@@ -578,6 +578,16 @@ implementing the `/negotiate` handshake — that is the intended shortcut.
 - Optional `umb-notifications` response header: a JSON array of
   `{ type, headline, message }`, surfaced as toasts and stripped by the interceptor
 - Same-origin, or CORS with `Access-Control-Allow-Credentials: true`
+- A write signed in by the session cookie (anything but `GET`, `HEAD` and
+  `OPTIONS`) must come from this site. That covers the Management API, the
+  routes that share its sign-in and the sign-in endpoints themselves. Otherwise
+  the API answers it as signed out (`401`) and the sign-in endpoints refuse it
+  (`403`). `Sec-Fetch-Site` decides when the browser sends it. Otherwise
+  `Origin` must match the request's host, or `applicationUrl`, so a proxy that
+  ends TLS doesn't trip it. `SameSite=Lax` alone would still let a sibling
+  subdomain's page post a `text/plain` body with the cookie. A request carrying
+  neither header isn't from a browser, so it passes, and so does one with a real
+  bearer token. This is `isSameOrigin` in `@crombolo/auth`.
 
 ## Localisation
 

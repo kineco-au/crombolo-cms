@@ -189,9 +189,11 @@ PATCH …/{id}/patch     { "operations": [...] }   // application/json-patch+jso
 `/values[alias=title,culture=null,segment=null]/value` and
 `/variants[culture=en-US,segment=null]/name`, indexes and `/-` — applied in order
 to a copy (`applyJsonPatch` in `@crombolo/core`), so any failure fails the lot.
-The patched model then saves exactly as a PUT would. 400 for a bad path, an
-unmatched filter or a missing value; 422 for an alias the type does not have;
-404 for no document.
+The patched model then saves exactly as a PUT would, and asks for the same
+Update permission on the node. Every operation is checked before any is applied,
+paths walk only the model's own properties, and a `__proto__`, `constructor` or
+`prototype` segment is refused. 400 for a bad path, an unmatched filter or a
+missing value; 422 for an alias the type does not have; 404 for no document.
 
 **Around the editor** (story `048`): `POST /dynamic-root/query` resolves a
 picker's start node from an origin (`Root`, `Parent`, `Current`, `Site` — the

@@ -26,9 +26,9 @@ import {
   syncedGroups,
 } from '@crombolo/server'
 import { type FakeOidc, startFakeOidc } from './support/fake-oidc.ts'
-import { type Harness, signedInServer, V1 } from './support/harness.ts'
+import { bootServer, type Harness, signedInServer, V1 } from './support/harness.ts'
 
-const open: Harness[] = []
+const open: Array<Pick<Harness, 'db'>> = []
 const fakes: FakeOidc[] = []
 const dirs: string[] = []
 afterEach(async () => {
@@ -458,9 +458,12 @@ describe(`backoffice users signing in through a provider (${process.env.CROMBOLO
   test('a new user is created in the mapped group, and the session carries the OAuth flow on', async () => {
     const fake = await startFakeOidc(CLIENT_ID)
     fakes.push(fake)
-    const h = await signedInServer({
+    // Nobody can sign in with a password here, so the checks below go through a pipeline's client.
+    const pipeline = { id: 'crombolo-back-office-pipeline', secret: 'a-pipeline-secret-1' }
+    const server = await bootServer({
       config: {
         allowLocalLogin: false,
+        apiClient: pipeline,
         backofficeIdentityProviders: [
           oidc({
             id: 'fake',
@@ -472,13 +475,44 @@ describe(`backoffice users signing in through a provider (${process.env.CROMBOLO
         ],
       },
     })
-    open.push(h)
+    open.push({ db: { close: () => server.close() } })
     const visit = (path: string, init: RequestInit = {}) =>
-      h.server.fetch(new Request(`http://localhost${path}`, { redirect: 'manual', ...init }))
+      server.fetch(new Request(`http://localhost${path}`, { redirect: 'manual', ...init }))
     const security = '/umbraco/management/api/v1/security/back-office'
+    const granted = await visit(`${security}/token`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: pipeline.id,
+        client_secret: pipeline.secret,
+      }).toString(),
+    })
+    const { access_token } = (await granted.json()) as { access_token: string }
+    const asAdmin = async <T>(path: string): Promise<T> => {
+      const response = await visit(path, { headers: { authorization: `Bearer ${access_token}` } })
+      expect(response.status).toBe(200)
+      return (await response.json()) as T
+    }
+
+    // Turning local login off closes the password endpoints, not only the form.
+    const json = { 'content-type': 'application/json' }
+    const password = await visit(`${security}/login`, {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify({ username: 'admin@crombolo.local', password: 'test-password' }),
+    })
+    expect(password.status).toBe(403)
+    expect(password.headers.get('set-cookie')).toBeNull()
+    const code = await visit(`${security}/verify-2fa`, {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify({ provider: 'x', code: '1' }),
+    })
+    expect(code.status).toBe(403)
 
     // Without a session, authorize sends the browser to the login page, which offers the provider.
-    const backOffice = h.server.config.backOfficePath
+    const backOffice = server.config.backOfficePath
     const authorize = `${security}/authorize?client_id=umbraco-back-office&redirect_uri=${encodeURIComponent(`http://localhost${backOffice}/oauth_complete`)}&response_type=code&code_challenge=abc&code_challenge_method=S256`
     const toLogin = await visit(authorize)
     const loginUrl = new URL(toLogin.headers.get('location') as string)
@@ -520,18 +554,18 @@ describe(`backoffice users signing in through a provider (${process.env.CROMBOLO
     expect(resumed.status).toBe(302)
     expect(new URL(resumed.headers.get('location') as string).searchParams.get('code')).toBeTruthy()
 
-    const users = await h.json<{
+    const users = await asAdmin<{
       items: Array<{ email: string; userGroupIds: Array<{ id: string }> }>
     }>(`${V1}/user?skip=0&take=50`)
     const grace = users.items.find((u) => u.email === 'grace@example.test')
     expect(grace).toBeDefined()
-    const groups = await h.json<{ items: Array<{ id: string; alias: string }> }>(
+    const groups = await asAdmin<{ items: Array<{ id: string; alias: string }> }>(
       `${V1}/user-group?skip=0&take=50`,
     )
     const editor = groups.items.find((g) => g.alias === 'editor')
     expect(grace?.userGroupIds.map((g) => g.id)).toEqual([editor?.id as string])
 
-    const providers = await h.json<Array<{ providerSchemeName: string; isLinkedOnUser: boolean }>>(
+    const providers = await asAdmin<Array<{ providerSchemeName: string; isLinkedOnUser: boolean }>>(
       `${V1}/user/current/login-providers`,
     )
     expect(providers).toEqual([

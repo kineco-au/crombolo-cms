@@ -24,7 +24,7 @@ Like `admin reset-password`, these commands open the site's database directly,
 not through the server, so they work when the site will not boot. In a container
 they run through `docker exec`.
 
-User groups are files (`schema/user-groups/`), so they are out of scope here.
+User groups are out of scope here. (This once said they were files under `schema/user-groups/`; they are database-only, and where they belong is story 162.)
 
 ## Acceptance criteria
 

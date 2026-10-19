@@ -152,6 +152,25 @@ describe('JSON Patch with filter segments', () => {
     ].map((operation) => applyJsonPatch(doc, [operation]))
     expect(reasons.every((result) => !result.ok)).toBe(true)
   })
+
+  test('never reaches a prototype, and a later bad operation stops the earlier ones', () => {
+    for (const path of [
+      '/__proto__/polluted',
+      '/constructor/prototype/polluted',
+      '/values/0/__proto__/polluted',
+      '/values[__proto__=x]/value',
+      '/hasOwnProperty/polluted',
+    ])
+      expect(applyJsonPatch(doc, [{ op: 'add', path, value: true }]).ok).toBe(false)
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined()
+
+    const mixed = applyJsonPatch(doc, [
+      { op: 'replace', path: '/variants/0/name', value: 'Changed' },
+      { op: 'add', path: '/__proto__/polluted', value: true },
+    ])
+    expect(mixed.ok).toBe(false)
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined()
+  })
 })
 
 describe('the rest of the contract', () => {

@@ -222,7 +222,7 @@ What the CLI lacks against [clispec.dev](https://clispec.dev/) is `150`. The
 rest are what the Management API can do that a script or an operator cannot,
 short of signing in as a person. The CLI does not mirror the API: editing
 content, data types, templates and the rest stays in the back office, or in files
-under `schema/`.
+under `schema/` — and, for a site's starting content, in seed files (Epic Q).
 
 | # | Story | Priority | Size | State | Depends on |
 |---|---|---|---|---|---|
@@ -236,3 +236,26 @@ under `schema/`.
 | `157` | A docs section on the product site | should | L | done | 150 |
 | `158` | A hosting plugin for the CLI | should | S | done | 150 |
 | `159` | A site file without its hostnames | should | S | done | 104, 105 |
+
+### Epic Q — A site from the command line
+
+A whole working site — schema, content, media, people and access — set up from
+an empty folder with the CLI alone, scriptable in CI, never opening the back
+office. Most of it is already files or commands; these are the gaps. Content is
+declared as seed files compiled to a bundle and applied through the existing
+import (`163`), not mirrored as imperative commands. Where groups and access
+live (`162`) and how a remote site is changed short of a whole push (`160`,
+`167`) are open questions; `160` and `167` are security critical and need
+elaborating before work starts.
+
+| # | Story | Priority | Size | State | Depends on |
+|---|---|---|---|---|---|
+| `160` | Signing in to a remote from CI | should | M | ready | — |
+| `161` | Schema files without the raw keys | should | L | ready | — |
+| `162` | User and member groups as files | should | M | ready | — |
+| `163` | Content as code: seed files | should | L | ready | — |
+| `164` | The demo sites from seed files | should | M | backlog | 163 |
+| `165` | Moving, sorting and deleting content | could | S | ready | — |
+| `166` | People and access per environment | should | M | backlog | 162 |
+| `167` | Changing a remote site piece by piece | should | M | backlog | 160 |
+| `168` | The dictionary and single media files | could | S | ready | — |

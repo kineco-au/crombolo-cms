@@ -155,8 +155,8 @@ export interface SeoHostOptions {
   cache: PublishedCache
   /** Whether a visitor who is not signed in would be turned away from a page. */
   isProtected(content: PublishedContent): Promise<boolean>
-  /** A document's latest saved version, as the preview renders it. */
-  draft(key: string, culture: string | null): Promise<DraftModel | undefined>
+  /** A document's latest saved version, as the preview renders it, if `principal` may read it. */
+  draft(key: string, culture: string | null, principal: Principal): Promise<DraftModel | undefined>
 }
 
 export interface SeoHost {
@@ -311,11 +311,11 @@ export function createSeoHost(options: SeoHostOptions): SeoHost {
     return false
   }
 
-  const preview = async (request: Request): Promise<Response> => {
+  const preview = async (request: Request, principal: Principal): Promise<Response> => {
     const url = new URL(request.url)
     const key = url.searchParams.get('document') ?? ''
     if (!UUID.test(key)) return Response.json({ message: 'Choose a page.' }, { status: 400 })
-    const draft = await options.draft(key, url.searchParams.get('culture') || null)
+    const draft = await options.draft(key, url.searchParams.get('culture') || null, principal)
     if (!draft) return Response.json({ message: 'That page could not be found.' }, { status: 404 })
     const origin = originOf(request, config)
     const snapshot = await cache.snapshot()
@@ -338,7 +338,7 @@ export function createSeoHost(options: SeoHostOptions): SeoHost {
   }
 
   const handle: SeoHost['handle'] = async (request, subpath, principal) => {
-    if (subpath === '/preview' && request.method === 'GET') return preview(request)
+    if (subpath === '/preview' && request.method === 'GET') return preview(request, principal)
     if (subpath !== '/settings') return undefined
     if (!hasSection(principal, 'settings')) return new Response('Forbidden', { status: 403 })
     if (request.method === 'GET') return Response.json(await settings())

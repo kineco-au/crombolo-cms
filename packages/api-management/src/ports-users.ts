@@ -97,7 +97,9 @@ export interface UserTwoFactorPort {
     userKey: string,
     code: string,
     secret: string,
-  ): Promise<{ ok: true; recoveryCodes: string[] } | { ok: false; message: string }>
+  ): Promise<
+    { ok: true; recoveryCodes: string[] } | { ok: false; message: string; alreadyEnabled?: boolean }
+  >
   disable(userKey: string, code: string): Promise<{ ok: true } | { ok: false; message: string }>
   /** An administrator turning it off for someone who lost their phone. */
   reset(userKey: string): Promise<void>

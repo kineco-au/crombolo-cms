@@ -47,14 +47,14 @@ and where it sits here:
 
 | Metadata | Umbraco today | Here | Notes |
 | --- | --- | --- | --- |
-| User groups: sections, permissions, granular permissions, languages | DB: `umbracoUserGroup` and four join tables | **Files** `schema/user-groups/` | roles are deploy-bound |
-| Start nodes per group | DB: columns on `umbracoUserGroup` | Files, by content key | optional |
+| User groups: sections, permissions, granular permissions, languages | DB: `umbracoUserGroup` and four join tables | DB — not yet files; where they belong is open in story `162` | roles are deploy-bound |
+| Start nodes per group | DB: columns on `umbracoUserGroup` | DB (story `162`) | optional |
 | Start nodes per user | DB: `umbracoUserStartNode` | DB | per-person |
 | Users, sessions, tokens, 2FA secrets | DB | DB | data, not metadata |
 | External login provider configuration | Files and code: `appsettings.json`, `AddBackOfficeExternalLogins()` | **Files** `crombolo.config.ts` | |
 | External login links | DB: `umbracoExternalLogin` | DB | per-person |
 | API keys, Delivery API access | Files: `appsettings.json` | Files `crombolo.config.ts` | |
-| Member groups | DB: nodes of the member-group object type | **Files** `schema/member-groups.toml` | roles, referenced by public-access rules |
+| Member groups | DB: nodes of the member-group object type | DB — not yet files (story `162`) | roles, referenced by public-access rules |
 | Public access rules | DB: `umbracoAccess`, `umbracoAccessRule`, per node | DB | a per-page editorial decision |
 
 ### Relations, integration, operations
@@ -128,8 +128,6 @@ schema/
 │   └── short-text.toml
 ├── languages.toml
 ├── relation-types.toml
-├── user-groups/
-│   └── editors.toml
 └── migrations/
     └── 0007-split-summary.ts    site-authored value migrations, see packaging-and-upgrades.md
 ```

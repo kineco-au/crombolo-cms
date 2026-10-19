@@ -11,6 +11,7 @@ import { join } from 'node:path'
 import { createDeliveryApi, resolveDeliveryApiSettings } from '@crombolo/api-delivery'
 import {
   type ClientAddress,
+  canReadDocument,
   createManagementApiRouter,
   hasSection,
   type Principal,
@@ -21,6 +22,8 @@ import {
   cookieNames,
   createAuthRoutes,
   expireCookie,
+  isSafeMethod,
+  isSameOrigin,
   REDACTED,
   readCookie,
   serializeCookie,
@@ -371,6 +374,8 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     backOfficePath: paths.backOfficePath,
     service: auth,
     cookies,
+    applicationUrl: config.applicationUrl || undefined,
+    allowLocalLogin: config.allowLocalLogin,
     twoFactor: {
       providersFor: (userKey) => twoFactor.providers(userKey),
       verify: (userKey, provider, code) =>
@@ -448,8 +453,22 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
   async function authenticate(request: Request): Promise<Principal | undefined> {
     const header = request.headers.get('authorization')
     const bearer = header?.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : undefined
-    const token = bearer && bearer !== REDACTED ? bearer : readCookie(request, names.accessToken)
+    const fromCookie = !bearer || bearer === REDACTED
+    const token = fromCookie ? readCookie(request, names.accessToken) : bearer
     if (!token) return undefined
+    // The browser sends the cookie wherever the request came from, so a write
+    // that relies on it must come from this site; a real bearer token need not.
+    if (
+      fromCookie &&
+      !isSafeMethod(request.method) &&
+      !isSameOrigin(request, config.applicationUrl || undefined)
+    ) {
+      log.warning('Refused a signed-in {method} {path} from another site', {
+        method: request.method,
+        path: new URL(request.url).pathname,
+      })
+      return undefined
+    }
 
     const identity = await auth.resolveAccessToken(token)
     if (!identity) return undefined
@@ -695,8 +714,14 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
           search: (term, options) => new SiteSearch(db).query(term, options),
         })
 
-  /** A document's latest saved version, as preview shows it, in the published tree's context. */
-  async function draftModel(key: string, requested: string | null) {
+  const nodeLookup = createNodeLookup(db)
+
+  /**
+   * A document's latest saved version, as preview shows it, in the published
+   * tree's context — or undefined when `principal` may not read it.
+   */
+  async function draftModel(key: string, requested: string | null, principal: Principal) {
+    if (!(await canReadDocument(principal, key, nodeLookup))) return undefined
     const draft = await loadDraftNode(db, key, {
       nodeState: schema.nodeState,
       nodeId: schema.nodeId,
@@ -803,7 +828,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
   const api = createManagementApiRouter({
     deps: managementDeps,
     authenticate,
-    nodes: createNodeLookup(db),
+    nodes: nodeLookup,
     allowLocalLogin: config.allowLocalLogin,
     audit: createAuditSink(db),
     clientAddress,
@@ -1929,13 +1954,15 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
    * draft of the page it resolves to.
    */
   async function renderPreview(request: Request, pathname: string, host: string) {
-    if (!readCookie(request, PREVIEW_COOKIE) || !(await authenticate(request))) return undefined
+    if (!readCookie(request, PREVIEW_COOKIE)) return undefined
+    const principal = await authenticate(request)
+    if (!principal) return undefined
     const byKey = /^\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i.exec(
       pathname,
     )
     const key = byKey?.[1] ?? (await cache.resolve(host, pathname))?.content.key
     if (!key) return undefined
-    const draft = await draftModel(key, new URL(request.url).searchParams.get('culture'))
+    const draft = await draftModel(key, new URL(request.url).searchParams.get('culture'), principal)
     if (!draft) return undefined
     return renderer.renderModel(draft.content, draft.culture, {
       ...(await pageRequest(request)),

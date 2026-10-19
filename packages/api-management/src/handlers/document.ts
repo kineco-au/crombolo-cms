@@ -19,6 +19,7 @@ import {
   problemResponse,
   ROOT_ACCESS,
 } from '@crombolo/core'
+import { deniedChildren } from '../authorization.ts'
 import type { PreviewPort } from '../ports.ts'
 import type { ApprovalGatePort, DocumentPort, PortFailure, SaveDocument } from '../ports-content.ts'
 import type { ManagementApiRouter, RequestContext } from '../router.ts'
@@ -1006,7 +1007,18 @@ export function registerDocumentHandlers(
   router.handle('GetCollectionDocumentById', async (ctx) => {
     const page = paging(ctx)
     if (!page) return problemResponse(invalidSkipTake())
-    const result = await port.collection(ctx.params.id as string, page)
+    // Read on the parent let the request through; a child can still deny it.
+    const parent = ctx.params.id as string
+    const principal = ctx.principal
+    const chain =
+      principal && ctx.nodes
+        ? (await ctx.nodes.documents([parent])).get(parent.toLowerCase())?.chain
+        : undefined
+    const result = await port.collection(
+      parent,
+      page,
+      principal && chain ? deniedChildren(principal, chain) : [],
+    )
     return Response.json({
       total: result.total,
       items: result.items.map((aggregate) => ({

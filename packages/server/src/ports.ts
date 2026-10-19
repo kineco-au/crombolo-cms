@@ -699,7 +699,11 @@ function userTwoFactorPort(service: TwoFactorService): UserTwoFactorPort {
       const enabled = await service.enable(userKey, provider, secret, code)
       return enabled.ok
         ? { ok: true, recoveryCodes: enabled.value.recoveryCodes }
-        : { ok: false, message: enabled.message }
+        : {
+            ok: false,
+            message: enabled.message,
+            alreadyEnabled: enabled.reason === 'alreadyEnabled',
+          }
     },
     async disable(userKey, code) {
       const disabled = await service.disable(userKey, provider, code)

@@ -25,7 +25,11 @@ export const MEMBER_TWO_FACTOR_PROVIDER = 'UmbracoMemberAppAuthenticator'
 
 export type TwoFactorResult<T = undefined> =
   | ({ ok: true } & (T extends undefined ? object : { value: T }))
-  | { ok: false; reason: 'unavailable' | 'invalidCode' | 'notEnabled'; message: string }
+  | {
+      ok: false
+      reason: 'unavailable' | 'invalidCode' | 'notEnabled' | 'alreadyEnabled'
+      message: string
+    }
 
 export class TwoFactorService {
   #repository: TwoFactorRepository
@@ -69,7 +73,12 @@ export class TwoFactorService {
     return { ok: true, value: { secret, qrCodeSetupImageUrl: qrCodeDataUrl(uri), otpauthUri: uri } }
   }
 
-  /** Turns the provider on when `code` is right for `secret`; answers with the recovery codes, shown once. */
+  /**
+   * Turns the provider on when `code` is right for `secret`; answers with the
+   * recovery codes, shown once. Refused while it is already on: replacing the
+   * authenticator means turning it off first, which asks for the current one, so
+   * a stolen session cannot swap in its own.
+   */
   async enable(
     ownerKey: string,
     provider: string,
@@ -77,6 +86,12 @@ export class TwoFactorService {
     code: string,
   ): Promise<TwoFactorResult<{ recoveryCodes: string[] }>> {
     if (!this.#key) return this.#unavailable()
+    if (await this.#repository.get(ownerKey, provider))
+      return {
+        ok: false,
+        reason: 'alreadyEnabled',
+        message: 'Two-factor sign-in is already on. Turn it off first to use another app.',
+      }
     const step = verifyTotp(secret, code)
     if (step === undefined)
       return {

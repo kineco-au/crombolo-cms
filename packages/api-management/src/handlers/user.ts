@@ -492,8 +492,13 @@ function registerUsers(router: ManagementApiRouter, users: UserPort): void {
     if (!provider) return noProvider()
     const b = await body(ctx)
     const enabled = await provider.enable(me(ctx).id, str(b.code), str(b.secret))
-    return enabled.ok
-      ? Response.json({ $type: 'TwoFactorRecoveryCodes', recoveryCodes: enabled.recoveryCodes })
+    if (enabled.ok)
+      return Response.json({
+        $type: 'TwoFactorRecoveryCodes',
+        recoveryCodes: enabled.recoveryCodes,
+      })
+    return enabled.alreadyEnabled
+      ? bad('Two-factor sign-in is already on', enabled.message, 'ProviderAlreadySetup', 400)
       : refused(enabled.message)
   })
   router.handle('DeleteUserCurrent2faByProviderName', async (ctx) => {

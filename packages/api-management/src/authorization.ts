@@ -243,6 +243,8 @@ const DOCUMENT_RULES: Record<string, readonly DocumentRule[]> = {
   GetDocumentByIdAvailableSegmentOptions: [{ verbs: [D.Read], node: id }],
   GetDocumentByIdPreviewUrl: [{ verbs: [D.Read], node: id }],
   GetDocumentVersion: [{ verbs: [D.Read], node: { query: 'documentId' } }],
+  GetDocumentVersionById: [{ verbs: [D.Read], node: { version: 'id' } }],
+  PutDocumentVersionByIdPreventCleanup: [{ verbs: [D.Update], node: { version: 'id' } }],
   // The list view: it answers with the children's own property values, so it is
   // a read of the branch and not merely of the tree, and Umbraco filters it per
   // item (ContentListViewService.FilterAuthorizedKeysAsync). Requiring Read on
@@ -252,6 +254,7 @@ const DOCUMENT_RULES: Record<string, readonly DocumentRule[]> = {
   PostDocument: [{ verbs: [D.Create], node: { body: ['parent', 'id'] } }],
   PostDocumentValidate: [{ verbs: [D.Create], node: { body: ['parent', 'id'] } }],
   PutDocumentById: [{ verbs: [D.Update], node: id }],
+  PatchDocumentByIdPatch: [{ verbs: [D.Update], node: id }],
   PutDocumentByIdValidate: [{ verbs: [D.Update], node: id }],
   PostDocumentCreateAndPublish: [
     { verbs: [D.Publish], node: { body: ['parent', 'id'] }, cultures: true },
@@ -384,6 +387,31 @@ async function resolveKeys(
     return document ? [document] : []
   }
   return pick(await body(), ref.body).map((key) => key ?? 'root')
+}
+
+/**
+ * Keys the caller is denied Read on as children of a parent they can read. A
+ * child can only lose what its parent grants by an explicit setting on the child
+ * itself, so the candidates are the nodes the caller's groups set explicitly; a
+ * candidate that is not a child of this parent filters nothing.
+ */
+export function deniedChildren(principal: Principal, parentChain: readonly string[]): string[] {
+  const candidates = new Set(principal.groups.flatMap((g) => [...g.granular.keys()]))
+  return [...candidates].filter(
+    (key) => !permissionsForPath(principal.groups, [...parentChain, key]).has(D.Read),
+  )
+}
+
+/** Whether the caller may read a document's draft: the Content section, its path, and Read on it. */
+export async function canReadDocument(
+  principal: Principal,
+  key: string,
+  nodes: NodeLookup,
+): Promise<boolean> {
+  if (!hasSection(principal, 'content')) return false
+  const node = (await nodes.documents([key])).get(key.toLowerCase())
+  if (!node || !hasPathAccess(principal.startNodes.document, node.chain, node.trashed)) return false
+  return permissionsForPath(principal.groups, node.chain).has(D.Read)
 }
 
 /** Evaluates the operation's section requirements, then its node rules. */

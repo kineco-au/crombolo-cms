@@ -578,12 +578,40 @@ describe(`public access (${process.env.CROMBOLO_DB ?? 'sqlite'})`, () => {
     // into an account the attacker holds is the point of doing this.
     const elsewhere: Record<string, string>[] = [
       { 'sec-fetch-site': 'cross-site' },
+      // A sibling subdomain is the same site, so SameSite=Lax lets its cookie-bearing post through.
+      { 'sec-fetch-site': 'same-site', origin: 'http://evil.localhost' },
       { origin: 'https://evil.example' },
+      { origin: 'null' },
     ]
     for (const headers of elsewhere) {
       expect((await crossSite('/umbraco/members/login', credentials, headers)).status).toBe(403)
       expect((await crossSite('/umbraco/members/logout', {}, headers)).status).toBe(403)
+      expect((await crossSite('/umbraco/members/register', credentials, headers)).status).toBe(403)
     }
+
+    // Signed in, so only the origin check stands between a forged post and her two-factor settings.
+    const signedIn = await crossSite('/umbraco/members/login', credentials, {
+      'sec-fetch-site': 'same-origin',
+    })
+    const cookie = signedIn.headers
+      .getSetCookie()
+      .map((c) => c.split(';')[0] as string)
+      .join('; ')
+    expect(cookie).not.toBe('')
+    expect(
+      (
+        await crossSite(
+          '/umbraco/members/2fa/setup',
+          {},
+          { cookie, 'sec-fetch-site': 'same-origin' },
+        )
+      ).status,
+    ).not.toBe(403)
+    for (const headers of elsewhere)
+      for (const step of ['setup', 'enable', 'disable'])
+        expect(
+          (await crossSite(`/umbraco/members/2fa/${step}`, {}, { cookie, ...headers })).status,
+        ).toBe(403)
 
     // The site's own form still works, however the browser labels it.
     expect(
@@ -593,6 +621,16 @@ describe(`public access (${process.env.CROMBOLO_DB ?? 'sqlite'})`, () => {
     expect(
       (await crossSite('/umbraco/members/login', credentials, { origin: 'http://localhost' }))
         .status,
+    ).toBe(303)
+
+    // Behind a proxy that ends TLS the browser says https while the request reaches us as http.
+    expect(
+      (
+        await crossSite('/umbraco/members/login', credentials, {
+          origin: 'https://localhost',
+          host: 'localhost',
+        })
+      ).status,
     ).toBe(303)
   })
 })

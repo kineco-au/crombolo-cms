@@ -464,8 +464,12 @@ export function createDocumentPort(
       return toTreeItems(repo, await repo.nodes.byKeys(keys))
     },
 
-    async collection(parentKey: string | null, paging: SkipTake): Promise<Page<DocumentAggregate>> {
-      const page = await repo.children(parentKey, paging.skip, paging.take)
+    async collection(
+      parentKey: string | null,
+      paging: SkipTake,
+      excludeKeys: readonly string[] = [],
+    ): Promise<Page<DocumentAggregate>> {
+      const page = await repo.children(parentKey, paging.skip, paging.take, excludeKeys)
       const items: DocumentAggregate[] = []
       for (const row of page.items) {
         const aggregate = await repo.load(row)

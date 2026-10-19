@@ -900,6 +900,15 @@ describe('who may do what', () => {
     expect((await c.call(`${V1}/collection/document/${other}?skip=0&take=10`)).status).toBe(403)
     // Team's explicit empty set denies even reading it
     expect((await c.call(`${V1}/document/${team}`)).status).toBe(403)
+    // ...so About's list view leaves it out, from the page and the total alike
+    const listed = await c.json<{ total: number; items: Array<{ id: string }> }>(
+      `${V1}/collection/document/${about}?skip=0&take=10`,
+    )
+    expect(listed).toMatchObject({ total: 0, items: [] })
+    const asAdmin = await h.json<{ total: number; items: Array<{ id: string }> }>(
+      `${V1}/collection/document/${about}?skip=0&take=10`,
+    )
+    expect(asAdmin.items.map((i) => i.id)).toEqual([team])
 
     // Cannot delete, trash or move; can edit and create below About, not at the root
     expect((await c.del(`${V1}/document/${about}`)).status).toBe(403)

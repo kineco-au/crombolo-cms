@@ -133,17 +133,29 @@ export class NodeRepository {
     skip: number,
     take: number,
     trashed = false,
+    excludeKeys: readonly string[] = [],
   ): Promise<Page<NodeRow>> {
+    const where = `parent_id = ? AND node_object_type = ? AND trashed = ?${
+      excludeKeys.length > 0
+        ? ` AND unique_id NOT IN (${excludeKeys.map(() => '?').join(', ')})`
+        : ''
+    }`
+    const params = [
+      parentId,
+      objectType,
+      this.#db.dialect.boolValue(trashed),
+      ...excludeKeys.map(normaliseUuid),
+    ]
     const totals = await this.#db.query<{ n: number }>(
-      'SELECT COUNT(*) AS n FROM node WHERE parent_id = ? AND node_object_type = ? AND trashed = ?',
-      [parentId, objectType, this.#db.dialect.boolValue(trashed)],
+      `SELECT COUNT(*) AS n FROM node WHERE ${where}`,
+      params,
     )
     const rows = await this.#db.query(
       `SELECT ${NODE_COLUMNS} FROM node
-       WHERE parent_id = ? AND node_object_type = ? AND trashed = ?
+       WHERE ${where}
        ORDER BY sort_order, id
        LIMIT ? OFFSET ?`,
-      [parentId, objectType, this.#db.dialect.boolValue(trashed), take, skip],
+      [...params, take, skip],
     )
     return { total: Number(totals[0]?.n ?? 0), items: rows.map(mapNode) }
   }

@@ -6,7 +6,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { ComponentRepository, ContentTypeRepository } from '@crombolo/data'
-import { type Harness, signedInServer, V1 } from './support/harness.ts'
+import { BACKOFFICE, type Harness, signedInServer, signInAsGroup, V1 } from './support/harness.ts'
 
 const open: Harness[] = []
 const dirs: string[] = []
@@ -675,6 +675,43 @@ describe('story 024 preview', () => {
     expect(
       (await h.call(`${V1}/document/${crypto.randomUUID()}/preview-url?providerAlias=x`)).status,
     ).toBe(404)
+  })
+
+  test('an editor previews only the drafts they may read, in the page and in the search snippet', async () => {
+    const { h, create } = await site()
+    const harbour = await create('Harbour', null, 'Harbour draft')
+    const vault = await create('Vault', null, 'Confidential draft')
+    const created = await h.post(`${V1}/user-group`, {
+      name: 'Harbour editors',
+      alias: 'harbourEditors',
+      sections: ['Umb.Section.Content'],
+      languages: [],
+      hasAccessToAllLanguages: true,
+      documentRootAccess: false,
+      documentStartNode: { id: harbour },
+      mediaRootAccess: true,
+      mediaStartNode: null,
+      elementRootAccess: false,
+      elementStartNode: null,
+      fallbackPermissions: ['Umb.Document.Read'],
+      permissions: [],
+    })
+    expect(created.status).toBe(201)
+    const scoped = await signInAsGroup(h, 'harbourEditors')
+    const entered = await scoped.call(
+      `${V1}/document/${harbour}/preview-url?providerAlias=umbDocumentUrlProvider`,
+    )
+    expect(entered.status).toBe(200)
+
+    expect(await (await scoped.call(`/${harbour}`)).text()).toContain('Harbour draft')
+    const outside = await scoped.call(`/${vault}`)
+    expect(outside.status).toBe(404)
+    expect(await outside.text()).not.toContain('Confidential draft')
+
+    const snippet = (key: string) =>
+      scoped.call(`${BACKOFFICE}/crombolo/api/seo/preview?document=${key}`)
+    expect((await snippet(harbour)).status).toBe(200)
+    expect((await snippet(vault)).status).toBe(404)
   })
 
   test('an open preview is told to refresh when its document is saved', async () => {

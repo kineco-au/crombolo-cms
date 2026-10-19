@@ -370,7 +370,9 @@ group object ids, which is what the `map` keys are.
   so protected pages and the Delivery API's app sign-in work unchanged; an app
   can send `identity_provider=UmbracoMembers.<id>` to go straight to the
   provider. A user gets the backoffice session, and the login page shows a
-  button per provider. `allowLocalLogin: false` makes those the only way in.
+  button per provider. `allowLocalLogin: false` makes those the only way in:
+  the password form is hidden, and the password and two-factor sign-in
+  endpoints answer 403.
 - A member with no password shows as External only in the backoffice. A
   provisioning job creates one through `POST /member` by leaving `password` out
   (story `035`). Such a member cannot use the login form — it refuses them as it
@@ -419,8 +421,11 @@ it off with the two-factor toggle in the member's workspace.
 
 A code is accepted a step either side of now, for clock drift, and never twice:
 the last step used is recorded. A wrong code counts towards lockout as a wrong
-password does. Recovery codes are kept as SHA-256 hashes; turning it on again
-replaces them.
+password does. Recovery codes are kept as SHA-256 hashes. Turning it on while
+it is already on is refused (`ProviderAlreadySetup` for users, `400` for
+members), so a signed-in session alone cannot swap in its own app. Moving to
+another app means turning it off with a code from the current one or a recovery
+code, then on again, which issues new recovery codes.
 
 ## A site as a remote
 
@@ -649,9 +654,13 @@ contract says nothing. What is worth knowing as an operator:
 | `returnUrl`             | Reduced to a local path by `localReturnUrl`, server-side and again in the login page — resolved against an origin, so `/\host` and a tab-smuggled `//host` are caught too |
 | Lockout                 | Checked before the password, so a locked account cannot be used to confirm which guess was the real one; a wrong two-factor code counts as a wrong password               |
 | Plugin routes           | The endpoints outside the contract answer to the same authority as the operations beside them: Settings for git, schema import and the upgrade findings                    |
-| List views              | `collection/document/{id}` and `collection/media` need Read on the parent, so a start node bounds them as it bounds the tree                                               |
+| List views              | `collection/document/{id}` and `collection/media` need Read on the parent, so a start node bounds them as it bounds the tree; a child explicitly denied Read is left out of the page and the total |
 | Media                   | Content types come from the file name, never from the uploader's header; served with `nosniff` and `Content-Security-Policy: sandbox`, which denies script to SVG and HTML  |
-| Member endpoints        | Cross-site form posts are refused via fetch metadata, since these act on a cookie and have no antiforgery token; registration uses the configured type and a password policy |
+| Member endpoints        | Posts from another origin, a sibling subdomain included, are refused by `isSameOrigin`. These act on a cookie and have no antiforgery token. Registration uses the configured type and a password policy |
+| Cookie-signed-in writes | A Management API or plugin-route write signed in by the session cookie must come from this site (`Sec-Fetch-Site`, else `Origin` against the host or `applicationUrl`); a real bearer token is exempt |
+| Local login off         | `allowLocalLogin: false` refuses the password and two-factor sign-in endpoints, not only the form                                                                         |
+| Preview                 | A draft renders only for an editor who could read the document: the Content section, a start node above it, and Read on it                                                |
+| Document patch          | Needs Update on the node, as a save does; paths walk own properties only and refuse `__proto__`, `constructor` and `prototype`                                            |
 | Request bodies          | Capped at 32 MiB (`CROMBOLO_MAX_REQUEST_BODY_MB`) rather than Bun's 128 MB default                                                                                        |
 | Assistant               | Read-and-propose only; the transcript a browser returns is capped before it is billed; provider configuration is shown to Settings holders only                            |
 | Proposed templates      | Scanned for the globals and the roads to `eval` — `Function`, `.constructor`, `import.meta` — behind human approval, which is the real gate                               |

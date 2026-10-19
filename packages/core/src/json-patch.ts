@@ -19,14 +19,22 @@ type Step =
 
 class PatchError extends Error {}
 
-const unescapeSegment = (segment: string) => segment.replace(/~1/g, '/').replace(/~0/g, '~')
+/** Names that would reach an object's prototype rather than its own data. */
+const FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
+
+function unescapeSegment(segment: string, path: string): string {
+  const key = segment.replace(/~1/g, '/').replace(/~0/g, '~')
+  if (FORBIDDEN_KEYS.has(key))
+    throw new PatchError(`"${key}" may not appear in a path, in "${path}".`)
+  return key
+}
 
 function parseFilter(body: string, path: string): Step {
   const conditions = body.split(',').map((pair): [string, string | null] => {
     const at = pair.indexOf('=')
     if (at <= 0) throw new PatchError(`The filter "[${body}]" in "${path}" needs key=value pairs.`)
-    const value = unescapeSegment(pair.slice(at + 1))
-    return [unescapeSegment(pair.slice(0, at)), value.toLowerCase() === 'null' ? null : value]
+    const value = unescapeSegment(pair.slice(at + 1), path)
+    return [unescapeSegment(pair.slice(0, at), path), value.toLowerCase() === 'null' ? null : value]
   })
   return { kind: 'filter', conditions }
 }
@@ -39,12 +47,12 @@ export function parsePatchPath(path: string): Step[] {
     const open = segment.indexOf('[')
     if (open === -1) {
       steps.push(
-        segment === '-' ? { kind: 'append' } : { kind: 'key', key: unescapeSegment(segment) },
+        segment === '-' ? { kind: 'append' } : { kind: 'key', key: unescapeSegment(segment, path) },
       )
       continue
     }
     if (!segment.endsWith(']')) throw new PatchError(`The filter in "${path}" is not closed.`)
-    if (open > 0) steps.push({ kind: 'key', key: unescapeSegment(segment.slice(0, open)) })
+    if (open > 0) steps.push({ kind: 'key', key: unescapeSegment(segment.slice(0, open), path) })
     steps.push(parseFilter(segment.slice(open + 1, -1), path))
   }
   steps.forEach((step, index) => {
@@ -63,8 +71,8 @@ function matchIndex(array: unknown[], step: Extract<Step, { kind: 'filter' }>, p
       isRecord(element) &&
       step.conditions.every(([key, value]) =>
         value === null
-          ? element[key] === undefined || element[key] === null
-          : element[key] === value,
+          ? !Object.hasOwn(element, key) || element[key] === null
+          : Object.hasOwn(element, key) && element[key] === value,
       ),
   )
   if (index === -1) throw new PatchError(`Nothing in the list matches the filter in "${path}".`)
@@ -85,13 +93,21 @@ function child(container: unknown, step: Step, path: string): unknown {
     if (step.kind === 'filter') return container[matchIndex(container, step, path)]
     if (step.kind === 'key') return container[arrayIndex(container, step.key, path, false)]
   } else if (isRecord(container) && step.kind === 'key') {
-    if (!(step.key in container)) throw new PatchError(`There is no "${step.key}" in "${path}".`)
+    if (!Object.hasOwn(container, step.key))
+      throw new PatchError(`There is no "${step.key}" in "${path}".`)
     return container[step.key]
   }
   throw new PatchError(`"${path}" does not lead anywhere in the document.`)
 }
 
-function applyOne(root: unknown, operation: PatchOperation): unknown {
+/** Checks an operation's shape and path without touching the document. */
+function validate(operation: PatchOperation): Step[] {
+  if (
+    !isRecord(operation) ||
+    typeof operation.op !== 'string' ||
+    typeof operation.path !== 'string'
+  )
+    throw new PatchError('Every operation needs an op and a path.')
   const { op, path } = operation
   if (op !== 'replace' && op !== 'add' && op !== 'remove')
     throw new PatchError(
@@ -103,6 +119,12 @@ function applyOne(root: unknown, operation: PatchOperation): unknown {
   const last = steps[steps.length - 1] as Step
   if (last.kind === 'append' && op !== 'add')
     throw new PatchError(`"-" appends, so only add may use it, in "${path}".`)
+  return steps
+}
+
+function applyOne(root: unknown, operation: PatchOperation, steps: Step[]): unknown {
+  const { op, path } = operation
+  const last = steps[steps.length - 1] as Step
   let parent = root
   for (const step of steps.slice(0, -1)) parent = child(parent, step, path)
 
@@ -120,7 +142,7 @@ function applyOne(root: unknown, operation: PatchOperation): unknown {
   }
   if (isRecord(parent) && last.kind === 'key') {
     if (op === 'remove') {
-      if (!(last.key in parent))
+      if (!Object.hasOwn(parent, last.key))
         throw new PatchError(`There is no "${last.key}" to remove, in "${path}".`)
       delete parent[last.key]
     } else parent[last.key] = operation.value
@@ -134,8 +156,11 @@ export function applyJsonPatch(
   operations: readonly PatchOperation[],
 ): PatchResult {
   try {
+    const parsed = operations.map(validate)
     let value = structuredClone(document)
-    for (const operation of operations) value = applyOne(value, operation)
+    operations.forEach((operation, index) => {
+      value = applyOne(value, operation, parsed[index] as Step[])
+    })
     return { ok: true, value }
   } catch (error) {
     if (error instanceof PatchError) return { ok: false, reason: error.message }

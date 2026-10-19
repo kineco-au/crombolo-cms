@@ -390,7 +390,12 @@ export interface DocumentPort extends TreePort {
   setPreventCleanup(versionId: string, prevent: boolean): Promise<boolean>
   /** Published URLs per culture, for the editor's info panel. */
   urls(key: string): Promise<Array<{ culture: string | null; url: string }>>
-  collection(parentKey: string | null, paging: SkipTake): Promise<Page<DocumentAggregate>>
+  /** A page of a document's children, without `excludeKeys` in the page or the total. */
+  collection(
+    parentKey: string | null,
+    paging: SkipTake,
+    excludeKeys?: readonly string[],
+  ): Promise<Page<DocumentAggregate>>
 }
 
 export interface SaveDocument {

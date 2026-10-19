@@ -16,6 +16,7 @@ import {
   serializeCookie,
 } from './cookies.ts'
 import { REMOTE_CLIENT_ID } from './device.ts'
+import { isSafeMethod, isSameOrigin } from './origin.ts'
 import type { AuthService } from './service.ts'
 import { BACKOFFICE_CLIENT_ID, DEFAULT_SCOPE } from './service.ts'
 import { readShortLived, signShortLived } from './short-lived.ts'
@@ -33,6 +34,10 @@ export interface AuthRouteOptions {
   backOfficePath: string
   service: AuthService
   cookies: CookieOptions
+  /** The site's public address, which a request's `Origin` may name behind a proxy. */
+  applicationUrl?: string
+  /** False refuses the password sign-in and its two-factor step, not merely hides the form. */
+  allowLocalLogin?: boolean
   /** Told about every sign-in, failed sign-in and sign-out, for the audit log. */
   onAudit?: (event: AuthAuditEvent, request: Request) => Promise<void>
   /** Two-factor sign-in (story 032): who has a provider on, and whether a code is theirs. */
@@ -501,14 +506,6 @@ export function createAuthRoutes(options: AuthRouteOptions): AuthRoutes {
     return sessionId ? (await service.resolveSession(sessionId))?.userId : undefined
   }
 
-  /** A cookie-authenticated write must come from this site, not a form elsewhere. */
-  const sameSite = (request: Request) => {
-    const site = request.headers.get('sec-fetch-site')
-    if (site) return site === 'same-origin'
-    const origin = request.headers.get('origin')
-    return !origin || origin === new URL(request.url).origin
-  }
-
   const signInFirst = () => problemResponse(problemDetails({ title: 'Sign in first', status: 401 }))
 
   /** What the approval page shows for a code, and its decision. */
@@ -537,7 +534,6 @@ export function createAuthRoutes(options: AuthRouteOptions): AuthRoutes {
       })
     }
     if (action === 'device/decide' && request.method === 'POST') {
-      if (!sameSite(request)) return new Response('Forbidden', { status: 403 })
       const body = (await request.json().catch(() => ({}))) as {
         userCode?: unknown
         approve?: unknown
@@ -564,7 +560,6 @@ export function createAuthRoutes(options: AuthRouteOptions): AuthRoutes {
     }
     const revoking = /^devices\/(\d+)$/.exec(action)
     if (revoking && request.method === 'DELETE') {
-      if (!sameSite(request)) return new Response('Forbidden', { status: 403 })
       return (await service.revokeDevice(Number(revoking[1]), userId))
         ? new Response(null, { status: 204 })
         : problemResponse(problemDetails({ title: 'No such device', status: 404 }))
@@ -577,9 +572,24 @@ export function createAuthRoutes(options: AuthRouteOptions): AuthRoutes {
       if (!pathname.startsWith(`${prefix}/`)) return undefined
       const action = pathname.slice(prefix.length + 1)
       const url = new URL(request.url)
+      // Every write here reads a cookie or sets one, so none may come from another origin.
+      if (!isSafeMethod(request.method) && !isSameOrigin(request, options.applicationUrl))
+        return new Response('Forbidden', { status: 403 })
 
       if (action === 'authorize' && request.method === 'GET') return handleAuthorize(request, url)
       if (action === 'token' && request.method === 'POST') return handleToken(request, url)
+      if (
+        options.allowLocalLogin === false &&
+        (action === 'login' || action === 'verify-2fa') &&
+        request.method === 'POST'
+      )
+        return problemResponse(
+          problemDetails({
+            title: 'Signing in with a password is turned off',
+            status: 403,
+            detail: 'This site signs people in through its identity provider.',
+          }),
+        )
       if (action === 'login' && request.method === 'POST') return handleLogin(request)
       if (action === 'revoke' && request.method === 'POST') return handleRevoke(request)
       if (action === 'signout') return handleSignOut(request, url)

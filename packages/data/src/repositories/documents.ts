@@ -363,10 +363,16 @@ export class DocumentRepository {
     return this.#load(node)
   }
 
-  async children(parentKey: string | null, skip: number, take: number): Promise<Page<NodeRow>> {
+  /** A page of children, leaving out `excludeKeys` from the page and the total alike. */
+  async children(
+    parentKey: string | null,
+    skip: number,
+    take: number,
+    excludeKeys: readonly string[] = [],
+  ): Promise<Page<NodeRow>> {
     const parentId = parentKey ? (await this.#nodes.byKey(parentKey))?.id : SystemNodes.Root
     if (parentId === undefined) return { total: 0, items: [] }
-    return this.#nodes.children(parentId, this.objectType, skip, take)
+    return this.#nodes.children(parentId, this.objectType, skip, take, false, excludeKeys)
   }
 
   /** The recycle bin's tree: trashed documents, top level being what was trashed directly. */

@@ -10,7 +10,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { authorize, type NodeLookup, type Principal, sectionsOf } from '@crombolo/api-management'
-import { AuthService, type AuthStore, hashPassword } from '@crombolo/auth'
+import { AuthService, type AuthStore, hashPassword, isSameOrigin } from '@crombolo/auth'
 import { listOperations, loadSpec, type OperationInfo } from '@crombolo/contracts'
 import { localReturnUrl, sectionKey, toSectionAliases } from '@crombolo/core'
 import { loadConfig, type ServerBundle } from '@crombolo/server'
@@ -240,6 +240,90 @@ describe('the plugin routes outside the contract', () => {
 
     const anonymous = await h.server.fetch(new Request(`http://localhost${report}`))
     expect(anonymous.status).toBe(401)
+  })
+})
+
+describe('a write from another site', () => {
+  const at = (headers: Record<string, string>) =>
+    new Request('http://cms.example.test/x', { method: 'POST', headers })
+
+  test("is told apart by the browser's marks, and a request with none is not a browser's", () => {
+    expect(isSameOrigin(at({ 'sec-fetch-site': 'same-origin' }))).toBe(true)
+    expect(isSameOrigin(at({ 'sec-fetch-site': 'same-site' }))).toBe(false)
+    expect(isSameOrigin(at({ 'sec-fetch-site': 'cross-site' }))).toBe(false)
+    expect(isSameOrigin(at({ origin: 'http://cms.example.test' }))).toBe(true)
+    expect(isSameOrigin(at({ origin: 'http://evil.example.test' }))).toBe(false)
+    expect(isSameOrigin(at({ origin: 'null' }))).toBe(false)
+    expect(isSameOrigin(at({}))).toBe(true)
+    // Behind a proxy that ends TLS the request says http while the browser said https.
+    expect(isSameOrigin(at({ origin: 'https://cms.example.test', host: 'cms.example.test' }))).toBe(
+      true,
+    )
+    expect(isSameOrigin(at({ origin: 'https://cms.example.org' }), 'https://cms.example.org')).toBe(
+      true,
+    )
+    expect(
+      isSameOrigin(
+        at({ origin: 'https://evil.example.org', 'x-forwarded-host': 'cms.example.org' }),
+      ),
+    ).toBe(false)
+  })
+
+  test('is refused when signed in by cookie, and allowed with a real bearer token', async () => {
+    const client = { id: 'crombolo-back-office-pipeline', secret: 'a-pipeline-secret-1' }
+    const h = await site({ apiClient: client })
+    // The shape a sibling subdomain's page can send: a simple request, so no preflight.
+    const forged = (headers: Record<string, string>) =>
+      h.call(`${V1}/dictionary`, {
+        method: 'POST',
+        headers: { 'content-type': 'text/plain', ...headers },
+        body: JSON.stringify({ name: 'Forged', translations: [] }),
+      })
+    expect(
+      (await forged({ origin: 'http://evil.localhost', 'sec-fetch-site': 'same-site' })).status,
+    ).toBe(401)
+    expect((await forged({ origin: 'http://evil.localhost' })).status).toBe(401)
+    expect((await forged({ 'sec-fetch-site': 'cross-site' })).status).toBe(401)
+    // Reads are not writes, and the back office's own writes still land.
+    expect(
+      (await h.call(`${V1}/user/current`, { headers: { 'sec-fetch-site': 'cross-site' } })).status,
+    ).toBe(200)
+    expect(
+      (await forged({ origin: 'http://localhost', 'sec-fetch-site': 'same-origin' })).status,
+    ).not.toBe(401)
+
+    const granted = await h.call(`${V1}/security/back-office/token`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: client.id,
+        client_secret: client.secret,
+      }).toString(),
+    })
+    const { access_token } = (await granted.json()) as { access_token: string }
+    const bearer = await h.server.fetch(
+      new Request(`http://localhost${V1}/dictionary`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${access_token}`,
+          'content-type': 'application/json',
+          origin: 'http://evil.localhost',
+        },
+        body: JSON.stringify({ name: 'By a pipeline', translations: [] }),
+      }),
+    )
+    expect(bearer.status).not.toBe(401)
+  })
+
+  test('cannot reach the sign-in endpoints either', async () => {
+    const h = await site()
+    const login = await h.call(`${V1}/security/back-office/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain', 'sec-fetch-site': 'same-site' },
+      body: JSON.stringify({ username: 'admin@crombolo.local', password: 'test-password' }),
+    })
+    expect(login.status).toBe(403)
   })
 })
 

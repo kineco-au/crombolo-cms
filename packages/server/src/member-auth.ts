@@ -26,6 +26,7 @@ import {
   expireCookie,
   hashPassword,
   isNativeHash,
+  isSameOrigin,
   memberCookieName,
   passwordConfigJson,
   readCookie,
@@ -124,30 +125,6 @@ async function readInput(request: Request): Promise<Record<string, string>> {
  * guarantee of anything.
  */
 const safeReturnUrl = (value: string | undefined): string | undefined => localReturnUrl(value)
-
-/**
- * Whether a POST came from this site, rather than a form on someone else's.
- *
- * These three endpoints take a plain form post and act on the member cookie, and
- * `SameSite=Lax` does not cover a cross-site POST's effect here: an attacker's
- * form can sign a visitor into an account the attacker controls, or out of their
- * own. Umbraco's surface controllers carry an antiforgery token for this; with no
- * token to hand, the fetch metadata a browser sends is what distinguishes them.
- *
- * A request with neither header is allowed: that is a non-browser client, which
- * carries no ambient cookies to abuse.
- */
-function fromThisSite(request: Request): boolean {
-  const site = request.headers.get('sec-fetch-site')
-  if (site) return site === 'same-origin' || site === 'none'
-  const origin = request.headers.get('origin')
-  if (!origin) return true
-  try {
-    return origin === new URL(request.url).origin
-  } catch {
-    return false
-  }
-}
 
 export function createMemberAuth(
   db: Db,
@@ -468,7 +445,8 @@ export function createMemberAuth(
       })
     }
     if (request.method !== 'POST') return new Response(null, { status: 405 })
-    if (!fromThisSite(request)) return new Response('Forbidden', { status: 403 })
+    if (!isSameOrigin(request, config.applicationUrl || undefined))
+      return new Response('Forbidden', { status: 403 })
     const input = await readInput(request)
     switch (step) {
       case 'setup': {
@@ -603,7 +581,10 @@ export function createMemberAuth(
       if (action === '2fa' || action.startsWith('2fa/'))
         return manageTwoFactor(request, action.slice(4))
       if (request.method !== 'POST') return new Response(null, { status: 405 })
-      if (!fromThisSite(request)) return new Response('Forbidden', { status: 403 })
+      // SameSite=Lax still lets a sibling subdomain post here, signing a visitor
+      // into an account the attacker holds, or out of their own.
+      if (!isSameOrigin(request, config.applicationUrl || undefined))
+        return new Response('Forbidden', { status: 403 })
       switch (action) {
         case 'login':
           return login(request)

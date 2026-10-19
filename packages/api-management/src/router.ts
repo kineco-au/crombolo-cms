@@ -75,6 +75,8 @@ export interface RequestContext {
    * operation can rely on this being set.
    */
   principal: Principal | undefined
+  /** Node positions, for a handler that filters what it returns per node. */
+  nodes?: NodeLookup
 }
 
 export type Authenticator = (request: Request) => Promise<Principal | undefined>
@@ -259,7 +261,15 @@ export class ManagementApiRouter {
             .catch(() => undefined)
         : undefined
     const response = handler
-      ? await this.#run(handler, { request, url, params, operation, notifications, principal })
+      ? await this.#run(handler, {
+          request,
+          url,
+          params,
+          operation,
+          notifications,
+          principal,
+          nodes: this.#nodes,
+        })
       : problemResponse(notImplemented(operation.operationId))
     if (plan && audit && response.status >= 200 && response.status < 300)
       await this.#recordAudit(plan, audit, params, request, response, principal)

@@ -776,7 +776,10 @@ Asking for a document's preview URL sets the `UMB_PREVIEW` cookie and returns
 Umbraco's `preview?id=…`, the backoffice's own preview app, which frames
 `/<document key>`. With the cookie and a signed-in editor (the backoffice's
 access-token cookie), the front end renders the draft, for routed URLs too;
-without an editor the cookie changes nothing. Saving a document tells an open
+without an editor the cookie changes nothing. The editor must be able to read
+that document: the Content section, a start node above it, and Read on it
+(`canReadDocument`). Otherwise the draft isn't there and the published page, or a
+404, renders. The search-snippet preview applies the same check. Saving a document tells an open
 preview to reload over `/umbraco/PreviewHub` (`refreshed`).
 `DELETE /umbraco/management/api/v1/preview` ends it.
 

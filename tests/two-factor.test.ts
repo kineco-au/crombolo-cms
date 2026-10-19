@@ -256,6 +256,34 @@ describe(`backoffice users (${DIALECT})`, () => {
     expect((await backofficeLogin(h, ADMIN)).login.status).toBe(200)
   })
 
+  test('while it is on, a session cannot swap in another authenticator', async () => {
+    const h = await server()
+    const { secret, recoveryCodes } = await turnOn(h)
+    const replacement = await h.json<{ secret: string }>(`${V1}/user/current/2fa/${USER_PROVIDER}`)
+    const swapped = await h.post(`${V1}/user/current/2fa/${USER_PROVIDER}`, {
+      secret: replacement.secret,
+      code: codeFor(replacement.secret),
+    })
+    expect(swapped.status).toBe(400)
+    expect(((await swapped.json()) as { operationStatus: string }).operationStatus).toBe(
+      'ProviderAlreadySetup',
+    )
+
+    // The owner's app and recovery codes still work; the replacement's do not.
+    const withRecovery = await backofficeLogin(h, ADMIN)
+    expect((await withRecovery.verify(recoveryCodes[0] as string)).status).toBe(200)
+    const withNew = await backofficeLogin(h, ADMIN)
+    expect((await withNew.verify(codeFor(replacement.secret, 1))).status).toBe(400)
+    const withOld = await backofficeLogin(h, ADMIN)
+    expect((await withOld.verify(codeFor(secret, 1))).status).toBe(200)
+
+    // Replacing it is turning it off with the current one, then on again.
+    expect(
+      (await h.del(`${V1}/user/current/2fa/${USER_PROVIDER}?code=${recoveryCodes[1]}`)).status,
+    ).toBe(200)
+    await turnOn(h)
+  })
+
   test('without the secret key it cannot be turned on', async () => {
     const h = await server('')
     const setup = await h.call(`${V1}/user/current/2fa/${USER_PROVIDER}`)
@@ -368,6 +396,30 @@ describe(`members (${DIALECT})`, () => {
     jar.cookies.clear()
     await login()
     expect((await post('/umbraco/members/login/2fa', { code })).status).toBe(400)
+  })
+
+  test('while it is on, a signed-in member cannot swap in another authenticator', async () => {
+    const { post, login, jar, turnOnForMember } = await site()
+    const { recoveryCodes } = await turnOnForMember()
+    await login()
+    expect(
+      (await post('/umbraco/members/login/2fa', { code: recoveryCodes[0] as string })).status,
+    ).toBe(200)
+    const replacement = (await (await post('/umbraco/members/2fa/setup')).json()) as {
+      secret: string
+    }
+    const swapped = await post('/umbraco/members/2fa/enable', {
+      secret: replacement.secret,
+      code: codeFor(replacement.secret),
+    })
+    expect(swapped.status).toBe(400)
+
+    // The member's own recovery codes were not replaced.
+    jar.cookies.clear()
+    await login()
+    expect(
+      (await post('/umbraco/members/login/2fa', { code: recoveryCodes[1] as string })).status,
+    ).toBe(200)
   })
 
   test('the code step without the password first is refused', async () => {
