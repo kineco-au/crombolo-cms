@@ -5,7 +5,8 @@
  *
  * The graph rules are `@crombolo/core`'s; the record is `ApprovalRepository`'s.
  * This decides: who may act, what an edit does to a waiting request, when a
- * stage is done, and when the page is published.
+ * stage is done, and when the page is published — at once, or at the time the
+ * request asked for (story 029), the schedule job doing the publishing.
  */
 
 import type { Principal } from '@crombolo/api-management'
@@ -27,6 +28,7 @@ import {
   ApprovalRepository,
   type ApprovalRepository as ApprovalRepositoryType,
   type ApprovalRequest,
+  type ApprovalScheduleEntry,
   type ApprovalStep,
   AuditLog,
   type Db,
@@ -100,6 +102,12 @@ export interface RequestView {
   action: ApprovalAction
   cultures: string[] | null
   state: ApprovalRequest['state']
+  /** The times it asked for, in ISO form; null to publish on approval. */
+  schedule: Array<{
+    culture: string | null
+    publishTime: string | null
+    unpublishTime: string | null
+  }> | null
   requestedBy: string
   requestedAt: string
   workflow: SchemaWorkflow
@@ -141,12 +149,24 @@ export interface Approvals {
   beforeSave(principal: Principal, key: string): Promise<string | undefined>
   /** What the save does to a waiting request, once it has gone through. */
   afterSave(principal: Principal, key: string): Promise<void>
+  /** A direct publish, schedule or unpublish by someone allowed to: a scheduled request ends. */
+  afterDirectPublish(principal: Principal, key: string, what: string): Promise<void>
+  /** The schedule job fired one of a page's schedules: a scheduled request goes on or ends. */
+  scheduleFired(
+    key: string,
+    culture: string | null,
+    action: 'Release' | 'Expire',
+    result: { ok: true } | { ok: false; reason: string },
+  ): Promise<void>
+  /** Ends scheduled requests whose schedule is gone: the recycle bin, an import, the CLI. */
+  sweepScheduled(now?: number): Promise<void>
   send(
     principal: Principal,
     key: string,
     action: ApprovalAction,
     cultures: string[] | null,
     comment?: string,
+    schedule?: ApprovalScheduleEntry[] | null,
   ): Promise<RequestView>
   approve(
     principal: Principal,
@@ -172,12 +192,69 @@ export interface Approvals {
   ): Promise<{ total: number; items: RequestView[] }>
 }
 
+const SWEEP_GRACE_MS = 5 * 60_000
+
+/** A time as a person reads it in a history or an e-mail, in UTC. Pure. */
+export const describeTime = (time: Date): string =>
+  `${time.toISOString().slice(0, 16).replace('T', ' ')} UTC`
+
+/** "published at …" for each time a request asks for, culture by culture. Pure. */
+export function describeSchedule(
+  action: ApprovalAction,
+  entries: readonly ApprovalScheduleEntry[],
+): string {
+  return entries
+    .flatMap((e) => {
+      const culture = e.culture ? ` (${e.culture})` : ''
+      return [
+        ...(action === 'publish' && e.publishTime
+          ? [`published at ${describeTime(e.publishTime)}${culture}`]
+          : []),
+        ...(e.unpublishTime ? [`taken down at ${describeTime(e.unpublishTime)}${culture}`] : []),
+      ]
+    })
+    .join(', ')
+}
+
+/** Why a request may not carry these times, or undefined when it may. Pure. */
+export function scheduleRefusal(
+  workflow: SchemaWorkflow,
+  action: ApprovalAction,
+  cultures: readonly string[] | null,
+  entries: readonly ApprovalScheduleEntry[],
+  now = Date.now(),
+): string | undefined {
+  if (entries.length === 0) return undefined
+  if (!workflow.scheduling)
+    return `"${workflow.name}" does not let a request say when to publish. Send it without a time.`
+  const named = new Set((cultures ?? []).map((c) => c.toLowerCase()))
+  const seen = new Set<string>()
+  for (const e of entries) {
+    if (action === 'unpublish' && e.publishTime)
+      return 'A request to take the page down can only say when to take it down.'
+    for (const time of [e.publishTime, e.unpublishTime])
+      if (time && (Number.isNaN(time.getTime()) || time.getTime() <= now))
+        return 'Pick a time in the future.'
+    if (e.publishTime && e.unpublishTime && e.unpublishTime <= e.publishTime)
+      return 'The page has to be taken down after it is published.'
+    const culture = e.culture?.toLowerCase() ?? null
+    if (culture === null ? cultures !== null : !named.has(culture))
+      return culture === null
+        ? 'This request names its languages: give each one its own time.'
+        : `"${e.culture}" is not one of the languages this request sends.`
+    if (seen.has(culture ?? '')) return 'Give each language one time.'
+    seen.add(culture ?? '')
+  }
+  return undefined
+}
+
 export function createApprovals(options: ApprovalsOptions): Approvals {
   const { db } = options
   const requests = (tx: Db = db): ApprovalRepositoryType => new ApprovalRepository(tx)
   const nodes = new NodeRepository(db)
   const groups = new UserGroupRepository(db)
   const audit = new AuditLog(db)
+  const documents = () => new DocumentRepository(db, { nodeState: options.nodeState })
 
   const page = async (key: string): Promise<PageFacts | undefined> => {
     const node = await nodes.byKey(key)
@@ -388,11 +465,66 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
     return false
   }
 
+  /** The time a request's entry asks it to act at: publish for a publish request, take down otherwise. */
+  const dueAt = (request: ApprovalRequest, entry: ApprovalScheduleEntry) =>
+    request.action === 'publish' ? entry.publishTime : entry.unpublishTime
+
+  /** Removes the schedule rows a request wrote, culture by culture. */
+  const clearSchedule = async (request: ApprovalRequest) => {
+    if (!request.schedule) return
+    await documents().setSchedule(
+      request.nodeKey,
+      request.schedule.map((e) => ({ culture: e.culture, publishTime: null, unpublishTime: null })),
+    )
+  }
+
+  /** An approved page that could not be published goes back to its editor with the reason. */
+  const unpublishable = async (
+    request: ApprovalRequest,
+    facts: PageFacts | undefined,
+    reason: string,
+  ) => {
+    const repo = requests()
+    await repo.setState(request.id, 'sent-back')
+    await repo.record(request.id, {
+      kind: 'sent-back',
+      comment: `approved, but it could not be ${request.action === 'publish' ? 'published' : 'taken down'}: ${reason}`,
+    })
+    await notify(
+      'editor',
+      request,
+      [],
+      `Could not publish: ${facts?.name ?? 'a page'}`,
+      `"${facts?.name}" was approved but could not be published: ${reason}`,
+    )
+  }
+
+  /** The request is done: recorded as approved, and its editor told. */
+  const approved = async (request: ApprovalRequest, principal: Principal | undefined) => {
+    const facts = await page(request.nodeKey)
+    await requests().setState(request.id, 'approved')
+    await auditStep(
+      principal,
+      facts,
+      request.action === 'publish' ? 'Published on approval' : 'Unpublished on approval',
+      `through "${request.workflow.name}"`,
+    )
+    await notify(
+      'editor',
+      request,
+      [],
+      `Approved: ${facts?.name ?? 'a page'}`,
+      `"${facts?.name}" was approved through "${request.workflow.name}" and is now ${request.action === 'publish' ? 'published' : 'taken down'}.`,
+    )
+  }
+
   /**
    * Publishes (or takes down) a fully approved page, outside any transaction:
    * publishing takes the content tree's lock, which must never be waited on
-   * from inside one. A page that cannot be published goes back to its editor
-   * with the reason, rather than sitting approved and unpublished.
+   * from inside one. What the request asked to happen later is scheduled
+   * instead, and the request stays open until it has. A page that cannot be
+   * published goes back to its editor with the reason, rather than sitting
+   * approved and unpublished.
    */
   const finish = async (
     request: ApprovalRequest,
@@ -400,48 +532,73 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
   ): Promise<void> => {
     const repo = requests()
     const facts = await page(request.nodeKey)
-    const result =
-      request.action === 'publish'
-        ? await options.publisher.publish(request.nodeKey, request.cultures)
-        : await options.publisher.unpublish(request.nodeKey, request.cultures)
-    if (!result.ok) {
-      await repo.setState(request.id, 'sent-back')
-      await repo.record(request.id, {
-        kind: 'sent-back',
-        comment: `approved, but it could not be ${request.action === 'publish' ? 'published' : 'taken down'}: ${result.reason}`,
-      })
-      await notify(
-        'editor',
-        request,
-        [],
-        `Could not publish: ${facts?.name ?? 'a page'}`,
-        `"${facts?.name}" was approved but could not be published: ${result.reason}`,
-      )
-      return
+    const now = Date.now()
+    const later: ApprovalScheduleEntry[] = []
+    const expires: ApprovalScheduleEntry[] = []
+    let cultures: string[] | null | undefined = request.cultures
+    let passed = false
+    if (request.schedule) {
+      const nowCultures: Array<string | null> = []
+      for (const entry of request.schedule) {
+        const due = dueAt(request, entry)
+        if (due && due.getTime() > now) {
+          later.push(request.action === 'publish' ? entry : { ...entry, publishTime: null })
+          continue
+        }
+        if (due) passed = true
+        nowCultures.push(entry.culture)
+        if (request.action === 'publish' && entry.unpublishTime)
+          expires.push({ ...entry, publishTime: null })
+      }
+      // Cultures the request names without a time publish on approval.
+      const timed = new Set(request.schedule.map((e) => e.culture?.toLowerCase()))
+      const untimed = (request.cultures ?? []).filter((c) => !timed.has(c.toLowerCase()))
+      cultures = nowCultures.includes(null)
+        ? request.cultures
+        : nowCultures.length + untimed.length > 0
+          ? [...(nowCultures as string[]), ...untimed]
+          : undefined
     }
-    await repo.setState(request.id, 'approved')
+    if (cultures !== undefined) {
+      const result =
+        request.action === 'publish'
+          ? await options.publisher.publish(request.nodeKey, cultures)
+          : await options.publisher.unpublish(request.nodeKey, cultures)
+      if (!result.ok) return unpublishable(request, facts, result.reason)
+      await repo.record(request.id, {
+        kind: request.action === 'publish' ? 'published' : 'unpublished',
+        userKey: principal?.id ?? null,
+        comment: passed ? 'the requested time had passed when it was approved' : null,
+      })
+      if (request.action === 'publish')
+        await options.notifier?.raise(
+          { actions: ['Umb.Document.Publish'], key: request.nodeKey, keyKind: 'document' },
+          principal ? { key: principal.id, name: principal.name } : null,
+          `approved through "${request.workflow.name}"`,
+        )
+    }
+    if (later.length + expires.length > 0)
+      await documents().setSchedule(request.nodeKey, [...later, ...expires])
+    if (later.length === 0) return approved(request, principal)
+    const when = describeSchedule(request.action, later)
+    await repo.setState(request.id, 'scheduled')
     await repo.record(request.id, {
-      kind: request.action === 'publish' ? 'published' : 'unpublished',
+      kind: 'scheduled',
       userKey: principal?.id ?? null,
+      comment: when,
     })
     await auditStep(
       principal,
       facts,
-      request.action === 'publish' ? 'Published on approval' : 'Unpublished on approval',
-      `through "${request.workflow.name}"`,
+      'Scheduled on approval',
+      `${when}, through "${request.workflow.name}"`,
     )
-    if (request.action === 'publish')
-      await options.notifier?.raise(
-        { actions: ['Umb.Document.Publish'], key: request.nodeKey, keyKind: 'document' },
-        principal ? { key: principal.id, name: principal.name } : null,
-        `approved through "${request.workflow.name}"`,
-      )
     await notify(
       'editor',
       request,
       [],
       `Approved: ${facts?.name ?? 'a page'}`,
-      `"${facts?.name}" was approved through "${request.workflow.name}" and is now ${request.action === 'publish' ? 'published' : 'taken down'}.`,
+      `"${facts?.name}" was approved through "${request.workflow.name}" and will be ${when}.`,
     )
   }
 
@@ -501,6 +658,12 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
       action: request.action,
       cultures: request.cultures,
       state: request.state,
+      schedule:
+        request.schedule?.map((e) => ({
+          culture: e.culture,
+          publishTime: e.publishTime?.toISOString() ?? null,
+          unpublishTime: e.unpublishTime?.toISOString() ?? null,
+        })) ?? null,
       requestedBy: request.requestedBy,
       requestedAt: request.requestedAt.toISOString(),
       workflow: request.workflow,
@@ -518,7 +681,7 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
             ? []
             : actionable.filter((s) => !already(s.alias)).map((s) => s.alias),
         sendBack: actionable.map((s) => s.alias),
-        withdraw: waiting && (ownChange || principal.isAdmin),
+        withdraw: (waiting || request.state === 'scheduled') && (ownChange || principal.isAdmin),
       },
     }
   }
@@ -593,9 +756,14 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
     },
 
     async beforeSave(principal, key) {
-      const request = await requests().waitingFor(key)
+      const request = await requests().openFor(key)
       if (!request || principal.isAdmin) return undefined
       const edit = request.workflow.onEdit
+      if (request.state === 'scheduled') {
+        if (edit === 'lock' || edit === 'lock-after-first-approval')
+          return `This page is approved and will be ${describeSchedule(request.action, request.schedule ?? [])}. It cannot be changed until then; withdraw the request to change it.`
+        return undefined
+      }
       if (edit === 'lock')
         return 'This page is waiting for approval and cannot be changed until it is decided.'
       if (edit === 'lock-after-first-approval') {
@@ -608,7 +776,7 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
 
     async afterSave(principal, key) {
       const repo = requests()
-      const request = await repo.waitingFor(key)
+      const request = await repo.openFor(key)
       if (!request) return
       const head =
         (await new DocumentRepository(db, { nodeState: options.nodeState }).eventMarkers(key))
@@ -622,13 +790,14 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
           userKey: principal.id,
           comment: 'the page was changed after it was sent',
         })
+        if (request.state === 'scheduled') await clearSchedule(request)
         return
       }
       await repo.setEvent(request.id, head)
       await repo.record(request.id, { kind: 'edited', userKey: principal.id })
     },
 
-    async send(principal, key, action, cultures, comment) {
+    async send(principal, key, action, cultures, comment, schedule) {
       const facts = await page(key)
       if (!facts) throw new ApprovalRefused('The page could not be found.', 404)
       const workflow = await covering(facts)
@@ -638,13 +807,22 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
             ? 'No workflow covers this page: it can be published directly.'
             : 'Taking this page down needs no approval.',
         )
+      const timed = (schedule ?? []).filter((e) => e.publishTime || e.unpublishTime)
+      const refusal = scheduleRefusal(workflow, action, cultures, timed)
+      if (refusal) throw new ApprovalRefused(refusal)
       const stored = (await readWorkflows(db)).find(
         (s) => (s.workflow.key ?? s.workflow.alias) === (workflow.key ?? workflow.alias),
       )
       const outcome = await db.transaction(async (tx) => {
         const repo = requests(tx)
-        if (await repo.waitingFor(key))
-          throw new ApprovalRefused('This page is already waiting for approval.', 409)
+        const open = await repo.openFor(key)
+        if (open)
+          throw new ApprovalRefused(
+            open.state === 'scheduled'
+              ? `This page is already approved and will be ${describeSchedule(open.action, open.schedule ?? [])}. Withdraw that request to send it with another time.`
+              : 'This page is already waiting for approval.',
+            409,
+          )
         const head =
           (await new DocumentRepository(tx, { nodeState: options.nodeState }).eventMarkers(key))
             ?.head ?? null
@@ -656,11 +834,13 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
           workflow,
           workflowVersion: stored?.version ?? '',
           requestedBy: principal.id,
+          schedule: timed.length > 0 ? timed : null,
         })
+        const when = timed.length > 0 ? describeSchedule(action, timed) : ''
         await repo.record(request.id, {
           kind: 'sent',
           userKey: principal.id,
-          comment: comment?.trim() || null,
+          comment: [comment?.trim(), when && `to be ${when}`].filter(Boolean).join('\n\n') || null,
         })
         const first = startStages(workflow)
         await reach(repo, request, first)
@@ -669,7 +849,7 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
           request,
           first,
           `Waiting for your approval: ${facts.name}`,
-          `${principal.name} sent "${facts.name}" for approval through "${workflow.name}".${comment ? `\n\n${comment}` : ''}`,
+          `${principal.name} sent "${facts.name}" for approval through "${workflow.name}".${when ? ` It is to be ${when}.` : ''}${comment ? `\n\n${comment}` : ''}`,
         )
         const complete = await settle(repo, request)
         await auditStep(
@@ -784,7 +964,10 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
     },
 
     async withdraw(principal, requestKey) {
-      const request = await waitingRequest(requestKey)
+      const request = await requests().byKey(requestKey)
+      if (!request) throw new ApprovalRefused('There is no such request.', 404)
+      if (request.state !== 'waiting' && request.state !== 'scheduled')
+        throw new ApprovalRefused('This request has already been decided.', 409)
       if (normaliseUuid(principal.id) !== request.requestedBy && !principal.isAdmin)
         throw new ApprovalRefused(
           'Only the person who sent it, or an administrator, can withdraw it.',
@@ -792,6 +975,7 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
         )
       await requests().setState(request.id, 'withdrawn')
       await requests().record(request.id, { kind: 'withdrawn', userKey: principal.id })
+      if (request.state === 'scheduled') await clearSchedule(request)
       await auditStep(
         principal,
         await page(request.nodeKey),
@@ -801,12 +985,88 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
       return view(principal, (await requests().byKey(request.key)) as ApprovalRequest)
     },
 
+    async afterDirectPublish(principal, key, what) {
+      const repo = requests()
+      const request = await repo.openFor(key)
+      if (request?.state !== 'scheduled') return
+      await repo.setState(request.id, 'superseded')
+      await repo.record(request.id, {
+        kind: 'superseded',
+        userKey: principal.id,
+        comment: `${principal.name} ${what} directly`,
+      })
+      await auditStep(
+        principal,
+        await page(key),
+        'Superseded approval request',
+        `scheduled under "${request.workflow.name}"`,
+      )
+    },
+
+    async scheduleFired(key, culture, action, result) {
+      const repo = requests()
+      const request = await repo.openFor(key)
+      if (request?.state !== 'scheduled' || !request.schedule) return
+      // An expiry on a page a request published is an ordinary schedule by then.
+      if (action !== (request.action === 'publish' ? 'Release' : 'Expire')) return
+      const same = (a: string | null, b: string | null) =>
+        (a?.toLowerCase() ?? null) === (b?.toLowerCase() ?? null)
+      if (!request.schedule.some((e) => same(e.culture, culture))) return
+      const facts = await page(key)
+      if (!result.ok) {
+        await clearSchedule(request)
+        return unpublishable(request, facts, result.reason)
+      }
+      await repo.record(request.id, {
+        kind: request.action === 'publish' ? 'published' : 'unpublished',
+        comment: `as scheduled${culture ? ` (${culture})` : ''}`,
+      })
+      const left = (await documents().schedules(key)).some(
+        (row) =>
+          row.action === action && request.schedule?.some((e) => same(e.culture, row.culture)),
+      )
+      if (!left) await approved(request, undefined)
+    },
+
+    async sweepScheduled(now = Date.now()) {
+      for (const request of await requests().scheduled()) {
+        const node = await nodes.byKey(request.nodeKey)
+        if (!node || node.trashed) {
+          if (node) await clearSchedule(request)
+          await requests().setState(request.id, 'withdrawn')
+          await requests().record(request.id, {
+            kind: 'withdrawn',
+            comment: node ? 'the page was moved to the recycle bin' : 'the page was deleted',
+          })
+          continue
+        }
+        const action = request.action === 'publish' ? 'Release' : 'Expire'
+        const rows = await documents().schedules(request.nodeKey)
+        const left = rows.some(
+          (row) =>
+            row.action === action &&
+            request.schedule?.some(
+              (e) => (e.culture?.toLowerCase() ?? null) === (row.culture?.toLowerCase() ?? null),
+            ),
+        )
+        if (left) continue
+        // A row the job has claimed and is publishing is gone too: give it time to report.
+        const due = (request.schedule ?? []).flatMap((e) => dueAt(request, e) ?? [])
+        if (due.some((d) => d.getTime() <= now && d.getTime() > now - SWEEP_GRACE_MS)) continue
+        await requests().setState(request.id, 'withdrawn')
+        await requests().record(request.id, {
+          kind: 'withdrawn',
+          comment: 'the schedule was removed',
+        })
+      }
+    },
+
     async forPage(principal, key) {
       const facts = await page(key)
       if (!facts) throw new ApprovalRefused('The page could not be found.', 404)
       const workflow = await covering(facts)
       const all = await requests().forNode(key)
-      const waiting = all.find((r) => r.state === 'waiting')
+      const waiting = all.find((r) => r.state === 'waiting' || r.state === 'scheduled')
       return {
         workflow,
         request: waiting ? await view(principal, waiting) : undefined,
@@ -826,7 +1086,7 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
 
     async waitingFor(principal) {
       const out: RequestView[] = []
-      for (const request of await requests().waiting()) {
+      for (const request of await requests().open()) {
         const v = await view(principal, request)
         if (v.can.approve.length > 0 || v.can.sendBack.length > 0) out.push(v)
       }
@@ -834,7 +1094,7 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
     },
 
     async inFlight(principal) {
-      return Promise.all((await requests().waiting()).map((r) => view(principal, r)))
+      return Promise.all((await requests().open()).map((r) => view(principal, r)))
     },
 
     async finished(principal, skip, take) {

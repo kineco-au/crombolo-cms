@@ -1,12 +1,13 @@
 /**
  * Story 028: approval before publishing, end to end through the API — the gate
  * on publishing and saving, a graph of stages run in parallel and joined,
- * send-backs, edits while waiting, and a workflow changed in flight.
+ * send-backs, edits while waiting, and a workflow changed in flight. Story 029:
+ * a request that says when to publish, and the schedule job that does it.
  */
 import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { ContentTypeRepository, UserGroupRepository } from '@crombolo/data'
+import { ContentTypeRepository, DocumentRepository, UserGroupRepository } from '@crombolo/data'
 import { dialectUnderTest } from './support/db.ts'
 import { BACKOFFICE, type Harness, signedInServer, signInAsGroup, V1 } from './support/harness.ts'
 
@@ -16,6 +17,7 @@ const POLICY_TOML = `[content-type]
 alias = "policy"
 name = "Policy"
 allow-at-root = true
+allow-children = ["policy"]
 components = ["policy"]
 default-component = "policy"
 
@@ -62,6 +64,11 @@ required = "all"
 interface View {
   key: string
   state: string
+  schedule: Array<{
+    culture: string | null
+    publishTime: string | null
+    unpublishTime: string | null
+  }> | null
   stages: Array<{ alias: string; state: string; approvals: number; needed: number }>
   history: Array<{ kind: string; stage: string | null; comment: string | null }>
   can: { approve: string[]; sendBack: string[]; withdraw: boolean }
@@ -351,6 +358,18 @@ describe(`approval before publishing (${dialectUnderTest})`, () => {
   })
 })
 
+/** Legal alone, nothing else set: a workflow that does not allow a time. */
+const ONE_STAGE_PLAIN = `[workflow]
+alias = "plain"
+name = "Plain sign-off"
+applies-to = { branches = [], content-types = ["policy"] }
+publishers-may-skip = false
+
+[[stage]]
+alias = "legal"
+approvers = ["legal"]
+`
+
 describe(`each workflow's settings (${dialectUnderTest})`, () => {
   /** Legal alone, then final: the smallest graph each setting can be seen on. */
   const ONE_STAGE = (settings: Record<string, string>, legal: Record<string, string> = {}) => {
@@ -499,5 +518,336 @@ approvers = ["admin"]
     })
     expect(inside.status).toBe(400)
     expect((await inside.json()).detail).toContain('needs approval through "Policy sign-off"')
+  })
+})
+
+describe(`scheduled publishing through approval (${dialectUnderTest})`, () => {
+  /** Legal alone, a request may carry a time; other settings as given. */
+  const TIMED = (settings: Record<string, string> = {}) => {
+    const lines = Object.entries({
+      'publishers-may-skip': 'false',
+      scheduling: 'true',
+      ...settings,
+    }).map(([k, v]) => `${k} = ${v}`)
+    return `[workflow]
+alias = "timed"
+name = "Timed sign-off"
+applies-to = { branches = [], content-types = ["policy"] }
+${lines.join('\n')}
+
+[[stage]]
+alias = "legal"
+approvers = ["legal"]
+`
+  }
+  const inAnHour = () => new Date(Date.now() + 3600_000)
+  const later = (date: Date, ms = 1000) => new Date(date.getTime() + ms)
+
+  async function timedSite(settings: Record<string, string> = {}) {
+    const s = await site(TIMED(settings))
+    const sendAt = (
+      key: string,
+      schedule: unknown,
+      action = 'publish',
+      cultures: string[] | null = null,
+    ) => s.people.writer.post(`${API}/page/${key}/send`, { action, schedule, cultures })
+    const tab = (key: string) =>
+      s.people.writer.json<{ request?: View; past: View[] }>(`${API}/page/${key}`)
+    const run = (now: Date) => s.people.admin.server.jobs.runScheduledPublishing(now)
+    const save = (by: Harness, key: string, text: string, name = 'Timed') =>
+      by.put(`${V1}/document/${key}`, {
+        template: null,
+        values: [{ alias: 'body', culture: null, segment: null, value: text }],
+        variants: [{ culture: null, segment: null, name }],
+      })
+    return { ...s, sendAt, tab, run, save }
+  }
+
+  test('a time is refused when the workflow does not allow one, or it makes no sense', async () => {
+    const plain = await site(ONE_STAGE_PLAIN)
+    const key = await plain.page('No times')
+    const refused = await plain.people.writer.post(`${API}/page/${key}/send`, {
+      action: 'publish',
+      schedule: [{ culture: null, publishTime: inAnHour().toISOString() }],
+    })
+    expect(refused.status).toBe(400)
+    expect((await refused.json()).message).toContain('does not let a request say when')
+
+    const { page, sendAt } = await timedSite({ unpublish: 'true' })
+    const page2 = await page('Bad times')
+    const message = async (response: Response) => {
+      expect(response.status).toBe(400)
+      return (await response.json()).message as string
+    }
+    const hour = inAnHour()
+    expect(
+      await message(
+        await sendAt(page2, [{ culture: null, publishTime: new Date(Date.now() - 1000) }]),
+      ),
+    ).toContain('in the future')
+    expect(
+      await message(
+        await sendAt(page2, [
+          { culture: null, publishTime: hour, unpublishTime: new Date(hour.getTime() - 60_000) },
+        ]),
+      ),
+    ).toContain('taken down after it is published')
+    expect(
+      await message(await sendAt(page2, [{ culture: null, publishTime: hour }], 'unpublish')),
+    ).toContain('only say when to take it down')
+    expect(await message(await sendAt(page2, [{ culture: 'en-US', publishTime: hour }]))).toContain(
+      'not one of the languages',
+    )
+    expect(await message(await sendAt(page2, [{ culture: null, publishTime: 'soon' }]))).toContain(
+      'in the future',
+    )
+  }, 20_000)
+
+  test('approval schedules it; the job publishes at the time, not before', async () => {
+    const { people, page, sendAt, act, published, tab, run } = await timedSite()
+    const key = await page('Launch')
+    const at = inAnHour()
+    const sent = await sendAt(key, [{ culture: null, publishTime: at.toISOString() }])
+    expect(sent.status, await sent.clone().text()).toBe(200)
+    const view = (await sent.json()) as View
+    expect(view.schedule).toEqual([
+      { culture: null, publishTime: at.toISOString(), unpublishTime: null },
+    ])
+    expect(view.history[0]?.comment).toContain('to be published at')
+
+    const decided = (await (await act(view.key, 'approve', people.legal)).json()) as View
+    expect(decided.state).toBe('scheduled')
+    expect(decided.history.map((h) => h.kind)).toEqual(['sent', 'approved', 'scheduled'])
+    expect(await published(key)).not.toBe('Published')
+    // Approvers see it in flight, with the time; a scheduled request is not waiting on them.
+    const flight = await people.legal.json<{ items: View[] }>(`${API}/in-flight`)
+    expect(flight.items.map((i) => i.state)).toEqual(['scheduled'])
+    expect((await people.legal.json<{ items: View[] }>(`${API}/waiting`)).items).toEqual([])
+
+    expect((await run(new Date(at.getTime() - 60_000))).published).toEqual([])
+    expect((await tab(key)).request?.state).toBe('scheduled')
+    expect((await run(later(at))).published).toEqual([key])
+    expect(await published(key)).toBe('Published')
+    const done = await tab(key)
+    expect(done.request).toBeUndefined()
+    expect(done.past[0]?.state).toBe('approved')
+    expect(done.past[0]?.history.map((h) => h.kind)).toEqual([
+      'sent',
+      'approved',
+      'scheduled',
+      'published',
+    ])
+  })
+
+  test('a time that passed before approval publishes at once, and says so', async () => {
+    const { people, page, sendAt, act, published } = await timedSite()
+    const key = await page('Late')
+    const sent = (await (
+      await sendAt(key, [{ culture: null, publishTime: new Date(Date.now() + 1200) }])
+    ).json()) as View
+    await Bun.sleep(1300)
+    const done = (await (await act(sent.key, 'approve', people.legal)).json()) as View
+    expect(done.state).toBe('approved')
+    expect(done.history.at(-1)).toMatchObject({
+      kind: 'published',
+      comment: 'the requested time had passed when it was approved',
+    })
+    expect(await published(key)).toBe('Published')
+  })
+
+  test('a publish time with a take-down time: the take-down stays scheduled once it is live', async () => {
+    const { people, page, sendAt, act, published, tab, run } = await timedSite()
+    const key = await page('Campaign')
+    const at = inAnHour()
+    const down = later(at, 3600_000)
+    const sent = (await (
+      await sendAt(key, [{ culture: null, publishTime: at, unpublishTime: down }])
+    ).json()) as View
+    await act(sent.key, 'approve', people.legal)
+    await run(later(at))
+    expect(await published(key)).toBe('Published')
+    expect((await tab(key)).past[0]?.state).toBe('approved')
+    expect((await run(later(down))).unpublished).toEqual([key])
+    expect(await published(key)).not.toBe('Published')
+  })
+
+  test('a request to take the page down at a time', async () => {
+    const { people, page, sendAt, act, published, run } = await timedSite({ unpublish: 'true' })
+    const key = await page('Retire')
+    const first = (await (await sendAt(key, null)).json()) as View
+    await act(first.key, 'approve', people.legal)
+    expect(await published(key)).toBe('Published')
+    const at = inAnHour()
+    const sent = (await (
+      await sendAt(key, [{ culture: null, unpublishTime: at }], 'unpublish')
+    ).json()) as View
+    const decided = (await (await act(sent.key, 'approve', people.legal)).json()) as View
+    expect(decided.state).toBe('scheduled')
+    expect(await published(key)).toBe('Published')
+    expect((await run(later(at))).unpublished).toEqual([key])
+    expect(await published(key)).not.toBe('Published')
+  })
+
+  test('withdraw: saving a scheduled page ends the request and its schedule', async () => {
+    const { people, page, sendAt, act, published, tab, run, save } = await timedSite()
+    const key = await page('Edited')
+    const at = inAnHour()
+    const sent = (await (await sendAt(key, [{ culture: null, publishTime: at }])).json()) as View
+    await act(sent.key, 'approve', people.legal)
+    // An administrator's edit goes into the request.
+    expect((await save(people.admin, key, 'tidied')).status).toBe(200)
+    expect((await tab(key)).request?.history.at(-1)?.kind).toBe('edited')
+    expect((await save(people.writer, key, 'unapproved words')).status).toBe(200)
+    const after = await tab(key)
+    expect(after.request).toBeUndefined()
+    expect(after.past[0]?.state).toBe('withdrawn')
+    expect((await run(later(at))).published).toEqual([])
+    expect(await published(key)).not.toBe('Published')
+  })
+
+  test('lock: a scheduled page cannot be changed until its time', async () => {
+    const { people, page, sendAt, act, save } = await timedSite({ 'on-edit': '"lock"' })
+    const key = await page('Locked in')
+    const sent = (await (
+      await sendAt(key, [{ culture: null, publishTime: inAnHour() }])
+    ).json()) as View
+    await act(sent.key, 'approve', people.legal)
+    const refused = await save(people.writer, key, 'no')
+    expect(refused.status).toBe(400)
+    expect((await refused.json()).detail).toContain('approved and will be published at')
+  })
+
+  test('approve-latest: an edit while scheduled is what goes out', async () => {
+    const { people, page, sendAt, act, run, save } = await timedSite({
+      'on-edit': '"approve-latest"',
+    })
+    const key = await page('Latest')
+    const at = inAnHour()
+    const sent = (await (await sendAt(key, [{ culture: null, publishTime: at }])).json()) as View
+    await act(sent.key, 'approve', people.legal)
+    expect((await save(people.writer, key, 'the final words')).status).toBe(200)
+    await run(later(at))
+    const live = await people.admin.json<{ values: Array<{ alias: string; value: unknown }> }>(
+      `${V1}/document/${key}/published`,
+    )
+    expect(live.values.find((v) => v.alias === 'body')?.value).toBe('the final words')
+  })
+
+  test('withdrawing a scheduled request clears its schedule; sending again takes a new time', async () => {
+    const { people, page, sendAt, act, published, run } = await timedSite()
+    const key = await page('Moved')
+    const at = inAnHour()
+    const sent = (await (await sendAt(key, [{ culture: null, publishTime: at }])).json()) as View
+    await act(sent.key, 'approve', people.legal)
+    const again = await sendAt(key, [{ culture: null, publishTime: later(at, 60_000) }])
+    expect(again.status).toBe(409)
+    expect((await again.json()).message).toContain('Withdraw that request')
+    expect((await act(sent.key, 'withdraw', people.writer)).status).toBe(200)
+    expect((await run(later(at))).published).toEqual([])
+    expect(await published(key)).not.toBe('Published')
+    expect((await sendAt(key, [{ culture: null, publishTime: later(at, 60_000) }])).status).toBe(
+      200,
+    )
+  })
+
+  test('a direct publish by someone who may skip the workflow supersedes it', async () => {
+    const { people, page, sendAt, act, tab } = await timedSite({ 'publishers-may-skip': 'true' })
+    const key = await page('Overtaken')
+    const sent = (await (
+      await sendAt(key, [{ culture: null, publishTime: inAnHour() }])
+    ).json()) as View
+    await act(sent.key, 'approve', people.legal)
+    expect(
+      (await people.editor.put(`${V1}/document/${key}/publish`, { publishSchedules: [] })).status,
+    ).toBe(200)
+    const after = await tab(key)
+    expect(after.request).toBeUndefined()
+    expect(after.past[0]?.state).toBe('superseded')
+    expect(after.past[0]?.history.at(-1)?.comment).toContain('published it directly')
+  })
+
+  test('a page that cannot be published at its time goes back to its editor', async () => {
+    const { people, page, sendAt, act, tab, run } = await timedSite({
+      'publishers-may-skip': 'true',
+    })
+    const parent = await page('Parent', people.admin)
+    expect(
+      (await people.admin.put(`${V1}/document/${parent}/publish`, { publishSchedules: [] })).status,
+    ).toBe(200)
+    const typeKey = (await new ContentTypeRepository(people.admin.server.db).byAlias('policy'))?.key
+    const created = await people.writer.post(`${V1}/document`, {
+      documentType: { id: typeKey },
+      template: null,
+      parent: { id: parent },
+      values: [],
+      variants: [{ culture: null, segment: null, name: 'Child' }],
+    })
+    expect(created.status).toBe(201)
+    const child = created.headers.get('umb-generated-resource') as string
+    const at = inAnHour()
+    const sent = (await (await sendAt(child, [{ culture: null, publishTime: at }])).json()) as View
+    await act(sent.key, 'approve', people.legal)
+    expect(
+      (await people.admin.put(`${V1}/document/${parent}/unpublish`, { cultures: null })).status,
+    ).toBe(200)
+    expect((await run(later(at))).failed.map((f) => f.key)).toEqual([child])
+    const after = await tab(child)
+    expect(after.past[0]?.state).toBe('sent-back')
+    expect(after.past[0]?.history.at(-1)?.comment).toContain('could not be published')
+  })
+
+  test('a scheduled page moved to the recycle bin: the request ends', async () => {
+    const { people, page, sendAt, act, run } = await timedSite()
+    const key = await page('Binned')
+    const sent = (await (
+      await sendAt(key, [{ culture: null, publishTime: inAnHour() }])
+    ).json()) as View
+    await act(sent.key, 'approve', people.legal)
+    expect((await people.admin.put(`${V1}/document/${key}/move-to-recycle-bin`, {})).status).toBe(
+      200,
+    )
+    await run(new Date())
+    const history = await people.admin.json<{ items: View[] }>(`${API}/history`)
+    const ended = history.items.find((i) => i.key === sent.key)
+    expect(ended?.state).toBe('withdrawn')
+    expect(ended?.history.at(-1)?.comment).toBe('the page was moved to the recycle bin')
+  })
+
+  test('a schedule removed some other way (an import, the command line) ends the request', async () => {
+    const { people, page, sendAt, act } = await timedSite()
+    const key = await page('Cleared')
+    const sent = (await (
+      await sendAt(key, [{ culture: null, publishTime: inAnHour() }])
+    ).json()) as View
+    await act(sent.key, 'approve', people.legal)
+    await new DocumentRepository(people.admin.server.db).setSchedule(key, [
+      { culture: null, publishTime: null, unpublishTime: null },
+    ])
+    await people.admin.server.jobs.runScheduledPublishing(new Date())
+    const history = await people.admin.json<{ items: View[] }>(`${API}/history`)
+    const ended = history.items.find((i) => i.key === sent.key)
+    expect(ended?.state).toBe('withdrawn')
+    expect(ended?.history.at(-1)?.comment).toBe('the schedule was removed')
+  })
+
+  test('a workflow change leaves a scheduled request alone', async () => {
+    const { people, page, sendAt, act, tab } = await timedSite({ 'on-change': '"withdraw"' })
+    const key = await page('Steady')
+    const sent = (await (
+      await sendAt(key, [{ culture: null, publishTime: inAnHour() }])
+    ).json()) as View
+    await act(sent.key, 'approve', people.legal)
+    const { items } = await people.admin.json<{ items: Array<Record<string, unknown>> }>(
+      `${API}/workflows`,
+    )
+    const preview = await people.admin.post(`${API}/workflows/timed/preview`, {
+      workflow: { ...items[0], comments: 'always' },
+    })
+    expect((await preview.json()).affected ?? []).toEqual([])
+    const saved = await people.admin.put(`${API}/workflows/timed`, {
+      workflow: { ...items[0], comments: 'always' },
+    })
+    expect(saved.status).toBe(200)
+    expect((await tab(key)).request?.state).toBe('scheduled')
   })
 })

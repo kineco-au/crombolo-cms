@@ -11,7 +11,13 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Principal } from '@crombolo/api-management'
 import type { SchemaWorkflow } from '@crombolo/core'
-import { type Db, readWorkflows, syncWorkflows, UserGroupRepository } from '@crombolo/data'
+import {
+  type ApprovalScheduleEntry,
+  type Db,
+  readWorkflows,
+  syncWorkflows,
+  UserGroupRepository,
+} from '@crombolo/data'
 import {
   fileNameFor,
   loadSchemaDirectory,
@@ -51,10 +57,25 @@ async function changePreview(approvals: Approvals, principal: Principal, workflo
   )
   const version = workflowVersion(workflow)
   if (stored && stored.version === version) return []
+  // A scheduled request is decided already: a change leaves it alone.
   const waiting = (await approvals.inFlight(principal)).filter(
-    (r) => (r.workflow.key ?? r.workflow.alias) === id,
+    (r) => r.state === 'waiting' && (r.workflow.key ?? r.workflow.alias) === id,
   )
   return waiting.map((r) => ({ key: r.key, page: r.nodeName, outcome: workflow.onChange }))
+}
+
+/**
+ * `schedule`: `[{ culture, publishTime, unpublishTime }]`, times in ISO form.
+ * A time that does not parse stays an invalid date, which the engine refuses.
+ */
+function readSchedule(value: unknown): ApprovalScheduleEntry[] | null {
+  if (!Array.isArray(value)) return null
+  const time = (t: unknown) => (typeof t === 'string' && t ? new Date(t) : null)
+  return value.map((e: Record<string, unknown>) => ({
+    culture: typeof e?.culture === 'string' && e.culture ? e.culture : null,
+    publishTime: time(e?.publishTime),
+    unpublishTime: time(e?.unpublishTime),
+  }))
 }
 
 export async function handleApprovalsApi(
@@ -81,6 +102,7 @@ export async function handleApprovalsApi(
           b.action === 'unpublish' ? 'unpublish' : 'publish',
           cultures && cultures.length > 0 ? cultures : null,
           text(b.comment),
+          readSchedule(b.schedule),
         ),
       )
     }

@@ -94,6 +94,8 @@ export async function freshDb(): Promise<Db> {
  * replay runs its `CREATE TABLE` against a table that is already there.
  */
 export async function undoMigrationsSinceContentEditing(db: Db): Promise<void> {
+  // 044
+  await db.exec('ALTER TABLE approval_request DROP COLUMN schedule')
   // 043
   await db.exec('DROP INDEX IF EXISTS ix_user_notification_node_action')
   await db.exec('DROP TABLE IF EXISTS content_notification')

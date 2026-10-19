@@ -197,6 +197,24 @@ describe('the file', () => {
     expect(workflowVersion({ ...SIGN_OFF, onEdit: 'lock' })).not.toBe(workflowVersion(SIGN_OFF))
   })
 
+  test('scheduling (story 029) is written only when on, so earlier files keep their version', () => {
+    const before = writeWorkflow(SIGN_OFF)
+    expect(before).not.toContain('scheduling')
+    expect(writeWorkflow({ ...SIGN_OFF, scheduling: false })).toBe(before)
+    expect(workflowVersion({ ...SIGN_OFF, scheduling: false })).toBe(workflowVersion(SIGN_OFF))
+    const on = { ...SIGN_OFF, scheduling: true }
+    const text = writeWorkflow(on)
+    expect(text).toContain('scheduling = true')
+    expect(parseWorkflow('w.toml', text).value).toEqual(on)
+    expect(
+      parseWorkflow(
+        'w.toml',
+        before.replace('unpublish = true', 'unpublish = true\nscheduling = false'),
+      ).value,
+    ).toEqual(SIGN_OFF)
+    expect(workflowVersion(on)).not.toBe(workflowVersion(SIGN_OFF))
+  })
+
   test('two workflows may not claim the same branch or content type, or a type that is not there', () => {
     const other = { ...SIGN_OFF, alias: 'other', key: undefined }
     const messages = validateWorkflows([SIGN_OFF, other], new Set(['article'])).map(

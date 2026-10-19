@@ -34,6 +34,7 @@ self-approval = "refused"     # refused | allowed | automatic
 comments = "on-send-back"     # optional | on-send-back | always
 unpublish = true
 on-change = "restart"         # keep | restart | withdraw
+scheduling = true             # a request may say when; left out when off
 
 [[stage]]
 alias = "legal"
@@ -61,6 +62,7 @@ workflow covers publishes as it always has.
 | `comments` | When a decision needs a comment: `optional`, `on-send-back`, `always` |
 | `unpublish` | Whether taking a covered page down needs approval too ("Request unpublish") |
 | `on-change` | What a request in flight does when the workflow changes: `keep` the version it started under, `restart` from the first stage of the new one, or be `withdrawn` |
+| `scheduling` | Whether a request may say when to publish or take the page down. Off unless set; the file carries it only when it is on, so workflows from before it keep their version |
 
 **Administrators may always edit** a waiting page, whatever `on-edit` says: the
 request goes on with what they saved, and their edit is in its history.
@@ -85,6 +87,42 @@ any publish is. A page that cannot be published at that point — a mandatory
 value since emptied, an unpublished parent — goes back to its editor with the
 reason, rather than sitting approved and unpublished.
 
+## A time on a request
+
+When the workflow has `scheduling`, a request can say when the page should go
+live, when it should come down, or both — per culture through the API, one
+time for the whole page on the Workflow tab. Story `029`.
+
+- **Sending** refuses a time the workflow does not allow, one that has passed,
+  a take-down before the publish, a publish time on a request to take the page
+  down, and a culture the request does not send. The time is in the request's
+  history and in the approvers' e-mail.
+- **The last approval schedules it** instead of publishing, and the request
+  becomes *scheduled*: approved, and open until its time. A time that passed
+  while the request waited publishes at once, and its history says so; cultures
+  with no time publish on approval. A take-down time on a request to publish is
+  written alongside, and stays an ordinary schedule once the page is live.
+- **The schedule job publishes it.** The request ends as approved when its last
+  time has come, with the editor e-mailed; a page that cannot be published then
+  (an unpublished parent) goes back to its editor with the reason.
+- **Until then the page is still held by the request.** Saving it does what
+  `on-edit` says: `withdraw` ends the request and clears its schedule; `lock`
+  and `lock-after-first-approval` refuse the save; `approve-latest` lets the
+  edit go out at the time. An administrator's edit goes in and is recorded.
+  Sending it again is refused: changing the time is a new request, so the
+  scheduled one is withdrawn first, which clears its schedule.
+- **Someone who may skip the workflow can overtake it.** A direct publish,
+  unpublish or reschedule of the page ends the request as *superseded*, naming
+  who did it, and the schedule stays as they set it.
+- **A schedule that goes some other way** — the page moved to the recycle bin
+  or deleted, its schedule cleared by an import or the command line — ends the
+  request as withdrawn, with the reason, the next time the job runs.
+- **A workflow change leaves a scheduled request alone**: it is decided
+  already, so `on-change` and the designer's list of affected requests pass it by.
+
+Times are kept in UTC and shown in the reader's own time, with the zone named;
+"at the time" means within the job's interval of it, as for any schedule.
+
 ## In the backoffice
 
 - **The Workflows section** — *Waiting for me* (stages the reader may decide),
@@ -98,7 +136,9 @@ reason, rather than sitting approved and unpublished.
 - **A page's Workflow tab** — which workflow covers it, the graph coloured by
   where a request stands, *Send for approval* and *Request unpublish*, *Approve*
   and *Send back* for the approvers of a waiting stage, *Withdraw* for the
-  sender, and the history of each request.
+  sender, and the history of each request. Where the workflow allows it,
+  *Publish at* and *Take down at* beside the send buttons; a request shows the
+  time it asked for. The section's lists have a *When* column.
 
 Approvers are e-mailed when a stage starts waiting on them, and the sender when
 the request is decided, through the e-mail port when one is configured. Every
@@ -110,7 +150,8 @@ step is in the audit log.
 |---|---|
 | The model and graph rules | `packages/core/src/workflows.ts` |
 | The file | `packages/schema/src/workflows.ts`; loaded, validated and hashed with the schema |
-| The record | `approval_request`, `approval_step`, `approval_history` (migration 038); `packages/data/src/repositories/approvals.ts` |
+| The record | `approval_request`, `approval_step`, `approval_history` (migration 038), `approval_request.schedule` (044); `packages/data/src/repositories/approvals.ts` |
+| Publishing at a time | the schedule job (`packages/server/src/jobs.ts`) tells the engine what it fired: `scheduleFired`, then `sweepScheduled` |
 | Synced workflows | `key_value` `crombolo:workflows`; `syncWorkflows` applies `on-change` |
 | The engine | `packages/server/src/approvals.ts` |
 | The gate | `ApprovalGatePort`, asked by the document handlers |
@@ -119,7 +160,3 @@ step is in the audit log.
 
 A bundle that carries `schema/workflows/*.toml` installs them like any schema
 file; requests never travel.
-
-## Still to come
-
-- A publish time on a request: story `029`.

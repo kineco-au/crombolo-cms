@@ -65,7 +65,7 @@ move, not only parity.
 ## Out of scope
 
 - Conditions on arrows. Every arrow out of a stage is followed.
-- A publish time on a request: story `029`.
+- A publish time on a request: story `029`, since built.
 - Cycles. A loop is refused; sending back to an earlier stage is the only way
   round again.
 
@@ -271,5 +271,5 @@ as run and would never get the tables. Its `release` must be the next version
   through the API (`cultures`) and not offered on the tab.
 - A restart applied by a sync does not count an `automatic` approval until the
   request is next acted on.
-- A publish time on a request is story `029`.
+- A publish time on a request is story `029`, since built.
 

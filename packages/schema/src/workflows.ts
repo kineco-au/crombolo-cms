@@ -29,6 +29,7 @@ const WORKFLOW_KEYS = [
   'comments',
   'unpublish',
   'on-change',
+  'scheduling',
 ] as const
 const APPLIES_KEYS = ['branches', 'content-types'] as const
 const STAGE_KEYS = [
@@ -126,6 +127,7 @@ export function parseWorkflow(file: string, source: string): ParseResult<SchemaW
     comments: choice(r, t, 'comments', path, WORKFLOW_COMMENTS, 'optional'),
     unpublish: r.bool(t, 'unpublish', path, false),
     onChange: choice(r, t, 'on-change', path, WORKFLOW_ON_CHANGE, 'keep'),
+    ...(r.bool(t, 'scheduling', path, false) ? { scheduling: true } : {}),
     stages: r.tables(root.stage, 'stage').map((s, i) => stage(r, s, `stage[${i}]`)),
   }
   if (r.problems.length === 0)
@@ -136,7 +138,10 @@ export function parseWorkflow(file: string, source: string): ParseResult<SchemaW
 const str = (value: string) => JSON.stringify(value)
 const list = (values: readonly string[]) => `[${values.map(str).join(', ')}]`
 
-/** A workflow as canonical TOML: a fixed key order, defaults written out. */
+/**
+ * A workflow as canonical TOML: a fixed key order, defaults written out, except
+ * `scheduling`, written only when on so files and versions from before it are unchanged.
+ */
 export function writeWorkflow(workflow: SchemaWorkflow): string {
   const out = ['[workflow]']
   if (workflow.key) out.push(`key = ${str(workflow.key)}`)
@@ -150,6 +155,7 @@ export function writeWorkflow(workflow: SchemaWorkflow): string {
     `unpublish = ${workflow.unpublish}`,
     `on-change = ${str(workflow.onChange)}`,
   )
+  if (workflow.scheduling) out.push('scheduling = true')
   for (const s of workflow.stages) {
     out.push('', '[[stage]]', `alias = ${str(s.alias)}`)
     if (s.name !== undefined) out.push(`name = ${str(s.name)}`)

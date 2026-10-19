@@ -13,6 +13,7 @@
  */
 
 import { MigrationPlan } from '../migrations.ts'
+import { approvalSchedulesMigration } from './approval-schedules.ts'
 import { approvalsMigration } from './approvals.ts'
 import { assistantMigration } from './assistant.ts'
 import { auditLogMigration } from './audit-log.ts'
@@ -101,4 +102,5 @@ export const cromboloPlan = new MigrationPlan([
   remoteMigration,
   trashedDateMigration,
   contentNotificationsMigration,
+  approvalSchedulesMigration,
 ])

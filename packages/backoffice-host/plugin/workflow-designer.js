@@ -590,6 +590,11 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
           'Taking a page down goes through the workflow too',
           html`<uui-toggle label="Unpublishing needs approval" ?disabled=${!editable} ?checked=${w.unpublish} @change=${(e) => set('unpublish')(e.target.checked)}></uui-toggle>`,
         )}
+        ${property(
+          'Requests can say when to publish',
+          'The editor may give a time to publish or take the page down; approval schedules it',
+          html`<uui-toggle label="Requests can say when to publish" ?disabled=${!editable} ?checked=${w.scheduling === true} @change=${(e) => set('scheduling')(e.target.checked)}></uui-toggle>`,
+        )}
         ${property('When a waiting page is changed', undefined, select('When a waiting page is changed', w.onEdit, ON_EDIT, set('onEdit'), !editable))}
         ${property(
           'When the person who made the change could approve it',

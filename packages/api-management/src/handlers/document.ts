@@ -375,6 +375,7 @@ export function registerDocumentHandlers(
         return problemResponse(notFound(result.reason))
       return failureResponse('Could not publish the document', result, input.values)
     }
+    await approvals?.afterDirectPublish?.(principalOf(ctx), key, 'published it')
     return new Response(null, { status: 200 })
   })
 
@@ -587,6 +588,7 @@ export function registerDocumentHandlers(
       )
     const immediate = schedules.filter((s) => !later(s))
     if (schedules.length > 0 && immediate.length === 0) {
+      await approvals?.afterDirectPublish?.(principalOf(ctx), key, 'rescheduled it')
       ctx.notifications.push({
         message: 'Publishing scheduled',
         category: 'Content',
@@ -608,6 +610,7 @@ export function registerDocumentHandlers(
         }),
       )
     }
+    await approvals?.afterDirectPublish?.(principalOf(ctx), key, 'published it')
     return new Response(null, { status: 200 })
   })
 
@@ -627,6 +630,7 @@ export function registerDocumentHandlers(
         }),
       )
     }
+    await approvals?.afterDirectPublish?.(principalOf(ctx), key, 'took it down')
     return new Response(null, { status: 200 })
   })
 
@@ -746,6 +750,8 @@ export function registerDocumentHandlers(
       body.includeUnpublishedDescendants === true,
     )
     if (!result.ok) return failed('Could not publish the branch', result)
+    for (const published of result.published)
+      await approvals?.afterDirectPublish?.(principalOf(ctx), published, 'published its branch')
     const taskId = crypto.randomUUID()
     branchTasks.set(taskId, { documentKey: key })
     ctx.notifications.push({

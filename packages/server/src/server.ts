@@ -893,6 +893,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
   const jobs = createBackgroundJobs({
     db,
     cache,
+    approvals: managementDeps.approvals as Approvals | undefined,
     nodeState: schema.nodeState,
     nodeId: schema.nodeId,
     versionCleanup: config.versionCleanup,

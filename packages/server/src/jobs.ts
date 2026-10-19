@@ -18,6 +18,7 @@ import {
 } from '@crombolo/data'
 import type { PublishedCache } from '@crombolo/render'
 import { auditRetainedSince, recordAudit } from './adapters/audit.ts'
+import type { Approvals } from './approvals.ts'
 import type {
   ContentNotificationRunner,
   ContentNotificationRunReport,
@@ -61,6 +62,8 @@ export interface JobsOptions {
   contentNotificationsMs?: number
   /** Queues the notifications scheduled publishing makes, as an editor's publish does. */
   notifier?: ContentNotifier
+  /** Told what scheduled publishing did, for the approval requests waiting on it (story 029). */
+  approvals?: Pick<Approvals, 'scheduleFired' | 'sweepScheduled'>
 }
 
 export interface ScheduledRun {
@@ -123,11 +126,17 @@ export function createBackgroundJobs(options: JobsOptions): BackgroundJobs {
           detail: `Scheduled${due.culture ? ` (${due.culture})` : ''}`,
         })
         options.onDocumentChanged?.(due.key)
+        await options.approvals?.scheduleFired(due.key, due.culture, due.action, { ok: true })
       } catch (error) {
         if (!(error instanceof PublishBlockedError)) throw error
         run.failed.push({ key: due.key, reason: error.message })
+        await options.approvals?.scheduleFired(due.key, due.culture, due.action, {
+          ok: false,
+          reason: error.message,
+        })
       }
     }
+    await options.approvals?.sweepScheduled(now.getTime())
     if (run.published.length + run.unpublished.length > 0) options.cache.invalidate()
     for (const key of run.published) {
       await options.webhooks?.raise({ alias: 'Umbraco.ContentPublish', key })

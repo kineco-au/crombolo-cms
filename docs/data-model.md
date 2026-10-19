@@ -398,7 +398,10 @@ three is `(node_id, property_type_id, language_id, segment, id DESC)`.
   subscriptions, indexed by page and action; `content_notification`, the
   outbox those subscriptions are delivered from (story 045, migration 043): one
   row per person per change, with names as they were and no foreign keys, a
-  delivery state, attempts, the last error and when it may run; `domain(node_id, language_id, domain_name, sort_order)` for
+  delivery state, attempts, the last error and when it may run;
+  `approval_request.schedule` (story 029, migration 044), the times an
+  approval request asked to publish or take its page down, per culture, as
+  JSON — null on a request that publishes on approval; `domain(node_id, language_id, domain_name, sort_order)` for
   culture and hostnames, names unique (the wildcard is `*<node id>`).
 - **Media and blueprints are documents** of their own object types. The
   document repository takes a `kind` (document, media, blueprint), which picks

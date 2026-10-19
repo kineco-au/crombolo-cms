@@ -21,8 +21,8 @@ async function call(path, init = {}) {
 const post = (path, body = {}) => call(path, { method: 'POST', body: JSON.stringify(body) })
 
 export const pageApproval = (key) => call(`page/${encodeURIComponent(key)}`)
-export const sendForApproval = (key, action, comment) =>
-  post(`page/${encodeURIComponent(key)}/send`, { action, comment })
+export const sendForApproval = (key, action, comment, schedule) =>
+  post(`page/${encodeURIComponent(key)}/send`, { action, comment, schedule })
 export const decide = (requestKey, verb, body) =>
   post(`request/${encodeURIComponent(requestKey)}/${verb}`, body)
 export const waitingForMe = () => call('waiting')

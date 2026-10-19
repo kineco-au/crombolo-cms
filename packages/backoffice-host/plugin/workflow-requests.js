@@ -6,12 +6,15 @@
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { finished, inFlight, waitingForMe } from './workflow-client.js'
+import { describeWhen } from './workflow-time.js'
 
 const STATE = {
   waiting: ['warning', 'Waiting'],
+  scheduled: ['positive', 'Approved, waiting for its time'],
   approved: ['positive', 'Approved'],
   'sent-back': ['danger', 'Sent back'],
   withdrawn: ['default', 'Withdrawn'],
+  superseded: ['default', 'Replaced by a direct publish'],
 }
 
 /** The page's Workflow tab: the editor's route is `edit/<key>/<variant>/view/<tab>`. */
@@ -82,6 +85,7 @@ class CromboloWorkflowListElement extends UmbLitElement {
                 <uui-table-head-cell>Page</uui-table-head-cell>
                 <uui-table-head-cell>Workflow</uui-table-head-cell>
                 <uui-table-head-cell>Asked for</uui-table-head-cell>
+                <uui-table-head-cell>When</uui-table-head-cell>
                 <uui-table-head-cell>Where it stands</uui-table-head-cell>
                 <uui-table-head-cell>Sent</uui-table-head-cell>
               </uui-table-head>
@@ -92,6 +96,7 @@ class CromboloWorkflowListElement extends UmbLitElement {
                   <uui-table-cell><a href=${pageLink(item)} @click=${(e) => openInBackoffice(e, pageLink(item))}>${item.nodeName}</a></uui-table-cell>
                   <uui-table-cell>${item.workflow.name}</uui-table-cell>
                   <uui-table-cell>${item.action === 'unpublish' ? 'Taking it down' : 'Publishing'}</uui-table-cell>
+                  <uui-table-cell>${describeWhen(item.action, item.schedule) || 'On approval'}</uui-table-cell>
                   <uui-table-cell>
                     <uui-tag color=${color}>${label}</uui-tag>
                     ${waiting.length > 0 ? html`<small>at ${waiting.join(', ')}</small>` : nothing}
@@ -140,7 +145,7 @@ customElements.define(
       return 'In flight'
     }
     get empty() {
-      return 'No page is waiting for approval.'
+      return 'No page is waiting for approval or for its time.'
     }
     fetch() {
       return inFlight()

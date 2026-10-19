@@ -65,6 +65,8 @@ export interface SchemaWorkflow {
   comments: WorkflowComments
   unpublish: boolean
   onChange: WorkflowOnChange
+  /** Whether a request may say when to publish or take down (story 029); absent means no. */
+  scheduling?: boolean
   stages: WorkflowStage[]
 }
 

@@ -1,5 +1,5 @@
 /**
- * Story 080: a database as the previous release (0.13.2) left it upgrades to
+ * Story 080: a database as the previous release (0.19.0) left it upgrades to
  * this one, and the Changes dashboard says so. The ledger summary it reads is
  * pure, so its rules are tested on hand-made rows.
  */
@@ -13,8 +13,8 @@ import {
   migrate,
   readLedger,
   readState,
+  STATE_APPROVAL_SCHEDULES,
   STATE_CONTENT_NOTIFICATIONS,
-  STATE_TRASHED_DATE,
   seedIdentity,
 } from '@crombolo/data'
 import { summariseUpgrades, VERSION } from '@crombolo/server'
@@ -79,13 +79,12 @@ describe('summarising the ledger', () => {
   })
 })
 
-/** Puts a current database back the way 0.16.0 left it, a day ago: before content notifications (043). */
+/** Puts a current database back the way 0.19.0 left it, a day ago: before approval schedules (044). */
 async function asPreviousRelease(db: Db): Promise<void> {
-  await db.exec('DROP INDEX IF EXISTS ix_user_notification_node_action')
-  await db.exec('DROP TABLE content_notification')
-  await db.exec("DELETE FROM migration_history WHERE name = 'AddContentNotifications'")
+  await db.exec('ALTER TABLE approval_request DROP COLUMN schedule')
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddApprovalSchedules'")
   await db.exec('UPDATE key_value SET value = ? WHERE key = ?', [
-    STATE_TRASHED_DATE,
+    STATE_CONTENT_NOTIFICATIONS,
     MIGRATION_STATE_KEY,
   ])
   const yesterday = new Date(Date.now() - 24 * 3600_000).toISOString()
@@ -112,14 +111,14 @@ describe('upgrading from the previous release', () => {
       passwordConfig: passwordConfigJson(),
     })
     await asPreviousRelease(db)
-    expect(await readState(db)).toBe(STATE_TRASHED_DATE)
+    expect(await readState(db)).toBe(STATE_CONTENT_NOTIFICATIONS)
 
     const result = await migrate(db, cromboloPlan, { by: 'upgrade' })
-    expect(result.applied).toEqual(['AddContentNotifications'])
-    expect(await readState(db)).toBe(STATE_CONTENT_NOTIFICATIONS)
-    expect(await db.query('SELECT id FROM content_notification')).toBeArray()
+    expect(result.applied).toEqual(['AddApprovalSchedules'])
+    expect(await readState(db)).toBe(STATE_APPROVAL_SCHEDULES)
+    expect(await db.query('SELECT schedule FROM approval_request')).toBeArray()
     const summary = summariseUpgrades(await readLedger(db), VERSION)
-    expect(summary.lastUpgrade).toMatchObject({ release: '0.17.0', steps: 1 })
+    expect(summary.lastUpgrade).toMatchObject({ release: '0.20.0', steps: 1 })
   })
 
   test('the Changes dashboard reports the version, the install and the last upgrade', async () => {

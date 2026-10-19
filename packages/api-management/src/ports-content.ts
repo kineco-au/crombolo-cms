@@ -626,4 +626,6 @@ export interface ApprovalGatePort {
   ): Promise<string | undefined>
   beforeSave(principal: Principal, key: string): Promise<string | undefined>
   afterSave(principal: Principal, key: string): Promise<void>
+  /** A publish, schedule or unpublish that passed the gate: it supersedes a scheduled request. */
+  afterDirectPublish?(principal: Principal, key: string, what: string): Promise<void>
 }

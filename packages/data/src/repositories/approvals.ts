@@ -9,7 +9,14 @@ import type { Db } from '../database.ts'
 import { DbDate } from '../dialect.ts'
 
 export type ApprovalAction = 'publish' | 'unpublish'
-export type ApprovalState = 'waiting' | 'approved' | 'sent-back' | 'withdrawn'
+/** `scheduled`: approved, and open until its time comes (story 029). */
+export type ApprovalState =
+  | 'waiting'
+  | 'scheduled'
+  | 'approved'
+  | 'sent-back'
+  | 'withdrawn'
+  | 'superseded'
 export type ApprovalStepState = 'waiting' | 'approved' | 'sent-back' | 'discarded'
 export type ApprovalHistoryKind =
   | 'sent'
@@ -20,6 +27,15 @@ export type ApprovalHistoryKind =
   | 'restarted'
   | 'published'
   | 'unpublished'
+  | 'scheduled'
+  | 'superseded'
+
+/** When a request asked to publish or take down one culture (null: the invariant variant). */
+export interface ApprovalScheduleEntry {
+  culture: string | null
+  publishTime: Date | null
+  unpublishTime: Date | null
+}
 
 export interface ApprovalRequest {
   id: number
@@ -28,6 +44,8 @@ export interface ApprovalRequest {
   /** Null for the invariant variant, or the whole page. */
   cultures: string[] | null
   action: ApprovalAction
+  /** The times it asked for; null to publish on approval. */
+  schedule: ApprovalScheduleEntry[] | null
   /** The page's head event when it was sent, or after the last edit the workflow let through. */
   eventId: number | null
   workflowKey: string
@@ -62,12 +80,29 @@ export interface ApprovalHistoryEntry {
   createDate: Date
 }
 
+const scheduleFrom = (json: string): ApprovalScheduleEntry[] =>
+  (
+    JSON.parse(json) as Array<{
+      culture: string | null
+      publishTime: string | null
+      unpublishTime: string | null
+    }>
+  ).map((e) => ({
+    culture: e.culture,
+    publishTime: e.publishTime ? new Date(e.publishTime) : null,
+    unpublishTime: e.unpublishTime ? new Date(e.unpublishTime) : null,
+  }))
+
+/** States a request is still open in: it holds the page until it ends. */
+const OPEN = "state IN ('waiting', 'scheduled')"
+
 const requestFrom = (row: Record<string, unknown>): ApprovalRequest => ({
   id: Number(row.id),
   key: normaliseUuid(String(row.key)),
   nodeKey: normaliseUuid(String(row.node_key)),
   cultures: row.cultures ? (JSON.parse(String(row.cultures)) as string[]) : null,
   action: row.action === 'unpublish' ? 'unpublish' : 'publish',
+  schedule: row.schedule ? scheduleFrom(String(row.schedule)) : null,
   eventId: row.event_id === null || row.event_id === undefined ? null : Number(row.event_id),
   workflowKey: String(row.workflow_key),
   workflowVersion: String(row.workflow_version),
@@ -119,12 +154,13 @@ export class ApprovalRepository {
     workflowVersion: string
     /** The user's key. */
     requestedBy: string
+    schedule?: ApprovalScheduleEntry[] | null
   }): Promise<ApprovalRequest> {
     const key = crypto.randomUUID()
     await this.#db.exec(
       `INSERT INTO approval_request (key, node_key, cultures, action, event_id, workflow_key,
-         workflow_version, workflow, state, requested_by, requested_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'waiting', ?, ?)`,
+         workflow_version, workflow, state, requested_by, requested_at, schedule)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'waiting', ?, ?, ?)`,
       [
         key,
         normaliseUuid(input.nodeKey),
@@ -136,6 +172,7 @@ export class ApprovalRepository {
         JSON.stringify(input.workflow),
         normaliseUuid(input.requestedBy),
         DbDate.toDb(new Date()),
+        input.schedule?.length ? JSON.stringify(input.schedule) : null,
       ],
     )
     return (await this.byKey(key)) as ApprovalRequest
@@ -148,10 +185,10 @@ export class ApprovalRepository {
     return rows[0] ? requestFrom(rows[0]) : undefined
   }
 
-  /** The request a page is waiting on, if any: at most one at a time. */
-  async waitingFor(nodeKey: string): Promise<ApprovalRequest | undefined> {
+  /** The request a page is waiting on or scheduled under, if any: at most one at a time. */
+  async openFor(nodeKey: string): Promise<ApprovalRequest | undefined> {
     const rows = await this.#db.query(
-      "SELECT * FROM approval_request WHERE node_key = ? AND state = 'waiting' ORDER BY id DESC",
+      `SELECT * FROM approval_request WHERE node_key = ? AND ${OPEN} ORDER BY id DESC`,
       [normaliseUuid(nodeKey)],
     )
     return rows[0] ? requestFrom(rows[0]) : undefined
@@ -166,10 +203,16 @@ export class ApprovalRepository {
     return rows.map(requestFrom)
   }
 
-  /** Every request still waiting, oldest first. */
-  async waiting(): Promise<ApprovalRequest[]> {
+  /** Every request still open (waiting or scheduled), oldest first. */
+  async open(): Promise<ApprovalRequest[]> {
+    const rows = await this.#db.query(`SELECT * FROM approval_request WHERE ${OPEN} ORDER BY id`)
+    return rows.map(requestFrom)
+  }
+
+  /** Every request approved and waiting for its time, oldest first. */
+  async scheduled(): Promise<ApprovalRequest[]> {
     const rows = await this.#db.query(
-      "SELECT * FROM approval_request WHERE state = 'waiting' ORDER BY id",
+      "SELECT * FROM approval_request WHERE state = 'scheduled' ORDER BY id",
     )
     return rows.map(requestFrom)
   }
@@ -177,10 +220,10 @@ export class ApprovalRepository {
   /** Requests that have finished, newest first. */
   async finished(skip: number, take: number): Promise<{ total: number; items: ApprovalRequest[] }> {
     const counted = await this.#db.query<{ n: number }>(
-      "SELECT COUNT(*) AS n FROM approval_request WHERE state <> 'waiting'",
+      `SELECT COUNT(*) AS n FROM approval_request WHERE NOT ${OPEN}`,
     )
     const rows = await this.#db.query(
-      "SELECT * FROM approval_request WHERE state <> 'waiting' ORDER BY id DESC LIMIT ? OFFSET ?",
+      `SELECT * FROM approval_request WHERE NOT ${OPEN} ORDER BY id DESC LIMIT ? OFFSET ?`,
       [take, skip],
     )
     return { total: Number(counted[0]?.n ?? 0), items: rows.map(requestFrom) }
@@ -197,7 +240,7 @@ export class ApprovalRepository {
   async setState(id: number, state: ApprovalState): Promise<void> {
     await this.#db.exec('UPDATE approval_request SET state = ?, finished_at = ? WHERE id = ?', [
       state,
-      state === 'waiting' ? null : DbDate.toDb(new Date()),
+      state === 'waiting' || state === 'scheduled' ? null : DbDate.toDb(new Date()),
       id,
     ])
   }
