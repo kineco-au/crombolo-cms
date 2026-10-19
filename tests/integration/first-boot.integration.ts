@@ -135,15 +135,14 @@ describe('the first boot of a self-hosted site', () => {
   test('a database the previous release left is upgraded by `crombolo upgrade`, and then starts', async () => {
     const file = readdirSync(site()).find((name) => name.endsWith('.sqlite')) as string
     const sqlite = new Database(join(site(), file))
-    // As 0.16.0 left it: before content notifications (043). Every migration
+    // As 0.19.0 left it: before approval schedules (044). Every migration
     // since the last release has to be undone here, or the upgrade replays one
     // against a table that is already there.
-    sqlite.exec('DROP INDEX IF EXISTS ix_user_notification_node_action')
-    sqlite.exec('DROP TABLE content_notification')
-    sqlite.exec("DELETE FROM migration_history WHERE name = 'AddContentNotifications'")
+    sqlite.exec('ALTER TABLE approval_request DROP COLUMN schedule')
+    sqlite.exec("DELETE FROM migration_history WHERE name = 'AddApprovalSchedules'")
     sqlite
       .query("UPDATE key_value SET value = ? WHERE key = 'Crombolo.Core.Upgrader.State'")
-      .run('{8d3f1a62-0042-4b7e-9c15-2e6a4f0b8d43}')
+      .run('{5a7c2e19-0043-4d8f-b361-0f4e9a2c7d43}')
     sqlite.close()
 
     const run = async (...args: string[]) => {
@@ -167,7 +166,7 @@ describe('the first boot of a self-hosted site', () => {
     const upgraded = await run('upgrade')
     expect(upgraded.code, upgraded.out).toBe(0)
     const ledger = await run('upgrade', 'ledger')
-    expect(ledger.out).toContain('AddContentNotifications')
+    expect(ledger.out).toContain('AddApprovalSchedules')
 
     const proc = Bun.spawn(['bun', CLI, 'start'], {
       cwd: site(),
