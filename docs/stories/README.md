@@ -198,7 +198,7 @@ not cover.
 | # | Story | Priority | Size | State | Depends on |
 |---|---|---|---|---|---|
 | `120` | Cache instructions arrive without polling | could | S | done | — |
-| `121` | Reads from a Postgres replica | could | M | ready | — |
+| `121` | Reads from a Postgres replica | could | M | backlog | 174 |
 
 ### Epic N — The assistant
 
@@ -259,3 +259,32 @@ elaborating before work starts.
 | `166` | People and access per environment | should | M | backlog | 162 |
 | `167` | Changing a remote site piece by piece | should | M | backlog | 160 |
 | `168` | The dictionary and single media files | could | S | ready | — |
+
+### Epic R — Architecture and reliability
+
+Follow-ups from the architecture review against the eight greenfield targets.
+The baseline was approximately **3.1/5** overall: extension API 3, application
+layer 3, publishing consistency 3.5, reads and caching 3, concurrency and side
+effects 2.5, persistence 4, frontend simplicity 2, and runtime composition 3.5.
+These are design assessments, not security certification or new benchmark
+results. The existing versioned storage and vendored editor remain deliberate
+choices; replacing either is not a deliverable in this epic.
+
+Start with shared content operations (`170`), durable events (`171`) and stale
+edit protection (`172`). The supported extension boundary (`173`) and published
+snapshot checkpoints (`174`) can start independently. Checkpoints unblock read
+replicas (`121`) and measured cache growth (`175`); durable events underpin
+independent workers (`176`). Version-history cleanup remains `082`.
+
+The stories describe proposed outcomes and record decisions to resolve before
+implementation; creating them does not settle those architectural choices.
+
+| # | Story | Priority | Size | State | Depends on |
+|---|---|---|---|---|---|
+| `170` | The same content rules from every entry point | should | L | ready | 028, 081, 083 |
+| `171` | Published changes reliably reach subscribers | should | L | backlog | 170, 044, 045 |
+| `172` | An older edit cannot overwrite a newer one | should | M | backlog | 170, 081 |
+| `173` | A supported API for extensions | should | M | ready | 062, 063 |
+| `174` | Renderers know which published changes they serve | should | L | ready | 011, 120 |
+| `175` | Published cache growth stays within measured limits | could | L | backlog | 086, 174 |
+| `176` | Background jobs run independently | could | L | backlog | 171 |

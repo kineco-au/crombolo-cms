@@ -15,6 +15,11 @@ version-cleanup job exists, respecting pinned versions (`preventCleanup`). A
 site whose every save is a version accumulates far more rows than Umbraco
 would. The job has not been measured against a large history.
 
+The architecture review retained this as the history-growth follow-up to the
+existing versioned value model, which scored **4/5** for persistence and schema
+evolution. Story 175 covers published-cache memory and rebuild work; it does
+not replace this story or require a different property-storage format.
+
 ## Acceptance criteria
 
 - [ ] Measured against a generated history of realistic size, on both dialects.

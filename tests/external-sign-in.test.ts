@@ -409,6 +409,17 @@ describe(`members signing in through a provider (${process.env.CROMBOLO_DB ?? 's
     }
   })
 
+  test('the callback is on the address the visitor used, as the proxy in front says it', async () => {
+    const { visit } = await memberSite()
+    const started = await visit('/umbraco/members/external/fake?returnUrl=%2F', {
+      headers: { 'x-forwarded-host': 'members.example.test', 'x-forwarded-proto': 'https' },
+    })
+    const sent = new URL(started.headers.get('location') as string)
+    expect(sent.searchParams.get('redirect_uri')).toBe(
+      'https://members.example.test/umbraco/members/external/fake/callback',
+    )
+  })
+
   test('a callback without the flow it started from is refused', async () => {
     const { visit } = await memberSite()
     const response = await visit('/umbraco/members/external/fake/callback?code=x&state=y')

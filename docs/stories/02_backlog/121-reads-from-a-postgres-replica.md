@@ -1,7 +1,7 @@
 # 121 — Reads from a Postgres replica
 
 **Epic:** M — Running at scale · **Priority:** could · **Size:** M
-**Depends on:** —
+**Depends on:** 174
 
 ## Story
 
@@ -10,11 +10,15 @@ replica, so that visitor traffic does not compete with editors for the primary.
 
 ## Context
 
-Connection pooling is built (`poolSize`). Renderers are readers by role and
-already refuse to migrate or write, so they are the natural users of a replica.
+Connection pooling is built (`poolSize`). Web nodes do not own migrations or
+schema sync, so published-content reads are natural users of a replica. They
+can still write for member authentication, form submissions and operational
+bookkeeping; those operations must retain primary access.
+
 A replica lags, and the published cache reloads on cache instructions, so a
 reload must not read a replica that has not yet caught up with the instruction
-that triggered it.
+that triggered it. Story 174 establishes the durable snapshot checkpoint and
+consistency contract used to determine whether the replica is ready.
 
 ## Acceptance criteria
 

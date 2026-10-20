@@ -26,6 +26,7 @@ import {
   externalLoginProvider,
 } from '@crombolo/data'
 import type { IdentityProvider } from './identity-providers.ts'
+import { originOf } from './seo.ts'
 
 /** A member or user, as far as signing in is concerned. */
 export interface ExternalAccount {
@@ -155,10 +156,13 @@ export function createExternalSignIn(
     return key
   }
   const flowCookie = `crombolo-external-${audience.audience}`
-  const originOf = (request: Request) =>
-    (options.applicationUrl || new URL(request.url).origin).replace(/\/$/, '')
+  // The address the visitor used, as a proxy in front says it, so a site
+  // reached by several names signs in on the one it was opened on. The
+  // provider still refuses a callback it was not registered with.
+  const callbackOrigin = (request: Request) =>
+    originOf(request, { applicationUrl: options.applicationUrl })
   const callbackUrl = (request: Request, id: string) =>
-    `${originOf(request)}${audience.basePath}/${id}/callback`
+    `${callbackOrigin(request)}${audience.basePath}/${id}/callback`
   const redirect = (location: string, cookies: string[] = []) => {
     const headers = new Headers({ location })
     for (const cookie of cookies) headers.append('set-cookie', cookie)
