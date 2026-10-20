@@ -14,6 +14,7 @@ import {
   approvalsNeeded,
   DocumentPermissions,
   descendantStages,
+  hasPathAccess,
   normaliseUuid,
   permissionsForPath,
   type SchemaWorkflow,
@@ -80,6 +81,7 @@ interface PageFacts {
   key: string
   name: string
   chain: string[]
+  trashed: boolean
   contentTypeAlias: string | undefined
   variesByCulture: boolean
 }
@@ -273,6 +275,7 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
       key: node.key,
       name: node.text ?? node.key,
       chain: ids.flatMap((id) => keyOf.get(id) ?? []),
+      trashed: node.trashed,
       contentTypeAlias: type[0]?.alias,
       // Umbraco's flags: 1 is culture, 2 is segment.
       variesByCulture: (Number(type[0]?.variations ?? 0) & 1) === 1,
@@ -294,6 +297,19 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
     permissionsForPath(principal.groups, facts.chain).has(
       action === 'publish' ? DocumentPermissions.Publish : DocumentPermissions.Unpublish,
     )
+
+  /**
+   * Refuses, with a 403, a caller who cannot reach the page through their start
+   * nodes or lacks a verb on it: asking about a page needs what opening it does.
+   */
+  const assertMayReach = (principal: Principal, facts: PageFacts, verbs: readonly string[]) => {
+    const granted = permissionsForPath(principal.groups, facts.chain)
+    if (
+      !hasPathAccess(principal.startNodes.document, facts.chain, facts.trashed) ||
+      !verbs.every((verb) => granted.has(verb))
+    )
+      throw new ApprovalRefused('You do not have access to this page.', 403)
+  }
 
   const covers = (workflow: SchemaWorkflow | undefined, action: ApprovalAction) =>
     workflow !== undefined && (action === 'publish' || workflow.unpublish)
@@ -749,6 +765,7 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
         key: '',
         name: 'This page',
         chain: parent?.chain ?? [],
+        trashed: false,
         contentTypeAlias: type[0]?.alias,
         variesByCulture: false,
       }
@@ -800,6 +817,7 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
     async send(principal, key, action, cultures, comment, schedule) {
       const facts = await page(key)
       if (!facts) throw new ApprovalRefused('The page could not be found.', 404)
+      assertMayReach(principal, facts, [DocumentPermissions.Read, DocumentPermissions.Update])
       const workflow = await covering(facts)
       if (!workflow || !covers(workflow, action))
         throw new ApprovalRefused(
@@ -1064,6 +1082,7 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
     async forPage(principal, key) {
       const facts = await page(key)
       if (!facts) throw new ApprovalRefused('The page could not be found.', 404)
+      assertMayReach(principal, facts, [DocumentPermissions.Read])
       const workflow = await covering(facts)
       const all = await requests().forNode(key)
       const waiting = all.find((r) => r.state === 'waiting' || r.state === 'scheduled')

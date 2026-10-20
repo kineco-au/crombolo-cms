@@ -67,6 +67,40 @@ export const RemotePermissions = {
 } as const
 export type RemoteVerb = (typeof RemotePermissions)[keyof typeof RemotePermissions]
 
+/**
+ * Media (story 088). Umbraco has no media verbs: a group with the Media section
+ * may change everything in it. These are group-wide, held in the groups'
+ * fallback permissions, since media has no per-node permissions; start nodes
+ * still scope media by place.
+ */
+export const MediaPermissions = {
+  Read: 'Crombolo.Media.Read',
+  Update: 'Crombolo.Media.Update',
+} as const
+export type MediaVerb = (typeof MediaPermissions)[keyof typeof MediaPermissions]
+
+/** Umbraco's element verbs, which the Library section's operations require. */
+export const ElementPermissions = {
+  Read: 'Umb.Element.Read',
+  Create: 'Umb.Element.Create',
+  Update: 'Umb.Element.Update',
+  Delete: 'Umb.Element.Delete',
+  Move: 'Umb.Element.Move',
+  Duplicate: 'Umb.Element.Duplicate',
+  Publish: 'Umb.Element.Publish',
+  Unpublish: 'Umb.Element.Unpublish',
+  Rollback: 'Umb.Element.Rollback',
+} as const
+
+/** Umbraco's element folder verbs. */
+export const ElementContainerPermissions = {
+  Read: 'Umb.ElementContainer.Read',
+  Create: 'Umb.ElementContainer.Create',
+  Update: 'Umb.ElementContainer.Update',
+  Delete: 'Umb.ElementContainer.Delete',
+  Move: 'Umb.ElementContainer.Move',
+} as const
+
 /** The discriminator on a granular permission row. */
 export type PermissionContext = 'Document' | 'Element' | 'DocumentTypeProperty'
 
@@ -151,6 +185,8 @@ export interface GroupGrant {
   alias: string
   defaults: readonly string[]
   granular: ReadonlyMap<string, readonly string[]>
+  /** Property types the group sets explicitly, by property type key: their value verbs. */
+  properties?: ReadonlyMap<string, readonly string[]>
 }
 
 /**
@@ -184,6 +220,27 @@ export function permissionsForPath(
     }
     for (const verb of granted) verbs.add(verb)
   }
+  return verbs
+}
+
+/** The verbs a user's groups hold everywhere: their defaults, for what has no per-node permissions. */
+export function fallbackPermissions(groups: readonly GroupGrant[]): Set<string> {
+  return new Set(groups.flatMap((group) => group.defaults))
+}
+
+/**
+ * The value verbs a user holds on a property type, as Umbraco's client reads
+ * them: a group that sets the property explicitly replaces its defaults with
+ * that setting; the result is the union over groups.
+ */
+export function propertyValuePermissions(
+  groups: readonly GroupGrant[],
+  propertyTypeKey: string,
+): Set<string> {
+  const verbs = new Set<string>()
+  const key = propertyTypeKey.toLowerCase()
+  for (const group of groups)
+    for (const verb of group.properties?.get(key) ?? group.defaults) verbs.add(verb)
   return verbs
 }
 

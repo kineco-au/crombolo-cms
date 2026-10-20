@@ -59,6 +59,12 @@ Listed so they are not mistaken for gaps:
   A self-hosted site is set up from environment variables, or from the browser's
   "Set up your new site" screen guarded by `CROMBOLO_SETUP_CODE` (story `080`,
   `docs/operations.md`).
+- **Media has verbs** (story `088`). Umbraco has none, so its Media section
+  alone lets a group change everything in it. Crombolo asks for
+  `Crombolo.Media.Read` to open media and `Crombolo.Media.Update` to change it,
+  and **turning URL tracking on or off** needs the Settings section, where
+  Umbraco asks only for Content. Each such operation is listed with its reason
+  in `AUTHORIZATION_DIVERGENCES` (`packages/api-management/src/divergences.ts`).
 - The **template query builder** writes TypeScript against the render model rather
   than Razor (story `021`).
 - **Telemetry** is fixed at Minimal and cannot be raised: nothing is collected or

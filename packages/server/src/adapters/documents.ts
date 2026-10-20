@@ -116,6 +116,7 @@ export function createDocumentPort(
   return {
     byKey: (key) => repo.byKey(key),
     propertyAliases: (key) => repo.propertyAliases(key),
+    propertyTypes: (key) => repo.propertyTypeKeys(key),
     byKeyPublished: (key) => repo.byKeyPublished(key),
     validate: (input, cultures) => repo.validate(input, cultures),
 

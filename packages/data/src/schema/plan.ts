@@ -36,6 +36,7 @@ import { formsMigration } from './forms.ts'
 import { groupPermissionsMigration } from './group-permissions.ts'
 import { identityMigration } from './identity.ts'
 import { logViewerMigration } from './log-viewer.ts'
+import { mediaPermissionsMigration } from './media-permissions.ts'
 import { memberPropertyTypeMigration } from './member-property-type.ts'
 import { membersMigration } from './members.ts'
 import { propertySearchableMigration } from './property-searchable.ts'
@@ -103,4 +104,5 @@ export const cromboloPlan = new MigrationPlan([
   trashedDateMigration,
   contentNotificationsMigration,
   approvalSchedulesMigration,
+  mediaPermissionsMigration,
 ])

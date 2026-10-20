@@ -540,7 +540,41 @@ policies:
   caller's start nodes (the root and the bin need root access). Publishing
   checks the cultures too, against the group's languages. A missing node is not
   refused, so the handler answers 404 as Umbraco does.
-- **Media** checks start-node path access only; media has no verbs.
+- **Media** has two verbs of crombolo's own, since Umbraco has none:
+  `Crombolo.Media.Read` to open an item, a folder's list view, the audit log or
+  a binned item's original parent, and `Crombolo.Media.Update` for every change
+  — create (folders too), save, validate, delete, trash, move, sort, and
+  restoring, deleting or emptying the recycle bin. Media has no per-node
+  permissions, so they are checked against the groups' fallback verbs, on top
+  of start-node path access on the nodes the operation names. The media tree
+  and items stay open to pickers, as for documents, and temporary-file uploads
+  to any signed-in user: only the media call that uses the file needs Update,
+  so the upload field on a document keeps working. The user-group editor shows
+  both under Media, and the media library hides its changes from a user without
+  Update (`plugin/media-permissions.js`). Every group that had the Media
+  section was given both on upgrade (migration 045).
+- **Elements** need the Library section and Umbraco's element verbs
+  (`ELEMENT_RULES`), as documents need theirs: `Umb.Element.*` on elements, their
+  versions and the bin, `Umb.ElementContainer.*` on folders; emptying the bin
+  needs Delete on both. They are checked against the groups' fallback verbs,
+  which is also what the client is told for every element: per-element
+  permissions are not stored for checking yet.
+- **Property values.** Saving a document (`PUT`, `PATCH`, update and publish)
+  refuses, with a `403` naming the property, a change to a property the
+  caller's groups may not write: `Umb.Document.PropertyValue.Write` from the
+  group's setting for that property type, or its defaults where it has none,
+  unioned over groups. A value sent back unchanged is not a change; one left
+  out that was stored is. Values inside blocks are not checked.
+- **Redirect management** needs Content, except turning URL tracking on or off
+  for the whole site, which needs Settings.
+- **Approval requests** (outside the contract, `docs/workflows.md`): asking to
+  publish or unpublish a page needs Read and Update on it, and its request
+  history Read, inside the caller's start nodes; otherwise `403`.
+
+The verbs are Umbraco's, as its `DatabaseDataCreator` seeds them per built-in
+group, except where a verb is prefixed `Crombolo.` (`packages/core/src/permissions.ts`).
+Operations whose authorization differs from Umbraco's are listed in
+`AUTHORIZATION_DIVERGENCES` (`packages/api-management/src/divergences.ts`).
 
 A refusal is a bare `403`, as ASP.NET's authorization answers. Trees are not
 refused but filtered: a restricted user's root shows only the way to their

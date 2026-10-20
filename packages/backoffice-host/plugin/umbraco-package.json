@@ -72,6 +72,34 @@
       }
     },
     {
+      "type": "entityUserPermission",
+      "alias": "Crombolo.UserPermission.Media.Read",
+      "name": "Crombolo Media Read Permission",
+      "forEntityTypes": ["media"],
+      "meta": {
+        "verbs": ["Crombolo.Media.Read"],
+        "label": "Browse",
+        "description": "Open media items and folders in the Media section"
+      }
+    },
+    {
+      "type": "entityUserPermission",
+      "alias": "Crombolo.UserPermission.Media.Update",
+      "name": "Crombolo Media Update Permission",
+      "forEntityTypes": ["media"],
+      "meta": {
+        "verbs": ["Crombolo.Media.Update"],
+        "label": "Change",
+        "description": "Upload, edit, move, sort and delete media, and empty or restore from the recycle bin"
+      }
+    },
+    {
+      "type": "backofficeEntryPoint",
+      "alias": "Crombolo.EntryPoint.MediaPermissions",
+      "name": "Crombolo Media Permissions",
+      "js": "/crombolo-plugin/media-permissions.js"
+    },
+    {
       "type": "userProfileApp",
       "alias": "Crombolo.UserProfileApp.SignedInDevices",
       "name": "Crombolo Signed-in Devices",

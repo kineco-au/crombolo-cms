@@ -113,7 +113,7 @@ describe('the media collection', () => {
       media: { root: false, keys: ['mine'] },
       element: { root: false, keys: [] },
     },
-    groups: [],
+    groups: [{ key: 'g', alias: 'g', defaults: ['Crombolo.Media.Read'], granular: new Map() }],
   })
 
   const nodes: NodeLookup = {

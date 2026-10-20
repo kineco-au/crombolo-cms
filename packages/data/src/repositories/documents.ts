@@ -1767,6 +1767,31 @@ export class DocumentRepository {
     return (await this.#propertyTypes(contentTypeNodeId)).map((p) => p.alias)
   }
 
+  /** A document's property types — alias, key and name — compositions included; undefined when there is no document. */
+  async propertyTypeKeys(
+    key: string,
+  ): Promise<Array<{ alias: string; key: string; name: string }> | undefined> {
+    const node = await this.#nodes.byKey(key)
+    if (!node) return undefined
+    const contentTypeNodeId = await this.#contentTypeNodeId(node.id)
+    if (!contentTypeNodeId) return undefined
+    const rows = await this.#db.query<{ alias: string; unique_id: string; name: string }>(
+      `WITH RECURSIVE ancestry(id) AS (
+         SELECT ?
+         UNION
+         SELECT c.parent_content_type_id FROM content_type_composition c JOIN ancestry a ON a.id = c.child_content_type_id
+       )
+       SELECT p.alias, p.unique_id, p.name FROM property_type p
+       WHERE p.content_type_id IN (SELECT id FROM ancestry) AND p.retired_at IS NULL`,
+      [contentTypeNodeId],
+    )
+    return rows.map((row) => ({
+      alias: String(row.alias),
+      key: normaliseUuid(String(row.unique_id)),
+      name: String(row.name),
+    }))
+  }
+
   /** Property types of a content type, including everything it composes; retired ones excluded. */
   async #propertyTypes(contentTypeNodeId: number): Promise<PropertyTypeRow[]> {
     const rows = await this.#db.query(

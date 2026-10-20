@@ -608,17 +608,15 @@ export function createUserPorts(
 
     async permissions(principal, tree, keys) {
       if (tree !== 'document') {
-        // Media carries no verbs; element verbs are the groups' own until the Library exists
-        const verbs =
-          tree === 'element'
-            ? [
-                ...new Set(
-                  principal.groups.flatMap((g) =>
-                    g.defaults.filter((p) => p.startsWith('Umb.Element')),
-                  ),
-                ),
-              ]
-            : []
+        // Media and element verbs are the groups' own: neither has per-node permissions
+        const prefixes = tree === 'element' ? ['Umb.Element'] : ['Crombolo.Media.']
+        const verbs = [
+          ...new Set(
+            principal.groups.flatMap((g) =>
+              g.defaults.filter((p) => prefixes.some((prefix) => p.startsWith(prefix))),
+            ),
+          ),
+        ]
         return keys.map((nodeKey) => ({ nodeKey: normaliseUuid(nodeKey), permissions: verbs }))
       }
       const found = await nodes.documents(keys)

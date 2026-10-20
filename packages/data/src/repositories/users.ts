@@ -596,13 +596,28 @@ export class UserRepository {
     return {
       groups: groups.map((group) => {
         const granular = new Map<string, string[]>()
+        const properties = new Map<string, string[]>()
         for (const row of group.granular)
           if (row.context === 'Document' && row.key) {
             const verbs = granular.get(row.key) ?? []
             if (row.permission) verbs.push(row.permission)
             granular.set(row.key, verbs)
+          } else if (row.context === 'DocumentTypeProperty' && row.key) {
+            // `<property type key>|<verb>`; an empty verb is an explicit "nothing"
+            const [propertyType, verb = ''] = row.permission.split('|')
+            if (!propertyType) continue
+            const key = propertyType.toLowerCase()
+            const verbs = properties.get(key) ?? []
+            if (verb) verbs.push(verb)
+            properties.set(key, verbs)
           }
-        return { key: group.key, alias: group.alias, defaults: group.permissions, granular }
+        return {
+          key: group.key,
+          alias: group.alias,
+          defaults: group.permissions,
+          granular,
+          properties,
+        }
       }),
       languages: languageRows.map((l) => String(l.iso_code)),
       hasAccessToAllLanguages: groups.some((g) => g.hasAccessToAllLanguages),

@@ -4,7 +4,7 @@
  * Password hashing is injected rather than imported so this package stays free of
  * a dependency on @crombolo/auth.
  */
-import { RemotePermissions } from '@crombolo/core'
+import { MediaPermissions, RemotePermissions } from '@crombolo/core'
 import type { Db } from '../database.ts'
 import { DbDate } from '../dialect.ts'
 
@@ -41,6 +41,9 @@ const FORM_FULL = [
   'Crombolo.FormEntry.Sensitive',
 ] as const
 
+/** Browsing and changing media (story 088): every built-in group with the Media section. */
+const MEDIA_FULL = Object.values(MediaPermissions)
+
 export const BUILT_IN_GROUP_PERMISSIONS: Record<string, readonly string[]> = {
   admin: [
     'Umb.Document.Create',
@@ -67,6 +70,7 @@ export const BUILT_IN_GROUP_PERMISSIONS: Record<string, readonly string[]> = {
     ...FORM_FULL,
     ...ELEMENT_EDIT,
     ...Object.values(RemotePermissions),
+    ...MEDIA_FULL,
   ],
   editor: [
     'Umb.Document.Create',
@@ -93,6 +97,7 @@ export const BUILT_IN_GROUP_PERMISSIONS: Record<string, readonly string[]> = {
     'Crombolo.FormEntry.Read',
     'Crombolo.FormEntry.Manage',
     ...ELEMENT_EDIT,
+    ...MEDIA_FULL,
   ],
   writer: [
     'Umb.Document.Create',

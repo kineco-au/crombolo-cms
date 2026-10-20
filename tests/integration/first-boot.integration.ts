@@ -135,14 +135,16 @@ describe('the first boot of a self-hosted site', () => {
   test('a database the previous release left is upgraded by `crombolo upgrade`, and then starts', async () => {
     const file = readdirSync(site()).find((name) => name.endsWith('.sqlite')) as string
     const sqlite = new Database(join(site(), file))
-    // As 0.19.0 left it: before approval schedules (044). Every migration
-    // since the last release has to be undone here, or the upgrade replays one
+    // As 0.20.0 left it: before the media verbs (045). Every migration since
+    // the last release has to be undone here, or the upgrade replays one
     // against a table that is already there.
-    sqlite.exec('ALTER TABLE approval_request DROP COLUMN schedule')
-    sqlite.exec("DELETE FROM migration_history WHERE name = 'AddApprovalSchedules'")
+    sqlite.exec(
+      "DELETE FROM user_group_permission WHERE permission IN ('Crombolo.Media.Read', 'Crombolo.Media.Update')",
+    )
+    sqlite.exec("DELETE FROM migration_history WHERE name = 'GrantMediaPermissions'")
     sqlite
       .query("UPDATE key_value SET value = ? WHERE key = 'Crombolo.Core.Upgrader.State'")
-      .run('{5a7c2e19-0043-4d8f-b361-0f4e9a2c7d43}')
+      .run('{3c9e5b17-0044-4a2d-8f61-7b0d4e2a9c44}')
     sqlite.close()
 
     const run = async (...args: string[]) => {
@@ -166,7 +168,7 @@ describe('the first boot of a self-hosted site', () => {
     const upgraded = await run('upgrade')
     expect(upgraded.code, upgraded.out).toBe(0)
     const ledger = await run('upgrade', 'ledger')
-    expect(ledger.out).toContain('AddApprovalSchedules')
+    expect(ledger.out).toContain('GrantMediaPermissions')
 
     const proc = Bun.spawn(['bun', CLI, 'start'], {
       cwd: site(),

@@ -161,6 +161,7 @@ not cover.
 | `085` | A full Postgres parity run | must | M | ready | — |
 | `086` | Performance of the tree and the published cache | should | M | done | — |
 | `087` | A ready-to-run container image | should | M | ready | — |
+| `088` | A read-only group changes nothing | must | M | in progress | 023, 026, 027, 028 |
 
 ### Epic J — Forms
 

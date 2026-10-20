@@ -356,6 +356,55 @@ describe(`approval before publishing (${dialectUnderTest})`, () => {
     expect((await people.brand.json<{ items: View[] }>(`${API}/waiting`)).items).toEqual([])
     expect((await people.admin.json<{ items: View[] }>(`${API}/in-flight`)).items).toHaveLength(2)
   })
+
+  test('asking about a page needs Read and Update on it, inside one’s start nodes (088)', async () => {
+    const { people, page } = await site()
+    const theirs = await page('Theirs')
+    const mine = await page('Mine')
+    const group = async (alias: string, startNode: string | null, verbs: string[]) => {
+      const created = await people.admin.post(`${V1}/user-group`, {
+        name: alias,
+        alias,
+        sections: ['Umb.Section.Content', 'Crombolo.Section.Workflow'],
+        languages: [],
+        hasAccessToAllLanguages: true,
+        documentRootAccess: startNode === null,
+        documentStartNode: startNode ? { id: startNode } : null,
+        mediaRootAccess: false,
+        mediaStartNode: null,
+        elementRootAccess: false,
+        elementStartNode: null,
+        fallbackPermissions: verbs,
+        permissions: [],
+      })
+      expect(created.status).toBe(201)
+      const person = await signInAsGroup(people.admin, alias)
+      open.push(person)
+      return person
+    }
+    const elsewhere = await group('elsewhere', mine, ['Umb.Document.Read', 'Umb.Document.Update'])
+    const readers = await group('readers', null, ['Umb.Document.Read'])
+
+    for (const action of ['publish', 'unpublish'])
+      expect((await elsewhere.post(`${API}/page/${theirs}/send`, { action })).status, action).toBe(
+        403,
+      )
+    expect((await elsewhere.call(`${API}/page/${theirs}`)).status).toBe(403)
+    expect((await readers.post(`${API}/page/${theirs}/send`, { action: 'publish' })).status).toBe(
+      403,
+    )
+    expect((await readers.call(`${API}/page/${theirs}`)).status).toBe(200)
+    // Nothing was recorded
+    expect(
+      (await people.admin.json<{ request?: View }>(`${API}/page/${theirs}`)).request,
+    ).toBeUndefined()
+
+    // Inside its start node, the same group may ask
+    expect((await elsewhere.call(`${API}/page/${mine}`)).status).toBe(200)
+    expect((await elsewhere.post(`${API}/page/${mine}/send`, { action: 'publish' })).status).toBe(
+      200,
+    )
+  })
 })
 
 /** Legal alone, nothing else set: a workflow that does not allow a time. */

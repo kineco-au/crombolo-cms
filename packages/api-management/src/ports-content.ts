@@ -268,6 +268,10 @@ export interface DocumentPort extends TreePort {
   byKey(key: string): Promise<DocumentAggregate | undefined>
   /** Every property alias its type has, compositions included. */
   propertyAliases?(key: string): Promise<string[] | undefined>
+  /** Every property type its type has, compositions included: for checking value permissions. */
+  propertyTypes?(
+    key: string,
+  ): Promise<Array<{ alias: string; key: string; name: string }> | undefined>
   /** The published version's values; undefined when nothing is published. */
   byKeyPublished(key: string): Promise<DocumentAggregate | undefined>
   /** What the editor asks before a save: the rules the server would enforce. */

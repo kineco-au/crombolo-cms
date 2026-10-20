@@ -2,16 +2,22 @@
  * Authorization for every Management API call, as Umbraco's policies apply it:
  * first the sections an operation's controller demands (any one of a set, and
  * every set), then, for documents and media, the caller's start nodes and the
- * permission verbs the operation needs on the nodes it names. Users and user
- * groups carry rules about the people involved, which their port enforces.
- * See docs/backoffice-hosting.md for the table's provenance.
+ * permission verbs the operation needs on the nodes it names, and for elements
+ * the verbs it needs. Users and user groups carry rules about the people
+ * involved, which their port enforces. See docs/backoffice-hosting.md for the
+ * tables' provenance.
  */
 import type { OperationInfo } from '@crombolo/contracts'
 import {
   type AppAlias,
   DocumentPermissions as D,
+  ElementPermissions as E,
+  ElementContainerPermissions as EC,
+  fallbackPermissions,
   hasPathAccess,
+  MediaPermissions as M,
   permissionsForPath,
+  propertyValuePermissions,
   type StartNodes,
   sectionKey,
 } from '@crombolo/core'
@@ -157,9 +163,11 @@ export function sectionRequirements(operation: OperationInfo): Array<Sections | 
       if (second === 'user' || second === 'user-group') return [USERS]
       if (second === 'member') return [MEMBERS]
       return []
+    case 'redirect-management':
+      // Tracking on or off is a setting for the whole site, not an edit to content
+      return second === 'status' && write ? [SETTINGS] : [CONTENT]
     case 'document':
     case 'document-version':
-    case 'redirect-management':
     case 'relation':
     case 'oembed':
     case 'dynamic-root':
@@ -296,27 +304,79 @@ const DOCUMENT_RULES: Record<string, readonly DocumentRule[]> = {
   GetRecycleBinDocumentByIdOriginalParent: [{ verbs: [D.Read], node: 'bin' }],
 }
 
-/** Media carries no verbs: a rule names the nodes whose path the caller must be able to reach. */
-const MEDIA_RULES: Record<string, readonly NodeRef[]> = {
-  GetMediaById: [id],
+/**
+ * Media verbs are the groups' fallback ones (media has no per-node permissions),
+ * on top of the start-node path checks on the nodes a rule names. Trees and
+ * items stay open to pickers, as for documents.
+ */
+interface MediaRule {
+  verbs: readonly string[]
+  nodes: readonly NodeRef[]
+}
+
+const MEDIA_RULES: Record<string, MediaRule> = {
+  GetMediaById: { verbs: [M.Read], nodes: [id] },
   // As for documents above. `id` is a query parameter here and omitting it means
   // the root, so the rule says so rather than leaving the absent case unchecked.
-  GetCollectionMedia: [{ query: 'id', orRoot: true }],
-  PutMediaById: [id],
-  DeleteMediaById: [id],
-  GetMediaByIdAuditLog: [id],
-  PutMediaByIdMove: [id, { body: ['target', 'id'] }],
-  PutMediaByIdMoveToRecycleBin: [id],
-  PutMediaByIdSortChildren: [id],
-  PutMediaByIdValidate: [id],
-  PostMedia: [{ body: ['parent', 'id'] }],
-  PostMediaValidate: [{ body: ['parent', 'id'] }],
-  PutMediaSort: [{ body: ['parent', 'id'] }, { body: ['sorting', '*', 'id'] }],
-  PutMediaRootSortChildren: ['root'],
-  DeleteRecycleBinMedia: ['bin'],
-  DeleteRecycleBinMediaById: ['bin'],
-  PutRecycleBinMediaByIdRestore: ['bin'],
-  GetRecycleBinMediaByIdOriginalParent: ['bin'],
+  GetCollectionMedia: { verbs: [M.Read], nodes: [{ query: 'id', orRoot: true }] },
+  GetMediaByIdAuditLog: { verbs: [M.Read], nodes: [id] },
+  GetRecycleBinMediaByIdOriginalParent: { verbs: [M.Read], nodes: ['bin'] },
+  PutMediaById: { verbs: [M.Update], nodes: [id] },
+  PutMediaByIdValidate: { verbs: [M.Update], nodes: [id] },
+  DeleteMediaById: { verbs: [M.Update], nodes: [id] },
+  PutMediaByIdMove: { verbs: [M.Update], nodes: [id, { body: ['target', 'id'] }] },
+  PutMediaByIdMoveToRecycleBin: { verbs: [M.Update], nodes: [id] },
+  PutMediaByIdSortChildren: { verbs: [M.Update], nodes: [id] },
+  PostMedia: { verbs: [M.Update], nodes: [{ body: ['parent', 'id'] }] },
+  PostMediaValidate: { verbs: [M.Update], nodes: [{ body: ['parent', 'id'] }] },
+  PutMediaSort: {
+    verbs: [M.Update],
+    nodes: [{ body: ['parent', 'id'] }, { body: ['sorting', '*', 'id'] }],
+  },
+  PutMediaRootSortChildren: { verbs: [M.Update], nodes: ['root'] },
+  DeleteRecycleBinMedia: { verbs: [M.Update], nodes: ['bin'] },
+  DeleteRecycleBinMediaById: { verbs: [M.Update], nodes: ['bin'] },
+  PutRecycleBinMediaByIdRestore: { verbs: [M.Update], nodes: ['bin'] },
+}
+
+/**
+ * The element and element folder verbs each Library operation needs, held in
+ * the groups' fallback permissions. Mirrors DOCUMENT_RULES verb for verb.
+ */
+const ELEMENT_RULES: Record<string, readonly string[]> = {
+  GetElementById: [E.Read],
+  GetElementByIdPublished: [E.Read],
+  GetElementByIdAuditLog: [E.Read],
+  GetElementVersion: [E.Read],
+  GetElementVersionById: [E.Read],
+  GetRecycleBinElementByIdOriginalParent: [E.Read],
+  PostElement: [E.Create],
+  PostElementValidate: [E.Create],
+  PutElementById: [E.Update],
+  PutElementByIdValidate: [E.Update],
+  PutElementVersionByIdPreventCleanup: [E.Update],
+  PostElementCreateAndPublish: [E.Publish],
+  PutElementByIdUpdateAndPublish: [E.Publish],
+  PutElementByIdPublish: [E.Publish],
+  PutElementByIdUnpublish: [E.Unpublish],
+  DeleteElementById: [E.Delete],
+  PutElementByIdMoveToRecycleBin: [E.Delete],
+  PutElementByIdMove: [E.Move],
+  PostElementByIdCopy: [E.Duplicate, E.Create],
+  PostElementVersionByIdRollback: [E.Rollback],
+  DeleteRecycleBinElementById: [E.Delete],
+  PutRecycleBinElementByIdRestore: [E.Move],
+  // Emptying the bin deletes the folders in it as well as the elements
+  DeleteRecycleBinElement: [E.Delete, EC.Delete],
+  GetElementFolderById: [EC.Read],
+  GetRecycleBinElementFolderByIdOriginalParent: [EC.Read],
+  PostElementFolder: [EC.Create],
+  PutElementFolderById: [EC.Update],
+  DeleteElementFolderById: [EC.Delete],
+  PutElementFolderByIdMoveToRecycleBin: [EC.Delete],
+  DeleteRecycleBinElementFolderById: [EC.Delete],
+  PutElementFolderByIdMove: [EC.Move],
+  PutRecycleBinElementFolderByIdRestore: [EC.Move],
 }
 
 /** Values at `path` in `body`; `*` walks every element of an array. A missing or null step means the root. */
@@ -402,6 +462,61 @@ export function deniedChildren(principal: Principal, parentChain: readonly strin
   )
 }
 
+/** One property value as a save carries it. */
+export interface PropertyValueRef {
+  alias: string
+  culture: string | null
+  segment: string | null
+  value: unknown
+}
+
+/** JSON with object keys in order, so equal values compare equal however they were built. */
+const canonical = (value: unknown): string =>
+  JSON.stringify(value ?? null, (_key, v) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : v,
+  )
+
+/** Each property's values by culture and segment, nulls left out: what a save would leave stored. */
+function valuesByAlias(values: readonly PropertyValueRef[]): Map<string, Map<string, string>> {
+  const out = new Map<string, Map<string, string>>()
+  for (const v of values) {
+    if (v.value === null || v.value === undefined) continue
+    const alias = v.alias.toLowerCase()
+    const variants = out.get(alias) ?? new Map<string, string>()
+    const where = `${v.culture?.toLowerCase() ?? ''}|${v.segment ?? ''}`
+    if (!variants.has(where)) variants.set(where, canonical(v.value))
+    out.set(alias, variants)
+  }
+  return out
+}
+
+/**
+ * The first property a save would change that the caller's groups may not
+ * write (`Umb.Document.PropertyValue.Write`, per property type), or undefined.
+ * A value sent back as it was is not a change; one left out that was stored is.
+ */
+export function deniedPropertyWrite<P extends { alias: string; key: string }>(
+  principal: Principal,
+  properties: readonly P[],
+  before: readonly PropertyValueRef[],
+  after: readonly PropertyValueRef[],
+): P | undefined {
+  const old = valuesByAlias(before)
+  const next = valuesByAlias(after)
+  for (const property of properties) {
+    const alias = property.alias.toLowerCase()
+    const a = old.get(alias) ?? new Map<string, string>()
+    const b = next.get(alias) ?? new Map<string, string>()
+    const changed = a.size !== b.size || [...a].some(([where, value]) => b.get(where) !== value)
+    if (!changed) continue
+    if (!propertyValuePermissions(principal.groups, property.key).has(D.PropertyValueWrite))
+      return property
+  }
+  return undefined
+}
+
 /** Whether the caller may read a document's draft: the Content section, its path, and Read on it. */
 export async function canReadDocument(
   principal: Principal,
@@ -464,17 +579,25 @@ export async function authorize(
     if (rule.cultures && !hasCultureAccess(principal, culturesIn(await body()))) return false
   }
 
-  for (const ref of MEDIA_RULES[operation.operationId] ?? []) {
+  const fallback = fallbackPermissions(principal.groups)
+  const elementVerbs = ELEMENT_RULES[operation.operationId]
+  if (elementVerbs && !elementVerbs.every((v) => fallback.has(v))) return false
+
+  const media = MEDIA_RULES[operation.operationId]
+  if (media) {
+    if (!media.verbs.every((v) => fallback.has(v))) return false
     const start = principal.startNodes.media
-    const keys = await resolveKeys(ref, params, url, body, nodes)
-    const found = await nodes.media(keys.filter((k): k is string => k !== 'root' && k !== 'bin'))
-    for (const key of keys) {
-      if (key === 'root' || key === 'bin') {
-        if (!start.root) return false
-        continue
+    for (const ref of media.nodes) {
+      const keys = await resolveKeys(ref, params, url, body, nodes)
+      const found = await nodes.media(keys.filter((k): k is string => k !== 'root' && k !== 'bin'))
+      for (const key of keys) {
+        if (key === 'root' || key === 'bin') {
+          if (!start.root) return false
+          continue
+        }
+        const node = found.get(key.toLowerCase())
+        if (node && !hasPathAccess(start, node.chain, node.trashed)) return false
       }
-      const node = found.get(key.toLowerCase())
-      if (node && !hasPathAccess(start, node.chain, node.trashed)) return false
     }
   }
   return true

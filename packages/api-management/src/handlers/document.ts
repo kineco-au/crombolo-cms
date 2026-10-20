@@ -19,7 +19,7 @@ import {
   problemResponse,
   ROOT_ACCESS,
 } from '@crombolo/core'
-import { deniedChildren } from '../authorization.ts'
+import { deniedChildren, deniedPropertyWrite } from '../authorization.ts'
 import type { PreviewPort } from '../ports.ts'
 import type { ApprovalGatePort, DocumentPort, PortFailure, SaveDocument } from '../ports-content.ts'
 import type { ManagementApiRouter, RequestContext } from '../router.ts'
@@ -286,6 +286,39 @@ export function registerDocumentHandlers(
       problemDetails({ title, status: 400, detail, operationStatus: 'NeedsApproval' }),
     )
   const principalOf = (ctx: RequestContext) => ctx.principal as NonNullable<typeof ctx.principal>
+
+  /**
+   * A 403 naming the first property the save would change that the caller's
+   * groups may not write. Skipped when a group writes every property anyway.
+   */
+  const propertyWriteRefusal = async (
+    ctx: RequestContext,
+    key: string,
+    existing: DocumentAggregate | undefined,
+    values: readonly DocumentValue[],
+  ): Promise<Response | undefined> => {
+    const principal = ctx.principal
+    if (!principal || !existing || !port.propertyTypes) return undefined
+    const writesAll = principal.groups.some(
+      (group) =>
+        !group.properties?.size && group.defaults.includes(DocumentPermissions.PropertyValueWrite),
+    )
+    if (writesAll) return undefined
+    const denied = deniedPropertyWrite(
+      principal,
+      (await port.propertyTypes(key)) ?? [],
+      existing.values,
+      values,
+    )
+    if (!denied) return undefined
+    return problemResponse(
+      problemDetails({
+        title: 'Could not save the document',
+        status: 403,
+        detail: `You may not change "${denied.name}" (${denied.alias}).`,
+      }),
+    )
+  }
   const trees: TreeSource = {
     treeRoot: (paging) => port.treeRoot(paging),
     treeChildren: (key, paging) => port.treeChildren(key, paging),
@@ -360,6 +393,8 @@ export function registerDocumentHandlers(
     const body = await readBody(ctx)
     const key = ctx.params.id as string
     const input = toSaveDocument(key, body)
+    const denied = await propertyWriteRefusal(ctx, key, await port.byKey(key), input.values)
+    if (denied) return denied
     const refusal =
       (await approvals?.beforeSave(principalOf(ctx), key)) ??
       (await approvals?.publishRefusal(principalOf(ctx), key, 'publish'))
@@ -498,6 +533,8 @@ export function registerDocumentHandlers(
     existing: DocumentAggregate,
     body: Record<string, unknown>,
   ) => {
+    const denied = await propertyWriteRefusal(ctx, key, existing, readValues(body))
+    if (denied) return denied
     const refusal = await approvals?.beforeSave(principalOf(ctx), key)
     if (refusal) return needsApproval('The document is waiting for approval', refusal)
     const result = await port.update(

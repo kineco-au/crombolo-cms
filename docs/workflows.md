@@ -81,6 +81,11 @@ workflow the caller may not skip, with the workflow's name and where to send it
 from. Saving is checked against `on-edit` before it is written, and what the
 save did to a waiting request is recorded after.
 
+Asking about a page is checked as opening it is (story `088`): sending a page
+for approval, or asking to take it down, needs Read and Update on it, and its
+request history needs Read, inside the person's start nodes. Otherwise the
+answer is a `403` and nothing is recorded.
+
 Approval publishes through the same port an editor's publish takes, after the
 decision's transaction has committed, so it is cached, tracked and announced as
 any publish is. A page that cannot be published at that point — a mandatory
