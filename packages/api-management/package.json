@@ -28,7 +28,8 @@
     "access": "public"
   },
   "dependencies": {
-    "@crombolo/core": "workspace:*",
-    "@crombolo/contracts": "workspace:*"
+    "@crombolo/content": "workspace:*",
+    "@crombolo/contracts": "workspace:*",
+    "@crombolo/core": "workspace:*"
   }
 }

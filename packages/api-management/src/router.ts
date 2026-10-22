@@ -25,6 +25,7 @@ import {
   auditReadsBody,
 } from './audit.ts'
 import { authorize, LOCAL_LOGIN_OPERATIONS, type NodeLookup } from './authorization.ts'
+import { DOCUMENT_WRITE_OPERATIONS } from './document-writes.ts'
 import {
   changeReadsBody,
   contentChangeFor,
@@ -77,6 +78,8 @@ export interface RequestContext {
   principal: Principal | undefined
   /** Node positions, for a handler that filters what it returns per node. */
   nodes?: NodeLookup
+  /** Where the request came from, for an operation's audit entry. */
+  client?: ClientAddress
 }
 
 export type Authenticator = (request: Request) => Promise<Principal | undefined>
@@ -251,7 +254,10 @@ export class ManagementApiRouter {
 
     const handler = this.#handlers.get(operation.operationId)
     if (!handler) this.#onNotImplemented?.(operation, request)
-    const plan = handler && this.#audit ? auditPlanFor(operation.operationId) : undefined
+    // A document write announces itself from its operation (story 170).
+    const announces = !DOCUMENT_WRITE_OPERATIONS.has(operation.operationId)
+    const plan =
+      handler && this.#audit && announces ? auditPlanFor(operation.operationId) : undefined
     const audit = plan ? await this.#beforeAudit(plan, params, request) : undefined
     const changeBody =
       handler && this.#onContentChange && changeReadsBody(operation.operationId)
@@ -269,19 +275,20 @@ export class ManagementApiRouter {
           notifications,
           principal,
           nodes: this.#nodes,
+          client: this.#clientAddress(request),
         })
       : problemResponse(notImplemented(operation.operationId))
     if (plan && audit && response.status >= 200 && response.status < 300)
       await this.#recordAudit(plan, audit, params, request, response, principal)
-    if (handler && this.#onServerEvent) {
+    if (handler && announces && this.#onServerEvent) {
       const event = serverEventFor(operation, params, response)
       if (event) this.#onServerEvent(event)
     }
-    if (handler && this.#onWebhookEvent) {
+    if (handler && announces && this.#onWebhookEvent) {
       const event = webhookEventFor(operation.operationId, params, response)
       if (event) this.#onWebhookEvent(event)
     }
-    if (handler && this.#onContentChange) {
+    if (handler && announces && this.#onContentChange) {
       const change = contentChangeFor(operation.operationId, params, response, changeBody)
       if (change) this.#onContentChange(change, principal)
     }

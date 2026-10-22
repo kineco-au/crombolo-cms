@@ -1,3 +1,4 @@
+import { operatorActor } from '@crombolo/content'
 import { ObjectTypes } from '@crombolo/core'
 import {
   appendCacheInstruction,
@@ -5,9 +6,16 @@ import {
   DocumentRepository,
   type NodeRow,
 } from '@crombolo/data'
-import { bootstrapDatabase, MediaFileStore, mediaFileOf, mediaStoreFor } from '@crombolo/server'
+import {
+  bootstrapDatabase,
+  MediaFileStore,
+  mediaFileOf,
+  mediaStoreFor,
+  siteDocumentOperations,
+} from '@crombolo/server'
 import { Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
+import { commandActorName } from '../../operations/commands.ts'
 import { dryRun } from '../../support/flags.ts'
 import { confirm } from '../../support/prompt.ts'
 import { siteConfig } from '../../support/site.ts'
@@ -125,7 +133,17 @@ export default class RecycleBinEmpty extends BaseCommand {
           },
         )
       let mediaChanged = false
+      // Pages through the document operations, as the local operator (story 170):
+      // each is recorded and announced as a delete from the backoffice's bin is.
+      const pages = kinds.includes('content')
+        ? (await siteDocumentOperations(db, config)).operations
+        : undefined
+      const actor = operatorActor(commandActorName())
       for (const { repo, node, kind } of chosen) {
+        if (kind === 'content' && pages) {
+          await pages.delete(actor, node.key, { fromBin: true })
+          continue
+        }
         // A media item's file goes with it, as emptying the bin in the back office does.
         const paths: string[] = []
         if (kind === 'media') {

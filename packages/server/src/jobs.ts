@@ -8,6 +8,7 @@
  * it runs once.
  */
 
+import { type DocumentOperations, systemActor } from '@crombolo/content'
 import type { NodeSchemaState } from '@crombolo/data'
 import {
   AuditLog,
@@ -64,6 +65,11 @@ export interface JobsOptions {
   notifier?: ContentNotifier
   /** Told what scheduled publishing did, for the approval requests waiting on it (story 029). */
   approvals?: Pick<Approvals, 'scheduleFired' | 'sweepScheduled'>
+  /**
+   * Publishes what a schedule says, as the site (story 170): recorded, tracked and
+   * announced as an editor's publish is. Without them the job writes directly.
+   */
+  operations?: DocumentOperations
 }
 
 export interface ScheduledRun {
@@ -110,8 +116,25 @@ export function createBackgroundJobs(options: JobsOptions): BackgroundJobs {
     for (const due of await documents.dueSchedules(now)) {
       if (!(await documents.claimSchedule(due.id))) continue
       const cultures = due.culture ? [due.culture] : null
+      const release = due.action === 'Release'
+      if (options.operations) {
+        const actor = systemActor('The schedule', {
+          note: `scheduled${due.culture ? ` (${due.culture})` : ''}`,
+        })
+        const result = release
+          ? await options.operations.publish(actor, due.key, { cultures })
+          : await options.operations.unpublish(actor, due.key, cultures)
+        if (result.ok) (release ? run.published : run.unpublished).push(due.key)
+        else run.failed.push({ key: due.key, reason: result.reason })
+        await options.approvals?.scheduleFired(
+          due.key,
+          due.culture,
+          due.action,
+          result.ok ? { ok: true } : { ok: false, reason: result.reason },
+        )
+        continue
+      }
       try {
-        const release = due.action === 'Release'
         const changed = release
           ? await documents.publish(due.key, cultures)
           : await documents.unpublish(due.key, cultures)
@@ -137,6 +160,8 @@ export function createBackgroundJobs(options: JobsOptions): BackgroundJobs {
       }
     }
     await options.approvals?.sweepScheduled(now.getTime())
+    // The operations announced and refreshed what they did themselves.
+    if (options.operations) return run
     if (run.published.length + run.unpublished.length > 0) options.cache.invalidate()
     for (const key of run.published) {
       await options.webhooks?.raise({ alias: 'Umbraco.ContentPublish', key })

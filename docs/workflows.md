@@ -81,6 +81,17 @@ workflow the caller may not skip, with the workflow's name and where to send it
 from. Saving is checked against `on-edit` before it is written, and what the
 save did to a waiting request is recorded after.
 
+The gate stands in the document operations (`@crombolo/content`, story 170), so
+it holds wherever a publish starts. Who is acting decides how it applies:
+
+- **A backoffice user** is gated as above.
+- **The command line** (`content publish`, `content unpublish`) is gated as
+  someone who may not skip: a covered page is refused with the same reason.
+  `--skip-approval` goes ahead anyway, and the audit log records the publish
+  with *Approval skipped from the command line*.
+- **The site itself** — the schedule, an approved request, a form's workflow —
+  acts on what was already decided and is not gated.
+
 Asking about a page is checked as opening it is (story `088`): sending a page
 for approval, or asking to take it down, needs Read and Update on it, and its
 request history needs Read, inside the person's start nodes. Otherwise the

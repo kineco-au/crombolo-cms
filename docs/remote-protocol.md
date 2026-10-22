@@ -158,7 +158,11 @@ never from the media store's public address.
 The remote refuses a file whose hash doesn't match (400 `hash-mismatch`)
 before anything is replaced. Accepted, the push is a job that:
 1. backs up where the remote can;
-2. replaces the environment with the file, as `crombolo import --replace` does.
+2. replaces the environment with the file, as `crombolo import --replace` does;
+3. refreshes the published content of the node that took it, so visitors see the
+   push at once. The import also tells every other node, through a cache
+   instruction; a node skips its own instructions, so this step is what reaches the
+   one it ran on.
 
 A push to a protected environment needs the protected-push permission (403
 `forbidden-protected` otherwise).

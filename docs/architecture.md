@@ -11,6 +11,7 @@ crombolo/
 │   ├── core/                     # domain: entities, services, notifications — no I/O
 │   ├── contracts/                # OpenApi.json + generated types
 │   ├── data/                     # dialect seam: schema, migrations, repositories
+│   ├── content/                  # document writes: actors, permissions, approvals, events
 │   ├── auth/                     # OAuth2 server, token store, cookies, providers
 │   ├── api-management/           # /umbraco/management/api/v1/** handlers
 │   ├── api-delivery/             # /umbraco/delivery/api/v2/** over the published cache
@@ -34,7 +35,12 @@ which is what makes the packages consumable outside this repo.
 - `core` depends on nothing but its own types — all business rules live here
 - `data` implements `core`'s repository interfaces and is the only package that
   knows SQL exists
-- `api-management` depends on `core`, never on `data`
+- `content` depends on `core` and `data` only — never on a transport. It holds
+  every document write and the rules each follows (below)
+- `api-management` depends on `core`, never on `data`. From `content` it imports
+  values only through `@crombolo/content/rules` (actors, permission tables, event
+  mappings), which reaches no database; the operations themselves are handed to
+  it as a port
 - `api-delivery` depends on `core`, `contracts` and `render`, never on `data`: it
   reads the published cache, and the server hands it the member and protection
   lookups it needs
@@ -58,6 +64,36 @@ which is what makes the packages consumable outside this repo.
   its own; `@crombolo/crombolo` depends on `cli` only to expose the bin, so a site that
   never shells out still gets the same binary
 - composition happens in `apps/site` and the CLI
+
+## Document writes
+
+Every change to a page — create, save, publish, unpublish, schedule, publish a
+branch, trash, delete, empty the bin, restore, move, copy, sort, roll back,
+domains and public access — is a method on `DocumentOperations`
+(`packages/content/src/operations.ts`, story 170). The backoffice handlers, the
+command line, scheduled publishing, approvals and form workflows all call it, so
+the rules do not depend on what started the change.
+
+- **An actor is passed to every operation.** A `user` is checked against their
+  permissions, start nodes, languages and property writes, and gated by
+  approvals. An `operator` (the command line) is not checked — they hold the
+  database — but approvals still apply unless they say `skipApproval`, which is
+  recorded. `system` (the schedule, an approved request, a form) acts on what
+  was already decided: no checks, no gate.
+- **One change is one transaction.** `DocumentRepository.atomically` takes the
+  tree lock and a transaction; create-and-publish, save-and-publish and
+  publishing several pages either all happen or none do.
+- **A refusal is a value**, not an exception: `notFound`, `forbidden`,
+  `needsApproval`, `invalid`, `conflict`, `blocked` or `validation`, with the
+  status a transport would answer and the reason in words. Each transport turns
+  it into its own shape — a problem-details response, a CLI error.
+- **What happened is an event**, handed with the actor to an `EventSink`. The
+  mappings from event to audit entry, webhook, change notification and live
+  backoffice event are pure functions in `content`; the server's sink
+  (`packages/server/src/content-events.ts`) does the writing. The command line
+  wires the same sink without the live part (`siteDocumentOperations`). The
+  Management API router skips its own derivation for these operations
+  (`DOCUMENT_WRITE_OPERATIONS`), so nothing is announced twice.
 - file I/O a save needs (placing uploads) reaches the repository as a
   _value intake_ the server supplies, so `data` stays free of the file system
 - image processing adds no dependency: Bun's `Image` resizes and encodes, and

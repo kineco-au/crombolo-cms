@@ -53,6 +53,7 @@ these packages. All four are fixed:
 | `@crombolo/server` | the composition root, `crombolo(config)`, ports and adapters | `@crombolo/crombolo` |
 | `@crombolo/backoffice-dist` | **the built backoffice only** — static assets, ~90 MB, versioned in lockstep | `@crombolo/backoffice-host` |
 | `@crombolo/core`, `data`, `auth`, `api-management`, `backoffice-host`, `render`, `contracts`, `schema`, `transfer` | as today, plus the schema package and `transfer` (the content bundle format — `content-transfer.md`) | `@crombolo/server` |
+| `@crombolo/content` | every document write and the rules it follows (`architecture.md`, "Document writes"); `@crombolo/content/rules` is the part without the database | `@crombolo/server`, `api-management`, the CLI |
 | `@crombolo/delivery-client` | a typed client for the Delivery API, built to JavaScript (`delivery-api.md`, "Typed apps") | **apps**, never a site |
 
 **Why the built backoffice is its own package.** It changes only when the pinned

@@ -35,6 +35,7 @@
     "@crombolo/assistant": "workspace:*",
     "@crombolo/auth": "workspace:*",
     "@crombolo/backoffice-host": "workspace:*",
+    "@crombolo/content": "workspace:*",
     "@crombolo/contracts": "workspace:*",
     "@crombolo/core": "workspace:*",
     "@crombolo/data": "workspace:*",

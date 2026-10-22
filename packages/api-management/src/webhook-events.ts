@@ -24,6 +24,12 @@ export const WEBHOOK_EVENTS: readonly WebhookEventInfo[] = [
   },
   { alias: 'Umbraco.ContentMoved', eventName: 'Content Moved', eventType: 'Content' },
   { alias: 'Umbraco.ContentCopied', eventName: 'Content Copied', eventType: 'Content' },
+  { alias: 'Umbraco.ContentSorted', eventName: 'Content Sorted', eventType: 'Content' },
+  {
+    alias: 'Umbraco.ContentRolledBack',
+    eventName: 'Content Rolled Back',
+    eventType: 'Content',
+  },
   { alias: 'Umbraco.MediaSave', eventName: 'Media Saved', eventType: 'Media' },
   { alias: 'Umbraco.MediaDelete', eventName: 'Media Deleted', eventType: 'Media' },
 ]

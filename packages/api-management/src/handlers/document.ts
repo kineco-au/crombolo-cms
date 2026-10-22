@@ -2,6 +2,8 @@
  * Documents: the tree, the editor's read/write cycle, publishing and versions.
  */
 
+import type { DocumentOperations, Refusal } from '@crombolo/content'
+import { userActor } from '@crombolo/content/rules'
 import type {
   DocumentAggregate,
   DocumentTreeItem,
@@ -19,9 +21,9 @@ import {
   problemResponse,
   ROOT_ACCESS,
 } from '@crombolo/core'
-import { deniedChildren, deniedPropertyWrite } from '../authorization.ts'
+import { deniedChildren } from '../authorization.ts'
 import { APP_PREVIEW_PROVIDER, type PreviewPort } from '../ports.ts'
-import type { ApprovalGatePort, DocumentPort, PortFailure, SaveDocument } from '../ports-content.ts'
+import type { DocumentPort, PortFailure, SaveDocument } from '../ports-content.ts'
 import type { ManagementApiRouter, RequestContext } from '../router.ts'
 import { created, paging } from './content-type.ts'
 import {
@@ -277,45 +279,34 @@ export function toDocumentTreeItemResponse(item: DocumentTreeItem, noAccess = fa
 export function registerDocumentHandlers(
   router: ManagementApiRouter,
   port: DocumentPort,
+  operations: DocumentOperations,
   preview?: PreviewPort,
-  approvals?: ApprovalGatePort,
 ): void {
   /** A page a workflow covers goes through it: the gate's refusal, as a problem. */
   const needsApproval = (title: string, detail: string) =>
     problemResponse(
       problemDetails({ title, status: 400, detail, operationStatus: 'NeedsApproval' }),
     )
-  const principalOf = (ctx: RequestContext) => ctx.principal as NonNullable<typeof ctx.principal>
+  /** The signed-in user, as the operations know them: their rules apply (story 170). */
+  const actorOf = (ctx: RequestContext) =>
+    userActor(ctx.principal as NonNullable<typeof ctx.principal>, ctx.client ?? {})
 
-  /**
-   * A 403 naming the first property the save would change that the caller's
-   * groups may not write. Skipped when a group writes every property anyway.
-   */
-  const propertyWriteRefusal = async (
-    ctx: RequestContext,
-    key: string,
-    existing: DocumentAggregate | undefined,
-    values: readonly DocumentValue[],
-  ): Promise<Response | undefined> => {
-    const principal = ctx.principal
-    if (!principal || !existing || !port.propertyTypes) return undefined
-    const writesAll = principal.groups.some(
-      (group) =>
-        !group.properties?.size && group.defaults.includes(DocumentPermissions.PropertyValueWrite),
-    )
-    if (writesAll) return undefined
-    const denied = deniedPropertyWrite(
-      principal,
-      (await port.propertyTypes(key)) ?? [],
-      existing.values,
-      values,
-    )
-    if (!denied) return undefined
+  /** An operation's refusal as the problem the client reads; `approval` titles a gate refusal. */
+  const refused = (
+    result: Refusal,
+    title: string,
+    options: { sent?: readonly DocumentValue[]; approval?: string; operationStatus?: string } = {},
+  ) => {
+    if (result.kind === 'needsApproval')
+      return needsApproval(options.approval ?? title, result.reason)
+    if (result.kind === 'validation' && result.errors)
+      return problemResponse(validationProblem(result.errors, options.sent ?? []))
     return problemResponse(
       problemDetails({
-        title: 'Could not save the document',
-        status: 403,
-        detail: `You may not change "${denied.name}" (${denied.alias}).`,
+        title,
+        status: result.status,
+        detail: result.reason,
+        ...(options.operationStatus ? { operationStatus: options.operationStatus } : {}),
       }),
     )
   }
@@ -371,18 +362,12 @@ export function registerDocumentHandlers(
     const body = await readBody(ctx)
     const key = typeof body.id === 'string' && body.id ? body.id : crypto.randomUUID()
     const input = toSaveDocument(key, body)
-    const refusal = await approvals?.newPageRefusal(
-      principalOf(ctx),
-      input.parentKey,
-      input.contentTypeKey,
-    )
-    if (refusal) return needsApproval('The document needs approval before it is published', refusal)
-    const result = await port.createAndPublish(
-      input,
-      readCultures(body),
-      ctx.principal as NonNullable<typeof ctx.principal>,
-    )
-    if (!result.ok) return failureResponse('Could not create the document', result, input.values)
+    const result = await operations.createAndPublish(actorOf(ctx), input, readCultures(body))
+    if (!result.ok)
+      return refused(result, 'Could not create the document', {
+        sent: input.values,
+        approval: 'The document needs approval before it is published',
+      })
     return created(
       `${ctx.url.pathname.replace(/\/create-and-publish$/, '')}/${result.key}`,
       result.key,
@@ -393,24 +378,17 @@ export function registerDocumentHandlers(
     const body = await readBody(ctx)
     const key = ctx.params.id as string
     const input = toSaveDocument(key, body)
-    const denied = await propertyWriteRefusal(ctx, key, await port.byKey(key), input.values)
-    if (denied) return denied
-    const refusal =
-      (await approvals?.beforeSave(principalOf(ctx), key)) ??
-      (await approvals?.publishRefusal(principalOf(ctx), key, 'publish'))
-    if (refusal) return needsApproval('The document needs approval before it is published', refusal)
-    const result = await port.updateAndPublish(
-      key,
-      input,
-      readCultures(body),
-      ctx.principal as NonNullable<typeof ctx.principal>,
-    )
+    const result = await operations.saveAndPublish(actorOf(ctx), key, input, readCultures(body))
     if (!result.ok) {
-      if (result.reason === 'The document could not be found.')
-        return problemResponse(notFound(result.reason))
-      return failureResponse('Could not publish the document', result, input.values)
+      if (result.kind === 'notFound') return problemResponse(notFound(result.reason))
+      return refused(
+        result,
+        result.kind === 'forbidden'
+          ? 'Could not save the document'
+          : 'Could not publish the document',
+        { sent: input.values, approval: 'The document needs approval before it is published' },
+      )
     }
-    await approvals?.afterDirectPublish?.(principalOf(ctx), key, 'published it')
     return new Response(null, { status: 200 })
   })
 
@@ -510,19 +488,8 @@ export function registerDocumentHandlers(
   router.handle('PostDocument', async (ctx) => {
     const body = await readBody(ctx)
     const key = typeof body.id === 'string' && body.id ? body.id : crypto.randomUUID()
-    const result = await port.create(
-      toSaveDocument(key, body),
-      ctx.principal as NonNullable<typeof ctx.principal>,
-    )
-    if (!result.ok) {
-      return problemResponse(
-        problemDetails({
-          title: 'Could not create the document',
-          status: result.status ?? 400,
-          detail: result.reason,
-        }),
-      )
-    }
+    const result = await operations.create(actorOf(ctx), toSaveDocument(key, body))
+    if (!result.ok) return refused(result, 'Could not create the document')
     ctx.notifications.push({ message: 'Document created', category: 'Content', type: 'Success' })
     return created(`${ctx.url.origin}/umbraco/management/api/v1/document/${result.key}`, result.key)
   })
@@ -533,29 +500,15 @@ export function registerDocumentHandlers(
     existing: DocumentAggregate,
     body: Record<string, unknown>,
   ) => {
-    const denied = await propertyWriteRefusal(ctx, key, existing, readValues(body))
-    if (denied) return denied
-    const refusal = await approvals?.beforeSave(principalOf(ctx), key)
-    if (refusal) return needsApproval('The document is waiting for approval', refusal)
-    const result = await port.update(
-      key,
-      {
-        ...toSaveDocument(key, body),
-        // The content type never changes on update.
-        contentTypeKey: existing.contentTypeKey,
-      },
-      ctx.principal as NonNullable<typeof ctx.principal>,
-    )
-    if (!result.ok) {
-      return problemResponse(
-        problemDetails({
-          title: 'Could not save the document',
-          status: result.status ?? 400,
-          detail: result.reason,
-        }),
-      )
-    }
-    await approvals?.afterSave(principalOf(ctx), key)
+    const result = await operations.save(actorOf(ctx), key, {
+      ...toSaveDocument(key, body),
+      // The content type never changes on update.
+      contentTypeKey: existing.contentTypeKey,
+    })
+    if (!result.ok)
+      return refused(result, 'Could not save the document', {
+        approval: 'The document is waiting for approval',
+      })
     ctx.notifications.push({ message: 'Document saved', category: 'Content', type: 'Success' })
     return new Response(null, { status: 200 })
   }
@@ -607,47 +560,27 @@ export function registerDocumentHandlers(
     if (!(await port.byKey(key)))
       return problemResponse(notFound('The document could not be found'))
     const body = await readBody(ctx)
-    const refusal = await approvals?.publishRefusal(principalOf(ctx), key, 'publish')
-    if (refusal) return needsApproval('The document needs approval before it is published', refusal)
     const schedules = readSchedules(body)
     if (schedules === 'invalid')
       return problemResponse(
         problemDetails({ title: 'A schedule date is not a valid date', status: 400 }),
       )
-    const now = Date.now()
     // A future publish time schedules the variant instead of publishing it now.
-    const later = (s: (typeof schedules)[number]) =>
-      s.publishTime !== null && s.publishTime.getTime() > now
-    if (schedules.length > 0)
-      await port.schedule(
-        key,
-        schedules.map((s) => ({ ...s, publishTime: later(s) ? s.publishTime : null })),
-      )
-    const immediate = schedules.filter((s) => !later(s))
-    if (schedules.length > 0 && immediate.length === 0) {
-      await approvals?.afterDirectPublish?.(principalOf(ctx), key, 'rescheduled it')
+    const result = await operations.publish(actorOf(ctx), key, {
+      cultures: readCultures(body),
+      schedules,
+    })
+    if (!result.ok)
+      return refused(result, 'Could not publish the document', {
+        approval: 'The document needs approval before it is published',
+        operationStatus: 'PathNotPublished',
+      })
+    if (result.scheduledOnly)
       ctx.notifications.push({
         message: 'Publishing scheduled',
         category: 'Content',
         type: 'Success',
       })
-      return new Response(null, { status: 200 })
-    }
-    const cultures = immediate.some((s) => s.culture !== null)
-      ? immediate.flatMap((s) => (s.culture === null ? [] : [s.culture]))
-      : readCultures(body)
-    const result = await port.publish(key, cultures)
-    if (!result.ok) {
-      return problemResponse(
-        problemDetails({
-          title: 'Could not publish the document',
-          status: result.status ?? 400,
-          detail: result.reason,
-          operationStatus: 'PathNotPublished',
-        }),
-      )
-    }
-    await approvals?.afterDirectPublish?.(principalOf(ctx), key, 'published it')
     return new Response(null, { status: 200 })
   })
 
@@ -655,25 +588,21 @@ export function registerDocumentHandlers(
     const key = ctx.params.id as string
     if (!(await port.byKey(key)))
       return problemResponse(notFound('The document could not be found'))
-    const refusal = await approvals?.publishRefusal(principalOf(ctx), key, 'unpublish')
-    if (refusal) return needsApproval('Taking the document down needs approval', refusal)
-    const result = await port.unpublish(key, readCultures(await readBody(ctx)))
-    if (!result.ok) {
-      return problemResponse(
-        problemDetails({
-          title: 'Could not unpublish the document',
-          status: result.status ?? 400,
-          detail: result.reason,
-        }),
-      )
-    }
-    await approvals?.afterDirectPublish?.(principalOf(ctx), key, 'took it down')
+    const result = await operations.unpublish(actorOf(ctx), key, readCultures(await readBody(ctx)))
+    if (!result.ok)
+      return refused(result, 'Could not unpublish the document', {
+        approval: 'Taking the document down needs approval',
+      })
     return new Response(null, { status: 200 })
   })
 
   router.handle('PutDocumentByIdMoveToRecycleBin', async (ctx) => {
-    const moved = await port.moveToRecycleBin(ctx.params.id as string)
-    if (!moved) return problemResponse(notFound('The document could not be found'))
+    const moved = await operations.trash(actorOf(ctx), ctx.params.id as string)
+    if (!moved.ok) {
+      if (moved.kind === 'notFound')
+        return problemResponse(notFound('The document could not be found'))
+      return refused(moved, 'Could not move the document to the recycle bin')
+    }
     ctx.notifications.push({
       message: 'Moved to the recycle bin',
       category: 'Content',
@@ -683,8 +612,12 @@ export function registerDocumentHandlers(
   })
 
   router.handle('DeleteDocumentById', async (ctx) => {
-    const removed = await port.remove(ctx.params.id as string)
-    if (!removed) return problemResponse(notFound('The document could not be found'))
+    const removed = await operations.delete(actorOf(ctx), ctx.params.id as string)
+    if (!removed.ok) {
+      if (removed.kind === 'notFound')
+        return problemResponse(notFound('The document could not be found'))
+      return refused(removed, 'Could not delete the document')
+    }
     return new Response(null, { status: 200 })
   })
 
@@ -693,7 +626,7 @@ export function registerDocumentHandlers(
     const id = (value as Record<string, unknown>).id
     return typeof id === 'string' && id ? id : null
   }
-  const failed = (title: string, result: PortFailure) =>
+  const failed = (title: string, result: PortFailure | Refusal) =>
     problemResponse(problemDetails({ title, status: result.status ?? 400, detail: result.reason }))
   const done = (ctx: RequestContext, message: string) => {
     ctx.notifications.push({ message, category: 'Content', type: 'Success' })
@@ -701,17 +634,23 @@ export function registerDocumentHandlers(
   }
 
   router.handle('PutDocumentByIdMove', async (ctx) => {
-    const result = await port.move(ctx.params.id as string, refId((await readBody(ctx)).target))
+    const result = await operations.move(
+      actorOf(ctx),
+      ctx.params.id as string,
+      refId((await readBody(ctx)).target),
+    )
     return result.ok ? done(ctx, 'Document moved') : failed('Could not move the document', result)
   })
 
   router.handle('PostDocumentByIdCopy', async (ctx) => {
     const body = await readBody(ctx)
-    const result = await port.copy(
+    const result = await operations.copy(
+      actorOf(ctx),
       ctx.params.id as string,
       refId(body.target),
-      { includeDescendants: body.includeDescendants === true },
-      ctx.principal as NonNullable<typeof ctx.principal>,
+      {
+        includeDescendants: body.includeDescendants === true,
+      },
     )
     if (!result.ok) return failed('Could not copy the document', result)
     ctx.notifications.push({ message: 'Document copied', category: 'Content', type: 'Success' })
@@ -726,7 +665,7 @@ export function registerDocumentHandlers(
       key: String(item.id ?? ''),
       sortOrder: Number(item.sortOrder ?? 0),
     }))
-    const result = await port.sort(refId(body.parent), sorting)
+    const result = await operations.sort(actorOf(ctx), refId(body.parent), sorting)
     return result.ok ? done(ctx, 'Sort order saved') : failed('Could not sort', result)
   })
 
@@ -738,7 +677,8 @@ export function registerDocumentHandlers(
       return problemResponse(problemDetails({ title: 'Unknown sort field', status: 400 }))
     if (!['Ascending', 'Descending'].includes(direction))
       return problemResponse(problemDetails({ title: 'Unknown sort direction', status: 400 }))
-    const result = await port.sortChildrenBy(
+    const result = await operations.sortChildrenBy(
+      actorOf(ctx),
       parentKey,
       field as 'Name' | 'CreateDate' | 'UpdateDate',
       direction as 'Ascending' | 'Descending',
@@ -751,24 +691,29 @@ export function registerDocumentHandlers(
   router.handle('PutRecycleBinDocumentByIdRestore', async (ctx) => {
     const body = await readBody(ctx)
     const target = 'target' in body ? refId(body.target) : undefined
-    const result = await port.restore(ctx.params.id as string, target ?? undefined)
+    const result = await operations.restore(
+      actorOf(ctx),
+      ctx.params.id as string,
+      target ?? undefined,
+    )
     return result.ok ? done(ctx, 'Document restored') : failed('Could not restore', result)
   })
 
   router.handle('DeleteRecycleBinDocumentById', async (ctx) => {
-    const key = ctx.params.id as string
-    const document = await port.byKey(key)
-    if (!document) return problemResponse(notFound('The document could not be found'))
-    if (!document.isTrashed)
-      return problemResponse(
-        problemDetails({ title: 'The document is not in the recycle bin', status: 400 }),
-      )
-    await port.remove(key)
+    const result = await operations.delete(actorOf(ctx), ctx.params.id as string, { fromBin: true })
+    if (!result.ok) {
+      if (result.kind === 'notFound')
+        return problemResponse(notFound('The document could not be found'))
+      if (result.kind === 'invalid')
+        return problemResponse(problemDetails({ title: result.reason, status: 400 }))
+      return refused(result, 'Could not delete the document')
+    }
     return done(ctx, 'Document deleted')
   })
 
   router.handle('DeleteRecycleBinDocument', async (ctx) => {
-    await port.emptyRecycleBin()
+    const result = await operations.emptyBin(actorOf(ctx))
+    if (!result.ok) return refused(result, 'Could not empty the recycle bin')
     return done(ctx, 'Recycle bin emptied')
   })
 
@@ -776,19 +721,18 @@ export function registerDocumentHandlers(
   const branchTasks = new Map<string, { documentKey: string }>()
   router.handle('PutDocumentByIdPublishWithDescendants', async (ctx) => {
     const key = ctx.params.id as string
-    const refusal = await approvals?.branchRefusal(principalOf(ctx), key)
-    if (refusal)
-      return needsApproval('Part of this branch needs approval before it is published', refusal)
     const body = await readBody(ctx)
     const cultures = Array.isArray(body.cultures) ? (body.cultures as unknown[]).map(String) : []
-    const result = await port.publishBranch(
+    const result = await operations.publishBranch(
+      actorOf(ctx),
       key,
       cultures.length > 0 ? cultures : null,
       body.includeUnpublishedDescendants === true,
     )
-    if (!result.ok) return failed('Could not publish the branch', result)
-    for (const published of result.published)
-      await approvals?.afterDirectPublish?.(principalOf(ctx), published, 'published its branch')
+    if (!result.ok)
+      return refused(result, 'Could not publish the branch', {
+        approval: 'Part of this branch needs approval before it is published',
+      })
     const taskId = crypto.randomUUID()
     branchTasks.set(taskId, { documentKey: key })
     ctx.notifications.push({
@@ -823,7 +767,7 @@ export function registerDocumentHandlers(
           isoCode: String(d.isoCode ?? ''),
         }))
       : []
-    const result = await port.setDomains(ctx.params.id as string, {
+    const result = await operations.setDomains(actorOf(ctx), ctx.params.id as string, {
       defaultIsoCode: typeof body.defaultIsoCode === 'string' ? body.defaultIsoCode : null,
       domains,
     })
@@ -842,6 +786,10 @@ export function registerDocumentHandlers(
         )
       case 'notFound':
         return problemResponse(notFound('The document could not be found'))
+      case 'forbidden':
+        return problemResponse(
+          problemDetails({ title: 'Could not save culture and hostnames', status: 403 }),
+        )
       case 'conflict':
         return problemResponse(
           problemDetails({
@@ -1035,8 +983,12 @@ export function registerDocumentHandlers(
   })
 
   router.handle('PostDocumentVersionByIdRollback', async (ctx) => {
-    const rolled = await port.rollback(ctx.params.id as string)
-    if (!rolled) return problemResponse(notFound('The version could not be found'))
+    const rolled = await operations.rollback(actorOf(ctx), ctx.params.id as string)
+    if (!rolled.ok) {
+      if (rolled.kind === 'notFound')
+        return problemResponse(notFound('The version could not be found'))
+      return refused(rolled, 'Could not roll the document back')
+    }
     return new Response(null, { status: 200 })
   })
 

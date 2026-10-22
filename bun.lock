@@ -53,6 +53,7 @@
         "@crombolo/backoffice-dist": "workspace:*",
         "@crombolo/backoffice-host": "workspace:*",
         "@crombolo/cli": "workspace:*",
+        "@crombolo/content": "workspace:*",
         "@crombolo/contracts": "workspace:*",
         "@crombolo/core": "workspace:*",
         "@crombolo/crombolo": "workspace:*",
@@ -95,6 +96,7 @@
       "name": "@crombolo/api-management",
       "version": "0.22.0",
       "dependencies": {
+        "@crombolo/content": "workspace:*",
         "@crombolo/contracts": "workspace:*",
         "@crombolo/core": "workspace:*",
       },
@@ -144,12 +146,21 @@
         "@crombolo/api-delivery": "workspace:*",
         "@crombolo/api-management": "workspace:*",
         "@crombolo/auth": "workspace:*",
+        "@crombolo/content": "workspace:*",
         "@crombolo/core": "workspace:*",
         "@crombolo/data": "workspace:*",
         "@crombolo/schema": "workspace:*",
         "@crombolo/server": "workspace:*",
         "@crombolo/transfer": "workspace:*",
         "@oclif/core": "^5.1.8",
+      },
+    },
+    "packages/content": {
+      "name": "@crombolo/content",
+      "version": "0.22.0",
+      "dependencies": {
+        "@crombolo/core": "workspace:*",
+        "@crombolo/data": "workspace:*",
       },
     },
     "packages/contracts": {
@@ -174,6 +185,7 @@
         "@crombolo/backoffice-dist": "workspace:*",
         "@crombolo/backoffice-host": "workspace:*",
         "@crombolo/cli": "workspace:*",
+        "@crombolo/content": "workspace:*",
         "@crombolo/contracts": "workspace:*",
         "@crombolo/core": "workspace:*",
         "@crombolo/data": "workspace:*",
@@ -247,6 +259,7 @@
         "@crombolo/assistant": "workspace:*",
         "@crombolo/auth": "workspace:*",
         "@crombolo/backoffice-host": "workspace:*",
+        "@crombolo/content": "workspace:*",
         "@crombolo/contracts": "workspace:*",
         "@crombolo/core": "workspace:*",
         "@crombolo/data": "workspace:*",
@@ -367,6 +380,8 @@
     "@crombolo/backoffice-host": ["@crombolo/backoffice-host@workspace:packages/backoffice-host"],
 
     "@crombolo/cli": ["@crombolo/cli@workspace:packages/cli"],
+
+    "@crombolo/content": ["@crombolo/content@workspace:packages/content"],
 
     "@crombolo/contracts": ["@crombolo/contracts@workspace:packages/contracts"],
 

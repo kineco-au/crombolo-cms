@@ -70,6 +70,7 @@
     "@crombolo/backoffice-dist": "workspace:*",
     "@crombolo/backoffice-host": "workspace:*",
     "@crombolo/cli": "workspace:*",
+    "@crombolo/content": "workspace:*",
     "@crombolo/contracts": "workspace:*",
     "@crombolo/core": "workspace:*",
     "@crombolo/crombolo": "workspace:*",

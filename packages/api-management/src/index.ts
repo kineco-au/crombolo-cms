@@ -1,6 +1,7 @@
 export * from './audit.ts'
 export * from './authorization.ts'
 export * from './divergences.ts'
+export * from './document-writes.ts'
 export * from './handlers/content-type.ts'
 export * from './handlers/package.ts'
 export * from './handlers/settings-stubs.ts'

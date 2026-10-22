@@ -659,6 +659,11 @@ different words (`/` and `/Home`) are refused rather than silently replacing
 one another. A site with no `domains.toml` is left alone entirely: nothing to
 converge onto means the backoffice stays the only way, as it was before.
 
+Applying the file — at boot, after a push, or from `crombolo domains` in another
+process — posts a cache instruction when the bindings changed, signed by nobody,
+so every running node rebuilds its routing, the one it ran in included. Applying
+the same file again changes nothing and says nothing.
+
 `crombolo domains` prints what the file declares, what each `${VAR}` comes to
 here, and what is actually bound. `domains set` and `domains clear` write the
 file *and* apply it, keeping the file they replaced so `domains undo` puts it

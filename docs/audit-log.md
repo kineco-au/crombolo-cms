@@ -30,9 +30,28 @@ there is one, and the connecting address on hover.
 
 ## Where entries come from
 
+**Document writes** (story 170). Every change to a page goes through the
+document operations in `@crombolo/content`, whoever started it: the backoffice,
+the command line, scheduled publishing, an approved request or a form's
+workflow. The operation hands its event and its actor to an event sink, and
+`createContentEventSink` (`packages/server/src/content-events.ts`) writes the
+entry from `auditEntryFor`. So a page published from the command line is
+recorded exactly as one published in the backoffice, apart from who did it and
+the `source`. The router leaves these operations out (`DOCUMENT_WRITE_OPERATIONS`
+in `packages/api-management/src/document-writes.ts`), so nothing is recorded
+twice.
+
+| Actor | `user_name` | `source` | `detail` |
+| --- | --- | --- | --- |
+| a backoffice user | the user | `request` | — |
+| the command line | `CROMBOLO_ACTOR`, else the account that ran it | `cli` | `Approval skipped from the command line` when `--skip-approval` let it past a workflow |
+| scheduled publishing | `The schedule` | `job` | `Scheduled`, with the culture when it is one |
+| an approved request | the approver | `request` | `Approved through "<workflow>"` |
+| a form's workflow | `The form "<name>"` | `job` | `From a submission to "<name>"` |
+
 **The Management API router.** Every successful change through the contract
 (a 2xx answer to a `POST`, `PUT`, `PATCH` or `DELETE`) writes one entry, in
-`ManagementApiRouter.dispatch`. The mapping from operation to entry is
+`ManagementApiRouter.dispatch`. Document writes are the exception, above. The mapping from operation to entry is
 `auditPlanFor` (`packages/api-management/src/audit.ts`). It is derived from the
 operation's name, as server events are: `PutDocumentByIdPublish` is `Publish`
 on a `Document`, in `content`. Exceptions are listed by name. A test walks the
@@ -76,20 +95,21 @@ what Umbraco records too, and it is how a run of guesses shows up. The service
 tells the routes which user a refusal concerns, but only the routes see it. The
 sign-in page still learns nothing beyond the status it always got.
 
-**Scheduled publishing** writes `Publish` or `Unpublish` with source `job` and
-no user.
-
 **The command line.** Each command that changes the environment writes one
 entry after it succeeds:
 
 - `types sync` and `types purge`
-- `content import`, `content publish`, `content unpublish`, `content revert`, and `bundle install`
+- `content import`, `content revert`, and `bundle install`
 - `bundle purge`
 - `dictionary import`
 - the `domains` writes
 - `upgrade` and `upgrade check --fix`
 - `maintenance pause` and `maintenance resume`
 - `admin reset-password`
+- `recycle-bin empty`, which also records each page it deletes as a document write
+
+`content publish` and `content unpublish` record one entry per page, as document
+writes.
 
 The user recorded is the account that ran the command, or `CROMBOLO_ACTOR`
 when a pipeline names who it is acting for. The detail is the command without

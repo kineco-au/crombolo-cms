@@ -326,6 +326,26 @@ describe(`pushing (${dialectUnderTest})`, () => {
     expect(after.variants[0]?.name).toBe('Home')
   })
 
+  test('visitors see what was pushed at once, not what this node had cached', async () => {
+    const { h, home } = await remoteSite()
+    const file = await pushFile(h)
+    const page = await h.json<Record<string, unknown>>(`${V1}/document/${home}`)
+    await h.put(`${V1}/document/${home}`, {
+      ...page,
+      variants: [{ culture: null, segment: null, name: 'Renamed' }],
+    })
+    expect(
+      (await h.put(`${V1}/document/${home}/publish`, { publishSchedules: [{ culture: null }] }))
+        .status,
+    ).toBe(200)
+    expect((await h.server.cache.byKey(home))?.name).toBe('Renamed')
+    const { api, settle } = client(h, await tokenFor(h))
+    const job = (await settle(((await (await push(api, file)).json()) as Job).id)) as Job
+    expect(job.state).toBe('done')
+    // The import's cache instruction carries this node's id, which it skips: the push itself must say.
+    expect((await h.server.cache.byKey(home))?.name).toBe('Home')
+  })
+
   test('a push can be checked first: what it would recycle and remove, nothing written', async () => {
     const { h, root } = await remoteSite()
     writeFileSync(join(root, 'css', 'old.css'), 'body {}\n')

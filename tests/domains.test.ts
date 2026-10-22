@@ -164,6 +164,35 @@ describe(`applying the domains file (${dialectUnderTest})`, () => {
     return { h, root, page, bound }
   }
 
+  test('applied from the CLI, a running server answers on the new hostname', async () => {
+    if (!(await canConnect())) throw new Error(`no ${dialectUnderTest} to test against`)
+    const { h, root, page } = await site()
+    await page('Home')
+    await page('Other')
+    const count = async () =>
+      Number(
+        (await h.server.db.query<{ n: number }>('SELECT COUNT(*) AS n FROM cache_instruction'))[0]
+          ?.n,
+      )
+    const resolved = async () => (await h.server.cache.resolve('other.example', '/'))?.content.name
+    expect(await resolved()).toBe('Home')
+
+    // What `crombolo domains apply` does, from another process, on the same database.
+    writeFileSync(
+      join(root, DOMAINS_FILE),
+      writeDomainsFile([{ node: '/Other', host: 'other.example' }]),
+    )
+    const before = await count()
+    await syncDomainsFile(h.server.db, root)
+    expect(await count()).toBe(before + 1)
+    await h.server.poll()
+    expect(await resolved()).toBe('Other')
+
+    // The same file again changes nothing, and says nothing.
+    await syncDomainsFile(h.server.db, root)
+    expect(await count()).toBe(before + 1)
+  })
+
   test('binds what the file declares, and the site answers on it', async () => {
     if (!(await canConnect())) throw new Error(`no ${dialectUnderTest} to test against`)
     const { h, root, page, bound } = await site()

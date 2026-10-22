@@ -72,6 +72,7 @@ describe('the published package set', () => {
       '@crombolo/backoffice-dist',
       '@crombolo/backoffice-host',
       '@crombolo/cli',
+      '@crombolo/content',
       '@crombolo/contracts',
       '@crombolo/core',
       '@crombolo/crombolo',

@@ -48,6 +48,11 @@ export interface RemoteOptions {
   db: Db
   config: CromboloConfig
   authenticate(request: Request): Promise<Principal | undefined>
+  /**
+   * Told once a push has landed, so this node's published cache is rebuilt: the
+   * import's cache instruction carries this node's id, and a node skips its own.
+   */
+  onApplied?(): void
 }
 
 export interface Remote {
@@ -307,6 +312,7 @@ export function createRemote(options: RemoteOptions): Remote {
         })
         return
       }
+      options.onApplied?.()
       await jobs.update(job.id, {
         state: 'done',
         stage:

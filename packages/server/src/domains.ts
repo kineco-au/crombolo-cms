@@ -16,9 +16,11 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { ObjectTypes } from '@crombolo/core'
 import {
+  appendCacheInstruction,
   type Db,
   DocumentRepository,
   DomainRepository,
+  type DomainRow,
   describeRefFailure,
   LanguageRepository,
   NodeRepository,
@@ -307,6 +309,7 @@ export async function syncDomainsFile(
     else byNode.set(declaration.node, [declaration])
   }
 
+  const boundBefore = bindingsOf(await domains.all())
   const kept = new Set<number>()
   const namedBy = new Map<number, string>()
   for (const [node, declarations] of byNode) {
@@ -368,7 +371,22 @@ export async function syncDomainsFile(
     removed += before.domains.length + (before.defaultIsoCode ? 1 : 0)
   }
 
+  // Hostnames are part of every node's published cache, and this runs from the
+  // CLI as often as from a server. Unsigned, so every node rebuilds its routing,
+  // the one this ran in included; only when something changed, so a boot that
+  // re-applies the same file tells nobody anything.
+  if (bindingsOf(await domains.all()) !== boundBefore)
+    await appendCacheInstruction(db, { kind: 'content', payload: { domains: true } })
+
   return { action: 'applied', applied, removed, problems }
+}
+
+/** The bindings as a comparable string: page, hostname and culture, in a stable order. */
+function bindingsOf(rows: readonly DomainRow[]): string {
+  return rows
+    .map((row) => `${row.nodeId}|${row.domainName}|${row.isoCode ?? ''}|${row.isWildcard}`)
+    .sort()
+    .join('\n')
 }
 
 function describeSetFailure(result: { status: string; domainName?: string; isoCode?: string }) {
@@ -382,4 +400,37 @@ function describeSetFailure(result: { status: string; domainName?: string; isoCo
     default:
       return result.status
   }
+}
+
+/**
+ * After a page's hostnames were saved in the backoffice: a site that keeps
+ * `domains.toml` keeps them in the file, since the next boot converges onto it
+ * and a change saved only in the database would be undone. Only this page's
+ * entries are rewritten, so `${VAR}` in the others survives. Answers the file it
+ * wrote, or undefined for a site without one.
+ */
+export async function writeDomainsFor(
+  db: Db,
+  siteDir: string | undefined,
+  node: NodeRow,
+  assignment: {
+    defaultIsoCode: string | null
+    domains: Array<{ domainName: string; isoCode: string }>
+  },
+): Promise<string | undefined> {
+  const declarations = siteDir ? readDomainsFile(siteDir) : undefined
+  if (!siteDir || !declarations) return undefined
+  await writeDomains(
+    siteDir,
+    replaceNodeDeclarations(
+      declarations.declarations,
+      await nodeReferenceFor(db, declarations.declarations, node),
+      assignment.domains.map((domain) => ({
+        host: domain.domainName,
+        culture: domain.isoCode || undefined,
+      })),
+      assignment.defaultIsoCode ?? undefined,
+    ),
+  )
+  return DOMAINS_FILE
 }

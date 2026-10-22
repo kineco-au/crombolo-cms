@@ -7,6 +7,7 @@
  * drifts from the wire shape fails to compile.
  */
 
+import type { DocumentOperations } from '@crombolo/content'
 import type { ResponseOf } from '@crombolo/contracts'
 import type { UploadSettings } from '@crombolo/core'
 import type {
@@ -280,6 +281,8 @@ export interface ManagementApiDeps {
   documents?: DocumentPort
   /** Approval workflows: the gate on publishing and saving a page a workflow covers. */
   approvals?: ApprovalGatePort
+  /** Every document write, with its rules and its events (story 170); required alongside `documents`. */
+  documentOperations?: DocumentOperations
   dictionary?: DictionaryPort
   userManagement?: UserPort
   userGroups?: UserGroupPort

@@ -17,15 +17,20 @@ through the Management API's webhook operations.
 | `Umbraco.ContentUnpublish` | unpublishing, by hand or on schedule |
 | `Umbraco.ContentDelete` | deleting a page, from the bin or directly |
 | `Umbraco.ContentMovedToRecycleBin` | moving a page to the bin |
-| `Umbraco.ContentMoved` | moving a page |
+| `Umbraco.ContentMoved` | moving a page, or restoring one from the bin |
 | `Umbraco.ContentCopied` | copying a page |
+| `Umbraco.ContentSorted` | sorting a page's children; the key is the parent's |
+| `Umbraco.ContentRolledBack` | rolling a page back to an earlier version |
 | `Umbraco.MediaSave` | creating or saving a media item |
 | `Umbraco.MediaDelete` | deleting a media item |
 
 The aliases are Umbraco's, so the backoffice's event picker and an imported
 site mean the same thing. An event is raised only when the change really
 happened. A publish request that only schedules a publish raises nothing until
-the schedule runs, and then raises the same event as a publish by hand.
+the schedule runs, and then raises the same event as a publish by hand. Every
+document write raises its event from the same place, `webhookFor` in
+`@crombolo/content`, so a page published from the command line, by an approval
+or by a form's workflow raises what a publish in the backoffice does.
 
 A webhook limited to some content types still hears about a deleted item whose
 type can no longer be read. A missed delete is worse than an extra one.

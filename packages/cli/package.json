@@ -39,6 +39,7 @@
     "@crombolo/api-delivery": "workspace:*",
     "@crombolo/api-management": "workspace:*",
     "@crombolo/auth": "workspace:*",
+    "@crombolo/content": "workspace:*",
     "@crombolo/core": "workspace:*",
     "@crombolo/data": "workspace:*",
     "@crombolo/schema": "workspace:*",

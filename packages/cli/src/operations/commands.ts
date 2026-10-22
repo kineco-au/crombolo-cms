@@ -723,13 +723,19 @@ export interface CommandAudit {
  * account that ran it — `CROMBOLO_ACTOR` when a pipeline names who it runs for.
  * Never fails the command: what it records has already happened.
  */
-export async function recordCommand(config: CromboloConfig, entry: CommandAudit): Promise<void> {
-  let actor = setting('CROMBOLO_ACTOR')
+/** Who runs a command: `CROMBOLO_ACTOR` when a pipeline names who it runs for, else the account. */
+export function commandActorName(): string {
+  const named = setting('CROMBOLO_ACTOR')
+  if (named) return named
   try {
-    actor ??= userInfo().username
+    return userInfo().username
   } catch {
-    actor ??= undefined
+    return 'The command line'
   }
+}
+
+export async function recordCommand(config: CromboloConfig, entry: CommandAudit): Promise<void> {
+  const actor = commandActorName()
   try {
     await withDatabase(config, (db) =>
       recordAudit(db, {

@@ -11,6 +11,7 @@
  * why), and Slack is `sendToUrl` with a webhook URL rather than a type of its
  * own.
  */
+import { type DocumentOperations, systemActor } from '@crombolo/content'
 import {
   allFormFields,
   type FormValueToStore,
@@ -66,6 +67,11 @@ export interface WorkflowDeps {
   nodeId?: string
   /** Told when a workflow published something, so the cache is dropped. */
   onContentChanged?: () => void
+  /**
+   * Saves a submission as a page as the site (story 170), recorded and announced
+   * as any page made in the backoffice is. Without them it writes directly.
+   */
+  operations?: DocumentOperations
   /** The workflow types wired bundles add, by type. */
   bundleWorkflows?: ReadonlyMap<string, FormWorkflowTypeDefinition>
   /** Renders a `template` component to HTML; absent, a workflow naming one cannot send. */
@@ -358,6 +364,36 @@ async function saveAsContent(
     (nameField ? firstValue(context.values, nameField) : '') ||
     `${context.form.name} ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`
 
+  const input = {
+    key: crypto.randomUUID(),
+    contentTypeKey: type.key,
+    componentKey: null,
+    // `root` or nothing both mean the top of the tree.
+    parentKey: parent && parent !== 'root' ? parent : null,
+    values: Object.entries(map).map(([fieldAlias, propertyAlias]) => ({
+      alias: propertyAlias,
+      culture: null,
+      segment: null,
+      value: firstValue(context.values, fieldAlias),
+    })),
+    variants: [{ culture: null, segment: null, name }],
+  }
+  if (deps.operations) {
+    const actor = systemActor(`The form "${context.form.name}"`, {
+      note: `from a submission to "${context.form.name}"`,
+    })
+    const result =
+      settings.publish === true
+        ? await deps.operations.createAndPublish(actor, input, null)
+        : await deps.operations.create(actor, input)
+    if (result.ok) return { ok: true, detail: result.key }
+    // A node behind the schema, or a parent not yet published, resolves on its own: worth retrying.
+    return {
+      ok: false,
+      retry: result.kind === 'conflict' || result.kind === 'blocked',
+      error: result.reason,
+    }
+  }
   const documents = new DocumentRepository(deps.db, {
     nodeState: deps.nodeState,
     nodeId: deps.nodeId,

@@ -24,6 +24,14 @@ import {
   toResponseModels,
 } from '@crombolo/backoffice-host'
 import {
+  type ApprovalsGate,
+  type ContentPrincipal,
+  createDocumentOperations,
+  type DocumentOperations,
+  type EventSink,
+  SILENT,
+} from '@crombolo/content'
+import {
   CORE_SECTION_ALIASES,
   DEFAULT_UPLOAD_SETTINGS,
   hasAccessToSensitiveData,
@@ -72,12 +80,13 @@ import { createTemplateFileStore } from './adapters/template-files.ts'
 import { createTemplateQueryPort } from './adapters/template-query.ts'
 import { avatarUrls, createUserPorts } from './adapters/users.ts'
 import { createWebhookPort } from './adapters/webhooks.ts'
-import { createApprovals } from './approvals.ts'
+import { type Approvals, createApprovals } from './approvals.ts'
 import { COMPONENT_SNIPPETS } from './component-snippets.ts'
 import { type CromboloConfig, type UserLinkSender, VERSION } from './config.ts'
 import type { ContentNotifier } from './content-notifications.ts'
+import { writeDomainsFor } from './domains.ts'
 import { type EmailPort, resolveEmailPort } from './email.ts'
-import { createFileIntake } from './file-intake.ts'
+import { createFileIntake, TemporaryFileMissingError } from './file-intake.ts'
 import { formTypesFor } from './form-types.ts'
 import { createLogViewerPort } from './log-viewer.ts'
 import { logger } from './logging.ts'
@@ -387,6 +396,8 @@ export interface DepsOptions {
   extensions: ExtensionRegistry
   /** Omitted only by tests that exercise the contract without a database. */
   db?: Db
+  /** Where document operations announce what they did; nothing hears them when absent. */
+  contentEvents?: EventSink
   /** The site's webhooks, shared with the delivery job and the event source. */
   webhooks?: WebhookService
   /** Required alongside `db` to serve documents, which invalidate the cache. */
@@ -638,6 +649,13 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
     deps.dictionary = createDictionaryPort(options.db, mediaFiles, {
       onChange: () => options.cache?.invalidate(),
     })
+    const tracker = options.cache
+      ? createRedirectTracker({
+          cache: options.cache,
+          redirects: new RedirectRepository(options.db),
+          enabled: options.config.trackRedirects,
+        })
+      : undefined
     if (options.cache)
       deps.documents = createDocumentPort(
         options.db,
@@ -647,29 +665,47 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
           nodeId: options.schema?.nodeId,
           valueIntake,
         },
-        createRedirectTracker({
-          cache: options.cache,
-          redirects: new RedirectRepository(options.db),
-          enabled: options.config.trackRedirects,
-        }),
+        tracker,
         options.config.siteDir,
         Boolean(email),
       )
     if (deps.documents) {
-      const documents = deps.documents
-      deps.approvals = createApprovals({
-        db: options.db,
+      const db = options.db
+      // Every document write, whoever starts it (story 170). Approvals publish
+      // through it too, so what an approval publishes is cached, tracked and
+      // announced as any publish is.
+      let operations: DocumentOperations | undefined
+      const approvals = createApprovals({
+        db,
         nodeState: options.schema?.nodeState,
         email,
         backOfficeUrl: backOfficeUrl(options.config),
         notifier: options.notifier,
-        // Through the same port an editor's publish takes, so what approval
-        // publishes is cached, tracked and announced as any publish is.
         publisher: {
-          publish: (key, cultures) => documents.publish(key, cultures),
-          unpublish: (key, cultures) => documents.unpublish(key, cultures),
+          publish: (key, cultures, actor) =>
+            (operations as DocumentOperations).publish(actor, key, { cultures }),
+          unpublish: (key, cultures, actor) =>
+            (operations as DocumentOperations).unpublish(actor, key, cultures),
         },
       })
+      deps.approvals = approvals
+      operations = createDocumentOperations({
+        db,
+        repository: {
+          nodeState: options.schema?.nodeState,
+          nodeId: options.schema?.nodeId,
+          valueIntake,
+        },
+        events: options.contentEvents ?? SILENT,
+        approvals: approvalsGate(approvals),
+        redirects: tracker,
+        onChange: () => options.cache?.invalidate(),
+        afterDomains: (node, assignment) =>
+          writeDomainsFor(db, options.config.siteDir, node, assignment),
+        refusalReason: (error) =>
+          error instanceof TemporaryFileMissingError ? error.message : undefined,
+      })
+      deps.documentOperations = operations
     }
   }
   return deps
@@ -713,5 +749,22 @@ function userTwoFactorPort(service: TwoFactorService): UserTwoFactorPort {
       return disabled.ok ? { ok: true } : { ok: false, message: disabled.message }
     },
     reset: (userKey) => service.reset(userKey, provider),
+  }
+}
+
+/**
+ * The approval workflows as the document operations meet them. A user's principal
+ * is the backoffice's own, passed straight through; a local operator has none.
+ */
+export function approvalsGate(approvals: Approvals): ApprovalsGate {
+  const as = (who: ContentPrincipal | undefined) => who as Principal | undefined
+  return {
+    publishRefusal: (who, key, action) => approvals.publishRefusal(as(who), key, action),
+    branchRefusal: (who, key) => approvals.branchRefusal(as(who), key),
+    newPageRefusal: (who, parentKey, typeKey) =>
+      approvals.newPageRefusal(as(who), parentKey, typeKey),
+    beforeSave: (who, key) => approvals.beforeSave(as(who), key),
+    afterSave: (who, key) => approvals.afterSave(as(who), key),
+    afterDirectPublish: (who, key, what) => approvals.afterDirectPublish(as(who), key, what),
   }
 }

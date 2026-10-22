@@ -96,10 +96,12 @@ schema-state write guard.
   time, so it can stop half done — it becomes one transaction.
 - `createAndPublish` is two transactions; it becomes one.
 - Forms "save as content" writes no audit entry.
-- *Bugs to confirm first:* a remote push may leave the receiving node's published
-  cache stale (`createRemote` has no cache hook and the node skips its own
-  instruction); domains set from the CLI and public-access changes post no cluster
-  cache instruction, so other nodes are not told.
+- *Checked and fixed ahead of this story (2026-10-22):* a remote push left the
+  receiving node serving its old published content — `createRemote` now has an
+  `onApplied` hook the server wires to `cache.invalidate()`; and domains applied
+  from the CLI were never seen by running servers — `syncDomainsFile` now posts an
+  unsigned cache instruction when the bindings changed. Public access was ruled
+  out: it is read from the database on every request, so nothing can be stale.
 
 Transfer imports keep their own whole-run transaction and per-run audit; they gain
 the per-document events only if that proves cheap, as a follow-up.
@@ -131,20 +133,76 @@ Tests run on SQLite and Postgres throughout, since it touches the data layer.
 
 ## Acceptance criteria
 
-- [ ] Inventory document write entry points and their intended policy and side
+- [x] Inventory document write entry points and their intended policy and side
       effects, including save, publish, unpublish and scheduling.
-- [ ] HTTP, local CLI and scheduled jobs invoke shared operations for those
+- [x] HTTP, local CLI and scheduled jobs invoke shared operations for those
       writes instead of independently assembling business workflows.
-- [ ] Operations receive an explicit actor and enforce agreed authorization,
+- [x] Operations receive an explicit actor and enforce agreed authorization,
       approval and publishing rules; authentication stays at transport boundaries.
-- [ ] Equivalent changes produce equivalent content, actor-attributed audit
+- [x] Equivalent changes produce equivalent content, actor-attributed audit
       records and events; intentional differences have tests.
-- [ ] Persistence adapters own SQL and locking; application operations do not
+- [x] Persistence adapters own SQL and locking; application operations do not
       depend on HTTP requests, responses or CLI output.
-- [ ] Existing backoffice contracts and local CLI behavior remain compatible,
+- [x] Existing backoffice contracts and local CLI behavior remain compatible,
       except for explicitly reviewed corrections.
-- [ ] Tests cover all entry points, refusals and rollback on SQLite and Postgres.
-- [ ] README and architecture documentation describe the implemented boundary.
+- [x] Tests cover all entry points, refusals and rollback on SQLite and Postgres.
+- [x] README and architecture documentation describe the implemented boundary.
+
+## What was built
+
+- **`@crombolo/content`** (`packages/content`), depending on `core` and `data`
+  only. `actor.ts`: `userActor`, `operatorActor(name, {skipApproval})`,
+  `systemActor(name, {source, user, note})`. `policy.ts`: `WRITE_VERBS`, the one
+  table of verbs per write, which the router's `DOCUMENT_RULES` now reads, and
+  the start-node, culture and property-write checks. `events.ts`: the
+  `DocumentEvent` union, `EventSink`, and the pure mappings `auditEntryFor`,
+  `webhookFor`, `notificationFor` and `liveEventsFor`. `operations.ts`:
+  `createDocumentOperations` with every document write; a refusal is a value
+  (`notFound`, `forbidden`, `needsApproval`, `invalid`, `conflict`, `blocked`,
+  `validation`) with its status and reason. `@crombolo/content/rules` exports
+  the rules without the operations, so `api-management` still loads nothing that
+  reaches the database.
+- **One transaction per change.** `DocumentRepository.atomically` takes the tree
+  lock and a transaction; nested ones join. `createAndPublish`,
+  `saveAndPublish` and `publishMany` use it.
+- **Every entry point through the operations.** The backoffice handlers
+  (`handlers/document.ts`, `handlers/public-access.ts`) keep their titles and
+  wire shapes and turn refusals into problem details. The router skips its own
+  audit, webhook, notification and server-event derivation for the 23 operations
+  in `DOCUMENT_WRITE_OPERATIONS`. Approvals publish as
+  `systemActor('Approval', {user: approver, note: 'approved through "…"'})` and
+  no longer raise their own notification. The scheduled job acts as
+  `The schedule`; form workflows as `The form "<name>"`. The CLI's `content
+  publish` / `unpublish` and `recycle-bin empty` use `siteDocumentOperations`
+  (`packages/server/src/content-operations.ts`) as the operator.
+- **The sink.** `createContentEventSink` (`packages/server/src/content-events.ts`)
+  writes the audit entry, queues the webhook and the notification and, on a
+  server, announces to the open backoffice through the same `announce` the
+  router uses.
+- **The CLI and approvals.** A covered page is refused with the workflow's
+  reason and a hint; `--skip-approval` goes ahead and the audit entry says
+  *Approval skipped from the command line*. `CROMBOLO_ACTOR`, else the OS user,
+  names the operator.
+- **Corrections made**, each tested in `tests/content-operations.test.ts`
+  unless noted: property-write check on create; culture check on save; a
+  schedule-only publish raises no webhook; `Umbraco.ContentSorted` and
+  `Umbraco.ContentRolledBack` added to the event list, and restore raises
+  `ContentMoved`; the scheduled job tracks redirects; CLI schedules every culture
+  named; CLI publish of several pages is one transaction; create-and-publish is
+  one transaction; forms "save as content" is audited
+  (`tests/forms-workflows.test.ts`). An upload that has expired is still a `400`
+  through a `refusalReason` hook the server supplies.
+- **Fixed after review:** `content unpublish --at` scheduled a *publish* at that
+  time; `--at` is now when the command's own action happens and `--until` its
+  opposite, for both commands (`scheduleTimes`, tested in
+  `tests/content-operations.test.ts`). The scheduled line now says `publish` /
+  `unpublish` with each time rather than `from` / `until`.
+- **Packaging.** `@crombolo/content` is in the umbrella's dependencies, the root
+  devDependencies and the packaging test's list, so the release workflow
+  publishes it with the rest.
+- **Docs:** `docs/architecture.md` ("Document writes" and the dependency rules),
+  README structure, `docs/workflows.md` (the gate per actor),
+  `docs/audit-log.md`, `docs/webhooks.md`, `docs/packaging-and-upgrades.md`.
 
 ## Related work and scope
 

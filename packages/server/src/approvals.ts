@@ -10,6 +10,7 @@
  */
 
 import type { Principal } from '@crombolo/api-management'
+import { type Actor, systemActor } from '@crombolo/content'
 import {
   approvalsNeeded,
   DocumentPermissions,
@@ -45,13 +46,16 @@ import type { EmailPort } from './email.ts'
 
 /** What publishing and unpublishing go through when approval says yes. */
 export interface ApprovalPublisher {
+  /** As the site, on the approver's behalf: the gate has been passed by approving. */
   publish(
     key: string,
     cultures: string[] | null,
+    actor: Actor,
   ): Promise<{ ok: true } | { ok: false; reason: string }>
   unpublish(
     key: string,
     cultures: string[] | null,
+    actor: Actor,
   ): Promise<{ ok: true } | { ok: false; reason: string }>
 }
 
@@ -135,24 +139,24 @@ export interface Approvals {
   workflows(): Promise<StoredWorkflow[]>
   /** Undefined when the caller may go ahead; otherwise why not. */
   publishRefusal(
-    principal: Principal,
+    principal: Principal | undefined,
     key: string,
     action: ApprovalAction,
   ): Promise<string | undefined>
   /** A branch publish: the root and every page below it. */
-  branchRefusal(principal: Principal, key: string): Promise<string | undefined>
+  branchRefusal(principal: Principal | undefined, key: string): Promise<string | undefined>
   /** For a page being created and published at once: by its parent and type. */
   newPageRefusal(
-    principal: Principal,
+    principal: Principal | undefined,
     parentKey: string | null,
     contentTypeKey: string,
   ): Promise<string | undefined>
   /** Undefined when the save may go ahead; otherwise why not. */
-  beforeSave(principal: Principal, key: string): Promise<string | undefined>
+  beforeSave(principal: Principal | undefined, key: string): Promise<string | undefined>
   /** What the save does to a waiting request, once it has gone through. */
-  afterSave(principal: Principal, key: string): Promise<void>
+  afterSave(principal: Principal | undefined, key: string): Promise<void>
   /** A direct publish, schedule or unpublish by someone allowed to: a scheduled request ends. */
-  afterDirectPublish(principal: Principal, key: string, what: string): Promise<void>
+  afterDirectPublish(principal: Principal | undefined, key: string, what: string): Promise<void>
   /** The schedule job fired one of a page's schedules: a scheduled request goes on or ends. */
   scheduleFired(
     key: string,
@@ -292,11 +296,17 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
   const groupAliases = async (principal: Principal): Promise<Set<string>> =>
     new Set((await groups.byKeys(principal.groupKeys)).map((g) => g.alias))
 
-  const mayPublish = (principal: Principal, facts: PageFacts, action: ApprovalAction): boolean =>
-    principal.isAdmin ||
-    permissionsForPath(principal.groups, facts.chain).has(
-      action === 'publish' ? DocumentPermissions.Publish : DocumentPermissions.Unpublish,
-    )
+  /** A local operator (no principal) holds no publishing rights of their own. */
+  const mayPublish = (
+    principal: Principal | undefined,
+    facts: PageFacts,
+    action: ApprovalAction,
+  ): boolean =>
+    principal !== undefined &&
+    (principal.isAdmin ||
+      permissionsForPath(principal.groups, facts.chain).has(
+        action === 'publish' ? DocumentPermissions.Publish : DocumentPermissions.Unpublish,
+      ))
 
   /**
    * Refuses, with a 403, a caller who cannot reach the page through their start
@@ -315,7 +325,7 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
     workflow !== undefined && (action === 'publish' || workflow.unpublish)
 
   const refusalFor = (
-    principal: Principal,
+    principal: Principal | undefined,
     facts: PageFacts,
     workflow: SchemaWorkflow | undefined,
     action: ApprovalAction,
@@ -576,22 +586,22 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
           : undefined
     }
     if (cultures !== undefined) {
+      // As the site, on the approver's behalf; the publish raises the notification, with this note.
+      const actor = systemActor('Approval', {
+        source: principal ? 'request' : 'job',
+        user: principal ? { id: principal.id, name: principal.name } : undefined,
+        note: `approved through "${request.workflow.name}"`,
+      })
       const result =
         request.action === 'publish'
-          ? await options.publisher.publish(request.nodeKey, cultures)
-          : await options.publisher.unpublish(request.nodeKey, cultures)
+          ? await options.publisher.publish(request.nodeKey, cultures, actor)
+          : await options.publisher.unpublish(request.nodeKey, cultures, actor)
       if (!result.ok) return unpublishable(request, facts, result.reason)
       await repo.record(request.id, {
         kind: request.action === 'publish' ? 'published' : 'unpublished',
         userKey: principal?.id ?? null,
         comment: passed ? 'the requested time had passed when it was approved' : null,
       })
-      if (request.action === 'publish')
-        await options.notifier?.raise(
-          { actions: ['Umb.Document.Publish'], key: request.nodeKey, keyKind: 'document' },
-          principal ? { key: principal.id, name: principal.name } : null,
-          `approved through "${request.workflow.name}"`,
-        )
     }
     if (later.length + expires.length > 0)
       await documents().setSchedule(request.nodeKey, [...later, ...expires])
@@ -774,7 +784,7 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
 
     async beforeSave(principal, key) {
       const request = await requests().openFor(key)
-      if (!request || principal.isAdmin) return undefined
+      if (!request || principal?.isAdmin) return undefined
       const edit = request.workflow.onEdit
       if (request.state === 'scheduled') {
         if (edit === 'lock' || edit === 'lock-after-first-approval')
@@ -800,18 +810,18 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
           ?.head ?? null
       if (head === request.eventId) return
       // Administrators may always edit; the request goes on, on what they saved.
-      if (!principal.isAdmin && request.workflow.onEdit === 'withdraw') {
+      if (!principal?.isAdmin && request.workflow.onEdit === 'withdraw') {
         await repo.setState(request.id, 'withdrawn')
         await repo.record(request.id, {
           kind: 'withdrawn',
-          userKey: principal.id,
+          userKey: principal?.id ?? null,
           comment: 'the page was changed after it was sent',
         })
         if (request.state === 'scheduled') await clearSchedule(request)
         return
       }
       await repo.setEvent(request.id, head)
-      await repo.record(request.id, { kind: 'edited', userKey: principal.id })
+      await repo.record(request.id, { kind: 'edited', userKey: principal?.id ?? null })
     },
 
     async send(principal, key, action, cultures, comment, schedule) {
@@ -1010,8 +1020,8 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
       await repo.setState(request.id, 'superseded')
       await repo.record(request.id, {
         kind: 'superseded',
-        userKey: principal.id,
-        comment: `${principal.name} ${what} directly`,
+        userKey: principal?.id ?? null,
+        comment: `${principal?.name ?? 'Someone at the command line'} ${what} directly`,
       })
       await auditStep(
         principal,

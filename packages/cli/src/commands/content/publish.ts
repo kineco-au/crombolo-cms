@@ -6,16 +6,10 @@ export default class ContentPublish extends BaseCommand {
   static override description = '--culture per culture; --at and --until schedule it instead.'
   static override args = publishArgs
   static override flags = publishFlags
-  static override audit = {
-    category: 'content',
-    action: 'Publish',
-    entityType: 'Document',
-  } as const
   static override spec = publishSpec
 
   async run() {
     const { args, flags } = await this.parse(ContentPublish)
-    this.auditKey = args.page
     return publishPages(this, true, args.page, flags)
   }
 }

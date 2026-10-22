@@ -1,0 +1,35 @@
+{
+  "name": "@crombolo/content",
+  "version": "0.22.0",
+  "description": "The rules every document write follows, whoever starts it: who may, approvals, and what it announces. No transport.",
+  "license": "MIT",
+  "author": "Crombolo",
+  "homepage": "https://github.com/kineco-au/crombolo-cms#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kineco-au/crombolo-cms.git",
+    "directory": "packages/content"
+  },
+  "bugs": {
+    "url": "https://github.com/kineco-au/crombolo-cms/issues"
+  },
+  "engines": {
+    "bun": ">=1.3.0"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./rules": "./src/rules.ts"
+  },
+  "files": [
+    "src",
+    "NOTICE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@crombolo/core": "workspace:*",
+    "@crombolo/data": "workspace:*"
+  }
+}

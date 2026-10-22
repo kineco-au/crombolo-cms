@@ -7,6 +7,7 @@
  * involved, which their port enforces. See docs/backoffice-hosting.md for the
  * tables' provenance.
  */
+import { WRITE_VERBS as W } from '@crombolo/content/rules'
 import type { OperationInfo } from '@crombolo/contracts'
 import {
   type AppAlias,
@@ -17,11 +18,12 @@ import {
   hasPathAccess,
   MediaPermissions as M,
   permissionsForPath,
-  propertyValuePermissions,
   type StartNodes,
   sectionKey,
 } from '@crombolo/core'
 import type { Principal } from './router.ts'
+
+export { deniedPropertyWrite, type PropertyValueRef } from '@crombolo/content/rules'
 
 /**
  * Operations behind Umbraco's `DenyLocalLoginIfConfigured` policy: the contract
@@ -241,6 +243,7 @@ interface DocumentRule {
 }
 
 const id: NodeRef = { param: 'id' }
+// The writes take their verbs from the operations' table, which applies them again.
 const DOCUMENT_RULES: Record<string, readonly DocumentRule[]> = {
   GetDocumentById: [{ verbs: [D.Read], node: id }],
   GetDocumentByIdPublished: [{ verbs: [D.Read], node: id }],
@@ -259,48 +262,48 @@ const DOCUMENT_RULES: Record<string, readonly DocumentRule[]> = {
   // the parent is the same boundary expressed once: a caller who cannot reach the
   // parent's path cannot reach anything below it either.
   GetCollectionDocumentById: [{ verbs: [D.Read], node: id }],
-  PostDocument: [{ verbs: [D.Create], node: { body: ['parent', 'id'] } }],
+  PostDocument: [{ verbs: W.create, node: { body: ['parent', 'id'] } }],
   PostDocumentValidate: [{ verbs: [D.Create], node: { body: ['parent', 'id'] } }],
-  PutDocumentById: [{ verbs: [D.Update], node: id }],
-  PatchDocumentByIdPatch: [{ verbs: [D.Update], node: id }],
+  PutDocumentById: [{ verbs: W.save, node: id }],
+  PatchDocumentByIdPatch: [{ verbs: W.save, node: id }],
   PutDocumentByIdValidate: [{ verbs: [D.Update], node: id }],
   PostDocumentCreateAndPublish: [
-    { verbs: [D.Publish], node: { body: ['parent', 'id'] }, cultures: true },
+    { verbs: W.publish, node: { body: ['parent', 'id'] }, cultures: true },
   ],
-  PutDocumentByIdUpdateAndPublish: [{ verbs: [D.Publish], node: id, cultures: true }],
-  PutDocumentByIdPublish: [{ verbs: [D.Publish], node: id, cultures: true }],
+  PutDocumentByIdUpdateAndPublish: [{ verbs: W.publish, node: id, cultures: true }],
+  PutDocumentByIdPublish: [{ verbs: W.publish, node: id, cultures: true }],
   PutDocumentByIdPublishWithDescendants: [
-    { verbs: [D.Publish], node: id, branch: true, cultures: true },
+    { verbs: W.publish, node: id, branch: true, cultures: true },
   ],
-  PutDocumentByIdUnpublish: [{ verbs: [D.Unpublish], node: id, cultures: true }],
-  DeleteDocumentById: [{ verbs: [D.Delete], node: id }],
-  PutDocumentByIdMoveToRecycleBin: [{ verbs: [D.Delete], node: id }],
+  PutDocumentByIdUnpublish: [{ verbs: W.unpublish, node: id, cultures: true }],
+  DeleteDocumentById: [{ verbs: W.delete, node: id }],
+  PutDocumentByIdMoveToRecycleBin: [{ verbs: W.trash, node: id }],
   PutDocumentByIdMove: [
-    { verbs: [D.Move], node: id },
-    { verbs: [D.Create], node: { body: ['target', 'id'] } },
+    { verbs: W.move, node: id },
+    { verbs: W.intoTarget, node: { body: ['target', 'id'] } },
   ],
   PostDocumentByIdCopy: [
-    { verbs: [D.Duplicate], node: id },
-    { verbs: [D.Create], node: { body: ['target', 'id'] } },
+    { verbs: W.copy, node: id },
+    { verbs: W.intoTarget, node: { body: ['target', 'id'] } },
   ],
   PutDocumentSort: [
-    { verbs: [D.Sort], node: { body: ['parent', 'id'] } },
-    { verbs: [D.Sort], node: { body: ['sorting', '*', 'id'] } },
+    { verbs: W.sort, node: { body: ['parent', 'id'] } },
+    { verbs: W.sort, node: { body: ['sorting', '*', 'id'] } },
   ],
-  PutDocumentByIdSortChildren: [{ verbs: [D.Sort], node: id }],
-  PutDocumentRootSortChildren: [{ verbs: [D.Sort], node: 'root' }],
+  PutDocumentByIdSortChildren: [{ verbs: W.sort, node: id }],
+  PutDocumentRootSortChildren: [{ verbs: W.sort, node: 'root' }],
   GetDocumentByIdPublicAccess: [{ verbs: [D.PublicAccess], node: id }],
-  PostDocumentByIdPublicAccess: [{ verbs: [D.PublicAccess], node: id }],
-  PutDocumentByIdPublicAccess: [{ verbs: [D.PublicAccess], node: id }],
-  DeleteDocumentByIdPublicAccess: [{ verbs: [D.PublicAccess], node: id }],
-  PutDocumentByIdDomains: [{ verbs: [D.CultureAndHostnames], node: id }],
-  PostDocumentVersionByIdRollback: [{ verbs: [D.Rollback], node: { version: 'id' } }],
+  PostDocumentByIdPublicAccess: [{ verbs: W.publicAccess, node: id }],
+  PutDocumentByIdPublicAccess: [{ verbs: W.publicAccess, node: id }],
+  DeleteDocumentByIdPublicAccess: [{ verbs: W.publicAccess, node: id }],
+  PutDocumentByIdDomains: [{ verbs: W.domains, node: id }],
+  PostDocumentVersionByIdRollback: [{ verbs: W.rollback, node: { version: 'id' } }],
   PostDocumentBlueprintFromDocument: [
     { verbs: [D.CreateBlueprint], node: { body: ['document', 'id'] } },
   ],
-  DeleteRecycleBinDocument: [{ verbs: [D.Delete], node: 'bin' }],
-  DeleteRecycleBinDocumentById: [{ verbs: [D.Delete], node: 'bin' }],
-  PutRecycleBinDocumentByIdRestore: [{ verbs: [D.Move], node: 'bin' }],
+  DeleteRecycleBinDocument: [{ verbs: W.emptyBin, node: 'bin' }],
+  DeleteRecycleBinDocumentById: [{ verbs: W.delete, node: 'bin' }],
+  PutRecycleBinDocumentByIdRestore: [{ verbs: W.restore, node: 'bin' }],
   GetRecycleBinDocumentByIdOriginalParent: [{ verbs: [D.Read], node: 'bin' }],
 }
 
@@ -460,61 +463,6 @@ export function deniedChildren(principal: Principal, parentChain: readonly strin
   return [...candidates].filter(
     (key) => !permissionsForPath(principal.groups, [...parentChain, key]).has(D.Read),
   )
-}
-
-/** One property value as a save carries it. */
-export interface PropertyValueRef {
-  alias: string
-  culture: string | null
-  segment: string | null
-  value: unknown
-}
-
-/** JSON with object keys in order, so equal values compare equal however they were built. */
-const canonical = (value: unknown): string =>
-  JSON.stringify(value ?? null, (_key, v) =>
-    v && typeof v === 'object' && !Array.isArray(v)
-      ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
-      : v,
-  )
-
-/** Each property's values by culture and segment, nulls left out: what a save would leave stored. */
-function valuesByAlias(values: readonly PropertyValueRef[]): Map<string, Map<string, string>> {
-  const out = new Map<string, Map<string, string>>()
-  for (const v of values) {
-    if (v.value === null || v.value === undefined) continue
-    const alias = v.alias.toLowerCase()
-    const variants = out.get(alias) ?? new Map<string, string>()
-    const where = `${v.culture?.toLowerCase() ?? ''}|${v.segment ?? ''}`
-    if (!variants.has(where)) variants.set(where, canonical(v.value))
-    out.set(alias, variants)
-  }
-  return out
-}
-
-/**
- * The first property a save would change that the caller's groups may not
- * write (`Umb.Document.PropertyValue.Write`, per property type), or undefined.
- * A value sent back as it was is not a change; one left out that was stored is.
- */
-export function deniedPropertyWrite<P extends { alias: string; key: string }>(
-  principal: Principal,
-  properties: readonly P[],
-  before: readonly PropertyValueRef[],
-  after: readonly PropertyValueRef[],
-): P | undefined {
-  const old = valuesByAlias(before)
-  const next = valuesByAlias(after)
-  for (const property of properties) {
-    const alias = property.alias.toLowerCase()
-    const a = old.get(alias) ?? new Map<string, string>()
-    const b = next.get(alias) ?? new Map<string, string>()
-    const changed = a.size !== b.size || [...a].some(([where, value]) => b.get(where) !== value)
-    if (!changed) continue
-    if (!propertyValuePermissions(principal.groups, property.key).has(D.PropertyValueWrite))
-      return property
-  }
-  return undefined
 }
 
 /** Whether the caller may read a document's draft: the Content section, its path, and Read on it. */

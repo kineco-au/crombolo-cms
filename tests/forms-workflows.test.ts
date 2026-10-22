@@ -11,6 +11,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { dirname, join } from 'node:path'
 import type { SchemaForm } from '@crombolo/core'
 import {
+  AuditLog,
   ComponentRepository,
   ContentTypeRepository,
   FormEntryRepository,
@@ -459,6 +460,13 @@ name = "File it"
       `${V1}/document/${filed?.id}`,
     )
     expect(document.values.find((v) => v.alias === 'fromAddress')?.value).toBe('a@example.com')
+    // Recorded as the form's doing (story 170): it wrote no audit entry before.
+    const audit = await new AuditLog(h.server.db).query(
+      { entityKey: filed?.id },
+      { skip: 0, take: 10 },
+    )
+    expect(audit.items.map((e) => [e.action, e.source])).toEqual([['CreateAndPublish', 'job']])
+    expect(audit.items[0]?.userName).toMatch(/^The form "/)
   })
 
   test('a workflow naming a content type that does not exist never reaches the queue', async () => {

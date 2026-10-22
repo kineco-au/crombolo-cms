@@ -340,6 +340,14 @@ export class DocumentRepository {
     return this.#inTreeLock ? fn() : this.#db.locks.withLock(KINDS[this.kind].lock, fn)
   }
 
+  /**
+   * Runs `fn` under the tree lock in one transaction, with a repository bound to
+   * it, so several writes commit together or not at all (story 170).
+   */
+  async atomically<T>(fn: (repo: DocumentRepository) => Promise<T>): Promise<T> {
+    return this.#withTree(() => this.#db.transaction((tx) => fn(this.#child(tx))))
+  }
+
   #child(tx: Db): DocumentRepository {
     return new DocumentRepository(tx, {
       nodeState: this.#nodeState,

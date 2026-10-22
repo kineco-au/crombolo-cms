@@ -29,6 +29,7 @@ import {
   createManagementApiRouter,
   hasSection,
   type Principal,
+  type ServerEvent,
 } from '@crombolo/api-management'
 import {
   AuthService,
@@ -130,6 +131,7 @@ import {
   type ServerRole,
   VERSION,
 } from './config.ts'
+import { createContentEventSink } from './content-events.ts'
 import { createContentNotificationRunner, createContentNotifier } from './content-notifications.ts'
 import { attachDatabase, bootstrapDatabase } from './database.ts'
 import { createDeliveryMemberSecurity } from './delivery-members.ts'
@@ -741,7 +743,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
           },
         )
       : undefined
-  const remote = createRemote({ db, config, authenticate })
+  const remote = createRemote({ db, config, authenticate, onApplied: () => cache.invalidate() })
   const members = createMemberAuth(db, config, {
     nodeState: schema.nodeState,
     nodeId: schema.nodeId,
@@ -932,12 +934,27 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
         }
       : undefined,
   })
+  /**
+   * What an open backoffice hears of a change: the event hub drops its cached
+   * copy, whatever was queued gets indexed now, and an open preview reloads.
+   * Called only once requests are served, by which time the hubs below exist.
+   */
+  function announce(event: ServerEvent): void {
+    events.broadcast('notify', [event])
+    jobs.kickSearchIndexing()
+    if (event.eventSource === 'Umbraco:CMS:Document' && event.eventType !== 'Deleted')
+      previewHub.broadcast('refreshed', [event.key])
+  }
+  // Document writes announce themselves through this, from every entry point (story 170).
+  const contentEvents = createContentEventSink({ db, webhooks, notifier, live: announce })
+
   const managementDeps = createDeps({
     config,
     paths,
     extensions,
     db,
     webhooks,
+    contentEvents,
     cache,
     previewInApp: appPreview,
     schema,
@@ -985,14 +1002,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     onContentChange: (change, principal) => {
       void notifier.raise(change, principal ? { key: principal.id, name: principal.name } : null)
     },
-    onServerEvent: (event) => {
-      events.broadcast('notify', [event])
-      // Saves, deletes and moves all announce themselves; whatever they queued gets indexed now.
-      jobs.kickSearchIndexing()
-      // An open preview of the document reloads when it changes.
-      if (event.eventSource === 'Umbraco:CMS:Document' && event.eventType !== 'Deleted')
-        previewHub.broadcast('refreshed', [event.key])
-    },
+    onServerEvent: announce,
   })
 
   // Fixed by the contract and the client's SDK, wherever the editor is mounted.
@@ -1031,6 +1041,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     db,
     cache,
     approvals: managementDeps.approvals as Approvals | undefined,
+    operations: managementDeps.documentOperations,
     nodeState: schema.nodeState,
     nodeId: schema.nodeId,
     versionCleanup: config.versionCleanup,
@@ -1047,6 +1058,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
       nodeState: schema.nodeState,
       nodeId: schema.nodeId,
       onContentChanged: () => cache.invalidate(),
+      operations: managementDeps.documentOperations,
       bundleWorkflows: formTypes.workflows,
       renderEmail: (alias, props) => renderer.renderEmail(alias, props),
       site: async () => ({

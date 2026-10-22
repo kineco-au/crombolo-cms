@@ -5,6 +5,8 @@
  * calls the mixture ambiguous and refuses it, and so do we, because the two are
  * different intentions and the editor offers them as a choice.
  */
+import type { DocumentOperations } from '@crombolo/content'
+import { userActor } from '@crombolo/content/rules'
 import { notFound, problemDetails, problemResponse } from '@crombolo/core'
 import type { PublicAccessPort, PublicAccessStatus } from '../ports-members.ts'
 import type { ManagementApiRouter, RequestContext } from '../router.ts'
@@ -22,10 +24,14 @@ const names = (value: unknown): string[] =>
     : []
 
 /** Umbraco's `PublicAccessOperationStatus`, as the problem details the client reads. */
-function statusResponse(status: PublicAccessStatus, ok: () => Response): Response {
+function statusResponse(status: PublicAccessStatus | 'forbidden', ok: () => Response): Response {
   switch (status) {
     case 'ok':
       return ok()
+    case 'forbidden':
+      return problemResponse(
+        problemDetails({ title: 'Could not change public access', status: 403 }),
+      )
     case 'content-not-found':
       return problemResponse(notFound('The document could not be found'))
     case 'login-node-not-found':
@@ -46,7 +52,11 @@ function statusResponse(status: PublicAccessStatus, ok: () => Response): Respons
 export function registerPublicAccessHandlers(
   router: ManagementApiRouter,
   port: PublicAccessPort,
+  /** Writes go through these when present, so they are announced as any document write is (story 170). */
+  operations?: DocumentOperations,
 ): void {
+  const actorOf = (ctx: RequestContext) =>
+    userActor(ctx.principal as NonNullable<typeof ctx.principal>, ctx.client ?? {})
   router.handle('GetDocumentByIdPublicAccess', async (ctx) => {
     const result = await port.entry(
       ctx.params.id as string,
@@ -57,7 +67,7 @@ export function registerPublicAccessHandlers(
     return Response.json(result.entry)
   })
 
-  const write = async (ctx: RequestContext, ok: () => Response) => {
+  const write = async (ctx: RequestContext, ok: () => Response, change: 'added' | 'set') => {
     const body = await readBody(ctx)
     const login = refId(body.loginDocument)
     const error = refId(body.errorDocument)
@@ -82,25 +92,30 @@ export function registerPublicAccessHandlers(
           status: 400,
         }),
       )
-    const status = await port.save(ctx.params.id as string, {
+    const input = {
       loginDocumentKey: login,
       errorDocumentKey: error,
       memberGroupNames,
       memberUserNames,
-    })
+    }
+    const status = operations
+      ? await operations.setPublicAccess(actorOf(ctx), ctx.params.id as string, input, change)
+      : await port.save(ctx.params.id as string, input)
     return statusResponse(status, ok)
   }
 
   router.handle('PostDocumentByIdPublicAccess', (ctx) =>
-    write(ctx, () => new Response(null, { status: 201 })),
+    write(ctx, () => new Response(null, { status: 201 }), 'added'),
   )
   router.handle('PutDocumentByIdPublicAccess', (ctx) =>
-    write(ctx, () => new Response(null, { status: 200 })),
+    write(ctx, () => new Response(null, { status: 200 }), 'set'),
   )
 
   router.handle('DeleteDocumentByIdPublicAccess', async (ctx) =>
     statusResponse(
-      await port.remove(ctx.params.id as string),
+      operations
+        ? await operations.removePublicAccess(actorOf(ctx), ctx.params.id as string)
+        : await port.remove(ctx.params.id as string),
       () => new Response(null, { status: 200 }),
     ),
   )
