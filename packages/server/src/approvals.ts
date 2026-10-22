@@ -51,7 +51,9 @@ export interface ApprovalPublisher {
     key: string,
     cultures: string[] | null,
     actor: Actor,
-  ): Promise<{ ok: true } | { ok: false; reason: string }>
+    /** The event the request was approved on; anything later is not published (story 172). */
+    approvedHead?: number,
+  ): Promise<{ ok: true } | { ok: false; reason: string; kind?: string }>
   unpublish(
     key: string,
     cultures: string[] | null,
@@ -594,9 +596,21 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
       })
       const result =
         request.action === 'publish'
-          ? await options.publisher.publish(request.nodeKey, cultures, actor)
+          ? await options.publisher.publish(
+              request.nodeKey,
+              cultures,
+              actor,
+              request.eventId ?? undefined,
+            )
           : await options.publisher.unpublish(request.nodeKey, cultures, actor)
-      if (!result.ok) return unpublishable(request, facts, result.reason)
+      if (!result.ok)
+        return unpublishable(
+          request,
+          facts,
+          'kind' in result && result.kind === 'stale'
+            ? 'it was changed after it was approved, so it needs approving again'
+            : result.reason,
+        )
       await repo.record(request.id, {
         kind: request.action === 'publish' ? 'published' : 'unpublished',
         userKey: principal?.id ?? null,

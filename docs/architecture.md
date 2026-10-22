@@ -84,10 +84,19 @@ the rules do not depend on what started the change.
   tree lock and a transaction; create-and-publish, save-and-publish and
   publishing several pages either all happen or none do.
 - **A refusal is a value**, not an exception: `notFound`, `forbidden`,
-  `needsApproval`, `invalid`, `conflict`, `blocked` or `validation`, with the
-  status a transport would answer and the reason in words. Each transport turns
-  it into its own shape — a problem-details response, a CLI error.
-- **What happened is an event**, handed with the actor to an `EventSink`. The
+  `needsApproval`, `invalid`, `conflict`, `blocked`, `validation`, `stale` or
+  `revisionRequired`, with the status a transport would answer and the reason
+  in words. Each transport turns it into its own shape — a problem-details
+  response, a CLI error.
+- **A user writes from a revision** (story 172). `save`, `saveAndPublish`,
+  `publish` and `rollback` take the revision the user's copy was read at, and
+  the repository compares it after taking the tree lock. A user's draft-
+  replacing write needs one; the operator and the system act on the page as it
+  stands. The HTTP shape is `ETag` / `If-Match` (`api-contract.md`).
+- **What happened is an event**, recorded through an `EventSink` inside the
+  change's transaction (`record`), with what only a running server does after
+  the commit (`afterCommit`). The event goes to the audit log and the outbox
+  in that same transaction (story 171). The
   mappings from event to audit entry, webhook, change notification and live
   backoffice event are pure functions in `content`; the server's sink
   (`packages/server/src/content-events.ts`) does the writing. The command line
@@ -130,10 +139,13 @@ operations per area — and fails CI if an implemented operation regresses.
 
 ## Cross-cutting infrastructure
 
-- **Notification bus** (`core/notifications`): synchronous, ordered, typed
-  publish/subscribe mirroring Umbraco's `INotificationHandler`. Publishing,
-  cache invalidation, indexing and webhooks all hang off this rather than calling
-  each other.
+- **The event outbox** (story 171): a page or media change records what it
+  announces in `content_event`, inside its own transaction.
+  `createContentDispatcher` (`server/src/content-dispatch.ts`) turns each event
+  into webhook deliveries and change notifications, then marks it dispatched,
+  in one transaction. The queues' unique keys make a repeat harmless. Cache
+  instructions are a separate broadcast log that every node reads. They are
+  written in the same transactions and pruned after a day.
 - **Lock abstraction** (`data/locks`): named write locks around content-tree
   mutation. SQLite → WAL plus a single-writer queue; Postgres → an in-process
   queue in front of a transaction-scoped advisory lock. Every document, media

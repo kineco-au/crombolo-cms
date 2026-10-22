@@ -88,8 +88,31 @@ how those paths are computed — without it the editor cannot highlight fields.
 **`skip` must be a multiple of `take`** or Umbraco returns 400 `"Invalid
 skip/take"`; the client relies on that contract.
 
-**No ETag, no If-Match, no concurrency tokens anywhere.** Last write wins. Do not
-invent them.
+**Pages carry a revision; nothing else does** (story 172). Umbraco itself has
+no concurrency tokens and its contract describes none, so everything below is
+outside the vendored contract and limited to documents. Last write still wins
+everywhere else.
+
+- `GET /document/{id}` answers with `ETag: "<revision>"`. The revision is
+  opaque. It moves on every save, publish and rollback, and when an upgrade
+  rewrites the page's values. It does not move on unpublish, move, sort, trash,
+  restore or a schedule.
+- A user's `PUT /document/{id}`, `PUT /document/{id}/update-and-publish` and
+  `PATCH /document/{id}/patch` must send that revision back in `If-Match`:
+  - without it they answer `428 Precondition Required`;
+  - with an older one they answer `412 Precondition Failed` and change nothing;
+  - `If-Match: *` says to replace whatever is there.
+- `PUT /document/{id}/publish` and the version rollback check the revision when
+  it is sent, and go ahead without it.
+- A successful write answers with the page's new `ETag`.
+- The whole page is the unit: a change in any language makes every older copy
+  stale, because a save replaces every language's values.
+- The command line, scheduled publishing, approvals, form workflows and imports
+  act on the page as it stands, and send no revision.
+- The backoffice sends it through a crombolo entry point
+  (`packages/backoffice-host/plugin/edit-conflicts.js`). It remembers the
+  revision each editor loaded, never one from another read of the same page,
+  and shows a banner with a link to the latest version when a save is refused.
 
 **Serialization**: camelCase, string enums, `Umb-` headers, and
 `Cache-Control: no-store` on the Management API.

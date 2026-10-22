@@ -44,7 +44,33 @@ export interface ContentNotifierOptions {
   delayMs?: number
 }
 
+/**
+ * What a change's notifications need, read when it commits (story 171): the
+ * page as it was, where its subscribers are looked up, and who made the change.
+ */
+export interface NotificationFacts {
+  actions: string[]
+  nodeKey: string
+  nodeName: string
+  /** Node ids, root first: where the page is, or where it was before the recycle bin. */
+  path: number[]
+  detail: string | null
+  actorUserKey: string | null
+  actorName: string | null
+  occurredAt: string
+}
+
 export interface ContentNotifier {
+  /** The facts for a change, read on `db` — the change's transaction; undefined when it notifies no one. */
+  factsFor(
+    db: Db,
+    change: RaisedContentChange,
+    actor: Actor | null,
+    detail?: string,
+  ): Promise<NotificationFacts | undefined>
+  /** Queues one row per subscriber, once per event however often it is repeated. */
+  enqueueFor(db: Db, eventId: string | undefined, facts: NotificationFacts): Promise<void>
+  /** Facts and queue at once, outside any outbox: for a change with no event to record. */
   raise(change: RaisedContentChange, actor: Actor | null, detail?: string): Promise<void>
 }
 
@@ -56,71 +82,90 @@ const pathIds = (path: string): number[] =>
     .filter((id) => Number.isFinite(id) && id > 0)
 
 export function createContentNotifier(db: Db, options: ContentNotifierOptions): ContentNotifier {
-  const nodes = new NodeRepository(db)
-  const documents = new DocumentRepository(db)
-  const subscriptions = new NotificationRepository(db)
-  const outbox = new ContentNotificationRepository(db)
-
-  const resolve = async (change: RaisedContentChange) => {
-    if (change.keyKind === 'version') {
-      const version = await documents.atVersion(change.key)
-      return version ? nodes.byKey(version.document.key) : undefined
+  const factsFor: ContentNotifier['factsFor'] = async (on, change, actor, detail) => {
+    const nodes = new NodeRepository(on)
+    const documents = new DocumentRepository(on)
+    const node =
+      change.keyKind === 'version'
+        ? await documents
+            .atVersion(change.key)
+            .then((version) => (version ? nodes.byKey(version.document.key) : undefined))
+        : await nodes.byKey(change.key)
+    if (!node || node.objectType !== ObjectTypes.Document) return undefined
+    // A trashed page sits under the recycle bin now; its subscribers are
+    // the ones where it was.
+    let path = pathIds(node.path)
+    if (node.trashed) {
+      const parentKey = await documents.originalParent(node.key)
+      const parent = parentKey ? await nodes.byKey(parentKey) : undefined
+      path = [...(parent ? pathIds(parent.path) : []), node.id]
     }
-    return nodes.byKey(change.key)
+    let summary = detail ?? null
+    if (change.withDescendants) {
+      const [row] = await on.query<{ n: number }>(
+        'SELECT COUNT(*) AS n FROM node WHERE path LIKE ? AND node_object_type = ? AND trashed = ?',
+        [`${node.path},%`, ObjectTypes.Document, on.dialect.boolValue(false)],
+      )
+      const under = Number(row?.n ?? 0)
+      if (under > 0) summary = `and ${under} page${under === 1 ? '' : 's'} under it`
+    }
+    return {
+      actions: [...change.actions],
+      nodeKey: node.key,
+      nodeName: node.text ?? node.key,
+      path,
+      detail: summary,
+      actorUserKey: actor?.key ?? null,
+      actorName: actor?.name ?? null,
+      occurredAt: new Date().toISOString(),
+    }
+  }
+
+  const enqueueFor: ContentNotifier['enqueueFor'] = async (on, eventId, facts) => {
+    // A site that cannot send e-mail queues nothing, so nothing piles up.
+    if (!options.canSend) return
+    const subscriptions = new NotificationRepository(on)
+    const actorId = facts.actorUserKey
+      ? (await new UserRepository(on).byKey(facts.actorUserKey))?.id
+      : undefined
+    const occurredAt = new Date(facts.occurredAt)
+    const runAfter = new Date(Date.now() + (options.delayMs ?? DIGEST_DELAY_MS))
+    const rows = []
+    for (const actionId of facts.actions) {
+      const userIds = (await subscriptions.subscribersFor(actionId, facts.path)).filter(
+        (id) => id !== actorId,
+      )
+      if (userIds.length === 0) continue
+      const keys = await on.query<{ key: string }>(
+        `SELECT key FROM user_account WHERE id IN (${userIds.map(() => '?').join(', ')})`,
+        userIds,
+      )
+      for (const { key } of keys)
+        rows.push({
+          recipientUserKey: String(key),
+          actionId,
+          nodeKey: facts.nodeKey,
+          nodeName: facts.nodeName,
+          actorUserKey: facts.actorUserKey,
+          actorName: facts.actorName,
+          detail: facts.detail,
+          occurredAt,
+          runAfter,
+          eventId,
+        })
+    }
+    await new ContentNotificationRepository(on).enqueue(rows)
   }
 
   return {
+    factsFor,
+    enqueueFor,
     async raise(change, actor, detail) {
       if (!options.canSend) return
       try {
-        const node = await resolve(change)
-        if (!node || node.objectType !== ObjectTypes.Document) return
-        // A trashed page sits under the recycle bin now; its subscribers are
-        // the ones where it was.
-        let path = pathIds(node.path)
-        if (node.trashed) {
-          const parentKey = await documents.originalParent(node.key)
-          const parent = parentKey ? await nodes.byKey(parentKey) : undefined
-          path = [...(parent ? pathIds(parent.path) : []), node.id]
-        }
-        let summary = detail ?? null
-        if (change.withDescendants) {
-          const [row] = await db.query<{ n: number }>(
-            'SELECT COUNT(*) AS n FROM node WHERE path LIKE ? AND node_object_type = ? AND trashed = ?',
-            [`${node.path},%`, ObjectTypes.Document, db.dialect.boolValue(false)],
-          )
-          const under = Number(row?.n ?? 0)
-          if (under > 0) summary = `and ${under} page${under === 1 ? '' : 's'} under it`
-        }
-        const actorId = actor?.key ? (await new UserRepository(db).byKey(actor.key))?.id : undefined
-        const occurredAt = new Date()
-        const runAfter = new Date(occurredAt.getTime() + (options.delayMs ?? DIGEST_DELAY_MS))
-        const rows = []
-        for (const actionId of change.actions) {
-          const userIds = (await subscriptions.subscribersFor(actionId, path)).filter(
-            (id) => id !== actorId,
-          )
-          if (userIds.length === 0) continue
-          const keys = await db.query<{ key: string }>(
-            `SELECT key FROM user_account WHERE id IN (${userIds.map(() => '?').join(', ')})`,
-            userIds,
-          )
-          for (const { key } of keys)
-            rows.push({
-              recipientUserKey: String(key),
-              actionId,
-              nodeKey: node.key,
-              nodeName: node.text ?? node.key,
-              actorUserKey: actor?.key ?? null,
-              actorName: actor?.name ?? null,
-              detail: summary,
-              occurredAt,
-              runAfter,
-            })
-        }
-        await outbox.enqueue(rows)
+        const facts = await factsFor(db, change, actor, detail)
+        if (facts) await enqueueFor(db, undefined, facts)
       } catch (error) {
-        // Like the audit log: a notification that cannot be queued never costs the change.
         log.error('A content notification could not be queued: {error}', { error: String(error) })
       }
     },

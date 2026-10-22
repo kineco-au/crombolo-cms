@@ -161,13 +161,14 @@ export function createAssistantHost(options: AssistantHostOptions): AssistantHos
     const origin = new URL(source.url).origin
     const cookie = source.headers.get('cookie')
     const authorization = source.headers.get('authorization')
-    return async ({ method, path, query, body }) => {
+    return async ({ method, path, query, body, headers: extra }) => {
       const url = new URL(path, origin)
       for (const [name, value] of Object.entries(query ?? {})) url.searchParams.set(name, value)
       const headers = new Headers({ accept: 'application/json' })
       if (cookie) headers.set('cookie', cookie)
       if (authorization) headers.set('authorization', authorization)
       if (body !== undefined) headers.set('content-type', 'application/json')
+      for (const [name, value] of Object.entries(extra ?? {})) headers.set(name, value)
       const response = await options.dispatch(
         new Request(url, {
           method: method.toUpperCase(),
@@ -184,7 +185,11 @@ export function createAssistantHost(options: AssistantHostOptions): AssistantHos
           // A non-JSON body is passed through as text; the tools report it as-is.
         }
       }
-      return { status: response.status, body: parsed }
+      return {
+        status: response.status,
+        body: parsed,
+        etag: response.headers.get('etag') ?? undefined,
+      }
     }
   }
 

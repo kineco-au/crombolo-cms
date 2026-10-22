@@ -35,6 +35,8 @@ export interface NewContentNotification {
   detail: string | null
   occurredAt: Date
   runAfter: Date
+  /** The content event it was dispatched from (story 171): one row per event, person and action. */
+  eventId?: string
 }
 
 const COLUMNS = `id, recipient_user_key, action_id, node_key, node_name, actor_user_key, actor_name,
@@ -74,8 +76,9 @@ export class ContentNotificationRepository {
         await tx.exec(
           `INSERT INTO content_notification (id, recipient_user_key, action_id, node_key, node_name,
              actor_user_key, actor_name, detail, occurred_at, state, attempts, last_error, run_after,
-             create_date, update_date)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, NULL, ?, ?, ?)`,
+             create_date, update_date, event_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, NULL, ?, ?, ?, ?)
+           ON CONFLICT DO NOTHING`,
           [
             crypto.randomUUID(),
             row.recipientUserKey,
@@ -89,6 +92,7 @@ export class ContentNotificationRepository {
             DbDate.toDb(row.runAfter),
             now,
             now,
+            row.eventId ?? null,
           ],
         )
     })
@@ -160,6 +164,26 @@ export class ContentNotificationRepository {
       [DbDate.toDb(new Date()), DbDate.toDb(olderThan)],
     )
     return rows.length
+  }
+
+  /** Puts failed notifications back, all or one; answers how many. */
+  async retry(id?: string): Promise<number> {
+    const now = DbDate.toDb(new Date())
+    const rows = await this.#db.query(
+      `UPDATE content_notification SET state = 'pending', attempts = 0, run_after = ?, update_date = ?
+        WHERE state = 'failed'${id ? ' AND id = ?' : ''} RETURNING id`,
+      id ? [now, now, id] : [now, now],
+    )
+    return rows.length
+  }
+
+  async failed(limit = 100): Promise<ContentNotification[]> {
+    const rows = await this.#db.query(
+      `SELECT ${COLUMNS} FROM content_notification WHERE state = 'failed'
+        ORDER BY occurred_at DESC LIMIT ?`,
+      [limit],
+    )
+    return rows.map(hydrate)
   }
 
   async prune(before: Date): Promise<number> {

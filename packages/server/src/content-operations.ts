@@ -46,7 +46,8 @@ export async function siteDocumentOperations(
     secretKey: config.secretKey,
     bundles: config.bundles,
   })
-  const events = createContentEventSink({ db, webhooks, notifier })
+  // Recorded only: a running server's dispatcher sends what this records (story 171).
+  const events = createContentEventSink({ webhooks, notifier })
   const cache = new PublishedCache(createPublishedContentSource(db, { nodeState }))
   let operations: DocumentOperations | undefined
   const approvals = createApprovals({
@@ -56,8 +57,11 @@ export async function siteDocumentOperations(
     backOfficeUrl: backOfficeUrl(config),
     notifier,
     publisher: {
-      publish: (key, cultures, actor) =>
-        (operations as DocumentOperations).publish(actor, key, { cultures }),
+      publish: (key, cultures, actor, approvedHead) =>
+        (operations as DocumentOperations).publish(actor, key, {
+          cultures,
+          expectedHead: approvedHead,
+        }),
       unpublish: (key, cultures, actor) =>
         (operations as DocumentOperations).unpublish(actor, key, cultures),
     },

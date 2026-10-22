@@ -81,8 +81,8 @@ export const CLI_PAGES: readonly CliPageSpec[] = [
   {
     slug: 'operations',
     title: 'Operations',
-    summary: 'Caches, the search index, maintenance pauses and upgrades.',
-    topics: ['cache', 'index', 'maintenance', 'upgrade'],
+    summary: 'Caches, the search index, maintenance pauses, outgoing changes and upgrades.',
+    topics: ['cache', 'index', 'maintenance', 'events', 'upgrade'],
   },
 ]
 

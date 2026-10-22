@@ -82,6 +82,7 @@ rather than the running server. Secret ones are never printed or logged.
 | `CROMBOLO_VERSION_CLEANUP_KEEP_ALL_DAYS` | number | `7` | The clean-up keeps every version newer than this many days. A content type's own policy wins. |
 | `CROMBOLO_VERSION_CLEANUP_KEEP_LATEST_DAYS` | number | `90` | After that, it keeps each day's latest version for this many days. |
 | `CROMBOLO_AUDIT_RETENTION_DAYS` | number | `365` | How many days the audit log keeps an entry. `0` keeps them all. |
+| `CROMBOLO_EVENT_RETENTION_DAYS` | number | `30` | How many days delivered webhooks, their log, and sent change events are kept. Failed ones stay until retried. `0` keeps them all. |
 
 ### Sign-in and secrets
 

@@ -22,6 +22,7 @@ import {
   AuditLog,
   ComponentRepository,
   ContentTypeRepository,
+  currentSchemaState,
   DocumentRepository,
   RedirectRepository,
 } from '@crombolo/data'
@@ -117,7 +118,11 @@ async function site() {
     const operations = createDocumentOperations({
       db,
       repository: { nodeState: h.server.schema.nodeState },
-      events: { emit: async (event, actor) => void heard.push({ event, actor }) },
+      // Heard once committed: an event recorded in a transaction that rolled back never happened.
+      events: {
+        record: async () => {},
+        afterCommit: (event, actor) => void heard.push({ event, actor }),
+      },
     })
     return { operations, heard }
   }
@@ -258,6 +263,191 @@ describe('one change, one transaction', () => {
     expect(result.ok).toBe(false)
     expect((await new DocumentRepository(db).byKeyPublished(ready))?.key).toBeUndefined()
     expect(heard).toEqual([])
+  })
+})
+
+describe('an older copy cannot overwrite a newer one (story 172)', () => {
+  const titleOf = async (h: Harness, key: string) =>
+    (
+      await h.json<{ values: Array<{ alias: string; value: unknown }> }>(`${V1}/document/${key}`)
+    ).values.find((v) => v.alias === 'title')?.value
+  const body = (h: Harness, key: string) => h.json<Record<string, unknown>>(`${V1}/document/${key}`)
+  const withTitle = (document: Record<string, unknown>, title: string) => ({
+    ...document,
+    values: [{ alias: 'title', culture: null, segment: null, value: title }],
+  })
+  const put = (h: Harness, path: string, payload: unknown, headers: Record<string, string>) =>
+    h.call(path, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', ...headers },
+      body: JSON.stringify(payload),
+    })
+
+  test('a read names its revision, and a save from it answers with the next one', async () => {
+    const { h, page } = await site()
+    const home = await page('Home', null)
+    const read = await h.call(`${V1}/document/${home}`)
+    const etag = read.headers.get('etag') as string
+    expect(etag).toMatch(/^"\d+\.\d+"$/)
+    const saved = await put(h, `${V1}/document/${home}`, withTitle(await read.json(), 'Mine'), {
+      'if-match': etag,
+    })
+    expect(saved.status).toBe(200)
+    const next = saved.headers.get('etag')
+    expect(next).not.toBe(etag)
+    expect((await h.call(`${V1}/document/${home}`)).headers.get('etag')).toBe(next)
+  })
+
+  test('two saves from the same copy: the first lands, the second is refused and changes nothing', async () => {
+    const { h, page } = await site()
+    const home = await page('Home', null)
+    const read = await h.call(`${V1}/document/${home}`)
+    const etag = read.headers.get('etag') as string
+    const copy = await read.json()
+    expect(
+      (await put(h, `${V1}/document/${home}`, withTitle(copy, 'First'), { 'if-match': etag }))
+        .status,
+    ).toBe(200)
+    const second = await put(h, `${V1}/document/${home}`, withTitle(copy, 'Second'), {
+      'if-match': etag,
+    })
+    expect(second.status).toBe(412)
+    expect(await second.json()).toMatchObject({
+      title: 'Could not save the document',
+      detail: expect.stringContaining('Someone else changed this page after you opened it'),
+    })
+    expect(await titleOf(h, home)).toBe('First')
+  })
+
+  test('a save that names no revision is refused for a user; `*` says to overwrite', async () => {
+    const { h, page } = await site()
+    const home = await page('Home', null)
+    const copy = await body(h, home)
+    const none = await put(h, `${V1}/document/${home}`, withTitle(copy, 'Blind'), {
+      'x-test-no-if-match': '1',
+    })
+    expect(none.status).toBe(428)
+    expect(await titleOf(h, home)).toBe('Home title')
+    const forced = await put(h, `${V1}/document/${home}`, withTitle(copy, 'Forced'), {
+      'if-match': '*',
+    })
+    expect(forced.status).toBe(200)
+    expect(await titleOf(h, home)).toBe('Forced')
+  })
+
+  test('saving and publishing from a stale copy is refused as a save', async () => {
+    const { h, page } = await site()
+    const home = await page('Home', null)
+    const read = await h.call(`${V1}/document/${home}`)
+    const etag = read.headers.get('etag') as string
+    const copy = await read.json()
+    await h.put(`${V1}/document/${home}`, withTitle(copy, 'Theirs'))
+    const stale = await put(
+      h,
+      `${V1}/document/${home}/update-and-publish`,
+      { ...withTitle(copy, 'Mine'), culturesToPublish: [] },
+      { 'if-match': etag },
+    )
+    expect(stale.status).toBe(412)
+    expect((await stale.json()).title).toBe('Could not save the document')
+  })
+
+  test('publishing from a stale copy is refused; without a revision it publishes what is there', async () => {
+    const { h, page, db } = await site()
+    const home = await page('Home', null)
+    const etag = (await h.call(`${V1}/document/${home}`)).headers.get('etag') as string
+    await h.put(`${V1}/document/${home}`, withTitle(await body(h, home), 'Newer'))
+    const stale = await put(
+      h,
+      `${V1}/document/${home}/publish`,
+      { publishSchedules: [] },
+      {
+        'if-match': etag,
+      },
+    )
+    expect(stale.status).toBe(412)
+    const plain = await put(h, `${V1}/document/${home}/publish`, { publishSchedules: [] }, {})
+    expect(plain.status).toBe(200)
+    const published = await new DocumentRepository(db).byKeyPublished(home)
+    expect(published?.values.find((v) => v.alias === 'title')?.value).toBe('Newer')
+  })
+
+  test('rolling back from a stale copy is refused when a revision is sent', async () => {
+    const { h, page } = await site()
+    const home = await page('Home', null)
+    const versions = await h.json<{ items: Array<{ id: string }> }>(
+      `${V1}/document-version?documentId=${home}`,
+    )
+    const etag = (await h.call(`${V1}/document/${home}`)).headers.get('etag') as string
+    await h.put(`${V1}/document/${home}`, withTitle(await body(h, home), 'Newer'))
+    const version = versions.items.at(-1)?.id as string
+    const stale = await h.call(`${V1}/document-version/${version}/rollback`, {
+      method: 'POST',
+      headers: { 'if-match': etag },
+    })
+    expect(stale.status).toBe(412)
+    expect(await titleOf(h, home)).toBe('Newer')
+  })
+
+  test('a patch is checked against the copy it was applied to', async () => {
+    const { h, page } = await site()
+    const home = await page('Home', null)
+    const etag = (await h.call(`${V1}/document/${home}`)).headers.get('etag') as string
+    await h.put(`${V1}/document/${home}`, withTitle(await body(h, home), 'Theirs'))
+    const patch = (headers: Record<string, string>) =>
+      h.call(`${V1}/document/${home}/patch`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', ...headers },
+        body: JSON.stringify({
+          operations: [{ op: 'replace', path: '/values/0/value', value: 'Patched' }],
+        }),
+      })
+    expect((await patch({ 'if-match': etag })).status).toBe(412)
+    expect(await titleOf(h, home)).toBe('Theirs')
+    expect((await patch({ 'if-match': '*' })).status).toBe(200)
+    expect(await titleOf(h, home)).toBe('Patched')
+  })
+
+  test('the site acts on the current page and needs no revision', async () => {
+    const { page, input, recorded } = await site()
+    const home = await page('Home', null)
+    const { operations } = recorded()
+    const sent = await input('Home', null)
+    expect((await operations.save(systemActor('The schedule'), home, sent)).ok).toBe(true)
+    expect((await operations.save(operatorActor('ci'), home, sent)).ok).toBe(true)
+    const refused = await operations.save(editor(), home, sent)
+    expect(refused.ok).toBe(false)
+  })
+
+  test('an approval publishes only the version it was given for', async () => {
+    const { db, h, page, input, recorded } = await site()
+    const home = await page('Home', null, 'page', false)
+    const docs = new DocumentRepository(db, { nodeState: h.server.schema.nodeState })
+    const approvedOn = (await docs.eventMarkers(home))?.head as number
+    const { operations } = recorded()
+    await operations.save(systemActor('test'), home, await input('Home', null))
+    const result = await operations.publish(systemActor('Approval'), home, {
+      cultures: null,
+      expectedHead: approvedOn,
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.kind).toBe('stale')
+    expect((await docs.byKeyPublished(home))?.key).toBeUndefined()
+  })
+
+  test('an upgrade rewriting values moves the revision, though it adds no version', async () => {
+    const { db, h, page } = await site()
+    const home = await page('Home', null)
+    const docs = new DocumentRepository(db, { nodeState: h.server.schema.nodeState })
+    const before = await docs.revisionOf(home)
+    const head = (await docs.eventMarkers(home))?.head
+    await docs.appendUnderState(
+      home,
+      [{ alias: 'title', culture: null, segment: null, value: 'Upgraded' }],
+      { schemaStateId: (await currentSchemaState(db)).id },
+    )
+    expect((await docs.eventMarkers(home))?.head).toBe(head)
+    expect(await docs.revisionOf(home)).not.toBe(before)
   })
 })
 

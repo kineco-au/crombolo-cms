@@ -43,38 +43,3 @@ export interface RaisedWebhookEvent {
   alias: string
   key: string
 }
-
-const BY_OPERATION: Record<string, string> = {
-  PostDocument: 'Umbraco.ContentSaved',
-  PutDocumentById: 'Umbraco.ContentSaved',
-  PutDocumentByIdPublish: 'Umbraco.ContentPublish',
-  PutDocumentByIdPublishWithDescendants: 'Umbraco.ContentPublish',
-  PostDocumentCreateAndPublish: 'Umbraco.ContentPublish',
-  PutDocumentByIdUpdateAndPublish: 'Umbraco.ContentPublish',
-  PutDocumentByIdUnpublish: 'Umbraco.ContentUnpublish',
-  DeleteDocumentById: 'Umbraco.ContentDelete',
-  DeleteRecycleBinDocumentById: 'Umbraco.ContentDelete',
-  PutDocumentByIdMoveToRecycleBin: 'Umbraco.ContentMovedToRecycleBin',
-  PutDocumentByIdMove: 'Umbraco.ContentMoved',
-  PostDocumentByIdCopy: 'Umbraco.ContentCopied',
-  PostMedia: 'Umbraco.MediaSave',
-  PutMediaById: 'Umbraco.MediaSave',
-  DeleteMediaById: 'Umbraco.MediaDelete',
-  DeleteRecycleBinMediaById: 'Umbraco.MediaDelete',
-}
-
-/**
- * The event a successful operation raises, if any. Pure. The item is the one
- * the operation created (its generated-resource header) or the one it names.
- */
-export function webhookEventFor(
-  operationId: string,
-  params: Readonly<Record<string, string>>,
-  response: Pick<Response, 'status' | 'headers'>,
-): RaisedWebhookEvent | undefined {
-  if (response.status < 200 || response.status >= 300) return undefined
-  const alias = BY_OPERATION[operationId]
-  if (!alias) return undefined
-  const key = response.headers.get('umb-generated-resource') ?? params.id
-  return key ? { alias, key: key.toLowerCase() } : undefined
-}

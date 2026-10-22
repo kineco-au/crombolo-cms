@@ -104,6 +104,8 @@ export interface WebhookDelivery {
   lastError: string | null
   runAfter: Date
   createDate: Date
+  /** The content event it was dispatched from (story 171); null for one raised before. */
+  eventId: string | null
 }
 
 export interface WebhookLogEntry {
@@ -124,7 +126,7 @@ export interface WebhookLogEntry {
 }
 
 const DELIVERY_COLUMNS =
-  'id, subscriber, event_alias, payload, state, attempts, last_error, run_after, create_date'
+  'id, subscriber, event_alias, payload, state, attempts, last_error, run_after, create_date, event_id'
 
 const hydrateDelivery = (row: Record<string, unknown>): WebhookDelivery => {
   let payload: unknown = null
@@ -143,6 +145,7 @@ const hydrateDelivery = (row: Record<string, unknown>): WebhookDelivery => {
     lastError: (row.last_error as string | null) ?? null,
     runAfter: DbDate.fromDb(row.run_after) ?? new Date(0),
     createDate: DbDate.fromDb(row.create_date) ?? new Date(0),
+    eventId: row.event_id === null || row.event_id === undefined ? null : String(row.event_id),
   }
 }
 
@@ -155,16 +158,26 @@ export class WebhookDeliveryRepository {
     this.#db = db
   }
 
+  /**
+   * Queues deliveries. One per event and subscriber: a dispatcher repeating a
+   * step after a crash queues nothing twice. Answers the ids actually queued.
+   */
   async enqueue(
-    deliveries: ReadonlyArray<{ subscriber: string; eventAlias: string; payload: unknown }>,
+    deliveries: ReadonlyArray<{
+      subscriber: string
+      eventAlias: string
+      payload: unknown
+      eventId?: string
+    }>,
     now = new Date(),
   ): Promise<string[]> {
     const ids: string[] = []
     for (const delivery of deliveries) {
       const id = randomUUID()
-      await this.#db.exec(
+      const rows = await this.#db.query(
         `INSERT INTO webhook_delivery (${DELIVERY_COLUMNS}, update_date)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT DO NOTHING RETURNING id`,
         [
           id,
           delivery.subscriber,
@@ -175,12 +188,63 @@ export class WebhookDeliveryRepository {
           null,
           DbDate.toDb(now),
           DbDate.toDb(now),
+          delivery.eventId ?? null,
           DbDate.toDb(now),
         ],
       )
-      ids.push(id)
+      if (rows.length > 0) ids.push(id)
     }
     return ids
+  }
+
+  /** Claims older than `olderThan` belong to a node that died: they go back in the queue. */
+  async releaseStale(olderThan: Date): Promise<number> {
+    const rows = await this.#db.query(
+      `UPDATE webhook_delivery SET state = 'pending', update_date = ?
+        WHERE state = 'running' AND update_date < ? RETURNING id`,
+      [DbDate.toDb(new Date()), DbDate.toDb(olderThan)],
+    )
+    return rows.length
+  }
+
+  /** Puts failed deliveries back, all or one; answers how many. */
+  async retry(id?: string): Promise<number> {
+    const now = DbDate.toDb(new Date())
+    const rows = await this.#db.query(
+      `UPDATE webhook_delivery SET state = 'pending', attempts = 0, run_after = ?, update_date = ?
+        WHERE state = 'failed'${id ? ' AND id = ?' : ''} RETURNING id`,
+      id ? [now, now, id] : [now, now],
+    )
+    return rows.length
+  }
+
+  /** Delivered rows and log entries older than `before` go; failed ones stay until retried. */
+  async prune(before: Date): Promise<number> {
+    const done = await this.#db.query(
+      `DELETE FROM webhook_delivery WHERE state = 'done' AND update_date < ? RETURNING id`,
+      [DbDate.toDb(before)],
+    )
+    const logged = await this.#db.query(
+      'DELETE FROM webhook_log WHERE log_date < ? RETURNING key',
+      [DbDate.toDb(before)],
+    )
+    return done.length + logged.length
+  }
+
+  async failed(limit = 100): Promise<WebhookDelivery[]> {
+    const rows = await this.#db.query(
+      `SELECT ${DELIVERY_COLUMNS} FROM webhook_delivery WHERE state = 'failed'
+        ORDER BY update_date DESC LIMIT ?`,
+      [limit],
+    )
+    return rows.map(hydrateDelivery)
+  }
+
+  async all(): Promise<WebhookDelivery[]> {
+    const rows = await this.#db.query(
+      `SELECT ${DELIVERY_COLUMNS} FROM webhook_delivery ORDER BY create_date`,
+    )
+    return rows.map(hydrateDelivery)
   }
 
   async due(now = new Date(), limit = 25): Promise<WebhookDelivery[]> {

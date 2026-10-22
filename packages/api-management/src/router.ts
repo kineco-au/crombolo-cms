@@ -32,7 +32,6 @@ import {
   type RaisedContentChange,
 } from './notification-events.ts'
 import { type ServerEvent, serverEventFor } from './server-events.ts'
-import { type RaisedWebhookEvent, webhookEventFor } from './webhook-events.ts'
 
 /**
  * Resolved back-office identity, assembled from a reference token plus the
@@ -102,8 +101,6 @@ export interface RouterOptions {
   clientAddress?: (request: Request) => ClientAddress
   /** Answers an error a handler threw; undefined lets it propagate. */
   onError?: (error: unknown) => Response | undefined
-  /** Told about every webhook event a successful operation raises. */
-  onWebhookEvent?: (event: RaisedWebhookEvent) => void
   /** A change to a page that people can subscribe to, and who made it (story 045). */
   onContentChange?: (change: RaisedContentChange, principal: Principal | undefined) => void
 }
@@ -141,7 +138,6 @@ export class ManagementApiRouter {
   readonly #audit: AuditSink | undefined
   readonly #clientAddress: (request: Request) => ClientAddress
   readonly #onError: RouterOptions['onError']
-  readonly #onWebhookEvent: RouterOptions['onWebhookEvent']
   readonly #onContentChange: RouterOptions['onContentChange']
 
   constructor(options: RouterOptions = {}) {
@@ -155,7 +151,6 @@ export class ManagementApiRouter {
     this.#audit = options.audit
     this.#clientAddress = options.clientAddress ?? forwardedOnly
     this.#onError = options.onError
-    this.#onWebhookEvent = options.onWebhookEvent
     this.#onContentChange = options.onContentChange
     for (const operation of operations) {
       const segments = operation.path.split('/').filter((s) => s.length > 0)
@@ -283,10 +278,6 @@ export class ManagementApiRouter {
     if (handler && announces && this.#onServerEvent) {
       const event = serverEventFor(operation, params, response)
       if (event) this.#onServerEvent(event)
-    }
-    if (handler && announces && this.#onWebhookEvent) {
-      const event = webhookEventFor(operation.operationId, params, response)
-      if (event) this.#onWebhookEvent(event)
     }
     if (handler && announces && this.#onContentChange) {
       const change = contentChangeFor(operation.operationId, params, response, changeBody)

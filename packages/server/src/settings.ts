@@ -194,6 +194,14 @@ const DECLARED = [
     section: 'Database',
     description: 'How many days the audit log keeps an entry. `0` keeps them all.',
   },
+  {
+    env: 'CROMBOLO_EVENT_RETENTION_DAYS',
+    kind: 'number',
+    default: '30',
+    section: 'Database',
+    description:
+      'How many days delivered webhooks, their log, and sent change events are kept. Failed ones stay until retried. `0` keeps them all.',
+  },
 
   // Sign-in and secrets
   {

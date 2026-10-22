@@ -39,6 +39,7 @@ import {
   permissionsForPath,
 } from '@crombolo/core'
 import {
+  ContentEventRepository,
   ContentTypeRepository,
   type Db,
   DynamicRootRepository,
@@ -398,6 +399,8 @@ export interface DepsOptions {
   db?: Db
   /** Where document operations announce what they did; nothing hears them when absent. */
   contentEvents?: EventSink
+  /** Told when something was put in the event outbox, so it goes out now (story 171). */
+  nudgeEvents?: () => void
   /** The site's webhooks, shared with the delivery job and the event source. */
   webhooks?: WebhookService
   /** Required alongside `db` to serve documents, which invalidate the cache. */
@@ -528,15 +531,30 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
       endSessions: async (userId) => {
         await store.endAllSessionsForUser(userId)
       },
-      onPagePermissionsChanged: (principal, nodeKeys) =>
-        Promise.all(
-          nodeKeys.map((key) =>
-            options.notifier?.raise(
+      // Through the outbox, as a page's own changes are (story 171).
+      onPagePermissionsChanged: async (principal, nodeKeys) => {
+        const notifier = options.notifier
+        const db = options.db
+        if (!notifier || !db) return
+        await db.transaction(async (tx) => {
+          for (const key of nodeKeys) {
+            const notification = await notifier.factsFor(
+              tx,
               { actions: ['Umb.Document.Permissions'], key, keyKind: 'document' },
               { key: principal.id, name: principal.name },
-            ),
-          ),
-        ).then(() => undefined),
+            )
+            if (notification)
+              await new ContentEventRepository(tx).record({
+                kind: 'permissionsChanged',
+                entityType: 'Document',
+                entityKey: key,
+                facts: { v: 1, notification },
+                actor: { kind: 'user', name: principal.name, userKey: principal.id },
+              })
+          }
+        })
+        options.nudgeEvents?.()
+      },
     })
     // Story 032: the authenticator provider, offered only where secrets can be sealed.
     const twoFactor = new TwoFactorService(options.db, {
@@ -561,6 +579,8 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
       nodeId: options.schema?.nodeId,
       valueIntake,
       onChange: () => options.cache?.invalidate(),
+      webhooks: options.webhooks,
+      nudge: options.nudgeEvents,
     })
     deps.blueprints = createBlueprintPort(options.db, {
       nodeState: options.schema?.nodeState,
@@ -682,8 +702,11 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
         backOfficeUrl: backOfficeUrl(options.config),
         notifier: options.notifier,
         publisher: {
-          publish: (key, cultures, actor) =>
-            (operations as DocumentOperations).publish(actor, key, { cultures }),
+          publish: (key, cultures, actor, approvedHead) =>
+            (operations as DocumentOperations).publish(actor, key, {
+              cultures,
+              expectedHead: approvedHead,
+            }),
           unpublish: (key, cultures, actor) =>
             (operations as DocumentOperations).unpublish(actor, key, cultures),
         },

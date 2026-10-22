@@ -13,7 +13,7 @@ import {
   migrate,
   readLedger,
   readState,
-  STATE_APPROVAL_SCHEDULES,
+  STATE_CONTENT_EVENTS,
   STATE_MEDIA_PERMISSIONS,
   seedIdentity,
 } from '@crombolo/data'
@@ -79,14 +79,16 @@ describe('summarising the ledger', () => {
   })
 })
 
-/** Puts a current database back the way 0.20.0 left it, a day ago: before the media verbs (045). */
+/** Puts a current database back the way 0.23.0 left it, a day ago: before the event outbox (046). */
 async function asPreviousRelease(db: Db): Promise<void> {
-  await db.exec(
-    "DELETE FROM user_group_permission WHERE permission IN ('Crombolo.Media.Read', 'Crombolo.Media.Update')",
-  )
-  await db.exec("DELETE FROM migration_history WHERE name = 'GrantMediaPermissions'")
+  await db.exec('DROP INDEX IF EXISTS ux_content_notification_event')
+  await db.exec('ALTER TABLE content_notification DROP COLUMN event_id')
+  await db.exec('DROP INDEX IF EXISTS ux_webhook_delivery_event')
+  await db.exec('ALTER TABLE webhook_delivery DROP COLUMN event_id')
+  await db.exec('DROP TABLE IF EXISTS content_event')
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddContentEvents'")
   await db.exec('UPDATE key_value SET value = ? WHERE key = ?', [
-    STATE_APPROVAL_SCHEDULES,
+    STATE_MEDIA_PERMISSIONS,
     MIGRATION_STATE_KEY,
   ])
   const yesterday = new Date(Date.now() - 24 * 3600_000).toISOString()
@@ -113,13 +115,13 @@ describe('upgrading from the previous release', () => {
       passwordConfig: passwordConfigJson(),
     })
     await asPreviousRelease(db)
-    expect(await readState(db)).toBe(STATE_APPROVAL_SCHEDULES)
+    expect(await readState(db)).toBe(STATE_MEDIA_PERMISSIONS)
 
     const result = await migrate(db, cromboloPlan, { by: 'upgrade' })
-    expect(result.applied).toEqual(['GrantMediaPermissions'])
-    expect(await readState(db)).toBe(STATE_MEDIA_PERMISSIONS)
+    expect(result.applied).toEqual(['AddContentEvents'])
+    expect(await readState(db)).toBe(STATE_CONTENT_EVENTS)
     const summary = summariseUpgrades(await readLedger(db), VERSION)
-    expect(summary.lastUpgrade).toMatchObject({ release: '0.21.0', steps: 1 })
+    expect(summary.lastUpgrade).toMatchObject({ release: '0.24.0', steps: 1 })
   })
 
   test('the Changes dashboard reports the version, the install and the last upgrade', async () => {

@@ -51,6 +51,8 @@ const BASELINE_READS: Partial<
   },
 }
 
+const STALE = 'it changed after this was proposed — ask for it to be proposed again'
+
 const digest = (value: unknown): string =>
   new Bun.CryptoHasher('sha256').update(JSON.stringify(value ?? null)).digest('hex')
 
@@ -105,6 +107,9 @@ export async function applyChange(
   }
 
   const baseline = BASELINE_READS[change.kind]
+  // The revision of the copy checked below, sent with the write so nothing can
+  // change in between (story 172).
+  let ifMatch: string | undefined
   if (baseline && change.baseline !== undefined) {
     const entity = byId.get(baseline.operationId)
     if (!entity) return await settle(`${baseline.operationId} is missing from the contract`)
@@ -115,8 +120,9 @@ export async function applyChange(
     }
     const now = digest(baseline.pick ? baseline.pick(current.body) : current.body)
     if (now !== change.baseline) {
-      return await settle('it changed after this was proposed — ask for it to be proposed again')
+      return await settle(STALE)
     }
+    ifMatch = current.etag
   }
 
   let path = operation.path
@@ -125,7 +131,13 @@ export async function applyChange(
   }
   if (path.includes('{')) return await settle(`${operationId} is missing a path parameter`)
 
-  const response = await options.call({ method: operation.method, path, body: change.body })
+  const response = await options.call({
+    method: operation.method,
+    path,
+    body: change.body,
+    ...(ifMatch ? { headers: { 'if-match': ifMatch } } : {}),
+  })
+  if (response.status === 412) return await settle(STALE, response.status)
   if (response.status >= 400) {
     return await settle(
       messageFrom(response.body) ?? `the API refused it (${response.status})`,

@@ -57,6 +57,7 @@ import {
   resolveStaticFile,
   serveStaticFile,
 } from '@crombolo/backoffice-host'
+import type { DocumentOperations } from '@crombolo/content'
 import { servedContract } from '@crombolo/contracts'
 import {
   CHOICE_SOURCE_KINDS,
@@ -131,6 +132,7 @@ import {
   type ServerRole,
   VERSION,
 } from './config.ts'
+import { createContentDispatcher } from './content-dispatch.ts'
 import { createContentEventSink } from './content-events.ts'
 import { createContentNotificationRunner, createContentNotifier } from './content-notifications.ts'
 import { attachDatabase, bootstrapDatabase } from './database.ts'
@@ -945,8 +947,15 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     if (event.eventSource === 'Umbraco:CMS:Document' && event.eventType !== 'Deleted')
       previewHub.broadcast('refreshed', [event.key])
   }
-  // Document writes announce themselves through this, from every entry point (story 170).
-  const contentEvents = createContentEventSink({ db, webhooks, notifier, live: announce })
+  // Recorded content events become deliveries and notifications here (story 171).
+  const dispatcher = createContentDispatcher({ db, webhooks, notifier })
+  // Document writes record and announce themselves through this, from every entry point.
+  const contentEvents = createContentEventSink({
+    webhooks,
+    notifier,
+    live: announce,
+    nudge: () => dispatcher.nudge(),
+  })
 
   const managementDeps = createDeps({
     config,
@@ -955,6 +964,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     db,
     webhooks,
     contentEvents,
+    nudgeEvents: () => dispatcher.nudge(),
     cache,
     previewInApp: appPreview,
     schema,
@@ -994,10 +1004,6 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     onNotImplemented: config.development
       ? (operation, request) => notImplemented.record(operation, request)
       : undefined,
-    // Queued after the response, so a slow receiver never holds an editor up.
-    onWebhookEvent: (event) => {
-      void webhooks.raise(event)
-    },
     // After the response too: the subscribers are worked out and queued, and sent a minute later.
     onContentChange: (change, principal) => {
       void notifier.raise(change, principal ? { key: principal.id, name: principal.name } : null)
@@ -1041,7 +1047,9 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     db,
     cache,
     approvals: managementDeps.approvals as Approvals | undefined,
-    operations: managementDeps.documentOperations,
+    operations: managementDeps.documentOperations as DocumentOperations,
+    dispatcher,
+    eventRetentionDays: config.eventRetentionDays,
     nodeState: schema.nodeState,
     nodeId: schema.nodeId,
     versionCleanup: config.versionCleanup,
@@ -1066,7 +1074,6 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
         url: config.applicationUrl,
       }),
     }),
-    notifier,
     contentNotifications: email
       ? createContentNotificationRunner({
           db,

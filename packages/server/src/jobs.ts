@@ -12,18 +12,20 @@ import { type DocumentOperations, systemActor } from '@crombolo/content'
 import type { NodeSchemaState } from '@crombolo/data'
 import {
   AuditLog,
+  ContentEventRepository,
   type Db,
   DocumentRepository,
-  PublishBlockedError,
+  pruneCacheInstructions,
   SearchIndex,
+  WebhookDeliveryRepository,
 } from '@crombolo/data'
 import type { PublishedCache } from '@crombolo/render'
-import { auditRetainedSince, recordAudit } from './adapters/audit.ts'
+import { auditRetainedSince } from './adapters/audit.ts'
 import type { Approvals } from './approvals.ts'
+import type { ContentDispatcher } from './content-dispatch.ts'
 import type {
   ContentNotificationRunner,
   ContentNotificationRunReport,
-  ContentNotifier,
 } from './content-notifications.ts'
 import type { WorkflowRunner, WorkflowRunReport } from './form-workflows.ts'
 import { logger } from './logging.ts'
@@ -51,9 +53,14 @@ export interface JobsOptions {
    */
   formWorkflows?: WorkflowRunner
   formWorkflowsMs?: number
-  /** Raises the publishes scheduled publishing makes, and drains the delivery queue. */
-  webhooks?: Pick<WebhookService, 'raise' | 'runDue'>
+  /** Drains the delivery queue. */
+  webhooks?: Pick<WebhookService, 'runDue'>
   webhooksMs?: number
+  /** Turns recorded content events into deliveries and notifications (story 171). */
+  dispatcher?: ContentDispatcher
+  dispatcherMs?: number
+  /** Days delivered webhooks, their log and dispatched events are kept; failed work stays. */
+  eventRetentionDays?: number
   /** How often the search indexer looks for queued items; a write here also starts it at once. */
   searchIndexingMs?: number
   /** Days the audit log keeps an entry; 0 or absent keeps them forever. */
@@ -61,16 +68,17 @@ export interface JobsOptions {
   /** Content notifications (story 045): queued by changes, sent here. Absent without e-mail. */
   contentNotifications?: ContentNotificationRunner
   contentNotificationsMs?: number
-  /** Queues the notifications scheduled publishing makes, as an editor's publish does. */
-  notifier?: ContentNotifier
   /** Told what scheduled publishing did, for the approval requests waiting on it (story 029). */
   approvals?: Pick<Approvals, 'scheduleFired' | 'sweepScheduled'>
   /**
    * Publishes what a schedule says, as the site (story 170): recorded, tracked and
-   * announced as an editor's publish is. Without them the job writes directly.
+   * announced as an editor's publish is.
    */
-  operations?: DocumentOperations
+  operations: DocumentOperations
 }
+
+/** A delivery a node took and never finished is retried after this long: that node died. */
+export const WEBHOOK_STALE_AFTER_MS = 15 * 60_000
 
 export interface ScheduledRun {
   published: string[]
@@ -84,6 +92,10 @@ export interface BackgroundJobs {
   runFormWorkflows(now?: Date): Promise<WorkflowRunReport>
   /** Delivers the webhook and bundle events that are due. */
   runWebhooks(now?: Date): Promise<WorkflowRunReport>
+  /** Dispatches the content events waiting in the outbox (story 171). */
+  runEvents(now?: Date): Promise<WorkflowRunReport>
+  /** Releases claims left by a node that died, and prunes delivered work. */
+  runQueueUpkeep(now?: Date): Promise<void>
   /** Sends the content notifications that are due (story 045). */
   runContentNotifications(now?: Date): Promise<ContentNotificationRunReport>
   /** Indexes every queued item, and returns how many. docs/search.md. */
@@ -106,7 +118,6 @@ export function createBackgroundJobs(options: JobsOptions): BackgroundJobs {
     nodeId: options.nodeId,
   })
   const timers: Array<ReturnType<typeof setInterval>> = []
-  let running = false
   const search = new SearchIndex(options.db)
   let indexing: Promise<number> | undefined
   let kicked: ReturnType<typeof setTimeout> | undefined
@@ -117,66 +128,61 @@ export function createBackgroundJobs(options: JobsOptions): BackgroundJobs {
       if (!(await documents.claimSchedule(due.id))) continue
       const cultures = due.culture ? [due.culture] : null
       const release = due.action === 'Release'
-      if (options.operations) {
-        const actor = systemActor('The schedule', {
-          note: `scheduled${due.culture ? ` (${due.culture})` : ''}`,
-        })
-        const result = release
-          ? await options.operations.publish(actor, due.key, { cultures })
-          : await options.operations.unpublish(actor, due.key, cultures)
-        if (result.ok) (release ? run.published : run.unpublished).push(due.key)
-        else run.failed.push({ key: due.key, reason: result.reason })
-        await options.approvals?.scheduleFired(
-          due.key,
-          due.culture,
-          due.action,
-          result.ok ? { ok: true } : { ok: false, reason: result.reason },
-        )
-        continue
-      }
-      try {
-        const changed = release
-          ? await documents.publish(due.key, cultures)
-          : await documents.unpublish(due.key, cultures)
-        ;(release ? run.published : run.unpublished).push(due.key)
-        await recordAudit(options.db, {
-          category: 'content',
-          action: release ? 'Publish' : 'Unpublish',
-          source: 'job',
-          entityType: 'Document',
-          entityKey: due.key,
-          entityName: changed?.variants[0]?.name ?? null,
-          detail: `Scheduled${due.culture ? ` (${due.culture})` : ''}`,
-        })
-        options.onDocumentChanged?.(due.key)
-        await options.approvals?.scheduleFired(due.key, due.culture, due.action, { ok: true })
-      } catch (error) {
-        if (!(error instanceof PublishBlockedError)) throw error
-        run.failed.push({ key: due.key, reason: error.message })
-        await options.approvals?.scheduleFired(due.key, due.culture, due.action, {
-          ok: false,
-          reason: error.message,
-        })
-      }
-    }
-    await options.approvals?.sweepScheduled(now.getTime())
-    // The operations announced and refreshed what they did themselves.
-    if (options.operations) return run
-    if (run.published.length + run.unpublished.length > 0) options.cache.invalidate()
-    for (const key of run.published) {
-      await options.webhooks?.raise({ alias: 'Umbraco.ContentPublish', key })
-      await options.notifier?.raise(
-        { actions: ['Umb.Document.Publish'], key, keyKind: 'document' },
-        { key: null, name: 'The schedule' },
-        'scheduled',
+      const actor = systemActor('The schedule', {
+        note: `scheduled${due.culture ? ` (${due.culture})` : ''}`,
+      })
+      const result = release
+        ? await options.operations.publish(actor, due.key, { cultures })
+        : await options.operations.unpublish(actor, due.key, cultures)
+      if (result.ok) (release ? run.published : run.unpublished).push(due.key)
+      else run.failed.push({ key: due.key, reason: result.reason })
+      await options.approvals?.scheduleFired(
+        due.key,
+        due.culture,
+        due.action,
+        result.ok ? { ok: true } : { ok: false, reason: result.reason },
       )
     }
-    for (const key of run.unpublished)
-      await options.webhooks?.raise({ alias: 'Umbraco.ContentUnpublish', key })
+    await options.approvals?.sweepScheduled(now.getTime())
+    // The operations recorded, announced and refreshed what they did themselves.
     return run
   }
 
+  async function runEvents(now?: Date): Promise<WorkflowRunReport> {
+    // A run a commit already started finishes first, so this sees what it left.
+    await options.dispatcher?.settled()
+    return (
+      (await options.dispatcher?.runDue(notBefore(now))) ?? {
+        claimed: 0,
+        done: 0,
+        retrying: 0,
+        failed: 0,
+      }
+    )
+  }
+
+  /**
+   * Hourly: claims left by a node that died go back in their queues, and what
+   * was delivered long enough ago goes (story 171). Failed work stays until
+   * someone retries it.
+   */
+  async function runQueueUpkeep(now = new Date()): Promise<void> {
+    const staleBefore = new Date(now.getTime() - WEBHOOK_STALE_AFTER_MS)
+    const deliveries = new WebhookDeliveryRepository(options.db)
+    await deliveries.releaseStale(staleBefore)
+    const days = options.eventRetentionDays ?? 30
+    if (days > 0) {
+      const before = new Date(now.getTime() - days * 86_400_000)
+      await deliveries.prune(before)
+      await new ContentEventRepository(options.db).prune(before)
+    }
+    // Every node starts from the newest instruction at boot, so a day's history is plenty.
+    await pruneCacheInstructions(options.db, new Date(now.getTime() - 86_400_000))
+  }
+
   async function runContentNotifications(now = new Date()): Promise<ContentNotificationRunReport> {
+    // What is waiting in the outbox is queued first, so it goes in this run.
+    await runEvents(now)
     const runner = options.contentNotifications
     return runner ? runner.runDue(now) : { claimed: 0, sent: 0, skipped: 0, retrying: 0, failed: 0 }
   }
@@ -190,8 +196,20 @@ export function createBackgroundJobs(options: JobsOptions): BackgroundJobs {
     return documents.cleanupVersions(now, options.versionCleanup)
   }
 
-  async function runWebhooks(now = new Date()): Promise<WorkflowRunReport> {
-    return (await options.webhooks?.runDue(now)) ?? { claimed: 0, done: 0, retrying: 0, failed: 0 }
+  /** The later of the time asked for and now: what was queued a moment ago is due too. */
+  const notBefore = (asked: Date | undefined) =>
+    new Date(Math.max(asked?.getTime() ?? 0, Date.now()))
+
+  async function runWebhooks(now?: Date): Promise<WorkflowRunReport> {
+    await runEvents(now)
+    return (
+      (await options.webhooks?.runDue(notBefore(now))) ?? {
+        claimed: 0,
+        done: 0,
+        retrying: 0,
+        failed: 0,
+      }
+    )
   }
 
   async function runFormWorkflows(now = new Date()): Promise<WorkflowRunReport> {
@@ -219,15 +237,20 @@ export function createBackgroundJobs(options: JobsOptions): BackgroundJobs {
       logger('jobs').error('Search indexing failed', { error })
     })
 
-  const guarded = (job: () => Promise<unknown>) => async () => {
-    if (running) return
-    running = true
-    try {
-      await job()
-    } catch (error) {
-      logger('jobs').error('A background job failed', { error })
-    } finally {
-      running = false
+  // One guard per job: a slow webhook run skips its own next tick, never a
+  // scheduled publish's.
+  const guarded = (job: () => Promise<unknown>) => {
+    let running = false
+    return async () => {
+      if (running) return
+      running = true
+      try {
+        await job()
+      } catch (error) {
+        logger('jobs').error('A background job failed', { error })
+      } finally {
+        running = false
+      }
     }
   }
 
@@ -243,6 +266,8 @@ export function createBackgroundJobs(options: JobsOptions): BackgroundJobs {
     runAuditRetention,
     runFormWorkflows,
     runWebhooks,
+    runEvents,
+    runQueueUpkeep,
     runContentNotifications,
     runSearchIndexing,
     kickSearchIndexing() {
@@ -264,6 +289,10 @@ export function createBackgroundJobs(options: JobsOptions): BackgroundJobs {
       if (options.formWorkflows) every(options.formWorkflowsMs ?? 15_000, runFormWorkflows)
       // As often, for the same reason: a receiver that is waiting notices a minute.
       if (options.webhooks) every(options.webhooksMs ?? 15_000, runWebhooks)
+      // A commit nudges the dispatcher at once; this picks up what another node,
+      // the command line or a crash left behind.
+      if (options.dispatcher) every(options.dispatcherMs ?? 15_000, runEvents)
+      every(60 * 60_000, runQueueUpkeep)
       // A digest waits a minute anyway; this is how soon after that it goes.
       const notifications = options.contentNotifications
       if (notifications) {

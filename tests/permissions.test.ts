@@ -135,7 +135,13 @@ describe('the media verbs (story 088)', () => {
     const librarians = await custom('librarians', 'media')
     const imported = await custom('imported', 'Umb.Section.Media')
     const authors = await custom('authors', 'content')
-    // As 0.20.0 left it: nobody holds a media verb
+    // As 0.20.0 left it: nobody holds a media verb, and nothing since 045 is there.
+    await db.exec('DROP INDEX IF EXISTS ux_content_notification_event')
+    await db.exec('ALTER TABLE content_notification DROP COLUMN event_id')
+    await db.exec('DROP INDEX IF EXISTS ux_webhook_delivery_event')
+    await db.exec('ALTER TABLE webhook_delivery DROP COLUMN event_id')
+    await db.exec('DROP TABLE IF EXISTS content_event')
+    await db.exec("DELETE FROM migration_history WHERE name = 'AddContentEvents'")
     await db.exec(
       `DELETE FROM user_group_permission WHERE permission IN ('Crombolo.Media.Read', 'Crombolo.Media.Update')`,
     )
@@ -144,7 +150,10 @@ describe('the media verbs (story 088)', () => {
       STATE_APPROVAL_SCHEDULES,
       MIGRATION_STATE_KEY,
     ])
-    expect((await migrate(db, cromboloPlan)).applied).toEqual(['GrantMediaPermissions'])
+    expect((await migrate(db, cromboloPlan)).applied).toEqual([
+      'GrantMediaPermissions',
+      'AddContentEvents',
+    ])
     const held = async (key: string) =>
       (
         await db.query<{ permission: string }>(

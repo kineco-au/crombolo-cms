@@ -135,16 +135,18 @@ describe('the first boot of a self-hosted site', () => {
   test('a database the previous release left is upgraded by `crombolo upgrade`, and then starts', async () => {
     const file = readdirSync(site()).find((name) => name.endsWith('.sqlite')) as string
     const sqlite = new Database(join(site(), file))
-    // As 0.20.0 left it: before the media verbs (045). Every migration since
+    // As 0.23.0 left it: before the event outbox (046). Every migration since
     // the last release has to be undone here, or the upgrade replays one
     // against a table that is already there.
-    sqlite.exec(
-      "DELETE FROM user_group_permission WHERE permission IN ('Crombolo.Media.Read', 'Crombolo.Media.Update')",
-    )
-    sqlite.exec("DELETE FROM migration_history WHERE name = 'GrantMediaPermissions'")
+    sqlite.exec('DROP INDEX IF EXISTS ux_content_notification_event')
+    sqlite.exec('ALTER TABLE content_notification DROP COLUMN event_id')
+    sqlite.exec('DROP INDEX IF EXISTS ux_webhook_delivery_event')
+    sqlite.exec('ALTER TABLE webhook_delivery DROP COLUMN event_id')
+    sqlite.exec('DROP TABLE IF EXISTS content_event')
+    sqlite.exec("DELETE FROM migration_history WHERE name = 'AddContentEvents'")
     sqlite
       .query("UPDATE key_value SET value = ? WHERE key = 'Crombolo.Core.Upgrader.State'")
-      .run('{3c9e5b17-0044-4a2d-8f61-7b0d4e2a9c44}')
+      .run('{8d4f2b61-0045-4c3e-9a17-5e2b7c9d1f45}')
     sqlite.close()
 
     const run = async (...args: string[]) => {
@@ -168,7 +170,7 @@ describe('the first boot of a self-hosted site', () => {
     const upgraded = await run('upgrade')
     expect(upgraded.code, upgraded.out).toBe(0)
     const ledger = await run('upgrade', 'ledger')
-    expect(ledger.out).toContain('GrantMediaPermissions')
+    expect(ledger.out).toContain('AddContentEvents')
 
     const proc = Bun.spawn(['bun', CLI, 'start'], {
       cwd: site(),

@@ -129,6 +129,9 @@ export async function signInAsGroup(
   return signIn(h.server, { username: email, password: reset.resetPassword })
 }
 
+const DOCUMENT_SAVE =
+  /\/management\/api\/v1\/document\/([0-9a-f-]{36})(?:\/update-and-publish|\/patch)?$/i
+
 /** A client of `server` signed in as `credentials`, through the same flow the backoffice uses. */
 export async function signIn(
   server: ServerHandle,
@@ -136,7 +139,7 @@ export async function signIn(
 ): Promise<Harness> {
   const jar = new Jar()
 
-  const call = async (path: string, init: RequestInit = {}): Promise<Response> => {
+  const send = async (path: string, init: RequestInit = {}): Promise<Response> => {
     const headers = new Headers(init.headers)
     if (jar.header) headers.set('cookie', jar.header)
     const response = await server.fetch(
@@ -144,6 +147,27 @@ export async function signIn(
     )
     jar.absorb(response)
     return response
+  }
+  /**
+   * As the backoffice does (story 172): a save of a page names the revision it
+   * was based on, read just before when the test did not say. A test about
+   * revisions sends its own `If-Match`, or `x-test-no-if-match` to send none.
+   */
+  const call = async (path: string, init: RequestInit = {}): Promise<Response> => {
+    const method = (init.method ?? 'GET').toUpperCase()
+    const page = DOCUMENT_SAVE.exec(path.split('?')[0] ?? '')
+    const headers = new Headers(init.headers)
+    if (headers.has('x-test-no-if-match')) {
+      headers.delete('x-test-no-if-match')
+      return send(path, { ...init, headers })
+    }
+    if (page && (method === 'PUT' || method === 'PATCH') && !headers.has('if-match')) {
+      const read = await send(`${V1}/document/${page[1]}`)
+      const etag = read.headers.get('etag')
+      if (etag) headers.set('if-match', etag)
+      return send(path, { ...init, headers })
+    }
+    return send(path, init)
   }
 
   const login = await call(`${SECURITY}/login`, {

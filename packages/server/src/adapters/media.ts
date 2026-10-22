@@ -15,6 +15,7 @@ import {
 } from '@crombolo/core'
 import {
   appendCacheInstruction,
+  ContentEventRepository,
   ContentTypeRepository,
   DataTypeRepository,
   type Db,
@@ -27,6 +28,7 @@ import {
 } from '@crombolo/data'
 import { TemporaryFileMissingError } from '../file-intake.ts'
 import type { MediaFileStore } from '../media-files.ts'
+import type { WebhookService } from '../webhooks.ts'
 
 /** The file path an item's `umbracoFile` holds, whether an upload or a cropper value. */
 export function mediaFileOf(media: DocumentAggregate): string | null {
@@ -45,17 +47,55 @@ export function createMediaPort(
     valueIntake?: ValueIntake
     /** Told after every change, so pages that show media refresh. */
     onChange?: () => void | Promise<void>
+    /** Reads what a `MediaSave` or `MediaDelete` delivery needs, inside the change. */
+    webhooks?: Pick<WebhookService, 'factsFor'>
+    /** Told after a commit that left an event in the outbox (story 171). */
+    nudge?: () => void
   } = {},
 ): MediaPort {
+  /** Every node is told inside the change's transaction; this node's pages refresh after. */
+  const instruct = (on: Db) =>
+    appendCacheInstruction(on, { kind: 'content', payload: { media: true }, by: options.nodeId })
   const changed = async () => {
-    await appendCacheInstruction(db, {
-      kind: 'content',
-      payload: { media: true },
-      by: options.nodeId,
-    })
+    await instruct(db)
     await options.onChange?.()
   }
   const repo = new DocumentRepository(db, { ...options, kind: 'media' })
+
+  /**
+   * Writes a media change, its cache instruction and its webhook event in one
+   * transaction (story 171), so the event commits with the change or not at all.
+   */
+  const commit = async <T>(
+    write: (tx: DocumentRepository) => Promise<T>,
+    announce: (result: T) => { alias: string; key: string } | undefined,
+    principal?: Principal,
+  ): Promise<T> => {
+    let recorded = false
+    const result = await repo.atomically(async (tx, txDb) => {
+      const written = await write(tx)
+      const event = announce(written)
+      if (!event) return written
+      await instruct(txDb)
+      const webhook = await options.webhooks?.factsFor(txDb, event)
+      if (webhook) {
+        await new ContentEventRepository(txDb).record({
+          kind: event.alias === 'Umbraco.MediaDelete' ? 'mediaDeleted' : 'mediaSaved',
+          entityType: 'Media',
+          entityKey: event.key,
+          facts: { v: 1, webhook },
+          actor: principal
+            ? { kind: 'user', name: principal.name, userKey: principal.id }
+            : { kind: 'system', name: 'The site', userKey: null },
+        })
+        recorded = true
+      }
+      return written
+    })
+    if (announce(result)) await options.onChange?.()
+    if (recorded) options.nudge?.()
+    return result
+  }
 
   const userIdOf = async (principal: Principal): Promise<number | undefined> => {
     const rows = await db.query<{ id: number }>('SELECT id FROM user_account WHERE key = ?', [
@@ -131,11 +171,12 @@ export function createMediaPort(
   }
   const removeBranch = async (key: string) => {
     const paths = await filesIn(key)
-    const removed = await repo.delete(key)
-    if (removed) {
-      for (const path of paths) await files.remove(path)
-      await changed()
-    }
+    const removed = await commit(
+      (tx) => tx.delete(key),
+      (done) => (done ? { alias: 'Umbraco.MediaDelete', key } : undefined),
+    )
+    // The files go once the rows have: a failed delete leaves both.
+    if (removed) for (const path of paths) await files.remove(path)
     return removed
   }
 
@@ -145,12 +186,12 @@ export function createMediaPort(
 
     async create(input, principal) {
       try {
-        const created = await repo.create({
-          ...input,
-          componentKey: null,
-          userId: await userIdOf(principal),
-        })
-        await changed()
+        const userId = await userIdOf(principal)
+        const created = await commit(
+          (tx) => tx.create({ ...input, componentKey: null, userId }),
+          (doc) => ({ alias: 'Umbraco.MediaSave', key: doc.key }),
+          principal,
+        )
         return { ok: true as const, key: created.key }
       } catch (error) {
         return failure(error)
@@ -160,17 +201,16 @@ export function createMediaPort(
     async update(key, input, principal) {
       try {
         const before = await repo.byKey(key)
-        const updated = await repo.update({
-          ...input,
-          key,
-          componentKey: null,
-          userId: await userIdOf(principal),
-        })
+        const userId = await userIdOf(principal)
+        const updated = await commit(
+          (tx) => tx.update({ ...input, key, componentKey: null, userId }),
+          (doc) => (doc ? { alias: 'Umbraco.MediaSave', key } : undefined),
+          principal,
+        )
         if (!updated) return notFound()
         // A replaced file is no longer anyone's: Umbraco deletes it too.
         const was = before ? mediaFileOf(before) : null
         if (was && was !== mediaFileOf(updated)) await files.remove(was)
-        await changed()
         return { ok: true as const }
       } catch (error) {
         return failure(error)

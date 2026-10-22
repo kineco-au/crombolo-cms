@@ -23,6 +23,7 @@ import {
   PublicAccessRepository,
   PublishBlockedError,
   type SetDomainsResult,
+  StaleRevisionError,
   WriteRejectedError,
 } from '@crombolo/data'
 import type { Actor, ContentPrincipal } from './actor.ts'
@@ -63,6 +64,10 @@ export interface Refusal {
     | 'conflict'
     | 'blocked'
     | 'validation'
+    /** The page changed after the copy the write was based on (412). */
+    | 'stale'
+    /** A user's write named no revision to check against (428). */
+    | 'revisionRequired'
   status: number
   reason: string
   errors?: DocumentValidationError[]
@@ -141,6 +146,18 @@ export type PublicAccessStatus =
   | 'forbidden'
 
 const NOT_FOUND = 'The document could not be found.'
+const STALE =
+  'Someone else changed this page after you opened it. Your changes have not been saved; copy what you need, then reload the page to see theirs.'
+const REVISION_REQUIRED =
+  'Read the page first and send back the revision it came with (its ETag, as If-Match), so a newer change is not overwritten.'
+
+/** What a write was based on (story 172). */
+export interface Precondition {
+  /** The page's revision when the copy being saved was read. */
+  expectedRevision?: string
+  /** The sender said to replace whatever is there (`If-Match: *`): checked by no revision. */
+  overwrite?: boolean
+}
 
 const refuse = (kind: Refusal['kind'], status: number, reason: string): Refusal => ({
   ok: false,
@@ -154,6 +171,7 @@ function refusalFrom(error: unknown, extra?: (error: unknown) => string | undefi
   if (error instanceof WriteRejectedError) return refuse('conflict', 409, error.message)
   if (error instanceof InvalidParentError) return refuse('invalid', 400, error.message)
   if (error instanceof PublishBlockedError) return refuse('blocked', 400, error.message)
+  if (error instanceof StaleRevisionError) return refuse('stale', 412, STALE)
   const reason = extra?.(error)
   if (reason) return refuse('invalid', 400, reason)
   throw error
@@ -166,7 +184,29 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
   const repo = new DocumentRepository(db, options.repository)
   const nodes = new NodeRepository(db)
   const changed = () => options.onChange?.()
-  const emit = (event: DocumentEvent, actor: Actor) => events.emit(event, actor)
+
+  /**
+   * Writes and records in one transaction (story 171): the change, its audit
+   * entry and what it announces commit together or not at all. What only a
+   * running server does follows the commit.
+   */
+  const commit = async <T>(
+    actor: Actor,
+    write: (tx: DocumentRepository, txDb: Db) => Promise<T>,
+    announce: (result: T) => readonly DocumentEvent[],
+  ): Promise<T> => {
+    const recorded: DocumentEvent[] = []
+    const result = await repo.atomically(async (tx, txDb) => {
+      const written = await write(tx, txDb)
+      for (const event of announce(written)) {
+        await events.record(txDb, event, actor)
+        recorded.push(event)
+      }
+      return written
+    })
+    for (const event of recorded) events.afterCommit?.(event, actor)
+    return result
+  }
 
   /** The version author: the user's row, when the actor is one. */
   const userIdOf = async (actor: Actor): Promise<number | undefined> => {
@@ -214,6 +254,11 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
   }
 
   const forbidden = () => refuse('forbidden', 403, 'You may not do that to this page.')
+  /** A user replaces a draft only from a copy whose revision is checked; the site acts on the head. */
+  const revisionRefusal = (actor: Actor, precondition: Precondition): Refusal | undefined =>
+    actor.kind === 'user' && precondition.expectedRevision === undefined && !precondition.overwrite
+      ? refuse('revisionRequired', 428, REVISION_REQUIRED)
+      : undefined
 
   /** Whether the actor may work in these languages; only a user is limited to some. */
   const languagesAllowed = (actor: Actor, cultures: readonly string[] | null) =>
@@ -285,16 +330,25 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
       )
       if (denied) return denied
       try {
-        const created = await repo.create({ ...input, userId: await userIdOf(actor) })
+        const userId = await userIdOf(actor)
+        const created = await commit(
+          actor,
+          (tx) => tx.create({ ...input, userId }),
+          (doc) => [{ type: 'created', key: doc.key }],
+        )
         changed()
-        await emit({ type: 'created', key: created.key }, actor)
         return { ok: true, key: created.key }
       } catch (error) {
         return refusalFrom(error, options.refusalReason)
       }
     },
 
-    async save(actor: Actor, key: string, input: DocumentInput): Promise<Result> {
+    async save(
+      actor: Actor,
+      key: string,
+      input: DocumentInput,
+      precondition: Precondition = {},
+    ): Promise<Result<{ revision?: string }>> {
       const existing = await repo.byKey(key)
       if (!existing) return refuse('notFound', 404, NOT_FOUND)
       if (!(await permits(actor, 'save', key))) return forbidden()
@@ -306,24 +360,32 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
         input.values,
       )
       if (denied) return denied
+      const unbased = revisionRefusal(actor, precondition)
+      if (unbased) return unbased
       const gate = gateFor(actor)
       if (!gate.skip) {
         const waiting = await options.approvals?.beforeSave(gate.who, key)
         if (waiting) return needsApproval(waiting)
       }
       try {
-        // The content type never changes on a save.
-        const updated = await repo.update({
-          ...input,
-          key,
-          contentTypeKey: existing.contentTypeKey,
-          userId: await userIdOf(actor),
-        })
+        const userId = await userIdOf(actor)
+        const updated = await commit(
+          actor,
+          (tx) =>
+            tx.update({
+              ...input,
+              key,
+              // The content type never changes on a save.
+              contentTypeKey: existing.contentTypeKey,
+              userId,
+              expectedRevision: precondition.expectedRevision,
+            }),
+          (doc) => (doc ? [{ type: 'saved', key }] : []),
+        )
         if (!updated) return refuse('notFound', 404, NOT_FOUND)
         changed()
         if (!gate.skip) await options.approvals?.afterSave(gate.who, key)
-        await emit({ type: 'saved', key }, actor)
-        return { ok: true }
+        return { ok: true, revision: updated.revision }
       } catch (error) {
         return refusalFrom(error, options.refusalReason)
       }
@@ -358,12 +420,14 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
       try {
         const userId = await userIdOf(actor)
         // One transaction: a page that cannot be published is not left behind as a draft.
-        const result = await repo.atomically((tx) =>
-          tx.createAndPublish({ ...input, userId }, cultures),
+        const result = await commit(
+          actor,
+          (tx) => tx.createAndPublish({ ...input, userId }, cultures),
+          (done) =>
+            done.ok ? [{ type: 'createdAndPublished', key: done.document.key, cultures }] : [],
         )
         if (!result.ok) return validationRefusal(result.errors)
         changed()
-        await emit({ type: 'createdAndPublished', key: result.document.key, cultures }, actor)
         return { ok: true, key: result.document.key }
       } catch (error) {
         return refusalFrom(error, options.refusalReason)
@@ -375,7 +439,8 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
       key: string,
       input: DocumentInput,
       cultures: string[] | null,
-    ): Promise<Result> {
+      precondition: Precondition = {},
+    ): Promise<Result<{ revision?: string }>> {
       const existing = await repo.byKey(key)
       if (!existing) return refuse('notFound', 404, NOT_FOUND)
       if (!(await permits(actor, 'publish', key))) return forbidden()
@@ -388,6 +453,8 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
         input.values,
       )
       if (denied) return denied
+      const unbased = revisionRefusal(actor, precondition)
+      if (unbased) return unbased
       const gate = gateFor(actor)
       if (!gate.skip) {
         const refusal =
@@ -398,16 +465,21 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
       try {
         const before = await options.redirects?.capture(key)
         const userId = await userIdOf(actor)
-        const result = await repo.atomically((tx) =>
-          tx.updateAndPublish({ ...input, key, userId }, cultures),
+        const result = await commit(
+          actor,
+          (tx) =>
+            tx.updateAndPublish(
+              { ...input, key, userId, expectedRevision: precondition.expectedRevision },
+              cultures,
+            ),
+          (done) => (done?.ok ? [{ type: 'savedAndPublished', key, cultures }] : []),
         )
         if (!result) return refuse('notFound', 404, NOT_FOUND)
         if (!result.ok) return validationRefusal(result.errors)
         changed()
         await options.redirects?.commit(before)
         if (!gate.skip) await options.approvals?.afterDirectPublish(gate.who, key, 'published it')
-        await emit({ type: 'savedAndPublished', key, cultures }, actor)
-        return { ok: true }
+        return { ok: true, revision: result.document.revision }
       } catch (error) {
         return refusalFrom(error, options.refusalReason)
       }
@@ -424,8 +496,12 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
         cultures: string[] | null
         schedules?: readonly ScheduleEntry[]
         now?: number
+        /** Checked when sent: a publish from a stale copy would publish what its sender never saw. */
+        expectedRevision?: string
+        /** The event an approval was given for; a later one is not published. */
+        expectedHead?: number
       },
-    ): Promise<Result<{ scheduledOnly: boolean }>> {
+    ): Promise<Result<{ scheduledOnly: boolean; revision?: string }>> {
       if (!(await repo.byKey(key))) return refuse('notFound', 404, NOT_FOUND)
       if (!(await permits(actor, 'publish', key))) return forbidden()
       const schedules = request.schedules ?? []
@@ -442,30 +518,45 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
       const now = request.now ?? Date.now()
       const later = (s: ScheduleEntry) => s.publishTime !== null && s.publishTime.getTime() > now
       try {
-        if (schedules.length > 0)
-          await repo.setSchedule(
-            key,
-            schedules.map((s) => ({ ...s, publishTime: later(s) ? s.publishTime : null })),
-          )
         const immediate = schedules.filter((s) => !later(s))
-        if (schedules.length > 0 && immediate.length === 0) {
-          changed()
-          if (!gate.skip)
-            await options.approvals?.afterDirectPublish(gate.who, key, 'rescheduled it')
-          await emit({ type: 'scheduled', key }, actor)
-          return { ok: true, scheduledOnly: true }
-        }
+        const scheduledOnly = schedules.length > 0 && immediate.length === 0
         const cultures = immediate.some((s) => s.culture !== null)
           ? immediate.flatMap((s) => (s.culture === null ? [] : [s.culture]))
           : request.cultures
-        const before = await options.redirects?.capture(key)
-        const published = await repo.publish(key, cultures)
+        const before = scheduledOnly ? undefined : await options.redirects?.capture(key)
+        // The schedule and the publish are one change: neither lands without the other.
+        const published = await commit(
+          actor,
+          async (tx) => {
+            if (schedules.length > 0)
+              await tx.setSchedule(
+                key,
+                schedules.map((s) => ({ ...s, publishTime: later(s) ? s.publishTime : null })),
+              )
+            if (scheduledOnly) return 'scheduled' as const
+            return tx.publish(key, cultures, {
+              expectedRevision: request.expectedRevision,
+              expectedHead: request.expectedHead,
+            })
+          },
+          (done): DocumentEvent[] =>
+            done === 'scheduled'
+              ? [{ type: 'scheduled', key }]
+              : done
+                ? [{ type: 'published', key, cultures }]
+                : [],
+        )
+        if (published === 'scheduled') {
+          changed()
+          if (!gate.skip)
+            await options.approvals?.afterDirectPublish(gate.who, key, 'rescheduled it')
+          return { ok: true, scheduledOnly: true }
+        }
         if (!published) return refuse('notFound', 404, NOT_FOUND)
         changed()
         await options.redirects?.commit(before)
         if (!gate.skip) await options.approvals?.afterDirectPublish(gate.who, key, 'published it')
-        await emit({ type: 'published', key, cultures }, actor)
-        return { ok: true, scheduledOnly: false }
+        return { ok: true, scheduledOnly: false, revision: published.revision }
       } catch (error) {
         return refusalFrom(error, options.refusalReason)
       }
@@ -481,11 +572,14 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
         if (refusal) return needsApproval(refusal)
       }
       try {
-        const result = await repo.unpublish(key, cultures)
+        const result = await commit(
+          actor,
+          (tx) => tx.unpublish(key, cultures),
+          (done) => (done ? [{ type: 'unpublished', key, cultures }] : []),
+        )
         if (!result) return refuse('notFound', 404, NOT_FOUND)
         changed()
         if (!gate.skip) await options.approvals?.afterDirectPublish(gate.who, key, 'took it down')
-        await emit({ type: 'unpublished', key, cultures }, actor)
         return { ok: true }
       } catch (error) {
         return refusalFrom(error, options.refusalReason)
@@ -544,17 +638,27 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
         if (action === 'publish')
           for (const node of targets)
             befores.set(node.key, await options.redirects?.capture(node.key))
-        const done = await repo.atomically(async (tx) => {
-          const out: string[] = []
-          for (const node of targets) {
-            const result =
-              action === 'publish'
-                ? await tx.publish(node.key, cultures)
-                : await tx.unpublish(node.key, cultures)
-            if (result) out.push(node.key)
-          }
-          return out
-        })
+        const done = await commit(
+          actor,
+          async (tx) => {
+            const out: string[] = []
+            for (const node of targets) {
+              const result =
+                action === 'publish'
+                  ? await tx.publish(node.key, cultures)
+                  : await tx.unpublish(node.key, cultures)
+              if (result) out.push(node.key)
+            }
+            return out
+          },
+          (keys) =>
+            keys.map(
+              (key): DocumentEvent =>
+                action === 'publish'
+                  ? { type: 'published', key, cultures }
+                  : { type: 'unpublished', key, cultures },
+            ),
+        )
         changed()
         for (const key of done) {
           if (action === 'publish') await options.redirects?.commit(befores.get(key))
@@ -564,12 +668,6 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
               key,
               action === 'publish' ? 'published it' : 'took it down',
             )
-          await emit(
-            action === 'publish'
-              ? { type: 'published', key, cultures }
-              : { type: 'unpublished', key, cultures },
-            actor,
-          )
         }
         return { ok: true, changed: done }
       } catch (error) {
@@ -594,10 +692,13 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
         if (refusal) return needsApproval(refusal)
       }
       try {
-        await repo.setSchedule(key, entries)
+        await commit(
+          actor,
+          (tx) => tx.setSchedule(key, entries),
+          () => [{ type: 'scheduled', key }],
+        )
         changed()
         if (!gate.skip) await options.approvals?.afterDirectPublish(gate.who, key, 'rescheduled it')
-        await emit({ type: 'scheduled', key }, actor)
         return { ok: true }
       } catch (error) {
         return refusalFrom(error, options.refusalReason)
@@ -629,14 +730,17 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
       }
       try {
         const before = await options.redirects?.capture(key)
-        const result = await repo.publishBranch(key, cultures, includeUnpublished)
+        const result = await commit(
+          actor,
+          (tx) => tx.publishBranch(key, cultures, includeUnpublished),
+          (done) => (done ? [{ type: 'branchPublished', key, published: done.published }] : []),
+        )
         if (!result) return refuse('notFound', 404, NOT_FOUND)
         changed()
         await options.redirects?.commit(before)
         if (!gate.skip)
           for (const published of result.published)
             await options.approvals?.afterDirectPublish(gate.who, published, 'published its branch')
-        await emit({ type: 'branchPublished', key, published: result.published }, actor)
         return { ok: true, ...result }
       } catch (error) {
         return refusalFrom(error, options.refusalReason)
@@ -645,10 +749,13 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
 
     async trash(actor: Actor, key: string): Promise<Result> {
       if (!(await permits(actor, 'trash', key))) return forbidden()
-      const moved = await repo.moveToRecycleBin(key)
+      const moved = await commit(
+        actor,
+        (tx) => tx.moveToRecycleBin(key),
+        (done) => (done ? [{ type: 'trashed', key }] : []),
+      )
       if (!moved) return refuse('notFound', 404, NOT_FOUND)
       changed()
-      await emit({ type: 'trashed', key }, actor)
       return { ok: true }
     },
 
@@ -659,20 +766,35 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
       if (options_.fromBin && !node.trashed)
         return refuse('invalid', 400, 'The document is not in the recycle bin')
       if (!(await permits(actor, 'delete', options_.fromBin ? 'bin' : key))) return forbidden()
-      const removed = await repo.delete(key)
+      const removed = await commit(
+        actor,
+        (tx) => tx.delete(key),
+        (done) => (done ? [{ type: 'deleted', key, name: node.text ?? null }] : []),
+      )
       if (!removed) return refuse('notFound', 404, NOT_FOUND)
       changed()
-      await emit({ type: 'deleted', key, name: node.text ?? null }, actor)
       return { ok: true }
     },
 
     async emptyBin(actor: Actor): Promise<Result<{ deleted: number }>> {
       if (!(await permits(actor, 'emptyBin', 'bin'))) return forbidden()
-      let deleted = 0
-      for (const node of await repo.trashedRoots()) if (await repo.delete(node.key)) deleted++
+      // One change: each page deleted is announced as a delete from the bin is,
+      // and the emptying itself is recorded once.
+      const deleted = await commit(
+        actor,
+        async (tx) => {
+          const gone: Array<{ key: string; name: string | null }> = []
+          for (const node of await tx.trashedRoots())
+            if (await tx.delete(node.key)) gone.push({ key: node.key, name: node.text ?? null })
+          return gone
+        },
+        (gone): DocumentEvent[] => [
+          ...gone.map((node): DocumentEvent => ({ type: 'deleted', ...node })),
+          { type: 'binEmptied' },
+        ],
+      )
       changed()
-      await emit({ type: 'binEmptied' }, actor)
-      return { ok: true, deleted }
+      return { ok: true, deleted: deleted.length }
     },
 
     async restore(
@@ -682,7 +804,11 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
     ): Promise<Result> {
       if (!(await permits(actor, 'restore', 'bin'))) return forbidden()
       try {
-        const result = await repo.restore(key, targetKey)
+        const result = await commit(
+          actor,
+          (tx) => tx.restore(key, targetKey),
+          (done) => (done === 'notFound' || done === 'invalid' ? [] : [{ type: 'restored', key }]),
+        )
         if (result === 'notFound')
           return refuse('notFound', 404, 'The document is not in the recycle bin.')
         if (result === 'invalid')
@@ -692,7 +818,6 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
             'The restore target does not exist or is in the recycle bin.',
           )
         changed()
-        await emit({ type: 'restored', key }, actor)
         return { ok: true }
       } catch (error) {
         return refusalFrom(error, options.refusalReason)
@@ -704,7 +829,11 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
       if (!(await permits(actor, 'intoTarget', targetKey ?? 'root'))) return forbidden()
       try {
         const before = await options.redirects?.capture(key)
-        const result = await repo.move(key, targetKey)
+        const result = await commit(
+          actor,
+          (tx) => tx.move(key, targetKey),
+          (done) => (done === 'notFound' || done === 'invalid' ? [] : [{ type: 'moved', key }]),
+        )
         if (result === 'notFound')
           return refuse('notFound', 404, 'The document or target could not be found.')
         if (result === 'invalid')
@@ -715,7 +844,6 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
           )
         changed()
         await options.redirects?.commit(before)
-        await emit({ type: 'moved', key }, actor)
         return { ok: true }
       } catch (error) {
         return refusalFrom(error, options.refusalReason)
@@ -731,13 +859,15 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
       if (!(await permits(actor, 'copy', key))) return forbidden()
       if (!(await permits(actor, 'intoTarget', targetKey ?? 'root'))) return forbidden()
       try {
-        const copied = await repo.copy(key, targetKey, {
-          includeDescendants: copyOptions.includeDescendants,
-          userId: await userIdOf(actor),
-        })
+        const userId = await userIdOf(actor)
+        const copied = await commit(
+          actor,
+          (tx) =>
+            tx.copy(key, targetKey, { includeDescendants: copyOptions.includeDescendants, userId }),
+          (copyKey) => (copyKey ? [{ type: 'copied', key, copyKey }] : []),
+        )
         if (!copied) return refuse('notFound', 404, 'The document or target could not be found.')
         changed()
-        await emit({ type: 'copied', key, copyKey: copied }, actor)
         return { ok: true, key: copied }
       } catch (error) {
         return refusalFrom(error, options.refusalReason)
@@ -753,7 +883,11 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
       for (const item of sorting) if (!(await permits(actor, 'sort', item.key))) return forbidden()
       try {
         const before = await options.redirects?.captureChildren(parentKey)
-        const result = await repo.sort(parentKey, sorting)
+        const result = await commit(
+          actor,
+          (tx) => tx.sort(parentKey, sorting),
+          (done) => (done === 'notFound' ? [] : [{ type: 'sorted', parentKey }]),
+        )
         if (result === 'notFound')
           return refuse(
             'notFound',
@@ -762,7 +896,6 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
           )
         changed()
         await options.redirects?.commit(before)
-        await emit({ type: 'sorted', parentKey }, actor)
         return { ok: true }
       } catch (error) {
         return refusalFrom(error, options.refusalReason)
@@ -778,27 +911,37 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
       if (!(await permits(actor, 'sort', parentKey ?? 'root'))) return forbidden()
       try {
         const before = await options.redirects?.captureChildren(parentKey)
-        const result = await repo.sortChildrenBy(parentKey, field, direction)
+        const result = await commit(
+          actor,
+          (tx) => tx.sortChildrenBy(parentKey, field, direction),
+          (done) => (done === 'notFound' ? [] : [{ type: 'sorted', parentKey }]),
+        )
         if (result === 'notFound') return refuse('notFound', 404, NOT_FOUND)
         changed()
         await options.redirects?.commit(before)
-        await emit({ type: 'sorted', parentKey }, actor)
         return { ok: true }
       } catch (error) {
         return refusalFrom(error, options.refusalReason)
       }
     },
 
-    async rollback(actor: Actor, versionId: string): Promise<Result> {
+    async rollback(
+      actor: Actor,
+      versionId: string,
+      precondition: Precondition = {},
+    ): Promise<Result<{ revision?: string }>> {
       const document = await repo.atVersion(versionId)
       if (!document) return refuse('notFound', 404, 'The version could not be found.')
       if (!(await permits(actor, 'rollback', document.document.key))) return forbidden()
       try {
-        const result = await repo.rollback(versionId)
+        const result = await commit(
+          actor,
+          (tx) => tx.rollback(versionId, precondition),
+          (done) => (done ? [{ type: 'rolledBack', key: done.key, versionId }] : []),
+        )
         if (!result) return refuse('notFound', 404, 'The version could not be found.')
         changed()
-        await emit({ type: 'rolledBack', key: result.key, versionId }, actor)
-        return { ok: true }
+        return { ok: true, revision: result.revision }
       } catch (error) {
         return refusalFrom(error, options.refusalReason)
       }
@@ -817,13 +960,19 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
       const node = await nodes.byKey(key)
       if (!node || node.objectType !== repo.objectType) return { status: 'notFound' }
       if (!(await permits(actor, 'domains', key))) return { status: 'forbidden' }
-      const result = await new DomainRepository(db).setForNode(node.id, assignment)
+      const result = await commit(
+        actor,
+        async (_tx, txDb) => {
+          const set = await new DomainRepository(txDb).setForNode(node.id, assignment)
+          // Every node routes by hostname from its published cache, so they are all told.
+          if (set.status === 'ok') await repoInstruction(node.key, txDb)
+          return set
+        },
+        (set) => (set.status === 'ok' ? [{ type: 'domainsAssigned', key: node.key }] : []),
+      )
       if (result.status !== 'ok') return result
-      // Every node routes by hostname from its published cache, so they are all told.
-      await repoInstruction(node.key)
       changed()
       const file = await options.afterDomains?.(node, assignment)
-      await emit({ type: 'domainsAssigned', key: node.key }, actor)
       return file ? { status: 'ok', file } : { status: 'ok' }
     },
 
@@ -837,25 +986,33 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
       if (!(await permits(actor, 'publicAccess', key))) return 'forbidden'
       if (!(await isDocument(input.loginDocumentKey))) return 'login-node-not-found'
       if (!(await isDocument(input.errorDocumentKey))) return 'error-node-not-found'
-      const saved = await new PublicAccessRepository(db).save({
-        nodeKey: key,
-        loginNodeKey: input.loginDocumentKey,
-        errorNodeKey: input.errorDocumentKey,
-        memberGroupNames: input.memberGroupNames,
-        memberUserNames: input.memberUserNames,
-      })
+      const saved = await commit(
+        actor,
+        (_tx, txDb) =>
+          new PublicAccessRepository(txDb).save({
+            nodeKey: key,
+            loginNodeKey: input.loginDocumentKey,
+            errorNodeKey: input.errorDocumentKey,
+            memberGroupNames: input.memberGroupNames,
+            memberUserNames: input.memberUserNames,
+          }),
+        (done) => (done ? [{ type: 'publicAccessChanged', key, change }] : []),
+      )
       if (!saved) return 'content-not-found'
       changed()
-      await emit({ type: 'publicAccessChanged', key, change }, actor)
       return 'ok'
     },
 
     async removePublicAccess(actor: Actor, key: string): Promise<PublicAccessStatus> {
       if (!(await isDocument(key))) return 'content-not-found'
       if (!(await permits(actor, 'publicAccess', key))) return 'forbidden'
-      if (!(await new PublicAccessRepository(db).remove(key))) return 'entry-not-found'
+      const removed = await commit(
+        actor,
+        (_tx, txDb) => new PublicAccessRepository(txDb).remove(key),
+        (done) => (done ? [{ type: 'publicAccessChanged', key, change: 'removed' }] : []),
+      )
+      if (!removed) return 'entry-not-found'
       changed()
-      await emit({ type: 'publicAccessChanged', key, change: 'removed' }, actor)
       return 'ok'
     },
 
@@ -869,8 +1026,8 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
   }
 
   /** The content cache instruction other nodes rebuild on. */
-  async function repoInstruction(key: string): Promise<void> {
-    await appendCacheInstruction(db, {
+  async function repoInstruction(key: string, on: Db = db): Promise<void> {
+    await appendCacheInstruction(on, {
       kind: 'content',
       payload: { key },
       by: options.repository?.nodeId,

@@ -30,7 +30,8 @@ export type ManagementCall = (input: {
   path: string
   query?: Readonly<Record<string, string>>
   body?: unknown
-}) => Promise<{ status: number; body: unknown }>
+  headers?: Readonly<Record<string, string>>
+}) => Promise<{ status: number; body: unknown; etag?: string }>
 
 export interface ToolHostOptions {
   call: ManagementCall

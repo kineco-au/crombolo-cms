@@ -451,7 +451,7 @@ Design documents, in reading order; planned work is in the stories:
 | [stories](docs/stories/README.md) | every piece of work, built and planned, by epic and state |
 | [testing](docs/testing.md) | the test layers, the containers, the browser suite |
 | [schema-as-code](docs/schema-as-code.md) | the TOML format, sync, retirement, coherence across nodes |
-| [packaging-and-upgrades](docs/packaging-and-upgrades.md) | environments, the upgrade process, releasing to npm |
+| [packaging-and-upgrades](docs/packaging-and-upgrades.md) | environments, the upgrade process, releasing to npm; what each release changed, and what to do on upgrading, in [release-notes](docs/release-notes.md) |
 | [assistant](docs/assistant.md) | the optional AI helper, its guardrails and its credentials |
 | [schema-at-runtime](docs/schema-at-runtime.md) | the shared schema store, and importing at runtime |
 | [content-transfer](docs/content-transfer.md) | the bundle format, and moving content between environments |

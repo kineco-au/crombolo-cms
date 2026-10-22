@@ -5,6 +5,7 @@
  * notifications — and the server adds live backoffice refresh. The mappings here
  * are pure, so every transport turns one event into the same entries.
  */
+import type { Db } from '@crombolo/data'
 import { type Actor, actorName, actorNote, actorUserKey } from './actor.ts'
 
 export type DocumentEvent =
@@ -31,18 +32,27 @@ export type DocumentEvent =
   | { type: 'domainsAssigned'; key: string }
   | { type: 'publicAccessChanged'; key: string; change: 'added' | 'set' | 'removed' }
 
-/** Where an operation reports what it did, once the change has committed. */
+/**
+ * Where an operation reports what it did (story 171). `record` runs inside the
+ * change's own transaction, so what must not be lost — the audit entry, the
+ * announcement waiting to go out — commits with the change or not at all.
+ * `afterCommit` is for what only a running server does once it has.
+ */
 export interface EventSink {
-  emit(event: DocumentEvent, actor: Actor): Promise<void>
+  record(tx: Db, event: DocumentEvent, actor: Actor): Promise<void>
+  afterCommit?(event: DocumentEvent, actor: Actor): void
 }
 
 /** A sink that hears nothing: for tests and tools that announce nothing. */
-export const SILENT: EventSink = { emit: async () => {} }
+export const SILENT: EventSink = { record: async () => {} }
 
 /** Several sinks heard in turn. */
 export const both = (...sinks: EventSink[]): EventSink => ({
-  async emit(event, actor) {
-    for (const sink of sinks) await sink.emit(event, actor)
+  async record(tx, event, actor) {
+    for (const sink of sinks) await sink.record(tx, event, actor)
+  },
+  afterCommit(event, actor) {
+    for (const sink of sinks) sink.afterCommit?.(event, actor)
   },
 })
 

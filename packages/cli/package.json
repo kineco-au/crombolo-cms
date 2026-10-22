@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/cli",
-  "version": "0.23.0",
+  "version": "0.24.0",
   "description": "The crombolo command line: scaffolding a site, schema, views, domains, content transfer and upgrades.",
   "license": "MIT",
   "author": "Crombolo",
@@ -105,6 +105,9 @@
       },
       "cache": {
         "description": "the published cache on every node"
+      },
+      "events": {
+        "description": "what is waiting to go out to webhooks and e-mail, and sending failures again"
       },
       "recycle-bin": {
         "description": "what has been deleted, before it is gone for good"

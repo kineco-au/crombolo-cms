@@ -255,6 +255,11 @@ export interface CromboloConfig {
   }
   /** How many days the audit log keeps an entry; 0 keeps them forever. docs/audit-log.md. */
   auditRetentionDays: number
+  /**
+   * How many days delivered webhooks, their log and dispatched content events
+   * are kept; 0 keeps them forever. Failed work stays until retried. docs/webhooks.md.
+   */
+  eventRetentionDays: number
   /** Where uploaded media files live; served at `/media/`. */
   mediaDir: string
   /**
@@ -455,6 +460,7 @@ export const DEFAULTS = {
   keepAllVersionsNewerThanDays: 7,
   keepLatestVersionPerDayForDays: 90,
   auditRetentionDays: 365,
+  eventRetentionDays: 30,
   memberRegistrationType: 'Member',
   memberSessionMinutes: 60 * 24 * 14,
   maxFailedPasswordAttempts: 5,
@@ -597,6 +603,10 @@ export function loadConfig(
     auditRetentionDays: nonNegative(
       setting('CROMBOLO_AUDIT_RETENTION_DAYS'),
       DEFAULTS.auditRetentionDays,
+    ),
+    eventRetentionDays: nonNegative(
+      setting('CROMBOLO_EVENT_RETENTION_DAYS'),
+      DEFAULTS.eventRetentionDays,
     ),
     mediaDir: setting('CROMBOLO_MEDIA_DIR') ?? DEFAULTS.mediaDir,
     mediaStore: undefined,
@@ -788,7 +798,7 @@ export function describeDatabase(
   }
 }
 
-export const VERSION = '0.23.0'
+export const VERSION = '0.24.0'
 
 /** A whole number of seconds from the environment; undefined when unset or not one. */
 function numberSetting(name: Parameters<typeof setting>[0]): number | undefined {

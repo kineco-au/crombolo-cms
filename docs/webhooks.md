@@ -82,18 +82,37 @@ Every delivery carries:
 | `Webhook-Retry-Count` | 0 on the first attempt |
 | `Webhook-Id` | the webhook's key |
 | `Webhook-Delivery` | this delivery's id, the same on every retry, for de-duplication |
+| `Webhook-Event-Id` | the change's id, the same for every webhook it reaches (story 171) |
 
 Umbraco's `Umb-` prefix is not used. A webhook may not set these, nor
 `Content-Type` or `Host`, itself.
 
 ## Delivery
 
-The change queues a delivery for each listening webhook and bundle handler
-once the editor's request has answered, so a slow receiver never holds anyone
-up. The queue (`webhook_delivery`) is drained every 15 seconds by the
-background jobs, on the nodes that run them. Each row is claimed with
-`UPDATE … WHERE state = 'pending' … RETURNING`, so on a cluster exactly one
-node delivers it.
+Delivery is **at least once**, and nothing a committed change raises is lost
+to a crash or a restart (story 171).
+
+1. **The change records its event.** Every page and media change writes a row
+   to `content_event` in its own transaction. The row holds the facts as they
+   were when the change committed: the item, its type, and who made the
+   change. A change that rolls back leaves no event, and an event never
+   outlives a change that did not happen.
+2. **The dispatcher turns it into deliveries.** It runs straight after the
+   commit and again every 15 seconds. It picks the listening webhooks and
+   bundle handlers, inserts one `webhook_delivery` row per event and webhook,
+   and marks the event dispatched, all in one transaction. A crash part way
+   repeats the step. The unique key on `(event_id, subscriber)` means a repeat
+   queues nothing twice. Changes made from the command line wait for a running
+   server's dispatcher.
+3. **The delivery job sends them.** It also runs every 15 seconds, on the nodes
+   that run jobs. Each row is claimed with
+   `UPDATE … WHERE state = 'pending' … RETURNING`, so on a cluster exactly one
+   node sends it. A claim left by a node that died is released after 15
+   minutes.
+
+A publish quickly followed by an unpublish raises both events, because each
+event carries the facts from its own commit. Receivers should de-duplicate on
+`Webhook-Delivery`, since a delivery whose answer was lost is sent again.
 
 - **2xx** is delivered.
 - **5xx, 408, 429, a timeout (30 s) or a network failure** is retried, at 1,
@@ -104,6 +123,17 @@ node delivers it.
 Every attempt is in the delivery log (`webhook_log`), which the backoffice
 shows per webhook and for all of them. It holds the status, the request body,
 the response and the names of the headers sent. Header values are masked.
+
+**Keeping and recovering.**
+- Delivered rows, log entries and dispatched events are pruned after
+  `CROMBOLO_EVENT_RETENTION_DAYS`, 30 by default.
+- Failed deliveries and events are kept until someone acts on them:
+  - `crombolo events status` shows what is waiting and what failed;
+  - `crombolo events failed` says why each failed;
+  - `crombolo events retry <id>` or `crombolo events retry --all` sends them
+    again.
+- The **Outgoing changes** health check, under Servers, warns when anything
+  has failed, or when work has waited more than ten minutes.
 
 ## A bundle's handlers
 

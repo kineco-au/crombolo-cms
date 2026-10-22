@@ -41,6 +41,20 @@ export async function appendCacheInstruction(
     await db.exec('SELECT pg_notify(?, ?)', [CACHE_INSTRUCTION_CHANNEL, instruction.kind])
 }
 
+/**
+ * Deletes instructions older than `before`, keeping the newest, whose id a
+ * starting node reads its position from. Every node starts from there, so
+ * nothing older is ever read again.
+ */
+export async function pruneCacheInstructions(db: Db, before: Date): Promise<number> {
+  const rows = await db.query(
+    `DELETE FROM cache_instruction WHERE created_at < ?
+       AND id < (SELECT MAX(id) FROM cache_instruction) RETURNING id`,
+    [DbDate.toDb(before)],
+  )
+  return rows.length
+}
+
 /** The highest instruction id, so a fresh node ignores history. */
 export async function latestCacheInstructionId(db: Db): Promise<number> {
   const rows = await db.query<{ n: number | null }>('SELECT MAX(id) AS n FROM cache_instruction')

@@ -11,6 +11,8 @@ import {
   liveNodes,
   type NodeSchemaState,
   pendingMigrations,
+  type QueueCounts,
+  queueCounts,
 } from '@crombolo/data'
 import { BundleConfigurationError, bundleChainsFor, pendingBundleSteps } from '../bundle-tables.ts'
 import { type CromboloConfig, describeDatabase, VERSION } from '../config.ts'
@@ -29,7 +31,11 @@ const CHECKS = {
   media: { id: '6f1d4a8e-0047-4c1a-9e7d-000000000003', name: 'Media storage' },
   email: { id: '6f1d4a8e-0047-4c1a-9e7d-000000000004', name: 'E-mail delivery' },
   nodes: { id: '6f1d4a8e-0047-4c1a-9e7d-000000000005', name: 'Servers' },
+  outgoing: { id: '6f1d4a8e-0047-4c1a-9e7d-000000000006', name: 'Outgoing changes' },
 } as const
+
+/** Waiting longer than this means nothing is sending: no server is running its jobs, or one is stuck. */
+export const BACKLOG_AFTER_MS = 10 * 60_000
 
 const GROUPS: HealthCheckGroup[] = [
   {
@@ -57,9 +63,48 @@ const GROUPS: HealthCheckGroup[] = [
         ...CHECKS.nodes,
         description: 'The servers running this site, and whether they run the same release.',
       },
+      {
+        ...CHECKS.outgoing,
+        description:
+          'Whether changes are reaching webhooks and the people who asked to hear of them.',
+      },
     ],
   },
 ]
+
+const QUEUE_LABELS = {
+  changes: 'change(s) waiting to be passed on',
+  webhooks: 'webhook delivery(ies)',
+  notifications: 'change e-mail(s)',
+} as const
+
+/** What the outgoing queues say about delivery, worst first (story 171). Pure. */
+export function outgoingResults(
+  queues: Record<keyof typeof QUEUE_LABELS, QueueCounts>,
+  at: Date,
+): HealthCheckResult[] {
+  const results: HealthCheckResult[] = []
+  for (const [name, counts] of Object.entries(queues) as Array<
+    [keyof typeof QUEUE_LABELS, QueueCounts]
+  >) {
+    if (counts.failed > 0)
+      results.push(
+        result(
+          'Warning',
+          `${counts.failed} ${QUEUE_LABELS[name]} failed. \`crombolo events failed\` says why; \`crombolo events retry --all\` sends them again.`,
+        ),
+      )
+    if (counts.oldestPending && at.getTime() - counts.oldestPending.getTime() > BACKLOG_AFTER_MS)
+      results.push(
+        result(
+          'Warning',
+          `${counts.pending} ${QUEUE_LABELS[name]} waiting, the oldest since ${counts.oldestPending.toISOString()}. Check a server is running background jobs.`,
+        ),
+      )
+  }
+  if (results.length === 0) results.push(result('Success', 'Changes are going out as they happen.'))
+  return results
+}
 
 export interface HealthCheckOptions {
   config: CromboloConfig
@@ -237,6 +282,15 @@ export function createDiagnosticsPort(options: HealthCheckOptions): DiagnosticsP
     [CHECKS.media.id]: mediaStorage,
     [CHECKS.email.id]: email,
     [CHECKS.nodes.id]: nodes,
+    [CHECKS.outgoing.id]: async () =>
+      outgoingResults(
+        {
+          changes: await queueCounts(db, 'content_event'),
+          webhooks: await queueCounts(db, 'webhook_delivery'),
+          notifications: await queueCounts(db, 'content_notification'),
+        },
+        now(),
+      ),
   }
 
   return {

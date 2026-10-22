@@ -2,7 +2,7 @@
  * Documents: the tree, the editor's read/write cycle, publishing and versions.
  */
 
-import type { DocumentOperations, Refusal } from '@crombolo/content'
+import type { DocumentOperations, Precondition, Refusal } from '@crombolo/content'
 import { userActor } from '@crombolo/content/rules'
 import type {
   DocumentAggregate,
@@ -276,6 +276,19 @@ export function toDocumentTreeItemResponse(item: DocumentTreeItem, noAccess = fa
   }
 }
 
+/** A revision as an entity tag. */
+const etag = (revision: string) => `"${revision}"`
+
+/** Refusals about the copy being saved, titled as a save even when a publish followed. */
+const SAVE_REFUSALS: ReadonlySet<Refusal['kind']> = new Set([
+  'forbidden',
+  'stale',
+  'revisionRequired',
+])
+
+const STALE_PATCH =
+  'The page changed after the copy this patch was based on was read. Read it again, then patch that.'
+
 export function registerDocumentHandlers(
   router: ManagementApiRouter,
   port: DocumentPort,
@@ -287,6 +300,22 @@ export function registerDocumentHandlers(
     problemResponse(
       problemDetails({ title, status: 400, detail, operationStatus: 'NeedsApproval' }),
     )
+  /**
+   * What the sender's copy was based on (story 172): `If-Match` names the
+   * revision a read answered with as its `ETag`; `*` says to replace whatever
+   * is there.
+   */
+  const preconditionOf = (ctx: RequestContext): Precondition => {
+    const header = ctx.request.headers.get('if-match')?.trim()
+    if (!header) return {}
+    if (header === '*') return { overwrite: true }
+    const first = (header.split(',')[0] ?? '').trim().replace(/^W\//, '')
+    return { expectedRevision: first.replace(/^"|"$/g, '') }
+  }
+  /** A 200 that tells the client which revision it now holds. */
+  const okWith = (revision: string | undefined) =>
+    new Response(null, { status: 200, headers: revision ? { ETag: etag(revision) } : {} })
+
   /** The signed-in user, as the operations know them: their rules apply (story 170). */
   const actorOf = (ctx: RequestContext) =>
     userActor(ctx.principal as NonNullable<typeof ctx.principal>, ctx.client ?? {})
@@ -320,7 +349,9 @@ export function registerDocumentHandlers(
   router.handle('GetDocumentById', async ({ params }) => {
     const aggregate = await port.byKey(params.id as string)
     if (!aggregate) return problemResponse(notFound('The document could not be found'))
-    return Response.json(toDocumentResponse(aggregate))
+    return Response.json(toDocumentResponse(aggregate), {
+      headers: aggregate.revision ? { ETag: etag(aggregate.revision) } : {},
+    })
   })
 
   router.handle('GetDocumentByIdPublished', async ({ params }) => {
@@ -378,18 +409,24 @@ export function registerDocumentHandlers(
     const body = await readBody(ctx)
     const key = ctx.params.id as string
     const input = toSaveDocument(key, body)
-    const result = await operations.saveAndPublish(actorOf(ctx), key, input, readCultures(body))
+    const result = await operations.saveAndPublish(
+      actorOf(ctx),
+      key,
+      input,
+      readCultures(body),
+      preconditionOf(ctx),
+    )
     if (!result.ok) {
       if (result.kind === 'notFound') return problemResponse(notFound(result.reason))
       return refused(
         result,
-        result.kind === 'forbidden'
+        SAVE_REFUSALS.has(result.kind)
           ? 'Could not save the document'
           : 'Could not publish the document',
         { sent: input.values, approval: 'The document needs approval before it is published' },
       )
     }
-    return new Response(null, { status: 200 })
+    return okWith(result.revision)
   })
 
   router.handle('GetTreeDocumentAncestors', async (ctx) => {
@@ -499,25 +536,31 @@ export function registerDocumentHandlers(
     key: string,
     existing: DocumentAggregate,
     body: Record<string, unknown>,
+    precondition: Precondition,
   ) => {
-    const result = await operations.save(actorOf(ctx), key, {
-      ...toSaveDocument(key, body),
-      // The content type never changes on update.
-      contentTypeKey: existing.contentTypeKey,
-    })
+    const result = await operations.save(
+      actorOf(ctx),
+      key,
+      {
+        ...toSaveDocument(key, body),
+        // The content type never changes on update.
+        contentTypeKey: existing.contentTypeKey,
+      },
+      precondition,
+    )
     if (!result.ok)
       return refused(result, 'Could not save the document', {
         approval: 'The document is waiting for approval',
       })
     ctx.notifications.push({ message: 'Document saved', category: 'Content', type: 'Success' })
-    return new Response(null, { status: 200 })
+    return okWith(result.revision)
   }
 
   router.handle('PutDocumentById', async (ctx) => {
     const key = ctx.params.id as string
     const existing = await port.byKey(key)
     if (!existing) return problemResponse(notFound('The document could not be found'))
-    return saveUpdate(ctx, key, existing, await readBody(ctx))
+    return saveUpdate(ctx, key, existing, await readBody(ctx), preconditionOf(ctx))
   })
 
   // JSON Patch over the update model, Umbraco's filter segments included; the
@@ -552,7 +595,18 @@ export function registerDocumentHandlers(
     )
     if (unknown)
       return invalid(`This document's type has no property "${String(unknown.alias)}".`, 422)
-    return saveUpdate(ctx, key, existing, body)
+    // The patch applied to the copy read above, so the save is checked against
+    // that copy's revision: a change in between refuses it rather than being lost.
+    const sent = preconditionOf(ctx)
+    if (sent.expectedRevision !== undefined && sent.expectedRevision !== existing.revision)
+      return refused(
+        { ok: false, kind: 'stale', status: 412, reason: STALE_PATCH },
+        'Could not save the document',
+      )
+    return saveUpdate(ctx, key, existing, body, {
+      ...sent,
+      expectedRevision: sent.expectedRevision ?? (sent.overwrite ? existing.revision : undefined),
+    })
   })
 
   router.handle('PutDocumentByIdPublish', async (ctx) => {
@@ -569,6 +623,7 @@ export function registerDocumentHandlers(
     const result = await operations.publish(actorOf(ctx), key, {
       cultures: readCultures(body),
       schedules,
+      expectedRevision: preconditionOf(ctx).expectedRevision,
     })
     if (!result.ok)
       return refused(result, 'Could not publish the document', {
@@ -581,7 +636,7 @@ export function registerDocumentHandlers(
         category: 'Content',
         type: 'Success',
       })
-    return new Response(null, { status: 200 })
+    return okWith(result.revision)
   })
 
   router.handle('PutDocumentByIdUnpublish', async (ctx) => {
@@ -983,13 +1038,16 @@ export function registerDocumentHandlers(
   })
 
   router.handle('PostDocumentVersionByIdRollback', async (ctx) => {
-    const rolled = await operations.rollback(actorOf(ctx), ctx.params.id as string)
+    const rolled = await operations.rollback(actorOf(ctx), ctx.params.id as string, {
+      expectedRevision: preconditionOf(ctx).expectedRevision,
+      overwrite: true,
+    })
     if (!rolled.ok) {
       if (rolled.kind === 'notFound')
         return problemResponse(notFound('The version could not be found'))
       return refused(rolled, 'Could not roll the document back')
     }
-    return new Response(null, { status: 200 })
+    return okWith(rolled.revision)
   })
 
   router.handle('PutDocumentVersionByIdPreventCleanup', async (ctx) => {

@@ -295,9 +295,9 @@ implementation; creating them does not settle those architectural choices.
 | # | Story | Priority | Size | State | Depends on |
 |---|---|---|---|---|---|
 | `170` | The same content rules from every entry point | should | L | done | 028, 081, 083 |
-| `171` | Published changes reliably reach subscribers | should | L | ready | 170, 044, 045 |
-| `172` | An older edit cannot overwrite a newer one | should | M | ready | 170, 081 |
+| `171` | Published changes reliably reach subscribers | should | XL | done | 170, 044, 045 |
+| `172` | An older edit cannot overwrite a newer one | should | M | done | 170, 081 |
 | `173` | A supported API for extensions | should | M | ready | 062, 063 |
 | `174` | Renderers know which published changes they serve | should | L | ready | 011, 120 |
 | `175` | Published cache growth stays within measured limits | could | L | backlog | 086, 174 |
-| `176` | Background jobs run independently | could | L | backlog | 171 |
+| `176` | Background jobs run independently | could | L | ready | 171 |

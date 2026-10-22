@@ -123,12 +123,18 @@ its arguments, because an argument can be a password.
 - members signing in to the public site, which are visitors rather than
   editors.
 
-## Writing never fails the change
+## When an entry is written
 
-An entry is written after the change it records has been committed. If
-writing it fails, the failure is logged and the response goes out as it
-would have. Failing the request would tell the editor the change did not
-happen when it did. The same holds for the command line.
+**Document writes commit their entry with the change** (story 171). The entry
+is written inside the change's own transaction, so a page change without its
+entry cannot happen. If the entry cannot be written, the change fails with it,
+because both live in the same database.
+
+**Everything else is written after the change** it records has been
+committed. That covers media, people, settings, sign-ins and the command
+line's own entries. If writing it fails, the failure is logged and the response
+goes out as it would have. Failing the request would tell the editor the change
+did not happen when it did.
 
 ## Reading it
 

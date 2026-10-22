@@ -620,11 +620,15 @@ sort, move to the recycle bin, restore, roll back, public access and
 permissions. A subscription covers the pages under it too, as in Umbraco, so
 "create" on a section tells you of every new page in it. Story 045.
 
-- **When.** A change is matched to its subscribers as it happens: the API
-  router raises it after a successful operation, and scheduled publishing, a
-  publish on approval, the CLI's `content publish` and a user-group save that
-  changes a page's permissions raise their own. The person who made the change
-  is never told about it.
+- **When.** Every page change records an event in its own transaction, with
+  the page's name and place as they were (story 171). That covers the
+  backoffice, scheduled publishing, approvals, the command line and a
+  user-group save that changes a page's permissions. The dispatcher matches
+  each event to its subscribers just after the commit. A crash in between
+  loses nothing, because the event waits to be dispatched. The person who
+  made the change is never told about it. `crombolo events status` shows what
+  is waiting, and `crombolo events retry` sends failed work again
+  (`webhooks.md`, "Delivery").
 - **The outbox.** Each person's notifications wait a minute in
   `content_notification`, so a save and a publish arrive as one e-mail; a
   branch publish is one line, "and 12 pages under it".

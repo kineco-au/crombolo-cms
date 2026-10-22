@@ -97,6 +97,10 @@ for approval, or asking to take it down, needs Read and Update on it, and its
 request history needs Read, inside the person's start nodes. Otherwise the
 answer is a `403` and nothing is recorded.
 
+An approval publishes the version it was given for (story 172). If the page has
+changed since then without the request following it, the publish is refused and
+the request goes back to its editor to be approved again.
+
 Approval publishes through the same port an editor's publish takes, after the
 decision's transaction has committed, so it is cached, tracked and announced as
 any publish is. A page that cannot be published at that point — a mandatory

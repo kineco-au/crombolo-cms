@@ -31,10 +31,17 @@ pushed. A failed release is fixed by a **new** patch version.
      `docker compose run --rm cms-test-sqlite bun run test:integration`
    - a failing browser test, alone:
      `docker compose run --rm cms-test-browser bun run test:browser <file>`
-2. `bun run release:version <version>`, then `bun install` so `bun.lock` agrees.
-3. Commit everything the bump touched with the fix:
+2. **Release notes.** In `docs/release-notes.md`, rename `## Unreleased` to
+   `## v<version> — <date>` and add a fresh empty `## Unreleased` above it.
+   Check the section against `git log <last-tag>..HEAD` and the stories moved
+   to `05_completed` since the last tag. Give each change a user-facing bullet
+   with its story number, list the migrations, and add the upgrade notes an
+   operator must act on. A patch release that only fixes a failed release adds
+   a short section of its own.
+3. `bun run release:version <version>`, then `bun install` so `bun.lock` agrees.
+4. Commit everything the bump touched with the fix, release notes included:
    `git commit -am "<what changed>; bump version->v<version>"`.
-4. `git tag v<version>` and `git push origin main v<version>`.
+5. `git tag v<version>` and `git push origin main v<version>`.
 
 ## Watch it
 
@@ -56,7 +63,8 @@ A browser failure leaves `browser-report` as an artifact. Each failure's
 1. Read the failure. A test can be stale rather than the code wrong, so check
    what changed since the last green release before choosing which to fix.
 2. Fix it, and verify that fix locally as above.
-3. Bump the **patch** version (0.14.1 → 0.14.2), commit, tag and push, as in
+3. Bump the **patch** version (0.14.1 → 0.14.2), add its section to
+   `docs/release-notes.md` (the fix, in a line), commit, tag and push, as in
    "Cut it". Never reuse the failed version's tag.
 4. Watch both workflows again. Repeat until CI and Release are both green.
 

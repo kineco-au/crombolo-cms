@@ -8,7 +8,6 @@ import { join } from 'node:path'
 import { type RaisedWebhookEvent, WEBHOOK_EVENT_ALIASES } from '@crombolo/api-management'
 import {
   type Db,
-  fromDbBool,
   type WebhookDelivery,
   WebhookDeliveryRepository,
   type WebhookLogEntry,
@@ -143,6 +142,11 @@ export interface WebhookServiceOptions {
   now?: () => Date
 }
 
+/** An event as a webhook delivers it, with the item's type as it was when it happened. */
+export interface WebhookFacts extends RaisedWebhookEvent {
+  contentTypeKey?: string
+}
+
 export interface WebhookService {
   /** Which stores a new or moved webhook may use on this node. */
   stores(): { files: boolean; database: boolean }
@@ -152,7 +156,11 @@ export interface WebhookService {
   update(key: string, definition: WebhookDefinition): Promise<WebhookWriteResult>
   remove(key: string): Promise<boolean>
   move(key: string, store: WebhookStore): Promise<WebhookWriteResult>
-  /** Queues an event for everyone listening. Never throws into the caller. */
+  /** What a delivery needs to know about the item, read on `db` — the change's transaction. */
+  factsFor(db: Db, event: RaisedWebhookEvent): Promise<WebhookFacts>
+  /** Queues a delivery per subscriber, once per event however often it is repeated. */
+  enqueueFor(db: Db, eventId: string | undefined, facts: WebhookFacts): Promise<number>
+  /** Facts and queue at once, outside any outbox. Never throws into the caller. */
   raise(event: RaisedWebhookEvent): Promise<number>
   runDue(now?: Date, limit?: number): Promise<WorkflowRunReport>
   logs(
@@ -288,6 +296,8 @@ export function createWebhookService(options: WebhookServiceOptions): WebhookSer
       'Webhook-Retry-Count': String(delivery.attempts - 1),
       'Webhook-Id': webhook.key,
       'Webhook-Delivery': delivery.id,
+      // The change itself, the same for every webhook it reaches (story 171).
+      ...(delivery.eventId ? { 'Webhook-Event-Id': delivery.eventId } : {}),
     }
     // The log shows which headers were sent, never what their values were.
     const logged = JSON.stringify({
@@ -458,21 +468,27 @@ export function createWebhookService(options: WebhookServiceOptions): WebhookSer
       else await rows.remove(existing.key)
       return written
     },
+    async factsFor(db, event) {
+      const contentTypeKey = await itemType(db, event.key)
+      return contentTypeKey ? { ...event, contentTypeKey } : { ...event }
+    },
+    async enqueueFor(db, eventId, facts) {
+      const subscribers = subscribersFor(facts, facts.contentTypeKey, await all(), bundles)
+      if (subscribers.length === 0) return 0
+      const queued = await new WebhookDeliveryRepository(db).enqueue(
+        subscribers.map((subscriber) => ({
+          subscriber,
+          eventAlias: facts.alias,
+          payload: { Id: facts.key },
+          eventId,
+        })),
+        now(),
+      )
+      return queued.length
+    },
     async raise(event) {
       try {
-        const facts = await itemFacts(options.db, event.key)
-        if (!eventHappened(event.alias, facts.published)) return 0
-        const subscribers = subscribersFor(event, facts.contentTypeKey, await all(), bundles)
-        if (subscribers.length === 0) return 0
-        await deliveries.enqueue(
-          subscribers.map((subscriber) => ({
-            subscriber,
-            eventAlias: event.alias,
-            payload: { Id: event.key },
-          })),
-          now(),
-        )
-        return subscribers.length
+        return await this.enqueueFor(options.db, undefined, await this.factsFor(options.db, event))
       } catch (error) {
         log.error('Could not queue {event} for {key}: {error}', { ...event, error })
         return 0
@@ -509,36 +525,14 @@ export function createWebhookService(options: WebhookServiceOptions): WebhookSer
   }
 }
 
-/**
- * Whether the change an event names really happened. A publish request that
- * only schedules one answers 200 too, and must not tell anyone the page is live
- * until the schedule makes it so. Pure; `published` is undefined for an item
- * that is gone or not a document.
- */
-export function eventHappened(alias: string, published: boolean | undefined): boolean {
-  if (alias === 'Umbraco.ContentPublish') return published === true
-  if (alias === 'Umbraco.ContentUnpublish') return published !== true
-  return true
-}
-
-/** An item's type and whether it is published, while it still exists. */
-async function itemFacts(
-  db: Db,
-  key: string,
-): Promise<{ contentTypeKey: string | undefined; published: boolean | undefined }> {
-  const rows = await db.query<{ type_key: string; published: unknown }>(
-    `SELECT tn.unique_id AS type_key, d.published FROM node n
+/** An item's type, while it still exists. */
+async function itemType(db: Db, key: string): Promise<string | undefined> {
+  const rows = await db.query<{ type_key: string }>(
+    `SELECT tn.unique_id AS type_key FROM node n
        JOIN content c ON c.node_id = n.id
        JOIN node tn ON tn.id = c.content_type_id
-       LEFT JOIN document d ON d.node_id = n.id
       WHERE n.unique_id = ?`,
     [key],
   )
-  const row = rows[0]
-  if (!row) return { contentTypeKey: undefined, published: undefined }
-  return {
-    contentTypeKey: String(row.type_key).toLowerCase(),
-    published:
-      row.published === null || row.published === undefined ? undefined : fromDbBool(row.published),
-  }
+  return rows[0] ? String(rows[0].type_key).toLowerCase() : undefined
 }

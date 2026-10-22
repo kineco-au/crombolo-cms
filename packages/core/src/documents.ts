@@ -57,6 +57,11 @@ export interface DocumentAggregate {
   edited: boolean
   values: DocumentValue[]
   variants: DocumentVariant[]
+  /**
+   * Which state of the draft this is (story 172): changes whenever a save,
+   * publish, rollback or value upgrade changes what an editor would see. Opaque.
+   */
+  revision?: string
 }
 
 /** One property that failed validation, in the terms the editor highlights. */

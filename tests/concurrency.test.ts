@@ -369,14 +369,18 @@ describe('contention through the server', () => {
     expect((await treeOps(site).save(key, 'Home', 'after')).status).toBe(200)
   })
 
-  test('concurrent saves of one page leave one current version and the last save on top', async () => {
+  test('concurrent saves of one page leave one current version and the winning save on top', async () => {
     const site = await treeSite()
     sites.push(site)
     const key = await createPage(site, 'Home')
     const ops = treeOps(site)
     const titles = Array.from({ length: 8 }, (_, i) => `title ${i}`)
     const responses = await Promise.all(titles.map((t) => ops.save(key, t, t)))
-    expect(responses.map((r) => r.status)).toEqual(titles.map(() => 200))
+    // Each save names the revision it read (story 172): one based on a copy
+    // another save has since replaced is refused, never lost silently.
+    const statuses = responses.map((r) => r.status)
+    expect(statuses.every((status) => status === 200 || status === 412)).toBe(true)
+    expect(statuses).toContain(200)
     expect(checkTreeInvariants(await loadTreeSnapshot(site.h.server.db))).toEqual([])
     const doc = await site.h.json<{
       values: Array<{ alias: string; value: string }>

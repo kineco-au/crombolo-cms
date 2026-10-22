@@ -254,9 +254,16 @@ export interface CachePollerOptions {
  * skipped. Where the database can notify, a write wakes it at once and the
  * timer is only the fallback.
  */
+/** How far behind its cursor the poller looks for a row that committed late. */
+const CURSOR_WINDOW = 100
+
 export class CacheInstructionPoller {
   #options: CachePollerOptions
   #cursor = 0
+  /** Where this node started: history before it was never this node's to apply. */
+  #origin = 0
+  /** Ids applied within the window behind the cursor. */
+  #seen = new Set<number>()
   #timer: ReturnType<typeof setInterval> | undefined
   #unlisten: (() => Promise<void>) | undefined
   #running: Promise<number> | undefined
@@ -294,6 +301,7 @@ export class CacheInstructionPoller {
     this.#bootLedgerId = await latestLedgerId(this.#options.db)
     this.#paused = await readWritesPaused(this.#options.db)
     this.#cursor = await latestCacheInstructionId(this.#options.db)
+    this.#origin = this.#cursor
     if (intervalMs > 0) {
       this.#timer = setInterval(() => void this.poll().catch(() => {}), intervalMs)
       this.#timer.unref()
@@ -331,14 +339,20 @@ export class CacheInstructionPoller {
 
   async #pollOnce(): Promise<number> {
     const { db, nodeId, nodeState, onInstruction } = this.#options
-    const instructions = await cacheInstructionsAfter(db, this.#cursor)
+    // A row can commit after one with a higher id (Postgres hands ids out
+    // before commit), so a short window behind the cursor is read again and
+    // the ids already seen are skipped.
+    const instructions = await cacheInstructionsAfter(db, Math.max(0, this.#cursor - CURSOR_WINDOW))
     let applied = 0
     for (const instruction of instructions) {
+      if (this.#seen.has(instruction.id) || instruction.id <= this.#origin) continue
+      this.#seen.add(instruction.id)
       this.#cursor = Math.max(this.#cursor, instruction.id)
       if (instruction.createdBy === nodeId) continue
       onInstruction(instruction.kind, instruction.payload)
       applied += 1
     }
+    for (const id of this.#seen) if (id <= this.#cursor - CURSOR_WINDOW) this.#seen.delete(id)
     await touchServer(db, {
       nodeId,
       ...nodeState,

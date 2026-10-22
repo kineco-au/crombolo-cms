@@ -59,7 +59,8 @@ tail of 1–3 each.
 - Domains and culture hostnames; public access (protect by member group/login)
 - Blueprints (content templates), notification subscriptions, audit log, references/usage
 - The `Umb-Notifications` response header convention. Umbraco has **no** ETag/If-Match
-  anywhere — last write wins; do not invent concurrency tokens the client will not send
+  anywhere; crombolo adds one for pages only, sent by its own backoffice entry point, so an
+  older copy cannot overwrite a newer one (`api-contract.md`, story 172)
 
 ### Templates & static files
 - Templates (views) CRUD with master-template chain; partial views; stylesheets; scripts

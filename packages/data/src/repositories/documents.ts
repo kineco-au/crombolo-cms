@@ -110,6 +110,8 @@ export interface SaveDocumentInput {
   values: DocumentValue[]
   variants: Array<{ culture: string | null; segment: string | null; name: string }>
   userId?: number
+  /** The revision the values were based on; a different one refuses the save (story 172). */
+  expectedRevision?: string
 }
 
 /** A published document plus the values of its published version. */
@@ -220,6 +222,19 @@ export class PublishBlockedError extends Error {}
 
 /** The parent named for a new item is gone, or in the recycle bin. */
 export class InvalidParentError extends Error {}
+
+/** The draft changed after the revision a write was based on (story 172). */
+export class StaleRevisionError extends Error {
+  constructor(
+    readonly expected: string,
+    readonly actual: string,
+  ) {
+    super('The page changed after this copy of it was read.')
+  }
+}
+
+const revisionString = (head: unknown, value: unknown): string =>
+  `${Number(head ?? 0)}.${Number(value ?? 0)}`
 
 const isEmpty = (value: unknown) =>
   value === null || value === undefined || (typeof value === 'string' && value.trim() === '')
@@ -344,8 +359,8 @@ export class DocumentRepository {
    * Runs `fn` under the tree lock in one transaction, with a repository bound to
    * it, so several writes commit together or not at all (story 170).
    */
-  async atomically<T>(fn: (repo: DocumentRepository) => Promise<T>): Promise<T> {
-    return this.#withTree(() => this.#db.transaction((tx) => fn(this.#child(tx))))
+  async atomically<T>(fn: (repo: DocumentRepository, tx: Db) => Promise<T>): Promise<T> {
+    return this.#withTree(() => this.#db.transaction((tx) => fn(this.#child(tx), tx)))
   }
 
   #child(tx: Db): DocumentRepository {
@@ -875,6 +890,7 @@ export class DocumentRepository {
       const state = await assertNodeMayWrite(tx, this.#nodeState)
       const node = await repo.nodes.byKey(input.key)
       if (!node) return undefined
+      await repo.#assertRevision(node.id, input.expectedRevision)
       const contentTypeNodeId = await repo.#contentTypeNodeId(node.id)
       if (!contentTypeNodeId) return undefined
 
@@ -909,6 +925,11 @@ export class DocumentRepository {
   async publish(
     key: string,
     cultures: readonly string[] | null,
+    /**
+     * `expectedHead` is the event an approval was given for: a publish of
+     * anything later is refused, while an upgrade's value rewrite is not.
+     */
+    options: { expectedRevision?: string; expectedHead?: number } = {},
   ): Promise<DocumentAggregate | undefined> {
     return this.#withTree(async () =>
       this.#db.transaction(async (tx) => {
@@ -916,6 +937,12 @@ export class DocumentRepository {
         await assertNodeMayWrite(tx, this.#nodeState)
         const node = await repo.nodes.byKey(key)
         if (!node) return undefined
+        await repo.#assertRevision(node.id, options.expectedRevision)
+        if (options.expectedHead !== undefined) {
+          const head = (await repo.#headEvent(node.id))?.id
+          if (head !== options.expectedHead)
+            throw new StaleRevisionError(String(options.expectedHead), String(head))
+        }
         // The bin is not a document, so the ancestor check below passes for a
         // node trashed directly; Umbraco refuses it as FailedPublishIsTrashed.
         if (node.trashed) throw new PublishBlockedError('The document is in the recycle bin.')
@@ -1090,11 +1117,42 @@ export class DocumentRepository {
   }
 
   /** Rollback appends the target version's values under a new event. History is never rewritten. */
-  async rollback(versionId: string): Promise<DocumentAggregate | undefined> {
-    return this.#withTree(() => this.#rollback(versionId))
+  async rollback(
+    versionId: string,
+    options: { expectedRevision?: string } = {},
+  ): Promise<DocumentAggregate | undefined> {
+    return this.#withTree(() => this.#rollback(versionId, options.expectedRevision))
   }
 
-  async #rollback(versionId: string): Promise<DocumentAggregate | undefined> {
+  /**
+   * Which state of the draft a node is in (story 172): its latest event and its
+   * latest value row. The second moves when an upgrade rewrites values under the
+   * same event, which an editor's copy must not silently undo.
+   */
+  async revisionOf(key: string): Promise<string | undefined> {
+    const node = await this.#nodes.byKey(key)
+    return node ? this.#revision(node.id) : undefined
+  }
+
+  async #revision(nodeId: number): Promise<string> {
+    const rows = await this.#db.query<{ head: number | null; value: number | null }>(
+      `SELECT (SELECT MAX(id) FROM content_version WHERE node_id = ?) AS head,
+              (SELECT MAX(id) FROM property_value WHERE node_id = ?) AS value`,
+      [nodeId, nodeId],
+    )
+    return revisionString(rows[0]?.head, rows[0]?.value)
+  }
+
+  async #assertRevision(nodeId: number, expected: string | undefined): Promise<void> {
+    if (expected === undefined) return
+    const actual = await this.#revision(nodeId)
+    if (actual !== expected) throw new StaleRevisionError(expected, actual)
+  }
+
+  async #rollback(
+    versionId: string,
+    expectedRevision?: string,
+  ): Promise<DocumentAggregate | undefined> {
     return this.#db.transaction(async (tx) => {
       const repo = this.#child(tx)
       const state = await assertNodeMayWrite(tx, this.#nodeState)
@@ -1107,6 +1165,7 @@ export class DocumentRepository {
       if (!target) return undefined
       const node = await repo.nodes.byId(Number(target.node_id))
       if (!node) return undefined
+      await repo.#assertRevision(node.id, expectedRevision)
       const contentTypeNodeId = await repo.#contentTypeNodeId(node.id)
       if (!contentTypeNodeId) return undefined
 
@@ -1791,7 +1850,9 @@ export class DocumentRepository {
               ctn.unique_id AS content_type_key, d.published, d.edited,
               head.text AS draft_name, head.version_date AS draft_date,
               hv.template_id, tn.unique_id AS template_key,
-              pub.version_date AS published_date
+              pub.version_date AS published_date,
+              (SELECT MAX(cvm.id) FROM content_version cvm WHERE cvm.node_id = n.id) AS head_id,
+              (SELECT MAX(pvm.id) FROM property_value pvm WHERE pvm.node_id = n.id) AS last_value_id
        FROM node n
        JOIN content c ON c.node_id = n.id
        JOIN content_type ct ON ct.node_id = c.content_type_id
@@ -1832,6 +1893,7 @@ export class DocumentRepository {
       edited: fromDbBool(row.edited),
       values,
       variants,
+      revision: revisionString(row.head_id as number | null, row.last_value_id as number | null),
     }
   }
 

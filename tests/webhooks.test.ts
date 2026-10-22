@@ -6,10 +6,8 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { webhookEventFor } from '@crombolo/api-management'
 import {
   bundleEventProblems,
-  eventHappened,
   MASKED,
   openSecret,
   parseWebhookFile,
@@ -53,41 +51,6 @@ const definition = (over: Partial<WebhookDefinition> = {}): WebhookDefinition =>
   contentTypeKeys: [],
   headers: {},
   ...over,
-})
-
-describe('which operation raises which event', () => {
-  const ok = (generated?: string) => ({
-    status: 200,
-    headers: new Headers(generated ? { 'umb-generated-resource': generated } : {}),
-  })
-  test.each([
-    ['PutDocumentByIdPublish', 'Umbraco.ContentPublish'],
-    ['PutDocumentByIdUnpublish', 'Umbraco.ContentUnpublish'],
-    ['PutDocumentById', 'Umbraco.ContentSaved'],
-    ['DeleteRecycleBinDocumentById', 'Umbraco.ContentDelete'],
-    ['PutDocumentByIdMoveToRecycleBin', 'Umbraco.ContentMovedToRecycleBin'],
-    ['PutMediaById', 'Umbraco.MediaSave'],
-  ])('%s raises %s, about the item it names', (operation, alias) => {
-    expect(webhookEventFor(operation, { id: 'ABC' }, ok())).toEqual({ alias, key: 'abc' })
-  })
-
-  test('a create names the item it made', () => {
-    expect(webhookEventFor('PostDocument', {}, ok('NEW'))).toEqual({
-      alias: 'Umbraco.ContentSaved',
-      key: 'new',
-    })
-  })
-
-  test('a refused operation, or one that is not a change, raises nothing', () => {
-    expect(
-      webhookEventFor(
-        'PutDocumentByIdPublish',
-        { id: 'a' },
-        { status: 400, headers: new Headers() },
-      ),
-    ).toBeUndefined()
-    expect(webhookEventFor('GetDocumentById', { id: 'a' }, ok())).toBeUndefined()
-  })
 })
 
 describe('the rules a webhook is held to', () => {
@@ -194,13 +157,6 @@ describe('who hears about an event', () => {
     expect(
       bundleEventProblems([{ id: 'acme', events: { 'Umbraco.Nope': () => ({ ok: true }) } }]),
     ).toEqual(['The bundle "acme" handles "Umbraco.Nope", which is not an event this site raises.'])
-  })
-
-  test('a publish that only scheduled one, or an unpublish that left it live, raises nothing', () => {
-    expect(eventHappened('Umbraco.ContentPublish', false)).toBe(false)
-    expect(eventHappened('Umbraco.ContentPublish', true)).toBe(true)
-    expect(eventHappened('Umbraco.ContentUnpublish', true)).toBe(false)
-    expect(eventHappened('Umbraco.ContentDelete', undefined)).toBe(true)
   })
 
   test('the panel says why a store is unavailable', () => {
