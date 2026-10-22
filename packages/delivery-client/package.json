@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/delivery-client",
-  "version": "0.21.0",
+  "version": "0.22.0",
   "description": "A typed client for a crombolo site's Delivery API, for apps in the browser, Node or Bun. No dependencies.",
   "license": "MIT",
   "author": "Crombolo",
