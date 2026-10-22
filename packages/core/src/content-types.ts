@@ -113,8 +113,15 @@ export const SYSTEM_MEDIA_TYPE_KEYS: Readonly<Record<'Folder' | 'Image' | 'File'
   File: '4c52d8ab-54e6-40cd-999c-7a5f24903e4d',
 }
 
+/** "Caching" for media (story 057): a composition this CMS ships, never created as an item. */
+export const MEDIA_CACHE_FIELDS_TYPE_KEY = '2d7c5e91-4a38-4f06-b1e2-8c9a0f3d6b57'
+export const MEDIA_CACHE_KEEP_FOR_PROPERTY_KEY = '6e1d9b47-3a2c-4f85-8b06-d4c7a2e5f193'
+
 export function isSystemMediaType(key: string): boolean {
-  return Object.values(SYSTEM_MEDIA_TYPE_KEYS).includes(key.toLowerCase())
+  const lower = key.toLowerCase()
+  return (
+    Object.values(SYSTEM_MEDIA_TYPE_KEYS).includes(lower) || lower === MEDIA_CACHE_FIELDS_TYPE_KEY
+  )
 }
 
 /**
@@ -131,8 +138,13 @@ export function isSystemMemberType(key: string): boolean {
  * Content types this CMS ships: always present, not deletable, alias fixed. A
  * site may add fields to one, but not remove or change the ones it ships with.
  */
-export const SYSTEM_CONTENT_TYPE_KEYS: Readonly<Record<'SeoFields', string>> = {
+export const SYSTEM_CONTENT_TYPE_KEYS: Readonly<
+  Record<'SeoFields' | 'CacheFields' | 'Menu' | 'MenuItem', string>
+> = {
   SeoFields: '5e0f1c2a-7b3d-4c8e-9a61-0d2b4f6e8a13',
+  CacheFields: '7a1e4c93-2b6d-4f58-a0c7-5d3e9b1f8a24',
+  Menu: '3c9e2f71-5a4d-4b86-9e13-7f0a2d6c8b45',
+  MenuItem: '8b4d1a26-6e3f-4c90-a7d5-2e9c0f4b7a18',
 }
 
 export function isSystemContentType(kind: 'document' | 'media' | 'member', key: string): boolean {
@@ -201,9 +213,41 @@ export const SEO_FIELDS_PROPERTIES: readonly SystemPropertyModel[] = [
   },
 ]
 
+/** Where an editor chooses how long copies of a page or media item may be kept (story 057). */
+export const CACHE_KEEP_FOR_ALIAS = 'cacheKeepFor'
+
+/** The "Keep copies for" data type: a dropdown of `KEEP_COPIES_FOR` labels. */
+export const KEEP_COPIES_FOR_DATA_TYPE_KEY = '4f2b8d61-9c0e-4a73-b5d8-1e6a3c7f9b02'
+
+/** Each choice, as it is stored and shown, and its lifetime in seconds; none chosen is the site's. */
+export const KEEP_COPIES_FOR: ReadonlyArray<{ label: string; seconds: number }> = [
+  { label: "Don't keep copies", seconds: 0 },
+  { label: '1 minute', seconds: 60 },
+  { label: '5 minutes', seconds: 300 },
+  { label: '1 hour', seconds: 3600 },
+  { label: '1 day', seconds: 86400 },
+]
+
+/** The "Caching" composition's one field, the same for pages and media. */
+export const CACHE_FIELDS_PROPERTIES: readonly SystemPropertyModel[] = [
+  {
+    key: '9b3e6f12-5d8a-4c07-8e41-2f7a0c9d6b13',
+    alias: CACHE_KEEP_FOR_ALIAS,
+    name: 'Keep copies for',
+    description:
+      "How long browsers and any service in front of the site may reuse a copy before asking again. Leave empty for the site's usual setting.",
+    dataTypeKey: KEEP_COPIES_FOR_DATA_TYPE_KEY,
+  },
+]
+
 /** The fields a system content type ships with, by the type's key. */
 export function systemContentTypeProperties(key: string): readonly SystemPropertyModel[] {
-  return key.toLowerCase() === SYSTEM_CONTENT_TYPE_KEYS.SeoFields ? SEO_FIELDS_PROPERTIES : []
+  const lower = key.toLowerCase()
+  if (lower === SYSTEM_CONTENT_TYPE_KEYS.SeoFields) return SEO_FIELDS_PROPERTIES
+  if (lower === SYSTEM_CONTENT_TYPE_KEYS.CacheFields) return CACHE_FIELDS_PROPERTIES
+  if (lower === SYSTEM_CONTENT_TYPE_KEYS.Menu) return MENU_PROPERTIES
+  if (lower === SYSTEM_CONTENT_TYPE_KEYS.MenuItem) return MENU_ITEM_PROPERTIES
+  return []
 }
 
 /**
@@ -271,4 +315,79 @@ export interface TreeItem {
 export interface Page<T> {
   total: number
   items: T[]
+}
+
+/** A menu's "Alias", which templates name it by: `menu('header')` (story 141). */
+export const MENU_ALIAS_PROPERTY = 'alias'
+
+/** The "Menu items" data type: a block list of menu items, nested in each item too. */
+export const MENU_ITEMS_DATA_TYPE_KEY = '5d2a8f47-1c6b-4e93-b0f4-8a3e7c2d9f61'
+
+/** The "Menu link" data type: one page, media item or address. */
+export const MENU_LINK_DATA_TYPE_KEY = '1f7c3b95-8d2e-4a64-9c0b-6e5d4a2f8c37'
+
+/** The Menu element type's own fields. */
+export const MENU_PROPERTIES: readonly SystemPropertyModel[] = [
+  {
+    key: '0a6f4d38-2c9b-4e71-8f5a-3d1b7e9c4a62',
+    alias: MENU_ALIAS_PROPERTY,
+    name: 'Alias',
+    description:
+      "What templates call this menu, such as header. Left empty, it is made from the menu's name when saved; renaming the menu later does not change it.",
+    dataTypeKey: '0cc0eba1-9960-42c9-bf9b-60e150b429ae',
+  },
+  {
+    key: '6e2b9c41-7f3a-4d58-b1c6-9a0e5d8f2b73',
+    alias: 'items',
+    name: 'Items',
+    description: 'Drag to reorder. Each item can hold items of its own.',
+    dataTypeKey: MENU_ITEMS_DATA_TYPE_KEY,
+  },
+]
+
+/** The Menu item element type's fields. */
+export const MENU_ITEM_PROPERTIES: readonly SystemPropertyModel[] = [
+  {
+    key: '4c8a1e57-3b6d-4f92-a0e8-7d2c5b9f1a84',
+    alias: 'link',
+    name: 'Link',
+    description:
+      'A page, a media item or an address. Leave it empty for a heading that only holds the items below it.',
+    dataTypeKey: MENU_LINK_DATA_TYPE_KEY,
+  },
+  {
+    key: '9d3f6b28-1a7e-4c05-b8d2-5e4a0c7f3b95',
+    alias: 'label',
+    name: 'Label',
+    description: "Shown instead of the page's name. Needed when there is no link.",
+    dataTypeKey: '0cc0eba1-9960-42c9-bf9b-60e150b429ae',
+  },
+  {
+    key: '2b7e0c64-8f1d-4a39-9c5e-6a3d8b1f4e06',
+    alias: 'children',
+    name: 'Items below',
+    description: 'Shown under this item, as a submenu.',
+    dataTypeKey: MENU_ITEMS_DATA_TYPE_KEY,
+  },
+]
+
+/**
+ * An alias made from a name as Umbraco's `ToSafeAlias` makes one: letters and
+ * digits only, words joined in camelCase, starting with a lowercase letter.
+ * "Main navigation" becomes `mainNavigation`. Pure.
+ */
+export function safeAlias(name: string): string {
+  const words = name
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean)
+  const joined = words
+    .map((word, i) =>
+      i === 0
+        ? word.charAt(0).toLowerCase() + word.slice(1)
+        : word.charAt(0).toUpperCase() + word.slice(1),
+    )
+    .join('')
+  return joined.replace(/^[0-9]+/, '')
 }

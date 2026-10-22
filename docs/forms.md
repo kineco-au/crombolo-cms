@@ -566,6 +566,13 @@ adds conditional logic, inline validation and optional fetch submission on top.
 
 ### Submitting
 
+An app on another site draws a form from the Delivery API's `forms/{key}`, which
+hands it the fields and a fresh token, and posts here the same way
+([`delivery-api.md`](delivery-api.md), "Forms"); this endpoint answers it with
+the Delivery API's CORS origins. Its language for choice labels is the request's
+`Accept-Language` when that is one of the site's, else the page it was posted
+from.
+
 **Built.** `POST /crombolo/forms/<formKey>`, outside the Management API because
 the caller is the public.
 

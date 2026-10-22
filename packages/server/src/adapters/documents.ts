@@ -481,14 +481,19 @@ export function createDocumentPort(
   }
 }
 
+/**
+ * What the published cache is built from. With `drafts`, every page as last
+ * saved instead of as published, for previewing in an app (story 053); the
+ * rest — media, languages, domains, elements — is the same either way.
+ */
 export function createPublishedContentSource(
   db: Db,
-  options: DocumentRepositoryOptions = {},
+  options: DocumentRepositoryOptions & { drafts?: boolean } = {},
 ): PublishedContentSource {
   const repo = new DocumentRepository(db, options)
   return {
     async loadPublished(): Promise<PublishedNode[]> {
-      const rows = await repo.loadPublished()
+      const rows = options.drafts ? await repo.loadDrafts() : await repo.loadPublished()
       return rows.map((row) => ({
         key: row.key,
         id: row.id,

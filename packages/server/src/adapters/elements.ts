@@ -12,7 +12,15 @@
  * themselves did.
  */
 import type { ElementPort, Principal } from '@crombolo/api-management'
-import { type ElementTreeItem, normaliseUuid, ObjectTypes, SystemNodes } from '@crombolo/core'
+import {
+  type ElementTreeItem,
+  MENU_ALIAS_PROPERTY,
+  normaliseUuid,
+  ObjectTypes,
+  SYSTEM_CONTENT_TYPE_KEYS,
+  SystemNodes,
+  safeAlias,
+} from '@crombolo/core'
 import {
   appendCacheInstruction,
   type Db,
@@ -77,6 +85,72 @@ export function createElementPort(
   /** An element has no template, whatever a save sends. */
   const saved = <T extends object>(input: T) => ({ ...input, componentKey: null })
 
+  /** Whether another menu, not in the bin, already answers to `alias`. */
+  const menuAliasTaken = async (alias: string, key: string | undefined): Promise<boolean> => {
+    const rows = await db.query<{ unique_id: string }>(
+      `SELECT n.unique_id FROM property_value pv
+       JOIN property_type p ON p.id = pv.property_type_id
+       JOIN node n ON n.id = pv.node_id
+       JOIN content c ON c.node_id = n.id
+       JOIN node ct ON ct.id = c.content_type_id
+       WHERE p.alias = ? AND pv.is_current = ? AND n.trashed = ? AND ct.unique_id = ?
+         AND LOWER(COALESCE(pv.varchar_value, pv.text_value)) = ?`,
+      [
+        MENU_ALIAS_PROPERTY,
+        db.dialect.boolValue(true),
+        db.dialect.boolValue(false),
+        SYSTEM_CONTENT_TYPE_KEYS.Menu,
+        alias.toLowerCase(),
+      ],
+    )
+    return rows.some((row) => normaliseUuid(String(row.unique_id)) !== key?.toLowerCase())
+  }
+
+  /**
+   * A menu's alias, filled from its name when left empty, as Umbraco makes a type's
+   * (story 141); refused when another menu has it, since a template could then get
+   * either. Anything that is not a menu is saved as sent.
+   */
+  const withMenuAlias = async <
+    T extends {
+      contentTypeKey?: string
+      values: Array<{
+        alias: string
+        culture: string | null
+        segment: string | null
+        value: unknown
+      }>
+      variants: Array<{ name: string }>
+    },
+  >(
+    input: T,
+    key?: string,
+  ): Promise<T | { ok: false; reason: string; status: number }> => {
+    const typeKey =
+      input.contentTypeKey ?? (key ? (await repo.byKey(key))?.contentTypeKey : undefined)
+    if (typeKey?.toLowerCase() !== SYSTEM_CONTENT_TYPE_KEYS.Menu) return input
+    const given = input.values.find((v) => v.alias === MENU_ALIAS_PROPERTY && v.culture === null)
+    const alias =
+      (typeof given?.value === 'string' ? given.value.trim() : '') ||
+      safeAlias(input.variants[0]?.name ?? '')
+    if (!alias) return input
+    if (await menuAliasTaken(alias, key))
+      return {
+        ok: false,
+        reason: `Another menu already uses the alias "${alias}". Choose another one.`,
+        status: 400,
+      }
+    return {
+      ...input,
+      values: [
+        ...input.values.filter((v) => !(v.alias === MENU_ALIAS_PROPERTY && v.culture === null)),
+        { alias: MENU_ALIAS_PROPERTY, culture: null, segment: null, value: alias },
+      ],
+    }
+  }
+  const refused = (value: object): value is { ok: false; reason: string; status: number } =>
+    'ok' in value && value.ok === false
+
   return {
     folders: createFolderPort(folders, tree, changed),
 
@@ -118,7 +192,9 @@ export function createElementPort(
     byKeyPublished: (key) => repo.byKeyPublished(key),
     validate: (input, cultures) => repo.validate(input, cultures),
 
-    async create(input, principal) {
+    async create(sent, principal) {
+      const input = await withMenuAlias(sent)
+      if (refused(input)) return input
       try {
         const created = await repo.create(saved({ ...input, userId: await userIdOf(principal) }))
         await changed()
@@ -128,7 +204,9 @@ export function createElementPort(
       }
     },
 
-    async update(key, input, principal) {
+    async update(key, sent, principal) {
+      const input = await withMenuAlias(sent, key)
+      if (refused(input)) return input
       try {
         const updated = await repo.update(
           saved({ ...input, key, userId: await userIdOf(principal) }),
@@ -141,7 +219,9 @@ export function createElementPort(
       }
     },
 
-    async createAndPublish(input, cultures, principal) {
+    async createAndPublish(sent, cultures, principal) {
+      const input = await withMenuAlias(sent)
+      if (refused(input)) return input
       try {
         const result = await repo.createAndPublish(
           saved({ ...input, userId: await userIdOf(principal) }),
@@ -161,7 +241,9 @@ export function createElementPort(
       }
     },
 
-    async updateAndPublish(key, input, cultures, principal) {
+    async updateAndPublish(key, sent, cultures, principal) {
+      const input = await withMenuAlias(sent, key)
+      if (refused(input)) return input
       try {
         const result = await repo.updateAndPublish(
           saved({ ...input, key, userId: await userIdOf(principal) }),

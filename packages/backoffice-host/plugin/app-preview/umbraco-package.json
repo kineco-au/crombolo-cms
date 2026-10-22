@@ -1,0 +1,21 @@
+{
+  "$schema": "../../../backoffice-dist/dist/umbraco-package-schema.json",
+  "name": "Crombolo App Preview",
+  "id": "Crombolo.AppPreview",
+  "version": "0.21.0",
+  "allowPublicAccess": false,
+  "extensions": [
+    {
+      "type": "workspaceActionMenuItem",
+      "kind": "previewOption",
+      "alias": "Crombolo.Document.WorkspaceActionMenuItem.PreviewInApp",
+      "name": "Crombolo Preview In App",
+      "forWorkspaceActions": "Umb.WorkspaceAction.Document.SaveAndPreview",
+      "weight": 200,
+      "meta": {
+        "label": "Preview in app",
+        "urlProviderAlias": "cromboloAppPreview"
+      }
+    }
+  ]
+}

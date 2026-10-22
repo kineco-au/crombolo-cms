@@ -532,31 +532,8 @@ export class DocumentRepository {
       [t, this.objectType, this.#db.dialect.boolValue(false)],
     )
     const languages = await this.#languages()
-    const stateId = await visibleStateIdFor(this.#db, this.#nodeState)
     const typesById = new Map<number, PropertyTypeRow[]>()
-    const rowsById = new Map<number, ValueRow[]>()
-    for (const slice of slices(rows.map((row) => Number(row.id)))) {
-      if (stateId === undefined) {
-        const current = await this.#db.query(
-          `SELECT id, node_id, event_id, property_type_id, language_id, segment,
-                  int_value, decimal_value, date_value, varchar_value, text_value
-           FROM property_value WHERE node_id IN (${slice.map(() => '?').join(', ')}) AND is_current = ?`,
-          [...slice, t],
-        )
-        for (const row of current) {
-          const id = Number(row.node_id)
-          rowsById.set(id, [...(rowsById.get(id) ?? []), this.#toValueRow(row)])
-        }
-      } else {
-        // As of the state this node reads: the latest value per key at or before it.
-        for (const [id, history] of await this.#valueHistoryFor(slice, stateId)) {
-          const latest = new Map<string, ValueRow>()
-          for (const row of history)
-            latest.set(keyOf(row.propertyTypeId, row.languageId, row.segment), row)
-          rowsById.set(id, [...latest.values()])
-        }
-      }
-    }
+    const rowsById = await this.#currentValueRowsFor(rows.map((row) => Number(row.id)))
     const out = []
     for (const row of rows) {
       const typeId = Number(row.content_type_id)
@@ -579,6 +556,114 @@ export class DocumentRepository {
       })
     }
     return out
+  }
+
+  /**
+   * The values an editor sees now, per node: the current ones, or, on a node
+   * reading an older schema state, the latest at or before it. Read in slices.
+   */
+  async #currentValueRowsFor(ids: number[]): Promise<Map<number, ValueRow[]>> {
+    const t = this.#db.dialect.boolValue(true)
+    const stateId = await visibleStateIdFor(this.#db, this.#nodeState)
+    const rowsById = new Map<number, ValueRow[]>()
+    for (const slice of slices(ids)) {
+      if (stateId === undefined) {
+        const current = await this.#db.query(
+          `SELECT id, node_id, event_id, property_type_id, language_id, segment,
+                  int_value, decimal_value, date_value, varchar_value, text_value
+           FROM property_value WHERE node_id IN (${slice.map(() => '?').join(', ')}) AND is_current = ?`,
+          [...slice, t],
+        )
+        for (const row of current) {
+          const id = Number(row.node_id)
+          rowsById.set(id, [...(rowsById.get(id) ?? []), this.#toValueRow(row)])
+        }
+      } else {
+        // As of the state this node reads: the latest value per key at or before it.
+        for (const [id, history] of await this.#valueHistoryFor(slice, stateId)) {
+          const latest = new Map<string, ValueRow>()
+          for (const row of history)
+            latest.set(keyOf(row.propertyTypeId, row.languageId, row.segment), row)
+          rowsById.set(id, [...latest.values()])
+        }
+      }
+    }
+    return rowsById
+  }
+
+  /**
+   * Every document not in the bin as an editor last saved it, published or not,
+   * in the published cache's shape: the draft cache behind previewing in an app
+   * (story 053). A culture is there once it has a name.
+   */
+  async loadDrafts(): Promise<PublishedNodeRow[]> {
+    const t = this.#db.dialect.boolValue(true)
+    const rows = await this.#db.query(
+      `SELECT n.id, n.unique_id, n.parent_id, n.level, n.path, n.sort_order, n.create_date, n.text,
+              head.text AS draft_name, head.version_date,
+              ct.alias AS content_type_alias, c.content_type_id, tpl.alias AS template_alias
+       FROM node n
+       JOIN content c ON c.node_id = n.id
+       JOIN content_type ct ON ct.node_id = c.content_type_id
+       JOIN content_version head ON head.node_id = n.id AND head.current = ?
+       JOIN document_version hv ON hv.id = head.id
+       LEFT JOIN template tpl ON tpl.node_id = hv.template_id
+       WHERE n.node_object_type = ? AND n.trashed = ?
+       ORDER BY n.level, n.sort_order, n.id`,
+      [t, this.objectType, this.#db.dialect.boolValue(false)],
+    )
+    const ids = rows.map((row) => Number(row.id))
+    const languages = await this.#languages()
+    const valuesById = await this.#currentValueRowsFor(ids)
+    const culturesById = new Map<number, Array<{ isoCode: string; name: string }>>()
+    for (const slice of slices(ids)) {
+      const cultureRows = await this.#db.query(
+        `SELECT dcv.node_id, dcv.name, l.iso_code
+         FROM document_culture_variation dcv JOIN language l ON l.id = dcv.language_id
+         WHERE dcv.node_id IN (${slice.map(() => '?').join(', ')}) AND dcv.available = ?`,
+        [...slice, t],
+      )
+      for (const row of cultureRows) {
+        const id = Number(row.node_id)
+        culturesById.set(id, [
+          ...(culturesById.get(id) ?? []),
+          { isoCode: String(row.iso_code), name: String(row.name ?? '') },
+        ])
+      }
+    }
+    const typesById = new Map<number, PropertyTypeRow[]>()
+    const drafts: PublishedNodeRow[] = []
+    for (const row of rows) {
+      const typeId = Number(row.content_type_id)
+      if (!typesById.has(typeId))
+        // A pending property is never rendered, in a preview no more than on the site.
+        typesById.set(
+          typeId,
+          (await this.#propertyTypes(typeId)).filter((p) => !p.pending),
+        )
+      const cultures = culturesById.get(Number(row.id)) ?? []
+      drafts.push({
+        id: Number(row.id),
+        key: normaliseUuid(String(row.unique_id)),
+        parentId: Number(row.parent_id),
+        level: Number(row.level),
+        path: String(row.path),
+        sortOrder: Number(row.sort_order),
+        name: String(row.draft_name ?? row.text ?? ''),
+        contentTypeAlias: String(row.content_type_alias),
+        componentAlias: (row.template_alias as string | null) ?? null,
+        createDate: DbDate.fromDb(row.create_date) ?? new Date(),
+        updateDate: DbDate.fromDb(row.version_date) ?? DbDate.fromDb(row.create_date) ?? new Date(),
+        cultures: cultures.map((c) => c.isoCode),
+        names: Object.fromEntries(cultures.map((c) => [c.isoCode, c.name])),
+        values: this.#valuesFromRows(
+          valuesById.get(Number(row.id)) ?? [],
+          typesById.get(typeId) as PropertyTypeRow[],
+          languages,
+        ),
+      })
+    }
+    return drafts
   }
 
   // --------------------------------------------------------------- writes
@@ -1328,6 +1413,8 @@ export class DocumentRepository {
           'UPDATE document SET original_parent_id = NULL, trashed_date = NULL WHERE node_id = ?',
           [node.id],
         )
+        // Nothing published comes back, but a preview's drafts do.
+        await repo.#instructContent(node.key)
         return 'restored' as const
       }),
     )
@@ -2807,4 +2894,13 @@ function parseConfig(raw: unknown): Record<string, unknown> {
   } catch {
     return {}
   }
+}
+
+/**
+ * The newest version id of anything, which moves on every save: how a node's
+ * draft cache knows it is stale when the save happened on another node.
+ */
+export async function latestContentVersionId(db: Db): Promise<number> {
+  const rows = await db.query<{ n: number | null }>('SELECT MAX(id) AS n FROM content_version')
+  return Number(rows[0]?.n ?? 0)
 }

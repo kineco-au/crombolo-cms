@@ -667,6 +667,13 @@ const DECLARED = [
       'Off keeps search engines out entirely, for a staging site: robots are refused, there is no sitemap and every page asks not to be indexed.',
   },
   {
+    env: 'CROMBOLO_PUBLIC_URL',
+    kind: 'string',
+    section: 'Public site',
+    description:
+      'Where visitors see the site, when that is an app on another address, such as https://www.example.com. Used for preferred addresses, the sitemap and robots.txt.',
+  },
+  {
     env: 'CROMBOLO_SITEMAP',
     kind: 'boolean',
     default: 'true',
@@ -708,6 +715,47 @@ const DECLARED = [
     default: 'false',
     section: 'Public site',
     description: 'The Delivery API serves media as well as content.',
+  },
+  {
+    env: 'CROMBOLO_DELIVERY_API_CORS_ORIGINS',
+    kind: 'list',
+    section: 'Public site',
+    description:
+      'Other sites whose pages may call the Delivery API from the browser, such as https://app.example.com, separated by commas.',
+  },
+  {
+    env: 'CROMBOLO_CACHE_MAX_AGE',
+    kind: 'number',
+    section: 'Public site',
+    description:
+      'Seconds browsers and a CDN may reuse a page, an API answer or a media item before asking again; 0 keeps nothing. Unset, nothing is kept.',
+  },
+  {
+    env: 'CROMBOLO_CACHE_STALE_WHILE_REVALIDATE',
+    kind: 'number',
+    section: 'Public site',
+    description: 'Seconds an out-of-date copy may still be shown while a fresh one is fetched.',
+  },
+  {
+    env: 'CROMBOLO_CACHE_TAG_HEADER',
+    kind: 'string',
+    section: 'Public site',
+    description:
+      'The header your CDN purges by, such as Surrogate-Key or Cache-Tag. Set, every answer lists the pages and media in it.',
+  },
+  {
+    env: 'CROMBOLO_DELIVERY_API_PREVIEW_URL',
+    kind: 'string',
+    section: 'Public site',
+    description:
+      'Where Preview opens a page in your app, such as https://app.example.com/preview?path={path}&token={token}.',
+  },
+  {
+    env: 'CROMBOLO_DELIVERY_API_PREVIEW_TOKEN_MINUTES',
+    kind: 'number',
+    default: '60',
+    section: 'Public site',
+    description: 'How long a preview opened in your app keeps working.',
   },
 
   // Remote

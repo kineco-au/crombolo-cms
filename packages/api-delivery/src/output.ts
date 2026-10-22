@@ -3,6 +3,8 @@
  * holds: content, media, links, blocks and each editor's value, in Umbraco
  * 18.2's shapes. docs/delivery-api.md, "Output".
  */
+
+import type { SchemaForm } from '@crombolo/core'
 import {
   type BlockGridItem,
   type BlockItem,
@@ -17,6 +19,7 @@ import {
   RawHtml,
 } from '@crombolo/render'
 import { type ExpansionNode, keeps, nextNode } from './expansion.ts'
+import { apiFormReference } from './forms.ts'
 import type { Access } from './protection.ts'
 
 export interface ApiRoute {
@@ -34,6 +37,8 @@ export interface OutputContext {
   allowedType(alias: string): boolean
   /** Whether the caller may see a page's properties when a reference to it is expanded. */
   access(content: PublishedContent): Access
+  /** An expanded form picker's form, as `v2/forms/{key}` answers it (story 056). */
+  form?(form: SchemaForm): Record<string, unknown>
 }
 
 const iso = (date: Date): string => date.toISOString()
@@ -283,6 +288,11 @@ export function deliveryValue(
   switch (property.editorAlias) {
     case 'Umbraco.MemberPicker':
       return '(unsupported)'
+    // Never the stored definition, whose workflows hold the site's addresses and settings.
+    case 'Crombolo.FormPicker': {
+      const form = converted as SchemaForm
+      return expand !== undefined && ctx.form ? ctx.form(form) : apiFormReference(form)
+    }
     case 'Umbraco.RichText':
       return { markup: plain(converted), blocks: [] }
     case 'Umbraco.ContentPicker': {

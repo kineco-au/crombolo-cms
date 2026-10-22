@@ -16,6 +16,7 @@ import {
   type PublishedContent,
   renderSitemap,
   robotsTxt,
+  SEO_ALIASES,
   type SeoSiteDefaults,
   sitemapEntries,
   urlsIn,
@@ -71,6 +72,34 @@ export function originOf(request: Request, config: Pick<CromboloConfig, 'applica
     // A request without an absolute URL falls through to the configured address.
   }
   return config.applicationUrl.replace(/\/$/, '')
+}
+
+/**
+ * The origin visitors' addresses are written against: the site's public address
+ * when it is served by an app elsewhere (`seo.publicUrl`), else the request's.
+ * Never for anything the CMS itself answers, such as sign-in callbacks.
+ */
+export function publicOrigin(
+  request: Request,
+  config: Pick<CromboloConfig, 'applicationUrl' | 'seo'>,
+): string {
+  const configured = config.seo.publicUrl?.trim()
+  if (configured && /^https?:\/\/[^/]+/i.test(configured)) return configured.replace(/\/+$/, '')
+  return originOf(request, config)
+}
+
+/** A page's search and sharing details as an app writes its head tags (story 055). */
+export interface SeoDetails {
+  /** The `<title>`, suffix included. */
+  title: string
+  description: string | null
+  image: { url: string; width: number | null; height: number | null } | null
+  canonical: string | null
+  /** `noindex` when search engines are asked to leave the page out; otherwise null. */
+  robots: string | null
+  alternates: Array<{ culture: string; url: string }>
+  xDefault: string | null
+  siteName: string
 }
 
 /** Refusal text for a settings body, or the overrides it sets. */
@@ -172,6 +201,21 @@ export interface SeoHost {
     host: string,
     pathname: string,
   ): Promise<{ content: PublishedContent; culture: string | null } | undefined>
+  /** What `<SeoHead>` would write for a page with no template's fallbacks, as data. */
+  details(content: PublishedContent, request: Request): Promise<SeoDetails>
+  /** The sitemap's pages for a hostname, as data; undefined when the sitemap is off. */
+  sitemapItems(
+    request: Request,
+    host: string,
+  ): Promise<
+    | Array<{
+        id: string
+        url: string
+        lastmod: string
+        alternates: Array<{ culture: string; url: string }>
+      }>
+    | undefined
+  >
   /** Backoffice routes below `<backoffice>/crombolo/api/seo`. */
   handle(request: Request, subpath: string, principal: Principal): Promise<Response | undefined>
 }
@@ -253,6 +297,59 @@ export function createSeoHost(options: SeoHostOptions): SeoHost {
 
   const cacheControl = config.development ? 'no-cache' : 'public, max-age=3600'
 
+  /** The pages a hostname offers search engines, members-only ones left out. */
+  const openEntries = async (request: Request, host: string) => {
+    const snapshot = await cache.snapshot()
+    const entries = sitemapEntries(snapshot, { host, origin: publicOrigin(request, config) })
+    const open: typeof entries = []
+    for (const entry of entries) if (!(await options.isProtected(entry.content))) open.push(entry)
+    return open
+  }
+
+  const sitemapItems: SeoHost['sitemapItems'] = async (request, host) => {
+    const { effective } = await settings()
+    if (!effective.sitemap || !effective.indexable) return undefined
+    return (await openEntries(request, host)).map((entry) => ({
+      id: entry.content.key,
+      url: entry.url,
+      lastmod: entry.lastmod.toISOString(),
+      alternates: entry.alternates,
+    }))
+  }
+
+  const details: SeoHost['details'] = async (content, request) => {
+    const snapshot = await cache.snapshot()
+    const { effective } = await settings()
+    const meta = effectiveMeta(content, {
+      origin: publicOrigin(request, config),
+      alternates: urlsIn(snapshot, content.key),
+      site: await siteDefaults(),
+    })
+    // A size only when the image is a media item: the page's own, or a site default given by key.
+    const media =
+      meta.image.source === 'page'
+        ? content.media(SEO_ALIASES.image)[0]?.media
+        : meta.image.source === 'site' && UUID.test(effective.defaultImage.trim())
+          ? snapshot.media.get(effective.defaultImage.trim().toLowerCase())
+          : undefined
+    const size = (alias: string) => {
+      const value = Number(media?.value(alias))
+      return media && Number.isFinite(value) && value > 0 ? value : null
+    }
+    return {
+      title: meta.fullTitle,
+      description: meta.description.value ?? null,
+      image: meta.image.value
+        ? { url: meta.image.value, width: size('umbracoWidth'), height: size('umbracoHeight') }
+        : null,
+      canonical: meta.canonical.value ?? null,
+      robots: meta.noindex.value ? 'noindex' : null,
+      alternates: meta.alternates,
+      xDefault: meta.xDefault ?? null,
+      siteName: meta.siteName,
+    }
+  }
+
   const sitemap: SeoHost['sitemap'] = async (request, host) => {
     const { effective } = await settings()
     if (!effective.sitemap || !effective.indexable)
@@ -260,10 +357,7 @@ export function createSeoHost(options: SeoHostOptions): SeoHost {
         status: 404,
         headers: { 'content-type': 'text/plain; charset=utf-8' },
       })
-    const snapshot = await cache.snapshot()
-    const entries = sitemapEntries(snapshot, { host, origin: originOf(request, config) })
-    const open: typeof entries = []
-    for (const entry of entries) if (!(await options.isProtected(entry.content))) open.push(entry)
+    const open = await openEntries(request, host)
     return new Response(renderSitemap(open), {
       headers: { 'content-type': 'application/xml; charset=utf-8', 'cache-control': cacheControl },
     })
@@ -272,7 +366,7 @@ export function createSeoHost(options: SeoHostOptions): SeoHost {
   const robots: SeoHost['robots'] = async (request) => {
     const { effective } = await settings()
     const text = robotsTxt(effective.robotsTxt, {
-      origin: originOf(request, config),
+      origin: publicOrigin(request, config),
       indexable: effective.indexable,
       sitemap: effective.sitemap,
     })
@@ -317,7 +411,7 @@ export function createSeoHost(options: SeoHostOptions): SeoHost {
     if (!UUID.test(key)) return Response.json({ message: 'Choose a page.' }, { status: 400 })
     const draft = await options.draft(key, url.searchParams.get('culture') || null, principal)
     if (!draft) return Response.json({ message: 'That page could not be found.' }, { status: 404 })
-    const origin = originOf(request, config)
+    const origin = publicOrigin(request, config)
     const snapshot = await cache.snapshot()
     const meta = effectiveMeta(draft.content, {
       origin,
@@ -359,7 +453,7 @@ export function createSeoHost(options: SeoHostOptions): SeoHost {
     return Response.json(await settings())
   }
 
-  return { settings, siteDefaults, sitemap, robots, notFound, handle }
+  return { settings, siteDefaults, sitemap, robots, notFound, details, sitemapItems, handle }
 }
 
 function safeJson(text: string): unknown {

@@ -8,6 +8,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { join } from 'node:path'
 import { parseMediaType } from '@crombolo/schema'
 import { type Harness, signedInServer, V1 } from './support/harness.ts'
+import { SHIPPED_TYPE_KEYS } from './support/shipped.ts'
 
 const open: Harness[] = []
 const dirs: string[] = []
@@ -229,8 +230,8 @@ describe('media types', () => {
     const media = await create(h, mediaType('asset'))
     expect((await h.call(`${V1}/document-type/${media}`)).status).toBe(404)
     const docTree = await h.json<{ total: number }>(`${V1}/tree/document-type/root?skip=0&take=10`)
-    // Only the shipped Search & sharing type.
-    expect(docTree.total).toBe(1)
+    // Only the shipped types.
+    expect(docTree.total).toBe(SHIPPED_TYPE_KEYS.size)
     // Umbraco's content_type alias is unique across both kinds
     const clash = await h.post(`${V1}/document-type`, {
       ...mediaType('asset'),

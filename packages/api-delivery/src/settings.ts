@@ -22,6 +22,17 @@ export interface DeliveryApiSettings {
   /** Never served; ignored when the allow list has entries. */
   disallowedContentTypeAliases: string[]
   media: { enabled: boolean; publicAccess: boolean }
+  /**
+   * Origins whose pages may call the API from the browser, e.g.
+   * `https://app.example.com`; `*` for any, only while the API is public.
+   */
+  cors: { allowedOrigins: string[] }
+  /**
+   * Previewing drafts in an app (story 053): where the backoffice's Preview
+   * button sends an editor, with `{path}`, `{id}`, `{culture}` and `{token}`
+   * filled in; per content type alias in `urls`, which wins over `url`.
+   */
+  preview: { url: string | undefined; urls: Record<string, string>; tokenMinutes: number }
   memberAuthorization: {
     authorizationCodeFlow: {
       enabled: boolean
@@ -68,6 +79,24 @@ export function resolveDeliveryApiSettings(options: DeliveryApiOptions = {}): De
     media: {
       enabled: options.media?.enabled ?? false,
       publicAccess: options.media?.publicAccess ?? true,
+    },
+    cors: {
+      allowedOrigins: [...(options.cors?.allowedOrigins ?? [])].filter(
+        (origin): origin is string => typeof origin === 'string' && origin.trim() !== '',
+      ),
+    },
+    preview: {
+      url: options.preview?.url?.trim() || undefined,
+      urls: Object.fromEntries(
+        Object.entries(options.preview?.urls ?? {}).filter(
+          (entry): entry is [string, string] =>
+            typeof entry[1] === 'string' && entry[1].trim() !== '',
+        ),
+      ),
+      tokenMinutes:
+        Number.isFinite(options.preview?.tokenMinutes) && (options.preview?.tokenMinutes ?? 0) > 0
+          ? (options.preview?.tokenMinutes as number)
+          : 60,
     },
     memberAuthorization: {
       authorizationCodeFlow: {
@@ -134,4 +163,51 @@ export function memberAuthorizationProblems(settings: DeliveryApiSettings): stri
       )
   }
   return problems
+}
+
+/** A preview URL must say where the app is: a scheme and host. Pure. */
+const isAppUrl = (url: string) => /^https?:\/\/[^/]+/i.test(url)
+
+/** Preview URLs that cannot be used, said once at boot and then ignored. Pure. */
+export function previewProblems(settings: DeliveryApiSettings): string[] {
+  const named = [
+    ...(settings.preview.url ? [['preview.url', settings.preview.url]] : []),
+    ...Object.entries(settings.preview.urls).map(([alias, url]) => [`preview.urls.${alias}`, url]),
+  ] as Array<[string, string]>
+  return named
+    .filter(([, url]) => !isAppUrl(url))
+    .map(
+      ([name, url]) =>
+        `The ${name} "${url}" is ignored: it must start with the app's address, such as https://app.example.com.`,
+    )
+}
+
+/** The preview URL for a page of this type, or none; a malformed one is never used. Pure. */
+export function previewUrlFor(
+  settings: DeliveryApiSettings,
+  contentTypeAlias: string,
+): string | undefined {
+  const own = Object.entries(settings.preview.urls).find(
+    ([alias]) => alias.toLowerCase() === contentTypeAlias.toLowerCase(),
+  )?.[1]
+  const url = own ?? settings.preview.url
+  return url && isAppUrl(url) ? url : undefined
+}
+
+/** Whether any page type previews in an app, so the backoffice offers it. Pure. */
+export const previewsInApp = (settings: DeliveryApiSettings): boolean =>
+  [settings.preview.url, ...Object.values(settings.preview.urls)].some(
+    (url) => url !== undefined && isAppUrl(url),
+  )
+
+/** The URL with its placeholders filled, each value escaped for where it sits. Pure. */
+export function fillPreviewUrl(
+  template: string,
+  values: { path: string; id: string; culture: string | null; token: string },
+): string {
+  return template
+    .replaceAll('{path}', values.path.split('/').map(encodeURIComponent).join('/'))
+    .replaceAll('{id}', encodeURIComponent(values.id))
+    .replaceAll('{culture}', encodeURIComponent(values.culture ?? ''))
+    .replaceAll('{token}', encodeURIComponent(values.token))
 }

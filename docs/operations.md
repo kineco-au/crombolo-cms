@@ -678,6 +678,87 @@ worth a decision per site:
   disallow-list allows. The `sandbox` header above is what makes that safe to
   serve; a site wanting them refused outright should narrow the upload settings.
 
+## Behind a CDN
+
+Pages, Delivery API answers and media say how long a browser or a CDN may keep
+them, and whether they changed. Story `057`; the policy is
+`packages/render/src/cache-policy.ts`.
+
+**Nothing is kept unless the site says so.** Without settings, pages and API
+answers carry no lifetime, as before. Three levels, each optional, the narrowest
+one set winning:
+
+```ts
+// crombolo.config.ts
+export default defineConfig({
+  cache: {
+    maxAge: 60,                 // seconds; 0 keeps nothing
+    staleWhileRevalidate: 300,
+    types: { newsListing: { maxAge: 10 }, contactPage: { maxAge: 3600 } },
+    tagHeader: 'Surrogate-Key', // or Cache-Tag; unset, no tags
+  },
+})
+```
+
+| Level | Where | Applies to |
+| --- | --- | --- |
+| Site | `cache.maxAge`, `cache.staleWhileRevalidate` — or `CROMBOLO_CACHE_MAX_AGE`, `CROMBOLO_CACHE_STALE_WHILE_REVALIDATE` | pages and API answers |
+| Type | `cache.types`, by content or media type alias, in code | that type's pages, API answers and media files |
+| Page or media item | "Keep copies for", for a type that composes `cacheFields` (pages) or `mediaCacheFields` (media) | that page or item |
+
+"Keep copies for" offers *Don't keep copies*, *1 minute*, *5 minutes*, *1 hour*
+and *1 day*; left empty, the type's or the site's applies. A type opts in as it
+does to Search & sharing:
+
+```toml
+# schema/content-types/article.toml
+compositions = ["seoFields", "cacheFields"]
+
+# schema/media-types/document.toml
+compositions = ["mediaCacheFields"]
+```
+
+- **A list** — a Delivery API query, `items`, a search — takes the shortest
+  lifetime among the pages in it; one that keeps nothing keeps the list from
+  being kept.
+- **Media files** are `public, max-age=31536000, immutable` unless their item or
+  type says otherwise: a replaced file gets a new address, so the bytes at one
+  never change. The site's lifetime does not apply to them. *Don't keep copies*
+  on an item is for a file that may have to be withdrawn. When the media store
+  serves files itself (a bucket or CDN URL), only the redirect carries these
+  headers.
+- **Nothing personal is kept**, whatever is configured: a page seen by a signed-in
+  member, a page in a members-only branch (including the login page a visitor
+  sees at its address), a form's answer, a preview, an API answer to a member's
+  token or from a non-public API are all `private, no-store`.
+- **ETags** on every page and API answer, over the body; a matching
+  `If-None-Match` is a `304` with no body.
+- **Purge tags**, with `tagHeader` set: a page lists its own key and its
+  ancestors'; an API answer every page, element and media key in it, and a query
+  the page it fetched from; a media file its key. Space-separated for
+  `Surrogate-Key`, comma-separated otherwise.
+
+### Purging on publish
+
+A webhook for `Umbraco.ContentPublish` and `Umbraco.ContentUnpublish` tells the
+CDN ([`webhooks.md`](webhooks.md)). Its payload is the page's key; with tags,
+purge it and its ancestors, which is every list that could hold it:
+
+```ts
+// a bundle's webhook handler, or any receiver
+'Umbraco.ContentPublish': async ({ payload, fetch }) => {
+  const site = 'https://cms.example.com/umbraco/delivery/api/v2'
+  const above = await (await fetch(`${site}/content?fetch=ancestors:${payload.Id}&take=100`)).json()
+  await fetch('https://api.cdn.example/purge', {
+    method: 'POST',
+    body: JSON.stringify({ tags: [payload.Id, ...above.items.map((page) => page.id)] }),
+  })
+}
+```
+
+Without tags, purge everything on publish; with short lifetimes and
+`staleWhileRevalidate`, many sites need no purge at all.
+
 ## Running a cluster
 
 A deployed site is run as well as served: backed up, given content, upgraded.

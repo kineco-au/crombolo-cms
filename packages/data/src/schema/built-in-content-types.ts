@@ -1,14 +1,18 @@
 /**
- * Content types this CMS ships. "Search & sharing" (`seoFields`) is a
- * composition a site opts into with `compositions = ["seoFields"]`: the fields
- * the head helper, the sitemap and the editor's preview read.
+ * Content types this CMS ships, each a composition a site opts into, such as
+ * `compositions = ["seoFields"]`. "Search & sharing" (`seoFields`) holds the
+ * fields the head helper, the sitemap and the editor's preview read; "Caching"
+ * (`cacheFields`, story 057) how long copies of a page may be kept.
  *
  * A **system** type, like the Folder, Image and File media types: ensured at
  * every boot, exempt from schema retirement, not deletable, alias fixed. A site
  * may extend it with a file of the same alias and key; the shipped fields stay.
  */
 import {
+  CACHE_FIELDS_PROPERTIES,
   type ContentTypeAggregate,
+  MENU_ITEM_PROPERTIES,
+  MENU_PROPERTIES,
   SEO_FIELDS_PROPERTIES,
   SYSTEM_CONTENT_TYPE_KEYS,
   type SystemPropertyModel,
@@ -22,6 +26,10 @@ export interface BuiltInContentType {
   name: string
   description: string
   icon: string
+  /** An element type: the menu types (story 141). */
+  isElement?: boolean
+  /** Offered for creating in the Library section. */
+  allowedInLibrary?: boolean
   tab: { key: string; name: string; alias: string }
   properties: readonly SystemPropertyModel[]
 }
@@ -36,7 +44,48 @@ export const SEO_FIELDS_TYPE: BuiltInContentType = {
   properties: SEO_FIELDS_PROPERTIES,
 }
 
-export const SYSTEM_CONTENT_TYPES: readonly BuiltInContentType[] = [SEO_FIELDS_TYPE]
+/** "Caching" (story 057): how long copies of a page may be kept, for the types that want it. */
+export const CACHE_FIELDS_TYPE: BuiltInContentType = {
+  key: SYSTEM_CONTENT_TYPE_KEYS.CacheFields,
+  alias: 'cacheFields',
+  name: 'Caching',
+  description: 'How long copies of a page may be kept before they are asked for again.',
+  icon: 'icon-timer',
+  tab: { key: '0d6e2a49-7c1f-4b85-93a2-6f8e1b4c7d39', name: 'Caching', alias: 'caching' },
+  properties: CACHE_FIELDS_PROPERTIES,
+}
+
+/** A menu (story 141): made in the Library, named by its alias in templates. */
+export const MENU_TYPE: BuiltInContentType = {
+  key: SYSTEM_CONTENT_TYPE_KEYS.Menu,
+  alias: 'menu',
+  name: 'Menu',
+  description: 'Pages and links in the order a navigation shows them.',
+  icon: 'icon-navigation',
+  isElement: true,
+  allowedInLibrary: true,
+  tab: { key: '7d1c5a93-0e4b-4f26-8b37-2a9e6c1d5f84', name: 'Menu', alias: 'menu' },
+  properties: MENU_PROPERTIES,
+}
+
+/** One entry in a menu: a page, media or an address, a label, and items below it. */
+export const MENU_ITEM_TYPE: BuiltInContentType = {
+  key: SYSTEM_CONTENT_TYPE_KEYS.MenuItem,
+  alias: 'menuItem',
+  name: 'Menu item',
+  description: 'A page, media item or address in a menu, with any items below it.',
+  icon: 'icon-link',
+  isElement: true,
+  tab: { key: '3a8e2d61-9f5c-4b07-a1d4-6c2b8e0f7a35', name: 'Item', alias: 'item' },
+  properties: MENU_ITEM_PROPERTIES,
+}
+
+export const SYSTEM_CONTENT_TYPES: readonly BuiltInContentType[] = [
+  SEO_FIELDS_TYPE,
+  CACHE_FIELDS_TYPE,
+  MENU_TYPE,
+  MENU_ITEM_TYPE,
+]
 
 export function systemContentTypeAggregate(def: BuiltInContentType): ContentTypeAggregate {
   return {
@@ -48,8 +97,8 @@ export function systemContentTypeAggregate(def: BuiltInContentType): ContentType
     allowedAsRoot: false,
     variesByCulture: false,
     variesBySegment: false,
-    isElement: false,
-    allowedInLibrary: false,
+    isElement: def.isElement === true,
+    allowedInLibrary: def.allowedInLibrary === true,
     collectionKey: null,
     cleanup: {
       preventCleanup: false,

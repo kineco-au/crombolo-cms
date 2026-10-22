@@ -57,6 +57,7 @@
         "@crombolo/core": "workspace:*",
         "@crombolo/crombolo": "workspace:*",
         "@crombolo/data": "workspace:*",
+        "@crombolo/delivery-client": "workspace:*",
         "@crombolo/entra": "workspace:*",
         "@crombolo/import-umbraco": "workspace:*",
         "@crombolo/remote-conformance": "workspace:*",
@@ -140,6 +141,7 @@
         "crombolo": "./bin/crombolo.ts",
       },
       "dependencies": {
+        "@crombolo/api-delivery": "workspace:*",
         "@crombolo/api-management": "workspace:*",
         "@crombolo/auth": "workspace:*",
         "@crombolo/core": "workspace:*",
@@ -187,6 +189,10 @@
       "dependencies": {
         "@crombolo/core": "workspace:*",
       },
+    },
+    "packages/delivery-client": {
+      "name": "@crombolo/delivery-client",
+      "version": "0.21.0",
     },
     "packages/entra": {
       "name": "@crombolo/entra",
@@ -369,6 +375,8 @@
     "@crombolo/crombolo": ["@crombolo/crombolo@workspace:packages/crombolo"],
 
     "@crombolo/data": ["@crombolo/data@workspace:packages/data"],
+
+    "@crombolo/delivery-client": ["@crombolo/delivery-client@workspace:packages/delivery-client"],
 
     "@crombolo/entra": ["@crombolo/entra@workspace:packages/entra"],
 

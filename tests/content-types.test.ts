@@ -7,6 +7,7 @@
  */
 import { afterEach, describe, expect, test } from 'bun:test'
 import { type Harness, signedInServer, V1 } from './support/harness.ts'
+import { notShipped, SHIPPED_IN_LIBRARY } from './support/shipped.ts'
 
 const open: Harness[] = []
 afterEach(async () => {
@@ -345,11 +346,12 @@ describe('content types', () => {
       total: number
       items: Array<{ name: string; icon: string; hasChildren: boolean }>
     }>(`${V1}/tree/document-type/root?skip=0&take=100`)
-    expect(tree.items.map((i) => i.name).sort()).toEqual([
-      'Home Page',
-      'Search & sharing',
-      'Text Page',
-    ])
+    expect(
+      tree.items
+        .filter(notShipped)
+        .map((i) => i.name)
+        .sort(),
+    ).toEqual(['Home Page', 'Text Page'])
     expect(tree.items.find((i) => i.name === 'Home Page')?.icon).toBe('icon-home')
     expect(tree.items.every((i) => i.hasChildren === false)).toBe(true)
 
@@ -413,7 +415,9 @@ describe('content types', () => {
         await h.json<{ items: Array<{ alias: string }> }>(
           `${V1}/document-type/allowed-in-library?skip=0&take=100`,
         )
-      ).items.map((i) => i.alias)
+      ).items
+        .filter(notShipped)
+        .map((i) => i.alias)
     expect(await library()).toEqual([])
 
     // Ticking it and saving is what makes it appear — the update path, not create.
@@ -452,10 +456,11 @@ describe('content types', () => {
       total: number
       items: Array<{ id: string; name: string; alias: string; icon: string }>
     }>(`${V1}/document-type/allowed-in-library?skip=0&take=100`)
-    expect(library.items.map((i) => i.alias)).toEqual(['quote'])
-    expect(library.total).toBe(1)
-    expect(library.items[0]?.name).toBe('Quote')
-    expect(library.items[0]?.id).toMatch(/^[0-9a-f-]{36}$/)
+    const own = library.items.filter(notShipped)
+    expect(own.map((i) => i.alias)).toEqual(['quote'])
+    expect(library.total).toBe(1 + SHIPPED_IN_LIBRARY)
+    expect(own[0]?.name).toBe('Quote')
+    expect(own[0]?.id).toMatch(/^[0-9a-f-]{36}$/)
   })
 
   test('pages the library listing and names the parent it was given', async () => {
@@ -474,19 +479,19 @@ describe('content types', () => {
     const first = await h.json<{ total: number; items: Array<{ name: string }> }>(
       `${V1}/document-type/allowed-in-library?skip=0&take=2`,
     )
-    expect(first.total).toBe(3)
+    expect(first.total).toBe(3 + SHIPPED_IN_LIBRARY)
     expect(first.items.map((i) => i.name)).toEqual(['Alpha', 'Beta'])
 
     const second = await h.json<{ total: number; items: Array<{ name: string }> }>(
       `${V1}/document-type/allowed-in-library?skip=2&take=2`,
     )
-    expect(second.items.map((i) => i.name)).toEqual(['Gamma'])
+    expect(second.items.filter(notShipped).map((i) => i.name)).toEqual(['Gamma'])
 
     // parentKey is accepted; core Umbraco has no filter that acts on it.
     const withParent = await h.json<{ total: number }>(
       `${V1}/document-type/allowed-in-library?skip=0&take=100&parentKey=${crypto.randomUUID()}`,
     )
-    expect(withParent.total).toBe(3)
+    expect(withParent.total).toBe(3 + SHIPPED_IN_LIBRARY)
   })
 
   test('records allowed children', async () => {

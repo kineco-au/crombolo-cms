@@ -66,6 +66,8 @@ export type {
   FormProps,
   InnerHTML,
   Link,
+  Menu,
+  MenuItem,
   Navigation,
   PageProps,
   PublishedContent,

@@ -20,6 +20,12 @@ export const MANIFEST_FILE_NAME = 'umbraco-package.json'
  */
 export const ASSISTANT_MANIFEST_ID = 'Crombolo.Assistant'
 
+/**
+ * Preview in app (story 053), which the server omits unless the site has an app
+ * preview address, so the Preview button is Umbraco's own until then.
+ */
+export const APP_PREVIEW_MANIFEST_ID = 'Crombolo.AppPreview'
+
 export interface PackageManifestImportmap {
   imports: Record<string, string>
   scopes?: Record<string, Record<string, string>>

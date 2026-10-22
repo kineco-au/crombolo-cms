@@ -90,6 +90,14 @@ export default function Layout(props: PageProps & { children?: Child }) {
       …
 ```
 
+When an app serves the site somewhere else, `seo.publicUrl` (or
+`CROMBOLO_PUBLIC_URL`) names that address, and it replaces the request's origin
+in preferred addresses, the sitemap, `robots.txt` and the backoffice preview —
+never in anything the CMS itself answers, such as sign-in. The Delivery API hands
+an app the same worked-out values with `seo=true`, and the sitemap as data
+([`delivery-api.md`](delivery-api.md), "Search and sharing details"). Pages bound
+to a hostname keep that hostname.
+
 To make addresses absolute, `PageProps` carries `request` (`origin`, `url`), a
 `urls` helper (`absolute`, `alternates`) and `seo`, the site-wide values. The
 origin honours `X-Forwarded-Proto` and `X-Forwarded-Host`, so a site behind a

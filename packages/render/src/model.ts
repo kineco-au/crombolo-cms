@@ -6,9 +6,11 @@
  * the published cache cheap. `value()` carries the ergonomics: culture is
  * ambient, so `model.value('title')` returns the current request's culture.
  */
+
 import type { FormSubmissionState } from '@crombolo/core'
 import { RawHtml } from './html.ts'
 import { MediaWithCrops } from './media.ts'
+import type { MenuItem } from './menus.ts'
 import type { SeoSiteDefaults } from './seo.ts'
 import { NAVI_HIDE_ALIAS } from './url-segment.ts'
 import { convertValue, type ValueContext } from './values.ts'
@@ -253,6 +255,11 @@ export interface PageProps<Properties = any> {
   culture: string | null
   /** A dictionary item in the request's culture, then its fallback languages; '' when missing. */
   dictionary: (key: string) => string
+  /**
+   * A menu's items by the menu's alias, in the request's culture: `menu('header')`.
+   * Empty when there is no such menu (story 141; docs/rendering.md, "Menus").
+   */
+  menu: (alias: string) => MenuItem[]
   /** The signed-in member, or undefined for an anonymous visitor. */
   member: RequestMember | undefined
   /**

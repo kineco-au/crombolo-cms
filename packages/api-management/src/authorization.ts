@@ -523,10 +523,19 @@ export async function canReadDocument(
   key: string,
   nodes: NodeLookup,
 ): Promise<boolean> {
-  if (!hasSection(principal, 'content')) return false
   const node = (await nodes.documents([key])).get(key.toLowerCase())
-  if (!node || !hasPathAccess(principal.startNodes.document, node.chain, node.trashed)) return false
-  return permissionsForPath(principal.groups, node.chain).has(D.Read)
+  return node !== undefined && canReadDocumentAt(principal, node.chain, node.trashed)
+}
+
+/** `canReadDocument` for a document whose place is known: its ancestors' keys then its own. Pure. */
+export function canReadDocumentAt(
+  principal: Principal,
+  chain: readonly string[],
+  trashed = false,
+): boolean {
+  if (!hasSection(principal, 'content')) return false
+  if (!hasPathAccess(principal.startNodes.document, chain, trashed)) return false
+  return permissionsForPath(principal.groups, chain).has(D.Read)
 }
 
 /** Evaluates the operation's section requirements, then its node rules. */

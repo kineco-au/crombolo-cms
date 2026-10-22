@@ -15,10 +15,12 @@
 import {
   type ChoiceOption,
   type ChoiceSource,
+  MENU_ALIAS_PROPERTY,
   type SchemaForm,
   withResolvedChoices,
 } from '@crombolo/core'
 import { PublishedMedia } from './media.ts'
+import { buildMenu, type Menu } from './menus.ts'
 import { type Navigation, PublishedContent, type PublishedProperty } from './model.ts'
 import { matchRedirect, type RedirectRule } from './redirects.ts'
 import {
@@ -276,7 +278,39 @@ export interface PublishedCacheOptions {
    * see that.
    */
   form?: (key: string) => SchemaForm | undefined
+  /** Told on every invalidation, for whatever else is built from the same content. */
+  onInvalidate?: () => void
 }
+
+/** A menu's items in a culture, from a snapshot already in hand; empty when there is none. Pure. */
+export function menuItemsIn(snapshot: CacheSnapshot, culture: string | null, alias: string) {
+  const view =
+    snapshot.views.get(viewKey(culture ?? snapshot.defaultCulture)) ??
+    snapshot.views.get(viewKey(snapshot.defaultCulture))
+  return view ? (menuIn(snapshot, view, alias)?.items ?? []) : []
+}
+
+/** The menu published under `alias` in a view, built against that view's pages. Pure. */
+export function menuIn(
+  snapshot: CacheSnapshot,
+  view: CultureView,
+  alias: string,
+): Menu | undefined {
+  const wanted = alias.trim().toLowerCase()
+  for (const element of view.elements.values()) {
+    if (element.contentType.alias !== 'menu') continue
+    const own = element.properties.find((p) => p.alias === MENU_ALIAS_PROPERTY)?.value
+    if (typeof own !== 'string' || own.trim().toLowerCase() !== wanted) continue
+    return buildMenu(element, {
+      content: (key) => view.byKey.get(key.toLowerCase()),
+      media: (key) => snapshot.media.get(key.toLowerCase()),
+    })
+  }
+  return undefined
+}
+
+/** Built the first time a snapshot is asked for a file, and gone with the snapshot. */
+const mediaByUrl = new WeakMap<CacheSnapshot, Map<string, PublishedMedia>>()
 
 export class PublishedCache {
   #source: PublishedContentSource
@@ -297,6 +331,7 @@ export class PublishedCache {
   invalidate(): void {
     this.#loaded = false
     this.#generation += 1
+    this.#options.onInvalidate?.()
   }
 
   /**
@@ -474,9 +509,28 @@ export class PublishedCache {
     return out
   }
 
+  /** A menu by its alias, in a culture; undefined when none is published under it (story 141). */
+  async menu(alias: string, culture?: string | null): Promise<Menu | undefined> {
+    const snapshot = await this.snapshot()
+    const view = this.#view(snapshot, culture)
+    return view ? menuIn(snapshot, view, alias) : undefined
+  }
+
   /** Every media item, in tree order. */
   async allMedia(): Promise<PublishedMedia[]> {
     return [...(await this.snapshot()).media.values()]
+  }
+
+  /** The media item whose file is served at this address, `/media/<folder>/<name>`. */
+  async mediaAt(url: string): Promise<PublishedMedia | undefined> {
+    const snapshot = await this.snapshot()
+    let byUrl = mediaByUrl.get(snapshot)
+    if (!byUrl) {
+      byUrl = new Map()
+      for (const media of snapshot.media.values()) if (media.url) byUrl.set(media.url, media)
+      mediaByUrl.set(snapshot, byUrl)
+    }
+    return byUrl.get(url)
   }
 
   /** How URLs are built here: whether the top-level page is left out of paths. */
@@ -918,6 +972,28 @@ export class PublishedCache {
   }
 
   /** The form with its source-backed choices resolved, as a page in `culture` would render it. */
+  /**
+   * What drawing forms from data needs, synchronously once the snapshot is in
+   * hand: a form with its choice sources filled in, and a page's address.
+   */
+  async formTools(culture?: string | null): Promise<{
+    resolve(form: SchemaForm): SchemaForm
+    urlOf(key: string): string | undefined
+  }> {
+    const snapshot = await this.snapshot()
+    const view = this.#view(snapshot, culture)
+    return {
+      resolve: (form) =>
+        withResolvedChoices(form, (source) =>
+          resolveChoices(snapshot, view, culture ?? null, source),
+        ),
+      urlOf: (key) => {
+        const url = view?.byKey.get(key.toLowerCase())?.url
+        return url && url !== '#' ? url : undefined
+      },
+    }
+  }
+
   async resolveForm(form: SchemaForm, culture?: string | null): Promise<SchemaForm> {
     const snapshot = await this.snapshot()
     const view = this.#view(snapshot, culture)

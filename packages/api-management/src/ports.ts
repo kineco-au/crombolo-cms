@@ -185,11 +185,23 @@ export interface DynamicRootPort {
 }
 
 /** Preview mode is a cookie; the server owns its name and attributes. */
+/** The provider alias the Preview in app option asks for (story 053). */
+export const APP_PREVIEW_PROVIDER = 'cromboloAppPreview'
+
 export interface PreviewPort {
   /** `Set-Cookie` values that enter preview for the signed-in editor. */
   enter(): string[]
   /** `Set-Cookie` values that leave it. */
   exit(): string[]
+  /**
+   * Where a page previews in the site's app, with a preview token for the
+   * editor in it, or why it cannot; absent when the site has no app preview.
+   */
+  inApp?(
+    key: string,
+    culture: string | null,
+    principal: Principal,
+  ): Promise<{ url: string } | { message: string }>
 }
 
 export interface DictionaryItemModel {

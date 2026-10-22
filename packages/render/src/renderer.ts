@@ -15,7 +15,7 @@ import type { EmailProps, EmailRenderResult } from './email.ts'
 import { RawHtml } from './html.ts'
 import { type Child, renderToString } from './jsx-runtime.ts'
 import type { PageProps, PublishedContent, RequestMember } from './model.ts'
-import { type PublishedCache, translate, urlsIn } from './published-cache.ts'
+import { menuItemsIn, type PublishedCache, translate, urlsIn } from './published-cache.ts'
 import type { SiteSearchPort } from './search.ts'
 import { absoluteUrl, type SeoSiteDefaults } from './seo.ts'
 import type { ViewSnapshots } from './snapshots.ts'
@@ -348,12 +348,14 @@ export class Renderer {
     const nav = await this.#cache.navigation(culture)
     const snapshot = await this.#cache.snapshot()
     const dictionary = (key: string) => translate(snapshot, key, culture)
+    const menu = (alias: string) => menuItemsIn(snapshot, culture, alias)
     const origin = (request.origin ?? 'http://localhost').replace(/\/$/, '')
     const props: PageProps = {
       model: content,
       nav,
       culture,
       dictionary,
+      menu,
       member: request.member,
       submission: request.submission,
       request: { origin, url: request.url ?? `${origin}/` },

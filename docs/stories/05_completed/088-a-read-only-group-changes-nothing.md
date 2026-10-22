@@ -144,9 +144,8 @@ other media write (13 operations, held by a test that walks the contract).
   verbs. "Children" in the criteria is read as the collection (list view).
 - Seeded into `admin` and `editor` (the built-in groups with Media).
 - *Decision:* migration 045 `GrantMediaPermissions`
-  (`packages/data/src/schema/media-permissions.ts`, `release: '0.21.0'` — the
-  next release: 0.21.0 is the version in the tree but is not yet tagged or
-  published) runs `grantBuiltInPermissions` and then gives **both** verbs to
+  (`packages/data/src/schema/media-permissions.ts`, `release: '0.21.0'`, the
+  release it shipped in) runs `grantBuiltInPermissions` and then gives **both** verbs to
   **every** group with the Media section, custom ones included (section stored
   as `media` or `Umb.Section.Media`). Every group keeps exactly the media access
   it had; an administrator narrows a group afterwards by unticking Change.
@@ -234,3 +233,16 @@ tracking; a read-only property). `tests/upgrade-from-release.test.ts` and
   Start nodes already scope media by place; verbs here are per group.
 - Member and settings areas, which already need their own sections and were
   found sound.
+
+### Since: the media workspace is read only too (2026-10-20)
+
+Checked live, a user without `Crombolo.Media.Update` could still type into a
+media item's name. Nothing saved it, because Save was hidden and the server
+refuses anyway, but the field looked editable.
+
+`media-permissions.js` now also registers a `workspaceContext` for
+`Umb.Workspace.Media`, `media-read-only.js`, loaded only in the backoffice.
+It adds a rule to the workspace's own `readOnlyGuard` for such a user. That is
+the state Umbraco uses for a trashed item, and it locks the name and every
+property. A test holds the vendored workspace to still having that guard and
+that alias.

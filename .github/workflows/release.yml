@@ -105,7 +105,7 @@ jobs:
 
             - run: bun run generate:types
 
-            - uses: actions/cache@v4
+            - uses: actions/cache@v6
               id: dist
               with:
                   path: packages/backoffice-dist/dist

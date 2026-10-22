@@ -8,11 +8,21 @@
  * deletable, alias fixed. Video, Audio, Article and Vector Graphics are
  * ordinary types a site owns as files in `schema/media-types/`; `crombolo
  * init` scaffolds them and deleting one deletes its file.
+ *
+ * `mediaCacheFields` ("Caching", story 057) is ours: a system type only ever
+ * composed into others, so it is never offered as something to make.
  */
-import { type ContentTypeAggregate, normaliseUuid, SYSTEM_MEDIA_TYPE_KEYS } from '@crombolo/core'
+import {
+  CACHE_FIELDS_PROPERTIES,
+  type ContentTypeAggregate,
+  MEDIA_CACHE_FIELDS_TYPE_KEY,
+  MEDIA_CACHE_KEEP_FOR_PROPERTY_KEY,
+  normaliseUuid,
+  SYSTEM_MEDIA_TYPE_KEYS,
+} from '@crombolo/core'
 import type { Db } from '../database.ts'
 import { ContentTypeRepository } from '../repositories/content-types.ts'
-import { DEFAULT_DATA_TYPES } from './content-seed.ts'
+import { ALL_SEEDED_DATA_TYPES } from './content-seed.ts'
 
 export interface BuiltInMediaProperty {
   key: string
@@ -30,6 +40,8 @@ export interface BuiltInMediaType {
   icon: string
   /** Folder, Image and File: undeletable, alias fixed. */
   system: boolean
+  /** Only ever composed into other media types, never made as an item: "Caching" (story 057). */
+  composition?: boolean
   /** A built-in data type alias for the collection view. */
   collection?: string
   /** Aliases; Folder allows every built-in, the ones a site has. */
@@ -207,12 +219,30 @@ export const BUILT_IN_MEDIA_TYPES: readonly BuiltInMediaType[] = [
       pixels('9e4c2b59-6bc6-4648-bb71-b0f45ddbc274', 'umbracoHeight'),
     ],
   },
+  {
+    key: MEDIA_CACHE_FIELDS_TYPE_KEY,
+    alias: 'mediaCacheFields',
+    name: 'Caching',
+    icon: 'icon-timer',
+    system: true,
+    composition: true,
+    allowChildren: [],
+    group: { key: '5c8f1a36-0e7b-4d29-9a54-3b6d2e8f1c70', name: 'Caching', alias: 'caching' },
+    // Its own key: a property key is unique across every type, document or media.
+    properties: CACHE_FIELDS_PROPERTIES.map((p) => ({
+      key: MEDIA_CACHE_KEEP_FOR_PROPERTY_KEY,
+      alias: p.alias,
+      name: p.name,
+      dataType: 'keepCopiesFor',
+      mandatory: false,
+    })),
+  },
 ]
 
 export const SYSTEM_MEDIA_TYPES = BUILT_IN_MEDIA_TYPES.filter((t) => t.system)
 
 const dataTypeKey = (alias: string): string => {
-  const found = DEFAULT_DATA_TYPES.find((d) => d.alias === alias)
+  const found = ALL_SEEDED_DATA_TYPES.find((d) => d.alias === alias)
   if (!found) throw new Error(`built-in media types reference unknown data type "${alias}"`)
   return found.key
 }
@@ -228,7 +258,7 @@ export function builtInMediaTypeAggregate(
     name: def.name,
     description: null,
     icon: def.icon,
-    allowedAsRoot: true,
+    allowedAsRoot: !def.composition,
     variesByCulture: false,
     variesBySegment: false,
     isElement: false,

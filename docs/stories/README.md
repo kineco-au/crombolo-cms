@@ -126,9 +126,21 @@ not cover.
 
 ### Epic F — Headless
 
+What a single-page app or any other front end built apart from the site needs
+around the read API. `051` comes first: until the API answers cross-origin
+requests, only server-side and build-time front ends can call it.
+
 | # | Story | Priority | Size | State | Depends on |
 |---|---|---|---|---|---|
 | `050` | The Delivery API | should | L | done | — |
+| `051` | An app on another site reads the API | must | S | done | — |
+| `052` | Types for every content type | should | M | done | — |
+| `053` | An app previews drafts | should | L | done | 051 |
+| `054` | One lookup answers a route | should | M | done | — |
+| `055` | Search and sharing details reach the app | should | S | done | — |
+| `056` | An app renders a form itself | could | M | done | 051 |
+| `057` | A CDN can cache the site and the API | should | L | done | — |
+| `058` | Translations, menus and site settings reach the app | could | M | ready | 141 |
 
 ### Epic G — Trusting and extending bundles
 
@@ -161,7 +173,7 @@ not cover.
 | `085` | A full Postgres parity run | must | M | ready | — |
 | `086` | Performance of the tree and the published cache | should | M | done | — |
 | `087` | A ready-to-run container image | should | M | ready | — |
-| `088` | A read-only group changes nothing | must | M | in progress | 023, 026, 027, 028 |
+| `088` | A read-only group changes nothing | must | M | done | 023, 026, 027, 028 |
 
 ### Epic J — Forms
 
@@ -212,7 +224,7 @@ not cover.
 | # | Story | Priority | Size | State | Depends on |
 |---|---|---|---|---|---|
 | `140` | Site search for visitors | should | M | done | — |
-| `141` | Navigation menus | should | M | ready | — |
+| `141` | Navigation menus | should | M | done | — |
 | `142` | Blogging basics: taxonomies, archives and feeds | should | M | ready | — |
 | `143` | Comments with moderation | could | M | ready | — |
 | `144` | Themes configured without code | could | L | ready | — |

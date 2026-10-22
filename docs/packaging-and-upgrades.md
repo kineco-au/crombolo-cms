@@ -53,6 +53,7 @@ these packages. All four are fixed:
 | `@crombolo/server` | the composition root, `crombolo(config)`, ports and adapters | `@crombolo/crombolo` |
 | `@crombolo/backoffice-dist` | **the built backoffice only** — static assets, ~90 MB, versioned in lockstep | `@crombolo/backoffice-host` |
 | `@crombolo/core`, `data`, `auth`, `api-management`, `backoffice-host`, `render`, `contracts`, `schema`, `transfer` | as today, plus the schema package and `transfer` (the content bundle format — `content-transfer.md`) | `@crombolo/server` |
+| `@crombolo/delivery-client` | a typed client for the Delivery API, built to JavaScript (`delivery-api.md`, "Typed apps") | **apps**, never a site |
 
 **Why the built backoffice is its own package.** It changes only when the pinned
 Umbraco version changes; the code packages change every release. Shipping it
@@ -651,8 +652,8 @@ draft, and every mandatory language must be published.
 
 ## Releasing to npm
 
-The workspace publishes as **one fixed-version set**: thirteen packages, one
-version, released together. `@crombolo/crombolo` is the only package a site installs; the
+The workspace publishes as **one fixed-version set**: every package under
+`packages/`, one version, released together. `@crombolo/crombolo` is the only package a site installs; the
 `@crombolo/*` packages are its dependencies, pinned to the exact same version.
 `@crombolo/cli` is the one worth installing alone — on a machine that runs
 commands against a site rather than serving it.
@@ -670,6 +671,14 @@ Packages ship **TypeScript source**, not compiled JS: `exports` points straight 
 `src/index.ts`. Bun runs it, types come free, and there is no build step, no dual
 ESM/CJS and no sourcemaps. The cost is that crombolo is Bun-only — `engines.bun`
 says so — and a consumer's `tsc` typechecks our source rather than declarations.
+
+`@crombolo/delivery-client` is the one exception, because it is installed by an
+app, not a site, and an app's toolchain cannot be assumed to run TypeScript from
+`node_modules` (Node will not strip types there; Next.js needs
+`transpilePackages`). In the workspace it is source like the rest; publishing
+builds `dist/index.js` and `dist/index.d.ts` and packs it under a manifest whose
+`exports` point there (`scripts/delivery-client.ts`), then puts the source
+manifest back. It has no dependencies, and no site depends on it.
 
 Runtime dependencies are `@logtape/logtape`, and the AWS SDK behind
 `@crombolo/assistant` — which a site installs only if it depends on that package,

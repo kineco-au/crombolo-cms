@@ -16,6 +16,7 @@ import type {
 } from '@crombolo/api-management'
 import { AuthStore, expireCookie, serializeCookie } from '@crombolo/auth'
 import {
+  APP_PREVIEW_MANIFEST_ID,
   ASSISTANT_MANIFEST_ID,
   type BackOfficePaths,
   collectManifests,
@@ -127,12 +128,13 @@ function createServerPort(config: CromboloConfig, canSendUserLinks: boolean): Se
 /** Umbraco's preview cookie; with a signed-in editor it turns on draft rendering. */
 export const PREVIEW_COOKIE = 'UMB_PREVIEW'
 
-function createPreviewPort(config: CromboloConfig): PreviewPort {
+function createPreviewPort(config: CromboloConfig, inApp?: PreviewPort['inApp']): PreviewPort {
   return {
     enter: () => [
       serializeCookie({ name: PREVIEW_COOKIE, value: 'preview', secure: config.secureCookies }),
     ],
     exit: () => [expireCookie(PREVIEW_COOKIE, config.secureCookies)],
+    inApp,
   }
 }
 
@@ -389,6 +391,8 @@ export interface DepsOptions {
   webhooks?: WebhookService
   /** Required alongside `db` to serve documents, which invalidate the cache. */
   cache?: PublishedCache
+  /** Where a page previews in the site's app (story 053); unset, Preview is Umbraco's own. */
+  previewInApp?: PreviewPort['inApp']
   schema?: SchemaBoot
   /** Uploaded files; one is made on `config.mediaDir` when omitted. */
   mediaFiles?: MediaFileStore
@@ -454,14 +458,13 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
   const sendUserLink = resolveUserLinkSender(options.config, email)
   const deps: ManagementApiDeps = {
     server: createServerPort(options.config, Boolean(sendUserLink)),
-    preview: createPreviewPort(options.config),
+    preview: createPreviewPort(options.config, options.previewInApp),
     // An unconfigured assistant contributes no extension, so the backoffice has
-    // no drawer, no button and nothing to load.
-    manifests: createManifestPort(
-      options.paths,
-      options.extensions,
-      options.config.assistant ? [] : [ASSISTANT_MANIFEST_ID],
-    ),
+    // no drawer, no button and nothing to load; Preview in app likewise.
+    manifests: createManifestPort(options.paths, options.extensions, [
+      ...(options.config.assistant ? [] : [ASSISTANT_MANIFEST_ID]),
+      ...(options.previewInApp ? [] : [APP_PREVIEW_MANIFEST_ID]),
+    ]),
     localization: createLocalizationPort(
       options.db,
       options.db ? createSchemaFileWriter(options.db, schemaFiles(options.config)) : undefined,

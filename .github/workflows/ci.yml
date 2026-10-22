@@ -52,7 +52,7 @@ jobs:
               with:
                   bun-version: ${{ env.BUN_VERSION }}
             - run: bun install --frozen-lockfile
-            - uses: actions/cache@v4
+            - uses: actions/cache@v6
               id: dist
               with:
                   path: ${{ env.DIST_PATH }}
@@ -152,7 +152,7 @@ jobs:
             - run: bun run generate:types
             # The `client` job has just populated this key, so a miss is a real fault
             # rather than something to paper over by skipping the tests that need it.
-            - uses: actions/cache/restore@v4
+            - uses: actions/cache/restore@v6
               with:
                   path: ${{ env.DIST_PATH }}
                   key: >-
@@ -190,7 +190,7 @@ jobs:
                   bun-version: ${{ env.BUN_VERSION }}
             - run: bun install --frozen-lockfile
             - run: bun run generate:types
-            - uses: actions/cache/restore@v4
+            - uses: actions/cache/restore@v6
               with:
                   path: ${{ env.DIST_PATH }}
                   key: >-
@@ -230,7 +230,7 @@ jobs:
             - run: bun install --frozen-lockfile
             - run: bun run generate:types
             # Keyed on the lockfile, which is what moves when @playwright/test does.
-            - uses: actions/cache@v4
+            - uses: actions/cache@v6
               id: browsers
               with:
                   path: ~/.cache/ms-playwright
@@ -240,7 +240,7 @@ jobs:
             # A restored cache has the browser but not the system libraries.
             - run: bunx playwright install-deps chromium
               if: steps.browsers.outputs.cache-hit == 'true'
-            - uses: actions/cache/restore@v4
+            - uses: actions/cache/restore@v6
               with:
                   path: ${{ env.DIST_PATH }}
                   key: >-

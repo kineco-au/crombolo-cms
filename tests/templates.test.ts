@@ -22,6 +22,7 @@ import {
   scaffoldFiles,
 } from '@crombolo/cli'
 import { allFormFields, type SchemaForm } from '@crombolo/core'
+import { SYSTEM_CONTENT_TYPES } from '@crombolo/data'
 import { allProperties, loadSchemaDirectory, validateSchemaSet } from '@crombolo/schema'
 import { listComponents } from '@crombolo/server'
 import { type LoadedBundle, loadBundle } from '@crombolo/transfer'
@@ -109,7 +110,8 @@ describe('the starter templates', () => {
         (t) => t.alias,
       ),
     )
-    const seeded = new Set(['Image', 'File', 'Folder'])
+    // The media types every site has, and the content types Crombolo ships (menus among them).
+    const seeded = new Set(['Image', 'File', 'Folder', ...SYSTEM_CONTENT_TYPES.map((t) => t.alias)])
     for (const type of set.manifest.dependencies.schema.contentTypes)
       expect(aliases.has(type.alias) || seeded.has(type.alias), type.alias).toBe(true)
     // And nothing it expects to find at the destination, which a new site has not got.

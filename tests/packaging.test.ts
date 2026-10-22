@@ -25,6 +25,7 @@ const packages = publishablePackages()
 
 /** Published, but installed only by a site that wants it. */
 const OPT_IN = new Set([
+  '@crombolo/delivery-client',
   '@crombolo/entra',
   '@crombolo/import-umbraco',
   '@crombolo/remote-conformance',
@@ -75,6 +76,7 @@ describe('the published package set', () => {
       '@crombolo/core',
       '@crombolo/crombolo',
       '@crombolo/data',
+      '@crombolo/delivery-client',
       '@crombolo/entra',
       '@crombolo/import-umbraco',
       '@crombolo/remote-conformance',

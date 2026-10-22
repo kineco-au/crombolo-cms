@@ -11,10 +11,13 @@
  *
  * The sites in `sites/` marked `"distribute": true` are staged into the CLI's
  * `templates/` for the length of its pack, so they ship and nothing else does.
+ * `@crombolo/delivery-client` is built to `dist/` and packed under a manifest
+ * pointing there (`delivery-client.ts`); both are put back afterwards.
  */
-import { copyFileSync, existsSync, mkdirSync, rmSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { CLI_MANIFEST, writeCliManifest } from './cli-manifest.ts'
+import { buildDeliveryClient, builtManifest, DELIVERY_CLIENT } from './delivery-client.ts'
 import {
   GENERATED,
   type Manifest,
@@ -131,8 +134,14 @@ for (const pkg of packages) {
   const templates = join(pkg.dir, 'templates')
   const staged = name === CLI ? stageTemplates(templates) : []
   if (name === CLI) await writeCliManifest()
+  const manifestFile = join(pkg.dir, 'package.json')
+  const sourceManifest = readFileSync(manifestFile, 'utf8')
 
   try {
+    if (name === DELIVERY_CLIENT) {
+      await buildDeliveryClient(pkg.dir)
+      writeFileSync(manifestFile, `${JSON.stringify(builtManifest(pkg.manifest), null, 2)}\n`)
+    }
     await run(['bun', 'pm', 'pack', '--destination', OUT], pkg.dir, true)
     const tarball = join(OUT, `${name.replace('@', '').replace('/', '-')}-${version}.tgz`)
     if (!existsSync(tarball)) throw new Error(`Expected ${tarball}`)
@@ -176,6 +185,10 @@ for (const pkg of packages) {
     for (const file of LICENCE_FILES) rmSync(join(pkg.dir, file), { force: true })
     unstage(staged, templates)
     if (name === CLI) rmSync(CLI_MANIFEST, { force: true })
+    if (name === DELIVERY_CLIENT) {
+      writeFileSync(manifestFile, sourceManifest)
+      rmSync(join(pkg.dir, 'dist'), { recursive: true, force: true })
+    }
   }
 }
 

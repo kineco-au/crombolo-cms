@@ -25,7 +25,7 @@ export const BUILTIN_DATA_TYPES: readonly SchemaDataType[] = ALL_SEEDED_DATA_TYP
 )
 
 /** The `property_value` column family an editor stores into; Umbraco's ValueStorageType. */
-/** Folder, Image and File: always present, never deleted, alias fixed. */
+/** Folder, Image, File and Caching: always present, never deleted, alias fixed. */
 export const SYSTEM_MEDIA_TYPE_ALIASES: ReadonlySet<string> = new Set(
   SYSTEM_MEDIA_TYPES.map((t) => t.alias),
 )
@@ -44,7 +44,7 @@ export function builtInMediaTypeSchema(
     alias: def.alias,
     name: def.name,
     icon: def.icon,
-    allowAtRoot: true,
+    allowAtRoot: !def.composition,
     isElement: false,
     allowInLibrary: false,
     variesByCulture: false,
@@ -97,8 +97,8 @@ export function builtInContentTypeSchema(def: BuiltInContentType): SchemaContent
     description: def.description,
     icon: def.icon,
     allowAtRoot: false,
-    isElement: false,
-    allowInLibrary: false,
+    isElement: def.isElement === true,
+    allowInLibrary: def.allowedInLibrary === true,
     variesByCulture: false,
     variesBySegment: false,
     compositions: [],
@@ -147,8 +147,12 @@ export function checkSystemContentTypeFile(t: SchemaContentType): string[] {
   const findings: string[] = []
   if (t.key && t.key.toLowerCase() !== def.key)
     findings.push(`"${t.alias}" is provided by Crombolo; its key must be ${def.key}`)
-  if (t.isElement)
-    findings.push(`"${t.alias}" is provided by Crombolo and cannot be an element type`)
+  if (t.isElement !== (def.isElement === true))
+    findings.push(
+      def.isElement
+        ? `"${t.alias}" is provided by Crombolo and must stay an element type`
+        : `"${t.alias}" is provided by Crombolo and cannot be an element type`,
+    )
   const declared = declaredProperties(t)
   for (const shipped of def.properties) {
     const found = declared.find((p) => p.alias === shipped.alias)

@@ -493,6 +493,8 @@ crombolo/
 │   ├── auth/                      # OAuth2 + PKCE, reference tokens, cookie redaction
 │   ├── api-management/            # contract-first router, authorization, ports, handlers
 │   ├── api-delivery/              # Umbraco's Delivery API over the published cache (docs/delivery-api.md)
+│   ├── delivery-client/           # a typed client for the Delivery API, for apps; the one package published
+│   │                              #    as built JavaScript (scripts/delivery-client.ts)
 │   ├── assistant/                 # optional AI helper: tools, guardrails, changesets, agent loop, MCP, Bedrock
 │   ├── backoffice-host/           # SPA shells, import map, static serving, graphics, bundle manifest and discovery;
 │   │                              #    plugin/ = the Changes dashboard, the Bundles views, the banner,

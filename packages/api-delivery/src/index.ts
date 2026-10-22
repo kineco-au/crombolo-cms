@@ -1,5 +1,7 @@
+export * from './cors.ts'
 export * from './coverage.ts'
 export * from './expansion.ts'
+export * from './forms.ts'
 export * from './handler.ts'
 export * from './output.ts'
 export * from './protection.ts'

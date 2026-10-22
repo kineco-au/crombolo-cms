@@ -7,7 +7,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { SYSTEM_MEDIA_TYPE_KEYS } from '@crombolo/core'
+import { MEDIA_CACHE_FIELDS_TYPE_KEY, SYSTEM_MEDIA_TYPE_KEYS } from '@crombolo/core'
 import {
   BUILT_IN_MEDIA_TYPES,
   ContentTypeRepository,
@@ -154,8 +154,11 @@ describe('built-in media types', () => {
     expect(video.properties[0]?.dataType.id).toBe('70575fe7-9812-4396-bbe1-c81a76db71b5')
 
     const folder = await h.json<MediaTypeResponse>(`${V1}/media-type/${SYSTEM.Folder}`)
+    // Every built-in a folder can hold; "Caching" is only ever composed (story 057).
     expect(folder.allowedMediaTypes.map((a) => a.mediaType.id).sort()).toEqual(
-      BUILT_IN_MEDIA_TYPES.map((t) => t.key).sort(),
+      BUILT_IN_MEDIA_TYPES.filter((t) => !t.composition)
+        .map((t) => t.key)
+        .sort(),
     )
 
     // The file is a top-level group, round-trips, and the site can delete the type
@@ -173,7 +176,9 @@ describe('built-in media types', () => {
     const tree = await h.json<{ items: Array<{ id: string }> }>(
       `${V1}/tree/media-type/root?skip=0&take=20`,
     )
-    expect(tree.items.map((i) => i.id).sort()).toEqual(Object.values(SYSTEM).sort())
+    expect(tree.items.map((i) => i.id).sort()).toEqual(
+      [...Object.values(SYSTEM), MEDIA_CACHE_FIELDS_TYPE_KEY].sort(),
+    )
     const folder = await h.json<MediaTypeResponse>(`${V1}/media-type/${SYSTEM.Folder}`)
     expect(folder.allowedMediaTypes.map((a) => a.mediaType.id).sort()).toEqual(
       Object.values(SYSTEM).sort(),

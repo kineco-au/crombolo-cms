@@ -11,7 +11,7 @@
  * for the case where the point is to move work in progress.
  */
 import type { DocumentAggregate, DocumentValue } from '@crombolo/core'
-import { ObjectTypes } from '@crombolo/core'
+import { isSystemContentType, ObjectTypes } from '@crombolo/core'
 import {
   ComponentRepository,
   type ContentKind,
@@ -288,6 +288,12 @@ export async function exportBundle(db: Db, options: ExportOptions): Promise<Expo
   const outside = [...referenced].filter((key) => !carried.has(key))
   const expected: BundleDependency[] = []
   for (const row of await nodes.byKeys(outside)) {
+    // A type Crombolo ships — a menu item's, in a menu's blocks — is on every site.
+    if (
+      (row.objectType === ObjectTypes.DocumentType && isSystemContentType('document', row.key)) ||
+      (row.objectType === ObjectTypes.MediaType && isSystemContentType('media', row.key))
+    )
+      continue
     expected.push({
       key: row.key,
       objectType: row.objectType ?? '',

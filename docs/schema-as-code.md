@@ -639,6 +639,7 @@ bunx crombolo types check            # …and report what a sync would do
 bunx crombolo types sync             # apply (a deploy step, or leave it to boot)
 bunx crombolo types export           # database → canonical files (adopting an existing site)
 bunx crombolo generate                # schema/content-types.d.ts for typed views
+bunx crombolo generate --delivery --out ../app/src/cms-types.ts   # the Delivery API's JSON, for an app
 ```
 
 `types new` writes the type file — keys filled in, so it passes the production

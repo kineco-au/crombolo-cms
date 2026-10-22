@@ -783,6 +783,61 @@ that document: the Content section, a start node above it, and Read on it
 preview to reload over `/umbraco/PreviewHub` (`refreshed`).
 `DELETE /umbraco/management/api/v1/preview` ends it.
 
+A preview, like a member's page, is sent `private, no-store`, so nothing in
+front of the site keeps it ([`operations.md`](operations.md), "Behind a CDN").
+
+A headless site previews in its app instead: with an app preview address set,
+the Preview button opens the app with a preview token, and the Delivery API
+answers it from drafts ([`delivery-api.md`](delivery-api.md), "Preview").
+
+## Menus
+
+Editors build a site's menus in the Library: a **Menu** is an element made there,
+with an **Alias**, which templates name it by, and its **Items**, dragged into
+order. Each **Menu item** is a link to a page, a media item or an address, an
+optional **Label**, and **Items below**, which nest as deep as the design wants. An
+item with no link is a heading for the items below it. Story `141`;
+`packages/render/src/menus.ts`.
+
+```tsx
+export function SiteHeader(props: PageProps) {
+  return (
+    <nav>
+      {props.menu('main').map((item) => (
+        <a href={item.url ?? undefined}>{item.label}</a>
+      ))}
+    </nav>
+  )
+}
+```
+
+`menu(alias)` is on `PageProps`, so `usePage().menu('footer')` works from any
+component; it answers the menu's items in the page's culture, or `[]` when no
+published menu has that alias. Each item is `{ label, url, target, kind, key,
+content, children }`: `label` is the item's own, else the page's or media item's
+name, else the link's text; `content` is the page, for `aria-current`.
+
+- **Pages are read as they are now.** A renamed or moved page shows its new name
+  and address. One unpublished or in the recycle bin drops out, with the items
+  below it, and comes back when it is published again. An address that would run
+  script (`javascript:` and the like) is dropped as the multi-URL picker drops it.
+- **Cached with the published content.** Menus are published elements, held in
+  the published cache per culture like any other, so publishing a menu or a page
+  in it is what changes it.
+- **The alias** is filled from the menu's name when left empty — "Main
+  navigation" becomes `mainNavigation`, Umbraco's safe-alias rule
+  (`safeAlias` in core) — and stays when the menu is renamed. Two menus may not
+  share one: the second is refused when saved.
+- **The types** are shipped: `menu` (an element type offered in the Library) and
+  `menuItem`, with the `menuItems` block list and the `menuLink` multi-URL picker
+  data types, all ensured at boot by fixed keys. They travel in bundles and in
+  content transfer as any element does; an export does not list them as needing
+  to exist at the destination, because every site has them.
+- The Delivery API answers `menus/{alias}` ([`delivery-api.md`](delivery-api.md)).
+
+The starter template's header reads `menu('main')`, falling back to the home page
+and its children when the menu is empty.
+
 ## Media and imaging
 
 Media items are documents of the media object type, never published. A file

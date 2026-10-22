@@ -1,14 +1,18 @@
 /**
  * Story 050: Umbraco's Delivery API v2 over the published cache — access,
- * items, paths, queries, expansion, members-only pages and media.
+ * items, paths, queries, expansion, members-only pages and media. Story 051:
+ * requests from another origin.
  */
 import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   accessTo,
+  allowedOrigin,
   bearerToken,
   contentAccess,
+  corsMethodsFor,
+  corsPolicy,
   type DeliveryApiOptions,
   mediaAccess,
   memberClientId,
@@ -420,5 +424,128 @@ describe('the Delivery API over HTTP', () => {
     expect(inside.items).toMatchObject([{ id: image.key, path: '/photos/harbour view/' }])
     expect((await json<{ id: string }>('/media/item/photos/harbour view')).id).toBe(image.key)
     expect((await json<{ id: string }>(`/media/item/${image.key}`)).id).toBe(image.key)
+  })
+})
+
+describe('requests from another origin', () => {
+  const policy = (allowedOrigins: string[], publicAccess = true) =>
+    corsPolicy(resolveDeliveryApiSettings({ publicAccess, cors: { allowedOrigins } }))
+  const from = (origin: string) => new Request(`${ORIGIN}/x`, { headers: { origin } })
+
+  test('allow exact origins only, in any case, and say why a malformed one is ignored', () => {
+    const p = policy([
+      'https://App.example.com',
+      'http://localhost:5173/',
+      'app.example.com',
+      'https://example.com/app',
+      'https://example.com?x=1',
+    ])
+    expect([...p.origins]).toEqual(['https://app.example.com', 'http://localhost:5173'])
+    expect(p.problems).toHaveLength(3)
+    expect(p.problems[0]).toContain('"app.example.com"')
+    expect(allowedOrigin(p, from('https://app.example.com'))).toBe('https://app.example.com')
+    expect(allowedOrigin(p, from('https://APP.example.com'))).toBe('https://APP.example.com')
+    expect(allowedOrigin(p, from('https://evil.example.com'))).toBeUndefined()
+    expect(allowedOrigin(p, from('https://app.example.com.evil.com'))).toBeUndefined()
+  })
+
+  test('accept * only while the API is public', () => {
+    expect(allowedOrigin(policy(['*']), from('https://any.example.com'))).toBe('*')
+    const closed = policy(['*'], false)
+    expect(closed.any).toBe(false)
+    expect(closed.problems[0]).toContain('not public')
+    expect(allowedOrigin(closed, from('https://any.example.com'))).toBeUndefined()
+  })
+
+  test('cover the API and the token endpoints, never sign-in or sign-out', () => {
+    expect(corsMethodsFor('v2/content/item/x')).toBe('GET, HEAD')
+    expect(corsMethodsFor('v2/media')).toBe('GET, HEAD')
+    expect(corsMethodsFor('v2/search')).toBe('GET, HEAD')
+    expect(corsMethodsFor('v1/security/member/token')).toBe('POST')
+    expect(corsMethodsFor('v1/security/member/revoke')).toBe('POST')
+    expect(corsMethodsFor('v1/security/member/userinfo')).toBe('GET, POST')
+    expect(corsMethodsFor('v1/security/member/authorize')).toBeUndefined()
+    expect(corsMethodsFor('v1/security/member/signout')).toBeUndefined()
+  })
+
+  const APP = 'https://app.example.com'
+  const SECURITY = '/umbraco/delivery/api/v1/security/member'
+  const preflight = (path: string, origin = APP) =>
+    new Request(`${ORIGIN}${path}`, {
+      method: 'OPTIONS',
+      headers: {
+        origin,
+        'access-control-request-method': 'GET',
+        'access-control-request-headers': 'api-key, accept-language',
+      },
+    })
+
+  test('a listed origin reads content, and the answer varies by origin', async () => {
+    const { get, story } = await site({ enabled: true, cors: { allowedOrigins: [APP] } })
+    const allowed = await get(`/content/item/${story}`, { origin: APP })
+    expect(allowed.status).toBe(200)
+    expect(allowed.headers.get('access-control-allow-origin')).toBe(APP)
+    expect(allowed.headers.get('access-control-allow-credentials')).toBeNull()
+    expect(allowed.headers.get('vary')).toBe(
+      'Accept-Language, Accept-Segment, Preview, Start-Item, Origin',
+    )
+    const other = await get(`/content/item/${story}`, { origin: 'https://evil.example.com' })
+    expect(other.status).toBe(200)
+    expect(other.headers.get('access-control-allow-origin')).toBeNull()
+  })
+
+  test('a pre-flight names the methods and the headers the API reads', async () => {
+    const { h } = await site({ enabled: true, cors: { allowedOrigins: [APP] } })
+    const content = await h.server.fetch(preflight(`${API}/content`))
+    expect(content.status).toBe(204)
+    expect(content.headers.get('access-control-allow-origin')).toBe(APP)
+    expect(content.headers.get('access-control-allow-methods')).toBe('GET, HEAD')
+    expect(content.headers.get('access-control-allow-headers')).toBe(
+      'Accept-Language, Api-Key, Authorization, Content-Type, Preview, Preview-Token, Start-Item',
+    )
+    const token = await h.server.fetch(preflight(`${SECURITY}/token`))
+    expect(token.headers.get('access-control-allow-methods')).toBe('POST')
+    const refused = await h.server.fetch(preflight(`${API}/content`, 'https://evil.example.com'))
+    expect(refused.status).toBe(204)
+    expect(refused.headers.get('access-control-allow-origin')).toBeNull()
+    expect(refused.headers.get('access-control-allow-methods')).toBeNull()
+  })
+
+  test('a refusal still carries the header, so the app can read its status', async () => {
+    const { get, h } = await site({
+      enabled: true,
+      publicAccess: false,
+      cors: { allowedOrigins: [APP] },
+    })
+    const refused = await get('/content', { origin: APP })
+    expect(refused.status).toBe(401)
+    expect(refused.headers.get('access-control-allow-origin')).toBe(APP)
+    const missing = await get(`/content/item/${crypto.randomUUID()}`, {
+      origin: APP,
+      'api-key': 'wrong',
+    })
+    expect(missing.headers.get('access-control-allow-origin')).toBe(APP)
+    const token = await h.server.fetch(
+      new Request(`${ORIGIN}${SECURITY}/token`, { method: 'POST', headers: { origin: APP } }),
+    )
+    expect(token.headers.get('access-control-allow-origin')).toBe(APP)
+  })
+
+  test('sign-in and sign-out are navigations, and get no header', async () => {
+    const { h } = await site({ enabled: true, cors: { allowedOrigins: [APP] } })
+    const signIn = await h.server.fetch(
+      new Request(`${ORIGIN}${SECURITY}/authorize`, { headers: { origin: APP } }),
+    )
+    expect(signIn.headers.get('access-control-allow-origin')).toBeNull()
+  })
+
+  test('with no origins listed nothing changes', async () => {
+    const { get, h, story } = await site()
+    const response = await get(`/content/item/${story}`, { origin: APP })
+    expect(response.headers.get('access-control-allow-origin')).toBeNull()
+    expect(response.headers.get('vary')).toBe(
+      'Accept-Language, Accept-Segment, Preview, Start-Item',
+    )
+    expect((await h.server.fetch(preflight(`${API}/content`))).status).toBe(405)
   })
 })

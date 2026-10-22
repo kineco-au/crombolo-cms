@@ -16,6 +16,7 @@
 import { cpSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { listTemplates, type SiteTemplate } from '@crombolo/cli'
+import { SYSTEM_CONTENT_TYPE_KEYS } from '@crombolo/core'
 import {
   ComponentRepository,
   ContentTypeRepository,
@@ -304,8 +305,35 @@ const LOREM =
   'nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia ' +
   'deserunt mollit anim id est laborum.</p>'
 
+/** A menu's items as the block list stores them: each a page, with a label and items below. */
+interface MenuEntry {
+  key: string
+  page: string
+  label?: string
+  children?: MenuEntry[]
+}
+
+function menuBlocks(entries: readonly MenuEntry[]): Record<string, unknown> {
+  return {
+    layout: { 'Umbraco.BlockList': entries.map((entry) => ({ contentKey: entry.key })) },
+    contentData: entries.map((entry) => ({
+      key: entry.key,
+      contentTypeKey: SYSTEM_CONTENT_TYPE_KEYS.MenuItem,
+      values: [
+        {
+          alias: 'link',
+          value: [{ unique: entry.page, type: 'document', name: '', target: null }],
+        },
+        { alias: 'label', value: entry.label ?? '' },
+        { alias: 'children', value: menuBlocks(entry.children ?? []) },
+      ],
+    })),
+    settingsData: [],
+  }
+}
+
 const STARTER: Builder = async (site) => {
-  const { page } = await writers(site)
+  const { page, element } = await writers(site)
   const home = await page({
     key: '64d95359-d91a-4050-b440-3e5124a74999',
     type: 'contentPage',
@@ -360,6 +388,26 @@ const STARTER: Builder = async (site) => {
     parent: home,
     name: 'Search',
     values: { title: 'Search' },
+  })
+  // The header's links (story 141): editors change them in the Library, without a developer.
+  await element({
+    key: '4e1b7c92-3d5a-4f08-9b26-8c0e2a7d5f13',
+    type: 'menu',
+    name: 'Main navigation',
+    values: {
+      alias: 'main',
+      items: menuBlocks([
+        { key: '6a2d9e41-7b3c-4f58-a1e6-0d4c8b2f9a71', page: home, label: 'Home' },
+        {
+          key: '1c8f5a37-2e9d-4b06-8f43-7a5e1d0c6b92',
+          page: '634dd948-cf83-4cad-9b7b-7c938b33da76',
+        },
+        {
+          key: '9e3b6d24-5f1a-4c87-b0d9-2c7a4e8f1b35',
+          page: 'd2997ebb-36ca-47cb-bbc8-31fefca787c0',
+        },
+      ]),
+    },
   })
 }
 

@@ -6,7 +6,12 @@ import {
   DEFAULT_PASSWORD_CONFIGURATION,
   isValidPassword,
 } from '@crombolo/core'
-import { DEFAULT_RENDER_TIMEOUT_MS, type RedirectRule, type SnapshotLimits } from '@crombolo/render'
+import {
+  type CacheOptions,
+  DEFAULT_RENDER_TIMEOUT_MS,
+  type RedirectRule,
+  type SnapshotLimits,
+} from '@crombolo/render'
 import type { AssistantConfig } from './assistant.ts'
 import type { ServerBundle } from './bundles.ts'
 import type { EmailPort } from './email.ts'
@@ -349,10 +354,19 @@ export interface CromboloConfig {
   /**
    * Umbraco's Delivery API (`docs/delivery-api.md`): off unless enabled.
    * `CROMBOLO_DELIVERY_API`, `CROMBOLO_DELIVERY_API_KEY`,
-   * `CROMBOLO_DELIVERY_API_PUBLIC` and `CROMBOLO_DELIVERY_API_MEDIA`; member
+   * `CROMBOLO_DELIVERY_API_PUBLIC`, `CROMBOLO_DELIVERY_API_MEDIA`,
+   * `CROMBOLO_DELIVERY_API_CORS_ORIGINS`, `CROMBOLO_DELIVERY_API_PREVIEW_URL` and
+   * `CROMBOLO_DELIVERY_API_PREVIEW_TOKEN_MINUTES`; member
    * sign-in is configured here, since its clients and secrets are a list.
    */
   deliveryApi: DeliveryApiOptions
+  /**
+   * How long pages, Delivery API answers and media may be kept by browsers and a
+   * CDN (story 057; `docs/operations.md`, "Behind a CDN"). Nothing is kept unless
+   * set. `CROMBOLO_CACHE_MAX_AGE`, `CROMBOLO_CACHE_STALE_WHILE_REVALIDATE` and
+   * `CROMBOLO_CACHE_TAG_HEADER`; per type alias in code only.
+   */
+  cache: CacheOptions
   /**
    * Bundles whose server half this site runs, each the result of calling the
    * factory its package exports. Imported and listed here by hand on purpose:
@@ -485,6 +499,12 @@ export interface SeoConfig {
   defaultImage?: string
   /** A page key, or rules choosing one per hostname or language. */
   notFoundPage?: string | NotFoundRule[]
+  /**
+   * Where visitors see the site, when that is not here — an app on another host
+   * (story 055): used for preferred addresses, the sitemap and `robots.txt`.
+   * CROMBOLO_PUBLIC_URL.
+   */
+  publicUrl?: string
 }
 
 /** A site's config file exports `defineConfig({...})`; unset keys come from the environment. */
@@ -624,6 +644,7 @@ export function loadConfig(
     seo: stripUndefined({
       sitemap: envFlag(setting('CROMBOLO_SITEMAP')),
       indexable: envFlag(setting('CROMBOLO_INDEXABLE')),
+      publicUrl: setting('CROMBOLO_PUBLIC_URL') || undefined,
     }),
     deliveryApi: stripUndefined({
       enabled: envFlag(setting('CROMBOLO_DELIVERY_API')),
@@ -633,6 +654,27 @@ export function loadConfig(
         envFlag(setting('CROMBOLO_DELIVERY_API_MEDIA')) === undefined
           ? undefined
           : { enabled: envFlag(setting('CROMBOLO_DELIVERY_API_MEDIA')) },
+      cors:
+        setting('CROMBOLO_DELIVERY_API_CORS_ORIGINS') === undefined
+          ? undefined
+          : {
+              allowedOrigins: (setting('CROMBOLO_DELIVERY_API_CORS_ORIGINS') ?? '')
+                .split(',')
+                .map((origin) => origin.trim())
+                .filter(Boolean),
+            },
+      preview: stripUndefined({
+        url: setting('CROMBOLO_DELIVERY_API_PREVIEW_URL') || undefined,
+        tokenMinutes:
+          setting('CROMBOLO_DELIVERY_API_PREVIEW_TOKEN_MINUTES') === undefined
+            ? undefined
+            : Number(setting('CROMBOLO_DELIVERY_API_PREVIEW_TOKEN_MINUTES')),
+      }),
+    }),
+    cache: stripUndefined({
+      maxAge: numberSetting('CROMBOLO_CACHE_MAX_AGE'),
+      staleWhileRevalidate: numberSetting('CROMBOLO_CACHE_STALE_WHILE_REVALIDATE'),
+      tagHeader: setting('CROMBOLO_CACHE_TAG_HEADER') || undefined,
     }),
     // No environment variable: a bundle is an import, which is code.
     bundles: [],
@@ -653,10 +695,16 @@ export function loadConfig(
     throw new Error(
       `remote.environment "${merged.remote.environment}" must be lower case letters, digits and dashes.`,
     )
+  merged.cache = { ...fromEnv.cache, ...stripUndefined(overrides.cache ?? {}) }
   merged.deliveryApi = {
     ...fromEnv.deliveryApi,
     ...stripUndefined(overrides.deliveryApi ?? {}),
     media: { ...fromEnv.deliveryApi.media, ...(overrides.deliveryApi?.media ?? {}) },
+    cors: { ...fromEnv.deliveryApi.cors, ...stripUndefined(overrides.deliveryApi?.cors ?? {}) },
+    preview: {
+      ...fromEnv.deliveryApi.preview,
+      ...stripUndefined(overrides.deliveryApi?.preview ?? {}),
+    },
   }
   // A schema store makes backoffice writes durable, so it carries writability with
   // it — that is the point of configuring one. An explicit setting still wins.
@@ -741,3 +789,11 @@ export function describeDatabase(
 }
 
 export const VERSION = '0.21.0'
+
+/** A whole number of seconds from the environment; undefined when unset or not one. */
+function numberSetting(name: Parameters<typeof setting>[0]): number | undefined {
+  const raw = setting(name)
+  if (raw === undefined || raw.trim() === '') return undefined
+  const value = Number(raw)
+  return Number.isFinite(value) && value >= 0 ? value : undefined
+}

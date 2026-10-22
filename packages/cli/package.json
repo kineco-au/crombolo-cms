@@ -36,6 +36,7 @@
     "access": "public"
   },
   "dependencies": {
+    "@crombolo/api-delivery": "workspace:*",
     "@crombolo/api-management": "workspace:*",
     "@crombolo/auth": "workspace:*",
     "@crombolo/core": "workspace:*",

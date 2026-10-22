@@ -355,13 +355,21 @@ export class AuthService {
     if (!token || token.revokedAt || token.expiresAt.getTime() < Date.now()) return undefined
     const session = await this.#store.findSession(token.sessionId)
     if (!session) return undefined
-    const user = await this.#store.findUserById(token.userId)
-    if (!user || user.isLockedOut || !user.isApproved) return undefined
+    const identity = await this.identityOf(token.userId)
+    return identity && { ...identity, sessionId: token.sessionId }
+  }
 
+  /**
+   * Who a user is and what they may do now, outside any session: for a
+   * credential that acts for them, such as a preview token. Undefined once they
+   * are locked out or not approved.
+   */
+  async identityOf(userId: number): Promise<Omit<ResolvedIdentity, 'sessionId'> | undefined> {
+    const user = await this.#store.findUserById(userId)
+    if (!user || user.isLockedOut || !user.isApproved) return undefined
     const authorization = await this.#store.loadAuthorization(user.id)
     return {
       user,
-      sessionId: token.sessionId,
       allowedSections: toSectionAliases(authorization.appAliases),
       groupKeys: authorization.groupKeys,
       isAdmin: authorization.isAdmin,

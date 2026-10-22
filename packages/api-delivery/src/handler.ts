@@ -4,14 +4,27 @@
  * Every answer is read from memory, so it scales with the nodes that render.
  * docs/delivery-api.md.
  */
-import { branchAccess } from '@crombolo/core'
+import { branchAccess, type SchemaForm } from '@crombolo/core'
 import type {
   PublishedCache,
   PublishedContent,
   PublishedMedia,
   SearchableText,
 } from '@crombolo/render'
-import { excerpt, excerptHtml, isRightToLeft } from '@crombolo/render'
+import {
+  type Cacheable,
+  type CacheSettings,
+  cacheable,
+  excerpt,
+  excerptHtml,
+  isRightToLeft,
+  lifetimeFor,
+  type MenuItem,
+  PRIVATE_NO_STORE,
+  resolveCacheSettings,
+  shortest,
+} from '@crombolo/render'
+import { corsPolicy, isPreflight, preflightResponse, withCors } from './cors.ts'
 import {
   ALL_FIELDS,
   type ExpansionNode,
@@ -50,6 +63,37 @@ export interface DeliveryApiPorts {
   protection(): Promise<ProtectionRule[]>
   /** The member an access token names; undefined for none, or one not valid now. */
   member(token: string): Promise<DeliveryMember | undefined>
+  /**
+   * Drafts for a `Preview: true` request (story 053): given whether it carries
+   * the API key, the draft cache and, for a preview token, which pages its
+   * editor may read; undefined when the request may not preview.
+   */
+  preview?(request: Request, keyed: boolean): Promise<PreviewAccess | undefined>
+  /** How long answers may be kept (story 057); nothing is kept when absent. */
+  caching?: CacheSettings
+  /**
+   * A page's search and sharing details, worked out as `<SeoHead>` works them
+   * out, for `seo=true` (story 055).
+   */
+  seo?(content: PublishedContent, request: Request): Promise<Record<string, unknown>>
+  /** The sitemap's pages for a hostname; undefined when the site serves no sitemap (story 055). */
+  sitemap?(request: Request, host: string): Promise<unknown[] | undefined>
+  /**
+   * Forms as data (story 056): a definition by key or alias, and, for one
+   * request in one culture, how to draw any form as `v2/forms/{key}` answers it.
+   */
+  forms?: {
+    byKey(key: string): SchemaForm | undefined
+    shaper(
+      culture: string | null,
+      request: Request,
+    ): Promise<(form: SchemaForm) => Record<string, unknown>>
+  }
+  /** The page the site shows for an address nothing answers, if it has one (story 054). */
+  notFound?(
+    host: string,
+    path: string,
+  ): Promise<{ key: string; culture: string | null } | undefined>
   /** The member sign-in endpoints under `v1/security/member/`, when built. */
   security?(request: Request, action: string): Promise<Response | undefined>
   /**
@@ -68,12 +112,34 @@ export interface DeliveryApiPorts {
   ): Promise<{ total: number; items: Array<{ key: string; score: number; text: SearchableText }> }>
 }
 
+export interface PreviewAccess {
+  /** Every page as last saved. */
+  cache: PublishedCache
+  /** For an editor's preview token: whether a page, by its ancestors' keys then its own, may be read. */
+  mayRead?(chain: readonly string[]): boolean
+}
+
 export interface DeliveryApi {
   handle(request: Request): Promise<Response | undefined>
+  /** Configured cross-origin settings that were ignored, said once at boot. */
+  problems: string[]
+}
+
+/**
+ * The methods a cross-origin caller may send to a path, or none for a path a
+ * browser reaches by navigating (sign-in and sign-out) or that is not the API's. Pure.
+ */
+export function corsMethodsFor(rest: string): string | undefined {
+  if (/^v2\/(content|media|search|route|sitemap|forms|menus)(\/.*)?$/.test(rest)) return 'GET, HEAD'
+  const security = /^v1\/security\/member\/([^/]+)\/?$/.exec(rest)?.[1]
+  if (security === 'token' || security === 'revoke') return 'POST'
+  if (security === 'userinfo') return 'GET, POST'
+  return undefined
 }
 
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const ROOT_KEY = '00000000-0000-0000-0000-000000000000'
+const PREVIEW_PATH = /^preview-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i
 const CONTENT_VARY = 'Accept-Language, Accept-Segment, Preview, Start-Item'
 
 /** 401, 403 and 404 carry no body in Umbraco's Delivery API. */
@@ -100,6 +166,30 @@ const invalid = (field: string, value: string) =>
     },
     { status: 400, headers: { 'content-type': 'application/problem+json' } },
   )
+
+/**
+ * Whether an answer depends on who asked: a member's token, or an API that is
+ * not public, whose answers are for the key's holder. Pure.
+ */
+export function personal(request: Request, isPublic: boolean, membersSignIn: boolean): boolean {
+  return !isPublic || (membersSignIn && bearerToken(request) !== undefined)
+}
+
+/** Every page, element and media key in an answer, for purge tags. Pure. */
+export function keysIn(body: unknown, into: Set<string> = new Set()): Set<string> {
+  if (Array.isArray(body)) for (const item of body) keysIn(item, into)
+  else if (body && typeof body === 'object') {
+    const record = body as Record<string, unknown>
+    if (
+      typeof record.id === 'string' &&
+      (typeof record.contentType === 'string' || typeof record.mediaType === 'string')
+    )
+      into.add(record.id)
+    for (const value of Object.values(record))
+      if (value && typeof value === 'object') keysIn(value, into)
+  }
+  return into
+}
 
 /** The caller's key, compared exactly; a site without one has none to match. Pure. */
 export const hasValidApiKey = (settings: DeliveryApiSettings, request: Request): boolean =>
@@ -161,14 +251,71 @@ const expansionOf = (url: URL): { expand: ExpansionNode; include: ExpansionNode 
 export function createDeliveryApi(ports: DeliveryApiPorts): DeliveryApi {
   const { settings, cache } = ports
   const prefix = ports.prefix.replace(/\/$/, '')
+  const caching = ports.caching ?? resolveCacheSettings()
 
-  /** Everything a content request decides once: culture, member, rules, routes. */
-  async function contentRequest(request: Request) {
-    const asked = requestedCulture(request.headers.get('accept-language'))
-    const culture = asked ?? (await cache.defaultCulture())
-    const known = asked === undefined || (await cache.hasCulture(asked))
-    const nav = await cache.navigation(culture)
-    const hide = await cache.hidesTopLevel()
+  /** What each public answer holds, so its lifetime and tags are those of its pages and media. */
+  const holds = new WeakMap<Response, { items: Cacheable[]; tags: string[] }>()
+  const holding = (
+    response: Response,
+    items: Cacheable[],
+    tags: string[] = [],
+    drawn?: { formDrawn(): boolean },
+  ) => {
+    if (drawn?.formDrawn()) response.headers.set('cache-control', 'no-store')
+    holds.set(response, { items, tags })
+    return response
+  }
+  const page = (content: PublishedContent): Cacheable => ({
+    typeAlias: content.contentType.alias,
+    value: (alias) => content.value(alias),
+  })
+  const mediaItem = (media: PublishedMedia): Cacheable => ({
+    typeAlias: media.mediaType.alias,
+    value: (alias) => media.value(alias),
+  })
+
+  /**
+   * A public answer's lifetime, ETag and tags; a `304` when the caller holds it.
+   * Anything that depends on who asks is never kept.
+   */
+  async function finish(request: Request, response: Response, personal: boolean) {
+    if (personal) {
+      response.headers.set('cache-control', PRIVATE_NO_STORE)
+      return response
+    }
+    const held = holds.get(response)
+    if (!held || response.status !== 200) return response
+    const body = await response.text()
+    const lifetime =
+      response.headers.get('cache-control') === 'no-store'
+        ? 'none'
+        : shortest(
+            held.items.map((item) => lifetimeFor(caching, item)),
+            caching.site,
+          )
+    const tags = caching.tagHeader ? [...held.tags, ...keysIn(JSON.parse(body))] : undefined
+    return cacheable(request, response, body, { lifetime, tags, tagHeader: caching.tagHeader })
+  }
+
+  /**
+   * Everything a content request decides once: culture, member, rules, routes.
+   * A preview reads the draft cache, and an editor's sees only what they may read.
+   */
+  async function contentRequest(
+    request: Request,
+    preview?: PreviewAccess,
+    /** A culture the address chose, which wins over `Accept-Language`. */
+    chosen?: string | null,
+  ) {
+    const source = preview?.cache ?? cache
+    const asked =
+      chosen !== undefined && chosen !== null
+        ? chosen
+        : requestedCulture(request.headers.get('accept-language'))
+    const culture = asked ?? (await source.defaultCulture())
+    const known = asked === undefined || (await source.hasCulture(asked))
+    const nav = await source.navigation(culture)
+    const hide = await source.hidesTopLevel()
     const roots = nav.root()
     const rtl = isRightToLeft(culture)
 
@@ -178,7 +325,7 @@ export function createDeliveryApi(ports: DeliveryApiPorts): DeliveryApi {
     const loadedRules = new Map((await ports.protection()).map((rule) => [rule.nodeId, rule]))
 
     const routeIn = async (inCulture: string | null) => {
-      const view = await cache.navigation(inCulture)
+      const view = await source.navigation(inCulture)
       const first = view.root()[0]
       const cultureRtl = isRightToLeft(inCulture)
       return (content: PublishedContent): ApiRoute | undefined => {
@@ -198,11 +345,31 @@ export function createDeliveryApi(ports: DeliveryApiPorts): DeliveryApi {
     }
     const route = await routeIn(culture)
 
+    const chainOf = (content: PublishedContent) => [
+      ...[...nav.ancestors(content)].reverse().map((c) => c.key),
+      content.key,
+    ]
+    const readable = (content: PublishedContent) =>
+      !preview?.mayRead || preview.mayRead(chainOf(content))
+
+    // A form carries a token signed for when it was drawn, so an answer holding one
+    // is never kept: a stale draw time would let a bot past the timing guard.
+    let formDrawn = false
+    const shapeForm = ports.forms ? await ports.forms.shaper(culture, request) : undefined
+
     const ctx: OutputContext = {
+      form: shapeForm
+        ? (form) => {
+            formDrawn = true
+            return shapeForm(form)
+          }
+        : undefined,
       route,
       content: (key) => nav.byKey(key),
       allowedType: (alias) => isAllowedContentType(settings, alias),
-      access: (content) => accessTo(content.path, loadedRules, member),
+      // A page the previewing editor may not read keeps its route in a picker, never its properties.
+      access: (content) =>
+        readable(content) ? accessTo(content.path, loadedRules, member) : 'forbidden',
     }
 
     /** Below a node by URL segments, exactly as stored. */
@@ -254,6 +421,7 @@ export function createDeliveryApi(ports: DeliveryApiPorts): DeliveryApi {
       content &&
       known &&
       isAllowedContentType(settings, content.contentType.alias) &&
+      readable(content) &&
       route(content)
         ? content
         : undefined
@@ -263,16 +431,23 @@ export function createDeliveryApi(ports: DeliveryApiPorts): DeliveryApi {
       if (expansion instanceof Response) return expansion
       const routes = new Map<string, (c: PublishedContent) => ApiRoute | undefined>()
       for (const c of content.cultures) routes.set(c, await routeIn(c))
-      return apiContentResponse(
+      const body = apiContentResponse(
         content,
         ctx,
         (c) => routes.get(c)?.(content),
         expansion.expand,
         expansion.include,
       )
+      // Asked for, so answers that do not want them stay the size Umbraco's are.
+      if (body && ports.seo && url.searchParams.get('seo') === 'true')
+        return { ...body, seo: await ports.seo(content, request) }
+      return body
     }
 
     return {
+      source,
+      shapeForm,
+      formDrawn: () => formDrawn,
       culture,
       known,
       nav,
@@ -299,7 +474,7 @@ export function createDeliveryApi(ports: DeliveryApiPorts): DeliveryApi {
     if (access !== 'allowed') return bare(access === 'forbidden' ? 403 : 401)
     const body = await r.respond(found, url)
     if (body instanceof Response) return body
-    return body ? json(body) : bare(404)
+    return body ? holding(json(body), [page(found)], [], r) : bare(404)
   }
 
   async function contentItems(r: ContentRequest, url: URL) {
@@ -319,7 +494,7 @@ export function createDeliveryApi(ports: DeliveryApiPorts): DeliveryApi {
       if (body instanceof Response) return body
       if (body) out.push(body)
     }
-    return json(out)
+    return holding(json(out), found.map(page), [], r)
   }
 
   async function contentQuery(r: ContentRequest, url: URL) {
@@ -334,7 +509,7 @@ export function createDeliveryApi(ports: DeliveryApiPorts): DeliveryApi {
     const take = intParam(url, 'take', 10)
     if (take instanceof Response) return take
 
-    const all = r.known ? await cache.contentIn(r.culture) : []
+    const all = r.known ? await r.source.contentIn(r.culture) : []
     const resolveTarget = (target: string): PublishedContent | 'roots' | undefined => {
       if (!target) return undefined
       if (target === ROOT_KEY) return 'roots'
@@ -384,12 +559,20 @@ export function createDeliveryApi(ports: DeliveryApiPorts): DeliveryApi {
           )
         : visible
     const items = []
-    for (const content of ordered.slice(skip, skip + take)) {
+    const shown = ordered.slice(skip, skip + take)
+    for (const content of shown) {
       const body = await r.respond(content, url)
       if (body instanceof Response) return body
       if (body) items.push(body)
     }
-    return json({ total: ordered.length, items })
+    // A new page under the one fetched from changes this list, so it carries that page's tag.
+    const from = selector.kind === 'all' ? undefined : resolveTarget(selector.target)
+    return holding(
+      json({ total: ordered.length, items }),
+      shown.map(page),
+      from && from !== 'roots' ? [from.key] : [],
+      r,
+    )
   }
 
   /** Media's tree, by parent, and each item's path of lowercased names. */
@@ -426,16 +609,16 @@ export function createDeliveryApi(ports: DeliveryApiPorts): DeliveryApi {
     if (rest === 'items') {
       const ids = [...new Set(url.searchParams.getAll('id').map((id) => id.toLowerCase()))]
       for (const id of ids) if (!GUID.test(id)) return invalid('id', id)
-      return Response.json(
-        ids.flatMap((id) =>
-          tree.byKey.has(id) ? [answer(tree.byKey.get(id) as PublishedMedia)] : [],
-        ),
-      )
+      const found = ids.flatMap((id) => {
+        const media = tree.byKey.get(id)
+        return media ? [media] : []
+      })
+      return holding(Response.json(found.map(answer)), found.map(mediaItem))
     }
     if (rest.startsWith('item/')) {
       const target = rest.slice('item/'.length)
       const found = GUID.test(target) ? tree.byKey.get(target.toLowerCase()) : tree.byPath(target)
-      return found ? Response.json(answer(found)) : bare(404)
+      return found ? holding(Response.json(answer(found)), [mediaItem(found)]) : bare(404)
     }
     if (rest !== '') return undefined
     const query = parseMediaQuery({
@@ -466,10 +649,11 @@ export function createDeliveryApi(ports: DeliveryApiPorts): DeliveryApi {
           compareBy([query.sort]) as unknown as (a: PublishedMedia, b: PublishedMedia) => number,
         )
       : filtered
-    return Response.json({
-      total: ordered.length,
-      items: ordered.slice(skip, skip + take).map(answer),
-    })
+    const shown = ordered.slice(skip, skip + take)
+    return holding(
+      Response.json({ total: ordered.length, items: shown.map(answer) }),
+      shown.map(mediaItem),
+    )
   }
 
   /**
@@ -499,54 +683,288 @@ export function createDeliveryApi(ports: DeliveryApiPorts): DeliveryApi {
       access: branchAccess(r.rules, member),
     })
     const items = []
+    const shown: PublishedContent[] = []
     for (const hit of hits.items) {
       const content = r.servable(r.nav.byKey(hit.key))
       if (!content || r.ctx.access(content) !== 'allowed') continue
       const body = await r.respond(content, url)
       if (body instanceof Response) return body
-      if (body)
+      if (body) {
+        shown.push(content)
         items.push({ ...body, score: hit.score, excerpt: excerptHtml(excerpt(hit.text, term)) })
+      }
     }
-    return json({ total: hits.total, items })
+    return holding(json({ total: hits.total, items }), shown.map(page), [], r)
   }
 
+  const cors = corsPolicy(settings)
+  const corsOn = cors.origins.size > 0 || cors.any
+
   return {
+    problems: cors.problems,
     async handle(request) {
       const url = new URL(request.url)
       if (!url.pathname.startsWith(`${prefix}/`)) return undefined
       const rest = url.pathname.slice(prefix.length + 1)
-
-      const security = /^v1\/security\/member\/(.+)$/.exec(rest)
-      if (security) return ports.security?.(request, security[1] as string)
-
-      if (/^v2\/search\/?$/.test(rest)) {
-        if (request.method !== 'GET' && request.method !== 'HEAD') return bare(405)
-        if (!contentAccess(settings, request)) return bare(401)
-        return contentSearch(await contentRequest(request), url)
-      }
-
-      const match = /^v2\/(content|media)(?:\/(.*))?$/.exec(rest)
-      if (!match) return undefined
-      if (request.method !== 'GET' && request.method !== 'HEAD') return bare(405)
-      const area = match[1]
-      const tail = (match[2] ?? '').replace(/\/$/, '')
-
-      if (area === 'media')
-        return (
-          (await handleMedia(request, url, tail === '' && match[2] === undefined ? '' : tail)) ??
-          bare(404)
-        )
-
-      if (!contentAccess(settings, request)) return bare(401)
-      const r = await contentRequest(request)
-      if (r.badStartItem) return Response.json('The Start-Item could not be found', { status: 404 })
-      if (tail === '' && match[2] === undefined) return contentQuery(r, url)
-      if (tail === 'items') return contentItems(r, url)
-      if (match[2]?.startsWith('item')) {
-        const target = (match[2] as string).replace(/^item\/?/, '')
-        return contentItem(r, GUID.test(target) ? r.nav.byKey(target) : r.byPath(target), url)
-      }
-      return bare(404)
+      const methods = corsOn ? corsMethodsFor(rest) : undefined
+      if (!methods) return route(request, url, rest)
+      if (isPreflight(request)) return preflightResponse(cors, request, methods)
+      const response = await route(request, url, rest)
+      return response && withCors(cors, request, response)
     },
+  }
+
+  async function route(request: Request, url: URL, rest: string) {
+    const security = /^v1\/security\/member\/(.+)$/.exec(rest)
+    if (security) return ports.security?.(request, security[1] as string)
+
+    if (/^v2\/search\/?$/.test(rest)) {
+      if (request.method !== 'GET' && request.method !== 'HEAD') return bare(405)
+      if (!contentAccess(settings, request)) return bare(401)
+      const response = await contentSearch(await contentRequest(request), url)
+      return finish(
+        request,
+        response,
+        personal(request, settings.publicAccess, memberAuthorizationEnabled(settings)),
+      )
+    }
+
+    const menuMatch = /^v2\/menus\/([^/]+)\/?$/.exec(rest)
+    if (menuMatch) {
+      if (request.method !== 'GET' && request.method !== 'HEAD') return bare(405)
+      const preview = isPreview(request) ? await previewAccess(request) : undefined
+      if (preview === null) return bare(401)
+      if (!preview && !contentAccess(settings, request)) return bare(401)
+      const response = await menuAnswer(
+        request,
+        decodeURIComponent(menuMatch[1] as string),
+        preview,
+      )
+      if (preview) {
+        response.headers.set('cache-control', 'no-store')
+        return response
+      }
+      return finish(
+        request,
+        response,
+        personal(request, settings.publicAccess, memberAuthorizationEnabled(settings)),
+      )
+    }
+
+    const formMatch = /^v2\/forms\/([^/]+)\/?$/.exec(rest)
+    if (formMatch) {
+      if (request.method !== 'GET' && request.method !== 'HEAD') return bare(405)
+      if (!contentAccess(settings, request)) return bare(401)
+      const form = ports.forms?.byKey(decodeURIComponent(formMatch[1] as string))
+      if (!form) return bare(404)
+      const r = await contentRequest(request)
+      const shaped = r.shapeForm?.(form)
+      if (!shaped) return bare(404)
+      // Drawn now, with a token for now: never kept, so the timing guard means what it says.
+      return Response.json(shaped, { headers: { vary: CONTENT_VARY, 'cache-control': 'no-store' } })
+    }
+
+    if (/^v2\/sitemap\/?$/.test(rest)) {
+      if (request.method !== 'GET' && request.method !== 'HEAD') return bare(405)
+      if (!contentAccess(settings, request)) return bare(401)
+      const items = await ports.sitemap?.(request, url.searchParams.get('host') || url.host)
+      if (!items) return bare(404)
+      return finish(
+        request,
+        holding(json({ total: items.length, items }), []),
+        personal(request, settings.publicAccess, memberAuthorizationEnabled(settings)),
+      )
+    }
+
+    if (/^v2\/route\/?$/.test(rest)) {
+      if (request.method !== 'GET' && request.method !== 'HEAD') return bare(405)
+      const preview = isPreview(request) ? await previewAccess(request) : undefined
+      if (preview === null) return bare(401)
+      if (!preview && !contentAccess(settings, request)) return bare(401)
+      const response = await routeLookup(request, url, preview)
+      if (preview) {
+        response.headers.set('cache-control', 'no-store')
+        return response
+      }
+      return finish(
+        request,
+        response,
+        personal(request, settings.publicAccess, memberAuthorizationEnabled(settings)),
+      )
+    }
+
+    const match = /^v2\/(content|media)(?:\/(.*))?$/.exec(rest)
+    if (!match) return undefined
+    if (request.method !== 'GET' && request.method !== 'HEAD') return bare(405)
+    const area = match[1]
+    const tail = (match[2] ?? '').replace(/\/$/, '')
+
+    if (area === 'media') {
+      const response =
+        (await handleMedia(request, url, tail === '' && match[2] === undefined ? '' : tail)) ??
+        bare(404)
+      return finish(
+        request,
+        response,
+        personal(
+          request,
+          settings.publicAccess && settings.media.publicAccess,
+          memberAuthorizationEnabled(settings),
+        ),
+      )
+    }
+
+    const preview = isPreview(request) ? await previewAccess(request) : undefined
+    if (preview === null) return bare(401)
+    if (!preview && !contentAccess(settings, request)) return bare(401)
+    const response = await contentRoute(request, url, match[2], tail, preview)
+    // A draft is never kept by a cache between here and the app.
+    if (preview) {
+      response.headers.set('cache-control', 'no-store')
+      return response
+    }
+    return finish(
+      request,
+      response,
+      personal(request, settings.publicAccess, memberAuthorizationEnabled(settings)),
+    )
+  }
+
+  /**
+   * `v2/route?path=&host=` (story 054): what the site would answer at an address
+   * — the page, a redirect, or not found with the site's not-found page — so an
+   * app's router behaves as the rendered site does. A Crombolo addition.
+   */
+  async function routeLookup(
+    request: Request,
+    url: URL,
+    preview: PreviewAccess | undefined,
+  ): Promise<Response> {
+    const path = url.searchParams.get('path')
+    if (!path) return invalid('path', '')
+    const host = url.searchParams.get('host') || url.host
+    const pathname = path.startsWith('/') ? path : `/${path}`
+    const found = await (preview?.cache ?? cache).resolve(host, pathname)
+    // A page that sends its visitors elsewhere (`umbracoRedirect`), as the site's 302 does.
+    if (found?.redirect) return redirectAnswer(found.redirect, 302)
+    if (found) {
+      const r = await contentRequest(request, preview, found.culture)
+      const content = r.servable(r.nav.byKey(found.content.key))
+      if (content) {
+        const access = r.ctx.access(content)
+        if (access !== 'allowed') return bare(access === 'forbidden' ? 403 : 401)
+        const item = await r.respond(content, url)
+        if (item instanceof Response) return item
+        if (item)
+          return holding(
+            json({ kind: 'page', culture: found.culture, item }),
+            [page(content)],
+            [],
+            r,
+          )
+      }
+    }
+    // Only once no page answered, so a redirect never hides live content.
+    const redirect = await cache.redirect(host, pathname)
+    if (redirect) return redirectAnswer(redirect.location, redirect.statusCode)
+    const missing = await ports.notFound?.(host, pathname)
+    let item: Record<string, unknown> | null = null
+    if (missing) {
+      const r = await contentRequest(request, preview, missing.culture)
+      const content = r.servable(r.nav.byKey(missing.key))
+      const body =
+        content && r.ctx.access(content) === 'allowed' ? await r.respond(content, url) : null
+      if (body && !(body instanceof Response)) item = body
+    }
+    return Response.json(
+      { kind: 'notFound', item },
+      { status: 404, headers: { vary: CONTENT_VARY } },
+    )
+  }
+
+  /** A redirect as data. Never kept, as the site's are not: renaming back must not strand anyone. */
+  /**
+   * `v2/menus/{alias}` (story 141): a menu's items in the request's culture. A
+   * page the caller may not open, or of a type the API does not serve, is left
+   * out with the items below it, as a members-only page is from a query.
+   */
+  async function menuAnswer(
+    request: Request,
+    alias: string,
+    preview: PreviewAccess | undefined,
+  ): Promise<Response> {
+    const r = await contentRequest(request, preview)
+    const menu = r.known ? await r.source.menu(alias, r.culture) : undefined
+    if (!menu) return bare(404)
+    const pages: PublishedContent[] = []
+    const shape = (items: readonly MenuItem[]): Record<string, unknown>[] =>
+      items.flatMap((item) => {
+        let route: ApiRoute | undefined
+        if (item.kind === 'page') {
+          const content = item.content ? r.nav.byKey(item.content.key) : undefined
+          if (!content || !r.servable(content) || r.ctx.access(content) !== 'allowed') return []
+          route = r.ctx.route(content)
+          pages.push(content)
+        }
+        return [
+          {
+            label: item.label,
+            kind: item.kind,
+            id: item.key,
+            url: item.kind === 'page' ? null : item.url,
+            route: route ?? null,
+            target: item.target,
+            children: shape(item.children),
+          },
+        ]
+      })
+    const items = shape(menu.items)
+    return holding(json({ alias: menu.alias, items }), pages.map(page), [
+      menu.key,
+      ...pages.map((p) => p.key),
+    ])
+  }
+
+  function redirectAnswer(location: string, statusCode: number): Response {
+    return Response.json(
+      {
+        kind: 'redirect',
+        location,
+        statusCode,
+        permanent: statusCode === 301 || statusCode === 308,
+      },
+      { headers: { vary: CONTENT_VARY, 'cache-control': 'no-store' } },
+    )
+  }
+
+  /** Drafts for a preview with the key or a preview token; null when it may not preview. */
+  async function previewAccess(request: Request): Promise<PreviewAccess | null> {
+    if (!settings.enabled) return null
+    const keyed = hasValidApiKey(settings, request)
+    const access = await ports.preview?.(request, keyed)
+    if (access) return access
+    // Without drafts to read, a keyed preview answers from what is published, as it always has.
+    return keyed && !ports.preview ? { cache } : null
+  }
+
+  async function contentRoute(
+    request: Request,
+    url: URL,
+    rest: string | undefined,
+    tail: string,
+    preview: PreviewAccess | undefined,
+  ): Promise<Response> {
+    const r = await contentRequest(request, preview)
+    if (r.badStartItem) return Response.json('The Start-Item could not be found', { status: 404 })
+    if (tail === '' && rest === undefined) return contentQuery(r, url)
+    if (tail === 'items') return contentItems(r, url)
+    if (rest?.startsWith('item')) {
+      const target = rest.replace(/^item\/?/, '').replace(/\/$/, '')
+      // Umbraco's address for a page in preview, whether or not it has a route.
+      const previewKey = preview ? PREVIEW_PATH.exec(target)?.[1] : undefined
+      if (previewKey) return contentItem(r, r.nav.byKey(previewKey.toLowerCase()), url)
+      return contentItem(r, GUID.test(target) ? r.nav.byKey(target) : r.byPath(target), url)
+    }
+    return bare(404)
   }
 }

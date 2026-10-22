@@ -3,11 +3,16 @@
  * view can name a property and have the compiler check it. Umbraco's
  * ModelsBuilder, minus the DLL.
  */
-import { SYSTEM_CONTENT_TYPES } from '@crombolo/data'
-import { BUILTIN_DATA_TYPES, builtInContentTypeSchema, storageTypeFor } from './builtin.ts'
+import { BUILT_IN_MEDIA_TYPES, SYSTEM_CONTENT_TYPES } from '@crombolo/data'
+import {
+  BUILTIN_DATA_TYPES,
+  builtInContentTypeSchema,
+  builtInMediaTypeSchema,
+  storageTypeFor,
+} from './builtin.ts'
 import { allProperties, type SchemaContentType, type SchemaSet } from './model.ts'
 
-function pascal(alias: string): string {
+export function pascal(alias: string): string {
   const cleaned = alias.replace(/[^A-Za-z0-9]+(.)?/g, (_, next: string | undefined) =>
     next ? next.toUpperCase() : '',
   )
@@ -15,7 +20,7 @@ function pascal(alias: string): string {
 }
 
 /** The element types a block data type allows, by alias, for its content and its settings. */
-function blockElements(set: SchemaSet, config: Record<string, unknown>) {
+export function blockElements(set: SchemaSet, config: Record<string, unknown>) {
   const blocks = Array.isArray(config.blocks)
     ? (config.blocks as Array<Record<string, unknown>>)
     : []
@@ -33,12 +38,22 @@ const elementUnion = (aliases: string[]) =>
     ? 'PublishedElement'
     : aliases.map((a) => `TypedElement<${pascal(a)}>`).join(' | ')
 
+/** A data type's editor and configuration, the site's own or a built-in one. */
+export function dataTypeOf(
+  set: SchemaSet,
+  dataTypeAlias: string,
+): { editor: string | undefined; config: Record<string, unknown> } {
+  const custom = set.dataTypes.find((d) => d.alias === dataTypeAlias)
+  const builtIn = BUILTIN_DATA_TYPES.find((b) => b.alias === dataTypeAlias)
+  return {
+    editor: custom?.editor ?? builtIn?.editor,
+    config: (custom?.config ?? builtIn?.config ?? {}) as Record<string, unknown>,
+  }
+}
+
 /** What a template receives for a property of this data type (see `@crombolo/render` values). */
 function tsTypeFor(set: SchemaSet, dataTypeAlias: string): string {
-  const custom = set.dataTypes.find((d) => d.alias === dataTypeAlias)
-  const editor = custom?.editor ?? BUILTIN_DATA_TYPES.find((b) => b.alias === dataTypeAlias)?.editor
-  const config =
-    custom?.config ?? BUILTIN_DATA_TYPES.find((b) => b.alias === dataTypeAlias)?.config ?? {}
+  const { editor, config } = dataTypeOf(set, dataTypeAlias)
   if (!editor) return 'unknown'
   switch (editor) {
     case 'Umbraco.TrueFalse':
@@ -96,16 +111,23 @@ function tsTypeFor(set: SchemaSet, dataTypeAlias: string): string {
 }
 
 /** Every property a type carries, including those from its compositions. */
-function effectiveProperties(set: SchemaSet, type: SchemaContentType, seen = new Set<string>()) {
+export function effectiveProperties(
+  set: SchemaSet,
+  type: SchemaContentType,
+  seen = new Set<string>(),
+) {
   if (seen.has(type.alias)) return []
   seen.add(type.alias)
   const out = [...allProperties(type)]
   for (const alias of type.compositions) {
     // A built-in type such as `seoFields` has no file until a site extends it.
     const shipped = SYSTEM_CONTENT_TYPES.find((t) => t.alias === alias)
+    const shippedMedia = BUILT_IN_MEDIA_TYPES.find((t) => t.alias === alias)
     const composed =
       set.contentTypes.find((t) => t.alias === alias) ??
-      (shipped ? builtInContentTypeSchema(shipped) : undefined)
+      set.mediaTypes?.find((t) => t.alias === alias) ??
+      (shipped ? builtInContentTypeSchema(shipped) : undefined) ??
+      (shippedMedia ? builtInMediaTypeSchema(shippedMedia) : undefined)
     if (composed) out.push(...effectiveProperties(set, composed, seen))
   }
   return out

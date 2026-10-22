@@ -156,6 +156,7 @@ describe('the settings list', () => {
       CROMBOLO_DELIVERY_API: (c) => c.deliveryApi.enabled ?? false,
       CROMBOLO_DELIVERY_API_PUBLIC: (c) => c.deliveryApi.publicAccess ?? true,
       CROMBOLO_DELIVERY_API_MEDIA: (c) => c.deliveryApi.media?.enabled ?? false,
+      CROMBOLO_DELIVERY_API_PREVIEW_TOKEN_MINUTES: (c) => c.deliveryApi.preview?.tokenMinutes ?? 60,
       CROMBOLO_REMOTE_ENABLED: (c) => c.remote.enabled,
       CROMBOLO_REMOTE_ENVIRONMENT: (c) => c.remote.environment,
       CROMBOLO_REMOTE_PROTECTED: (c) => c.remote.protected,

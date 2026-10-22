@@ -291,3 +291,21 @@ name = "Tell the team"
     expect(JSON.parse(unnamed.out)).toMatchObject({ template: false, email: true })
   })
 })
+
+describe('generate --delivery (story 052)', () => {
+  test('needs --out, because the types belong in the app', () => {
+    const result = run(['generate', '--delivery'])
+    expect(result.code).toBe(2)
+    expect(result.envelope()).toMatchObject({ kind: 'usage' })
+    expect(result.err).toContain('--out')
+  })
+
+  test('writes the Delivery API types from another schema directory', () => {
+    const schema = join(ROOT, 'sites/harbourstone/schema')
+    const result = run(['generate', '--delivery', '--schema', schema, '--out', 'app/cms-types.ts'])
+    expect(result.code).toBe(0)
+    const written = readFileSync(join(dir, 'app/cms-types.ts'), 'utf8')
+    expect(written).toContain('export interface DeliveryTypes {')
+    expect(written).toContain("from '@crombolo/delivery-client'")
+  })
+})

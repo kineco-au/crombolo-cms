@@ -10,9 +10,11 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { SYSTEM_CONTENT_TYPE_KEYS } from '@crombolo/core'
 import { ComponentRepository, ContentTypeRepository } from '@crombolo/data'
 import { generateTypes, loadSchemaDirectory, validateSchemaSet } from '@crombolo/schema'
 import { type Harness, signedInServer, V1 } from './support/harness.ts'
+import { notShipped } from './support/shipped.ts'
 
 const open: Harness[] = []
 const dirs: string[] = []
@@ -100,7 +102,9 @@ describe('the Library tree', () => {
     const allowed = await h.json<{ total: number; items: Array<{ id: string; name: string }> }>(
       `${V1}/document-type/allowed-in-library?skip=0&take=100`,
     )
-    expect(allowed.items.map((i) => i.id)).toEqual([typeKey])
+    expect(allowed.items.filter(notShipped).map((i) => i.id)).toEqual([typeKey])
+    // Menus are made here too (story 141).
+    expect(allowed.items.map((i) => i.id)).toContain(SYSTEM_CONTENT_TYPE_KEYS.Menu)
   })
 
   test('mixes folders and elements, and a folder reports no type and no content', async () => {

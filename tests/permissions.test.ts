@@ -18,6 +18,8 @@ import {
 import {
   onInit as hideMediaChanges,
   MEDIA_CHANGES,
+  MEDIA_READ_ONLY,
+  mayChangeMedia,
 } from '../packages/backoffice-host/plugin/media-permissions.js'
 import umbracoPackage from '../packages/backoffice-host/plugin/umbraco-package.json'
 import { freshDb, undoMigrationsSinceContentEditing } from './support/db.ts'
@@ -170,9 +172,12 @@ describe('the media verbs (story 088)', () => {
 
   test("the media library's changes are hidden from a user without Update", () => {
     const appended: Array<[string, unknown]> = []
+    const registered: unknown[] = []
     hideMediaChanges(undefined, {
       appendCondition: (alias: string, condition: unknown) => appended.push([alias, condition]),
+      register: (manifest: unknown) => registered.push(manifest),
     })
+    expect(registered).toEqual([MEDIA_READ_ONLY])
     expect(appended.map(([alias]) => alias)).toEqual(MEDIA_CHANGES)
     for (const [, condition] of appended)
       expect(condition).toEqual({
@@ -186,6 +191,24 @@ describe('the media verbs (story 088)', () => {
       'Umb.EntityAction.Media.SortChildrenOf',
     ])
       expect(MEDIA_CHANGES).toContain(alias)
+  })
+
+  test('the media workspace is read only, name included, without Update', async () => {
+    expect(mayChangeMedia(['Crombolo.Media.Read', 'Crombolo.Media.Update'])).toBe(true)
+    expect(mayChangeMedia(['Crombolo.Media.Read'])).toBe(false)
+    expect(mayChangeMedia(undefined)).toBe(false)
+    expect(MEDIA_READ_ONLY).toMatchObject({
+      type: 'workspaceContext',
+      conditions: [{ alias: 'Umb.Condition.WorkspaceAlias', match: 'Umb.Workspace.Media' }],
+    })
+    // What it leans on in the vendored client, so an upgrade that moves it fails here.
+    const workspace = 'packages/backoffice-dist/dist/packages/media/media/workspace'
+    expect(await Bun.file(`${workspace}/constants.js`).text()).toContain("'Umb.Workspace.Media'")
+    const context = await Bun.file(`${workspace}/media-workspace.context.js`).text()
+    expect(context).toContain('this.readOnlyGuard.addRule(')
+    const loaded = await Bun.file('packages/backoffice-host/plugin/media-read-only.js').text()
+    expect(loaded).toContain("from '@umbraco-cms/backoffice/media'")
+    expect(loaded).toContain('export { CromboloMediaReadOnly as api }')
   })
 
   test('each action it hides is still one the vendored client registers', async () => {

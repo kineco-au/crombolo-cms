@@ -5,7 +5,16 @@
  * Data type keys are Umbraco's own, so any documentation or example that
  * references a well-known data type still applies.
  */
-import { ObjectTypes, SystemNodes, ValueStorageType } from '@crombolo/core'
+import {
+  KEEP_COPIES_FOR,
+  KEEP_COPIES_FOR_DATA_TYPE_KEY,
+  MENU_ITEMS_DATA_TYPE_KEY,
+  MENU_LINK_DATA_TYPE_KEY,
+  ObjectTypes,
+  SYSTEM_CONTENT_TYPE_KEYS,
+  SystemNodes,
+  ValueStorageType,
+} from '@crombolo/core'
 import type { Db } from '../database.ts'
 import { DbDate } from '../dialect.ts'
 
@@ -507,6 +516,34 @@ export async function seedContent(db: Db): Promise<boolean> {
  * than from the vendored client. Seeded and ensured exactly as Umbraco's are.
  */
 export const CROMBOLO_DATA_TYPES: readonly SeedDataType[] = [
+  // A menu's items and each item's own (story 141): blocks of the Menu item type.
+  {
+    key: MENU_ITEMS_DATA_TYPE_KEY,
+    alias: 'menuItems',
+    name: 'Menu items',
+    editorAlias: 'Umbraco.BlockList',
+    editorUiAlias: 'Umb.PropertyEditorUi.BlockList',
+    dbType: ValueStorageType.Ntext,
+    config: { blocks: [{ contentElementTypeKey: SYSTEM_CONTENT_TYPE_KEYS.MenuItem }] },
+  },
+  {
+    key: MENU_LINK_DATA_TYPE_KEY,
+    alias: 'menuLink',
+    name: 'Menu link',
+    editorAlias: 'Umbraco.MultiUrlPicker',
+    editorUiAlias: 'Umb.PropertyEditorUi.MultiUrlPicker',
+    dbType: ValueStorageType.Ntext,
+    config: { minNumber: 0, maxNumber: 1 },
+  },
+  {
+    key: KEEP_COPIES_FOR_DATA_TYPE_KEY,
+    alias: 'keepCopiesFor',
+    name: 'Keep copies for',
+    editorAlias: 'Umbraco.DropDown.Flexible',
+    editorUiAlias: 'Umb.PropertyEditorUi.Dropdown',
+    dbType: ValueStorageType.Nvarchar,
+    config: { multiple: false, items: KEEP_COPIES_FOR.map((choice) => choice.label) },
+  },
   {
     key: '9c4a7d1e-0100-4b2a-9f31-6d8e2c5a7b40',
     alias: 'formPicker',

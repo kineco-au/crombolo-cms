@@ -20,7 +20,7 @@ import {
   ROOT_ACCESS,
 } from '@crombolo/core'
 import { deniedChildren, deniedPropertyWrite } from '../authorization.ts'
-import type { PreviewPort } from '../ports.ts'
+import { APP_PREVIEW_PROVIDER, type PreviewPort } from '../ports.ts'
 import type { ApprovalGatePort, DocumentPort, PortFailure, SaveDocument } from '../ports-content.ts'
 import type { ManagementApiRouter, RequestContext } from '../router.ts'
 import { created, paging } from './content-type.ts'
@@ -918,6 +918,18 @@ export function registerDocumentHandlers(
         )
       const culture = ctx.url.searchParams.get('culture') || null
       const segment = ctx.url.searchParams.get('segment') || null
+      const provider = ctx.url.searchParams.get('providerAlias')
+      // The app's own address: no preview cookie, since nothing here renders it.
+      if (provider === APP_PREVIEW_PROVIDER && preview.inApp && ctx.principal) {
+        const inApp = await preview.inApp(key, culture, ctx.principal)
+        return Response.json({
+          url: 'url' in inApp ? inApp.url : null,
+          provider,
+          isExternal: true,
+          culture,
+          message: 'message' in inApp ? inApp.message : null,
+        })
+      }
       const query = new URLSearchParams({ id: key, culture: culture ?? '', segment: segment ?? '' })
       const headers = new Headers({ 'content-type': 'application/json' })
       for (const cookie of preview.enter()) headers.append('set-cookie', cookie)

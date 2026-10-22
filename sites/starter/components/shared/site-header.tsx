@@ -1,16 +1,20 @@
-import type { Navigation, PublishedContent } from '@crombolo/crombolo'
+import type { MenuItem, Navigation, PublishedContent } from '@crombolo/crombolo'
 
 /**
- * The site name, from the config, and the primary nav: the home page followed by its children, so
- * adding a page in the backoffice adds it here. A Search Page among them is the search box instead.
+ * The site name, from the config, and the primary nav: the "Main navigation" menu,
+ * which editors change in the Library. Without one, the home page and its children,
+ * so adding a page in the backoffice adds it here. A Search Page there is the
+ * search box instead.
  */
 export function SiteHeader({
   model,
   nav,
+  links,
   siteName,
 }: {
   model: PublishedContent
   nav: Navigation
+  links: MenuItem[]
   siteName: string
 }) {
   const home = nav.root()[0]
@@ -18,7 +22,15 @@ export function SiteHeader({
   const ancestry = model.path.split(',')
   const children = nav.children(home, { visibleOnly: true })
   const searchPage = children.find((child) => child.contentType.alias === 'searchPage')
-  const links = [home, ...children.filter((child) => child !== searchPage)]
+  const shown =
+    links.length > 0
+      ? links
+      : [home, ...children.filter((child) => child !== searchPage)].map((page) => ({
+          label: page.key === home.key ? 'Home' : page.name,
+          url: page.url,
+          target: null,
+          content: page,
+        }))
   return (
     <header class="site-header">
       <div class="container site-header__inner">
@@ -26,13 +38,23 @@ export function SiteHeader({
           {siteName}
         </a>
         <nav aria-label="Primary">
-          {links.map((link) => {
-            const here =
-              link.key === home.key ? model.key === home.key : ancestry.includes(String(link.id))
-            return (
-              <a href={link.url} aria-current={here ? 'page' : undefined}>
-                {link.key === home.key ? 'Home' : link.name}
+          {shown.map((link) => {
+            const page = link.content
+            const here = page
+              ? page.key === home.key
+                ? model.key === home.key
+                : ancestry.includes(String(page.id))
+              : false
+            return link.url ? (
+              <a
+                href={link.url}
+                target={link.target ?? undefined}
+                aria-current={here ? 'page' : undefined}
+              >
+                {link.label}
               </a>
+            ) : (
+              <span>{link.label}</span>
             )
           })}
         </nav>

@@ -80,7 +80,8 @@ describe('loadConfig reads the environment', () => {
       applyBundleContentOnInstall: true,
       runtimeInstalls: true,
       seo: {},
-      deliveryApi: { media: {} },
+      deliveryApi: { media: {}, cors: {}, preview: {} },
+      cache: {},
       marketplaceUrl: 'https://www.npmjs.com/search?q=keywords%3Acrombolo-bundle',
       packageKeyword: 'crombolo-bundle',
       npmRegistry: 'https://registry.npmjs.org',
@@ -162,10 +163,17 @@ describe('loadConfig reads the environment', () => {
       CROMBOLO_RUNTIME_INSTALLS: 'false',
       CROMBOLO_SITEMAP: 'false',
       CROMBOLO_INDEXABLE: 'false',
+      CROMBOLO_PUBLIC_URL: 'https://www.example.com',
       CROMBOLO_DELIVERY_API: 'true',
       CROMBOLO_DELIVERY_API_KEY: 'key',
       CROMBOLO_DELIVERY_API_PUBLIC: 'false',
       CROMBOLO_DELIVERY_API_MEDIA: 'true',
+      CROMBOLO_DELIVERY_API_CORS_ORIGINS: 'https://app.example.com, https://shop.example.com',
+      CROMBOLO_DELIVERY_API_PREVIEW_URL: 'https://app.example.com/preview?token={token}',
+      CROMBOLO_DELIVERY_API_PREVIEW_TOKEN_MINUTES: '15',
+      CROMBOLO_CACHE_MAX_AGE: '60',
+      CROMBOLO_CACHE_STALE_WHILE_REVALIDATE: '30',
+      CROMBOLO_CACHE_TAG_HEADER: 'Surrogate-Key',
       CROMBOLO_MARKETPLACE_URL: 'https://market.example.com',
       CROMBOLO_PACKAGE_KEYWORD: 'acme-bundle',
       CROMBOLO_NPM_REGISTRY: 'https://npm.example.com',
@@ -228,8 +236,16 @@ describe('loadConfig reads the environment', () => {
       trackRedirects: false,
       applyBundleContentOnInstall: false,
       runtimeInstalls: false,
-      seo: { sitemap: false, indexable: false },
-      deliveryApi: { enabled: true, apiKey: 'key', publicAccess: false, media: { enabled: true } },
+      seo: { sitemap: false, indexable: false, publicUrl: 'https://www.example.com' },
+      deliveryApi: {
+        enabled: true,
+        apiKey: 'key',
+        publicAccess: false,
+        media: { enabled: true },
+        cors: { allowedOrigins: ['https://app.example.com', 'https://shop.example.com'] },
+        preview: { url: 'https://app.example.com/preview?token={token}', tokenMinutes: 15 },
+      },
+      cache: { maxAge: 60, staleWhileRevalidate: 30, tagHeader: 'Surrogate-Key' },
       marketplaceUrl: 'https://market.example.com',
       packageKeyword: 'acme-bundle',
       npmRegistry: 'https://npm.example.com',
@@ -297,6 +313,20 @@ describe('loadConfig reads the environment', () => {
     expect(config.remote.enabled).toBe(true)
     expect(config.remote.environment).toBe('staging')
     expect(config.deliveryApi).toMatchObject({ enabled: true, media: { enabled: true } })
+  })
+
+  test('the Delivery API origins come from the environment, or from code, which wins', () => {
+    setEnv({
+      CROMBOLO_DELIVERY_API_CORS_ORIGINS: 'https://app.example.com,,https://b.example.com ',
+    })
+    expect(loadConfig({}, site).deliveryApi.cors).toEqual({
+      allowedOrigins: ['https://app.example.com', 'https://b.example.com'],
+    })
+    const coded = loadConfig(
+      { deliveryApi: { cors: { allowedOrigins: ['https://code.example.com'] } } },
+      site,
+    )
+    expect(coded.deliveryApi.cors).toEqual({ allowedOrigins: ['https://code.example.com'] })
   })
 
   test('a schema store makes the schema writable and runtime installs off, unless set', () => {

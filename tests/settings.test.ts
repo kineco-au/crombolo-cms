@@ -10,6 +10,7 @@ import { SYSTEM_CONTENT_TYPE_KEYS } from '@crombolo/core'
 import { Locks, SYSTEM_MEMBER_TYPE } from '@crombolo/data'
 import { parseContentType, parseDataType } from '@crombolo/schema'
 import { type Harness, signedInServer, V1 } from './support/harness.ts'
+import { notShipped, SHIPPED_TYPE_KEYS } from './support/shipped.ts'
 
 const open: Harness[] = []
 const dirs: string[] = []
@@ -135,7 +136,9 @@ describe('story 021 content types', () => {
     const elements = await h.json<{ items: Array<{ id: string }> }>(
       `${V1}/item/document-type/search?query=&isElement=true&skip=0&take=10`,
     )
-    expect(elements.items.map((i) => i.id)).toEqual([seo])
+    expect(elements.items.map((i) => i.id).filter((id) => !SHIPPED_TYPE_KEYS.has(id))).toEqual([
+      seo,
+    ])
 
     expect(
       await h.json<Record<string, unknown>>(`${V1}/document-type/${page}/allowed-parents`),
@@ -185,10 +188,8 @@ describe('story 021 content types', () => {
       }),
     })
     // itself never; the type that composes it never (none here); types with compositions never.
-    // The shipped Search & sharing type is always on offer.
-    expect(forPage.map((c) => c.id).sort()).toEqual(
-      [nav, plain, seo, SYSTEM_CONTENT_TYPE_KEYS.SeoFields].sort(),
-    )
+    // The shipped types are always on offer.
+    expect(forPage.map((c) => c.id).sort()).toEqual([nav, plain, seo, ...SHIPPED_TYPE_KEYS].sort())
     expect(forPage.find((c) => c.id === nav)?.isCompatible).toBe(false)
     expect(forPage.find((c) => c.id === seo)?.isCompatible).toBe(true)
     // seo may not compose the page that composes it, and an element type sees only element types
@@ -205,7 +206,7 @@ describe('story 021 content types', () => {
         }),
       },
     )
-    expect(forSeo.map((c) => c.id)).toEqual([nav])
+    expect(forSeo.map((c) => c.id).filter((id) => !SHIPPED_TYPE_KEYS.has(id))).toEqual([nav])
   })
 
   test('folders: tree, siblings, move, rename, refuse to delete when full, and the files say where a type lives', async () => {
@@ -230,11 +231,11 @@ describe('story 021 content types', () => {
     const root = await h.json<{
       items: Array<{ id: string; isFolder: boolean; hasChildren: boolean }>
     }>(`${V1}/tree/document-type/root?skip=0&take=10`)
-    // The folder, the type at root, and the shipped Search & sharing type.
+    // The folder, the type at root, and the shipped types.
     expect(root.items.map((i) => [i.isFolder, i.hasChildren])).toEqual([
       [true, true],
       [false, false],
-      [false, false],
+      ...[...SHIPPED_TYPE_KEYS].map(() => [false, false]),
     ])
     const onlyFolders = await h.json<{ items: Array<{ id: string }> }>(
       `${V1}/tree/document-type/root?skip=0&take=10&foldersOnly=true`,
@@ -251,11 +252,11 @@ describe('story 021 content types', () => {
     const siblings = await h.json<{ items: Array<{ id: string }>; totalBefore: number }>(
       `${V1}/tree/document-type/siblings?target=${other}&before=5&after=5`,
     )
-    expect(siblings.items.map((i) => i.id)).toEqual([
+    expect(siblings.items.map((i) => i.id).filter((id) => !SHIPPED_TYPE_KEYS.has(id))).toEqual([
       folderKey,
       other,
-      SYSTEM_CONTENT_TYPE_KEYS.SeoFields,
     ])
+    expect(siblings.items.map((i) => i.id)).toContain(SYSTEM_CONTENT_TYPE_KEYS.SeoFields)
 
     // The file carries the folder path, and the composition picker shows it
     const file = parseContentType(
@@ -339,10 +340,7 @@ describe('story 021 content types', () => {
     const root = await h.json<{ items: Array<{ name: string; isFolder: boolean }> }>(
       `${V1}/tree/document-type/root?skip=0&take=10`,
     )
-    expect(root.items).toMatchObject([
-      { name: 'Content', isFolder: true },
-      { name: 'Search & sharing', isFolder: false },
-    ])
+    expect(root.items.filter(notShipped)).toMatchObject([{ name: 'Content', isFolder: true }])
     const ancestors = await h.json<Array<{ name: string }>>(
       `${V1}/tree/document-type/ancestors?descendantId=0b1c8e3a-5555-4a5b-9c1d-000000000001`,
     )

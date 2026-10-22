@@ -8,10 +8,24 @@
 
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { createDeliveryApi, resolveDeliveryApiSettings } from '@crombolo/api-delivery'
+import {
+  apiForm,
+  corsPolicy,
+  createDeliveryApi,
+  fillPreviewUrl,
+  isPreflight,
+  preflightResponse,
+  previewProblems,
+  previewsInApp,
+  previewUrlFor,
+  requestedCulture,
+  resolveDeliveryApiSettings,
+  withCors,
+} from '@crombolo/api-delivery'
 import {
   type ClientAddress,
   canReadDocument,
+  canReadDocumentAt,
   createManagementApiRouter,
   hasSection,
   type Principal,
@@ -63,6 +77,7 @@ import {
   ensureKeyValue,
   FormEntryRepository,
   FormWorkflowRepository,
+  latestContentVersionId,
   PublicAccessRepository,
   RedirectRepository,
   readLedger,
@@ -74,14 +89,20 @@ import {
   type WritesPaused,
 } from '@crombolo/data'
 import {
+  cacheable,
+  cacheControl,
   contentForNode,
   DEVELOPMENT_LIMITS,
   FORM_SCRIPT,
   FORM_SCRIPT_PATH,
   FORM_SUBMIT_PATH,
+  formAction,
+  lifetimeFor,
   MEMBER_EXTERNAL_SIGN_IN_PATH,
+  PRIVATE_NO_STORE,
   PublishedCache,
   Renderer,
+  resolveCacheSettings,
   type SnapshotStatus,
   setFormFieldTypes,
   setFormTokenSigner,
@@ -149,6 +170,12 @@ import { createMemberAuth, MEMBER_ROUTE_PREFIX } from './member-auth.ts'
 import { noNodesPage } from './no-nodes.ts'
 import { NotImplementedLog } from './not-implemented.ts'
 import { createDeps, documentEditUrl, PREVIEW_COOKIE, resolveUserLinkSender } from './ports.ts'
+import {
+  previewSigningSecret,
+  previewUser,
+  readPreviewToken,
+  signPreviewToken,
+} from './preview-tokens.ts'
 import { createRedirectTracker } from './redirects.ts'
 import { createRemote } from './remote.ts'
 import { withRemoteMedia } from './remote-media.ts'
@@ -178,7 +205,7 @@ import {
   watchSchema,
 } from './schema.ts'
 import { publishSchema, type SchemaStore, useSchemaStore } from './schema-store.ts'
-import { createSeoHost, originOf } from './seo.ts'
+import { createSeoHost, originOf, publicOrigin } from './seo.ts'
 import {
   combineHubs,
   createServerEventHub,
@@ -471,7 +498,13 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     }
 
     const identity = await auth.resolveAccessToken(token)
-    if (!identity) return undefined
+    return identity && principalFrom(identity)
+  }
+
+  /** What a resolved user may do, as every check in the Management API reads it. */
+  async function principalFrom(
+    identity: NonNullable<Awaited<ReturnType<typeof auth.identityOf>>>,
+  ): Promise<Principal> {
     return {
       id: identity.user.key,
       userName: identity.user.login,
@@ -500,7 +533,28 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     nodeId: schema.nodeId,
   })
   const cacheOptions = { form: (key: string) => forms.byKey(key) }
-  const cache = new PublishedCache(publishedSource, cacheOptions)
+  // Every page as last saved, for previewing in an app (story 053). Built on the
+  // first preview after a change and dropped with the published cache, so a site
+  // nobody previews never holds it. A save on another node announces nothing,
+  // but always adds a version, so the newest version id says when it is stale.
+  const draftSource = createPublishedContentSource(db, {
+    nodeState: schema.nodeState,
+    nodeId: schema.nodeId,
+    drafts: true,
+  })
+  let drafts: { cache: PublishedCache; version: number } | undefined
+  const draftCache = async (): Promise<PublishedCache> => {
+    const version = await latestContentVersionId(db)
+    if (drafts?.version !== version)
+      drafts = { cache: new PublishedCache(draftSource, cacheOptions), version }
+    return drafts.cache
+  }
+  const cache = new PublishedCache(publishedSource, {
+    ...cacheOptions,
+    onInvalidate: () => {
+      drafts = undefined
+    },
+  })
   // A sync or a Settings change that alters how URLs are built moves every URL:
   // the old ones redirect, as a rename's do.
   const urlChange: UrlChangeContext = {
@@ -693,6 +747,8 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     nodeId: schema.nodeId,
   })
   const deliverySettings = resolveDeliveryApiSettings(config.deliveryApi)
+  const caching = resolveCacheSettings(config.cache)
+  const formCors = corsPolicy(deliverySettings)
   const deliveryPrefix = DELIVERY_API_PREFIX
   const deliveryMembers = createDeliveryMemberSecurity({
     db,
@@ -701,18 +757,98 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
   })
   for (const problem of deliveryMembers.problems)
     log.warning('Delivery API: {problem}', { problem })
+  for (const problem of previewProblems(deliverySettings))
+    log.warning('Delivery API: {problem}', { problem })
+
+  // Preview tokens (story 053): an app in the browser reads drafts for the
+  // editor who pressed Preview, checked again on every request.
+  const previewSecret = await previewSigningSecret(db)
+  const previewEditor = async (token: string): Promise<Principal | undefined> => {
+    const claims = readPreviewToken(previewSecret, token)
+    if (!claims) return undefined
+    const standing = await previewUser(db, { id: claims.user })
+    if (standing?.stamp !== claims.stamp) return undefined
+    const identity = await auth.identityOf(claims.user)
+    return identity && principalFrom(identity)
+  }
+
+  /** Where a page previews in the app, with a token for this editor in the address. */
+  async function previewInApp(
+    key: string,
+    culture: string | null,
+    principal: Principal,
+  ): Promise<{ url: string } | { message: string }> {
+    const page = await (await draftCache()).byKey(key, culture)
+    if (!page) return { message: 'Save the page, then preview it in the app.' }
+    const template = previewUrlFor(deliverySettings, page.contentType.alias)
+    if (!template)
+      return {
+        message:
+          'Pages of this type have no preview address in the app. Ask an administrator to add one.',
+      }
+    const standing = await previewUser(db, { key: principal.id })
+    if (!standing) return { message: 'Sign in again, then preview the page.' }
+    const token = signPreviewToken(previewSecret, {
+      user: standing.id,
+      stamp: standing.stamp,
+      expires: Date.now() + deliverySettings.preview.tokenMinutes * 60_000,
+    })
+    const path = /^https?:\/\//i.test(page.url) ? new URL(page.url).pathname : page.url
+    return { url: fillPreviewUrl(template, { path, id: key, culture, token }) }
+  }
+  const appPreview =
+    deliverySettings.enabled && previewsInApp(deliverySettings) ? previewInApp : undefined
+
   const deliveryApi =
     config.role === 'api'
       ? undefined
       : createDeliveryApi({
           settings: deliverySettings,
           cache,
+          caching,
           prefix: deliveryPrefix,
+          // Asked only at request time, by which point the SEO host below exists.
+          seo: async (content, request) => ({ ...(await seo.details(content, request)) }),
+          forms: {
+            // By key, or by alias, which is what an app is likelier to know.
+            byKey: (key) => forms.byKey(key) ?? forms.all().find((form) => form.alias === key),
+            shaper: async (culture, request) => {
+              const tools = await cache.formTools(culture)
+              const now = Date.now()
+              // Submissions go to the CMS, wherever the app that draws the form is.
+              const origin = originOf(request, config)
+              return (form) =>
+                apiForm(tools.resolve(form), {
+                  types: formTypes.types,
+                  action: `${origin}${formAction(form)}`,
+                  token: signFormToken(formSecret, form.key ?? form.alias, now),
+                  renderedAt: now,
+                  redirectUrl: form.redirectTo ? tools.urlOf(form.redirectTo) : undefined,
+                })
+            },
+          },
+          sitemap: (request, host) => seo.sitemapItems(request, host),
+          notFound: async (host, path) => {
+            const found = await seo.notFound(host, path)
+            return found && { key: found.content.key, culture: found.culture }
+          },
+          preview: async (request, keyed) => {
+            if (keyed) return { cache: await draftCache() }
+            const token = request.headers.get('preview-token')
+            const editor = token ? await previewEditor(token) : undefined
+            if (!editor) return undefined
+            return {
+              cache: await draftCache(),
+              mayRead: (chain) => canReadDocumentAt(editor, chain),
+            }
+          },
           protection: () => new PublicAccessRepository(db).allRules(),
           member: (token) => deliveryMembers.member(token),
           security: (request, action) => deliveryMembers.handle(request, action),
           search: (term, options) => new SiteSearch(db).query(term, options),
         })
+  for (const problem of deliveryApi?.problems ?? [])
+    log.warning('Delivery API: {problem}', { problem })
 
   const nodeLookup = createNodeLookup(db)
 
@@ -803,6 +939,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     db,
     webhooks,
     cache,
+    previewInApp: appPreview,
     schema,
     mediaFiles,
     email,
@@ -1064,10 +1201,14 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
 
     // A visitor posting a form. Before the renderer, which would otherwise try
     // to resolve `/crombolo/forms/...` as a page.
-    if (pathname.startsWith(`${FORM_SUBMIT_PATH}/`))
+    // An app on another origin posts here too (story 056), on the Delivery API's origins.
+    if (pathname.startsWith(`${FORM_SUBMIT_PATH}/`)) {
+      if (isPreflight(request) && formCors.origins.size + (formCors.any ? 1 : 0) > 0)
+        return preflightResponse(formCors, request, 'POST')
       return request.method === 'POST'
-        ? submitFormRoute(request, pathname)
+        ? withCors(formCors, request, await submitFormRoute(request, pathname))
         : new Response('Method Not Allowed', { status: 405, headers: { allow: 'POST' } })
+    }
 
     // Not on an `api` node, which serves no public site to describe.
     if ((pathname === '/sitemap.xml' || pathname === '/robots.txt') && config.role !== 'api')
@@ -1898,9 +2039,21 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
   async function serveMedia(pathname: string, search: URLSearchParams): Promise<Response> {
     // Media is what someone else uploaded, served from this origin, so a browser
     // must not guess a type the store did not give.
+    // A file's bytes never change at its address — a replacement is placed in a
+    // new folder — so it is kept for a year unless its media item or type says
+    // otherwise (story 057). Resized images follow their original.
+    const item = await cache.mediaAt(pathname)
+    const chosen = item
+      ? lifetimeFor(
+          caching,
+          { typeAlias: item.mediaType.alias, value: (alias) => item.value(alias) },
+          { site: false },
+        )
+      : undefined
     const cacheable = {
-      'cache-control': 'public, max-age=31536000, immutable',
+      'cache-control': cacheControl(chosen) ?? 'public, max-age=31536000, immutable',
       'x-content-type-options': 'nosniff',
+      ...(caching.tagHeader && item ? { [caching.tagHeader]: item.key } : {}),
     }
     /**
      * `sandbox` for the types that carry script, which Umbraco's upload rules
@@ -1974,7 +2127,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
   /** What every rendered page is told about the request and the site's search defaults. */
   async function pageRequest(request: Request) {
     return {
-      origin: originOf(request, config),
+      origin: publicOrigin(request, config),
       url: request.url,
       seo: await seo.siteDefaults(),
       signal: request.signal,
@@ -2022,6 +2175,9 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
         // The page it was sent from names the culture; the keys a source offers
         // are the same in every culture, so only the stored labels depend on it.
         resolveForm: async (form) => {
+          // An app says which language it drew the form in; a page's address says it otherwise.
+          const asked = requestedCulture(request.headers.get('accept-language'))
+          if (asked && (await cache.hasCulture(asked))) return cache.resolveForm(form, asked)
           const referer = request.headers.get('referer')
           let culture: string | null = null
           try {
@@ -2111,12 +2267,19 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     // cleared, so a reload shows the page rather than the thank-you again.
     const cookie = readCookie(request, FORM_FLASH_COOKIE)
     const submission = cookie ? readFlash(formSecret, cookie) : undefined
+    // A page that is not the same for everyone is never kept: a member's, a
+    // preview, a form's answer, or anything in a members-only branch — which a
+    // visitor sees as the login page, at the same address.
+    let personal = Boolean(preview || member || submission || cookie)
     const result =
       preview ??
       (await renderer.render(pathname, host, {
         member,
         submission,
-        access: (content) => members.decide(content, member),
+        access: async (content) => {
+          if ((await members.decide(content, undefined)).status !== 'allowed') personal = true
+          return members.decide(content, member)
+        },
         search: siteSearchFor(db, cache, member),
         ...(await pageRequest(request)),
       }))
@@ -2124,10 +2287,24 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
       ? { 'set-cookie': expireCookie(FORM_FLASH_COOKIE, config.secureCookies) }
       : {}
     switch (result.status) {
-      case 'ok':
-        return new Response(result.html, {
+      case 'ok': {
+        const response = new Response(result.html, {
           headers: { 'content-type': 'text/html; charset=utf-8', ...cleared },
         })
+        if (personal) {
+          response.headers.set('cache-control', PRIVATE_NO_STORE)
+          return response
+        }
+        const ancestors = (await cache.navigation(result.content.culture)).ancestors(result.content)
+        return cacheable(request, response, result.html, {
+          lifetime: lifetimeFor(caching, {
+            typeAlias: result.content.contentType.alias,
+            value: (alias) => result.content.value(alias),
+          }),
+          tags: [result.content.key, ...ancestors.map((a) => a.key)],
+          tagHeader: caching.tagHeader,
+        })
+      }
       case 'redirect':
         // Umbraco's `umbracoRedirect` answers 302: the page may stop redirecting.
         return new Response(null, {
