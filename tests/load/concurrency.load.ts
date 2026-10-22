@@ -205,7 +205,9 @@ describe(`concurrent editing (${dialectUnderTest}, seed ${SEED})`, () => {
           }
           const label = `${op} ${response.status}`
           statuses.set(label, (statuses.get(label) ?? 0) + 1)
-          if (response.status >= 300 && !REFUSALS.has(response.status))
+          // A save from a copy another save replaced meanwhile is refused (story 172).
+          const stale = op === 'save' && response.status === 412
+          if (response.status >= 300 && !REFUSALS.has(response.status) && !stale)
             unexpected.push(`${label} ${key}: ${await response.text()}`)
         }
       }

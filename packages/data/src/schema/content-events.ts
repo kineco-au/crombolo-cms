@@ -18,7 +18,7 @@ export const contentEventsMigration: Migration = {
   to: STATE_CONTENT_EVENTS,
   name: 'AddContentEvents',
   kind: 'expand',
-  release: '0.24.0',
+  release: '0.24.1',
   async up(db: Db) {
     const t = db.dialect.types
     await db.exec(

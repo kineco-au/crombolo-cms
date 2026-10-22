@@ -121,7 +121,7 @@ describe('upgrading from the previous release', () => {
     expect(result.applied).toEqual(['AddContentEvents'])
     expect(await readState(db)).toBe(STATE_CONTENT_EVENTS)
     const summary = summariseUpgrades(await readLedger(db), VERSION)
-    expect(summary.lastUpgrade).toMatchObject({ release: '0.24.0', steps: 1 })
+    expect(summary.lastUpgrade).toMatchObject({ release: '0.24.1', steps: 1 })
   })
 
   test('the Changes dashboard reports the version, the install and the last upgrade', async () => {

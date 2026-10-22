@@ -167,7 +167,7 @@ the event is marked, exhausted retries, and two dispatchers claiming at once.
 
 ## What was built
 
-- **Migration 046 (`AddContentEvents`, 0.24.0).** It adds a `content_event`
+- **Migration 046 (`AddContentEvents`, 0.24.1; 0.24.0 was tagged but not published).** It adds a `content_event`
   table. `webhook_delivery` and `content_notification` gain `event_id`, with
   unique keys `(event_id, subscriber)` and
   `(event_id, recipient_user_key, action_id)`. All three rewinds are updated:

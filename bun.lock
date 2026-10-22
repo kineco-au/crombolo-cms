@@ -85,7 +85,7 @@
     },
     "packages/api-delivery": {
       "name": "@crombolo/api-delivery",
-      "version": "0.24.0",
+      "version": "0.24.1",
       "dependencies": {
         "@crombolo/contracts": "workspace:*",
         "@crombolo/core": "workspace:*",
@@ -94,7 +94,7 @@
     },
     "packages/api-management": {
       "name": "@crombolo/api-management",
-      "version": "0.24.0",
+      "version": "0.24.1",
       "dependencies": {
         "@crombolo/content": "workspace:*",
         "@crombolo/contracts": "workspace:*",
@@ -103,7 +103,7 @@
     },
     "packages/assistant": {
       "name": "@crombolo/assistant",
-      "version": "0.24.0",
+      "version": "0.24.1",
       "dependencies": {
         "@aws-sdk/client-bedrock-runtime": "^3.1142.0",
         "@aws-sdk/credential-provider-node": "^3.972.84",
@@ -116,7 +116,7 @@
     },
     "packages/auth": {
       "name": "@crombolo/auth",
-      "version": "0.24.0",
+      "version": "0.24.1",
       "dependencies": {
         "@crombolo/core": "workspace:*",
         "@crombolo/data": "workspace:*",
@@ -130,7 +130,7 @@
     },
     "packages/backoffice-host": {
       "name": "@crombolo/backoffice-host",
-      "version": "0.24.0",
+      "version": "0.24.1",
       "dependencies": {
         "@crombolo/backoffice-dist": "workspace:*",
         "@crombolo/core": "workspace:*",
@@ -138,7 +138,7 @@
     },
     "packages/cli": {
       "name": "@crombolo/cli",
-      "version": "0.24.0",
+      "version": "0.24.1",
       "bin": {
         "crombolo": "./bin/crombolo.ts",
       },
@@ -157,7 +157,7 @@
     },
     "packages/content": {
       "name": "@crombolo/content",
-      "version": "0.24.0",
+      "version": "0.24.1",
       "dependencies": {
         "@crombolo/core": "workspace:*",
         "@crombolo/data": "workspace:*",
@@ -165,15 +165,15 @@
     },
     "packages/contracts": {
       "name": "@crombolo/contracts",
-      "version": "0.24.0",
+      "version": "0.24.1",
     },
     "packages/core": {
       "name": "@crombolo/core",
-      "version": "0.24.0",
+      "version": "0.24.1",
     },
     "packages/crombolo": {
       "name": "@crombolo/crombolo",
-      "version": "0.24.0",
+      "version": "0.24.1",
       "bin": {
         "crombolo": "./bin/crombolo.ts",
       },
@@ -197,18 +197,18 @@
     },
     "packages/data": {
       "name": "@crombolo/data",
-      "version": "0.24.0",
+      "version": "0.24.1",
       "dependencies": {
         "@crombolo/core": "workspace:*",
       },
     },
     "packages/delivery-client": {
       "name": "@crombolo/delivery-client",
-      "version": "0.24.0",
+      "version": "0.24.1",
     },
     "packages/entra": {
       "name": "@crombolo/entra",
-      "version": "0.24.0",
+      "version": "0.24.1",
       "dependencies": {
         "@crombolo/server": "workspace:*",
       },
@@ -218,7 +218,7 @@
     },
     "packages/import-umbraco": {
       "name": "@crombolo/import-umbraco",
-      "version": "0.24.0",
+      "version": "0.24.1",
       "dependencies": {
         "@crombolo/core": "workspace:*",
         "@crombolo/data": "workspace:*",
@@ -229,14 +229,14 @@
     },
     "packages/remote-conformance": {
       "name": "@crombolo/remote-conformance",
-      "version": "0.24.0",
+      "version": "0.24.1",
       "bin": {
         "crombolo-remote-conformance": "./bin/crombolo-remote-conformance.ts",
       },
     },
     "packages/render": {
       "name": "@crombolo/render",
-      "version": "0.24.0",
+      "version": "0.24.1",
       "dependencies": {
         "@crombolo/core": "workspace:*",
         "@types/react": "^19.3.0",
@@ -244,7 +244,7 @@
     },
     "packages/schema": {
       "name": "@crombolo/schema",
-      "version": "0.24.0",
+      "version": "0.24.1",
       "dependencies": {
         "@crombolo/core": "workspace:*",
         "@crombolo/data": "workspace:*",
@@ -252,7 +252,7 @@
     },
     "packages/server": {
       "name": "@crombolo/server",
-      "version": "0.24.0",
+      "version": "0.24.1",
       "dependencies": {
         "@crombolo/api-delivery": "workspace:*",
         "@crombolo/api-management": "workspace:*",
@@ -271,7 +271,7 @@
     },
     "packages/simple-redirects": {
       "name": "@crombolo/simple-redirects",
-      "version": "0.24.0",
+      "version": "0.24.1",
       "dependencies": {
         "@crombolo/server": "workspace:*",
       },
@@ -281,7 +281,7 @@
     },
     "packages/transfer": {
       "name": "@crombolo/transfer",
-      "version": "0.24.0",
+      "version": "0.24.1",
       "dependencies": {
         "@crombolo/core": "workspace:*",
         "@crombolo/data": "workspace:*",

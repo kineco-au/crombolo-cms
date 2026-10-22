@@ -8,7 +8,12 @@ point at `docs/stories/`.
 
 Nothing yet.
 
-## v0.24.0 — 2026-10-22
+## v0.24.1 — 2026-10-22
+
+v0.24.0 was tagged but never published: two of its release checks still
+expected a page save without the new revision. This is the first 0.24 release
+on npm, and everything below ships in it.
+
 
 - **An older copy of a page can no longer overwrite a newer one.** When someone
   else saved, published or rolled back a page after an editor opened it, that

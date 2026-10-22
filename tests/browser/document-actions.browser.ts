@@ -170,8 +170,11 @@ test('the page action menu: sort, publish, unpublish, rollback, public access, a
   const home = await createPage(page, HOME)
   await createPage(page, 'Bravo', home)
   await createPage(page, 'Alpha', home)
-  // A second version, so there is something to roll back to
+  // A second version, so there is something to roll back to, saved from the
+  // revision just read, as the backoffice does (story 172)
+  const read = await page.request.get(`${API}/document/${home}`)
   await page.request.put(`${API}/document/${home}`, {
+    headers: { 'if-match': read.headers().etag ?? '*' },
     data: {
       template: null,
       values: [{ alias: 'title', culture: null, segment: null, value: 'Changed' }],
