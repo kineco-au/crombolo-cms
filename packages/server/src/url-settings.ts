@@ -43,8 +43,19 @@ export async function redirectAfterUrlChange(
   ctx: UrlChangeContext,
   before: UrlOptions,
 ): Promise<void> {
+  const withBefore = (source: PublishedContentSource): PublishedContentSource => ({
+    ...source,
+    loadUrlOptions: async () => before,
+  })
+  // The snapshot hands the build a source of its own, so the old setting goes on that too.
+  const snapshot = ctx.source.withSnapshot?.bind(ctx.source)
   const old = new PublishedCache(
-    { ...ctx.source, loadUrlOptions: async () => before },
+    {
+      ...withBefore(ctx.source),
+      withSnapshot: snapshot
+        ? (fn) => snapshot((scoped, checkpoint) => fn(withBefore(scoped), checkpoint))
+        : undefined,
+    },
     ctx.cacheOptions,
   )
   const captured: DocumentRoute[] = []

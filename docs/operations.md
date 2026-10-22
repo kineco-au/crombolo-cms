@@ -612,6 +612,25 @@ should test for non-zero, or for the kind it means. Schema-as-code moved from
 `crombolo schema …` to `crombolo types …`; the old names still run, with a
 deprecation notice, until the next minor release.
 
+## Is every node serving the latest content?
+
+Each node reports the content checkpoint its published cache serves (story
+174; `rendering.md`, "Freshness").
+
+- **`/health`** has a `content` block: `checkpoint` is what the node serves,
+  `latest` is the latest committed checkpoint, `behind` says whether the node
+  lags, and `builtAt` is when its snapshot was built. These are numbers and
+  times only, never content.
+- **The Servers health check** lists what each node serves. It warns when a
+  node has served older content than the latest for more than a minute.
+- **`crombolo cache rebuild`** waits, 30 seconds by default (`--wait`), until
+  every node seen in the last minute serves the new checkpoint, and names the
+  ones that do not.
+
+Set `CROMBOLO_NODE_ID` to something stable per node. The default,
+`host:process`, changes on every restart, so a restarted node shows up as a new
+one and the old row lingers until it ages out.
+
 ## Notifications about page changes
 
 An editor chooses, in a page's **Notifications**, which of Umbraco's eleven

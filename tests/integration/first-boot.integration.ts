@@ -135,18 +135,17 @@ describe('the first boot of a self-hosted site', () => {
   test('a database the previous release left is upgraded by `crombolo upgrade`, and then starts', async () => {
     const file = readdirSync(site()).find((name) => name.endsWith('.sqlite')) as string
     const sqlite = new Database(join(site(), file))
-    // As 0.23.0 left it: before the event outbox (046). Every migration since
-    // the last release has to be undone here, or the upgrade replays one
+    // As 0.24.1 left it: before the content checkpoint (047). Every migration
+    // since the last release has to be undone here, or the upgrade replays one
     // against a table that is already there.
-    sqlite.exec('DROP INDEX IF EXISTS ux_content_notification_event')
-    sqlite.exec('ALTER TABLE content_notification DROP COLUMN event_id')
-    sqlite.exec('DROP INDEX IF EXISTS ux_webhook_delivery_event')
-    sqlite.exec('ALTER TABLE webhook_delivery DROP COLUMN event_id')
-    sqlite.exec('DROP TABLE IF EXISTS content_event')
-    sqlite.exec("DELETE FROM migration_history WHERE name = 'AddContentEvents'")
+    sqlite.exec('DROP TABLE IF EXISTS content_checkpoint')
+    sqlite.exec('ALTER TABLE cache_instruction DROP COLUMN checkpoint')
+    sqlite.exec('ALTER TABLE server DROP COLUMN served_checkpoint')
+    sqlite.exec('ALTER TABLE server DROP COLUMN served_at')
+    sqlite.exec("DELETE FROM migration_history WHERE name = 'AddContentCheckpoint'")
     sqlite
       .query("UPDATE key_value SET value = ? WHERE key = 'Crombolo.Core.Upgrader.State'")
-      .run('{8d4f2b61-0045-4c3e-9a17-5e2b7c9d1f45}')
+      .run('{3e9b7d25-0046-4a1c-8f63-2d5c9e1b7a46}')
     sqlite.close()
 
     const run = async (...args: string[]) => {
@@ -170,7 +169,7 @@ describe('the first boot of a self-hosted site', () => {
     const upgraded = await run('upgrade')
     expect(upgraded.code, upgraded.out).toBe(0)
     const ledger = await run('upgrade', 'ledger')
-    expect(ledger.out).toContain('AddContentEvents')
+    expect(ledger.out).toContain('AddContentCheckpoint')
 
     const proc = Bun.spawn(['bun', CLI, 'start'], {
       cwd: site(),

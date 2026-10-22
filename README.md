@@ -445,7 +445,7 @@ Design documents, in reading order; planned work is in the stories:
 | [data-model](docs/data-model.md) | the relational model, and why a node behind the schema may not write |
 | [api-contract](docs/api-contract.md) | the vendored contract, and how a handler is held to it |
 | [backoffice-hosting](docs/backoffice-hosting.md) | vendoring the SPA, the shells, the auth wire contract, de-branding |
-| [rendering](docs/rendering.md) | TSX templates and the JSX runtime, the published cache, views, hostnames, cultures |
+| [rendering](docs/rendering.md) | TSX templates and the JSX runtime, the published cache and how fresh each node is, views, hostnames, cultures |
 | [features](docs/features.md) | what is implemented, and what is out of scope |
 | [roadmap](docs/roadmap.md) | where this is going, the risks, and what diverges from Umbraco on purpose |
 | [stories](docs/stories/README.md) | every piece of work, built and planned, by epic and state |

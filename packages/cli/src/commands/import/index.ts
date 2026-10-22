@@ -10,7 +10,7 @@ import {
   here,
   printTransferFindings,
 } from '../../support/describe.ts'
-import { backupTaken } from '../../support/flags.ts'
+import { backupTaken, excludePeople } from '../../support/flags.ts'
 import { confirm, passphraseForPeople, passphraseToOpen } from '../../support/prompt.ts'
 import { siteConfig } from '../../support/site.ts'
 
@@ -46,6 +46,7 @@ export default class Import extends BaseCommand {
     'allow-missing-media': Flags.boolean({
       summary: 'import media items whose files the file does not carry',
     }),
+    'exclude-people': excludePeople,
     'backup-taken': backupTaken,
   }
   static override audit = { category: 'content', action: 'Import', entityType: 'Bundle' } as const
@@ -79,10 +80,18 @@ export default class Import extends BaseCommand {
         ? 'replace'
         : undefined
     const dir = await ops.unpackBundle(args.file, config.siteDir)
-    const carriesPeople = ops.readBundle(dir, config.siteDir).set.manifest.people !== undefined
+    const withoutPeople = flags['exclude-people']
+    if (withoutPeople && replace === 'replace-all')
+      this.fail(
+        'usage',
+        "--replace-all deletes the people the file lacks, so it cannot leave the file's people out.",
+        'Use --replace with --exclude-people.',
+      )
+    const carriesPeople =
+      !withoutPeople && ops.readBundle(dir, config.siteDir).set.manifest.people !== undefined
     const passphrase = carriesPeople
       ? await passphraseForPeople()
-      : await passphraseToOpen(dir, config)
+      : await passphraseToOpen(dir, config, { withoutPeople })
     const allowMissingBlobs = flags['allow-missing-media']
 
     const { check, summary } = await ops.siteReplaceCheck(config, {
@@ -90,10 +99,16 @@ export default class Import extends BaseCommand {
       passphrase,
       replace: replace ?? 'replace',
       allowMissingBlobs,
+      excludePeople: withoutPeople,
     })
     describeBundle(this, check.bundle)
     const c = check.check.counts
     this.say(`  brings   ${c.create} new, ${c.update} changed, ${c.unchanged} unchanged`)
+    const excluded = check.check.peopleExcluded
+    if (excluded)
+      this.say(
+        `  leaves   ${excluded.members} member(s) and ${excluded.users} user(s) in the file out`,
+      )
     const fate = replace === 'replace-all' ? 'deleted' : 'recycled'
     if (Object.keys(summary.leaving).length > 0)
       this.say(`  ${fate.padEnd(8)} ${counted(summary.leaving)} not in the file`)
@@ -140,6 +155,7 @@ export default class Import extends BaseCommand {
       passphrase,
       replace,
       allowMissingBlobs,
+      excludePeople: withoutPeople,
       label: `${replace} from ${basename(args.file)}`,
       backupTaken: flags['backup-taken'],
     })

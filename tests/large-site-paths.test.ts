@@ -45,20 +45,22 @@ afterEach(async () => {
 /** The database as given, every statement counted. */
 function counted(db: Db) {
   let statements = 0
-  const wrapped: Db = {
-    dialect: db.dialect,
-    locks: db.locks,
+  const wrap = (inner: Db): Db => ({
+    dialect: inner.dialect,
+    locks: inner.locks,
     query: (sql, params) => {
       statements += 1
-      return db.query(sql, params)
+      return inner.query(sql, params)
     },
     exec: (sql, params) => {
       statements += 1
-      return db.exec(sql, params)
+      return inner.exec(sql, params)
     },
-    transaction: (fn) => db.transaction(fn),
-    close: () => db.close(),
-  }
+    transaction: (fn) => inner.transaction(fn),
+    readSnapshot: (fn) => inner.readSnapshot((reader) => fn(wrap(reader))),
+    close: () => inner.close(),
+  })
+  const wrapped = wrap(db)
   return {
     db: wrapped,
     async during<T>(run: () => Promise<T>): Promise<number> {

@@ -18,6 +18,11 @@ export const backupTaken = Flags.boolean({
 
 export const dryRun = Flags.boolean({ summary: 'say what it would do, and change nothing' })
 
+/** Leaves a file's members, users and their groups out of an import. */
+export const excludePeople = Flags.boolean({
+  summary: "leave out the members and users it carries; this site's own are untouched",
+})
+
 /** A repeatable value flag that takes one value each time, so it never swallows an argument. */
 export const many = (summary: string, helpValue?: string) =>
   Flags.string({ summary, helpValue, multiple: true, multipleNonGreedy: true, default: [] })
@@ -42,6 +47,7 @@ export const transferFlags = {
   'replace-files': Flags.boolean({
     summary: 'allow replacing files this site has; the originals are kept for a revert',
   }),
+  'exclude-people': excludePeople,
 }
 
 export interface TransferFlagValues {
@@ -53,6 +59,7 @@ export interface TransferFlagValues {
   'no-schema': boolean
   'no-files': boolean
   'replace-files': boolean
+  'exclude-people'?: boolean
 }
 
 export function parseResolutions(values: readonly string[]): Record<string, NodeResolutions> {
@@ -81,6 +88,7 @@ export function transferInput(bundle: string, flags: TransferFlagValues): ops.Tr
     withoutSchema: flags['no-schema'],
     withoutFiles: flags['no-files'],
     replaceFiles: flags['replace-files'],
+    excludePeople: flags['exclude-people'],
   }
 }
 

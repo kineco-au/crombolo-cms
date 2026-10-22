@@ -82,12 +82,13 @@ const needPassphrase = (what: string) =>
 export async function passphraseToOpen(
   target: string,
   config: CromboloConfig,
+  options: { withoutPeople?: boolean } = {},
 ): Promise<string | undefined> {
   const given = setting(PASSPHRASE_ENV)
   if (given) return given
   let sealed = false
   try {
-    sealed = ops.readBundle(target, config.siteDir).set.sealed === true
+    sealed = ops.readBundle(target, config.siteDir, undefined, options).set.sealed === true
   } catch {
     // The command that follows reads it again and says what is wrong with it.
     return undefined

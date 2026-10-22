@@ -4,10 +4,13 @@
  */
 import type { DiagnosticsPort, HealthCheckGroup, HealthCheckResult } from '@crombolo/api-management'
 import {
+  changedSince,
   compareStates,
   cromboloPlan,
   currentSchemaState,
   type Db,
+  type LiveNode,
+  latestCheckpoint,
   liveNodes,
   type NodeSchemaState,
   pendingMigrations,
@@ -71,6 +74,36 @@ const GROUPS: HealthCheckGroup[] = [
     ],
   },
 ]
+
+/** Behind the latest content for longer than this, a node is worth a warning: it is not catching up. */
+export const CONTENT_STALE_AFTER_MS = 60_000
+
+/**
+ * Which nodes serve older published content than the latest committed, and for
+ * how long (story 174). Pure: `since` is when the first change a node lacks was
+ * recorded. Numbers and times only, never content.
+ */
+export function freshnessResults(
+  nodes: ReadonlyArray<Pick<LiveNode, 'nodeId' | 'servedCheckpoint'>>,
+  latest: number,
+  since: ReadonlyMap<string, Date>,
+  at: Date,
+): HealthCheckResult[] {
+  const results: HealthCheckResult[] = []
+  for (const node of nodes) {
+    if (node.servedCheckpoint === null) continue
+    if (node.servedCheckpoint >= latest) continue
+    const from = since.get(node.nodeId)
+    if (from && at.getTime() - from.getTime() > CONTENT_STALE_AFTER_MS)
+      results.push(
+        result(
+          'Warning',
+          `${node.nodeId} serves published content as of change ${node.servedCheckpoint}; the latest is ${latest}, since ${from.toISOString()}. It is not catching up: check it can reach the database, or restart it.`,
+        ),
+      )
+  }
+  return results
+}
 
 const QUEUE_LABELS = {
   changes: 'change(s) waiting to be passed on',
@@ -250,9 +283,16 @@ export function createDiagnosticsPort(options: HealthCheckOptions): DiagnosticsP
     const results = live.map((node) =>
       result(
         'Info',
-        `${node.nodeId}${node.role ? ` (${node.role})` : ''} runs Crombolo ${node.cromboloVersion ?? 'of an unknown release'} with schema ${node.version ?? '?'} revision ${node.revision ?? '?'}, last seen ${ago(node.lastSeen, at)}.`,
+        `${node.nodeId}${node.role ? ` (${node.role})` : ''} runs Crombolo ${node.cromboloVersion ?? 'of an unknown release'} with schema ${node.version ?? '?'} revision ${node.revision ?? '?'}, last seen ${ago(node.lastSeen, at)}${node.servedCheckpoint === null ? '' : `, serving published content as of change ${node.servedCheckpoint} of ${latest}`}.`,
       ),
     )
+    const latest = await latestCheckpoint(db)
+    const since = new Map<string, Date>()
+    for (const node of live)
+      if (node.servedCheckpoint !== null && node.servedCheckpoint < latest) {
+        const from = await changedSince(db, node.servedCheckpoint)
+        if (from) since.set(node.nodeId, from)
+      }
     const releases = new Set(live.map((node) => node.cromboloVersion ?? 'unknown'))
     const schemas = new Set(live.map((node) => `${node.version}/${node.revision}`))
     if (releases.size > 1)
@@ -273,6 +313,7 @@ export function createDiagnosticsPort(options: HealthCheckOptions): DiagnosticsP
       results.unshift(
         result('Success', `${live.length} server(s) running Crombolo ${[...releases][0]}.`),
       )
+    results.unshift(...freshnessResults(live, latest, since, at))
     return results
   }
 

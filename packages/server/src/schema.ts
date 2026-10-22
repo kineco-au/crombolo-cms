@@ -19,6 +19,7 @@ import {
   type Finding,
   Locks,
   latestCacheInstructionId,
+  latestCheckpoint,
   latestLedgerId,
   type NodeSchemaState,
   readWritesPaused,
@@ -247,14 +248,27 @@ export interface CachePollerOptions {
   role?: string
   /** Called for instructions other nodes appended. */
   onInstruction(kind: CacheInstructionKind, payload: Record<string, unknown>): void
+  /**
+   * The published cache's freshness (story 174). With it, content and schema
+   * instructions only wake the poll: the node compares the latest committed
+   * checkpoint with the one it serves, and is told it is behind. Being ordered
+   * by commit, the checkpoint cannot skip a change that committed late.
+   */
+  content?: {
+    served(): { checkpoint: number | undefined; builtAt: Date } | undefined
+    behind(latest: number): void
+  }
 }
+
+/** A rebuild asked for and not yet served is asked for again after this long. */
+const REASK_AFTER_MS = 30_000
 
 /**
  * Polls `cache_instruction` from where this node came in; own instructions are
  * skipped. Where the database can notify, a write wakes it at once and the
  * timer is only the fallback.
  */
-/** How far behind its cursor the poller looks for a row that committed late. */
+/** How far behind its cursor the poller looks for a views instruction that committed late. */
 const CURSOR_WINDOW = 100
 
 export class CacheInstructionPoller {
@@ -272,6 +286,14 @@ export class CacheInstructionPoller {
   #bootLedgerId = 0
   #readsUnsafe = false
   #paused: WritesPaused | undefined
+  /** The checkpoint this node last asked its cache to catch up to, and when. */
+  #asked: { checkpoint: number; at: number } | undefined
+  #latest: number | undefined
+
+  /** The latest committed content checkpoint, as of the last poll. */
+  get latestCheckpoint(): number | undefined {
+    return this.#latest
+  }
 
   /** True once an upgrade has moved the database past this node: reads only. */
   get behind(): boolean {
@@ -349,15 +371,22 @@ export class CacheInstructionPoller {
       this.#seen.add(instruction.id)
       this.#cursor = Math.max(this.#cursor, instruction.id)
       if (instruction.createdBy === nodeId) continue
-      onInstruction(instruction.kind, instruction.payload)
       applied += 1
+      // The checkpoint below decides; an instruction about content only woke us.
+      if (this.#options.content && instruction.checkpoint !== null) continue
+      onInstruction(instruction.kind, instruction.payload)
     }
     for (const id of this.#seen) if (id <= this.#cursor - CURSOR_WINDOW) this.#seen.delete(id)
+    const served = await this.#catchUp()
     await touchServer(db, {
       nodeId,
       ...nodeState,
       role: this.#options.role,
       cromboloVersion: VERSION,
+      served:
+        served?.checkpoint === undefined
+          ? undefined
+          : { checkpoint: served.checkpoint, at: served.builtAt },
     })
     const current = await currentSchemaState(db)
     const behind = compareStates(nodeState, current) < 0
@@ -369,6 +398,27 @@ export class CacheInstructionPoller {
       this.#readsUnsafe = (await contractsLedgeredAfter(db, this.#bootLedgerId)) > 0
     this.#paused = await readWritesPaused(db)
     return applied
+  }
+
+  /**
+   * Tells the cache it is behind when the latest committed checkpoint is past
+   * the one it serves. A cache that has not been built yet is left to build on
+   * its first read. A request not served within a while is made again, so a
+   * failed rebuild is retried.
+   */
+  async #catchUp() {
+    const content = this.#options.content
+    if (!content) return undefined
+    const latest = await latestCheckpoint(this.#options.db)
+    this.#latest = latest
+    const served = content.served()
+    if (served?.checkpoint === undefined || served.checkpoint >= latest) return served
+    const asked = this.#asked
+    if (!asked || asked.checkpoint < latest || Date.now() - asked.at > REASK_AFTER_MS) {
+      this.#asked = { checkpoint: latest, at: Date.now() }
+      content.behind(latest)
+    }
+    return served
   }
 
   stop(): void {

@@ -194,7 +194,9 @@ export async function siteReplaceCheck(
 ): Promise<SiteReplaceCheck> {
   await useSchemaStore(config)
   const bundle = await unpackBundle(input.bundle, config.siteDir)
-  const resolved = readBundle(bundle, config.siteDir, input.passphrase)
+  const resolved = readBundle(bundle, config.siteDir, input.passphrase, {
+    withoutPeople: input.excludePeople,
+  })
   const { db } = await bootstrapDatabase(config)
   try {
     const check = await checkBundleContent(db, config, {

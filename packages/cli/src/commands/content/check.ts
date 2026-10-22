@@ -54,7 +54,9 @@ export default class ContentCheck extends BaseCommand {
     const config = await siteConfig()
     const result = await ops.contentCheck(config, {
       ...transferInput(args.bundle, flags),
-      passphrase: await passphraseToOpen(args.bundle, config),
+      passphrase: await passphraseToOpen(args.bundle, config, {
+        withoutPeople: flags['exclude-people'],
+      }),
     })
     for (const problem of result.problems) this.warning(`  ${problem}`)
     describeBundle(this, result.bundle)

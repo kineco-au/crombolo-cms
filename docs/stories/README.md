@@ -199,6 +199,7 @@ requests, only server-side and build-time front ends can call it.
 | `106` | An imported schema reaches the schema store | must | S | done | — |
 | `107` | The remote protocol | should | L | done | 104, 105, 106 |
 | `108` | crombolo pull and push | should | M | done | 107 |
+| `177` | A host's own bundles stay with the host | should | S | ready | 063, 104 |
 
 ### Epic L — Routing
 
@@ -211,7 +212,7 @@ requests, only server-side and build-time front ends can call it.
 | # | Story | Priority | Size | State | Depends on |
 |---|---|---|---|---|---|
 | `120` | Cache instructions arrive without polling | could | S | done | — |
-| `121` | Reads from a Postgres replica | could | M | backlog | 174 |
+| `121` | Reads from a Postgres replica | could | M | ready | 174 |
 
 ### Epic N — The assistant
 
@@ -298,6 +299,6 @@ implementation; creating them does not settle those architectural choices.
 | `171` | Published changes reliably reach subscribers | should | XL | done | 170, 044, 045 |
 | `172` | An older edit cannot overwrite a newer one | should | M | done | 170, 081 |
 | `173` | A supported API for extensions | should | M | ready | 062, 063 |
-| `174` | Renderers know which published changes they serve | should | L | ready | 011, 120 |
-| `175` | Published cache growth stays within measured limits | could | L | backlog | 086, 174 |
+| `174` | Renderers know which published changes they serve | should | L | done | 011, 120 |
+| `175` | Published cache growth stays within measured limits | could | L | ready | 086, 174 |
 | `176` | Background jobs run independently | could | L | ready | 171 |

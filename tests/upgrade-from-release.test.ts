@@ -13,8 +13,8 @@ import {
   migrate,
   readLedger,
   readState,
+  STATE_CONTENT_CHECKPOINT,
   STATE_CONTENT_EVENTS,
-  STATE_MEDIA_PERMISSIONS,
   seedIdentity,
 } from '@crombolo/data'
 import { summariseUpgrades, VERSION } from '@crombolo/server'
@@ -79,16 +79,15 @@ describe('summarising the ledger', () => {
   })
 })
 
-/** Puts a current database back the way 0.23.0 left it, a day ago: before the event outbox (046). */
+/** Puts a current database back the way 0.24.1 left it, a day ago: before the content checkpoint (047). */
 async function asPreviousRelease(db: Db): Promise<void> {
-  await db.exec('DROP INDEX IF EXISTS ux_content_notification_event')
-  await db.exec('ALTER TABLE content_notification DROP COLUMN event_id')
-  await db.exec('DROP INDEX IF EXISTS ux_webhook_delivery_event')
-  await db.exec('ALTER TABLE webhook_delivery DROP COLUMN event_id')
-  await db.exec('DROP TABLE IF EXISTS content_event')
-  await db.exec("DELETE FROM migration_history WHERE name = 'AddContentEvents'")
+  await db.exec('DROP TABLE IF EXISTS content_checkpoint')
+  await db.exec('ALTER TABLE cache_instruction DROP COLUMN checkpoint')
+  await db.exec('ALTER TABLE server DROP COLUMN served_checkpoint')
+  await db.exec('ALTER TABLE server DROP COLUMN served_at')
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddContentCheckpoint'")
   await db.exec('UPDATE key_value SET value = ? WHERE key = ?', [
-    STATE_MEDIA_PERMISSIONS,
+    STATE_CONTENT_EVENTS,
     MIGRATION_STATE_KEY,
   ])
   const yesterday = new Date(Date.now() - 24 * 3600_000).toISOString()
@@ -115,13 +114,13 @@ describe('upgrading from the previous release', () => {
       passwordConfig: passwordConfigJson(),
     })
     await asPreviousRelease(db)
-    expect(await readState(db)).toBe(STATE_MEDIA_PERMISSIONS)
+    expect(await readState(db)).toBe(STATE_CONTENT_EVENTS)
 
     const result = await migrate(db, cromboloPlan, { by: 'upgrade' })
-    expect(result.applied).toEqual(['AddContentEvents'])
-    expect(await readState(db)).toBe(STATE_CONTENT_EVENTS)
+    expect(result.applied).toEqual(['AddContentCheckpoint'])
+    expect(await readState(db)).toBe(STATE_CONTENT_CHECKPOINT)
     const summary = summariseUpgrades(await readLedger(db), VERSION)
-    expect(summary.lastUpgrade).toMatchObject({ release: '0.24.1', steps: 1 })
+    expect(summary.lastUpgrade).toMatchObject({ release: '0.25.0', steps: 1 })
   })
 
   test('the Changes dashboard reports the version, the install and the last upgrade', async () => {

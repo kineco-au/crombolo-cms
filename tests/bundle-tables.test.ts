@@ -287,6 +287,7 @@ describe(`guards (${dialectUnderTest})`, () => {
         return inner.exec(sql, params)
       },
       transaction: (fn) => inner.transaction((tx) => fn(wrap(tx))),
+      readSnapshot: (fn) => inner.readSnapshot((reader) => fn(wrap(reader))),
       close: () => inner.close(),
     })
     return wrap(d)

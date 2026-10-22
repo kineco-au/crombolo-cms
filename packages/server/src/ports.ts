@@ -39,6 +39,7 @@ import {
   permissionsForPath,
 } from '@crombolo/core'
 import {
+  appendCacheInstruction,
   ContentEventRepository,
   ContentTypeRepository,
   type Db,
@@ -638,6 +639,7 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
     deps.redirects = createRedirectPort(options.db, options.cache, {
       isTracking: options.config.trackRedirects,
       onChange: () => options.cache?.invalidate(),
+      nodeId: options.schema?.nodeId,
     })
     deps.packages = createPackagePort(options.db, {
       siteName: options.config.siteName,
@@ -668,12 +670,20 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
     }
     deps.dictionary = createDictionaryPort(options.db, mediaFiles, {
       onChange: () => options.cache?.invalidate(),
+      nodeId: options.schema?.nodeId,
     })
+    const db = options.db
     const tracker = options.cache
       ? createRedirectTracker({
           cache: options.cache,
-          redirects: new RedirectRepository(options.db),
+          redirects: new RedirectRepository(db),
           enabled: options.config.trackRedirects,
+          instruct: () =>
+            appendCacheInstruction(db, {
+              kind: 'content',
+              payload: { redirects: true },
+              by: options.schema?.nodeId,
+            }),
         })
       : undefined
     if (options.cache)

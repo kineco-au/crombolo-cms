@@ -586,6 +586,7 @@ crombolo content check <pkg>          a package directory, or a bundle this site
                         [--under <path|uuid>] [--resolve <key>[/<alias>[@<culture>]]=<choice>]
                         [--resolve-all <choice>] [--allow-missing-blobs] [--save]
                         [--publish]   say which pages publishing would refuse
+                        [--exclude-people]  leave out the members and users it carries
 
 crombolo content import <pkg>
                         [--publish] [--label <text>] [--backup-taken] + the check flags
@@ -726,6 +727,12 @@ changes nothing without a mode:
 | --- | --- | --- | --- |
 | `--replace` | recycled, so a revert brings them back | removed, kept for the revert | kept, unless the file carries them |
 | `--replace-all` | deleted | removed, kept for the revert | those the file lacks are deleted |
+
+`--exclude-people` (with `--replace`, or on `content check` and `content import`)
+leaves the file's members, users and their groups out entirely: this site's own
+are untouched, the check reports what was left out (`peopleExcluded`, by count),
+and a file whose content is open needs no passphrase for the people it leaves.
+`--replace-all` refuses it, since it would delete everyone the file lacks.
 
 `--replace-all` asks for the site's name typed back (or `--yes`), and refuses
 outright when the file carries no enabled back-office administrator. Both take the

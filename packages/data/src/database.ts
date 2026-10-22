@@ -11,6 +11,12 @@ export interface Db {
   query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]>
   exec(sql: string, params?: unknown[]): Promise<void>
   transaction<T>(fn: (tx: Db) => Promise<T>): Promise<T>
+  /**
+   * Runs `fn` against one consistent, read-only view of committed data (story
+   * 174): it sees every transaction that committed before it began and nothing
+   * after, and never another chain's uncommitted writes. It holds no write lock.
+   */
+  readSnapshot<T>(fn: (reader: Db) => Promise<T>): Promise<T>
   close(): Promise<void>
   /** Postgres only: calls `onNotify` for each `NOTIFY` on `channel`; resolves to the way to stop. */
   listen?(channel: string, onNotify: (payload: string) => void): Promise<() => Promise<void>>
@@ -46,6 +52,9 @@ class SqliteDb implements Db {
   #db: BunSqlite
   #inTransaction: boolean
   #gate: { tail: Promise<void> }
+  /** The database file, for a read-only connection beside this one; absent in memory. */
+  #file: string | undefined
+  #reader: { db: BunSqlite; gate: { tail: Promise<void> } } | undefined
 
   constructor(
     db: BunSqlite,
@@ -53,11 +62,13 @@ class SqliteDb implements Db {
     inTransaction = false,
     gate: { tail: Promise<void> } = { tail: Promise.resolve() },
     lockTimeoutMs?: number,
+    file?: string,
   ) {
     this.#db = db
     this.locks = locks ?? createLockManager(this, { timeoutMs: lockTimeoutMs })
     this.#inTransaction = inTransaction
     this.#gate = gate
+    this.#file = file
   }
 
   async query<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> {
@@ -96,7 +107,40 @@ class SqliteDb implements Db {
     }
   }
 
+  /**
+   * On a file, a read-only connection of its own in one read transaction: WAL
+   * gives it a snapshot as of its first read, writers carry on, and nothing this
+   * connection has not committed is visible. In memory there is no second
+   * connection to open, so it reads inside a transaction on this one, which at
+   * least keeps other chains' writes out until it ends.
+   */
+  async readSnapshot<T>(fn: (reader: Db) => Promise<T>): Promise<T> {
+    if (this.#inTransaction || !this.#file || this.#file === ':memory:') return this.transaction(fn)
+    this.#reader ??= {
+      db: new BunSqlite(this.#file, { readonly: true }),
+      gate: { tail: Promise.resolve() },
+    }
+    const reader = this.#reader
+    const previous = reader.gate.tail
+    let release!: () => void
+    reader.gate.tail = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    await previous
+    try {
+      reader.db.exec('BEGIN')
+      try {
+        return await fn(new SqliteDb(reader.db, this.locks, true, reader.gate))
+      } finally {
+        reader.db.exec('COMMIT')
+      }
+    } finally {
+      release()
+    }
+  }
+
   async close(): Promise<void> {
+    this.#reader?.db.close()
     this.#db.close()
   }
 }
@@ -149,6 +193,15 @@ class PostgresDb implements Db {
     })
   }
 
+  /** A `REPEATABLE READ, READ ONLY` transaction: one snapshot for every statement in it. */
+  async readSnapshot<T>(fn: (reader: Db) => Promise<T>): Promise<T> {
+    if (this.#inTransaction) return fn(this)
+    return this.#sql.begin(async (sql) => {
+      await sql.unsafe('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY')
+      return fn(new PostgresDb(sql, this.locks, true))
+    })
+  }
+
   async close(): Promise<void> {
     await this.#sql.close()
   }
@@ -180,5 +233,12 @@ export async function connect(options: ConnectOptions = {}): Promise<Db> {
   sqlite.exec('PRAGMA journal_mode = WAL')
   sqlite.exec('PRAGMA foreign_keys = ON')
   sqlite.exec('PRAGMA busy_timeout = 5000')
-  return new SqliteDb(sqlite, undefined, false, undefined, resolveLockTimeoutMs(options))
+  return new SqliteDb(
+    sqlite,
+    undefined,
+    false,
+    undefined,
+    resolveLockTimeoutMs(options),
+    options.file,
+  )
 }

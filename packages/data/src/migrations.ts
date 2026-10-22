@@ -531,6 +531,10 @@ class RecordingDb implements Db {
     return fn(this)
   }
 
+  async readSnapshot<T>(fn: (reader: Db) => Promise<T>): Promise<T> {
+    return fn(this)
+  }
+
   async close(): Promise<void> {}
 }
 

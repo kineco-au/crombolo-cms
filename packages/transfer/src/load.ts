@@ -501,11 +501,20 @@ export interface OpenedBundle {
  * passphrase and `SealedFileError` for a file altered or moved; a bundle with
  * nothing sealed opens without one.
  */
-export function openBundle(loaded: LoadedBundle, passphrase: string | undefined): OpenedBundle {
+export function openBundle(
+  loaded: LoadedBundle,
+  passphrase: string | undefined,
+  options: { withoutPeople?: boolean } = {},
+): OpenedBundle {
   const set = loaded.set
   if (!set) throw new Error('The bundle could not be read, so there is nothing to open.')
   const params = set.manifest.seal
   if (!set.sealed || !params) return { set, people: undefined, openBlob: (_key, bytes) => bytes }
+  // People left behind need no passphrase when nothing else is sealed.
+  if (options.withoutPeople && set.manifest.content !== 'sealed') {
+    const { sealed: _sealed, ...open } = set
+    return { set: open, people: undefined, openBlob: (_key, bytes) => bytes }
+  }
   const key = unlock(passphrase ?? '', params)
   const nodes = set.nodes.map((node) => {
     const path = valuesPath(node.key)
@@ -523,9 +532,10 @@ export function openBundle(loaded: LoadedBundle, passphrase: string | undefined)
         : {}),
     }
   })
-  const people = loaded.people
-    ? openPeople(loaded.people.block, loaded.people.files, key)
-    : undefined
+  const people =
+    loaded.people && !options.withoutPeople
+      ? openPeople(loaded.people.block, loaded.people.files, key)
+      : undefined
   const sealedBlobs = set.manifest.content === 'sealed'
   const { sealed: _sealed, ...rest } = set
   return {

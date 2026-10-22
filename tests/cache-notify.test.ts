@@ -52,6 +52,7 @@ function observed(db: Db) {
       return db.exec(sql, params)
     },
     transaction: (fn) => db.transaction(fn),
+    readSnapshot: (fn) => db.readSnapshot(fn),
     close: () => db.close(),
     listen: async (channel, onNotify) => {
       subscribers.set(channel, onNotify)

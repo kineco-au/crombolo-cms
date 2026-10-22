@@ -1291,6 +1291,9 @@ export class DocumentRepository {
         await tx.exec('DELETE FROM content WHERE node_id = ?', [row])
         await tx.exec('DELETE FROM node WHERE id = ?', [row])
       }
+      // A page deleted from the bin was never served, but an item deleted
+      // directly may have been: every node is told (story 174).
+      await this.#child(tx).#instructContent(node.key)
       return true
     })
   }

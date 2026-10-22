@@ -23,6 +23,7 @@ import { bundlesRenameMigration } from './bundles-rename.ts'
 import { changeReportMigration } from './change-report.ts'
 import { clientIdPrefixMigration } from './client-id-prefix.ts'
 import { contentMigration } from './content.ts'
+import { contentCheckpointMigration } from './content-checkpoint.ts'
 import { contentEditingMigration } from './content-editing.ts'
 import { contentEventsMigration } from './content-events.ts'
 import { contentNotificationsMigration } from './content-notifications.ts'
@@ -107,4 +108,5 @@ export const cromboloPlan = new MigrationPlan([
   approvalSchedulesMigration,
   mediaPermissionsMigration,
   contentEventsMigration,
+  contentCheckpointMigration,
 ])

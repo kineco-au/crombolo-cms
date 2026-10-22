@@ -139,6 +139,11 @@ operations per area — and fails CI if an implemented operation regresses.
 
 ## Cross-cutting infrastructure
 
+- **The content checkpoint** (story 174): one counter, moved inside every
+  transaction that changes published content, so its order is the commit
+  order. Each published cache snapshot is read in one read snapshot and
+  labelled with the checkpoint it holds. Nodes compare it with the latest
+  committed one to know they are behind (`rendering.md`, "Freshness").
 - **The event outbox** (story 171): a page or media change records what it
   announces in `content_event`, inside its own transaction.
   `createContentDispatcher` (`server/src/content-dispatch.ts`) turns each event

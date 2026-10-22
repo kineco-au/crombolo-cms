@@ -695,10 +695,60 @@ fallbacks, else `''` (Umbraco's `GetDictionaryValue`).
 
 ## The published cache
 
-Published only — drafts are never cached. Invalidated through the notification
-bus, from *inside* the repository's unit of work (upstream raises
-`ContentRefreshNotification` there, which is what makes cache updates
-transactional with the write).
+Published only — drafts are never cached. The writing node invalidates its own
+cache after the change commits. Every other node learns of the change through
+the content checkpoint (story 174, below).
+
+### Freshness: the content checkpoint
+
+**What it is.** `content_checkpoint` counts the committed changes to anything
+the published cache reads:
+
+- pages, media and elements;
+- domains and the dictionary;
+- redirects and languages;
+- URL settings and schema sync;
+- imports and reverts.
+
+**How it moves.** Every such change increments it inside its own transaction
+(`appendCacheInstruction`). The row stays locked until that transaction
+commits, so on both dialects the checkpoint's order is the commit order: no
+change can commit later with a smaller number. A change that rolls back moves
+nothing. A views change is code, not content, and moves nothing either.
+
+Tracked redirects are the one exception, because they are computed from the
+published cache once the publish has committed. They move the checkpoint just
+after the change, never before it.
+
+**One consistent read per build.** Each build reads every source inside one
+read snapshot (`Db.readSnapshot`). It reads the checkpoint first, so the
+snapshot holds exactly the changes numbered up to it.
+- On Postgres this is a `REPEATABLE READ, READ ONLY` transaction.
+- On a SQLite file it is a read-only connection of its own. WAL gives it a
+  snapshot as of its first read, it never blocks a writer, and it never sees
+  another request's uncommitted rows.
+- In memory (tests) it is a transaction on the one connection.
+
+**Labels.** `CacheSnapshot.checkpoint` and `builtAt` label the result. A
+snapshot may be older than the latest committed change, but never newer than
+its data. A build of an older checkpoint never replaces a newer one, whichever
+finishes last.
+
+**Catching up.** Each poll compares the latest committed checkpoint with the
+one served. A node behind it rebuilds at once rather than on its next read, so
+an idle node catches up too. Instructions only wake the poll. A lost, pruned or
+late instruction therefore cannot leave a node permanently stale: the
+checkpoint still says it is behind. A rebuild that does not take is asked for
+again after 30 seconds.
+
+**Failure.** A build that fails leaves the previous snapshot serving, labelled
+with its own, older checkpoint. The node keeps reporting that it is behind, and
+the Servers health check warns after a minute.
+
+**Not schema revisions.** The checkpoint orders content changes. A schema
+revision (`schema_state`) says which definitions a node deploys, and which
+values it may read. A node behind on schema is read-only; a node behind on the
+checkpoint is serving older content.
 
 Umbraco runs three tiers: an in-process converted-object cache, a hybrid
 memory/distributed cache of serialised nodes, and the `content_cache` table.

@@ -193,6 +193,8 @@ export interface CheckOptions {
   backOfficePath?: string
   /** Users here the bundle's may take over by e-mail or username: a site this boot created. */
   adoptUsers?: boolean
+  /** The bundle's members, member groups, users and user groups are left out entirely. */
+  excludePeople?: boolean
 }
 
 /** What the import would do to one node. */
@@ -218,6 +220,8 @@ export interface TransferCheck {
   counts: { create: number; update: number; unchanged: number; skip: number }
   /** What the bundle's people would do here, when it carries any. */
   people?: PeoplePlan
+  /** What the bundle carried of people and `excludePeople` left out, by count. */
+  peopleExcluded?: { memberGroups: number; members: number; userGroups: number; users: number }
 }
 
 const documentLink = (backOfficePath: string | undefined, key: string): string | null =>
@@ -700,7 +704,8 @@ export async function checkBundle(
       ])
     ).map((row) => String(row.text)),
   )
-  for (const group of set.people?.memberGroups ?? []) groupsHere.add(group.name)
+  const carriedPeople = options.excludePeople ? undefined : set.people
+  for (const group of carriedPeople?.memberGroups ?? []) groupsHere.add(group.name)
   const skipped = new Set(plan.filter((p) => p.action === 'skip').map((p) => p.key))
   for (const node of set.nodes) {
     if (!node.access || skipped.has(node.key)) continue
@@ -735,8 +740,8 @@ export async function checkBundle(
       })
   }
 
-  const people = set.people
-    ? await planPeople(db, set.people, {
+  const people = carriedPeople
+    ? await planPeople(db, carriedPeople, {
         resolutions,
         resolveAll: options.resolveAll,
         adoptUsers: options.adoptUsers,
@@ -752,5 +757,8 @@ export async function checkBundle(
     plan,
     counts,
     ...(people ? { people } : {}),
+    ...(options.excludePeople && set.manifest.people
+      ? { peopleExcluded: { ...set.manifest.people.counts } }
+      : {}),
   }
 }

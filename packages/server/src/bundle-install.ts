@@ -160,7 +160,12 @@ function locate(target: string, siteDir: string): { directory: string; dependenc
  * The bundle a path or a package name names, read whole, or a refusal: a
  * half-copied bundle must never be checked as though complete.
  */
-export function readBundle(target: string, siteDir: string, passphrase?: string): ResolvedBundle {
+export function readBundle(
+  target: string,
+  siteDir: string,
+  passphrase?: string,
+  options: { withoutPeople?: boolean } = {},
+): ResolvedBundle {
   const { directory, dependency } = locate(target, siteDir)
   const json = readPackageJson(join(directory, 'package.json'))
   if (!json) {
@@ -199,9 +204,10 @@ export function readBundle(target: string, siteDir: string, passphrase?: string)
     people: undefined,
     openBlob: (_key, bytes) => bytes,
   }
-  if (passphrase !== undefined && passphrase !== '')
+  const peopleOnly = options.withoutPeople && loaded.set.manifest.content !== 'sealed'
+  if ((passphrase !== undefined && passphrase !== '') || peopleOnly)
     try {
-      opened = openBundle(loaded, passphrase)
+      opened = openBundle(loaded, passphrase || undefined, options)
     } catch (error) {
       if (error instanceof WrongPassphraseError)
         throw new PassphraseError(
@@ -269,6 +275,8 @@ export interface TransferInput extends SectionOptions {
   by?: string
   /** Opens what the bundle sealed; used for this request only, never stored. */
   passphrase?: string
+  /** Leave the file's members, users and their groups out: this site's own are untouched. */
+  excludePeople?: boolean
 }
 
 /**
@@ -312,6 +320,7 @@ export async function transferOptions(
       allowMissingBlobs: input.allowMissingBlobs ?? pending?.allowMissingBlobs ?? false,
       hasBlob: async (key: string) => Boolean(await store.get(key)),
       backOfficePath: config.backOfficePath,
+      ...(input.excludePeople ? { excludePeople: true } : {}),
     },
     under,
     problems: saved.problems,
@@ -341,7 +350,9 @@ export async function checkBundleContent(
   config: CromboloConfig,
   input: TransferInput,
 ): Promise<ContentCheckResult> {
-  const bundle = readBundle(input.bundle, config.siteDir, input.passphrase)
+  const bundle = readBundle(input.bundle, config.siteDir, input.passphrase, {
+    withoutPeople: input.excludePeople,
+  })
   const set = bundle.set
   const prepared = await transferOptions(db, config, bundle, input)
   const check = await checkBundle(db, set, prepared.options)
@@ -493,7 +504,9 @@ export async function installBundleContent(
   config: CromboloConfig,
   input: ContentImportInput,
 ): Promise<ContentImportResult> {
-  const bundle = readBundle(input.bundle, config.siteDir, input.passphrase)
+  const bundle = readBundle(input.bundle, config.siteDir, input.passphrase, {
+    withoutPeople: input.excludePeople,
+  })
   const { set, blobs, carried } = bundle
   // Before the backup and the sections: nothing of a bundle that cannot be
   // opened is applied.
@@ -538,6 +551,10 @@ export async function installBundleContent(
       ])
     referencedPresent = true
   }
+  if (replace === 'replace-all' && input.excludePeople)
+    return refuse([
+      "--replace-all deletes the people the file lacks, so it cannot leave the file's people out; use --replace",
+    ])
   if (replace === 'replace-all' && !carriesAdministrator(set.people))
     return refuse([
       'this file carries no back-office administrator, so replacing everything would leave nobody able to sign in; export it with --with-users, or use --replace',

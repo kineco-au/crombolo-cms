@@ -535,11 +535,16 @@ Each node caches its content types and its published content in memory; after
 one node syncs, the others are stale. Umbraco solves this with a polled
 `umbracoCacheInstruction` table. This slice adds the equivalent:
 
-- `cache_instruction(id, kind, payload, created_at)` — appended by whatever
-  changes shared state: schema sync, publish, unpublish. Every node polls with a
-  cursor of the last id it processed and reloads the affected cache. On
-  Postgres the append also sends a `NOTIFY`, so the others poll as soon as it
-  commits; on SQLite, which is single node, there is nothing to notify.
+- `cache_instruction(id, kind, payload, created_at, checkpoint)` — appended by
+  whatever changes shared state, in the change's own transaction. Every
+  instruction about content moves the content checkpoint (story 174;
+  `rendering.md`, "Freshness"). The checkpoint, not the instruction id, decides
+  whether a node is behind: ids are handed out before commit, so they can
+  commit out of order, and the checkpoint cannot. A node still reads
+  instructions by id, 100 behind its cursor, for views changes, which are not
+  content. On Postgres the append also sends a `NOTIFY`, so the others poll as
+  soon as it commits. On SQLite nothing notifies, and other processes (the
+  command line) are picked up by the timer.
 - `server(node_id, last_seen, version)` — node identity for `synced_by` and the
   ledger.
 - `schema_state` — the single row read in step 2.

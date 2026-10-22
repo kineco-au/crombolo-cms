@@ -24,6 +24,7 @@ import {
   DomainRepository,
   InvalidParentError,
   LanguageRepository,
+  latestCheckpoint,
   NOTIFIABLE_ACTIONS,
   type NodeRow,
   NotificationRepository,
@@ -607,6 +608,16 @@ export function createPublishedContentSource(
         source: row.source,
       }))
     },
+
+    /**
+     * Every load in one read snapshot, the checkpoint read first inside it
+     * (story 174), so the snapshot holds exactly the changes up to that number.
+     */
+    withSnapshot: (fn) =>
+      db.readSnapshot(async (reader) => {
+        const checkpoint = await latestCheckpoint(reader)
+        return fn(createPublishedContentSource(reader, options), checkpoint)
+      }),
   }
 }
 

@@ -11,7 +11,12 @@ import {
   type DocumentOperations,
   type EventSink,
 } from '@crombolo/content'
-import { currentSchemaState, type Db, RedirectRepository } from '@crombolo/data'
+import {
+  appendCacheInstruction,
+  currentSchemaState,
+  type Db,
+  RedirectRepository,
+} from '@crombolo/data'
 import { PublishedCache } from '@crombolo/render'
 import { createPublishedContentSource } from './adapters/documents.ts'
 import { createApprovals } from './approvals.ts'
@@ -75,6 +80,12 @@ export async function siteDocumentOperations(
       cache,
       redirects: new RedirectRepository(db),
       enabled: config.trackRedirects,
+      instruct: () =>
+        appendCacheInstruction(db, {
+          kind: 'content',
+          payload: { redirects: true },
+          by: `cli:${config.nodeId}`,
+        }),
     }),
     afterDomains: (node, assignment) => writeDomainsFor(db, config.siteDir, node, assignment),
     refusalReason: (error) =>

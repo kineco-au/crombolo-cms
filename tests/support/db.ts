@@ -94,6 +94,11 @@ export async function freshDb(): Promise<Db> {
  * replay runs its `CREATE TABLE` against a table that is already there.
  */
 export async function undoMigrationsSinceContentEditing(db: Db): Promise<void> {
+  // 047
+  await db.exec('DROP TABLE IF EXISTS content_checkpoint')
+  await db.exec('ALTER TABLE cache_instruction DROP COLUMN checkpoint')
+  await db.exec('ALTER TABLE server DROP COLUMN served_checkpoint')
+  await db.exec('ALTER TABLE server DROP COLUMN served_at')
   // 046
   await db.exec('DROP INDEX IF EXISTS ux_content_notification_event')
   await db.exec('ALTER TABLE content_notification DROP COLUMN event_id')
@@ -253,6 +258,8 @@ async function emptyMigratedSchema(db: Db): Promise<boolean> {
   // migration itself installs, which keeps one source of truth.
   const searches = new LogSearchRepository(db)
   for (const search of DEFAULT_LOG_SEARCHES) await searches.create(search.name, search.query)
+  // The content checkpoint's one row, as migration 047 installs it.
+  await db.exec('INSERT INTO content_checkpoint (id, n) VALUES (1, 0)')
   return true
 }
 

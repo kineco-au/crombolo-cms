@@ -136,6 +136,11 @@ describe('the media verbs (story 088)', () => {
     const imported = await custom('imported', 'Umb.Section.Media')
     const authors = await custom('authors', 'content')
     // As 0.20.0 left it: nobody holds a media verb, and nothing since 045 is there.
+    await db.exec('DROP TABLE IF EXISTS content_checkpoint')
+    await db.exec('ALTER TABLE cache_instruction DROP COLUMN checkpoint')
+    await db.exec('ALTER TABLE server DROP COLUMN served_checkpoint')
+    await db.exec('ALTER TABLE server DROP COLUMN served_at')
+    await db.exec("DELETE FROM migration_history WHERE name = 'AddContentCheckpoint'")
     await db.exec('DROP INDEX IF EXISTS ux_content_notification_event')
     await db.exec('ALTER TABLE content_notification DROP COLUMN event_id')
     await db.exec('DROP INDEX IF EXISTS ux_webhook_delivery_event')
@@ -153,6 +158,7 @@ describe('the media verbs (story 088)', () => {
     expect((await migrate(db, cromboloPlan)).applied).toEqual([
       'GrantMediaPermissions',
       'AddContentEvents',
+      'AddContentCheckpoint',
     ])
     const held = async (key: string) =>
       (

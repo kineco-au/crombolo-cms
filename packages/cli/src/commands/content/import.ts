@@ -50,7 +50,9 @@ export default class ContentImport extends BaseCommand {
     const config = await siteConfig()
     const result = await ops.contentImport(config, {
       ...transferInput(args.bundle, flags),
-      passphrase: await passphraseToOpen(args.bundle, config),
+      passphrase: await passphraseToOpen(args.bundle, config, {
+        withoutPeople: flags['exclude-people'],
+      }),
       publish: flags.publish,
       label: flags.label,
       backupTaken: flags['backup-taken'],

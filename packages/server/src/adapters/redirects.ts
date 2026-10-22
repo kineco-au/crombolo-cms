@@ -9,13 +9,18 @@
 
 import type { RedirectListing, RedirectPort } from '@crombolo/api-management'
 import type { Page } from '@crombolo/core'
-import { type Db, RedirectRepository, type RedirectRow } from '@crombolo/data'
+import {
+  appendCacheInstruction,
+  type Db,
+  RedirectRepository,
+  type RedirectRow,
+} from '@crombolo/data'
 import type { PublishedCache } from '@crombolo/render'
 
 export function createRedirectPort(
   db: Db,
   cache: PublishedCache | undefined,
-  options: { isTracking: boolean; onChange?: () => void },
+  options: { isTracking: boolean; onChange?: () => void; nodeId?: string },
 ): RedirectPort {
   const redirects = new RedirectRepository(db)
 
@@ -62,9 +67,16 @@ export function createRedirectPort(
       const found = await redirects.byKey(key)
       if (!found) return 'notFound'
       if (found.source === 'config') return 'configured'
-      await redirects.delete(key)
-      // The rules live in the published cache's snapshot, so it has to be dropped
-      // for the redirect to stop answering.
+      // The rules live in the published cache's snapshot: every node is told in
+      // the delete's own transaction (story 174), and this one drops its copy.
+      await db.transaction(async (tx) => {
+        await new RedirectRepository(tx).delete(key)
+        await appendCacheInstruction(tx, {
+          kind: 'content',
+          payload: { redirects: true },
+          by: options.nodeId,
+        })
+      })
       options.onChange?.()
       return 'deleted'
     },

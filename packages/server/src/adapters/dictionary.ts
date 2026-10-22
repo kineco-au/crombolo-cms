@@ -1,6 +1,6 @@
 /** The dictionary port over the repository, with `.udt` import and export. */
 import type { DictionaryPort } from '@crombolo/api-management'
-import { type Db, DictionaryRepository } from '@crombolo/data'
+import { appendCacheInstruction, type Db, DictionaryRepository } from '@crombolo/data'
 import { importDictionaryUdt } from '../dictionary-transfer.ts'
 import type { MediaFileStore } from '../media-files.ts'
 import { readUdt, type UdtItem, writeUdt } from '../udt.ts'
@@ -8,10 +8,22 @@ import { readUdt, type UdtItem, writeUdt } from '../udt.ts'
 export function createDictionaryPort(
   db: Db,
   files: MediaFileStore,
-  options: { onChange?: () => void } = {},
+  options: { onChange?: () => void; nodeId?: string } = {},
 ): DictionaryPort {
   const repo = new DictionaryRepository(db)
-  const changed = <T>(result: T): T => {
+  /** Every node is told in the change's own transaction (story 174). */
+  const instruct = (on: Db) =>
+    appendCacheInstruction(on, {
+      kind: 'content',
+      payload: { dictionary: true },
+      by: options.nodeId,
+    })
+  const write = async <T>(change: (tx: DictionaryRepository) => Promise<T>): Promise<T> => {
+    const result = await db.transaction(async (tx) => {
+      const done = await change(new DictionaryRepository(tx))
+      if (done === 'Success') await instruct(tx)
+      return done
+    })
     if (result === 'Success') options.onChange?.()
     return result
   }
@@ -34,10 +46,10 @@ export function createDictionaryPort(
     items: (keys) => repo.many(keys),
     children: (parentKey) => repo.children(parentKey),
     ancestry: (key) => repo.ancestry(key),
-    create: async (item) => changed(await repo.create(item)),
-    update: async (key, change) => changed(await repo.update(key, change)),
-    move: async (key, parentKey) => changed(await repo.move(key, parentKey)),
-    delete: async (key) => changed(await repo.delete(key)),
+    create: (item) => write((tx) => tx.create(item)),
+    update: (key, change) => write((tx) => tx.update(key, change)),
+    move: (key, parentKey) => write((tx) => tx.move(key, parentKey)),
+    delete: (key) => write((tx) => tx.delete(key)),
 
     async export(key, includeChildren) {
       const item = await toUdt(key, includeChildren)
@@ -69,6 +81,7 @@ export function createDictionaryPort(
           status: 'Invalid',
           reason: 'No item in the file could be imported: its name is already in use.',
         }
+      await instruct(db)
       options.onChange?.()
       return { ok: true, key: items[0]?.key as string }
     },

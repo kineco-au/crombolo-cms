@@ -571,6 +571,12 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
       cache,
       redirects: new RedirectRepository(db),
       enabled: config.trackRedirects,
+      instruct: () =>
+        appendCacheInstruction(db, {
+          kind: 'content',
+          payload: { redirects: true },
+          by: schema.nodeId,
+        }),
     }),
   }
   const afterSync = async (report: SyncReport | undefined) => {
@@ -709,6 +715,19 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
       // The hash only says when to stop looking eagerly; the snapshot is always
       // of the bytes this node reads, so a superseded one is harmless.
       snapshots.announce(typeof payload.hash === 'string' ? payload.hash : undefined)
+    },
+    // Behind the latest committed checkpoint: rebuilt now rather than on the next
+    // read, so an idle node catches up and says so (story 174).
+    content: {
+      served: () => cache.served(),
+      behind: () => {
+        cache.invalidate()
+        void cache
+          .snapshot()
+          .catch((error: unknown) =>
+            renderLog.error('Could not rebuild the published cache: {error}', { error }),
+          )
+      },
     },
   })
   await poller.start(config.development ? 2_000 : 5_000)
@@ -1014,6 +1033,23 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
   // Fixed by the contract and the client's SDK, wherever the editor is mounted.
   const apiPrefix = MANAGEMENT_API_PREFIX
 
+  /**
+   * Which committed changes this node's published cache holds (story 174):
+   * numbers and times only. `latest` is as of the last poll; `behind` is null
+   * until both are known.
+   */
+  const contentFreshness = () => {
+    const served = cache.served()
+    const latest = poller.latestCheckpoint
+    const checkpoint = served?.checkpoint
+    return {
+      checkpoint: checkpoint ?? null,
+      latest: latest ?? null,
+      behind: checkpoint === undefined || latest === undefined ? null : checkpoint < latest,
+      builtAt: served?.builtAt.toISOString() ?? null,
+    }
+  }
+
   const health = () => {
     const paused = poller.paused
     const readOnly = schema.compatibilityMode || poller.behind || paused !== undefined
@@ -1037,6 +1073,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
       revision: schema.nodeState.revision,
       nodeId: schema.nodeId,
       role: config.role,
+      content: contentFreshness(),
       components: snapshots.status(),
     }
   }

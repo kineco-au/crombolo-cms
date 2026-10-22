@@ -88,6 +88,14 @@ export interface PublishedContentSource {
   loadContentTypeAliases?(): Promise<Map<string, string>>
   /** How URLs are built; Umbraco's defaults when omitted. */
   loadUrlOptions?(): Promise<PublishedUrlOptions>
+  /**
+   * Runs a build's reads as one consistent state (story 174): `fn` is handed a
+   * source bound to a single read snapshot, and the content checkpoint that
+   * snapshot contains. Without it each load reads whatever is current.
+   */
+  withSnapshot?<T>(
+    fn: (source: PublishedContentSource, checkpoint: number) => Promise<T>,
+  ): Promise<T>
 }
 
 /** `HideTopLevelNodeFromPath`: true, Umbraco's default, leaves the top-level page out of paths. */
@@ -196,6 +204,14 @@ export interface CacheSnapshot {
   dictionaryOutline: DictionaryOutlineItem[]
   /** Content type key (lowercase) → alias. */
   contentTypeAliases: Map<string, string>
+  /**
+   * The content checkpoint whose changes this snapshot holds (story 174): every
+   * change numbered at or below it, and none above. Absent from a source that
+   * cannot say.
+   */
+  checkpoint?: number
+  /** When it was built. */
+  builtAt?: Date
 }
 
 /** What a request resolved to: the content, and the culture its hostname assigns. */
@@ -344,8 +360,13 @@ export class PublishedCache {
     const generation = this.#generation
     if (this.#building?.generation === generation) return this.#building.done
     const done = this.#build().then((snapshot) => {
-      // A slower, older build must not replace a newer one that finished first.
-      if (generation >= this.#snapshotGeneration) {
+      // A slower, older build must not replace a newer one that finished first,
+      // nor a snapshot of older data one of newer data.
+      const older =
+        snapshot.checkpoint !== undefined &&
+        this.#snapshot.checkpoint !== undefined &&
+        snapshot.checkpoint < this.#snapshot.checkpoint
+      if (generation >= this.#snapshotGeneration && !older) {
         this.#snapshot = snapshot
         this.#snapshotGeneration = generation
       }
@@ -643,27 +664,41 @@ export class PublishedCache {
     }
   }
 
+  /** The checkpoint and build time of the snapshot served now; nothing before the first build. */
+  served(): { checkpoint: number | undefined; builtAt: Date } | undefined {
+    if (this.#snapshot === EMPTY || !this.#snapshot.builtAt) return undefined
+    return { checkpoint: this.#snapshot.checkpoint, builtAt: this.#snapshot.builtAt }
+  }
+
   async #build(): Promise<CacheSnapshot> {
-    const nodes = await this.#source.loadPublished()
-    const domains = (await this.#source.loadDomains?.()) ?? []
-    const languages = (await this.#source.loadLanguages?.()) ?? []
+    const source = this.#source
+    if (source.withSnapshot)
+      return source.withSnapshot((scoped, checkpoint) => this.#buildFrom(scoped, checkpoint))
+    return this.#buildFrom(source, undefined)
+  }
+
+  async #buildFrom(
+    source: PublishedContentSource,
+    checkpoint: number | undefined,
+  ): Promise<CacheSnapshot> {
+    const builtAt = new Date()
+    const nodes = await source.loadPublished()
+    const domains = (await source.loadDomains?.()) ?? []
+    const languages = (await source.loadLanguages?.()) ?? []
     const dictionary = new Map<string, Map<string, string>>()
-    const dictionaryOutline = (await this.#source.loadDictionaryOutline?.()) ?? []
-    for (const [key, translations] of (await this.#source.loadDictionary?.()) ?? new Map())
+    const dictionaryOutline = (await source.loadDictionaryOutline?.()) ?? []
+    for (const [key, translations] of (await source.loadDictionary?.()) ?? new Map())
       dictionary.set(
         key.toLowerCase(),
         new Map([...translations].map(([culture, text]) => [culture.toLowerCase(), text])),
       )
     const media = new Map(
-      ((await this.#source.loadMedia?.()) ?? []).map((m) => [
-        m.key.toLowerCase(),
-        new PublishedMedia(m),
-      ]),
+      ((await source.loadMedia?.()) ?? []).map((m) => [m.key.toLowerCase(), new PublishedMedia(m)]),
     )
-    const redirects = (await this.#source.loadRedirects?.()) ?? []
-    const elementNodes = (await this.#source.loadElements?.()) ?? []
+    const redirects = (await source.loadRedirects?.()) ?? []
+    const elementNodes = (await source.loadElements?.()) ?? []
     const contentTypeAliases = new Map(
-      [...((await this.#source.loadContentTypeAliases?.()) ?? new Map())].map(([key, alias]) => [
+      [...((await source.loadContentTypeAliases?.()) ?? new Map())].map(([key, alias]) => [
         key.toLowerCase(),
         alias,
       ]),
@@ -692,7 +727,7 @@ export class PublishedCache {
     const firstRootId = nodes
       .filter((node) => node.parentId <= 0)
       .sort((a, b) => a.sortOrder - b.sortOrder)[0]?.id
-    const { hideTopLevel } = (await this.#source.loadUrlOptions?.()) ?? { hideTopLevel: true }
+    const { hideTopLevel } = (await source.loadUrlOptions?.()) ?? { hideTopLevel: true }
 
     const byRoute = new Map<string, PublishedContent>()
     const byDomainRoute = new Map<string, PublishedContent>()
@@ -946,6 +981,8 @@ export class PublishedCache {
       dictionary,
       dictionaryOutline,
       contentTypeAliases,
+      ...(checkpoint === undefined ? {} : { checkpoint }),
+      builtAt,
     }
   }
 

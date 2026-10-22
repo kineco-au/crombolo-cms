@@ -6,7 +6,35 @@ point at `docs/stories/`.
 
 ## Unreleased
 
-Nothing yet.
+- **Every server knows which published changes it shows.** Each change to
+  published content gets a number, in the order the changes were saved. A
+  server compares the number it serves with the latest, and catches up
+  automatically. A change can no longer be missed because its notice arrived
+  late or got lost, as could happen with long imports and schema syncs. `174`
+- **Each rebuild of a server's published content is one consistent moment.**
+  It never mixes before and after a change, and never shows something another
+  request has not finished saving. On SQLite, a rebuild no longer holds up
+  saves. `174`
+- **See it.** `/health` and the Servers health check show which change each
+  server serves, and warn when one has been behind for over a minute.
+  `crombolo cache rebuild` now waits until every server has rebuilt. `174`
+- **Fixes:** `174`
+  - Dictionary edits, deleted pages and redirects now reach every server.
+    Before, the other servers kept the old content until something else
+    changed.
+- **Import a file without its people.** `--exclude-people` on `crombolo import
+  --replace`, `content check` and `content import` (and `excludePeople` in
+  `@crombolo/transfer`) leaves the members, users and groups a file carries
+  out, so content can arrive without anyone who signs in. The site's own
+  people are untouched, and a file with open content needs no passphrase for
+  the people it leaves.
+- **Migrations:** 047 adds the change counter, and records on each server
+  which change it serves.
+- **Upgrade notes:**
+  - Set `CROMBOLO_NODE_ID` to a stable name per server, so the Servers check
+    follows the same server across restarts.
+  - Changes to different kinds of published content (pages, media, schema,
+    domains) now save one at a time; pages already did.
 
 ## v0.24.1 — 2026-10-22
 

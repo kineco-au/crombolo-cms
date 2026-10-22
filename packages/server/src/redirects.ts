@@ -39,6 +39,12 @@ export function createRedirectTracker(options: {
   cache: PublishedCache
   redirects: RedirectRepository
   enabled: boolean
+  /**
+   * Tells every node a redirect was written (story 174). The routes it compares
+   * are read from the published cache once the change has committed, so this
+   * moves the checkpoint just after the change rather than inside it.
+   */
+  instruct?: () => Promise<unknown>
 }): RedirectTracker {
   if (!options.enabled) return NO_REDIRECT_TRACKING
   const { cache, redirects } = options
@@ -99,7 +105,10 @@ export function createRedirectTracker(options: {
       // The rules are part of the cache's snapshot, and reading the new routes
       // above has just rebuilt it — so without this the redirect just written
       // would not answer until something else dropped the cache.
-      if (wrote) cache.invalidate()
+      if (wrote) {
+        await options.instruct?.()
+        cache.invalidate()
+      }
     },
   }
 }
