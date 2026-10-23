@@ -62,12 +62,14 @@ import { servedContract } from '@crombolo/contracts'
 import {
   CHOICE_SOURCE_KINDS,
   type ChoiceSourceKind,
+  contractPathFor,
   DEFAULT_UPLOAD_SETTINGS,
   DELIVERY_API_PREFIX,
   FormPermissions,
   hasAccessToSensitiveData,
   localReturnUrl,
   MANAGEMENT_API_PREFIX,
+  managementApiPrefix,
   ObjectTypes,
   PREVIEW_HUB_PATH,
   SERVER_EVENT_HUB_PATH,
@@ -117,7 +119,6 @@ import { createNodeLookup, loadAccess } from './access.ts'
 import { createAuditHost, createAuditSink, pluginAuditPlan, recordAudit } from './adapters/audit.ts'
 import { readCreatedBundlePackage, writeCreatedBundlePackage } from './adapters/bundles.ts'
 import { createPublishedContentSource, loadDraftNode } from './adapters/documents.ts'
-import { createSchemaProposals } from './adapters/schema-proposals.ts'
 import type { Approvals } from './approvals.ts'
 import { handleApprovalsApi } from './approvals-api.ts'
 import { CommandError, installBundleContent } from './bundle-install.ts'
@@ -164,6 +165,7 @@ import {
   parseEntryState,
   redactSensitive,
 } from './forms.ts'
+import { HOST_TOKEN_SECONDS, issueHostToken } from './host-token.ts'
 import { ImageProcessor, parseImagingQuery } from './imaging.ts'
 import { type BackgroundJobs, createBackgroundJobs } from './jobs.ts'
 import { configureLogging, logger } from './logging.ts'
@@ -183,6 +185,7 @@ import {
 import { createRedirectTracker } from './redirects.ts'
 import { createRemote } from './remote.ts'
 import { withRemoteMedia } from './remote-media.ts'
+import { unknownHostProvided } from './site-file.ts'
 import { handleTransferAction, pendingTransfers } from './transfer-dashboard.ts'
 import {
   changeUrlOptions,
@@ -216,7 +219,7 @@ import {
   type HubSocketData,
   type ServerEventHub,
 } from './server-events.ts'
-import { createSetupRoutes } from './setup.ts'
+import { AttemptLimiter, createSetupRoutes } from './setup.ts'
 import { siteSearchFor } from './site-search.ts'
 import { TwoFactorService, USER_TWO_FACTOR_PROVIDER } from './two-factor.ts'
 import { summariseUpgrades } from './upgrade-summary.ts'
@@ -379,7 +382,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
   const cookies = { siteName: config.siteName, securePrefix: config.secureCookies }
   const names = cookieNames(cookies)
   // The socket's peer for each request in flight, which only `Bun.serve` knows;
-  // a request that came some other way (a test, the assistant) has none.
+  // a request that came some other way (a test) has none.
   const peers = new WeakMap<Request, string>()
   const clientAddress = (request: Request): ClientAddress => ({
     ipAddress: peers.get(request) ?? null,
@@ -701,6 +704,11 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
       prefix: bundle.prefix,
       section: bundle.section,
     })
+  for (const name of unknownHostProvided(config))
+    log.warning(
+      '{name} is listed as host-provided but is not installed here; exports leave it out regardless',
+      { name },
+    )
 
   const poller = new CacheInstructionPoller({
     db,
@@ -1143,48 +1151,12 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
   const hubPath = SERVER_EVENT_HUB_PATH
   const previewHubPath = PREVIEW_HUB_PATH
 
-  // Imported only when the feature is configured, so an unconfigured site never
-  // loads the assistant, its provider or its tool definitions.
-  const assistantPath = `${paths.pluginPath}/api/assistant`
-  const assistant =
-    config.assistant && servesBackOffice
-      ? await import('./assistant.ts').then((module) =>
-          module.createAssistantHost({
-            config: config.assistant as NonNullable<typeof config.assistant>,
-            db,
-            schema: createSchemaProposals({ db, config, boot: schema, afterSync }),
-            siteName: config.siteName,
-            version: VERSION,
-            dispatch: (inner) => api.dispatch(inner),
-          }),
-        )
-      : undefined
-  if (assistant) {
-    log.info('Assistant enabled with {provider}{mcp}', {
-      provider: config.assistant?.provider.name,
-      mcp: config.assistant?.mcp === true ? ', MCP endpoint served' : '',
-    })
-    // Checked once at boot so an expired SSO session is reported here rather than
-    // as a failed message later. Never awaited into the boot path: the assistant
-    // is optional and the site must come up either way.
-    void assistant.status(true).then((status) => {
-      if (status.ok) {
-        log.info('Assistant credentials resolved: {detail}{expires}', {
-          detail: status.detail,
-          expires: status.expires ? `, expiring ${status.expires}` : '',
-        })
-      } else {
-        log.warning('Assistant cannot reach its model: {detail} {remedy}', {
-          detail: status.detail,
-          remedy: status.remedy ?? '',
-        })
-      }
-    })
-  }
-
-  // Imported only when configured, like the assistant: an unconfigured site has no
-  // git route and no credentials anywhere near it.
+  // Imported only when configured: an unconfigured site has no git route and no
+  // credentials anywhere near it.
   const auditPath = `${paths.pluginPath}/api/audit`
+  const hostTokenPath = `${paths.pluginPath}/api/host-token`
+  /** Per node: ten a minute for each person, three hundred in all. */
+  const hostTokens = new AttemptLimiter({ max: 10, maxAll: 300, windowMs: 60_000 })
   const auditHost = createAuditHost(db, config.auditRetentionDays)
 
   const gitPath = `${paths.pluginPath}/api/git`
@@ -1205,7 +1177,37 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     })
   }
 
+  /**
+   * Answers on the back office's API paths as on Umbraco's (`contractPathFor`):
+   * a request on the new paths is routed as the contract names it, and an
+   * address it is answered with points back at the new paths.
+   */
   async function fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url)
+    const contract = contractPathFor(paths.backOfficePath, url.pathname)
+    if (!contract) return route(request)
+    url.pathname = contract
+    const moved = new Request(url, request)
+    const peer = peers.get(request)
+    if (peer) peers.set(moved, peer)
+    const response = await route(moved)
+    const location = response.headers.get('location')
+    if (location?.includes(MANAGEMENT_API_PREFIX)) {
+      const headers = new Headers(response.headers)
+      headers.set(
+        'location',
+        location.replace(MANAGEMENT_API_PREFIX, managementApiPrefix(paths.backOfficePath)),
+      )
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      })
+    }
+    return response
+  }
+
+  async function route(request: Request): Promise<Response> {
     const url = new URL(request.url)
     const { pathname } = url
 
@@ -1278,13 +1280,14 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
 
   /**
    * The audit entry for a successful write to one of Crombolo's own endpoints,
-   * which the contract router does not see. The assistant's are left out: what it
-   * changes goes through the router, and is recorded there. docs/audit-log.md.
+   * which the contract router does not see. docs/audit-log.md.
    */
   async function auditPluginWrite(request: Request, pathname: string): Promise<void> {
     const prefix = `${paths.pluginPath}/api/`
     if (request.method === 'GET' || request.method === 'HEAD') return
-    if (!pathname.startsWith(prefix) || pathname.startsWith(`${assistantPath}/`)) return
+    if (!pathname.startsWith(prefix)) return
+    // A host token changes nothing here: each one is a log line, not an entry.
+    if (pathname === hostTokenPath) return
     const principal = await authenticate(request)
     if (!principal) return
     const plan = pluginAuditPlan(request.method, pathname.slice(prefix.length))
@@ -1318,20 +1321,6 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     )
       return new Response(null, { status: 303, headers: { location: setup.path } })
 
-    // Non-contract, signed-in: the assistant's chat, review and MCP endpoints.
-    // Absent configuration there is no `assistant`, so these paths 404 like any
-    // other unknown route.
-    if (assistant && pathname.startsWith(`${assistantPath}/`)) {
-      const principal = await authenticate(request)
-      if (!principal) return new Response('Unauthorized', { status: 401 })
-      const response = await assistant.handle(
-        request,
-        pathname.slice(assistantPath.length),
-        principal,
-      )
-      if (response) return response
-    }
-
     // Non-contract, Settings: what the repository has against what this site has.
     // Settings and not merely signed in, because the diff is the schema's full
     // text and a commit pushes it under this site's credentials — the same
@@ -1359,8 +1348,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
       const principal = await authenticate(request)
       if (!principal) return new Response('Unauthorized', { status: 401 })
       // Settings: this applies type changes to the database, which is what every
-      // `document-type` write requires, and what the assistant asks of a schema
-      // proposal before it writes one.
+      // `document-type` write requires.
       if (!hasSection(principal, 'settings')) return new Response('Forbidden', { status: 403 })
       if (request.method !== 'GET' && request.method !== 'POST') {
         return new Response('Method Not Allowed', { status: 405 })
@@ -1392,8 +1380,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     //
     // Signed in and not Settings, although only Settings can open a template:
     // this is the same vocabulary of type and property aliases that the content
-    // editor in front of every backoffice user already shows them, and the
-    // assistant's review pane loads a template for anyone who may use it.
+    // editor in front of every backoffice user already shows them.
     if (pathname === `${paths.pluginPath}/api/editor-types`) {
       const principal = await authenticate(request)
       if (!principal) return new Response('Unauthorized', { status: 401 })
@@ -1513,6 +1500,39 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
      * wherever someone finds the option missing. The provider's `description`
      * is deliberately left out: for a custom adapter it is an internal URL.
      */
+    // Story 178: the back office vouches for its user to the host's own service.
+    if (pathname === hostTokenPath) {
+      if (!config.host) return new Response('Not Found', { status: 404 })
+      if (request.method !== 'POST') return new Response('Method Not Allowed', { status: 405 })
+      if (!isSameOrigin(request, config.applicationUrl || undefined))
+        return new Response('Forbidden', { status: 403 })
+      // The person as they stand now: an ended session, a lock-out or a
+      // disabled account resolves to nobody.
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      if (hostTokens.blocked(principal.id))
+        return new Response('Too Many Requests', { status: 429, headers: { 'retry-after': '60' } })
+      hostTokens.fail(principal.id)
+      const token = await issueHostToken(config.host, {
+        user: { key: principal.id, name: principal.name },
+        groups: principal.groups.map((group) => group.alias),
+        sections: principal.allowedSections,
+        site: {
+          name: config.siteName,
+          nodeId: schema.nodeId,
+          url: config.applicationUrl || undefined,
+        },
+      })
+      log.info('Issued a host token to {user} for {host}', {
+        user: principal.email,
+        host: config.host.origin,
+      })
+      return Response.json(
+        { token, expiresIn: HOST_TOKEN_SECONDS },
+        { headers: { 'cache-control': 'no-store' } },
+      )
+    }
+
     if (pathname === `${paths.pluginPath}/api/email` && request.method === 'GET') {
       if (!(await authenticate(request))) return new Response('Unauthorized', { status: 401 })
       return Response.json({
@@ -1974,7 +1994,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     if (pathname.startsWith(apiPrefix)) {
       if (pathname === `${apiPrefix}openapi.json`) {
         // Umbraco's contract with crombolo's deliberate differences (contracts/src/overrides.ts).
-        return new Response(servedContract(), {
+        return new Response(servedContract(managementApiPrefix(paths.backOfficePath)), {
           headers: { 'content-type': 'application/json' },
         })
       }
@@ -2492,9 +2512,10 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
           if (!request.headers.has('content-length') && request.headers.has('transfer-encoding'))
             return new Response('Length Required', { status: 411 })
         }
-        if (pathname === hubPath || pathname === previewHubPath) {
+        const hubAt = contractPathFor(paths.backOfficePath, pathname) ?? pathname
+        if (hubAt === hubPath || hubAt === previewHubPath) {
           const principal = await authenticate(request)
-          const hub = pathname === hubPath ? events : previewHub
+          const hub = hubAt === hubPath ? events : previewHub
           return hub.upgrade(request, bunServer, principal?.id)
         }
         return fetch(request)
@@ -2504,6 +2525,8 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     async close() {
       diagnostics.stop()
       jobs.stop()
+      // A dispatch a commit started finishes before the connection goes.
+      await dispatcher.settled().catch(() => {})
       events.stop()
       previewHub.stop()
       watcher?.close()

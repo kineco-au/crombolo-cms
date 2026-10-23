@@ -1,8 +1,8 @@
 {
   "name": "@crombolo/crombolo",
-  "version": "0.25.0",
+  "version": "0.26.0",
   "crombolo": {
-    "migrations": "compatible"
+    "migrations": "breaking"
   },
   "description": "A CMS on Bun with React-style TSX templates, edited through the Umbraco backoffice.",
   "license": "MIT",
@@ -49,7 +49,6 @@
   "dependencies": {
     "@crombolo/api-delivery": "workspace:*",
     "@crombolo/api-management": "workspace:*",
-    "@crombolo/assistant": "workspace:*",
     "@crombolo/auth": "workspace:*",
     "@crombolo/backoffice-dist": "workspace:*",
     "@crombolo/backoffice-host": "workspace:*",

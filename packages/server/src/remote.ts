@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os'
 import { join, sep } from 'node:path'
 import type { Principal } from '@crombolo/api-management'
 import { DEVICE_CODE_GRANT, REMOTE_CLIENT_ID } from '@crombolo/auth'
-import { MANAGEMENT_API_PATH, RemotePermissions, type RemoteVerb } from '@crombolo/core'
+import { managementApiPath, RemotePermissions, type RemoteVerb } from '@crombolo/core'
 import { type Db, type RemoteJob, RemoteJobRepository } from '@crombolo/data'
 import type { ContentSet } from '@crombolo/transfer'
 import { recordAudit } from './adapters/audit.ts'
@@ -117,14 +117,17 @@ export function createRemote(options: RemoteOptions): Remote {
     protected: settings.protected,
   })
 
+  // Under the back office, as the editor's own API calls are; a command line
+  // follows these addresses rather than building its own.
+  const managementApi = managementApiPath(config.backOfficePath.replace(/\/+$/, ''))
   const discovery = (origin: string) => ({
     protocol: 'crombolo-remote',
     versions: [REMOTE_PROTOCOL_VERSION],
     name: config.siteName,
     api: `${origin}${REMOTE_API_PATH}`,
     auth: {
-      deviceAuthorization: `${origin}${MANAGEMENT_API_PATH}/security/back-office/device`,
-      token: `${origin}${MANAGEMENT_API_PATH}/security/back-office/token`,
+      deviceAuthorization: `${origin}${managementApi}/security/back-office/device`,
+      token: `${origin}${managementApi}/security/back-office/token`,
       clientId: REMOTE_CLIENT_ID,
       grantType: DEVICE_CODE_GRANT,
     },

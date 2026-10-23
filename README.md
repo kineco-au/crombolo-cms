@@ -112,7 +112,7 @@ Crombolo is in active development. What is built and planned is tracked as [stor
 | **Forms** | Form building in core, not an add-on: definitions as TOML in `schema/forms/`, a Forms section with a designer and an entries view, rendering and submission with no JavaScript required, and workflows on a retrying queue |
 | **E-mail** | Opt-in, over a provider's HTTPS API — Resend, Postmark, Amazon SES, or an endpoint of your own. Off by default, and what needs it says so rather than failing |
 | **Umbraco import** | A compatibility report for an existing Umbraco site, then its content types, content and media converted into a new site |
-| **Also** | Redirects that follow a moved page — and a Settings screen to manage them, as a bundle — members and public access, hostname routing, an optional AI assistant, and git integration from the backoffice |
+| **Also** | Redirects that follow a moved page — and a Settings screen to manage them, as a bundle — members and public access, hostname routing, and git integration from the backoffice |
 
 ---
 
@@ -452,7 +452,6 @@ Design documents, in reading order; planned work is in the stories:
 | [testing](docs/testing.md) | the test layers, the containers, the browser suite |
 | [schema-as-code](docs/schema-as-code.md) | the TOML format, sync, retirement, coherence across nodes |
 | [packaging-and-upgrades](docs/packaging-and-upgrades.md) | environments, the upgrade process, releasing to npm; what each release changed, and what to do on upgrading, in [release-notes](docs/release-notes.md) |
-| [assistant](docs/assistant.md) | the optional AI helper, its guardrails and its credentials |
 | [schema-at-runtime](docs/schema-at-runtime.md) | the shared schema store, and importing at runtime |
 | [content-transfer](docs/content-transfer.md) | the bundle format, and moving content between environments |
 | [configuration](docs/configuration.md) | every environment variable, and every script; the variable tables are generated from `packages/server/src/settings.ts` by `bun run docs:config` |
@@ -496,10 +495,9 @@ crombolo/
 │   ├── api-delivery/              # Umbraco's Delivery API over the published cache (docs/delivery-api.md)
 │   ├── delivery-client/           # a typed client for the Delivery API, for apps; the one package published
 │   │                              #    as built JavaScript (scripts/delivery-client.ts)
-│   ├── assistant/                 # optional AI helper: tools, guardrails, changesets, agent loop, MCP, Bedrock
 │   ├── backoffice-host/           # SPA shells, import map, static serving, graphics, bundle manifest and discovery;
 │   │                              #    plugin/ = the Changes dashboard, the Bundles views, the banner,
-│   │                              #    the template editor's TSX scaffold and layout, and the assistant drawer;
+│   │                              #    the template editor's TSX scaffold and layout;
 │   │                              #    plugin/seo/ = Settings → Search & sharing and the page preview
 │   │                              #    plugin/branding/ = theme, logos and the overrides that de-Umbraco the client,
 │   │                              #    exported as data by src/branding.ts for consumers that draw the brand;

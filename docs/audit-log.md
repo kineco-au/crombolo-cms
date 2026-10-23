@@ -70,16 +70,12 @@ previews, temporary uploads, a user's own UI state.
 - **Anonymous writes record their user.** A password reset by e-mailed link,
   or an accepted invitation, names the user it was for as the one who acted.
 
-**Everything else that goes through the router.** The assistant's changes
-reach the database through the same router, so they are recorded the same way,
-as the user who asked for them.
-
 **Crombolo's own endpoints.** These are the schema import, source control,
 search and sharing settings, bundles and forms, which the contract does not
 cover. A successful write to any `<backoffice>/crombolo/api/…` path writes an
-entry from `pluginAuditPlan` (`packages/server/src/adapters/audit.ts`). The
-assistant's own endpoints are left out, because what it changes is recorded by
-the router.
+entry from `pluginAuditPlan` (`packages/server/src/adapters/audit.ts`). A host
+token (story 178) is the exception: issuing one changes nothing, so it is a log
+line rather than an entry.
 
 **Sign-ins** (`packages/auth`). The auth routes report the following through
 `onAudit`:

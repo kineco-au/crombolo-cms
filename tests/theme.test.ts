@@ -113,7 +113,7 @@ describe('the themes and the switch', () => {
     for (const alias of ['umb-light-theme', THEME_DARK, THEME_SYSTEM])
       expect(element).toContain(alias)
     // Kept for the person, not only the browser.
-    expect(element).toContain('/umbraco/management/api/v1/user-data')
+    expect(element).toContain('/management/api/v1/user-data')
   })
 })
 

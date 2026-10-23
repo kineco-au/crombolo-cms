@@ -12,7 +12,7 @@
     {
       "culture": null,
       "segment": null,
-      "name": "An AI assistant that asks first",
+      "name": "Edits that never overwrite each other",
       "published": true
     }
   ],
@@ -22,14 +22,14 @@
       "culture": null,
       "segment": null,
       "editor": "Umbraco.TextArea",
-      "value": "Optional help building pages and content. It proposes changes for you to review, and it can never publish."
+      "value": "If someone else saved a page after you opened it, you are told before your save would replace their work, and your changes stay on screen."
     },
     {
       "property": "heading",
       "culture": null,
       "segment": null,
       "editor": "Umbraco.TextBox",
-      "value": "An AI assistant that asks first"
+      "value": "Edits that never overwrite each other"
     }
   ]
 }

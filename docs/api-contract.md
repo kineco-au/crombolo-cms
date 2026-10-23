@@ -6,9 +6,11 @@ contract. OpenAPI 3.1.1, 1.44 MB, 428 paths, **513 operations**, 507 schemas,
 52 tags, `info.version = "Latest"`, no `servers` block (paths are absolute from
 the host root).
 
-We serve our copy at **`GET /umbraco/management/api/openapi.json`**, which is
-where Umbraco serves the committed contract unconditionally (the reflection-generated
-`/umbraco/openapi/management.json` is a dev-only Swagger concern we skip).
+We serve our copy at **`GET <backOfficePath>/management/api/openapi.json`**
+(`/crombolo/…` by default), with its paths moved to where the site answers
+them; Umbraco's own `/umbraco/management/api/openapi.json` answers too (the
+reflection-generated `/umbraco/openapi/management.json` is a dev-only Swagger
+concern we skip).
 
 The file is never edited. Where crombolo differs from it on purpose — today only
 `CreateMemberRequestModel`, whose `password` is optional (story `035`) — the
@@ -21,9 +23,13 @@ the raw file.
 ## Routing
 
 ```
-/umbraco/management/api/v{version}/{template}      Management
-/umbraco/delivery/api/v{version}/{template}        Delivery (docs/delivery-api.md)
+<backOfficePath>/management/api/v{version}/{template}   Management (/crombolo/… by default)
+/crombolo/delivery/api/v{version}/{template}            Delivery (docs/delivery-api.md)
 ```
+
+Umbraco's paths, `/umbraco/management/api/…` and `/umbraco/delivery/api/…`,
+answer as well, so an Umbraco client or an older command line reaches the same
+API. Below, paths are written as the contract names them.
 
 URL-segment versioning, default `v1`, unversioned URLs resolve to v1. Exactly one
 endpoint is `v1.1`: `PUT /v1.1/document/{id}/validate`. Its operation id must stay

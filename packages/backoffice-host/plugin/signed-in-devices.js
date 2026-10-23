@@ -5,7 +5,8 @@
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 
-const API = '/umbraco/management/api/v1/security/back-office/devices'
+/** The Management API, under the back office wherever it is mounted. */
+const API = `${(document.querySelector('base')?.getAttribute('href') ?? '/crombolo/').replace(/\/$/, '')}/management/api/v1/security/back-office/devices`
 
 const when = (iso) => (iso ? new Date(iso).toLocaleString() : '—')
 

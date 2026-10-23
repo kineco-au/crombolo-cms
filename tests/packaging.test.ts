@@ -67,7 +67,6 @@ describe('the published package set', () => {
     expect(packages.map((pkg) => pkg.name)).toEqual([
       '@crombolo/api-delivery',
       '@crombolo/api-management',
-      '@crombolo/assistant',
       '@crombolo/auth',
       '@crombolo/backoffice-dist',
       '@crombolo/backoffice-host',
@@ -154,6 +153,15 @@ describe('the published package set', () => {
     const cli = readFileSync(join(ROOT, 'packages/cli/src/support/umbraco.ts'), 'utf8')
     expect(cli).toContain("await import('@crombolo/import-umbraco')")
     expect(cli).not.toMatch(/^import .* from '@crombolo\/import-umbraco'/m)
+  })
+
+  test('carries no cloud SDK: the assistant, its only user, left with story 179', () => {
+    const cloud = packages.flatMap((pkg) =>
+      Object.keys(pkg.manifest.dependencies ?? {})
+        .filter((name) => name.startsWith('@aws-sdk/') || name.startsWith('@smithy/'))
+        .map((name) => `${pkg.name}: ${name}`),
+    )
+    expect(cloud).toEqual([])
   })
 
   test('reports the shared version at runtime', () => {

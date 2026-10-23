@@ -10,7 +10,7 @@
  * `content_transfer_change` holds, per node, the event the node was at before
  * the run and the published event it was serving — which is exactly what
  * "restore the previously-live state" means. Shape follows
- * `assistant_changeset`/`assistant_change`: a header with its items.
+ * migration 017's changesets: a header with its items.
  */
 import type { Db } from '../database.ts'
 import type { Migration } from '../migrations.ts'

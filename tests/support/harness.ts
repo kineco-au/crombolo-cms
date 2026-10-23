@@ -5,6 +5,7 @@
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { deriveChallenge, generateToken, parseCookies } from '@crombolo/auth'
+import { MANAGEMENT_API_PATH, managementApiPath } from '@crombolo/core'
 import {
   type CromboloConfig,
   createServer,
@@ -41,13 +42,14 @@ process.on('exit', () => {
 export const ORIGIN = 'http://localhost'
 /**
  * Where the editor is mounted. Derived, so moving it is one change in
- * `@crombolo/core` rather than a sweep through the suite; `V1` does not move
- * with it, because the Management API is fixed by the contract.
+ * `@crombolo/core` rather than a sweep through the suite; `V1`, the Management
+ * API, moves with it. Umbraco's own path answers too (`LEGACY_V1`).
  */
 export const BACKOFFICE = DEFAULTS.backOfficePath
-export const V1 = '/umbraco/management/api/v1'
+export const V1 = managementApiPath(DEFAULTS.backOfficePath)
+export const LEGACY_V1 = MANAGEMENT_API_PATH
 const SECURITY = `${V1}/security/back-office`
-// The SPA's own route, which moves with the backoffice; the API does not.
+// The SPA's own route, which moves with the backoffice.
 const REDIRECT_URI = `${ORIGIN}${DEFAULTS.backOfficePath}/oauth_complete`
 const CLIENT_ID = 'umbraco-back-office'
 export const ADMIN = { username: 'admin@crombolo.local', password: 'test-password' }

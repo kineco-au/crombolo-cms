@@ -151,6 +151,19 @@ describe('the delivery client', () => {
     expect(Object.keys(items[0]?.properties ?? {})).toEqual(['title'])
   })
 
+  test("asks at crombolo's path, or at Umbraco's when told to, and both answer", async () => {
+    const { client, sent } = await site()
+    const own = await client({}).content({ fetch: 'children:/' })
+    const umbraco = await client({ apiPath: '/umbraco/delivery/api/v2' }).content({
+      fetch: 'children:/',
+    })
+    expect(sent.map((request) => new URL(request.url).pathname)).toEqual([
+      '/crombolo/delivery/api/v2/content',
+      '/umbraco/delivery/api/v2/content',
+    ])
+    expect(umbraco.items.map((item) => item.id)).toEqual(own.items.map((item) => item.id))
+  })
+
   test('sends the key, the culture, the start item and a member’s token', async () => {
     const { client, sent } = await site()
     const cms = client({
@@ -166,7 +179,7 @@ describe('the delivery client', () => {
     expect(query?.headers.get('accept-language')).toBe('en-US')
     expect(query?.headers.get('start-item')).toBe('home')
     expect(query?.headers.get('authorization')).toBe('Bearer member-token')
-    expect(new URL(query?.url ?? '').pathname).toBe('/umbraco/delivery/api/v2/content')
+    expect(new URL(query?.url ?? '').pathname).toBe('/crombolo/delivery/api/v2/content')
     expect(item?.headers.get('accept-language')).toBe('da-DK')
     expect(item?.headers.get('start-item')).toBe('other')
   })
@@ -215,6 +228,7 @@ describe('the published package', () => {
       expect(declarations).toContain('export declare function createDeliveryClient')
       const built = await import(join(dir, 'dist/index.js'))
       expect(Object.keys(built).sort()).toEqual([
+        'DELIVERY_API_PATH',
         'DeliveryError',
         'createDeliveryClient',
         'isExpanded',

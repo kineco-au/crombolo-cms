@@ -13,8 +13,8 @@ crombolo/
 │   ├── data/                     # dialect seam: schema, migrations, repositories
 │   ├── content/                  # document writes: actors, permissions, approvals, events
 │   ├── auth/                     # OAuth2 server, token store, cookies, providers
-│   ├── api-management/           # /umbraco/management/api/v1/** handlers
-│   ├── api-delivery/             # /umbraco/delivery/api/v2/** over the published cache
+│   ├── api-management/           # <backOfficePath>/management/api/v1/** handlers
+│   ├── api-delivery/             # /crombolo/delivery/api/v2/** over the published cache
 │   ├── backoffice-host/          # SPA shell, importmap, static assets, manifests
 │   ├── schema/                   # schema-as-code: model, parser, validator, writer, sync
 │   ├── import-umbraco/           # opt-in: an Umbraco backup → a report, schema files, a bundle, view stubs
@@ -44,10 +44,6 @@ which is what makes the packages consumable outside this repo.
 - `api-delivery` depends on `core`, `contracts` and `render`, never on `data`: it
   reads the published cache, and the server hands it the member and protection
   lookups it needs
-- `assistant` depends on `contracts` for its tool surface and on nothing that can
-  write: it is handed a function that issues Management API calls, so every read
-  it makes is authorised as the signed-in user and it has no path of its own to
-  the database
 - `render` depends on `core` and a content source interface; it never queries drafts.
   It also depends on `@types/react`, for types only: each tag's attributes are
   React's, adapted (`jsx-attributes.ts`), and nothing of React runs. A site
@@ -111,6 +107,10 @@ the rules do not depend on what started the change.
 ## Server composition
 
 One Bun `serve()` with an ordered router:
+
+Requests on `<backOfficePath>/management/api/…`, `/crombolo/delivery/api/…`
+and the two hubs under the back office are first routed as the contract names
+them (`contractPathFor`), so the table below is written in those terms.
 
 | Order | Prefix | Handled by |
 | --- | --- | --- |

@@ -1,5 +1,7 @@
 # 130 — The assistant converts Razor views
 
+**Abandoned (2026-10-23):** the assistant this extends left the CMS with story 179. A host could offer such a converter as a tool of its own (`bundles.md`, "Tools a host provides").
+
 **Epic:** N — The assistant · **Priority:** could · **Size:** M
 **Depends on:** 070
 

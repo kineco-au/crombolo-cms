@@ -55,10 +55,23 @@ export function loadSpec(): OpenApiSpec {
 }
 
 /** The contract as `GET …/openapi.json` serves it. */
-export function servedContract(): string {
+/**
+ * The contract as a site serves it. With `prefix`, its paths are moved from
+ * Umbraco's `/umbraco/management/api/` to where this site serves the API.
+ */
+export function servedContract(prefix?: string): string {
   if (!served) served = JSON.stringify(loadSpec())
-  return served
+  if (!prefix || prefix === UMBRACO_PREFIX) return served
+  let moved = servedAt.get(prefix)
+  if (!moved) {
+    moved = served.replaceAll(`"${UMBRACO_PREFIX}`, `"${prefix}`)
+    servedAt.set(prefix, moved)
+  }
+  return moved
 }
+
+const UMBRACO_PREFIX = '/umbraco/management/api/'
+const servedAt = new Map<string, string>()
 
 let deliveryCached: OpenApiSpec | undefined
 

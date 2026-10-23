@@ -832,8 +832,8 @@ const CROMBOLO: Builder = async (site) => {
     ),
     await feature(
       '6a683488-cad5-4765-b253-044090a86505',
-      'An AI assistant that asks first',
-      'Optional help building pages and content. It proposes changes for you to review, and it can never publish.',
+      'Edits that never overwrite each other',
+      'If someone else saved a page after you opened it, you are told before your save would replace their work, and your changes stay on screen.',
     ),
     await feature(
       'f6c036de-300b-42d5-aa83-56f60fa26ef2',

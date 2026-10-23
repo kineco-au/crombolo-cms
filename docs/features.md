@@ -108,7 +108,7 @@ tail of 1–3 each.
 
 ## Could have — high value, after core
 
-- **Delivery API** (`/umbraco/delivery/api/v2/**`) — built: content and media,
+- **Delivery API** (`/crombolo/delivery/api/v2/**`, and Umbraco's `/umbraco/delivery/api/v2/**`) — built: content and media,
   API key, members-only pages, member sign-in and calls from apps on other origins
   previewing drafts in an app from the backoffice's Preview button
   ([`delivery-api.md`](delivery-api.md)); cache headers, ETags and purge tags for

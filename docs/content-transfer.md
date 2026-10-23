@@ -687,7 +687,7 @@ manifest fields beyond the usual:
 | --- | --- |
 | `scope: "site"` | a whole site: `import` replaces with it, and refuses to replace with anything else |
 | `media: "omitted"` | written with `--no-media`: importing it needs `--allow-missing-media`, so arriving without the files is a decision |
-| `requires` | the server bundles the site wires, by package name and version; an import refuses while one is missing or older here |
+| `requires` | the server bundles the site wires, by package name and version, leaving out the packages the installation lists as `hostProvided` (story 177); an import refuses while one is missing or older here |
 
 `provenance.cmsVersion` records the CMS that wrote it, and the package's peer range
 (`>=` that version) is what makes an older CMS refuse it with the version named.

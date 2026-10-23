@@ -12,10 +12,10 @@ import {
   type RedirectRule,
   type SnapshotLimits,
 } from '@crombolo/render'
-import type { AssistantConfig } from './assistant.ts'
 import type { ServerBundle } from './bundles.ts'
 import type { EmailPort } from './email.ts'
 import type { GitConfig } from './git-routes.ts'
+import { checkHost, type HostConfig } from './host-token.ts'
 import { checkIdentityProviders, type IdentityProvider } from './identity-providers.ts'
 import type { MediaStore } from './media-store.ts'
 import type { SchemaStore } from './schema-store.ts'
@@ -381,6 +381,13 @@ export interface CromboloConfig {
    */
   bundles: ServerBundle[]
   /**
+   * Package names this installation provides to every site it runs, rather
+   * than the site choosing them (story 177): a whole-site file leaves them out
+   * of what it requires, so the site starts anywhere without them. Set by
+   * whoever runs the installation, in code only, as `bundles` is.
+   */
+  hostProvided: readonly string[]
+  /**
    * Whether installing a bundle from the Marketplace also applies the content it
    * carries — its schema, components and content — straight after `bun add`. On
    * by default; a load-balanced site that wants content to arrive only with a
@@ -414,12 +421,11 @@ export interface CromboloConfig {
    */
   git: GitConfig | undefined
   /**
-   * The AI helper in the backoffice. Absent means the feature does not exist: no
-   * route, no tools, no model client, and nothing in the backoffice. When it is
-   * configured the assistant can read the CMS and propose changes, and a person
-   * approves each one — it cannot write, and it cannot publish.
+   * The host this installation's back office vouches for its user to (story
+   * 178): its origin, the key that signs host tokens, and that key's id. From
+   * `crombolo.config.ts` only; without it no token is issued.
    */
-  assistant: AssistantConfig | undefined
+  host: HostConfig | undefined
 }
 
 export type SiteConfig = CromboloConfig
@@ -688,11 +694,13 @@ export function loadConfig(
     }),
     // No environment variable: a bundle is an import, which is code.
     bundles: [],
+    // Nor here: it is the installation's decision about that code.
+    hostProvided: [],
     marketplaceUrl: setting('CROMBOLO_MARKETPLACE_URL') ?? DEFAULTS.marketplaceUrl,
     packageKeyword: setting('CROMBOLO_PACKAGE_KEYWORD') ?? DEFAULTS.packageKeyword,
     npmRegistry: setting('CROMBOLO_NPM_REGISTRY') ?? DEFAULTS.npmRegistry,
-    // No environment variable: enabling it takes a provider, which is code.
-    assistant: undefined,
+    // Nor here: a host reads its own variables inside `defineConfig`, if it wants them.
+    host: undefined,
   }
   const merged: CromboloConfig = { ...fromEnv, ...stripUndefined(overrides) }
   checkIdentityProviders(merged.memberIdentityProviders, 'member')
@@ -701,6 +709,13 @@ export function loadConfig(
   merged.seo = { ...fromEnv.seo, ...stripUndefined(overrides.seo ?? {}) }
   merged.remote = { ...fromEnv.remote, ...stripUndefined(overrides.remote ?? {}) }
   checkApiClient(merged.apiClient)
+  checkHost(merged.host)
+  // The key itself is refused, so a config left over from before says so rather
+  // than starting without the feature it asked for.
+  if ('assistant' in overrides)
+    throw new Error(
+      "The AI assistant was removed from crombolo in 0.26 (story 179), so 'assistant' is no longer a setting. See the 0.26 release notes, and 'Tools a host provides' in docs/bundles.md for how a host offers such a tool now.",
+    )
   if (!/^[a-z][a-z0-9-]{0,62}$/.test(merged.remote.environment))
     throw new Error(
       `remote.environment "${merged.remote.environment}" must be lower case letters, digits and dashes.`,
@@ -798,7 +813,7 @@ export function describeDatabase(
   }
 }
 
-export const VERSION = '0.25.0'
+export const VERSION = '0.26.0'
 
 /** A whole number of seconds from the environment; undefined when unset or not one. */
 function numberSetting(name: Parameters<typeof setting>[0]): number | undefined {

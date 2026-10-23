@@ -79,11 +79,8 @@ services:
       CROMBOLO_LOG_LEVEL: ${CROMBOLO_LOG_LEVEL:-debug}
       CROMBOLO_TRACE_REQUESTS: ${CROMBOLO_TRACE_REQUESTS:-true}
       CROMBOLO_HEAP_INTERVAL_SECONDS: ${CROMBOLO_HEAP_INTERVAL_SECONDS:-30}
-      # The assistant, off unless a model is named. Compose reads these from
-      # `.env`, which is gitignored. AWS_PROFILE works because ~/.aws is mounted
-      # below; the keys remain for a machine that has no profile.
-      CROMBOLO_ASSISTANT_MODEL: ${CROMBOLO_ASSISTANT_MODEL:-}
-      AWS_PROFILE: ${AWS_PROFILE:-}
+      # SES e-mail's credentials, when it sends. Compose reads these from `.env`,
+      # which is gitignored.
       AWS_REGION: ${AWS_REGION:-}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
@@ -117,10 +114,6 @@ services:
       # the server restarts every minute or so, the two starve each other for CPU,
       # and a suite that takes two minutes takes thirty.
       - cms_output:/app/output
-      # Read-only: what AWS_PROFILE needs to mean anything in here, the SSO token
-      # cache included. Those tokens are short-lived and the mount cannot write
-      # back, so `aws sso login` stays something you do on the host.
-      - ${HOME}/.aws:/root/.aws:ro
     healthcheck:
       test: ['CMD-SHELL', "bun -e \"(await fetch('http://localhost:'+process.env.PORT+'/health')).ok || process.exit(1)\""]
       interval: 5s

@@ -145,9 +145,9 @@ than sequence numbers) and hardened:
 - **Expand/contract, enforced.** A migration declares itself `expand` or
   `contract`. An expand adds tables, columns, indexes, and never removes or
   renames. A contract may only remove what an expand introduced in an *earlier
-  release*, and may itself only ship in a **major** (`x.0.0`, never before
-  1.0.0) — so every minor and patch is additive and can be rolled under live
-  nodes. The plan is linted at build time, so the rule cannot be broken by
+  release*. From 1.0 it may itself only ship in a **major** (`x.0.0`), so every
+  minor and patch is additive and can be rolled under live nodes. Before 1.0,
+  breaking changes are allowed and any release may carry one. The plan is linted at build time, so the rule cannot be broken by
   accident. Consequence: the previous version always boots against the upgraded
   database, which is what makes rolling back a release possible.
 - **Boot refuses a database newer than the code.** Today that surfaces as
@@ -174,10 +174,12 @@ an **expand**:
 
 So the previous release always keeps working against a database the next one
 has migrated, and a cluster can be rolled one node at a time. A contract may
-only remove what an earlier release's expand added, and may itself only ship in
-`x.0.0` — never before 1.0.0. `MigrationPlan`'s lint enforces both when the plan
-is built, so a minor carrying a contract fails every test before it can be
-released.
+only remove what an earlier release's expand added. From 1.0 it may itself only
+ship in `x.0.0`; before 1.0, when breaking changes are allowed, any release may
+carry one (`mayShipContract`). `MigrationPlan`'s lint enforces both when the
+plan is built, so a post-1.0 minor carrying a contract fails every test before
+it can be released. A release with a contract is still declared breaking, and
+a cluster upgrading across it should not be rolled one node at a time.
 
 **The release declaration.** Every release states the result in the published
 `@crombolo/crombolo` package.json:
@@ -681,9 +683,9 @@ builds `dist/index.js` and `dist/index.d.ts` and packs it under a manifest whose
 `exports` point there (`scripts/delivery-client.ts`), then puts the source
 manifest back. It has no dependencies, and no site depends on it.
 
-Runtime dependencies are `@logtape/logtape`, and the AWS SDK behind
-`@crombolo/assistant` — which a site installs only if it depends on that package,
-since the umbrella re-exports `bedrock()` but nothing else reaches for it. The
+The runtime dependencies include `@logtape/logtape` and `jose`, and no cloud
+SDK: the AWS SDK left with the assistant (story 179), and a test keeps it out.
+The
 thirty browser packages in the root manifest (tiptap, monaco, lit, the Umbraco
 client) are build-time only: `vendor:backoffice` bundles them into
 `backoffice-dist`, so a site never installs them.

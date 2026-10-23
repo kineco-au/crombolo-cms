@@ -448,7 +448,7 @@ export interface SchemaImportResult {
  * by the backoffice arrives here and is imported the same way, through one path.
  *
  * Deliberately never automatic. It runs when someone asks, or when an operation
- * needs it — committing an assistant changeset, publishing type changes — because
+ * needs it — publishing type changes, say — because
  * importing a half-finished schema underneath an editor mid-save is worse than
  * importing a minute later.
  *

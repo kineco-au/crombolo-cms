@@ -168,7 +168,15 @@ describe('expand and contract, per bundle', () => {
       table,
       { name: 'drop', release: '1.2.0', up: (s) => s.dropColumn('thing', 'label') },
     ]
-    expect(problemsOf(steps)).toContain('a contract may only ship in a major release of the bundle')
+    expect(problemsOf(steps)).toContain('a contract may only ship in one of its major releases')
+  })
+
+  test('before its 1.0, a bundle may contract in any release', () => {
+    const steps: BundleStep[] = [
+      { ...table, release: '0.2.0' },
+      { name: 'drop', release: '0.3.0', up: (s) => s.dropColumn('thing', 'label') },
+    ]
+    expect(problemsOf(steps, '0.3.0')).not.toContain('major release')
   })
 
   test('a contract may only remove what an earlier release added', () => {

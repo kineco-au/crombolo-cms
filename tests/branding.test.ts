@@ -841,7 +841,7 @@ describe('the labels Umbraco hard-codes as Document Types', () => {
 })
 
 describe('the extensions the plugin registers', () => {
-  const manifests = ['', 'assistant', 'localizations', 'seo'].map((dir) =>
+  const manifests = ['', 'localizations', 'seo'].map((dir) =>
     join('packages/backoffice-host/plugin', dir, 'umbraco-package.json'),
   )
   const aliases = manifests.flatMap((file) =>

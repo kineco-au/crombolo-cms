@@ -1,7 +1,12 @@
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { DEFAULT_BACKOFFICE_PATH as CORE_DEFAULT } from '@crombolo/core'
+import {
+  DEFAULT_BACKOFFICE_PATH as CORE_DEFAULT,
+  managementApiPath,
+  previewHubPath,
+  serverEventHubPath,
+} from '@crombolo/core'
 
 /**
  * Path layout for the hosted backoffice.
@@ -25,6 +30,12 @@ export interface BackOfficePaths {
   readonly pluginPath: string
   /** Directory on disk holding that package: a manifest and its modules. */
   readonly pluginDir: string
+  /** e.g. /crombolo/management/api/v1 — the Management API, under the back office. */
+  readonly managementApiPath: string
+  /** e.g. /crombolo/serverEventHub */
+  readonly serverEventHubPath: string
+  /** e.g. /crombolo/PreviewHub */
+  readonly previewHubPath: string
 }
 
 export { DEFAULT_BACKOFFICE_PATH } from '@crombolo/core'
@@ -91,6 +102,9 @@ export function createBackOfficePaths(options: BackOfficePathOptions = {}): Back
     vendorDir,
     pluginPath: `${backOfficePath}/crombolo`,
     pluginDir: options.pluginDir ?? defaultPluginDir(),
+    managementApiPath: managementApiPath(backOfficePath),
+    serverEventHubPath: serverEventHubPath(backOfficePath),
+    previewHubPath: previewHubPath(backOfficePath),
   }
 }
 

@@ -86,6 +86,16 @@ export function isMajorRelease(release: string): boolean {
   return major >= 1 && minor === 0 && patch === 0
 }
 
+/**
+ * Whether a release may carry a contract: any release before 1.0, where
+ * breaking changes are allowed, and from then on only a major (`x.0.0`), since
+ * minors and patches are rolled under live nodes and must only add.
+ */
+export function mayShipContract(release: string): boolean {
+  const [major = 0] = release.split(/[.+-]/).map(Number)
+  return major === 0 || isMajorRelease(release)
+}
+
 export class MigrationPlan {
   readonly migrations: readonly Migration[]
   readonly stateKey: string
@@ -123,9 +133,9 @@ export class MigrationPlan {
           throw new Error(
             `Contract migration '${migration.name}' (${migration.release}) may only remove what an earlier release added; '${expand.name}' is ${expand.release}.`,
           )
-        if (!isMajorRelease(migration.release))
+        if (!mayShipContract(migration.release))
           throw new Error(
-            `Contract migration '${migration.name}' ships in ${migration.release}, but a contract may only ship in a major release (x.0.0): minors and patches are rolled under live nodes and must only add.`,
+            `Contract migration '${migration.name}' ships in ${migration.release}, but from 1.0 a contract may only ship in a major release (x.0.0): minors and patches are rolled under live nodes and must only add.`,
           )
       }
       seen.set(migration.name, migration)

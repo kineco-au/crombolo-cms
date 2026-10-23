@@ -13,7 +13,7 @@ import { UMB_SERVER_CONTEXT } from '@umbraco-cms/backoffice/server'
 
 /** The identity provider the server's authorize endpoint knows; nothing displays it. */
 const PROVIDER = 'Umbraco'
-const LOGO = '/umbraco/management/api/v1/security/back-office/graphics/login-logo-alternative'
+const LOGO = `${(document.querySelector('base')?.getAttribute('href') ?? '/crombolo/').replace(/\/$/, '')}/management/api/v1/security/back-office/graphics/login-logo-alternative`
 
 export class CromboloSignInDialogElement extends UmbModalBaseElement {
   static properties = {

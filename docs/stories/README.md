@@ -150,6 +150,7 @@ requests, only server-side and build-time front ends can call it.
 | `061` | Reviewed publishers | could | M | backlog | 060 |
 | `062` | Tables a bundle owns | should | L | done | 063 |
 | `063` | A bundle is an npm package | should | L | done | — |
+| `178` | The back office vouches for its user to a host | should | S | done | 063, 177 |
 
 ### Epic H — Importing a site
 
@@ -199,7 +200,7 @@ requests, only server-side and build-time front ends can call it.
 | `106` | An imported schema reaches the schema store | must | S | done | — |
 | `107` | The remote protocol | should | L | done | 104, 105, 106 |
 | `108` | crombolo pull and push | should | M | done | 107 |
-| `177` | A host's own bundles stay with the host | should | S | ready | 063, 104 |
+| `177` | A host's own bundles stay with the host | should | S | done | 063, 104 |
 
 ### Epic L — Routing
 
@@ -214,11 +215,12 @@ requests, only server-side and build-time front ends can call it.
 | `120` | Cache instructions arrive without polling | could | S | done | — |
 | `121` | Reads from a Postgres replica | could | M | ready | 174 |
 
-### Epic N — The assistant
+### Epic N — The assistant (closed with 179)
 
 | # | Story | Priority | Size | State | Depends on |
 |---|---|---|---|---|---|
-| `130` | The assistant converts Razor views | could | M | ready | 070 |
+| `130` | The assistant converts Razor views | could | M | abandoned | 070 |
+| `179` | The assistant leaves the CMS | should | M | done | 178 |
 
 ### Epic O — Building a site
 

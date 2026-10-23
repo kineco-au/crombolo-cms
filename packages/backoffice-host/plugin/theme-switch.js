@@ -10,7 +10,8 @@ import { css, html } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { UMB_THEME_CONTEXT } from '@umbraco-cms/backoffice/themes'
 
-const USER_DATA = '/umbraco/management/api/v1/user-data'
+/** The Management API, under the back office wherever it is mounted. */
+const USER_DATA = `${(document.querySelector('base')?.getAttribute('href') ?? '/crombolo/').replace(/\/$/, '')}/management/api/v1/user-data`
 const GROUP = 'crombolo'
 const IDENTIFIER = 'theme'
 const EARLY = 'crombolo-early-theme'

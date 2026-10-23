@@ -344,19 +344,33 @@ allowCacheBusting?, extensions: unknown[], importmap?: { imports, scopes? } }`.
 
 The editor is mounted at `/crombolo` (`CROMBOLO_BACKOFFICE_PATH`, defaulting to
 `DEFAULT_BACKOFFICE_PATH` in `@crombolo/core`, the single place the default is
-written). Moving it does **not** move the API, exactly as in Umbraco, where
-`UmbracoPath` does not affect `VersionedApiBackOfficeRoute`.
+written). Unlike Umbraco, where `UmbracoPath` does not move the API, the
+Management API and the live-update hubs move with it, so the editor and
+everything it talks to sit under one path.
 
-| Moves with `backOfficePath` | Fixed, because the vendored client hard-codes it |
+| Moves with `backOfficePath` (`/crombolo` here) | Stays put |
 | --- | --- |
-| the SPA shell and its routes (`/crombolo/section/…`) | `/umbraco/management/api/v1/**` — the contract, and the generated SDK |
-| the login page and its assets | `/umbraco/serverEventHub` — `server-event.context.js` |
-| static assets, `/crombolo/backoffice/<hash>/…` | `/umbraco/PreviewHub` — `preview.context.js` |
-| our own plugin, `/crombolo/crombolo/…` | the security endpoints, which are Management API operations |
-| `oauth_complete` and `logout`, the SPA's own routes | the back-office graphics, served under the API path |
+| the SPA shell and its routes (`/crombolo/section/…`) | the Delivery API, at `/crombolo/delivery/api/v2` wherever the back office is: it is public, and a site that locks its back office down must not cut its apps off |
+| the login page and its assets | Umbraco's own paths, which keep answering: `/umbraco/management/api/v1/**`, `/umbraco/serverEventHub`, `/umbraco/PreviewHub`, `/umbraco/delivery/api/v2/**` |
+| static assets, `/crombolo/backoffice/<hash>/…` | external sign-in callbacks, at `/umbraco/management/api/v1/security/back-office/external/<id>/callback`, so a provider's registration never changes |
+| our own plugin, `/crombolo/crombolo/…` | the remote protocol, `/umbraco/remote/v1` |
+| `oauth_complete` and `logout`, the SPA's own routes | |
+| the Management API, `/crombolo/management/api/v1/**`, its security endpoints and graphics included | |
+| the hubs, `/crombolo/serverEventHub` and `/crombolo/PreviewHub` | |
 
-The constants for the fixed paths live in `packages/core/src/api-paths.ts`, so
-nothing derives an API path from `backOfficePath` by accident. The vendored
+**How the client follows.** The vendored client and its contract name
+Umbraco's paths. Two pieces make the move:
+- **The client's modules are rewritten as they are served**
+  (`rehomeClientModule`, `backoffice-host/src/static.ts`). Its request
+  addresses move to the back office's path, and the rewritten text is cached.
+  This needs no new build of `@crombolo/backoffice-dist`, and an older
+  installed copy is rewritten the same way.
+- **The server routes a request on the new paths as the contract names it**
+  (`contractPathFor`, `server.ts`). A `Location` it answers with points back at
+  the path asked on, and the served contract (`…/management/api/openapi.json`)
+  lists the paths the site answers on.
+
+The constants and helpers live in `packages/core/src/api-paths.ts`. The vendored
 manifest's asset paths are rewritten from the literal the vendor script bakes in
 (`VENDORED_ASSETS_PATH`) onto the configured `assetsPath` — keying that rewrite
 off `virtualDirectory` silently breaks the import map the moment the editor

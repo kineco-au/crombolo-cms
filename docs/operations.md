@@ -685,8 +685,6 @@ contract says nothing. What is worth knowing as an operator:
 | Preview                 | A draft renders only for an editor who could read the document: the Content section, a start node above it, and Read on it                                                |
 | Document patch          | Needs Update on the node, as a save does; paths walk own properties only and refuse `__proto__`, `constructor` and `prototype`                                            |
 | Request bodies          | Capped at 32 MiB (`CROMBOLO_MAX_REQUEST_BODY_MB`) rather than Bun's 128 MB default                                                                                        |
-| Assistant               | Read-and-propose only; the transcript a browser returns is capped before it is billed; provider configuration is shown to Settings holders only                            |
-| Proposed templates      | Scanned for the globals and the roads to `eval` — `Function`, `.constructor`, `import.meta` — behind human approval, which is the real gate                               |
 
 Two things follow Umbraco rather than improving on it, deliberately, and are
 worth a decision per site:
@@ -770,7 +768,7 @@ purge it and its ancestors, which is every list that could hold it:
 ```ts
 // a bundle's webhook handler, or any receiver
 'Umbraco.ContentPublish': async ({ payload, fetch }) => {
-  const site = 'https://cms.example.com/umbraco/delivery/api/v2'
+  const site = 'https://cms.example.com/crombolo/delivery/api/v2'
   const above = await (await fetch(`${site}/content?fetch=ancestors:${payload.Id}&take=100`)).json()
   await fetch('https://api.cdn.example/purge', {
     method: 'POST',
@@ -806,8 +804,8 @@ carefully:
 The `web` row is what keeps an upgrade invisible to readers. A new node cannot
 boot until the upgrade has run, and every old node falls behind the moment it
 does; if old renderers drained then, there would be a window with nothing
-healthy to serve. An expand-only change — every minor and patch, since a
-contract may only ship in a major (`packaging-and-upgrades.md`) — leaves an
+healthy to serve. An expand-only change — every minor and patch from 1.0,
+since a contract may then only ship in a major (`packaging-and-upgrades.md`) — leaves an
 old node's reads correct, so it keeps serving until it is replaced. A
 contract (a framework contract, or `types purge`) is ledgered as one, and a
 `web` node that is behind drains as soon as it sees one ran after it booted.
@@ -850,7 +848,6 @@ answering the public site, which the editor, and on which schema state.
 | [`testing.md`](testing.md)                               | test strategy and what story `001` covers                                                                                                   |
 | [`schema-as-code.md`](schema-as-code.md)                 | content types, data types and languages as TOML files; sync; the backoffice writes them                                                |
 | [`packaging-and-upgrades.md`](packaging-and-upgrades.md) | how a site consumes the framework; migration ledger, `--plan`, expand/contract; the pre-upgrade check and `--fix` that gate the upgrade |
-| [`assistant.md`](assistant.md)                           | the optional AI helper: why the boundary is real, query and propose, approval and staleness, TSX guardrails, MCP, providers                |
 | [`schema-at-runtime.md`](schema-at-runtime.md)           | the shared schema store, importing files at runtime, how the version moves with the change, and getting it back into git                   |
 | [`content-transfer.md`](content-transfer.md)             | moving content between environments: the bundle format, what travels and what never does, dependency classification, naming a node         |
 | [`remote-protocol.md`](remote-protocol.md)               | the remote protocol: discovery, device sign-in, pulls and pushes as jobs, approvals, media by reference, conformance |

@@ -6,7 +6,6 @@
  * and .../UmbracoLogin/Index.cshtml.
  */
 
-import { MANAGEMENT_API_PATH } from '@crombolo/core'
 import type { PackageManifestImportmap } from './manifests.ts'
 import type { BackOfficePaths } from './paths.ts'
 import { earlyThemeScript } from './theme-early.ts'
@@ -89,7 +88,7 @@ ${JSON.stringify(importmap, null, 2)}
   <script type="module" src="${assets}/apps/app/app.element.js"></script>
 </head>
 <body class="uui-font uui-text" style="margin: 0; padding: 0; overflow: hidden">
-${noscript(`${MANAGEMENT_API_PATH}/security/back-office/graphics/login-logo-alternative`)}
+${noscript(`${paths.managementApiPath}/security/back-office/graphics/login-logo-alternative`)}
 ${
   /* The client defaults this to '/umbraco' and builds its OAuth redirect_uri
       and post-logout URL from it, so it must be told where the editor is. */ ''
@@ -106,7 +105,7 @@ export function renderLoginShell(
   settings: ShellSettings & LoginShellSettings,
 ): string {
   const assets = paths.assetsPath
-  const graphics = `${MANAGEMENT_API_PATH}/security/back-office/graphics`
+  const graphics = `${paths.managementApiPath}/security/back-office/graphics`
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -189,7 +188,7 @@ export function renderDeviceShell(
   return renderStandaloneShell(paths, importmap, {
     title: settings.title,
     script: 'device.js',
-    element: `<crombolo-device user-code="${escapeHtml(settings.userCode ?? '')}" logo-image="${MANAGEMENT_API_PATH}/security/back-office/graphics/login-logo-alternative"></crombolo-device>`,
+    element: `<crombolo-device user-code="${escapeHtml(settings.userCode ?? '')}" logo-image="${paths.managementApiPath}/security/back-office/graphics/login-logo-alternative"></crombolo-device>`,
   })
 }
 
@@ -202,6 +201,6 @@ export function renderRemoteApprovalShell(
   return renderStandaloneShell(paths, importmap, {
     title: settings.title,
     script: 'remote-approval.js',
-    element: `<crombolo-remote-approval job="${escapeHtml(settings.job)}" logo-image="${MANAGEMENT_API_PATH}/security/back-office/graphics/login-logo-alternative"></crombolo-remote-approval>`,
+    element: `<crombolo-remote-approval job="${escapeHtml(settings.job)}" logo-image="${paths.managementApiPath}/security/back-office/graphics/login-logo-alternative"></crombolo-remote-approval>`,
   })
 }

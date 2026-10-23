@@ -5,7 +5,7 @@
  * contract only in a major, and only removing what an earlier release added.
  * `docs/bundles.md`, Part 4.
  */
-import { isMajorRelease } from '../migrations.ts'
+import { mayShipContract } from '../migrations.ts'
 import {
   type ColumnSpec,
   type Op,
@@ -424,9 +424,9 @@ export function compileBundleTables(tables: BundleTables, version?: string): Com
       const problem = apply(working, op, step)
       if (problem) problems.push(problem)
     }
-    if (kind === 'contract' && !isMajorRelease(step.release))
+    if (kind === 'contract' && !mayShipContract(step.release))
       problems.push(
-        `${label} removes something in ${step.release}, but a contract may only ship in a major release of the bundle (x.0.0)`,
+        `${label} removes something in ${step.release}, but from the bundle's 1.0 a contract may only ship in one of its major releases (x.0.0)`,
       )
     schema = working
 

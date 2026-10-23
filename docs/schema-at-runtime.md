@@ -53,10 +53,8 @@ configuring it. An explicit setting still wins.
 
 **Everything that writes schema publishes it**, or the next boot's materialise
 lays the store's older copy over the write: a backoffice edit, a webhook or form
-kept with the files, a bundle's schema through `content import`, and an
-approved assistant proposal. A proposal materialises before it writes, then
-imports with `materialise: false` so its own write is not overwritten, then
-publishes. **Everything that reads schema outside the server materialises
+kept with the files, and a bundle's schema through `content import`.
+**Everything that reads schema outside the server materialises
 first** — `content import` and `content check` from the CLI call
 `useSchemaStore`, so they diff against the store and not whatever local
 directory there is (story `106`).

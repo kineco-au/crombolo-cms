@@ -793,6 +793,106 @@ environment says, that no environment variable names a bundle, that discovery
 parses JSON and never imports a dependency's module, and that the install path
 runs the package manager and nothing of the package.
 
+### Bundles a host provides
+
+An installation that runs other people's sites often wires bundles of its own
+into every one: an editing tool, an integration with its own services, a
+private package it never published. They belong to the host, not to any one
+site. Whoever runs the installation lists them by package name:
+
+```ts
+export default defineConfig({
+  bundles: [hostTool(), siteBundle()],
+  hostProvided: ['@host/tool'],
+})
+```
+
+- **A whole-site file leaves them out of `requires`** (story 177), so it does
+  not name the host's packages, private ones included, and it starts anywhere
+  that has the bundles the site chose itself. This covers `crombolo export
+  --site`, a pull and the operations export alike.
+- **A file written before** that names one still imports on the host that
+  provides it, where the package is installed.
+- **A listed name that is not installed** is logged once at start, not
+  refused, so a host can list a bundle it is still rolling out.
+- **Code only**, as `bundles` is: it is a decision about code.
+
+**Its output still has to stand on its own.** A host bundle's output (its
+components, styles, schema and content) is the site's own, and travels as
+usual. A tool that writes components importing the tool has made the site
+depend on it, so such a tool should write self-contained files. This setting
+only stops the file claiming a dependency the site does not have.
+
+### Tools a host provides
+
+A host can give every site it runs a back-office tool whose work happens on
+the host's side, without the CMS running any of the host's code on its
+server (story 178). Three pieces:
+
+1. **Browser code**, a back-office extension listed in `hostProvided`, so it
+   never leaves with a site (above).
+2. **The Management API as the person.** The extension calls the API from the
+   browser, as every back-office extension can, with the rules and
+   permissions the signed-in person already has.
+3. **A host token to the host's own service.** The extension asks the back
+   office who is signed in, as a short-lived statement signed with the
+   host's key:
+
+   ```js
+   const base = document.querySelector('base').getAttribute('href').replace(/\/$/, '')
+   const { token } = await (
+     await fetch(`${base}/crombolo/api/host-token`, { method: 'POST', credentials: 'include' })
+   ).json()
+   await fetch('https://tools.example.com/api/work', {
+     method: 'POST',
+     headers: { authorization: `Bearer ${token}` },
+   })
+   ```
+
+The installation names its host in `crombolo.config.ts`. The key stays out of
+the file by being read from the host's own variable:
+
+```ts
+export default defineConfig({
+  host: {
+    origin: 'https://tools.example.com',
+    signingKey: process.env.TOOLS_SIGNING_KEY ?? '',
+    keyId: 'installation-7',
+  },
+})
+```
+
+**The token:**
+- a compact JWS, signed HS256 with that key, with `kid` the key id;
+- `aud` is the host origin and `iss` the site's address;
+- it lasts five minutes;
+- `sub` is the user's key, with `name`, `groups` (aliases) and `sections`;
+- `site` gives the site's name and node id.
+
+**Getting one:**
+- only a signed-in person gets one, on a request from the site itself;
+- it reflects their groups now, and a locked-out or disabled person, or one
+  whose session has ended, gets `401`;
+- each person may ask ten times a minute, on each server;
+- each one issued is a log line, not an audit entry;
+- without `host` the route is a `404`.
+
+**The host checks it with the key alone**, choosing the key by `kid`:
+
+```ts
+import { jwtVerify } from 'jose'
+const { payload } = await jwtVerify(token, keyFor(kidOf(token)), {
+  audience: 'https://tools.example.com',
+  algorithms: ['HS256'],
+})
+```
+
+It must check `aud` and `exp`, which `jwtVerify` does when given the audience.
+It should keep a separate key per installation. The key both signs and
+verifies, so only the service that checks tokens should hold it: any component
+that has it can mint tokens the others accept. If the back office ever gains a
+content security policy, it must name the host's origin for these calls.
+
 ## What a wired bundle gets
 
 A narrow interface, not the server:
@@ -1202,7 +1302,8 @@ which no core read depends on.
 ## Expand and contract, per bundle
 
 The rules core's plan is held to, with `release` read as the **bundle's**
-version: a contract may only ship in a bundle major (`x.0.0`), and may only
+version: from the bundle's 1.0 a contract may only ship in a bundle major
+(`x.0.0`), and before it in any release, and it may only
 remove what an earlier bundle release added; a step is an expand or a
 contract, never both; no step may claim a release later than the package's
 own version. `compileBundleTables` collects every problem and

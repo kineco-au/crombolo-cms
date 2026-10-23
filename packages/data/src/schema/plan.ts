@@ -30,6 +30,7 @@ import { contentNotificationsMigration } from './content-notifications.ts'
 import { createdPackagesMigration } from './created-packages.ts'
 import { deliveryMemberTokensMigration } from './delivery-member-tokens.ts'
 import { diagnosticsMigration } from './diagnostics.ts'
+import { dropAssistantMigration } from './drop-assistant.ts'
 import { elementsMigration } from './elements.ts'
 import { formPermissionPrefixMigration } from './form-permission-prefix.ts'
 import { formPermissionsMigration } from './form-permissions.ts'
@@ -109,4 +110,5 @@ export const cromboloPlan = new MigrationPlan([
   mediaPermissionsMigration,
   contentEventsMigration,
   contentCheckpointMigration,
+  dropAssistantMigration,
 ])

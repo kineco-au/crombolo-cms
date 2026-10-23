@@ -141,6 +141,7 @@ describe('the media verbs (story 088)', () => {
     await db.exec('ALTER TABLE server DROP COLUMN served_checkpoint')
     await db.exec('ALTER TABLE server DROP COLUMN served_at')
     await db.exec("DELETE FROM migration_history WHERE name = 'AddContentCheckpoint'")
+    await db.exec("DELETE FROM migration_history WHERE name = 'DropAssistantTables'")
     await db.exec('DROP INDEX IF EXISTS ux_content_notification_event')
     await db.exec('ALTER TABLE content_notification DROP COLUMN event_id')
     await db.exec('DROP INDEX IF EXISTS ux_webhook_delivery_event')
@@ -159,6 +160,7 @@ describe('the media verbs (story 088)', () => {
       'GrantMediaPermissions',
       'AddContentEvents',
       'AddContentCheckpoint',
+      'DropAssistantTables',
     ])
     const held = async (key: string) =>
       (

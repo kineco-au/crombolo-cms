@@ -439,12 +439,6 @@ export default function Template({ model }: PageProps) {
     // And if the property it wraps ever moves, that costs the dialect rather
     // than this entry point, which also carries the TSX scaffolds.
     expect(editors).toContain('if (!language?.set) return')
-
-    // And the assistant asks for the dialect by name.
-    const drawer = await source('plugin/assistant/drawer.js')
-    expect(drawer).toContain("template: 'tsx'")
-    expect(drawer).toContain("'template-create': 'tsx'")
-    expect(drawer).not.toContain("template: 'typescript'")
   })
 
   test('reaches the TypeScript service where this monaco actually keeps it', async () => {

@@ -235,9 +235,8 @@ rather than the running server. Secret ones are never printed or logged.
 
 | Setting | Takes | Default | Description |
 | --- | --- | --- | --- |
-| `AWS_REGION` | string | — | The AWS region, for SES e-mail and the Bedrock assistant when they set none. |
-| `AWS_PROFILE` | string | — | The AWS profile the Bedrock assistant signs in with. |
-| `AWS_ACCESS_KEY_ID` | string | — | A static AWS access key, for SES e-mail and the Bedrock assistant. |
+| `AWS_REGION` | string | — | The AWS region, for SES e-mail when it sets none. |
+| `AWS_ACCESS_KEY_ID` | string | — | A static AWS access key, for SES e-mail. |
 | `AWS_SECRET_ACCESS_KEY` | string | — | That access key's secret. Kept secret: never printed. |
 | `AWS_SESSION_TOKEN` | string | — | A session token, for temporary AWS credentials. Kept secret: never printed. |
 
@@ -319,9 +318,10 @@ is code rather than a value:
 
 | Setting | What it is |
 | --- | --- |
-| `assistant` | the AI helper; enabling it takes a provider ([`assistant.md`](assistant.md)) |
 | `redirects` | rules built with `redirect()`, synced into the database at boot ([`rendering.md`](rendering.md)) |
 | `bundles` | the server halves of the bundles this site runs ([`bundles.md`](bundles.md)) |
+| `host` | the host service the back office vouches for its user to: `{ origin, signingKey, keyId }`, so a host's tool can tell its own service who is signed in ([`bundles.md`](bundles.md#tools-a-host-provides)) |
+| `hostProvided` | package names the installation provides to every site it runs; a whole-site file leaves them out of what it requires ([`bundles.md`](bundles.md#bundles-a-host-provides)) |
 | `memberIdentityProviders` | identity providers members sign in with on the site: `entra()`, `awsIdentityCenter()`, `oidc()` ([`operations.md`](operations.md#signing-in-through-an-identity-provider)) |
 | `backofficeIdentityProviders` | the same, for backoffice users; a separate list, so staff and members can use different providers |
 

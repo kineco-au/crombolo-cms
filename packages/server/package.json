@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/server",
-  "version": "0.25.0",
+  "version": "0.26.0",
   "description": "The crombolo HTTP server: routing, configuration, media stores and background jobs.",
   "license": "MIT",
   "author": "Crombolo",
@@ -32,7 +32,6 @@
   "dependencies": {
     "@crombolo/api-delivery": "workspace:*",
     "@crombolo/api-management": "workspace:*",
-    "@crombolo/assistant": "workspace:*",
     "@crombolo/auth": "workspace:*",
     "@crombolo/backoffice-host": "workspace:*",
     "@crombolo/content": "workspace:*",
@@ -42,6 +41,7 @@
     "@crombolo/render": "workspace:*",
     "@crombolo/schema": "workspace:*",
     "@crombolo/transfer": "workspace:*",
-    "@logtape/logtape": "^2.3.8"
+    "@logtape/logtape": "^2.3.8",
+    "jose": "^6.2.12"
   }
 }

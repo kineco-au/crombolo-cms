@@ -65,7 +65,6 @@
     "@biomejs/biome": "^2.5.14",
     "@crombolo/api-delivery": "workspace:*",
     "@crombolo/api-management": "workspace:*",
-    "@crombolo/assistant": "workspace:*",
     "@crombolo/auth": "workspace:*",
     "@crombolo/backoffice-dist": "workspace:*",
     "@crombolo/backoffice-host": "workspace:*",

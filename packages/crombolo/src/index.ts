@@ -15,13 +15,6 @@ import {
   type ServerHandle,
 } from '@crombolo/server'
 
-export {
-  type AssistantProvider,
-  type BedrockOptions,
-  bedrock,
-  type ConverseInput,
-  type ConverseResult,
-} from '@crombolo/assistant'
 // What a bundle's package.json declares; see `docs/bundles.md`.
 export type { BundlePackage, CromboloField } from '@crombolo/backoffice-host'
 // A view reads a form definition and a submission's state; both are domain

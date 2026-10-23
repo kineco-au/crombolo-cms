@@ -17,7 +17,6 @@ import type {
 import { AuthStore, expireCookie, serializeCookie } from '@crombolo/auth'
 import {
   APP_PREVIEW_MANIFEST_ID,
-  ASSISTANT_MANIFEST_ID,
   type BackOfficePaths,
   collectManifests,
   type ExtensionRegistry,
@@ -474,12 +473,12 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
   const deps: ManagementApiDeps = {
     server: createServerPort(options.config, Boolean(sendUserLink)),
     preview: createPreviewPort(options.config, options.previewInApp),
-    // An unconfigured assistant contributes no extension, so the backoffice has
-    // no drawer, no button and nothing to load; Preview in app likewise.
-    manifests: createManifestPort(options.paths, options.extensions, [
-      ...(options.config.assistant ? [] : [ASSISTANT_MANIFEST_ID]),
-      ...(options.previewInApp ? [] : [APP_PREVIEW_MANIFEST_ID]),
-    ]),
+    // Without an app to preview in, Preview in app contributes no extension.
+    manifests: createManifestPort(
+      options.paths,
+      options.extensions,
+      options.previewInApp ? [] : [APP_PREVIEW_MANIFEST_ID],
+    ),
     localization: createLocalizationPort(
       options.db,
       options.db ? createSchemaFileWriter(options.db, schemaFiles(options.config)) : undefined,

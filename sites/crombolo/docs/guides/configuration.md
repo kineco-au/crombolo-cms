@@ -32,7 +32,6 @@ Some settings can only go in the file, because they are code rather than a value
 | `email` | an e-mail provider, built with `resendEmail()`, `postmarkEmail()`, `sesEmail()` or `customEmail()` |
 | `mediaStore` | where uploaded files go, built with `s3MediaStore()` or `azureMediaStore()` |
 | `memberIdentityProviders`, `backofficeIdentityProviders` | sign-in through Entra, AWS Identity Center or any OpenID Connect provider |
-| `assistant` | the optional AI helper in the back office |
 
 `bundles` in particular has no environment variable on purpose: code reaches a running site only through a reviewed, deployed change to this file.
 

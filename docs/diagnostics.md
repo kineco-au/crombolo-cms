@@ -55,7 +55,7 @@ media store, e-mail, the log level, the time zone and the server time.
 **Secrets are omitted by construction:** each line is built from a value that
 holds none (a store's `description`, `describeDatabase`, which drops the
 Postgres user and password), rather than by filtering a dump of the
-configuration. The admin password, API keys, the Git and assistant settings are
+configuration. The admin password, API keys and the Git settings are
 never read.
 
 ## Upgrade check

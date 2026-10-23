@@ -3,7 +3,7 @@
  *
  * Each test here stands for one finding, so a regression names the thing it
  * reopened rather than a symptom. Where a finding belongs to a feature's own
- * suite — the assistant's guardrails, the git routes, media uploads — the test
+ * suite — the git routes, media uploads — the test
  * lives there instead and this file leaves it alone.
  */
 import { afterEach, describe, expect, test } from 'bun:test'

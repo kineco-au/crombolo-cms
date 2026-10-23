@@ -13,6 +13,7 @@ import {
   isMajorRelease,
   type Migration,
   MigrationPlan,
+  mayShipContract,
   migrate,
   migrationCompatibility,
   pendingMigrations,
@@ -116,10 +117,13 @@ describe('migration plan lint', () => {
       expect(() => new MigrationPlan([expand(), { ...contract, release }])).toThrow(
         /only ship in a major release/,
       )
-    // Before 1.0 nothing is a major, so nothing may contract.
+    // Before 1.0 breaking changes are allowed, so any release may contract.
     expect(
       () => new MigrationPlan([expand({ release: '0.3.0' }), { ...contract, release: '0.4.0' }]),
-    ).toThrow(/only ship in a major release/)
+    ).not.toThrow()
+    expect(mayShipContract('0.4.1')).toBe(true)
+    expect(mayShipContract('1.1.0')).toBe(false)
+    expect(mayShipContract('2.0.0')).toBe(true)
     expect(isMajorRelease('1.0.0')).toBe(true)
     expect(isMajorRelease('0.0.0')).toBe(false)
     expect(isMajorRelease('3.0.0-beta.1')).toBe(true)
@@ -168,11 +172,16 @@ describe('migration plan lint', () => {
     expect(declaredCompatibility({ name: 'x' })).toBeUndefined()
   })
 
-  test('the shipped plan is all expand, each with a release', () => {
+  test('each shipped step has a release, and every contract one that may carry it', () => {
     for (const m of cromboloPlan.migrations) {
-      expect(m.kind).toBe('expand')
       expect(m.release).toBeDefined()
+      if (m.kind === 'contract')
+        expect([m.name, mayShipContract(m.release as string)]).toEqual([m.name, true])
     }
+    // The first, in 0.26: the assistant's tables, gone with it (story 179).
+    expect(cromboloPlan.migrations.filter((m) => m.kind === 'contract').map((m) => m.name)).toEqual(
+      ['DropAssistantTables'],
+    )
   })
 
   test('no step claims a release that does not exist yet', () => {
@@ -202,7 +211,7 @@ describe(`migrations (${dialectUnderTest})`, () => {
     expect(result.applied).toHaveLength(cromboloPlan.migrations.length)
     const ledger = await readLedger(d)
     expect(ledger.map((r) => [r.name, r.kind, r.appliedBy, r.note])).toEqual(
-      cromboloPlan.migrations.map((m) => [m.name, 'expand', 'node-x', `release ${m.release}`]),
+      cromboloPlan.migrations.map((m) => [m.name, m.kind, 'node-x', `release ${m.release}`]),
     )
     expect(ledger[0]?.fromState).toBe(INITIAL_STATE)
     expect(ledger.at(-1)?.toState).toBe(cromboloPlan.finalState)

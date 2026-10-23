@@ -2,9 +2,8 @@
  * Importing schema files into a running node.
  *
  * The point of the feature is that the files are the source of truth and the
- * database is a view of them, so a TOML changed by a commit, by another node
- * publishing to the shared store, or by the assistant, reaches the runtime
- * without a restart — and says first what it is about to do.
+ * database is a view of them, so a TOML changed by a commit, or by another
+ * node publishing to the shared store, reaches the runtime without a restart — and says first what it is about to do.
  */
 import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'

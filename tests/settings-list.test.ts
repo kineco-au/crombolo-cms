@@ -19,7 +19,6 @@ const NOT_SETTINGS: Record<string, string> = {
   CROMBOLO_BACKUP_REASON: 'given to the backup command, not read',
   CROMBOLO_PORT: "the container stack's published port, read by compose.yaml",
   CROMBOLO_EMAIL_SES_: 'the family of SES variables, named in a comment',
-  KEY: 'an example inside a comment',
 }
 
 function sourceFiles(dir: string): string[] {

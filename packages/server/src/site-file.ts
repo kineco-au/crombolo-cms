@@ -98,12 +98,28 @@ async function topLevelNodes(db: Db): Promise<NodeRow[]> {
 }
 
 /** The server bundles the site wires, by package name and version. */
+/**
+ * The names in `hostProvided` this installation has not got: neither a wired
+ * bundle's package nor an extension discovered in the site. Said once at start
+ * rather than refused, so a host can list a bundle it is still rolling out.
+ */
+export function unknownHostProvided(
+  config: Pick<CromboloConfig, 'hostProvided' | 'siteDir'>,
+): string[] {
+  if (config.hostProvided.length === 0) return []
+  const installed = new Set(discoverBundles(config.siteDir).bundles.map((b) => b.packageName))
+  return config.hostProvided.filter((name) => !installed.has(name))
+}
+
 function requiredPackages(config: CromboloConfig): Record<string, string> {
   if (config.bundles.length === 0) return {}
   const wired = new Set(config.bundles.map((bundle) => bundle.id))
+  // The installation's own packages are not the site's to need (story 177).
+  const hosts = new Set(config.hostProvided)
   const required: Record<string, string> = {}
   for (const found of discoverBundles(config.siteDir).bundles)
-    if (wired.has(found.id)) required[found.packageName] = found.version
+    if (wired.has(found.id) && !hosts.has(found.packageName))
+      required[found.packageName] = found.version
   return required
 }
 

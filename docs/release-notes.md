@@ -6,6 +6,59 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+Nothing yet.
+
+## v0.26.0 — 2026-10-23
+
+- **The AI assistant has left the CMS.** The back office's assistant drawer,
+  its changesets, its MCP endpoint and its Bedrock provider are gone, and so
+  is the CMS's only cloud SDK. An assistant is now something a host provides:
+  browser code it lists as `hostProvided` (`177`), working through the
+  Management API as the person signed in, and telling the host's own service
+  who that is with a host token (`178`). `bundles.md`, "Tools a host
+  provides", shows how. `179`
+- **Migrations:** 048 drops the assistant's two tables, `assistant_changeset`
+  and `assistant_change`. It is the first migration that removes something;
+  before 1.0, any release may.
+- **Upgrade notes:**
+  - **Apply or discard any open assistant changesets before upgrading.** They
+    are dropped with their tables, not carried anywhere.
+  - Remove `assistant` from `crombolo.config.ts`: a config that still names
+    it refuses to start, saying why.
+  - `bedrock`, `AssistantProvider`, `BedrockOptions`, `ConverseInput` and
+    `ConverseResult` are no longer exported from `@crombolo/crombolo`.
+  - `CROMBOLO_ASSISTANT_MODEL`, `CROMBOLO_ASSISTANT_MCP` and `AWS_PROFILE` are
+    no longer read. The other AWS variables remain, for SES e-mail.
+  - `@crombolo/assistant` is no longer published with the rest. Its existing
+    versions stay on npm.
+  - This release removes something from the database, so upgrade a cluster in
+    one step rather than one server at a time: an older server still running
+    would look for the dropped tables.
+- **The back office can vouch for its user to a host's own service.** With
+  `host` set in `crombolo.config.ts`, a host's back-office tool can ask for a
+  five-minute signed token saying who is signed in, and send it to the host's
+  service, which checks it with its key alone. Nothing changes without
+  `host`. `178`
+- **A host's own bundles stay with the host.** An installation that runs sites
+  for other people lists the packages it provides to every site as
+  `hostProvided` in `crombolo.config.ts`. A whole-site file no longer names
+  them, so a site exported from the host starts anywhere with only the bundles
+  it chose itself. `177`
+- **The APIs move off `/umbraco`.** The Management API and the back office's
+  live updates are served under the back office's own path:
+  `/crombolo/management/api/v1` by default, following `backOfficePath` when a
+  site moves it. The Delivery API is at `/crombolo/delivery/api/v2`, wherever
+  the back office is. The back office, the served API description and the
+  typed Delivery API client use the new paths.
+- **Upgrade notes:**
+  - Umbraco's paths keep working, so nothing that calls the API breaks:
+    `/umbraco/management/api/…`, `/umbraco/delivery/api/…` and the hubs.
+    Change your own API clients to the new paths when convenient. The old ones
+    will go in a later major release.
+  - `@crombolo/delivery-client` now asks at `/crombolo/delivery/api/v2`. For a
+    site on 0.25 or older, pass `apiPath: '/umbraco/delivery/api/v2'`.
+  - External sign-in callback addresses do not change, so nothing needs
+    re-registering with a sign-in provider.
 - **Every server knows which published changes it shows.** Each change to
   published content gets a number, in the order the changes were saved. A
   server compares the number it serves with the latest, and catches up

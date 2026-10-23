@@ -893,19 +893,13 @@ const DECLARED = [
     env: 'AWS_REGION',
     kind: 'string',
     section: 'AWS credentials',
-    description: 'The AWS region, for SES e-mail and the Bedrock assistant when they set none.',
-  },
-  {
-    env: 'AWS_PROFILE',
-    kind: 'string',
-    section: 'AWS credentials',
-    description: 'The AWS profile the Bedrock assistant signs in with.',
+    description: 'The AWS region, for SES e-mail when it sets none.',
   },
   {
     env: 'AWS_ACCESS_KEY_ID',
     kind: 'string',
     section: 'AWS credentials',
-    description: 'A static AWS access key, for SES e-mail and the Bedrock assistant.',
+    description: 'A static AWS access key, for SES e-mail.',
   },
   {
     env: 'AWS_SECRET_ACCESS_KEY',

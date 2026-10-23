@@ -298,8 +298,8 @@ template is left out, because Umbraco does not serve one either.
 - **Real exports of 15, 16 and 18**, and a native Umbraco SQLite backup: the
   reader normalises key casing and date spelling for one, and is tested only
   against a copy altered to look like one. Story `072`.
-- **Razor → TSX** offered by the assistant ([`assistant.md`](assistant.md)),
-  reviewed per view. A could-have: story `130`.
+- **Razor → TSX** is not offered: it was to be the assistant's (story `130`),
+  which left the CMS with story `179`. Views arrive as stubs to rewrite.
 
 ## How it is tested
 

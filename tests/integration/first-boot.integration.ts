@@ -135,17 +135,13 @@ describe('the first boot of a self-hosted site', () => {
   test('a database the previous release left is upgraded by `crombolo upgrade`, and then starts', async () => {
     const file = readdirSync(site()).find((name) => name.endsWith('.sqlite')) as string
     const sqlite = new Database(join(site(), file))
-    // As 0.24.1 left it: before the content checkpoint (047). Every migration
-    // since the last release has to be undone here, or the upgrade replays one
-    // against a table that is already there.
-    sqlite.exec('DROP TABLE IF EXISTS content_checkpoint')
-    sqlite.exec('ALTER TABLE cache_instruction DROP COLUMN checkpoint')
-    sqlite.exec('ALTER TABLE server DROP COLUMN served_checkpoint')
-    sqlite.exec('ALTER TABLE server DROP COLUMN served_at')
-    sqlite.exec("DELETE FROM migration_history WHERE name = 'AddContentCheckpoint'")
+    // As 0.25.0 left it: before the assistant's tables were dropped (048). Every
+    // migration since the last release has to be undone here; this one drops
+    // with `IF EXISTS`, so only the state and the ledger go back.
+    sqlite.exec("DELETE FROM migration_history WHERE name = 'DropAssistantTables'")
     sqlite
       .query("UPDATE key_value SET value = ? WHERE key = 'Crombolo.Core.Upgrader.State'")
-      .run('{3e9b7d25-0046-4a1c-8f63-2d5c9e1b7a46}')
+      .run('{6b2e8f14-0047-4d93-a5c1-9e3f7b2d4c47}')
     sqlite.close()
 
     const run = async (...args: string[]) => {
@@ -169,7 +165,7 @@ describe('the first boot of a self-hosted site', () => {
     const upgraded = await run('upgrade')
     expect(upgraded.code, upgraded.out).toBe(0)
     const ledger = await run('upgrade', 'ledger')
-    expect(ledger.out).toContain('AddContentCheckpoint')
+    expect(ledger.out).toContain('DropAssistantTables')
 
     const proc = Bun.spawn(['bun', CLI, 'start'], {
       cwd: site(),

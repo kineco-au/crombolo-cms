@@ -1,6 +1,8 @@
 # The Delivery API
 
-Umbraco's Content Delivery API v2 (`/umbraco/delivery/api/v2/**`), so a site can
+Umbraco's Content Delivery API v2, at `/crombolo/delivery/api/v2/**` wherever
+the back office is mounted, and at Umbraco's own `/umbraco/delivery/api/v2/**`
+for Umbraco's headless clients, so a site can
 be read headless — from a static-site build, an app or any framework — with the
 same requests and the same JSON an Umbraco site answers. Story `050`.
 
@@ -406,7 +408,8 @@ The rules are read once per request (`PublicAccessRepository.allRules`).
 
 ## Member sign-in
 
-Under `/umbraco/delivery/api/v1/security/member/` (still v1 in Umbraco 18.2),
+Under `/crombolo/delivery/api/v1/security/member/` (Umbraco's
+`/umbraco/delivery/api/v1/security/member/` answers too; still v1 in Umbraco 18.2),
 whether or not the content API is on. `packages/server/src/delivery-members.ts`.
 
 - **Client credentials**, for a server reading members-only content on its own

@@ -1,5 +1,5 @@
 /**
- * A typed client for a crombolo site's Delivery API (`/umbraco/delivery/api/v2`).
+ * A typed client for a crombolo site's Delivery API (`/crombolo/delivery/api/v2`).
  * The shapes are the JSON the API writes; `crombolo generate --delivery` writes
  * a site's content types as a `DeliveryTypes` map to pass in as the generic.
  * docs/delivery-api.md, "Typed apps".
@@ -284,6 +284,11 @@ export interface SearchOptions {
 export interface DeliveryClientOptions {
   /** The site's address, such as `https://cms.example.com`. */
   baseUrl: string
+  /**
+   * The API's path on the site, `/crombolo/delivery/api/v2` unless given:
+   * `/umbraco/delivery/api/v2` for a site from before the move (0.25 or older) or an Umbraco site.
+   */
+  apiPath?: string
   /** Sent as `Api-Key`, for a site whose API is not public. Keep it out of browser code. */
   apiKey?: string
   /** The culture every request asks for unless it names its own. */
@@ -357,7 +362,8 @@ export interface DeliveryClient<Schema extends DeliverySchema = DeliverySchema> 
   ): Promise<RouteAnswer<Schema>>
 }
 
-const API_PATH = '/umbraco/delivery/api/v2'
+/** Where a crombolo site serves it; Umbraco's own path, `/umbraco/delivery/api/v2`, answers too. */
+export const DELIVERY_API_PATH = '/crombolo/delivery/api/v2'
 
 const list = (value: string | string[] | undefined): string[] =>
   value === undefined ? [] : Array.isArray(value) ? value : [value]
@@ -373,7 +379,7 @@ const itemPath = (idOrPath: string): string =>
 export function createDeliveryClient<Schema extends DeliverySchema = DeliverySchema>(
   options: DeliveryClientOptions,
 ): DeliveryClient<Schema> {
-  const base = `${options.baseUrl.replace(/\/+$/, '')}${API_PATH}`
+  const base = `${options.baseUrl.replace(/\/+$/, '')}${options.apiPath ?? DELIVERY_API_PATH}`
   const send = options.fetch ?? ((input, init) => fetch(input, init))
 
   async function get(
