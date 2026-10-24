@@ -8,6 +8,40 @@ point at `docs/stories/`.
 
 Nothing yet.
 
+## v0.27.0 — 2026-10-24
+
+- **Move, copy, sort and delete from the command line** (story 165):
+  `crombolo content move|copy|sort|delete` and `crombolo media move|delete`.
+  Each takes `--dry-run`, checks everything named before changing anything,
+  writes the audit entry under the operator's name, and a move keeps the old
+  addresses working as an editor's move does.
+- **A page or media item goes only where its parent's type allows it**, through
+  the Management API as well as the command line. Until now only the
+  backoffice's pickers held to this, so a script could create a page under a
+  type that does not allow it. Approvals, schedules and form workflows are not
+  affected, and nor are seeds or `content import`.
+- **Media writes are recorded with the change**, as page writes are: the audit
+  entry and webhook event commit in the same transaction, from the backoffice
+  and the command line alike. `recycle-bin empty` now deletes media the same way.
+- **A rename published from the command line records its redirect.** The
+  command line's own published cache was not dropped after a change, so the
+  tracker compared the new address with itself.
+
+- **The audit log from the command line** (story 156): `crombolo audit list`
+  pages it newest first, with a cursor, and `crombolo audit stream [--follow]`
+  prints NDJSON for a log store or SIEM. Both have filters for time, person,
+  category, action and item. They read through a connection that cannot write,
+  and `--remote` reads a hosted site through the remote protocol's new `audit`
+  capability, for people with the Settings section.
+- **An integration test walks a site from an empty directory** to a served
+  page through the CLI alone (`tests/integration/hello-world.integration.ts`).
+  Its steps that need seed files wait for story 163; the gaps it found are
+  story 180.
+
+**Upgrade notes:** a script that creates or moves pages through the Management
+API under a type that does not allow them now gets a 400; allow the type on the
+parent, or place the page where it is allowed.
+
 ## v0.26.0 — 2026-10-23
 
 - **The AI assistant has left the CMS.** The back office's assistant drawer,

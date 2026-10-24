@@ -100,7 +100,8 @@ export function createManagementApiRouter(options: ManagementApiOptions = {}): M
     registerDocumentHandlers(router, deps.documents, deps.documentOperations, deps.preview)
   if (deps.blueprints) registerDocumentBlueprintHandlers(router, deps.blueprints)
   if (deps.temporaryFiles) registerTemporaryFileHandlers(router, deps.temporaryFiles)
-  if (deps.media) registerMediaHandlers(router, deps.media)
+  if (deps.media && deps.mediaOperations)
+    registerMediaHandlers(router, deps.media, deps.mediaOperations)
   if (deps.dictionary) registerDictionaryHandlers(router, deps.dictionary)
   // The components tree is served through the PartialView file API: it is the
   // path-addressed one, so it is the only one that can express a folder.

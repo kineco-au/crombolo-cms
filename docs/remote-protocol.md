@@ -47,6 +47,7 @@ stated otherwise. Errors are `application/problem+json` with a stable `code`
   - `media-fetch` means media by reference is offered (see below).
   - `push-check` means a push can be checked before it is sent (see Pushing).
   - `approvals` means a push may wait for approval.
+  - `audit` means the audit log can be read (see below).
   - A client ignores capabilities it doesn't know.
 
 A site that isn't a remote answers 404.
@@ -90,8 +91,10 @@ may do:
 
 ```json
 [{ "id": "production", "name": "production", "protected": true,
-   "may": { "pull": true, "pullFull": false, "push": true } }]
+   "may": { "pull": true, "pullFull": false, "push": true, "audit": false } }]
 ```
+
+`audit` is there when the remote offers the capability.
 
 `push` is already false where the environment is protected and the person
 lacks the permission for that.
@@ -218,11 +221,42 @@ every blob is named with its key, size and etag.
   and names them.
 - **Permissions:** the same as pulling and pushing.
 
+## The audit log (`audit`, optional)
+
+`GET <api>/environments/{id}/audit` answers a page of who did what:
+
+```json
+{ "items": [{ "id": 41812, "occurredAt": "2026-10-24T09:12:03.000Z",
+    "category": "content", "action": "Publish", "source": "request",
+    "user": { "key": "…", "name": "Ada" },
+    "item": { "type": "Document", "key": "…", "name": "About" },
+    "ipAddress": "203.0.113.7", "forwardedFor": null, "detail": null }],
+  "next": 41812, "truncated": false }
+```
+
+| Parameter | |
+| --- | --- |
+| `before` / `after` | an entry id: newest first below it, or oldest first above it (not both); neither is newest first |
+| `limit` | 1 to 500, default 100 |
+| `since`, `until` | times |
+| `user` | an e-mail address, login or key |
+| `category`, `action`, `entity` | as the entries name them |
+
+- **`next`:** the cursor to pass back. Reading forward, it is the last id
+  read, or the cursor itself when there was nothing newer. Reading backward,
+  it is null at the end.
+- **`truncated`:** the `after` entry has been deleted by retention, and so
+  have the ones before it, so some entries were never seen.
+- **Errors:** a bad query answers 400 `bad-query`. A person who may not read
+  the log answers 403 `forbidden`.
+- **The reference server** asks for the Settings section, as its audit
+  dashboard does, and does not record the read.
+
 ## Errors
 
 | Status | `code` | |
 | --- | --- | --- |
-| 400 | `passphrase-required`, `hash-required`, `hash-mismatch`, `body-required`, `bad-key`, `too-many` | the request is wrong |
+| 400 | `passphrase-required`, `hash-required`, `hash-mismatch`, `body-required`, `bad-key`, `too-many`, `bad-query` | the request is wrong |
 | 401 | `sign-in-required` | no token, or a lapsed one |
 | 403 | `forbidden`, `forbidden-protected`, `own-push` | the person may not |
 | 404 | `not-found`, `no-such-environment`, `not-enabled` | |
@@ -289,6 +323,7 @@ The suite is read-only unless `--push` is given. It covers:
 - environments;
 - a pull to completion, checked against its stated hash;
 - media links, when offered;
+- an audit page, oldest first, when offered;
 - a refused tampered push;
 - with `--push`, a full push.
 

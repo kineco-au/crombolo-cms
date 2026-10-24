@@ -7,12 +7,13 @@
  * The repository keeps the SQL, the locking and the publish rules that guard
  * every path (published ancestors, mandatory languages, filled mandatory fields).
  * What it does not decide — who may, and whether a page needs approval — is here.
- * docs/architecture.md, "Document writes".
+ * docs/architecture.md, "Content writes".
  */
 import type { DocumentValidationError, DocumentValue } from '@crombolo/core'
-import { normaliseUuid } from '@crombolo/core'
+import { normaliseUuid, SystemNodes } from '@crombolo/core'
 import {
   appendCacheInstruction,
+  ContentTypeRepository,
   type Db,
   DocumentRepository,
   type DocumentRepositoryOptions,
@@ -75,6 +76,17 @@ export interface Refusal {
 
 export type Done<T extends object = object> = { ok: true } & T
 export type Result<T extends object = object> = Done<T> | Refusal
+
+/** Why each item of a selection cannot be written; any one of them stops the whole selection. */
+export type Blocked = Array<{ key: string; reasons: string[] }>
+
+/**
+ * What a write over several items did: the items it changed (or, in a dry run,
+ * would change) and those already as asked; or, refused, each item's reasons.
+ */
+export type SelectionResult =
+  | Done<{ changed: string[]; unchanged: string[] }>
+  | (Refusal & { blocked?: Blocked })
 
 /**
  * The approval workflows' say over a write (story 028). `who` is the user, or
@@ -183,6 +195,9 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
   const { db, events } = options
   const repo = new DocumentRepository(db, options.repository)
   const nodes = new NodeRepository(db)
+  const types = new ContentTypeRepository(db, {
+    kind: repo.kind === 'media' ? 'media' : 'document',
+  })
   const changed = () => options.onChange?.()
 
   /**
@@ -313,6 +328,159 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
     }))
   }
 
+  /** Where a page of this type may go; the system acts on what was already decided. */
+  const placement = async (actor: Actor, typeKey: string, parentKey: string | null) =>
+    actor.kind === 'system' || repo.kind === 'blueprint'
+      ? undefined
+      : types.placementRefusal(typeKey, parentKey)
+  const typeOf = async (key: string): Promise<string | undefined> => {
+    const rows = await db.query<{ unique_id: string }>(
+      `SELECT t.unique_id FROM node n JOIN content c ON c.node_id = n.id
+       JOIN node t ON t.id = c.content_type_id WHERE n.unique_id = ?`,
+      [normaliseUuid(key)],
+    )
+    return rows[0] ? normaliseUuid(String(rows[0].unique_id)) : undefined
+  }
+  const misplacedAt = async (actor: Actor, key: string, parentKey: string | null) => {
+    const type = await typeOf(key)
+    return type ? placement(actor, type, parentKey) : undefined
+  }
+
+  /** The selection's pages, each once, or the refusal for one that is not a page. */
+  const pagesFor = async (keys: readonly string[]): Promise<NodeRow[] | Refusal> => {
+    const out: NodeRow[] = []
+    for (const key of keys) {
+      const node = await nodes.byKey(key)
+      if (!node || node.objectType !== repo.objectType) return refuse('notFound', 404, NOT_FOUND)
+      if (!out.some((seen) => seen.id === node.id)) out.push(node)
+    }
+    return out
+  }
+
+  /** The pages of a selection the actor may not `kind`, as one refusal naming each. */
+  const deniedOf = async (
+    actor: Actor,
+    kind: WriteKind,
+    found: readonly NodeRow[],
+  ): Promise<(Refusal & { blocked: Blocked }) | undefined> => {
+    const blocked: Blocked = []
+    for (const node of found)
+      if (!(await permits(actor, kind, node.key)))
+        blocked.push({ key: node.key, reasons: ['You may not do that to this page.'] })
+    if (blocked.length === 0) return undefined
+    return {
+      ...refuse(
+        'forbidden',
+        403,
+        found.length === 1
+          ? 'You may not do that to this page.'
+          : `You may not change ${blocked.length} of ${found.length} page(s), so nothing was changed.`,
+      ),
+      blocked,
+    }
+  }
+
+  /**
+   * Moves pages under `targetKey` (null: the top level) in one transaction,
+   * every one checked first; one already there is unchanged.
+   */
+  const moveMany = async (
+    actor: Actor,
+    keys: readonly string[],
+    targetKey: string | null,
+    many: { dryRun?: boolean } = {},
+  ): Promise<SelectionResult> => {
+    const found = await pagesFor(keys)
+    if (!Array.isArray(found)) return found
+    const target = targetKey ? await nodes.byKey(targetKey) : undefined
+    if (targetKey && (!target || target.objectType !== repo.objectType))
+      return refuse('notFound', 404, 'The document or target could not be found.')
+    const denied = await deniedOf(actor, 'move', found)
+    if (denied) return denied
+    if (!(await permits(actor, 'intoTarget', targetKey ?? 'root'))) return forbidden()
+    const blocked: Blocked = []
+    for (const node of found) {
+      const reasons: string[] = []
+      if (
+        target &&
+        (target.trashed || target.id === node.id || `${target.path},`.startsWith(`${node.path},`))
+      )
+        reasons.push('A document cannot be moved below itself or into the recycle bin.')
+      const misplaced = await misplacedAt(actor, node.key, targetKey)
+      if (misplaced) reasons.push(misplaced)
+      if (reasons.length > 0) blocked.push({ key: node.key, reasons })
+    }
+    if (blocked.length > 0)
+      return {
+        ...refuse(
+          'invalid',
+          400,
+          found.length === 1
+            ? (blocked[0]?.reasons[0] as string)
+            : `${blocked.length} of ${found.length} page(s) cannot be moved there, so nothing was moved.`,
+        ),
+        blocked,
+      }
+    const parentId = target?.id ?? SystemNodes.Root
+    const stays = (node: NodeRow) => !node.trashed && node.parentId === parentId
+    const writes = found.filter((node) => !stays(node))
+    const unchanged = found.filter(stays).map((node) => node.key)
+    if (many.dryRun || writes.length === 0)
+      return { ok: true, changed: writes.map((node) => node.key), unchanged }
+    try {
+      const befores: unknown[] = []
+      for (const node of writes) befores.push(await options.redirects?.capture(node.key))
+      const done = await commit(
+        actor,
+        async (tx) => {
+          const out: string[] = []
+          for (const node of writes)
+            if ((await tx.move(node.key, targetKey)) === 'moved') out.push(node.key)
+          return out
+        },
+        (moved) => moved.map((key): DocumentEvent => ({ type: 'moved', key })),
+      )
+      changed()
+      for (const before of befores) await options.redirects?.commit(before)
+      return { ok: true, changed: done, unchanged }
+    } catch (error) {
+      return refusalFrom(error, options.refusalReason)
+    }
+  }
+
+  /**
+   * Moves pages to the recycle bin in one transaction, every one checked first.
+   * One already there is unchanged; one below another in the selection goes
+   * with it.
+   */
+  const trashMany = async (
+    actor: Actor,
+    keys: readonly string[],
+    many: { dryRun?: boolean } = {},
+  ): Promise<SelectionResult> => {
+    const found = await pagesFor(keys)
+    if (!Array.isArray(found)) return found
+    const denied = await deniedOf(actor, 'trash', found)
+    if (denied) return denied
+    const covered = (node: NodeRow) =>
+      found.some((other) => other.id !== node.id && `${node.path},`.startsWith(`${other.path},`))
+    const writes = found.filter((node) => !node.trashed && !covered(node))
+    const changedKeys = found.filter((node) => !node.trashed).map((node) => node.key)
+    const unchanged = found.filter((node) => node.trashed).map((node) => node.key)
+    if (many.dryRun || writes.length === 0) return { ok: true, changed: changedKeys, unchanged }
+    await commit(
+      actor,
+      async (tx) => {
+        const out: string[] = []
+        for (const node of writes) if (await tx.moveToRecycleBin(node.key)) out.push(node.key)
+        return out
+      },
+      (done) => done.map((key): DocumentEvent => ({ type: 'trashed', key })),
+    )
+    changed()
+    return { ok: true, changed: changedKeys, unchanged }
+  }
+
   const validationRefusal = (errors: DocumentValidationError[]): Refusal => ({
     ...refuse('validation', 400, 'One or more properties did not pass validation'),
     errors,
@@ -329,6 +497,8 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
         input.values,
       )
       if (denied) return denied
+      const misplaced = await placement(actor, input.contentTypeKey, input.parentKey)
+      if (misplaced) return refuse('invalid', 400, misplaced)
       try {
         const userId = await userIdOf(actor)
         const created = await commit(
@@ -406,6 +576,8 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
         input.values,
       )
       if (denied) return denied
+      const misplaced = await placement(actor, input.contentTypeKey, input.parentKey)
+      if (misplaced) return refuse('invalid', 400, misplaced)
       const gate = gateFor(actor)
       if (!gate.skip) {
         const refusal = await options.approvals?.newPageRefusal(
@@ -748,16 +920,12 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
     },
 
     async trash(actor: Actor, key: string): Promise<Result> {
-      if (!(await permits(actor, 'trash', key))) return forbidden()
-      const moved = await commit(
-        actor,
-        (tx) => tx.moveToRecycleBin(key),
-        (done) => (done ? [{ type: 'trashed', key }] : []),
-      )
-      if (!moved) return refuse('notFound', 404, NOT_FOUND)
-      changed()
-      return { ok: true }
+      const result = await trashMany(actor, [key])
+      if (result.ok) return { ok: true }
+      return result.kind === 'forbidden' ? forbidden() : result
     },
+
+    trashMany,
 
     /** Deletes a page for good; `fromBin` refuses one that is not in the recycle bin. */
     async delete(actor: Actor, key: string, options_: { fromBin?: boolean } = {}): Promise<Result> {
@@ -803,6 +971,10 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
       targetKey: string | null | undefined,
     ): Promise<Result> {
       if (!(await permits(actor, 'restore', 'bin'))) return forbidden()
+      if (targetKey !== undefined) {
+        const misplaced = await misplacedAt(actor, key, targetKey)
+        if (misplaced) return refuse('invalid', 400, misplaced)
+      }
       try {
         const result = await commit(
           actor,
@@ -825,39 +997,33 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
     },
 
     async move(actor: Actor, key: string, targetKey: string | null): Promise<Result> {
-      if (!(await permits(actor, 'move', key))) return forbidden()
-      if (!(await permits(actor, 'intoTarget', targetKey ?? 'root'))) return forbidden()
-      try {
-        const before = await options.redirects?.capture(key)
-        const result = await commit(
-          actor,
-          (tx) => tx.move(key, targetKey),
-          (done) => (done === 'notFound' || done === 'invalid' ? [] : [{ type: 'moved', key }]),
-        )
-        if (result === 'notFound')
-          return refuse('notFound', 404, 'The document or target could not be found.')
-        if (result === 'invalid')
-          return refuse(
-            'invalid',
-            400,
-            'A document cannot be moved below itself or into the recycle bin.',
-          )
-        changed()
-        await options.redirects?.commit(before)
-        return { ok: true }
-      } catch (error) {
-        return refusalFrom(error, options.refusalReason)
-      }
+      const result = await moveMany(actor, [key], targetKey)
+      if (result.ok) return { ok: true }
+      return result.kind === 'forbidden' ? forbidden() : result
     },
+
+    moveMany,
 
     async copy(
       actor: Actor,
       key: string,
       targetKey: string | null,
-      copyOptions: { includeDescendants: boolean },
-    ): Promise<Result<{ key: string }>> {
+      copyOptions: { includeDescendants: boolean; dryRun?: boolean },
+    ): Promise<Result<{ key: string | null }>> {
       if (!(await permits(actor, 'copy', key))) return forbidden()
       if (!(await permits(actor, 'intoTarget', targetKey ?? 'root'))) return forbidden()
+      if (!(await isDocument(key)))
+        return refuse('notFound', 404, 'The document or target could not be found.')
+      // Only the top page is placed anew: the pages below it keep the parents they had.
+      const misplaced = await misplacedAt(actor, key, targetKey)
+      if (misplaced) return refuse('invalid', 400, misplaced)
+      if (copyOptions.dryRun) {
+        const target = targetKey ? await nodes.byKey(targetKey) : undefined
+        if (targetKey && (!target || target.objectType !== repo.objectType))
+          return refuse('notFound', 404, 'The document or target could not be found.')
+        if (target?.trashed) return refuse('invalid', 400, 'The parent is in the recycle bin.')
+        return { ok: true, key: null }
+      }
       try {
         const userId = await userIdOf(actor)
         const copied = await commit(
@@ -878,9 +1044,23 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
       actor: Actor,
       parentKey: string | null,
       sorting: ReadonlyArray<{ key: string; sortOrder: number }>,
+      sortOptions: { dryRun?: boolean } = {},
     ): Promise<Result> {
       if (!(await permits(actor, 'sort', parentKey ?? 'root'))) return forbidden()
       for (const item of sorting) if (!(await permits(actor, 'sort', item.key))) return forbidden()
+      if (sortOptions.dryRun) {
+        const parentId = parentKey ? (await nodes.byKey(parentKey))?.id : SystemNodes.Root
+        const children = await nodes.byKeys(sorting.map((item) => item.key))
+        const fits =
+          parentId !== undefined &&
+          children.length === sorting.length &&
+          children.every(
+            (node) => node.objectType === repo.objectType && node.parentId === parentId,
+          )
+        return fits
+          ? { ok: true }
+          : refuse('notFound', 404, 'The parent, or one of the items, could not be found under it.')
+      }
       try {
         const before = await options.redirects?.captureChildren(parentKey)
         const result = await commit(

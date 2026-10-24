@@ -6,7 +6,9 @@
  */
 import {
   DocumentPermissions as D,
+  fallbackPermissions,
   hasPathAccess,
+  MediaPermissions as M,
   permissionsForPath,
   propertyValuePermissions,
   sectionKey,
@@ -59,6 +61,23 @@ export function mayAt(
   if (!hasPathAccess(start, place, trashed)) return false
   const granted = permissionsForPath(principal.groups, place)
   return verbs.every((verb) => granted.has(verb))
+}
+
+/**
+ * Whether the user may change media at `place` (an item's media ancestors' keys,
+ * then its own), or at the top level or the recycle bin: the group-wide media
+ * verb, within their media start nodes, as the Management API has always
+ * checked. Pure.
+ */
+export function mayChangeMedia(
+  principal: ContentPrincipal,
+  place: readonly string[] | 'root' | 'bin',
+  trashed = false,
+): boolean {
+  if (!fallbackPermissions(principal.groups).has(M.Update)) return false
+  const start = principal.startNodes.media
+  if (place === 'root' || place === 'bin') return start.root
+  return place.length === 0 || hasPathAccess(start, place, trashed)
 }
 
 /** Whether the user may work in every culture named. Pure. */

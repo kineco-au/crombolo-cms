@@ -205,6 +205,24 @@ export async function runConformance(options: ConformanceOptions): Promise<Confo
     assert(body.links?.['conformance/not-there.png'] === null, 'the missing file was not null')
   })
 
+  await check('the audit log answers a page, oldest first after a cursor', async () => {
+    const capabilities = (state.discovery?.capabilities as string[] | undefined) ?? []
+    if (!capabilities.includes('audit') || !state.may?.audit) return 'skip'
+    const response = await api(`environments/${state.environment}/audit?after=0&limit=5`)
+    assert(response.status === 200, `answered ${response.status}`)
+    const body = (await response.json()) as { items?: Json[]; next?: unknown; truncated?: unknown }
+    assert(Array.isArray(body.items), 'items is missing')
+    assert(typeof body.truncated === 'boolean', 'truncated is missing')
+    const ids = (body.items ?? []).map((item) => Number(item.id))
+    assert(
+      ids.every((id, index) => index === 0 || id > (ids[index - 1] as number)),
+      'the entries are not oldest first',
+    )
+    const refused = await api(`environments/${state.environment}/audit?limit=501`)
+    assert(refused.status === 400, `a limit over 500 answered ${refused.status}`)
+    assert(isProblem(refused), 'not application/problem+json')
+  })
+
   await check('a push check answers what would be recycled and removed', async () => {
     const capabilities = (state.discovery?.capabilities as string[] | undefined) ?? []
     if (!capabilities.includes('push-check') || !state.may?.push) return 'skip'

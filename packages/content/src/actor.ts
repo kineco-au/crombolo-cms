@@ -15,7 +15,7 @@ export interface ContentPrincipal {
   allowedSections: readonly string[]
   hasAccessToAllLanguages: boolean
   languages: readonly string[]
-  startNodes: { document: StartNodes }
+  startNodes: { document: StartNodes; media: StartNodes }
   groups: readonly GroupGrant[]
 }
 

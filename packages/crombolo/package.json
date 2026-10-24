@@ -1,8 +1,8 @@
 {
   "name": "@crombolo/crombolo",
-  "version": "0.26.0",
+  "version": "0.27.0",
   "crombolo": {
-    "migrations": "breaking"
+    "migrations": "compatible"
   },
   "description": "A CMS on Bun with React-style TSX templates, edited through the Umbraco backoffice.",
   "license": "MIT",

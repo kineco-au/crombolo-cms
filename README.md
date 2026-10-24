@@ -489,7 +489,7 @@ crombolo/
 │   ├── core/                      # domain primitives — problem details, notifications, paging
 │   ├── contracts/                 # OpenApi.json (vendored from Umbraco release-18.2.0, never edited; src/overrides.ts) + types
 │   ├── data/                      # dialect seam, drivers, migrations, repositories, bundle tables
-│   ├── content/                   # every document write and its rules, whoever starts it (docs/architecture.md)
+│   ├── content/                   # every page and media write and its rules, whoever starts it (docs/architecture.md)
 │   ├── auth/                      # OAuth2 + PKCE, reference tokens, cookie redaction
 │   ├── api-management/            # contract-first router, authorization, ports, handlers
 │   ├── api-delivery/              # Umbraco's Delivery API over the published cache (docs/delivery-api.md)

@@ -7,7 +7,7 @@
  * drifts from the wire shape fails to compile.
  */
 
-import type { DocumentOperations } from '@crombolo/content'
+import type { DocumentOperations, MediaOperations } from '@crombolo/content'
 import type { ResponseOf } from '@crombolo/contracts'
 import type { UploadSettings } from '@crombolo/core'
 import type {
@@ -270,6 +270,8 @@ export interface ManagementApiDeps {
   dynamicRoots?: DynamicRootPort
   temporaryFiles?: TemporaryFilePort
   media?: MediaPort
+  /** Every media write, with its rules and its events (story 165); required alongside `media`. */
+  mediaOperations?: MediaOperations
   tags?: TagPort
   oembed?: OEmbedPort
   blueprints?: BlueprintPort

@@ -459,30 +459,6 @@ export interface BlueprintPort {
 export interface MediaPort {
   byKey(key: string): Promise<DocumentAggregate | undefined>
   validate(input: SaveDocument): Promise<DocumentValidationError[]>
-  create(
-    input: SaveDocument,
-    principal: Principal,
-  ): Promise<{ ok: true; key: string } | PortFailure>
-  update(
-    key: string,
-    input: SaveDocument,
-    principal: Principal,
-  ): Promise<{ ok: true } | PortFailure>
-  /** Deletes a branch for good, and its files. */
-  remove(key: string): Promise<boolean>
-  moveToRecycleBin(key: string): Promise<boolean>
-  move(key: string, targetKey: string | null): Promise<{ ok: true } | PortFailure>
-  sort(
-    parentKey: string | null,
-    sorting: ReadonlyArray<{ key: string; sortOrder: number }>,
-  ): Promise<{ ok: true } | PortFailure>
-  sortChildrenBy(
-    parentKey: string | null,
-    field: 'Name' | 'CreateDate' | 'UpdateDate',
-    direction: 'Ascending' | 'Descending',
-  ): Promise<{ ok: true } | PortFailure>
-  restore(key: string, targetKey: string | null | undefined): Promise<{ ok: true } | PortFailure>
-  emptyRecycleBin(): Promise<void>
   originalParent(key: string): Promise<string | null | undefined>
   versions(key: string): Promise<DocumentVersionSummary[]>
   systemUserKey(): Promise<string | null>

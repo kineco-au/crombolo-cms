@@ -29,3 +29,22 @@ export const DOCUMENT_WRITE_OPERATIONS: ReadonlySet<string> = new Set([
   'PutDocumentByIdPublicAccess',
   'DeleteDocumentByIdPublicAccess',
 ])
+
+/**
+ * The media writes that go through the media operations (story 165). Each
+ * writes its own audit entry and webhook event in the change's transaction; the
+ * router still raises their live events and change notices.
+ */
+export const MEDIA_WRITE_OPERATIONS: ReadonlySet<string> = new Set([
+  'PostMedia',
+  'PutMediaById',
+  'DeleteMediaById',
+  'PutMediaByIdMoveToRecycleBin',
+  'PutMediaByIdMove',
+  'PutMediaSort',
+  'PutMediaByIdSortChildren',
+  'PutMediaRootSortChildren',
+  'PutRecycleBinMediaByIdRestore',
+  'DeleteRecycleBinMediaById',
+  'DeleteRecycleBinMedia',
+])

@@ -38,9 +38,8 @@ export async function openMedia(db: Db, config: CromboloConfig) {
       kind: 'media',
       valueIntake: createFileIntake(files),
     }),
-    // For the rules alone — which type takes which file — not for writing: a
-    // write through the port tells the cluster once per item.
-    port: createMediaPort(db, files, options),
+    // For the rules alone: which type takes which file.
+    port: createMediaPort(db, options),
   }
 }
 

@@ -1,6 +1,7 @@
 /** Driver-agnostic database handle. */
 
 import { Database as BunSqlite } from 'bun:sqlite'
+import { existsSync } from 'node:fs'
 import { ambient, ambientFor } from './ambient.ts'
 import { type Dialect, type DialectName, dialectFor } from './dialect.ts'
 import { createLockManager, DEFAULT_LOCK_TIMEOUT_MS, type LockManager } from './locks.ts'
@@ -32,6 +33,12 @@ export interface ConnectOptions {
   url?: string
   /** How long a write waits for a content lock; defaults to `CROMBOLO_LOCK_TIMEOUT_SECONDS`, else 15s. */
   lockTimeoutMs?: number
+  /**
+   * A connection that cannot write (story 156): SQLite opened read-only, an
+   * existing file only; on Postgres every statement in a read-only transaction,
+   * and no extension created.
+   */
+  readOnly?: boolean
 }
 
 export function resolveLockTimeoutMs(options: ConnectOptions = {}): number {
@@ -161,17 +168,30 @@ class PostgresDb implements Db {
   #sql: SqlTag
   #inTransaction: boolean
 
-  constructor(sql: SqlTag, locks?: LockManager, inTransaction = false, lockTimeoutMs?: number) {
+  #readOnly: boolean
+
+  constructor(
+    sql: SqlTag,
+    locks?: LockManager,
+    inTransaction = false,
+    lockTimeoutMs?: number,
+    readOnly = false,
+  ) {
     this.#sql = sql
     this.locks = locks ?? createLockManager(this, { timeoutMs: lockTimeoutMs })
     this.#inTransaction = inTransaction
+    this.#readOnly = readOnly
   }
 
   async query<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> {
+    if (this.#readOnly && !this.#inTransaction)
+      return this.transaction((tx) => tx.query<T>(sql, params))
     return (await this.#sql.unsafe(this.dialect.render(sql), params)) as T[]
   }
 
   async exec(sql: string, params: unknown[] = []): Promise<void> {
+    if (this.#readOnly && !this.#inTransaction)
+      return this.transaction((tx) => tx.exec(sql, params))
     await this.#sql.unsafe(this.dialect.render(sql), params)
   }
 
@@ -183,6 +203,7 @@ class PostgresDb implements Db {
   async transaction<T>(fn: (tx: Db) => Promise<T>): Promise<T> {
     if (this.#inTransaction) return fn(this)
     return this.#sql.begin(async (sql) => {
+      if (this.#readOnly) await sql.unsafe('SET TRANSACTION READ ONLY')
       const tx = new PostgresDb(sql, this.locks, true)
       const store = { owner: this, tx: tx as unknown }
       try {
@@ -225,9 +246,23 @@ export async function connect(options: ConnectOptions = {}): Promise<Db> {
     // A modest pool: many short-lived connections exhaust Postgres' client limit,
     // and a single process does not need more.
     const sql = new SQL({ url, max: options.poolSize ?? 5 }) as unknown as SqlTag
-    const db = new PostgresDb(sql, undefined, false, resolveLockTimeoutMs(options))
-    await db.exec('CREATE EXTENSION IF NOT EXISTS citext')
+    const db = new PostgresDb(
+      sql,
+      undefined,
+      false,
+      resolveLockTimeoutMs(options),
+      options.readOnly === true,
+    )
+    if (!options.readOnly) await db.exec('CREATE EXTENSION IF NOT EXISTS citext')
     return db
+  }
+  if (options.readOnly) {
+    const file = options.file
+    if (!file || file === ':memory:' || !existsSync(file))
+      throw new Error(`There is no database at ${file ?? '(none configured)'}.`)
+    const sqlite = new BunSqlite(file, { readonly: true })
+    sqlite.exec('PRAGMA busy_timeout = 5000')
+    return new SqliteDb(sqlite, undefined, false, undefined, resolveLockTimeoutMs(options))
   }
   const sqlite = new BunSqlite(options.file ?? ':memory:', { create: true })
   sqlite.exec('PRAGMA journal_mode = WAL')

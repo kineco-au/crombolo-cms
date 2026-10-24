@@ -36,7 +36,7 @@ which is what makes the packages consumable outside this repo.
 - `data` implements `core`'s repository interfaces and is the only package that
   knows SQL exists
 - `content` depends on `core` and `data` only — never on a transport. It holds
-  every document write and the rules each follows (below)
+  every page and media write and the rules each follows (below)
 - `api-management` depends on `core`, never on `data`. From `content` it imports
   values only through `@crombolo/content/rules` (actors, permission tables, event
   mappings), which reaches no database; the operations themselves are handed to
@@ -61,7 +61,7 @@ which is what makes the packages consumable outside this repo.
   never shells out still gets the same binary
 - composition happens in `apps/site` and the CLI
 
-## Document writes
+## Content writes
 
 Every change to a page — create, save, publish, unpublish, schedule, publish a
 branch, trash, delete, empty the bin, restore, move, copy, sort, roll back,
@@ -77,8 +77,17 @@ the rules do not depend on what started the change.
   recorded. `system` (the schedule, an approved request, a form) acts on what
   was already decided: no checks, no gate.
 - **One change is one transaction.** `DocumentRepository.atomically` takes the
-  tree lock and a transaction; create-and-publish, save-and-publish and
-  publishing several pages either all happen or none do.
+  tree lock and a transaction; create-and-publish, save-and-publish,
+  publishing several pages, and moving or trashing several (`moveMany`,
+  `trashMany`, story 165) either all happen or none do. A selection is
+  checked whole first, and a refusal lists each item and its reasons
+  (`blocked`); `dryRun` stops after the checks.
+- **An item goes only where its parent's type allows it** (story 165). Create,
+  move, copy and a restore to a chosen place refuse a type the parent (or, at
+  the top level, the root) does not allow, for a user and an operator alike;
+  the system is exempt, since it carries out what was already decided. Before
+  this, only the backoffice's pickers held to it. Seeds and `content import`
+  write through the repository and are not checked.
 - **A refusal is a value**, not an exception: `notFound`, `forbidden`,
   `needsApproval`, `invalid`, `conflict`, `blocked`, `validation`, `stale` or
   `revisionRequired`, with the status a transport would answer and the reason
@@ -99,6 +108,15 @@ the rules do not depend on what started the change.
   wires the same sink without the live part (`siteDocumentOperations`). The
   Management API router skips its own derivation for these operations
   (`DOCUMENT_WRITE_OPERATIONS`), so nothing is announced twice.
+- **Media writes have their own operations** (`MediaOperations`,
+  `packages/content/src/media-operations.ts`, story 165): create, save, trash,
+  delete, empty the bin, restore, move and sort, with the same actors, the same
+  placement rule and one transaction holding the change, its audit entry, its
+  webhook event and the cache instruction. A user needs the group-wide media
+  verb within their media start nodes. A deleted item's files go once its rows
+  have. The media port keeps the reads; the router still raises media's live
+  events and skips only its audit entry (`MEDIA_WRITE_OPERATIONS`). The command
+  line wires them with `siteMediaOperations`.
 - file I/O a save needs (placing uploads) reaches the repository as a
   _value intake_ the server supplies, so `data` stays free of the file system
 - image processing adds no dependency: Bun's `Image` resizes and encodes, and

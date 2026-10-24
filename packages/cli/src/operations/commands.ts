@@ -9,7 +9,7 @@ import { existsSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { userInfo } from 'node:os'
 import { basename, join, resolve } from 'node:path'
-import { ROOT_ACCESS } from '@crombolo/core'
+import { createMediaOperations, systemActor } from '@crombolo/content'
 import {
   type AuditCategory,
   bundleStateKey,
@@ -48,6 +48,7 @@ import {
   checkBundleContent,
   checkSchemaDirectory,
   createFileIntake,
+  createMediaEventSink,
   createMediaPort,
   exportSite,
   extractTarball,
@@ -626,10 +627,17 @@ export async function mediaAdd(
   // baseline state and the write gate refuses every write, because a server at
   // an older schema than its database must not write to it.
   const schema = await bootSchema(db, { ...config, syncSchemaAtBoot: false })
-  const port = createMediaPort(db, files, {
+  const repository = {
     nodeState: schema.nodeState,
     nodeId: schema.nodeId,
     valueIntake: createFileIntake(files),
+  }
+  const port = createMediaPort(db, repository)
+  const media = createMediaOperations({
+    db,
+    repository,
+    events: createMediaEventSink({}),
+    files,
   })
 
   // The same choice the backoffice makes: a type whose file property allows
@@ -653,42 +661,22 @@ export async function mediaAdd(
     new File([new Blob([bytes as BlobPart], { type: found.contentType })], name),
   )
 
-  const created = await port.create(
-    {
-      key: crypto.randomUUID(),
-      contentTypeKey: type.key,
-      componentKey: null,
-      parentKey: input.parent ?? null,
-      values: [
-        {
-          alias: 'umbracoFile',
-          culture: null,
-          segment: null,
-          value: { temporaryFileId: temporaryId },
-        },
-      ],
-      variants: [{ culture: null, segment: null, name }],
-    },
-    // The platform acting as itself: no user account, every permission, so the
-    // item is created rather than refused for an actor the site has never seen.
-    // `create` resolves a user id from the key and simply finds none.
-    {
-      id: '',
-      userName: 'operations',
-      name: 'operations',
-      email: '',
-      isAdmin: true,
-      languageIsoCode: undefined,
-      avatarUrls: [],
-      allowedSections: [],
-      permissions: [],
-      groupKeys: [],
-      hasAccessToAllLanguages: true,
-      languages: [],
-      startNodes: { document: ROOT_ACCESS, media: ROOT_ACCESS, element: ROOT_ACCESS },
-      groups: [],
-    },
-  )
+  // The platform acting as itself: it carries out what its host already decided,
+  // so no permission or placement rule applies.
+  const created = await media.create(systemActor('operations', { source: 'cli' }), {
+    key: crypto.randomUUID(),
+    contentTypeKey: type.key,
+    parentKey: input.parent ?? null,
+    values: [
+      {
+        alias: 'umbracoFile',
+        culture: null,
+        segment: null,
+        value: { temporaryFileId: temporaryId },
+      },
+    ],
+    variants: [{ culture: null, segment: null, name }],
+  })
   if (!created.ok) {
     // Nothing was registered, so the staged copy is litter.
     await files.deleteTemporary(temporaryId)

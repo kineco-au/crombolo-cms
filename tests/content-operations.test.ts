@@ -140,7 +140,7 @@ const editor = (languages: string[] = []) =>
     allowedSections: ['Umb.Section.Content'],
     hasAccessToAllLanguages: languages.length === 0,
     languages,
-    startNodes: { document: ROOT_ACCESS },
+    startNodes: { document: ROOT_ACCESS, media: ROOT_ACCESS },
     groups: [
       {
         key: 'g',

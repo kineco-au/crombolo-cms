@@ -1,122 +1,34 @@
 /**
  * The Media section: items stored as documents of the media object type (the
  * repository takes a kind), never published. An item's file is the path its
- * `umbracoFile` holds, served from the media root; deleting an item for good
- * deletes its file too.
+ * `umbracoFile` holds, served from the media root.
  */
-import type { MediaPort, Principal } from '@crombolo/api-management'
+import type { MediaPort } from '@crombolo/api-management'
 import {
   type ContentTypeAggregate,
   DEFAULT_UPLOAD_SETTINGS,
   type DocumentAggregate,
   IMAGE_CROPPER_EDITOR_ALIAS,
+  mediaFileOf,
   normaliseUuid,
   ObjectTypes,
 } from '@crombolo/core'
 import {
-  appendCacheInstruction,
-  ContentEventRepository,
   ContentTypeRepository,
   DataTypeRepository,
   type Db,
   DocumentRepository,
-  InvalidParentError,
   type NodeRow,
   type NodeSchemaState,
   type ValueIntake,
-  WriteRejectedError,
 } from '@crombolo/data'
-import { TemporaryFileMissingError } from '../file-intake.ts'
-import type { MediaFileStore } from '../media-files.ts'
-import type { WebhookService } from '../webhooks.ts'
 
-/** The file path an item's `umbracoFile` holds, whether an upload or a cropper value. */
-export function mediaFileOf(media: DocumentAggregate): string | null {
-  const value = media.values.find((v) => v.alias === 'umbracoFile')?.value
-  if (typeof value === 'string') return value || null
-  const src = (value as { src?: unknown } | null | undefined)?.src
-  return typeof src === 'string' && src ? src : null
-}
-
+/** The Media section's reads; its writes go through the media operations (story 165). */
 export function createMediaPort(
   db: Db,
-  files: MediaFileStore,
-  options: {
-    nodeState?: NodeSchemaState
-    nodeId?: string
-    valueIntake?: ValueIntake
-    /** Told after every change, so pages that show media refresh. */
-    onChange?: () => void | Promise<void>
-    /** Reads what a `MediaSave` or `MediaDelete` delivery needs, inside the change. */
-    webhooks?: Pick<WebhookService, 'factsFor'>
-    /** Told after a commit that left an event in the outbox (story 171). */
-    nudge?: () => void
-  } = {},
+  options: { nodeState?: NodeSchemaState; nodeId?: string; valueIntake?: ValueIntake } = {},
 ): MediaPort {
-  /** Every node is told inside the change's transaction; this node's pages refresh after. */
-  const instruct = (on: Db) =>
-    appendCacheInstruction(on, { kind: 'content', payload: { media: true }, by: options.nodeId })
-  const changed = async () => {
-    await instruct(db)
-    await options.onChange?.()
-  }
   const repo = new DocumentRepository(db, { ...options, kind: 'media' })
-
-  /**
-   * Writes a media change, its cache instruction and its webhook event in one
-   * transaction (story 171), so the event commits with the change or not at all.
-   */
-  const commit = async <T>(
-    write: (tx: DocumentRepository) => Promise<T>,
-    announce: (result: T) => { alias: string; key: string } | undefined,
-    principal?: Principal,
-  ): Promise<T> => {
-    let recorded = false
-    const result = await repo.atomically(async (tx, txDb) => {
-      const written = await write(tx)
-      const event = announce(written)
-      if (!event) return written
-      await instruct(txDb)
-      const webhook = await options.webhooks?.factsFor(txDb, event)
-      if (webhook) {
-        await new ContentEventRepository(txDb).record({
-          kind: event.alias === 'Umbraco.MediaDelete' ? 'mediaDeleted' : 'mediaSaved',
-          entityType: 'Media',
-          entityKey: event.key,
-          facts: { v: 1, webhook },
-          actor: principal
-            ? { kind: 'user', name: principal.name, userKey: principal.id }
-            : { kind: 'system', name: 'The site', userKey: null },
-        })
-        recorded = true
-      }
-      return written
-    })
-    if (announce(result)) await options.onChange?.()
-    if (recorded) options.nudge?.()
-    return result
-  }
-
-  const userIdOf = async (principal: Principal): Promise<number | undefined> => {
-    const rows = await db.query<{ id: number }>('SELECT id FROM user_account WHERE key = ?', [
-      principal.id,
-    ])
-    return rows[0] ? Number(rows[0].id) : undefined
-  }
-  const failure = (error: unknown) => {
-    if (error instanceof WriteRejectedError)
-      return { ok: false as const, reason: error.message, status: 409 }
-    if (error instanceof InvalidParentError)
-      return { ok: false as const, reason: error.message, status: 400 }
-    if (error instanceof TemporaryFileMissingError)
-      return { ok: false as const, reason: error.message, status: 400 }
-    throw error
-  }
-  const notFound = (what = 'The media item could not be found.') => ({
-    ok: false as const,
-    reason: what,
-    status: 404,
-  })
   const tree = async (rows: readonly NodeRow[]) => repo.treeItems(rows)
   const mediaTypes = new ContentTypeRepository(db, { kind: 'media' })
   const dataTypes = new DataTypeRepository(db)
@@ -153,118 +65,9 @@ export function createMediaPort(
       .map((e) => e.replace(/^\./, '').toLowerCase())
   }
 
-  /** Every file in a branch, gathered before the branch is deleted. */
-  const filesIn = async (key: string): Promise<string[]> => {
-    const root = await repo.nodes.byKey(key)
-    if (!root) return []
-    const rows = await db.query<{ unique_id: string }>(
-      'SELECT unique_id FROM node WHERE (id = ? OR path LIKE ?) AND node_object_type = ?',
-      [root.id, `${root.path},%`, ObjectTypes.Media],
-    )
-    const found: string[] = []
-    for (const row of rows) {
-      const media = await repo.byKey(normaliseUuid(String(row.unique_id)))
-      const file = media ? mediaFileOf(media) : null
-      if (file) found.push(file)
-    }
-    return found
-  }
-  const removeBranch = async (key: string) => {
-    const paths = await filesIn(key)
-    const removed = await commit(
-      (tx) => tx.delete(key),
-      (done) => (done ? { alias: 'Umbraco.MediaDelete', key } : undefined),
-    )
-    // The files go once the rows have: a failed delete leaves both.
-    if (removed) for (const path of paths) await files.remove(path)
-    return removed
-  }
-
   return {
     byKey: (key) => repo.byKey(key),
     validate: (input) => repo.validate(input, null),
-
-    async create(input, principal) {
-      try {
-        const userId = await userIdOf(principal)
-        const created = await commit(
-          (tx) => tx.create({ ...input, componentKey: null, userId }),
-          (doc) => ({ alias: 'Umbraco.MediaSave', key: doc.key }),
-          principal,
-        )
-        return { ok: true as const, key: created.key }
-      } catch (error) {
-        return failure(error)
-      }
-    },
-
-    async update(key, input, principal) {
-      try {
-        const before = await repo.byKey(key)
-        const userId = await userIdOf(principal)
-        const updated = await commit(
-          (tx) => tx.update({ ...input, key, componentKey: null, userId }),
-          (doc) => (doc ? { alias: 'Umbraco.MediaSave', key } : undefined),
-          principal,
-        )
-        if (!updated) return notFound()
-        // A replaced file is no longer anyone's: Umbraco deletes it too.
-        const was = before ? mediaFileOf(before) : null
-        if (was && was !== mediaFileOf(updated)) await files.remove(was)
-        return { ok: true as const }
-      } catch (error) {
-        return failure(error)
-      }
-    },
-
-    remove: removeBranch,
-    async moveToRecycleBin(key) {
-      const moved = await repo.moveToRecycleBin(key)
-      if (moved) await changed()
-      return moved
-    },
-
-    async move(key, targetKey) {
-      const result = await repo.move(key, targetKey)
-      if (result === 'moved') {
-        await changed()
-        return { ok: true as const }
-      }
-      return result === 'notFound'
-        ? notFound('The media item or target could not be found.')
-        : { ok: false as const, reason: 'A media item cannot move below itself.', status: 400 }
-    },
-
-    async sort(parentKey, sorting) {
-      return (await repo.sort(parentKey, sorting)) === 'sorted'
-        ? { ok: true as const }
-        : notFound('The parent, or one of the items, could not be found under it.')
-    },
-
-    async sortChildrenBy(parentKey, field, direction) {
-      return (await repo.sortChildrenBy(parentKey, field, direction)) === 'sorted'
-        ? { ok: true as const }
-        : notFound()
-    },
-
-    async restore(key, targetKey) {
-      const result = await repo.restore(key, targetKey)
-      if (result === 'restored') {
-        await changed()
-        return { ok: true as const }
-      }
-      return result === 'notFound'
-        ? notFound('The media item is not in the recycle bin.')
-        : {
-            ok: false as const,
-            reason: 'The restore target does not exist or is in the recycle bin.',
-            status: 400,
-          }
-    },
-
-    async emptyRecycleBin() {
-      for (const node of await repo.trashedRoots()) await removeBranch(node.key)
-    },
 
     originalParent: (key) => repo.originalParent(key),
     versions: (key) => repo.versions(key),

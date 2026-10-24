@@ -30,6 +30,7 @@ alias = "page"
 name = "Page"
 icon = "icon-document"
 allow-at-root = true
+allow-children = ["page"]
 
 [[property]]
 alias = "pick"

@@ -41,6 +41,11 @@ the `source`. The router leaves these operations out (`DOCUMENT_WRITE_OPERATIONS
 in `packages/api-management/src/document-writes.ts`), so nothing is recorded
 twice.
 
+**Media writes** (story 165) go the same way, through the media operations:
+`createMediaEventSink` writes the entry from `mediaAuditEntryFor`, with the same
+actors and sources as the table below. The router leaves them out too
+(`MEDIA_WRITE_OPERATIONS`).
+
 | Actor | `user_name` | `source` | `detail` |
 | --- | --- | --- | --- |
 | a backoffice user | the user | `request` | — |
@@ -51,7 +56,7 @@ twice.
 
 **The Management API router.** Every successful change through the contract
 (a 2xx answer to a `POST`, `PUT`, `PATCH` or `DELETE`) writes one entry, in
-`ManagementApiRouter.dispatch`. Document writes are the exception, above. The mapping from operation to entry is
+`ManagementApiRouter.dispatch`. Page and media writes are the exception, above. The mapping from operation to entry is
 `auditPlanFor` (`packages/api-management/src/audit.ts`). It is derived from the
 operation's name, as server events are: `PutDocumentByIdPublish` is `Publish`
 on a `Document`, in `content`. Exceptions are listed by name. A test walks the
@@ -121,14 +126,15 @@ its arguments, because an argument can be a password.
 
 ## When an entry is written
 
-**Document writes commit their entry with the change** (story 171). The entry
-is written inside the change's own transaction, so a page change without its
-entry cannot happen. If the entry cannot be written, the change fails with it,
-because both live in the same database.
+**Page and media writes commit their entry with the change** (stories 171 and
+165). The entry is written inside the change's own transaction, so a page or
+media change without its entry cannot happen. If the entry cannot be written,
+the change fails with it, because both live in the same database. A media
+entry reads as it always has: category `media`, the same actions.
 
 **Everything else is written after the change** it records has been
-committed. That covers media, people, settings, sign-ins and the command
-line's own entries. If writing it fails, the failure is logged and the response
+committed. That covers people, settings, sign-ins and the command line's own
+entries. If writing it fails, the failure is logged and the response
 goes out as it would have. Failing the request would tell the editor the change
 did not happen when it did.
 
@@ -163,7 +169,41 @@ other method on those paths answers 405.
 
 Umbraco's current Management API has no per-user audit operation (the
 `/audit-log` endpoints of older versions are gone). So "what did this person
-do" is the dashboard's *Who* filter.
+do" is the dashboard's *Who* filter, or `crombolo audit list --user`.
+
+**From the command line** (story 156), for an auditor or a log store:
+
+- **`crombolo audit list`** pages newest first. `-o json` answers
+  `{ items, next, truncated }`, and `--before <next>` gets the page after.
+- **`crombolo audit stream`** prints NDJSON, one entry per line, oldest first.
+  `--after <id>` carries on after an entry, and `--follow` keeps reading every
+  `--interval` seconds until it is stopped (SIGINT or SIGTERM, exit 0).
+- **Filters:** both take `--since`, `--until`, `--category`, `--action`,
+  `--entity` and `--user`. `--user` takes an e-mail address, login or key, and
+  a login with no account finds the failed sign-ins that tried it.
+- **Records:** an entry has the dashboard's shape (`auditRecord` in
+  `packages/data/src/audit.ts`): `id`, `occurredAt`, `category`, `action`,
+  `source`, `user`, `item`, `ipAddress`, `forwardedFor` and `detail`.
+
+**Reading writes nothing.** The commands open the database through
+`connect({ readOnly: true })`: SQLite read-only, and only a file that already
+exists; Postgres in read-only transactions, creating no extension. They write
+no audit entry of their own.
+
+**A hosted site** is read with `--remote <name>` (and `--env`), through the
+remote protocol's `audit` capability (`remote-protocol.md`). It asks for the
+Settings section, as the dashboard does.
+
+**Following is by id.**
+- **What a follower misses:** an id is given as an entry is written, but on
+  Postgres the write commits with its transaction. An entry written inside a
+  long transaction (a big import, say) can commit after newer ones, and a
+  follower that has already passed its id never prints it. SQLite commits in
+  id order and is not affected. This was the chosen trade-off (story 156); a
+  shipper that cannot accept it re-reads a window behind its cursor.
+- **Retention:** entries are deleted after the retention below, so a log that
+  must be kept longer is streamed out first. A cursor older than anything kept
+  sets `truncated`, and `stream` warns on stderr.
 
 ## Retention
 

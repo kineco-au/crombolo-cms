@@ -26,6 +26,7 @@ import {
   type ApprovalsGate,
   type ContentPrincipal,
   createDocumentOperations,
+  createMediaOperations,
   type DocumentOperations,
   type EventSink,
   SILENT,
@@ -84,6 +85,7 @@ import { createWebhookPort } from './adapters/webhooks.ts'
 import { type Approvals, createApprovals } from './approvals.ts'
 import { COMPONENT_SNIPPETS } from './component-snippets.ts'
 import { type CromboloConfig, type UserLinkSender, VERSION } from './config.ts'
+import { createMediaEventSink } from './content-events.ts'
 import type { ContentNotifier } from './content-notifications.ts'
 import { writeDomainsFor } from './domains.ts'
 import { type EmailPort, resolveEmailPort } from './email.ts'
@@ -574,13 +576,24 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
     }
     deps.userGroups = userPorts.groups
     deps.userData = userPorts.userData
-    deps.media = createMediaPort(options.db, mediaFiles, {
+    deps.media = createMediaPort(options.db, {
       nodeState: options.schema?.nodeState,
       nodeId: options.schema?.nodeId,
       valueIntake,
+    })
+    // Every media write, whoever starts it (story 165).
+    deps.mediaOperations = createMediaOperations({
+      db: options.db,
+      repository: {
+        nodeState: options.schema?.nodeState,
+        nodeId: options.schema?.nodeId,
+        valueIntake,
+      },
+      events: createMediaEventSink({ webhooks: options.webhooks, nudge: options.nudgeEvents }),
+      files: mediaFiles,
       onChange: () => options.cache?.invalidate(),
-      webhooks: options.webhooks,
-      nudge: options.nudgeEvents,
+      refusalReason: (error) =>
+        error instanceof TemporaryFileMissingError ? error.message : undefined,
     })
     deps.blueprints = createBlueprintPort(options.db, {
       nodeState: options.schema?.nodeState,

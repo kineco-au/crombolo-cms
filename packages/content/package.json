@@ -1,7 +1,7 @@
 {
   "name": "@crombolo/content",
-  "version": "0.26.0",
-  "description": "The rules every document write follows, whoever starts it: who may, approvals, and what it announces. No transport.",
+  "version": "0.27.0",
+  "description": "The rules every page and media write follows, whoever starts it: who may, where it may go, approvals, and what it announces. No transport.",
   "license": "MIT",
   "author": "Crombolo",
   "homepage": "https://github.com/kineco-au/crombolo-cms#readme",

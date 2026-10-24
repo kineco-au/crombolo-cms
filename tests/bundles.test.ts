@@ -10,6 +10,8 @@ import { mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { packageFileName } from '@crombolo/api-management'
+import type { ContentTypeAggregate } from '@crombolo/core'
+import { ContentTypeRepository } from '@crombolo/data'
 import { readBundle, VERSION } from '@crombolo/server'
 import { loadBundle } from '@crombolo/transfer'
 import { BACKOFFICE, type Harness, signedInServer, V1 } from './support/harness.ts'
@@ -431,6 +433,10 @@ describe('the download', () => {
   test('honours contentLoadChildNodes and mediaLoadChildNodes independently', async () => {
     const { h, create, contentType } = await site()
     const type = await contentType()
+    // A page under a page, which the type has to allow.
+    const types = new ContentTypeRepository(h.server.db)
+    const saved = (await types.byKey(type.id)) as ContentTypeAggregate
+    await types.save({ ...saved, allowedContentTypes: [{ contentTypeKey: type.id, sortOrder: 0 }] })
     const page = async (name: string, parent: string | null) => {
       const made = await h.post(`${V1}/document`, {
         documentType: { id: type.id },

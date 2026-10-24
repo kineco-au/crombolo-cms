@@ -8,8 +8,10 @@
 
 import {
   createDocumentOperations,
+  createMediaOperations,
   type DocumentOperations,
   type EventSink,
+  type MediaOperations,
 } from '@crombolo/content'
 import {
   appendCacheInstruction,
@@ -21,11 +23,12 @@ import { PublishedCache } from '@crombolo/render'
 import { createPublishedContentSource } from './adapters/documents.ts'
 import { createApprovals } from './approvals.ts'
 import type { CromboloConfig } from './config.ts'
-import { createContentEventSink } from './content-events.ts'
+import { createContentEventSink, createMediaEventSink } from './content-events.ts'
 import { createContentNotifier } from './content-notifications.ts'
 import { writeDomainsFor } from './domains.ts'
 import { resolveEmailPort } from './email.ts'
-import { TemporaryFileMissingError } from './file-intake.ts'
+import { createFileIntake, TemporaryFileMissingError } from './file-intake.ts'
+import { MediaFileStore, mediaStoreFor } from './media-files.ts'
 import { approvalsGate, backOfficeUrl } from './ports.ts'
 import { createRedirectTracker } from './redirects.ts'
 import { createWebhookService } from './webhooks.ts'
@@ -87,9 +90,44 @@ export async function siteDocumentOperations(
           by: `cli:${config.nodeId}`,
         }),
     }),
+    // The routes a redirect is tracked from are read from this cache once a change
+    // has committed, so the change has to drop it first.
+    onChange: () => cache.invalidate(),
     afterDomains: (node, assignment) => writeDomainsFor(db, config.siteDir, node, assignment),
     refusalReason: (error) =>
       error instanceof TemporaryFileMissingError ? error.message : undefined,
   })
   return { operations, events }
+}
+
+/**
+ * Media operations for a process that is not serving requests (story 165): the
+ * same rules, audit entries and webhook events as the server's, with the site's
+ * media store for the files a delete removes.
+ */
+export async function siteMediaOperations(
+  db: Db,
+  config: CromboloConfig,
+): Promise<MediaOperations> {
+  const state = await currentSchemaState(db)
+  const files = new MediaFileStore(await mediaStoreFor(config))
+  const webhooks = createWebhookService({
+    db,
+    schemaDir: config.schemaDir,
+    filesWritable: config.schemaWritable,
+    secretKey: config.secretKey,
+    bundles: config.bundles,
+  })
+  return createMediaOperations({
+    db,
+    repository: {
+      nodeState: { version: state.version, revision: state.revision },
+      nodeId: config.nodeId,
+      valueIntake: createFileIntake(files),
+    },
+    events: createMediaEventSink({ webhooks }),
+    files,
+    refusalReason: (error) =>
+      error instanceof TemporaryFileMissingError ? error.message : undefined,
+  })
 }

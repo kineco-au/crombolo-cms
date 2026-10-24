@@ -2,6 +2,9 @@
  * The Media section: the tree, the editor, the collection view, the recycle bin
  * and the file URLs its thumbnails and pickers need.
  */
+
+import type { MediaOperations, Refusal } from '@crombolo/content'
+import { userActor } from '@crombolo/content/rules'
 import type { DocumentAggregate, DocumentTreeItem } from '@crombolo/core'
 import {
   invalidSkipTake,
@@ -109,10 +112,20 @@ function toSaveMedia(key: string, body: Record<string, unknown>) {
   }
 }
 
-export function registerMediaHandlers(router: ManagementApiRouter, port: MediaPort): void {
+export function registerMediaHandlers(
+  router: ManagementApiRouter,
+  port: MediaPort,
+  operations: MediaOperations,
+): void {
   const mediaStart = (ctx: RequestContext) => ctx.principal?.startNodes.media ?? ROOT_ACCESS
 
-  const principal = (ctx: RequestContext) => ctx.principal as NonNullable<typeof ctx.principal>
+  /** The signed-in user, as the operations know them: their rules apply (story 165). */
+  const actorOf = (ctx: RequestContext) =>
+    userActor(ctx.principal as NonNullable<typeof ctx.principal>, ctx.client ?? {})
+  const missing = (result: Refusal, title: string) =>
+    result.kind === 'notFound'
+      ? problemResponse(notFound('The media item could not be found'))
+      : failed(title, result)
   const done = (ctx: RequestContext, message?: string) => {
     if (message) ctx.notifications.push({ message, category: 'Media', type: 'Success' })
     return new Response(null, { status: 200 })
@@ -183,7 +196,7 @@ export function registerMediaHandlers(router: ManagementApiRouter, port: MediaPo
     const input = toSaveMedia(key, body)
     const errors = await port.validate(input)
     if (errors.length > 0) return problemResponse(validationProblem(errors, input.values))
-    const result = await port.create(input, principal(ctx))
+    const result = await operations.create(actorOf(ctx), input)
     if (!result.ok) return failed('Could not create the media item', result)
     return created(`${ctx.url.origin}${API}/media/${result.key}`, result.key)
   })
@@ -199,25 +212,27 @@ export function registerMediaHandlers(router: ManagementApiRouter, port: MediaPo
     }
     const errors = await port.validate(input)
     if (errors.length > 0) return problemResponse(validationProblem(errors, input.values))
-    const result = await port.update(key, input, principal(ctx))
+    const result = await operations.save(actorOf(ctx), key, input)
     if (!result.ok) return failed('Could not save the media item', result)
     return done(ctx)
   })
 
   router.handle('DeleteMediaById', async (ctx) => {
-    if (!(await port.remove(ctx.params.id as string)))
-      return problemResponse(notFound('The media item could not be found'))
-    return done(ctx)
+    const result = await operations.delete(actorOf(ctx), ctx.params.id as string)
+    return result.ok ? done(ctx) : missing(result, 'Could not delete the media item')
   })
 
   router.handle('PutMediaByIdMoveToRecycleBin', async (ctx) => {
-    if (!(await port.moveToRecycleBin(ctx.params.id as string)))
-      return problemResponse(notFound('The media item could not be found'))
-    return done(ctx)
+    const result = await operations.trash(actorOf(ctx), ctx.params.id as string)
+    return result.ok ? done(ctx) : missing(result, 'Could not move the media item')
   })
 
   router.handle('PutMediaByIdMove', async (ctx) => {
-    const result = await port.move(ctx.params.id as string, refId((await readBody(ctx)).target))
+    const result = await operations.move(
+      actorOf(ctx),
+      ctx.params.id as string,
+      refId((await readBody(ctx)).target),
+    )
     return result.ok ? done(ctx) : failed('Could not move the media item', result)
   })
 
@@ -229,7 +244,7 @@ export function registerMediaHandlers(router: ManagementApiRouter, port: MediaPo
       key: String(item.id ?? ''),
       sortOrder: Number(item.sortOrder ?? 0),
     }))
-    const result = await port.sort(refId(body.parent), sorting)
+    const result = await operations.sort(actorOf(ctx), refId(body.parent), sorting)
     return result.ok ? done(ctx) : failed('Could not sort', result)
   })
 
@@ -241,7 +256,8 @@ export function registerMediaHandlers(router: ManagementApiRouter, port: MediaPo
       return problemResponse(problemDetails({ title: 'Unknown sort field', status: 400 }))
     if (!['Ascending', 'Descending'].includes(direction))
       return problemResponse(problemDetails({ title: 'Unknown sort direction', status: 400 }))
-    const result = await port.sortChildrenBy(
+    const result = await operations.sortChildrenBy(
+      actorOf(ctx),
       parentKey,
       field as 'Name' | 'CreateDate' | 'UpdateDate',
       direction as 'Ascending' | 'Descending',
@@ -425,7 +441,11 @@ export function registerMediaHandlers(router: ManagementApiRouter, port: MediaPo
   router.handle('PutRecycleBinMediaByIdRestore', async (ctx) => {
     const body = await readBody(ctx)
     const target = 'target' in body ? refId(body.target) : undefined
-    const result = await port.restore(ctx.params.id as string, target ?? undefined)
+    const result = await operations.restore(
+      actorOf(ctx),
+      ctx.params.id as string,
+      target ?? undefined,
+    )
     return result.ok ? done(ctx) : failed('Could not restore', result)
   })
   router.handle('DeleteRecycleBinMediaById', async (ctx) => {
@@ -436,12 +456,12 @@ export function registerMediaHandlers(router: ManagementApiRouter, port: MediaPo
       return problemResponse(
         problemDetails({ title: 'The media item is not in the recycle bin', status: 400 }),
       )
-    await port.remove(key)
-    return done(ctx)
+    const result = await operations.delete(actorOf(ctx), key, { fromBin: true })
+    return result.ok ? done(ctx) : missing(result, 'Could not delete the media item')
   })
   router.handle('DeleteRecycleBinMedia', async (ctx) => {
-    await port.emptyRecycleBin()
-    return done(ctx)
+    const result = await operations.emptyBin(actorOf(ctx))
+    return result.ok ? done(ctx) : failed('Could not empty the recycle bin', result)
   })
 
   // References arrive with relations (story 046); nothing is known to refer yet.

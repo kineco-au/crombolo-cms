@@ -708,8 +708,10 @@ export function registerDocumentHandlers(
       },
     )
     if (!result.ok) return failed('Could not copy the document', result)
+    // Not a dry run, so the copy has its key.
+    const key = result.key as string
     ctx.notifications.push({ message: 'Document copied', category: 'Content', type: 'Success' })
-    return created(`${ctx.url.origin}/umbraco/management/api/v1/document/${result.key}`, result.key)
+    return created(`${ctx.url.origin}/umbraco/management/api/v1/document/${key}`, key)
   })
 
   router.handle('PutDocumentSort', async (ctx) => {

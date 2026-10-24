@@ -1,18 +1,6 @@
 import { operatorActor } from '@crombolo/content'
-import { ObjectTypes } from '@crombolo/core'
-import {
-  appendCacheInstruction,
-  currentSchemaState,
-  DocumentRepository,
-  type NodeRow,
-} from '@crombolo/data'
-import {
-  bootstrapDatabase,
-  MediaFileStore,
-  mediaFileOf,
-  mediaStoreFor,
-  siteDocumentOperations,
-} from '@crombolo/server'
+import { currentSchemaState, DocumentRepository, type NodeRow } from '@crombolo/data'
+import { bootstrapDatabase, siteDocumentOperations, siteMediaOperations } from '@crombolo/server'
 import { Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
 import { commandActorName } from '../../operations/commands.ts'
@@ -74,14 +62,12 @@ export default class RecycleBinEmpty extends BaseCommand {
       const kinds = (['content', 'media'] as const).filter(
         (kind) => (!flags.content && !flags.media) || flags[kind],
       )
-      const files = new MediaFileStore(await mediaStoreFor(config))
       const state = await currentSchemaState(db)
       const cutoff =
         flags['older-than'] === undefined
           ? undefined
           : Date.now() - flags['older-than'] * 86_400_000
       const chosen: Array<{
-        repo: DocumentRepository
         node: NodeRow
         kind: 'content' | 'media'
         trashedAt: Date | undefined
@@ -101,7 +87,7 @@ export default class RecycleBinEmpty extends BaseCommand {
             kept += 1
             continue
           }
-          chosen.push({ repo, node, kind, trashedAt })
+          chosen.push({ node, kind, trashedAt })
         }
       }
       const items = chosen.map(({ node, kind, trashedAt }) => ({
@@ -132,40 +118,16 @@ export default class RecycleBinEmpty extends BaseCommand {
             bypass: '--yes',
           },
         )
-      let mediaChanged = false
-      // Pages through the document operations, as the local operator (story 170):
-      // each is recorded and announced as a delete from the backoffice's bin is.
+      // Through the operations, as the local operator (stories 170 and 165): each
+      // item is recorded and announced as a delete from the backoffice's bin is,
+      // and a media item's files go with it.
       const pages = kinds.includes('content')
         ? (await siteDocumentOperations(db, config)).operations
         : undefined
+      const media = kinds.includes('media') ? await siteMediaOperations(db, config) : undefined
       const actor = operatorActor(commandActorName())
-      for (const { repo, node, kind } of chosen) {
-        if (kind === 'content' && pages) {
-          await pages.delete(actor, node.key, { fromBin: true })
-          continue
-        }
-        // A media item's file goes with it, as emptying the bin in the back office does.
-        const paths: string[] = []
-        if (kind === 'media') {
-          const rows = await db.query<{ unique_id: string }>(
-            'SELECT unique_id FROM node WHERE (id = ? OR path LIKE ?) AND node_object_type = ?',
-            [node.id, `${node.path},%`, ObjectTypes.Media],
-          )
-          for (const row of rows) {
-            const media = await repo.byKey(String(row.unique_id))
-            const file = media ? mediaFileOf(media) : null
-            if (file) paths.push(file)
-          }
-        }
-        if (await repo.delete(node.key)) for (const path of paths) await files.remove(path)
-        if (kind === 'media') mediaChanged = true
-      }
-      // One instruction for the run, as a node's own empty-bin does.
-      await appendCacheInstruction(db, {
-        kind: 'content',
-        payload: mediaChanged ? { media: true } : { recycleBin: true },
-        by: `cli:${config.nodeId}`,
-      })
+      for (const { node, kind } of chosen)
+        await (kind === 'content' ? pages : media)?.delete(actor, node.key, { fromBin: true })
       this.say(`  deleted  ${items.length} item(s)`)
       return { items, kept, changed: true }
     } finally {

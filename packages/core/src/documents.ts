@@ -127,3 +127,11 @@ export function normaliseValueCulture(
 ): string | null {
   return propertyVariesByCulture ? culture : null
 }
+
+/** The file path a media item's `umbracoFile` holds, whether an upload or a cropper value. */
+export function mediaFileOf(media: Pick<DocumentAggregate, 'values'>): string | null {
+  const value = media.values.find((v) => v.alias === 'umbracoFile')?.value
+  if (typeof value === 'string') return value || null
+  const src = (value as { src?: unknown } | null | undefined)?.src
+  return typeof src === 'string' && src ? src : null
+}

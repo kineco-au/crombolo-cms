@@ -75,7 +75,47 @@ export interface AuditFilter {
   /** Matched anywhere in the item's name or key, or the user's name. */
   text?: string
   ascending?: boolean
+  /**
+   * A person by e-mail, login or key: their account's entries, or, for a login
+   * with no account, the entries that name it (a failed sign-in).
+   */
+  user?: string
 }
+
+/** Where a page of entries starts: newest first below `before`, or oldest first above `after`. */
+export interface AuditCursor {
+  before?: number
+  after?: number
+  limit: number
+}
+
+export interface AuditPage {
+  items: AuditEntry[]
+  /** The cursor for the next page; null when a newest-first read has reached the end. */
+  next: number | null
+  /** The `after` cursor names an entry retention has already deleted, so some were missed. */
+  truncated: boolean
+}
+
+/** An entry as every reader gets it: the dashboard, the command line and a remote. */
+export function auditRecord(entry: AuditEntry) {
+  return {
+    id: entry.id,
+    occurredAt: entry.occurredAt.toISOString(),
+    category: entry.category,
+    action: entry.action,
+    source: entry.source,
+    user: entry.userKey || entry.userName ? { key: entry.userKey, name: entry.userName } : null,
+    item: entry.entityType
+      ? { type: entry.entityType, key: entry.entityKey, name: entry.entityName }
+      : null,
+    ipAddress: entry.ipAddress,
+    forwardedFor: entry.forwardedFor,
+    detail: entry.detail,
+  }
+}
+
+export type AuditRecord = ReturnType<typeof auditRecord>
 
 /** What a key names, for an entry to carry once the thing itself has gone. */
 export interface AuditSubject {
@@ -162,14 +202,12 @@ export class AuditLog {
     }
   }
 
-  async query(
-    filter: AuditFilter = {},
-    page: { skip: number; take: number } = { skip: 0, take: 100 },
-  ): Promise<{ total: number; items: AuditEntry[] }> {
+  /** The conditions a filter comes to, or undefined when it can match nothing. */
+  async #where(filter: AuditFilter): Promise<{ where: string[]; params: unknown[] } | undefined> {
     const where: string[] = []
     const params: unknown[] = []
     if (filter.userKey !== undefined) {
-      if (!UUID.test(filter.userKey)) return { total: 0, items: [] }
+      if (!UUID.test(filter.userKey)) return undefined
       where.push('user_key = ?')
       params.push(normaliseUuid(filter.userKey))
     }
@@ -201,6 +239,36 @@ export class AuditLog {
       )
       params.push(like, like, like)
     }
+    if (filter.user !== undefined) {
+      const who = filter.user.trim()
+      const accounts = await this.#db.query<{ key: string }>(
+        UUID.test(who)
+          ? 'SELECT key FROM user_account WHERE key = ?'
+          : 'SELECT key FROM user_account WHERE LOWER(email) = LOWER(?) OR LOWER(login) = LOWER(?) OR LOWER(user_name) = LOWER(?)',
+        UUID.test(who) ? [normaliseUuid(who)] : [who, who, who],
+      )
+      const account = accounts[0]
+      if (account) {
+        where.push('user_key = ?')
+        params.push(normaliseUuid(String(account.key)))
+      } else if (UUID.test(who)) {
+        where.push('user_key = ?')
+        params.push(normaliseUuid(who))
+      } else {
+        where.push('user_key IS NULL AND LOWER(user_name) = LOWER(?)')
+        params.push(who)
+      }
+    }
+    return { where, params }
+  }
+
+  async query(
+    filter: AuditFilter = {},
+    page: { skip: number; take: number } = { skip: 0, take: 100 },
+  ): Promise<{ total: number; items: AuditEntry[] }> {
+    const conditions = await this.#where(filter)
+    if (!conditions) return { total: 0, items: [] }
+    const { where, params } = conditions
     const clause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
     const counted = await this.#db.query<{ total: number }>(
       `SELECT COUNT(*) AS total FROM audit_entry ${clause}`,
@@ -212,6 +280,57 @@ export class AuditLog {
       [...params, page.take, page.skip],
     )
     return { total: Number(counted[0]?.total ?? 0), items: rows.map(toEntry) }
+  }
+
+  /**
+   * A page by id (story 156): newest first below `before`, or oldest first
+   * above `after`, for a reader that resumes where it stopped. Id order is
+   * write order, since every entry is stamped as it is written.
+   */
+  async page(filter: AuditFilter, cursor: AuditCursor): Promise<AuditPage> {
+    const ascending = cursor.after !== undefined
+    const conditions = await this.#where(filter)
+    if (!conditions)
+      return { items: [], next: ascending ? (cursor.after ?? null) : null, truncated: false }
+    const { where, params } = conditions
+    if (cursor.after !== undefined) {
+      where.push('id > ?')
+      params.push(cursor.after)
+    }
+    if (cursor.before !== undefined) {
+      where.push('id < ?')
+      params.push(cursor.before)
+    }
+    const clause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
+    const order = ascending ? 'ASC' : 'DESC'
+    const rows = await this.#db.query(
+      `SELECT * FROM audit_entry ${clause} ORDER BY id ${order} LIMIT ?`,
+      [...params, cursor.limit],
+    )
+    const items = rows.map(toEntry)
+    const last = items.at(-1)?.id
+    const next = ascending
+      ? (last ?? cursor.after ?? null)
+      : items.length === cursor.limit && last !== undefined
+        ? last
+        : null
+    return { items, next, truncated: ascending && (await this.#pruned(cursor.after as number)) }
+  }
+
+  /** Whether the entry a cursor names has gone while older ones are kept no longer. */
+  async #pruned(after: number): Promise<boolean> {
+    if (after <= 0) return false
+    const rows = await this.#db.query<{ oldest: number | null; there: number }>(
+      'SELECT MIN(id) AS oldest, SUM(CASE WHEN id = ? THEN 1 ELSE 0 END) AS there FROM audit_entry',
+      [after],
+    )
+    const oldest = rows[0]?.oldest
+    return (
+      Number(rows[0]?.there ?? 0) === 0 &&
+      oldest !== null &&
+      oldest !== undefined &&
+      Number(oldest) > after
+    )
   }
 
   /** Everyone the log names, by the name they had most recently. */

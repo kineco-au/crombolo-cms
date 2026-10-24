@@ -14,6 +14,9 @@ import {
   type DocumentEvent,
   type EventSink,
   liveEventsFor,
+  type MediaEventSink,
+  mediaAuditEntryFor,
+  mediaWebhookFor,
   notificationFor,
   webhookFor,
 } from '@crombolo/content'
@@ -84,6 +87,48 @@ export function createContentEventSink(options: ContentEventSinkOptions): EventS
     afterCommit(event) {
       for (const live of liveEventsFor(event)) options.live?.(live)
       if (webhookFor(event) || notificationFor(event)) options.nudge?.()
+    },
+  }
+}
+
+/**
+ * Where media operations record what they did (story 165): the audit entry and,
+ * for a save or a delete, the webhook event, in the change's own transaction.
+ */
+export function createMediaEventSink(options: {
+  webhooks?: Pick<WebhookService, 'factsFor'>
+  nudge?(): void
+}): MediaEventSink {
+  return {
+    async record(tx: Db, event, actor) {
+      const entry = mediaAuditEntryFor(event, actor)
+      const audit = new AuditLog(tx)
+      const subject =
+        event.type === 'deleted'
+          ? { entityType: entry.entityType, entityKey: event.key, entityName: event.name }
+          : entry.entityKey
+            ? await audit.describe(entry.entityType, entry.entityKey)
+            : undefined
+      await audit.record({
+        ...entry,
+        entityType: subject?.entityType ?? entry.entityType,
+        entityKey: subject?.entityKey ?? entry.entityKey,
+        entityName: subject?.entityName ?? null,
+      })
+      const hook = mediaWebhookFor(event)
+      const webhook =
+        hook && options.webhooks ? await options.webhooks.factsFor(tx, hook) : undefined
+      if (!webhook || !hook) return
+      await new ContentEventRepository(tx).record({
+        kind: event.type === 'deleted' ? 'mediaDeleted' : 'mediaSaved',
+        entityType: 'Media',
+        entityKey: hook.key,
+        facts: { v: 1, webhook },
+        actor: outboxActor(actor),
+      })
+    },
+    afterCommit(event) {
+      if (mediaWebhookFor(event)) options.nudge?.()
     },
   }
 }

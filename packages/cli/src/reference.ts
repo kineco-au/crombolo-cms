@@ -75,8 +75,8 @@ export const CLI_PAGES: readonly CliPageSpec[] = [
   {
     slug: 'users',
     title: 'Users and access',
-    summary: 'Back office users, the administrator’s password and API clients.',
-    topics: ['users', 'admin', 'api-client'],
+    summary: 'Back office users, the administrator’s password, API clients and the audit log.',
+    topics: ['users', 'admin', 'api-client', 'audit'],
   },
   {
     slug: 'operations',

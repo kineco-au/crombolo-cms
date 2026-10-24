@@ -15,12 +15,12 @@ import { createWriteStream } from 'node:fs'
 import { mkdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, sep } from 'node:path'
-import type { Principal } from '@crombolo/api-management'
+import { hasSection, type Principal } from '@crombolo/api-management'
 import { DEVICE_CODE_GRANT, REMOTE_CLIENT_ID } from '@crombolo/auth'
 import { managementApiPath, RemotePermissions, type RemoteVerb } from '@crombolo/core'
-import { type Db, type RemoteJob, RemoteJobRepository } from '@crombolo/data'
+import { AuditLog, auditRecord, type Db, type RemoteJob, RemoteJobRepository } from '@crombolo/data'
 import type { ContentSet } from '@crombolo/transfer'
-import { recordAudit } from './adapters/audit.ts'
+import { readAuditPageQuery, recordAudit } from './adapters/audit.ts'
 import { installBundleContent } from './bundle-install.ts'
 import type { CromboloConfig } from './config.ts'
 import { mediaStoreFor } from './media-files.ts'
@@ -78,6 +78,9 @@ const problem = (status: number, body: Problem) =>
 const may = (principal: Principal, verb: RemoteVerb) =>
   principal.isAdmin || principal.permissions.includes(verb)
 
+/** Who may read the audit log: whoever has its dashboard, in Settings. */
+const mayReadAudit = (principal: Principal) => hasSection(principal, 'settings')
+
 /** A cookie-authenticated write must come from this site; a bearer token is a client's own. */
 const fromThisSiteOrBearer = (request: Request) => {
   if (request.headers.get('authorization')?.toLowerCase().startsWith('bearer ')) return true
@@ -131,7 +134,12 @@ export function createRemote(options: RemoteOptions): Remote {
       clientId: REMOTE_CLIENT_ID,
       grantType: DEVICE_CODE_GRANT,
     },
-    capabilities: ['media-fetch', 'push-check', ...(settings.approvals ? ['approvals'] : [])],
+    capabilities: [
+      'media-fetch',
+      'push-check',
+      'audit',
+      ...(settings.approvals ? ['approvals'] : []),
+    ],
     environments: [environment()],
   })
 
@@ -341,6 +349,22 @@ export function createRemote(options: RemoteOptions): Remote {
           detail: 'The file is sealed with it, so content travels unreadable.',
         })
       : undefined
+
+  /**
+   * A page of the audit log (story 156), for whoever may read it in the back
+   * office: the Settings section, as the dashboard asks. Reading is not audited.
+   */
+  async function readAudit(url: URL, principal: Principal): Promise<Response> {
+    if (!mayReadAudit(principal))
+      return problem(403, { code: 'forbidden', title: 'You may not read the audit log' })
+    const query = readAuditPageQuery(url.searchParams)
+    if (typeof query === 'string') return problem(400, { code: 'bad-query', title: query })
+    const page = await new AuditLog(db).page(query.filter, query.cursor)
+    return Response.json(
+      { items: page.items.map(auditRecord), next: page.next, truncated: page.truncated },
+      { headers: { 'cache-control': 'no-store' } },
+    )
+  }
 
   async function startPull(request: Request, url: URL, principal: Principal): Promise<Response> {
     if (!may(principal, RemotePermissions.Pull))
@@ -718,6 +742,7 @@ export function createRemote(options: RemoteOptions): Remote {
               push:
                 may(principal, RemotePermissions.Push) &&
                 (!settings.protected || may(principal, RemotePermissions.PushProtected)),
+              audit: mayReadAudit(principal),
             },
           },
         ])
@@ -750,6 +775,7 @@ export function createRemote(options: RemoteOptions): Remote {
           title: `There is no environment "${envId}"`,
         })
 
+      if (what === 'audit' && request.method === 'GET') return readAudit(url, principal)
       if (what === 'pulls' && request.method === 'POST') return startPull(request, url, principal)
       if (what === 'pushes' && request.method === 'PUT') return startPush(request, url, principal)
       if (what === 'pushes/check' && request.method === 'POST') {

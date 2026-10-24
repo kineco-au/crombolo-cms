@@ -3,7 +3,7 @@
   "id": "ffc7145b-99fa-48da-9daf-12cd61454a22",
   "createdAt": "2026-10-01T00:00:00.000Z",
   "createdBy": "bun run build:template",
-  "integrity": "sha256-69e0dac587e3e2e148f52b9d767d07f8f967286d29a85798f50791260de092f6",
+  "integrity": "sha256-eb56c1042738a158b3ef4e242d7f289589ec7f7fa547d7d9223d8fc73616e1ba",
   "snapshot": "published",
   "provenance": {
     "siteName": "Crombolo",

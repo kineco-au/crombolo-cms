@@ -531,6 +531,30 @@ exec`. Each writes an audit entry, and each takes `-o json`.
   (migration 042); `--older-than` keeps one trashed before that, and says how
   many it kept.
 
+**Moving, copying, sorting and deleting** (story 165), through the same
+operations as the backoffice, as the person at the command line:
+
+| Command | Does |
+| --- | --- |
+| `crombolo content move <page>… --to <page\|/>` | moves pages and their branches; `/` is the top level |
+| `crombolo content copy <page> --to <page\|/> [--descendants]` | a draft copy with a free name, and its branch with `--descendants` |
+| `crombolo content sort <parent\|/> <child>…` | the children named first, in that order; the rest keep theirs after them |
+| `crombolo content delete <page>…` | to the recycle bin; `recycle-bin empty` deletes for good |
+| `crombolo media move <item>… --to <folder\|/>` / `media delete <item>…` | the same for media |
+
+A page is named by its path or its uuid, and a child of `content sort` by its
+name under the parent too. Every item is checked before any is written: one
+that cannot go where it is asked (a type its new parent does not allow, a page
+below itself) stops the lot, and the failure lists each one and why.
+`--dry-run` says what would change. Each change is in the audit log under the
+operator's name, and a move records the redirects an editor's move would. An
+item already where it was asked to go is reported unchanged.
+
+**The audit log** (story 156): `crombolo audit list` pages it newest first,
+and `crombolo audit stream [--follow]` ships it as NDJSON to a log store. Both
+read without writing, locally or from a hosted site with `--remote`
+(`audit-log.md`, "Reading it").
+
 **Media in bulk** (story 153): `crombolo media import <dir> [--under <folder>]`
 makes a media folder for each directory and an item for each file, typed by its
 extension as an upload is, through the same upload path. Run it again after a

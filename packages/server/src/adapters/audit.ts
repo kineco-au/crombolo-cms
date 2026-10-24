@@ -6,9 +6,11 @@ import type { AuditHistoryPort, AuditSink } from '@crombolo/api-management'
 import {
   AUDIT_CATEGORIES,
   type AuditCategory,
-  type AuditEntry,
+  type AuditCursor,
   type AuditEntryInput,
+  type AuditFilter,
   AuditLog,
+  auditRecord,
   type Db,
 } from '@crombolo/data'
 import { logger } from '../logging.ts'
@@ -74,20 +76,44 @@ export function createAuditHistory(db: Db, retentionDays: number): AuditHistoryP
   }
 }
 
-function toResponse(entry: AuditEntry) {
+/**
+ * A page of the log as the remote protocol asks for it (story 156):
+ * `before` or `after`, `limit` (1–500, default 100), and the filters `since`,
+ * `until`, `user`, `category`, `action` and `entity`. Answers the reason when
+ * the query is not one.
+ */
+export function readAuditPageQuery(
+  search: URLSearchParams,
+): { filter: AuditFilter; cursor: AuditCursor } | string {
+  const limit = Number(search.get('limit') ?? 100)
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500)
+    return 'limit must be between 1 and 500.'
+  const id = (name: string) => {
+    const raw = search.get(name)
+    if (raw === null) return undefined
+    const value = Number(raw)
+    return Number.isInteger(value) && value >= 0 ? value : null
+  }
+  const before = id('before')
+  const after = id('after')
+  if (before === null || after === null) return 'before and after must be entry ids.'
+  if (before !== undefined && after !== undefined) return 'Give before or after, not both.'
+  const category = search.get('category') ?? undefined
+  if (category && !AUDIT_CATEGORIES.includes(category as AuditCategory))
+    return `There is no category "${category}".`
+  const since = dateParam(search.get('since'))
+  const until = dateParam(search.get('until'))
+  if (since === null || until === null) return 'since and until must be dates.'
   return {
-    id: entry.id,
-    occurredAt: entry.occurredAt.toISOString(),
-    category: entry.category,
-    action: entry.action,
-    source: entry.source,
-    user: entry.userKey || entry.userName ? { key: entry.userKey, name: entry.userName } : null,
-    item: entry.entityType
-      ? { type: entry.entityType, key: entry.entityKey, name: entry.entityName }
-      : null,
-    ipAddress: entry.ipAddress,
-    forwardedFor: entry.forwardedFor,
-    detail: entry.detail,
+    filter: {
+      user: search.get('user') ?? undefined,
+      entityKey: search.get('entity') ?? undefined,
+      category: category as AuditCategory | undefined,
+      action: search.get('action') ?? undefined,
+      since,
+      until,
+    },
+    cursor: { before, after, limit },
   }
 }
 
@@ -140,7 +166,7 @@ export function createAuditHost(db: Db, retentionDays: number) {
       return Response.json({
         total: result.total,
         retentionDays,
-        items: result.items.map(toResponse),
+        items: result.items.map(auditRecord),
       })
     },
   }

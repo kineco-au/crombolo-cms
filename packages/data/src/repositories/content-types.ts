@@ -227,6 +227,40 @@ export class ContentTypeRepository {
     return { total: Number(totals[0]?.n ?? 0) - hidden, items }
   }
 
+  /**
+   * Why an item of type `typeKey` may not sit under `parentKey` (null: the top
+   * level), as its parent's type allows children; nothing when it may.
+   */
+  async placementRefusal(typeKey: string, parentKey: string | null): Promise<string | undefined> {
+    const types = await this.#db.query<{ id: number; text: string | null; allow_at_root: unknown }>(
+      `SELECT n.id, n.text, ct.allow_at_root FROM node n JOIN content_type ct ON ct.node_id = n.id
+       WHERE n.unique_id = ?`,
+      [normaliseUuid(typeKey)],
+    )
+    const type = types[0]
+    if (!type) return undefined
+    const typeName = String(type.text ?? typeKey)
+    if (parentKey === null)
+      return fromDbBool(type.allow_at_root)
+        ? undefined
+        : `"${typeName}" isn't allowed at the top level.`
+    const parents = await this.#db.query<{ text: string | null; content_type_id: number }>(
+      `SELECT n.text, c.content_type_id FROM node n JOIN content c ON c.node_id = n.id
+       WHERE n.unique_id = ?`,
+      [normaliseUuid(parentKey)],
+    )
+    const parent = parents[0]
+    if (!parent) return undefined
+    const allowed = await this.#db.query<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM content_type_allowed_child
+       WHERE content_type_id = ? AND allowed_content_type_id = ?`,
+      [parent.content_type_id, type.id],
+    )
+    return Number(allowed[0]?.n ?? 0) > 0
+      ? undefined
+      : `"${typeName}" isn't allowed under "${parent.text ?? parentKey}".`
+  }
+
   async allowedChildren(
     key: string,
     skip: number,

@@ -248,7 +248,7 @@ under `schema/` — and, for a site's starting content, in seed files (Epic Q).
 | `153` | Media in bulk | should | M | done | — |
 | `154` | Redirects as data | could | S | ready | — |
 | `155` | Members out and in | could | M | ready | — |
-| `156` | The audit log from the command line | could | S | ready | — |
+| `156` | The audit log from the command line | could | M | done | — |
 | `157` | A docs section on the product site | should | L | done | 150 |
 | `158` | A hosting plugin for the CLI | should | S | done | 150 |
 | `159` | A site file without its hostnames | should | S | done | 104, 105 |
@@ -269,12 +269,13 @@ elaborating before work starts.
 | `160` | Signing in to a remote from CI | should | M | ready | — |
 | `161` | Schema files without the raw keys | should | L | ready | — |
 | `162` | User and member groups as files | should | M | ready | — |
-| `163` | Content as code: seed files | should | L | ready | — |
+| `163` | Content as code: seed files | should | XL | ready | — |
 | `164` | The demo sites from seed files | should | M | backlog | 163 |
-| `165` | Moving, sorting and deleting content | could | S | ready | — |
+| `165` | Moving, sorting and deleting content | could | M | done | — |
 | `166` | People and access per environment | should | M | backlog | 162 |
 | `167` | Changing a remote site piece by piece | should | M | backlog | 160 |
 | `168` | The dictionary and single media files | could | S | ready | — |
+| `180` | A working site from an empty directory, from the command line | should | S | backlog | 163 |
 
 ### Epic R — Architecture and reliability
 
