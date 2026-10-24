@@ -3,8 +3,9 @@
  * signals that stop it, and `start --from`, which makes a site out of a file.
  * `crombolo start` and `crombolo pull` both end here.
  */
-import { existsSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import { AuthStore, resetAdminPassword } from '@crombolo/auth'
 import { readSetupState, recordInLedger, TransferRunRepository, writeReport } from '@crombolo/data'
@@ -16,6 +17,7 @@ import {
   bootRetryDelays,
   bootstrapDatabase,
   type CromboloConfig,
+  compileSeed,
   createServer,
   describeBootFailure,
   describeDatabase,
@@ -32,6 +34,7 @@ import { scaffoldFiles } from '../templates.ts'
 import { banner, describePlaced, describeSync, printTransferFindings } from './describe.ts'
 import { type TransferFlagValues, transferInput } from './flags.ts'
 import { PASSPHRASE_ENV, passphraseForPeople, passphraseToOpen } from './prompt.ts'
+import { writeSeedPackage } from './seed.ts'
 import { cwd, hasSite, type Io, siteConfig } from './site.ts'
 
 /** How long a shutdown gets before it is abandoned and the process leaves anyway. */
@@ -80,6 +83,8 @@ function stopOnSignal(
 export interface StartOptions extends TransferFlagValues {
   keepAdmin: boolean
   bundles: string[]
+  /** Apply `seed/` first, once per change to it (story 163). */
+  seed?: boolean
   label?: string
   backupTaken: boolean
 }
@@ -275,87 +280,110 @@ async function importStartupBundles(
   config: CromboloConfig,
   options: StartOptions,
 ): Promise<string[]> {
-  if (options.bundles.length === 0) return []
+  if (options.bundles.length === 0 && !options.seed) return []
 
   const lines: string[] = []
   const db = server.db
   let imported = false
-  for (const target of options.bundles) {
-    let resolved: ops.ResolvedBundle
-    try {
-      resolved = ops.readBundle(target, config.siteDir, await passphraseToOpen(target, config))
-    } catch (error) {
-      if (!(error instanceof ops.CommandError)) throw error
-      throw new CliError('refused', `${target} cannot be read. The site has not started.`, {
-        details: [error.message, ...error.problems],
+  // The seed, built from the files as they are now, goes first as a bundle of
+  // its own: its id is its content, so it is applied once for each change.
+  let seedDir: string | undefined
+  if (options.seed) {
+    const build = await compileSeed(db, config)
+    if (build.findings.length > 0)
+      throw new CliError('refused', 'seed/ has problems, so the site has not started.', {
+        hint: '`crombolo seed check` lists them.',
+        details: build.findings.map((f) => `${f.file}:${f.line}  ${f.message}`),
       })
-    }
-    const set = resolved.set
-    const standing = await new TransferRunRepository(db).appliedFor(set.manifest.id)
-    if (standing) {
-      lines.push(`  bundle      ${set.manifest.id} already imported (run ${standing.id})`)
-      continue
-    }
+    seedDir = mkdtempSync(join(tmpdir(), 'crombolo-seed-'))
+    writeSeedPackage(build, seedDir)
+  }
+  const targets = seedDir ? [seedDir, ...options.bundles] : options.bundles
+  try {
+    for (const target of targets) {
+      let resolved: ops.ResolvedBundle
+      try {
+        resolved = ops.readBundle(target, config.siteDir, await passphraseToOpen(target, config))
+      } catch (error) {
+        if (!(error instanceof ops.CommandError)) throw error
+        throw new CliError('refused', `${target} cannot be read. The site has not started.`, {
+          details: [error.message, ...error.problems],
+        })
+      }
+      const set = resolved.set
+      const standing = await new TransferRunRepository(db).appliedFor(set.manifest.id)
+      if (standing) {
+        lines.push(`  bundle      ${set.manifest.id} already imported (run ${standing.id})`)
+        continue
+      }
 
-    // Nothing to roll back to on a database this boot created, so the backup
-    // rule — which on Postgres means refusing without one — applies only to a
-    // site that already had content.
-    if (!server.seededAdminPassword) {
-      const backup = await backupBefore(config, {
-        reason: 'content-import',
-        backupTaken: options.backupTaken,
-      })
-      if (backup.path) io.progress(`  backup   ${backup.path}`)
-    }
+      // Nothing to roll back to on a database this boot created, so the backup
+      // rule — which on Postgres means refusing without one — applies only to a
+      // site that already had content.
+      if (!server.seededAdminPassword) {
+        const backup = await backupBefore(config, {
+          reason: 'content-import',
+          backupTaken: options.backupTaken,
+        })
+        if (backup.path) io.progress(`  backup   ${backup.path}`)
+      }
 
-    const prepared = await ops.transferOptions(db, config, resolved, transferInput(target, options))
-    for (const problem of prepared.problems) io.warning(`  ${problem}`)
-    const started = performance.now()
-    const result = await importBundle(db, set, {
-      ...prepared.options,
-      // The administrator this boot created stands in until the site's own arrive.
-      adoptUsers: Boolean(server.seededAdminPassword),
-      publish: options.publish,
-      nodeId: config.nodeId,
-      label: options.label,
-      package: { name: resolved.package.packageName, version: resolved.package.version },
-    })
-    await writeReport(db, result.check.findings, { source: 'transfer', scope: set.manifest.id })
-    if (!result.runId) {
-      printTransferFindings(io, result.check)
-      throw new CliError(
-        'refused',
-        `${target} was refused: ${result.check.outstanding.length} finding(s) outstanding. Nothing was written, and the site has not started.`,
+      const prepared = await ops.transferOptions(
+        db,
+        config,
+        resolved,
+        transferInput(target, options),
       )
-    }
-    const c = result.check.counts
-    const placed = describePlaced(
-      resolved.blobs.size > 0
-        ? await placeBlobs(await mediaStoreFor(config), resolved.blobs, resolved.openBlob)
-        : null,
-    )
-    lines.push(
-      `  bundle      ${set.manifest.id}: ${c.create} created, ${c.update} updated` +
-        `${result.published.length > 0 ? `, ${result.published.length} published` : ''} (run ${result.runId})`,
-    )
-    if (placed) lines.push(`  blobs       ${placed}`)
-    const people = result.people.filter((p) => p.kind === 'member' || p.kind === 'user')
-    if (people.length > 0)
+      for (const problem of prepared.problems) io.warning(`  ${problem}`)
+      const started = performance.now()
+      const result = await importBundle(db, set, {
+        ...prepared.options,
+        // The administrator this boot created stands in until the site's own arrive.
+        adoptUsers: Boolean(server.seededAdminPassword),
+        publish: options.publish,
+        nodeId: config.nodeId,
+        label: options.label,
+        package: { name: resolved.package.packageName, version: resolved.package.version },
+      })
+      await writeReport(db, result.check.findings, { source: 'transfer', scope: set.manifest.id })
+      if (!result.runId) {
+        printTransferFindings(io, result.check)
+        throw new CliError(
+          'refused',
+          `${target} was refused: ${result.check.outstanding.length} finding(s) outstanding. Nothing was written, and the site has not started.`,
+        )
+      }
+      const c = result.check.counts
+      const placed = describePlaced(
+        resolved.blobs.size > 0
+          ? await placeBlobs(await mediaStoreFor(config), resolved.blobs, resolved.openBlob)
+          : null,
+      )
       lines.push(
-        `  people      ${people.filter((p) => p.kind === 'member').length} member(s), ${people.filter((p) => p.kind === 'user').length} user(s); their passwords are the ones they had`,
+        `  bundle      ${set.manifest.id}: ${c.create} created, ${c.update} updated` +
+          `${result.published.length > 0 ? `, ${result.published.length} published` : ''} (run ${result.runId})`,
       )
-    for (const finding of result.check.findings.filter((f) => f.code === 'user-adopted'))
-      lines.push(`  admin       ${finding.message}`)
-    for (const failure of result.publishFailures)
-      io.warning(`  not published  ${failure.key}: ${failure.reason}`)
-    await recordInLedger(db, {
-      name: `content import ${set.manifest.id}`,
-      kind: 'transfer',
-      durationMs: Math.round(performance.now() - started),
-      appliedBy: config.nodeId,
-      note: `run ${result.runId}, ${resolved.package.packageName}@${resolved.package.version} (start --bundle)`,
-    })
-    imported = true
+      if (placed) lines.push(`  blobs       ${placed}`)
+      const people = result.people.filter((p) => p.kind === 'member' || p.kind === 'user')
+      if (people.length > 0)
+        lines.push(
+          `  people      ${people.filter((p) => p.kind === 'member').length} member(s), ${people.filter((p) => p.kind === 'user').length} user(s); their passwords are the ones they had`,
+        )
+      for (const finding of result.check.findings.filter((f) => f.code === 'user-adopted'))
+        lines.push(`  admin       ${finding.message}`)
+      for (const failure of result.publishFailures)
+        io.warning(`  not published  ${failure.key}: ${failure.reason}`)
+      await recordInLedger(db, {
+        name: `content import ${set.manifest.id}`,
+        kind: 'transfer',
+        durationMs: Math.round(performance.now() - started),
+        appliedBy: config.nodeId,
+        note: `run ${result.runId}, ${resolved.package.packageName}@${resolved.package.version} (start --bundle)`,
+      })
+      imported = true
+    }
+  } finally {
+    if (seedDir) rmSync(seedDir, { recursive: true, force: true })
   }
   // The content landed under a cache this process had already constructed.
   if (imported) server.cache.invalidate()

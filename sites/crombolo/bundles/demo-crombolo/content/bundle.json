@@ -3,7 +3,7 @@
   "id": "ffc7145b-99fa-48da-9daf-12cd61454a22",
   "createdAt": "2026-10-01T00:00:00.000Z",
   "createdBy": "bun run build:template",
-  "integrity": "sha256-eb56c1042738a158b3ef4e242d7f289589ec7f7fa547d7d9223d8fc73616e1ba",
+  "integrity": "sha256-6cc65d844e9e1fe9837a85917f0e37f5021293e6d148fcb3073a2f9bde41ee17",
   "snapshot": "published",
   "provenance": {
     "siteName": "Crombolo",
@@ -45,6 +45,7 @@
       "bfbe288f-2c69-4228-872f-9977d0ba23ae",
       "6e5fea07-0e58-4f64-8eef-c7ef533d7c98",
       "2d05a8a7-9e6c-4e64-8fe7-b2af5f4952b3",
+      "f3965998-f9f2-4665-80fe-34e02ffd1ae3",
       "d4292a2e-c06e-4099-8ddf-e47b593e79c4",
       "56c7f79b-2233-46dd-8887-27992f20bc95",
       "2e8dd4e8-d958-4646-83b9-44879bbcfcc2",
@@ -71,7 +72,7 @@
   },
   "counts": {
     "element": 25,
-    "document": 25
+    "document": 26
   },
   "dependencies": {
     "carried": [
@@ -122,6 +123,7 @@
       "dc12892a-7d67-40cf-8645-09a9387a069b",
       "e41ed7cc-3023-43a1-93ad-83f1b2ea1559",
       "eda4ab14-74bf-446d-bb3e-064be4e5913b",
+      "f3965998-f9f2-4665-80fe-34e02ffd1ae3",
       "f6c036de-300b-42d5-aa83-56f60fa26ef2",
       "fa2dd680-27ba-4811-8dc2-101cb3813c6d",
       "fe380729-34ae-48f6-848c-ab6e20d20b09"

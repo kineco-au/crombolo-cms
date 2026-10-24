@@ -16,6 +16,7 @@
  */
 import {
   appendCacheInstruction,
+  ContentAppliedRepository,
   currentSchemaState,
   type Db,
   DocumentRepository,
@@ -411,6 +412,8 @@ export async function revertRun(
           eventId: markers?.head ?? null,
         })
       }
+      // What the next import compares against goes back with the content.
+      await new ContentAppliedRepository(tx).revert(runId)
       await runs.finish(newRunId, todo.length + removed.length)
       await runs.setStatus(runId, 'reverted')
 

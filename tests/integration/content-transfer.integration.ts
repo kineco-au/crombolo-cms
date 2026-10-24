@@ -91,6 +91,7 @@ if (args[0] === 'tree') {
     values: [{ alias: 'title', culture: null, segment: null, value: args[2] }],
     variants: existing.variants.map((v) => ({ culture: v.culture, segment: v.segment, name: v.name })),
   })
+  if (args[3] === '--publish') await docs.publish(args[1], null)
   console.log('edited')
 } else if (args[0] === 'media') {
   // A media item with real bytes in this environment's store, which is what
@@ -289,10 +290,32 @@ describe('content transfer, end to end through the CLI', () => {
     expect(result.out).toContain('0 created, 0 updated, 3 unchanged')
   })
 
-  test('refuses when the destination has diverged, naming the conflict', async () => {
+  test('keeps an edit made at the destination while the bundle has not changed it', async () => {
     expect(
       (await seed('target', 'edit', keys[1] as string, 'Edited at the destination')).code,
     ).toBe(0)
+    const kept = await cli('target', 'content', 'import', bundle())
+    expect(kept.code, kept.out).toBe(0)
+    expect(kept.out).toContain('was changed here since it was last imported')
+    expect((await read('target', keys[1] as string)).draft).toBe('Edited at the destination')
+  })
+
+  test('refuses when both sides changed the same value, naming the conflict', async () => {
+    expect(
+      (await seed('source', 'edit', keys[1] as string, 'Offer A, revised', '--publish')).code,
+    ).toBe(0)
+    rmSync(bundle(), { recursive: true, force: true })
+    const exported = await cli(
+      'source',
+      'content',
+      'export',
+      '--include-content',
+      '--root',
+      '/Campaigns',
+      '--out',
+      bundle(),
+    )
+    expect(exported.code, exported.out).toBe(0)
     const refused = await cli('target', 'content', 'import', bundle())
     expect(refused.code).toBe(ERROR_KINDS.refused.exitCode)
     // The message a person reads, not the finding code: it has to name the node
@@ -321,7 +344,7 @@ describe('content transfer, end to end through the CLI', () => {
     // No flag this time: the answer is in the bundle.
     const imported = await cli('target', 'content', 'import', bundle())
     expect(imported.code, imported.out).toBe(0)
-    expect((await read('target', keys[1] as string)).draft).toBe('Offer A')
+    expect((await read('target', keys[1] as string)).draft).toBe('Offer A, revised')
   })
 
   test('--publish puts live what was live at the source', async () => {

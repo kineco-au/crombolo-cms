@@ -21,21 +21,20 @@ one step per test, through the real CLI on a bare `crombolo init`:
 | A page type and its view | `types new content-type page --at-root` | works; the type comes with a `title`, and the view shows it |
 | Another property | `types add-property page body --type textarea` | works; the view written earlier does not show it, which is fair: a view is the site's own code |
 | Check | `types check` | works |
-| **The home page, with its title** | *(no command)* | **gap: story 163** |
-| Publish | `content publish /Home` | works once there is a page |
+| The home page, with its title | `seed/content/home.toml`, `seed check`, `seed apply` | works since story 163 |
+| Publish | `content publish /Home` | works |
 | **An image in a media folder** | `media import`, then `media move … --to /images` | **gap: refused**, see below |
 | An administrator | `admin reset-password -o json` | works |
 | Health | `health` | works |
 | Start | `start` | works |
-| **The page is served** | `GET /` | works once there is a page |
+| The page is served | `GET /` | works |
 | Sign in | the back office login, with the reset password | works |
 
 A probe that made the page directly in the database got through every step,
-so the two gaps below are the only ones.
+so the gaps below were the only ones.
 
-- **Content.** Nothing on the command line makes a page or sets its values.
-  This is story 163's job: seed files compiled to a bundle and applied. Story
-  163 decided against an imperative `content create`.
+- **Content** was the other gap, closed by story 163 (seed files). Steps 6, 7
+  and 12 are tests again.
 - **Media folders on a command-line-only site.** A server's boot links the
   built-in Folder type to the other built-in media types
   (`ensureSystemMediaTypes(db, { linkFolderChildren })` in `bootSchema`).
@@ -51,8 +50,9 @@ so the two gaps below are the only ones.
 - [ ] The command line links Folder as boot does, unless a schema file defines
       Folder, so a site never run with `start` holds images in its folders. It
       is done once, in the path every command shares, not per command
-- [ ] Steps 6, 7, 8 and 12 of `hello-world.integration.ts` are tests again, not
-      `test.todo`, with step 6 written to the seed format story 163 settles on,
-      and the whole journey passes in CI
+- [ ] Step 8 of `hello-world.integration.ts` is a test again, not `test.todo`,
+      and the whole journey passes in CI (steps 6, 7 and 12 already are, since
+      story 163)
+- [ ] A seed that puts an image in a folder applies on a site never started
 - [ ] `docs/operations.md` points at the journey as the worked example of a
       site built from the command line

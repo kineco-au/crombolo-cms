@@ -16,6 +16,9 @@
  */
 import { ObjectTypes } from '@crombolo/core'
 import {
+  type AppliedState,
+  appliedValueKey,
+  ContentAppliedRepository,
   ContentTypeRepository,
   currentSchemaState,
   DataTypeRepository,
@@ -89,7 +92,7 @@ export function resolutionsFor(code: string): readonly string[] {
   switch (code) {
     case 'local-edit':
       return [
-        '--resolve <key>/<property>=take-bundle to let the bundle win for this property',
+        '--resolve <key>/<property>=take-bundle to let the bundle win for this property (@name and @parent for the name and place)',
         '--resolve <key>/<property>=keep-local to keep what is here for this property',
         '--resolve <key>=<choice> to answer the whole node, skip included',
         '--resolve-all=<choice> to answer every one the same way',
@@ -118,6 +121,11 @@ export function resolutionsFor(code: string): readonly string[] {
       return ['transfer the node it refers to', 'or accept a value that points at nothing']
     case 'name-collision':
       return ['rename one of them, or --resolve <key>=skip']
+    case 'move-refused':
+      return [
+        'allow its type under the new parent in schema/, then import again',
+        '--resolve <key>/@parent=keep-local to leave it where it is',
+      ]
     case 'missing-template':
       return ['deploy the view, and the template attaches on the next save']
     case 'content-sealed':
@@ -209,6 +217,36 @@ export interface NodePlan {
   resolution: Resolution | undefined
   /** Values kept as they are here, by property handle; the rest come from the bundle. */
   keepLocal?: string[]
+  /** Cultures whose name stays as it is here (`""` for an invariant one); the rest take the bundle's. */
+  keepNames?: string[]
+  /** Where the node moves to, when the bundle moved it and the site did not (story 163). */
+  moveTo?: string | null
+  /** The bundle reordered it among its siblings and the site did not. */
+  reorder?: boolean
+  /** The site reordered it since the last import, and keeps its place. */
+  keepOrder?: boolean
+}
+
+/** The handle a node's name takes in findings and `--resolve`. */
+export const NAME_HANDLE = '@name'
+/** The handle a node's parent takes in findings and `--resolve`. */
+export const PARENT_HANDLE = '@parent'
+
+/**
+ * One field compared three ways (story 163): the site, the bundle, and what the
+ * last import applied. Without a record of that, a difference is a question.
+ * Pure.
+ */
+export function threeWay(
+  mine: unknown,
+  theirs: unknown,
+  base: { value: unknown } | undefined,
+): 'same' | 'take' | 'keep' | 'ask' {
+  if (sameValue(mine, theirs)) return 'same'
+  if (!base) return 'ask'
+  if (sameValue(theirs, base.value)) return 'keep'
+  if (sameValue(mine, base.value)) return 'take'
+  return 'ask'
 }
 
 export interface TransferCheck {
@@ -426,6 +464,8 @@ export async function checkBundle(
   }
 
   const siblingNames = new Map<string, Set<string>>()
+  // What earlier imports applied: the third side of every comparison below.
+  const appliedBefore = await new ContentAppliedRepository(db).byKeys(set.nodes.map((n) => n.key))
 
   for (const node of set.nodes) {
     const name = node.variants[0]?.name ?? node.key
@@ -631,65 +671,189 @@ export async function checkBundle(
       continue
     }
 
-    // What the bundle would actually change, property by property.
+    const decided = await threeWayPlan(node, name, existing, appliedBefore.get(node.key), editors)
+    findings.push(...decided.findings)
+    plan.push(decided.plan)
+  }
+
+  /**
+   * What the bundle would change on a node that is here, field by field, three
+   * ways (story 163): taken where only the bundle changed, kept where only the
+   * site did, and asked where both did — or, for a node no import has recorded,
+   * wherever the two differ, as before.
+   */
+  async function threeWayPlan(
+    node: BundleNode,
+    name: string,
+    existing: NodeRow,
+    base: AppliedState | undefined,
+    editors: ReadonlyMap<string, string>,
+  ): Promise<{ plan: NodePlan; findings: Finding[] }> {
+    const out: Finding[] = []
+    const answers = resolutions[node.key]
+    const resolution = answers?.[WHOLE_NODE] ?? options.resolveAll
+    const subjectType = node.kind === 'media' ? 'media' : 'document'
     const current = await repoFor(node.kind).byKey(node.key)
     const currentByKey = new Map(
-      (current?.values ?? []).map((v) => [`${v.alias}|${v.culture ?? ''}|${v.segment ?? ''}`, v]),
+      (current?.values ?? []).map((v) => [appliedValueKey(v.alias, v.culture, v.segment), v]),
     )
-    const changedValues = node.values.filter((value) => {
-      if (!editors.has(value.property)) return false
-      const mine = currentByKey.get(
-        `${value.property}|${value.culture ?? ''}|${value.segment ?? ''}`,
-      )
-      return !sameValue(mine?.value, value.value)
-    })
-    const changing = [...new Set(changedValues.map((value) => value.property))]
+    const keepLocal: string[] = []
+    const keepNames: string[] = []
+    const changing = new Set<string>()
+    const taken: string[] = []
+    const kept: string[] = []
+    let taking = false
+    let asked = 0
+    const ask = (alias: string, culture: string | null, what: string) => {
+      const handle = propertyHandle(alias, culture)
+      const answer = answerFor(answers, alias, culture, options.resolveAll)
+      if (answer === 'keep-local') return 'keep' as const
+      if (answer === 'take-bundle') return 'take' as const
+      asked += 1
+      out.push({
+        kind: 'person',
+        code: 'local-edit',
+        subjectType,
+        subjectKey: node.key,
+        subjectName: name,
+        propertyAlias: alias,
+        culture,
+        message: `"${name}" is already here and its ${what}${culture ? ` (${culture})` : ''} differs from the bundle's${base ? ', and both changed since it was last imported' : ''}`,
+        link: link(node.key),
+      })
+      return handle
+    }
 
-    if (changing.length === 0) {
-      plan.push({
+    for (const value of node.values) {
+      if (!editors.has(value.property)) continue
+      const key = appliedValueKey(value.property, value.culture, value.segment)
+      const side = threeWay(
+        currentByKey.get(key)?.value,
+        value.value,
+        base ? { value: base.values[key] } : undefined,
+      )
+      if (side === 'same') continue
+      changing.add(value.property)
+      const handle = propertyHandle(value.property, value.culture)
+      const decision = side === 'ask' ? ask(value.property, value.culture, value.property) : side
+      if (decision === 'keep') {
+        keepLocal.push(handle)
+        if (side === 'keep') kept.push(handle)
+      } else if (decision === 'take') {
+        taking = true
+        if (side === 'take') taken.push(handle)
+      }
+    }
+
+    // Names: a node no import has recorded takes the bundle's, as it always has.
+    if (!base && current)
+      for (const variant of node.variants) {
+        const mine = current.variants.find((v) => (v.culture ?? '') === (variant.culture ?? ''))
+        if (mine?.name !== variant.name) taking = true
+      }
+    if (base && current)
+      for (const variant of node.variants) {
+        const culture = variant.culture ?? ''
+        const mine = current.variants.find((v) => (v.culture ?? '') === culture)?.name
+        const side = threeWay(mine, variant.name, { value: base.names[culture] })
+        if (side === 'same') continue
+        const decision = side === 'ask' ? ask(NAME_HANDLE, variant.culture, 'name') : side
+        if (decision === 'keep') {
+          keepNames.push(culture)
+          if (side === 'keep') kept.push(propertyHandle(NAME_HANDLE, variant.culture))
+        } else if (decision === 'take') {
+          taking = true
+          if (side === 'take') taken.push(propertyHandle(NAME_HANDLE, variant.culture))
+        }
+      }
+
+    // Place and order follow the bundle only where an import recorded them, and
+    // only where the bundle is placed where it says.
+    let moveTo: string | null | undefined
+    let reorder = false
+    let keepOrder = false
+    if (base && !options.under) {
+      const parentNow = current?.parentKey ?? null
+      const side = threeWay(parentNow, node.parent, { value: base.parent })
+      const decision = side === 'ask' ? ask(PARENT_HANDLE, null, 'place in the tree') : side
+      if (decision === 'take') {
+        const refused =
+          node.kind === 'document' || node.kind === 'media'
+            ? await (node.kind === 'media' ? mediaTypes : types).placementRefusal(
+                current?.contentTypeKey ?? node.contentType.key ?? '',
+                node.parent,
+              )
+            : undefined
+        if (refused)
+          out.push({
+            kind: 'blocking',
+            code: 'move-refused',
+            subjectType,
+            subjectKey: node.key,
+            subjectName: name,
+            propertyAlias: null,
+            culture: null,
+            message: `the bundle moves "${name}", but ${refused}`,
+            link: link(node.key),
+          })
+        else {
+          moveTo = node.parent
+          taking = true
+          taken.push(PARENT_HANDLE)
+        }
+      } else if (side === 'keep') kept.push(PARENT_HANDLE)
+      const parentHere = moveTo !== undefined ? moveTo : parentNow
+      if (parentHere === node.parent && node.kind === 'document') {
+        const bundleMoved = node.sortOrder !== base.bundleSortOrder
+        const siteMoved = existing.sortOrder !== base.sortOrder
+        if (bundleMoved && !siteMoved) reorder = true
+        else if (siteMoved) keepOrder = true
+        if (reorder) taking = true
+      }
+    }
+
+    if (taken.length > 0)
+      out.push({
+        kind: 'auto',
+        code: 'bundle-changed',
+        subjectType,
+        subjectKey: node.key,
+        subjectName: name,
+        propertyAlias: null,
+        culture: null,
+        message: `"${name}" changed in the bundle since it was last imported, and not here: ${taken.join(', ')} will be updated`,
+        link: link(node.key),
+      })
+    if (kept.length > 0)
+      out.push({
+        kind: 'auto',
+        code: 'local-kept',
+        subjectType,
+        subjectKey: node.key,
+        subjectName: name,
+        propertyAlias: null,
+        culture: null,
+        message: `"${name}" was changed here since it was last imported, and not in the bundle: ${kept.join(', ')} stays as it is`,
+        link: link(node.key),
+      })
+
+    const changes = taking || asked > 0 || reorder
+    return {
+      plan: {
         key: node.key,
         name,
         kind: node.kind,
-        action: 'unchanged',
-        changing: [],
+        action: changes ? 'update' : 'unchanged',
+        changing: [...changing],
         resolution,
-      })
-      continue
+        keepLocal,
+        ...(keepNames.length > 0 ? { keepNames } : {}),
+        ...(moveTo !== undefined ? { moveTo } : {}),
+        ...(reorder ? { reorder } : {}),
+        ...(keepOrder ? { keepOrder } : {}),
+      },
+      findings: out,
     }
-
-    // It exists, and the bundle disagrees with it. We cannot know whether
-    // somebody edited it here or the bundle is simply newer, so this is a
-    // decision rather than a defect — and it is the one an import waits on.
-    // One per property, so each can be answered on its own.
-    const keepLocal: string[] = []
-    let taking = false
-    for (const value of changedValues) {
-      const handle = propertyHandle(value.property, value.culture)
-      const answer = answerFor(answers, value.property, value.culture, options.resolveAll)
-      if (answer === 'keep-local') keepLocal.push(handle)
-      else if (answer === 'take-bundle') taking = true
-      else
-        findings.push({
-          kind: 'person',
-          code: 'local-edit',
-          subjectType: node.kind === 'media' ? 'media' : 'document',
-          subjectKey: node.key,
-          subjectName: name,
-          propertyAlias: value.property,
-          culture: value.culture ?? null,
-          message: `"${name}" is already here and its ${value.property}${value.culture ? ` (${value.culture})` : ''} differs from the bundle's`,
-          link: link(node.key),
-        })
-    }
-    plan.push({
-      key: node.key,
-      name,
-      kind: node.kind,
-      action: taking || keepLocal.length < changedValues.length ? 'update' : 'unchanged',
-      changing,
-      resolution,
-      keepLocal,
-    })
   }
 
   const counts = { create: 0, update: 0, unchanged: 0, skip: 0 }

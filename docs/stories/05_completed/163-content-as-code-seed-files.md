@@ -235,51 +235,127 @@ section of the product site, fixtures), is *declared*.
    - the journey in `hello-world.integration.ts`, step 6, once story 180
      un-todoes it.
 
+## What was built (2026-10-25)
+
+- **The applied record:**
+  - migration 049 `AddContentApplied` (release 0.28.0, with
+    `release:version 0.28.0`) creates `content_applied`: `node_key`, `run_id`,
+    `state`, `applied_at`, `previous_run_id` and `previous_state`;
+  - `ContentAppliedRepository` (`data/src/repositories/content-applied.ts`)
+    provides `byKeys`, `record` (keeping the state it replaced) and `revert`;
+  - the four rewinds undo it.
+- **Three-way import** (`transfer/src/check.ts`, `threeWay`, `threeWayPlan`):
+  - every value is compared as site, bundle and record;
+  - new findings: `bundle-changed` and `local-kept` (automatic), and
+    `move-refused` (blocking, from the placement rule);
+  - names (`@name`) and parent (`@parent`) follow the same rule and take
+    `--resolve`;
+  - order applies among the siblings the bundle carries unless the site
+    reordered the node;
+  - a node with no record is compared as before, names included.
+  - `import.ts` applies the kept names, moves and reorders, and records the
+    state per node. A node planned `unchanged` is no longer written (except
+    for a whole-site replace), so an unchanged re-import adds no version,
+    where it used to add one to every page. `revertRun` reverts the record.
+- **The compiler** is in `packages/server/src/seed/`, not
+  `@crombolo/transfer` as planned. It needs the media port's "which type takes
+  this file" rule and the site's config, and it still writes through
+  transfer's pure `writeBundle` and `writeBundlePackage`.
+  - **`read.ts`** walks `seed/`. A TOML syntax error is placed by parsing
+    ever longer prefixes, since Bun's own position is not always the file's.
+  - **`lines.ts`** is the key-to-line scan.
+  - **`keys.ts`** makes v5 uuids under a fixed namespace.
+  - **`compile.ts`** checks the items against the database and turns each
+    shorthand into the stored shape (rich text through `Bun.markdown.html`,
+    with links to content paths turned into local links). It derives block
+    keys, checks placement against the parent's type, builds media items with
+    their blobs and dimensions, warns about a renamed file, and sets the
+    content-derived id.
+  - **`export.ts`** writes seed files back, including a small TOML writer.
+- **Commands:**
+  - `seed check` exits 20 with `file:line  message`;
+  - `seed build --out`;
+  - `seed apply [--publish] [--dry-run] [--resolve…]`, which compiles to a
+    temporary package and runs `contentImport` or `contentCheck`;
+  - `seed export <page>…`;
+  - `start --seed`: the compiled seed is the first startup bundle, and its id
+    makes it apply once per change;
+  - a `seed` topic on the "Content and media" reference page.
+- **The journey** (`tests/integration/hello-world.integration.ts`): steps 6,
+  7 and 12 are tests now. An empty directory reaches a served "Hello, world"
+  through the CLI alone. Step 8 (a media folder on a site never started) is
+  story 180, now ready.
+- **Docs:** `docs/seeds.md`, a "Seed files" guide in the product site's docs
+  (the guide order shifted by one), `content-transfer.md` (three-way),
+  `operations.md` and the release notes.
+- **Tests:**
+  - `tests/content-import-three-way.test.ts`, on both dialects:
+    bundle-only, site-only, both, names, move and reorder, a refused move, no
+    record, an unchanged re-import, and a revert;
+  - `tests/seed.test.ts`, on both dialects: every shorthand, cultures, order,
+    publish state, a media sidecar, findings with lines, applying with the
+    file in the store, an unchanged re-apply, three-way through a seed, and an
+    export round trip;
+  - `tests/cli-seed.test.ts`, on SQLite: check, build, apply (dry run,
+    publish, again, changed), export, and `start --seed` once per change.
+- **Test runs:**
+  - SQLite 2803 pass and Postgres 2801 pass. The one failure on each was the
+    README not linking `docs/seeds.md`, now linked.
+  - Integration: two content-transfer steps expected a destination's edit to
+    conflict with an unchanged bundle. As decided, it is now kept, so the step
+    became two: a destination edit is kept, and a change on both sides is
+    refused and then settled by a saved resolution.
+- **Not done:**
+  - Library folders are reported, not read;
+  - segment variants are given in the stored shape only;
+  - a template change on an otherwise unchanged node is not applied;
+  - `seed export` writes pages only, not Library elements or media.
+
 ## Acceptance criteria
 
-- [ ] **Layout.** A `seed/` directory at the site root: `seed/content/` (the
+- [x] **Layout.** A `seed/` directory at the site root: `seed/content/` (the
       content tree), `seed/library/` (Library elements) and `seed/media/` (the
       files, in the folders they go in). The folder tree is the content tree;
       each item is one TOML file named for its URL segment, with its children
       in a folder of the same name
-- [ ] **Identity.** An item may give a `key`; otherwise its key is derived from
+- [x] **Identity.** An item may give a `key`; otherwise its key is derived from
       its path, so a rebuild names the same node and the bundle does not churn.
       Renaming a file is a new node, and `seed check` says so
-- [ ] **Order.** Siblings are sorted by an `order` field, then by name
-- [ ] **Values by property alias, with a shorthand per editor:** rich text as
+- [x] **Order.** Siblings are sorted by an `order` field, then by name
+- [x] **Values by property alias, with a shorthand per editor:** rich text as
       Markdown or HTML; a content picker or link by content path; a media picker
       by media path; an element picker by Library path; block list and block
       grid items as `{ type = "<element alias>", values = {…}, settings = {…} }`;
       multi-URL picker, tags, dates, numbers and toggles in their natural TOML
       form. Anything else may be given in the editor's stored shape
-- [ ] **Cultures and segments.** Variant values and names per culture
+- [x] **Cultures and segments.** Variant values and names per culture
       (`[values.en-US]`); a culture the site has no language for fails the check
-- [ ] **Media.** A file under `seed/media/` becomes a media item of the type its
+- [x] **Media.** A file under `seed/media/` becomes a media item of the type its
       extension implies; an optional sidecar (`photo.jpg.toml`) gives its name,
       alt text and focal point. The bytes travel in the bundle
-- [ ] **Template and publish state.** An item may name a template (default: its
+- [x] **Template and publish state.** An item may name a template (default: its
       type's) and `published = false`; everything else is published by
       `seed apply --publish`
-- [ ] `crombolo seed check` validates every file against the site's schema
+- [x] `crombolo seed check` validates every file against the site's schema
       (unknown type or property, a value the editor cannot take, a path that
       resolves to nothing, a missing culture) and exits 20 with each finding,
       file and line
-- [ ] `crombolo seed build --out <dir>` writes the bundle; `crombolo seed apply
+- [x] `crombolo seed build --out <dir>` writes the bundle; `crombolo seed apply
       [--publish] [--dry-run]` builds and imports it, showing the import's own
       findings (new, changed, conflicting) and taking its resolution flags
-- [ ] **Idempotent, three-way.** Applying an unchanged seed changes nothing; a
+- [x] **Idempotent, three-way.** Applying an unchanged seed changes nothing; a
       value edited in the back office since is kept and reported, never
       silently overwritten; a change to the seed where the site is untouched
       is taken; a change to both is a conflict for a person. The import
       records what it applied per node, for every bundle
-- [ ] `crombolo start --seed` applies the seed once per seed version, as
+- [x] `crombolo start --seed` applies the seed once per seed version, as
       `--bundle` does today, so a fresh clone starts populated
-- [ ] `crombolo seed export <path>…` writes seed files from content already in
+- [x] `crombolo seed export <path>…` writes seed files from content already in
       a site, so an existing site can move to seeds
-- [ ] Commands in `crombolo schema` (clispec), with `-o json`
-- [ ] A seed guide in `docs/` and on the product site's docs section; the Epic P
+- [x] Commands in `crombolo schema` (clispec), with `-o json`
+- [x] A seed guide in `docs/` and on the product site's docs section; the Epic P
       line in `docs/stories/README.md` updated
-- [ ] Tests on SQLite and Postgres: every shorthand, cultures, media with
+- [x] Tests on SQLite and Postgres: every shorthand, cultures, media with
       sidecars, ordering, re-apply without changes, a conflicting re-apply,
       and a round trip (`seed export` then `seed apply` onto an empty site)
 

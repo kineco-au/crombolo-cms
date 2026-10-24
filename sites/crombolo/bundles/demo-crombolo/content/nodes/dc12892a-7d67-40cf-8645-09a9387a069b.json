@@ -6,7 +6,7 @@
     "alias": "docsPage"
   },
   "parent": "bfbe288f-2c69-4228-872f-9977d0ba23ae",
-  "sortOrder": 5,
+  "sortOrder": 6,
   "template": "pages/docsPage",
   "variants": [
     {

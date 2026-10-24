@@ -382,8 +382,37 @@ hurt:
    needs no ordering cleverness — there is no order that would satisfy both in
    one pass.
 
-**Idempotence falls out of (2).** The repository appends only what differs, so a
-second import of the same bundle writes nothing and reports `unchanged`.
+**Idempotence.** A node whose plan is `unchanged` is not written at all, so a
+second import of the same bundle adds no version and reports `unchanged`. A
+whole-site replace still writes it, to clear what the bundle does not carry.
+
+### Three ways: what the last import applied
+
+Each run records, per node, what it applied (story 163): the bundle's values by
+property, culture and segment, its names, its parent, and its order (the
+bundle's, and the one the node had here afterwards). They live in
+`content_applied` (migration 049), written in the run's transaction, with the
+state each row replaced so that `content revert` puts it back too.
+
+The next check compares each field three ways:
+
+| The site and the record | The bundle and the record | Result |
+| --- | --- | --- |
+| the same | different | taken: `bundle-changed`, automatic |
+| different | the same | kept: `local-kept`, automatic |
+| different | different, and not equal | `local-edit`, for a person |
+| no record | — | `local-edit` wherever they differ, as before |
+
+- **Names, order and place:** a node's names follow this rule, answered with
+  the handle `@name`, and so does its place, answered with `@parent`.
+- **A move** goes through the placement rule (story 165). Where the new parent
+  does not allow the type, it is `move-refused`, which blocks.
+- **Order** is the bundle's among the siblings it carries, unless the site
+  reordered the node since.
+- **No record:** without one (a node imported before 0.28.0), names are taken
+  and place and order are left alone, as before.
+
+Pulls, pushes, `start --bundle` and seeds (`seeds.md`) all compare this way.
 
 ### Drafts, and what `--publish` means
 

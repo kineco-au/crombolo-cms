@@ -550,6 +550,10 @@ below itself) stops the lot, and the failure lists each one and why.
 operator's name, and a move records the redirects an editor's move would. An
 item already where it was asked to go is reported unchanged.
 
+**Seed files** (story 163): `crombolo seed check | build | apply | export` and
+`start --seed` turn a site's `seed/` directory into content through the import,
+three-way on every apply (`seeds.md`).
+
 **The audit log** (story 156): `crombolo audit list` pages it newest first,
 and `crombolo audit stream [--follow]` ships it as NDJSON to a log store. Both
 read without writing, locally or from a hosted site with `--remote`

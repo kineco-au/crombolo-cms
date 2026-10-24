@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/cli",
-  "version": "0.27.0",
+  "version": "0.28.0",
   "description": "The crombolo command line: scaffolding a site, schema, views, domains, content transfer and upgrades.",
   "license": "MIT",
   "author": "Crombolo",
@@ -108,6 +108,9 @@
       },
       "audit": {
         "description": "who did what, and when: the audit log, to read or to ship elsewhere"
+      },
+      "seed": {
+        "description": "a site's starting content, written as files and applied"
       },
       "events": {
         "description": "what is waiting to go out to webhooks and e-mail, and sending failures again"

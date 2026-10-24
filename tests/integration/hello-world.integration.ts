@@ -104,8 +104,8 @@ describe('an empty directory to "Hello, world", through the command line alone',
     expect(run.code, said(run)).toBe(0)
   })
 
-  // Story 163: content is declared in seed files and applied, not typed into a command.
-  test.todo('6. the home page, as a seed file, applied', async () => {
+  // Content is declared in seed files and applied (story 163), not typed into a command.
+  test('6. the home page, as a seed file, applied', async () => {
     mkdirSync(join(dir, 'seed', 'content'), { recursive: true })
     writeFileSync(
       join(dir, 'seed', 'content', 'home.toml'),
@@ -117,7 +117,7 @@ describe('an empty directory to "Hello, world", through the command line alone',
     expect(run.code, said(run)).toBe(0)
   })
 
-  test.todo('7. publishes it', async () => {
+  test('7. publishes it', async () => {
     const run = await cli('content', 'publish', '/Home')
     expect(run.code, said(run)).toBe(0)
   })
@@ -187,7 +187,7 @@ describe('an empty directory to "Hello, world", through the command line alone',
     expect((await fetch(new URL('/health', url))).status).toBe(200)
   })
 
-  test.todo('12. serves the home page', async () => {
+  test('12. serves the home page', async () => {
     if (!server) throw new Error('the site is not running')
     const home = await fetch(new URL('/', server.url))
     expect(home.status).toBe(200)

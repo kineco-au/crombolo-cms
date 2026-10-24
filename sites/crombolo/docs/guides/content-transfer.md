@@ -1,7 +1,7 @@
 ---
 title: Content transfer
 summary: Move content between environments as a bundle of files, check what it would change, import it, and put it back if you need to.
-order: 3
+order: 4
 ---
 
 A deploy moves files: your schema, your templates, your config. It never moves content. When a campaign built on staging needs to reach production, or you want a copy of production's pages to develop against, you move the content as a separate, deliberate step.

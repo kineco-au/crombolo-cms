@@ -1,7 +1,7 @@
 ---
 title: Deploying
 summary: Run a site in production on SQLite or Postgres, in a container or on a server, as one process or split in two, and upgrade it without taking it down.
-order: 5
+order: 6
 ---
 
 A crombolo site in production is the same Bun project you run locally, started with `crombolo start` and `NODE_ENV=production`.

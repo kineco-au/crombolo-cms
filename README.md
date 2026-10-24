@@ -453,7 +453,8 @@ Design documents, in reading order; planned work is in the stories:
 | [schema-as-code](docs/schema-as-code.md) | the TOML format, sync, retirement, coherence across nodes |
 | [packaging-and-upgrades](docs/packaging-and-upgrades.md) | environments, the upgrade process, releasing to npm; what each release changed, and what to do on upgrading, in [release-notes](docs/release-notes.md) |
 | [schema-at-runtime](docs/schema-at-runtime.md) | the shared schema store, and importing at runtime |
-| [content-transfer](docs/content-transfer.md) | the bundle format, and moving content between environments |
+| [content-transfer](docs/content-transfer.md) | the bundle format, and moving content between environments; imports compare three ways against what was last applied |
+| [seeds](docs/seeds.md) | a site's starting content as files under `seed/`: the format, the shorthand per editor, and `crombolo seed` |
 | [configuration](docs/configuration.md) | every environment variable, and every script; the variable tables are generated from `packages/server/src/settings.ts` by `bun run docs:config` |
 | [operations](docs/operations.md) | media storage, redirects, git, security, members; running a cluster: health during upgrades, pausing editing, the commands as functions; the backoffice's health checks and troubleshooting in [diagnostics](docs/diagnostics.md); [webhooks](docs/webhooks.md) |
 | [umbraco-import](docs/umbraco-import.md) | importing an existing Umbraco site: the report, what converts, and what is left |

@@ -13,7 +13,7 @@ import {
   migrate,
   readLedger,
   readState,
-  STATE_CONTENT_CHECKPOINT,
+  STATE_CONTENT_APPLIED,
   STATE_DROP_ASSISTANT,
   seedIdentity,
 } from '@crombolo/data'
@@ -80,14 +80,14 @@ describe('summarising the ledger', () => {
 })
 
 /**
- * Puts a current database back the way 0.25.0 left it, a day ago: before the
- * assistant's tables were dropped (048). The drop is `IF EXISTS`, so only the
- * state and the ledger go back.
+ * Puts a current database back the way 0.27.0 left it, a day ago: before what
+ * imports applied was recorded (049).
  */
 async function asPreviousRelease(db: Db): Promise<void> {
-  await db.exec("DELETE FROM migration_history WHERE name = 'DropAssistantTables'")
+  await db.exec('DROP TABLE IF EXISTS content_applied')
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddContentApplied'")
   await db.exec('UPDATE key_value SET value = ? WHERE key = ?', [
-    STATE_CONTENT_CHECKPOINT,
+    STATE_DROP_ASSISTANT,
     MIGRATION_STATE_KEY,
   ])
   const yesterday = new Date(Date.now() - 24 * 3600_000).toISOString()
@@ -114,13 +114,13 @@ describe('upgrading from the previous release', () => {
       passwordConfig: passwordConfigJson(),
     })
     await asPreviousRelease(db)
-    expect(await readState(db)).toBe(STATE_CONTENT_CHECKPOINT)
+    expect(await readState(db)).toBe(STATE_DROP_ASSISTANT)
 
     const result = await migrate(db, cromboloPlan, { by: 'upgrade' })
-    expect(result.applied).toEqual(['DropAssistantTables'])
-    expect(await readState(db)).toBe(STATE_DROP_ASSISTANT)
+    expect(result.applied).toEqual(['AddContentApplied'])
+    expect(await readState(db)).toBe(STATE_CONTENT_APPLIED)
     const summary = summariseUpgrades(await readLedger(db), VERSION)
-    expect(summary.lastUpgrade).toMatchObject({ release: '0.26.0', steps: 1 })
+    expect(summary.lastUpgrade).toMatchObject({ release: '0.28.0', steps: 1 })
   })
 
   test('the Changes dashboard reports the version, the install and the last upgrade', async () => {

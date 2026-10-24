@@ -27,11 +27,19 @@
  *
  * Idempotence falls out of (2): the repository appends only what differs, so
  * importing the same bundle twice writes no values the second time.
+ *
+ * What a run applied to each node is recorded (`content_applied`, story 163),
+ * so the next import compares three ways: a field only the bundle changed is
+ * taken, one only the site changed is kept, and a node's name, place and order
+ * follow the bundle under the same rule.
  */
 import type { DocumentValue } from '@crombolo/core'
 import {
+  type AppliedState,
   appendCacheInstruction,
+  appliedValueKey,
   ComponentRepository,
+  ContentAppliedRepository,
   type ContentKind,
   ContentTypeRepository,
   currentSchemaState,
@@ -319,8 +327,10 @@ async function applyBundle(tx: Db, set: ContentSet, options: ImportOptions): Pro
     for (const node of ordered) {
       const plan = planByKey.get(node.key)
       const kept = new Set(plan?.keepLocal ?? [])
-      // Every difference answered keep-local: nothing of the bundle's to write.
-      if (plan?.action === 'unchanged' && kept.size > 0) {
+      // Nothing of the bundle's to write — every difference kept, or none at
+      // all — so no new version either. A replace still clears what the bundle
+      // does not carry.
+      if (plan?.action === 'unchanged' && !options.exact) {
         applied.push(plan)
         continue
       }
@@ -338,8 +348,10 @@ async function applyBundle(tx: Db, set: ContentSet, options: ImportOptions): Pro
               ),
             }
           : node
-      // A node answered keep-local as a whole keeps its names too.
+      // A node answered keep-local as a whole keeps its names too, and a name
+      // changed only here since the last import stays.
       const keepNames = plan?.resolution === 'keep-local'
+      const keptCultures = new Set(plan?.keepNames ?? [])
       await repo.update({
         key: node.key,
         contentTypeKey: current.contentTypeKey,
@@ -357,10 +369,44 @@ async function applyBundle(tx: Db, set: ContentSet, options: ImportOptions): Pro
           : node.variants.map((v) => ({
               culture: v.culture,
               segment: v.segment,
-              name: v.name,
+              name: keptCultures.has(v.culture ?? '')
+                ? (current.variants.find((c) => (c.culture ?? '') === (v.culture ?? ''))?.name ??
+                  v.name)
+                : v.name,
             })),
       })
       if (plan) applied.push(plan)
+    }
+
+    // A node the bundle moved, and the site did not, follows it.
+    for (const node of ordered) {
+      const moveTo = planByKey.get(node.key)?.moveTo
+      if (moveTo === undefined) continue
+      await repoFor(node.kind).move(node.key, moveTo)
+    }
+
+    // Nodes the bundle reordered, and the site did not, take the bundle's order
+    // among the siblings the bundle carries, in the slots those siblings hold.
+    const reorderUnder = new Set<string | null>()
+    for (const node of ordered)
+      if (planByKey.get(node.key)?.reorder && node.kind === 'document')
+        reorderUnder.add(node.parent)
+    for (const parent of reorderUnder) {
+      const documents = repoFor('document')
+      const carried = ordered.filter(
+        (node) =>
+          node.kind === 'document' && node.parent === parent && !planByKey.get(node.key)?.keepOrder,
+      )
+      const rows = await documents.nodes.byKeys(carried.map((n) => n.key))
+      const slots = rows.map((row) => row.sortOrder).sort((a, b) => a - b)
+      const wanted = [...carried].sort((a, b) => a.sortOrder - b.sortOrder)
+      await documents.sort(
+        parent,
+        wanted.flatMap((node, index) => {
+          const sortOrder = slots[index]
+          return sortOrder === undefined ? [] : [{ key: node.key, sortOrder }]
+        }),
+      )
     }
 
     // People before the rules that name them, and after the content their
@@ -460,6 +506,33 @@ async function applyBundle(tx: Db, set: ContentSet, options: ImportOptions): Pro
         eventId: markers?.head ?? null,
       })
     }
+    // What this run applied, for the next import to compare against. A node
+    // that kept its own order keeps the order recorded before.
+    const appliedRecords = new ContentAppliedRepository(tx)
+    const earlier = await appliedRecords.byKeys(ordered.map((node) => node.key))
+    const rowsNow = new Map(
+      (await repoFor('document').nodes.byKeys(ordered.map((node) => node.key))).map((row) => [
+        row.key,
+        row,
+      ]),
+    )
+    for (const node of ordered) {
+      const row = rowsNow.get(node.key)
+      if (!row) continue
+      const state: AppliedState = {
+        values: Object.fromEntries(
+          node.values.map((v) => [appliedValueKey(v.property, v.culture, v.segment), v.value]),
+        ),
+        names: Object.fromEntries(node.variants.map((v) => [v.culture ?? '', v.name])),
+        parent: node.parent,
+        bundleSortOrder: node.sortOrder,
+        sortOrder: planByKey.get(node.key)?.keepOrder
+          ? (earlier.get(node.key)?.sortOrder ?? row.sortOrder)
+          : row.sortOrder,
+      }
+      await appliedRecords.record(node.key, runId, state)
+    }
+
     await runs.finish(runId, ordered.length + people.length)
 
     // Other nodes drop their published cache; this one already has.

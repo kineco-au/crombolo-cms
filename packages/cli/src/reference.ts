@@ -57,8 +57,8 @@ export const CLI_PAGES: readonly CliPageSpec[] = [
   {
     slug: 'content',
     title: 'Content and media',
-    summary: 'Pages, media, the dictionary, domains and the recycle bin.',
-    topics: ['content', 'media', 'dictionary', 'domains', 'recycle-bin'],
+    summary: 'Pages, media, seed files, the dictionary, domains and the recycle bin.',
+    topics: ['content', 'media', 'seed', 'dictionary', 'domains', 'recycle-bin'],
   },
   {
     slug: 'remotes',

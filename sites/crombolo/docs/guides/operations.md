@@ -1,7 +1,7 @@
 ---
 title: Operations
 summary: Keep a running site healthy: health checks, pausing editing, backups, rebuilding the cache and search indexes, logs, and looking after users.
-order: 6
+order: 7
 ---
 
 Once a site is deployed, most of looking after it is done from the command line in the site's folder. These commands open the site's database directly rather than going through the running server, so they work even when the site will not start. In a container, run them with `docker exec`.

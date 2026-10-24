@@ -1,7 +1,7 @@
 ---
 title: Remotes, pull and push
 summary: Connect your local site to a running one, sign in from the terminal, pull a copy down to work on, and push your work back.
-order: 4
+order: 5
 ---
 
 A **remote** is a running crombolo site that your local copy can pull from and push to. Pulling gives you a working copy of an environment, content and all; pushing replaces an environment with your local site. It works like `git pull` and `git push`, but for a whole site: schema, templates, content and media.

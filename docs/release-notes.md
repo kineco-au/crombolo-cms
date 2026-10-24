@@ -8,6 +8,28 @@ point at `docs/stories/`.
 
 Nothing yet.
 
+## v0.28.0 — 2026-10-25
+
+- **Seed files** (story 163): a site's starting pages, Library elements and
+  media as TOML files under `seed/`, written in a shorthand per editor
+  (Markdown, paths for pickers, blocks as tables), with `crombolo seed check`
+  (every problem by file and line), `seed build`, `seed apply [--publish]
+  [--dry-run]`, `seed export` and `start --seed` (applied once per change).
+  An empty directory now reaches a served page through the command line alone.
+- **Imports compare three ways.** Every import records what it applied to each
+  node, so the next one takes a change only the bundle made, keeps one only the
+  site made, and asks only when both changed. Names, place and order follow the
+  same rule. Pulls, pushes and `start --bundle` get it too.
+- **An unchanged re-import writes nothing**, where it used to add a version to
+  every page.
+
+**Migration:** 049 `AddContentApplied` (expand), a table of what each import
+applied.
+
+**Upgrade notes:** nodes imported before this release have no record, so the
+first import after upgrading compares them as before, and any difference is
+still a question. Every import after that is three-way.
+
 ## v0.27.0 — 2026-10-24
 
 - **Move, copy, sort and delete from the command line** (story 165):

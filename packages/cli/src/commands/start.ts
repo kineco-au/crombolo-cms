@@ -19,6 +19,9 @@ export default class Start extends BaseCommand {
   static override flags = {
     'keep-admin': Flags.boolean({ summary: "don't touch the administrator's password" }),
     bundle: many("apply a bundle's content first; repeatable", '<pkg>'),
+    seed: Flags.boolean({
+      summary: 'apply seed/ first, once for each change to it, taking the `content import` flags',
+    }),
     from: Flags.string({
       summary: 'in an empty folder: a site from a whole-site file',
       helpValue: '<file>',
@@ -56,6 +59,7 @@ export default class Start extends BaseCommand {
       ...flags,
       keepAdmin,
       bundles: flags.bundle,
+      seed: flags.seed,
       backupTaken: flags['backup-taken'],
     })
     // A stream: one record when it is up, then it serves until it is stopped.
