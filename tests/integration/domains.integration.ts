@@ -135,7 +135,7 @@ describe('hostnames, end to end through the CLI', () => {
     expect(init.code, init.out).toBe(0)
     // One boot to land the template's page, so there is something to bind a
     // hostname to; every command below then runs against a site at rest.
-    const first = await serve('--bundle', 'bundles/basic', '--publish')
+    const first = await serve('--seed', '--publish')
     expect(first.banner).toContain('bundle')
     await first.stop()
   }, 180_000)

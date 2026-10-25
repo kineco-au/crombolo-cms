@@ -45,6 +45,10 @@ send-back = "editor"
 position = { x = 0, y = 0 }   # where the canvas drew it
 ```
 
+A workflow is found by its `key` where it has one, else by its alias, so a
+file needs no key (story 161). `crombolo workflows new <alias> [--content-type
+<alias>…] [--approver <group>…]` writes one with a single stage.
+
 ## What it covers
 
 `applies-to` names branch roots by key and content types by alias. The nearest

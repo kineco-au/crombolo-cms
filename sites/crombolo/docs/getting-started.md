@@ -1,6 +1,6 @@
 ---
 title: Getting started
-summary: Create a site, sign in to the back office, add a content type and a template, and publish your first page.
+summary: Create a site, run the demo, sign in to the back office, add a content type and a template, and publish your first page.
 order: 1
 ---
 
@@ -39,6 +39,7 @@ bun start
 | `server.ts` | three lines that start the server |
 | `schema/` | your content types, as TOML files ([Schema as code](/docs/guides/schema-as-code/)) |
 | `components/` | your templates and the components they share |
+| `seed/` | a template's starting pages and media, as files ([Seed files](/docs/guides/seeds/)) |
 
 Add `--postgres` to write a `.env` that points at a Postgres database instead of SQLite.
 
@@ -53,7 +54,34 @@ bunx crombolo init --template starter             # a header, a footer and place
 bunx crombolo init --template demo/harbourstone   # a whole brochure site, content and all
 ```
 
-A template brings its schema, components, styles and images, and its content as a bundle that `bun start` imports the first time it runs.
+A template brings its schema, components and styles, and its pages, Library elements and images as seed files under `seed/`. Its `bun start` runs `crombolo start --seed --publish`, which applies the seed before the site serves: the first time, and again whenever a file in `seed/` changes. The content is yours to edit, as files or in the back office. An edit made in the back office is kept when the seed is applied again ([Seed files](/docs/guides/seeds/)).
+
+## Run the demo site
+
+Harbourstone is a whole brochure site for a coastal distillery: a home page, an about page, its bottlings, search, a contact page with a form, and photographs. There are two ways to run it.
+
+**As a site of your own**, to look around and change things:
+
+```sh
+mkdir harbourstone && cd harbourstone
+bunx crombolo init --template demo/harbourstone
+bun install
+bun start
+```
+
+**In three commands**, into a bare site. The demo is built into one bundle, then the bundle is installed:
+
+```sh
+mkdir harbourstone && cd harbourstone
+bunx crombolo init --name "Harbourstone"
+bun install
+bunx crombolo bundle build --template demo/harbourstone --out ./harbourstone-bundle
+bunx crombolo start --bundle ./harbourstone-bundle --publish
+```
+
+`bundle build` takes a site directory (or a template, by id) and packs its schema, components, styles and seed into one bundle. `start --bundle` stages the files, applies the schema and the content in one go, then starts the site with them. Run the same `start --bundle` again and nothing changes; build a changed bundle and only the changes are applied.
+
+Try the demo in development. A production site refuses a schema change that comes without a version bump, as it would on any deploy.
 
 ## Sign in
 
@@ -85,7 +113,18 @@ bunx crombolo types new content-type article --at-root
 bunx crombolo types add-property article summary --type textarea --mandatory
 ```
 
-The first command writes `schema/content-types/article.toml` and a starting template at `components/article.tsx`, then applies the type to the database. The second adds a property to it.
+The first command writes `schema/content-types/article.toml` and a starting template at `components/article.tsx`, then applies the type to the database. The second adds a property to it. The files carry no IDs: each type's identity comes from its alias, so the same files give the same site everywhere.
+
+The rest of the model can be written the same way, without opening a file:
+
+```sh
+bunx crombolo types new content-type blog --at-root --allow-child article --list-view
+bunx crombolo types new data-type summaryText --editor textarea --rows 3 --max-chars 280
+bunx crombolo languages add fr-FR --fallback en-US
+bunx crombolo forms new contact
+```
+
+Each one refuses a name that is already taken, or one that points at something the site doesn't have, before it writes anything. [Schema as code](/docs/guides/schema-as-code/) has the full list.
 
 ## Write the template
 
@@ -117,11 +156,20 @@ There is no React in the browser: no virtual DOM, no hydration, and nothing ship
 2. **Publish** it. The first page at the root is the site's home page, so `http://localhost:8080/` now renders your template.
 3. Edit it and save again. The site keeps serving the published version until you publish the change, and **Info → History** lets you roll back.
 
+Or, without the back office, write the page as a file and apply it:
+
+```sh
+mkdir -p seed/content
+printf 'type = "article"\nname = "Home"\n\n[values]\ntitle = "Hello, world"\nsummary = "My first page"\n' > seed/content/home.toml
+bunx crombolo seed apply --publish
+```
+
 ## Check before you ship
 
 ```sh
 bunx crombolo components check   # compile and type-check every template
 bunx crombolo types check --static   # validate schema/ without a database
+bunx crombolo seed check             # check seed/ against the schema
 ```
 
 Both exit with a non-zero code when they find a problem, so they drop straight into CI.
@@ -130,5 +178,6 @@ Both exit with a non-zero code when they find a problem, so they drop straight i
 
 - [Configuration](/docs/guides/configuration/): the settings file and the handful of settings you set first
 - [Schema as code](/docs/guides/schema-as-code/): content types as files, and how they reach production
+- [Seed files](/docs/guides/seeds/): a site's starting content, as files
 - [Deploying](/docs/guides/deploying/): running a site in production
 - [The command line](/docs/reference/command-line/): every command and flag

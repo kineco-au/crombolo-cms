@@ -7,6 +7,13 @@
  * TOML serialisers. `parse(write(x))` must equal `x` — the tests hold it to that.
  */
 import {
+  dataTypeKeyFor,
+  isDerived,
+  propertyKeyFor,
+  shippedPropertyKeys,
+  typeKeyFor,
+} from './keys.ts'
+import {
   type SchemaContentType,
   type SchemaDataType,
   type SchemaLanguage,
@@ -20,12 +27,21 @@ function str(value: string): string {
   return JSON.stringify(value)
 }
 
+/**
+ * A value as TOML: nested config as inline tables and arrays of them, not a
+ * JSON string (story 161), so block config or `validationLimit = { min, max }`
+ * survives a rewrite as the TOML it was written in. A null inside a table is
+ * left out, since TOML has none.
+ */
 function scalar(value: unknown): string {
   if (typeof value === 'string') return str(value)
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)
   if (Array.isArray(value)) return `[${value.map(scalar).join(', ')}]`
   if (value === null || value === undefined) return '""'
-  return str(JSON.stringify(value))
+  const entries = Object.entries(value as Record<string, unknown>).filter(
+    ([, v]) => v !== null && v !== undefined,
+  )
+  return `{ ${entries.map(([k, v]) => `${keyOf(k)} = ${scalar(v)}`).join(', ')} }`
 }
 
 /**
@@ -48,9 +64,21 @@ function line(out: string[], key: string, value: unknown, when = true): void {
   out.push(`${keyOf(key)} = ${scalar(value)}`)
 }
 
-function writeProperty(out: string[], header: string, p: SchemaProperty): void {
+/** Where a property sits, for the key it would derive. */
+interface PropertyOwner {
+  typeKey: string
+  shipped: ReadonlyMap<string, string>
+}
+
+function writeProperty(
+  out: string[],
+  header: string,
+  p: SchemaProperty,
+  owner: PropertyOwner,
+): void {
   out.push('', `[[${header}]]`)
-  line(out, 'key', p.key)
+  // A key is written only when it is not the one the property would derive (story 161).
+  line(out, 'key', p.key, !isDerived(p.key, propertyKeyFor(owner.typeKey, p.alias, owner.shipped)))
   line(out, 'alias', p.alias)
   line(out, 'name', p.name)
   line(out, 'description', p.description)
@@ -74,7 +102,12 @@ function writeProperty(out: string[], header: string, p: SchemaProperty): void {
 
 export function writeContentType(t: SchemaContentType, kind: SchemaTypeKind = 'document'): string {
   const out: string[] = [`[${TYPE_KIND_FILES[kind].header}]`]
-  line(out, 'key', t.key)
+  const expected = typeKeyFor(kind, t.alias)
+  line(out, 'key', t.key, !isDerived(t.key, expected))
+  const owner: PropertyOwner = {
+    typeKey: t.key ?? expected,
+    shipped: shippedPropertyKeys(kind, t.alias),
+  }
   line(out, 'alias', t.alias)
   line(out, 'name', t.name)
   line(out, 'description', t.description)
@@ -103,23 +136,23 @@ export function writeContentType(t: SchemaContentType, kind: SchemaTypeKind = 'd
     line(out, 'keep-all-newer-than-days', t.cleanup.keepAllNewerThanDays)
     line(out, 'keep-latest-per-day-for-days', t.cleanup.keepLatestPerDayForDays)
   }
-  for (const p of t.properties) writeProperty(out, 'property', p)
+  for (const p of t.properties) writeProperty(out, 'property', p, owner)
   for (const g of t.groups ?? []) {
     out.push('', '[[group]]')
     line(out, 'name', g.name)
     line(out, 'alias', g.alias)
-    for (const p of g.properties) writeProperty(out, 'group.property', p)
+    for (const p of g.properties) writeProperty(out, 'group.property', p, owner)
   }
   for (const tab of t.tabs) {
     out.push('', '[[tab]]')
     line(out, 'name', tab.name)
     line(out, 'alias', tab.alias)
-    for (const p of tab.properties) writeProperty(out, 'tab.property', p)
+    for (const p of tab.properties) writeProperty(out, 'tab.property', p, owner)
     for (const g of tab.groups) {
       out.push('', '[[tab.group]]')
       line(out, 'name', g.name)
       line(out, 'alias', g.alias)
-      for (const p of g.properties) writeProperty(out, 'tab.group.property', p)
+      for (const p of g.properties) writeProperty(out, 'tab.group.property', p, owner)
     }
   }
   return `${out.join('\n')}\n`
@@ -135,7 +168,7 @@ export function writeMemberType(t: SchemaContentType): string {
 
 export function writeDataType(d: SchemaDataType): string {
   const out: string[] = ['[data-type]']
-  line(out, 'key', d.key)
+  line(out, 'key', d.key, !isDerived(d.key, dataTypeKeyFor(d.alias)))
   line(out, 'alias', d.alias)
   line(out, 'name', d.name)
   line(out, 'notes', d.notes)
@@ -147,6 +180,40 @@ export function writeDataType(d: SchemaDataType): string {
   if (keys.length > 0) {
     out.push('', '[data-type.config]')
     for (const key of keys) line(out, key, d.config[key])
+  }
+  for (const b of d.blocks ?? []) {
+    out.push('', '[[data-type.block]]')
+    line(out, 'element', b.element)
+    line(out, 'settings', b.settings)
+    line(out, 'label', b.label)
+    line(out, 'size', b.size)
+    line(out, 'background', b.background)
+    line(out, 'icon-color', b.iconColor)
+    line(out, 'thumbnail', b.thumbnail)
+    line(out, 'group', b.group)
+    line(out, 'allow-at-root', b.allowAtRoot)
+    line(out, 'allow-in-areas', b.allowInAreas)
+    line(out, 'column-spans', b.columnSpans)
+    line(out, 'row-span', b.rowSpan)
+    line(out, 'area-columns', b.areaColumns)
+    for (const a of b.areas ?? []) {
+      out.push('', '[[data-type.block.area]]')
+      line(out, 'alias', a.alias)
+      line(out, 'column-span', a.columnSpan)
+      line(out, 'row-span', a.rowSpan)
+      line(out, 'create-label', a.createLabel)
+      line(out, 'min', a.min)
+      line(out, 'max', a.max)
+      line(
+        out,
+        'allow',
+        a.allow?.map((entry) =>
+          entry.element && entry.min === undefined && entry.max === undefined
+            ? entry.element
+            : entry,
+        ),
+      )
+    }
   }
   return `${out.join('\n')}\n`
 }

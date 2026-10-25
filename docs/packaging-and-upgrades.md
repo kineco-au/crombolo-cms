@@ -114,7 +114,7 @@ empty. Same commands, same ledger, same dashboard.
 production; content lives where it is edited. Moving content — a campaign
 promoted up, or production content pulled down to develop against — is a
 separate, explicit act with its own artifact and its own audit trail:
-`crombolo content export/check/import`, in `content-transfer.md`. Nothing
+`crombolo bundle export/check/import`, in `content-transfer.md`. Nothing
 about a deploy touches content.
 
 ### Why Umbraco majors hurt
@@ -362,7 +362,7 @@ file is written and nothing is committed.
 #### The promotion pipeline
 
 ```
-PR              crombolo types check --static    parse; keys present; classify expand/contract;
+PR              crombolo types check --static    parse; references resolve; classify expand/contract;
                                                   a migration accompanies any rename or split
 merge -> dev    boot sync applies; the developer fixes the three pages, or writes a migration
 deploy -> test  check --fix runs the migrations against test content; the dashboard lists

@@ -1,0 +1,9 @@
+type = "step"
+key = "03ef280b-511e-4778-859b-34e6a48be6f6"
+name = "Install Bun"
+order = 19
+
+[values]
+heading = "Install Bun"
+detail = "Crombolo runs on Bun 1.3 or later. A SQLite site needs nothing else."
+command = "curl -fsSL https://bun.sh/install | bash"

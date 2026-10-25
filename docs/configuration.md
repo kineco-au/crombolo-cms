@@ -106,6 +106,8 @@ rather than the running server. Secret ones are never printed or logged.
 | `CROMBOLO_SCRIPTS_DIR` | string | `scripts` | The scripts the Settings section edits, served at `/scripts/`. |
 | `CROMBOLO_APPLY_BUNDLE_CONTENT` | `true` / `false` | `true` | Installing a bundle from the Marketplace also applies the schema, components and content it carries. |
 | `CROMBOLO_RUNTIME_INSTALLS` | `true` / `false` | true, false with a schema store | The Packages section installs and removes packages on the running site. Off, they are added to `package.json` and deployed. |
+| `CROMBOLO_INSTALLS_ELSEWHERE_MESSAGE` | string | — | With runtime installs off, what the Marketplace says about where bundles are added, in place of "add it to package.json and deploy". For a host that installs them itself. |
+| `CROMBOLO_INSTALLS_ELSEWHERE_URL` | string | — | A link shown with that message: the host’s own place for installing bundles. |
 | `CROMBOLO_MARKETPLACE_URL` | string | `https://www.npmjs.com/search?q=keywords%3Acrombolo-bundle` | Where the Marketplace sends someone browsing for bundles. |
 | `CROMBOLO_PACKAGE_KEYWORD` | string | `crombolo-bundle` | The npm keyword a bundle publishes under to be found by the Marketplace. |
 | `CROMBOLO_NPM_REGISTRY` | string | `https://registry.npmjs.org` | The registry the Marketplace searches, such as a mirror. |
@@ -267,9 +269,9 @@ is staged into `@crombolo/cli`'s `templates/` only while the CLI is packed
 beside them; the media types `init` writes for itself are left out. Only
 `templates/basic` is committed in the CLI.
 
-A site's bundle is generated, not edited: `scripts/build-template.ts` creates the
-content in a throwaway database from the site's own schema and exports it, so
-`bun run build:template <id>` is how a change to the content lands.
+A site's content is its seed (`seed/`, `docs/seeds.md`), edited as files and
+applied by `crombolo start --seed`. Only the product site keeps a built bundle,
+which `bun run build:template` regenerates (story 164).
 
 ## The demo command and the database it may touch
 
@@ -476,9 +478,9 @@ when a link can actually be delivered.
 | `bun run start:local:watch`                           | as above, reloading on change                                                                                                                                 |
 | `bun run dev`                                         | `apps/site/server.ts` under `bun --watch`, with no password handling                                                                                          |
 | `bun run site <id>`                                   | **a site, running**: a copy of a site in `sites/`, or a CLI template scaffolded, in `.scaffolds/`. `--docker` in the compose stack, `--fresh` to copy or scaffold again, `--in-place` to run a site in `sites/` itself, `--reuse` to accept a scaffold whose database holds content, `--dry-run` to say what it would do. Runs the working tree, not the published packages |
-| `bunx crombolo <cmd>`                                 | the CLI: `start [--bundle <dir>] [--from <file>]`, `export --site`, `import <file> [--replace\|--replace-all]`, `init [--name\|--postgres\|--template]`, `status`, `admin reset-password`, `types check\|sync\|export\|rewrite\|purge\|new\|add-property`, `generate`, `components check\|list\|new`, `assets list\|new`, `content export\|check\|import\|runs\|revert\|publish\|unpublish`, `domains [set\|clear\|apply\|undo]`, `dictionary export\|import`, `upgrade [check [--fix]\|--plan\|ledger]`, `remote add\|list\|remove\|job`, `login\|logout\|whoami`, `pull`, `push`, `media fetch\|import\|export`, `maintenance pause\|resume\|status`, `bundle purge`, `users list\|unlock\|enable\|disable\|reset-password\|reset-2fa\|invite`, `api-client rotate`, `index list\|rebuild`, `cache rebuild`, `health`, `recycle-bin empty`, `schema` (this CLI described for machines); every command takes `-o json` |
+| `bunx crombolo <cmd>`                                 | the CLI: `start [--bundle <dir>] [--from <file>]`, `export --site`, `import <file> [--replace\|--replace-all]`, `init [--name\|--postgres\|--template]`, `status`, `admin reset-password`, `types check\|sync\|export\|rewrite\|purge\|new\|add-property`, `generate`, `components check\|list\|new`, `assets list\|new`, `content check\|import\|runs\|revert\|publish\|unpublish\|move\|copy\|sort\|delete`, `seed check\|apply\|export`, `audit list\|stream`, `domains [set\|clear\|apply\|undo]`, `dictionary export\|import`, `upgrade [check [--fix]\|--plan\|ledger]`, `remote add\|list\|remove\|job`, `login\|logout\|whoami`, `pull`, `push`, `media fetch\|import\|export\|move\|delete`, `maintenance pause\|resume\|status`, `bundle export\|build\|purge`, `users list\|unlock\|enable\|disable\|reset-password\|reset-2fa\|invite`, `api-client rotate`, `index list\|rebuild`, `cache rebuild`, `health`, `recycle-bin empty`, `schema` (this CLI described for machines); every command takes `-o json` |
 | `bun add -g @crombolo/cli`                            | the same CLI without a site: `init` somewhere new, or run commands against a site this machine does not serve                                                  |
-| `bun run build:template`                              | regenerate a starter template's content bundle and images (`scripts/build-template.ts`); no argument does every template                                       |
+| `bun run build:template`                              | regenerate the product site's generated docs seed and its bundle (`scripts/build-template.ts`); the other sites and templates are their seeds          |
 | `bun run generate:types`                              | regenerate contract types from `contracts/OpenApi.json`                                                                                                       |
 | `bun run docs:config`                                 | regenerate the environment variable tables in this page from the settings list (`packages/server/src/settings.ts`) |
 | `bun run coverage:api`                                | implemented vs. total API operations → `docs/api-coverage.md`                                                                                                 |

@@ -5,7 +5,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import Ajv2020 from 'ajv/dist/2020'
@@ -21,11 +21,11 @@ beforeEach(() => {
 })
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
-function run(args: string[], stdin?: string) {
+function run(args: string[], stdin?: string, env: Record<string, string> = {}) {
   const proc = Bun.spawnSync(['bun', BIN, ...args], {
     cwd: dir,
     stdin: stdin === undefined ? 'ignore' : new TextEncoder().encode(stdin),
-    env: { ...process.env, NO_COLOR: '1' },
+    env: { ...process.env, NO_COLOR: '1', ...env },
   })
   const err = proc.stderr.toString()
   return {
@@ -135,6 +135,13 @@ describe('failures and outcomes', () => {
     expect(result.code).toBe(ERROR_KINDS.not_found.exitCode)
   })
 
+  test('content export still runs under its old name, and points at bundle export', () => {
+    const result = run(['content', 'export'])
+    // oclif wraps the warning, so its words are matched across the break.
+    expect(result.err.replace(/\s*›?\s+/g, ' ')).toContain('Use "bundle export" instead')
+    expect(result.code).toBe(ERROR_KINDS.usage.exitCode)
+  })
+
   test('a check that finds problems exits with its outcome, its findings on stdout and no envelope', () => {
     // An empty folder has no database yet: status reports it as a problem.
     const result = run(['status', '-o', 'json'])
@@ -170,6 +177,18 @@ describe('crombolo schema', () => {
       global_args: Array<{ name: string }>
     }
   }
+
+  test('describes the commands that write schema files (story 161)', () => {
+    const names = schema().commands.map((c) => c.name)
+    for (const name of [
+      'languages add',
+      'languages list',
+      'forms new',
+      'workflows new',
+      'webhooks new',
+    ])
+      expect(names, name).toContain(name)
+  })
 
   test('validates against clispec v0.3, in a folder with no site', () => {
     const ajv = new Ajv2020({ allErrors: true, strict: false })
@@ -290,6 +309,133 @@ name = "Tell the team"
     const unnamed = run(['components', 'new', 'emails/welcome', '-o', 'json'])
     expect(JSON.parse(unnamed.out)).toMatchObject({ template: false, email: true })
   })
+})
+
+describe('writing schema from the command line (story 161)', () => {
+  test('types, data types, languages, forms, workflows and webhooks, each refusing what would not apply', () => {
+    mkdirSync(join(dir, 'schema'), { recursive: true })
+    writeFileSync(join(dir, 'schema', 'schema.toml'), '[schema]\nversion = "1.0.0"\n')
+    // A database of this test's own, whichever dialect the suite runs on.
+    const env = { CROMBOLO_DB: 'sqlite', CROMBOLO_SQLITE_FILE: join(dir, 'site.db') }
+    const cli = (...args: string[]) => run([...args, '-o', 'json'], undefined, env)
+    const ok = (...args: string[]) => {
+      const result = cli(...args)
+      expect(result.code, `${args.join(' ')}\n${result.err}`).toBe(0)
+      return JSON.parse(result.out) as Record<string, unknown>
+    }
+    const refused = (kind: string, ...args: string[]) => {
+      const result = cli(...args)
+      expect(result.envelope(), args.join(' ')).toMatchObject({ kind })
+      return result
+    }
+    const file = (path: string) => readFileSync(join(dir, 'schema', path), 'utf8')
+
+    ok('types', 'new', 'content-type', 'feature', '--element')
+    expect(
+      ok('types', 'new', 'data-type', 'pageBlocks', '--editor', 'block-list', '--block', 'feature')
+        .created,
+    ).toEqual(['schema/data-types/page-blocks.toml'])
+    expect(file('data-types/page-blocks.toml')).toContain(
+      '[[data-type.block]]\nelement = "feature"',
+    )
+    refused('conflict', 'types', 'new', 'data-type', 'pageBlocks', '--editor', 'block-list')
+    refused(
+      'refused',
+      'types',
+      'new',
+      'data-type',
+      'flag',
+      '--editor',
+      'toggle',
+      '--max-chars',
+      '3',
+    )
+    refused(
+      'refused',
+      'types',
+      'new',
+      'data-type',
+      'picker',
+      '--editor',
+      'element-picker',
+      '--allow',
+      'nothing',
+    )
+
+    // An alias that names nothing is refused before anything is written.
+    refused('refused', 'types', 'new', 'content-type', 'page', '--compose', 'nothing')
+    expect(existsSync(join(dir, 'schema', 'content-types', 'page.toml'))).toBe(false)
+    ok(
+      'types',
+      'new',
+      'content-type',
+      'page',
+      '--at-root',
+      '--allow-child',
+      'page',
+      '--list-view',
+      '--vary-by-culture',
+    )
+    const page = file('content-types/page.toml')
+    expect(page).toContain('collection = "listViewContent"')
+    expect(page).toContain('allow-children = ["page"]')
+    expect(page).not.toContain('key =')
+
+    ok('languages', 'add', 'fr-FR', '--fallback', 'en-US')
+    expect(ok('languages', 'list').languages).toEqual([
+      {
+        iso: 'en-US',
+        name: 'English (United States)',
+        default: true,
+        mandatory: false,
+        fallback: null,
+      },
+      {
+        iso: 'fr-FR',
+        name: 'French (France)',
+        default: false,
+        mandatory: false,
+        fallback: 'en-US',
+      },
+    ])
+    refused('conflict', 'languages', 'add', 'fr-FR')
+    refused('refused', 'languages', 'add', 'de-DE', '--fallback', 'it-IT')
+
+    ok('forms', 'new', 'contact')
+    expect(file('forms/contact.toml')).toContain('type = "email"')
+    refused('conflict', 'forms', 'new', 'contact')
+
+    ok('workflows', 'new', 'signOff', '--content-type', 'page')
+    refused('refused', 'workflows', 'new', 'other', '--content-type', 'nothing')
+
+    ok(
+      'webhooks',
+      'new',
+      'searchIndex',
+      '--url',
+      'https://search.example/hook',
+      '--event',
+      'Umbraco.ContentPublish',
+      '--content-type',
+      'page',
+    )
+    const hook = file('webhooks/searchIndex.toml')
+    expect(hook).toContain('content-types = ["page"]')
+    expect(hook).not.toContain('key =')
+    refused(
+      'conflict',
+      'webhooks',
+      'new',
+      'searchIndex',
+      '--url',
+      'https://x.example/',
+      '--event',
+      'Umbraco.ContentPublish',
+    )
+    refused('refused', 'webhooks', 'new', 'bad', '--url', 'ftp://x', '--event', 'Nope')
+
+    expect(cli('types', 'check', '--static').code).toBe(0)
+  }, 120_000)
 })
 
 describe('generate --delivery (story 052)', () => {

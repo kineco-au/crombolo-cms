@@ -1,0 +1,8 @@
+type = "feature"
+key = "eda4ab14-74bf-446d-bb3e-064be4e5913b"
+name = "Checks before production"
+order = 15
+
+[values]
+heading = "Checks before production"
+detail = "crombolo components check compiles every template in CI, so a broken page is caught before a visitor sees it."

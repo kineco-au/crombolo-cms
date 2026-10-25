@@ -6,7 +6,74 @@ point at `docs/stories/`.
 
 ## Unreleased
 
-Nothing yet.
+## v0.29.0 — 2026-10-25
+
+- **A demo site in three commands** (story 164): `crombolo init`, `crombolo
+  bundle build sites/harbourstone --out <dir>` (or `--template
+  demo/harbourstone`), then `crombolo start --bundle <dir> --publish`.
+  - `bundle build` turns a site directory (schema, views, styles and seed) into
+    one bundle, compiling the seed against that schema with no database of its
+    own.
+  - `start --bundle` now installs a bundle that carries schema and views, then
+    boots again to load them.
+- **The demo sites are seed files.** Their pages, Library elements and
+  photographs live in each site's `seed/`. `crombolo init --template` copies
+  them, and the new site's `start` script is `crombolo start --seed
+  --publish`, so its starting content is files to edit. Templates no longer
+  ship pre-built bundles, and the TypeScript builders are gone. Node keys are
+  kept, so a site that already holds a demo sees no change.
+- **`crombolo seed export --all`** writes every page, Library element and media
+  item (with its file) as seed files, in the shorthand `seed apply` reads back:
+  rich text as `{ html }`, pickers and links as paths, blocks as tables.
+- **`crombolo content export` is `crombolo bundle export`**; the old name still
+  runs, and says it is deprecated. `seed build` is now `bundle build`.
+- **A site built from a config that names a dialect boots on that dialect**,
+  where `bootstrapDatabase` used to follow `CROMBOLO_DB` instead.
+- **Schema files carry no keys** (story 161). Sync derives each type's,
+  property's and data type's key from its alias, so two nodes syncing the same
+  new files assign the same keys. A production node no longer refuses a file
+  without keys, and nothing is written back for a new type.
+  - **Data types name types by alias:** picker filters, allowed element types,
+    and a block editor's blocks, which can now be written as
+    `[[data-type.block]]` tables with named groups and grid areas. `types
+    check` names an alias that is not there.
+  - **Nested config is written as TOML tables,** not JSON strings.
+  - **Webhook files are `schema/webhooks/<alias>.toml`,** with content types
+    by alias.
+- **A site never started holds images in its folders** (story 180). Opening
+  the database and every schema sync now let the built-in Folder hold the
+  built-in media types, as a server's start did. So `media move` into a folder,
+  or a seed with an image in one, works from the first command. An empty
+  directory reaches a published site, signed in and checked, through the
+  command line alone (`docs/operations.md`).
+- **A host can install a site's bundles** (story 181). `cromboloServer()`
+  returns the server handle, and its `reloadBundles()` takes up packages the
+  host wrote to `package.json` and `node_modules` without a restart. Open back
+  offices are told "Extensions changed — reload to use them". A server half is
+  never mounted by a reload. `installsElsewhere` (`CROMBOLO_INSTALLS_ELSEWHERE_MESSAGE`
+  and `_URL`) replaces the Marketplace's deploy wording with the host's own.
+  `validateBundlePackage` and `peerRangeProblem` are exported from
+  `@crombolo/crombolo`.
+- **Schema from the command line:** `types new content-type` takes
+  `--compose`, `--allow-child`, `--vary-by-culture`, `--vary-by-segment`,
+  `--library` and `--list-view`. `types new data-type <alias> --editor
+  <preset>` writes a data type for twelve common editors. There are new
+  commands: `languages add` and `languages list`, `forms new`, `workflows new`
+  and `webhooks new`. Each refuses an alias that names nothing before it
+  writes.
+
+**Upgrade notes:** a site's existing keys stay: a row is found by alias, and a
+development sync writes its key back where it differs from the derived one, so
+existing files and content are unchanged. Deleting a key line changes nothing
+on a database that has the row. On a fresh database it gives the derived key,
+and block values store element type keys, so content moved there must come
+with its schema. The demo sites' schema files are now keyless, so a demo installed
+fresh gets new type keys. One already installed keeps its own.
+
+**Upgrade notes:** a site scaffolded from a template before this release keeps
+its `start --bundle bundles/<template>` script and bundle, and still works.
+Moving it to its seed is `crombolo seed export --all`, then switching the
+script to `crombolo start --seed --publish`.
 
 ## v0.28.0 — 2026-10-25
 

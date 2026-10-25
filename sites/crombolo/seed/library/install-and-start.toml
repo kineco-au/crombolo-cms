@@ -1,0 +1,9 @@
+type = "step"
+key = "c7d11c0f-afa9-4269-9f26-c52e8cb09b0e"
+name = "Install and start"
+order = 21
+
+[values]
+heading = "Install and start"
+detail = "The first start creates the database, then prints the back office address and your sign-in details."
+command = "bun install\nbun start"

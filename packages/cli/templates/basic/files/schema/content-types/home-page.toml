@@ -1,5 +1,4 @@
 [content-type]
-key = "b8188492-dc05-43e6-98bf-04ee758e4c17"
 alias = "homePage"
 name = "Home Page"
 description = "The site's landing page"
@@ -14,7 +13,6 @@ default-component = "homePage"
 name = "Content"
 
 [[tab.property]]
-key = "41fc551c-4bc9-4a1e-acab-d3c8a11e35ff"
 alias = "title"
 name = "Title"
 description = "Shown as the page heading"
@@ -22,7 +20,6 @@ type = "textstring"
 mandatory = true
 
 [[tab.property]]
-key = "f4b0420a-125c-49c6-863d-c40ad6f09703"
 alias = "bodyText"
 name = "Body"
 type = "richtext"

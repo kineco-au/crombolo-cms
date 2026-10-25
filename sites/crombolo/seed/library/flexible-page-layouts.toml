@@ -1,0 +1,8 @@
+type = "feature"
+key = "9ccf8f41-fdb9-4a17-87d2-69835c42d5bd"
+name = "Flexible page layouts"
+order = 6
+
+[values]
+heading = "Flexible page layouts"
+detail = "Build pages from blocks your developers design, arranged as lists or grids."

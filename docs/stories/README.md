@@ -151,6 +151,7 @@ requests, only server-side and build-time front ends can call it.
 | `062` | Tables a bundle owns | should | L | done | 063 |
 | `063` | A bundle is an npm package | should | L | done | — |
 | `178` | The back office vouches for its user to a host | should | S | done | 063, 177 |
+| `181` | A host installs a site's bundles | should | S | done | 063 |
 
 ### Epic H — Importing a site
 
@@ -267,15 +268,15 @@ elaborating before work starts.
 | # | Story | Priority | Size | State | Depends on |
 |---|---|---|---|---|---|
 | `160` | Signing in to a remote from CI | should | M | ready | — |
-| `161` | Schema files without the raw keys | should | L | ready | — |
+| `161` | Schema files without the raw keys | should | L | done | — |
 | `162` | User and member groups as files | should | M | ready | — |
 | `163` | Content as code: seed files | should | XL | done | — |
-| `164` | The demo sites from seed files | should | M | ready | 163 |
+| `164` | The demo sites from seed files | should | L | done | 163 |
 | `165` | Moving, sorting and deleting content | could | M | done | — |
 | `166` | People and access per environment | should | M | backlog | 162 |
 | `167` | Changing a remote site piece by piece | should | M | backlog | 160 |
 | `168` | The dictionary and single media files | could | S | ready | — |
-| `180` | A working site from an empty directory, from the command line | should | S | ready | 163 |
+| `180` | A working site from an empty directory, from the command line | should | S | done | 163 |
 
 ### Epic R — Architecture and reliability
 

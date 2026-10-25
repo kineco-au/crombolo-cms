@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/cli",
-  "version": "0.28.0",
+  "version": "0.29.0",
   "description": "The crombolo command line: scaffolding a site, schema, views, domains, content transfer and upgrades.",
   "license": "MIT",
   "author": "Crombolo",
@@ -117,6 +117,18 @@
       },
       "recycle-bin": {
         "description": "what has been deleted, before it is gone for good"
+      },
+      "languages": {
+        "description": "the languages a site is written in (languages.toml)"
+      },
+      "forms": {
+        "description": "the forms in schema/forms"
+      },
+      "workflows": {
+        "description": "the approval workflows in schema/workflows"
+      },
+      "webhooks": {
+        "description": "the webhooks kept with the site, in schema/webhooks"
       }
     },
     "optionalPlugins": [

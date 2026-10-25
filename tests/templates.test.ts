@@ -3,17 +3,16 @@
  *
  * `tests/integration/new-site.integration.ts` boots a scaffolded site; this
  * holds the shipped templates to the rules a site is held to — valid schema, a
- * view for every template alias, a bundle that reads back — so a template that
- * would fail in somebody's terminal fails here first.
+ * view for every template alias, a seed that builds into a bundle (story 164) —
+ * so a template that would fail in somebody's terminal fails here first.
  *
  * The sites in `sites/` are checked as templates, staged exactly as packing the
  * CLI stages the distributed ones — every site, so the product site is held to
  * the same rules as the ones that ship.
  */
-import { afterAll, describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { basename, join } from 'node:path'
-import { readBundlePackage } from '@crombolo/backoffice-host'
 import {
   findTemplate,
   listTemplates,
@@ -24,8 +23,8 @@ import {
 import { allFormFields, type SchemaForm } from '@crombolo/core'
 import { SYSTEM_CONTENT_TYPES } from '@crombolo/data'
 import { allProperties, loadSchemaDirectory, validateSchemaSet } from '@crombolo/schema'
-import { listComponents } from '@crombolo/server'
-import { type LoadedBundle, loadBundle } from '@crombolo/transfer'
+import { type BundleBuildResult, buildBundleFromDirectory, listComponents } from '@crombolo/server'
+import type { BundleNode } from '@crombolo/transfer'
 import { ROOT } from '../scripts/packages.ts'
 import { listSites, stageTemplates } from '../scripts/sites.ts'
 
@@ -41,11 +40,14 @@ const byId = (id: string): SiteTemplate => {
   return found
 }
 
-/** A template's bundle: the package at `bundle/`, and the payload it names. */
-function templateBundle(dir: string): LoadedBundle {
-  const { bundle, problems } = readBundlePackage(join(dir, 'bundle'))
-  if (!bundle?.contentDir) throw new Error(`${dir}/bundle is not a bundle package: ${problems}`)
-  return loadBundle(bundle.contentDir)
+/** A template built as `crombolo bundle build --template` builds it, once per run. */
+const built = new Map<string, Promise<BundleBuildResult>>()
+const templateBundle = (template: SiteTemplate): Promise<BundleBuildResult> => {
+  const cached = built.get(template.id)
+  if (cached) return cached
+  const build = buildBundleFromDirectory(join(template.dir, 'files'))
+  built.set(template.id, build)
+  return build
 }
 
 describe('the starter templates', () => {
@@ -84,57 +86,59 @@ describe('the starter templates', () => {
     ]
     expect(problems.map((p) => `${p.file}: ${p.message}`)).toEqual([])
 
-    // Keys in the files, or the first sync in a new site would assign its own
-    // and the bundle's content types would match nothing.
+    // No keys in the files: sync derives them from the aliases, the same on
+    // every site, and the seed names types by alias (story 161).
     for (const type of [...loaded.set.contentTypes, ...(loaded.set.mediaTypes ?? [])]) {
-      expect(type.key, type.alias).toBeTruthy()
-      for (const property of allProperties(type)) expect(property.key, property.alias).toBeTruthy()
+      expect(type.key, type.alias).toBeUndefined()
+      for (const property of allProperties(type))
+        expect(property.key, property.alias).toBeUndefined()
     }
-    for (const dataType of loaded.set.dataTypes) expect(dataType.key, dataType.alias).toBeTruthy()
+    for (const dataType of loaded.set.dataTypes)
+      expect(dataType.key, dataType.alias).toBeUndefined()
   })
 
-  test.each(templates.map((t) => [t.id] as const))('%s ships a bundle that reads back', (id) => {
-    const template = byId(id)
-    expect(template.bundle).toBe(`bundles/${id.replaceAll('/', '-')}`)
-    const loaded = templateBundle(template.dir)
-    // Integrity is over the node files' text, so this also catches a formatter
-    // or an editor having been let loose on a committed artifact.
-    expect(loaded.problems.map((p) => `${p.file}: ${p.message}`)).toEqual([])
-    expect(loaded.set?.nodes.length ?? 0).toBeGreaterThan(0)
+  test.each(templates.map((t) => [t.id] as const))(
+    '%s ships a seed that builds into a bundle',
+    async (id) => {
+      const template = byId(id)
+      expect(template.seed).toBe(true)
+      const result = await templateBundle(template)
+      expect(result.problems).toEqual([])
+      const set = result.seed?.set
+      expect(set?.nodes.length ?? 0).toBeGreaterThan(0)
+      if (!set) return
+      // Every type the seed needs is one this template's own files define.
+      const aliases = new Set(
+        loadSchemaDirectory(join(template.dir, 'files', 'schema')).set.contentTypes.map(
+          (t) => t.alias,
+        ),
+      )
+      // The media types every site has, and the content types Crombolo ships (menus among them).
+      const seeded = new Set([
+        'Image',
+        'File',
+        'Folder',
+        ...SYSTEM_CONTENT_TYPES.map((t) => t.alias),
+      ])
+      for (const type of set.manifest.dependencies.schema.contentTypes)
+        expect(aliases.has(type.alias) || seeded.has(type.alias), type.alias).toBe(true)
+      // And nothing it expects to find at the destination, which a new site has not got.
+      expect(set.manifest.dependencies.expected).toEqual([])
+    },
+    60_000,
+  )
 
-    const set = loaded.set
-    if (!set) return
-    // Every type the bundle needs is one this template's own files define.
-    const aliases = new Set(
-      loadSchemaDirectory(join(template.dir, 'files', 'schema')).set.contentTypes.map(
-        (t) => t.alias,
-      ),
-    )
-    // The media types every site has, and the content types Crombolo ships (menus among them).
-    const seeded = new Set(['Image', 'File', 'Folder', ...SYSTEM_CONTENT_TYPES.map((t) => t.alias)])
-    for (const type of set.manifest.dependencies.schema.contentTypes)
-      expect(aliases.has(type.alias) || seeded.has(type.alias), type.alias).toBe(true)
-    // And nothing it expects to find at the destination, which a new site has not got.
-    expect(set.manifest.dependencies.expected).toEqual([])
-  })
-
-  test('the demo carries the bytes for every media file its bundle names', () => {
-    const template = byId('demo/harbourstone')
-    const loaded = templateBundle(template.dir)
-    // Integrity covers the bytes, so a loaded bundle is one whose images are
-    // the images it was built with.
-    expect(loaded.problems).toEqual([])
-    const blobs = loaded.set?.manifest.blobs ?? []
+  test('the demo carries the bytes for every media file its seed names', async () => {
+    const result = await templateBundle(byId('demo/harbourstone'))
+    const blobs = result.seed?.set?.manifest.blobs ?? []
     expect(blobs.length).toBeGreaterThan(0)
     for (const blob of blobs) {
       // Carried, so a new site gets its images wherever its media lives — a
       // disk, a bucket, a container — rather than only on a local disk.
       expect(blob.included, blob.key).toBe(true)
-      const file = loaded.blobs.get(blob.key)
-      expect(file, blob.key).toBeTruthy()
-      expect(readFileSync(file as string).length).toBe(blob.size as number)
+      expect(result.seed?.blobs.get(blob.key)?.length, blob.key).toBe(blob.size as number)
     }
-  })
+  }, 60_000)
 })
 
 describe('the demo’s form', () => {
@@ -146,10 +150,10 @@ describe('the demo’s form', () => {
     expect(forms[0]?.key).toBeTruthy()
   })
 
-  test('is pointed at by the page that renders it', () => {
+  test('is pointed at by the page that renders it', async () => {
     // A `formPicker` stores a UUID, so a key that matches no file renders
     // nothing at all — silently, and only on the page nobody checked.
-    const set = templateBundle(template.dir).set
+    const set = (await templateBundle(template)).seed?.set
     const picked = (set?.nodes ?? []).flatMap((node) =>
       (node.values ?? [])
         .filter((value) => value.editor === 'Crombolo.FormPicker')
@@ -269,23 +273,21 @@ describe('what init writes', () => {
     expect(paths).toContain('components/pages/homePage.tsx')
     expect(paths).toContain('schema/content-types/home-page.toml')
     expect(paths).toContain('css/site.css')
-    // The content arrives as the private package every bundle is.
-    expect(paths).toContain('bundles/demo-harbourstone/package.json')
-    expect(paths.some((p) => p.startsWith('bundles/demo-harbourstone/content/nodes/'))).toBe(true)
-    expect(paths).toContain('bundles/demo-harbourstone/content/bundle.json')
-    // The images travel inside the bundle, not as a directory of their own.
-    expect(paths.some((p) => p.startsWith('bundles/demo-harbourstone/content/blobs/'))).toBe(true)
+    // The content arrives as the seed, files the new site edits (story 164).
+    expect(paths).toContain('seed/content/harbourstone.toml')
+    expect(paths.some((p) => p.startsWith('seed/library/'))).toBe(true)
+    // The images are seed media, not a bundle and not the site's own media/.
+    expect(paths.some((p) => p.startsWith('seed/media/') && p.endsWith('.jpg'))).toBe(true)
+    expect(paths.some((p) => p.startsWith('bundles/'))).toBe(false)
     expect(paths.some((p) => p.startsWith('media/'))).toBe(false)
     // Everything from the template is copied, not rewritten.
-    for (const file of files.filter((f) => f.path.startsWith('bundles/')))
+    for (const file of files.filter((f) => f.path.startsWith('seed/')))
       expect(file.copyFrom).toBeTruthy()
 
     const manifest = JSON.parse(files.find((f) => f.path === 'package.json')?.text ?? '{}') as {
       scripts: Record<string, string>
     }
-    expect(manifest.scripts.start).toBe(
-      'crombolo start --bundle bundles/demo-harbourstone --publish',
-    )
+    expect(manifest.scripts.start).toBe('crombolo start --seed --publish')
   })
 
   test('lets a template win over the file it would otherwise scaffold', () => {
@@ -311,7 +313,7 @@ describe('the demo’s element types, reused across page types', () => {
     expect(highlight?.isElement).toBe(true)
 
     const picker = (set.dataTypes ?? []).find((type) => type.alias === 'highlightPicker')
-    expect(picker?.config?.allowedContentTypes).toBe(highlight?.key)
+    expect(picker?.config?.allowedContentTypes).toEqual(['highlight'])
 
     const pickedBy = set.contentTypes
       .filter((type) => allProperties(type).some((property) => property.type === 'highlightPicker'))
@@ -321,46 +323,33 @@ describe('the demo’s element types, reused across page types', () => {
   })
 
   test('every picker names a type that is in this template', () => {
-    // A picker narrowed to a key that no longer exists offers nothing at all,
+    // A picker narrowed to a type that no longer exists offers nothing at all,
     // silently, and only in the dialog nobody opened.
-    const keys = new Set(set.contentTypes.map((type) => type.key))
+    const aliases = new Set(set.contentTypes.map((type) => type.alias))
     for (const dataType of set.dataTypes ?? []) {
       const allowed = dataType.config?.allowedContentTypes
-      if (typeof allowed !== 'string') continue
-      for (const key of allowed.split(',').filter(Boolean))
-        expect([dataType.alias, keys.has(key)]).toEqual([dataType.alias, true])
+      if (!Array.isArray(allowed)) continue
+      for (const alias of allowed)
+        expect([dataType.alias, aliases.has(alias)]).toEqual([dataType.alias, true])
     }
   })
 })
 
 describe('the demo’s photographs', () => {
-  const template = byId('demo/harbourstone')
-  const sources = join(ROOT, 'assets/templates/harbourstone')
-
-  test('are the files in assets/, byte for byte', () => {
-    // `build:template` copies the bytes through rather than re-encoding them:
-    // re-encoding an already-compressed JPEG would churn the committed bundle
-    // on every build and lose a little more of the image each time.
-    const blobs = join(template.dir, 'bundle', 'content', 'blobs')
-    const shipped = readdirSync(blobs, { recursive: true, encoding: 'utf8' }).filter((file) =>
-      file.endsWith('.jpg'),
-    )
+  test('travel in its bundle byte for byte, as the seed holds them', async () => {
+    // The bytes are passed through rather than re-encoded: re-encoding an
+    // already-compressed JPEG would lose a little more of the image each build.
+    const template = byId('demo/harbourstone')
+    const media = join(template.dir, 'files', 'seed', 'media')
+    const shipped = readdirSync(media).filter((file) => file.endsWith('.jpg'))
     expect(shipped.length).toBeGreaterThan(0)
+    const blobs = (await templateBundle(template)).seed?.blobs ?? new Map()
     for (const file of shipped) {
-      const source = join(sources, basename(file))
-      expect([file, existsSync(source)]).toEqual([file, true])
-      expect(readFileSync(join(blobs, file))).toEqual(readFileSync(source))
+      const blob = [...blobs].find(([key]) => basename(key) === file)
+      expect([file, Boolean(blob)]).toEqual([file, true])
+      expect(Buffer.from(blob?.[1] as Uint8Array)).toEqual(readFileSync(join(media, file)))
     }
-  })
-
-  test('are not published a second time as sources', () => {
-    // `assets/` is outside the `files` list, so the originals stay in the
-    // repository and only the bundle ships.
-    const manifest = JSON.parse(readFileSync(join(ROOT, 'packages/cli/package.json'), 'utf8')) as {
-      files: string[]
-    }
-    expect(manifest.files.some((entry) => entry.startsWith('assets'))).toBe(false)
-  })
+  }, 60_000)
 })
 
 describe('the demo’s typography', () => {
@@ -395,7 +384,10 @@ describe('the demo’s typography', () => {
 describe('the Crombolo product site', () => {
   const template = byId('demo/crombolo')
   const components = join(template.dir, 'files', 'components')
-  const nodes = templateBundle(template.dir).set?.nodes ?? []
+  let nodes: BundleNode[] = []
+  beforeAll(async () => {
+    nodes = (await templateBundle(template)).seed?.set?.nodes ?? []
+  }, 60_000)
   // Across every node of the type: the developer guide and the command line
   // reference are both developer pages.
   const storedValue = (type: string, alias: string) =>
@@ -440,7 +432,10 @@ describe('the starter', () => {
   const template = byId('starter')
   const components = join(template.dir, 'files', 'components')
   const read = (path: string) => readFileSync(join(components, path), 'utf8')
-  const nodes = templateBundle(template.dir).set?.nodes ?? []
+  let nodes: BundleNode[] = []
+  beforeAll(async () => {
+    nodes = (await templateBundle(template)).seed?.set?.nodes ?? []
+  }, 60_000)
 
   test('is a header, a footer and a layout every page shares', () => {
     const layout = read('shared/layout.tsx')

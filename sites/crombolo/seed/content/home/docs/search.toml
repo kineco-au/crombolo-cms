@@ -1,0 +1,7 @@
+type = "searchPage"
+key = "764372aa-43c9-4bb9-8587-fd5842381079"
+name = "Search"
+order = 99
+
+[values]
+title = "Search the docs"

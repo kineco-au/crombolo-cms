@@ -1,0 +1,8 @@
+type = "feature"
+key = "4d577630-7c9f-46c0-a0d5-f887daef0aa0"
+name = "A media library with cropping"
+order = 5
+
+[values]
+heading = "A media library with cropping"
+detail = "Upload an image once and crop it for every place it appears."

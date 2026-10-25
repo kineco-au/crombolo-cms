@@ -1,0 +1,8 @@
+type = "feature"
+key = "9fbf656c-7b94-4f38-9c45-b4a93dea980d"
+name = "Content between environments"
+order = 17
+
+[values]
+heading = "Content between environments"
+detail = "Export content as a bundle of files you can review, then import it into staging or production."

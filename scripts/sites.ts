@@ -35,7 +35,7 @@ export const SITES_DIR = join(ROOT, 'sites')
 const MANIFEST = 'site.json'
 
 /** What a template carries as `files/`; everything else in a site is its own. */
-const TEMPLATE_FILES = ['components', 'css', 'schema']
+const TEMPLATE_FILES = ['components', 'css', 'schema', 'seed']
 
 /** Shipped beside `template.json` rather than copied into a new site. */
 const TEMPLATE_EXTRAS = ['CREDITS.md']
@@ -133,7 +133,6 @@ export function stageTemplate(site: RepoSite, into: string): string {
   if (existsSync(target)) throw new Error(`${target} already exists; refusing to overwrite it`)
   try {
     copyTemplateFiles(site, join(target, 'files'))
-    cpSync(join(site.dir, site.bundle), join(target, 'bundle'), { recursive: true })
     for (const extra of TEMPLATE_EXTRAS)
       if (existsSync(join(site.dir, extra))) cpSync(join(site.dir, extra), join(target, extra))
     const manifest = {

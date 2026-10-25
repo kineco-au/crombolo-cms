@@ -8,7 +8,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { ComponentRepository, ContentTypeRepository } from '@crombolo/data'
-import { parseContentType } from '@crombolo/schema'
+import { parseContentType, typeKeyFor } from '@crombolo/schema'
 import { createServer, loadConfig, SchemaBootError } from '@crombolo/server'
 import { dialectUnderTest } from './support/db.ts'
 import { type Harness, signedInServer, V1 } from './support/harness.ts'
@@ -138,13 +138,13 @@ describe(`schema at boot (${dialectUnderTest})`, () => {
     const template = await new ComponentRepository(h.server.db).byAlias('article')
     expect(template?.key).toBe(type?.defaultComponentKey as string)
 
-    // Keys were written back into the file (development).
+    // The keys are derived, so the file is left without them (story 161).
     const written = parseContentType(
       'article',
       readFileSync(join(s.schemaDir, 'content-types', 'article.toml'), 'utf8'),
     )
-    expect(written.value?.key).toBe(type?.key)
-    expect(written.value?.properties.map((p) => p.key)).toEqual(type?.properties.map((p) => p.key))
+    expect(written.value?.key).toBeUndefined()
+    expect(type?.key).toBe(typeKeyFor('document', 'article'))
 
     const key = await createArticle(h, type?.key as string, 'Hello', {
       title: 'Hi',

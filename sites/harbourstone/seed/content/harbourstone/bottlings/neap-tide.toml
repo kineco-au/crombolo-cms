@@ -1,0 +1,19 @@
+type = "expression"
+key = "40107d59-f3e9-4592-aee8-5b03d4586cbd"
+name = "Neap Tide"
+order = 3
+
+[values]
+title = "Neap Tide"
+kind = "Cask strength"
+productType = "Whisky"
+abv = "58.4%"
+batch = "07"
+summary = "Unreduced vatting of first-fill bourbon. Add water when you are ready."
+bottleImage = "/bottle-neap-tide.jpg"
+bodyText = { html = "<p>No age statement and no reduction: a small vatting of first-fill bourbon barrels taken at the strength they came out at. Batch 07 is 58.4%. Water is not cheating.</p>" }
+tastingNotes = [
+  "nose-heather-honey-warm-oak-can",
+  "palate-thick-barley-white-pepper",
+  "finish-powerful-and-warming-water",
+]

@@ -5,6 +5,8 @@
  */
 import { SITE_SEARCH_LEVELS, type SiteSearchLevel } from '@crombolo/core'
 import {
+  type SchemaBlock,
+  type SchemaBlockAllowance,
   type SchemaContentType,
   type SchemaDataType,
   type SchemaGroup,
@@ -79,8 +81,104 @@ const DATA_TYPE_KEYS = [
   'editor-ui',
   'folder',
   'config',
+  'block',
   'since',
 ] as const
+
+const BLOCK_KEYS = [
+  'element',
+  'settings',
+  'label',
+  'size',
+  'background',
+  'icon-color',
+  'thumbnail',
+  'group',
+  'allow-at-root',
+  'allow-in-areas',
+  'column-spans',
+  'row-span',
+  'area-columns',
+  'area',
+] as const
+
+const AREA_KEYS = [
+  'alias',
+  'column-span',
+  'row-span',
+  'create-label',
+  'min',
+  'max',
+  'allow',
+] as const
+
+/** `[[data-type.block]]` tables (story 161); undefined when there are none. */
+function parseBlocks(r: Reader, t: Toml, path: string): SchemaBlock[] | undefined {
+  if (t.block === undefined) return undefined
+  return r.tables(t.block, `${path}.block`).map((b, index) => {
+    const at = `${path}.block[${index}]`
+    r.unknown(b, BLOCK_KEYS, at)
+    const rowSpan =
+      b['row-span'] === undefined ? undefined : r.table(b['row-span'], `${at}.row-span`)
+    const spans = b['column-spans']
+    const block: SchemaBlock = {
+      element: r.str(b, 'element', at, true) ?? '',
+      settings: r.str(b, 'settings', at),
+      label: r.str(b, 'label', at),
+      size: r.str(b, 'size', at),
+      background: r.str(b, 'background', at),
+      iconColor: r.str(b, 'icon-color', at),
+      thumbnail: r.str(b, 'thumbnail', at),
+      group: r.str(b, 'group', at),
+      allowAtRoot:
+        b['allow-at-root'] === undefined ? undefined : r.bool(b, 'allow-at-root', at, true),
+      allowInAreas:
+        b['allow-in-areas'] === undefined ? undefined : r.bool(b, 'allow-in-areas', at, true),
+      columnSpans:
+        Array.isArray(spans) && spans.every((n) => typeof n === 'number')
+          ? (spans as number[])
+          : undefined,
+      rowSpan: rowSpan
+        ? {
+            min: r.num(rowSpan, 'min', `${at}.row-span`),
+            max: r.num(rowSpan, 'max', `${at}.row-span`),
+          }
+        : undefined,
+      areaColumns: r.num(b, 'area-columns', at),
+      areas:
+        b.area === undefined
+          ? undefined
+          : r.tables(b.area, `${at}.area`).map((a, i) => {
+              const where = `${at}.area[${i}]`
+              r.unknown(a, AREA_KEYS, where)
+              const allow = Array.isArray(a.allow)
+                ? a.allow.map((entry): SchemaBlockAllowance => {
+                    if (typeof entry === 'string') return { element: entry }
+                    const e = r.table(entry, `${where}.allow`) ?? {}
+                    return {
+                      element: r.str(e, 'element', `${where}.allow`),
+                      group: r.str(e, 'group', `${where}.allow`),
+                      min: r.num(e, 'min', `${where}.allow`),
+                      max: r.num(e, 'max', `${where}.allow`),
+                    }
+                  })
+                : undefined
+              return {
+                alias: r.str(a, 'alias', where, true) ?? '',
+                columnSpan: r.num(a, 'column-span', where),
+                rowSpan: r.num(a, 'row-span', where),
+                createLabel: r.str(a, 'create-label', where),
+                min: r.num(a, 'min', where),
+                max: r.num(a, 'max', where),
+                allow,
+              }
+            }),
+    }
+    if (spans !== undefined && block.columnSpans === undefined)
+      r.problem(`${at}.column-spans`, 'column-spans is a list of numbers')
+    return block
+  })
+}
 const LANGUAGE_KEYS = ['iso', 'name', 'default', 'mandatory', 'fallback'] as const
 
 function property(r: Reader, t: Toml, path: string): SchemaProperty {
@@ -252,6 +350,15 @@ export function parseDataType(file: string, source: string): ParseResult<SchemaD
     folder: r.str(t, 'folder', path),
     config: (config ?? {}) as Record<string, unknown>,
     since: r.str(t, 'since', path),
+  }
+  const blocks = parseBlocks(r, t, path)
+  if (blocks) {
+    value.blocks = blocks
+    if (value.config.blocks !== undefined)
+      r.problem(
+        `${path}.block`,
+        'give blocks as [[data-type.block]] tables or as config.blocks, not both',
+      )
   }
   return { value: r.problems.length === 0 ? value : undefined, problems: r.problems }
 }

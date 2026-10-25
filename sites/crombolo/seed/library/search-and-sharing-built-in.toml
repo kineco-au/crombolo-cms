@@ -1,0 +1,8 @@
+type = "feature"
+key = "3b2ff4af-b93b-4c28-bf5c-f7ccdc434948"
+name = "Search and sharing built in"
+order = 9
+
+[values]
+heading = "Search and sharing built in"
+detail = "Set the title, description and image each page shows in search results and when it is shared, and see how it will look as you edit. The sitemap keeps itself up to date."

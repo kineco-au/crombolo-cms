@@ -1,0 +1,8 @@
+type = "step"
+key = "05b6bdcb-2635-4a84-96e3-aa51980f368a"
+name = "Model your content"
+order = 22
+
+[values]
+heading = "Model your content"
+detail = "Sign in at http://localhost:8080/crombolo and create your content types. Each one is saved as a TOML file under schema/, ready to commit."

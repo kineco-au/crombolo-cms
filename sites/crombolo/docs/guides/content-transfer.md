@@ -29,7 +29,7 @@ The same format carries more. A bundle built in the back office's **Bundles** se
 ## Exporting
 
 ```sh
-bunx crombolo content export --root "/Campaigns/Autumn" --out bundles/campaign
+bunx crombolo bundle export --root "/Campaigns/Autumn" --out bundles/campaign
 ```
 
 `--root` takes a page by its path or its UUID, and can be repeated. The export takes the page and everything below it (`--only` takes just the page), and records what the destination must already have: a parent, or a page that a link in the content points at.
@@ -41,7 +41,7 @@ A bundle holds what the site serves. A published page carries its published valu
 By default a bundle places and names pages but carries no property values, so it is safe to commit anywhere. To move the content itself:
 
 ```sh
-bunx crombolo content export --root "/Campaigns/Autumn" --include-content --with-blobs --out bundles/campaign
+bunx crombolo bundle export --root "/Campaigns/Autumn" --include-content --with-blobs --out bundles/campaign
 ```
 
 `--include-content` adds property values, and `--with-blobs` adds the media files. Both are encrypted under a passphrase, which you are asked for or can give in `CROMBOLO_BUNDLE_PASSPHRASE`. The structure, names and schema stay readable for review. `--allow-content-unencrypted` writes the values in the clear, if you need to.

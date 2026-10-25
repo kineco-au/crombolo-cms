@@ -10,7 +10,8 @@ import {
   builtInMediaTypeSchema,
   storageTypeFor,
 } from './builtin.ts'
-import { allProperties, type SchemaContentType, type SchemaSet } from './model.ts'
+import { typeKeyFor } from './keys.ts'
+import { allProperties, type SchemaBlock, type SchemaContentType, type SchemaSet } from './model.ts'
 
 export function pascal(alias: string): string {
   const cleaned = alias.replace(/[^A-Za-z0-9]+(.)?/g, (_, next: string | undefined) =>
@@ -19,17 +20,36 @@ export function pascal(alias: string): string {
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
 }
 
+/**
+ * A content type a data type names: by alias, by the key its file gives, or by
+ * the key it derives (story 161).
+ */
+export function contentTypeAliasOf(set: SchemaSet, value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const wanted = value.trim().toLowerCase()
+  return set.contentTypes.find(
+    (t) =>
+      t.alias.toLowerCase() === wanted ||
+      (t.key ?? typeKeyFor('document', t.alias)).toLowerCase() === wanted,
+  )?.alias
+}
+
 /** The element types a block data type allows, by alias, for its content and its settings. */
-export function blockElements(set: SchemaSet, config: Record<string, unknown>) {
+export function blockElements(
+  set: SchemaSet,
+  config: Record<string, unknown>,
+  tables?: readonly SchemaBlock[],
+) {
+  if (tables)
+    return {
+      content: [...new Set(tables.map((b) => b.element))],
+      settings: [...new Set(tables.flatMap((b) => (b.settings ? [b.settings] : [])))],
+    }
   const blocks = Array.isArray(config.blocks)
     ? (config.blocks as Array<Record<string, unknown>>)
     : []
-  const aliasOf = (key: unknown) =>
-    typeof key === 'string'
-      ? set.contentTypes.find((t) => t.key?.toLowerCase() === key.toLowerCase())?.alias
-      : undefined
-  const content = blocks.flatMap((b) => aliasOf(b.contentElementTypeKey) ?? [])
-  const settings = blocks.flatMap((b) => aliasOf(b.settingsElementTypeKey) ?? [])
+  const content = blocks.flatMap((b) => contentTypeAliasOf(set, b.contentElementTypeKey) ?? [])
+  const settings = blocks.flatMap((b) => contentTypeAliasOf(set, b.settingsElementTypeKey) ?? [])
   return { content: [...new Set(content)], settings: [...new Set(settings)] }
 }
 
@@ -42,18 +62,23 @@ const elementUnion = (aliases: string[]) =>
 export function dataTypeOf(
   set: SchemaSet,
   dataTypeAlias: string,
-): { editor: string | undefined; config: Record<string, unknown> } {
+): {
+  editor: string | undefined
+  config: Record<string, unknown>
+  blocks?: readonly SchemaBlock[]
+} {
   const custom = set.dataTypes.find((d) => d.alias === dataTypeAlias)
   const builtIn = BUILTIN_DATA_TYPES.find((b) => b.alias === dataTypeAlias)
   return {
     editor: custom?.editor ?? builtIn?.editor,
     config: (custom?.config ?? builtIn?.config ?? {}) as Record<string, unknown>,
+    blocks: custom?.blocks,
   }
 }
 
 /** What a template receives for a property of this data type (see `@crombolo/render` values). */
 function tsTypeFor(set: SchemaSet, dataTypeAlias: string): string {
-  const { editor, config } = dataTypeOf(set, dataTypeAlias)
+  const { editor, config, blocks } = dataTypeOf(set, dataTypeAlias)
   if (!editor) return 'unknown'
   switch (editor) {
     case 'Umbraco.TrueFalse':
@@ -68,16 +93,16 @@ function tsTypeFor(set: SchemaSet, dataTypeAlias: string): string {
       // `allowedContentTypes` is a comma-separated list of element type keys, as
       // Umbraco's AllowedContentTypeKeysParser reads it. Narrowing to those types
       // is what makes `hero.value('body')` typed rather than `unknown`.
-      const allowed =
-        typeof config.allowedContentTypes === 'string' ? config.allowedContentTypes : ''
+      const raw = config.allowedContentTypes
+      const allowed = Array.isArray(raw)
+        ? raw.map(String)
+        : typeof raw === 'string'
+          ? raw.split(',')
+          : []
       const aliases = allowed
-        .split(',')
-        .map((key) => key.trim())
+        .map((value) => value.trim())
         .filter(Boolean)
-        .flatMap(
-          (key) =>
-            set.contentTypes.find((t) => t.key?.toLowerCase() === key.toLowerCase())?.alias ?? [],
-        )
+        .flatMap((value) => contentTypeAliasOf(set, value) ?? [])
       // `Array<>` not `[]`: a union of two element types would otherwise bind as
       // `A | (B[])`.
       return `Array<${elementUnion([...new Set(aliases)])}>`
@@ -90,11 +115,11 @@ function tsTypeFor(set: SchemaSet, dataTypeAlias: string): string {
     case 'Umbraco.UploadField':
       return 'string'
     case 'Umbraco.BlockList': {
-      const { content, settings } = blockElements(set, config)
+      const { content, settings } = blockElements(set, config, blocks)
       return `Array<BlockItem & { content: ${elementUnion(content)}; settings: ${settings.length ? `${elementUnion(settings)} | null` : 'PublishedElement | null'} }>`
     }
     case 'Umbraco.BlockGrid': {
-      const { content } = blockElements(set, config)
+      const { content } = blockElements(set, config, blocks)
       return `Array<BlockGridItem & { content: ${elementUnion(content)} }>`
     }
   }

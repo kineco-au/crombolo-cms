@@ -14,7 +14,7 @@ document keeps them apart:
 ## One artifact: a bundle is an npm package
 
 Every bundle is an npm package, with no exceptions: the Created view's
-download, an environment's content export, a starter template's content, and
+download, an environment's `bundle export`, a site directory's `bundle build`, and
 anything published to the registry. Its `package.json` carries the **bundle
 manifest** in its `crombolo` field, and the manifest declares the bundle's three
 possible halves:
@@ -177,7 +177,7 @@ The download is laid out as `npm pack` lays out a package, so `bun add
 ./acme-tasks-1.0.0.tgz` installs it and `bun publish` publishes it as it is. Its
 `package.json` names the package, carries the `crombolo-bundle` keyword, and
 declares a peer range of `>=` the release it was built by — the same range an
-environment's export, an Umbraco import and a starter template's bundle carry.
+environment's export, an Umbraco import and a `bundle build` carry.
 A later release reads every earlier bundle format, so it is never a reason to
 refuse one, and an earlier release is turned away by name. Not `^`: before 1.0
 a caret pins the minor, and a production one minor ahead of its preview would
@@ -406,7 +406,7 @@ backoffice extension into a site that never asked for one.
 
 ### Serving
 
-`/packages/<name>/<path>`, following the existing plugin branch in `static.ts`
+`/bundles/<name>/<path>`, following the existing plugin branch in `static.ts`
 exactly — `safeJoin` into the resolved package directory, `no-cache`. The
 `?umb__rnd=` stamp is lost, which costs nothing: the framework plugin already
 lives without it on the same header.
@@ -533,6 +533,52 @@ That is the whole of what an install trusts today: the registry's integrity
 hash and the permission to install. Saying who published a package — the
 registry's provenance attestation, and a list of publishers crombolo has
 reviewed — is not built yet: stories `060` and `061`.
+
+### A host that installs packages
+
+Someone who runs crombolo for other people's sites can offer a third route
+besides a runtime install and a deploy (story 181). The host resolves the
+site's packages with its own tooling, and the running nodes take them up
+without a restart.
+
+- **What it writes.** The site's `package.json` and the `node_modules` that
+  resolve it, the same on every node that serves the back office, kept across
+  restarts. Only those nodes need the packages: a `role: web` node serves no
+  back office, and a reload there does nothing.
+- **How a node is told.** The host's `server.ts` keeps the server handle from
+  `cromboloServer()` rather than `crombolo()`, and calls `reloadBundles()` on
+  each node after writing its files there:
+
+  ```ts
+  import { cromboloServer } from '@crombolo/crombolo'
+  import config from './crombolo.config.ts'
+
+  const server = await cromboloServer(config)
+  Bun.serve(server.serveOptions)
+  // When the host has changed this node's packages, by whatever means it uses:
+  const { added, removed, changed, problems } = await server.reloadBundles()
+  ```
+
+  Discovery runs again from the files as they are now. New extensions are
+  served, removed ones are not, and `/bundles/<pkg>/…` follows. Open back
+  offices hear `Crombolo:Bundles` / `Changed` on the live-update channel, and
+  offer "Extensions changed — reload to use them". Nothing reloads by itself.
+  The Marketplace's own install goes through the same reload.
+- **Never a server half.** Configured `bundles` are wired at boot only. A
+  newly found bundle with a `server` field is reported with `wired: false`.
+  Wiring it is a config change and a deploy, as before.
+- **Checking a package first.** `validateBundlePackage` and `peerRangeProblem`
+  are exported from `@crombolo/crombolo`, so a host checks a package by the
+  CMS's own rules without reaching into `@crombolo/backoffice-host`.
+- **Where installs happen.** With `runtimeInstalls` off,
+  `installsElsewhere: { message, url }` (`CROMBOLO_INSTALLS_ELSEWHERE_MESSAGE`
+  and `_URL`) replaces the Marketplace's "add it to `package.json` and deploy":
+  the banner shows the message and a link, each package not installed shows the
+  link instead of the `bun add` line, and a refused install says the message.
+- **Output should import only what the host provides.** A bundle's back-office
+  files are served as they are, so an import of a package the host has not put
+  on the node fails in the browser. The import map covers the vendored client
+  (`@umbraco-cms/backoffice/*`), and nothing else is promised.
 
 ---
 
@@ -690,7 +736,7 @@ a path that would land outside the package.
 `tests/extensions.test.ts` covers discovery (including a transitive dependency
 that declares an extension and must be ignored), asset-path rewriting, the
 memoizing registry, and serving — a path escaping the package root and a
-dependency that is not a declared extension are both refused, so `/packages/`
+dependency that is not a declared extension are both refused, so `/bundles/`
 cannot be used to read `node_modules`.
 
 `tests/bundle-install.test.ts` covers the installer: finding a bundle as a
@@ -1442,6 +1488,7 @@ Its docs section (`/docs/`) is built into it: the guides are Markdown in
 `sites/crombolo/docs/`, and the command line, configuration and exit code
 references are generated from the CLI's manifest and
 `packages/server/src/settings.ts` (`scripts/docs-site.ts`).
-`bun run build:template demo/crombolo` rewrites the lot, and
+`bun run build:template` rewrites the lot: the docs pages as seed files under
+`sites/crombolo/seed/content/home/docs/`, then the site's bundle, and
 `tests/docs-site.test.ts` fails when a guide, a command or a setting has changed
 without a rebuild.

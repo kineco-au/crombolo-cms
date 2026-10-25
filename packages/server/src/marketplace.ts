@@ -98,6 +98,8 @@ export interface MarketplaceOptions {
    * `package.json` and a deploy, so every node has it and it outlives a restart.
    */
   installs?: boolean
+  /** A host's own word on where installs happen, said in place of a deploy (story 181). */
+  installsElsewhere?: { message: string; url?: string }
 }
 
 export interface InstallOutcome {
@@ -320,7 +322,7 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
     },
 
     async install(name, version, request = {}) {
-      if (options.installs === false) return refusedHere(name, 'add')
+      if (options.installs === false) return refusedHere(name, 'add', options.installsElsewhere)
       if (!isValidPackageName(name))
         return { ok: false, message: `'${name}' is not a package name npm would accept.` }
       if (version !== undefined && !isValidVersion(version))
@@ -378,7 +380,7 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
     },
 
     async uninstall(name) {
-      if (options.installs === false) return refusedHere(name, 'remove')
+      if (options.installs === false) return refusedHere(name, 'remove', options.installsElsewhere)
       if (!isValidPackageName(name))
         return { ok: false, message: `'${name}' is not a package name npm would accept.` }
       const result = await install('remove', name, options.siteDir)
@@ -406,7 +408,16 @@ function descriptionOf(directory: string): string {
 }
 
 /** What a site that does not install at runtime says instead, with what to do. */
-function refusedHere(name: string, verb: 'add' | 'remove'): InstallOutcome {
+function refusedHere(
+  name: string,
+  verb: 'add' | 'remove',
+  elsewhere?: { message: string; url?: string },
+): InstallOutcome {
+  if (elsewhere)
+    return {
+      ok: false,
+      message: elsewhere.url ? `${elsewhere.message} ${elsewhere.url}` : elsewhere.message,
+    }
   return {
     ok: false,
     message:

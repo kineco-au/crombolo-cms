@@ -24,7 +24,7 @@ crombolo import umbraco apply  <backup> --out <dir> [--site <dir>] [--media <dir
                                [--with-members] [--with-users]
 ```
 
-The flags are `content export`'s ([`content-transfer.md`](content-transfer.md),
+The flags are `bundle export`'s ([`content-transfer.md`](content-transfer.md),
 "What is readable, and what is sealed"). Without `--include-content` the site
 gets its schema, views and the tree of pages and media with their names,
 templates and rules, and no value or media file — the output and the report say

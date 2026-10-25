@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { join } from 'node:path'
 import { type RaisedWebhookEvent, WEBHOOK_EVENT_ALIASES } from '@crombolo/api-management'
 import {
+  ContentTypeRepository,
   type Db,
   type WebhookDelivery,
   WebhookDeliveryRepository,
@@ -22,6 +23,7 @@ import {
   parseWebhookFile,
   type WebhookDefinition,
   type WebhookStore,
+  webhookAliasFor,
   webhookProblems,
   writeWebhookFile,
 } from './webhook-files.ts'
@@ -188,9 +190,10 @@ export function createWebhookService(options: WebhookServiceOptions): WebhookSer
 
   const stores = () => ({ files: options.filesWritable, database: secret !== undefined })
 
-  const fromFiles = (): WebhookDefinition[] => {
+  /** Each webhook file, by its file name, as written: content types still aliases. */
+  const filesOnDisk = (): Array<{ name: string; webhook: WebhookDefinition }> => {
     if (!existsSync(dir)) return []
-    const out: WebhookDefinition[] = []
+    const out: Array<{ name: string; webhook: WebhookDefinition }> = []
     for (const name of readdirSync(dir)
       .filter((file) => file.endsWith('.toml'))
       .sort()) {
@@ -198,8 +201,37 @@ export function createWebhookService(options: WebhookServiceOptions): WebhookSer
         `schema/webhooks/${name}`,
         readFileSync(join(dir, name), 'utf8'),
       )
-      if (parsed.webhook) out.push(parsed.webhook)
+      if (parsed.webhook) out.push({ name, webhook: parsed.webhook })
       else log.warning('A webhook file was skipped: {problems}', { problems: parsed.problems })
+    }
+    return out
+  }
+
+  /**
+   * The files' webhooks with their content types as keys (story 161). An alias
+   * no type has is logged and kept as a filter nothing matches, so a webhook
+   * meant for some types never widens to every type.
+   */
+  const fromFiles = async (): Promise<WebhookDefinition[]> => {
+    const types = new ContentTypeRepository(options.db)
+    const out: WebhookDefinition[] = []
+    for (const { name, webhook } of filesOnDisk()) {
+      const keys: string[] = []
+      for (const value of webhook.contentTypeKeys) {
+        if (/^[0-9a-f-]{36}$/i.test(value)) keys.push(value)
+        else {
+          const found = await types.byAlias(value)
+          if (found) keys.push(found.key.toLowerCase())
+          else {
+            log.warning('Webhook {file} names a content type {alias} this site has not got', {
+              file: `schema/webhooks/${name}`,
+              alias: value,
+            })
+            keys.push(`unknown:${value}`)
+          }
+        }
+      }
+      out.push({ ...webhook, contentTypeKeys: keys })
     }
     return out
   }
@@ -226,17 +258,38 @@ export function createWebhookService(options: WebhookServiceOptions): WebhookSer
     })
 
   const all = async (): Promise<WebhookView[]> => [
-    ...fromFiles().map((webhook) => ({ ...webhook, store: 'files' as const })),
+    ...(await fromFiles()).map((webhook) => ({ ...webhook, store: 'files' as const })),
     ...(await fromDatabase()).map((webhook) => ({ ...webhook, store: 'database' as const })),
   ]
 
+  /** Content types by alias, as a file names them; a key no type has stays a key. */
+  const contentTypeAliases = async (keys: readonly string[]) => {
+    const types = new ContentTypeRepository(options.db)
+    const out: string[] = []
+    for (const key of keys) out.push((await types.byKey(key))?.alias ?? key)
+    return out
+  }
+  /** The files that hold a webhook, legacy `<key>.toml` among them. */
+  const filesFor = (key: string) =>
+    filesOnDisk()
+      .filter(({ webhook }) => webhook.key === key.toLowerCase())
+      .map(({ name }) => name)
   const writeFile = async (webhook: WebhookDefinition) => {
     mkdirSync(dir, { recursive: true })
-    writeFileSync(join(dir, `${webhook.key}.toml`), writeWebhookFile(webhook), 'utf8')
+    const alias = webhook.alias ?? webhookAliasFor(webhook.name, webhook.key)
+    const name = `${alias}.toml`
+    // Renamed, or a legacy `<key>.toml`: the old file goes, so one webhook is one file.
+    for (const old of filesFor(webhook.key))
+      if (old !== name) rmSync(join(dir, old), { force: true })
+    writeFileSync(
+      join(dir, name),
+      writeWebhookFile({ ...webhook, alias }, await contentTypeAliases(webhook.contentTypeKeys)),
+      'utf8',
+    )
     await options.onFilesChanged?.()
   }
   const removeFile = async (key: string) => {
-    rmSync(join(dir, `${key}.toml`), { force: true })
+    for (const name of filesFor(key)) rmSync(join(dir, name), { force: true })
     await options.onFilesChanged?.()
   }
   const writeRow = async (webhook: WebhookDefinition) => {

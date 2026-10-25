@@ -1,19 +1,27 @@
 /**
- * A webhook as a file, `schema/webhooks/<key>.toml`, and the rules every webhook
- * is held to. Pure: reading and writing the directory is `webhooks.ts`'s job.
- * docs/webhooks.md.
+ * A webhook as a file, `schema/webhooks/<alias>.toml`, and the rules every
+ * webhook is held to. Pure: reading and writing the directory is `webhooks.ts`'s
+ * job. docs/webhooks.md.
+ *
+ * Since story 161 a webhook file names itself by alias, carries no key unless
+ * one differs from the one its alias derives, and names its content types by
+ * alias. A legacy `<key>.toml` with keys still reads.
  */
 import { WEBHOOK_EVENT_ALIASES } from '@crombolo/api-management'
+import { derivedKey } from '@crombolo/core'
 
 export type WebhookStore = 'files' | 'database'
 
 export interface WebhookDefinition {
   key: string
+  /** A file's name for it (story 161); absent on a webhook kept in the database. */
+  alias?: string
   name: string | null
   description: string | null
   url: string
   enabled: boolean
   events: string[]
+  /** In memory, keys; in a file, aliases (a uuid-shaped value is a key). */
   contentTypeKeys: string[]
   /** A value is either `env:NAME` or, kept in the database only, the secret itself. */
   headers: Record<string, string>
@@ -62,16 +70,38 @@ const quote = (value: string) => JSON.stringify(value)
 const list = (values: readonly string[]) => `[${values.map(quote).join(', ')}]`
 const key = (name: string) => (/^[A-Za-z0-9_-]+$/.test(name) ? name : quote(name))
 
-/** Canonical TOML, so a backoffice edit is a small diff. */
-export function writeWebhookFile(webhook: WebhookDefinition): string {
-  const out = ['[webhook]', `key = ${quote(webhook.key)}`]
+/** The key a webhook's alias derives, so a file need not carry one (story 161). */
+export const webhookKeyFor = (alias: string) => derivedKey('webhook', alias)
+
+/** An alias from a name, as a file takes one: `Order placed` → `orderPlaced`. */
+export function webhookAliasFor(name: string | null, key: string): string {
+  const words = (name ?? '').split(/[^A-Za-z0-9]+/).filter(Boolean)
+  const camel = words
+    .map((w, i) =>
+      i === 0 ? w.charAt(0).toLowerCase() + w.slice(1) : w.charAt(0).toUpperCase() + w.slice(1),
+    )
+    .join('')
+  return /^[A-Za-z]/.test(camel) ? camel : `webhook${key.replaceAll('-', '').slice(0, 8)}`
+}
+
+/**
+ * Canonical TOML, so a backoffice edit is a small diff. `contentTypes` is what
+ * the file names them by — aliases — and defaults to the keys.
+ */
+export function writeWebhookFile(
+  webhook: WebhookDefinition,
+  contentTypes: readonly string[] = webhook.contentTypeKeys,
+): string {
+  const alias = webhook.alias ?? webhookAliasFor(webhook.name, webhook.key)
+  const out = ['[webhook]']
+  if (webhook.key.toLowerCase() !== webhookKeyFor(alias)) out.push(`key = ${quote(webhook.key)}`)
+  out.push(`alias = ${quote(alias)}`)
   if (webhook.name) out.push(`name = ${quote(webhook.name)}`)
   if (webhook.description) out.push(`description = ${quote(webhook.description)}`)
   out.push(`url = ${quote(webhook.url)}`)
   if (!webhook.enabled) out.push('enabled = false')
   out.push(`events = ${list(webhook.events)}`)
-  if (webhook.contentTypeKeys.length > 0)
-    out.push(`content-types = ${list(webhook.contentTypeKeys)}`)
+  if (contentTypes.length > 0) out.push(`content-types = ${list(contentTypes)}`)
   const headers = Object.keys(webhook.headers).sort()
   if (headers.length > 0) {
     out.push('', '[webhook.headers]')
@@ -82,6 +112,7 @@ export function writeWebhookFile(webhook: WebhookDefinition): string {
 
 const KEYS = new Set([
   'key',
+  'alias',
   'name',
   'description',
   'url',
@@ -120,17 +151,23 @@ export function parseWebhookFile(
     for (const [name, value] of Object.entries(table.headers as Record<string, unknown>))
       if (typeof value === 'string') headers[name] = value
       else problems.push(`${file}: webhook.headers.${name} must be text`)
-  const webhookKey = text('key')
-  if (!webhookKey || !/^[0-9a-f-]{36}$/i.test(webhookKey))
-    problems.push(`${file}: webhook.key must be the webhook's key`)
+  const webhookAlias = text('alias') ?? undefined
+  const written = text('key')
+  if (written !== null && !/^[0-9a-f-]{36}$/i.test(written))
+    problems.push(`${file}: webhook.key must be a key`)
+  if (!written && !webhookAlias) problems.push(`${file}: webhook.alias is required`)
+  const webhookKey = written ?? (webhookAlias ? webhookKeyFor(webhookAlias) : '')
   const webhook: WebhookDefinition = {
-    key: (webhookKey ?? '').toLowerCase(),
+    key: webhookKey.toLowerCase(),
+    ...(webhookAlias ? { alias: webhookAlias } : {}),
     name: text('name'),
     description: text('description'),
     url: text('url') ?? '',
     enabled: table.enabled !== false,
     events: strings('events'),
-    contentTypeKeys: strings('content-types').map((value) => value.toLowerCase()),
+    contentTypeKeys: strings('content-types').map((value) =>
+      /^[0-9a-f-]{36}$/i.test(value) ? value.toLowerCase() : value,
+    ),
     headers,
   }
   problems.push(...webhookProblems(webhook, 'files').map((message) => `${file}: ${message}`))

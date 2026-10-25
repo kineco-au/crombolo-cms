@@ -175,7 +175,7 @@ describe('a split deployment, as separate processes', () => {
   }, 120_000)
 
   test('the api node migrates, then the web nodes start against it', async () => {
-    api = await serve('api', '--bundle', 'bundles/basic', '--publish')
+    api = await serve('api', '--seed', '--publish')
     expect(api.banner).toContain('role        api')
     // The api node is not the public site, so its banner does not offer one.
     expect(api.banner).not.toContain('site        http')

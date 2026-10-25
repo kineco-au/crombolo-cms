@@ -1,0 +1,33 @@
+type = "homePage"
+key = "1f9d8eb5-4a8d-448d-bedc-a84f33ddab21"
+name = "Home"
+order = 0
+
+[values]
+title = "The CMS your editors already know"
+strapline = "Crombolo gives your content team the Umbraco editing experience they trust, on an open-source platform that is quicker to build on and cheaper to run."
+heroCtaLabel = "Get started"
+whyHeading = "Why teams switch to Crombolo"
+whyIntro = "Keep the editing experience your team relies on, without the platform costs and constraints that usually come with it."
+reasons = ["no-retraining", "lower-running-costs", "fast-by-default", "yours-to-own"]
+editorsHeading = "Built for the people who publish"
+editorsIntro = "Familiar from the first login, with the tools content teams ask for already included."
+editorFeatures = [
+  "drafts-scheduling-and-version-history",
+  "a-media-library-with-cropping",
+  "flexible-page-layouts",
+  "forms-built-in",
+  "redirects-you-manage-yourself",
+  "search-and-sharing-built-in",
+  "edits-that-never-overwrite-each-other",
+  "upgrades-that-keep-the-site-live",
+]
+migrateHeading = "Already on Umbraco?"
+migrateBody = { html = "<p>The import tool starts with a compatibility report, so you know exactly what will move across before anything changes. It then brings your content types, content and media into a new Crombolo site.</p><p>Your editors keep working in a back office they already trust.</p>" }
+developersHeading = "Your developers will thank you"
+developersIntro = "TypeScript templates, a content model kept in Git, and a single runtime that starts in seconds. No .NET, no Razor."
+developersCtaLabel = "Read the developer guide"
+closingHeading = "Up and running in minutes"
+closingBody = "One command creates a site, and the developer guide takes you from there to your first published page."
+repositoryUrl = "https://github.com/kineco-au/crombolo-cms"
+installCommand = "bunx crombolo init"

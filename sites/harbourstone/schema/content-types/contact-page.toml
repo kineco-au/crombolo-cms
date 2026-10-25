@@ -3,7 +3,6 @@
 # and branching one template on which properties happen to be filled is how a
 # view becomes unreadable.
 [content-type]
-key = "7100a925-a7e5-48a4-ad8e-120fc08cf987"
 alias = "contactPage"
 name = "Contact Page"
 description = "A form and the details beside it"
@@ -15,14 +14,12 @@ default-component = "pages/contactPage"
 name = "Header"
 
 [[tab.property]]
-key = "753d8c52-4949-4e92-a76a-fa02da0fd199"
 alias = "eyebrow"
 name = "Eyebrow"
 type = "textstring"
 site-search = "low"
 
 [[tab.property]]
-key = "1e8f3a9d-5bdf-4a01-a6c7-cc4a055fae22"
 alias = "title"
 name = "Title"
 type = "textstring"
@@ -30,7 +27,6 @@ mandatory = true
 site-search = "high"
 
 [[tab.property]]
-key = "cf4561c0-82bb-4ad5-9f88-bd3fbd210b7c"
 alias = "standfirst"
 name = "Standfirst"
 type = "textarea"
@@ -43,7 +39,6 @@ name = "Form"
 # `schema/forms/`, and the value converter hands the view the definition rather
 # than the key — see `components/contactPage.tsx`.
 [[tab.property]]
-key = "9f2c71b5-5de4-4a6e-9c0a-1b7d84f3a2ce"
 alias = "enquiryForm"
 name = "Form"
 description = "Leave empty for a page that only gives the address."
@@ -53,25 +48,21 @@ type = "formPicker"
 name = "Details"
 
 [[tab.property]]
-key = "74ad36ef-7bc9-44a5-833b-a5ebbc055198"
 alias = "asideEyebrow"
 name = "Eyebrow"
 type = "textstring"
 
 [[tab.property]]
-key = "f280c253-5a8e-4db2-8cd6-516066061242"
 alias = "asideHeading"
 name = "Heading"
 type = "textstring"
 
 [[tab.property]]
-key = "5611c2fa-720b-447a-9b01-c8e761e738ac"
 alias = "asideBody"
 name = "Address and contact"
 type = "richtext"
 
 [[tab.property]]
-key = "278a95aa-9a7d-47bc-ad09-545104a1a7cd"
 alias = "asideImage"
 name = "Image"
 type = "imageMediaPicker"

@@ -146,6 +146,7 @@ function marketplace(options: {
   applyContent?: (name: string) => Promise<ContentOutcome>
   applyContentOnInstall?: boolean
   runtimeInstalls?: boolean
+  installsElsewhere?: { message: string; url?: string }
 }) {
   const root = options.root ?? site()
   const extensions = createExtensionRegistry(root, { cache: false })
@@ -173,6 +174,7 @@ function marketplace(options: {
       applyContent: options.applyContent,
       applyContentOnInstall: options.applyContentOnInstall,
       installs: options.runtimeInstalls,
+      installsElsewhere: options.installsElsewhere,
     }),
   }
 }
@@ -295,6 +297,22 @@ describe('installing', () => {
     expect(removal.message).toContain('bun remove @acme/seo')
     // Nothing reached bun on this node.
     expect(calls).toEqual([])
+  })
+
+  test('a host that installs elsewhere says where, in place of a deploy (story 181)', async () => {
+    const { market } = marketplace({
+      runtimeInstalls: false,
+      installsElsewhere: {
+        message: 'Bundles are added in your hosting dashboard.',
+        url: 'https://host.example/bundles',
+      },
+    })
+    const install = await market.install('@acme/seo', '2.0.0')
+    expect(install.ok).toBe(false)
+    expect(install.message).toBe(
+      'Bundles are added in your hosting dashboard. https://host.example/bundles',
+    )
+    expect(install.message).not.toContain('bun add')
   })
 
   test('installs without a version when none is given', async () => {
@@ -545,6 +563,28 @@ describe('the endpoints', () => {
     expect(body.keyword).toBe('crombolo-bundle')
     expect(body.url).toContain('crombolo-bundle')
     expect(Array.isArray(body.items)).toBe(true)
+  })
+
+  test('carry where installs happen only while runtime installs are off (story 181)', async () => {
+    const elsewhere = {
+      message: 'Bundles are added in your hosting dashboard.',
+      url: 'https://host.example/bundles',
+    }
+    const off = await signedInServer({
+      config: { runtimeInstalls: false, installsElsewhere: elsewhere },
+    })
+    open.push(off)
+    for (const action of ['marketplace', 'installed'])
+      expect(
+        await off.json<{ installs: boolean; installsElsewhere: unknown }>(`${PACKAGES}/${action}`),
+        action,
+      ).toMatchObject({ installs: false, installsElsewhere: elsewhere })
+    // Unset, or with installs on, today's wording stays.
+    const on = await signedInServer({ config: { installsElsewhere: elsewhere } })
+    open.push(on)
+    expect(
+      (await on.json<{ installsElsewhere: unknown }>(`${PACKAGES}/marketplace`)).installsElsewhere,
+    ).toBeNull()
   })
 
   test('refuse a bad install name with a 400 and a reason', async () => {

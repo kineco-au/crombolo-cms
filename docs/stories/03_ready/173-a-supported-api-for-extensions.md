@@ -23,6 +23,12 @@ The candidate is an intentional supported export surface with automated checks
 against accidental growth. Installed extensions remain trusted in-process
 JavaScript; this is an API stability boundary, not a sandbox.
 
+Already promised to hosts by story 181, so part of whatever boundary this
+draws: `cromboloServer()` and the `ServerHandle` it returns (with
+`reloadBundles()`, `BundleReload` and `ReloadedBundle`), and
+`validateBundlePackage`, `peerRangeProblem` and `PackageJson`, all from
+`@crombolo/crombolo`.
+
 ## Decisions before implementation
 
 - Inventory consumers and classify supported, advanced and internal exports,

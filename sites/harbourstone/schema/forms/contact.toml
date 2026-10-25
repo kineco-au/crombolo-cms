@@ -25,7 +25,6 @@ minimum-submit-seconds = 3
   columns = 1
 
     [[page.group.field]]
-    key = "7b1f4c20-0001-4e18-8d25-3c6f5a1e9b04"
     alias = "visitorName"
     type = "shortAnswer"
     caption = "Name"
@@ -34,7 +33,6 @@ minimum-submit-seconds = 3
     autocomplete = "name"
 
     [[page.group.field]]
-    key = "7b1f4c20-0002-4e18-8d25-3c6f5a1e9b04"
     alias = "visitorEmail"
     type = "email"
     caption = "Email"
@@ -43,7 +41,6 @@ minimum-submit-seconds = 3
     autocomplete = "email"
 
     [[page.group.field]]
-    key = "7b1f4c20-0003-4e18-8d25-3c6f5a1e9b04"
     alias = "topic"
     type = "dropdown"
     caption = "Subject"
@@ -57,7 +54,6 @@ minimum-submit-seconds = 3
     ]
 
     [[page.group.field]]
-    key = "7b1f4c20-0004-4e18-8d25-3c6f5a1e9b04"
     alias = "company"
     type = "shortAnswer"
     caption = "Company"
@@ -76,7 +72,6 @@ minimum-submit-seconds = 3
       rule = [{ field = "topic", operator = "is", value = "Trade and allocation" }]
 
     [[page.group.field]]
-    key = "7b1f4c20-0005-4e18-8d25-3c6f5a1e9b04"
     alias = "phone"
     type = "shortAnswer"
     caption = "Phone"
@@ -85,7 +80,6 @@ minimum-submit-seconds = 3
     autocomplete = "tel"
 
     [[page.group.field]]
-    key = "7b1f4c20-0006-4e18-8d25-3c6f5a1e9b04"
     alias = "message"
     type = "longAnswer"
     caption = "Message"
@@ -95,7 +89,6 @@ minimum-submit-seconds = 3
     rows = 5
 
     [[page.group.field]]
-    key = "7b1f4c20-0007-4e18-8d25-3c6f5a1e9b04"
     alias = "consent"
     type = "dataConsent"
     caption = "I am happy for Harbourstone to hold these details in order to answer my message."
@@ -108,7 +101,6 @@ minimum-submit-seconds = 3
 # queue retries, so a provider that is briefly down loses nothing.
 #
 # [[workflow]]
-# key = "7b1f4c20-0008-4e18-8d25-3c6f5a1e9b04"
 # type = "sendEmail"
 # name = "Tell the stillhouse office"
 # on = "submit"

@@ -1,0 +1,8 @@
+type = "feature"
+key = "9249bc6e-4bb3-4161-a538-a7c8008f1c95"
+name = "Forms built in"
+order = 7
+
+[values]
+heading = "Forms built in"
+detail = "Design forms in the back office and review every submission in one place."

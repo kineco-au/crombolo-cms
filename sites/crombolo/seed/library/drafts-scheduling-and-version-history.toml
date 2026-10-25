@@ -1,0 +1,8 @@
+type = "feature"
+key = "5846d97d-b99b-4949-951d-43eda14b73ee"
+name = "Drafts, scheduling and version history"
+order = 4
+
+[values]
+heading = "Drafts, scheduling and version history"
+detail = "Prepare changes in draft, publish on a schedule, and roll back to any earlier version."

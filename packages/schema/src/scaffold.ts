@@ -7,6 +7,7 @@
  * canonical writer turns it into the file, so what the CLI writes is byte for
  * byte what `types rewrite` would.
  */
+import type { SchemaForm, SchemaFormField, SchemaWorkflow } from '@crombolo/core'
 import type { SchemaContentType, SchemaProperty, SchemaTab, SchemaTypeKind } from './model.ts'
 import { allProperties } from './model.ts'
 
@@ -33,6 +34,16 @@ export interface NewTypeOptions {
   template?: boolean
   /** The tab the scaffolded `title` goes in; absent means no properties at all. */
   tab?: string
+  /** Aliases of the types it is composed of. */
+  compose?: string[]
+  /** Content types only: the aliases of the types allowed beneath it. */
+  allowChildren?: string[]
+  variesByCulture?: boolean
+  variesBySegment?: boolean
+  /** May it be created in the Library; elements always may. */
+  library?: boolean
+  /** Content types only: its children shown as a list, with this data type. */
+  listView?: string
 }
 
 const DEFAULT_ICONS: Record<SchemaTypeKind, string> = {
@@ -41,10 +52,10 @@ const DEFAULT_ICONS: Record<SchemaTypeKind, string> = {
   member: 'icon-user',
 }
 
-/** A type as a new site would write it: keys filled in, nothing else assumed. */
+/** A type as a new site would write it: no keys (sync derives them, story 161), nothing else assumed. */
 export function newType(
   options: NewTypeOptions,
-  key: () => string = () => crypto.randomUUID(),
+  key: () => string | undefined = () => undefined,
 ): SchemaContentType {
   const kind = options.kind ?? 'document'
   const element = options.element === true
@@ -66,8 +77,8 @@ export function newType(
                 description: element ? undefined : 'Shown as the page heading',
                 type: 'textstring',
                 mandatory: true,
-                variesByCulture: false,
-                variesBySegment: false,
+                variesByCulture: options.variesByCulture === true,
+                variesBySegment: options.variesBySegment === true,
                 labelOnTop: false,
               },
             ],
@@ -82,13 +93,14 @@ export function newType(
     icon: options.icon ?? DEFAULT_ICONS[kind],
     allowAtRoot: kind === 'document' ? options.allowAtRoot === true : false,
     isElement: element,
-    allowInLibrary: element,
-    variesByCulture: false,
-    variesBySegment: false,
-    compositions: [],
-    allowChildren: [],
+    allowInLibrary: element || options.library === true,
+    variesByCulture: options.variesByCulture === true,
+    variesBySegment: options.variesBySegment === true,
+    compositions: options.compose ?? [],
+    allowChildren: kind === 'document' ? (options.allowChildren ?? []) : [],
     components: templated ? [options.alias] : [],
     defaultComponent: templated ? options.alias : undefined,
+    collection: kind === 'document' ? options.listView : undefined,
     cleanup: { prevent: false },
     properties: [],
     tabs,
@@ -118,7 +130,7 @@ export type AddPropertyResult =
 export function addProperty(
   type: SchemaContentType,
   options: AddPropertyOptions,
-  key: () => string = () => crypto.randomUUID(),
+  key: () => string | undefined = () => undefined,
 ): AddPropertyResult {
   if (allProperties(type).some((p) => p.alias === options.alias))
     return { ok: false, reason: `"${type.alias}" already has a property "${options.alias}"` }
@@ -143,6 +155,81 @@ export function addProperty(
       )
     : [...type.tabs, { name: wanted, properties: [property], groups: [] }]
   return { ok: true, type: { ...type, tabs }, tab: wanted, property }
+}
+
+const field = (
+  alias: string,
+  type: string,
+  caption: string,
+  autocomplete: string,
+): SchemaFormField => ({
+  alias,
+  type,
+  caption,
+  mandatory: true,
+  sensitive: false,
+  autocomplete,
+  values: [],
+  accept: [],
+})
+
+/** A form to start from (story 161): one page asking for a name and an email address, kept as entries. */
+export function newForm(alias: string, name?: string): SchemaForm {
+  return {
+    alias,
+    name: name ?? nameFor(alias),
+    storeEntries: true,
+    requiresApproval: false,
+    honeypot: true,
+    pages: [
+      {
+        groups: [
+          {
+            columns: 1,
+            fields: [
+              field('name', 'shortAnswer', 'Name', 'name'),
+              field('email', 'email', 'Email', 'email'),
+            ],
+          },
+        ],
+      },
+    ],
+    workflows: [],
+  }
+}
+
+export interface NewWorkflowOptions {
+  alias: string
+  name?: string
+  /** The content types it covers, by alias. */
+  contentTypes?: string[]
+  /** The user groups who approve, by alias; editors when absent. */
+  approvers?: string[]
+}
+
+/** An approval workflow to start from (story 161): one stage, approved by one of its approvers. */
+export function newWorkflow(options: NewWorkflowOptions): SchemaWorkflow {
+  return {
+    alias: options.alias,
+    name: options.name ?? nameFor(options.alias),
+    appliesTo: { branches: [], contentTypes: options.contentTypes ?? [] },
+    publishersMaySkip: true,
+    onEdit: 'withdraw',
+    selfApproval: 'refused',
+    comments: 'optional',
+    unpublish: false,
+    onChange: 'keep',
+    stages: [
+      {
+        alias: 'approval',
+        name: 'Approval',
+        approvers: options.approvers ?? ['editor'],
+        required: 'one',
+        next: [],
+        sendBack: 'editor',
+      },
+    ],
+  }
 }
 
 /** The view a scaffolded content type points at, if it has not got one yet. */

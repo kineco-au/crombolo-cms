@@ -1,0 +1,8 @@
+type = "tastingNote"
+key = "2fe03891-1294-4344-8e24-47e8b212e5b0"
+name = "Palate — Dark honey, cocoa nib, salte…"
+order = 15
+
+[values]
+aspect = "Palate"
+note = "Dark honey, cocoa nib, salted caramel, polished oak."

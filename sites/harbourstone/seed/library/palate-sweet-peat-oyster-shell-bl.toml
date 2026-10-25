@@ -1,0 +1,8 @@
+type = "tastingNote"
+key = "4b760c0b-b83a-4eee-aa29-c225cfabf19b"
+name = "Palate — Sweet peat, oyster shell, bl…"
+order = 12
+
+[values]
+aspect = "Palate"
+note = "Sweet peat, oyster shell, black pepper, barley sugar."

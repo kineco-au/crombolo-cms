@@ -1,0 +1,8 @@
+type = "tastingNote"
+key = "b4e38bbd-c1a3-431a-b7a9-5868aa32993a"
+name = "Finish — Clean and saline, with oak s…"
+order = 10
+
+[values]
+aspect = "Finish"
+note = "Clean and saline, with oak spice that stays polite."

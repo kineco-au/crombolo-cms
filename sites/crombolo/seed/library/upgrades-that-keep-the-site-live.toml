@@ -1,0 +1,8 @@
+type = "feature"
+key = "f6c036de-300b-42d5-aa83-56f60fa26ef2"
+name = "Upgrades that keep the site live"
+order = 11
+
+[values]
+heading = "Upgrades that keep the site live"
+detail = "Visitors keep seeing your site while a new version rolls out."

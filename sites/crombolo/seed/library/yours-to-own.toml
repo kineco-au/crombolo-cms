@@ -1,0 +1,8 @@
+type = "feature"
+key = "1b966f5b-2fa6-4912-92aa-6390e00ac12e"
+name = "Yours to own"
+order = 3
+
+[values]
+heading = "Yours to own"
+detail = "Open source from end to end. Host it wherever you like, keep your content in a standard database, and never depend on a single vendor."

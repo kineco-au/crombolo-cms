@@ -182,7 +182,7 @@ export default function Home({ model }) {
     )
     // The api node migrates and publishes the bundle; the renderer is what this
     // suite then watches, so the api node is only ever started, never asserted.
-    await serve('api', { args: ['--bundle', 'bundles/basic', '--publish'] })
+    await serve('api', { args: ['--seed', '--publish'] })
     web = await serve('web')
   }, 300_000)
 

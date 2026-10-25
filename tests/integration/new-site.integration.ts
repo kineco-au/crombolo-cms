@@ -200,8 +200,8 @@ describe('creating a site, end to end through the CLI', () => {
     expect(postgresInit.code, postgresInit.out).toBe(0)
 
     bare = await serve('bare')
-    demo = await serve('demo', '--bundle', 'bundles/demo-harbourstone', '--publish')
-    product = await serve('product', '--bundle', 'bundles/demo-crombolo', '--publish')
+    demo = await serve('demo', '--seed', '--publish')
+    product = await serve('product', '--seed', '--publish')
   }, 240_000)
 
   afterAll(async () => {
@@ -281,7 +281,7 @@ describe('creating a site, end to end through the CLI', () => {
   test('the basic template boots and serves its page, and a second boot imports nothing', async () => {
     const manifest = json('basic', 'package.json')
     const start = (manifest.scripts as Record<string, string>).start as string
-    expect(start).toBe('crombolo start --bundle bundles/basic --publish')
+    expect(start).toBe('crombolo start --seed --publish')
 
     // Exactly what the scaffolded script would run.
     const first = await serve('basic', ...start.split(' ').slice(2))
@@ -378,10 +378,10 @@ describe('creating a site, end to end through the CLI', () => {
     const src = /<img[^>]*\ssrc="([^"]+)"/.exec(html)?.[1]?.replaceAll('&amp;', '&') as string
     expect(src).toStartWith('/media/')
 
-    // The bundle carried the bytes and the boot placed them in this site's
-    // store, so what it serves is the file the template shipped.
+    // The seed carried the bytes and the boot placed them in this site's
+    // store, so what it serves is the file the template shipped (story 164).
     const file = '180cc8ef/distillery-from-the-cliff-path.jpg'
-    const shipped = join(TEMPLATES, 'demo/harbourstone/bundle/content/blobs', file)
+    const shipped = join(siteDir('demo'), 'seed', 'media', 'distillery-from-the-cliff-path.jpg')
     const landed = join(siteDir('demo'), 'media', file)
     expect(readFileSync(landed)).toEqual(readFileSync(shipped))
 

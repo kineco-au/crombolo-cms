@@ -1,0 +1,8 @@
+type = "highlight"
+key = "62f479ff-0875-453e-99ae-3bf1bec5e3c8"
+name = "Water"
+order = 4
+
+[values]
+heading = "Water"
+detail = "Hill spring above the cove, soft and cold."

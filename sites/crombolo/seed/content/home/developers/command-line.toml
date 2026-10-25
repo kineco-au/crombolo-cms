@@ -1,0 +1,8 @@
+type = "developerPage"
+key = "3c1e9b52-7d40-4f18-9a6e-150c11ec0150"
+name = "Command line"
+order = 0
+
+[values]
+title = "The crombolo command line"
+umbracoRedirect = "/home/docs/reference/command-line"

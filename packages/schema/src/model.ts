@@ -93,7 +93,50 @@ export interface SchemaDataType {
   editorUi?: string
   folder?: string
   config: Record<string, unknown>
+  /** A block editor's blocks as `[[data-type.block]]` tables (story 161). */
+  blocks?: SchemaBlock[]
   since?: string
+}
+
+/** One block a block list, block grid or rich-text editor offers (story 161). */
+export interface SchemaBlock {
+  /** The element type's alias. */
+  element: string
+  /** The settings element type's alias. */
+  settings?: string
+  label?: string
+  size?: string
+  background?: string
+  iconColor?: string
+  thumbnail?: string
+  /** A group's name; blocks of one group sit together in the picker. */
+  group?: string
+  /** Grid only. */
+  allowAtRoot?: boolean
+  allowInAreas?: boolean
+  columnSpans?: number[]
+  rowSpan?: { min?: number; max?: number }
+  areaColumns?: number
+  areas?: SchemaBlockArea[]
+}
+
+/** An area inside a grid block, and what may be placed in it. */
+export interface SchemaBlockArea {
+  alias: string
+  columnSpan?: number
+  rowSpan?: number
+  createLabel?: string
+  min?: number
+  max?: number
+  allow?: SchemaBlockAllowance[]
+}
+
+/** An element, or a group of blocks, allowed in an area, with optional limits. */
+export interface SchemaBlockAllowance {
+  element?: string
+  group?: string
+  min?: number
+  max?: number
 }
 
 export interface SchemaLanguage {

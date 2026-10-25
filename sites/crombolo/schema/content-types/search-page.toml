@@ -1,5 +1,4 @@
 [content-type]
-key = "7ac5464d-4ce4-4d47-8b4c-6fc4faf29911"
 alias = "searchPage"
 name = "Search Page"
 description = "Lists the documentation pages matching what a visitor searched for"
@@ -13,7 +12,6 @@ site-search = false
 name = "Content"
 
 [[tab.property]]
-key = "6e4863c4-109c-4225-b137-d5bef652c46a"
 alias = "title"
 name = "Title"
 description = "Shown as the page heading"

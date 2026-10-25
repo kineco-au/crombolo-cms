@@ -1,0 +1,8 @@
+type = "feature"
+key = "704573e6-9386-4273-b6e8-04110bf6a9eb"
+name = "Reusable bundles"
+order = 18
+
+[values]
+heading = "Reusable bundles"
+detail = "Package schema, templates, content and media together, and install them into another site or publish them to npm."

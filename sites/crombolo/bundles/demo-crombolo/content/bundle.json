@@ -1,78 +1,55 @@
 {
   "formatVersion": 2,
-  "id": "ffc7145b-99fa-48da-9daf-12cd61454a22",
-  "createdAt": "2026-10-01T00:00:00.000Z",
-  "createdBy": "bun run build:template",
-  "integrity": "sha256-6cc65d844e9e1fe9837a85917f0e37f5021293e6d148fcb3073a2f9bde41ee17",
-  "snapshot": "published",
+  "id": "406523a2-00fd-5b2f-ae11-a748dd58d021",
+  "label": "Crombolo",
+  "createdAt": "1970-01-01T00:00:00.000Z",
+  "createdBy": "crombolo bundle build",
+  "integrity": "sha256-ca9b3cf3728450d862a127746f8760b7607c6d51051cfcf71711972bc1d2f125",
+  "snapshot": "drafts",
   "provenance": {
     "siteName": "Crombolo",
     "schemaVersion": "1.0.0",
     "schemaRevision": "0",
-    "schemaHash": "5360b9cb7c85fc7b83b79c9e0d822e308286bfdfc055eba1189cfef4f11ae8f3"
+    "schemaHash": "421734415428a18efb15bd0d9b168f4eaf88af1cd5bb7e8c90be897b90fc4a92",
+    "cmsVersion": "0.28.0"
   },
   "selector": {
     "roots": [
-      "b13339a3-69dd-43a2-a766-9ed92c8e7a28",
-      "7a0bca8c-36cf-4602-b204-1b6674d2e1ee",
-      "e41ed7cc-3023-43a1-93ad-83f1b2ea1559",
-      "1b966f5b-2fa6-4912-92aa-6390e00ac12e",
-      "5846d97d-b99b-4949-951d-43eda14b73ee",
+      "1f9d8eb5-4a8d-448d-bedc-a84f33ddab21",
       "4d577630-7c9f-46c0-a0d5-f887daef0aa0",
+      "276110ee-fb7c-4e1b-8648-89b8f828e161",
+      "eda4ab14-74bf-446d-bb3e-064be4e5913b",
+      "9fbf656c-7b94-4f38-9c45-b4a93dea980d",
+      "6fbd32fd-64ea-4cc1-867d-a453a3fc6d7a",
+      "5846d97d-b99b-4949-951d-43eda14b73ee",
+      "6a683488-cad5-4765-b253-044090a86505",
+      "e41ed7cc-3023-43a1-93ad-83f1b2ea1559",
       "9ccf8f41-fdb9-4a17-87d2-69835c42d5bd",
       "9249bc6e-4bb3-4161-a538-a7c8008f1c95",
-      "28e248bf-609b-4a0e-a2fa-1c2a8cc6846f",
-      "3b2ff4af-b93b-4c28-bf5c-f7ccdc434948",
-      "6a683488-cad5-4765-b253-044090a86505",
-      "f6c036de-300b-42d5-aa83-56f60fa26ef2",
-      "566477d3-97a4-446b-b9f1-d9b0f810caa8",
-      "6bd08968-76a1-4f96-a7bf-453bad090fdc",
-      "fe380729-34ae-48f6-848c-ab6e20d20b09",
-      "eda4ab14-74bf-446d-bb3e-064be4e5913b",
-      "ad985566-f642-413e-83e5-3e9bb4cdf283",
-      "9fbf656c-7b94-4f38-9c45-b4a93dea980d",
-      "704573e6-9386-4273-b6e8-04110bf6a9eb",
-      "03ef280b-511e-4778-859b-34e6a48be6f6",
-      "6fbd32fd-64ea-4cc1-867d-a453a3fc6d7a",
       "c7d11c0f-afa9-4269-9f26-c52e8cb09b0e",
+      "03ef280b-511e-4778-859b-34e6a48be6f6",
+      "7a0bca8c-36cf-4602-b204-1b6674d2e1ee",
       "05b6bdcb-2635-4a84-96e3-aa51980f368a",
+      "b13339a3-69dd-43a2-a766-9ed92c8e7a28",
+      "6bd08968-76a1-4f96-a7bf-453bad090fdc",
+      "28e248bf-609b-4a0e-a2fa-1c2a8cc6846f",
+      "704573e6-9386-4273-b6e8-04110bf6a9eb",
+      "3b2ff4af-b93b-4c28-bf5c-f7ccdc434948",
+      "fe380729-34ae-48f6-848c-ab6e20d20b09",
+      "f6c036de-300b-42d5-aa83-56f60fa26ef2",
+      "ad985566-f642-413e-83e5-3e9bb4cdf283",
       "a90cf801-2632-4000-85e6-14056ccacbb4",
-      "276110ee-fb7c-4e1b-8648-89b8f828e161",
-      "1f9d8eb5-4a8d-448d-bedc-a84f33ddab21",
-      "fa2dd680-27ba-4811-8dc2-101cb3813c6d",
-      "3ae2a2eb-66a7-40a2-bcbf-72d32bc0b5d6",
-      "a1a5f5a7-eb6f-4465-848a-1a86b595946e",
-      "bfbe288f-2c69-4228-872f-9977d0ba23ae",
-      "6e5fea07-0e58-4f64-8eef-c7ef533d7c98",
-      "2d05a8a7-9e6c-4e64-8fe7-b2af5f4952b3",
-      "f3965998-f9f2-4665-80fe-34e02ffd1ae3",
-      "d4292a2e-c06e-4099-8ddf-e47b593e79c4",
-      "56c7f79b-2233-46dd-8887-27992f20bc95",
-      "2e8dd4e8-d958-4646-83b9-44879bbcfcc2",
-      "dc12892a-7d67-40cf-8645-09a9387a069b",
-      "3d525785-ea12-44ab-890b-fdcb049d9d1b",
-      "d1ff5d1b-338a-4ed7-8b12-6bf9d4659da6",
-      "82fdcd06-8db5-48de-83ce-76c29947adfe",
-      "89ecdb25-4b22-4557-8494-e075e88ae0d3",
-      "8edc6093-5294-4e95-8d4b-13cda44da5f4",
-      "d701c25a-6cca-4875-880b-2d70c0227158",
-      "c4d3fed5-e5e4-4eaa-836a-60f841ad9d5a",
-      "a05f0143-68ce-4242-8266-7db386b6747b",
-      "2603f397-f28b-4a0e-8775-57ba021acc9b",
-      "cb496fd4-b965-43b8-8531-f83c08e8fc80",
-      "030e1fb7-4785-41ce-891b-fed3794e5280",
-      "43ff870b-8511-477f-8dd0-cc9d2edc5727",
-      "764372aa-43c9-4bb9-8587-fd5842381079",
-      "3c1e9b52-7d40-4f18-9a6e-150c11ec0150"
+      "566477d3-97a4-446b-b9f1-d9b0f810caa8",
+      "1b966f5b-2fa6-4912-92aa-6390e00ac12e"
     ],
     "descendants": true,
     "asGiven": [
-      "demo/crombolo"
+      "seed/"
     ]
   },
   "counts": {
-    "element": 25,
-    "document": 26
+    "document": 26,
+    "element": 25
   },
   "dependencies": {
     "carried": [
@@ -132,31 +109,31 @@
     "schema": {
       "contentTypes": [
         {
-          "key": "8c8d49a7-1575-4bc9-b7f1-717c045cce49",
+          "key": "ddf61c38-cc84-5991-9cfd-69ae00852d5f",
           "alias": "developerPage"
         },
         {
-          "key": "50f0950e-b374-438c-a8a1-540825534a75",
+          "key": "aa13972a-5fd6-56a9-842f-832abb4944b2",
           "alias": "docsPage"
         },
         {
-          "key": "bb2beab4-5b54-4b43-a471-adbd625968d5",
+          "key": "46b8697a-8376-5448-a737-7dda94cf69da",
           "alias": "docsSection"
         },
         {
-          "key": "06853f7a-4f55-4a20-b74d-5ba39ce6b9c4",
+          "key": "b82a8b2f-b7c9-55c4-8a9b-7b90b3ed4968",
           "alias": "feature"
         },
         {
-          "key": "75b32ec4-62f3-437a-a1a4-b89bb4081245",
+          "key": "576b32f0-b760-5b1d-acbb-52a88256d132",
           "alias": "homePage"
         },
         {
-          "key": "7ac5464d-4ce4-4d47-8b4c-6fc4faf29911",
+          "key": "9550cc32-ea8b-5268-a047-5a8b58590f8f",
           "alias": "searchPage"
         },
         {
-          "key": "bd46f89c-5685-4048-adb7-b4bd40b65c8a",
+          "key": "a3db818d-fa11-52a5-ab5b-22e8c42fc8e6",
           "alias": "step"
         }
       ],
@@ -182,6 +159,10 @@
       "schema/content-types/step.toml",
       "schema/data-types/feature-picker.toml",
       "schema/data-types/step-picker.toml",
+      "schema/media-types/umbraco-media-article.toml",
+      "schema/media-types/umbraco-media-audio.toml",
+      "schema/media-types/umbraco-media-vector-graphics.toml",
+      "schema/media-types/umbraco-media-video.toml",
       "schema/schema.toml"
     ],
     "components": [

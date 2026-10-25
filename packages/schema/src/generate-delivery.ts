@@ -8,7 +8,13 @@
  */
 import { BUILT_IN_MEDIA_TYPES } from '@crombolo/data'
 import { storageTypeFor } from './builtin.ts'
-import { blockElements, dataTypeOf, effectiveProperties, pascal } from './generate.ts'
+import {
+  blockElements,
+  contentTypeAliasOf,
+  dataTypeOf,
+  effectiveProperties,
+  pascal,
+} from './generate.ts'
 import type { SchemaContentType, SchemaSet } from './model.ts'
 
 export interface DeliveryTypesOptions {
@@ -24,12 +30,12 @@ const key = (alias: string) => (/^[A-Za-z_$][\w$]*$/.test(alias) ? alias : `'${a
 
 const byAlias = (a: { alias: string }, b: { alias: string }) => a.alias.localeCompare(b.alias)
 
-const keyAliases = (set: SchemaSet, keys: string): string[] =>
-  keys
-    .split(',')
-    .map((key) => key.trim().toLowerCase())
+/** Types a config names, by key or alias, as a list or a comma-separated string (story 161). */
+const keyAliases = (set: SchemaSet, keys: unknown): string[] =>
+  (Array.isArray(keys) ? keys.map(String) : typeof keys === 'string' ? keys.split(',') : [])
+    .map((key) => key.trim())
     .filter(Boolean)
-    .flatMap((key) => set.contentTypes.find((t) => t.key?.toLowerCase() === key)?.alias ?? [])
+    .flatMap((key) => contentTypeAliasOf(set, key) ?? [])
 
 export function generateDeliveryTypes(set: SchemaSet, options: DeliveryTypesOptions = {}): string {
   const serves = options.serves ?? (() => true)
@@ -56,7 +62,7 @@ export function generateDeliveryTypes(set: SchemaSet, options: DeliveryTypesOpti
 
   /** The JSON the Delivery API writes for a property of this data type; null when empty. */
   const typeFor = (dataTypeAlias: string): string => {
-    const { editor, config } = dataTypeOf(set, dataTypeAlias)
+    const { editor, config, blocks } = dataTypeOf(set, dataTypeAlias)
     switch (editor) {
       case undefined:
         return 'unknown'
@@ -85,17 +91,15 @@ export function generateDeliveryTypes(set: SchemaSet, options: DeliveryTypesOpti
       case 'Umbraco.MultiUrlPicker':
         return 'ApiLink[]'
       case 'Umbraco.BlockList': {
-        const { content, settings } = blockElements(set, config)
+        const { content, settings } = blockElements(set, config, blocks)
         return `ApiBlockList<${elementUnion(content)}, ${elementUnion(settings)}>`
       }
       case 'Umbraco.BlockGrid': {
-        const { content, settings } = blockElements(set, config)
+        const { content, settings } = blockElements(set, config, blocks)
         return `ApiBlockGrid<${elementUnion(content)}, ${elementUnion(settings)}>`
       }
       case 'Umbraco.ElementPicker': {
-        const allowed =
-          typeof config.allowedContentTypes === 'string' ? config.allowedContentTypes : ''
-        return `Array<${elementUnion([...new Set(keyAliases(set, allowed))])}>`
+        return `Array<${elementUnion([...new Set(keyAliases(set, config.allowedContentTypes))])}>`
       }
       case 'Umbraco.DropDown.Flexible':
         return config.multiple === true ? 'string[]' : 'string'

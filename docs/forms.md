@@ -41,12 +41,15 @@ rather than failing a save silently.
 `@crombolo/schema`. `parseForm(writeForm(x))` equals `x`, which is what lets the
 backoffice write a file somebody will read in a diff.
 
-Same vocabulary as the other schema files: kebab-case keys, a `key` UUID for
-identity so a rename is not a delete, and arrays of tables for the tree.
+Same vocabulary as the other schema files: kebab-case keys and arrays of tables
+for the tree. A form is found by its `key` where it has one, else by its alias
+(story 161). A form whose UUID is already stored in content (a form picker's
+value) keeps its `key` line, so renaming its alias is not a delete. A new form
+needs none: `crombolo forms new <alias>` writes one asking for a name and an
+email address.
 
 ```toml
 [form]
-key = "9c4a7d1e-0001-4b2a-9f31-6d8e2c5a7b40"
 alias = "contactUs"
 name = "Contact us"
 store-entries = true
@@ -62,7 +65,6 @@ caption = "Your details"
   columns = 2
 
     [[page.group.field]]
-    key = "9c4a7d1e-0002-4b2a-9f31-6d8e2c5a7b40"
     alias = "email"
     type = "shortAnswer"
     caption = "Email address"
@@ -72,14 +74,12 @@ caption = "Your details"
     pattern-message = "That does not look like an email address"
 
     [[page.group.field]]
-    key = "9c4a7d1e-0003-4b2a-9f31-6d8e2c5a7b40"
     alias = "enquiryType"
     type = "dropdown"
     caption = "What is this about?"
     values = ["Sales", "Support", "Something else"]
 
     [[page.group.field]]
-    key = "9c4a7d1e-0004-4b2a-9f31-6d8e2c5a7b40"
     alias = "orderNumber"
     type = "shortAnswer"
     caption = "Order number"
@@ -91,7 +91,6 @@ caption = "Your details"
       rule = [{ field = "enquiryType", operator = "is", value = "Support" }]
 
 [[workflow]]
-key = "9c4a7d1e-0010-4b2a-9f31-6d8e2c5a7b40"
 type = "sendEmail"
 name = "Tell the team"
 on = "submit"

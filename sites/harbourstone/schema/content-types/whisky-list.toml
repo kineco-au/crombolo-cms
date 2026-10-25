@@ -1,7 +1,6 @@
 # `collection` gives the backoffice a list view of the children instead of a
 # tree branch, which is what a range of bottlings wants.
 [content-type]
-key = "57a5b3bd-c465-4509-9833-e20a06f28717"
 alias = "whiskyList"
 name = "Whisky List"
 description = "The range: a parent for the bottlings"
@@ -15,14 +14,12 @@ default-component = "pages/whiskyList"
 name = "Content"
 
 [[tab.property]]
-key = "13785a42-6d0a-4152-89ec-c765db766547"
 alias = "eyebrow"
 name = "Eyebrow"
 type = "textstring"
 site-search = "low"
 
 [[tab.property]]
-key = "727804c0-7d4a-43d9-a473-71c9e27397c0"
 alias = "title"
 name = "Title"
 type = "textstring"
@@ -30,7 +27,6 @@ mandatory = true
 site-search = "high"
 
 [[tab.property]]
-key = "9c83bcea-a70e-4a3f-8185-ad04ddec55f1"
 alias = "standfirst"
 name = "Standfirst"
 description = "A paragraph under the title"

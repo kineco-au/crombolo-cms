@@ -32,12 +32,13 @@ import {
   type BundleNode,
   type BundleValue,
   type ContentSet,
+  referenceCandidates,
   writeBundle,
   writeBundlePackage,
 } from '@crombolo/transfer'
 import { createMediaPort } from '../adapters/media.ts'
 import { type CromboloConfig, VERSION } from '../config.ts'
-import { blockKey, seedKey, uuidV5 } from './keys.ts'
+import { blockKey, pickKey, SEED_NAMESPACE, seedKey, uuidV5 } from './keys.ts'
 import { lineOf } from './lines.ts'
 import { readSeed, type SeedFinding, type SeedItem } from './read.ts'
 
@@ -189,8 +190,10 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
   /** Rich text: Markdown by default, `{ html = … }` as written; links to content paths become local links. */
   const richText = async (raw: unknown, why: string): Promise<Converted> => {
     let html: string
+    // HTML is taken exactly as written; only Markdown's links are made local.
+    if (isRecord(raw) && typeof raw.html === 'string')
+      return { ok: true, value: { markup: raw.html, blocks: null } }
     if (typeof raw === 'string') html = Bun.markdown.html(raw)
-    else if (isRecord(raw) && typeof raw.html === 'string') html = raw.html
     else if (isRecord(raw) && typeof raw.markdown === 'string')
       html = Bun.markdown.html(raw.markdown)
     else if (isRecord(raw) && 'markup' in raw) return { ok: true, value: raw }
@@ -222,7 +225,10 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
       const element = await typeOf(documentTypes, entry.type)
       if (!element?.isElement)
         return fail(`block ${index + 1}: there is no element type "${entry.type}"`)
-      const contentKey = blockKey(owner, `${where}/${index}`)
+      const contentKey =
+        typeof entry.key === 'string' && looksLikeKey(entry.key)
+          ? normaliseUuid(entry.key)
+          : blockKey(owner, `${where}/${index}`)
       const values = await elementValues(element, entry.values, owner, `${where}/${index}`)
       if (!values.ok) return fail(`block ${index + 1}: ${values.message}`)
       contentData.push({ key: contentKey, contentTypeKey: element.key, values: values.value })
@@ -234,7 +240,10 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
             : undefined
         if (!settingsType?.isElement)
           return fail(`block ${index + 1}: settings need a type, an element type`)
-        const settingsKey = blockKey(owner, `${where}/${index}/settings`)
+        const settingsKey =
+          typeof entry.settings.key === 'string' && looksLikeKey(entry.settings.key)
+            ? normaliseUuid(entry.settings.key)
+            : blockKey(owner, `${where}/${index}/settings`)
         const settings = await elementValues(
           settingsType,
           entry.settings.values,
@@ -334,7 +343,7 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
           const media = await mediaRef(ref, why)
           if (!media) return fail(`"${ref}" is not media in the seed or on the site`)
           picks.push({
-            key: uuidV5(`pick:${media.key}`),
+            key: pickKey(media.key),
             mediaKey: media.key,
             mediaTypeAlias: media.typeAlias,
             crops: [],
@@ -388,7 +397,7 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
           links.push({
             unique: key,
             type: media ? 'media' : 'document',
-            name: typeof link.name === 'string' ? link.name : null,
+            name: typeof link.name === 'string' ? link.name : '',
             target,
           })
         }
@@ -553,12 +562,14 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
           find(item, [...path, alias], 'bad-value', `${alias}: ${converted.message}`)
           continue
         }
+        const references = referenceCandidates(converted.value)
         values.push({
           property: alias,
           culture,
           segment: null,
           editor: property.editor,
           value: converted.value,
+          ...(references.length > 0 ? { references } : {}),
         })
       }
     }
@@ -576,7 +587,8 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
       const media: Record<string, unknown> = {
         umbracoFile:
           fileEditor === IMAGE_CROPPER_EDITOR_ALIAS ? { src, crops: [], focalPoint } : src,
-        umbracoBytes: item.bytes.length,
+        // A label stores text, so the size is a string, as an upload stores it.
+        umbracoBytes: String(item.bytes.length),
         umbracoExtension: extname(file).slice(1).toLowerCase(),
       }
       if (fileEditor === IMAGE_CROPPER_EDITOR_ALIAS)
@@ -611,7 +623,8 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
             ? ((await components.byKey(type.defaultComponentKey))?.alias ?? null)
             : null
     if (template) usedComponents.add(template)
-    const published = item.data.published !== false
+    // Media has no published state: it is live as soon as it lands.
+    const published = item.kind !== 'media' && item.data.published !== false
     const parent =
       item.kind === 'library' || !item.parent
         ? null
@@ -680,7 +693,7 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
     identity.update(`${item.kind}\0${item.path}\0${item.text}\0`)
     if (item.bytes) identity.update(item.bytes)
   }
-  const id = uuidV5(`seed:${identity.digest('hex')}`)
+  const id = uuidV5(`seed:${identity.digest('hex')}`, SEED_NAMESPACE)
   const tally: Partial<Record<BundleKind, number>> = {}
   for (const node of bundleNodes) tally[node.kind] = (tally[node.kind] ?? 0) + 1
   const set: ContentSet = {

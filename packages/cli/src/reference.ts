@@ -44,8 +44,9 @@ export const CLI_PAGES: readonly CliPageSpec[] = [
   {
     slug: 'types',
     title: 'Content types',
-    summary: 'Check, apply and change the content model kept in schema/.',
-    topics: ['types'],
+    summary:
+      'Check, apply and change the content model kept in schema/: types, languages, forms, workflows and webhooks.',
+    topics: ['types', 'languages', 'forms', 'workflows', 'webhooks'],
   },
   {
     slug: 'components',

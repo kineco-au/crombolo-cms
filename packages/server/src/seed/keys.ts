@@ -4,24 +4,32 @@
  * sites built from the same seed share keys.
  */
 import { createHash } from 'node:crypto'
+import { SEED_NAMESPACE, uuidV5 } from '@crombolo/core'
 
-/** Crombolo's seed namespace. Fixed for ever: changing it re-keys every seeded node. */
-export const SEED_NAMESPACE = '6f1d3c0e-7a52-4b8e-9c41-2e5f8a1b7d63'
-
-const bytesOf = (uuid: string) => Buffer.from(uuid.replaceAll('-', ''), 'hex')
-
-/** A version 5 uuid for `name` in `namespace`. Pure. */
-export function uuidV5(name: string, namespace = SEED_NAMESPACE): string {
-  const hash = createHash('sha1').update(bytesOf(namespace)).update(name, 'utf8').digest()
-  const bytes = hash.subarray(0, 16)
-  bytes[6] = ((bytes[6] as number) & 0x0f) | 0x50
-  bytes[8] = ((bytes[8] as number) & 0x3f) | 0x80
-  const hex = bytes.toString('hex')
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
-}
+export { SEED_NAMESPACE, uuidV5 }
 
 /** The key a seed item has when its file gives none: `content/about/team`, `media/logos/mark.png`. */
-export const seedKey = (path: string) => uuidV5(path)
+export const seedKey = (path: string) => uuidV5(path, SEED_NAMESPACE)
 
 /** The key of a block inside an item's value: stable for the item, the property and the position. */
-export const blockKey = (owner: string, where: string) => uuidV5(`${owner}#${where}`)
+export const blockKey = (owner: string, where: string) =>
+  uuidV5(`${owner}#${where}`, SEED_NAMESPACE)
+
+/**
+ * A media picker item's own key: a uuid-shaped sha256 of the media key, the
+ * formula the demo sites' pickers have always used, so a seed reproduces them.
+ */
+export function pickKey(mediaKey: string): string {
+  const hex = createHash('sha256')
+    .update(`pick:${normaliseKey(mediaKey)}`)
+    .digest('hex')
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    `4${hex.slice(13, 16)}`,
+    `8${hex.slice(17, 20)}`,
+    hex.slice(20, 32),
+  ].join('-')
+}
+
+const normaliseKey = (key: string) => key.toLowerCase()

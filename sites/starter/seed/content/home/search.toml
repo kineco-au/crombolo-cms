@@ -1,0 +1,7 @@
+type = "searchPage"
+key = "c720ef2a-b5c8-48ec-a504-065e8188d4aa"
+name = "Search"
+order = 2
+
+[values]
+title = "Search"

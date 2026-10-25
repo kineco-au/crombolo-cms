@@ -1,0 +1,9 @@
+type = "contentPage"
+key = "d2997ebb-36ca-47cb-bbc8-31fefca787c0"
+name = "Contact"
+order = 1
+
+[values]
+title = "Get in touch"
+intro = "Tell visitors how to reach you."
+bodyText = { html = "<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p><p>Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>" }

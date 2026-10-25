@@ -1,0 +1,9 @@
+type = "searchPage"
+key = "9468d1b4-f521-48ef-b044-2ab07b461b96"
+name = "Search"
+order = 3
+
+[values]
+eyebrow = "Search"
+title = "Find it in the cove."
+standfirst = "Search the range, the tasting notes and the story of the distillery."

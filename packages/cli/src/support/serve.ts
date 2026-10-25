@@ -21,6 +21,7 @@ import {
   createServer,
   describeBootFailure,
   describeDatabase,
+  installBundleContent,
   listeningBodyLimit,
   mediaStoreFor,
   placeBlobs,
@@ -237,7 +238,15 @@ async function bootWithRetries(io: Io, config: CromboloConfig, options: StartOpt
       current = server
       // After the schema sync inside `createServer`, which is what gives the
       // bundle content types to land on, and before anything is served.
-      const bundles = await importStartupBundles(io, server, config, options)
+      const imported = await importStartupBundles(io, server, config, options)
+      // A bundle that brought schema and views changed what this server booted
+      // from, so it boots again to load them; the content is already in.
+      if (imported.reboot) {
+        await server.close()
+        server = await createServer(config)
+        current = server
+      }
+      const bundles = imported.lines
       listening.reload(server.serveOptions as never)
       return { listening, server, bundles }
     } catch (error) {
@@ -279,8 +288,9 @@ async function importStartupBundles(
   server: ServerHandle,
   config: CromboloConfig,
   options: StartOptions,
-): Promise<string[]> {
-  if (options.bundles.length === 0 && !options.seed) return []
+): Promise<{ lines: string[]; reboot: boolean }> {
+  if (options.bundles.length === 0 && !options.seed) return { lines: [], reboot: false }
+  let reboot = false
 
   const lines: string[] = []
   const db = server.db
@@ -302,8 +312,9 @@ async function importStartupBundles(
   try {
     for (const target of targets) {
       let resolved: ops.ResolvedBundle
+      const passphrase = await passphraseToOpen(target, config)
       try {
-        resolved = ops.readBundle(target, config.siteDir, await passphraseToOpen(target, config))
+        resolved = ops.readBundle(target, config.siteDir, passphrase)
       } catch (error) {
         if (!(error instanceof ops.CommandError)) throw error
         throw new CliError('refused', `${target} cannot be read. The site has not started.`, {
@@ -314,6 +325,36 @@ async function importStartupBundles(
       const standing = await new TransferRunRepository(db).appliedFor(set.manifest.id)
       if (standing) {
         lines.push(`  bundle      ${set.manifest.id} already imported (run ${standing.id})`)
+        continue
+      }
+
+      // A bundle that carries the site's schema and views (`crombolo bundle
+      // build`, story 164) installs as `content import` installs it: files
+      // staged, schema synced and content imported in one transaction. The
+      // server then boots again to load what it brought.
+      if (Object.keys(resolved.carried.carries).length > 0) {
+        const result = await installBundleContent(db, config, {
+          ...transferInput(target, options),
+          passphrase,
+          publish: options.publish,
+          label: options.label,
+          backupTaken: options.backupTaken || Boolean(server.seededAdminPassword),
+        })
+        if (!result.runId) {
+          printTransferFindings(io, result.check)
+          throw new CliError(
+            'refused',
+            `${target} was refused. Nothing was written, and the site has not started.`,
+            { details: [...result.problems, ...result.check.outstanding.map((f) => f.message)] },
+          )
+        }
+        const c = result.check.counts
+        lines.push(
+          `  bundle      ${set.manifest.id}: ${c.create} created, ${c.update} updated, with its schema and views` +
+            `${result.published > 0 ? `, ${result.published} published` : ''} (run ${result.runId})`,
+        )
+        reboot = true
+        imported = true
         continue
       }
 
@@ -387,7 +428,7 @@ async function importStartupBundles(
   }
   // The content landed under a cache this process had already constructed.
   if (imported) server.cache.invalidate()
-  return lines
+  return { lines, reboot }
 }
 
 export interface FromFileOptions {

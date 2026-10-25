@@ -238,7 +238,8 @@ describe('a node backed by a store', () => {
     })
     expect(created.status).toBe(201)
     const key = created.headers.get('umb-generated-resource') as string
-    expect(await storeIn(remote).list()).toContain(`webhooks/${key}.toml`)
+    // Named for the alias its name gives it (story 161).
+    expect(await storeIn(remote).list()).toContain('webhooks/search.toml')
 
     // A new node, with a cache of its own, finds it.
     const next = await signedInServer({ config: { ...config, schemaCacheDir: temp('cache') } })

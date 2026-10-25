@@ -156,19 +156,60 @@ comes from a separate **revision** supplied at deploy time and never committed
 
 ## Writing one
 
-The files are the source, so somebody has to write the first one. Two commands
-do it rather than leaving a new site to copy a type out of the documentation:
+The files are the source, so somebody has to write the first one. Commands
+write each kind of file, rather than leaving a new site to copy one out of the
+documentation (story 161):
 
 ```bash
-crombolo types new content-type article --at-root
-crombolo types add-property article summary --type textarea --mandatory
+crombolo types new content-type feature --element
+crombolo types new data-type pageBlocks --editor block-list --block feature
+crombolo types new content-type blog --at-root --allow-child article --list-view --vary-by-culture
+crombolo types add-property blog blocks --type pageBlocks
+crombolo languages add fr-FR --fallback en-US
+crombolo forms new contact
+crombolo workflows new article-sign-off --content-type article --approver editor
+crombolo webhooks new searchIndex --url https://search.example/hook --event Umbraco.ContentPublish --content-type article
 ```
 
-`types new` writes the type with its keys already in it — so the file passes
-the production rules on the first deploy rather than needing a development sync
-to fill them in — and the `components/<alias>.tsx` it declares. `--element` writes a
+`types new` writes the type and the `components/<alias>.tsx` it declares, with
+no keys: sync derives them (see "Four rules", below). `--element` writes a
 Library element type, which has no URL and so no template. Media and member
-types are written with nothing assumed about what belongs on one.
+types are written with nothing assumed about what belongs on one. A content
+type also takes `--compose <alias>…`, `--allow-child <alias>…`,
+`--vary-by-culture`, `--vary-by-segment`, `--library`, and `--list-view` (the
+built-in list view) or `--list-view-type <data type alias>`.
+
+`types new data-type <alias> --editor <preset>` writes a data type for a
+common editor (`packages/schema/src/presets.ts`):
+
+| Preset | Flags |
+| --- | --- |
+| `textstring` | `--max-chars` |
+| `textarea` | `--rows`, `--max-chars` |
+| `rich-text` | `--block <alias>…` |
+| `number` | `--min`, `--max`, `--step` |
+| `toggle` | `--default-on`, `--label` |
+| `date` | `--with-time` |
+| `dropdown` | `--option <value>…`, `--multiple` |
+| `content-picker` | `--allow <alias>…` |
+| `media-picker` | `--allow <media type alias>…`, `--multiple`, `--min`, `--max` |
+| `element-picker` | `--allow <element alias>…` |
+| `block-list` | `--block <alias>…`, `--min`, `--max` |
+| `block-grid` | `--block <alias>…`, `--columns` |
+
+A flag the preset does not take is refused. `languages add` writes
+`languages.toml`; the first language added to a site without one keeps English
+(`en-US`) as the default beside it, unless it says `--default`. `languages list`
+reads it back. `forms new` writes a one-page form asking for a name and an
+email address, kept as entries. `workflows new` writes one approval stage,
+approved by editors unless `--approver` says otherwise.
+
+**Each command refuses before writing.** An alias already taken is a
+`conflict`, and anything the new file names that is not there (a composition,
+an allowed child, a block's element type, a fallback language) is `refused`
+with the file and the alias. Then the command applies the files. A webhook is
+not part of the schema sync: `webhooks new` checks the file as the server will
+read it, and the running server reads `schema/webhooks/` as it is.
 
 `add-property` appends a property to a tab, because order in the file is order
 in the editor, and refuses an alias the type already has. Both then apply the
@@ -184,7 +225,6 @@ comment in it is not kept. The command says so when it has removed any, and
 
 ```toml
 [content-type]
-key = "8c3a6c2e-5d4f-4d3e-9d6d-2b7f8a1c9e10"
 alias = "homePage"
 name = "Home Page"
 description = "The site landing page"
@@ -228,7 +268,7 @@ Reference:
 
 | Key | Meaning | Default |
 | --- | --- | --- |
-| `key` | Stable identity, a uuid. **Written by tooling on first sync** — leave it out when creating a file by hand | generated |
+| `key` | Stable identity, a uuid. Leave it out: sync derives it from the alias. A file keeps one only where it differs from the derived key: a type from before story 161, one made in the back office, or a built-in's shipped key | derived |
 | `alias` | Machine name; must be unique across all types | required |
 | `name`, `description`, `notes`, `icon` | As shown in the backoffice; `notes` is for file maintainers | `icon-document` |
 | `allow-at-root`, `is-element`, `allow-in-library` | Flags, as Umbraco | `false` |
@@ -374,7 +414,6 @@ so the file the backoffice writes cannot be one the next boot refuses. Pinned by
 
 ```toml
 [data-type]
-key = "…"
 alias = "shortText"
 name = "Short text"
 notes = "Use for headings and labels"
@@ -386,6 +425,70 @@ maxChars = 80
 ```
 
 `config` is the editor's configuration, keys as the property editor defines them.
+Nested values are TOML tables (`validationLimit = { min = 1 }`), never JSON
+strings.
+
+**Types are named by alias** wherever an editor's config takes a type's key
+(story 161, `packages/schema/src/config-references.ts`):
+
+| Editor | Field | Names |
+| --- | --- | --- |
+| `Umbraco.ElementPicker` | `allowedContentTypes` | element types |
+| `Umbraco.MediaPicker3` | `filter` | media types |
+| `Umbraco.MultiNodeTreePicker` | `filter` | content, media or member types, by `startNode.type` |
+| `Umbraco.BlockList`, `Umbraco.BlockGrid`, `Umbraco.RichText` | the blocks' element and settings types | element types |
+| `Umbraco.BlockGrid` | an area's allowed element types | element types |
+
+```toml
+[data-type.config]
+allowedContentTypes = ["tastingNote", "highlight"]
+```
+
+Sync resolves each alias to its key, in the shape the editor reads (a
+comma-separated string where it expects one). It can name a type the same
+change adds, because every type's key is settled before data types sync. A
+value shaped like a uuid is taken as a key, so older files still read. `types
+check` names an alias that is not a type, a type that is not an element where
+one is needed, and a type of the wrong kind. Export and the back office write
+aliases back, as a list.
+
+**Blocks are tables.** A block list, block grid or rich-text editor's blocks
+are `[[data-type.block]]` tables rather than raw `config.blocks`:
+
+```toml
+[data-type]
+alias = "pageBlocks"
+name = "Page blocks"
+editor = "Umbraco.BlockGrid"
+
+[data-type.config]
+gridColumns = 12
+
+[[data-type.block]]
+element = "feature"         # the element type, by alias
+settings = "featureSettings"
+label = "{{heading}}"
+size = "medium"             # the editor's overlay size
+group = "Layout"            # groups are named; their keys are derived
+column-spans = [6, 12]
+
+[[data-type.block.area]]    # grid only
+alias = "main"
+column-span = 12
+allow = ["quote", { group = "Layout", max = 2 }]
+
+[[data-type.block]]
+element = "quote"
+group = "Layout"
+```
+
+A block also takes `background`, `icon-color`, `thumbnail`, `allow-at-root`,
+`allow-in-areas`, `row-span = { min, max }` and `area-columns`. An area takes
+`row-span`, `create-label`, `min` and `max`. Sync compiles the tables into
+`blocks` and `blockGroups` (`packages/schema/src/blocks.ts`). Group and area
+keys are derived from the data type, so every node computes the same ones.
+Export writes tables back when every block can be said as one, and otherwise
+keeps the raw config. Giving both tables and `config.blocks` is refused.
 Built-in data types (`textstring`, `textarea`, `richtext`, `numeric`, `trueFalse`,
 `datePicker`, `dropdown`, `contentPicker`, `tags`, `imageCropper`, `upload`,
 `label`) need no file; a file with the same alias overrides the built-in.
@@ -471,19 +574,40 @@ node allowed to write is one whose files are at least as new as the database.
 **Production requires a version bump for any schema change.** Same version,
 different hash, in production: refuse to boot, naming the files that differ.
 In development it simply applies. This makes the first rule airtight and gives
-`crombolo types check` something concrete to enforce in CI — files parse, keys
-present, version bumped when content changed.
+`crombolo types check` something concrete to enforce in CI — files parse,
+references resolve, version bumped when content changed.
 
-**Keys are written in development and required in production.** Writing a
-generated `key` back into a file is a development convenience; a production
-node cannot write files. So `types check` fails any file without a key, and a
-key is never minted on a production node — which is what stops two nodes from
-minting different keys for one alias.
+**Keys are derived, so every node computes the same ones** (story 161). A key
+nobody wrote is a version 5 uuid of fixed parts under one namespace
+(`derivedKey`, `packages/core/src/keys.ts`):
 
-Write-back changes the files after the sync hashed them, so the sync re-hashes
-the in-memory set once the keys are in and updates the `schema_state` row; a
-backoffice save does the same after writing its file. Either way the next node
-to compare sees the files as already applied rather than as an unversioned change.
+| What | Parts |
+| --- | --- |
+| content, media, member type | `type`, kind, alias |
+| property | its type's key, alias |
+| data type | `data-type`, alias |
+| webhook | `webhook`, alias |
+| block group | the data type's key, `group`, name |
+| grid area | the data type's key, element alias, area alias |
+
+A key is chosen in this order: a `key` in the file; the existing row of that
+alias; a built-in's shipped key; the derived key. Two production nodes syncing
+the same new files therefore assign the same keys, with nothing written back,
+and a file carries a `key` line only where it differs from the derived one.
+Forms and approval workflows are found by `key`, else by alias, so they need no
+derived key.
+
+A database from before story 161 keeps its random keys, found by alias. A
+development sync writes those back into the files (they differ from the derived
+ones). Write-back changes the files after the sync hashed them, so the sync
+re-hashes the in-memory set and updates the `schema_state` row; a backoffice
+save does the same after writing its file. Either way the next node to compare
+sees the files as already applied rather than as an unversioned change.
+
+**An alias is the identity a file can see.** Renaming an alias by hand is a new
+type, and the old one is retired (below), as before. Content's block values
+store element type keys, so content moved between two environments whose keys
+differ (legacy random keys on one side) still needs them to match.
 
 **Expand and convert roll; only contract waits.** `since` gates *new* elements,
 removal is retirement (below), and a value migration appends versions an old
@@ -504,8 +628,8 @@ Removing a property from a file does **not** delete anything:
   rendered, not in the Delivery API — the pending treatment, plus not editable.
 - **Reintroducing the property revives it.** By `key` when the file still has
   one. When a hand-edited file re-adds the alias *without* a key, the sync
-  matches a retired property of that alias on the same type, revives it, and
-  writes its key back — so "I deleted it; put it back" simply works. If it
+  matches a retired property of that alias on the same type and revives it,
+  writing its key back where it is not the derived one — so "I deleted it; put it back" simply works. If it
   returns with a different data type, `check` flags a data-requiring change,
   and the old values are still there, in the old storage column, to migrate.
 - **Purge is separate, explicit and rare**: `crombolo types purge
@@ -627,17 +751,17 @@ Document, media and member types, data types and languages are files:
 `schema/languages.toml` the cultures. Boot syncs them into the
 database under a distributed lock, version-gated (`docs/schema-as-code.md`):
 
-- **development** — files without keys get them written back on first sync; the
-  directory is watched and re-synced on change; saving a content type in the
+- **development** — the directory is watched and re-synced on change; saving a content type in the
   backoffice writes its file; removing a property retires it and its values
   survive; removing a type with content refuses to boot.
-- **production** — every element must carry a key, a change needs a version
+- **production** — keys are derived from aliases, so no file needs one; a change needs a version
   bump (or a newer `CROMBOLO_SCHEMA_REVISION`), and the backoffice editor
   answers 409 pointing at the file. A node whose files are older than the
   database runs in compatibility mode: reads only, writes refused with 409.
 
 ```bash
-bunx crombolo types new content-type article --at-root   # the file, with keys, and its view
+bunx crombolo types new content-type article --at-root   # the file and its view
+bunx crombolo types new data-type pageBlocks --editor block-list --block feature
 bunx crombolo types add-property article summary --type textarea --mandatory
 bunx crombolo types check --static   # parse and validate, no database
 bunx crombolo types check            # …and report what a sync would do
@@ -647,8 +771,7 @@ bunx crombolo generate                # schema/content-types.d.ts for typed view
 bunx crombolo generate --delivery --out ../app/src/cms-types.ts   # the Delivery API's JSON, for an app
 ```
 
-`types new` writes the type file — keys filled in, so it passes the production
-rules — and the `components/<alias>.tsx` it points at, then applies it. `--element`
+`types new` writes the type file, with no keys, and the `components/<alias>.tsx` it points at, then applies it. `--element`
 writes a Library element type instead, which has no URL and so no view.
 `add-property` appends one property and applies that; it re-emits the file
 canonically, as `types rewrite` does, so a comment in it is not kept and the

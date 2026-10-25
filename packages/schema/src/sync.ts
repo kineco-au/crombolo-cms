@@ -4,7 +4,12 @@
  * the multi-node rules are in docs/schema-as-code.md, "Synchronisation".
  */
 import type { FormTypes } from '@crombolo/core'
-import { type ContentTypeAggregate, ObjectTypes, type PropertyTypeModel } from '@crombolo/core'
+import {
+  type ContentTypeAggregate,
+  derivedKey,
+  ObjectTypes,
+  type PropertyTypeModel,
+} from '@crombolo/core'
 import {
   appendCacheInstruction,
   appendSchemaState,
@@ -17,6 +22,7 @@ import {
   type Db,
   DbDate,
   DEFAULT_URL_OPTIONS,
+  ensureSystemMediaTypes,
   FolderRepository,
   LanguageRepository,
   Locks,
@@ -34,14 +40,16 @@ import {
   type WorkflowSyncReport,
   writeUrlOptions,
 } from '@crombolo/data'
-import { BUILTIN_DATA_TYPES, storageTypeFor, systemPropertyKeys } from './builtin.ts'
+import { compileBlocks } from './blocks.ts'
+import { BUILTIN_DATA_TYPES, storageTypeFor } from './builtin.ts'
+import { type ReferenceKind, resolveConfig } from './config-references.ts'
+import { dataTypeKeyFor, propertyKeyFor, shippedPropertyKeys, typeKeyFor } from './keys.ts'
 import { hashSchemaSet, type LoadedSchema } from './load.ts'
 import {
   allProperties,
   type SchemaContentType,
   type SchemaProblem,
   type SchemaProperty,
-  type SchemaSet,
   typeFileKey,
 } from './model.ts'
 import { validateSchemaSet } from './validate.ts'
@@ -155,13 +163,6 @@ export async function syncSchema(
     return emptySyncReport('refused', { reason: 'the schema has problems', problems })
 
   const set = loaded.set
-  if (options.mode === 'production') {
-    const missing = elementsWithoutKeys(set)
-    if (missing.length > 0)
-      return emptySyncReport('refused', {
-        reason: `production requires every element to carry a key; run \`crombolo types sync\` in development to assign them: ${missing.join(', ')}`,
-      })
-  }
   const hash = hashSchemaSet(set)
   const fileState: NodeSchemaState = { version: set.version, revision: node.revision }
 
@@ -236,6 +237,72 @@ export async function syncSchema(
         const templates = new ComponentRepository(tx)
         const languages = new LanguageRepository(tx)
 
+        // Content types, then media types: one table, two kinds, the same rules.
+        const kinds = [
+          {
+            name: 'document' as const,
+            types: set.contentTypes,
+            repo: types,
+            folders: typeFolders,
+            noun: 'content type',
+            items: 'document(s)',
+          },
+          {
+            name: 'media' as const,
+            types: set.mediaTypes ?? [],
+            repo: new ContentTypeRepository(tx, { kind: 'media' }),
+            folders: new FolderRepository(
+              tx,
+              ObjectTypes.MediaTypeContainer,
+              ObjectTypes.MediaType,
+            ),
+            noun: 'media type',
+            items: 'media item(s)',
+          },
+          {
+            name: 'member' as const,
+            types: set.memberTypes ?? [],
+            repo: new ContentTypeRepository(tx, { kind: 'member' }),
+            folders: new FolderRepository(
+              tx,
+              ObjectTypes.MemberTypeContainer,
+              ObjectTypes.MemberType,
+            ),
+            noun: 'member type',
+            items: 'member(s)',
+          },
+        ]
+        // ---- type keys, settled before anything is saved (story 161): a data
+        // type's config may name a type this same change adds.
+        const settledTypeKeys = new Map<string, Map<string, string>>()
+        for (const kind of kinds) {
+          const fileTypeKeys = new Set(
+            kind.types.flatMap((t) => (t.key ? [t.key.toLowerCase()] : [])),
+          )
+          const byAlias = new Map<string, string>()
+          for (const t of kind.types)
+            byAlias.set(t.alias, (await resolveTypeKey(kind.repo, kind.name, t, fileTypeKeys)).key)
+          settledTypeKeys.set(kind.name, byAlias)
+        }
+
+        // A type named in a data type's config, by alias: one this change
+        // settles, or one Crombolo ships.
+        const typeByAlias = (alias: string, kind: ReferenceKind): string | undefined => {
+          const k = kind === 'element' ? 'document' : kind
+          const settled = settledTypeKeys.get(k)?.get(alias)
+          if (settled) return settled
+          const shipped =
+            k === 'document'
+              ? SYSTEM_CONTENT_TYPES.find((t) => t.alias === alias)
+              : k === 'media'
+                ? (SYSTEM_MEDIA_TYPES.find((t) => t.alias === alias) ??
+                  BUILT_IN_MEDIA_TYPES.find((t) => t.alias === alias))
+                : SYSTEM_MEMBER_TYPE.alias === alias
+                  ? SYSTEM_MEMBER_TYPE
+                  : undefined
+          return shipped?.key
+        }
+
         // ---- data types: built-ins are seeded; files add or override by alias
         for (const d of set.dataTypes) {
           const existing = await dataTypes.byAlias(d.alias)
@@ -247,14 +314,24 @@ export async function syncSchema(
             existing !== undefined &&
             existing.key.toLowerCase() !== d.key.toLowerCase() &&
             !(await dataTypes.byKey(d.key))
-          const key = (rekeyed ? existing?.key : d.key) ?? existing?.key ?? crypto.randomUUID()
-          if ((!d.key && !existing) || rekeyed)
+          const expected = dataTypeKeyFor(d.alias)
+          const key = (rekeyed ? existing?.key : d.key) ?? existing?.key ?? expected
+          // Written back only when the file needs it: a key no file without one would get.
+          if ((!d.key && key.toLowerCase() !== expected.toLowerCase()) || rekeyed)
             report.assignedKeys.push({
               file: loaded.files.get(`data-type:${d.alias}`) ?? '',
               typeAlias: d.alias,
               key,
               revived: false,
             })
+          // Blocks as tables and types by alias, compiled to the keys the editor reads.
+          let config = d.config
+          if (d.blocks)
+            config = {
+              ...config,
+              ...compileBlocks(key, d.blocks, (alias) => typeByAlias(alias, 'element')).config,
+            }
+          config = resolveConfig(d.editor, config, typeByAlias).config
           await dataTypes.save({
             key,
             alias: d.alias,
@@ -262,7 +339,7 @@ export async function syncSchema(
             editorAlias: d.editor,
             editorUiAlias: d.editorUi ?? builtin?.editorUi ?? null,
             dbType: existing?.dbType ?? storageTypeFor(d.editor),
-            values: Object.entries(d.config).map(([alias, value]) => ({ alias, value })),
+            values: Object.entries(config).map(([alias, value]) => ({ alias, value })),
             parentKey: existing?.parentKey ?? (await folderKey(dataTypeFolders, d.folder)),
           })
           if (existing) report.updated.dataTypes += 1
@@ -319,41 +396,6 @@ export async function syncSchema(
           componentKeyByAlias.set(alias, key)
         }
 
-        // Content types, then media types: one table, two kinds, the same rules.
-        const kinds = [
-          {
-            name: 'document' as const,
-            types: set.contentTypes,
-            repo: types,
-            folders: typeFolders,
-            noun: 'content type',
-            items: 'document(s)',
-          },
-          {
-            name: 'media' as const,
-            types: set.mediaTypes ?? [],
-            repo: new ContentTypeRepository(tx, { kind: 'media' }),
-            folders: new FolderRepository(
-              tx,
-              ObjectTypes.MediaTypeContainer,
-              ObjectTypes.MediaType,
-            ),
-            noun: 'media type',
-            items: 'media item(s)',
-          },
-          {
-            name: 'member' as const,
-            types: set.memberTypes ?? [],
-            repo: new ContentTypeRepository(tx, { kind: 'member' }),
-            folders: new FolderRepository(
-              tx,
-              ObjectTypes.MemberTypeContainer,
-              ObjectTypes.MemberType,
-            ),
-            noun: 'member type',
-            items: 'member(s)',
-          },
-        ]
         // Umbraco's fixed keys for the built-in media types' groups, so a site's
         // video.toml keeps the key Umbraco gave its "Video" group.
         const fixedGroupKeys = new Map([
@@ -382,37 +424,18 @@ export async function syncSchema(
           )
           for (const t of inCompositionOrder(kind.types)) {
             const file = loaded.files.get(typeFileKey(kind.name, t.alias)) ?? ''
-            let existing = t.key
-              ? await kind.repo.byKey(t.key)
-              : await kind.repo.byAlias(t.alias, { includeRetired: true })
-            // A key this site has never had, for an alias it has and no other
-            // file claims, is that type — as a property's is: the row keeps its
-            // key, and the file is given it (story 105).
-            let rekeyed = false
-            if (!existing && t.key) {
-              const sameAlias = await kind.repo.byAlias(t.alias, { includeRetired: true })
-              if (sameAlias && !fileTypeKeys.has(sameAlias.key.toLowerCase())) {
-                existing = sameAlias
-                rekeyed = true
-              }
-            }
-            const shippedKey =
-              kind.name === 'document'
-                ? SYSTEM_CONTENT_TYPES.find((d) => d.alias === t.alias)?.key
-                : undefined
-            const key =
-              (rekeyed ? existing?.key : t.key) ??
-              existing?.key ??
-              shippedKey ??
-              crypto.randomUUID()
-            if ((!t.key && !existing) || rekeyed)
+            const resolved = await resolveTypeKey(kind.repo, kind.name, t, fileTypeKeys)
+            const existing = resolved.existing
+            const rekeyed = resolved.rekeyed
+            const expected = typeKeyFor(kind.name, t.alias)
+            const key = resolved.key
+            if ((!t.key && key.toLowerCase() !== expected.toLowerCase()) || rekeyed)
               report.assignedKeys.push({ file, typeAlias: t.alias, key, revived: false })
             typeKeyByAlias.set(t.alias, key)
+            const typeKey = key
             const retired = existing ? await kind.repo.retiredProperties(existing.key) : []
             const liveByAlias = new Map((existing?.properties ?? []).map((p) => [p.alias, p]))
-            const shippedPropertyKeys: ReadonlyMap<string, string> = shippedKey
-              ? systemPropertyKeys(t.alias)
-              : new Map()
+            const shippedProperties = shippedPropertyKeys(kind.name, t.alias)
 
             const containers: ContentTypeAggregate['containers'] = []
             const properties: PropertyTypeModel[] = []
@@ -426,10 +449,10 @@ export async function syncSchema(
               if (!key) {
                 const live = liveByAlias.get(p.alias)
                 const back = retired.find((r) => r.alias === p.alias)
-                key =
-                  live?.key ?? back?.key ?? shippedPropertyKeys.get(p.alias) ?? crypto.randomUUID()
+                const expectedKey = propertyKeyFor(typeKey, p.alias, shippedProperties)
+                key = live?.key ?? back?.key ?? expectedKey
                 revived = !live && back !== undefined
-                if (!live)
+                if (key.toLowerCase() !== expectedKey.toLowerCase())
                   report.assignedKeys.push({
                     file,
                     typeAlias: t.alias,
@@ -493,7 +516,7 @@ export async function syncSchema(
                 (c) => c.name === name && (c.parentKey ?? null) === parentKey && c.type === type,
               )?.key ??
               fixedGroupKeys.get(`${t.alias}|${name}`) ??
-              crypto.randomUUID()
+              derivedKey(typeKey, type, parentKey ?? '', name)
             for (const p of t.properties) properties.push(resolveProperty(p, null))
             let rootGroupOrder = 0
             for (const g of t.groups ?? []) {
@@ -638,6 +661,11 @@ export async function syncSchema(
           }
         }
 
+        // Folder holds whichever built-in media types the site now has (story 180),
+        // in this transaction so no node sees the new state before Folder does.
+        // A file that defines Folder says itself what it allows.
+        if (!(set.mediaTypes ?? []).some((t) => t.alias.toLowerCase() === 'folder'))
+          await ensureSystemMediaTypes(tx, { linkFolderChildren: true })
         if (cutOver) {
           await makeStateCurrent(tx, state.id)
           await updateSchemaStateHash(tx, state.id, hash)
@@ -661,18 +689,35 @@ export async function syncSchema(
 
 export class SchemaSyncRefused extends Error {}
 
+/**
+ * A type's key (story 161): the file's, else the row that has its alias, else
+ * the shipped or derived one. A key this site has never had, for an alias it
+ * has and no other file claims, is that type: the row keeps its key, and the
+ * file is given it (story 105).
+ */
+async function resolveTypeKey(
+  repo: ContentTypeRepository,
+  kind: 'document' | 'media' | 'member',
+  t: SchemaContentType,
+  fileTypeKeys: ReadonlySet<string>,
+): Promise<{ existing: ContentTypeAggregate | undefined; key: string; rekeyed: boolean }> {
+  let existing = t.key
+    ? await repo.byKey(t.key)
+    : await repo.byAlias(t.alias, { includeRetired: true })
+  let rekeyed = false
+  if (!existing && t.key) {
+    const sameAlias = await repo.byAlias(t.alias, { includeRetired: true })
+    if (sameAlias && !fileTypeKeys.has(sameAlias.key.toLowerCase())) {
+      existing = sameAlias
+      rekeyed = true
+    }
+  }
+  const key = (rekeyed ? existing?.key : t.key) ?? existing?.key ?? typeKeyFor(kind, t.alias)
+  return { existing, key, rekeyed }
+}
+
 class DryRun extends Error {
   constructor(readonly report: SyncReport) {
     super('dry run')
   }
-}
-
-function elementsWithoutKeys(set: SchemaSet): string[] {
-  const missing: string[] = []
-  for (const t of [...set.contentTypes, ...(set.mediaTypes ?? []), ...(set.memberTypes ?? [])]) {
-    if (!t.key) missing.push(t.alias)
-    for (const p of allProperties(t)) if (!p.key) missing.push(`${t.alias}.${p.alias}`)
-  }
-  for (const d of set.dataTypes) if (!d.key) missing.push(`data-type ${d.alias}`)
-  return missing
 }

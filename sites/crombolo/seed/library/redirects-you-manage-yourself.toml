@@ -1,0 +1,8 @@
+type = "feature"
+key = "28e248bf-609b-4a0e-a2fa-1c2a8cc6846f"
+name = "Redirects you manage yourself"
+order = 8
+
+[values]
+heading = "Redirects you manage yourself"
+detail = "When a page moves, its old address follows it. Add your own redirects without raising a ticket."

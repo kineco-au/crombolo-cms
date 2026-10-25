@@ -307,6 +307,19 @@ const DECLARED = [
       'The Packages section installs and removes packages on the running site. Off, they are added to `package.json` and deployed.',
   },
   {
+    env: 'CROMBOLO_INSTALLS_ELSEWHERE_MESSAGE',
+    kind: 'string',
+    section: 'Back office and bundles',
+    description:
+      'With runtime installs off, what the Marketplace says about where bundles are added, in place of "add it to package.json and deploy". For a host that installs them itself.',
+  },
+  {
+    env: 'CROMBOLO_INSTALLS_ELSEWHERE_URL',
+    kind: 'string',
+    section: 'Back office and bundles',
+    description: 'A link shown with that message: the host’s own place for installing bundles.',
+  },
+  {
     env: 'CROMBOLO_MARKETPLACE_URL',
     kind: 'string',
     default: 'https://www.npmjs.com/search?q=keywords%3Acrombolo-bundle',

@@ -60,15 +60,24 @@ not a secret, so it is shown as written.
 
 ```toml
 [webhook]
-key = "5d3c1a2b-0044-4c1a-9e7d-3a5b8c2d4e44"
+alias = "searchIndex"
 name = "Search index"
 url = "https://search.example/hook"
 events = ["Umbraco.ContentPublish", "Umbraco.ContentDelete"]
-content-types = ["0c1d2e3f-4a5b-4c6d-8e7f-001122334455"]
+content-types = ["article"]
 
 [webhook.headers]
 Authorization = "env:SEARCH_TOKEN"
 ```
+
+A file is `schema/webhooks/<alias>.toml` (story 161). Its key is derived from
+the alias, so the file carries a `key` line only for a webhook made before, or
+in the back office, whose key differs. A back-office save names the file after
+the webhook's name. Content types are named by alias, and a uuid is read as a
+key. A content type the site has not got matches nothing, so a typo narrows
+the webhook rather than widening it, and the server logs it.
+`crombolo webhooks new <alias> --url … --event …` writes one, checked as the
+server reads it.
 
 ## What is sent
 

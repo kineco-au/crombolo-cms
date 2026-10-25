@@ -18,7 +18,7 @@ export default class Export extends BaseCommand {
   static override examples = ['<%= config.bin %> export --site --out site.tgz']
   static override flags = {
     site: Flags.boolean({
-      summary: 'the whole site (required: a part of it is `content export`)',
+      summary: 'the whole site (required: a part of it is `bundle export`)',
       required: true,
     }),
     out: Flags.string({ summary: 'the file to write', helpValue: '<file.tgz>' }),

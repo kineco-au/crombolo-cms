@@ -19,8 +19,11 @@ import {
   loadSchemaDirectory,
   parseMediaType,
   siteMediaTypeFiles,
+  typeKeyFor,
   validateSchemaSet,
 } from '@crombolo/schema'
+import { installDatabase, loadConfig, syncSchemaDirectory } from '@crombolo/server'
+import { freshDb } from './support/db.ts'
 import { type Harness, signedInServer, V1 } from './support/harness.ts'
 
 const open: Harness[] = []
@@ -206,7 +209,10 @@ describe('built-in media types', () => {
     const imageFile = join(schemaDir, 'media-types', 'image.toml')
     expect(existsSync(imageFile)).toBe(true)
     const parsed = parseMediaType('image', readFileSync(imageFile, 'utf8'))
-    expect(parsed.value).toMatchObject({ key: SYSTEM.Image, alias: 'Image', name: 'Picture' })
+    expect(parsed.value).toMatchObject({ alias: 'Image', name: 'Picture' })
+    // Its key is the one Crombolo ships, so the file need not say it (story 161).
+    expect(parsed.value?.key).toBeUndefined()
+    expect(typeKeyFor('media', 'Image')).toBe(SYSTEM.Image)
     // …and that file is a valid override of the system type
     expect(validateSchemaSet(loadSchemaDirectory(schemaDir).set)).toEqual([])
   })
@@ -258,5 +264,72 @@ describe('built-in media types', () => {
     expect(await ensureBuiltInDataTypes(db)).toEqual([])
     expect(await ensureSystemMediaTypes(db)).toEqual([])
     expect((await repo.byKey(SYSTEM.Image))?.properties).toHaveLength(5)
+  })
+})
+
+describe('the media types init writes, without keys (story 161)', () => {
+  test('carry no key lines, and sync to the keys Umbraco ships', async () => {
+    for (const [path, content] of Object.entries(siteMediaTypeFiles()))
+      expect(content, path).not.toContain('key = ')
+    const { h } = await site()
+    const repo = new ContentTypeRepository(h.server.db, { kind: 'media' })
+    for (const def of BUILT_IN_MEDIA_TYPES.filter((t) => !t.system && !t.composition)) {
+      const synced = await repo.byAlias(def.alias)
+      expect(synced?.key, def.alias).toBe(def.key)
+      for (const property of def.properties)
+        expect(
+          synced?.properties.find((p) => p.alias === property.alias)?.key,
+          `${def.alias}.${property.alias}`,
+        ).toBe(property.key)
+    }
+  })
+})
+
+describe('Folder on a site never started (story 180)', () => {
+  const dbs: Array<{ close(): Promise<void> }> = []
+  afterEach(async () => {
+    while (dbs.length > 0) await dbs.pop()?.close()
+  })
+
+  async function siteNeverStarted(files: Record<string, string> = {}) {
+    const root = mkdtempSync(join(process.cwd(), 'output', 'never-started-'))
+    dirs.push(root)
+    mkdirSync(join(root, 'schema', 'media-types'), { recursive: true })
+    writeFileSync(join(root, 'schema', 'schema.toml'), '[schema]\nversion = "1.0.0"\n')
+    for (const [path, content] of Object.entries(files)) writeFileSync(join(root, path), content)
+    const db = await freshDb()
+    dbs.push(db)
+    const config = loadConfig({ schemaDir: join(root, 'schema'), development: true })
+    // What every command does when it opens the database: no server, no boot.
+    await installDatabase(db, config)
+    const folderAllows = async () => {
+      const folder = await new ContentTypeRepository(db, { kind: 'media' }).byKey(SYSTEM.Folder)
+      const keys = new Set(folder?.allowedContentTypes.map((a) => a.contentTypeKey.toLowerCase()))
+      return BUILT_IN_MEDIA_TYPES.filter((t) => keys.has(t.key)).map((t) => t.alias)
+    }
+    return { db, config, root, folderAllows }
+  }
+
+  test('opening the database puts images in folders, and a sync adds the types it creates', async () => {
+    const site = await siteNeverStarted()
+    expect(await site.folderAllows()).toEqual(expect.arrayContaining(['Folder', 'Image', 'File']))
+    expect(await site.folderAllows()).not.toContain('umbracoMediaVideo')
+
+    for (const [path, content] of Object.entries(siteMediaTypeFiles()))
+      writeFileSync(join(site.root, path), content)
+    const report = await syncSchemaDirectory(site.db, site.config, { nodeId: 'n', revision: '1' })
+    expect(report.action).toBe('applied')
+    // In the same process, not at the next start.
+    expect(await site.folderAllows()).toContain('umbracoMediaVideo')
+  })
+
+  test('a file that defines Folder says itself what it allows', async () => {
+    const site = await siteNeverStarted({
+      'schema/media-types/folder.toml':
+        '[media-type]\nalias = "Folder"\nname = "Folder"\nicon = "icon-folder"\nallow-at-root = true\nallow-children = ["Folder"]\n',
+    })
+    const report = await syncSchemaDirectory(site.db, site.config, { nodeId: 'n', revision: '1' })
+    expect(report.action, JSON.stringify(report.problems)).toBe('applied')
+    expect(await site.folderAllows()).toEqual(['Folder'])
   })
 })

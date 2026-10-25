@@ -66,10 +66,10 @@ export default class Init extends BaseCommand {
     }
 
     this.say('\nNext:\n  bun install\n  bun start')
-    if (template?.bundle)
+    if (template?.seed)
       this.say(
-        `\n\`bun start\` imports ${template.bundle} on the first boot of an empty database,\n` +
-          'and says so. Nothing happens on later boots; it is one line in package.json.',
+        '\n`bun start` applies seed/ on the first boot, and again after you change it:\n' +
+          'the starting content is files to edit. `crombolo seed check` checks them.',
       )
     return { created, existing, templates: [] }
   }

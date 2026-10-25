@@ -2,8 +2,7 @@
  * `types new` and `types add-property`: the model they build.
  *
  * What matters is that the file they produce is one the rest of the system
- * accepts — parsed back to the same type, valid, and carrying the keys
- * production insists on — because a scaffold that writes something subtly
+ * accepts — parsed back to the same type, and valid — because a scaffold that writes something subtly
  * wrong is worse than no scaffold at all.
  */
 import { describe, expect, test } from 'bun:test'
@@ -13,10 +12,13 @@ import {
   nameFor,
   newType,
   parseContentType,
+  parseDataType,
   parseMediaType,
+  presetDataType,
   validateSchemaSet,
   viewScaffold,
   writeContentType,
+  writeDataType,
 } from '@crombolo/schema'
 
 /** Deterministic keys, so a test reads as what it is about. */
@@ -173,5 +175,98 @@ describe('adding a property', () => {
       description: 'Shown in listings',
       mandatory: true,
     })
+  })
+})
+
+describe('the options a new type takes (story 161)', () => {
+  test('compositions, children, variation, the Library and a list view reach the file', () => {
+    const type = newType({
+      alias: 'blog',
+      allowAtRoot: true,
+      tab: 'Content',
+      compose: ['seo'],
+      allowChildren: ['article'],
+      variesByCulture: true,
+      library: true,
+      listView: 'listViewContent',
+    })
+    const parsed = parseContentType('blog.toml', writeContentType(type)).value
+    expect(parsed).toMatchObject({
+      compositions: ['seo'],
+      allowChildren: ['article'],
+      variesByCulture: true,
+      variesBySegment: false,
+      allowInLibrary: true,
+      collection: 'listViewContent',
+    })
+    // A page that varies by language has a title that does too.
+    expect(allProperties(parsed as never)[0]?.variesByCulture).toBe(true)
+  })
+
+  test('an alias that names nothing is a problem on the new file', () => {
+    const type = newType({ alias: 'blog', tab: 'Content', compose: ['nothing'] })
+    const problems = validateSchemaSet({
+      version: '1.0.0',
+      contentTypes: [type],
+      dataTypes: [],
+      languages: [],
+    })
+    expect(problems.map((p) => `${p.file}: ${p.message}`)).toContain(
+      'schema/content-types/blog: unknown type "nothing"',
+    )
+  })
+})
+
+describe('data types by preset (story 161)', () => {
+  test('each preset gives its editor, and its flags become config', () => {
+    const cases: Array<[string, Parameters<typeof presetDataType>[2], Record<string, unknown>]> = [
+      ['textstring', { maxChars: 80 }, { maxChars: 80 }],
+      ['textarea', { rows: 4 }, { rows: 4 }],
+      ['number', { min: 1, max: 9, step: 2 }, { min: 1, max: 9, step: 2 }],
+      [
+        'toggle',
+        { defaultOn: true, label: 'On' },
+        { default: true, showLabels: true, labelOn: 'On' },
+      ],
+      ['date', { withTime: true }, { format: 'YYYY-MM-DD HH:mm:ss' }],
+      ['dropdown', { option: ['a', 'b'], multiple: true }, { multiple: true, items: ['a', 'b'] }],
+      ['content-picker', { allow: ['page'] }, { startNode: { type: 'content' }, filter: ['page'] }],
+      [
+        'media-picker',
+        { allow: ['Image'] },
+        { filter: ['Image'], multiple: false, validationLimit: { min: 0, max: 1 } },
+      ],
+      ['element-picker', { allow: ['quote'] }, { allowedContentTypes: ['quote'] }],
+      ['block-grid', { columns: 6 }, { gridColumns: 6 }],
+    ]
+    for (const [preset, options, config] of cases) {
+      const built = presetDataType('x', preset, options)
+      if (!built.ok) throw new Error(`${preset}: ${built.reason}`)
+      expect(built.dataType.config, preset).toEqual(config)
+    }
+  })
+
+  test('blocks become block tables, and the file reads back', () => {
+    const built = presetDataType('pageBlocks', 'block-list', {
+      block: ['feature', 'quote'],
+      min: 1,
+    })
+    if (!built.ok) throw new Error(built.reason)
+    expect(built.dataType).toMatchObject({
+      name: 'Page Blocks',
+      editor: 'Umbraco.BlockList',
+      config: { validationLimit: { min: 1 } },
+      blocks: [{ element: 'feature' }, { element: 'quote' }],
+    })
+    expect(parseDataType('page-blocks', writeDataType(built.dataType)).value).toEqual(
+      built.dataType,
+    )
+  })
+
+  test('an unknown preset, or a flag it does not take, is refused', () => {
+    expect(presetDataType('x', 'colour').ok).toBe(false)
+    const wrong = presetDataType('x', 'toggle', { maxChars: 3 })
+    expect(wrong.ok).toBe(false)
+    if (!wrong.ok) expect(wrong.reason).toBe('toggle does not take --max-chars')
   })
 })

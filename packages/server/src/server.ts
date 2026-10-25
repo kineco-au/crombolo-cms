@@ -122,6 +122,7 @@ import { createPublishedContentSource, loadDraftNode } from './adapters/document
 import type { Approvals } from './approvals.ts'
 import { handleApprovalsApi } from './approvals-api.ts'
 import { CommandError, installBundleContent } from './bundle-install.ts'
+import { BUNDLES_CHANGED_EVENT, type BundleReload, createBundleReloader } from './bundle-reload.ts'
 import { bundleChains, bundleTablesReport } from './bundle-tables.ts'
 import { createBundleRedirects, createServerBundles, validateServerBundles } from './bundles.ts'
 import { busyResponse } from './busy.ts'
@@ -270,6 +271,12 @@ export interface ServerHandle {
   }
   /** Scheduled publishing and version cleanup; each run can be called directly. */
   jobs: BackgroundJobs
+  /**
+   * Reads the site's `package.json` and `node_modules` again, after a host has
+   * changed them (story 181), and says what changed. Back-office halves only:
+   * nothing is mounted, and a `web` node, which serves no back office, does nothing.
+   */
+  reloadBundles(): Promise<BundleReload>
   /** Stops the watcher and the poll, then closes the database. */
   close(): Promise<void>
 }
@@ -301,17 +308,26 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
   // Extensions are the site's own npm dependencies (`docs/bundles.md`).
   // Uncached in development so an author editing one sees a reload pick it up.
   const extensions = createExtensionRegistry(config.siteDir, { cache: !config.development })
+  // A host that installs packages itself calls `reloadBundles()` (story 181); the
+  // Marketplace's own install goes through it too, so either way open back
+  // offices hear about it. `events` is created further down, before any reload.
+  const bundleReloader = createBundleReloader({
+    extensions,
+    wired: () => bundles?.mounted.map((bundle) => bundle.id) ?? [],
+    changed: () => events.broadcast('notify', [BUNDLES_CHANGED_EVENT]),
+  })
   const marketplace = createMarketplace({
     registry: config.npmRegistry,
     keyword: config.packageKeyword,
     marketplaceUrl: config.marketplaceUrl,
-    extensions,
+    extensions: { ...extensions, invalidate: () => void bundleReloader.reload() },
     siteDir: config.siteDir,
     wired: () => bundles?.mounted.map((bundle) => bundle.id) ?? [],
     contentApplied: async (packageName) =>
       (await new TransferRunRepository(db).appliedForPackage(packageName))?.packageVersion ?? null,
     applyContentOnInstall: config.applyBundleContentOnInstall,
     installs: config.runtimeInstalls,
+    installsElsewhere: config.installsElsewhere,
     applyContent: async (packageName) => {
       // A package from the marketplace is for anyone, so nothing in it can be
       // sealed; one that is is refused rather than half applied.
@@ -1438,6 +1454,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
           keyword: config.packageKeyword,
           appliesContent: config.applyBundleContentOnInstall,
           installs: config.runtimeInstalls,
+          installsElsewhere: config.runtimeInstalls ? null : (config.installsElsewhere ?? null),
           items: await marketplace.search(url.searchParams.get('q') ?? undefined),
         })
       }
@@ -1461,6 +1478,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
       if (action === 'installed' && request.method === 'GET') {
         return Response.json({
           installs: config.runtimeInstalls,
+          installsElsewhere: config.runtimeInstalls ? null : (config.installsElsewhere ?? null),
           items: await marketplace.installed(),
         })
       }
@@ -2492,6 +2510,10 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     health,
     events,
     jobs,
+    reloadBundles: async () =>
+      servesBackOffice
+        ? bundleReloader.reload()
+        : { added: [], removed: [], changed: [], problems: [] },
     serveOptions: {
       port: config.port,
       maxRequestBodySize: listeningBodyLimit(config),

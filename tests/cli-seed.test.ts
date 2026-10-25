@@ -97,12 +97,16 @@ describe('seed check', () => {
 })
 
 describe('seed build and apply', () => {
-  test('build writes the bundle a content import reads', () => {
+  test('seed build is bundle build now: the site, schema and views with its seed', () => {
     const out = join(site, 'built')
     const run = cli(['seed', 'build', '--out', out])
     expect(run.code, run.err).toBe(0)
+    expect(run.err).toContain('deprecated')
     expect(existsSync(join(out, 'package.json'))).toBe(true)
-    expect(JSON.parse(readFileSync(join(out, 'content', 'bundle.json'), 'utf8')).label).toBe('Seed')
+    expect(existsSync(join(out, 'content', 'schema', 'content-types', 'page.toml'))).toBe(true)
+    expect(JSON.parse(readFileSync(join(out, 'content', 'bundle.json'), 'utf8')).counts).toEqual({
+      document: 2,
+    })
   })
 
   test('a dry run writes nothing; apply creates and publishes; again changes nothing', async () => {
@@ -144,6 +148,29 @@ describe('seed export', () => {
     // Exported from where its file is, so the key it derives is the one it has.
     expect(about).not.toContain('key =')
     expect(cli(['seed', 'check']).code).toBe(0)
+  })
+})
+
+describe('media in folders on a site never started (story 180)', () => {
+  test('a seed that puts an image in a folder checks and applies with no server ever run', () => {
+    // The smallest PNG there is: one transparent pixel.
+    const file = join(site, 'seed', 'media', 'images', 'pixel.png')
+    mkdirSync(join(file, '..'), { recursive: true })
+    writeFileSync(
+      file,
+      Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+        'base64',
+      ),
+    )
+    try {
+      const check = cli(['seed', 'check'])
+      expect(check.code, check.out + check.err).toBe(0)
+      const apply = cli(['seed', 'apply'])
+      expect(apply.code, apply.out + apply.err).toBe(0)
+    } finally {
+      rmSync(join(site, 'seed', 'media'), { recursive: true, force: true })
+    }
   })
 })
 

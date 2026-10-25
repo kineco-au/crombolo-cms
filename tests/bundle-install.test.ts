@@ -214,12 +214,11 @@ describe('applying', () => {
     )
     expect(readFileSync(join(root, 'css', 'brochure.css'), 'utf8')).toContain('.brochure')
     expect(readFileSync(join(root, 'scripts', 'brochure.js'), 'utf8')).toContain('brochure')
-    // Not byte-identical to what the bundle carried: the sync writes the keys it
-    // assigned back into the file, which is how a type stays matchable by key
-    // across environments rather than by alias alone.
+    // Exactly as the bundle carried it: the sync derives the type's key from its
+    // alias, the same on every environment, so nothing is written back (story 161).
     const written = readFileSync(join(root, 'schema', 'content-types', 'brochure.toml'), 'utf8')
     expect(written).toContain('alias = "brochure"')
-    expect(written).toContain('key = ')
+    expect(written).not.toContain('key = ')
     expect(result.written).toHaveLength(5)
 
     // The file is the truth and the database follows it: the sync is what makes

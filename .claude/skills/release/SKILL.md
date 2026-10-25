@@ -5,6 +5,11 @@ description: Cut a crombolo release, push it, and watch CI and the Release pipel
 
 # Releasing crombolo
 
+**"Cut a new release" means the whole job, not just the tag.** Push it, then
+watch CI and the Release pipeline, fixing and re-releasing as below, until both
+are green and the packages are on npm. Stop to ask only when a blocker needs
+the maintainer's input: a credential, a decision, or a failure with no safe fix.
+
 Pushing a `v*` tag publishes to npm (`.github/workflows/release.yml`). A tag is
 a release, not a bookmark: never move, delete or re-push a tag that has been
 pushed. A failed release is fixed by a **new** patch version.

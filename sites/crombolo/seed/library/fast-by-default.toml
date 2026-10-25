@@ -1,0 +1,8 @@
+type = "feature"
+key = "e41ed7cc-3023-43a1-93ad-83f1b2ea1559"
+name = "Fast by default"
+order = 2
+
+[values]
+heading = "Fast by default"
+detail = "Pages are plain HTML rendered on the server, with no client-side framework to download, so sites load quickly and score well on Core Web Vitals."

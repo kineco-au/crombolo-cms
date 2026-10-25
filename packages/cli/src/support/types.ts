@@ -3,8 +3,10 @@ import { existsSync } from 'node:fs'
 import {
   allProperties,
   loadSchemaDirectory,
+  type SchemaSet,
   type SyncReport,
   type ValueMigration,
+  validateSchemaSet,
 } from '@crombolo/schema'
 import {
   bootstrapDatabase,
@@ -32,6 +34,18 @@ export function refuseProblems(problems: SyncReport['problems'], message?: strin
     })
 }
 
+/**
+ * Refuses what a new file alone gets wrong (an alias that names nothing),
+ * before it is written: `set` has the new file in it, and `file` is its
+ * name without the extension.
+ */
+export function refuseOwnProblems(set: SchemaSet, file: string): void {
+  refuseProblems(
+    validateSchemaSet(set).filter((p) => p.file === file || p.file === `${file}.toml`),
+    `${file} would not apply.`,
+  )
+}
+
 /** Applies `schema/` as a boot or a deploy step would, and reports what it did. */
 export async function applySchema(io: Io, config: CromboloConfig): Promise<SyncReport> {
   const { db } = await bootstrapDatabase(config)
@@ -52,18 +66,15 @@ export async function applySchema(io: Io, config: CromboloConfig): Promise<SyncR
   }
 }
 
-/** The pull-request rules: keys present, migrations well-formed, nothing the database needs. */
+/**
+ * The pull-request rules: migrations well-formed, nothing the database needs.
+ * Keys are not required: sync derives them (story 161).
+ */
 export function staticProblems(
   loaded: ReturnType<typeof loadSchemaDirectory>,
   migrations: ValueMigration[],
 ): string[] {
   const problems: string[] = []
-  for (const t of loaded.set.contentTypes) {
-    if (!t.key)
-      problems.push(`${t.alias}: no key — run \`crombolo types sync\` in development to assign one`)
-    for (const p of allProperties(t)) if (!p.key) problems.push(`${t.alias}.${p.alias}: no key`)
-  }
-  for (const d of loaded.set.dataTypes) if (!d.key) problems.push(`data type ${d.alias}: no key`)
   for (const m of migrations) {
     const type = loaded.set.contentTypes.find((t) => t.alias === m.from.type)
     if (!type) {

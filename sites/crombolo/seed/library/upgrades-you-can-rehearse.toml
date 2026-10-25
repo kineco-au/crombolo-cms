@@ -1,0 +1,8 @@
+type = "feature"
+key = "ad985566-f642-413e-83e5-3e9bb4cdf283"
+name = "Upgrades you can rehearse"
+order = 16
+
+[values]
+heading = "Upgrades you can rehearse"
+detail = "Check an upgrade before you run it, then roll it out while the old version keeps serving pages."

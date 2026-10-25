@@ -14,7 +14,6 @@ import {
   currentSchemaState,
   type Db,
   ensureSystemContentTypes,
-  ensureSystemMediaTypes,
   ensureSystemMemberTypes,
   type Finding,
   Locks,
@@ -150,7 +149,6 @@ export async function bootSchema(db: Db, config: CromboloConfig): Promise<Schema
   if (!existsSync(config.schemaDir)) {
     const nodeState = { version: '0', revision: config.schemaRevision }
     await touchServer(db, { nodeId, ...nodeState, role: config.role, cromboloVersion: VERSION })
-    await ensureSystemMediaTypes(db, { linkFolderChildren: true })
     await ensureSystemMemberTypes(db)
     await ensureSystemContentTypes(db)
     return { nodeState, nodeId, report: undefined, compatibilityMode: false }
@@ -170,10 +168,6 @@ export async function bootSchema(db: Db, config: CromboloConfig): Promise<Schema
   }
   const report = await syncSchemaDirectory(db, config, node)
   if (report.action === 'refused') throw new SchemaBootError(report)
-  // Folder allows whichever built-in media types the site has — unless a file
-  // defines Folder, and so says itself what it allows.
-  const folderInFiles = (loaded.set.mediaTypes ?? []).some((t) => t.alias === 'Folder')
-  await ensureSystemMediaTypes(db, { linkFolderChildren: !folderInFiles })
   await ensureSystemMemberTypes(db)
   await ensureSystemContentTypes(db)
   const boot: SchemaBoot = {

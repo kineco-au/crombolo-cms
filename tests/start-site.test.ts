@@ -43,7 +43,8 @@ function runWith(args: string[], env: Record<string, string>) {
 /** A site in the sandboxed `sites/`, with a database that has been used. */
 function repoSite(): string {
   const dir = join(SITES, 'example')
-  mkdirSync(join(dir, 'bundles', 'demo-example'), { recursive: true })
+  mkdirSync(join(dir, 'seed', 'content'), { recursive: true })
+  writeFileSync(join(dir, 'seed', 'content', 'home.toml'), 'type = "home"\n')
   mkdirSync(join(dir, 'media'), { recursive: true })
   mkdirSync(join(dir, 'components'), { recursive: true })
   writeFileSync(
@@ -83,7 +84,7 @@ describe('choosing a site or a template', () => {
 describe('a site in sites/', () => {
   const copy = join(SANDBOX, 'demo-example')
 
-  test('runs from a copy, by id or by directory, and imports its own bundle', () => {
+  test('runs from a copy, by id or by directory, and applies its own seed', () => {
     const dir = repoSite()
     for (const name of ['demo/example', 'example']) {
       const { code, out } = run([name, '--dry-run'])
@@ -91,7 +92,7 @@ describe('a site in sites/', () => {
       expect(out).toContain('would copy')
       expect(out).toContain(join(copy, 'crombolo.sqlite'))
       expect(out).not.toContain(join(dir, 'crombolo.sqlite'))
-      expect(out).toContain('--bundle bundles/demo-example --publish')
+      expect(out).toContain('--seed --publish')
     }
     expect(existsSync(copy)).toBe(false)
   })
@@ -101,7 +102,7 @@ describe('a site in sites/', () => {
     mkdirSync(join(dir, 'node_modules', 'crombolo'), { recursive: true })
     writeFileSync(join(dir, 'crombolo.sqlite.content-import.bak'), '')
     copySite(dir, copy)
-    for (const kept of ['site.json', 'components/home.tsx', 'bundles/demo-example'])
+    for (const kept of ['site.json', 'components/home.tsx', 'seed/content/home.toml'])
       expect(existsSync(join(copy, kept))).toBe(true)
     for (const left of [
       'crombolo.sqlite',
@@ -358,8 +359,8 @@ describe('what it runs', () => {
     expect(script).toContain("join(ROOT, 'packages/cli/bin/crombolo.ts')")
   })
 
-  test('imports the site’s bundle, once', () => {
-    expect(readFileSync(SCRIPT, 'utf8')).toContain("'--bundle'")
-    expect(existsSync(join(ROOT, 'sites/harbourstone/bundles/demo-harbourstone'))).toBe(true)
+  test('applies the site’s seed, once for each change to it', () => {
+    expect(readFileSync(SCRIPT, 'utf8')).toContain("'--seed'")
+    expect(existsSync(join(ROOT, 'sites/harbourstone/seed/content'))).toBe(true)
   })
 })

@@ -1,0 +1,8 @@
+type = "docsSection"
+key = "3ae2a2eb-66a7-40a2-bcbf-72d32bc0b5d6"
+name = "Docs"
+order = 1
+
+[values]
+title = "Crombolo docs"
+standfirst = "Guides to building and running a crombolo site, and a reference generated from the product itself."

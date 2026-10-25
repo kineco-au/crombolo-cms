@@ -340,7 +340,7 @@ describe('republishing the product site', () => {
 })
 
 describe('every image a template redistributes', () => {
-  /** The binaries under a template's bundle, which ship inside `@crombolo/cli`. */
+  /** The binaries in a site's seed media, which ship inside `@crombolo/cli` (story 164). */
   const images = (dir: string): string[] =>
     existsSync(dir)
       ? readdirSync(dir, { recursive: true, encoding: 'utf8' }).filter((file) =>
@@ -355,7 +355,7 @@ describe('every image a template redistributes', () => {
     // convention. Every site, not only the distributed ones: flipping
     // `distribute` should not be what reveals an unattributed photograph.
     for (const site of listSites()) {
-      const found = images(join(site.dir, site.bundle, 'blobs'))
+      const found = images(join(site.dir, 'seed', 'media'))
       if (found.length === 0) continue
       const credits = join(site.dir, 'CREDITS.md')
       expect([site.id, existsSync(credits)]).toEqual([site.id, true])

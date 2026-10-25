@@ -1,0 +1,9 @@
+type = "step"
+key = "276110ee-fb7c-4e1b-8648-89b8f828e161"
+name = "Check before you ship"
+order = 24
+
+[values]
+heading = "Check before you ship"
+detail = "Compile every template in CI, so a broken page never reaches a visitor."
+command = "bunx crombolo components check"

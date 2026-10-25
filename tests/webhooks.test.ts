@@ -4,7 +4,7 @@
  * delivered once across a cluster — and a bundle's handlers on the same queue.
  */
 import { afterEach, describe, expect, test } from 'bun:test'
-import { existsSync, readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   bundleEventProblems,
@@ -16,6 +16,7 @@ import {
   subscribersFor,
   usableSecretKey,
   type WebhookDefinition,
+  webhookKeyFor,
   webhookProblems,
   webhookStoreView,
   writeWebhookFile,
@@ -94,12 +95,38 @@ describe('the rules a webhook is held to', () => {
 describe('a webhook as a file', () => {
   test('writes and reads back unchanged', () => {
     const webhook = definition({
+      alias: 'searchIndex',
       description: 'For the search index',
       enabled: false,
       contentTypeKeys: ['0c1d2e3f-4a5b-4c6d-8e7f-001122334455'],
       headers: { Authorization: 'env:SEARCH_TOKEN' },
     })
     expect(parseWebhookFile('w.toml', writeWebhookFile(webhook))).toEqual({ webhook, problems: [] })
+  })
+
+  test('a file names itself by alias, derives its key, and names content types by alias', () => {
+    const source = `[webhook]
+alias = "searchIndex"
+url = "https://search.example/hook"
+events = ["Umbraco.ContentPublish"]
+content-types = ["article"]
+`
+    const parsed = parseWebhookFile('schema/webhooks/searchIndex.toml', source)
+    expect(parsed.problems).toEqual([])
+    expect(parsed.webhook).toMatchObject({
+      alias: 'searchIndex',
+      key: webhookKeyFor('searchIndex'),
+      contentTypeKeys: ['article'],
+    })
+    // Written back, the derived key stays out of the file.
+    expect(writeWebhookFile(parsed.webhook as WebhookDefinition, ['article'])).not.toContain(
+      'key =',
+    )
+    // A legacy file, keyed and with no alias, still reads.
+    expect(
+      parseWebhookFile('w.toml', writeWebhookFile(definition()).replace(/alias = .*\n/, ''))
+        .problems,
+    ).toEqual([])
   })
 
   test('an unknown key and a typed-in secret are refused, with the file named', () => {
@@ -388,7 +415,10 @@ describe('where a webhook is kept', () => {
     })
     expect(created.status).toBe(201)
     const id = created.headers.get('umb-generated-resource') as string
-    const file = join(s.root, 'schema', 'webhooks', `${id}.toml`)
+    // One file, named for the alias the webhook was given (story 161).
+    const files = readdirSync(join(s.root, 'schema', 'webhooks'))
+    expect(files).toEqual([`webhook${id.replaceAll('-', '').slice(0, 8)}.toml`])
+    const file = join(s.root, 'schema', 'webhooks', files[0] as string)
     expect(readFileSync(file, 'utf8')).toContain('Authorization = "env:TOKEN"')
     const view = await s.h.json<{ store: string; available: { database: boolean } }>(store(s, id))
     expect(view).toMatchObject({ store: 'files', available: { database: false } })
@@ -413,7 +443,7 @@ describe('where a webhook is kept', () => {
       headers: { Authorization: 'env:TOKEN' },
     })
     expect((await s.h.put(store(s, id), { store: 'files' })).status).toBe(200)
-    expect(existsSync(join(s.root, 'schema', 'webhooks', `${id}.toml`))).toBe(true)
+    expect(readdirSync(join(s.root, 'schema', 'webhooks'))).toHaveLength(1)
     expect(await s.h.server.db.query('SELECT key FROM webhook')).toEqual([])
     expect((await s.h.json<{ store: string }>(store(s, id))).store).toBe('files')
   })

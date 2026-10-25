@@ -1,0 +1,8 @@
+type = "feature"
+key = "b13339a3-69dd-43a2-a766-9ed92c8e7a28"
+name = "No retraining"
+order = 0
+
+[values]
+heading = "No retraining"
+detail = "Editors work in the back office they already know from Umbraco. The content tree, drafts, scheduling, version history and media library are all where they expect them."

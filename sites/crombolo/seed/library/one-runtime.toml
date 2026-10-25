@@ -1,0 +1,8 @@
+type = "feature"
+key = "6bd08968-76a1-4f96-a7bf-453bad090fdc"
+name = "One runtime"
+order = 13
+
+[values]
+heading = "One runtime"
+detail = "Bun runs the server, the build and the tests. No Node toolchain and no .NET SDK."

@@ -1,0 +1,12 @@
+type = "menu"
+key = "4e1b7c92-3d5a-4f08-9b26-8c0e2a7d5f13"
+name = "Main navigation"
+order = 0
+
+[values]
+alias = "main"
+items = [
+  { type = "menuItem", key = "6a2d9e41-7b3c-4f58-a1e6-0d4c8b2f9a71", values = { link = ["/home"], label = "Home", children = [] } },
+  { type = "menuItem", key = "1c8f5a37-2e9d-4b06-8f43-7a5e1d0c6b92", values = { link = ["/home/about"], label = "", children = [] } },
+  { type = "menuItem", key = "9e3b6d24-5f1a-4c87-b0d9-2c7a4e8f1b35", values = { link = ["/home/contact"], label = "", children = [] } },
+]

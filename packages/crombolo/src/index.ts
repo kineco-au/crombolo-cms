@@ -16,7 +16,9 @@ import {
 } from '@crombolo/server'
 
 // What a bundle's package.json declares; see `docs/bundles.md`.
-export type { BundlePackage, CromboloField } from '@crombolo/backoffice-host'
+export type { BundlePackage, CromboloField, PackageJson } from '@crombolo/backoffice-host'
+// The CMS's own checks of a bundle package, for a host that installs them (story 181).
+export { peerRangeProblem, validateBundlePackage } from '@crombolo/backoffice-host'
 // A view reads a form definition and a submission's state; both are domain
 // types, so they come from core rather than from the renderer.
 export type {
@@ -108,6 +110,7 @@ export {
   type BundleRedirectInput,
   type BundleRedirectRule,
   type BundleRedirects,
+  type BundleReload,
   type BundleRequest,
   type BundleSection,
   type CromboloConfig,
@@ -132,6 +135,7 @@ export {
   type PostmarkOptions,
   type Principal,
   postmarkEmail,
+  type ReloadedBundle,
   type ResendOptions,
   resendEmail,
   type S3MediaStoreOptions,
@@ -152,10 +156,20 @@ export async function crombolo(
   overrides: Partial<CromboloConfig> = {},
   cwd = process.cwd(),
 ): Promise<ServerHandle['serveOptions']> {
+  return (await cromboloServer(overrides, cwd)).serveOptions
+}
+
+/**
+ * Boots a site and returns the server handle: `serveOptions` for `Bun.serve`,
+ * and `reloadBundles()` for a host that changes the site's packages while it
+ * runs (story 181). `crombolo()` is this, for a `server.ts` that needs neither.
+ */
+export async function cromboloServer(
+  overrides: Partial<CromboloConfig> = {},
+  cwd = process.cwd(),
+): Promise<ServerHandle> {
   const config = loadConfig(overrides, cwd)
-  // The caller is about to serve these options, so fail here rather than after a
-  // migration and a seed.
+  // The caller is about to serve, so fail here rather than after a migration and a seed.
   await assertPortAvailable(config.port)
-  const server = await createServer(config)
-  return server.serveOptions
+  return createServer(config)
 }

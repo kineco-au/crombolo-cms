@@ -244,7 +244,7 @@ describe('content transfer, end to end through the CLI', () => {
   test('exports a subtree to disk by path', async () => {
     const result = await cli(
       'source',
-      'content',
+      'bundle',
       'export',
       '--include-content',
       '--root',
@@ -307,7 +307,7 @@ describe('content transfer, end to end through the CLI', () => {
     rmSync(bundle(), { recursive: true, force: true })
     const exported = await cli(
       'source',
-      'content',
+      'bundle',
       'export',
       '--include-content',
       '--root',
@@ -386,7 +386,7 @@ describe('content transfer, end to end through the CLI', () => {
     const broken = join(dir, 'broken')
     const copied = await cli(
       'source',
-      'content',
+      'bundle',
       'export',
       '--include-content',
       '--root',
@@ -408,7 +408,7 @@ describe('content transfer, end to end through the CLI', () => {
   test('a path that names nothing is refused with the candidates', async () => {
     const result = await cli(
       'source',
-      'content',
+      'bundle',
       'export',
       '--include-content',
       '--root',
@@ -432,7 +432,7 @@ describe('content transfer, end to end through the CLI', () => {
     const out = join(dir, 'with-blobs')
     const exported = await cli(
       'source',
-      'content',
+      'bundle',
       'export',
       '--include-content',
       '--root',
@@ -474,7 +474,7 @@ describe('content transfer, end to end through the CLI', () => {
     const out = join(dir, 'no-blobs')
     const exported = await cli(
       'source',
-      'content',
+      'bundle',
       'export',
       '--include-content',
       '--root',
@@ -498,7 +498,7 @@ describe('content transfer, end to end through the CLI', () => {
 
   test('content stays out unless asked for, is sealed when it is, and opens only with the passphrase', async () => {
     const bare = join(dir, 'bare')
-    const left = await cli('source', 'content', 'export', '--root', '/Campaigns', '--out', bare)
+    const left = await cli('source', 'bundle', 'export', '--root', '/Campaigns', '--out', bare)
     expect(left.code, left.out).toBe(0)
     expect(left.out).toContain('not included')
     const node = JSON.parse(readFileSync(join(bare, 'content', 'nodes', `${keys[1]}.json`), 'utf8'))
@@ -508,7 +508,7 @@ describe('content transfer, end to end through the CLI', () => {
     const sealed = join(dir, 'sealed')
     const exported = await cli(
       'source',
-      'content',
+      'bundle',
       'export',
       '--include-content',
       '--root',
@@ -537,7 +537,7 @@ describe('content transfer, end to end through the CLI', () => {
     const open = join(dir, 'open')
     const unencrypted = await cli(
       'source',
-      'content',
+      'bundle',
       'export',
       '--include-content',
       '--allow-content-unencrypted',
@@ -551,7 +551,7 @@ describe('content transfer, end to end through the CLI', () => {
     expect(existsSync(join(open, 'content', 'values'))).toBe(false)
     const refused = await cli(
       'source',
-      'content',
+      'bundle',
       'export',
       '--allow-content-unencrypted',
       '--root',

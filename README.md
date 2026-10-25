@@ -282,7 +282,7 @@ The database is forced to SQLite inside the site, whatever the environment says.
 how distribution works and the safety rules.
 
 A template brings `schema/`, `components/`, a stylesheet, its images — and its content as
-a **bundle**: a private npm package, the same artifact `crombolo content export` writes.
+a **bundle**: a private npm package, the same artifact `crombolo bundle export` writes.
 `init` puts it in `bundles/` and wires the import into the scaffolded `start` script:
 
 ```json
@@ -305,13 +305,12 @@ submissions in the Forms section. Its views are broken up under `components/`: `
 type names, `shared/` for the six they import. Nothing turns on those folder
 names — a component is a template because the schema names it.
 
-Its content is regenerated, never hand-edited, by `bun run build:template` —
-which builds a throwaway site from the template's own schema files, creates the
-content through the repositories and exports it, so the committed bundle is a
-real export, and a rebuild of an unchanged template produces an identical one.
-The photographs come from `assets/templates/`, which is outside the published
-`files` list: the bytes are copied into the bundle untouched, so they ship once
-and a rebuild neither churns the diff nor re-compresses them.
+Its content is its seed (story 164): the pages, the Library elements and the
+photographs under `seed/`, as files to read and edit (`docs/seeds.md`). `crombolo
+init --template` copies them into the new site, whose `start` script applies them
+with `--seed`. `crombolo bundle build sites/harbourstone --out <dir>` turns the
+whole directory, schema and views included, into a bundle that `crombolo start
+--bundle <dir>` installs into a bare site.
 
 A template may also wire a bundle's server half, which the demo does for
 redirects: `template.json` names the package and the factory, and `init` writes

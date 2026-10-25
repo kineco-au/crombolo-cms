@@ -1,0 +1,8 @@
+type = "feature"
+key = "7a0bca8c-36cf-4602-b204-1b6674d2e1ee"
+name = "Lower running costs"
+order = 1
+
+[values]
+heading = "Lower running costs"
+detail = "One lightweight process on SQLite or Postgres, hosted on modest Linux infrastructure. No licence fees, and no paid add-ons for essentials like forms."

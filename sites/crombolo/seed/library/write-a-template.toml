@@ -1,0 +1,9 @@
+type = "step"
+key = "a90cf801-2632-4000-85e6-14056ccacbb4"
+name = "Write a template"
+order = 23
+
+[values]
+heading = "Write a template"
+detail = "Add a component under components/, or create one from the back office. Generate types for your content types to get autocomplete as you write."
+command = "bunx crombolo components new pages/article\nbunx crombolo generate"

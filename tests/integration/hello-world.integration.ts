@@ -5,8 +5,8 @@
  * get into the back office, check it, start it and read the page.
  *
  * Each step is a test of its own, in order, so a step the command line cannot do
- * fails by name. The steps the command line cannot do yet are `test.todo`, so
- * CI runs the rest; story 180 turns them back into tests.
+ * fails by name. It is the worked example of a site built from the command line
+ * (`docs/operations.md`).
  *
  * Named `*.integration.ts`, so `bun test` does not collect it: it spawns the CLI
  * per step and boots the site. `bun run test:integration` runs it, and CI does.
@@ -122,8 +122,8 @@ describe('an empty directory to "Hello, world", through the command line alone',
     expect(run.code, said(run)).toBe(0)
   })
 
-  // Story 180: until a server has booted, Folder holds only folders.
-  test.todo('8. an image goes into a media folder', async () => {
+  // Story 180: Folder holds images on a site no server has ever run.
+  test('8. an image goes into a media folder', async () => {
     const files = join(dir, 'to-upload', 'images')
     mkdirSync(files, { recursive: true })
     // The smallest PNG there is: one transparent pixel.

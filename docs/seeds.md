@@ -58,12 +58,12 @@ Values are given by property alias, in a shorthand for each editor:
 | Editor | Shorthand | Stored as |
 | --- | --- | --- |
 | Text box, text area | a string | the string |
-| Rich text | Markdown, or `{ html = "…" }` | `{ markup, blocks: null }`, with links to content paths as local links |
+| Rich text | Markdown, or `{ html = "…" }` | `{ markup, blocks: null }`; Markdown's links to content paths become local links, and HTML is taken exactly as written |
 | Content picker | a content path, `/home/about` | `umb://document/<key>` |
 | Media picker | a media path, or a list of them | the picker's items, with each item's type |
 | Element picker | a Library path, or a list | the element keys |
 | Multi-URL picker | paths, URLs, or `{ path \| url, name, target }` | the links |
-| Block list and block grid | `[{ type = "<element alias>", values = {…}, settings = {…} }]` (grid: `columns`, `rows`) | layout, content data and settings data, with derived block keys |
+| Block list and block grid | `[{ type = "<element alias>", key = "…", values = {…}, settings = { type, key, values } }]` (grid: `columns`, `rows`) | layout, content data and settings data; a block's key is derived unless it gives one |
 | Tags | a list of strings | the list |
 | Date | a TOML date, or an ISO 8601 string | an ISO 8601 string |
 | Toggle | `true` or `false` | the boolean |
@@ -82,6 +82,9 @@ A file under `seed/media/` becomes a media item:
 - **Folders:** a directory becomes a Folder.
 - **Sidecar:** `photo.jpg.toml` gives `name`, `type`, `key`, `order`,
   `focalPoint = { left, top }` and `[values]`.
+- **On a site never started:** an image in a folder applies from the first
+  command, since opening the database lets Folder hold the built-in media
+  types (story 180).
 - **The bytes** travel in the bundle. The file is stored as an import stores
   it, at `/media/<the first 8 hex of its key>/<file>`, with its width, height,
   size and extension.
@@ -91,9 +94,9 @@ A file under `seed/media/` becomes a media item:
 | Command | Does |
 | --- | --- |
 | `crombolo seed check` | checks every file against the site's schema; exits 20 with each finding as `file:line  message` |
-| `crombolo seed build --out <dir>` | writes the bundle, an npm package `content import` reads |
+| `crombolo bundle build [<dir>] [--template <id>] --out <dir>` | a bundle of a site directory: its schema, views, styles and seed, compiled with no database of its own (story 164); `seed build` is its deprecated name |
 | `crombolo seed apply [--publish] [--dry-run]` | builds it and imports it, with the import's `--resolve` flags; `--dry-run` is the import's check |
-| `crombolo seed export <page>…` | writes seed files from pages already in the site |
+| `crombolo seed export <page>… \| --all` | writes seed files from a site: the pages named, or with `--all` every page, Library element and media item with its file, in shorthand where `seed apply` reads it back (story 164) |
 | `crombolo start --seed` | applies the seed before the site serves, once for each change to it |
 
 - **What `seed check` finds:** an unknown type or property, a value its
@@ -129,6 +132,27 @@ Names, order and place follow the same rule.
 `start --seed` applies it once for each change: a standing run for that id
 means the site already has this version.
 
+## A site in three commands
+
+`crombolo bundle build` turns a site directory into one bundle, carrying its
+schema, components, styles and seed. `crombolo start --bundle` installs that
+into a bare site: the files are staged, the schema synced and the content
+imported in one transaction, and the server boots again to load the views. The
+demo sites start that way (story 164):
+
+```bash
+crombolo init --name "Harbourstone"
+crombolo bundle build sites/harbourstone --out ./harbourstone-bundle   # or --template demo/harbourstone
+crombolo start --bundle ./harbourstone-bundle --publish
+```
+
+A bundle's id is its content's, so a changed site re-applies on the next
+`start --bundle`, three ways, and an unchanged one does nothing.
+
+**In production**, a bare site's schema (`1.0.0`) changing to the demo's
+without a version bump is refused, as any such schema change is across nodes.
+Try a demo in development, or bump the version.
+
 ## Where the code is
 
 | Code | What it does |
@@ -136,6 +160,7 @@ means the site already has this version.
 | `packages/server/src/seed/read.ts` | walks `seed/` |
 | `packages/server/src/seed/compile.ts` | checks the items and builds the bundle |
 | `packages/server/src/seed/export.ts` | writes seed files from a site |
+| `packages/server/src/bundle-build.ts` | a bundle from a site directory |
 | `packages/cli/src/commands/seed/` | the commands |
 
 The compiler is in the server rather than `@crombolo/transfer`. It reads the
@@ -148,5 +173,5 @@ writes through the transfer package's pure writer (`writeBundle`).
   folders under it are reported, not read.
 - **Segments:** segment variants of a value are given in the stored shape
   only.
-- **Out of scope** (story 163): public access, users and members, content
-  templates, and the demo sites as seeds (story 164).
+- **Out of scope** (story 163): public access, users and members, and content
+  templates.

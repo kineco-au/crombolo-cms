@@ -3,7 +3,13 @@
  * a person fixing a schema wants the full list.
  */
 
-import { SYSTEM_MEDIA_TYPES, SYSTEM_MEMBER_TYPE } from '@crombolo/data'
+import {
+  BUILT_IN_MEDIA_TYPES,
+  SYSTEM_CONTENT_TYPES,
+  SYSTEM_MEDIA_TYPES,
+  SYSTEM_MEMBER_TYPE,
+} from '@crombolo/data'
+import { compileBlocks } from './blocks.ts'
 import {
   BUILTIN_DATA_TYPE_ALIASES,
   checkSystemContentTypeFile,
@@ -11,6 +17,7 @@ import {
   SYSTEM_CONTENT_TYPE_ALIASES,
   SYSTEM_MEDIA_TYPE_ALIASES,
 } from './builtin.ts'
+import { type ReferenceKind, resolveConfig } from './config-references.ts'
 import {
   allProperties,
   type SchemaContentType,
@@ -187,6 +194,53 @@ export function validateSchemaSet(set: SchemaSet, options: ValidateOptions = {})
           `${header}.compositions`,
           `composition cycle: ${cycle.join(' -> ')}`,
         )
+    }
+  }
+
+  // ---- types a data type names, by alias, in its config or its block tables
+  // (story 161): each must exist, be of the kind the field takes, and be an
+  // element type where the editor places elements.
+  const contentType = (alias: string) =>
+    set.contentTypes.find((t) => t.alias === alias) ??
+    SYSTEM_CONTENT_TYPES.find((t) => t.alias === alias)
+  const exists = (alias: string, kind: ReferenceKind): boolean =>
+    kind === 'element'
+      ? contentType(alias)?.isElement === true
+      : kind === 'document'
+        ? contentType(alias) !== undefined
+        : kind === 'media'
+          ? (set.mediaTypes ?? []).some((t) => t.alias === alias) ||
+            SYSTEM_MEDIA_TYPES.some((t) => t.alias === alias) ||
+            BUILT_IN_MEDIA_TYPES.some((t) => t.alias === alias)
+          : (set.memberTypes ?? []).some((t) => t.alias === alias) ||
+            SYSTEM_MEMBER_TYPE.alias === alias
+  const referenceMessage = (alias: string, kind: ReferenceKind) =>
+    kind === 'element' && contentType(alias)
+      ? `"${alias}" is not an element type`
+      : `unknown ${kind === 'element' ? 'element' : kind} type "${alias}"`
+  for (const d of set.dataTypes) {
+    const file = `schema/data-types/${d.alias}`
+    const { problems: found } = resolveConfig(d.editor, d.config, (alias, kind) =>
+      exists(alias, kind) ? alias : undefined,
+    )
+    for (const p of found)
+      add(file, `data-type.config.${p.path}`, referenceMessage(p.alias, p.kind))
+    if (d.blocks) {
+      const compiled = compileBlocks('', d.blocks, (alias) =>
+        exists(alias, 'element') ? alias : undefined,
+      )
+      for (const p of compiled.problems)
+        add(file, `data-type.${p.path}`, referenceMessage(p.alias, p.kind))
+      const groups = new Set(d.blocks.flatMap((b) => (b.group ? [b.group] : [])))
+      for (const [index, b] of d.blocks.entries())
+        for (const [i, area] of (b.areas ?? []).entries())
+          for (const entry of area.allow ?? [])
+            if (entry.group && !groups.has(entry.group))
+              add(
+                file,
+                `data-type.block[${index}].area[${i}].allow`,
+                `no block is in the group "${entry.group}"`,
+              )
     }
   }
 

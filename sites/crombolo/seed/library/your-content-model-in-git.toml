@@ -1,0 +1,8 @@
+type = "feature"
+key = "566477d3-97a4-446b-b9f1-d9b0f810caa8"
+name = "Your content model in Git"
+order = 12
+
+[values]
+heading = "Your content model in Git"
+detail = "Content types are readable TOML files you can diff and review, and crombolo generate turns them into TypeScript types."

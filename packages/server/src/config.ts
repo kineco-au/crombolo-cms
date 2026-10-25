@@ -405,6 +405,13 @@ export interface CromboloConfig {
    */
   runtimeInstalls: boolean
   /**
+   * Where a host that installs packages for the site says to go instead (story
+   * 181), shown by the Marketplace while `runtimeInstalls` is off in place of
+   * "add it to package.json and deploy". `CROMBOLO_INSTALLS_ELSEWHERE_MESSAGE`
+   * and `CROMBOLO_INSTALLS_ELSEWHERE_URL`.
+   */
+  installsElsewhere?: { message: string; url?: string }
+  /**
    * Where the Packages section's Marketplace sends someone browsing for
    * extensions. Never framed — npm refuses to be framed — so the native view
    * uses it as the link out while listing the registry itself.
@@ -522,6 +529,14 @@ export interface SeoConfig {
 /** A site's config file exports `defineConfig({...})`; unset keys come from the environment. */
 export function defineConfig(overrides: Partial<CromboloConfig> = {}): Partial<CromboloConfig> {
   return overrides
+}
+
+/** Where installs happen, from the environment; only set when it names a message. */
+function installsElsewhereFromEnv(): Pick<CromboloConfig, 'installsElsewhere'> {
+  const message = setting('CROMBOLO_INSTALLS_ELSEWHERE_MESSAGE')
+  if (!message) return {}
+  const url = setting('CROMBOLO_INSTALLS_ELSEWHERE_URL')
+  return { installsElsewhere: { message, ...(url ? { url } : {}) } }
 }
 
 /** Builds the effective config: explicit values, then environment, then defaults. */
@@ -697,6 +712,7 @@ export function loadConfig(
     // Nor here: it is the installation's decision about that code.
     hostProvided: [],
     marketplaceUrl: setting('CROMBOLO_MARKETPLACE_URL') ?? DEFAULTS.marketplaceUrl,
+    ...installsElsewhereFromEnv(),
     packageKeyword: setting('CROMBOLO_PACKAGE_KEYWORD') ?? DEFAULTS.packageKeyword,
     npmRegistry: setting('CROMBOLO_NPM_REGISTRY') ?? DEFAULTS.npmRegistry,
     // Nor here: a host reads its own variables inside `defineConfig`, if it wants them.
@@ -813,7 +829,7 @@ export function describeDatabase(
   }
 }
 
-export const VERSION = '0.28.0'
+export const VERSION = '0.29.0'
 
 /** A whole number of seconds from the environment; undefined when unset or not one. */
 function numberSetting(name: Parameters<typeof setting>[0]): number | undefined {

@@ -23,12 +23,11 @@ redistributed — which is the question this file exists to answer.
 
 ## Where the originals live
 
-`assets/templates/harbourstone/` in this repository, at the size they ship at.
-That directory is **not** in the `files` list in `packages/cli/package.json`, so
-the photographs are published once, in the bundle, rather than twice.
-`bun run build:template demo/harbourstone` copies the bytes through untouched:
-re-encoding an already-compressed JPEG on every build would churn the committed
-bundle and lose a little more of the image each time.
+`seed/media/` in this site, at the size they ship at, as the seed's media
+(story 164): `crombolo init --template demo/harbourstone` copies them into a new
+site, and `crombolo bundle build` carries their bytes untouched. Re-encoding an
+already-compressed JPEG on every build would lose a little more of the image
+each time.
 
 ## Adding one
 

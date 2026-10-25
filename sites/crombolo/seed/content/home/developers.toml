@@ -1,0 +1,32 @@
+type = "developerPage"
+key = "fa2dd680-27ba-4811-8dc2-101cb3813c6d"
+name = "Developers"
+order = 0
+
+[values]
+eyebrow = "For developers"
+title = "Templates in TSX, schema in Git, one runtime"
+standfirst = "Crombolo keeps the back office your editors know and rebuilds everything behind it in TypeScript on Bun. Here is what that means for you, and how to get started."
+codeHeading = "Templates are typed components"
+codeIntro = "Write pages as React-style TSX components. They render to HTML on the server, with no React runtime and no hydration, and your changes show up without a restart."
+codeSample = "import type { PageProps } from '@crombolo/crombolo'\nimport { Layout } from '../shared/layout.tsx'\n\nexport default function Article({ model, nav }: PageProps) {\n  return (\n    <Layout model={model} nav={nav}>\n      <h1>{model.text('title')}</h1>\n      {model.html('bodyText')}\n    </Layout>\n  )\n}"
+toolkitHeading = "What you get"
+toolkit = [
+  "your-content-model-in-git",
+  "one-runtime",
+  "sqlite-or-postgres",
+  "checks-before-production",
+  "upgrades-you-can-rehearse",
+  "content-between-environments",
+  "reusable-bundles",
+]
+stepsHeading = "Get started"
+steps = [
+  "install-bun",
+  "create-a-site",
+  "install-and-start",
+  "model-your-content",
+  "write-a-template",
+  "check-before-you-ship",
+]
+nextSteps = { html = "<p>The <a href=\"/docs/\">docs</a> cover configuration, deployment, moving content between environments and the rest of the toolkit in depth, and the <a href=\"/docs/reference/command-line/\">command line reference</a> covers every command.</p>" }

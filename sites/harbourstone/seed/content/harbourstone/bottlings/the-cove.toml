@@ -1,0 +1,19 @@
+type = "expression"
+key = "6ad8f0f3-9334-47f1-b805-80c4b4b4fa88"
+name = "The Cove"
+order = 0
+
+[values]
+title = "The Cove"
+kind = "House malt"
+productType = "Whisky"
+abv = "46%"
+age = 12
+summary = "Ex-bourbon and refill hogsheads. The everyday dram from the shore."
+bottleImage = "/bottle-the-cove.jpg"
+bodyText = { html = "<p>The house style with nothing in the way of it: twelve years in ex-bourbon and refill hogsheads in the low warehouse nearest the water, and no attempt to make it into anything else.</p>" }
+tastingNotes = [
+  "nose-lemon-zest-warm-porridge-w",
+  "palate-malt-biscuit-green-apple-s",
+  "finish-clean-and-saline-with-oak-s",
+]

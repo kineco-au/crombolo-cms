@@ -3,7 +3,16 @@
  * site's schema into the bundle format, and applied through the import.
  */
 import { afterEach, describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { join } from 'node:path'
 import { ObjectTypes } from '@crombolo/core'
 import { DocumentRepository, NodeRepository, resolveNodeRef } from '@crombolo/data'
@@ -12,9 +21,10 @@ import {
   exportSeed,
   installBundleContent,
   lineOf,
+  MediaFileStore,
+  pickKey,
   type SeedBuild,
   seedKey,
-  uuidV5,
 } from '@crombolo/server'
 import type { BundleNode } from '@crombolo/transfer'
 import { writeSeedPackage } from '../packages/cli/src/support/seed.ts'
@@ -246,7 +256,7 @@ describe(`compiling a seed (${dialectUnderTest})`, () => {
     expect(stored(home, 'rank')).toBe(3)
     expect(stored(home, 'hero')).toEqual([
       {
-        key: uuidV5(`pick:${mark}`),
+        key: pickKey(mark),
         mediaKey: mark,
         mediaTypeAlias: 'Image',
         crops: [],
@@ -254,7 +264,7 @@ describe(`compiling a seed (${dialectUnderTest})`, () => {
       },
     ])
     expect(stored(home, 'links')).toEqual([
-      { unique: about, type: 'document', name: null, target: null },
+      { unique: about, type: 'document', name: '', target: null },
       { unique: null, type: 'external', name: 'Example', target: null, url: 'https://example.com' },
     ])
     expect(stored(home, 'card')).toEqual([seedKey('library/hero-card')])
@@ -383,6 +393,59 @@ describe(`applying a seed (${dialectUnderTest})`, () => {
     expect(await value(about, 'title')).toBe('Edited in the back office')
   })
 
+  test('everything exported, Library and media with their files, builds the same bundle', async () => {
+    const source = await site()
+    const first = await source.compile()
+    await source.apply(first, { publish: true })
+    const all = await new NodeRepository(source.h.server.db).children(
+      -1,
+      ObjectTypes.Document,
+      0,
+      100,
+    )
+    const elsewhere = mkdtempSync(join(process.cwd(), 'output', 'seed-export-all-'))
+    dirs.push(elsewhere)
+    await exportSeed(source.h.server.db, elsewhere, {
+      pages: all.items,
+      library: true,
+      media: true,
+      files: new MediaFileStore(source.h.server.config.mediaDir),
+    })
+    const files: Record<string, string | Buffer> = {}
+    const walk = (dir: string, prefix: string) => {
+      for (const name of readdirSync(dir)) {
+        const path = join(dir, name)
+        if (statSync(path).isDirectory()) walk(path, `${prefix}${name}/`)
+        else files[`${prefix}${name}`] = readFileSync(path)
+      }
+    }
+    walk(join(elsewhere, 'seed'), '')
+    // Read as a person would: shorthand where there is one.
+    const home = String(files['content/home.toml'])
+    expect(home).toContain('hero = "/logos/mark.png"')
+    expect(home).toContain('card = "hero-card"')
+    expect(home).toContain('{ type = "card"')
+
+    const target = await site(files)
+    const second = await target.compile()
+    expect(second.findings).toEqual([])
+    const byKey = (build: SeedBuild) => new Map((build.set?.nodes ?? []).map((n) => [n.key, n]))
+    const before = byKey(first)
+    const after = byKey(second)
+    expect([...after.keys()].sort()).toEqual([...before.keys()].sort())
+    for (const [key, node] of before) {
+      const again = after.get(key) as BundleNode
+      const sorted = (n: BundleNode) =>
+        n.values
+          .map((v) => [`${v.property}|${v.culture ?? ''}`, v.value] as const)
+          .sort(([a], [b]) => a.localeCompare(b))
+      expect(sorted(again)).toEqual(sorted(node))
+      expect(again.variants).toEqual(node.variants)
+      expect(again.parent).toBe(node.parent)
+      expect(again.sortOrder).toBe(node.sortOrder)
+    }
+  })
+
   test('exported from one site, applied to an empty one, names the same pages', async () => {
     const source = await site()
     await source.apply(await source.compile())
@@ -390,7 +453,7 @@ describe(`applying a seed (${dialectUnderTest})`, () => {
     if (!homeNode.ok) throw new Error('no Home')
     const elsewhere = mkdtempSync(join(process.cwd(), 'output', 'seed-export-'))
     dirs.push(elsewhere)
-    const exported = await exportSeed(source.h.server.db, elsewhere, [homeNode.node])
+    const exported = await exportSeed(source.h.server.db, elsewhere, { pages: [homeNode.node] })
     expect(exported.written).toContain('seed/content/home.toml')
 
     const files: Record<string, string> = {}

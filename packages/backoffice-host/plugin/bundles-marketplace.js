@@ -28,6 +28,7 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
     _appliesContent: { state: true },
     _declined: { state: true },
     _installs: { state: true },
+    _elsewhere: { state: true },
   }
 
   constructor() {
@@ -43,6 +44,7 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
     this._appliesContent = true
     this._declined = new Set()
     this._installs = true
+    this._elsewhere = null
   }
 
   connectedCallback() {
@@ -60,11 +62,18 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
       this._url = result.url ?? ''
       this._appliesContent = result.appliesContent !== false
       this._installs = result.installs !== false
+      this._elsewhere = result.installsElsewhere ?? null
     } catch (error) {
       this._error = error instanceof Error ? error.message : String(error)
     } finally {
       this._loading = false
     }
+  }
+
+  /** The host's own place for installs, when it gave one. */
+  #elsewhereLink() {
+    const url = this._elsewhere?.url
+    return url ? html`<a href=${url} target="_blank" rel="noopener">Add bundles</a>` : ''
   }
 
   #search(event) {
@@ -141,7 +150,9 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
       ${
         this._installs
           ? nothing
-          : html`<div id="notice">Bundles are added to this site by a deploy, so that every server has them: add one to the site's <code>package.json</code> and deploy it.</div>`
+          : this._elsewhere
+            ? html`<div id="notice">${this._elsewhere.message} ${this.#elsewhereLink()}</div>`
+            : html`<div id="notice">Bundles are added to this site by a deploy, so that every server has them: add one to the site's <code>package.json</code> and deploy it.</div>`
       }
       ${
         this._items.length === 0 && !this._error
@@ -170,7 +181,9 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
                       item.installedVersion
                         ? html`<uui-tag look="positive">Installed ${item.installedVersion}</uui-tag>`
                         : !this._installs
-                          ? html`<p class="meta">Add it to the site with <code>bun add ${item.name}</code>, then deploy.</p>`
+                          ? this._elsewhere
+                            ? html`<p class="meta">${this.#elsewhereLink() || this._elsewhere.message}</p>`
+                            : html`<p class="meta">Add it to the site with <code>bun add ${item.name}</code>, then deploy.</p>`
                           : html`
                           <uui-button
                             look="primary"

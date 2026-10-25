@@ -51,7 +51,7 @@ Put the files under `seed/media/`, in the folders they should sit in. Each file 
 crombolo seed check            # every problem, with its file and line
 crombolo seed apply --dry-run  # what applying would change
 crombolo seed apply --publish  # apply it, and publish it
-crombolo seed export /Home     # seed files from pages already in a site
+crombolo seed export --all     # seed files from everything already in a site
 crombolo start --seed          # apply it before serving, once for each change
 ```
 
@@ -62,3 +62,13 @@ Applying an unchanged seed changes nothing. Change a file and apply again, and t
 An edit made in the back office since the last apply is kept, not overwritten. Only when the same thing changed in both places does `seed apply` stop and ask, and `--resolve` answers it.
 
 Every apply is a run that `crombolo content revert <run>` undoes.
+
+## A whole site as one bundle
+
+`crombolo bundle build` turns a site directory into a bundle carrying its schema, views, styles and seed. A bare site becomes that site with `start --bundle`. This is how the demos start:
+
+```bash
+crombolo init --name "Harbourstone"
+crombolo bundle build --template demo/harbourstone --out ./harbourstone-bundle
+crombolo start --bundle ./harbourstone-bundle --publish
+```

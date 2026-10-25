@@ -90,7 +90,7 @@ passphrase apart from a damaged file. The key is never written anywhere.
 | Schema, components, styles, scripts and dictionary | |
 | Redirects, schedules, and protected pages by member group | |
 
-`content export` leaves values and media files out unless `--include-content`
+`bundle export` leaves values and media files out unless `--include-content`
 is given: such a bundle places and names pages and writes no value, and its
 check says so. `--include-content` seals them; `--allow-content-unencrypted`
 writes them readable, with a warning. People are never written readable.
@@ -234,12 +234,12 @@ destination must satisfy is checked element by element instead.
 
 ## Naming a node
 
-`content export --root` and `content import --under` both take **either** a uuid
+`bundle export --root` and `content import --under` both take **either** a uuid
 or a path by name, through one resolver, so the two cannot drift.
 
 ```
-crombolo content export --root /Campaigns/Autumn 2026 --out bundles/campaign-x
-crombolo content export --root 9a1f3c2e-5d4f-4d3e-9d6d-2b7f8a1c9e10 --out …
+crombolo bundle export --root /Campaigns/Autumn 2026 --out bundles/campaign-x
+crombolo bundle export --root 9a1f3c2e-5d4f-4d3e-9d6d-2b7f8a1c9e10 --out …
 ```
 
 A path is resolved at export time and the resolved **uuid** is what lands in the
@@ -604,12 +604,12 @@ as installing a bundle is; everyone with Settings still sees the findings.
 ## Commands
 
 ```
-crombolo content export --root <path|uuid> [--root …] --out <dir>
+crombolo bundle export --root <path|uuid> [--root …] --out <dir>
                         [--only] [--drafts] [--with-blueprints]
                         [--include-content [--with-blobs] [--allow-content-unencrypted]]
                         [--with-members] [--with-users]
 
-crombolo content export … [--name <npm name>] [--package-version <version>]
+crombolo bundle export … [--name <npm name>] [--package-version <version>]
 
 crombolo content check <pkg>          a package directory, or a bundle this site depends on
                         [--under <path|uuid>] [--resolve <key>[/<alias>[@<culture>]]=<choice>]
@@ -653,8 +653,11 @@ children. `--at`/`--until` write a schedule instead, which the background job
 acts on; today's blockers are not the question for a date in the future.
 
 `start --bundle` applies a bundle before the site serves anything, which is how a
-starter template's content reaches a new site (`crombolo init --template`) and how
-a container can bring its own content with it. It imports **once per bundle** —
+container can bring its own content with it, and how a bare site becomes a whole
+site from `crombolo bundle build` (story 164): a bundle that carries schema and
+views is installed as `content import` installs it, and the server boots again
+to load them. A starter template's content is its seed, applied by `start
+--seed` (`docs/seeds.md`). It imports **once per bundle** —
 an import run still standing here means this site has that content already, so a
 restart is a query and a line in the banner — and a refusal stops the boot rather
 than serving a site missing the content the command line asked for. The import
@@ -812,9 +815,9 @@ no credentials for one stored in another; the bundle travels as a file does.
 
 ```bash
 # where the content is
-bunx crombolo content export --root "/Campaigns/Autumn 2026" --out bundles/campaign-x
-bunx crombolo content export --root 9a1f3c2e-… --only --drafts --out bundles/one-page
-bunx crombolo content export --root "/Campaigns" --include-content --with-blobs --out bundles/campaign-x
+bunx crombolo bundle export --root "/Campaigns/Autumn 2026" --out bundles/campaign-x
+bunx crombolo bundle export --root 9a1f3c2e-… --only --drafts --out bundles/one-page
+bunx crombolo bundle export --root "/Campaigns" --include-content --with-blobs --out bundles/campaign-x
                                       # values and media bytes, sealed: the bundle is self-contained
 
 # where it is going: read-only, and non-zero while anything is outstanding

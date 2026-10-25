@@ -22,7 +22,9 @@ import {
   SYSTEM_CONTENT_TYPES,
   SYSTEM_MEDIA_TYPES,
 } from '@crombolo/data'
+import { decompileBlocks } from './blocks.ts'
 import { BUILTIN_DATA_TYPES, builtInContentTypeSchema, builtInMediaTypeSchema } from './builtin.ts'
+import { aliasConfig } from './config-references.ts'
 import type { LoadedSchema } from './load.ts'
 import type {
   SchemaContentType,
@@ -157,15 +159,35 @@ export function toSchemaContentType(
   return type
 }
 
-export function toSchemaDataType(model: DataTypeModel, alias: string): SchemaDataType {
+/**
+ * A data type as a file says it. With `typeAliasOf`, the types its config names
+ * are written by alias and its blocks as `[[data-type.block]]` tables, where
+ * every block can be said as one (story 161).
+ */
+export function toSchemaDataType(
+  model: DataTypeModel,
+  alias: string,
+  typeAliasOf?: (key: string) => string | undefined,
+): SchemaDataType {
+  let config: Record<string, unknown> = Object.fromEntries(
+    model.values.map((v) => [v.alias, v.value]),
+  )
   const dataType: SchemaDataType = {
     key: model.key,
     alias,
     name: model.name,
     editor: model.editorAlias,
-    config: Object.fromEntries(model.values.map((v) => [v.alias, v.value])),
+    config,
   }
   if (model.editorUiAlias) dataType.editorUi = model.editorUiAlias
+  if (!typeAliasOf) return dataType
+  const blocks = decompileBlocks(config, typeAliasOf)
+  if (blocks) {
+    const { blocks: _blocks, blockGroups: _groups, ...rest } = config
+    config = rest
+    dataType.blocks = blocks
+  }
+  dataType.config = aliasConfig(model.editorAlias, config, typeAliasOf)
   return dataType
 }
 
@@ -213,6 +235,14 @@ export async function exportSchemaSet(db: Db, version: string): Promise<SchemaSe
   const aggregates = await liveTypes(types)
   const mediaAggregates = await liveTypes(mediaTypeRepo)
   const memberAggregates = await liveTypes(new ContentTypeRepository(db, { kind: 'member' }))
+  // Every type by key, so a data type's config names it by alias (story 161).
+  const typeAliasByKey = new Map(
+    [...aggregates, ...mediaAggregates, ...memberAggregates].map((a) => [
+      a.key.toLowerCase(),
+      a.alias,
+    ]),
+  )
+  const typeAliasOf = (key: string) => typeAliasByKey.get(key.toLowerCase())
 
   const dataTypeRows = await db.query<{ unique_id: string }>(
     'SELECT n.unique_id FROM data_type d JOIN node n ON n.id = d.node_id ORDER BY n.text',
@@ -232,8 +262,9 @@ export async function exportSchemaSet(db: Db, version: string): Promise<SchemaSe
     }
     taken.add(alias)
     dataTypeAliasByKey.set(model.key, alias)
-    const dataType = toSchemaDataType(model, alias)
-    if (!isUnchangedBuiltin(dataType)) exportedDataTypes.push(dataType)
+    // A built-in is compared as stored, before its config is written by alias.
+    if (!isUnchangedBuiltin(toSchemaDataType(model, alias)))
+      exportedDataTypes.push(toSchemaDataType(model, alias, typeAliasOf))
   }
 
   const templateAliasByKey = new Map<string, string>()

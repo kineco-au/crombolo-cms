@@ -1,5 +1,4 @@
 [content-type]
-key = "cf0bade1-5027-4f98-b7b3-0f7ae51f0a7f"
 alias = "expression"
 name = "Expression"
 description = "One bottling in the range"
@@ -11,7 +10,6 @@ default-component = "pages/expression"
 name = "Content"
 
 [[tab.property]]
-key = "52a26147-233c-41f3-84f3-cf8921b696c5"
 alias = "title"
 name = "Title"
 type = "textstring"
@@ -19,34 +17,29 @@ mandatory = true
 site-search = "high"
 
 [[tab.property]]
-key = "25738367-ed14-4985-9843-04716417c88a"
 alias = "kind"
 name = "Kind"
 description = "House malt, Lightly peated, Sherry matured, Cask strength"
 type = "textstring"
 
 [[tab.property]]
-key = "96f868bf-a368-4457-843a-1f38accf6cc1"
 alias = "productType"
 name = "Product type"
 description = "What the bottling is, e.g. Whisky"
 type = "textstring"
 
 [[tab.property]]
-key = "f4238bf1-3d9d-4dbc-b6f4-9800e1dfdc79"
 alias = "summary"
 name = "Summary"
 description = "One line, shown wherever this bottling is listed"
 type = "textarea"
 
 [[tab.property]]
-key = "df466e38-c8c5-4b8f-b56b-fff051d724cc"
 alias = "bottleImage"
 name = "Bottle"
 type = "imageMediaPicker"
 
 [[tab.property]]
-key = "5b509286-46c1-4863-8b6d-d054a1501164"
 alias = "bodyText"
 name = "Body"
 type = "richtext"
@@ -55,21 +48,18 @@ type = "richtext"
 name = "Specification"
 
 [[tab.property]]
-key = "ff73013c-fdb2-4cd6-9afa-e117d8d223a9"
 alias = "abv"
 name = "ABV"
 description = "As it is printed on the label, e.g. 46%"
 type = "textstring"
 
 [[tab.property]]
-key = "f1053b53-6cbc-4b6b-85b3-9f5c5a73750f"
 alias = "age"
 name = "Age"
 description = "Years in cask. Leave empty for a batch release."
 type = "numeric"
 
 [[tab.property]]
-key = "4622644d-c3b4-44e3-abc1-318229680f1e"
 alias = "batch"
 name = "Batch"
 description = "Shown instead of an age, e.g. 07"
@@ -79,7 +69,6 @@ type = "textstring"
 name = "Tasting"
 
 [[tab.property]]
-key = "ac279149-fa32-4ce0-91a8-d32b7160d36f"
 alias = "tastingNotes"
 name = "Tasting notes"
 description = "Nose, palate and finish, picked from the Library"

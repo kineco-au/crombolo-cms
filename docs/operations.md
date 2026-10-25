@@ -492,6 +492,33 @@ for a protected push); it never waits on stdin. `--dry-run` on `bundle purge` an
 `push` says what would go and changes nothing. `admin reset-password --stdin`
 reads the new password from a pipe, so it never sits in shell history.
 
+### A site built from the command line
+
+An empty directory reaches a published, working site without the back office
+or an editor (story 180). `tests/integration/hello-world.integration.ts` is the
+worked example. CI runs it, one step per test, in this order:
+
+| Step | Command |
+| --- | --- |
+| Scaffold | `crombolo init --name "Hello"` |
+| A page type and its view | `crombolo types new content-type page --at-root` |
+| Another property | `crombolo types add-property page body --type textarea` |
+| Check | `crombolo types check` |
+| The home page | `seed/content/home.toml`, then `crombolo seed check` and `seed apply` |
+| Publish | `crombolo content publish /Home` |
+| An image in a folder | `crombolo media import <dir>`, then `media move` |
+| An administrator | `crombolo admin reset-password -o json` |
+| Health | `crombolo health` |
+| Serve | `crombolo start`, then `GET /` and the back-office sign-in |
+
+A site no server has ever run is a full site. Opening the database (every
+command does) and every schema sync link the built-in Folder media type to the
+built-in media types the site has, as a server's start does
+(`linkMediaFolders`, `packages/server/src/media-folders.ts`, and the end of
+`syncSchema`'s transaction). So images go into
+folders by `media move` or by a seed from the first command. A schema file that
+defines Folder is left to say what Folder allows.
+
 ### Running a site from the command line
 
 These open the site's database directly rather than going through the server,

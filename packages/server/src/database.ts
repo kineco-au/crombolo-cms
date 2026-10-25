@@ -11,7 +11,6 @@ import {
   type Db,
   ensureBuiltInDataTypes,
   ensureSystemContentTypes,
-  ensureSystemMediaTypes,
   ensureSystemMemberTypes,
   INITIAL_STATE,
   markSetupPending,
@@ -25,6 +24,7 @@ import { ensureApiClient } from './api-client.ts'
 import { type BundleChain, migrateBundles, pendingBundleSteps } from './bundle-tables.ts'
 import { type CromboloConfig, runsOnLocalhost } from './config.ts'
 import { logger } from './logging.ts'
+import { linkMediaFolders } from './media-folders.ts'
 
 /** Production never auto-upgrades: an existing database with steps pending refuses to boot. */
 export class UpgradePendingError extends Error {
@@ -73,7 +73,7 @@ export class DatabaseNotReadyError extends Error {
  * served an unmigrated database would answer queries against missing tables.
  */
 export async function attachDatabase(config: CromboloConfig): Promise<Bootstrap> {
-  const db = await connect({ file: config.sqliteFile })
+  const db = await connect({ dialect: config.dialect, file: config.sqliteFile })
   const pending = await pendingMigrations(db, cromboloPlan)
   if (pending.length > 0) {
     await db.close()
@@ -91,7 +91,7 @@ export async function bootstrapDatabase(
   config: CromboloConfig,
   chains: readonly BundleChain[] = [],
 ): Promise<Bootstrap> {
-  const db = await connect({ file: config.sqliteFile })
+  const db = await connect({ dialect: config.dialect, file: config.sqliteFile })
   try {
     // pendingMigrations throws when the database is newer than this code.
     const pending = await pendingMigrations(db, cromboloPlan)
@@ -155,7 +155,7 @@ export async function installDatabase(
   await seedContent(db)
   // A database from an older version gains the built-ins it lacks.
   await ensureBuiltInDataTypes(db)
-  await ensureSystemMediaTypes(db)
+  await linkMediaFolders(db, config.schemaDir)
   await ensureSystemMemberTypes(db)
   await ensureSystemContentTypes(db)
 

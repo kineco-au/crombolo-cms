@@ -6,13 +6,12 @@
  * family can share a prefix (`demo/harbourstone`):
  *
  *   template.json   name and description, for the catalogue
- *   files/          copied verbatim into the new site
- *   bundle/         a content bundle, which the scaffolded `start` script
- *                   applies; it carries its own media, so nothing else does
+ *   files/          copied verbatim into the new site, its content as
+ *                   `seed/` among them (story 164)
  *
- * Content arrives as a bundle rather than as seed code so that it is the same
- * artifact `content export` produces: reviewable, committed with the site, and
- * applied by the one import path that is already tested.
+ * A template's content is its seed: files the new site reads, edits and keeps,
+ * which the scaffolded `start` script applies with `--seed` — on the first
+ * boot, and again after each change to them, through the one import path.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
@@ -54,8 +53,8 @@ export interface SiteTemplate {
   name: string
   description: string
   dir: string
-  /** `bundles/<slug>` in the new site, when the template ships content. */
-  bundle?: string
+  /** The template ships content, as `files/seed/`. */
+  seed: boolean
   /** Server bundles the scaffolded site runs; empty for most templates. */
   serverBundles: TemplateServerBundle[]
 }
@@ -71,7 +70,7 @@ function read(dir: string, id: string): SiteTemplate | undefined {
     name: typeof raw.name === 'string' ? raw.name : id,
     description: typeof raw.description === 'string' ? raw.description : '',
     dir,
-    bundle: existsSync(join(dir, 'bundle')) ? `bundles/${id.replaceAll('/', '-')}` : undefined,
+    seed: existsSync(join(dir, 'files', 'seed')),
     serverBundles: readServerBundles(raw.bundles),
   }
 }
@@ -128,12 +127,12 @@ export interface ScaffoldOptions {
   /**
    * A bundle the site already has, for the `start` script to apply: the path,
    * relative to the site, and any `content import` flags it needs beyond
-   * `--publish`. A template's own bundle is used when this is absent.
+   * `--publish`. A template's own seed is used when this is absent.
    */
   bundle?: { path: string; flags?: readonly string[] }
 }
 
-/** One file to write: literal text, or a path to copy (template media and bundles). */
+/** One file to write: literal text, or a path to copy (a template's files and media). */
 export interface ScaffoldFile {
   /** Relative to the new site, `/`-separated. */
   path: string
@@ -241,8 +240,13 @@ function packageJson(options: {
 /** Every file in a scaffolded site, template files last so they win on a clash. */
 export function scaffoldFiles(options: ScaffoldOptions = {}): ScaffoldFile[] {
   const siteName = options.siteName?.trim() || DEFAULT_SITE_NAME
-  const bundle = options.bundle?.path ?? options.template?.bundle
+  const bundle = options.bundle?.path
   const bundleFlags = ['--publish', ...(options.bundle?.flags ?? [])].join(' ')
+  const start = bundle
+    ? `crombolo start --bundle ${bundle} ${bundleFlags}`
+    : options.template?.seed
+      ? 'crombolo start --seed --publish'
+      : 'crombolo start'
   const serverBundles = options.template?.serverBundles ?? []
   const files: ScaffoldFile[] = [
     {
@@ -251,7 +255,7 @@ export function scaffoldFiles(options: ScaffoldOptions = {}): ScaffoldFile[] {
         name: packageNameFor(siteName),
         // The import is a boot step rather than a config setting so that it is
         // visible here, and so that dropping it is editing one line.
-        start: bundle ? `crombolo start --bundle ${bundle} ${bundleFlags}` : 'crombolo start',
+        start,
         bundles: serverBundles,
       }),
     },
@@ -294,7 +298,7 @@ CROMBOLO_POSTGRES_URL=postgres://crombolo:crombolo@localhost:5432/${packageNameF
   return [...new Map(files.map((file) => [file.path, file])).values()]
 }
 
-/** `files/` into the site root, `bundle/` under `bundles/<slug>`. */
+/** `files/` into the site root, its seed among them. */
 export function componentFiles(template: SiteTemplate | undefined): ScaffoldFile[] {
   if (!template) return []
   const out: ScaffoldFile[] = []
@@ -307,7 +311,6 @@ export function componentFiles(template: SiteTemplate | undefined): ScaffoldFile
     }
   }
   walk(join(template.dir, 'files'), (path) => path)
-  if (template.bundle) walk(join(template.dir, 'bundle'), (path) => `${template.bundle}/${path}`)
   return out
 }
 

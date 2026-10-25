@@ -10,6 +10,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -21,11 +22,14 @@ import { buildManifest } from '../packages/cli/src/manifest.ts'
 import {
   configurationHtml,
   DOCS_DIR,
+  DOCS_SEED_DIR,
   type DocsPage,
   docsKey,
   docsTree,
+  GENERATED_HEADER,
   parseGuide,
   renderMarkdown,
+  writeDocsSeed,
 } from '../scripts/docs-site.ts'
 import { ROOT } from '../scripts/packages.ts'
 import { type Harness, signedInServer } from './support/harness.ts'
@@ -94,11 +98,11 @@ describe('the committed bundle', () => {
     const pages = everyPage(docsTree(await buildManifest()))
     for (const page of pages) {
       const node = stored(docsKey(page.path))
-      expect(node, `${page.path}: run \`bun run build:template demo/crombolo\``).toBeDefined()
+      expect(node, `${page.path}: run \`bun run build:template\``).toBeDefined()
       const body = (storedValue(node, 'body') as { markup?: string } | undefined)?.markup
       expect(
         body === page.body,
-        `${page.path} changed: run \`bun run build:template demo/crombolo\` to rewrite the docs`,
+        `${page.path} changed: run \`bun run build:template\` to rewrite the docs`,
       ).toBe(true)
     }
   })
@@ -122,6 +126,38 @@ describe('the committed bundle', () => {
     // And as the site has them, so the bundle is never a stale copy.
     expect(readFileSync(join(BUNDLE, 'content/components/pages/docsPage.tsx'), 'utf8')).toBe(
       readFileSync(join(ROOT, 'sites/crombolo/components/pages/docsPage.tsx'), 'utf8'),
+    )
+  })
+})
+
+describe('the docs seed', () => {
+  test('is the seed the build writes today, file for file', async () => {
+    // The generated pages are committed seed files (story 164): a guide, a
+    // command or a setting changed without a rebuild shows here.
+    const fresh = mkdtempSync(join(ROOT, 'output', 'docs-seed-'))
+    try {
+      cpSync(DOCS_SEED_DIR, fresh, { recursive: true })
+      writeDocsSeed(await buildManifest(), fresh)
+      const files = (dir: string) =>
+        (readdirSync(dir, { recursive: true }) as string[])
+          .filter((file) => file.endsWith('.toml'))
+          .sort()
+      expect(files(DOCS_SEED_DIR)).toEqual(files(fresh))
+      for (const file of files(fresh))
+        expect(
+          readFileSync(join(DOCS_SEED_DIR, file), 'utf8') ===
+            readFileSync(join(fresh, file), 'utf8'),
+          `${file} changed: run \`bun run build:template\``,
+        ).toBe(true)
+    } finally {
+      rmSync(fresh, { recursive: true, force: true })
+    }
+  })
+
+  test('says it is generated, and what to edit instead', () => {
+    const guide = readFileSync(join(DOCS_SEED_DIR, 'guides', 'remotes.toml'), 'utf8')
+    expect(guide.split('\n')[0]).toBe(
+      `${GENERATED_HEADER} from sites/crombolo/docs/guides/remotes.md: edit that, not this file.`,
     )
   })
 })

@@ -73,7 +73,7 @@ default = "To follow"
 
 A few things worth knowing:
 
-- **`key`** is each type's and property's stable identity, a UUID. Leave it out when you write a file by hand, as above: it is written in for you the first time the file is applied in development. Production refuses a file without one.
+- **No IDs.** A type's identity comes from its alias, and every server works out the same one, so the files need no `key` lines. A file may still carry one where the identity was made some other way, such as a type created in the back office or one from an older site. Leave it as it is: it keeps the type's pages attached.
 - **`components`** names the templates a page of this type may use, by their path under `components/`. `pages/article` is `components/pages/article.tsx`.
 - **`type`** on a property is a data type alias. The common ones are built in (`textstring`, `textarea`, `richtext`, `numeric`, `trueFalse`, `datePicker`, `contentPicker`, `imageMediaPicker`, `tags` and more); a file in `data-types/` adds your own or overrides one.
 - **`default`** fills in a new property on pages that already exist. Without one, adding a mandatory property to a type with content leaves each page for a person to fill in.
@@ -82,16 +82,61 @@ A few things worth knowing:
 
 An element type, the kind block editors hold, is a content type with `is-element = true`. It has no URL, so it has no template.
 
-## Writing files
+## A data type
 
-You can write files by hand, but two commands write them with their keys already in:
+A data type is an editor with its settings. Where it names the types it offers, it names them by alias:
 
-```sh
-bunx crombolo types new content-type article --at-root
-bunx crombolo types add-property article summary --type textarea --mandatory
+```toml
+[data-type]
+alias = "tastingNotePicker"
+name = "Tasting Note Picker"
+editor = "Umbraco.ElementPicker"
+
+[data-type.config]
+allowedContentTypes = ["tastingNote"]
 ```
 
-`types new` writes the type's file and a starting template at `components/article.tsx` (`--no-view` leaves the template out; `--element` writes an element type). `add-property` appends a property to a tab. Both apply the change straight away, through the same step a start runs.
+A block list or block grid lists its blocks as tables:
+
+```toml
+[data-type]
+alias = "pageBlocks"
+name = "Page blocks"
+editor = "Umbraco.BlockList"
+
+[data-type.config]
+validationLimit = { min = 1 }
+
+[[data-type.block]]
+element = "feature"
+label = "{{heading}}"
+group = "Layout"
+
+[[data-type.block]]
+element = "quote"
+group = "Layout"
+```
+
+An alias that names nothing, or a type of the wrong kind, is reported by `types check`, with the file.
+
+## Writing files
+
+You can write files by hand, or have the command line write them:
+
+```sh
+bunx crombolo types new content-type feature --element
+bunx crombolo types new data-type pageBlocks --editor block-list --block feature
+bunx crombolo types new content-type article --at-root --compose seoFields
+bunx crombolo types add-property article blocks --type pageBlocks
+bunx crombolo languages add fr-FR --fallback en-US
+bunx crombolo forms new contact
+bunx crombolo workflows new article-sign-off --content-type article
+bunx crombolo webhooks new searchIndex --url https://search.example/hook --event Umbraco.ContentPublish
+```
+
+`types new` writes the type's file and a starting template at `components/article.tsx` (`--no-view` leaves the template out; `--element` writes an element type). A content type also takes `--allow-child`, `--vary-by-culture`, `--vary-by-segment`, `--library` and `--list-view`. A data type takes `--editor` and that editor's settings: `textstring`, `textarea`, `rich-text`, `number`, `toggle`, `date`, `dropdown`, `content-picker`, `media-picker`, `element-picker`, `block-list` or `block-grid`. `add-property` appends a property to a tab.
+
+Each command refuses a name that is taken, or one that points at something the site doesn't have, before it writes anything. Then it applies the change straight away, through the same step a start runs.
 
 The back office writes the same files. In development, saving a content type under **Settings** writes its `.toml` file, which you then commit like any other change. In production the files are read-only, and the editor says which file to change in source control.
 
@@ -127,7 +172,7 @@ bunx crombolo types purge --older-than 90
 ## Checking in CI
 
 ```sh
-bunx crombolo types check --static   # the files alone: parse, validate, keys present
+bunx crombolo types check --static   # the files alone: parse, validate, every alias found
 bunx crombolo types check            # and what applying them would do to this database
 ```
 

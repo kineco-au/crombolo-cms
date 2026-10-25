@@ -2,7 +2,7 @@
   "$schema": "../../backoffice-dist/dist/umbraco-package-schema.json",
   "name": "Crombolo",
   "id": "Crombolo.Core",
-  "version": "0.28.0",
+  "version": "0.29.0",
   "allowPublicAccess": false,
   "extensions": [
     {
@@ -300,6 +300,13 @@
       "name": "Crombolo Read-only Banner",
       "element": "/crombolo-plugin/read-only-banner.js",
       "weight": 1000
+    },
+    {
+      "type": "headerApp",
+      "alias": "Crombolo.HeaderApp.BundlesChanged",
+      "name": "Crombolo Extensions Changed Notice",
+      "element": "/crombolo-plugin/bundles-changed.js",
+      "weight": 999
     },
     {
       "type": "headerApp",

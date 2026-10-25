@@ -20,15 +20,17 @@ import {
   seedIdentity,
 } from '@crombolo/data'
 import {
-  allProperties,
   exportSchemaSet,
   generateTypes,
   hashSchemaSet,
   loadSchemaDirectory,
+  propertyKeyFor,
   type SchemaContentType,
   type SyncOptions,
   type SyncReport,
   syncSchema,
+  typeKeyFor,
+  writeContentType,
   writeKeysBack,
   writeSchemaFiles,
 } from '@crombolo/schema'
@@ -127,14 +129,15 @@ describe(`schema sync (${dialectUnderTest})`, () => {
     expect(report.action).toBe('applied')
     expect(report.created).toEqual({ types: 1, properties: 2, dataTypes: 0, languages: 1 })
     expect(report.updated.languages).toBe(1)
-    // Keys were minted for the type and both properties
-    expect(report.assignedKeys.map((k) => k.propertyAlias ?? '<type>').sort()).toEqual([
-      '<type>',
-      'summary',
-      'title',
-    ])
+    // Keys are derived, so none needs writing back into the file (story 161).
+    expect(report.assignedKeys).toEqual([])
 
     const type = await new ContentTypeRepository(db).byAlias('article')
+    expect(type?.key).toBe(typeKeyFor('document', 'article'))
+    expect(type?.properties.map((p) => p.key)).toEqual([
+      propertyKeyFor(type?.key as string, 'title'),
+      propertyKeyFor(type?.key as string, 'summary'),
+    ])
     expect(type?.properties.map((p) => p.alias)).toEqual(['title', 'summary'])
     expect(type?.containers.map((c) => [c.name, c.type])).toEqual([['Content', 'Tab']])
     const state = await currentSchemaState(db)
@@ -278,10 +281,8 @@ describe(`schema sync (${dialectUnderTest})`, () => {
     expect(revived.revived).toEqual(['article.summary'])
     const back = (await types.byAlias('article'))?.properties.find((p) => p.alias === 'summary')
     expect(back?.key).toBe(summaryKey)
-    expect(revived.assignedKeys.find((k) => k.propertyAlias === 'summary')).toMatchObject({
-      key: summaryKey,
-      revived: true,
-    })
+    // Derived both times, so there is nothing to write back.
+    expect(revived.assignedKeys).toEqual([])
     const loaded = await docs.byKey(doc.key)
     expect(loaded?.values.find((v) => v.alias === 'summary')?.value).toBe('kept')
   })
@@ -372,26 +373,66 @@ describe(`schema sync extras (${dialectUnderTest})`, () => {
     expect(await new ContentTypeRepository(db).byAlias('article')).toBeUndefined()
   })
 
-  test('production refuses files without keys, and accepts them once written back', async () => {
-    const db = await prepared()
+  test('files without keys sync to the same keys in any database, production included', async () => {
     const dir = schemaDir('1.0.0', { 'content-types/article.toml': ARTICLE(SUMMARY) })
-    const refused = await sync(db, dir, NODE, prod)
-    expect(refused.action).toBe('refused')
-    expect(refused.reason).toContain('article.title')
-
-    const loaded = loadSchemaDirectory(dir)
-    const applied = await syncSchema(db, loaded, NODE, dev)
-    const written = writeKeysBack(loaded, applied.assignedKeys)
-    expect(written).toEqual([join(dir, 'content-types', 'article.toml')])
-    const again = loadSchemaDirectory(dir)
-    expect(again.problems).toEqual([])
-    expect(again.set.contentTypes[0]?.key).toBeDefined()
-    expect(allProperties(again.set.contentTypes[0] as SchemaContentType).every((p) => p.key)).toBe(
-      true,
-    )
-    // Same files, now keyed: production is happy, and nothing is applied twice
+    const db = await prepared()
+    expect((await sync(db, dir, NODE, prod)).action).toBe('applied')
+    const first = await new ContentTypeRepository(db).byAlias('article')
+    // A second database, as another environment would be: the same keys.
     const db2 = await prepared()
-    expect((await syncSchema(db2, again, NODE, prod)).action).toBe('applied')
+    expect((await syncSchema(db2, loadSchemaDirectory(dir), NODE, prod)).action).toBe('applied')
+    const second = await new ContentTypeRepository(db2).byAlias('article')
+    expect(second?.key).toBe(first?.key as string)
+    expect(second?.properties.map((p) => p.key)).toEqual(first?.properties.map((p) => p.key))
+  })
+
+  test('a key in a file wins, a legacy key found by alias is kept and written back', async () => {
+    const db = await prepared()
+    const legacy = '0b1d2c3e-4f50-4a61-8b72-9c83d4e5f601'
+    const keyed = schemaDir('1.0.0', {
+      'content-types/article.toml': ARTICLE(SUMMARY).replace(
+        '[content-type]\n',
+        `[content-type]\nkey = "${legacy}"\n`,
+      ),
+    })
+    await sync(db, keyed)
+    expect((await new ContentTypeRepository(db).byAlias('article'))?.key).toBe(legacy)
+    // The same type with its key line gone: the row is found by alias, and a
+    // development sync writes its key back so other environments get it too.
+    const keyless = schemaDir('1.0.1', { 'content-types/article.toml': ARTICLE(SUMMARY) })
+    const loaded = loadSchemaDirectory(keyless)
+    const applied = await syncSchema(db, loaded, { ...NODE, version: '1.0.1' }, dev)
+    expect(applied.assignedKeys.map((k) => [k.typeAlias, k.propertyAlias, k.key])).toContainEqual([
+      'article',
+      undefined,
+      legacy,
+    ])
+    writeKeysBack(loaded, applied.assignedKeys)
+    expect(loadSchemaDirectory(keyless).set.contentTypes[0]?.key).toBe(legacy)
+  })
+
+  test('the writer leaves out a derived key and keeps any other', () => {
+    const base = loadSchemaDirectory(
+      schemaDir('1.0.0', { 'content-types/article.toml': ARTICLE(SUMMARY) }),
+    ).set.contentTypes[0] as SchemaContentType
+    const derived = { ...base, key: typeKeyFor('document', 'article') }
+    expect(writeContentType(derived)).not.toContain('key =')
+    const legacy = { ...base, key: '0b1d2c3e-4f50-4a61-8b72-9c83d4e5f601' }
+    expect(writeContentType(legacy)).toContain('key = "0b1d2c3e-4f50-4a61-8b72-9c83d4e5f601"')
+  })
+
+  test('renaming an alias by hand makes a new type, and the old one is retired', async () => {
+    const db = await prepared()
+    await sync(db, schemaDir('1.0.0', { 'content-types/article.toml': ARTICLE(SUMMARY) }))
+    const renamed = schemaDir('1.0.1', {
+      'content-types/story.toml': ARTICLE(SUMMARY).replace('alias = "article"', 'alias = "story"'),
+    })
+    const report = await sync(db, renamed, { ...NODE, version: '1.0.1' })
+    expect(report.action).toBe('applied')
+    expect((await new ContentTypeRepository(db).byAlias('story'))?.key).toBe(
+      typeKeyFor('document', 'story'),
+    )
+    expect(await new ContentTypeRepository(db).byAlias('article')).toBeUndefined()
   })
 
   test('export round-trips what sync applied, and generate names every property', async () => {
@@ -409,15 +450,18 @@ describe(`schema sync extras (${dialectUnderTest})`, () => {
     const exported = await exportSchemaSet(db, '1.0.0')
     expect(hashSchemaSet(exported)).toBe(hashSchemaSet(fromFiles.set))
 
+    // Export writes what the files say, canonically: the same text a
+    // canonical writing of the files gives, keys left out as derived.
     const out = mkdtempSync(join(tmpdir(), 'crombolo-export-'))
-    dirs.push(out)
+    const canonical = mkdtempSync(join(tmpdir(), 'crombolo-canonical-'))
+    dirs.push(out, canonical)
     writeSchemaFiles(out, exported)
-    expect(readFileSync(join(out, 'content-types', 'article.toml'), 'utf8')).toBe(
-      readFileSync(join(dir, 'content-types', 'article.toml'), 'utf8'),
-    )
-    expect(readFileSync(join(out, 'data-types', 'big-text.toml'), 'utf8')).toBe(
-      readFileSync(join(dir, 'data-types', 'big-text.toml'), 'utf8'),
-    )
+    writeSchemaFiles(canonical, fromFiles.set)
+    for (const file of ['content-types/article.toml', 'data-types/big-text.toml'])
+      expect(readFileSync(join(out, file), 'utf8')).toBe(
+        readFileSync(join(canonical, file), 'utf8'),
+      )
+    expect(readFileSync(join(out, 'content-types/article.toml'), 'utf8')).not.toContain('key =')
 
     const types = generateTypes(fromFiles.set)
     expect(types).toContain('export interface Article {')
