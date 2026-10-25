@@ -208,19 +208,34 @@ describe('the upgrade, end to end through the CLI', () => {
     }
   }
 
+  let runs = 0
+
   /**
-   * Everything a process printed, and its exit code. A command that has not
-   * finished in time is killed: a wrong assumption in a test here otherwise
-   * hangs until the suite's own timeout, with nothing to read.
+   * Runs a process and answers everything it printed, and its exit code.
+   *
+   * Its output goes to files, read once it has exited, rather than through
+   * pipes: `upgrade --plan` prints 170 KB, and on CI that came back cut off at
+   * about 47 KB with exit code 0, now and then. A command that has not finished
+   * in time is killed: a wrong assumption in a test here otherwise hangs until
+   * the suite's own timeout.
    */
-  async function collect(proc: Bun.Subprocess<'ignore', 'pipe', 'pipe'>): Promise<Run> {
+  async function collect(
+    command: string[],
+    options: { cwd: string; env: Record<string, string | undefined> },
+  ): Promise<Run> {
+    runs += 1
+    const out = join(dir, `run-${runs}.out`)
+    const err = join(dir, `run-${runs}.err`)
+    const proc = Bun.spawn(command, {
+      ...options,
+      stdin: 'ignore',
+      stdout: Bun.file(out),
+      stderr: Bun.file(err),
+    })
     const timer = setTimeout(() => proc.kill(), 60_000)
     try {
-      const [out, err] = await Promise.all([
-        new Response(proc.stdout).text(),
-        new Response(proc.stderr).text(),
-      ])
-      return { code: await proc.exited, out: `${out}${err}` }
+      const code = await proc.exited
+      return { code, out: `${await Bun.file(out).text()}${await Bun.file(err).text()}` }
     } finally {
       clearTimeout(timer)
     }
@@ -228,25 +243,17 @@ describe('the upgrade, end to end through the CLI', () => {
 
   /** Runs a command from a release directory, against one of the two databases. */
   function cli(database: Environment, release: Release, ...args: string[]): Promise<Run> {
-    return collect(
-      Bun.spawn(['bun', CLI, ...args], {
-        cwd: releaseDir(release),
-        env: environment(database, release),
-        stdout: 'pipe',
-        stderr: 'pipe',
-      }),
-    )
+    return collect(['bun', CLI, ...args], {
+      cwd: releaseDir(release),
+      env: environment(database, release),
+    })
   }
 
   function seed(database: Environment, ...args: string[]): Promise<Run> {
-    return collect(
-      Bun.spawn(['bun', join(dir, 'seed.ts'), ...args], {
-        cwd: dir,
-        env: environment(database, 2),
-        stdout: 'pipe',
-        stderr: 'pipe',
-      }),
-    )
+    return collect(['bun', join(dir, 'seed.ts'), ...args], {
+      cwd: dir,
+      env: environment(database, 2),
+    })
   }
 
   const lastLine = (run: Run) => run.out.trim().split('\n').at(-1) as string
@@ -508,19 +515,15 @@ describe('the upgrade, end to end through the CLI', () => {
   test('a production boot refuses while the data work is outstanding, and names the commands', async () => {
     // `prod` is still on release 1's data; deploying release 2's files there and
     // starting the server must fail loudly rather than apply half of it.
-    const refused = await collect(
-      Bun.spawn(['bun', CLI, 'start'], {
-        cwd: releaseDir(2),
-        env: {
-          ...environment('prod', 2),
-          NODE_ENV: 'production',
-          PORT: '0',
-          CROMBOLO_BOOT_ATTEMPTS: '1',
-        },
-        stdout: 'pipe',
-        stderr: 'pipe',
-      }),
-    )
+    const refused = await collect(['bun', CLI, 'start'], {
+      cwd: releaseDir(2),
+      env: {
+        ...environment('prod', 2),
+        NODE_ENV: 'production',
+        PORT: '0',
+        CROMBOLO_BOOT_ATTEMPTS: '1',
+      },
+    })
     expect(refused.out).toContain('need data work before they can apply')
     expect(refused.out).toContain('crombolo upgrade check')
     expect(refused.code, refused.out).not.toBe(0)
