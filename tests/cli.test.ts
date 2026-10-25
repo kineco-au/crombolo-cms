@@ -8,8 +8,10 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { Writable } from 'node:stream'
 import Ajv2020 from 'ajv/dist/2020'
 import { ERROR_KINDS, OUTCOMES } from '../packages/cli/src/errors.ts'
+import { drained } from '../packages/cli/src/main.ts'
 import { buildManifest } from '../packages/cli/src/manifest.ts'
 import { ROOT, sharedVersion } from '../scripts/packages.ts'
 
@@ -163,6 +165,27 @@ describe('failures and outcomes', () => {
     const result = run(['bundle', 'purge', 'demo', '--dry-run', '-o', 'json'])
     expect(result.code).toBe(0)
     expect(JSON.parse(result.out)).toMatchObject({ id: 'demo', dropped: [], changed: false })
+  })
+})
+
+describe('output on a slow pipe', () => {
+  test('the CLI waits for what it wrote to drain before it ends', async () => {
+    // A pipe that takes its time, as a busy CI runner's reader does: written
+    // output queues, and a process ending now would lose what is queued.
+    const taken: string[] = []
+    const slow = new Writable({
+      highWaterMark: 16,
+      write(chunk, _encoding, done) {
+        setTimeout(() => {
+          taken.push(String(chunk))
+          done()
+        }, 5)
+      },
+    })
+    for (let i = 0; i < 20; i++) slow.write(`line ${i}\n`)
+    expect(taken.length).toBeLessThan(20)
+    await drained([slow])
+    expect(taken.join('')).toContain('line 19')
   })
 })
 

@@ -6,6 +6,14 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.30.1 — 2026-10-25
+
+- **The command line no longer loses the end of its output on a slow pipe.**
+  It waits for stdout and stderr to drain before it ends. Before, output piped
+  to a busy reader could arrive cut off, with exit code 0: `upgrade --plan`
+  stopped at 47 KB of 170 KB on a CI runner, and v0.30.0's release was held
+  back by it.
+
 ## v0.30.0 — 2026-10-25
 
 - **Blocks render their own components** (story 184): `<Blocks

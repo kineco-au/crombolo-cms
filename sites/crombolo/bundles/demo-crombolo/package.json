@@ -6,7 +6,7 @@
     "content"
   ],
   "peerDependencies": {
-    "@crombolo/crombolo": ">=0.30.0"
+    "@crombolo/crombolo": ">=0.30.1"
   },
   "crombolo": {
     "id": "demo-crombolo",
