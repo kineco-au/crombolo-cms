@@ -6,6 +6,14 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.29.1 — 2026-10-25
+
+- **CI only; no change to the packages' behaviour.** Two tests that failed by
+  chance on a busy runner are fixed. One matched a member's name inside a hash;
+  the other boots four sites within CI's 5s limit. The pipeline's Postgres now
+  runs with `fsync`, `synchronous_commit` and `full_page_writes` off, to shorten
+  the Postgres test and benchmark jobs.
+
 ## v0.29.0 — 2026-10-25
 
 - **A demo site in three commands** (story 164): `crombolo init`, `crombolo

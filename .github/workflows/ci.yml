@@ -145,6 +145,24 @@ jobs:
             CROMBOLO_POSTGRES_URL: postgres://crombolo:crombolo@localhost:5432/crombolo_test
         steps:
             - uses: actions/checkout@v5
+            # Throwaway data: no durability to pay for. All three take a reload, so
+            # the service container needs no command line of its own.
+            - name: Tune Postgres for tests
+              if: matrix.dialect == 'postgres'
+              env:
+                  PGPASSWORD: crombolo
+              run: |
+                  # The health check can pass while the image still initialises on
+                  # a socket only, so wait for TCP before tuning.
+                  for _ in $(seq 1 30); do
+                    pg_isready -h localhost -U crombolo -d crombolo_test && break
+                    sleep 1
+                  done
+                  psql -h localhost -U crombolo -d crombolo_test -v ON_ERROR_STOP=1 \
+                    -c "ALTER SYSTEM SET fsync = off" \
+                    -c "ALTER SYSTEM SET synchronous_commit = off" \
+                    -c "ALTER SYSTEM SET full_page_writes = off" \
+                    -c "SELECT pg_reload_conf()"
             - uses: oven-sh/setup-bun@v2
               with:
                   bun-version: ${{ env.BUN_VERSION }}

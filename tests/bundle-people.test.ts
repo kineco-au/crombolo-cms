@@ -148,7 +148,8 @@ describe('a bundle with people', () => {
       formatVersion: 3,
       people: { counts: { members: 1, memberGroups: 1, users: 0, userGroups: 0 } },
     })
-    expect(manifest).not.toContain('ada')
+    // As a word: a hex hash in the manifest may hold the letters by chance.
+    expect(manifest).not.toMatch(/\bada\b/i)
     const member = readFileSync(
       join(dir, 'people/members/0b6c1a3e-0000-4000-8000-000000000002.json'),
     )

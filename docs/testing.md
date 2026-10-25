@@ -529,6 +529,13 @@ SQLite alone. `--postgres-tests` in the commit message adds the Postgres leg on
 `release.yml`), since both are what it publishes. Locally, `docker:test:all` is
 the release's matrix.
 
+In the pipeline, Postgres runs with `fsync`, `synchronous_commit` and
+`full_page_writes` off: its data is thrown away with the runner, so there is no
+durability to pay for. A step sets them with `ALTER SYSTEM` and a reload,
+because a service container takes no command line. It does this for the unit
+suite's Postgres leg and for the release's load and benchmark job. The local
+`db` container keeps the defaults, since it also holds development data.
+
 Three settings exist for CI specifically. `retries: 2` applies only when `CI` is set,
 so a flake on a laptop stays a flake worth chasing rather than being retried away.
 `forbidOnly` stops a stray `test.only` turning a green build into one test. And the

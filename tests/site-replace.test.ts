@@ -230,6 +230,7 @@ describe(`replacing a site (${dialectUnderTest})`, () => {
     ])
   })
 
+  // Four sites booted in one test: past CI's 5s default on a busy runner.
   test('--replace-all needs an administrator in the file, then deletes what it lacks', async () => {
     const a = await site({ types: ['page'], css: 'site.css', pages: ['Home'] })
     const withoutUsers = await exportAndClose(a.h)
@@ -275,7 +276,7 @@ describe(`replacing a site (${dialectUnderTest})`, () => {
     )
     expect(anyTrashed).toEqual([])
     expect(await new MemberRepository(db).byUsername('old')).toBeUndefined()
-  })
+  }, 30_000)
 
   test('refuses what is not a whole site, and a file without its media unless told', async () => {
     const a = await site({ types: ['page'], css: 'site.css', pages: ['Home'] })
