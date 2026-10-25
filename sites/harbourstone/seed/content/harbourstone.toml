@@ -12,7 +12,12 @@ heroCtaLabel = "The bottlings"
 styleEyebrow = "The house style"
 styleHeading = "Salt on the rim of the glass."
 styleIntro = { html = "<p>Spring water comes off the peat-dark hills behind the stillhouse. Spirit is filled into casks that sleep in stone warehouses open to the sea wind. We do not chill-filter, and we do not colour.</p>" }
-stats = ["1894", "2", "46", "12-21"]
+stats = [
+  { type = "highlight", values = { heading = "1894", detail = "First season on this rock" } },
+  { type = "highlight", values = { heading = "2", detail = "Pot stills, wash and spirit" } },
+  { type = "highlight", values = { heading = "46%", detail = "Core range, bottled here" } },
+  { type = "highlight", values = { heading = "12–21", detail = "Years in the current make" } },
+]
 styleImage = "/copper-pot-stills.jpg"
 rangeEyebrow = "On offer"
 rangeHeading = "Four expressions, one shoreline."

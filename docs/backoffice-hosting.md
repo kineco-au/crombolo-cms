@@ -451,6 +451,35 @@ A dashboard element must extend **`UmbLitElement`**, not Lit's `LitElement`.
 Umbraco uses a dashboard as a controller host; a plain element renders nothing
 and the console reports `controllerHost.provideContext is not a function`.
 
+### Side panels
+
+Umbraco's shell has no slot beside main: `umb-backoffice` renders the header,
+`umb-backoffice-main` and a bare slot in a flex column, and main fixes its own
+height under a 60 px header. The `Crombolo.EntryPoint.SidePanels` entry point
+(`plugin/side-panel/host.js`) docks a panel host into the live shell (story 182):
+- **Where:** it inserts `<crombolo-side-panel-host>` after main in the
+  shell's shadow root.
+- **Layout:** a stylesheet added to the shadow root's `adoptedStyleSheets`
+  turns the shell into a grid: the header across the top, then main and the
+  panel side by side.
+- **Main is never re-rendered or moved.** An entry point runs after the shell
+  has drawn, and a patched `render` would have made Lit replace the live main
+  and header, which broke the trees inside them.
+- **Outside the router,** so navigation leaves the panel alone.
+- **An upstream change:** if the shell's children are not the header, main
+  and the slot in that order, the panel is not docked and a warning is logged.
+  `tests/side-panel-plugin.test.ts` reads the served chunk and fails first.
+
+The rest is ordinary extension machinery:
+- **The panels:** `sidePanel` manifests, read with an
+  `UmbExtensionsElementInitializer` (conditions included).
+- **The control context:** `Crombolo.Context.SidePanel`, a `globalContext`
+  (`side-panel/context.js`).
+- **The toggles:** header apps that the host registers for panels asking for
+  one (`side-panel/toggle.js`).
+- **The rules:** the width limits, docked or sheet, and what is remembered,
+  all in `side-panel/layout.js`.
+
 ## Boot sequence the server must satisfy
 
 From `apps/app/app.element.ts` `#setup()`:

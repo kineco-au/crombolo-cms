@@ -599,7 +599,7 @@ cache supplies (`@crombolo/render` `values.ts` and `media.ts`):
 | Multinode Treepicker    | the published pages, in order                                                                               |
 | Element Picker          | `PublishedElement[]`, always a list, dropping any not published in the page's culture                       |
 | Multi URL Picker        | `Link[]`, with page and media URLs resolved                                                                 |
-| Block List / Block Grid | items with `content` and `settings` as `PublishedElement`s (same `value()`, and `contentType.alias` names the element type); grid items add spans and areas |
+| Block List / Block Grid | items with `content` and `settings` as `PublishedElement`s (same `value()`, and `contentType.alias` names the element type); grid items add spans, `areaGridColumns` and areas (with their alias and spans), and the list carries `gridColumns`. `<Blocks>` renders them (see "Blocks") |
 | Media Picker            | `MediaWithCrops`, one or a list as the data type says; `model.media(alias)` always lists                    |
 | Image Cropper           | `ImageCropperValue` (`src`, `crops`, `focalPoint`, `cropUrl()`)                                             |
 | Rich text               | the markup, with `/{localLink:…}` links resolved (`#` when gone)                                            |
@@ -926,6 +926,7 @@ waits for a visitor to find it. `components check` is that failure brought forwa
 bunx crombolo components check             # compile every view; report a template with no file
 bunx crombolo components list              # what is in components/, and which type declares each
 bunx crombolo components new shared/header        # components/shared/header.tsx
+bunx crombolo components new --block quote        # components/blocks/quote.tsx, for an element type
 bunx crombolo assets list             # the stylesheets and scripts beside them
 bunx crombolo assets new stylesheet print.css
 ```
@@ -942,6 +943,49 @@ template (over `EmailProps`) for one a form's Send email workflow names as its
 `template` ([`forms.md`](forms.md#an-e-mail-template)), and a plain component
 otherwise. An e-mail template renders through `Renderer.renderEmail`, with the
 same time limit and layout chain as a page.
+
+## Blocks
+
+A block renders with its own component, found by its element type (story 184):
+`<Blocks items={model.value('sections')} />` renders each block with
+`components/blocks/<element alias>.tsx`'s default export, given `{ content,
+settings, block }`. A new kind of block is one new file, not an edit to every
+template that lists blocks. It is Umbraco's partial-per-element-type convention
+(`blocklist/Components/<alias>`), for TSX.
+
+- **The lookup** goes through the render scope (`blockComponent`), which the
+  renderer fills for each page with `Renderer.blockComponent`. It imports from
+  the page's own views generation, so a changed block component is taken up
+  as a changed template is. The alias must be one plain segment
+  (`[A-Za-z0-9_-]`), so an element type alias cannot reach outside
+  `components/blocks/`.
+- **A template's own mapping wins**, there only: `<Blocks items={…}
+  components={{ quote: PullQuote }} />`. Harbourstone renders its `highlight`
+  blocks as rows through the file, and as figures on the home page by mapping
+  the type.
+- **A missing component** renders nothing to visitors. In preview, which is
+  the one render that passes `preview: true` (`RenderRequest`), it renders a
+  placeholder naming the element type and the file to create.
+- **A Block Grid** renders Umbraco's block-grid markup, so Umbraco's default
+  stylesheet and CSS written for it apply unchanged:
+  - `umb-block-grid` with `--umb-block-grid--grid-columns`;
+  - `umb-block-grid__layout-container`;
+  - `umb-block-grid__layout-item` with `data-content-element-type-alias` and
+    `--umb-block-grid--item-column-span` / `--umb-block-grid--item-row-span`;
+  - `umb-block-grid__area-container` with
+    `--umb-block-grid--area-grid-columns`;
+  - `umb-block-grid__area` with `data-area-alias`.
+
+  A block's areas, rendered, are its component's `children`; it places
+  `{children}` where they go, as Umbraco's `GetBlockGridItemAreasHtmlAsync`
+  does.
+- **Tooling:**
+  - `crombolo components new --block <alias>` writes the file, typed with
+    `BlockProps<Alias>` from `schema/content-types.d.ts`;
+  - `components check` warns of a block component whose name is no element
+    type.
+
+The code is in `packages/render/src/blocks.ts`.
 
 ## Hostnames
 

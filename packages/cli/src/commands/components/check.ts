@@ -20,6 +20,12 @@ export default class ComponentsCheck extends BaseCommand {
       { name: 'problems', type: 'array', items: { type: 'object' } },
       { name: 'typeProblems', type: 'array', items: { type: 'string' } },
       { name: 'typesNote', type: 'string', nullable: true },
+      {
+        name: 'orphanBlocks',
+        type: 'array',
+        items: { type: 'string' },
+        description: 'components under blocks/ whose name is no element type',
+      },
     ],
     outcomes: ['problems_found'],
   } as const
@@ -45,6 +51,18 @@ export default class ComponentsCheck extends BaseCommand {
       this.say(`  types    tsc --noEmit over ${here(config.siteDir)}`)
       for (const problem of report.types.problems) this.say(`  [types]  ${problem}`)
     }
+    // A block component renders an element type's blocks by its name; one that
+    // names none is never used, which is worth saying but breaks nothing.
+    const elements = new Set(types.filter((type) => type.isElement).map((type) => type.alias))
+    const orphanBlocks = report.components
+      .map((component) => component.alias)
+      .filter(
+        (alias) => alias.startsWith('blocks/') && !elements.has(alias.slice('blocks/'.length)),
+      )
+    for (const alias of orphanBlocks)
+      this.say(
+        `  [warn]   components/${alias}.tsx renders blocks of "${alias.slice(7)}", which is no element type`,
+      )
     if (report.problems.length > 0 || report.types.problems.length > 0)
       this.outcome = 'problems_found'
     return {
@@ -53,6 +71,7 @@ export default class ComponentsCheck extends BaseCommand {
       problems: report.problems.map((p) => ({ file: p.file, message: p.message })),
       typeProblems: report.types.problems,
       typesNote: report.types.note ?? null,
+      orphanBlocks,
     }
   }
 }

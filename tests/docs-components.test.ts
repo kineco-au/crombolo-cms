@@ -53,6 +53,40 @@ name = "Events feed URL"
 type = "textstring"
 `
 
+// The Blocks example's page and its block's element type (story 184).
+const LANDING = `[content-type]
+alias = "landingPage"
+name = "Landing Page"
+allow-at-root = true
+components = ["pages/landingPage"]
+default-component = "pages/landingPage"
+
+[[property]]
+alias = "sections"
+name = "Sections"
+type = "landingSections"
+`
+
+const QUOTE = `[content-type]
+alias = "quote"
+name = "Quote"
+is-element = true
+
+[[property]]
+alias = "said"
+name = "Said"
+type = "textstring"
+`
+
+const SECTIONS = `[data-type]
+alias = "landingSections"
+name = "Landing sections"
+editor = "Umbraco.BlockList"
+
+[[data-type.block]]
+element = "quote"
+`
+
 const open: Harness[] = []
 const dirs: string[] = []
 afterEach(async () => {
@@ -71,6 +105,10 @@ function siteFromGuide(): string {
   mkdirSync(join(root, 'schema', 'content-types'), { recursive: true })
   writeFileSync(join(root, 'schema', 'schema.toml'), '[schema]\nversion = "1.0.0"\n')
   writeFileSync(join(root, 'schema', 'content-types', 'showcase-page.toml'), SHOWCASE)
+  writeFileSync(join(root, 'schema', 'content-types', 'landing-page.toml'), LANDING)
+  writeFileSync(join(root, 'schema', 'content-types', 'quote.toml'), QUOTE)
+  mkdirSync(join(root, 'schema', 'data-types'), { recursive: true })
+  writeFileSync(join(root, 'schema', 'data-types', 'landing-sections.toml'), SECTIONS)
   writeFileSync(
     join(root, 'schema', 'content-types.d.ts'),
     generateTypes(loadSchemaDirectory(join(root, 'schema')).set),
@@ -85,8 +123,10 @@ function siteFromGuide(): string {
 describe('docs/writing-components.md', () => {
   test('has the components the page it builds imports', () => {
     expect([...examples().keys()].sort()).toEqual([
+      'components/blocks/quote.tsx',
       'components/emails/receipt.tsx',
       'components/emails/shell.tsx',
+      'components/pages/landingPage.tsx',
       'components/pages/searchPage.tsx',
       'components/shared/arrow-icon.tsx',
       'components/shared/badge.tsx',

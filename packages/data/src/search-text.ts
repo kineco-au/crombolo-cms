@@ -138,3 +138,8 @@ export function valueText(
   collect(raw, out, unsearchable)
   return out
 }
+
+/** `%`, `_` and the escape character itself, made literal for `LIKE … ESCAPE '\'`. */
+export function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (c) => `\\${c}`)
+}

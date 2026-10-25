@@ -104,6 +104,8 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'dashboard:Crombolo.Dashboard.Settings',
       'backofficeEntryPoint:Crombolo.EntryPoint.TsxEditors',
       'headerApp:Crombolo.HeaderApp.ReadOnly',
+      'backofficeEntryPoint:Crombolo.EntryPoint.SidePanels',
+      'globalContext:Crombolo.GlobalContext.SidePanel',
       'headerApp:Crombolo.HeaderApp.BundlesChanged',
       'headerApp:Crombolo.HeaderApp.Settings',
       'workspaceFooterApp:Crombolo.WorkspaceFooterApp.ElementTypeHint',

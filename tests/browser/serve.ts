@@ -13,7 +13,7 @@ import {
 } from 'node:fs'
 import { join } from 'node:path'
 import { DEFAULT_DATA_TYPES } from '@crombolo/data'
-import { createServer, loadConfig } from '@crombolo/server'
+import { createServer, loadConfig, VERSION } from '@crombolo/server'
 import { BLOCK_ONLY_ELEMENT_TYPE, BROWSER_ADMIN } from './fixtures.ts'
 
 const repo = join(import.meta.dir, '../..')
@@ -108,6 +108,59 @@ is-element = true
 alias = "text"
 name = "Text"
 type = "textstring"
+`,
+)
+
+// A bundle with a side panel and its header toggle, for the side-panel test
+// (story 182). The panel counts clicks, so a test can tell its state survived.
+const sidePanel = join(root, 'node_modules', 'test-side-panel')
+mkdirSync(sidePanel, { recursive: true })
+writeFileSync(
+  join(root, 'package.json'),
+  JSON.stringify({
+    name: 'browser-site',
+    private: true,
+    dependencies: { 'test-side-panel': '1.0.0' },
+  }),
+)
+writeFileSync(
+  join(sidePanel, 'package.json'),
+  JSON.stringify({
+    name: 'test-side-panel',
+    version: '1.0.0',
+    peerDependencies: { '@crombolo/crombolo': `^${VERSION}` },
+    crombolo: {
+      id: 'test-side-panel',
+      extensions: [
+        {
+          type: 'sidePanel',
+          alias: 'Test.SidePanel.Notes',
+          name: 'Notes',
+          element: 'panel.js',
+          meta: { label: 'Notes', icon: 'icon-notepad', defaultWidth: 360, toggle: true },
+        },
+      ],
+    },
+  }),
+)
+writeFileSync(
+  join(sidePanel, 'panel.js'),
+  `class TestNotesPanel extends HTMLElement {
+  count = 0
+  connectedCallback() {
+    if (this.button) return
+    this.button = document.createElement('button')
+    this.button.id = 'count'
+    this.button.textContent = 'Clicked 0'
+    this.button.addEventListener('click', () => {
+      this.count += 1
+      this.button.textContent = 'Clicked ' + this.count
+    })
+    this.append(this.button)
+  }
+}
+customElements.define('test-notes-panel', TestNotesPanel)
+export default TestNotesPanel
 `,
 )
 

@@ -97,6 +97,7 @@ not cover.
 | `027` | The Library section (elements) | should | M | done | 024 |
 | `028` | Approval before publishing | should | L | done | — |
 | `029` | Scheduled publishing through approval | could | M | done | 028 |
+| `182` | Extensions can dock a panel beside the back office | should | M | done | — |
 
 ### Epic D — Members and identity
 
@@ -123,6 +124,7 @@ not cover.
 | `047` | Diagnostics: health checks, telemetry, profiling and troubleshooting | could | M | done | — |
 | `048` | The rest of the contract | could | M | done | — |
 | `049` | Light and dark in the back office | should | M | done | — |
+| `183` | Find content by its properties | should | M | done | 043 |
 
 ### Epic F — Headless
 
@@ -232,6 +234,7 @@ requests, only server-side and build-time front ends can call it.
 | `142` | Blogging basics: taxonomies, archives and feeds | should | M | ready | — |
 | `143` | Comments with moderation | could | M | ready | — |
 | `144` | Themes configured without code | could | L | ready | — |
+| `184` | Blocks render their own components | should | M | done | — |
 
 ### Epic P — The command line
 

@@ -534,6 +534,45 @@ hash and the permission to install. Saying who published a package — the
 registry's provenance attestation, and a list of publishers crombolo has
 reviewed — is not built yet: stories `060` and `061`.
 
+### Side panels
+
+A bundle's client half can dock a panel beside whatever the editor has open
+(story 182): help, notes, a checklist, a tool to work alongside. The panel stays
+open, with its element and state, as the editor moves between sections, and is
+still open after a reload.
+
+```json
+{
+  "type": "sidePanel",
+  "alias": "Acme.SidePanel.Notes",
+  "name": "Notes",
+  "element": "dist/notes-panel.js",
+  "meta": { "label": "Notes", "icon": "icon-notepad", "toggle": true,
+            "defaultWidth": 400, "minWidth": 280, "maxWidth": 720 }
+}
+```
+
+- **`meta.toggle: true`** adds a header button that opens and closes the
+  panel, so one manifest is enough.
+- **Widths** default to 400, with limits of 280 and 720 px. A panel is never
+  wider than half the window, and the editor resizes it with the splitter,
+  by pointer or keyboard.
+- **One panel is open at a time.** Which one and its width are remembered per
+  user in the browser.
+- **Narrow windows:** below 768 px, or where main would drop under 480 px,
+  the panel opens as a full-width sheet over the view, which Escape closes.
+- **Control from code** through the context `Crombolo.Context.SidePanel`,
+  consumed by that string so nothing of ours is imported:
+  `this.consumeContext('Crombolo.Context.SidePanel', (panels) => panels.open('Acme.SidePanel.Notes'))`.
+  It offers `open(alias)`, `close()`, `toggle(alias)`, `active` and `width`
+  (observables), and `setAvailable(alias, available)`, which hides the toggle
+  and closes the panel while it cannot be used.
+- **Reading the open workspace** is the bundle's own business: a
+  `workspaceContext` observes it and shares what it sees with the panel.
+
+How the panel docks is in [`backoffice-hosting.md`](backoffice-hosting.md),
+"Side panels".
+
 ### A host that installs packages
 
 Someone who runs crombolo for other people's sites can offer a third route

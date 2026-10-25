@@ -6,6 +6,34 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.30.0 — 2026-10-25
+
+- **Blocks render their own components** (story 184): `<Blocks
+  items={model.value('sections')} />` renders each Block List or Block Grid
+  block with `components/blocks/<element alias>.tsx`. A template can map a
+  type to its own component, and a missing component shows only in preview. A
+  grid renders Umbraco's block-grid markup.
+  - `crombolo components new --block <alias>` scaffolds a typed block
+    component, and `components check` warns of one that names no element
+    type.
+  - Block Grid values now carry their areas' aliases and spans, and the
+    grid's column count.
+  - The Harbourstone demo's highlights are blocks now.
+
+- **Find pages by their facts** (story 183): `POST
+  <backoffice>/crombolo/api/content-query` and `crombolo content find` find
+  pages by type, place, dates, state, name, full text and up to five value
+  comparisons, as the signed-in user, over the drafts. Numbers and dates
+  compare as numbers and dates. A filter on a property the user may not read is
+  refused. `content find --remote` searches a hosted site through the new
+  `content-query` remote capability.
+
+- **Side panels** (story 182): a bundle's `sidePanel` docks beside the
+  back office's view, keeps its state as the editor moves around, and is
+  remembered per user. It can be resized, becomes a sheet on narrow windows,
+  and gets a header toggle with `meta.toggle`. Extensions control it through
+  the `Crombolo.Context.SidePanel` context.
+
 ## v0.29.1 — 2026-10-25
 
 - **CI only; no change to the packages' behaviour.** Two tests that failed by

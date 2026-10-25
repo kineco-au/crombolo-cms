@@ -65,8 +65,8 @@ type = "richtext"
 [[tab.property]]
 alias = "stats"
 name = "Figures"
-description = "Picked from the Library; shown as a grid under the introduction"
-type = "highlightPicker"
+description = "Shown as a grid under the introduction"
+type = "highlightBlocks"
 
 [[tab.property]]
 alias = "styleImage"

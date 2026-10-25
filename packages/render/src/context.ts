@@ -23,6 +23,22 @@ interface RenderScope {
   contexts: ReadonlyMap<symbol, unknown>
   /** Shared by every scope a provider opens inside one render, so ids stay unique. */
   ids: { next: number }
+  /** A block's component by element type alias, from the page's own views generation. */
+  blockComponent?: BlockComponentLoader
+  /** A draft is being previewed in the back office. */
+  preview?: boolean
+}
+
+/** Loads `components/blocks/<alias>.tsx`'s default export, or nothing when there is none. */
+export type BlockComponentLoader = (
+  alias: string,
+) => Promise<((props: never) => Child | Promise<Child>) | undefined>
+
+/** What a page render carries besides its props: the search, blocks, and whether it is a preview. */
+export interface RenderScopeOptions {
+  search?: SiteSearchPort
+  blockComponent?: BlockComponentLoader
+  preview?: boolean
 }
 
 /**
@@ -35,8 +51,12 @@ if (!shared[KEY]) shared[KEY] = new AsyncLocalStorage<RenderScope>()
 const store = shared[KEY] as AsyncLocalStorage<RenderScope>
 
 /** Runs a render with `page` available to `usePage()`, and ids counted from zero. */
-export function renderScope<T>(page: PageProps, render: () => T, search?: SiteSearchPort): T {
-  return store.run({ page, search, contexts: new Map(), ids: { next: 0 } }, render)
+export function renderScope<T>(
+  page: PageProps,
+  render: () => T,
+  options: RenderScopeOptions = {},
+): T {
+  return store.run({ page, ...options, contexts: new Map(), ids: { next: 0 } }, render)
 }
 
 /** Runs an e-mail template's render: ids and context work, and there is no page. */
@@ -140,4 +160,14 @@ export function createContext<T>(defaultValue: T): Context<T> {
 export function useContext<T>(context: Context<T>): T {
   const contexts = store.getStore()?.contexts
   return contexts?.has(context.key) ? (contexts.get(context.key) as T) : context.defaultValue
+}
+
+/** The page's block-component loader (story 184), for `Blocks`; undefined outside a page render. */
+export function blockComponentLoader(): BlockComponentLoader | undefined {
+  return store.getStore()?.blockComponent
+}
+
+/** Whether the page rendering is a back-office preview, which shows what visitors do not. */
+export function isPreview(): boolean {
+  return store.getStore()?.preview === true
 }

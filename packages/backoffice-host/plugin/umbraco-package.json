@@ -2,7 +2,7 @@
   "$schema": "../../backoffice-dist/dist/umbraco-package-schema.json",
   "name": "Crombolo",
   "id": "Crombolo.Core",
-  "version": "0.29.1",
+  "version": "0.30.0",
   "allowPublicAccess": false,
   "extensions": [
     {
@@ -300,6 +300,18 @@
       "name": "Crombolo Read-only Banner",
       "element": "/crombolo-plugin/read-only-banner.js",
       "weight": 1000
+    },
+    {
+      "type": "backofficeEntryPoint",
+      "alias": "Crombolo.EntryPoint.SidePanels",
+      "name": "Crombolo Side Panels",
+      "js": "/crombolo-plugin/side-panel/host.js"
+    },
+    {
+      "type": "globalContext",
+      "alias": "Crombolo.GlobalContext.SidePanel",
+      "name": "Crombolo Side Panel Context",
+      "api": "/crombolo-plugin/side-panel/context.js"
     },
     {
       "type": "headerApp",

@@ -217,7 +217,13 @@ describe('generateDeliveryTypes', () => {
   test('types the demo site as it is', () => {
     const loaded = loadSchemaDirectory(join(ROOT, 'sites/harbourstone/schema'))
     const text = generateDeliveryTypes(loaded.set)
-    expect(text).toContain('highlights: Array<ApiElement<"highlight", HighlightProperties>> | null')
+    // Highlights are blocks of one element type (story 184); tasting notes are still picked.
+    expect(text).toContain(
+      'highlights: ApiBlockList<ApiElement<"highlight", HighlightProperties>, Element> | null',
+    )
+    expect(text).toContain(
+      'tastingNotes: Array<ApiElement<"tastingNote", TastingNoteProperties>> | null',
+    )
   })
 })
 

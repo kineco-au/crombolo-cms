@@ -306,17 +306,18 @@ describe('the demo’s element types, reused across page types', () => {
 
   test('one highlight type answers for the figures and the decisions alike', () => {
     // The home page's figures and the About page's four decisions are the same
-    // shape, so they are the same element type picked twice. If this ever
-    // becomes two types, it is a decision somebody should have to make
-    // deliberately rather than by adding a file.
+    // shape, so they are blocks of the same element type in two places (story
+    // 184). If this ever becomes two types, it is a decision somebody should have
+    // to make deliberately rather than by adding a file.
     const highlight = set.contentTypes.find((type) => type.alias === 'highlight')
     expect(highlight?.isElement).toBe(true)
 
-    const picker = (set.dataTypes ?? []).find((type) => type.alias === 'highlightPicker')
-    expect(picker?.config?.allowedContentTypes).toEqual(['highlight'])
+    const blocks = (set.dataTypes ?? []).find((type) => type.alias === 'highlightBlocks')
+    expect(blocks?.editor).toBe('Umbraco.BlockList')
+    expect(blocks?.blocks?.map((block) => block.element)).toEqual(['highlight'])
 
     const pickedBy = set.contentTypes
-      .filter((type) => allProperties(type).some((property) => property.type === 'highlightPicker'))
+      .filter((type) => allProperties(type).some((property) => property.type === 'highlightBlocks'))
       .map((type) => type.alias)
       .sort()
     expect(pickedBy).toEqual(['contentPage', 'homePage'])

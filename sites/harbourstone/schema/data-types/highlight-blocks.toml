@@ -1,0 +1,13 @@
+# Highlights are blocks of the one `highlight` element type, written in place on
+# the page rather than picked from the Library. Each renders with its own
+# component, `components/blocks/highlight.tsx`, through `<Blocks>`; the home page
+# maps the same type to a figure instead (story 184).
+[data-type]
+alias = "highlightBlocks"
+name = "Highlight Blocks"
+editor = "Umbraco.BlockList"
+editor-ui = "Umb.PropertyEditorUi.BlockList"
+
+[[data-type.block]]
+element = "highlight"
+label = "{{heading}}"

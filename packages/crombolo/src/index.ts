@@ -48,7 +48,10 @@ export {
 export type {
   BlockGridArea,
   BlockGridItem,
+  BlockGridValue,
   BlockItem,
+  BlockProps,
+  BlocksProps,
   CSSProperties,
   EmailField,
   EmailLayoutProps,
@@ -80,6 +83,7 @@ export type {
   TypedElement,
 } from '@crombolo/render'
 export {
+  Blocks,
   type Context,
   createContext,
   externalSignInUrl,

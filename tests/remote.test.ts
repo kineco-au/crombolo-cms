@@ -200,7 +200,7 @@ describe(`discovery (${dialectUnderTest})`, () => {
         token: `${ORIGIN}${SECURITY}/token`,
         clientId: REMOTE_CLIENT_ID,
       },
-      capabilities: ['media-fetch', 'push-check', 'audit'],
+      capabilities: ['media-fetch', 'push-check', 'audit', 'content-query'],
       environments: [{ id: 'production', name: 'production', protected: true }],
     })
     const anonymous = await h.server.fetch(new Request(`${ORIGIN}${REMOTE_API_PATH}/environments`))

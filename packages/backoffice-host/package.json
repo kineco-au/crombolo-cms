@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/backoffice-host",
-  "version": "0.29.1",
+  "version": "0.30.0",
   "description": "Serves the Umbraco backoffice SPA: shell HTML, import map and package manifests.",
   "license": "MIT",
   "author": "Crombolo",

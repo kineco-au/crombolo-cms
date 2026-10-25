@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/core",
-  "version": "0.29.1",
+  "version": "0.30.0",
   "description": "Domain model, entity keys and shared contracts for crombolo. No I/O.",
   "license": "MIT",
   "author": "Crombolo",

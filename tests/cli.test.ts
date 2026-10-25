@@ -438,6 +438,47 @@ describe('writing schema from the command line (story 161)', () => {
   }, 120_000)
 })
 
+describe('block components (story 184)', () => {
+  test('components new --block writes a typed block component for an element type only', () => {
+    mkdirSync(join(dir, 'schema', 'content-types'), { recursive: true })
+    writeFileSync(join(dir, 'schema', 'schema.toml'), '[schema]\nversion = "1.0.0"\n')
+    writeFileSync(
+      join(dir, 'schema', 'content-types', 'quote.toml'),
+      '[content-type]\nalias = "quote"\nname = "Quote"\nis-element = true\n\n[[property]]\nalias = "said"\nname = "Said"\ntype = "textstring"\n',
+    )
+    writeFileSync(
+      join(dir, 'schema', 'content-types', 'page.toml'),
+      '[content-type]\nalias = "page"\nname = "Page"\nallow-at-root = true\n',
+    )
+    const made = run(['components', 'new', '--block', 'quote', '-o', 'json'])
+    expect(made.code, made.err).toBe(0)
+    const result = JSON.parse(made.out) as { created: string; block: boolean }
+    expect(result.block).toBe(true)
+    expect(result.created).toEndWith('blocks/quote.tsx')
+    const written = readFileSync(resolve(dir, result.created), 'utf8')
+    expect(written).toContain("import type { BlockProps } from '@crombolo/crombolo'")
+    expect(written).toContain("import type { Quote } from '../../schema/content-types'")
+    expect(written).toContain("content.text('said')")
+
+    expect(run(['components', 'new', '--block', 'page']).envelope()).toMatchObject({
+      kind: 'usage',
+    })
+    expect(run(['components', 'new', '--block', 'nothing']).envelope()).toMatchObject({
+      kind: 'usage',
+    })
+    expect(run(['components', 'new', '--block', 'quote']).envelope()).toMatchObject({
+      kind: 'conflict',
+    })
+
+    // A block component that names no element type is reported, and breaks nothing.
+    writeFileSync(resolve(dir, result.created, '..', 'ghost.tsx'), 'export default () => <p />\n')
+    const checked = JSON.parse(run(['components', 'check', '-o', 'json']).out) as {
+      orphanBlocks: string[]
+    }
+    expect(checked.orphanBlocks).toEqual(['blocks/ghost'])
+  }, 60_000)
+})
+
 describe('generate --delivery (story 052)', () => {
   test('needs --out, because the types belong in the app', () => {
     const result = run(['generate', '--delivery'])

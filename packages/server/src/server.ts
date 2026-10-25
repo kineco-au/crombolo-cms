@@ -137,6 +137,7 @@ import {
 import { createContentDispatcher } from './content-dispatch.ts'
 import { createContentEventSink } from './content-events.ts'
 import { createContentNotificationRunner, createContentNotifier } from './content-notifications.ts'
+import { answerContentQuery, contentQueryScope } from './content-query.ts'
 import { attachDatabase, bootstrapDatabase } from './database.ts'
 import { createDeliveryMemberSecurity } from './delivery-members.ts'
 import { createDiagnostics } from './diagnostics.ts'
@@ -1171,6 +1172,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
   // credentials anywhere near it.
   const auditPath = `${paths.pluginPath}/api/audit`
   const hostTokenPath = `${paths.pluginPath}/api/host-token`
+  const contentQueryPath = `${paths.pluginPath}/api/content-query`
   /** Per node: ten a minute for each person, three hundred in all. */
   const hostTokens = new AttemptLimiter({ max: 10, maxAll: 300, windowMs: 60_000 })
   const auditHost = createAuditHost(db, config.auditRetentionDays)
@@ -1304,6 +1306,8 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     if (!pathname.startsWith(prefix)) return
     // A host token changes nothing here: each one is a log line, not an entry.
     if (pathname === hostTokenPath) return
+    // A content query is a POST that reads.
+    if (pathname === contentQueryPath) return
     const principal = await authenticate(request)
     if (!principal) return
     const plan = pluginAuditPlan(request.method, pathname.slice(prefix.length))
@@ -1850,6 +1854,16 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     }
 
     // Non-contract, Settings: how page addresses are built (story 110).
+    // Non-contract: finding pages by their facts (story 183), as the signed-in user.
+    if (pathname === contentQueryPath) {
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      if (!hasSection(principal, 'content')) return new Response('Forbidden', { status: 403 })
+      if (request.method !== 'POST') return new Response('Method Not Allowed', { status: 405 })
+      const body = await request.json().catch(() => undefined)
+      return answerContentQuery(db, contentQueryScope(principal), body)
+    }
+
     if (pathname === `${paths.pluginPath}/api/url-options`) {
       const principal = await authenticate(request)
       if (!principal) return new Response('Unauthorized', { status: 401 })
@@ -2215,6 +2229,8 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     return renderer.renderModel(draft.content, draft.culture, {
       ...(await pageRequest(request)),
       search: siteSearchFor(db, cache, undefined),
+      // Blocks with no component say so here, and only here (story 184).
+      preview: true,
     })
   }
 

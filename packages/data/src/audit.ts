@@ -6,6 +6,7 @@ import { normaliseUuid } from '@crombolo/core'
 import type { Db } from './database.ts'
 import { DbDate } from './dialect.ts'
 import { STATE_AUDIT_LOG } from './schema/audit-log.ts'
+import { escapeLike } from './search-text.ts'
 
 export type AuditCategory =
   | 'content'
@@ -233,7 +234,7 @@ export class AuditLog {
     }
     const needle = filter.text?.trim().toLowerCase()
     if (needle) {
-      const like = `%${needle.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
+      const like = `%${escapeLike(needle)}%`
       where.push(
         `(LOWER(entity_name) LIKE ? ESCAPE '\\' OR LOWER(entity_key) LIKE ? ESCAPE '\\' OR LOWER(user_name) LIKE ? ESCAPE '\\')`,
       )

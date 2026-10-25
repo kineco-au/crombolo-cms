@@ -66,12 +66,12 @@ alias = "highlightsHeading"
 name = "Heading"
 type = "textstring"
 
-# The same element type the home page picks its figures from. Leave this empty
-# and the whole dark band disappears — see `components/contentPage.tsx`.
+# Blocks of the same element type as the home page's figures. Leave this empty
+# and the whole dark band disappears — see `components/pages/contentPage.tsx`.
 [[tab.property]]
 alias = "highlights"
 name = "Highlights"
-type = "highlightPicker"
+type = "highlightBlocks"
 
 [[tab.property]]
 alias = "highlightsImage"

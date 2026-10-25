@@ -23,6 +23,7 @@ import type { ContentSet } from '@crombolo/transfer'
 import { readAuditPageQuery, recordAudit } from './adapters/audit.ts'
 import { installBundleContent } from './bundle-install.ts'
 import type { CromboloConfig } from './config.ts'
+import { answerContentQuery, contentQueryScope } from './content-query.ts'
 import { mediaStoreFor } from './media-files.ts'
 import { type MediaStore, streamOf } from './media-store.ts'
 import { openSecret, sealSecret, usableSecretKey } from './secrets.ts'
@@ -138,6 +139,7 @@ export function createRemote(options: RemoteOptions): Remote {
       'media-fetch',
       'push-check',
       'audit',
+      'content-query',
       ...(settings.approvals ? ['approvals'] : []),
     ],
     environments: [environment()],
@@ -776,6 +778,16 @@ export function createRemote(options: RemoteOptions): Remote {
         })
 
       if (what === 'audit' && request.method === 'GET') return readAudit(url, principal)
+      // Finding pages by their facts (story 183), as the signed-in user, as in the back office.
+      if (what === 'content/query' && request.method === 'POST') {
+        if (!hasSection(principal, 'content'))
+          return problem(403, { code: 'forbidden', title: 'You may not search content here' })
+        return answerContentQuery(
+          db,
+          contentQueryScope(principal),
+          await request.json().catch(() => undefined),
+        )
+      }
       if (what === 'pulls' && request.method === 'POST') return startPull(request, url, principal)
       if (what === 'pushes' && request.method === 'PUT') return startPush(request, url, principal)
       if (what === 'pushes/check' && request.method === 'POST') {

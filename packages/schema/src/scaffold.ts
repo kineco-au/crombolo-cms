@@ -8,6 +8,7 @@
  * byte what `types rewrite` would.
  */
 import type { SchemaForm, SchemaFormField, SchemaWorkflow } from '@crombolo/core'
+import { pascal } from './generate.ts'
 import type { SchemaContentType, SchemaProperty, SchemaTab, SchemaTypeKind } from './model.ts'
 import { allProperties } from './model.ts'
 
@@ -230,6 +231,26 @@ export function newWorkflow(options: NewWorkflowOptions): SchemaWorkflow {
       },
     ],
   }
+}
+
+/**
+ * A block's component (story 184): `components/blocks/<alias>.tsx`, which
+ * `<Blocks>` renders an element type's blocks with, typed by the interface
+ * `crombolo generate` writes for it.
+ */
+export function blockScaffold(type: SchemaContentType): string {
+  const name = pascal(type.alias)
+  const shown = allProperties(type).find(
+    (property) => property.type === 'textstring' || property.type === 'textarea',
+  )
+  const body = shown ? `{content.text('${shown.alias}')}` : `{content.contentType.alias}`
+  return `import type { BlockProps } from '@crombolo/crombolo'
+import type { ${name} } from '../../schema/content-types'
+
+export default function ${name}Block({ content }: BlockProps<${name}>) {
+  return <div class="block-${type.alias}">${body}</div>
+}
+`
 }
 
 /** The view a scaffolded content type points at, if it has not got one yet. */

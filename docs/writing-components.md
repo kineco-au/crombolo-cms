@@ -172,6 +172,46 @@ export function NewsletterForm({ topics }: { topics: string[] }) {
 - A form built in the backoffice's Forms section is rendered with
   [`<Form>`](forms.md) rather than by hand.
 
+## Blocks
+
+A Block List or Block Grid property is rendered with `<Blocks>`, and each block
+with its own component, `components/blocks/<element alias>.tsx`:
+
+```tsx
+// components/pages/landingPage.tsx
+import { Blocks, type PageProps } from '@crombolo/crombolo'
+import type { LandingPage as Page } from '../../schema/content-types'
+
+export default function LandingPage({ model }: PageProps<Page>) {
+  return (
+    <main>
+      <Blocks items={model.value('sections')} />
+    </main>
+  )
+}
+```
+
+```tsx
+// components/blocks/quote.tsx
+// `crombolo components new --block quote` writes this.
+import type { BlockProps } from '@crombolo/crombolo'
+import type { Quote } from '../../schema/content-types'
+
+export default function QuoteBlock({ content, settings }: BlockProps<Quote>) {
+  return <blockquote>{content.text('said')}</blockquote>
+}
+```
+
+- **A new kind of block** is one new file: every template that renders that
+  property with `<Blocks>` picks it up.
+- **To render a type differently in one place,** pass `components={{ quote:
+  PullQuote }}`.
+- **A block with no component** shows nothing to visitors, and in preview a
+  note naming the file to create.
+- **In a grid,** a block's areas arrive as `children`: put `{children}` where
+  they belong. The grid's markup is Umbraco's, so its block-grid stylesheet
+  applies ([`rendering.md`](rendering.md#blocks)).
+
 ## Async components
 
 A component can wait for something: another service, a file, a slow query.

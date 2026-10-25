@@ -46,14 +46,23 @@ export interface BlockItem {
 
 export interface BlockGridArea {
   key: string
+  /** The area's alias from the data type, when its block type still declares it. */
+  alias: string | null
+  columnSpan: number | null
+  rowSpan: number | null
   items: BlockGridItem[]
 }
 
 export interface BlockGridItem extends BlockItem {
   columnSpan: number | null
   rowSpan: number | null
+  /** The columns this block's areas lay out in; the grid's own when its block type says none. */
+  areaGridColumns: number | null
   areas: BlockGridArea[]
 }
+
+/** A Block Grid's items, carrying the grid's column count for its markup. */
+export type BlockGridValue = BlockGridItem[] & { gridColumns: number }
 
 const references = (value: unknown): string[] => {
   if (Array.isArray(value)) return value.flatMap((v) => (typeof v === 'string' ? [v] : []))
@@ -151,6 +160,12 @@ function elementFrom(data: BlockData | undefined, context?: ValueContext): Publi
     },
     context,
   )
+}
+
+interface GridBlockConfig {
+  contentElementTypeKey?: string
+  areaGridColumns?: unknown
+  areas?: Array<{ key?: string; alias?: unknown; columnSpan?: unknown; rowSpan?: unknown }>
 }
 
 function blockItems<T extends BlockItem>(
@@ -304,21 +319,42 @@ export function convertValue(
     }
     case 'Umbraco.BlockList':
       return blockItems<BlockItem>(value, 'Umbraco.BlockList', context, (_, item) => item)
-    case 'Umbraco.BlockGrid':
-      return blockItems<BlockGridItem>(
+    case 'Umbraco.BlockGrid': {
+      // What the data type says of each block type's areas: their aliases and spans.
+      const blockTypes = Array.isArray(config.blocks) ? (config.blocks as GridBlockConfig[]) : []
+      const typeOf = (key: string | undefined) =>
+        blockTypes.find(
+          (b) => String(b.contentElementTypeKey ?? '').toLowerCase() === (key ?? '').toLowerCase(),
+        )
+      const number = (value: unknown) => (typeof value === 'number' ? value : null)
+      const items = blockItems<BlockGridItem>(
         value,
         'Umbraco.BlockGrid',
         context,
-        (layout, item, build) => ({
-          ...item,
-          columnSpan: layout.columnSpan ?? null,
-          rowSpan: layout.rowSpan ?? null,
-          areas: (layout.areas ?? []).map((area) => ({
-            key: area.key,
-            items: build(area.items ?? []),
-          })),
-        }),
+        (layout, item, build) => {
+          const type = typeOf(item.content.contentType.key)
+          return {
+            ...item,
+            columnSpan: layout.columnSpan ?? null,
+            rowSpan: layout.rowSpan ?? null,
+            areaGridColumns: number(type?.areaGridColumns),
+            areas: (layout.areas ?? []).map((area) => {
+              const declared = type?.areas?.find(
+                (a) => String(a.key ?? '').toLowerCase() === area.key.toLowerCase(),
+              )
+              return {
+                key: area.key,
+                alias: typeof declared?.alias === 'string' ? declared.alias : null,
+                columnSpan: number(declared?.columnSpan),
+                rowSpan: number(declared?.rowSpan),
+                items: build(area.items ?? []),
+              }
+            }),
+          }
+        },
       )
+      return Object.assign(items, { gridColumns: Number(config.gridColumns) || 12 })
+    }
     default:
       return value
   }

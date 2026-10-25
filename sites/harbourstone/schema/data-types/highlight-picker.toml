@@ -1,9 +1,0 @@
-# The same Element Picker schema as the tasting notes beside it, narrowed to a
-# different element type. Two data types over one editor is how a picker is kept
-# from offering everything in the Library.
-[data-type]
-alias = "highlightPicker"
-name = "Highlight Picker"
-editor = "Umbraco.ElementPicker"
-editor-ui = "Umb.PropertyEditorUi.ElementPicker"
-config = { allowedContentTypes = ["highlight"] }

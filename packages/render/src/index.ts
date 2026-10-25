@@ -1,3 +1,4 @@
+export * from './blocks.ts'
 export * from './cache-policy.ts'
 export * from './context.ts'
 export * from './email.ts'

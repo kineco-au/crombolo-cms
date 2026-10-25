@@ -48,6 +48,7 @@ stated otherwise. Errors are `application/problem+json` with a stable `code`
   - `push-check` means a push can be checked before it is sent (see Pushing).
   - `approvals` means a push may wait for approval.
   - `audit` means the audit log can be read (see below).
+  - `content-query` means pages can be found by their facts (see below).
   - A client ignores capabilities it doesn't know.
 
 A site that isn't a remote answers 404.
@@ -251,6 +252,30 @@ every blob is named with its key, size and etag.
   the log answers 403 `forbidden`.
 - **The reference server** asks for the Settings section, as its audit
   dashboard does, and does not record the read.
+
+## Finding content (`content-query`, optional)
+
+`POST <api>/environments/{id}/content/query` takes the same body as the back
+office's `content-query` endpoint and answers the same way, as the signed-in
+person: their start nodes, their Browse permission and the properties they may
+read ([`search.md`](search.md), "Finding content by its properties").
+
+```json
+{ "entity": "document", "contentTypes": ["newsPage"],
+  "updated": { "from": "2026-10-01" },
+  "properties": [{ "alias": "summary", "op": "empty" }], "take": 25 }
+```
+
+```json
+{ "total": 3, "exact": true,
+  "items": [{ "id": "…", "name": "Harbour lights", "path": [{ "id": "…", "name": "News" }],
+    "contentType": { "id": "…", "alias": "newsPage" }, "state": "changed",
+    "createDate": "…", "updateDate": "…" }] }
+```
+
+- **Errors:** a query that cannot be run answers 400 with `problems`, each
+  named. A person without the Content section answers 403 `forbidden`.
+- **The reference server** does not record the read.
 
 ## Errors
 

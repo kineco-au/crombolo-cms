@@ -99,6 +99,8 @@ export interface RenderRequest {
   signal?: AbortSignal
   /** Site search scoped to whoever is asking, for `search()`. */
   search?: SiteSearchPort
+  /** A back-office preview of a draft: blocks with no component say so (story 184). */
+  preview?: boolean
 }
 
 /**
@@ -368,7 +370,11 @@ export class Renderer {
     }
 
     // Inside the page's scope, so any component can ask for it with `usePage()`.
-    return renderScope(props, () => this.#renderLayouts(alias, props, rendering), request.search)
+    return renderScope(props, () => this.#renderLayouts(alias, props, rendering), {
+      search: request.search,
+      preview: request.preview,
+      blockComponent: (blockAlias) => this.blockComponent(blockAlias),
+    })
   }
 
   /** Generic over its props: a page's, or an e-mail's. */
@@ -399,6 +405,17 @@ export class Renderer {
       )
     }
     return body === undefined ? undefined : withDoctype(body.value)
+  }
+
+  /**
+   * A block's component (story 184): `components/blocks/<alias>.tsx` and
+   * nowhere else. The alias is one plain segment, so an element type alias can
+   * never reach outside `blocks/`.
+   */
+  async blockComponent(alias: string) {
+    if (!/^[A-Za-z0-9_-]+$/.test(alias)) return undefined
+    const module = await this.#load(`blocks/${alias}`)
+    return module?.default as ((props: never) => Child | Promise<Child>) | undefined
   }
 
   async #load(alias: string): Promise<ComponentModule | undefined> {

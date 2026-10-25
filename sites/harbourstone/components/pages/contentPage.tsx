@@ -5,7 +5,7 @@ import { PageHeader, SectionIntro } from '../shared/section-intro.tsx'
 
 export default function ContentPage({ model, nav }: PageProps) {
   const image = model.media('heroImage')[0]
-  const highlights = highlightsOf(model, 'highlights')
+  const highlights = highlightsOf(model.value('highlights'))
   const highlightsImage = model.media('highlightsImage')[0]
   return (
     <Layout model={model} nav={nav}>

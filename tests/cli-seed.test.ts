@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { join } from 'node:path'
 import { connect, type Db, DocumentRepository } from '@crombolo/data'
 import { seedKey } from '@crombolo/server'
-import { OUTCOMES } from '../packages/cli/src/errors.ts'
+import { ERROR_KINDS, OUTCOMES } from '../packages/cli/src/errors.ts'
 import { ROOT } from '../scripts/packages.ts'
 
 const BIN = join(ROOT, 'packages/cli/bin/crombolo.ts')
@@ -134,6 +134,36 @@ describe('seed build and apply', () => {
     expect(run.code, run.err).toBe(0)
     expect(run.out).toContain('changed in the bundle since it was last imported')
     expect(await title(seedKey('content/home/about'))).toBe('About us')
+  })
+})
+
+describe('content find (story 183)', () => {
+  test('finds the seeded pages by type, place and value, and refuses what names nothing', () => {
+    const found = cli(['content', 'find', '--type', 'page', '-o', 'json'])
+    expect(found.code, found.err).toBe(0)
+    const result = JSON.parse(found.out) as {
+      total: number
+      exact: boolean
+      items: Array<{ name: string; state: string; path: Array<{ name: string }> }>
+    }
+    expect(result).toMatchObject({ total: 2, exact: true })
+    expect(result.items.map((i) => i.name)).toEqual(['About', 'Home'])
+
+    const under = JSON.parse(
+      cli(['content', 'find', '--under', '/Home', '--where', 'title eq about us', '-o', 'json'])
+        .out,
+    ) as typeof result
+    expect(under.items.map((i) => [i.name, i.path.map((p) => p.name)])).toEqual([
+      ['About', ['Home']],
+    ])
+
+    const text = cli(['content', 'find', '--type', 'page'])
+    expect(text.out).toContain('Home / About')
+
+    expect(cli(['content', 'find', '--where', 'nothing exists']).code).toBe(
+      ERROR_KINDS.refused.exitCode,
+    )
+    expect(cli(['content', 'find', '--where', 'title sounds-like x']).code).toBe(2)
   })
 })
 

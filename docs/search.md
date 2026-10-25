@@ -117,6 +117,81 @@ A user with root access and Browse everywhere is paged in the database. Anyone
 else gets the best 1,000 matches, filtered and then paged. Past that window, an
 editor refines the query.
 
+## Finding content by its properties
+
+Back-office search answers "pages with these words". Story 183 adds the other
+question: "the news pages updated this month that have no summary". It is one
+query over the drafts, not a walk through the tree.
+
+`POST <backoffice>/crombolo/api/content-query`, behind the back-office
+session and the Content section:
+
+```json
+{ "entity": "document",
+  "contentTypes": ["newsPage"],
+  "updated": { "from": "2026-10-01" },
+  "properties": [{ "alias": "summary", "op": "empty" }],
+  "sort": { "by": "updateDate", "dir": "desc" },
+  "take": 25 }
+```
+
+```json
+{ "total": 3, "exact": true,
+  "items": [{ "id": "…", "name": "Harbour lights",
+    "path": [{ "id": "…", "name": "News" }],
+    "contentType": { "id": "…", "alias": "newsPage" },
+    "state": "changed", "createDate": "…", "updateDate": "…" }] }
+```
+
+| Field | |
+| --- | --- |
+| `contentTypes` | aliases or keys |
+| `name` | `{ op: contains \| startsWith \| equals, value }`, ignoring case |
+| `text` | words, through this index |
+| `under`, `parent`, `maxDepth` | a page's key; depth counts from `under` or `parent` |
+| `created`, `updated` | `{ from?, to? }`; updated is when the draft was last saved |
+| `state` | `published`, `draft`, `changed` (published with unpublished changes), `trashed`; trashed only when asked for |
+| `culture` | names, states and values in that language |
+| `properties` | up to five of `{ alias, op, value? }`, with `op` one of `eq`, `ne`, `contains`, `gt`, `gte`, `lt`, `lte`, `exists`, `empty` |
+| `sort` | `{ by: name \| createDate \| updateDate \| path \| sortOrder, dir }` |
+| `skip`, `take` | `take` is 25 by default, and at most 100 |
+
+- **What it compares:** the draft, as the editor sees it, and as this index
+  holds it. A comparison reads the value in the column its storage type uses,
+  so numbers and dates compare as numbers and dates, and text ignores case.
+  `ne` includes pages with no value at all.
+- **Structured values** (blocks, pickers, rich text, uploads, tags) take only
+  `exists` and `empty`. `text` searches inside them.
+- **Who sees what:**
+  - start nodes narrow the query itself, and the recycle bin needs root
+    access;
+  - Browse is checked as back-office search checks it. For a user whose
+    groups can withhold it somewhere, the first 1,000 matches are checked and
+    paged, and `exact: false` says the window was cut;
+  - a filter on a property the user may not read is refused (400). That is the
+    first place the server checks `Umb.Document.PropertyValue.Read`.
+- **Refusals** are 400 with `code: bad-query` and every problem named: an
+  unknown type, property or language, a comparison the property cannot make,
+  a malformed field.
+- **Cost:** LIKE patterns are escaped. Postgres stops the statement after 5
+  seconds; on SQLite the 1,000-row window bounds it.
+- **Media** is not searchable this way yet. `entity` leaves room for it.
+- **Code:** `packages/data/src/content-query.ts` (the query) and
+  `packages/server/src/content-query.ts` (the user's scope).
+
+**From the command line:** `crombolo content find` takes the same filters as
+flags. Values are tests of the form `--where "<alias> <op> [value]"`:
+
+```sh
+crombolo content find --type newsPage --updated-from 2026-10-01 --where "summary empty"
+crombolo content find --under /Products --where "price gte 10" --sort updateDate --desc -o json
+```
+
+- **On the site's own database** it sees everything, as the operator.
+- **With `--remote <name>`** it answers as you through the remote protocol's
+  `content-query` capability (`remote-protocol.md`), and `--under`/`--parent`
+  take a page's uuid.
+
 ## Keeping it current: the queue
 
 The index is updated **in the background, not in the save**. A write leaves a

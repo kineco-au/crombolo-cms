@@ -40,7 +40,7 @@ export default function HomePage({ model, nav }: PageProps) {
             class="prose"
             setInnerHTML={{ __html: model.text('styleIntro'), dangerously: true }}
           />
-          <Figures items={highlightsOf(model, 'stats')} />
+          <Figures items={highlightsOf(model.value('stats'))} />
         </div>
         {styleImage ? (
           <img
