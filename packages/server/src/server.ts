@@ -2562,7 +2562,9 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     },
     async close() {
       diagnostics.stop()
-      jobs.stop()
+      // A run already going finishes first: closing the database under a job
+      // left its locks behind for whatever used the database next.
+      await jobs.stop()
       // A dispatch a commit started finishes before the connection goes.
       await dispatcher.settled().catch(() => {})
       events.stop()

@@ -107,7 +107,11 @@ export interface BackgroundJobs {
   /** Runs whether or not the hourly job is enabled; the policy decides what goes. */
   runVersionCleanup(now?: Date): Promise<{ nodes: number; versionsDeleted: number }>
   start(): void
-  stop(): void
+  /**
+   * Disarms the timers, then waits for a run already going to finish, so a
+   * server closing next never takes the database from under it.
+   */
+  stop(): Promise<void>
   /** Whether the timers are armed; false on a node whose role is not to run them. */
   started(): boolean
 }
@@ -121,6 +125,13 @@ export function createBackgroundJobs(options: JobsOptions): BackgroundJobs {
   const search = new SearchIndex(options.db)
   let indexing: Promise<number> | undefined
   let kicked: ReturnType<typeof setTimeout> | undefined
+  /** Runs the timers started and have not finished, for `stop` to wait on. */
+  const inFlight = new Set<Promise<unknown>>()
+  const tracked = <T>(run: Promise<T>): Promise<T> => {
+    inFlight.add(run)
+    void run.finally(() => inFlight.delete(run)).catch(() => {})
+    return run
+  }
 
   async function runScheduledPublishing(now = new Date()): Promise<ScheduledRun> {
     const run: ScheduledRun = { published: [], unpublished: [], failed: [] }
@@ -233,7 +244,7 @@ export function createBackgroundJobs(options: JobsOptions): BackgroundJobs {
   }
 
   const indexQuietly = () =>
-    runSearchIndexing().catch((error: unknown) => {
+    tracked(runSearchIndexing()).catch((error: unknown) => {
       logger('jobs').error('Search indexing failed', { error })
     })
 
@@ -245,7 +256,7 @@ export function createBackgroundJobs(options: JobsOptions): BackgroundJobs {
       if (running) return
       running = true
       try {
-        await job()
+        await tracked(job())
       } catch (error) {
         logger('jobs').error('A background job failed', { error })
       } finally {
@@ -304,10 +315,11 @@ export function createBackgroundJobs(options: JobsOptions): BackgroundJobs {
       const files = options.mediaFiles
       if (files) every(60 * 60_000, () => files.cleanupExpired())
     },
-    stop() {
+    async stop() {
       for (const timer of timers.splice(0)) clearInterval(timer)
       if (kicked) clearTimeout(kicked)
       kicked = undefined
+      await Promise.allSettled([...inFlight])
     },
     started() {
       return timers.length > 0

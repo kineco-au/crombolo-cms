@@ -6,6 +6,13 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.30.2 — 2026-10-25
+
+- **A stopping server waits for a background job already running** before it
+  closes its database. Before, a job such as a search-indexing pass could be
+  left holding row locks, which deadlocked the next thing to use the database.
+  A Postgres CI run hit it, and v0.30.1's release was held back by it.
+
 ## v0.30.1 — 2026-10-25
 
 - **The command line no longer loses the end of its output on a slow pipe.**
