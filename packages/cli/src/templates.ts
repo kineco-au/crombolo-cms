@@ -153,6 +153,7 @@ const quote = (value: string): string => `'${value.replace(/[\\']/g, '\\$&')}'`
 export function packageNameFor(siteName: string): string {
   const slug = siteName
     .toLowerCase()
+    .replace(/['\u2018\u2019]/g, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
   return slug || 'my-site'

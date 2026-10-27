@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/cli",
-  "version": "0.30.3",
+  "version": "0.31.0",
   "description": "The crombolo command line: scaffolding a site, schema, views, domains, content transfer and upgrades.",
   "license": "MIT",
   "author": "Crombolo",

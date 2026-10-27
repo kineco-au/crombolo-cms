@@ -6,6 +6,12 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.31.0 — 2026-10-27
+
+- **An apostrophe in a site's name no longer splits its package name.**
+  `crombolo init --name "Nature's Calendar"` names the package
+  `natures-calendar`, not `nature-s-calendar`.
+
 ## v0.30.3 — 2026-10-27
 
 - **A new site type-checks out of the box.** `crombolo init` now adds

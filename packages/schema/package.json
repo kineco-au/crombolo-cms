@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/schema",
-  "version": "0.30.3",
+  "version": "0.31.0",
   "description": "Schema-as-code for crombolo: TOML document, media and member type definitions.",
   "license": "MIT",
   "author": "Crombolo",
