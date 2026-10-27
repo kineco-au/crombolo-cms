@@ -359,7 +359,7 @@ describe('creating a site, end to end through the CLI', () => {
       'Write a template',
       'Check before you ship',
     ])
-    expect(html).toContain('bunx crombolo init --name &quot;My Site&quot;')
+    expect(html).toContain('bunx @crombolo/cli init --name &quot;My Site&quot;')
   })
 
   test('its elements travel too: a bottling renders the tasting notes it picked', async () => {

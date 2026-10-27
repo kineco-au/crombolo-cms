@@ -144,6 +144,7 @@ const DEFAULT_SITE_NAME = 'My Site'
 
 /** Kept in step with the root `package.json`, which is what the views are checked with. */
 const TYPESCRIPT_VERSION = '^7.0.2'
+const BUN_TYPES_VERSION = '^1.4.2'
 
 /** Single quotes, because the file is TypeScript the site's own formatter owns. */
 const quote = (value: string): string => `'${value.replace(/[\\']/g, '\\$&')}'`
@@ -228,9 +229,10 @@ function packageJson(options: {
         ),
       },
       // So the tsconfig written beside this has something to run it, and
-      // `crombolo views check` checks types as well as compiling. The version
-      // is the one crombolo itself is checked with.
-      devDependencies: { typescript: TYPESCRIPT_VERSION },
+      // `crombolo components check` checks types as well as compiling. The
+      // versions are the ones crombolo itself is checked with; the tsconfig
+      // names the `bun` types, so they have to be installed too.
+      devDependencies: { '@types/bun': BUN_TYPES_VERSION, typescript: TYPESCRIPT_VERSION },
     },
     null,
     2,

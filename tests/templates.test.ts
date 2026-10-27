@@ -256,6 +256,19 @@ describe('what init writes', () => {
     ).toContain("siteName: 'Mac\\'s'")
   })
 
+  test('installs every type library its tsconfig names, so a new site type-checks', () => {
+    const files = scaffoldFiles()
+    const tsconfig = JSON.parse(files.find((f) => f.path === 'tsconfig.json')?.text ?? '{}') as {
+      compilerOptions: { types: string[] }
+    }
+    const manifest = JSON.parse(files.find((f) => f.path === 'package.json')?.text ?? '{}') as {
+      devDependencies: Record<string, string>
+    }
+    expect(manifest.devDependencies).toHaveProperty('typescript')
+    for (const types of tsconfig.compilerOptions.types)
+      expect(manifest.devDependencies).toHaveProperty([`@types/${types}`])
+  })
+
   test('adds the Postgres environment only when asked, and gitignores it', () => {
     const files = scaffoldFiles({ siteName: 'Site', postgres: true })
     const env = files.find((f) => f.path === '.env')?.text ?? ''

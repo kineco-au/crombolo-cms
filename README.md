@@ -81,7 +81,7 @@ partials and routing.
   same files, and `crombolo generate` turns them into a TypeScript interface per
   content type
 - **One runtime, one process.** Bun runs the server, the build and the tests. No
-  Node, no .NET, and with SQLite no database server either — `bunx crombolo init`
+  Node, no .NET, and with SQLite no database server either — `bunx @crombolo/cli init`
   to a running site is three commands
 - **A mature editing experience from day one.** Editors get a backoffice that has
   years of real use behind it, rather than a new admin UI
@@ -246,7 +246,7 @@ views and its schema, and `crombolo init` writes them:
 
 ```bash
 mkdir my-site && cd my-site
-bunx crombolo init --name "My Site"     # add --postgres for a Postgres .env
+bunx @crombolo/cli init --name "My Site"     # add --postgres for a Postgres .env
 bun install && bun start
 ```
 
@@ -255,10 +255,10 @@ holding page saying nothing is published yet, with a link to the backoffice. To
 start from something instead, scaffold a **starter template**:
 
 ```bash
-bunx crombolo init --template list                   # what there is
-bunx crombolo init --template basic                  # a home page type, a view, one page
-bunx crombolo init --template starter                # header, footer, two columns, placeholder pages
-bunx crombolo init --template demo/harbourstone      # a whole brochure site, content and all
+bunx @crombolo/cli init --template list                   # what there is
+bunx @crombolo/cli init --template basic                  # a home page type, a view, one page
+bunx @crombolo/cli init --template starter                # header, footer, two columns, placeholder pages
+bunx @crombolo/cli init --template demo/harbourstone      # a whole brochure site, content and all
 ```
 
 ### The sites in this repository

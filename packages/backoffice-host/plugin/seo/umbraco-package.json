@@ -2,7 +2,7 @@
   "$schema": "../../../backoffice-dist/dist/umbraco-package-schema.json",
   "name": "Crombolo Search & sharing",
   "id": "Crombolo.Seo",
-  "version": "0.30.2",
+  "version": "0.30.3",
   "allowPublicAccess": false,
   "extensions": [
     {

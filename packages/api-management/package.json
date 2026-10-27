@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/api-management",
-  "version": "0.30.2",
+  "version": "0.30.3",
   "description": "Umbraco-compatible Management API handlers for crombolo.",
   "license": "MIT",
   "author": "Crombolo",

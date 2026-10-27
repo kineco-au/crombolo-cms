@@ -6,6 +6,17 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.30.3 — 2026-10-27
+
+- **A new site type-checks out of the box.** `crombolo init` now adds
+  `@types/bun` to the site's `devDependencies`, which its `tsconfig.json`
+  already named. Before, `crombolo components check` on a freshly scaffolded
+  site failed with `TS2688: Cannot find type definition file for 'bun'`. An
+  existing site fixes it with `bun add -d @types/bun`.
+- **The docs scaffold a site with `bunx @crombolo/cli init`.** `bunx crombolo
+  init` named an npm package that does not exist. Inside a site, after `bun
+  install`, `bunx crombolo` still runs the installed command line.
+
 ## v0.30.2 — 2026-10-25
 
 - **A stopping server waits for a background job already running** before it
