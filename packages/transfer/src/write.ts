@@ -20,9 +20,7 @@ import {
   type BundleSection,
   type BundleValue,
   type BundleVariant,
-  CONTENT_ONLY_FORMAT_VERSION,
   type ContentSet,
-  SECTIONS_FORMAT_VERSION,
 } from './model.ts'
 import { type BundlePeople, sealPeople } from './people.ts'
 import { type Seal, sealBytes } from './seal.ts'
@@ -367,21 +365,9 @@ function planBundle(
   }
 
   const people = options.people && seal ? sealPeople(options.people, seal) : undefined
-  // Rules a node carries beyond its content: an older reader would drop them,
-  // and a protected page it dropped would be public.
-  const nodeExtras = source.some(
-    (n) => n.access || (n.schedule?.length ?? 0) > 0 || (n.redirects?.length ?? 0) > 0,
-  )
   const manifest: BundleManifest = {
     ...set.manifest,
-    // The oldest version that can read it: content only stays 1, sections
-    // need 2, and anything sealed or a node's rules need 3.
-    formatVersion:
-      people || sealing || nodeExtras
-        ? BUNDLE_FORMAT_VERSION
-        : extra.length > 0
-          ? SECTIONS_FORMAT_VERSION
-          : CONTENT_ONLY_FORMAT_VERSION,
+    formatVersion: BUNDLE_FORMAT_VERSION,
     // Without values nothing names a media file, so none is expected either.
     blobs: (content === 'omitted' ? [] : set.manifest.blobs).map((blob) => {
       const size = carriedSizes.get(blob.key)

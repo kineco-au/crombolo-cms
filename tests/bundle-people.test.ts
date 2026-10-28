@@ -145,7 +145,7 @@ describe('a bundle with people', () => {
     const dir = written()
     const manifest = readFileSync(join(dir, MANIFEST_FILE), 'utf8')
     expect(JSON.parse(manifest)).toMatchObject({
-      formatVersion: 3,
+      formatVersion: BUNDLE_FORMAT_VERSION,
       people: { counts: { members: 1, memberGroups: 1, users: 0, userGroups: 0 } },
     })
     // As a word: a hex hash in the manifest may hold the letters by chance.
@@ -183,11 +183,11 @@ describe('a bundle with people', () => {
     expect(() => writeBundle(emptySet, undefined, [], { people: PEOPLE })).toThrow('passphrase')
   })
 
-  test('a bundle without people stays format 1 and has no people block', () => {
+  test('a bundle without people has no people block', () => {
     const dir = mkdtempSync(join(process.cwd(), 'output', 'bundle-people-'))
     dirs.push(dir)
     const manifest = JSON.parse(writeBundle(emptySet)[0]?.text as string)
-    expect(manifest.formatVersion).toBe(1)
+    expect(manifest.formatVersion).toBe(BUNDLE_FORMAT_VERSION)
     expect(manifest.people).toBeUndefined()
   })
 })
@@ -212,7 +212,7 @@ describe('sealed content', () => {
     for (const secret of ['born in 1815', '"ada"', 'a photograph'])
       expect(all).not.toContain(secret)
     expect(JSON.parse(readFileSync(join(dir, MANIFEST_FILE), 'utf8'))).toMatchObject({
-      formatVersion: 3,
+      formatVersion: BUNDLE_FORMAT_VERSION,
       content: 'sealed',
       seal: { kdf: 'scrypt' },
     })
@@ -254,9 +254,9 @@ describe('sealed content', () => {
     expect(everything(dir)).not.toContain('a photograph')
   })
 
-  test('open content is readable as it always was, but rules on a node still need format 3', () => {
+  test('open content is readable as it always was, rules on a node and all', () => {
     const loaded = loadBundle(write(pageSet, {}))
-    expect(loaded.set?.manifest.formatVersion).toBe(3)
+    expect(loaded.set?.manifest.formatVersion).toBe(BUNDLE_FORMAT_VERSION)
     expect(openBundle(loaded, undefined).set.nodes).toEqual([PAGE])
   })
 })

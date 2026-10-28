@@ -6,6 +6,18 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.33.1 — 2026-10-28
+
+- **Bundles say which layout they are in.** 0.33.0 moved `bundle.json` to the
+  package root without raising the bundle format, so an old and a new bundle
+  carried the same version numbers. Every bundle is now written as format 4,
+  whatever it carries. A bundle older than 0.33.1, whether at format 1, 2 or 3
+  or with `"content"` naming a folder, is refused with a message saying to
+  rebuild it with the command that made it. Before, it got an error about a
+  missing `bundle.json` (story 193).
+
+  **Upgrade notes:** rebuild any bundle written by 0.33.0 or earlier.
+
 ## v0.33.0 — 2026-10-28
 
 - **One manifest for the whole bundle** (story 193). A bundle package now has

@@ -208,11 +208,11 @@ exactly as a missing blob already was. It also carries `label`, the package's
 name, so a downloaded artifact still knows what it is; without it two downloads
 are distinguishable only by filename, which is the first thing to be lost.
 
-A content-only bundle still says `formatVersion: 1` and carries no `carries`
-key, so it is byte-for-byte what it was and an older node still reads it. Only a
-bundle with sections says 2, which an older node refuses by name — "upgrade
-crombolo to import it" — rather than failing an integrity check it cannot
-explain.
+Every bundle says `formatVersion: 4`, whatever it carries. A content-only bundle
+carries no `carries` key. An older node refuses a format-4 bundle by name,
+with "upgrade crombolo to import it", rather than failing an integrity check it
+cannot explain. A node refuses a bundle older than 4, which kept its payload in
+`content/`, with a message saying to rebuild it (story 193).
 
 Three existing exporters compose it, and the build writes no new serialization
 format of its own:
@@ -854,8 +854,8 @@ was replaced and removes what was created. `replacementsNeedingPermission` is
 its own function rather than a condition inside the importer precisely so it can
 be held to that.
 
-`tests/content-bundle.test.ts` covers the format: a content-only bundle still
-says version 1, a bundle with sections declares them, the integrity hash catches
+`tests/content-bundle.test.ts` covers the format: every bundle says the current
+version and a layout older than it is refused, a bundle with sections declares them, the integrity hash catches
 an edited view, a declared file that is absent is reported, a path that climbs
 out of the bundle is dropped, and a newer format is refused by name.
 

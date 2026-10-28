@@ -23,6 +23,7 @@ import {
   type BundleValue,
   type BundleVariant,
   type ContentSet,
+  OLDEST_BUNDLE_FORMAT_VERSION,
 } from './model.ts'
 import { type BundlePeople, openPeople, type PeopleBlock, parsePeopleBlock } from './people.ts'
 import { openBytes, parseSealParameters, unlock } from './seal.ts'
@@ -237,6 +238,10 @@ function parseManifest(text: string, problems: BundleProblem[]): BundleManifest 
     })
     return undefined
   }
+  if (formatVersion < OLDEST_BUNDLE_FORMAT_VERSION) {
+    problems.push({ file: MANIFEST_FILE, message: OLD_LAYOUT })
+    return undefined
+  }
   const provenance = isRecord(raw.provenance) ? raw.provenance : {}
   const selector = isRecord(raw.selector) ? raw.selector : {}
   const dependencies = isRecord(raw.dependencies) ? raw.dependencies : {}
@@ -347,6 +352,10 @@ function parseCarries(raw: Record<string, unknown>): Partial<Record<BundleSectio
   }
   return out
 }
+
+/** Why a bundle in the layout before format 4 is refused, and what to do about it. */
+export const OLD_LAYOUT =
+  'this bundle was written before crombolo 0.33.1, in a layout no longer read; rebuild it with the command that made it (bundle build, content export, export, or a created package download)'
 
 /** Reads a bundle directory. `set` is undefined when it cannot be trusted at all. */
 export function loadBundle(dir: string): LoadedBundle {

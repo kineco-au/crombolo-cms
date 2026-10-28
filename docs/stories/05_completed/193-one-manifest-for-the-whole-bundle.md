@@ -65,3 +65,10 @@ paths that climb out.
   `If-Match` and was refused with 428 instead of 404. The harness now sends
   `If-Match: *` when the read is 404 (`tests/support/harness.ts`). Seed 492669
   replays it.
+- **The format version (0.33.1).** 0.33.0 shipped the new layout without
+  raising `formatVersion`, so the old and new layouts carried the same numbers.
+  `BUNDLE_FORMAT_VERSION` is now 4, and every bundle is written at it: the
+  choice of 1, 2 or 3 by what a bundle carries went with the layout it served.
+  `loadBundle` refuses anything below `OLDEST_BUNDLE_FORMAT_VERSION` (4) with
+  `OLD_LAYOUT`, which says to rebuild. `validateBundlePackage` refuses a
+  string `crombolo.content` the same way.

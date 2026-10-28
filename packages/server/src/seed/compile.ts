@@ -26,6 +26,7 @@ import {
   resolveNodeRef,
 } from '@crombolo/data'
 import {
+  BUNDLE_FORMAT_VERSION,
   type BundleBlob,
   type BundleFile,
   type BundleKind,
@@ -698,7 +699,7 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
   for (const node of bundleNodes) tally[node.kind] = (tally[node.kind] ?? 0) + 1
   const set: ContentSet = {
     manifest: {
-      formatVersion: 1,
+      formatVersion: BUNDLE_FORMAT_VERSION,
       id,
       label: 'Seed',
       createdAt: new Date(0).toISOString(),

@@ -126,7 +126,11 @@ export function validateBundlePackage(json: PackageJson, directory?: string): st
   if (f.server !== undefined && (typeof f.server !== 'string' || !EXPORT_NAME.test(f.server)))
     problems.push('"crombolo.server" must name the factory the package exports')
   if (f.content !== undefined) {
-    if (f.content !== true)
+    if (typeof f.content === 'string')
+      problems.push(
+        'it was written before crombolo 0.33.1, with its content in a folder, a layout no longer read; rebuild it with the command that made it',
+      )
+    else if (f.content !== true)
       problems.push(`"crombolo.content" is true: ${PAYLOAD_MANIFEST} sits at the package root`)
     else if (directory && !existsSync(join(directory, PAYLOAD_MANIFEST)))
       problems.push(`it declares content, and holds no ${PAYLOAD_MANIFEST} at its root`)

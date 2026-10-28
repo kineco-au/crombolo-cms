@@ -27,14 +27,87 @@ supporter number as custom attributes. Microsoft stopped selling B2C to new
 customers in May 2025 and supports existing tenants until at least 2030; Entra
 External ID succeeds it, so the preset should leave that move to configuration.
 
-## Decisions before implementation
+## Decided (2026-10-28)
 
-- **A `b2c()` preset, or options on `oidc()`.** A preset reads better and carries
-  the error handling; `oidc()` options would serve other multi-flow providers.
-- **Claims to member properties.** A mapping in config, applied on every sign-in,
-  and what happens when a mapped property does not exist on the member type.
-- **Edit profile.** A flow the member starts from the site, whose returned claims
-  update the member, so no outbound sync to B2C is needed.
+- **A `b2c()` preset on generic flows.** Named flows, and a map from claims to
+  member properties, become features of every identity provider.
+  `b2c({ tenant, domain?, clientId, clientSecret, flows, properties })` is a
+  thin preset that builds the per-policy issuers and adds B2C's
+  forgot-password handling. Entra External ID can later be another thin
+  preset.
+- **A mapped property the member type lacks refuses the boot,** naming the
+  provider, the claim and the property. A claim absent from a token leaves its
+  property as it is.
+- **Sign-out remembers the provider.** The member's session cookie records
+  which provider signed them in. Logout clears the site session, then
+  redirects to that flow's `end_session_endpoint` and back. A session cookie
+  without the field is still valid.
+
+## Plan (2026-10-28)
+
+Built on 031: `OidcClient` (`auth/src/oidc.ts`), `createExternalSignIn`
+(`server/src/external-sign-in.ts`), member creation in `member-auth.ts`, and
+the fake issuer in `tests/support/fake-oidc.ts`.
+
+1. **Flows.**
+   - `IdentityProvider` gains `flows: Record<string, OidcProviderOptions>`.
+     `signIn` is the default, and the others are `signUp`, `resetPassword`
+     and `editProfile`. Each flow has its own issuer, discovery and keys, and
+     one cached client per flow.
+   - The flow's name rides in the signed flow state, so the callback finishes
+     against the flow it started.
+   - `GET {base}/{id}?flow=<name>&returnUrl=…`, and
+     `externalSignInUrl(id, returnUrl, { flow })` for views. An unknown flow is
+     a 404.
+2. **Errors.**
+   - An `error_description` beginning `AADB2C90118` starts `resetPassword`,
+     keeping the return URL.
+   - `access_denied` goes to `cancelUrl`, and any other failure to
+     `failedUrl`, both provider options. Without them, today's behaviour stays:
+     the return URL with `memberLoginFailed` and the reason.
+3. **Claims.**
+   - An array claim reads as its first value: B2C sends `emails`.
+   - `subjectClaim` sets which claim is the subject: `sub` by default, `oid`
+     when a tenant needs it. The link is always by the subject.
+   - `b2c()` defaults its scopes to `openid`, its domain to
+     `<tenant>.b2clogin.com` (a custom domain is allowed), and its issuer to
+     `https://<domain>/<tenant>/<policy>/v2.0`.
+   - `linkByEmail` stays off unless the site sets it.
+4. **Properties.**
+   - `properties: { <member property alias>: <claim> }` on any member
+     provider. It writes those values when a member is created, and on every
+     sign-in, profile edit and reset after it.
+   - A value is written only when it changed, through `MemberRepository.update`
+     with the member's identity unchanged.
+   - It is checked at boot against the member type in `schema/`.
+5. **Sign-out.**
+   - `MemberTicket` gains an optional `via` (the provider id).
+   - `POST /umbraco/members/logout` clears the cookie, then redirects to the
+     provider's `end_session_endpoint` with `post_logout_redirect_uri` and
+     `p=<sign-in policy>`.
+   - A JSON caller gets the URL as `signOutUrl`, to follow itself.
+   - The redirect is skipped when the provider publishes no endpoint.
+6. **Tests.**
+   - The fake issuer serves per-policy metadata and keys, error callbacks and
+     an end-session endpoint.
+   - The cases:
+     - sign-in;
+     - forgot password, then reset, then signed in;
+     - cancel to `cancelUrl`;
+     - a profile edit updating properties;
+     - properties mapped on every sign-in;
+     - an unknown property refusing the boot;
+     - linking by object id even when the e-mail matches another member;
+     - sign-out through the end-session endpoint;
+     - a ticket without `via` still valid.
+7. **Docs.** `docs/operations.md` gets a B2C section: the app registration,
+   the redirect and sign-out URLs, the flows, the claim mapping, and the move
+   to Entra External ID.
+
+**Out of scope:**
+- B2C page layouts (Nature's Calendar story 085: the site serves them).
+- Back-office overrides of a provider's policies. The client id and secret
+  overrides from 033 still apply.
 
 ## Acceptance criteria
 

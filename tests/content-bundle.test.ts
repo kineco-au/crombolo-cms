@@ -17,8 +17,8 @@ import {
   type ContentSet,
   loadBundle,
   MANIFEST_FILE,
+  OLD_LAYOUT,
   referenceCandidates,
-  SECTIONS_FORMAT_VERSION,
   writeBundle,
 } from '@crombolo/transfer'
 
@@ -186,6 +186,21 @@ describe('the bundle format', () => {
     }
   })
 
+  test('refuses a bundle in the layout before format 4, and says to rebuild it', () => {
+    const dir = onDisk(set([node()]))
+    try {
+      for (const formatVersion of [1, 2, 3]) {
+        writeFileSync(join(dir, MANIFEST_FILE), JSON.stringify({ formatVersion }))
+        const { set: read, problems } = loadBundle(dir)
+        expect(read).toBeUndefined()
+        expect(problems[0]?.message).toBe(OLD_LAYOUT)
+        expect(OLD_LAYOUT).toContain('rebuild it')
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   test('names the file when a node is malformed', () => {
     const dir = onDisk(set([node()]))
     try {
@@ -311,24 +326,22 @@ describe('the sections a bundle can carry', () => {
     { path: VIEW, text: 'export default () => <h1>Campaign</h1>\n' },
   ]
 
-  test('a content-only bundle still says version 1, so an older node can read it', () => {
+  test('a content-only bundle is the current format, as every bundle is', () => {
     const files = writeBundle(set([node()]))
     const manifest = JSON.parse(
       files.find((f) => f.path === MANIFEST_FILE)?.text as string,
     ) as Record<string, unknown>
-    expect(manifest.formatVersion).toBe(1)
+    expect(manifest.formatVersion).toBe(BUNDLE_FORMAT_VERSION)
     expect(manifest.carries).toBeUndefined()
   })
 
-  test('carrying a section moves the version up and declares what is there', () => {
+  test('carrying a section declares what is there', () => {
     const files = writeBundle(set([node()]), undefined, sections())
     const manifest = JSON.parse(files.find((f) => f.path === MANIFEST_FILE)?.text as string) as {
       formatVersion: number
       carries: Record<string, string[]>
     }
-    // Version 2, not the newest: a bundle without people stays readable by a
-    // node that predates them.
-    expect(manifest.formatVersion).toBe(SECTIONS_FORMAT_VERSION)
+    expect(manifest.formatVersion).toBe(BUNDLE_FORMAT_VERSION)
     expect(manifest.carries).toEqual({ schema: [SCHEMA], components: [VIEW] })
     expect(files.map((f) => f.path)).toContain(SCHEMA)
   })

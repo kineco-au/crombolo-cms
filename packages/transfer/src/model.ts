@@ -11,22 +11,19 @@
 import type { BundlePeople, PeopleBlock } from './people.ts'
 import type { SealParameters } from './seal.ts'
 
-/** Bumped when a change to the shapes below stops an older reader understanding a bundle. */
-export const BUNDLE_FORMAT_VERSION = 3
-
-/** What a bundle with sections and nothing sealed writes: version 2 readers still read it. */
-export const SECTIONS_FORMAT_VERSION = 2
-
 /**
- * The version a bundle carrying only content is still written as.
+ * Bumped when a change to the shapes below stops an older reader understanding
+ * a bundle. Every bundle is written at this version.
  *
- * A content-only bundle is byte-for-byte what version 1 was, so it keeps saying
- * 1 and an older node can still read it. Only a bundle that carries a section
- * beyond its content needs a reader that knows about `carries`, and that one
- * says 2 — which an older node refuses with a message naming the upgrade,
- * rather than failing an integrity check it cannot explain.
+ * 4 (0.33.1): `bundle.json` at the package root, with what it carries beside
+ * it, and a site's code as a section (stories 192, 193). Versions 1–3 kept the
+ * payload in `content/`, and are refused rather than read (no older layout is
+ * kept up), with a message saying to rebuild them.
  */
-export const CONTENT_ONLY_FORMAT_VERSION = 1
+export const BUNDLE_FORMAT_VERSION = 4
+
+/** The oldest version this reader reads: the first with the payload at the package root. */
+export const OLDEST_BUNDLE_FORMAT_VERSION = 4
 
 /**
  * The sections a bundle can carry beyond its content, and the directory each

@@ -16,6 +16,7 @@
 ## Boundaries
 
 - Do not store lengthy commentary in code files, prefer storing implementation details in md files in the docs directory
+- You must not read or write from/to any crombolo source code repositories except those which are also open source
 
 ## Testing
 

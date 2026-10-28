@@ -96,7 +96,7 @@ is given: such a bundle places and names pages and writes no value, and its
 check says so. `--include-content` seals them; `--allow-content-unencrypted`
 writes them readable, with a warning. People are never written readable.
 
-A sealed bundle is format 3. Without the passphrase its check is one blocking
+A sealed bundle says so in `content: "sealed"`. Without the passphrase its check is one blocking
 finding, `content-sealed`, because a check that compared values it cannot read
 would report every one as cleared; an install is refused before anything is
 backed up or written. A package for anyone to install is open: writing one
@@ -161,8 +161,12 @@ layout it was built from. A file the site already has is not replaced without
 back — these files are editable in the backoffice, and a site need not be a git
 checkout ([`bundles.md`](bundles.md)). The manifest's `carries` declares every one, the
 integrity hash covers them, and `bundle install` applies them before the content
-that needs them. A content-only bundle carries no `carries` key and still says
-`formatVersion: 1`, so nothing about an existing bundle changed.
+that needs them. A content-only bundle carries no `carries` key.
+
+Every bundle is written as `formatVersion` 4, whatever it carries: the first
+format with `bundle.json` at the package root (story 193). A reader refuses a
+newer format with "upgrade crombolo to import it", and anything older than 4,
+whose payload sat in `content/`, with a message saying to rebuild it.
 
 `label` is the bundle's own name, when it has one — a created package's name
 travels in the artifact rather than being supplied at import time, so a

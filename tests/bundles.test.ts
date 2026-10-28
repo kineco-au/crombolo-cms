@@ -13,7 +13,7 @@ import { packageFileName } from '@crombolo/api-management'
 import type { ContentTypeAggregate } from '@crombolo/core'
 import { ContentTypeRepository } from '@crombolo/data'
 import { readBundle, VERSION } from '@crombolo/server'
-import { loadBundle } from '@crombolo/transfer'
+import { BUNDLE_FORMAT_VERSION, loadBundle } from '@crombolo/transfer'
 import { BACKOFFICE, type Harness, signedInServer, V1 } from './support/harness.ts'
 import { untar } from './support/tar.ts'
 
@@ -272,8 +272,7 @@ describe('the download', () => {
       integrity: string
     }
     expect(manifest.label).toBe('Nothing picked')
-    // Content-only, so it stays readable by a node that predates sections.
-    expect(manifest.formatVersion).toBe(1)
+    expect(manifest.formatVersion).toBe(BUNDLE_FORMAT_VERSION)
     expect(manifest.integrity).toMatch(/^sha256-/)
   })
 
@@ -286,7 +285,7 @@ describe('the download', () => {
       carries: Record<string, string[]>
     }
     expect(manifest.label).toBe('Declared')
-    expect(manifest.formatVersion).toBe(2)
+    expect(manifest.formatVersion).toBe(BUNDLE_FORMAT_VERSION)
     expect(manifest.carries.schema).toContain('schema/languages.toml')
   })
 

@@ -65,11 +65,12 @@ describe('the manifest', () => {
     expect(problemsOf(valid({}, { server: './src/index.ts' }))).toContain('"crombolo.server"')
   })
 
-  test('refuses content that names a folder: the payload is the package', () => {
-    for (const content of ['content', '../elsewhere', false])
-      expect(problemsOf(valid({}, { content })), String(content)).toContain(
-        '"crombolo.content" is true',
+  test('refuses content that names a folder: the old layout, to be rebuilt', () => {
+    for (const content of ['content', '../elsewhere'])
+      expect(problemsOf(valid({}, { content })), content).toContain(
+        'written before crombolo 0.33.1, with its content in a folder',
       )
+    expect(problemsOf(valid({}, { content: false }))).toContain('"crombolo.content" is true')
   })
 
   test('refuses content that holds no payload', () => {
