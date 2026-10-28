@@ -190,6 +190,7 @@ requests, only server-side and build-time front ends can call it.
 | `086` | Performance of the tree and the published cache | should | M | done | — |
 | `087` | A ready-to-run container image | should | M | ready | — |
 | `088` | A read-only group changes nothing | must | M | done | 023, 026, 027, 028 |
+| `200` | Bundle import fixtures close before reset | must | S | done | — |
 
 ### Epic J — Forms
 
@@ -229,6 +230,7 @@ requests, only server-side and build-time front ends can call it.
 |---|---|---|---|---|---|
 | `120` | Cache instructions arrive without polling | could | S | done | — |
 | `121` | Reads from a Postgres replica | could | M | ready | 174 |
+| `185` | Several API nodes behind one load balancer | should | L | backlog | 176 |
 | `197` | Media cached apart from pages | should | L | done | 171, 174, 196 |
 
 ### Epic N — The assistant (closed with 179)

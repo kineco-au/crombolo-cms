@@ -60,6 +60,8 @@ afterEach(async () => {
 })
 
 async function site(): Promise<{ h: Harness; typeKey: string }> {
+  // Postgres reuses this database: finish the source's jobs before the target resets it.
+  while (open.length > 0) await open.pop()?.db.close()
   const root = mkdtempSync(join(process.cwd(), 'output', 'crombolo-import-'))
   dirs.push(root)
   mkdirSync(join(root, 'schema', 'content-types'), { recursive: true })

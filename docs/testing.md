@@ -902,8 +902,13 @@ OAuth flow — login, authorize, code exchange — then carries cookies, so a te
 calls the Management API exactly as the backoffice does. Nothing is stubbed: the
 The story `004` and `005` suites exercise the same code path a browser would.
 
-Because the harness boots a server per test, each one must close its database
-(`afterEach`), or Postgres runs out of client slots.
+Because the harness boots a server per test, each one must close through
+`h.db.close()` (`afterEach`), which drains its jobs and dispatcher as well as
+closing its database, or Postgres runs out of client slots. Sequential source
+and target fixtures reuse the run's Postgres database, so the source must close
+before the target boots and resets it. The import fixture does this before
+starting each site (story `200`); otherwise pending source notifications can
+deadlock with the target's `TRUNCATE`.
 
 ### Two suites at once
 
