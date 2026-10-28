@@ -48,6 +48,12 @@ export const BUNDLE_SECTIONS = {
   styles: 'styles',
   scripts: 'scripts',
   dictionary: 'dictionary',
+  /**
+   * A site's own code (story 192), at its site paths. Carried and hashed like
+   * the rest, read as bytes, and never applied by an import: installing it is
+   * `installBundleCode`'s, followed by a restart.
+   */
+  code: 'code',
 } as const
 
 export type BundleSection = keyof typeof BUNDLE_SECTIONS

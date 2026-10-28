@@ -74,7 +74,7 @@ async function exported(h: Harness) {
   const unpacked = mkdtempSync(join(process.cwd(), 'output', 'host-provided-unpacked-'))
   dirs.push(unpacked)
   await extractTarball(out, unpacked)
-  const loaded = loadBundle(join(unpacked, 'content'))
+  const loaded = loadBundle(unpacked)
   if (!loaded.set) throw new Error(loaded.problems.map((p) => p.message).join('; '))
   return { manifest: loaded.set.manifest, dir: unpacked }
 }

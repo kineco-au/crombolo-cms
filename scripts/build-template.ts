@@ -18,7 +18,6 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { buildBundleFromDirectory } from '@crombolo/server'
-import { PAYLOAD_DIR } from '@crombolo/transfer'
 import { buildManifest } from '../packages/cli/src/manifest.ts'
 import { writeDocsSeed } from './docs-site.ts'
 import { findSite } from './sites.ts'
@@ -32,8 +31,8 @@ const built = await buildBundleFromDirectory(site.dir)
 if (built.problems.length > 0 || !built.files)
   throw new Error(`demo/crombolo cannot be built:\n  ${built.problems.join('\n  ')}`)
 const bundleDir = join(site.dir, site.bundle)
-// The payload is replaced whole, so a node the content no longer has does not linger.
-rmSync(join(bundleDir, PAYLOAD_DIR), { recursive: true, force: true })
+// The package is the payload, replaced whole, so a node the content no longer has does not linger.
+rmSync(bundleDir, { recursive: true, force: true })
 for (const file of built.files) {
   const target = join(bundleDir, file.path)
   mkdirSync(join(target, '..'), { recursive: true })

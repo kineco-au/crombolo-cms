@@ -256,11 +256,10 @@ describe('content transfer, end to end through the CLI', () => {
     expect(result.out).toContain('3 document')
     // The export is a private package: its package.json, and the payload under content/.
     expect(existsSync(join(bundle(), 'package.json'))).toBe(true)
-    expect(existsSync(join(bundle(), 'content', 'bundle.json'))).toBe(true)
-    for (const key of keys)
-      expect(existsSync(join(bundle(), 'content', 'nodes', `${key}.json`))).toBe(true)
+    expect(existsSync(join(bundle(), 'bundle.json'))).toBe(true)
+    for (const key of keys) expect(existsSync(join(bundle(), 'nodes', `${key}.json`))).toBe(true)
     // Keys and aliases only: an integer id would not survive the trip.
-    const manifest = JSON.parse(readFileSync(join(bundle(), 'content', 'bundle.json'), 'utf8'))
+    const manifest = JSON.parse(readFileSync(join(bundle(), 'bundle.json'), 'utf8'))
     expect(manifest.snapshot).toBe('published')
     expect(manifest.dependencies.expected).toEqual([])
   })
@@ -339,7 +338,7 @@ describe('content transfer, end to end through the CLI', () => {
       '--save',
     )
     expect(saved.code, saved.out).toBe(0)
-    expect(existsSync(join(bundle(), 'content', 'resolutions.json'))).toBe(true)
+    expect(existsSync(join(bundle(), 'resolutions.json'))).toBe(true)
 
     // No flag this time: the answer is in the bundle.
     const imported = await cli('target', 'content', 'import', bundle())
@@ -395,7 +394,7 @@ describe('content transfer, end to end through the CLI', () => {
       broken,
     )
     expect(copied.code, copied.out).toBe(0)
-    rmSync(join(broken, 'content', 'nodes', `${keys[2]}.json`))
+    rmSync(join(broken, 'nodes', `${keys[2]}.json`))
     // Checking must refuse rather than report-and-continue: otherwise a bundle
     // that was copied half-way passes the gate and then gets imported.
     const result = await cli('target', 'content', 'check', broken)
@@ -443,7 +442,7 @@ describe('content transfer, end to end through the CLI', () => {
     )
     expect(exported.code, exported.out).toBe(0)
     expect(exported.out, exported.out).toContain('1 media file(s),')
-    expect(existsSync(join(out, 'content', 'blobs', media.blob)), exported.out).toBe(true)
+    expect(existsSync(join(out, 'blobs', media.blob)), exported.out).toBe(true)
 
     // The destination has the node nowhere and the file nowhere.
     const before = await seed('target', 'blob', media.blob)
@@ -484,7 +483,7 @@ describe('content transfer, end to end through the CLI', () => {
     )
     expect(exported.code, exported.out).toBe(0)
     expect(exported.out).toContain('pass --with-blobs')
-    expect(existsSync(join(out, 'content', 'blobs'))).toBe(false)
+    expect(existsSync(join(out, 'blobs'))).toBe(false)
 
     const checked = await cli('target', 'content', 'check', out)
     // A person has to decide: the metadata can land without the file, but
@@ -501,7 +500,7 @@ describe('content transfer, end to end through the CLI', () => {
     const left = await cli('source', 'bundle', 'export', '--root', '/Campaigns', '--out', bare)
     expect(left.code, left.out).toBe(0)
     expect(left.out).toContain('not included')
-    const node = JSON.parse(readFileSync(join(bare, 'content', 'nodes', `${keys[1]}.json`), 'utf8'))
+    const node = JSON.parse(readFileSync(join(bare, 'nodes', `${keys[1]}.json`), 'utf8'))
     expect(node.variants[0].name).toBe('Offer A')
     expect(node.values).toEqual([])
 
@@ -518,7 +517,7 @@ describe('content transfer, end to end through the CLI', () => {
     )
     expect(exported.code, exported.out).toBe(0)
     expect(exported.out).toContain('encrypted')
-    const values = readFileSync(join(sealed, 'content', 'values', `${keys[1]}.json`))
+    const values = readFileSync(join(sealed, 'values', `${keys[1]}.json`))
     expect(values.includes(Buffer.from('Offer A'))).toBe(false)
 
     passphrase = 'not the passphrase it was given'
@@ -548,7 +547,7 @@ describe('content transfer, end to end through the CLI', () => {
     )
     expect(unencrypted.code, unencrypted.out).toBe(0)
     expect(unencrypted.out).toContain('warning')
-    expect(existsSync(join(open, 'content', 'values'))).toBe(false)
+    expect(existsSync(join(open, 'values'))).toBe(false)
     const refused = await cli(
       'source',
       'bundle',

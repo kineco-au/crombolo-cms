@@ -93,7 +93,7 @@ async function sealedMembers(source: Harness): Promise<ContentSet> {
     mkdirSync(join(dir, file.path, '..'), { recursive: true })
     writeFileSync(join(dir, file.path), file.bytes ?? (file.text as string))
   }
-  return openBundle(loadBundle(join(dir, 'content')), PASS).set
+  return openBundle(loadBundle(dir), PASS).set
 }
 
 describe(`members between crombolo sites (${dialectUnderTest})`, () => {

@@ -237,13 +237,9 @@ export const MANIFEST_FILE = 'bundle.json'
  * their bytes, which is what makes `--with-blobs` a claim the reader can check.
  */
 export function bundleIntegrity(files: readonly BundleFile[]): string {
-  return filesIntegrity(files.filter((file) => file.path !== MANIFEST_FILE))
-}
-
-/** The same hash over every file given, for a set with no manifest of its own to skip. */
-export function filesIntegrity(files: readonly BundleFile[]): string {
   const hasher = new Bun.CryptoHasher('sha256')
   for (const file of [...files].sort((a, b) => a.path.localeCompare(b.path))) {
+    if (file.path === MANIFEST_FILE) continue
     hasher.update(file.path)
     hasher.update('\0')
     hasher.update(file.bytes ?? (file.text as string))

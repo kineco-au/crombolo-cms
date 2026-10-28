@@ -89,7 +89,7 @@ async function bundleWithPeople(source: Harness, content?: 'open'): Promise<stri
     mkdirSync(join(dir, file.path, '..'), { recursive: true })
     writeFileSync(join(dir, file.path), file.bytes ?? (file.text as string))
   }
-  return join(dir, 'content')
+  return dir
 }
 
 describe(`importing without people (${dialectUnderTest})`, () => {

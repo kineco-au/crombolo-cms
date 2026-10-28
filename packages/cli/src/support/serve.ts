@@ -411,7 +411,7 @@ async function importStartupBundles(
           `${result.published.length > 0 ? `, ${result.published.length} published` : ''} (run ${result.runId})`,
       )
       if (placed) lines.push(`  blobs       ${placed}`)
-      if (resolved.package.field.code) lines.push(CARRIES_CODE)
+      if (set.manifest.carries?.code) lines.push(CARRIES_CODE)
       const people = result.people.filter((p) => p.kind === 'member' || p.kind === 'user')
       if (people.length > 0)
         lines.push(

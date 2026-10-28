@@ -156,7 +156,7 @@ beforeAll(async () => {
   await writePlan(site, plan)
 }, 120_000)
 
-const BUNDLE = () => join(site, 'bundles', 'umbraco-import', 'content')
+const BUNDLE = () => join(site, 'bundles', 'umbraco-import')
 const finding = (code: string) => plan.report.findings.find((f) => f.code === code)
 
 describe('what the report says', () => {

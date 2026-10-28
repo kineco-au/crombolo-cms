@@ -1,24 +1,20 @@
 /**
- * A site's own code, carried in its bundle (story 192): the files its
- * `package.json` names in `crombolo.code`, at their site paths under `code/`
- * beside the payload, with a hash of their own in the bundle's `package.json`.
+ * A site's own code, carried in its bundle (stories 192, 193): the files its
+ * `package.json` names in `crombolo.code`, at their site paths under `code/`,
+ * listed in `bundle.json` and covered by its one hash like every other section.
  * `docs/bundles.md`, "A site's bundle with code".
  */
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { isAbsolute, join, normalize, relative, sep } from 'node:path'
-import { type BundleFile, filesIntegrity } from './write.ts'
+import { existsSync, readFileSync } from 'node:fs'
+import { isAbsolute, join, sep } from 'node:path'
+import { loadBundle } from './load.ts'
+import { BUNDLE_SECTIONS } from './model.ts'
+import type { BundleFile } from './write.ts'
 
-/** The directory beside `content/` that holds the site's code. */
-export const CODE_DIR = 'code'
+/** The section, and directory, that holds the site's code. */
+export const CODE_DIR = BUNDLE_SECTIONS.code
 
 /** Packed whenever there is code: what installing and booting it needs. */
 export const CODE_ALWAYS = ['package.json', 'bun.lock', 'crombolo.config.ts'] as const
-
-/** `crombolo.code` in a bundle's `package.json`: where its code is, and the hash over it. */
-export interface BundleCodeField {
-  dir: string
-  integrity: string
-}
 
 /** The folders a bundle already carries as sections, or that are a site's local state. */
 const SITE_FOLDERS = new Set([
@@ -86,54 +82,34 @@ export function selectCodeFiles(
   return { paths: [...paths].sort(), problems }
 }
 
-/** The files at those paths, as bytes: a site's source is not only text. */
+/** The files at those paths, as bytes and as the bundle carries them, under `code/`. */
 export function readCodeFiles(siteDir: string, paths: readonly string[]): BundleFile[] {
-  return paths.map((path) => ({ path, bytes: new Uint8Array(readFileSync(join(siteDir, path))) }))
+  return paths.map((path) => ({
+    path: `${CODE_DIR}/${path}`,
+    bytes: new Uint8Array(readFileSync(join(siteDir, path))),
+  }))
 }
-
-/** The hash `crombolo.code.integrity` holds, over the code's paths and bytes. */
-export const codeIntegrity = (files: readonly BundleFile[]): string => filesIntegrity(files)
 
 export interface LoadedBundleCode {
   /** The absolute directory holding the code, when the bundle carries some. */
   dir?: string
-  /** Every file under it, relative and `/`-separated. */
+  /** Every file under it, relative to it and `/`-separated. */
   paths: string[]
+  /** The bundle's own problems, its hash among them, with any about the code. */
   problems: string[]
 }
 
-/** A bundle package's code, read and checked against its hash. */
+/** A bundle package's code, read through the bundle's own loader and its one hash. */
 export function loadBundleCode(packageDir: string): LoadedBundleCode {
-  const manifest = join(packageDir, 'package.json')
-  if (!existsSync(manifest)) return { paths: [], problems: [`no package at ${packageDir}`] }
-  const json = JSON.parse(readFileSync(manifest, 'utf8')) as {
-    crombolo?: { code?: Partial<BundleCodeField> }
-  }
-  const field = json.crombolo?.code
-  if (!field) return { paths: [], problems: ['the bundle carries no code'] }
-  if (typeof field.dir !== 'string' || typeof field.integrity !== 'string')
-    return { paths: [], problems: ['"crombolo.code" names no directory and hash'] }
-  const dir = normalize(join(packageDir, field.dir))
-  if (!dir.startsWith(normalize(packageDir) + sep))
-    return { paths: [], problems: [`"crombolo.code" (${field.dir}) is outside the package`] }
-  if (!existsSync(dir))
-    return {
-      paths: [],
-      problems: [`the bundle says it carries code in ${field.dir}, and it is not there`],
-    }
-  const paths = readdirSync(dir, { recursive: true, withFileTypes: true })
-    .filter((entry) => entry.isFile())
-    .map((entry) => relative(dir, join(entry.parentPath, entry.name)).split(sep).join('/'))
-    .sort()
-  const integrity = codeIntegrity(readCodeFiles(dir, paths))
+  const loaded = loadBundle(packageDir)
+  const problems = loaded.problems.map((p) => `${p.file}: ${p.message}`)
+  const carried = loaded.set?.manifest.carries?.code
+  if (!loaded.set) return { paths: [], problems }
+  if (!carried) return { paths: [], problems: [...problems, 'the bundle carries no code'] }
+  const prefix = `${CODE_DIR}/`
   return {
-    dir,
-    paths,
-    problems:
-      integrity === field.integrity
-        ? []
-        : [
-            `the code does not match its hash (${field.integrity} vs ${integrity}) — it is incomplete or was edited`,
-          ],
+    dir: join(packageDir, CODE_DIR),
+    paths: carried.map((path) => path.slice(prefix.length)),
+    problems,
   }
 }

@@ -29,7 +29,7 @@ possible halves:
     "id": "acme-tasks",
     "name": "Tasks",
     "extensions": [],
-    "content": "content",
+    "content": true,
     "server": "tasks"
   }
 }
@@ -40,7 +40,7 @@ possible halves:
 | `id` | the bundle's one identity: its route segment, its log name, and the prefix of anything else it owns. 2–39 lowercase letters, digits and hyphens, starting with a letter |
 | `name` | what a person calls it; the package name when absent |
 | `extensions` | the backoffice half, Umbraco extension manifests (Part 2) |
-| `content` | a directory inside the package holding a `bundle.json` payload: schema, components, styles, scripts, dictionary items and content (Part 1) |
+| `content` | `true` when the package carries a payload: `bundle.json` at its root, and the content, schema, components, styles, scripts, dictionary items and code it lists, beside it (Part 1) |
 | `server` | the factory the package exports for its server half (Part 3). A declaration only: core never imports it |
 
 A manifest with none of the three halves is refused, because it declares a
@@ -55,10 +55,15 @@ server half and the installer cannot disagree about what a bundle is.
 `@crombolo/crombolo`'s own package carries a `crombolo` field too, its release
 declaration, and is never read as a bundle.
 
-**The payload keeps its own format.** `bundle.json` and the directories beside
-it are exactly what [`content-transfer.md`](content-transfer.md) describes, with
-the same integrity hash and the same installer. The package is what gives the
-payload a name, a version and the core it was written for. `bundle.json`'s own
+**The payload is the package** (story 193). `bundle.json` sits at the root
+beside `package.json`, and the directories it lists sit beside them, as
+[`content-transfer.md`](content-transfer.md) describes. One integrity hash in
+`bundle.json` covers everything it carries. `package.json` is the one file
+outside the hash: it is npm's, and only names the package. `files` lists
+`bundle.json` and each top-level entry the payload carries. The package is
+what gives the payload a name, a version and the core it was written for.
+Before 0.33.0 the payload sat in `content/`, and that layout is no longer
+read. `bundle.json`'s own
 `id` identifies the export it came from, which is what the transfer ledger keys
 on, so it stays distinct from `crombolo.id`.
 
@@ -637,11 +642,10 @@ bundle is that artifact (story 192).
   site's `media/`, `logs/` and `.crombolo/`. A glob that matches nothing, or a
   site with no `bun.lock`, stops the build. A site that names no code builds
   the bundle it always did.
-- **Where.** The code goes in `code/` beside `content/`, at its site paths. The
-  bundle's `package.json` declares `crombolo.code: { dir, integrity }`. The
-  hash is a second one, taken over the code's paths and bytes in the same way
-  as the payload's. The payload's own hash could not cover the code: its
-  loader reads only `content/`, and refuses paths that climb out of it.
+- **Where.** The code goes in `code/`, at its site paths. It is a section like
+  `schema/` or `components/`: `bundle.json` lists it under `carries.code`, and
+  the bundle's one hash covers it. It is read as bytes, because source is not
+  only text (story 193).
 - **The CMS is the host's.** A site lists `@crombolo/*` under
   `peerDependencies`, and so does `crombolo init`. `bun install` still installs
   peers, so local development is unchanged. The code's install runs

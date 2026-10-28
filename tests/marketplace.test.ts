@@ -82,10 +82,7 @@ function addPackage(
 ): void {
   const dir = join(root, 'node_modules', name)
   mkdirSync(dir, { recursive: true })
-  if (field.content) {
-    mkdirSync(join(dir, String(field.content)), { recursive: true })
-    writeFileSync(join(dir, String(field.content), 'bundle.json'), '{}')
-  }
+  if (field.content) writeFileSync(join(dir, 'bundle.json'), '{}')
   writeFileSync(
     join(dir, 'package.json'),
     JSON.stringify(declares ? manifest(name, version, field) : { name, version }),
@@ -360,7 +357,7 @@ describe('installing', () => {
 
   /** Stands in for `bun add` leaving a bundle that carries content behind. */
   const withContent = (root: string) => () => {
-    addPackage(root, '@acme/kit', true, '1.0.0', { content: 'content' })
+    addPackage(root, '@acme/kit', true, '1.0.0', { content: true })
     writeFileSync(
       join(root, 'package.json'),
       JSON.stringify({ name: 'a-site', dependencies: { '@acme/kit': '^1.0.0' } }),

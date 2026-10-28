@@ -23,7 +23,6 @@ import {
   exportPeople,
   MANIFEST_FILE,
   newSeal,
-  PAYLOAD_DIR,
   packageNameFor,
   planStreamedBundle,
   sanitise,
@@ -252,14 +251,14 @@ export async function exportSite(
       if (file) {
         const body = file.bytes ?? encoder.encode(file.text ?? '')
         hasher.update(body)
-        await writer.add(`${PAYLOAD_DIR}/${path}`, body)
+        await writer.add(path, body)
       } else {
         const media = stored.get(blobs.get(path) as string) as StoredFile
         if (planned.sealing && seal) {
           const sealed = sealBytes(seal.key, path, await media.bytes())
           hasher.update(sealed)
           hasher.update('\n')
-          await writer.add(`${PAYLOAD_DIR}/${path}`, sealed)
+          await writer.add(path, sealed)
           bytes += media.size
           continue
         }
@@ -269,16 +268,16 @@ export async function exportSite(
             yield chunk
           }
         }
-        await writer.addStream(`${PAYLOAD_DIR}/${path}`, media.size, hashed())
+        await writer.addStream(path, media.size, hashed())
         bytes += media.size
       }
       hasher.update('\n')
     }
     const manifest = { ...planned.manifest, integrity: `sha256-${hasher.digest('hex')}` }
-    await writer.add(`${PAYLOAD_DIR}/${MANIFEST_FILE}`, encoder.encode(writeManifest(manifest)))
+    await writer.add(MANIFEST_FILE, encoder.encode(writeManifest(manifest)))
     await writer.add(
       'package.json',
-      encoder.encode(`${JSON.stringify(bundlePackageJson(info), null, 2)}\n`),
+      encoder.encode(`${JSON.stringify(bundlePackageJson(info, paths), null, 2)}\n`),
     )
     await writer.close()
     await rename(partial, options.out)

@@ -174,12 +174,17 @@ describe('which files are the code', () => {
 })
 
 describe('a bundle built with code', () => {
-  test('carries it under code/, with its hash in package.json', () => {
+  test('carries it under code/, listed in bundle.json at the root like any section', () => {
     const manifest = JSON.parse(readFileSync(join(bundle, 'package.json'), 'utf8'))
-    expect(manifest.files).toEqual(['content', 'code'])
-    expect(manifest.crombolo.code.dir).toBe('code')
-    expect(manifest.crombolo.code.integrity).toMatch(/^sha256-/)
+    expect(manifest.files).toContain('bundle.json')
+    expect(manifest.files).toContain('code')
+    expect(manifest.files).toContain('nodes')
+    expect(manifest.crombolo.content).toBe(true)
+    expect(manifest.crombolo.code).toBeUndefined()
     expect(validateBundlePackage(manifest, bundle)).toEqual([])
+    const payload = JSON.parse(readFileSync(join(bundle, 'bundle.json'), 'utf8'))
+    expect(payload.carries.code).toContain('code/src/logo.png')
+    expect(payload.carries.code).toContain('code/crombolo.config.ts')
     expect(readFileSync(join(bundle, 'code/src/logo.png'))).toEqual(
       readFileSync(join(site, 'src/logo.png')),
     )
@@ -206,29 +211,16 @@ describe('a bundle built with code', () => {
     expect(result.files?.some((file) => file.path.startsWith('code/'))).toBe(false)
   })
 
-  test('code changed after the build fails its hash', async () => {
+  test('code changed after the build fails the bundle’s one hash', async () => {
     const copy = await built(site)
     writeFileSync(join(copy, 'code/src/records.ts'), 'export const records = 2\n')
-    expect(loadBundleCode(copy).problems[0]).toContain('does not match its hash')
+    expect(loadBundleCode(copy).problems.join('\n')).toContain('integrity does not match')
   })
 
   test('still installs its content as before, and says it carries code', () => {
     const resolved = readBundle(bundle, site)
     expect(resolved.set.nodes.length).toBeGreaterThan(0)
-    expect(resolved.package.field.code?.dir).toBe('code')
-  })
-
-  test('a malformed code field is refused by the package check', () => {
-    const base = { name: 'x', version: '1.0.0', peerDependencies: { '@crombolo/crombolo': '*' } }
-    expect(
-      validateBundlePackage({ ...base, crombolo: { id: 'xx', content: 'content', code: 'code' } }),
-    ).toContain('"crombolo.code" names the directory holding the code, and its sha256 hash')
-    expect(
-      validateBundlePackage({
-        ...base,
-        crombolo: { id: 'xx', content: 'content', code: { dir: '../up', integrity: 'sha256-a' } },
-      }),
-    ).toContain('"crombolo.code" (../up) is outside the package')
+    expect(resolved.set.manifest.carries?.code).toContain('code/src/records.ts')
   })
 })
 
@@ -301,7 +293,9 @@ describe('installing the code', () => {
     const copy = await built(site)
     writeFileSync(join(copy, 'code/src/records.ts'), 'tampered\n')
     const target = join(scratch(), 'site')
-    expect((await installBundleCode(copy, target)).problems[0]).toContain('does not match its hash')
+    expect((await installBundleCode(copy, target)).problems.join('\n')).toContain(
+      'integrity does not match',
+    )
     expect(existsSync(target)).toBe(false)
   })
 })

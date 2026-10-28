@@ -7,7 +7,7 @@
  * bundle is.
  */
 import { existsSync, readFileSync, statSync } from 'node:fs'
-import { dirname, isAbsolute, join, normalize, sep } from 'node:path'
+import { dirname, join, normalize } from 'node:path'
 import type { PackageManifestImportmap } from './manifests.ts'
 
 /** The package a bundle declares its peer range on. */
@@ -20,7 +20,7 @@ export const CORE_PACKAGE = '@crombolo/crombolo'
  */
 export const BUNDLE_ID = /^[a-z][a-z0-9-]{1,38}$/
 
-/** The `content` payload: always `bundle.json` inside the named directory. */
+/** The payload's manifest, at the package root (story 193). */
 export const PAYLOAD_MANIFEST = 'bundle.json'
 
 /** An exported binding name: what a site imports to wire the server half. */
@@ -35,8 +35,8 @@ export interface CromboloField {
   /** The backoffice half: Umbraco extension manifests. */
   extensions?: unknown[]
   importmap?: PackageManifestImportmap
-  /** A directory inside the package holding a `bundle.json` payload. */
-  content?: string
+  /** The package carries content: `bundle.json` at its root, and what it lists beside it. */
+  content?: true
   /** The factory the package exports for the server half. Never imported by core. */
   server?: string
   /**
@@ -44,8 +44,6 @@ export interface CromboloField {
    * owns tables: `breaking` exactly when it ships a contract.
    */
   migrations?: 'compatible' | 'breaking'
-  /** A site's own code: the directory holding it, and the hash over it (story 192). */
-  code?: { dir: string; integrity: string }
 }
 
 /** A bundle as read from its package. */
@@ -59,7 +57,7 @@ export interface BundlePackage {
   peerRange: string
   private: boolean
   field: CromboloField
-  /** Absolute path of the payload directory, when the bundle carries content. */
+  /** The package's directory, when it carries content: the payload is the package. */
   contentDir: string | undefined
   carries: { extensions: boolean; content: boolean; server: boolean }
 }
@@ -92,14 +90,6 @@ export function readPackageJson(file: string): PackageJson | undefined {
  */
 export function declaresBundle(json: PackageJson | undefined): boolean {
   return Boolean(json?.crombolo) && json?.name !== CORE_PACKAGE
-}
-
-/** A relative path that stays inside the package. */
-function insidePackage(directory: string, relative: string): string | undefined {
-  if (relative === '' || isAbsolute(relative) || relative.includes('\0')) return undefined
-  const root = directory.endsWith(sep) ? directory : `${directory}${sep}`
-  const target = normalize(join(directory, relative))
-  return target === normalize(directory) || target.startsWith(root) ? target : undefined
 }
 
 /**
@@ -136,32 +126,10 @@ export function validateBundlePackage(json: PackageJson, directory?: string): st
   if (f.server !== undefined && (typeof f.server !== 'string' || !EXPORT_NAME.test(f.server)))
     problems.push('"crombolo.server" must name the factory the package exports')
   if (f.content !== undefined) {
-    if (typeof f.content !== 'string') problems.push('"crombolo.content" must be a directory')
-    else if (directory) {
-      const target = insidePackage(directory, f.content)
-      if (!target) problems.push(`"crombolo.content" (${f.content}) is outside the package`)
-      else if (!existsSync(join(target, PAYLOAD_MANIFEST)))
-        problems.push(`"crombolo.content" (${f.content}) holds no ${PAYLOAD_MANIFEST}`)
-    } else if (isAbsolute(f.content) || f.content.split(/[\\/]/).includes('..'))
-      problems.push(`"crombolo.content" (${f.content}) is outside the package`)
-  }
-
-  if (f.code !== undefined) {
-    const code = f.code as Record<string, unknown> | null
-    if (
-      !code ||
-      typeof code !== 'object' ||
-      typeof code.dir !== 'string' ||
-      typeof code.integrity !== 'string' ||
-      !code.integrity.startsWith('sha256-')
-    )
-      problems.push('"crombolo.code" names the directory holding the code, and its sha256 hash')
-    else if (
-      directory
-        ? !insidePackage(directory, code.dir)
-        : isAbsolute(code.dir) || code.dir.split(/[\\/]/).includes('..')
-    )
-      problems.push(`"crombolo.code" (${code.dir}) is outside the package`)
+    if (f.content !== true)
+      problems.push(`"crombolo.content" is true: ${PAYLOAD_MANIFEST} sits at the package root`)
+    else if (directory && !existsSync(join(directory, PAYLOAD_MANIFEST)))
+      problems.push(`it declares content, and holds no ${PAYLOAD_MANIFEST} at its root`)
   }
 
   const hasExtensions = Array.isArray(f.extensions) && f.extensions.length > 0
@@ -202,7 +170,7 @@ export function readBundlePackage(directory: string): {
       peerRange: pkg.peerDependencies?.[CORE_PACKAGE] as string,
       private: pkg.private === true,
       field,
-      contentDir: field.content ? insidePackage(directory, field.content) : undefined,
+      contentDir: field.content === true ? directory : undefined,
       carries: {
         extensions: Array.isArray(field.extensions) && field.extensions.length > 0,
         content: field.content !== undefined,

@@ -181,7 +181,7 @@ export async function referencedBlobs(file: string): Promise<BundleBlob[]> {
   const dir = mkdtempSync(join(tmpdir(), 'crombolo-pulled-'))
   try {
     await extractTarball(file, dir)
-    const manifest = loadBundle(join(dir, 'content')).set?.manifest
+    const manifest = loadBundle(dir).set?.manifest
     return manifest?.media === 'referenced' ? manifest.blobs : []
   } finally {
     rmSync(dir, { recursive: true, force: true })
@@ -266,7 +266,7 @@ export async function pushSite(
     }
     const unpacked = join(work, 'unpacked')
     await extractTarball(out, unpacked)
-    const loaded = loadBundle(join(unpacked, 'content'))
+    const loaded = loadBundle(unpacked)
     const manifest = loaded.set?.manifest
     if (!manifest) throw new Error('The export could not be read back.')
     const sending = {

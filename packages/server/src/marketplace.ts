@@ -229,12 +229,12 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
       if (!version || validateBundlePackage(version).length > 0) return undefined
       const field = version.crombolo as {
         extensions?: unknown[]
-        content?: string
+        content?: boolean
         server?: string
       }
       return {
         extensions: Array.isArray(field.extensions) && field.extensions.length > 0,
-        content: field.content !== undefined,
+        content: field.content === true,
         server: field.server !== undefined,
       }
     } catch {

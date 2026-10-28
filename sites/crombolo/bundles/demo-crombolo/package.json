@@ -3,14 +3,18 @@
   "version": "1.0.0",
   "private": true,
   "files": [
-    "content"
+    "bundle.json",
+    "components",
+    "nodes",
+    "schema",
+    "styles"
   ],
   "peerDependencies": {
-    "@crombolo/crombolo": ">=0.32.0"
+    "@crombolo/crombolo": ">=0.33.0"
   },
   "crombolo": {
     "id": "demo-crombolo",
     "name": "Crombolo",
-    "content": "content"
+    "content": true
   }
 }

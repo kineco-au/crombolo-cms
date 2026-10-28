@@ -235,7 +235,7 @@ describe(`pulling (${dialectUnderTest})`, () => {
     const dir = temp('pulled')
     writeFileSync(join(dir, 'site.tgz'), bytes)
     await extractTarball(join(dir, 'site.tgz'), join(dir, 'out'))
-    const loaded = loadBundle(join(dir, 'out', 'content'))
+    const loaded = loadBundle(join(dir, 'out'))
     expect(loaded.problems).toEqual([])
     expect(loaded.set?.manifest).toMatchObject({ scope: 'site', content: 'sealed' })
     expect(loaded.set?.manifest.people).toBeUndefined()
@@ -496,7 +496,7 @@ describe(`media by reference (${dialectUnderTest})`, () => {
       ),
     )
     await extractTarball(join(dir, 'site.tgz'), join(dir, 'out'))
-    const manifest = loadBundle(join(dir, 'out', 'content')).set?.manifest
+    const manifest = loadBundle(join(dir, 'out')).set?.manifest
     expect(manifest?.media).toBe('referenced')
     const [blob] = manifest?.blobs ?? []
     expect(blob?.etag).toBeTruthy()

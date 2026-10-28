@@ -829,7 +829,7 @@ export function describeDatabase(
   }
 }
 
-export const VERSION = '0.32.0'
+export const VERSION = '0.33.0'
 
 /** A whole number of seconds from the environment; undefined when unset or not one. */
 function numberSetting(name: Parameters<typeof setting>[0]): number | undefined {

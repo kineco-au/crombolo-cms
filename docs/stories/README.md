@@ -83,6 +83,7 @@ not cover.
 | `014` | Check, fix, upgrade | must | L | done | 013 |
 | `015` | The upgrade dashboard and the static check | must | M | done | 014 |
 | `192` | A site's bundle carries its code | should | M | done | 063, 181 |
+| `193` | One manifest for the whole bundle | should | M | done | 192 |
 
 ### Epic C — The backoffice, end to end
 

@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/content",
-  "version": "0.32.0",
+  "version": "0.33.0",
   "description": "The rules every page and media write follows, whoever starts it: who may, where it may go, approvals, and what it announces. No transport.",
   "license": "MIT",
   "author": "Crombolo",

@@ -112,13 +112,9 @@ async function site() {
   return { h, create, contentType }
 }
 
-/** The payload's files, by path inside it: what is under `content/` in the package. */
+/** The payload's files: everything in the package but its `package.json`. */
 const payloadOf = (entries: Map<string, Uint8Array>): Map<string, Uint8Array> =>
-  new Map(
-    [...entries]
-      .filter(([path]) => path.startsWith('content/'))
-      .map(([path, bytes]) => [path.slice('content/'.length), bytes]),
-  )
+  new Map([...entries].filter(([path]) => path !== 'package.json'))
 
 /** The whole package, by path inside it. */
 const downloadPackage = async (h: Harness, id: string): Promise<Map<string, Uint8Array>> => {
@@ -268,7 +264,7 @@ describe('the download', () => {
       'attachment; filename="nothing-picked-1.0.0.tgz"',
     )
     const packed = untar(new Uint8Array(await response.arrayBuffer()))
-    expect([...packed.keys()]).toEqual(['package.json', 'content/bundle.json'])
+    expect([...packed.keys()]).toEqual(['package.json', 'bundle.json'])
     const entries = payloadOf(packed)
     const manifest = JSON.parse(text(entries, 'bundle.json')) as {
       label: string
@@ -638,9 +634,9 @@ describe('the download is an npm package', () => {
       name: 'starter-kit',
       version: '1.0.0',
       keywords: ['crombolo-bundle'],
-      files: ['content'],
+      files: ['bundle.json'],
       peerDependencies: { '@crombolo/crombolo': `>=${VERSION}` },
-      crombolo: { id: 'starter-kit', name: 'Starter Kit', content: 'content' },
+      crombolo: { id: 'starter-kit', name: 'Starter Kit', content: true },
     })
   })
 

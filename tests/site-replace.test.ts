@@ -307,7 +307,7 @@ describe(`replacing a site (${dialectUnderTest})`, () => {
     // schema sync have run.
     const unpacked = temp('unpacked')
     await extractTarball(file, unpacked)
-    const loaded = loadBundle(join(unpacked, 'content'))
+    const loaded = loadBundle(unpacked)
     const homeKey = loaded.set?.nodes.find((n) => n.kind === 'document')?.key as string
 
     const b = await site({ types: ['article'], css: 'other.css', pages: [] })
@@ -344,7 +344,7 @@ describe(`replacing a site (${dialectUnderTest})`, () => {
 async function contents(file: string): Promise<Record<string, unknown>> {
   const dir = temp('compare')
   await extractTarball(file, dir)
-  const loaded = loadBundle(join(dir, 'content'))
+  const loaded = loadBundle(dir)
   expect(loaded.problems).toEqual([])
   const strip = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map(strip)

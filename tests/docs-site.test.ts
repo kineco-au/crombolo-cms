@@ -35,7 +35,7 @@ import { ROOT } from '../scripts/packages.ts'
 import { type Harness, signedInServer } from './support/harness.ts'
 
 const BUNDLE = join(ROOT, 'sites/crombolo/bundles/demo-crombolo')
-const NODES = join(BUNDLE, 'content/nodes')
+const NODES = join(BUNDLE, 'nodes')
 const CLI_REFERENCE_KEY = '3c1e9b52-7d40-4f18-9a6e-150c11ec0150'
 
 interface StoredNode {
@@ -116,15 +116,15 @@ describe('the committed bundle', () => {
 
   test('carries the site’s schema and views with its content', () => {
     for (const file of [
-      'content/schema/content-types/docs-page.toml',
-      'content/schema/content-types/docs-section.toml',
-      'content/components/pages/docsPage.tsx',
-      'content/components/shared/docs.tsx',
-      'content/styles/site.css',
+      'schema/content-types/docs-page.toml',
+      'schema/content-types/docs-section.toml',
+      'components/pages/docsPage.tsx',
+      'components/shared/docs.tsx',
+      'styles/site.css',
     ])
       expect(existsSync(join(BUNDLE, file)), file).toBe(true)
     // And as the site has them, so the bundle is never a stale copy.
-    expect(readFileSync(join(BUNDLE, 'content/components/pages/docsPage.tsx'), 'utf8')).toBe(
+    expect(readFileSync(join(BUNDLE, 'components/pages/docsPage.tsx'), 'utf8')).toBe(
       readFileSync(join(ROOT, 'sites/crombolo/components/pages/docsPage.tsx'), 'utf8'),
     )
   })

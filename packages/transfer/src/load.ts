@@ -404,7 +404,12 @@ export function loadBundle(dir: string): LoadedBundle {
         continue
       }
       files.set(path, file)
-      read.push({ path, text: readFileSync(file, 'utf8') })
+      // Code is a site's source, which is not only text.
+      read.push(
+        path.startsWith(`${BUNDLE_SECTIONS.code}/`)
+          ? { path, bytes: new Uint8Array(readFileSync(file)) }
+          : { path, text: readFileSync(file, 'utf8') },
+      )
     }
   }
 

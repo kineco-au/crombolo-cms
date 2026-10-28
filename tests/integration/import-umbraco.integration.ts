@@ -191,7 +191,7 @@ describe('importing an Umbraco site, end to end through the CLI', () => {
       'schema/languages.toml',
       'components/HomePage.tsx',
       'bundles/umbraco-import/package.json',
-      'bundles/umbraco-import/content/bundle.json',
+      'bundles/umbraco-import/bundle.json',
       'media/qvzdvqf4/whiterthanwhite.jpg',
       'css/site.css',
       'import/report.md',

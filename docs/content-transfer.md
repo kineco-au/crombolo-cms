@@ -42,14 +42,15 @@ everything below.
 
 ```
 bundles/campaign-x/
-├── package.json             "private": true, and "crombolo": { "id", "name", "content": "content" }
-└── content/
-    ├── bundle.json          manifest, including an integrity hash over everything
-    ├── nodes/<uuid>.json    one file per node, every kind: its place, name and rules
-    ├── values/<uuid>.json   the node's values, sealed, with --include-content
-    ├── blobs/<key>          the media bytes, with --with-blobs (sealed with the values)
-    ├── people/              members, users and their groups, always sealed
-    └── resolutions.json     conflict decisions, once check has been run
+├── package.json             "private": true, and "crombolo": { "id", "name", "content": true }
+├── bundle.json              manifest, including an integrity hash over everything below
+├── nodes/<uuid>.json        one file per node, every kind: its place, name and rules
+├── values/<uuid>.json       the node's values, sealed, with --include-content
+├── blobs/<key>              the media bytes, with --with-blobs (sealed with the values)
+├── people/                  members, users and their groups, always sealed
+├── schema/, components/, …  the sections, when the bundle carries structure
+├── code/                    a site's own code, when it carries some (bundles.md)
+└── resolutions.json         conflict decisions, once check has been run
 ```
 
 `--name` and `--package-version` set the package's name and version; the name

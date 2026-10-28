@@ -259,7 +259,7 @@ function summarise(bundle: ResolvedBundle): BundleSummary {
     blobsCarried: carried.length,
     blobBytes: carried.reduce((total, blob) => total + (blob.size ?? 0), 0),
     package: { name: bundle.package.packageName, version: bundle.package.version },
-    carriesCode: bundle.package.field.code !== undefined,
+    carriesCode: (set.manifest.carries?.code?.length ?? 0) > 0,
   }
 }
 

@@ -6,6 +6,26 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.33.0 — 2026-10-28
+
+- **One manifest for the whole bundle** (story 193). A bundle package now has
+  `bundle.json` at its root, beside `package.json`, and everything it carries
+  beside them: nodes, media, sealed values, people, the sections, and a site's
+  code. One integrity hash in `bundle.json` covers all of it. Code is a
+  section like `schema/`, listed under `carries.code`, so the second hash in
+  `crombolo.code` that 0.32.0 wrote is gone. `crombolo.content` is now `true`
+  rather than a folder name, and `files` lists what the bundle carries.
+
+  **Upgrade notes:** a bundle written before this release, with its payload in
+  `content/`, is not read. Rebuild it with the command that made it
+  (`bundle build`, `content export`, `export`, or a created package's
+  download). A bundle you publish yourself changes `"content": "content"` to
+  `"content": true`, and moves `content/*` to the package root.
+- **v0.32.0 was tagged and not published.** Its Release run failed on the
+  concurrency load test. The cause was in the test, not the CMS: a save raced
+  a permanent delete and was refused for naming no revision rather than for
+  the missing page. Everything in v0.32.0 ships in this release.
+
 ## v0.32.0 — 2026-10-28
 
 - **A site's bundle can carry its code** (story 192):

@@ -1,18 +1,13 @@
 /**
- * A written bundle as the npm package every bundle is: a `package.json` whose
- * `crombolo` field declares the payload, and the payload under `content/`.
- * `docs/bundles.md`.
+ * A written bundle as the npm package every bundle is: `bundle.json` at the
+ * root beside `package.json`, and everything it carries beside them, under its
+ * one hash (story 193). `docs/bundles.md`.
  *
- * The payload is `writeBundle`'s output unchanged, so its manifest, integrity
- * hash and sections mean what they always did. The package is what gives it a
- * name, a version and a core it was written for.
+ * The payload is `writeBundle`'s output unchanged. The package is what gives
+ * it a name, a version and a core it was written for.
  */
-import { CODE_DIR, codeIntegrity } from './code.ts'
 import { PEOPLE_DIR } from './people.ts'
-import type { BundleFile } from './write.ts'
-
-/** The directory inside a package that holds the `bundle.json` payload. */
-export const PAYLOAD_DIR = 'content'
+import { type BundleFile, MANIFEST_FILE } from './write.ts'
 
 /** The npm keyword a bundle publishes so the marketplace can find it. */
 export const BUNDLE_KEYWORD = 'crombolo-bundle'
@@ -30,8 +25,6 @@ export interface BundlePackageInfo {
   private?: boolean
   /** The range on `@crombolo/crombolo` it is written for. */
   peerRange: string
-  /** A site's own code, at its site paths, placed under `code/` (story 192). */
-  code?: readonly BundleFile[]
 }
 
 const NPM_NAME = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/
@@ -72,27 +65,30 @@ export function packageNameFor(text: string): string {
   return bundleIdFor(text)
 }
 
-/** The `package.json` a bundle package is written with. */
-export function bundlePackageJson(info: BundlePackageInfo): Record<string, unknown> {
+/** What `files` lists for a payload: the manifest and each top-level entry it carries. */
+export function packageFilesFor(paths: Iterable<string>): string[] {
+  const top = new Set<string>([MANIFEST_FILE])
+  for (const path of paths) top.add(path.split('/')[0] as string)
+  return [...top].sort()
+}
+
+/** The `package.json` a bundle package is written with, for a payload at these paths. */
+export function bundlePackageJson(
+  info: BundlePackageInfo,
+  paths: Iterable<string>,
+): Record<string, unknown> {
   return {
     name: info.name,
     version: info.version,
     ...(info.description ? { description: info.description } : {}),
     ...(info.private ? { private: true } : { keywords: [BUNDLE_KEYWORD] }),
-    files: info.code?.length ? [PAYLOAD_DIR, CODE_DIR] : [PAYLOAD_DIR],
+    files: packageFilesFor(paths),
     peerDependencies: { '@crombolo/crombolo': info.peerRange },
-    crombolo: {
-      id: info.id,
-      name: info.label,
-      content: PAYLOAD_DIR,
-      ...(info.code?.length
-        ? { code: { dir: CODE_DIR, integrity: codeIntegrity(info.code) } }
-        : {}),
-    },
+    crombolo: { id: info.id, name: info.label, content: true },
   }
 }
 
-/** A payload's files, placed into a package under `content/` beside its `package.json`. */
+/** A payload's files, with the `package.json` that makes them a package. */
 export function writeBundlePackage(
   payload: readonly BundleFile[],
   info: BundlePackageInfo,
@@ -105,8 +101,17 @@ export function writeBundlePackage(
   if (!info.private && payload.some((file) => file.path.startsWith('values/')))
     throw new Error('A bundle whose content is encrypted can only be a private package.')
   return [
-    { path: 'package.json', text: `${JSON.stringify(bundlePackageJson(info), null, 2)}\n` },
-    ...payload.map((file) => ({ ...file, path: `${PAYLOAD_DIR}/${file.path}` })),
-    ...(info.code ?? []).map((file) => ({ ...file, path: `${CODE_DIR}/${file.path}` })),
+    {
+      path: 'package.json',
+      text: `${JSON.stringify(
+        bundlePackageJson(
+          info,
+          payload.map((file) => file.path),
+        ),
+        null,
+        2,
+      )}\n`,
+    },
+    ...payload,
   ]
 }

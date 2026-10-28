@@ -259,7 +259,7 @@ async function exported(h: Harness, options: Parameters<typeof exportSite>[2]) {
   const result = await exportSite(h.server.db, h.server.config, options)
   const dir = temp('unpacked')
   await extractTarball(result.out, dir)
-  const loaded = loadBundle(join(dir, 'content'))
+  const loaded = loadBundle(dir)
   if (!loaded.set) throw new Error(loaded.problems.map((p) => p.message).join('; '))
   return { result, dir, loaded: { ...loaded, set: loaded.set } }
 }
@@ -304,7 +304,7 @@ describe(`a whole-site export (${dialectUnderTest})`, () => {
     expect(loaded.problems).toEqual([])
     expect(loaded.set.manifest.media).toBe('omitted')
     expect(loaded.set.manifest.counts.media).toBe(1)
-    expect(existsSync(join(dir, 'content', 'blobs'))).toBe(false)
+    expect(existsSync(join(dir, 'blobs'))).toBe(false)
     expect(result.media.omitted).toBe(true)
   })
 

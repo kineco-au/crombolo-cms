@@ -139,16 +139,21 @@ export async function buildBundleFromDirectory(
           createdBy: 'crombolo bundle build',
         },
       }
-      const files = writeBundlePackage(writeBundle(set, seed.blobs, sections), {
-        name,
-        version: '1.0.0',
-        id: bundleIdFor(name),
-        label: config.siteName,
-        private: true,
-        // As `release:version` writes it into every committed bundle.
-        peerRange: `>=${VERSION}`,
-        ...(code ? { code: readCodeFiles(dir, code.paths) } : {}),
-      })
+      const files = writeBundlePackage(
+        writeBundle(set, seed.blobs, [
+          ...sections,
+          ...(code ? readCodeFiles(dir, code.paths) : []),
+        ]),
+        {
+          name,
+          version: '1.0.0',
+          id: bundleIdFor(name),
+          label: config.siteName,
+          private: true,
+          // As `release:version` writes it into every committed bundle.
+          peerRange: `>=${VERSION}`,
+        },
+      )
       return { problems: [], seed, files, name, ...(code ? { code: code.paths } : {}) }
     } finally {
       await db.close()

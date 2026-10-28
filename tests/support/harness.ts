@@ -167,6 +167,8 @@ export async function signIn(
       const read = await send(`${V1}/document/${page[1]}`)
       const etag = read.headers.get('etag')
       if (etag) headers.set('if-match', etag)
+      // Deleted meanwhile by a concurrent writer: let the save answer for a missing page.
+      else if (read.status === 404) headers.set('if-match', '*')
       return send(path, { ...init, headers })
     }
     return send(path, init)

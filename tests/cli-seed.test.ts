@@ -103,8 +103,8 @@ describe('seed build and apply', () => {
     expect(run.code, run.err).toBe(0)
     expect(run.err).toContain('deprecated')
     expect(existsSync(join(out, 'package.json'))).toBe(true)
-    expect(existsSync(join(out, 'content', 'schema', 'content-types', 'page.toml'))).toBe(true)
-    expect(JSON.parse(readFileSync(join(out, 'content', 'bundle.json'), 'utf8')).counts).toEqual({
+    expect(existsSync(join(out, 'schema', 'content-types', 'page.toml'))).toBe(true)
+    expect(JSON.parse(readFileSync(join(out, 'bundle.json'), 'utf8')).counts).toEqual({
       document: 2,
     })
   })
