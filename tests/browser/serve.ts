@@ -48,8 +48,8 @@ writeFileSync(
 )
 writeFileSync(
   join(root, 'components', 'everyEditor.tsx'),
-  `export default function EveryEditor({ model }) {
-  const hero = model.value('imageMediaPicker')
+  `export default async function EveryEditor({ model }) {
+  const hero = await model.value('imageMediaPicker')
   return <main><h1>{model.name}</h1><img class="hero" src={hero?.cropUrl({ width: 40, height: 40 })} /></main>
 }
 `,

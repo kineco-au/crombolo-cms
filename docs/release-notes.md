@@ -6,6 +6,12 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.35.1 — 2026-10-28
+
+- v0.35.0 was tagged but never published: the browser suite's own test page
+  read a media picker without awaiting it (story 197). It now awaits it.
+  Nothing else changed.
+
 ## v0.35.0 — 2026-10-28
 
 - **A server bundle can manage media as the signed-in member** (story 198).
