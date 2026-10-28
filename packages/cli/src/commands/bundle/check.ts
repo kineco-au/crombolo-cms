@@ -8,8 +8,8 @@ import { CliError } from '../../errors.ts'
 export default class BundleCheck extends BaseCommand {
   static override summary = "check a bundle's code against this CMS"
   static override description = [
-    "Installs the code in a throwaway directory from its own bun.lock, running no install scripts and leaving the @crombolo packages to this CMS, then reads its crombolo.config.ts in a process given none of this one's environment. Every server bundle the config wires has to belong to a package the site declares, with a server half, written for this version; and nothing installed may carry an @crombolo package of its own.",
-    'Every problem is listed, not the first. Nothing is written.',
+    'Installs the code in a throwaway directory from its own bun.lock, running no install scripts and leaving the @crombolo packages to this CMS. Every bundle package the site declares has to be written for this version, and nothing installed may carry an @crombolo package of its own.',
+    "None of the site's code is run, its crombolo.config.ts included, so the server bundles it wires are checked when the host first starts it. Every problem is listed, not the first. Nothing is written.",
   ].join('\n\n')
   static override examples = ['<%= config.bin %> bundle check ./natures-calendar-bundle']
   static override args = {
@@ -21,7 +21,7 @@ export default class BundleCheck extends BaseCommand {
     outputFields: [
       { name: 'bundle', type: 'string' },
       { name: 'files', type: 'integer' },
-      { name: 'wired', type: 'array', items: { type: 'string' } },
+      { name: 'serverBundles', type: 'array', items: { type: 'string' } },
       { name: 'problems', type: 'array', items: { type: 'string' } },
     ],
     errors: ['refused'],
@@ -39,9 +39,9 @@ export default class BundleCheck extends BaseCommand {
       })
     this.say(`  code     ${result.files} file(s), installed from its lockfile`)
     this.say(
-      `  wires    ${result.wired.length > 0 ? result.wired.join(', ') : 'no server bundles'}`,
+      `  carries  ${result.serverBundles.length > 0 ? result.serverBundles.join(', ') : 'no server bundles'}`,
     )
     this.say(`\n  \`crombolo bundle install-code ${shown} <dir>\` installs it.`)
-    return { bundle: dir, files: result.files, wired: result.wired, problems: [] }
+    return { bundle: dir, files: result.files, serverBundles: result.serverBundles, problems: [] }
   }
 }

@@ -787,6 +787,33 @@ describe(`server bundles create media as the member (${dialectUnderTest})`, () =
     ).toBe(200)
   })
 
+  test("deleting a folder needs write permission on every file in it, so another member's files stay", async () => {
+    const s = await realSite()
+    const photo = (await (
+      await s.upload('ada', await phonePhoto(), 'a.jpg', '/Observations/Photos/2026')
+    ).json()) as { key: string }
+    const year = await s.h.server.db.query<{ unique_id: string }>(
+      "SELECT unique_id FROM node WHERE text = '2026'",
+    )
+    const yearKey = String(year[0]?.unique_id)
+
+    expect((await s.as('cy', 'DELETE', `photos/${yearKey}`)).status).toBe(403)
+    const trashed = async (key: string) =>
+      (
+        await s.h.server.db.query<{ trashed: unknown }>(
+          'SELECT trashed FROM node WHERE unique_id = ?',
+          [key],
+        )
+      )[0]?.trashed
+    expect([false, 0, '0']).toContain((await trashed(photo.key)) as never)
+    expect([false, 0, '0']).toContain((await trashed(yearKey)) as never)
+    expect((await s.as('cy', 'GET', `photos/${photo.key}`)).status).toBe(200)
+
+    // Ada may change everything in it, so she may delete the folder.
+    expect((await s.as('ada', 'DELETE', `photos/${yearKey}`)).status).toBe(200)
+    expect([true, 1, '1']).toContain((await trashed(photo.key)) as never)
+  })
+
   test('types: a page named as a photo, a type off the list and an empty list are refused', async () => {
     const s = await realSite({ types: ['jpeg', 'png', 'gif'] })
     const html = new TextEncoder().encode('<!doctype html><script>alert(1)</script>')

@@ -13,7 +13,6 @@ import {
   readFileSync,
   rmSync,
   symlinkSync,
-  writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
@@ -25,14 +24,10 @@ import {
   resolvePackageDir,
 } from '@crombolo/backoffice-host'
 import { loadBundleCode } from '@crombolo/transfer'
-import { type ServerBundle, validateServerBundles } from './bundles.ts'
 import { VERSION } from './config.ts'
 
 const SCOPE = '@crombolo/'
 const CORE_PACKAGE = '@crombolo/crombolo'
-
-/** How long reading a site's config may take before it is taken to have hung. */
-const CONFIG_TIMEOUT_MS = 60_000
 
 export interface BundleCodeOptions {
   /** The CMS version the code is checked against; this one by default. */
@@ -42,8 +37,8 @@ export interface BundleCodeOptions {
 export interface BundleCodeCheck {
   /** Every reason the code cannot run here; empty when it can. */
   problems: string[]
-  /** The bundle ids `crombolo.config.ts` wires. */
-  wired: string[]
+  /** The ids of the server bundles the code's packages carry. */
+  serverBundles: string[]
   /** How many files the bundle's code is. */
   files: number
 }
@@ -128,63 +123,11 @@ function linkCms(json: PackageJson, dir: string): string[] {
   return problems
 }
 
-const MARKER = '@@crombolo-bundles@@'
-
-/** Run in a process of its own: the wired bundles, as data, after a marker line. */
-const READ_CONFIG = `const config = (await import(process.argv[2])).default ?? {}
-const bundles = (config.bundles ?? []).map((b) => ({
-  id: b.id,
-  section: b.section,
-  capabilities: b.capabilities ?? [],
-  routes: (b.routes ?? []).map((r) => ({ method: r.method, path: r.path })),
-  ...(b.tables ? { tables: b.tables } : {}),
-}))
-process.stdout.write('\\n${MARKER}' + JSON.stringify(bundles) + '\\n')
-`
-
-/**
- * The bundles `crombolo.config.ts` wires, read in a `bun` process given none
- * of the caller's environment, so a config that reads a secret finds none and
- * one that hangs is stopped.
- */
-async function wiredBundles(dir: string): Promise<{ bundles: ServerBundle[]; problem?: string }> {
-  const config = join(dir, 'crombolo.config.ts')
-  if (!existsSync(config)) return { bundles: [] }
-  const scratch = mkdtempSync(join(tmpdir(), 'crombolo-read-config-'))
-  try {
-    const script = join(scratch, 'read-config.ts')
-    writeFileSync(script, READ_CONFIG)
-    const run = Bun.spawn([process.execPath, script, config], {
-      cwd: dir,
-      env: {},
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-    const timer = setTimeout(() => run.kill(), CONFIG_TIMEOUT_MS)
-    const [out, err, code] = await Promise.all([
-      new Response(run.stdout).text(),
-      new Response(run.stderr).text(),
-      run.exited,
-    ])
-    clearTimeout(timer)
-    const marker = out.split('\n').find((line) => line.startsWith(MARKER))
-    if (code !== 0 || !marker) {
-      const tail = err.trim().split('\n').slice(-5).join(' / ')
-      return {
-        bundles: [],
-        problem: `crombolo.config.ts could not be read: ${tail || `exit ${code}`}`,
-      }
-    }
-    return { bundles: JSON.parse(marker.slice(MARKER.length)) as ServerBundle[] }
-  } finally {
-    rmSync(scratch, { recursive: true, force: true })
-  }
-}
-
 /**
  * Every reason a bundle's code cannot run on this CMS: its hash, a frozen
- * install, `@crombolo/*` installed beside it, and the server bundles its config
- * wires, by the rules the boot applies. All of them, not the first.
+ * install, `@crombolo/*` installed beside it, and the bundle packages it
+ * declares. All of them, not the first. The site's code is never run here: a
+ * host has not yet accepted it, so its config's wiring is checked by the boot.
  */
 export async function checkBundleCode(
   packageDir: string,
@@ -192,10 +135,10 @@ export async function checkBundleCode(
 ): Promise<BundleCodeCheck> {
   const coreVersion = options.coreVersion ?? VERSION
   const loaded = loadBundleCode(packageDir)
-  if (!loaded.dir) return { problems: loaded.problems, wired: [], files: 0 }
+  if (!loaded.dir) return { problems: loaded.problems, serverBundles: [], files: 0 }
   const result: BundleCodeCheck = {
     problems: [...loaded.problems],
-    wired: [],
+    serverBundles: [],
     files: loaded.paths.length,
   }
   const json = JSON.parse(readFileSync(join(loaded.dir, 'package.json'), 'utf8')) as PackageJson
@@ -215,20 +158,16 @@ export async function checkBundleCode(
       )
     result.problems.push(...linkCms(json, work))
 
-    const read = await wiredBundles(work)
-    if (read.problem) result.problems.push(read.problem)
-    result.wired = read.bundles.map((bundle) => bundle.id)
-
     const discovered = discoverBundles(work)
     for (const entry of discovered.problems)
       for (const problem of entry.problems) result.problems.push(`${entry.packageName}: ${problem}`)
-    const wired = new Set(result.wired)
     for (const bundle of discovered.bundles) {
-      if (wired.has(bundle.id)) continue
       const peer = peerRangeProblem(bundle, coreVersion)
       if (peer) result.problems.push(peer)
     }
-    result.problems.push(...validateServerBundles(read.bundles, discovered.bundles, coreVersion))
+    result.serverBundles = discovered.bundles
+      .filter((bundle) => bundle.carries.server)
+      .map((bundle) => bundle.id)
     return result
   } finally {
     rmSync(work, { recursive: true, force: true })

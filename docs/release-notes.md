@@ -10,7 +10,29 @@ point at `docs/stories/`.
 
 - v0.35.0 was tagged but never published: the browser suite's own test page
   read a media picker without awaiting it (story 197). It now awaits it.
-  Nothing else changed.
+- **Security fixes.**
+  - `crombolo seed export` no longer writes outside `seed/`. A media folder
+    named `.` or `..` was written as that path segment, so an editor could
+    have a file written anywhere the operator's account can write. Such a
+    folder is now exported as `item`, and every write is checked to stay
+    under `seed/`.
+  - A member deleting or moving a media folder through a server bundle now
+    needs write permission on everything in it (story 198). Before, write
+    permission on the folder alone took every other member's files to the
+    recycle bin with it.
+  - `crombolo bundle check` and `checkBundleCode` no longer run the bundle's
+    `crombolo.config.ts`. They check the packages it declares instead, and
+    report the server bundles those carry as `serverBundles` in place of
+    `wired`. The wiring is checked when the host first starts the code.
+- **`bundle check` is only the code check.** It had also been an alias of
+  `content check`, which the code check hid. Use `content check` for a
+  bundle's content.
+
+### Upgrade notes
+
+- A host that read `wired` from `bundle check` or `checkBundleCode` reads
+  `serverBundles`, and starts the installed code once before serving from it
+  to catch wiring problems.
 
 ## v0.35.0 — 2026-10-28
 

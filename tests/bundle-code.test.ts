@@ -225,49 +225,41 @@ describe('a bundle built with code', () => {
 })
 
 describe('checking the code against this CMS', () => {
-  test('a site whose wiring is sound passes, naming what it wires', async () => {
+  test('a sound site passes, naming the server bundles its packages carry', async () => {
     const result = await checkBundleCode(bundle)
     expect(result.problems).toEqual([])
-    expect(result.wired).toEqual(['fx'])
+    expect(result.serverBundles).toEqual(['fx'])
   }, 60_000)
 
-  test('lists every problem: a stray @crombolo package, a peer range, an unknown wiring', async () => {
+  test('lists every problem: a stray @crombolo package and a peer range', async () => {
     const bad = await built(
       await siteWithCode({
         bundles: [{ id: 'old', peerRange: '<0.1.0' }],
         files: { 'vendor/stub/package.json': json({ name: '@crombolo/stub', version: '1.0.0' }) },
         dependencies: { '@crombolo/stub': 'file:./vendor/stub' },
-        config: `import { old } from 'old-bundle'
-export default { bundles: [old(), { id: 'ghost', section: 'content', capabilities: [], routes: [] }] }
-`,
       }),
     )
     const result = await checkBundleCode(bad)
-    expect(result.wired).toEqual(['old', 'ghost'])
     const problems = result.problems.join('\n')
     expect(problems).toContain('package.json lists @crombolo/stub under dependencies')
     expect(problems).toContain('node_modules/@crombolo/stub is installed with the code')
-    expect(problems).toContain('Bundle "old" cannot run here')
-    expect(problems).toContain('Bundle "ghost" is wired in crombolo.config.ts, but no package')
+    expect(problems).toContain('old-bundle (old) is written for @crombolo/crombolo <0.1.0')
   }, 120_000)
 
-  test('reads the config with none of the caller’s environment', async () => {
-    process.env.CROMBOLO_CODE_TEST_SECRET = 'leaked'
-    try {
-      const nosy = await built(
-        await siteWithCode({
-          config: `if (process.env.CROMBOLO_CODE_TEST_SECRET) throw new Error('saw the secret')
+  test('never runs the site’s config: a host has not yet accepted its code', async () => {
+    const sentinel = join(scratch(), 'ran')
+    const nosy = await built(
+      await siteWithCode({
+        config: `import { writeFileSync } from 'node:fs'
+writeFileSync(${JSON.stringify(sentinel)}, 'ran')
 import { fx } from 'fx-bundle'
 export default { bundles: [fx()] }
 `,
-        }),
-      )
-      const result = await checkBundleCode(nosy)
-      expect(result.problems).toEqual([])
-      expect(result.wired).toEqual(['fx'])
-    } finally {
-      delete process.env.CROMBOLO_CODE_TEST_SECRET
-    }
+      }),
+    )
+    const result = await checkBundleCode(nosy)
+    expect(result.problems).toEqual([])
+    expect(existsSync(sentinel)).toBe(false)
   }, 120_000)
 })
 

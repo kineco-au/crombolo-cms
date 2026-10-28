@@ -21,7 +21,6 @@ export default class ContentCheck extends BaseCommand {
     'Says what it needs from a person first, and writes it to the Changes dashboard. --save writes the answers given into the bundle.',
     'An encrypted bundle asks for its passphrase, or reads CROMBOLO_BUNDLE_PASSPHRASE. Exits 21 when a finding would stop an import.',
   ].join('\n\n')
-  static override aliases = ['bundle:check']
   static override args = {
     bundle: Args.string({
       required: true,

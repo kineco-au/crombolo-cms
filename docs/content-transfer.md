@@ -639,7 +639,6 @@ crombolo content revert <run-id>
                         [--resolve <key>=discard|skip] [--resolve-all <choice>]
                         [--force] [--backup-taken]
 
-crombolo bundle check   <pkg>     alias of `content check`
 crombolo bundle install <pkg>     alias of `content import`
 
 crombolo dictionary export --out <file.udt> [--key <uuid>]

@@ -653,12 +653,14 @@ A site on a host that runs the server for it deploys one bundle instead
 1. `crombolo bundle build --out <dir>` packs the content, the schema, the views
    and the code the site's `crombolo.code` names.
 2. The host runs `crombolo bundle check <dir>` against the CMS version it will
-   run, and refuses the deploy if it lists any problem.
+   run, and refuses the deploy if it lists any problem. The check runs none of
+   the site's code.
 3. The host runs `crombolo bundle install-code <dir> <site dir>` into a fresh
    directory, where its own `@crombolo/*` packages resolve, and
    `content import` for the content.
 4. The host starts the new directory and retires the old one. A server half is
-   wired only at boot, so new code always means a restart.
+   wired only at boot, so new code always means a restart, and the boot is
+   where the wiring in `crombolo.config.ts` is checked.
 
 The `@crombolo/*` packages are peers of the site, so the host's copy of the
 CMS is the only one. An upgrade of the CMS needs no change to the site's code,

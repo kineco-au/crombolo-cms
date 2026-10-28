@@ -261,24 +261,40 @@ export function createMediaOperations(options: MediaOperationsOptions) {
   /**
    * Whether a member may change `key` under the media permissions (story 196):
    * its own write policy, else the nearest rule's write groups. Never the root
-   * or the bin.
+   * or the bin. With `branch`, every item below it must pass too, so trashing
+   * or moving a folder cannot take another member's files with it.
    */
   const memberPermits = async (
     actor: MediaActor & { kind: 'member' },
     key: string | 'root' | 'bin',
+    branch: boolean,
   ): Promise<boolean> => {
     if (key === 'root' || key === 'bin') return false
     const node = await nodes.byKey(key)
     if (!node || node.objectType !== ObjectTypes.Media || node.trashed) return false
     const access = new MediaAccessRepository(db)
-    const item = await access.itemAccess(key)
-    const rule = await access.ruleFor(key)
-    return item ? memberMay('write', item, rule ? ruleOf(rule) : undefined, actor.member) : false
+    const writable = async (itemKey: string) => {
+      const item = await access.itemAccess(itemKey)
+      const rule = await access.ruleFor(itemKey)
+      return item ? memberMay('write', item, rule ? ruleOf(rule) : undefined, actor.member) : false
+    }
+    if (!(await writable(key))) return false
+    if (!branch) return true
+    for (const below of await nodes.descendants(node, [ObjectTypes.Media]))
+      if (!(await writable(below.key))) return false
+    return true
   }
 
-  /** Whether the actor may change media at `key`, the root or the bin; a user or a member is checked. */
-  const permits = async (actor: MediaActor, key: string | 'root' | 'bin'): Promise<boolean> => {
-    if (actor.kind === 'member') return memberPermits(actor, key)
+  /**
+   * Whether the actor may change media at `key`, the root or the bin; a user or
+   * a member is checked. `branch` when the change carries everything below `key`.
+   */
+  const permits = async (
+    actor: MediaActor,
+    key: string | 'root' | 'bin',
+    { branch = false }: { branch?: boolean } = {},
+  ): Promise<boolean> => {
+    if (actor.kind === 'member') return memberPermits(actor, key, branch)
     if (actor.kind !== 'user') return true
     if (key === 'root' || key === 'bin') return mayChangeMedia(actor.principal, key)
     const place = await placeOf(key)
@@ -344,7 +360,8 @@ export function createMediaOperations(options: MediaOperationsOptions) {
   ): Promise<(Refusal & { blocked: Array<{ key: string; reasons: string[] }> }) | undefined> => {
     const blocked: Array<{ key: string; reasons: string[] }> = []
     for (const node of found)
-      if (!(await permits(actor, node.key))) blocked.push({ key: node.key, reasons: [reason] })
+      if (!(await permits(actor, node.key, { branch: true })))
+        blocked.push({ key: node.key, reasons: [reason] })
     if (blocked.length === 0) return undefined
     return {
       ...refuse(
@@ -471,7 +488,8 @@ export function createMediaOperations(options: MediaOperationsOptions) {
       if (!node || node.objectType !== ObjectTypes.Media) return refuse('notFound', 404, NOT_FOUND)
       if (deleting.fromBin && !node.trashed)
         return refuse('invalid', 400, 'The media item is not in the recycle bin')
-      if (!(await permits(actor, deleting.fromBin ? 'bin' : key))) return forbidden()
+      if (!(await permits(actor, deleting.fromBin ? 'bin' : key, { branch: true })))
+        return forbidden()
       const paths = await filesIn(node)
       const removed = await commit(
         actor,

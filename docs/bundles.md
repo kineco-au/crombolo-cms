@@ -700,13 +700,15 @@ bundle is that artifact (story 192).
     something depends on one directly;
   - a `@crombolo/*` package listed under `dependencies`;
   - the site's peer range against this version;
-  - each wired bundle, under the rules the boot applies
-    (`validateServerBundles`);
   - each declared bundle's peer range.
 
-  It links this CMS's packages in, as a host provides them. It reads the
-  config in a `bun` process of its own, with an empty environment and a time
-  limit, so a config that reads a secret finds none.
+  It links this CMS's packages in, as a host provides them. It never runs the
+  site's code, its `crombolo.config.ts` included: a host runs the check before
+  it has accepted the code, and importing a config is running it. Which server
+  bundles the config wires is checked by the boot (`validateServerBundles`),
+  so a host starts the installed code once in a throwaway directory before it
+  serves from it. The check lists the server bundles the declared packages
+  carry.
 - **`crombolo bundle install-code <bundle> <dir>`** (`installBundleCode`)
   checks the hash, then installs the code into an empty directory the same way.
   It never writes over a directory that already holds files. The directory has
@@ -727,7 +729,7 @@ A bundle's content installs through the bundle's own commands — there is no
 second importer:
 
 ```
-crombolo bundle check   <pkg>     # read-only: what it would do here
+crombolo content check  <pkg>     # read-only: what it would do here
 crombolo bundle install <pkg>     # apply it
 ```
 

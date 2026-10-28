@@ -10,7 +10,7 @@
  * would derive, so a round trip names the same nodes.
  */
 import { mkdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 import { mediaFileOf, normaliseUuid, ObjectTypes } from '@crombolo/core'
 import {
   ContentTypeRepository,
@@ -33,8 +33,11 @@ export const segmentOf = (name: string) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '') || 'item'
 
-/** A media file or folder name as it can sit on disk. */
-const fileName = (name: string) => name.replace(/[/\\:*?"<>|]+/g, '-').trim() || 'item'
+/** A media file or folder name as it can sit on disk: never `.` or `..`. */
+const fileName = (name: string) => {
+  const safe = name.replace(/[/\\:*?"<>|]+/g, '-').trim()
+  return !safe || /^\.+$/.test(safe) ? 'item' : safe
+}
 
 const bareKey = (key: string) => (/^[A-Za-z0-9_-]+$/.test(key) ? key : JSON.stringify(key))
 
@@ -318,8 +321,15 @@ export async function exportSeed(
 
   // --------------------------------------------------------- the files
   const written: string[] = []
+  const seedRoot = resolve(siteDir, 'seed')
+  const under = (relative: string) => {
+    const file = resolve(seedRoot, relative)
+    if (!file.startsWith(seedRoot + sep))
+      throw new Error(`Refusing to write ${relative} outside the seed directory.`)
+    return file
+  }
   const write = (relative: string, text: string) => {
-    const file = join(siteDir, 'seed', relative)
+    const file = under(relative)
     mkdirSync(join(file, '..'), { recursive: true })
     writeFileSync(file, text)
     written.push(`seed/${relative}`)
@@ -366,12 +376,12 @@ export async function exportSeed(
       const src = mediaFile.get(node.key)
       if (!src) {
         // A folder: its directory says it, unless it has a name or key of its own.
-        mkdirSync(join(siteDir, 'seed', 'media', path), { recursive: true })
+        mkdirSync(under(`media/${path}`), { recursive: true })
         continue
       }
       const stored = options.files ? await options.files.open(src) : undefined
       if (stored) {
-        const file = join(siteDir, 'seed', 'media', path)
+        const file = under(`media/${path}`)
         mkdirSync(join(file, '..'), { recursive: true })
         writeFileSync(file, await stored.bytes())
         written.push(`seed/media/${path}`)

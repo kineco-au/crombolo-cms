@@ -446,6 +446,25 @@ describe(`applying a seed (${dialectUnderTest})`, () => {
     }
   })
 
+  test('a media folder named .. is exported inside seed/media, never above it', async () => {
+    const source = await site()
+    await source.apply(await source.compile())
+    const logos = await resolveNodeRef(source.h.server.db, [ObjectTypes.Media], '/logos')
+    if (!logos.ok) throw new Error('no logos folder')
+    await new NodeRepository(source.h.server.db).rename(logos.node.id, '..')
+    const elsewhere = mkdtempSync(join(process.cwd(), 'output', 'seed-export-dots-'))
+    dirs.push(elsewhere)
+    const exported = await exportSeed(source.h.server.db, elsewhere, {
+      pages: [],
+      media: true,
+      files: new MediaFileStore(source.h.server.config.mediaDir),
+    })
+    expect(exported.written).toContain('seed/media/item/mark.png')
+    for (const file of exported.written) expect(file.startsWith('seed/media/item/')).toBe(true)
+    expect(existsSync(join(elsewhere, 'seed', 'mark.png'))).toBe(false)
+    expect(readFileSync(join(elsewhere, 'seed', 'media', 'item', 'mark.png'))).toEqual(PIXEL)
+  })
+
   test('exported from one site, applied to an empty one, names the same pages', async () => {
     const source = await site()
     await source.apply(await source.compile())
