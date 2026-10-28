@@ -1173,6 +1173,9 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
   const auditPath = `${paths.pluginPath}/api/audit`
   const hostTokenPath = `${paths.pluginPath}/api/host-token`
   const contentQueryPath = `${paths.pluginPath}/api/content-query`
+  const bundleInstallPaths = new Set(
+    ['install', 'uninstall'].map((action) => `${paths.pluginPath}/api/bundles/${action}`),
+  )
   /** Per node: ten a minute for each person, three hundred in all. */
   const hostTokens = new AttemptLimiter({ max: 10, maxAll: 300, windowMs: 60_000 })
   const auditHost = createAuditHost(db, config.auditRetentionDays)
@@ -1308,6 +1311,8 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     if (pathname === hostTokenPath) return
     // A content query is a POST that reads.
     if (pathname === contentQueryPath) return
+    // Installs and removals write their own entry, with the package (story 194).
+    if (bundleInstallPaths.has(pathname)) return
     const principal = await authenticate(request)
     if (!principal) return
     const plan = pluginAuditPlan(request.method, pathname.slice(prefix.length))
@@ -1492,13 +1497,16 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
           name?: unknown
           version?: unknown
           applyContent?: unknown
+          acceptServerCode?: unknown
         }
         const name = typeof body.name === 'string' ? body.name : ''
         const version = typeof body.version === 'string' ? body.version : undefined
+        const acceptServerCode = body.acceptServerCode === true
         const outcome =
           action === 'install'
             ? await marketplace.install(name, version, {
                 applyContent: body.applyContent !== false,
+                acceptServerCode,
               })
             : await marketplace.uninstall(name)
         log.info('{user} {action} the package {name}: {outcome}', {
@@ -1507,6 +1515,20 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
           name,
           outcome: outcome.ok ? 'ok' : outcome.message,
         })
+        // One entry per install, naming the package and whether server code
+        // was accepted (story 194); the generic plugin-write entry skips these.
+        if (outcome.ok)
+          await recordAudit(db, {
+            category: 'system',
+            action: action === 'install' ? 'Install' : 'Uninstall',
+            entityType: 'Bundle',
+            entityName: outcome.dependency ? `${name}@${outcome.dependency.version}` : name,
+            detail: action === 'install' && acceptServerCode ? 'accepted server code' : null,
+            source: 'request',
+            userKey: principal.id,
+            userName: principal.name,
+            ...clientAddress(request),
+          })
         return Response.json(outcome, { status: outcome.ok ? 200 : 400 })
       }
 

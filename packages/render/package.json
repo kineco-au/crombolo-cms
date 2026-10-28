@@ -1,7 +1,7 @@
 {
   "name": "@crombolo/render",
-  "version": "0.33.1",
-  "description": "TSX server rendering and the published-content model for crombolo.",
+  "version": "0.34.0",
+  "description": "Internal to crombolo, with no compatibility promise: use @crombolo/crombolo. TSX server rendering and the published-content model for crombolo.",
   "license": "MIT",
   "author": "Crombolo",
   "homepage": "https://github.com/kineco-au/crombolo-cms#readme",

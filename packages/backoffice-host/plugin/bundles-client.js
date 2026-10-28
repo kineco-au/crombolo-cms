@@ -27,8 +27,11 @@ export const searchMarketplace = (query) =>
 
 export const listInstalled = () => json('/installed')
 
-export const installBundle = (name, version, applyContent = true) =>
-  json('/install', { method: 'POST', body: JSON.stringify({ name, version, applyContent }) })
+export const installBundle = (name, version, applyContent = true, acceptServerCode = false) =>
+  json('/install', {
+    method: 'POST',
+    body: JSON.stringify({ name, version, applyContent, acceptServerCode }),
+  })
 
 export const uninstallBundle = (name) =>
   json('/uninstall', { method: 'POST', body: JSON.stringify({ name }) })

@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/crombolo",
-  "version": "0.33.1",
+  "version": "0.34.0",
   "crombolo": {
     "migrations": "compatible"
   },
@@ -32,6 +32,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./bundle": "./src/bundle.ts",
+    "./host": "./src/host.ts",
     "./branding": "./src/branding.ts",
     "./jsx-runtime": "./src/jsx-runtime.ts",
     "./jsx-dev-runtime": "./src/jsx-runtime.ts",

@@ -1,7 +1,7 @@
 {
   "name": "@crombolo/backoffice-dist",
   "version": "18.2.0",
-  "description": "The Umbraco backoffice, built to run in a browser. Major and minor track the @umbraco-cms/backoffice release vendored here; the patch is ours. Regenerate with `bun run vendor:backoffice`.",
+  "description": "Internal to crombolo, with no compatibility promise: use @crombolo/crombolo. The Umbraco backoffice, built to run in a browser. Major and minor track the @umbraco-cms/backoffice release vendored here; the patch is ours. Regenerate with `bun run vendor:backoffice`.",
   "license": "MIT",
   "author": "Crombolo",
   "homepage": "https://github.com/kineco-au/crombolo-cms#readme",

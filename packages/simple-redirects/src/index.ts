@@ -18,7 +18,7 @@ import type {
   BundleRequest,
   BundleSection,
   ServerBundle,
-} from '@crombolo/server'
+} from '@crombolo/crombolo/bundle'
 import manifest from '../package.json' with { type: 'json' }
 
 /** What this bundle asks the host for, and all it can reach. */

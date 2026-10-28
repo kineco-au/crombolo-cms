@@ -1,7 +1,7 @@
 {
   "name": "@crombolo/core",
-  "version": "0.33.1",
-  "description": "Domain model, entity keys and shared contracts for crombolo. No I/O.",
+  "version": "0.34.0",
+  "description": "Internal to crombolo, with no compatibility promise: use @crombolo/crombolo. Domain model, entity keys and shared contracts for crombolo. No I/O.",
   "license": "MIT",
   "author": "Crombolo",
   "homepage": "https://github.com/kineco-au/crombolo-cms#readme",

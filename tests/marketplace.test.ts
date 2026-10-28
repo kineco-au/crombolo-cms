@@ -10,13 +10,16 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createExtensionRegistry } from '@crombolo/backoffice-host'
+import { AuditLog } from '@crombolo/data'
 import {
   bunInstaller,
   type ContentOutcome,
   createMarketplace,
+  installCommand,
   isValidPackageName,
   isValidVersion,
   type PackageInstaller,
+  SCREENS_NOTICE,
   VERSION,
 } from '@crombolo/server'
 import {
@@ -101,6 +104,8 @@ const declare = (name: string) => ({
 function registry(options: {
   hits: string[]
   declaring: string[]
+  /** Hits whose manifest declares a server half. */
+  server?: string[]
   onSearch?: (text: string) => void
   fail?: boolean
 }): typeof fetch {
@@ -114,17 +119,19 @@ function registry(options: {
     }
     const name = decodeURIComponent(url.slice(`${REGISTRY}/`.length))
     if (!options.hits.includes(name)) return new Response('Not Found', { status: 404 })
+    const at = (version: string) =>
+      options.declaring.includes(name)
+        ? manifest(name, version, options.server?.includes(name) ? { server: 'serve' } : {})
+        : // Claims the field, but is no valid bundle: no id, no peer range.
+          { name, version, crombolo: { extensions: [{ type: 'dashboard' }] } }
     return Response.json({
       'dist-tags': { latest: '1.2.3' },
-      versions: {
-        '1.2.3': options.declaring.includes(name)
-          ? manifest(name, '1.2.3')
-          : // Claims the field, but is no valid bundle: no id, no peer range.
-            { name, version: '1.2.3', crombolo: { extensions: [{ type: 'dashboard' }] } },
-      },
+      versions: { '1.0.0': at('1.0.0'), '1.2.3': at('1.2.3'), '2.0.0': at('2.0.0') },
     })
   }) as unknown as typeof fetch
 }
+
+const INSTALLABLE = ['@acme/seo', '@acme/kit', '@acme/tasks']
 
 interface Call {
   action: string
@@ -136,6 +143,7 @@ function marketplace(options: {
   root?: string
   hits?: string[]
   declaring?: string[]
+  server?: string[]
   fail?: boolean
   calls?: Call[]
   installs?: (call: Call) => { ok: boolean; output: string }
@@ -162,8 +170,10 @@ function marketplace(options: {
       extensions,
       siteDir: root,
       fetch: registry({
-        hits: options.hits ?? [],
-        declaring: options.declaring ?? [],
+        // The bundles the install cases use, unless a case says otherwise.
+        hits: options.hits ?? INSTALLABLE,
+        declaring: options.declaring ?? INSTALLABLE,
+        server: options.server,
         fail: options.fail,
         onSearch: options.onSearch,
       }),
@@ -337,22 +347,13 @@ describe('installing', () => {
     expect(extensions.list()).toHaveLength(1)
   })
 
-  test('says so when the package is not a bundle', async () => {
-    const root = site()
-    const { market } = marketplace({
-      root,
-      installs: () => {
-        addPackage(root, 'lodash', false)
-        writeFileSync(
-          join(root, 'package.json'),
-          JSON.stringify({ name: 'a-site', dependencies: { lodash: '^4' } }),
-        )
-        return { ok: true, output: '' }
-      },
-    })
+  test('refuses a package that is not a bundle, without installing it', async () => {
+    const calls: Call[] = []
+    const { market } = marketplace({ calls, hits: ['lodash'], declaring: [] })
     const outcome = await market.install('lodash', undefined)
-    expect(outcome.ok).toBe(true)
-    expect(outcome.message).toContain('is not a valid bundle')
+    expect(outcome.ok).toBe(false)
+    expect(outcome.message).toContain('is not a bundle for this site')
+    expect(calls).toEqual([])
   })
 
   /** Stands in for `bun add` leaving a bundle that carries content behind. */
@@ -484,6 +485,94 @@ describe('installing', () => {
   })
 })
 
+describe('a bundle that runs code on the server (story 194)', () => {
+  /** Stands in for `bun add` leaving a bundle behind, with a server half or not. */
+  const leaves = (root: string, server: boolean) => () => {
+    addPackage(root, '@acme/tasks', true, '1.2.3', server ? { server: 'serve' } : {})
+    writeFileSync(
+      join(root, 'package.json'),
+      JSON.stringify({ name: 'a-site', dependencies: { '@acme/tasks': '^1.2.3' } }),
+    )
+    return { ok: true, output: '' }
+  }
+
+  test('is refused without an explicit yes, and nothing is installed', async () => {
+    const calls: Call[] = []
+    const { market } = marketplace({ calls, server: ['@acme/tasks'] })
+    const outcome = await market.install('@acme/tasks', undefined)
+    expect(outcome.ok).toBe(false)
+    expect(outcome.needsServerConsent).toBe(true)
+    expect(outcome.message).toContain("access to the site's data, files and settings")
+    expect(calls).toEqual([])
+  })
+
+  test('installs with the yes, and says when its code will run', async () => {
+    const root = site()
+    const calls: Call[] = []
+    const { market } = marketplace({
+      root,
+      calls,
+      server: ['@acme/tasks'],
+      installs: leaves(root, true),
+    })
+    const outcome = await market.install('@acme/tasks', undefined, { acceptServerCode: true })
+    expect(outcome.ok).toBe(true)
+    expect(calls.map((c) => c.action)).toEqual(['add'])
+    expect(outcome.message).toContain("once your site's developers turn it on")
+    expect(outcome.message).not.toContain('crombolo.config.ts')
+  })
+
+  test('a version that gained server code after the listing is removed again', async () => {
+    const root = site()
+    const calls: Call[] = []
+    // The registry says no server half; the version that lands has one.
+    const { market } = marketplace({ root, calls, installs: leaves(root, true) })
+    const outcome = await market.install('@acme/tasks', undefined)
+    expect(outcome.ok).toBe(false)
+    expect(outcome.needsServerConsent).toBe(true)
+    expect(outcome.message).toContain('so it was removed again')
+    expect(calls.map((c) => `${c.action} ${c.specifier}`)).toEqual([
+      'add @acme/tasks',
+      'remove @acme/tasks',
+    ])
+  })
+
+  test('the version asked for is the one checked, not the latest', async () => {
+    const calls: Call[] = []
+    const { market } = marketplace({ calls, server: ['@acme/tasks'] })
+    expect((await market.install('@acme/tasks', '^2')).needsServerConsent).toBe(true)
+    expect(calls).toEqual([])
+  })
+
+  test('a registry that cannot say what a package holds refuses the install', async () => {
+    const calls: Call[] = []
+    const { market } = marketplace({ calls, fail: true })
+    const outcome = await market.install('@acme/tasks', undefined)
+    expect(outcome.ok).toBe(false)
+    expect(outcome.message).toContain('could not say what @acme/tasks contains')
+    expect(calls).toEqual([])
+  })
+
+  test('a bundle with screens only installs as before, naming where its screens run', async () => {
+    const root = site()
+    const { market } = marketplace({ root, installs: leaves(root, false) })
+    const outcome = await market.install('@acme/tasks', undefined)
+    expect(outcome.ok).toBe(true)
+    expect(outcome.needsServerConsent).toBeUndefined()
+    expect(outcome.message).toContain(SCREENS_NOTICE)
+  })
+
+  test('never runs install scripts', () => {
+    expect(installCommand('add', '@acme/tasks@1.2.3')).toEqual([
+      'bun',
+      'add',
+      '--ignore-scripts',
+      '@acme/tasks@1.2.3',
+    ])
+    expect(installCommand('remove', '@acme/tasks')).toEqual(['bun', 'remove', '@acme/tasks'])
+  })
+})
+
 describe('the real installer', () => {
   /**
    * `bunInstaller` is the only part of this that touches the filesystem, and
@@ -590,6 +679,43 @@ describe('the endpoints', () => {
     const response = await h.post(`${PACKAGES}/install`, { name: '../../etc/passwd' })
     expect(response.status).toBe(400)
     expect(((await response.json()) as { message: string }).message).toContain('not a package name')
+  })
+
+  test('refuse server code without the yes, and write no entry for a refusal (story 194)', async () => {
+    const npm = Bun.serve({
+      port: 0,
+      fetch: () =>
+        Response.json({
+          'dist-tags': { latest: '1.2.3' },
+          versions: { '1.2.3': manifest('@acme/tasks', '1.2.3', { server: 'serve' }) },
+        }),
+    })
+    try {
+      const h = await signedInServer({ config: { npmRegistry: `http://localhost:${npm.port}` } })
+      open.push(h)
+      const log = new AuditLog(h.server.db)
+      const floor = (await log.page({}, { limit: 1 })).items[0]?.id ?? 0
+      const response = await h.post(`${PACKAGES}/install`, { name: '@acme/tasks' })
+      expect(response.status).toBe(400)
+      expect(await response.json()).toMatchObject({ ok: false, needsServerConsent: true })
+      const entries = await log.page({ category: 'system' }, { after: floor, limit: 10 })
+      expect(entries.items.filter((e) => e.entityType === 'Bundle')).toEqual([])
+    } finally {
+      npm.stop(true)
+    }
+  })
+
+  test('record an uninstall once, naming the package (story 194)', async () => {
+    const h = await signedInServer({ config: { siteDir: site() } })
+    open.push(h)
+    const log = new AuditLog(h.server.db)
+    const floor = (await log.page({}, { limit: 1 })).items[0]?.id ?? 0
+    const response = await h.post(`${PACKAGES}/uninstall`, { name: '@acme/tasks' })
+    expect(response.status).toBe(200)
+    const entries = (await log.page({}, { after: floor, limit: 10 })).items.filter(
+      (e) => e.entityType === 'Bundle',
+    )
+    expect(entries.map((e) => [e.action, e.entityName])).toEqual([['Uninstall', '@acme/tasks']])
   })
 
   test('an unknown packages route is a 404', async () => {

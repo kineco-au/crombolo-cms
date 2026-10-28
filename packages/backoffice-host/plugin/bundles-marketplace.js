@@ -9,7 +9,9 @@
  * What it shows instead is the npm registry, searched for the keyword a crombolo
  * bundle publishes, and filtered to the ones whose manifest is a valid bundle.
  * Installing runs `bun add` on the server, then adds the content the bundle
- * carries unless the site or the person installing declines it.
+ * carries unless the site or the person installing declines it. A bundle that
+ * runs code on the server installs only after an explicit yes in its card,
+ * which the server insists on too (story 194).
  */
 import { css, html, nothing, repeat } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
@@ -29,6 +31,8 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
     _declined: { state: true },
     _installs: { state: true },
     _elsewhere: { state: true },
+    _consenting: { state: true },
+    _trusted: { state: true },
   }
 
   constructor() {
@@ -45,6 +49,8 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
     this._declined = new Set()
     this._installs = true
     this._elsewhere = null
+    this._consenting = ''
+    this._trusted = false
   }
 
   connectedCallback() {
@@ -81,11 +87,40 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
     this.#load()
   }
 
-  async #install(item) {
+  /** Asks first when the bundle runs code on the server; installs otherwise. */
+  #requestInstall(item) {
+    if (item.carries?.server) this.#askConsent(item)
+    else this.#install(item, false)
+  }
+
+  #askConsent(item) {
+    this._consenting = item.name
+    this._trusted = false
+  }
+
+  #cancelConsent() {
+    this._consenting = ''
+    this._trusted = false
+  }
+
+  async #install(item, acceptServerCode) {
     this._busy = item.name
     this._notice = ''
     try {
-      const outcome = await installBundle(item.name, item.version, !this._declined.has(item.name))
+      const outcome = await installBundle(
+        item.name,
+        item.version,
+        !this._declined.has(item.name),
+        acceptServerCode,
+      )
+      // The version that would install may have gained server code since the
+      // list was read: the server says so, and the card asks.
+      if (outcome.needsServerConsent && !acceptServerCode) {
+        this._notice = outcome.message ?? ''
+        this.#askConsent({ ...item, carries: { ...item.carries, server: true } })
+        return
+      }
+      this._consenting = ''
       // The dependency line is what there is to commit, so it is shown rather
       // than described: the install lives in this node's node_modules until it
       // is in the site's repository.
@@ -117,6 +152,43 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
         label="Add its content when installing"
         .checked=${!this._declined.has(item.name)}
         @change=${(event) => this.#toggleContent(item, event)}></uui-toggle>
+    `
+  }
+
+  /** The explicit yes a bundle that runs code on the server needs, in its own card. */
+  #consent(item) {
+    return html`
+      <div class="consent" role="group" aria-label="Install code that runs on the server">
+        <p>
+          <strong>This bundle runs code on the server.</strong> Once your site's developers turn
+          it on, its code can read and change the site's data, files and settings.
+        </p>
+        <p class="meta">
+          <span>Published by ${item.publisher ?? 'an unnamed publisher'}</span>
+          <a href=${item.links.npm} target="_blank" rel="noopener">npm</a>
+          ${
+            item.links.repository
+              ? html`<a href=${item.links.repository} target="_blank" rel="noopener">source</a>`
+              : nothing
+          }
+        </p>
+        <uui-checkbox
+          label="I trust this publisher with the site's server"
+          .checked=${this._trusted}
+          @change=${(event) => {
+            this._trusted = event.target.checked
+          }}></uui-checkbox>
+        <div class="actions">
+          <uui-button
+            look="primary"
+            color="warning"
+            label="Install server code"
+            ?disabled=${!this._trusted}
+            .state=${this._busy === item.name ? 'waiting' : undefined}
+            @click=${() => this.#install(item, true)}></uui-button>
+          <uui-button look="secondary" label="Cancel" @click=${this.#cancelConsent}></uui-button>
+        </div>
+      </div>
     `
   }
 
@@ -184,12 +256,14 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
                           ? this._elsewhere
                             ? html`<p class="meta">${this.#elsewhereLink() || this._elsewhere.message}</p>`
                             : html`<p class="meta">Add it to the site with <code>bun add ${item.name}</code>, then deploy.</p>`
-                          : html`
+                          : this._consenting === item.name
+                            ? this.#consent(item)
+                            : html`
                           <uui-button
                             look="primary"
                             label="Install"
                             .state=${this._busy === item.name ? 'waiting' : undefined}
-                            @click=${() => this.#install(item)}></uui-button>
+                            @click=${() => this.#requestInstall(item)}></uui-button>
                         `
                     }
                   </uui-box>
@@ -252,6 +326,16 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
     uui-toggle {
       display: block;
       margin-bottom: var(--uui-size-space-4, 12px);
+    }
+    .consent {
+      padding: var(--uui-size-space-4, 12px);
+      border-left: 3px solid var(--uui-color-warning, #f0ac00);
+      background: var(--uui-color-surface-alt, #f3f3f5);
+    }
+    .consent .actions {
+      display: flex;
+      gap: var(--uui-size-space-3, 9px);
+      margin-top: var(--uui-size-space-4, 12px);
     }
   `
 }

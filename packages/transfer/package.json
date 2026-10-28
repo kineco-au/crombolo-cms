@@ -1,7 +1,7 @@
 {
   "name": "@crombolo/transfer",
-  "version": "0.33.1",
-  "description": "Content transfer for crombolo: bundles of content moved between environments.",
+  "version": "0.34.0",
+  "description": "Internal to crombolo, with no compatibility promise: use @crombolo/crombolo. Content transfer for crombolo: bundles of content moved between environments.",
   "license": "MIT",
   "author": "Crombolo",
   "homepage": "https://github.com/kineco-au/crombolo-cms#readme",

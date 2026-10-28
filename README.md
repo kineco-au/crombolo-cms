@@ -457,6 +457,7 @@ Design documents, in reading order; planned work is in the stories:
 | [configuration](docs/configuration.md) | every environment variable, and every script; the variable tables are generated from `packages/server/src/settings.ts` by `bun run docs:config` |
 | [operations](docs/operations.md) | media storage, redirects, git, security, members; running a cluster: health during upgrades, pausing editing, the commands as functions; the backoffice's health checks and troubleshooting in [diagnostics](docs/diagnostics.md); [webhooks](docs/webhooks.md) |
 | [umbraco-import](docs/umbraco-import.md) | importing an existing Umbraco site: the report, what converts, and what is left |
+| [api](docs/api.md) | the supported API: the three entry points of `@crombolo/crombolo`, the compatibility promise, and how a snapshot and an import boundary hold it |
 | [bundles](docs/bundles.md) | created bundles, extensions as npm dependencies instead of App_Plugins, and bundles with a server half |
 | [forms](docs/forms.md) | form building in core: the TOML definition, entries, workflows, and the e-mail port; approval before publishing, as graphs of stages, in [workflows](docs/workflows.md) |
 | [audit-log](docs/audit-log.md) | who did what, when and from where: what writes an entry, the Info tab and the dashboard, retention |
@@ -478,9 +479,10 @@ crombolo/
 ├── assets/                        # source media for the starter templates, at the size it ships at;
 │                                  #    outside the published `files` list, so it is never published twice
 ├── packages/
-│   ├── crombolo/                  # the package a site installs: `crombolo()`, the JSX runtime,
-│   │                              #    a `crombolo` bin that delegates to cli/, and `@crombolo/crombolo/branding`
-│   │                              #    — the marks and the palette, for a surface outside this repo
+│   ├── crombolo/                  # the supported API (docs/api.md): `.` for a site, `./bundle` for a bundle's
+│   │                              #    author, `./host` for whoever runs sites, `./branding`, the JSX runtime,
+│   │                              #    and a `crombolo` bin that delegates to cli/. Every other package is
+│   │                              #    internal unless docs/api.md names it, and says so in its README
 │   ├── cli/                       # the command line on oclif, one class per command in src/commands/; `crombolo schema`
 │   │                              #    describes it (clispec); templates/ holds `basic`, the sites staged in at pack time
 │   ├── server/                    # the composition root: config, ports, adapters, createServer, the schema store, git;

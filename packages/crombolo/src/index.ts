@@ -15,10 +15,6 @@ import {
   type ServerHandle,
 } from '@crombolo/server'
 
-// What a bundle's package.json declares; see `docs/bundles.md`.
-export type { BundlePackage, CromboloField, PackageJson } from '@crombolo/backoffice-host'
-// The CMS's own checks of a bundle package, for a host that installs them (story 181).
-export { peerRangeProblem, validateBundlePackage } from '@crombolo/backoffice-host'
 // A view reads a form definition and a submission's state; both are domain
 // types, so they come from core rather than from the renderer.
 export type {
@@ -33,18 +29,6 @@ export type {
   SubmittedValues,
 } from '@crombolo/core'
 export { allFormFields, formFieldType, storingFormFields } from '@crombolo/core'
-export {
-  assertBundleTables,
-  type BundleStep,
-  type BundleTables,
-  type BundleTablesCapability,
-  bundleTablesCompatibility,
-  defineBundleTables,
-  type LiveNode,
-  liveNodes,
-  type TableHandle,
-  type Where,
-} from '@crombolo/data'
 export type {
   BlockGridArea,
   BlockGridItem,
@@ -98,33 +82,14 @@ export {
   usePage,
 } from '@crombolo/render'
 export type { Child } from '@crombolo/render/jsx-runtime'
-// A site's code from its bundle, checked and installed by a host in its own process (story 192).
 export {
-  // What a bundle's server half is written against; see `docs/bundles.md`.
-  type AppAlias,
   type AzureMediaStoreOptions,
   type AzureSchemaStoreOptions,
   awsIdentityCenter,
   azureMediaStore,
   azureSchemaStore,
-  type BundleCapability,
-  type BundleCodeCheck,
-  type BundleCodeInstall,
-  type BundleCodeOptions,
-  type BundleDocuments,
-  type BundleHost,
-  type BundleLog,
-  type BundleMethod,
-  type BundleRedirectInput,
-  type BundleRedirectRule,
-  type BundleRedirects,
-  type BundleReload,
-  type BundleRequest,
-  type BundleSection,
   type CromboloConfig,
   type CustomEmailOptions,
-  checkBundleCode,
-  createServer,
   customEmail,
   defineConfig,
   type EmailAddress,
@@ -136,23 +101,17 @@ export {
   fileSystemMediaStore,
   type IdentityProvider,
   type IdentityProviderOptions,
-  installBundleCode,
-  loadConfig,
   logEmail,
   type MediaStore,
   mediaStoreFor,
   oidc,
   type PostmarkOptions,
-  type Principal,
   postmarkEmail,
-  type ReloadedBundle,
   type ResendOptions,
   resendEmail,
   type S3MediaStoreOptions,
   type S3SchemaStoreOptions,
   type SchemaStore,
-  type ServerBundle,
-  type ServerBundleRoute,
   type ServerHandle,
   type SesOptions,
   s3MediaStore,
@@ -183,3 +142,82 @@ export async function cromboloServer(
   await assertPortAvailable(config.port)
   return createServer(config)
 }
+
+/** @deprecated Import it from `@crombolo/crombolo/host`. */
+/** @deprecated Import it from `@crombolo/crombolo/host`. */
+/** @deprecated Import it from `@crombolo/crombolo/host`. */
+export type { BundlePackage, CromboloField, PackageJson } from '@crombolo/backoffice-host'
+/** @deprecated Import it from `@crombolo/crombolo/host`. */
+/** @deprecated Import it from `@crombolo/crombolo/host`. */
+export { peerRangeProblem, validateBundlePackage } from '@crombolo/backoffice-host'
+/** @deprecated Import it from `@crombolo/crombolo/bundle`. */
+/** @deprecated Import it from `@crombolo/crombolo/bundle`. */
+/** @deprecated Import it from `@crombolo/crombolo/bundle`. */
+/** @deprecated Import it from `@crombolo/crombolo/bundle`. */
+/** @deprecated Import it from `@crombolo/crombolo/bundle`. */
+/** @deprecated Import it from `@crombolo/crombolo/host`. */
+export type {
+  BundleStep,
+  BundleTables,
+  BundleTablesCapability,
+  LiveNode,
+  TableHandle,
+  Where,
+} from '@crombolo/data'
+/** @deprecated Import it from `@crombolo/crombolo/bundle`. */
+/** @deprecated Import it from `@crombolo/crombolo/bundle`. */
+/** @deprecated Import it from `@crombolo/crombolo/bundle`. */
+/** @deprecated Import it from `@crombolo/crombolo/host`. */
+export {
+  assertBundleTables,
+  bundleTablesCompatibility,
+  defineBundleTables,
+  liveNodes,
+} from '@crombolo/data'
+// Deprecated at the root since 0.34.0 (story 173): each still works here for one
+// minor, and moves to the entry point its note names. `docs/api.md`.
+/** @deprecated Import it from `@crombolo/crombolo/bundle`. */
+/** @deprecated Import it from `@crombolo/crombolo/bundle`. */
+/** @deprecated Import it from `@crombolo/crombolo/bundle`. */
+/** @deprecated Import it from `@crombolo/crombolo/bundle`. */
+/** @deprecated Import it from `@crombolo/crombolo/bundle`. */
+/** @deprecated Import it from `@crombolo/crombolo/bundle`. */
+/** @deprecated Import it from `@crombolo/crombolo/bundle`. */
+/** @deprecated Import it from `@crombolo/crombolo/bundle`. */
+/** @deprecated Import it from `@crombolo/crombolo/bundle`. */
+/** @deprecated Import it from `@crombolo/crombolo/bundle`. */
+/** @deprecated Import it from `@crombolo/crombolo/bundle`. */
+/** @deprecated Import it from `@crombolo/crombolo/bundle`. */
+/** @deprecated Import it from `@crombolo/crombolo/bundle`. */
+/** @deprecated Import it from `@crombolo/crombolo/bundle`. */
+/** @deprecated Import it from `@crombolo/crombolo/host`. */
+/** @deprecated Import it from `@crombolo/crombolo/host`. */
+/** @deprecated Import it from `@crombolo/crombolo/host`. */
+/** @deprecated Import it from `@crombolo/crombolo/host`. */
+/** @deprecated Import it from `@crombolo/crombolo/host`. */
+export type {
+  AppAlias,
+  BundleCapability,
+  BundleCodeCheck,
+  BundleCodeInstall,
+  BundleCodeOptions,
+  BundleDocuments,
+  BundleHost,
+  BundleLog,
+  BundleMethod,
+  BundleRedirectInput,
+  BundleRedirectRule,
+  BundleRedirects,
+  BundleReload,
+  BundleRequest,
+  BundleSection,
+  Principal,
+  ReloadedBundle,
+  ServerBundle,
+  ServerBundleRoute,
+} from '@crombolo/server'
+/** @deprecated Import it from `@crombolo/crombolo/host`. */
+/** @deprecated Import it from `@crombolo/crombolo/host`. */
+/** @deprecated Import it from `@crombolo/crombolo/host`. */
+/** @deprecated Import it from `@crombolo/crombolo/host`. */
+export { checkBundleCode, createServer, installBundleCode, loadConfig } from '@crombolo/server'

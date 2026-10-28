@@ -6,6 +6,53 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.34.0 — 2026-10-28
+
+- **A supported API, with a compatibility promise** (story 173). `@crombolo/crombolo`
+  is now the one supported package, split by audience:
+  - `@crombolo/crombolo` for a site;
+  - `@crombolo/crombolo/bundle` for a server bundle's author;
+  - `@crombolo/crombolo/host` for whoever runs sites, including the upgrade,
+    import and export operations that came from `@crombolo/cli`.
+
+  A patch never breaks it, and a minor does so only after one minor of
+  deprecation. Every other `@crombolo/*` package is internal and says so in
+  its README. A committed snapshot of every exported name, and a test of who
+  imports what, hold the boundary. `docs/api.md`.
+
+  **Upgrade notes:** nothing breaks in this release.
+  - The bundle and host names that sat at the root still work there,
+    deprecated, through 0.34. Their new homes are listed in `docs/api.md`,
+    "Moving to the entry points".
+  - A bundle that imported types from `@crombolo/server` imports them from
+    `@crombolo/crombolo/bundle`.
+  - A host that imported from `@crombolo/cli` imports from
+    `@crombolo/crombolo/host`.
+  - `@crombolo/simple-redirects` and `@crombolo/entra` no longer depend on
+    `@crombolo/server`. Their peer on `@crombolo/crombolo` is all they need.
+
+- **Installing a bundle that runs code on the server takes an explicit yes**
+  (story 194). On the Marketplace:
+  - a bundle with server code is tagged "Runs code on the server", in warning
+    colour;
+  - installing one opens a panel in its card that says what the code can reach
+    and names the publisher;
+  - the install button stays disabled until "I trust this publisher with the
+    site's server" is ticked.
+
+  The server enforces it, and every install is safer:
+  - Without the yes the install is refused, and a version that turns out to
+    have server code is removed again.
+  - Only bundles are installed: a package that is not one, or one whose
+    contents the registry cannot confirm, is refused.
+  - Installs run with `--ignore-scripts`.
+  - Each install and uninstall is recorded once in the audit log, naming the
+    package and whether server code was accepted.
+
+  **Upgrade notes:** a script that calls `POST …/bundles/install` for a bundle
+  with server code sends `"acceptServerCode": true`. A call for a package that
+  is not a bundle is now refused, where before it was installed.
+
 ## v0.33.1 — 2026-10-28
 
 - **Bundles say which layout they are in.** 0.33.0 moved `bundle.json` to the

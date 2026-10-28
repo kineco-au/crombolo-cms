@@ -13,7 +13,7 @@ import type {
   BundleSection,
   ProviderOverrideInput,
   ServerBundle,
-} from '@crombolo/server'
+} from '@crombolo/crombolo/bundle'
 import manifest from '../package.json' with { type: 'json' }
 
 const CAPABILITIES = ['identityProviders', 'log'] as const

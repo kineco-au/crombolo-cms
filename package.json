@@ -12,6 +12,7 @@
     "build:template": "bun run scripts/build-template.ts",
     "check": "biome check . && bun run typecheck",
     "check:modules": "bun run scripts/check-module-graph.ts",
+    "api:snapshot": "bun run scripts/api-surface.ts",
     "coverage:api": "bun run scripts/api-coverage.ts",
     "db:up": "docker compose up -d --wait db",
     "dev": "bun run --cwd apps/site dev",

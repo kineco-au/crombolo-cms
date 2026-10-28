@@ -161,6 +161,7 @@ requests, only server-side and build-time front ends can call it.
 | `187` | Background and scheduled work for server bundles | should | M | ready | 063, 171 |
 | `188` | File storage for server bundles | should | M | ready | 063 |
 | `189` | A schema of the site's own | should | L | backlog | 062, 173 |
+| `194` | Installing server code takes an explicit yes | must | S | done | 063, 181 |
 
 ### Epic H — Importing a site
 
@@ -313,7 +314,7 @@ implementation; creating them does not settle those architectural choices.
 | `170` | The same content rules from every entry point | should | L | done | 028, 081, 083 |
 | `171` | Published changes reliably reach subscribers | should | XL | done | 170, 044, 045 |
 | `172` | An older edit cannot overwrite a newer one | should | M | done | 170, 081 |
-| `173` | A supported API for extensions | should | M | ready | 062, 063 |
+| `173` | A supported API for extensions | should | M | done | 062, 063 |
 | `174` | Renderers know which published changes they serve | should | L | done | 011, 120 |
 | `175` | Published cache growth stays within measured limits | could | L | ready | 086, 174 |
 | `176` | Background jobs run independently | could | L | ready | 171 |

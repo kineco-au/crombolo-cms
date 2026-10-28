@@ -113,6 +113,11 @@ export interface InstallOutcome {
   message: string
   /** What happened to the content the bundle carries; absent when it carries none. */
   content?: ContentOutcome
+  /**
+   * Refused because the bundle runs code on the server and the request did not
+   * accept that (story 194): the screen asks, and sends the install again.
+   */
+  needsServerConsent?: boolean
 }
 
 export type PackageInstaller = (
@@ -155,9 +160,19 @@ export interface Marketplace {
   install(
     name: string,
     version: string | undefined,
-    options?: { applyContent?: boolean },
+    options?: { applyContent?: boolean; acceptServerCode?: boolean },
   ): Promise<InstallOutcome>
   uninstall(name: string): Promise<InstallOutcome>
+}
+
+/**
+ * The argv an install runs. `add` never runs a package's install scripts,
+ * whatever Bun's own list of trusted packages says (story 194).
+ */
+export function installCommand(action: 'add' | 'remove', specifier: string): string[] {
+  return action === 'add'
+    ? ['bun', 'add', '--ignore-scripts', specifier]
+    : ['bun', action, specifier]
 }
 
 /**
@@ -170,7 +185,7 @@ export interface Marketplace {
  */
 export const bunInstaller: PackageInstaller = async (action, specifier, siteDir) => {
   try {
-    const proc = Bun.spawn(['bun', action, specifier], {
+    const proc = Bun.spawn(installCommand(action, specifier), {
       cwd: siteDir,
       stdout: 'pipe',
       stderr: 'pipe',
@@ -213,20 +228,37 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
     options.extensions.bundles().bundles.find((bundle) => bundle.packageName === name)?.version ??
     null
 
-  /** What the registry says this package's latest version carries, when it is a valid bundle. */
-  const declares = async (name: string): Promise<BundlePackage['carries'] | undefined> => {
+  /**
+   * What the registry says a version carries: the version asked for (an exact
+   * one, or the highest a range admits), or the latest. `not-a-bundle` when that
+   * version is no valid bundle, `unreachable` when the registry could not say.
+   */
+  const declaresAt = async (
+    name: string,
+    wanted?: string,
+  ): Promise<BundlePackage['carries'] | 'not-a-bundle' | 'unreachable'> => {
     try {
       const response = await call(`${options.registry}/${encodeURIComponent(name)}`, {
         headers: { accept: 'application/json' },
       })
-      if (!response.ok) return undefined
+      if (!response.ok) return response.status === 404 ? 'not-a-bundle' : 'unreachable'
       const packument = (await response.json()) as {
-        'dist-tags'?: { latest?: string }
+        'dist-tags'?: Record<string, string>
         versions?: Record<string, PackageJson>
       }
-      const latest = packument['dist-tags']?.latest
-      const version = latest ? packument.versions?.[latest] : undefined
-      if (!version || validateBundlePackage(version).length > 0) return undefined
+      const versions = packument.versions ?? {}
+      const resolved =
+        wanted === undefined
+          ? packument['dist-tags']?.latest
+          : wanted in versions
+            ? wanted
+            : (packument['dist-tags']?.[wanted] ??
+              Object.keys(versions)
+                .filter((v) => Bun.semver.satisfies(v, wanted))
+                .sort(Bun.semver.order)
+                .at(-1))
+      const version = resolved ? versions[resolved] : undefined
+      if (!version || validateBundlePackage(version).length > 0) return 'not-a-bundle'
       const field = version.crombolo as {
         extensions?: unknown[]
         content?: boolean
@@ -238,8 +270,14 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
         server: field.server !== undefined,
       }
     } catch {
-      return undefined
+      return 'unreachable'
     }
+  }
+
+  /** What the registry says this package's latest version carries, when it is a valid bundle. */
+  const declares = async (name: string): Promise<BundlePackage['carries'] | undefined> => {
+    const carries = await declaresAt(name)
+    return typeof carries === 'string' ? undefined : carries
   }
 
   return {
@@ -329,6 +367,22 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
       if (version !== undefined && !isValidVersion(version))
         return { ok: false, message: `'${version}' is not a version npm would accept.` }
 
+      // What the version being installed carries, read before anything is
+      // installed: server code needs an explicit yes (story 194), and only a
+      // bundle is installed here at all.
+      const declared = await declaresAt(name, version)
+      if (declared === 'unreachable')
+        return {
+          ok: false,
+          message: `The package registry could not say what ${name} contains, so it was not installed. Try again in a moment.`,
+        }
+      if (declared === 'not-a-bundle')
+        return {
+          ok: false,
+          message: `${name} is not a bundle for this site, so it was not installed.`,
+        }
+      if (declared.server && request.acceptServerCode !== true) return serverConsentNeeded(name)
+
       const specifier = version ? `${name}@${version}` : name
       const result = await install('add', specifier, options.siteDir)
       options.extensions.invalidate()
@@ -348,6 +402,16 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
           dependency: { name, range, version: version ?? range },
           message: `${name} was installed, but it is not a valid bundle, so nothing was added to the backoffice.`,
         }
+      // The version that landed is what counts: a release published between
+      // reading the registry and installing may have brought server code.
+      if (found.carries.server && request.acceptServerCode !== true) {
+        await install('remove', name, options.siteDir)
+        options.extensions.invalidate()
+        return serverConsentNeeded(
+          name,
+          `${name}@${found.version} turned out to run code on the server, so it was removed again.`,
+        )
+      }
 
       // The content half lands after the dependency, so a refused check leaves
       // the package installed and says why, rather than undoing an install that
@@ -373,9 +437,9 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
         // committed; saying so is the difference between a surprise and a plan.
         message: `${name}@${found.version} is installed. Commit the changed package.json and bun.lock to keep it across deployments.${
           found.carries.server
-            ? ' Its server half runs only once crombolo.config.ts imports it and the site is deployed.'
+            ? " Its server code runs only once your site's developers turn it on and deploy the site."
             : ''
-        }`,
+        }${found.carries.extensions ? ` ${SCREENS_NOTICE}` : ''}`,
         ...(content ? { content } : {}),
       }
     },
@@ -405,6 +469,18 @@ function descriptionOf(directory: string): string {
     return typeof json.description === 'string' ? json.description : ''
   } catch {
     return ''
+  }
+}
+
+/** Said of every bundle installed here: its screens are someone else's code in our browsers. */
+export const SCREENS_NOTICE = 'Its screens run in the browser of everyone who uses the back office.'
+
+/** A refusal the screen answers by asking for an explicit yes (story 194). */
+function serverConsentNeeded(name: string, before = ''): InstallOutcome {
+  return {
+    ok: false,
+    needsServerConsent: true,
+    message: `${before ? `${before} ` : ''}${name} runs code on the server, with access to the site's data, files and settings. Confirm that you trust its publisher to install it.`,
   }
 }
 

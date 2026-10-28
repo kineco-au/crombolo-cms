@@ -484,6 +484,39 @@ hand-maintaining a lockfile, and a lockfile maintained badly is worse than none.
 Then discovery is invalidated and the next manifest read picks the extension up.
 No restart.
 
+**Only a bundle, and server code only on an explicit yes** (story 194). Before
+`bun add`, the install reads the registry's manifest for the version asked for:
+the exact version, the highest a range admits, or the latest.
+- A package that is not a valid bundle is refused, so the endpoint never
+  installs an arbitrary package.
+- A registry that cannot be read is refused too, because what the package
+  carries cannot be checked.
+- A bundle that declares `server` is refused, with `needsServerConsent`, unless
+  the request carries `acceptServerCode: true`.
+- After `bun add`, the installed package's own manifest is checked again. A
+  version that turned out to have a server half nobody accepted is removed,
+  and the install is refused. This catches a `latest` that moved between the
+  listing and the install.
+
+The Marketplace asks for the yes in the bundle's own card:
+- The tag reads "Runs code on the server", in warning colour.
+- **Install** opens a panel. It says the code can read and change the site's
+  data, files and settings once the developers turn it on, and names the
+  publisher with links to npm and the source.
+- The panel has an unticked "I trust this publisher with the site's server"
+  box, and **Install server code** stays disabled until it is ticked.
+
+The yes is for what the code may do once wired. Installing still does not wire
+it: that takes the import in `crombolo.config.ts` and a deploy, as before. The
+audit log records each install and uninstall once: `system` / `Install` /
+`Bundle`, naming `package@version`, with `accepted server code` when it was.
+A bundle with screens says, after install, that they run in the browser of
+everyone who uses the back office.
+
+**No install scripts.** The install runs `bun add --ignore-scripts`, so a
+package's lifecycle scripts never run on the server, whatever Bun's built-in
+list of trusted packages or the site's `trustedDependencies` say.
+
 **Then its content, unless declined.** A bundle that carries content has it
 applied straight after `bun add`, through the same installer and overlay check
 as `crombolo bundle install` (`server/src/bundle-install.ts`), with the server's
@@ -894,6 +927,10 @@ a site's views cache has to resolve `@crombolo/crombolo/jsx-runtime` by walking 
 ---
 
 # Part 3 — Server-side bundles
+
+A server bundle is written against `@crombolo/crombolo/bundle`, the supported
+entry point for a bundle's author ([`api.md`](api.md)), and peers on
+`@crombolo/crombolo`. Nothing in `@crombolo/server` is a bundle's to import.
 
 Part 2 said a bundle that needs to run in the server process is "a dependency
 plus a deploy" and left it there. This is that, made into something a bundle can

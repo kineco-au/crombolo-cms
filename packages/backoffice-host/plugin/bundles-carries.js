@@ -7,10 +7,15 @@ import { html } from '@umbraco-cms/backoffice/external/lit'
 export const CARRIES_LABELS = {
   extensions: 'Screens',
   content: 'Content',
-  server: 'Server features',
+  server: 'Runs code on the server',
 }
 
+/** Server code is a different kind of thing to add, so it looks like one (story 194). */
 export const carriesTags = (carries) =>
   Object.entries(CARRIES_LABELS)
     .filter(([key]) => carries?.[key])
-    .map(([, label]) => html`<uui-tag look="secondary">${label}</uui-tag>`)
+    .map(([key, label]) =>
+      key === 'server'
+        ? html`<uui-tag look="primary" color="warning">${label}</uui-tag>`
+        : html`<uui-tag look="secondary">${label}</uui-tag>`,
+    )
