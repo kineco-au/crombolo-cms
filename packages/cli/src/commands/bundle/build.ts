@@ -11,6 +11,7 @@ export default class BundleBuild extends BaseCommand {
   static override description = [
     "Reads the directory's schema/, components/, css/, scripts/ and seed/, and compiles the seed against that schema in a throwaway database: no site or database of its own is needed. The bundle installs everything into a bare site in one transaction: `crombolo start --bundle <dir>`, or `content import`.",
     'The directory is the current one unless named; --template names a starter site the CLI ships instead.',
+    'A site with server code of its own names it in its package.json, as globs in `crombolo.code`, or with --code here; the bundle then carries that code with package.json, bun.lock and crombolo.config.ts under code/. `bundle check` checks it against a CMS, and `bundle install-code` installs it.',
   ].join('\n\n')
   static override aliases = ['seed:build']
   static override deprecateAliases = true
@@ -33,6 +34,11 @@ export default class BundleBuild extends BaseCommand {
       helpValue: '<dir>',
     }),
     name: Flags.string({ summary: "the bundle's package name", helpValue: '<name>' }),
+    code: Flags.string({
+      multiple: true,
+      summary: "the site's own code, as globs; in place of crombolo.code in its package.json",
+      helpValue: '<glob>',
+    }),
   }
   static override spec = {
     effects: 'idempotent',
@@ -42,6 +48,7 @@ export default class BundleBuild extends BaseCommand {
       { name: 'name', type: 'string' },
       { name: 'out', type: 'string' },
       { name: 'nodes', type: 'integer' },
+      { name: 'code', type: 'integer' },
     ],
     errors: ['not_found', 'refused', 'usage'],
   } as const
@@ -58,7 +65,7 @@ export default class BundleBuild extends BaseCommand {
         })
       source = join(found.dir, 'files')
     }
-    const built = await buildBundleFromDirectory(source, { name: flags.name })
+    const built = await buildBundleFromDirectory(source, { name: flags.name, code: flags.code })
     if (built.problems.length > 0 || !built.files)
       throw new CliError(
         'refused',
@@ -77,9 +84,13 @@ export default class BundleBuild extends BaseCommand {
     this.say(
       `  wrote    ${relative(process.cwd(), out) || '.'}  (${built.name}: ${nodes} node(s), with its schema and views)`,
     )
+    if (built.code)
+      this.say(
+        `  code     ${built.code.length} file(s); \`crombolo bundle check\` checks them, \`crombolo bundle install-code\` installs them`,
+      )
     this.say(
       `\n  \`crombolo start --bundle ${relative(process.cwd(), out) || '.'} --publish\` installs it into a site.`,
     )
-    return { id, name: built.name, out, nodes }
+    return { id, name: built.name, out, nodes, code: built.code?.length ?? 0 }
   }
 }

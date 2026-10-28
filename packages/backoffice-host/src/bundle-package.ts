@@ -44,6 +44,8 @@ export interface CromboloField {
    * owns tables: `breaking` exactly when it ships a contract.
    */
   migrations?: 'compatible' | 'breaking'
+  /** A site's own code: the directory holding it, and the hash over it (story 192). */
+  code?: { dir: string; integrity: string }
 }
 
 /** A bundle as read from its package. */
@@ -142,6 +144,24 @@ export function validateBundlePackage(json: PackageJson, directory?: string): st
         problems.push(`"crombolo.content" (${f.content}) holds no ${PAYLOAD_MANIFEST}`)
     } else if (isAbsolute(f.content) || f.content.split(/[\\/]/).includes('..'))
       problems.push(`"crombolo.content" (${f.content}) is outside the package`)
+  }
+
+  if (f.code !== undefined) {
+    const code = f.code as Record<string, unknown> | null
+    if (
+      !code ||
+      typeof code !== 'object' ||
+      typeof code.dir !== 'string' ||
+      typeof code.integrity !== 'string' ||
+      !code.integrity.startsWith('sha256-')
+    )
+      problems.push('"crombolo.code" names the directory holding the code, and its sha256 hash')
+    else if (
+      directory
+        ? !insidePackage(directory, code.dir)
+        : isAbsolute(code.dir) || code.dir.split(/[\\/]/).includes('..')
+    )
+      problems.push(`"crombolo.code" (${code.dir}) is outside the package`)
   }
 
   const hasExtensions = Array.isArray(f.extensions) && f.extensions.length > 0
@@ -244,8 +264,13 @@ export interface DiscoveredBundles {
 export function discoverBundles(siteDir: string): DiscoveredBundles {
   const json = readPackageJson(join(siteDir, 'package.json'))
   const found: DiscoveredBundles = { bundles: [], problems: [] }
-  if (!json?.dependencies) return found
-  for (const name of Object.keys(json.dependencies).sort()) {
+  // A peer is declared too: a site whose host provides `@crombolo/*` lists
+  // them there (story 192).
+  const names = new Set([
+    ...Object.keys(json?.dependencies ?? {}),
+    ...Object.keys(json?.peerDependencies ?? {}),
+  ])
+  for (const name of [...names].sort()) {
     const directory = resolvePackageDir(siteDir, name)
     if (!directory) continue
     const read = readBundlePackage(directory)

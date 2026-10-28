@@ -98,6 +98,7 @@ export {
   usePage,
 } from '@crombolo/render'
 export type { Child } from '@crombolo/render/jsx-runtime'
+// A site's code from its bundle, checked and installed by a host in its own process (story 192).
 export {
   // What a bundle's server half is written against; see `docs/bundles.md`.
   type AppAlias,
@@ -107,6 +108,9 @@ export {
   azureMediaStore,
   azureSchemaStore,
   type BundleCapability,
+  type BundleCodeCheck,
+  type BundleCodeInstall,
+  type BundleCodeOptions,
   type BundleDocuments,
   type BundleHost,
   type BundleLog,
@@ -119,6 +123,7 @@ export {
   type BundleSection,
   type CromboloConfig,
   type CustomEmailOptions,
+  checkBundleCode,
   createServer,
   customEmail,
   defineConfig,
@@ -131,6 +136,7 @@ export {
   fileSystemMediaStore,
   type IdentityProvider,
   type IdentityProviderOptions,
+  installBundleCode,
   loadConfig,
   logEmail,
   type MediaStore,

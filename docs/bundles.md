@@ -619,6 +619,62 @@ without a restart.
   on the node fails in the browser. The import map covers the vendored client
   (`@umbraco-cms/backoffice/*`), and nothing else is promised.
 
+### A site's bundle with code
+
+A site that is part application has server code of its own: the server
+bundles its `crombolo.config.ts` wires, and their source. A self-hosted site
+deploys that from its repository. A host that runs the server for its
+customers needs it as one artifact, checked by the CMS's rules, and the
+bundle is that artifact (story 192).
+
+- **Which files.** The site's `package.json` names them, as globs in
+  `crombolo.code` (`"code": ["src/**", "vendor/**"]`), and
+  `crombolo bundle build --code <glob>…` overrides the list. Once there is
+  code, `package.json`, `bun.lock` and `crombolo.config.ts` are always packed.
+  These are never packed, whatever a glob matches: `node_modules`, `.git`,
+  `.env` files, SQLite files, the folders the bundle already carries as
+  sections (`schema/`, `components/`, `css/`, `scripts/`, `seed/`), and the
+  site's `media/`, `logs/` and `.crombolo/`. A glob that matches nothing, or a
+  site with no `bun.lock`, stops the build. A site that names no code builds
+  the bundle it always did.
+- **Where.** The code goes in `code/` beside `content/`, at its site paths. The
+  bundle's `package.json` declares `crombolo.code: { dir, integrity }`. The
+  hash is a second one, taken over the code's paths and bytes in the same way
+  as the payload's. The payload's own hash could not cover the code: its
+  loader reads only `content/`, and refuses paths that climb out of it.
+- **The CMS is the host's.** A site lists `@crombolo/*` under
+  `peerDependencies`, and so does `crombolo init`. `bun install` still installs
+  peers, so local development is unchanged. The code's install runs
+  `bun install --frozen-lockfile --ignore-scripts --omit peer`, so it never
+  carries a copy of the CMS. Discovery reads peers as well as dependencies, so
+  a server bundle from the `@crombolo` scope is still found.
+- **`crombolo bundle check <bundle>`** (`checkBundleCode`) lists every
+  problem, not just the first:
+  - the hash;
+  - the frozen install;
+  - any `@crombolo/*` package the install put anywhere, which happens when
+    something depends on one directly;
+  - a `@crombolo/*` package listed under `dependencies`;
+  - the site's peer range against this version;
+  - each wired bundle, under the rules the boot applies
+    (`validateServerBundles`);
+  - each declared bundle's peer range.
+
+  It links this CMS's packages in, as a host provides them. It reads the
+  config in a `bun` process of its own, with an empty environment and a time
+  limit, so a config that reads a secret finds none.
+- **`crombolo bundle install-code <bundle> <dir>`** (`installBundleCode`)
+  checks the hash, then installs the code into an empty directory the same way.
+  It never writes over a directory that already holds files. The directory has
+  to sit where the host's `@crombolo/*` packages resolve from. Starting the
+  site, or restarting it so its server bundles are wired, is the host's step.
+- **An import leaves it alone.** `content import` and `start --bundle` install
+  the content and say the bundle carries code to install. A server half is
+  wired only at boot, so applying code always means a restart.
+
+Both functions are exported from `@crombolo/crombolo`, beside
+`validateBundlePackage`, for a host to run in its own process.
+
 ---
 
 ## Installing one

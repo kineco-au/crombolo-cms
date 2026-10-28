@@ -199,8 +199,10 @@ describe('a template that wires a server bundle', () => {
     const files = scaffoldFiles({ template: byId('demo/harbourstone'), siteName: 'Harbourstone' })
     const manifest = JSON.parse(
       files.find((file) => file.path === 'package.json')?.text as string,
-    ) as { dependencies: Record<string, string> }
-    expect(Object.keys(manifest.dependencies)).toContain('@crombolo/simple-redirects')
+    ) as { dependencies?: Record<string, string>; peerDependencies: Record<string, string> }
+    // A peer, as every @crombolo package is: a host that runs the site provides it.
+    expect(Object.keys(manifest.peerDependencies)).toContain('@crombolo/simple-redirects')
+    expect(manifest.dependencies).toBeUndefined()
 
     const config = files.find((file) => file.path === 'crombolo.config.ts')?.text as string
     expect(config).toContain("import { redirects } from '@crombolo/simple-redirects'")
@@ -270,6 +272,14 @@ describe('what init writes', () => {
     expect(manifest.devDependencies).toHaveProperty('typescript')
     for (const types of tsconfig.compilerOptions.types)
       expect(manifest.devDependencies).toHaveProperty([`@types/${types}`])
+  })
+
+  test('a server that boots with the site’s own config, as every site here does', () => {
+    const server = scaffoldFiles().find((f) => f.path === 'server.ts')?.text ?? ''
+    expect(server).toContain("import config from './crombolo.config.ts'")
+    expect(server).toContain('crombolo(config)')
+    for (const site of listSites())
+      expect(readFileSync(join(site.dir, 'server.ts'), 'utf8')).toBe(server)
   })
 
   test('adds the Postgres environment only when asked, and gitignores it', () => {

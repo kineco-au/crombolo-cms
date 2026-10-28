@@ -200,8 +200,9 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
     try {
       const json = (await Bun.file(join(options.siteDir, 'package.json')).json()) as {
         dependencies?: Record<string, string>
+        peerDependencies?: Record<string, string>
       }
-      return json.dependencies?.[name]
+      return json.dependencies?.[name] ?? json.peerDependencies?.[name]
     } catch {
       return undefined
     }

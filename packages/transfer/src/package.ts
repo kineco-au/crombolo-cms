@@ -7,6 +7,7 @@
  * hash and sections mean what they always did. The package is what gives it a
  * name, a version and a core it was written for.
  */
+import { CODE_DIR, codeIntegrity } from './code.ts'
 import { PEOPLE_DIR } from './people.ts'
 import type { BundleFile } from './write.ts'
 
@@ -29,6 +30,8 @@ export interface BundlePackageInfo {
   private?: boolean
   /** The range on `@crombolo/crombolo` it is written for. */
   peerRange: string
+  /** A site's own code, at its site paths, placed under `code/` (story 192). */
+  code?: readonly BundleFile[]
 }
 
 const NPM_NAME = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/
@@ -76,9 +79,16 @@ export function bundlePackageJson(info: BundlePackageInfo): Record<string, unkno
     version: info.version,
     ...(info.description ? { description: info.description } : {}),
     ...(info.private ? { private: true } : { keywords: [BUNDLE_KEYWORD] }),
-    files: [PAYLOAD_DIR],
+    files: info.code?.length ? [PAYLOAD_DIR, CODE_DIR] : [PAYLOAD_DIR],
     peerDependencies: { '@crombolo/crombolo': info.peerRange },
-    crombolo: { id: info.id, name: info.label, content: PAYLOAD_DIR },
+    crombolo: {
+      id: info.id,
+      name: info.label,
+      content: PAYLOAD_DIR,
+      ...(info.code?.length
+        ? { code: { dir: CODE_DIR, integrity: codeIntegrity(info.code) } }
+        : {}),
+    },
   }
 }
 
@@ -97,5 +107,6 @@ export function writeBundlePackage(
   return [
     { path: 'package.json', text: `${JSON.stringify(bundlePackageJson(info), null, 2)}\n` },
     ...payload.map((file) => ({ ...file, path: `${PAYLOAD_DIR}/${file.path}` })),
+    ...(info.code ?? []).map((file) => ({ ...file, path: `${CODE_DIR}/${file.path}` })),
   ]
 }

@@ -32,7 +32,13 @@ import { importBundle } from '@crombolo/transfer'
 import { CliError } from '../errors.ts'
 import * as ops from '../operations/commands.ts'
 import { scaffoldFiles } from '../templates.ts'
-import { banner, describePlaced, describeSync, printTransferFindings } from './describe.ts'
+import {
+  banner,
+  CARRIES_CODE,
+  describePlaced,
+  describeSync,
+  printTransferFindings,
+} from './describe.ts'
 import { type TransferFlagValues, transferInput } from './flags.ts'
 import { PASSPHRASE_ENV, passphraseForPeople, passphraseToOpen } from './prompt.ts'
 import { writeSeedPackage } from './seed.ts'
@@ -405,6 +411,7 @@ async function importStartupBundles(
           `${result.published.length > 0 ? `, ${result.published.length} published` : ''} (run ${result.runId})`,
       )
       if (placed) lines.push(`  blobs       ${placed}`)
+      if (resolved.package.field.code) lines.push(CARRIES_CODE)
       const people = result.people.filter((p) => p.kind === 'member' || p.kind === 'user')
       if (people.length > 0)
         lines.push(

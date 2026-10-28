@@ -217,18 +217,21 @@ function packageJson(options: {
   start: string
   bundles: readonly TemplateServerBundle[]
 }): string {
+  const ranges = options.bundles.map(
+    (bundle) => [bundle.package, bundle.version ?? `^${VERSION}`] as const,
+  )
+  const provided = ranges.filter(([name]) => name.startsWith('@crombolo/'))
+  const own = ranges.filter(([name]) => !name.startsWith('@crombolo/'))
   return `${JSON.stringify(
     {
       name: options.name,
       private: true,
       type: 'module',
       scripts: { start: options.start, dev: 'bun --watch server.ts' },
-      dependencies: {
-        '@crombolo/crombolo': `^${VERSION}`,
-        ...Object.fromEntries(
-          options.bundles.map((bundle) => [bundle.package, bundle.version ?? `^${VERSION}`]),
-        ),
-      },
+      ...(own.length > 0 ? { dependencies: Object.fromEntries(own) } : {}),
+      // Peers, because a host that runs the site provides the CMS; `bun install`
+      // still installs them here (story 192).
+      peerDependencies: { '@crombolo/crombolo': `^${VERSION}`, ...Object.fromEntries(provided) },
       // So the tsconfig written beside this has something to run it, and
       // `crombolo components check` checks types as well as compiling. The
       // versions are the ones crombolo itself is checked with; the tsconfig
@@ -265,9 +268,12 @@ export function scaffoldFiles(options: ScaffoldOptions = {}): ScaffoldFile[] {
     { path: 'crombolo.config.ts', text: config(siteName, serverBundles) },
     {
       path: 'server.ts',
+      // `crombolo start` reads the config itself; `server.ts` is what `dev` and
+      // a host run, and nothing else reads the file for them.
       text: `import { crombolo } from '@crombolo/crombolo'
+import config from './crombolo.config.ts'
 
-export default await crombolo()
+export default await crombolo(config)
 `,
     },
     { path: 'tsconfig.json', text: tsconfig() },

@@ -10,9 +10,9 @@ because the second is unsolvable without the first.
 
 ```
 my-site/
-├── package.json          "@crombolo/crombolo": "^1.0"
+├── package.json          peerDependencies: "@crombolo/crombolo": "^1.0"
 ├── crombolo.config.ts    site name, database, paths, providers
-├── server.ts             import { crombolo } from '@crombolo/crombolo'; Bun.serve(await crombolo(config))
+├── server.ts             import config from './crombolo.config.ts'; export default await crombolo(config)
 ├── schema/               content types, data types, languages — see schema-as-code.md
 ├── components/           components (.tsx)
 ├── package.json          dependencies, backoffice extensions among them — see bundles.md
@@ -638,6 +638,32 @@ own types: `@crombolo/crombolo`'s and the schema's generated `content-types.d.ts
 to monaco by `<backoffice>/crombolo/api/editor-types`. So `model.` completes,
 and a mistake is underlined in the editor rather than found on the next
 `typecheck` — see `docs/backoffice-hosting.md`.
+
+## A site whose code a host runs
+
+A self-hosted site deploys its repository: `bun install`, then
+`crombolo start`, or `server.ts`, which passes its `crombolo.config.ts` to
+`crombolo()`. An older scaffolded `server.ts` calls `crombolo()` without its
+config, and anything that runs it boots without the site's bundles; the release
+notes give the fix.
+
+A site on a host that runs the server for it deploys one bundle instead
+([`bundles.md`](bundles.md), "A site's bundle with code"):
+
+1. `crombolo bundle build --out <dir>` packs the content, the schema, the views
+   and the code the site's `crombolo.code` names.
+2. The host runs `crombolo bundle check <dir>` against the CMS version it will
+   run, and refuses the deploy if it lists any problem.
+3. The host runs `crombolo bundle install-code <dir> <site dir>` into a fresh
+   directory, where its own `@crombolo/*` packages resolve, and
+   `content import` for the content.
+4. The host starts the new directory and retires the old one. A server half is
+   wired only at boot, so new code always means a restart.
+
+The `@crombolo/*` packages are peers of the site, so the host's copy of the
+CMS is the only one. An upgrade of the CMS needs no change to the site's code,
+as long as its peer ranges admit the new version, and `bundle check` says
+whether they do.
 
 ## Publishing
 

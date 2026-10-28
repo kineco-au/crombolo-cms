@@ -8,7 +8,15 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { type BundleFile, bundleIdFor, writeBundle, writeBundlePackage } from '@crombolo/transfer'
+import {
+  type BundleFile,
+  bundleIdFor,
+  codePatternsOf,
+  readCodeFiles,
+  selectCodeFiles,
+  writeBundle,
+  writeBundlePackage,
+} from '@crombolo/transfer'
 import { createFileSystemPort } from './adapters/file-system.ts'
 import { createTemplateFileStore } from './adapters/template-files.ts'
 import { loadConfig, VERSION } from './config.ts'
@@ -22,6 +30,11 @@ export interface BundleBuildOptions {
   name?: string
   /** What a person calls it; default, the site's name. */
   label?: string
+  /**
+   * Globs naming the site's own code, in place of `crombolo.code` in its
+   * `package.json` (story 192). Neither: the bundle carries no code.
+   */
+  code?: readonly string[]
 }
 
 export interface BundleBuildResult {
@@ -30,6 +43,8 @@ export interface BundleBuildResult {
   seed?: SeedBuild
   files?: BundleFile[]
   name: string
+  /** The site's code the bundle carries, by path; absent when it carries none. */
+  code?: string[]
 }
 
 /** What a directory calls its site: `site.json`, then `package.json`, then its folder. */
@@ -60,6 +75,10 @@ export async function buildBundleFromDirectory(
   const name = options.name ?? identity.name
   if (!existsSync(join(dir, 'schema')))
     return { problems: [`${dir} has no schema/ directory, so it is not a site`], name }
+  const patterns = options.code ?? codePatternsOf(dir)
+  const code = patterns ? selectCodeFiles(dir, patterns) : undefined
+  if (code && code.problems.length > 0)
+    return { problems: code.problems.map((problem) => `its code: ${problem}`), name }
   const work = mkdtempSync(join(tmpdir(), 'crombolo-bundle-build-'))
   try {
     const config = loadConfig(
@@ -128,8 +147,9 @@ export async function buildBundleFromDirectory(
         private: true,
         // As `release:version` writes it into every committed bundle.
         peerRange: `>=${VERSION}`,
+        ...(code ? { code: readCodeFiles(dir, code.paths) } : {}),
       })
-      return { problems: [], seed, files, name }
+      return { problems: [], seed, files, name, ...(code ? { code: code.paths } : {}) }
     } finally {
       await db.close()
     }

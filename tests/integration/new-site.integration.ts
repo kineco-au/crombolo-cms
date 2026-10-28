@@ -228,7 +228,7 @@ describe('creating a site, end to end through the CLI', () => {
     expect(manifest.name).toBe('bare-site')
     expect(manifest.type).toBe('module')
     // Pinned, so `bun install` resolves the version that scaffolded the site.
-    expect((manifest.dependencies as Record<string, string>)['@crombolo/crombolo']).toMatch(
+    expect((manifest.peerDependencies as Record<string, string>)['@crombolo/crombolo']).toMatch(
       /^\^\d+\.\d+\.\d+$/,
     )
     // No template, so nothing to import on boot.

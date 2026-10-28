@@ -1,4 +1,5 @@
 export * from './check.ts'
+export * from './code.ts'
 export * from './export.ts'
 export * from './import.ts'
 export * from './load.ts'

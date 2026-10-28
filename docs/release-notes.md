@@ -6,6 +6,49 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.32.0 — 2026-10-28
+
+- **A site's bundle can carry its code** (story 192):
+  - **Building it.** `crombolo bundle build` packs the files the site's
+    `package.json` names in `crombolo.code`, or that `--code` names, under
+    `code/`, with `package.json`, `bun.lock` and `crombolo.config.ts`. A hash
+    of its own covers them. Secrets, databases, `node_modules` and the
+    folders the bundle already carries are never packed.
+  - **Checking it.** `crombolo bundle check <bundle>` installs the code from
+    its lockfile with no install scripts and reads its config in a process
+    with an empty environment. It lists every problem with the server bundles
+    the config wires, by the rules the boot applies.
+  - **Installing it.** `crombolo bundle install-code <bundle> <dir>` installs
+    the code where a host starts it.
+  - **Importing it.** `content import` and `start --bundle` leave the code
+    alone, and say the bundle carries some.
+  - **For hosts.** Both are exported as `checkBundleCode` and
+    `installBundleCode` from `@crombolo/crombolo`.
+- **A new site lists `@crombolo/*` as peers.** `crombolo init` writes
+  `@crombolo/crombolo`, and any `@crombolo` server bundle a template wires,
+  under `peerDependencies`, so a host that runs the site provides the CMS.
+  `bun install` still installs peers, so nothing changes locally. Bundle
+  discovery and the Marketplace read peers as well as dependencies.
+
+  **Upgrade notes:** an existing site keeps working as it is. A site whose
+  bundle will carry its code moves its `@crombolo/*` entries from
+  `dependencies` to `peerDependencies`, which `bundle check` asks for.
+
+- **A site's `server.ts` boots with its own `crombolo.config.ts`.** The
+  `server.ts` that `crombolo init` wrote called `crombolo()` without the
+  config, so `bun run dev`, and any host that runs `server.ts`, started the
+  site without its name, its server bundles or anything else the config set.
+  `crombolo start` was unaffected: it reads the config itself.
+
+  **Upgrade notes:** an existing site fixes its `server.ts` by hand:
+
+  ```ts
+  import { crombolo } from '@crombolo/crombolo'
+  import config from './crombolo.config.ts'
+
+  export default await crombolo(config)
+  ```
+
 ## v0.31.0 — 2026-10-27
 
 - **An apostrophe in a site's name no longer splits its package name.**

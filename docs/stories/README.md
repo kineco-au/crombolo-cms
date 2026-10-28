@@ -82,6 +82,7 @@ not cover.
 | `013` | Pending elements at runtime | must | M | done | 012 |
 | `014` | Check, fix, upgrade | must | L | done | 013 |
 | `015` | The upgrade dashboard and the static check | must | M | done | 014 |
+| `192` | A site's bundle carries its code | should | M | done | 063, 181 |
 
 ### Epic C — The backoffice, end to end
 
@@ -109,6 +110,7 @@ not cover.
 | `033` | Entra settings bundle | could | M | done | 031 |
 | `034` | An unattended install seeds an API client | should | S | done | 031 |
 | `035` | A member created without a password | should | S | done | 031 |
+| `191` | Azure AD B2C user flows for members | should | M | ready | 031 |
 
 ### Epic E — Cross-cutting
 
@@ -154,6 +156,10 @@ requests, only server-side and build-time front ends can call it.
 | `063` | A bundle is an npm package | should | L | done | — |
 | `178` | The back office vouches for its user to a host | should | S | done | 063, 177 |
 | `181` | A host installs a site's bundles | should | S | done | 063 |
+| `186` | Member and public routes for server bundles | should | M | ready | 030, 063 |
+| `187` | Background and scheduled work for server bundles | should | M | ready | 063, 171 |
+| `188` | File storage for server bundles | should | M | ready | 063 |
+| `189` | A schema of the site's own | should | L | backlog | 062, 173 |
 
 ### Epic H — Importing a site
 
@@ -164,6 +170,7 @@ requests, only server-side and build-time front ends can call it.
 | `072` | Proven on real exports from Umbraco 15, 16 and 18 | should | M | ready | 070 |
 | `073` | Import a WordPress site | should | L | backlog | 141, 142 |
 | `074` | An Umbraco extension exports a crombolo bundle | should | L | ready | 104, 105 |
+| `190` | Import from Umbraco 7 | should | L | ready | 070, 071 |
 
 ### Epic I — Hardening
 
