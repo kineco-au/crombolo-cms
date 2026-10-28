@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/core",
-  "version": "0.35.1",
+  "version": "0.35.2",
   "description": "Internal to crombolo, with no compatibility promise: use @crombolo/crombolo. Domain model, entity keys and shared contracts for crombolo. No I/O.",
   "license": "MIT",
   "author": "Crombolo",

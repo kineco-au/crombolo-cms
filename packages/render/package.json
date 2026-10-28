@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/render",
-  "version": "0.35.1",
+  "version": "0.35.2",
   "description": "Internal to crombolo, with no compatibility promise: use @crombolo/crombolo. TSX server rendering and the published-content model for crombolo.",
   "license": "MIT",
   "author": "Crombolo",
