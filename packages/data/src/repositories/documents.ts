@@ -15,9 +15,11 @@ import {
   type DocumentVariant,
   type DocumentVersionSummary,
   variesByCulture as flagVariesByCulture,
+  type MediaItemAccess,
   normaliseUuid,
   ObjectTypes,
   type Page,
+  parseMediaPolicy,
   STORAGE_COLUMN,
   SystemNodes,
   toEditorValue,
@@ -37,6 +39,7 @@ import {
   visibleStateIdFor,
 } from '../schema-state.ts'
 import { queueForSearch } from '../search.ts'
+import { recordFiles } from './media-access.ts'
 import { NodeRepository, type NodeRow } from './nodes.ts'
 
 export type EventKind = 'save' | 'publish' | 'rollback' | 'migrate'
@@ -312,6 +315,28 @@ export function publishedValueRows<
   return [...chosen.values()]
 }
 
+/** Which nodes `loadCurrent` reads: by key, by id, or by the file address a media item serves. */
+export type CurrentFilter =
+  | { keys: readonly string[]; ids?: undefined; urls?: undefined }
+  | { ids: readonly number[]; keys?: undefined; urls?: undefined }
+  | { urls: readonly string[]; keys?: undefined; ids?: undefined }
+
+/** A node as an editor sees it now. */
+export interface CurrentNodeRow {
+  id: number
+  key: string
+  name: string
+  contentTypeAlias: string
+  values: DocumentValue[]
+  parentId: number
+  path: string
+  sortOrder: number
+  createDate: Date
+  updateDate: Date
+  /** A media item's own read and write settings (story 196); `inherit` for anything else. */
+  access: MediaItemAccess
+}
+
 /** Ids in slices small enough for either dialect's parameter limit. */
 const slices = <T>(items: readonly T[], size = 500): T[][] =>
   Array.from({ length: Math.ceil(items.length / size) }, (_, n) =>
@@ -524,40 +549,55 @@ export class DocumentRepository {
   }
 
   /**
-   * Every node of this kind that is not in the bin, with the values an editor
-   * sees now: what the published cache holds for media, which has no publish.
-   * Read in slices, like `loadPublished`.
+   * The nodes of this kind not in the bin, with the values an editor sees now:
+   * what media is read as, having no publish. Without a filter every one, read
+   * in slices like `loadPublished`; with one, only the nodes it names — by key,
+   * id or (media) file address — through indexed lookups, in the order asked.
    */
-  async loadCurrent(): Promise<
-    Array<{
-      id: number
-      key: string
-      name: string
-      contentTypeAlias: string
-      values: DocumentValue[]
-      parentId: number
-      sortOrder: number
-      createDate: Date
-      updateDate: Date
-    }>
-  > {
+  async loadCurrent(filter?: CurrentFilter): Promise<CurrentNodeRow[]> {
     const t = this.#db.dialect.boolValue(true)
-    const rows = await this.#db.query(
-      `SELECT n.id, n.unique_id, n.text, n.parent_id, n.sort_order, n.create_date,
+    const select = `SELECT n.id, n.unique_id, n.text, n.parent_id, n.path, n.sort_order, n.create_date,
               head.text AS draft_name, head.version_date,
-              ct.alias AS content_type_alias, c.content_type_id
+              ct.alias AS content_type_alias, c.content_type_id,
+              c.read_policy, c.write_policy, c.creator_member_key, c.file_url
        FROM node n
        JOIN content c ON c.node_id = n.id
        JOIN content_type ct ON ct.node_id = c.content_type_id
        JOIN content_version head ON head.node_id = n.id AND head.current = ?
-       WHERE n.node_object_type = ? AND n.trashed = ?
-       ORDER BY n.level, n.sort_order, n.id`,
-      [t, this.objectType, this.#db.dialect.boolValue(false)],
-    )
+       WHERE n.node_object_type = ? AND n.trashed = ?`
+    const base = [t, this.objectType, this.#db.dialect.boolValue(false)]
+    let rows: Record<string, unknown>[]
+    if (!filter) rows = await this.#db.query(`${select} ORDER BY n.level, n.sort_order, n.id`, base)
+    else {
+      const [column, wanted] =
+        filter.keys !== undefined
+          ? ['n.unique_id', [...new Set(filter.keys.map(normaliseUuid))]]
+          : filter.ids !== undefined
+            ? ['n.id', [...new Set(filter.ids)]]
+            : ['c.file_url', [...new Set(filter.urls ?? [])]]
+      rows = []
+      for (const slice of slices<string | number>(wanted))
+        rows.push(
+          ...(await this.#db.query(
+            `${select} AND ${column} IN (${slice.map(() => '?').join(', ')})`,
+            [...base, ...slice],
+          )),
+        )
+      const order = new Map(wanted.map((value, index) => [String(value), index]))
+      const at = (row: Record<string, unknown>) =>
+        order.get(
+          column === 'n.unique_id'
+            ? normaliseUuid(String(row.unique_id))
+            : column === 'n.id'
+              ? String(Number(row.id))
+              : String(row.file_url),
+        ) ?? 0
+      rows.sort((a, b) => at(a) - at(b) || Number(a.id) - Number(b.id))
+    }
     const languages = await this.#languages()
     const typesById = new Map<number, PropertyTypeRow[]>()
     const rowsById = await this.#currentValueRowsFor(rows.map((row) => Number(row.id)))
-    const out = []
+    const out: CurrentNodeRow[] = []
     for (const row of rows) {
       const typeId = Number(row.content_type_id)
       if (!typesById.has(typeId)) typesById.set(typeId, await this.#propertyTypes(typeId))
@@ -568,10 +608,18 @@ export class DocumentRepository {
         name: String(row.draft_name ?? row.text ?? ''),
         contentTypeAlias: String(row.content_type_alias),
         parentId: Number(row.parent_id),
+        path: String(row.path),
         sortOrder: Number(row.sort_order),
         createDate: DbDate.fromDb(row.create_date) ?? new Date(0),
         updateDate:
           DbDate.fromDb(row.version_date) ?? DbDate.fromDb(row.create_date) ?? new Date(0),
+        access: {
+          readPolicy: parseMediaPolicy(row.read_policy),
+          writePolicy: parseMediaPolicy(row.write_policy),
+          creatorMemberKey: row.creator_member_key
+            ? normaliseUuid(String(row.creator_member_key))
+            : null,
+        },
         values:
           propertyTypes.length === 0
             ? []
@@ -740,6 +788,7 @@ export class DocumentRepository {
 
         const created = await repo.#load({ ...node, text: name })
         if (!created) throw new Error('Document could not be read back after creation.')
+        await recordFiles(tx, this.kind, node.id, created)
         return created
       }),
     )
@@ -911,7 +960,9 @@ export class DocumentRepository {
       await repo.#appendValues(node.id, eventId, state, contentTypeNodeId, input.values)
       await repo.#writeCultureVariations(node.id, eventId, input.variants)
       await repo.#recomputeEdited(node.id)
-      return repo.#load({ ...node, text: name })
+      const saved = await repo.#load({ ...node, text: name })
+      if (saved) await recordFiles(tx, this.kind, node.id, saved)
+      return saved
     })
   }
 
@@ -1189,7 +1240,9 @@ export class DocumentRepository {
       await repo.#copyCultureVariations(targetId, eventId)
       await repo.nodes.rename(node.id, name)
       await repo.#recomputeEdited(node.id)
-      return repo.#load({ ...node, text: name })
+      const restored = await repo.#load({ ...node, text: name })
+      if (restored) await recordFiles(tx, this.kind, node.id, restored)
+      return restored
     })
   }
 
@@ -1277,6 +1330,12 @@ export class DocumentRepository {
         await tx.exec('DELETE FROM content_schedule WHERE node_id = ?', [row])
         await tx.exec('DELETE FROM user_notification WHERE node_id = ?', [row])
         await tx.exec('DELETE FROM domain WHERE node_id = ?', [row])
+        await tx.exec(
+          'DELETE FROM media_access_rule WHERE media_access_id IN (SELECT id FROM media_access WHERE node_id = ?)',
+          [row],
+        )
+        await tx.exec('DELETE FROM media_access WHERE node_id = ?', [row])
+        await tx.exec('DELETE FROM node_file WHERE node_id = ?', [row])
         await tx.exec(
           'DELETE FROM content_version_culture_variation WHERE version_id IN (SELECT id FROM content_version WHERE node_id = ?)',
           [row],
@@ -2554,9 +2613,13 @@ export class DocumentRepository {
     return (await this.#nodes.byId(Number(parentId)))?.key ?? null
   }
 
-  /** Other nodes drop their published cache when they see this. */
+  /** Other nodes drop their published cache when they see this; media, only that item (story 197). */
   async #instructContent(key: string): Promise<void> {
-    await appendCacheInstruction(this.#db, { kind: 'content', payload: { key }, by: this.#nodeId })
+    await appendCacheInstruction(this.#db, {
+      kind: 'content',
+      payload: this.objectType === ObjectTypes.Media ? { media: [key] } : { key },
+      by: this.#nodeId,
+    })
   }
 
   async #insertEvent(

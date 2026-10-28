@@ -11,12 +11,10 @@ import { toContentTypeResponse } from '@crombolo/api-management'
 import { hashPassword, passwordConfigJson } from '@crombolo/auth'
 import {
   ContentTypeRepository,
-  cromboloPlan,
   currentSchemaState,
   type Db,
   DocumentRepository,
   makeStateCurrent,
-  migrate,
   type NodeSchemaState,
   PublishBlockedError,
   pendingUntil,
@@ -24,7 +22,7 @@ import {
   seedIdentity,
 } from '@crombolo/data'
 import { loadSchemaDirectory, syncSchema } from '@crombolo/schema'
-import { canConnect, dialectUnderTest, freshDb } from './support/db.ts'
+import { canConnect, dialectUnderTest, migratedDb } from './support/db.ts'
 
 const open: Db[] = []
 const dirs: string[] = []
@@ -38,9 +36,8 @@ afterEach(async () => {
 })
 
 async function prepared(): Promise<Db> {
-  const db = await freshDb()
+  const db = await migratedDb()
   open.push(db)
-  await migrate(db, cromboloPlan)
   await seedIdentity(db, {
     admin: { name: 'A', login: 'a@b.c', email: 'a@b.c', password: 'x' },
     hashPassword,

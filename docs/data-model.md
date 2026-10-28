@@ -403,6 +403,22 @@ three is `(node_id, property_type_id, language_id, segment, id DESC)`.
   approval request asked to publish or take its page down, per culture, as
   JSON — null on a request that publishes on approval; `domain(node_id, language_id, domain_name, sort_order)` for
   culture and hostnames, names unique (the wildcard is `*<node id>`).
+- **Migration 050, story `196`:** `media_access(node_id, public_read,
+  new_read, new_write)` and `media_access_rule(media_access_id, member_group,
+  can_read, can_write)`, a rule per media folder or item given permissions; on
+  `content`, a media item's `file_url` (indexed, the `/media/…` path its file
+  is served at, backfilled), `creator_member_key`, `read_policy` and
+  `write_policy`; and `node_file(node_id, url)`, the files any other node's
+  upload values name. `rendering.md`, "Protected media".
+- **Migration 051, story `197`:** `ix_node_parent_sort` on `node(parent_id,
+  node_object_type, trashed, sort_order, id)`, which pages a folder's children
+  in Umbraco's order in the database, and `ix_cache_instruction_checkpoint`,
+  which a server that missed changes reads the instructions after its
+  checkpoint by. `rendering.md`, "The media cache".
+- **Migration 052, story `198`:** on `media_access`, `member_types` (the file
+  types members may upload below the folder, a comma-separated list of names
+  such as `jpeg,png`; null is none) and `member_max_bytes` (the largest such
+  upload, or null). `rendering.md`, "What members may upload".
 - **Media and blueprints are documents** of their own object types. The
   document repository takes a `kind` (document, media, blueprint), which picks
   the object type, the recycle bin and the folder type; media and blueprints

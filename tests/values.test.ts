@@ -9,17 +9,15 @@ import {
   BASELINE_NODE_STATE,
   ContentTypeRepository,
   compareVersions,
-  cromboloPlan,
   currentSchemaState,
   type Db,
   DocumentRepository,
   makeStateCurrent,
-  migrate,
   seedContent,
   seedIdentity,
   WriteRejectedError,
 } from '@crombolo/data'
-import { canConnect, dialectUnderTest, freshDb } from './support/db.ts'
+import { canConnect, dialectUnderTest, migratedDb } from './support/db.ts'
 
 const TEXTSTRING = '0cc0eba1-9960-42c9-bf9b-60e150b429ae'
 const open: Db[] = []
@@ -32,9 +30,8 @@ afterEach(async () => {
 })
 
 async function prepared(): Promise<{ db: Db; typeKey: string }> {
-  const db = await freshDb()
+  const db = await migratedDb()
   open.push(db)
-  await migrate(db, cromboloPlan)
   await seedIdentity(db, {
     admin: { name: 'A', login: 'a@b.c', email: 'a@b.c', password: 'x' },
     hashPassword,

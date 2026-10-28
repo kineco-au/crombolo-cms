@@ -135,13 +135,25 @@ describe('the first boot of a self-hosted site', () => {
   test('a database the previous release left is upgraded by `crombolo upgrade`, and then starts', async () => {
     const file = readdirSync(site()).find((name) => name.endsWith('.sqlite')) as string
     const sqlite = new Database(join(site(), file))
-    // As 0.27.0 left it: before what imports applied was recorded (049). Every
-    // migration since the last release has to be undone here.
-    sqlite.exec('DROP TABLE IF EXISTS content_applied')
-    sqlite.exec("DELETE FROM migration_history WHERE name = 'AddContentApplied'")
+    // As 0.34.0 left it: before media permissions (050), the media paging
+    // indexes (051) and members' uploads (052). Every migration since the last
+    // release has to be undone here, an index before its columns.
+    for (const column of ['member_types', 'member_max_bytes'])
+      sqlite.exec(`ALTER TABLE media_access DROP COLUMN ${column}`)
+    sqlite.exec("DELETE FROM migration_history WHERE name = 'AddMediaMemberUploads'")
+    sqlite.exec('DROP INDEX IF EXISTS ix_node_parent_sort')
+    sqlite.exec('DROP INDEX IF EXISTS ix_cache_instruction_checkpoint')
+    sqlite.exec("DELETE FROM migration_history WHERE name = 'AddMediaPagingIndexes'")
+    sqlite.exec('DROP INDEX IF EXISTS ix_content_file_url')
+    for (const column of ['file_url', 'creator_member_key', 'read_policy', 'write_policy'])
+      sqlite.exec(`ALTER TABLE content DROP COLUMN ${column}`)
+    sqlite.exec('DROP TABLE IF EXISTS node_file')
+    sqlite.exec('DROP TABLE IF EXISTS media_access_rule')
+    sqlite.exec('DROP TABLE IF EXISTS media_access')
+    sqlite.exec("DELETE FROM migration_history WHERE name = 'AddMediaAccess'")
     sqlite
       .query("UPDATE key_value SET value = ? WHERE key = 'Crombolo.Core.Upgrader.State'")
-      .run('{9c4a1e72-0048-4b5d-8e26-7f3d1a9c5b48}')
+      .run('{5d1f8a3c-0049-4e72-b6a9-3c8e1f4d2b49}')
     sqlite.close()
 
     const run = async (...args: string[]) => {
@@ -165,7 +177,7 @@ describe('the first boot of a self-hosted site', () => {
     const upgraded = await run('upgrade')
     expect(upgraded.code, upgraded.out).toBe(0)
     const ledger = await run('upgrade', 'ledger')
-    expect(ledger.out).toContain('AddContentApplied')
+    expect(ledger.out).toContain('AddMediaAccess')
 
     const proc = Bun.spawn(['bun', CLI, 'start'], {
       cwd: site(),

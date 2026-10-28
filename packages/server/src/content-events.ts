@@ -6,7 +6,7 @@
  * its next tick. The command line wires the same sink without the live part.
  */
 import {
-  type Actor,
+  actorMemberKey,
   actorName,
   actorNote,
   actorUserKey,
@@ -14,6 +14,7 @@ import {
   type DocumentEvent,
   type EventSink,
   liveEventsFor,
+  type MediaActor,
   type MediaEventSink,
   mediaAuditEntryFor,
   mediaWebhookFor,
@@ -38,11 +39,15 @@ const subjectOf = (event: DocumentEvent): string | null =>
   'key' in event ? event.key : 'parentKey' in event ? event.parentKey : null
 
 /** Who made a change, as the outbox keeps it: enough to name them and leave them out. */
-export const outboxActor = (actor: Actor) => ({
-  kind: actor.kind,
-  name: actorName(actor),
-  userKey: actorUserKey(actor),
-})
+export const outboxActor = (actor: MediaActor) => {
+  const memberKey = actorMemberKey(actor)
+  return {
+    kind: actor.kind,
+    name: actorName(actor),
+    userKey: actorUserKey(actor),
+    ...(memberKey ? { memberKey } : {}),
+  }
+}
 
 export function createContentEventSink(options: ContentEventSinkOptions): EventSink {
   return {

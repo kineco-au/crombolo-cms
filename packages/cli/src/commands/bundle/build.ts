@@ -34,6 +34,9 @@ export default class BundleBuild extends BaseCommand {
       helpValue: '<dir>',
     }),
     name: Flags.string({ summary: "the bundle's package name", helpValue: '<name>' }),
+    'with-media': Flags.boolean({
+      summary: "the seed's media files too; left out unless asked",
+    }),
     code: Flags.string({
       multiple: true,
       summary: "the site's own code, as globs; in place of crombolo.code in its package.json",
@@ -65,7 +68,11 @@ export default class BundleBuild extends BaseCommand {
         })
       source = join(found.dir, 'files')
     }
-    const built = await buildBundleFromDirectory(source, { name: flags.name, code: flags.code })
+    const built = await buildBundleFromDirectory(source, {
+      name: flags.name,
+      code: flags.code,
+      media: flags['with-media'],
+    })
     if (built.problems.length > 0 || !built.files)
       throw new CliError(
         'refused',

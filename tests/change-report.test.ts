@@ -6,15 +6,8 @@
  * report on every restart, and checking one bundle would resolve another's.
  */
 import { beforeAll, describe, expect, test } from 'bun:test'
-import {
-  cromboloPlan,
-  type Db,
-  type Finding,
-  migrate,
-  readReport,
-  writeReport,
-} from '@crombolo/data'
-import { canConnect, dialectUnderTest, freshDb } from './support/db.ts'
+import { type Db, type Finding, readReport, writeReport } from '@crombolo/data'
+import { canConnect, dialectUnderTest, migratedDb } from './support/db.ts'
 
 function finding(code: string, subjectKey: string, message = code): Finding {
   return {
@@ -37,8 +30,7 @@ describe(`the change report (${dialectUnderTest})`, () => {
 
   beforeAll(async () => {
     if (!(await canConnect())) throw new Error(`no ${dialectUnderTest} to test against`)
-    db = await freshDb()
-    await migrate(db, cromboloPlan)
+    db = await migratedDb()
   })
 
   test('renames the upgrade report and carries its rows forward', async () => {

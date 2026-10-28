@@ -6,6 +6,174 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.35.0 — 2026-10-28
+
+- **A server bundle can manage media as the signed-in member** (story 198).
+  A bundle asks for the new `media` capability and declares the folders it
+  uses by path, `media: { folders, types?, maxBytes }`. It creates, reads,
+  changes and deletes media items as that member, under the media permissions,
+  or as the user on a back-office route; a public route may not use it.
+  - **A declared folder that does not exist refuses the boot**, naming the
+    bundle and the path. The back office shows which bundle uses a folder and
+    asks before renaming, moving or deleting it or a folder above it.
+  - **The member is recorded as the file's creator**, the folder's defaults
+    are stamped on it, and the audit log names the member and the bundle.
+  - **What members may upload is set per folder**, in the Permissions panel:
+    "File types members may upload here", ticked from a list, and an optional
+    largest size. Nothing is accepted that is not ticked. A file is recognised
+    by its first bytes, and its extension must agree.
+  - **A member's image is stored upright and without its metadata**: no
+    location, camera or time is ever served. What it said is handed to the
+    bundle instead. An image that cannot be prepared on the server is
+    refused.
+  - Back-office uploads are unchanged.
+
+  `docs/bundles.md`, Part 3, "Media as the member"; `docs/rendering.md`,
+  "What members may upload".
+
+  **Migration:** 052 `AddMediaMemberUploads` (expand): `member_types` and
+  `member_max_bytes` on `media_access`.
+
+- **A server bundle can serve members and visitors** (story 186). A route
+  declares an `audience`: `'backoffice'` (the default, so every existing route
+  is unchanged), `'member'`, `{ member: { groups } }` or `'public'`. Member
+  and public routes answer at `/crombolo/bundle/<id>/…` on `all` and `web`
+  nodes, never on `api` nodes.
+  - **The member** is the one the site's cookie signs in, or a Delivery API
+    member token names. The handler gets them as a frozen `BundleMember`:
+    key, name, username, e-mail and groups. A visitor gets 401, and a member
+    outside the route's groups 403.
+  - **A cookie-driven write needs an anti-forgery token.** Put
+    `<AntiforgeryMeta />` in the layout and load `/crombolo/bundle.js`, whose
+    `crombolo.fetch` sends it. A request with a member token needs none.
+  - **Rate limits** per route, `rateLimit: { max, perSeconds, by }`, by member
+    or by caller, answering 429 with `retry-after`. Each server counts on its
+    own, so behind N servers a route allows up to N times its limit.
+  - **Other origins** on the Delivery API's allow-list get CORS headers.
+  - **Every handler gets `caller`**, saying who the host resolved the request
+    to.
+  - A route group that does not exist is reported at boot as a warning.
+
+  `docs/bundles.md`, Part 3, "Routes for members and visitors".
+
+- **Media cached apart from pages** (story 197). A media library can grow to
+  millions of items without every server holding it, and an upload no longer
+  makes a server rebuild its pages:
+  - **The page snapshot no longer holds media.** Its memory and build time no
+    longer grow with the library.
+  - **A media cache** holds the items used most recently, within a memory
+    budget: `CROMBOLO_MEDIA_CACHE_MB` (`mediaCacheMegabytes`), 64 by default.
+    It fills from indexed lookups by key and by file address.
+  - **A media change drops only what it touched**, on every server: the item,
+    and what is below it when it moved. It no longer rebuilds the pages, and a
+    page change no longer drops media. A server that missed changes empties
+    its media cache and refills it as items are asked for.
+  - **`/media/…`** finds its item through the file address index, with no map
+    over all media.
+  - **The Delivery API's media endpoints** page in the database, in the same
+    order and with the same documents as before.
+  - **`crombolo media import`** tells the servers about the items it made a
+    batch at a time.
+  - **Adding to a large folder** no longer reads every item already in it to
+    find the new one's place.
+
+  **Migration:** 051 `AddMediaPagingIndexes` (expand): an index on `node`
+  for a folder's children in order, and one on `cache_instruction.checkpoint`.
+
+  **Upgrade notes — views must await media.** This release breaks views, as
+  story 173's promise says a minor must not without a deprecation first.
+  Keeping media synchronous for one more minor would have meant keeping every
+  media item in every server's memory for that minor, which is what this
+  release fixes. Each accessor that can resolve media now returns a promise:
+
+  | Accessor | Now | The change to make |
+  | --- | --- | --- |
+  | `model.media(alias)` | `Promise<MediaWithCrops[]>` | `const [hero] = await model.media('hero')` |
+  | `model.value(alias)` for a Media Picker | a promise of the pick, the picks or null | `await model.value('hero')` |
+  | `model.value(alias)` for a Multinode Treepicker | `Promise<Array<PublishedContent \| PublishedMedia>>` | `await model.value('related')` |
+  | `model.value(alias)` for a Multi URL Picker | `Promise<Link[]>` | `await model.value('links')` |
+  | `model.html(alias)` | `RawHtml`, or a promise of it when the text links to media | none: `{model.html('body')}` renders either |
+  | `model.value(alias)` for rich text | the markup, or a promise of it | write rich text with `html()` |
+  | `model.text(alias)` for rich text | links to media are `#` | write rich text with `html()` |
+  | `effectiveMeta(…)`, `<SeoHead>` | promises | `await effectiveMeta(…)`; `<SeoHead>` needs nothing |
+
+  - A component that awaits one is declared `async`:
+    `export default async function Home({ model }: PageProps)`. JSX renders
+    async components as any other.
+  - Elements have the same, a block's `content.media('image')` among them.
+  - `<div setInnerHTML={{ __html: model.text('body'), dangerously: true }} />`
+    still renders, but a link to media in the text is `#`: write
+    `<div>{model.html('body')}</div>`.
+  - `crombolo components check` reports each `media()` used without `await`,
+    with its line and the change to make; with `typescript` installed, the
+    compiler reports the rest.
+  - `crombolo generate` now types media pickers, tree pickers, link pickers
+    and rich text as promises. Run it again.
+  - `menu()`, `text()` and every other editor's value are unchanged.
+    `MediaWithCrops` and `PublishedMedia` are exported as types.
+  - Every view in this repository's sites and the `basic` template is updated.
+
+- **Media only the right people can read** (story 196). A media folder or item
+  has **Permissions** in the back office:
+  - **Who can see and change it,** by member group. A folder's permissions
+    cover everything below it, and a nearer folder or item can set its own:
+    stricter, looser, or open to anyone again.
+  - **What files added to a folder later get:** who can see them (anyone with
+    the link, the folder's groups, or only the member who added the file) and
+    who can change them. Each new file keeps what it was given, and its own
+    setting can be changed.
+  - **The member who added a file** is recorded with it.
+  - **A "Protected" badge** in the media workspace.
+
+  Serving follows them:
+  - A protected file, and its crops, go only to someone allowed to read it:
+    a member of its groups (by the site's cookie or a Delivery API member
+    token), or an editor with the Media section within their start nodes.
+    They are streamed with `Cache-Control: private, no-store`, and never sent
+    to a store's public address. Anyone else gets 404.
+  - A `/media/` address that no media item, page upload field or user's avatar
+    owns now answers 404.
+  - The Delivery API leaves protected media out of its lists, and its item
+    answers 401 or 403. A page's media picker keeps only the item's id and
+    name for someone who cannot read it.
+  - The permissions travel with content transfer and whole-site files.
+
+  **Migration:** 050 `AddMediaAccess` (expand): `media_access`,
+  `media_access_rule` and `node_file`, and `file_url`, `creator_member_key`,
+  `read_policy` and `write_policy` on `content`. Existing media items get their
+  `file_url`, and pages their uploads, as it runs.
+
+  **Upgrade notes:**
+  - A file in the media store that no media item or page upload names is no
+    longer served. One placed there by hand needs a media item.
+  - A file in the recycle bin is now served only to back-office users.
+  - A file a visitor uploaded through a form is no longer served at its
+    address. A workflow that attaches uploads still attaches it.
+  - A CDN or public bucket in front of the media store serves everything it
+    holds to anyone: keep protected files out of it (`docs/rendering.md`,
+    "Protected media"). The server warns at boot when a store has a public
+    address.
+
+- **A bundle's media files are listed in `media.json`, and left out unless
+  asked** (story 195). Bundle format 5:
+  - **The list.** Every media file the content names is listed in `media.json`
+    at the package root, which the integrity hash covers. A carried file has
+    the URI `bundle://<bundle id>/media/<key>`.
+  - **The bytes** sit under `media/`, where they sat under `blobs/`.
+  - **What is refused.** A file under `media/` that `media.json` does not
+    list, and a URI pointing outside the bundle.
+  - **The option.** Every command that writes a bundle leaves media out unless
+    given `--with-media`: `bundle build`, `content export` (with
+    `--include-content`) and `export`. The back office's created-package
+    download offers "Include media files", unticked.
+
+  **Upgrade notes:**
+  - `export` no longer includes media by default: pass `--with-media`.
+  - `--with-blobs` and `--no-media` still work for this minor, deprecated.
+  - A bundle written before this release is refused with a message saying to
+    rebuild it.
+  - `pull` and `push` are unchanged.
+
 ## v0.34.0 — 2026-10-28
 
 - **A supported API, with a compatibility promise** (story 173). `@crombolo/crombolo`

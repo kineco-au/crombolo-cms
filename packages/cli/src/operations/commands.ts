@@ -300,7 +300,7 @@ export async function contentExport(
   if ((content === 'sealed' || withPeople) && !input.passphrase)
     throw new CommandError('An encrypted export needs a passphrase.')
   if (input.withBlobs && content === 'omitted')
-    throw new CommandError('Media files are content: --with-blobs goes with --include-content.')
+    throw new CommandError('Media files are content: --with-media goes with --include-content.')
   const { db } = await bootstrapDatabase(config)
   try {
     // A path is resolved against the tree it is exported from, and the key is

@@ -16,6 +16,8 @@ import {
   ensureSystemContentTypes,
   ensureSystemMemberTypes,
   type Finding,
+  instructionEffects,
+  instructionsBetween,
   Locks,
   latestCacheInstructionId,
   latestCheckpoint,
@@ -251,11 +253,29 @@ export interface CachePollerOptions {
   content?: {
     served(): { checkpoint: number | undefined; builtAt: Date } | undefined
     behind(latest: number): void
+    /**
+     * Told that every change from the one it serves up to `checkpoint` left the
+     * pages alone — media only (story 197) — so its snapshot holds them too.
+     */
+    covered?(checkpoint: number): void
+  }
+  /**
+   * The media cache (story 197). Every change, this node's own included, is
+   * read in checkpoint order: a media change drops the items it names, and a
+   * change that empties caches empties it. A gap in the checkpoints, or being
+   * further behind than `MEDIA_REPLAY_LIMIT`, empties it too.
+   */
+  media?: {
+    apply(change: { keys: string[]; moved: string[] }): void
+    clear(): void
   }
 }
 
 /** A rebuild asked for and not yet served is asked for again after this long. */
 const REASK_AFTER_MS = 30_000
+
+/** Further behind than this many changes, the media cache is emptied rather than replayed. */
+export const MEDIA_REPLAY_LIMIT = 5_000
 
 /**
  * Polls `cache_instruction` from where this node came in; own instructions are
@@ -283,6 +303,10 @@ export class CacheInstructionPoller {
   /** The checkpoint this node last asked its cache to catch up to, and when. */
   #asked: { checkpoint: number; at: number } | undefined
   #latest: number | undefined
+  /** The checkpoint whose changes have all been read for the caches; undefined before the start. */
+  #followed: number | undefined
+  /** Checkpoints read whose changes left the pages alone. */
+  #pagesFree = new Set<number>()
 
   /** The latest committed content checkpoint, as of the last poll. */
   get latestCheckpoint(): number | undefined {
@@ -318,6 +342,8 @@ export class CacheInstructionPoller {
     this.#paused = await readWritesPaused(this.#options.db)
     this.#cursor = await latestCacheInstructionId(this.#options.db)
     this.#origin = this.#cursor
+    // An empty media cache is current with whatever has committed so far.
+    this.#followed = await latestCheckpoint(this.#options.db)
     if (intervalMs > 0) {
       this.#timer = setInterval(() => void this.poll().catch(() => {}), intervalMs)
       this.#timer.unref()
@@ -355,6 +381,8 @@ export class CacheInstructionPoller {
 
   async #pollOnce(): Promise<number> {
     const { db, nodeId, nodeState, onInstruction } = this.#options
+    // Read first: every instruction numbered up to it has committed, and is visible below.
+    const latest = await latestCheckpoint(db)
     // A row can commit after one with a higher id (Postgres hands ids out
     // before commit), so a short window behind the cursor is read again and
     // the ids already seen are skipped.
@@ -371,7 +399,8 @@ export class CacheInstructionPoller {
       onInstruction(instruction.kind, instruction.payload)
     }
     for (const id of this.#seen) if (id <= this.#cursor - CURSOR_WINDOW) this.#seen.delete(id)
-    const served = await this.#catchUp()
+    await this.#follow(latest)
+    const served = this.#catchUp(latest)
     await touchServer(db, {
       nodeId,
       ...nodeState,
@@ -395,18 +424,59 @@ export class CacheInstructionPoller {
   }
 
   /**
-   * Tells the cache it is behind when the latest committed checkpoint is past
-   * the one it serves. A cache that has not been built yet is left to build on
-   * its first read. A request not served within a while is made again, so a
-   * failed rebuild is retried.
+   * Reads every change since the last checkpoint followed, in order: for the
+   * media cache, and to know which left the pages alone. Checkpoints count up
+   * by one per change, so a number with no instruction was pruned before this
+   * node read it, and the media cache cannot know what it missed.
    */
-  async #catchUp() {
+  async #follow(latest: number): Promise<void> {
+    const from = this.#followed
+    if (from === undefined || latest === from) return
+    const media = this.#options.media
+    this.#followed = latest
+    // Behind a reset count, or too far behind to replay: start the media again.
+    if (latest < from || latest - from > MEDIA_REPLAY_LIMIT) {
+      media?.clear()
+      this.#pagesFree.clear()
+      return
+    }
+    const missed = await instructionsBetween(this.#options.db, from, latest)
+    const numbered = new Set(missed.map((instruction) => instruction.checkpoint))
+    let gap = false
+    for (let checkpoint = from + 1; checkpoint <= latest && !gap; checkpoint++)
+      gap = !numbered.has(checkpoint)
+    if (gap) media?.clear()
+    for (const instruction of missed) {
+      const effects = instructionEffects(instruction.kind, instruction.payload)
+      if (!effects.pages && instruction.checkpoint !== null)
+        this.#pagesFree.add(instruction.checkpoint)
+      if (gap || !media || effects.media === 'keep') continue
+      if (effects.media === 'clear') media.clear()
+      else media.apply(effects.media)
+    }
+  }
+
+  /**
+   * Tells the cache it is behind when the latest committed checkpoint is past
+   * the one it serves, and any changes between left pages alone. A cache that
+   * has not been built yet is left to build on its first read. A request not
+   * served within a while is made again, so a failed rebuild is retried.
+   */
+  #catchUp(latest: number) {
     const content = this.#options.content
     if (!content) return undefined
-    const latest = await latestCheckpoint(this.#options.db)
     this.#latest = latest
-    const served = content.served()
-    if (served?.checkpoint === undefined || served.checkpoint >= latest) return served
+    let served = content.served()
+    if (served?.checkpoint === undefined) return served
+    let covered = served.checkpoint
+    while (this.#pagesFree.has(covered + 1)) covered += 1
+    for (const checkpoint of this.#pagesFree)
+      if (checkpoint <= covered) this.#pagesFree.delete(checkpoint)
+    if (covered > served.checkpoint) {
+      content.covered?.(covered)
+      served = content.served() ?? served
+    }
+    if (covered >= latest) return served
     const asked = this.#asked
     if (!asked || asked.checkpoint < latest || Date.now() - asked.at > REASK_AFTER_MS) {
       this.#asked = { checkpoint: latest, at: Date.now() }

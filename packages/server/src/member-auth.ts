@@ -23,6 +23,7 @@
  * accounts is a decision a site makes, not one a framework makes for it.
  */
 import {
+  antiforgeryToken,
   expireCookie,
   hashPassword,
   isNativeHash,
@@ -35,6 +36,7 @@ import {
   serializeCookie,
   signMemberTicket,
   signShortLived,
+  verifyAntiforgery,
   verifyPassword,
 } from '@crombolo/auth'
 import {
@@ -77,9 +79,20 @@ export interface MemberAuthOptions {
   nodeId?: string
 }
 
+/** A member signed in by the site's cookie, with that session's anti-forgery token. */
+export interface MemberSession {
+  member: RequestMember
+  /** For `<AntiforgeryMeta />`. */
+  antiforgery: string
+  /** Whether a request's `Crombolo-Antiforgery` value belongs to this session. */
+  verify(token: string | null): Promise<boolean>
+}
+
 export interface MemberAuth {
   /** The member this request carries, or undefined. */
   resolve(request: Request): Promise<RequestMember | undefined>
+  /** The member this request's cookie carries, and its anti-forgery token (story 186). */
+  session(request: Request): Promise<MemberSession | undefined>
   /**
    * Whether a member may see a page, and what to render instead when not. The
    * answer is Umbraco's: the login page for a visitor who is not signed in, the
@@ -269,8 +282,9 @@ export function createMemberAuth(
           },
         )
 
-  const resolve: MemberAuth['resolve'] = async (request) => {
-    const ticket = await readMemberTicket(await secret(), readCookie(request, cookie))
+  const session: MemberAuth['session'] = async (request) => {
+    const key = await secret()
+    const ticket = await readMemberTicket(key, readCookie(request, cookie))
     if (!ticket) return undefined
     const member = await members.byKey(ticket.id)
     if (!member) return undefined
@@ -278,8 +292,14 @@ export function createMemberAuth(
     // lockout rotates it, and every ticket issued before it is now worthless.
     if ((member.securityStamp ?? '') !== ticket.stamp) return undefined
     if (!member.isApproved || member.isLockedOut) return undefined
-    return asRequestMember(member)
+    return {
+      member: asRequestMember(member),
+      antiforgery: await antiforgeryToken(key, ticket),
+      verify: (token) => verifyAntiforgery(key, ticket, token),
+    }
   }
+
+  const resolve: MemberAuth['resolve'] = async (request) => (await session(request))?.member
 
   const decide: MemberAuth['decide'] = async (content, member) => {
     const entry = await access.entryFor(content.key)
@@ -562,6 +582,7 @@ export function createMemberAuth(
 
   return {
     resolve,
+    session,
     decide,
     signOutCookie: () => expireCookie(cookie, config.secureCookies),
     externalSignInUrl: (providerId, returnUrl) =>

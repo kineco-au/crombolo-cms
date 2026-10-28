@@ -207,7 +207,9 @@ environment waits:
 
 For a site whose media would make a file too big to move comfortably, the
 file carries media metadata only. The manifest says `media: "referenced"`, and
-every blob is named with its key, size and etag.
+`media.json` names every file with its key, size and etag, and no URI: a file
+with no URI is not in the package, and the client fetches it from the remote by
+key (bundle format 5, story 195).
 
 | | |
 | --- | --- |

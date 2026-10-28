@@ -7,7 +7,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { cromboloPlan, type Db, migrate, touchServer } from '@crombolo/data'
+import { type Db, touchServer } from '@crombolo/data'
 import {
   createDiagnosticsPort,
   fileSystemMediaStore,
@@ -17,7 +17,7 @@ import {
   upgradeType,
   VERSION,
 } from '@crombolo/server'
-import { dialectUnderTest, freshDb } from './support/db.ts'
+import { dialectUnderTest, freshDb, migratedDb } from './support/db.ts'
 import { ADMIN, type Harness, signedInServer, signInAsGroup, V1 } from './support/harness.ts'
 
 const open: Harness[] = []
@@ -62,10 +62,9 @@ function mediaDir(): MediaStore {
   return fileSystemMediaStore(dir)
 }
 
-async function migratedDb(): Promise<Db> {
-  const db = await freshDb()
+async function cleanDb(): Promise<Db> {
+  const db = await migratedDb()
   dbs.push(db)
-  await migrate(db, cromboloPlan)
   return db
 }
 
@@ -129,7 +128,7 @@ describe(`health checks (${dialectUnderTest})`, () => {
   })
 
   test('say when the servers disagree about the release they run', async () => {
-    const db = await migratedDb()
+    const db = await cleanDb()
     await touchServer(db, {
       nodeId: 'web-1',
       version: '1',
@@ -224,7 +223,7 @@ describe(`troubleshooting and the upgrade check (${dialectUnderTest})`, () => {
   })
 
   test('the upgrade check answers from the registry, and remembers for the check period', async () => {
-    const db = await migratedDb()
+    const db = await cleanDb()
     const asked: string[] = []
     let latest = '99.0.0'
     let reachable = true

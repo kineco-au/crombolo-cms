@@ -261,6 +261,8 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
     kind: WriteKind,
     key: string | 'root' | 'bin',
   ): Promise<boolean> => {
+    // A member acts on media only (story 198); the type says so, and this holds without it.
+    if ((actor as { kind: string }).kind === 'member') return false
     if (actor.kind !== 'user') return true
     if (key === 'root' || key === 'bin') return mayAt(actor.principal, WRITE_VERBS[kind], key)
     const place = await placeOf(key)

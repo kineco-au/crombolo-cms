@@ -6,8 +6,9 @@ for Umbraco's headless clients, so a site can
 be read headless — from a static-site build, an app or any framework — with the
 same requests and the same JSON an Umbraco site answers. Story `050`.
 
-`packages/api-delivery` holds it, over the published cache: every answer is read
-from memory, so it is served by the nodes that render the site (`all` and `web`,
+`packages/api-delivery` holds it, over the published cache: every page answer is
+read from memory, and media is paged by the database and read through the media
+cache (story 197), so it is served by the nodes that render the site (`all` and `web`,
 never `api`) and scales with them, not with the backoffice. The contract is
 vendored as `packages/contracts/DeliveryApi.json` — Umbraco generates its spec at
 runtime and commits none, so this is the integration suite's expected generic
@@ -218,6 +219,29 @@ An unresolvable target is an empty page. Without a sort the order is the tree's.
 `GET media`: `fetch=children:` is required (`/` for the roots, an id, or a path of
 names), filters `mediaType:` and `name:`, and the last sort wins — Umbraco's own
 media rules.
+
+**Paged by the database** (story 197). The media library is not held in
+memory, so a listing is two indexed queries over `node` (`MediaListingRepository`,
+`server/src/delivery-media.ts`): a count of the parent's children that pass the
+filters and the caller's access, and the page of their keys, in Umbraco's order
+— `sort_order`, then the node id — after any `sort`. The items are then read
+through the media cache, and their paths of names in one more query. `item` by
+path walks the names a level at a time, in any case. Only the tables a filter
+or sort reads are joined, and `ix_node_parent_sort` (migration 051) serves the
+order, so a page near the end of a folder of a million files is a few
+milliseconds. The documents are the same as when the tree was built in memory.
+Access is decided in SQL from the rule above the folder, any child's own rule
+and each item's own setting, so `total` counts only what the caller may read.
+
+**Protected media** (story 196) follows the same rules as `/media/`
+([`rendering.md`](rendering.md), "Protected media"), with a member's token as
+their cookie. A protected item is left out of `media` and `media/items`, and
+not counted, for a caller who cannot read it; `media/item` answers **401** to
+a caller who is not signed in and **403** to a member not allowed, as for
+pages. A media picker, or a multi-node tree picker naming media, in a page's
+properties keeps only the item's `id` and `name` for such a caller. The rules
+are read once per request (`MediaAccessRepository.allRules`): one per folder
+given permissions, so few.
 
 ## Search
 

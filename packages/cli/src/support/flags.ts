@@ -108,16 +108,17 @@ export function contentMode(
     'include-content': boolean
     'allow-content-unencrypted': boolean
     'with-blobs'?: boolean
+    'with-media'?: boolean
   },
 ): 'omitted' | 'sealed' | 'open' {
   const include = flags['include-content']
   const open = flags['allow-content-unencrypted']
   if (open && !include)
     throw new CliError('usage', '--allow-content-unencrypted goes with --include-content.')
-  if (flags['with-blobs'] && !include)
+  if ((flags['with-media'] || flags['with-blobs']) && !include)
     throw new CliError(
       'usage',
-      'Media files are content: --with-blobs goes with --include-content.',
+      'Media files are content: --with-media goes with --include-content.',
     )
   if (open)
     io.warning(

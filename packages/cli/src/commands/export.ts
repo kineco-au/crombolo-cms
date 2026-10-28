@@ -22,7 +22,12 @@ export default class Export extends BaseCommand {
       required: true,
     }),
     out: Flags.string({ summary: 'the file to write', helpValue: '<file.tgz>' }),
-    'no-media': Flags.boolean({ summary: 'leave the media files out' }),
+    'with-media': Flags.boolean({ summary: 'the media files too; left out unless asked' }),
+    'no-media': Flags.boolean({
+      summary: 'leave the media files out, which is now the default',
+      deprecated: { message: 'Media is left out unless --with-media is passed.' },
+      hidden: true,
+    }),
     drafts: Flags.boolean({ summary: 'drafts too' }),
     'with-members': Flags.boolean({ summary: 'members, encrypted' }),
     'with-users': Flags.boolean({ summary: 'back-office users, encrypted' }),
@@ -55,7 +60,7 @@ export default class Export extends BaseCommand {
     )
     const result = await ops.siteExport(config, {
       out,
-      media: !flags['no-media'],
+      media: flags['with-media'] && !flags['no-media'],
       drafts: flags.drafts,
       withMembers: flags['with-members'],
       withUsers: flags['with-users'],
@@ -72,7 +77,7 @@ export default class Export extends BaseCommand {
     if (Object.keys(result.sections).length > 0) this.say(`  files    ${counted(result.sections)}`)
     if (result.media.omitted)
       this.say(
-        '  media    left out (--no-media): importing it brings the media items without their files',
+        '  media    left out: importing it brings the media items without their files; pass --with-media to include them',
       )
     else
       this.say(`  media    ${result.media.carried} file(s), ${describeBytes(result.media.bytes)}`)

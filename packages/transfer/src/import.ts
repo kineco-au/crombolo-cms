@@ -47,6 +47,7 @@ import {
   DocumentRepository,
   insideTransaction,
   Locks,
+  MediaAccessRepository,
   PublicAccessRepository,
   PublishBlockedError,
   RedirectRepository,
@@ -424,6 +425,7 @@ async function applyBundle(tx: Db, set: ContentSet, options: ImportOptions): Pro
     // The rules a node carries, once every node they name exists.
     const rules = { access: 0, schedules: 0, redirects: 0 }
     const access = new PublicAccessRepository(tx)
+    const mediaAccess = new MediaAccessRepository(tx)
     const redirects = new RedirectRepository(tx)
     const nodesHere = repoFor('document').nodes
     for (const node of ordered) {
@@ -436,6 +438,19 @@ async function applyBundle(tx: Db, set: ContentSet, options: ImportOptions): Pro
           memberUserNames: node.access.memberUserNames ?? [],
         })
         if (saved) rules.access += 1
+      }
+      // A media node's permissions as they were there; its creator is kept as a
+      // member key, and is that member wherever one has it.
+      if (node.kind === 'media' && node.mediaAccess) {
+        const carried = node.mediaAccess
+        if (carried.rule) {
+          if (await mediaAccess.save({ nodeKey: node.key, ...carried.rule })) rules.access += 1
+        } else await mediaAccess.remove(node.key)
+        await mediaAccess.setItemAccess(node.key, {
+          readPolicy: carried.readPolicy ?? 'inherit',
+          writePolicy: carried.writePolicy ?? 'inherit',
+        })
+        await mediaAccess.setCreator(node.key, carried.creator ?? null)
       }
       if (node.schedule && node.schedule.length > 0 && node.kind === 'document') {
         const byCulture = new Map<

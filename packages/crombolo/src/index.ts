@@ -48,12 +48,14 @@ export type {
   FormProps,
   InnerHTML,
   Link,
+  MediaWithCrops,
   Menu,
   MenuItem,
   Navigation,
   PageProps,
   PublishedContent,
   PublishedElement,
+  PublishedMedia,
   RedirectOptions,
   RedirectRule,
   RedirectTo,
@@ -67,6 +69,7 @@ export type {
   TypedElement,
 } from '@crombolo/render'
 export {
+  AntiforgeryMeta,
   Blocks,
   type Context,
   createContext,

@@ -85,10 +85,17 @@ function tsTypeFor(set: SchemaSet, dataTypeAlias: string): string {
       return 'boolean'
     case 'Umbraco.ContentPicker':
       return 'PublishedContent | null'
+    // These can name media, which is looked up as it is read (story 197): awaited.
     case 'Umbraco.MultiNodeTreePicker':
-      return 'PublishedContent[]'
+      return 'Promise<PublishedContent[]>'
     case 'Umbraco.MultiUrlPicker':
-      return 'Link[]'
+      return 'Promise<Link[]>'
+    case 'Umbraco.MediaPicker3':
+      return config.multiple === false
+        ? 'Promise<MediaWithCrops | null>'
+        : 'Promise<MediaWithCrops[]>'
+    case 'Umbraco.RichText':
+      return 'string | Promise<string>'
     case 'Umbraco.ElementPicker': {
       // `allowedContentTypes` is a comma-separated list of element type keys, as
       // Umbraco's AllowedContentTypeKeysParser reads it. Narrowing to those types
@@ -186,8 +193,10 @@ export function generateTypes(set: SchemaSet): string {
     'BlockGridItem',
     'BlockItem',
     'Link',
+    'MediaWithCrops',
     'PublishedContent',
     'PublishedElement',
+    'PublishedMedia',
     'TypedElement',
   ].filter((name) => new RegExp(`\\b${name}\\b`).test(body.split('\n').slice(2).join('\n')))
   if (used.length > 0)

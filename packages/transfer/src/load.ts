@@ -8,13 +8,15 @@
  */
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, relative, sep } from 'node:path'
 import {
   BUNDLE_FORMAT_VERSION,
   BUNDLE_SECTIONS,
   type BundleAccess,
+  type BundleBlob,
   type BundleKind,
   type BundleManifest,
+  type BundleMediaAccess,
   type BundleNode,
   type BundleProblem,
   type BundleRedirect,
@@ -28,9 +30,12 @@ import {
 import { type BundlePeople, openPeople, type PeopleBlock, parsePeopleBlock } from './people.ts'
 import { openBytes, parseSealParameters, unlock } from './seal.ts'
 import {
-  blobPath,
   bundleIntegrity,
   MANIFEST_FILE,
+  MEDIA_DIR,
+  MEDIA_MANIFEST,
+  mediaPath,
+  mediaUri,
   nodePath,
   type SealedValues,
   sectionOf,
@@ -159,6 +164,7 @@ export function parseNode(
   if (variants.length === 0) problems.push({ file, message: 'no variants: a node needs a name' })
 
   const access = parseAccess(raw.access)
+  const mediaAccess = kind === 'media' ? parseMediaAccess(raw.mediaAccess) : undefined
   const schedule = Array.isArray(raw.schedule)
     ? raw.schedule.flatMap((e): BundleSchedule[] =>
         isRecord(e) &&
@@ -193,6 +199,7 @@ export function parseNode(
     variants,
     values,
     ...(access ? { access } : {}),
+    ...(mediaAccess ? { mediaAccess } : {}),
     ...(schedule.length > 0 ? { schedule } : {}),
     ...(redirects.length > 0 ? { redirects } : {}),
   }
@@ -212,6 +219,50 @@ function parseAccess(raw: unknown): BundleAccess | undefined {
     memberGroups: names(raw.memberGroups),
     ...(Array.isArray(raw.memberUserNames) ? { memberUserNames: names(raw.memberUserNames) } : {}),
   }
+}
+
+const ITEM_POLICIES = ['public', 'groups', 'creator', 'none'] as const
+const NEW_READ = ['public', 'groups', 'creator'] as const
+const NEW_WRITE = ['groups', 'creator', 'none'] as const
+const oneOf = <T extends string>(values: readonly T[], v: unknown): T | undefined =>
+  values.includes(v as T) ? (v as T) : undefined
+
+function parseMediaAccess(raw: unknown): BundleMediaAccess | undefined {
+  if (!isRecord(raw)) return undefined
+  const rule = isRecord(raw.rule)
+    ? {
+        publicRead: raw.rule.publicRead === true,
+        groups: Array.isArray(raw.rule.groups)
+          ? raw.rule.groups.flatMap((g) =>
+              isRecord(g) && typeof g.name === 'string' && g.name
+                ? [{ name: g.name, read: g.read === true, write: g.write === true }]
+                : [],
+            )
+          : [],
+        newRead: oneOf(NEW_READ, raw.rule.newRead) ?? null,
+        newWrite: oneOf(NEW_WRITE, raw.rule.newWrite) ?? null,
+        ...(Array.isArray(raw.rule.memberTypes)
+          ? {
+              memberTypes: raw.rule.memberTypes.filter(
+                (t): t is string => typeof t === 'string' && t !== '',
+              ),
+            }
+          : {}),
+        ...(typeof raw.rule.memberMaxBytes === 'number' && raw.rule.memberMaxBytes > 0
+          ? { memberMaxBytes: raw.rule.memberMaxBytes }
+          : {}),
+      }
+    : undefined
+  const readPolicy = oneOf(ITEM_POLICIES, raw.readPolicy)
+  const writePolicy = oneOf(ITEM_POLICIES, raw.writePolicy)
+  const creator = str(raw.creator)
+  const parsed: BundleMediaAccess = {
+    ...(rule ? { rule } : {}),
+    ...(readPolicy ? { readPolicy } : {}),
+    ...(writePolicy ? { writePolicy } : {}),
+    ...(creator ? { creator } : {}),
+  }
+  return Object.keys(parsed).length > 0 ? parsed : undefined
 }
 
 function parseManifest(text: string, problems: BundleProblem[]): BundleManifest | undefined {
@@ -298,21 +349,9 @@ function parseManifest(text: string, problems: BundleProblem[]): BundleManifest 
         languages: keys(schema.languages),
       },
     },
-    blobs: Array.isArray(raw.blobs)
-      ? raw.blobs.flatMap((b) =>
-          isRecord(b) && typeof b.key === 'string'
-            ? [
-                {
-                  key: b.key,
-                  node: str(b.node) ?? '',
-                  etag: nullableStr(b.etag) ?? null,
-                  size: typeof b.size === 'number' ? b.size : null,
-                  included: b.included === true,
-                },
-              ]
-            : [],
-        )
-      : [],
+    // Filled from `media.json` by the loader, which the hash covers (story 195).
+    blobs: [],
+    ...(raw.mediaManifest === MEDIA_MANIFEST ? { mediaManifest: MEDIA_MANIFEST } : {}),
     ...(isRecord(raw.carries) ? { carries: parseCarries(raw.carries) } : {}),
     ...(raw.people !== undefined && parsePeopleBlock(raw.people)
       ? { people: parsePeopleBlock(raw.people) as PeopleBlock }
@@ -355,7 +394,70 @@ function parseCarries(raw: Record<string, unknown>): Partial<Record<BundleSectio
 
 /** Why a bundle in the layout before format 4 is refused, and what to do about it. */
 export const OLD_LAYOUT =
-  'this bundle was written before crombolo 0.33.1, in a layout no longer read; rebuild it with the command that made it (bundle build, content export, export, or a created package download)'
+  'this bundle was written by an older crombolo, in a layout no longer read; rebuild it with the command that made it (bundle build, content export, export, or a created package download)'
+
+/**
+ * `media.json`, read and checked: each entry's URI must be this bundle's own
+ * `bundle://<id>/media/<key>`, because nothing outside the package is fetched
+ * yet (story 195). Undefined when there is none; a problem when `bundle.json`
+ * says there is one and it is missing or malformed.
+ */
+function readMediaManifest(
+  dir: string,
+  manifest: BundleManifest,
+  problems: BundleProblem[],
+): { blobs: BundleBlob[]; text: string } | undefined {
+  const file = join(dir, MEDIA_MANIFEST)
+  if (!manifest.mediaManifest) {
+    if (existsSync(file))
+      problems.push({ file: MEDIA_MANIFEST, message: 'bundle.json does not declare this file' })
+    return undefined
+  }
+  if (!existsSync(file)) {
+    problems.push({ file: MEDIA_MANIFEST, message: 'bundle.json declares it, and it is missing' })
+    return undefined
+  }
+  const text = readFileSync(file, 'utf8')
+  let raw: unknown
+  try {
+    raw = JSON.parse(text)
+  } catch {
+    problems.push({ file: MEDIA_MANIFEST, message: 'not valid JSON' })
+    return undefined
+  }
+  const files = isRecord(raw) && Array.isArray(raw.files) ? raw.files : undefined
+  if (!files) {
+    problems.push({ file: MEDIA_MANIFEST, message: 'has no list of files' })
+    return undefined
+  }
+  const blobs: BundleBlob[] = []
+  for (const entry of files) {
+    if (!isRecord(entry) || typeof entry.key !== 'string' || !isSafeKey(entry.key)) {
+      problems.push({ file: MEDIA_MANIFEST, message: 'lists a file with no usable key' })
+      continue
+    }
+    const uri = str(entry.uri)
+    if (uri !== undefined && uri !== mediaUri(manifest.id, entry.key)) {
+      problems.push({
+        file: MEDIA_MANIFEST,
+        message: `${entry.key} points at ${uri}, which is not this bundle's own copy; only files inside the bundle are read`,
+      })
+      continue
+    }
+    blobs.push({
+      key: entry.key,
+      node: str(entry.node) ?? '',
+      etag: nullableStr(entry.etag) ?? null,
+      size: typeof entry.size === 'number' ? entry.size : null,
+      included: uri !== undefined,
+    })
+  }
+  return { blobs, text }
+}
+
+/** A media key that stays inside `media/`. */
+const isSafeKey = (key: string): boolean =>
+  key !== '' && !key.startsWith('/') && !key.split('/').some((part) => part === '' || part === '..')
 
 /** Reads a bundle directory. `set` is undefined when it cannot be trusted at all. */
 export function loadBundle(dir: string): LoadedBundle {
@@ -383,11 +485,19 @@ export function loadBundle(dir: string): LoadedBundle {
     }),
   )
 
+  // The media files are listed in `media.json`, read here and hashed with the
+  // rest, so the list is as much a checked claim as the files it names.
+  const listed = readMediaManifest(dir, manifest, problems)
+  if (listed) {
+    manifest.blobs = listed.blobs
+    read.push({ path: MEDIA_MANIFEST, text: listed.text })
+  }
+
   // A blob the manifest says it carries has to be here, and has to be the file
   // the hash was taken over: `included` is a claim, and this is what checks it.
   for (const blob of manifest.blobs) {
     if (!blob.included) continue
-    const path = blobPath(blob.key)
+    const path = mediaPath(blob.key)
     const file = join(dir, path)
     if (!existsSync(file)) {
       problems.push({
@@ -398,6 +508,19 @@ export function loadBundle(dir: string): LoadedBundle {
     }
     blobs.set(blob.key, file)
     read.push({ path, bytes: new Uint8Array(readFileSync(file)) })
+  }
+
+  // A file under `media/` that nothing lists would travel unhashed and unread;
+  // refused, so adding a file is caught as surely as editing one.
+  const mediaDir = join(dir, MEDIA_DIR)
+  if (existsSync(mediaDir)) {
+    const carried = new Set(manifest.blobs.filter((b) => b.included).map((b) => mediaPath(b.key)))
+    for (const entry of readdirSync(mediaDir, { recursive: true, withFileTypes: true })) {
+      if (!entry.isFile()) continue
+      const path = relative(dir, join(entry.parentPath, entry.name)).split(sep).join('/')
+      if (!carried.has(path))
+        problems.push({ file: path, message: 'this file is not listed in media.json' })
+    }
   }
 
   // Every file the manifest says it carries has to be here, and has to be the
@@ -555,6 +678,6 @@ export function openBundle(
   return {
     set: { ...rest, nodes, ...(people ? { people } : {}) },
     people,
-    openBlob: (blob, bytes) => (sealedBlobs ? openBytes(key, blobPath(blob), bytes) : bytes),
+    openBlob: (blob, bytes) => (sealedBlobs ? openBytes(key, mediaPath(blob), bytes) : bytes),
   }
 }

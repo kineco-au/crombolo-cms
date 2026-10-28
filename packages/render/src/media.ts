@@ -3,6 +3,7 @@
  * what the Media Picker and Image Cropper yield — the item with its crops,
  * each crop reachable as a URL the media route resizes and cuts.
  */
+import { type MediaItemAccess, OPEN_MEDIA } from '@crombolo/core'
 import type { PublishedProperty } from './model.ts'
 
 export interface Crop {
@@ -125,9 +126,13 @@ export class PublishedMedia {
   readonly mediaType: { alias: string }
   readonly properties: PublishedProperty[]
   readonly parentId: number
+  /** Its ancestors' ids and its own, root first: `-1,1050,1063`. */
+  readonly path: string
   readonly sortOrder: number
   readonly createDate: Date
   readonly updateDate: Date
+  /** Who it says may read and change it (story 196). */
+  readonly access: MediaItemAccess
 
   constructor(init: {
     key: string
@@ -136,9 +141,11 @@ export class PublishedMedia {
     mediaTypeAlias: string
     properties: PublishedProperty[]
     parentId?: number
+    path?: string
     sortOrder?: number
     createDate?: Date
     updateDate?: Date
+    access?: MediaItemAccess
   }) {
     this.key = init.key
     this.id = init.id
@@ -146,6 +153,8 @@ export class PublishedMedia {
     this.mediaType = { alias: init.mediaTypeAlias }
     this.properties = init.properties
     this.parentId = init.parentId ?? -1
+    this.path = init.path ?? `${this.parentId},${init.id}`
+    this.access = init.access ?? OPEN_MEDIA
     this.sortOrder = init.sortOrder ?? 0
     this.createDate = init.createDate ?? new Date(0)
     this.updateDate = init.updateDate ?? this.createDate

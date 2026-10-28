@@ -162,6 +162,14 @@ operations per area — and fails CI if an implemented operation regresses.
   order. Each published cache snapshot is read in one read snapshot and
   labelled with the checkpoint it holds. Nodes compare it with the latest
   committed one to know they are behind (`rendering.md`, "Freshness").
+- **Two caches** (story 197): the page snapshot (`PublishedCache`) holds pages,
+  elements, domains, the dictionary and redirects, rebuilt whole when one of
+  them changes. Media is held apart in `MediaCache`, the items used most
+  recently within a memory budget, filled by indexed lookups and dropped item
+  by item. A media change names its items in its cache instruction and leaves
+  the page snapshot alone; a page change leaves the media cache alone; a server
+  that missed changes empties the media cache. Values that can name media are
+  read asynchronously (`rendering.md`, "The media cache").
 - **The event outbox** (story 171): a page or media change records what it
   announces in `content_event`, inside its own transaction.
   `createContentDispatcher` (`server/src/content-dispatch.ts`) turns each event

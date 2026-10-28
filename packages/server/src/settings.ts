@@ -443,6 +443,14 @@ const DECLARED = [
     description: 'Where uploaded files live on this disk, served at `/media/`.',
   },
   {
+    env: 'CROMBOLO_MEDIA_CACHE_MB',
+    kind: 'number',
+    default: '64',
+    section: 'Media',
+    description:
+      'How much memory, in megabytes, each server gives to the media items it has used most recently. Others are looked up when asked for.',
+  },
+  {
     env: 'CROMBOLO_MEDIA_STORE',
     kind: 'enum',
     values: ['filesystem', 's3', 'azure'],

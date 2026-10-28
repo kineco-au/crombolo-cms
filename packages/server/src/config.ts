@@ -263,6 +263,11 @@ export interface CromboloConfig {
   /** Where uploaded media files live; served at `/media/`. */
   mediaDir: string
   /**
+   * The media cache's memory budget in megabytes (story 197): the media items
+   * used most recently are held up to about this much, the rest looked up again.
+   */
+  mediaCacheMegabytes?: number
+  /**
    * Where the bytes of uploaded media actually go. Unset means the environment
    * decides (`CROMBOLO_MEDIA_STORE`), which defaults to `mediaDir` on this disk.
    * A site swaps in blob storage with `s3MediaStore` or `azureMediaStore`.
@@ -464,6 +469,7 @@ export const DEFAULTS = {
   schemaDir: 'schema',
   schemaRevision: '0',
   mediaDir: 'media',
+  mediaCacheMegabytes: 64,
   stylesheetsDir: 'css',
   logsDir: 'logs',
   scriptsDir: 'scripts',
@@ -630,6 +636,10 @@ export function loadConfig(
       DEFAULTS.eventRetentionDays,
     ),
     mediaDir: setting('CROMBOLO_MEDIA_DIR') ?? DEFAULTS.mediaDir,
+    mediaCacheMegabytes: positiveNumber(
+      setting('CROMBOLO_MEDIA_CACHE_MB'),
+      DEFAULTS.mediaCacheMegabytes,
+    ),
     mediaStore: undefined,
     logsDir: setting('CROMBOLO_LOGS_DIR') ?? DEFAULTS.logsDir,
     logLevel: parseLogLevel(setting('CROMBOLO_LOG_LEVEL')),
@@ -829,9 +839,15 @@ export function describeDatabase(
   }
 }
 
-export const VERSION = '0.34.0'
+export const VERSION = '0.35.0'
 
 /** A whole number of seconds from the environment; undefined when unset or not one. */
+/** A positive number from a setting, else the default. */
+function positiveNumber(raw: string | undefined, fallback: number): number {
+  const value = Number(raw)
+  return raw !== undefined && raw !== '' && Number.isFinite(value) && value > 0 ? value : fallback
+}
+
 function numberSetting(name: Parameters<typeof setting>[0]): number | undefined {
   const raw = setting(name)
   if (raw === undefined || raw.trim() === '') return undefined

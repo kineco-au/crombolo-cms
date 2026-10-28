@@ -16,7 +16,7 @@ export default class BundleExport extends BaseCommand {
     'write a subtree as a private bundle package, to move to another environment'
   static override description = [
     'The subtree, its dependencies, and what the destination must already have.',
-    'Names and the tree only, unless --include-content: values, media files (--with-blobs) and protected-page usernames, encrypted under a passphrase (asked for, or CROMBOLO_BUNDLE_PASSPHRASE). --allow-content-unencrypted writes them readable. --with-members and --with-users add people, always encrypted.',
+    'Names and the tree only, unless --include-content: values, media files (--with-media) and protected-page usernames, encrypted under a passphrase (asked for, or CROMBOLO_BUNDLE_PASSPHRASE). --allow-content-unencrypted writes them readable. --with-members and --with-users add people, always encrypted.',
   ].join('\n\n')
   static override examples = ['<%= config.bin %> bundle export --root /blog --out ./bundles/blog']
   static override flags = {
@@ -29,7 +29,12 @@ export default class BundleExport extends BaseCommand {
     only: Flags.boolean({ summary: 'the roots alone, not what is below them' }),
     drafts: Flags.boolean({ summary: 'drafts, not only what is published' }),
     'with-blueprints': Flags.boolean({ summary: 'the blueprints of its types' }),
-    'with-blobs': Flags.boolean({ summary: 'with --include-content: the media files' }),
+    'with-media': Flags.boolean({ summary: 'with --include-content: the media files' }),
+    'with-blobs': Flags.boolean({
+      summary: 'the old name for --with-media',
+      deprecated: { to: 'with-media' },
+      hidden: true,
+    }),
     'with-members': Flags.boolean({ summary: 'members, encrypted' }),
     'with-users': Flags.boolean({ summary: 'back-office users, encrypted' }),
     name: Flags.string({ summary: "the package's npm name", helpValue: '<npm name>' }),
@@ -60,7 +65,7 @@ export default class BundleExport extends BaseCommand {
       roots: flags.root,
       only: flags.only,
       drafts: flags.drafts,
-      withBlobs: flags['with-blobs'],
+      withBlobs: flags['with-media'] || flags['with-blobs'],
       withMembers: flags['with-members'],
       withUsers: flags['with-users'],
       passphrase:
@@ -103,7 +108,7 @@ export default class BundleExport extends BaseCommand {
       )
     else if (result.blobs.notCarried > 0)
       this.say(
-        `  blobs    ${result.blobs.notCarried} media file(s) are not carried — pass --with-blobs to include them`,
+        `  blobs    ${result.blobs.notCarried} media file(s) are not carried — pass --with-media to include them`,
       )
     return {
       out: here(flags.out),

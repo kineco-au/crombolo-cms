@@ -161,7 +161,10 @@ export function registerPackageHandlers(router: ManagementApiRouter, port: Packa
   })
 
   router.handle('GetPackageCreatedByIdDownload', async (ctx) => {
-    const built = await port.build(ctx.params.id as string)
+    // Without media unless asked, as every command that writes a bundle (story 195).
+    const built = await port.build(ctx.params.id as string, {
+      withMedia: ctx.url.searchParams.get('withMedia') === 'true',
+    })
     if (!built) return packageNotFound()
     return new Response(built.bytes, {
       headers: {

@@ -8,8 +8,9 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { SYSTEM_MEDIA_TYPE_KEYS } from '@crombolo/core'
 import { ComponentRepository, ContentTypeRepository } from '@crombolo/data'
+import { PublishedCache } from '@crombolo/render'
 import { siteMediaTypeFiles } from '@crombolo/schema'
-import { decodePng, encodePng } from '@crombolo/server'
+import { createPublishedContentSource, decodePng, encodePng } from '@crombolo/server'
 import { type Harness, signedInServer, V1 } from './support/harness.ts'
 
 const open: Harness[] = []
@@ -64,12 +65,13 @@ width = 4
 height = 4
 `
 
-const VIEW = `export default function Article({ model }) {
-  const hero = model.value('hero')
+const VIEW = `export default async function Article({ model }) {
+  const hero = await model.value('hero')
+  const gallery = await model.media('gallery')
   return (
     <main>
       <img class="hero" src={hero?.cropUrl({ width: 4, height: 4 })} alt={hero?.name} />
-      <ul>{model.media('gallery').map((m) => <li>{m.name}={m.url}</li>)}</ul>
+      <ul>{gallery.map((m) => <li>{m.name}={m.url}</li>)}</ul>
       <div class="body">{model.html('body')}</div>
       <img class="cover" src={model.value('cover')?.cropUrl('thumb')} />
     </main>
@@ -228,5 +230,79 @@ describe('media on pages', () => {
     // Trashed media drops out of the page
     await h.put(`${V1}/media/${other.key}/move-to-recycle-bin`, {})
     expect(await (await h.call('/home')).text()).toContain(`<ul><li>Hero=${hero.src}</li></ul>`)
+  })
+})
+
+describe('media cached apart from the pages (story 197)', () => {
+  test('a saved, moved or trashed item is dropped from the media cache, and the pages are not rebuilt', async () => {
+    const { h, image, page } = await site()
+    const hero = await image('Hero')
+    const other = await image('Other')
+    await page('Home', { hero: [pick(hero.key)], gallery: [pick(other.key), pick(hero.key)] })
+    expect(await (await h.call('/')).text()).toContain('alt="Hero"')
+    const built = h.server.cache.served()?.builtAt
+    const media = h.server.cache.media
+    expect(media?.stats().items).toBe(2)
+
+    // Renamed: the page shows the new name, from the same page snapshot
+    const read = await h.json<{ values: unknown[] }>(`${V1}/media/${hero.key}`)
+    expect(
+      (
+        await h.put(`${V1}/media/${hero.key}`, {
+          values: read.values,
+          variants: [{ culture: null, segment: null, name: 'Harbour' }],
+        })
+      ).status,
+    ).toBe(200)
+    expect(media?.stats().items).toBe(1)
+    expect(await (await h.call('/')).text()).toContain('alt="Harbour"')
+    expect(h.server.cache.served()?.builtAt).toBe(built)
+
+    // Trashed: it drops out of the page, still without a rebuild
+    await h.put(`${V1}/media/${other.key}/move-to-recycle-bin`, {})
+    expect(await (await h.call('/')).text()).toContain(`<ul><li>Harbour=${hero.src}</li></ul>`)
+    expect(h.server.cache.served()?.builtAt).toBe(built)
+  })
+
+  test('the page snapshot holds no media, and builds the same however large the library', async () => {
+    const { h, image, page } = await site()
+    await page('Home', {})
+    const statements = async () => {
+      const seen: string[] = []
+      const db = h.server.db
+      const counting = {
+        ...db,
+        query: (sql: string, params?: unknown[]) => {
+          seen.push(sql)
+          return db.query(sql, params)
+        },
+        readSnapshot: <T>(fn: (reader: typeof db) => Promise<T>) =>
+          db.readSnapshot((reader) =>
+            fn({
+              ...reader,
+              query: (sql: string, params?: unknown[]) => {
+                seen.push(sql)
+                return reader.query(sql, params)
+              },
+            }),
+          ),
+      }
+      const cache = new PublishedCache(createPublishedContentSource(counting as typeof db))
+      const snapshot = await cache.snapshot()
+      expect('media' in snapshot).toBe(false)
+      return seen.length
+    }
+    const before = await statements()
+    for (let n = 0; n < 5; n++) await image(`Extra ${n}`)
+    expect(await statements()).toBe(before)
+  })
+
+  test('a file is found through its address in the media cache, and its type decides how long it is kept', async () => {
+    const { h, image } = await site()
+    const hero = await image('Hero')
+    const response = await h.call(hero.src)
+    expect(response.status).toBe(200)
+    expect(response.headers.get('cache-control')).toContain('max-age')
+    expect(h.server.cache.media?.stats().items).toBe(1)
   })
 })

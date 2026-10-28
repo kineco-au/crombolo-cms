@@ -31,7 +31,7 @@ export interface Menu {
   items: MenuItem[]
 }
 
-/** What a menu's links resolve against: one culture's pages, and the media. */
+/** What a menu's links resolve against: one culture's pages, and the media already looked up. */
 export interface MenuLookup {
   content(key: string): PublishedContent | undefined
   media(key: string): PublishedMedia | undefined
@@ -126,6 +126,27 @@ function isSafe(url: string): boolean {
   } catch {
     return false
   }
+}
+
+/** The media items a menu links to, at any depth, so they can be looked up in one query. Pure. */
+export function menuMediaKeys(element: PublishedElement): string[] {
+  const keys: string[] = []
+  const walk = (value: unknown) => {
+    const blocks = parsed(value) as StoredBlocks | undefined
+    if (!blocks || typeof blocks !== 'object') return
+    for (const block of blocks.contentData ?? []) {
+      const own = (alias: string) => block.values?.find((v) => v.alias === alias)?.value
+      const links = parsed(own('link'))
+      const link = Array.isArray(links)
+        ? (links[0] as Record<string, unknown> | undefined)
+        : undefined
+      const key = link ? keyFromReference(link.unique ?? link.udi) : undefined
+      if (key && link?.type === 'media') keys.push(key)
+      walk(own('children'))
+    }
+  }
+  walk(element.properties.find((p) => p.alias === 'items')?.value)
+  return keys
 }
 
 /** A Menu element as the tree it describes. Pure. */

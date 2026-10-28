@@ -17,6 +17,8 @@ import {
   type ContentSet,
   loadBundle,
   MANIFEST_FILE,
+  MEDIA_MANIFEST,
+  mediaUri,
   OLD_LAYOUT,
   referenceCandidates,
   writeBundle,
@@ -186,10 +188,10 @@ describe('the bundle format', () => {
     }
   })
 
-  test('refuses a bundle in the layout before format 4, and says to rebuild it', () => {
+  test('refuses a bundle in a layout before the current format, and says to rebuild it', () => {
     const dir = onDisk(set([node()]))
     try {
-      for (const formatVersion of [1, 2, 3]) {
+      for (const formatVersion of [1, 2, 3, 4]) {
         writeFileSync(join(dir, MANIFEST_FILE), JSON.stringify({ formatVersion }))
         const { set: read, problems } = loadBundle(dir)
         expect(read).toBeUndefined()
@@ -261,52 +263,101 @@ describe('the media a bundle carries', () => {
     }
   }
 
-  test('writes the bytes beside the nodes, and records their size', () => {
-    const files = writeBundle(withBlob(), new Map([[BLOB, bytes]]))
-    const blob = files.find((file) => file.path === `blobs/${BLOB}`)
-    expect(blob?.bytes).toEqual(bytes)
+  /** `media.json`'s entries, from a written bundle. */
+  const listedIn = (files: readonly { path: string; text?: string }[]) =>
+    (
+      JSON.parse(files.find((file) => file.path === MEDIA_MANIFEST)?.text as string) as {
+        files: Array<{ key: string; size: number | null; uri?: string }>
+      }
+    ).files
 
-    const manifest = JSON.parse(
-      files.find((file) => file.path === MANIFEST_FILE)?.text as string,
-    ) as { blobs: Array<{ included: boolean; size: number }> }
-    // `included` is decided by whether the bytes were there to write, not by
-    // the flag that asked for them: a file the store had not got is not carried,
-    // and the destination is told so rather than finding nothing.
-    expect(manifest.blobs[0]?.included).toBe(true)
-    expect(manifest.blobs[0]?.size).toBe(bytes.length)
+  test('writes the bytes under media/, and lists them in media.json with a bundle URI', () => {
+    const files = writeBundle(withBlob(), new Map([[BLOB, bytes]]))
+    expect(files.find((file) => file.path === `media/${BLOB}`)?.bytes).toEqual(bytes)
+    const manifest = JSON.parse(files.find((f) => f.path === MANIFEST_FILE)?.text as string) as {
+      mediaManifest?: string
+      blobs?: unknown
+    }
+    // bundle.json holds the hash, so the list lives in a file the hash covers.
+    expect(manifest.mediaManifest).toBe(MEDIA_MANIFEST)
+    expect(manifest.blobs).toBeUndefined()
+    // `included` is decided by whether the bytes were there to write: a carried
+    // file has a URI, and its size.
+    const [entry] = listedIn(files)
+    expect(entry?.uri).toBe(mediaUri(withBlob().manifest.id, BLOB))
+    expect(entry?.uri?.startsWith('bundle://')).toBe(true)
+    expect(entry?.size).toBe(bytes.length)
   })
 
-  test('leaves the manifest honest when the bytes were not there to carry', () => {
+  test('lists a file it could not carry without a URI, rather than claiming it', () => {
     const files = writeBundle(withBlob())
-    expect(files.some((file) => file.path.startsWith('blobs/'))).toBe(false)
-    const manifest = JSON.parse(
-      files.find((file) => file.path === MANIFEST_FILE)?.text as string,
-    ) as { blobs: Array<{ included: boolean }> }
-    expect(manifest.blobs[0]?.included).toBe(false)
+    expect(files.some((file) => file.path.startsWith('media/'))).toBe(false)
+    expect(listedIn(files)[0]?.uri).toBeUndefined()
+  })
+
+  test('encodes a key that is a path or not ASCII, so the URI is a URI', () => {
+    expect(mediaUri('kit', '2026/10/κλειδί one.png')).toBe(
+      'bundle://kit/media/2026/10/%CE%BA%CE%BB%CE%B5%CE%B9%CE%B4%CE%AF%20one.png',
+    )
   })
 
   test('reads them back, and hands the reader where each one is', () => {
     const dir = onDisk(withBlob(), new Map([[BLOB, bytes]]))
     const loaded = loadBundle(dir)
     expect(loaded.problems).toEqual([])
-    expect(loaded.blobs.get(BLOB)).toBe(join(dir, 'blobs', BLOB))
+    expect(loaded.blobs.get(BLOB)).toBe(join(dir, 'media', BLOB))
+    expect(loaded.set?.manifest.blobs[0]?.included).toBe(true)
     rmSync(dir, { recursive: true, force: true })
   })
 
   test('refuses a bundle whose media was edited, or never arrived', () => {
     const dir = onDisk(withBlob(), new Map([[BLOB, bytes]]))
-    writeFileSync(join(dir, 'blobs', BLOB), new Uint8Array([0, 0, 0, 0]))
-    // The hash covers the bytes, so `--with-blobs` is a claim the reader checks
-    // rather than a line in a manifest.
+    writeFileSync(join(dir, 'media', BLOB), new Uint8Array([0, 0, 0, 0]))
+    // The hash covers the bytes, so including them is a claim the reader checks.
     expect(
       loadBundle(dir)
         .problems.map((p) => p.message)
         .join('\n'),
     ).toContain('integrity')
 
-    rmSync(join(dir, 'blobs', BLOB))
+    rmSync(join(dir, 'media', BLOB))
     const gone = loadBundle(dir)
     expect(gone.problems.map((p) => p.message).join('\n')).toContain('carried')
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  test('refuses an edited media.json: the list is inside the hash', () => {
+    const dir = onDisk(withBlob(), new Map([[BLOB, bytes]]))
+    const text = readFileSync(join(dir, MEDIA_MANIFEST), 'utf8')
+    writeFileSync(join(dir, MEDIA_MANIFEST), text.replace(/"size": \d+/, '"size": 1'))
+    expect(
+      loadBundle(dir)
+        .problems.map((p) => p.message)
+        .join('\n'),
+    ).toContain('integrity')
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  test('refuses a file under media/ that media.json does not list', () => {
+    const dir = onDisk(withBlob(), new Map([[BLOB, bytes]]))
+    writeFileSync(join(dir, 'media', 'stowaway.png'), new Uint8Array([1]))
+    const problems = loadBundle(dir).problems
+    expect(problems).toContainEqual({
+      file: 'media/stowaway.png',
+      message: 'this file is not listed in media.json',
+    })
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  test('reads only files inside the bundle: a URI elsewhere is refused by name', () => {
+    const dir = onDisk(withBlob(), new Map([[BLOB, bytes]]))
+    const text = readFileSync(join(dir, MEDIA_MANIFEST), 'utf8')
+    writeFileSync(
+      join(dir, MEDIA_MANIFEST),
+      text.replace(/"uri": "[^"]+"/, '"uri": "https://elsewhere.example/a.png"'),
+    )
+    const messages = loadBundle(dir).problems.map((p) => p.message)
+    expect(messages.join('\n')).toContain("not this bundle's own copy")
     rmSync(dir, { recursive: true, force: true })
   })
 })

@@ -107,13 +107,16 @@ alias = "grid"
 name = "Grid"
 type = "featureGrid"
 `,
-  'components/page.tsx': `export default function Page({ model }) {
+  'components/page.tsx': `export default async function Page({ model }) {
   const pick = model.value('pick')
+  // Pickers that can name media are read asynchronously (story 197).
+  const related = await model.value('related')
+  const links = await model.value('links')
   return (
     <main>
       <p class="pick">{pick ? pick.name + ' at ' + pick.url : 'none'}</p>
-      <ul class="related">{model.value('related').map((p) => <li>{p.name}</li>)}</ul>
-      <ul class="links">{model.value('links').map((l) => <li><a href={l.url} target={l.target ?? undefined}>{l.name}</a></li>)}</ul>
+      <ul class="related">{related.map((p) => <li>{p.name}</li>)}</ul>
+      <ul class="links">{links.map((l) => <li><a href={l.url} target={l.target ?? undefined}>{l.name}</a></li>)}</ul>
       {model.value('blocks').map((b) => (
         <section class="block">{b.content.text('headline')} → {b.content.value('target')?.name}</section>
       ))}
@@ -348,8 +351,9 @@ describe('value converters', () => {
     const types = generateTypes(loadSchemaDirectory(join(root, 'schema')).set)
     expect(types).toContain("from '@crombolo/crombolo'")
     expect(types).toContain('"pick"?: PublishedContent | null')
-    expect(types).toContain('"related"?: PublishedContent[]')
-    expect(types).toContain('"links"?: Link[]')
+    // Values that can name media are read asynchronously (story 197)
+    expect(types).toContain('"related"?: Promise<PublishedContent[]>')
+    expect(types).toContain('"links"?: Promise<Link[]>')
     expect(types).toContain(
       '"blocks"?: Array<BlockItem & { content: TypedElement<Feature>; settings: PublishedElement | null }>',
     )

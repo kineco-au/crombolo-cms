@@ -40,6 +40,9 @@ import { formsMigration } from './forms.ts'
 import { groupPermissionsMigration } from './group-permissions.ts'
 import { identityMigration } from './identity.ts'
 import { logViewerMigration } from './log-viewer.ts'
+import { mediaAccessMigration } from './media-access.ts'
+import { mediaCacheMigration } from './media-cache.ts'
+import { mediaMemberUploadsMigration } from './media-member-uploads.ts'
 import { mediaPermissionsMigration } from './media-permissions.ts'
 import { memberPropertyTypeMigration } from './member-property-type.ts'
 import { membersMigration } from './members.ts'
@@ -113,4 +116,7 @@ export const cromboloPlan = new MigrationPlan([
   contentCheckpointMigration,
   dropAssistantMigration,
   contentAppliedMigration,
+  mediaAccessMigration,
+  mediaCacheMigration,
+  mediaMemberUploadsMigration,
 ])

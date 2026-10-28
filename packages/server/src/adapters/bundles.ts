@@ -180,6 +180,7 @@ export function createPackagePort(db: Db, options: PackagePortOptions): PackageP
    */
   const contentEntries = async (
     from: PackageDefinition,
+    withMedia: boolean,
   ): Promise<{ set: ContentSet | undefined; blobs: ReadonlyMap<string, Uint8Array> }> => {
     const groups: Array<{ refs: string[]; descendants: boolean }> = [
       {
@@ -208,7 +209,7 @@ export function createPackagePort(db: Db, options: PackagePortOptions): PackageP
         descendants: group.descendants,
         snapshot: 'published',
         blueprints: false,
-        withBlobs: true,
+        withBlobs: withMedia,
         siteName: options.siteName,
         nodeId: options.nodeId,
       })
@@ -220,7 +221,7 @@ export function createPackagePort(db: Db, options: PackagePortOptions): PackageP
     if (!merged) return { set: undefined, blobs: new Map() }
 
     const { bytes } =
-      blobKeys.size > 0
+      withMedia && blobKeys.size > 0
         ? await readBlobs(options.mediaStore, [...blobKeys])
         : { bytes: new Map<string, Uint8Array>() }
     return { set: merged, blobs: bytes }
@@ -272,7 +273,7 @@ export function createPackagePort(db: Db, options: PackagePortOptions): PackageP
      * name, a version and the core it was written for, so the download is
      * something `bun add ./file.tgz` and `bun publish` take as it is.
      */
-    async build(id): Promise<BuiltPackage | undefined> {
+    async build(id, buildOptions = {}): Promise<BuiltPackage | undefined> {
       const row = await bundles.byId(id)
       if (!row) return undefined
       const from = definition(row)
@@ -298,7 +299,7 @@ export function createPackagePort(db: Db, options: PackagePortOptions): PackageP
         },
       )
 
-      const content = await contentEntries(from)
+      const content = await contentEntries(from, buildOptions.withMedia === true)
       // A package with nothing picked is still a bundle: an empty selection
       // produces an empty set rather than throwing, which is what gives a
       // schema-only package a manifest of its own.

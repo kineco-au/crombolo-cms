@@ -31,9 +31,10 @@ components = ["everyEditor"]
 default-component = "everyEditor"
 ${EDITORS.map((d) => `\n[[property]]\nalias = "${d.alias}"\nname = "${d.name}"\ntype = "${d.alias}"\n`).join('')}`
 
-const VIEW = `export default function EveryEditor({ model }) {
+const VIEW = `export default async function EveryEditor({ model }) {
   const show = (v) => (v === null || v === undefined ? 'null' : typeof v === 'object' ? JSON.stringify(v) : String(v))
-  return <dl>{model.properties.map((p) => <><dt>{p.alias}</dt><dd>{show(model.value(p.alias))}</dd></>)}</dl>
+  const values = await Promise.all(model.properties.map((p) => model.value(p.alias)))
+  return <dl>{model.properties.map((p, i) => <><dt>{p.alias}</dt><dd>{show(values[i])}</dd></>)}</dl>
 }
 `
 

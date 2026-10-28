@@ -27,6 +27,8 @@ interface RenderScope {
   blockComponent?: BlockComponentLoader
   /** A draft is being previewed in the back office. */
   preview?: boolean
+  /** The signed-in member's anti-forgery token, for `<AntiforgeryMeta />`. */
+  antiforgery?: string
 }
 
 /** Loads `components/blocks/<alias>.tsx`'s default export, or nothing when there is none. */
@@ -39,6 +41,7 @@ export interface RenderScopeOptions {
   search?: SiteSearchPort
   blockComponent?: BlockComponentLoader
   preview?: boolean
+  antiforgery?: string
 }
 
 /**
@@ -96,6 +99,12 @@ export function currentSiteSearch(): { page: PageProps; search: SiteSearchPort |
   if (!scope.page)
     throw new Error('search() was called inside a context Provider rendered outside a page.')
   return { page: scope.page, search: scope.search }
+}
+
+/** The signed-in member's anti-forgery token for this render, or undefined for a visitor. */
+export function currentAntiforgery(): string | undefined {
+  const scope = within('<AntiforgeryMeta />')
+  return scope.page?.member ? scope.antiforgery : undefined
 }
 
 /**

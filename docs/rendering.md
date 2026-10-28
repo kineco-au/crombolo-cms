@@ -70,6 +70,19 @@ Types are a separate question, because they need the compiler and a site may not
 have one: when `typescript` is installed the command also runs `tsc --noEmit`
 over the site, and when it is not it says so rather than quietly checking less.
 
+Values that can name media are read asynchronously (story 197, "The media
+cache" below), so a view written before that reads a promise as if it were the
+value. The check finds it both ways:
+
+- **Without the compiler.** `model.media('hero')[0]`, a property read off it, a
+  destructuring `const [hero] = model.media(…)` or a `for … of` over it is a
+  problem, named with its line and the change to make:
+  `(await model.media('hero'))`, in an async component (`unawaitedMedia`).
+  Passing the promise on, or returning it, is left alone.
+- **With it.** Generated types give the pickers, links and rich text their
+  `Promise<…>` types, so `tsc` reports every other use, and each message about
+  one says to await it in an async component (`withAwaitHint`).
+
 `templateAliasesIn` scans the whole tree and the schema validator checks against
 it, so a content type naming a template that no file provides is refused by
 name. A component nobody declares is left alone: that is the normal case, not a
@@ -150,13 +163,16 @@ Values escape by default: `renderChild` runs everything but `RawHtml` through
 ways.
 
 `model.html('alias')` returns `RawHtml` and is the short route — rich text hands a
-template its markup, so this is what a body field wants.
+template its markup, so this is what a body field wants. Rich text that links to
+media is a promise of it, which JSX renders as it is: `<div>{model.html('body')}</div>`
+needs no `await`. `text()` never waits, so a rich text's media links are `#`
+there: write rich text with `html()`.
 
 The **`setInnerHTML` attribute** covers markup from anywhere else, and takes React's
 `{ __html }` shape with one addition:
 
 ```tsx
-<div setInnerHTML={{ __html: model.text('bodyText'), dangerously: true }} />
+<div setInnerHTML={{ __html: markdownToHtml(model.text('notes')), dangerously: true }} />
 ```
 
 Without `dangerously` the content is **escaped**. That is the deliberate difference
@@ -394,6 +410,12 @@ export default function Page({ model, member }: PageProps) {
 }
 ```
 
+A page whose scripts call a server bundle's member routes puts
+`<AntiforgeryMeta />` in its layout's `<head>`: it writes the signed-in
+member's anti-forgery token, which `/crombolo/bundle.js` sends with their
+writes, and nothing for a visitor (`docs/bundles.md`, "Routes for members and
+visitors").
+
 ### `value()` — the ergonomic core
 
 `@Model.Value("alias")` is the single most-used API in an Umbraco view, and its
@@ -450,9 +472,28 @@ own.
 Umbraco converts in three memoised stages (source → intermediate → object),
 with cache levels per converter. Here a value is converted when a template
 reads it (`convertValue`, by editor alias, with the data type's
-configuration), against the published snapshot; see *Property values* below
-for what each editor yields. Memoising per request, which Umbraco does for
-block elements, is left until profiling asks for it.
+configuration), against the published snapshot and the media cache; see
+*Property values* below for what each editor yields. Memoising per request,
+which Umbraco does for block elements, is left until profiling asks for it.
+
+**Read asynchronously, where media can be named** (story 197). Media is not in
+the page snapshot, so the four editors that can name it look it up as they are
+read, and their values are promises:
+
+| Accessor | Returns | In a view |
+| --- | --- | --- |
+| `model.media(alias)` | `Promise<MediaWithCrops[]>` | `const [hero] = await model.media('hero')` |
+| `model.value(alias)` for a Media Picker | `Promise<MediaWithCrops \| MediaWithCrops[] \| null>` | `const hero = await model.value('hero')` |
+| `model.value(alias)` for a Multinode Treepicker | `Promise<Array<PublishedContent \| PublishedMedia>>` | `const related = await model.value('related')` |
+| `model.value(alias)` for a Multi URL Picker | `Promise<Link[]>` | `const links = await model.value('links')` |
+| `model.html(alias)` | `RawHtml`, or `Promise<RawHtml>` when it links to media | `{model.html('body')}`, unchanged |
+| `model.value(alias)` for rich text | the markup, or a promise of it when it links to media | prefer `html()` |
+
+Elements have the same: a block's `content.media('image')`, read in the block's
+own async component. Every other editor is read synchronously as before, and
+`text()` never waits. A component that awaits is `async`, which JSX renders as
+any other (see *Async components*). Lookups made in the same tick go to the
+database as one query, so a page's pickers read together cost one.
 
 ## Request pipeline
 
@@ -596,13 +637,13 @@ cache supplies (`@crombolo/render` `values.ts` and `media.ts`):
 | Editor                  | `model.value()`                                                                                             |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------- |
 | Content Picker          | the published page, or null                                                                                 |
-| Multinode Treepicker    | the published pages, in order                                                                               |
+| Multinode Treepicker    | a promise of the published pages and media items, in order                                                  |
 | Element Picker          | `PublishedElement[]`, always a list, dropping any not published in the page's culture                       |
-| Multi URL Picker        | `Link[]`, with page and media URLs resolved                                                                 |
+| Multi URL Picker        | a promise of `Link[]`, with page and media URLs resolved                                                    |
 | Block List / Block Grid | items with `content` and `settings` as `PublishedElement`s (same `value()`, and `contentType.alias` names the element type); grid items add spans, `areaGridColumns` and areas (with their alias and spans), and the list carries `gridColumns`. `<Blocks>` renders them (see "Blocks") |
-| Media Picker            | `MediaWithCrops`, one or a list as the data type says; `model.media(alias)` always lists                    |
+| Media Picker            | a promise of `MediaWithCrops`, one or a list as the data type says; `await model.media(alias)` always lists |
 | Image Cropper           | `ImageCropperValue` (`src`, `crops`, `focalPoint`, `cropUrl()`)                                             |
-| Rich text               | the markup, with `/{localLink:…}` links resolved (`#` when gone)                                            |
+| Rich text               | the markup, with `/{localLink:…}` links resolved (`#` when gone); a promise when a link names media          |
 
 References to anything unpublished or deleted are dropped. `crombolo
 generate` types all of these, down to a block editor's element types.
@@ -698,6 +739,65 @@ fallbacks, else `''` (Umbraco's `GetDictionaryValue`).
 Published only — drafts are never cached. The writing node invalidates its own
 cache after the change commits. Every other node learns of the change through
 the content checkpoint (story 174, below).
+
+**Two caches** (story 197). The page snapshot holds pages, elements, domains,
+the dictionary and redirects, and is rebuilt whole when any of them changes.
+Media is held apart, in the media cache below, item by item: a library of
+millions of files is never loaded, and an upload never rebuilds the pages.
+
+| A change to | The page snapshot | The media cache |
+| --- | --- | --- |
+| a page, an element, a domain, the dictionary, a redirect, URL settings | rebuilt | kept |
+| a media item: saved, created, moved, sorted, trashed, restored, deleted | kept | drops the item, and everything below a moved one |
+| an item's own access settings | kept | drops the item |
+| the schema, a bundle or site import, a revert, `crombolo cache rebuild` | rebuilt | emptied |
+| anything a server missed (a gap, or more than 5,000 changes behind) | rebuilt if pages changed | emptied |
+
+### The media cache
+
+`MediaCache` (`packages/render/src/media-cache.ts`) answers `byKey`, `byKeys`
+and `byUrl`, all asynchronous, from a least-recently-used map of
+`PublishedMedia` held within a memory budget.
+
+- **Filled by indexed queries.** A miss reads the item by its node key, or by
+  the `/media/…` address `content.file_url` indexes (story 196), with its
+  current values and its own access settings: `createMediaSource` over
+  `DocumentRepository.loadCurrent({ keys })` or `({ urls })`. Nothing reads the
+  library whole.
+- **Shared lookups.** Lookups made in the same tick are sent as one query, and
+  one already in flight for a key is shared rather than repeated. A miss is not
+  remembered, so a new item is found at once.
+- **Within a budget.** Each item's size is estimated from the JSON of its
+  values, its name and path; once the total passes the budget the least
+  recently used are evicted. `CROMBOLO_MEDIA_CACHE_MB` sets it, 64 by default
+  (`mediaCacheMegabytes`): a plain image estimates at under a kilobyte, an
+  image with crops and several values at a few, so some tens of thousands. An
+  item larger than the whole budget is answered and not held.
+- **Per item.** A media operation's cache instruction is `{ media: [keys],
+  moved?: [paths] }`: the items it touched, and the old paths of any that moved,
+  so their descendants, whose paths changed with them, are dropped too
+  (`dropUnder`). A load in flight when its item is dropped answers its caller
+  and is not kept.
+- **Every server, its own changes included.** Each poll reads every instruction
+  numbered after the checkpoint it followed last, in checkpoint order
+  (`instructionsBetween`, indexed on `cache_instruction.checkpoint`), and applies
+  what each says (`instructionEffects`). Checkpoints count up by one, so a
+  number with no instruction means one was pruned before this server read it:
+  the server cannot know what it missed, so it empties the media cache
+  (`clear()`) and refills it as items are asked for. So it does when more than
+  5,000 changes behind (`MEDIA_REPLAY_LIMIT`), or when the count was reset.
+- **The page snapshot stays.** A change that touched only media leaves the
+  pages alone, so the poller tells the page cache its snapshot also holds that
+  checkpoint (`PublishedCache.covered`) rather than rebuilding it. Only a
+  page change after its own checkpoint rebuilds it.
+
+The published and draft caches share one media cache: media has no drafts.
+Rendering reads it through the value context (`media: (key) =>
+media.byKey(key)`), `/media/…` through `byKey` of the item `file_url` names,
+the Delivery API through `byKeys` once the database has paged the keys, and
+search and sharing (`<SeoHead>`, `seo=true`, the default share image) through
+`byKey`. Menus are read whole before a page renders, their media in one
+`byKeys`, so `menu('main')` stays synchronous.
 
 ### Freshness: the content checkpoint
 
@@ -878,7 +978,9 @@ name, else the link's text; `content` is the page, for `aria-current`.
   script (`javascript:` and the like) is dropped as the multi-URL picker drops it.
 - **Cached with the published content.** Menus are published elements, held in
   the published cache per culture like any other, so publishing a menu or a page
-  in it is what changes it.
+  in it is what changes it. The media items a menu links to are read from the
+  media cache in one lookup, before the page renders, so `menu()` stays
+  synchronous and a renamed file shows its new name at once.
 - **The alias** is filled from the menu's name when left empty — "Main
   navigation" becomes `mainNavigation`, Umbraco's safe-alias rule
   (`safeAlias` in core) — and stays when the menu is renamed. Two menus may not
@@ -915,6 +1017,99 @@ etag — so replacing an original invalidates its crops with nothing tracking
 that, and one node's work serves every node. Bun's `Image` decodes, resizes
 and encodes; cropping and padding go through raw RGBA pixels via a small PNG
 codec in `@crombolo/server` `imaging.ts`.
+
+### Protected media
+
+A media folder or item can say which member groups may see it and which may
+change it (story 196), from **Permissions** on its actions menu in the back
+office. A file whose folder sets nothing is open to anyone with its address,
+as before.
+
+- **The nearest rule wins.** A folder's rule governs everything below it, and
+  a rule on a child folder or item replaces it: stricter, looser, or open to
+  anyone again. Rules are rows in `media_access` and `media_access_rule`, one
+  per folder or item given permissions, with groups named as page rules name
+  them.
+- **A folder sets what files added later get**: who may see them (anyone with
+  the link, members of its groups, or only the member who added the file) and
+  who may change them (its groups, the member who added it, or no member).
+  These are stamped on each new file as it is created, as its `read_policy` and
+  `write_policy` columns on `content`, so changing a folder's defaults later
+  affects only files created afterwards, and millions of files cost no rule
+  rows. A file's own setting can be changed at any time; `inherit` (stored as
+  null) follows the nearest rule.
+- **The creator.** `content.creator_member_key` records the member who created
+  a file. "Only the member who added it" means that member, and being its
+  creator grants nothing else. Members create media through a server bundle
+  ([below](#what-members-may-upload)).
+- **Who else may read.** A back-office user with the Media section may read a
+  protected file within their Media start nodes; an API client acts with its
+  user's rights. A Delivery API member token counts as the member's site
+  cookie. The check is `memberMay` in `@crombolo/core`, one function for
+  `/media/`, the Delivery API and the back office.
+
+**Serving.** Every `/media/…` request finds the media item that owns the file
+through `content.file_url`, an indexed column written whenever the file value
+is saved. A file a page's own upload field holds is listed in `node_file`, and
+a back-office user's avatar is on their account: both are served as before. A
+key nothing owns answers 404 — a visitor's form upload among them, which a
+workflow still attaches — and `.cache/` and `.temp/` are never reachable by
+URL.
+
+- A protected file, and every crop of it, is checked, then streamed by this
+  server with `Cache-Control: private, no-store`. It is **never redirected** to
+  the store's public address, whatever the store.
+- Anyone who may not read it gets **404**, so a shared or guessed link does not
+  confirm that the file exists.
+- A file in the recycle bin has left the folder that protected it, so only a
+  back-office user may read it.
+- An open file keeps its caching headers and its redirect.
+
+**What a CDN must not front.** A CDN or a public bucket in front of the media
+store serves whatever it holds to anyone who has the address, and this server
+never sees the request. Keep protected files in a store nothing public serves:
+point `CROMBOLO_MEDIA_PUBLIC_URL` (or the S3 or Azure public address) only at a
+store whose files are all open, and never cache `/media/` at a CDN by path
+alone, since a protected file's answer is `private`. The server says so at boot
+when a store has a public address.
+
+**Pages.** A media picker on a page still renders the file's URL; the file
+itself is guarded when it is fetched. A page's own access is separate, as
+before.
+
+**The item behind a file** is read through the media cache (story 197): its
+type and its own `cacheKeepFor` decide how long an open file may be kept, and
+its key tags the answer when tagging is on. No map over all media is built.
+
+#### What members may upload
+
+A member uploads only through a server bundle's `media` capability
+(`docs/bundles.md`, "Media as the member", story 198), and only into a folder
+whose rule lets one of their groups change it. The same rule says what they may
+upload there, under **File types members may upload here** in the Permissions
+panel:
+
+- **The file types**, ticked from a fixed list: JPEG, PNG, GIF, WebP, AVIF,
+  HEIC, PDF, MP3, WAV, MP4 and QuickTime (`MEMBER_FILE_TYPES` in
+  `@crombolo/core`). Nothing is accepted that is not ticked, so a folder with
+  none ticked, or no rule at all, accepts nothing from a member. A file is
+  recognised by its first bytes, and its extension must agree; the site's
+  disallowed extensions still apply. A bundle may narrow the list for its own
+  uploads, never widen it.
+- **The largest file**, in MB, optional. The smallest of this, the bundle's own
+  limit and the site's applies, counted while the upload is read.
+
+Both are part of the folder's rule (`media_access.member_types`, a
+comma-separated list, and `member_max_bytes`, migration 052), so they are
+inherited by the folders below and replaced, with the rest of the rule, by a
+nearer one: give a subfolder its own rule and tick its types again. An image a
+member uploads is stored upright and without its metadata; see the bundle docs.
+
+A folder a bundle uses shows **Used by** with the bundle's name, in the
+Permissions panel and the media workspace, and the back office asks before it,
+or a folder above it, is renamed, moved or deleted, since the bundle finds it
+by its path and the site will not start again until the bundle is changed to
+match.
 
 ## Components
 

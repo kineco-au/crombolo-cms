@@ -49,6 +49,35 @@ export type Actor =
       note?: string
     }
 
+/**
+ * A signed-in member, acting through a server bundle (story 198): media
+ * operations only, with the media permissions deciding what they may do. A
+ * document operation never takes one, which `Actor` leaving it out enforces.
+ */
+export interface MemberActor {
+  kind: 'member'
+  member: { key: string; name: string; groups: readonly string[] }
+  /** What they acted through, for the audit log: the bundle's name. */
+  via?: string
+  origin: ActorOrigin
+}
+
+/** Who a media write is for: anyone a document write may be for, or a member. */
+export type MediaActor = Actor | MemberActor
+
+export const memberActor = (
+  member: MemberActor['member'],
+  options: { via?: string } & Omit<ActorOrigin, 'source'> = {},
+): MemberActor => {
+  const { via, ...origin } = options
+  return {
+    kind: 'member',
+    member: { key: member.key, name: member.name, groups: [...member.groups] },
+    via,
+    origin: { source: 'request', ...origin },
+  }
+}
+
 export const userActor = (
   principal: ContentPrincipal,
   origin: Omit<ActorOrigin, 'source'> = {},
@@ -77,21 +106,27 @@ export const systemActor = (
 })
 
 /** The name an audit entry or a notification gives the actor. */
-export const actorName = (actor: Actor): string =>
+export const actorName = (actor: MediaActor): string =>
   actor.kind === 'user'
     ? actor.principal.name
     : actor.kind === 'system'
       ? (actor.user?.name ?? actor.name)
-      : actor.name
+      : actor.kind === 'member'
+        ? actor.member.name
+        : actor.name
 
 /** The user's key, when the actor is one; versions record it as their author. */
-export const actorUserKey = (actor: Actor): string | null =>
+export const actorUserKey = (actor: MediaActor): string | null =>
   actor.kind === 'user'
     ? actor.principal.id
     : actor.kind === 'system'
       ? (actor.user?.id ?? null)
       : null
 
+/** The member's key, when the actor is one. */
+export const actorMemberKey = (actor: MediaActor): string | null =>
+  actor.kind === 'member' ? actor.member.key : null
+
 /** What the actor says alongside the change, if anything. */
-export const actorNote = (actor: Actor): string | undefined =>
+export const actorNote = (actor: MediaActor): string | undefined =>
   actor.kind === 'system' ? actor.note : undefined

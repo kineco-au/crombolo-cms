@@ -10,6 +10,15 @@
  * and request, so each variant is computed once.
  */
 import { deflateSync, inflateSync } from 'node:zlib'
+import {
+  heifHasMetadata,
+  type ImageLocation,
+  readExif,
+  stripGif,
+  stripJpeg,
+  stripPng,
+  stripWebp,
+} from './image-metadata.ts'
 import type { MediaStore, StoredFile } from './media-store.ts'
 
 // --------------------------------------------------------------------- PNG
@@ -431,4 +440,93 @@ export function resizeQuery(options: {
   if (options.format) params.set('format', options.format)
   const query = params.toString()
   return query ? `?${query}` : ''
+}
+
+// ------------------------------------------------------- a member's photo
+
+/** What a member's image carried, handed to the bundle that took it (story 198). */
+export interface MemberImageFacts {
+  width: number
+  height: number
+  location?: ImageLocation
+  /** When it was taken, as the camera said: `2026-10-28T09:15:00`, with an offset if it gave one. */
+  takenAt?: string
+}
+
+/** An image that cannot be stored without its metadata, so is not stored at all. */
+export class ImageRefusedError extends Error {}
+
+/** Turning a picture upright, as EXIF numbers its orientations: a rotation, then a mirror. */
+const UPRIGHT: Record<number, { rotate?: number; flip?: boolean; flop?: boolean }> = {
+  2: { flop: true },
+  3: { rotate: 180 },
+  4: { flip: true },
+  5: { rotate: 90, flop: true },
+  6: { rotate: 90 },
+  7: { rotate: 270, flop: true },
+  8: { rotate: 270 },
+}
+
+/**
+ * A member's image made safe to keep: turned the way its EXIF says is up, then
+ * re-encoded in its own format with every metadata block stripped, so nothing
+ * private is ever served. What the metadata said is returned beside it. A GIF
+ * keeps its frames and loses only its comments and application blocks. A
+ * format that cannot be re-encoded here, or that comes back still carrying
+ * metadata, is refused.
+ */
+export async function prepareMemberImage(
+  bytes: Uint8Array,
+  format: string,
+): Promise<{ bytes: Uint8Array; facts: MemberImageFacts }> {
+  const exif = readExif(bytes, format)
+  const said = {
+    ...(exif.location ? { location: exif.location } : {}),
+    ...(exif.takenAt ? { takenAt: exif.takenAt } : {}),
+  }
+  try {
+    if (format === 'gif') {
+      const stripped = stripGif(bytes)
+      const { width, height } = await new Bun.Image(stripped).metadata()
+      return { bytes: stripped, facts: { width, height, ...said } }
+    }
+    let image = new Bun.Image(bytes, { autoOrient: false })
+    const upright = UPRIGHT[exif.orientation ?? 1]
+    if (upright?.rotate) image = image.rotate(upright.rotate)
+    if (upright?.flip) image = image.flip()
+    if (upright?.flop) image = image.flop()
+    let out: Uint8Array
+    switch (format) {
+      case 'jpeg':
+        out = stripJpeg(await image.jpeg({ quality: 90 }).bytes())
+        break
+      case 'png':
+        out = stripPng(await image.png().bytes())
+        break
+      case 'webp': {
+        const lossless = new TextDecoder().decode(bytes.subarray(12, 16)) === 'VP8L'
+        out = stripWebp(await image.webp(lossless ? { lossless: true } : { quality: 90 }).bytes())
+        break
+      }
+      case 'heic':
+      case 'avif':
+        out = await (format === 'heic'
+          ? image.heic({ quality: 90 })
+          : image.avif({ quality: 90 })
+        ).bytes()
+        if (heifHasMetadata(out)) throw new ImageRefusedError()
+        break
+      default:
+        throw new ImageRefusedError()
+    }
+    const { width, height } = await new Bun.Image(out).metadata()
+    return { bytes: out, facts: { width, height, ...said } }
+  } catch (error) {
+    const code = (error as { code?: string }).code
+    if (error instanceof ImageRefusedError || code === 'ERR_IMAGE_FORMAT_UNSUPPORTED')
+      throw new ImageRefusedError(
+        'This kind of image cannot be prepared here, so it was not uploaded. Try a JPEG or PNG.',
+      )
+    throw new ImageRefusedError('The image could not be read, so it was not uploaded.')
+  }
 }

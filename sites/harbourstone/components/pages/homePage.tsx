@@ -4,9 +4,9 @@ import { Figures, highlightsOf } from '../shared/highlights.tsx'
 import { Layout } from '../shared/layout.tsx'
 import { Eyebrow, SectionIntro } from '../shared/section-intro.tsx'
 
-export default function HomePage({ model, nav }: PageProps) {
-  const hero = model.media('heroImage')[0]
-  const styleImage = model.media('styleImage')[0]
+export default async function HomePage({ model, nav }: PageProps) {
+  const hero = (await model.media('heroImage'))[0]
+  const styleImage = (await model.media('styleImage'))[0]
   // The range is whichever child is the list, rather than a hard-coded path:
   // rename or move it in the backoffice and these two sections follow.
   const range = nav.children(model).find((child) => child.contentType.alias === 'whiskyList')
@@ -36,10 +36,7 @@ export default function HomePage({ model, nav }: PageProps) {
       <section class="split">
         <div>
           <SectionIntro eyebrow={model.text('styleEyebrow')} heading={model.text('styleHeading')} />
-          <div
-            class="prose"
-            setInnerHTML={{ __html: model.text('styleIntro'), dangerously: true }}
-          />
+          <div class="prose">{model.html('styleIntro')}</div>
           <Figures items={highlightsOf(model.value('stats'))} />
         </div>
         {styleImage ? (

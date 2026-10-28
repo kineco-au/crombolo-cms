@@ -123,7 +123,11 @@ Three things follow from the interface rather than from any one store:
 - **Serving.** By default this server streams the bytes, which keeps a bucket
   private; it streams from the local file when the store has one, so a
   disk-backed site still gets `sendfile`. A store that returns a `publicUrl`
-  gets browsers redirected to it instead.
+  gets browsers redirected to it instead — except for a protected file, which
+  is always streamed by this server, `private, no-store` (story 196). Anything
+  the public address serves is open to whoever has the link, so keep protected
+  files in a store nothing public fronts ([`rendering.md`](rendering.md),
+  "Protected media").
 - **Image variants.** Crops and resizes are cached _in the store_, under
   `.cache/`, keyed by the source's etag — so a replaced original invalidates its
   crops with nothing tracking that, and one node's work serves every node.

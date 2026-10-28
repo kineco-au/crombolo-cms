@@ -8,6 +8,7 @@
 import {
   type DocumentValue,
   mediaFileOf,
+  memberMay,
   normaliseUuid,
   ObjectTypes,
   SystemNodes,
@@ -19,11 +20,13 @@ import {
   DocumentRepository,
   type DocumentRepositoryOptions,
   InvalidParentError,
+  MediaAccessRepository,
   NodeRepository,
   type NodeRow,
+  ruleOf,
   WriteRejectedError,
 } from '@crombolo/data'
-import { type Actor, actorName, actorUserKey } from './actor.ts'
+import { actorName, actorUserKey, type MediaActor } from './actor.ts'
 import type { Refusal, Result, SelectionResult } from './operations.ts'
 import { mayChangeMedia } from './policy.ts'
 
@@ -34,6 +37,13 @@ export interface MediaInput {
   parentKey: string | null
   values: DocumentValue[]
   variants: Array<{ culture: string | null; segment: string | null; name: string }>
+  /** The member who created it, recorded as its creator (story 196); a member actor is. */
+  creatorMemberKey?: string | null
+  /**
+   * False leaves it following the rule above rather than stamping the defaults
+   * that rule sets for new files: for a folder made to hold them (story 198).
+   */
+  stamp?: boolean
 }
 
 export type MediaEvent =
@@ -50,8 +60,8 @@ export type MediaEvent =
 
 /** Where a media operation records what it did, inside the change's transaction. */
 export interface MediaEventSink {
-  record(tx: Db, event: MediaEvent, actor: Actor): Promise<void>
-  afterCommit?(event: MediaEvent, actor: Actor): void
+  record(tx: Db, event: MediaEvent, actor: MediaActor): Promise<void>
+  afterCommit?(event: MediaEvent, actor: MediaActor): void
 }
 
 /** The audit entry a media event writes: the entries the backoffice has always written. Pure. */
@@ -101,7 +111,7 @@ export function mediaWebhookFor(event: MediaEvent): { alias: string; key: string
 }
 
 /** The whole audit entry a media event writes, with who acted and from where. Pure. */
-export function mediaAuditEntryFor(event: MediaEvent, actor: Actor) {
+export function mediaAuditEntryFor(event: MediaEvent, actor: MediaActor) {
   return {
     ...mediaAuditFor(event),
     source: actor.origin.source,
@@ -109,8 +119,18 @@ export function mediaAuditEntryFor(event: MediaEvent, actor: Actor) {
     userName: actorName(actor),
     ipAddress: actor.origin.ipAddress ?? null,
     forwardedFor: actor.origin.forwardedFor ?? null,
-    detail: null,
+    detail:
+      actor.kind === 'member'
+        ? `A member${actor.via ? `, through ${actor.via}` : ''} (${actor.member.key})`
+        : null,
   }
+}
+
+/** The cache instruction a media change appends: `{ media: [keys], moved?: [paths] }`. Pure. */
+export function mediaChangePayload(change: MediaChange): Record<string, unknown> {
+  const keys = [...new Set(change.keys.map(normaliseUuid))]
+  const moved = [...new Set(change.moved)]
+  return moved.length > 0 ? { media: keys, moved } : { media: keys }
 }
 
 export interface MediaOperationsOptions {
@@ -119,10 +139,19 @@ export interface MediaOperationsOptions {
   events: MediaEventSink
   /** Where an item's file goes when the item is deleted for good. */
   files?: { remove(path: string): Promise<void> }
-  /** Told after every committed change, for a cache held in this process. */
-  onChange?(): void | Promise<void>
+  /**
+   * Told after every committed change, with the items it touched and the old
+   * paths of any that moved, for the media cache held in this process.
+   */
+  onChange?(change: MediaChange): void | Promise<void>
   /** Errors a value's intake throws that are the sender's to fix, as the reason to give. */
   refusalReason?(error: unknown): string | undefined
+}
+
+/** What a media change touched: the items, and the old paths of any whose branch moved with them. */
+export interface MediaChange {
+  keys: string[]
+  moved: string[]
 }
 
 const NOT_FOUND = 'The media item could not be found.'
@@ -150,26 +179,34 @@ export function createMediaOperations(options: MediaOperationsOptions) {
   const nodes = new NodeRepository(db)
   const types = new ContentTypeRepository(db, { kind: 'media' })
   const nodeId = options.repository?.nodeId
-  const changed = async () => {
-    await options.onChange?.()
-  }
 
-  /** The change, its events and the cache instruction in one transaction (stories 171, 174). */
+  /**
+   * The change, its events and the cache instruction in one transaction
+   * (stories 171, 174). The instruction names the items touched, and the old
+   * paths of any that moved, so each server drops only those (story 197).
+   */
   const commit = async <T>(
-    actor: Actor,
+    actor: MediaActor,
     write: (tx: DocumentRepository, txDb: Db) => Promise<T>,
     announce: (result: T) => readonly MediaEvent[],
+    touched: (result: T, events: readonly MediaEvent[]) => MediaChange = (_, said) => ({
+      keys: said.flatMap((e) => ('key' in e ? [e.key] : [])),
+      moved: [],
+    }),
   ): Promise<T> => {
     const recorded: MediaEvent[] = []
+    let change: MediaChange | undefined
     const result = await repo.atomically(async (tx, txDb) => {
       const written = await write(tx, txDb)
       const said = announce(written)
-      if (said.length > 0)
+      if (said.length > 0) {
+        change = touched(written, said)
         await appendCacheInstruction(txDb, {
           kind: 'content',
-          payload: { media: true },
+          payload: mediaChangePayload(change),
           by: nodeId,
         })
+      }
       for (const event of said) {
         await events.record(txDb, event, actor)
         recorded.push(event)
@@ -177,11 +214,16 @@ export function createMediaOperations(options: MediaOperationsOptions) {
       return written
     })
     for (const event of recorded) events.afterCommit?.(event, actor)
-    if (recorded.length > 0) await changed()
+    if (change) await options.onChange?.(change)
     return result
   }
+  /** The keys, and the old paths of branches that moved: what a move, trash or delete touched. */
+  const branches = (rows: readonly NodeRow[]): MediaChange => ({
+    keys: rows.map((row) => row.key),
+    moved: rows.map((row) => row.path),
+  })
 
-  const userIdOf = async (actor: Actor): Promise<number | undefined> => {
+  const userIdOf = async (actor: MediaActor): Promise<number | undefined> => {
     if (actor.kind !== 'user') return undefined
     const rows = await db.query<{ id: number }>('SELECT id FROM user_account WHERE key = ?', [
       actor.principal.id,
@@ -205,8 +247,38 @@ export function createMediaOperations(options: MediaOperationsOptions) {
     return { node, chain }
   }
 
-  /** Whether the actor may change media at `key`, the root or the bin; only a user is checked. */
-  const permits = async (actor: Actor, key: string | 'root' | 'bin'): Promise<boolean> => {
+  /** A parent's media children, by key: what sorting them all touched. */
+  const childKeys = async (parentKey: string | null): Promise<string[]> => {
+    const parentId = parentKey ? (await nodes.byKey(parentKey))?.id : SystemNodes.Root
+    if (parentId === undefined) return []
+    const rows = await db.query<{ unique_id: string }>(
+      'SELECT unique_id FROM node WHERE parent_id = ? AND node_object_type = ?',
+      [parentId, ObjectTypes.Media],
+    )
+    return rows.map((row) => normaliseUuid(String(row.unique_id)))
+  }
+
+  /**
+   * Whether a member may change `key` under the media permissions (story 196):
+   * its own write policy, else the nearest rule's write groups. Never the root
+   * or the bin.
+   */
+  const memberPermits = async (
+    actor: MediaActor & { kind: 'member' },
+    key: string | 'root' | 'bin',
+  ): Promise<boolean> => {
+    if (key === 'root' || key === 'bin') return false
+    const node = await nodes.byKey(key)
+    if (!node || node.objectType !== ObjectTypes.Media || node.trashed) return false
+    const access = new MediaAccessRepository(db)
+    const item = await access.itemAccess(key)
+    const rule = await access.ruleFor(key)
+    return item ? memberMay('write', item, rule ? ruleOf(rule) : undefined, actor.member) : false
+  }
+
+  /** Whether the actor may change media at `key`, the root or the bin; a user or a member is checked. */
+  const permits = async (actor: MediaActor, key: string | 'root' | 'bin'): Promise<boolean> => {
+    if (actor.kind === 'member') return memberPermits(actor, key)
     if (actor.kind !== 'user') return true
     if (key === 'root' || key === 'bin') return mayChangeMedia(actor.principal, key)
     const place = await placeOf(key)
@@ -216,7 +288,7 @@ export function createMediaOperations(options: MediaOperationsOptions) {
   const forbidden = () => refuse('forbidden', 403, 'You may not do that to this media item.')
 
   /** Where an item of this type may go; the system acts on what was already decided. */
-  const placement = async (actor: Actor, typeKey: string, parentKey: string | null) =>
+  const placement = async (actor: MediaActor, typeKey: string, parentKey: string | null) =>
     actor.kind === 'system' ? undefined : types.placementRefusal(typeKey, parentKey)
   const typeOf = async (key: string): Promise<string | undefined> => {
     const rows = await db.query<{ unique_id: string }>(
@@ -247,7 +319,7 @@ export function createMediaOperations(options: MediaOperationsOptions) {
 
   /** Every item checked before any is written: the reasons each one cannot be moved there. */
   const moveBlockers = async (
-    actor: Actor,
+    actor: MediaActor,
     targets: readonly NodeRow[],
     target: NodeRow | undefined,
   ) => {
@@ -266,7 +338,7 @@ export function createMediaOperations(options: MediaOperationsOptions) {
 
   /** The items the actor may not change, as one refusal naming each. */
   const deniedOf = async (
-    actor: Actor,
+    actor: MediaActor,
     found: readonly NodeRow[],
     reason: string,
   ): Promise<(Refusal & { blocked: Array<{ key: string; reasons: string[] }> }) | undefined> => {
@@ -295,15 +367,24 @@ export function createMediaOperations(options: MediaOperationsOptions) {
   }
 
   const operations = {
-    async create(actor: Actor, input: MediaInput): Promise<Result<{ key: string }>> {
+    async create(actor: MediaActor, input: MediaInput): Promise<Result<{ key: string }>> {
       if (!(await permits(actor, input.parentKey ?? 'root'))) return forbidden()
       const misplaced = await placement(actor, input.contentTypeKey, input.parentKey)
       if (misplaced) return refuse('invalid', 400, misplaced)
       try {
         const userId = await userIdOf(actor)
+        const { creatorMemberKey, stamp, ...fields } = input
+        const creator = actor.kind === 'member' ? actor.member.key : (creatorMemberKey ?? null)
         const created = await commit(
           actor,
-          (tx) => tx.create({ ...input, componentKey: null, userId }),
+          async (tx, txDb) => {
+            const doc = await tx.create({ ...fields, componentKey: null, userId })
+            // What the folder above says files created in it get.
+            const access = new MediaAccessRepository(txDb)
+            if (stamp === false) await access.setCreator(doc.key, creator)
+            else await access.stampNew(doc.key, creator)
+            return doc
+          },
           (doc) => [{ type: 'created', key: doc.key }],
         )
         return { ok: true, key: created.key }
@@ -313,7 +394,7 @@ export function createMediaOperations(options: MediaOperationsOptions) {
     },
 
     /** Saves an item's values and names; its type and place stay as they are. */
-    async save(actor: Actor, key: string, input: Omit<MediaInput, 'key'>): Promise<Result> {
+    async save(actor: MediaActor, key: string, input: Omit<MediaInput, 'key'>): Promise<Result> {
       const before = await repo.byKey(key)
       if (!before) return refuse('notFound', 404, NOT_FOUND)
       if (!(await permits(actor, key))) return forbidden()
@@ -342,7 +423,7 @@ export function createMediaOperations(options: MediaOperationsOptions) {
       }
     },
 
-    async trash(actor: Actor, key: string): Promise<Result> {
+    async trash(actor: MediaActor, key: string): Promise<Result> {
       const result = await operations.trashMany(actor, [key])
       return result.ok ? { ok: true } : result
     },
@@ -353,7 +434,7 @@ export function createMediaOperations(options: MediaOperationsOptions) {
      * selection goes with it.
      */
     async trashMany(
-      actor: Actor,
+      actor: MediaActor,
       keys: readonly string[],
       many: { dryRun?: boolean } = {},
     ): Promise<SelectionResult> {
@@ -375,12 +456,17 @@ export function createMediaOperations(options: MediaOperationsOptions) {
           return out
         },
         (done) => done.map((key): MediaEvent => ({ type: 'trashed', key })),
+        () => branches(writes),
       )
       return { ok: true, changed: changedKeys, unchanged }
     },
 
     /** Deletes an item and its branch for good, with their files; `fromBin` only one in the bin. */
-    async delete(actor: Actor, key: string, deleting: { fromBin?: boolean } = {}): Promise<Result> {
+    async delete(
+      actor: MediaActor,
+      key: string,
+      deleting: { fromBin?: boolean } = {},
+    ): Promise<Result> {
       const node = await nodes.byKey(key)
       if (!node || node.objectType !== ObjectTypes.Media) return refuse('notFound', 404, NOT_FOUND)
       if (deleting.fromBin && !node.trashed)
@@ -391,13 +477,14 @@ export function createMediaOperations(options: MediaOperationsOptions) {
         actor,
         (tx) => tx.delete(key),
         (done) => (done ? [{ type: 'deleted', key, name: node.text ?? null }] : []),
+        () => branches([node]),
       )
       if (!removed) return refuse('notFound', 404, NOT_FOUND)
       await removeFiles(paths)
       return { ok: true }
     },
 
-    async emptyBin(actor: Actor): Promise<Result<{ deleted: number }>> {
+    async emptyBin(actor: MediaActor): Promise<Result<{ deleted: number }>> {
       if (!(await permits(actor, 'bin'))) return forbidden()
       const roots = await repo.trashedRoots()
       const paths: string[] = []
@@ -414,13 +501,14 @@ export function createMediaOperations(options: MediaOperationsOptions) {
           ...done.map((node): MediaEvent => ({ type: 'deleted', ...node })),
           { type: 'binEmptied' },
         ],
+        () => branches(roots),
       )
       await removeFiles(paths)
       return { ok: true, deleted: gone.length }
     },
 
     async restore(
-      actor: Actor,
+      actor: MediaActor,
       key: string,
       targetKey: string | null | undefined,
     ): Promise<Result> {
@@ -430,10 +518,12 @@ export function createMediaOperations(options: MediaOperationsOptions) {
         const misplaced = type ? await placement(actor, type, targetKey) : undefined
         if (misplaced) return refuse('invalid', 400, misplaced)
       }
+      const before = await nodes.byKey(key)
       const result = await commit(
         actor,
         (tx) => tx.restore(key, targetKey),
         (done) => (done === 'restored' ? [{ type: 'restored', key }] : []),
+        () => (before ? branches([before]) : { keys: [key], moved: [] }),
       )
       if (result === 'notFound')
         return refuse('notFound', 404, 'The media item is not in the recycle bin.')
@@ -442,7 +532,7 @@ export function createMediaOperations(options: MediaOperationsOptions) {
       return { ok: true }
     },
 
-    async move(actor: Actor, key: string, targetKey: string | null): Promise<Result> {
+    async move(actor: MediaActor, key: string, targetKey: string | null): Promise<Result> {
       const result = await operations.moveMany(actor, [key], targetKey)
       if (result.ok) return { ok: true }
       const first = 'blocked' in result ? result.blocked?.[0]?.reasons[0] : undefined
@@ -454,7 +544,7 @@ export function createMediaOperations(options: MediaOperationsOptions) {
      * transaction, every one checked first. One already there is unchanged.
      */
     async moveMany(
-      actor: Actor,
+      actor: MediaActor,
       keys: readonly string[],
       targetKey: string | null,
       many: { dryRun?: boolean } = {},
@@ -494,6 +584,7 @@ export function createMediaOperations(options: MediaOperationsOptions) {
             return out
           },
           (moved) => moved.map((key): MediaEvent => ({ type: 'moved', key })),
+          (moved) => branches(writes.filter((node) => moved.includes(node.key))),
         )
         return { ok: true, changed: done, unchanged }
       } catch (error) {
@@ -502,7 +593,7 @@ export function createMediaOperations(options: MediaOperationsOptions) {
     },
 
     async sort(
-      actor: Actor,
+      actor: MediaActor,
       parentKey: string | null,
       sorting: ReadonlyArray<{ key: string; sortOrder: number }>,
       sortOptions: { dryRun?: boolean } = {},
@@ -526,6 +617,7 @@ export function createMediaOperations(options: MediaOperationsOptions) {
         actor,
         (tx) => tx.sort(parentKey, sorting),
         (done) => (done === 'sorted' ? [{ type: 'sorted', parentKey }] : []),
+        () => ({ keys: sorting.map((item) => item.key), moved: [] }),
       )
       return result === 'sorted'
         ? { ok: true }
@@ -533,16 +625,18 @@ export function createMediaOperations(options: MediaOperationsOptions) {
     },
 
     async sortChildrenBy(
-      actor: Actor,
+      actor: MediaActor,
       parentKey: string | null,
       field: 'Name' | 'CreateDate' | 'UpdateDate',
       direction: 'Ascending' | 'Descending',
     ): Promise<Result> {
       if (!(await permits(actor, parentKey ?? 'root'))) return forbidden()
+      const keys = await childKeys(parentKey)
       const result = await commit(
         actor,
         (tx) => tx.sortChildrenBy(parentKey, field, direction),
         (done) => (done === 'sorted' ? [{ type: 'sorted', parentKey }] : []),
+        () => ({ keys, moved: [] }),
       )
       return result === 'sorted' ? { ok: true } : refuse('notFound', 404, NOT_FOUND)
     },

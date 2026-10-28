@@ -3,8 +3,8 @@ import { specOf, TastingNotes } from '../shared/bottling.tsx'
 import { Layout } from '../shared/layout.tsx'
 import { Eyebrow } from '../shared/section-intro.tsx'
 
-export default function Expression({ model, nav }: PageProps) {
-  const bottle = model.media('bottleImage')[0]
+export default async function Expression({ model, nav }: PageProps) {
+  const bottle = (await model.media('bottleImage'))[0]
   const notes = (model.value('tastingNotes') ?? []) as PublishedElement[]
   const range = nav.parent(model)
   return (
@@ -19,7 +19,7 @@ export default function Expression({ model, nav }: PageProps) {
           <Eyebrow>{specOf(model)}</Eyebrow>
           <h1>{model.text('title')}</h1>
           {model.hasValue('summary') ? <p class="standfirst">{model.text('summary')}</p> : null}
-          <div class="prose" setInnerHTML={{ __html: model.text('bodyText'), dangerously: true }} />
+          <div class="prose">{model.html('bodyText')}</div>
           <TastingNotes notes={notes} />
           {range ? (
             <p class="back">

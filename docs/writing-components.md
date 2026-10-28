@@ -118,7 +118,7 @@ Rich text is stored as HTML, so it is written out as HTML, not escaped:
 
 ```tsx
 <div>{model.html('body')}</div>
-<div setInnerHTML={{ __html: model.text('body'), dangerously: true }} />
+<div setInnerHTML={{ __html: markdownToHtml(model.text('notes')), dangerously: true }} />
 <div dangerouslySetInnerHTML={{ __html: markupFromElsewhere }} />
 ```
 

@@ -14,6 +14,7 @@ import {
   createDeliveryApi,
   fillPreviewUrl,
   isPreflight,
+  memberAuthorizationEnabled,
   preflightResponse,
   previewProblems,
   previewsInApp,
@@ -57,7 +58,7 @@ import {
   resolveStaticFile,
   serveStaticFile,
 } from '@crombolo/backoffice-host'
-import type { DocumentOperations } from '@crombolo/content'
+import type { DocumentOperations, MediaOperations } from '@crombolo/content'
 import { servedContract } from '@crombolo/contracts'
 import {
   CHOICE_SOURCE_KINDS,
@@ -82,6 +83,8 @@ import {
   FormEntryRepository,
   FormWorkflowRepository,
   latestContentVersionId,
+  MediaAccessRepository,
+  MemberRepository,
   PublicAccessRepository,
   RedirectRepository,
   readLedger,
@@ -93,9 +96,13 @@ import {
   type WritesPaused,
 } from '@crombolo/data'
 import {
+  BUNDLE_SCRIPT,
+  BUNDLE_SCRIPT_PATH,
+  BUNDLE_SITE_PATH,
   cacheable,
   cacheControl,
   contentForNode,
+  DEFAULT_MEDIA_CACHE_MEGABYTES,
   DEVELOPMENT_LIMITS,
   FORM_SCRIPT,
   FORM_SCRIPT_PATH,
@@ -103,6 +110,7 @@ import {
   formAction,
   lifetimeFor,
   MEMBER_EXTERNAL_SIGN_IN_PATH,
+  MediaCache,
   PRIVATE_NO_STORE,
   PublishedCache,
   Renderer,
@@ -118,13 +126,29 @@ import type { Server } from 'bun'
 import { createNodeLookup, loadAccess } from './access.ts'
 import { createAuditHost, createAuditSink, pluginAuditPlan, recordAudit } from './adapters/audit.ts'
 import { readCreatedBundlePackage, writeCreatedBundlePackage } from './adapters/bundles.ts'
-import { createPublishedContentSource, loadDraftNode } from './adapters/documents.ts'
+import {
+  createMediaSource,
+  createPublishedContentSource,
+  loadDraftNode,
+} from './adapters/documents.ts'
 import type { Approvals } from './approvals.ts'
 import { handleApprovalsApi } from './approvals-api.ts'
 import { CommandError, installBundleContent } from './bundle-install.ts'
+import {
+  type BundleMediaFactory,
+  createBundleMedia,
+  type ResolvedMediaFolder,
+  resolveBundleMediaFolders,
+} from './bundle-media.ts'
 import { BUNDLES_CHANGED_EVENT, type BundleReload, createBundleReloader } from './bundle-reload.ts'
 import { bundleChains, bundleTablesReport } from './bundle-tables.ts'
-import { createBundleRedirects, createServerBundles, validateServerBundles } from './bundles.ts'
+import {
+  type BundleMember,
+  bundleRouteGroups,
+  createBundleRedirects,
+  createServerBundles,
+  validateServerBundles,
+} from './bundles.ts'
 import { busyResponse } from './busy.ts'
 import { listEmailTemplates } from './components.ts'
 import {
@@ -139,6 +163,7 @@ import { createContentEventSink } from './content-events.ts'
 import { createContentNotificationRunner, createContentNotifier } from './content-notifications.ts'
 import { answerContentQuery, contentQueryScope } from './content-query.ts'
 import { attachDatabase, bootstrapDatabase } from './database.ts'
+import { createDeliveryMediaPort } from './delivery-media.ts'
 import { createDeliveryMemberSecurity } from './delivery-members.ts'
 import { createDiagnostics } from './diagnostics.ts'
 import { syncDomainsFile } from './domains.ts'
@@ -172,6 +197,7 @@ import { ImageProcessor, parseImagingQuery } from './imaging.ts'
 import { type BackgroundJobs, createBackgroundJobs } from './jobs.ts'
 import { configureLogging, logger } from './logging.ts'
 import { createMarketplace } from './marketplace.ts'
+import { createMediaAccess } from './media-access.ts'
 import { MediaFileStore } from './media-files.ts'
 import { mediaStoreFromEnvironment } from './media-store.ts'
 import { createMemberAuth, MEMBER_ROUTE_PREFIX } from './member-auth.ts'
@@ -204,6 +230,7 @@ import {
   createBundleIdentityProviders,
   IdentityProviderOverrides,
 } from './identity-provider-overrides.ts'
+import { callerAddress } from './rate-limit.ts'
 import { syncConfiguredRedirects } from './redirects.ts'
 import {
   bootSchema,
@@ -352,6 +379,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
       }
       // The content landed under a cache this process had already constructed.
       cache.invalidate()
+      mediaCache.clear()
       return { applied: true, runId: result.runId, message: 'Its content was applied.' }
     },
   })
@@ -364,7 +392,8 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
   // Bundles are checked before the database is touched, because a bundle that
   // owns tables is migrated at boot, and a bad declaration must not get that far.
   // On every role: a bundle's form types are needed wherever forms render and
-  // submit. Its routes and tables stay with the nodes that serve the backoffice.
+  // submit, and its member and public routes wherever the site is served. Its
+  // tables are migrated only by the nodes that own the database.
   const bundlePackages = extensions.bundles().bundles
   const formTypes = formTypesOf(config)
   {
@@ -377,7 +406,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
       throw new Error(`The configured bundles cannot be mounted:\n- ${problems.join('\n- ')}`)
   }
   setFormFieldTypes(formTypes.types, formTypes.renderers)
-  const chains = servesBackOffice ? bundleChains(config.bundles, bundlePackages) : []
+  const chains = bundleChains(config.bundles, bundlePackages)
   const { db, seededAdminPassword } = owns
     ? await bootstrapDatabase(config, chains)
     : await attachDatabase(config)
@@ -556,7 +585,13 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     nodeState: schema.nodeState,
     nodeId: schema.nodeId,
   })
-  const cacheOptions = { form: (key: string) => forms.byKey(key) }
+  // Media is cached apart from the pages (story 197), item by item within a
+  // budget, and shared by the published and draft caches: media has no drafts.
+  const mediaCache = new MediaCache(
+    createMediaSource(db, { nodeState: schema.nodeState, nodeId: schema.nodeId }),
+    { budgetBytes: (config.mediaCacheMegabytes ?? DEFAULT_MEDIA_CACHE_MEGABYTES) * 1024 * 1024 },
+  )
+  const cacheOptions = { form: (key: string) => forms.byKey(key), media: mediaCache }
   // Every page as last saved, for previewing in an app (story 053). Built on the
   // first preview after a change and dropped with the published cache, so a site
   // nobody previews never holds it. A save on another node announces nothing,
@@ -665,62 +700,153 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
         removed: domains.removed,
       })
   }
+  const deliverySettings = resolveDeliveryApiSettings(config.deliveryApi)
+  const formCors = corsPolicy(deliverySettings)
   /**
-   * The server halves of the site's bundles, mounted only where the backoffice
-   * is: these are backoffice endpoints, and a `web` node serves none of them.
+   * The server halves of the site's bundles. Back-office routes answer only
+   * where the backoffice is; member and public routes (story 186) wherever the
+   * site is served.
    *
    * Capabilities are built here, from what this node already holds, so a bundle
    * is handed a narrow interface rather than the database. A bad bundle fails the
    * boot — see `createServerBundles`.
    */
-  const bundles = servesBackOffice
-    ? createServerBundles({
-        bundles: config.bundles,
-        packages: bundlePackages,
-        coreVersion: VERSION,
-        tables: (bundle) => {
-          const chain = chains.find((candidate) => candidate.id === bundle.id)
-          return chain ? createTablesCapability(db, chain.compiled.schema) : undefined
-        },
-        pluginApiPath: `${paths.pluginPath}/api`,
-        host: {
-          redirects: createBundleRedirects({ db, cache }),
-          documents: {
-            url: async (key, culture) => {
-              const content = await cache.byKey(key, culture ?? null)
-              return content && content.url !== '#' ? content.url : undefined
+  const asBundleMember = (member: {
+    key: string
+    name: string
+    username: string
+    email: string
+    roles: string[]
+  }): BundleMember => ({
+    key: member.key,
+    name: member.name,
+    username: member.username,
+    email: member.email,
+    groups: member.roles,
+  })
+  // Story 198: media as the member, built at the first request, when the media
+  // operations and the store it writes through exist.
+  let bundleMedia: BundleMediaFactory | undefined
+  let bundleMediaFolders = new Map<string, ResolvedMediaFolder[]>()
+  const bundles =
+    config.bundles.length > 0
+      ? createServerBundles({
+          bundles: config.bundles,
+          packages: bundlePackages,
+          coreVersion: VERSION,
+          tables: (bundle) => {
+            const chain = chains.find((candidate) => candidate.id === bundle.id)
+            return chain ? createTablesCapability(db, chain.compiled.schema) : undefined
+          },
+          pluginApiPath: `${paths.pluginPath}/api`,
+          host: {
+            redirects: createBundleRedirects({ db, cache }),
+            documents: {
+              url: async (key, culture) => {
+                const content = await cache.byKey(key, culture ?? null)
+                return content && content.url !== '#' ? content.url : undefined
+              },
+            },
+            log: bundleLog('bundle'),
+            identityProviders: createBundleIdentityProviders({
+              overrides: new IdentityProviderOverrides(db, config.secretKey),
+              members: config.memberIdentityProviders,
+              backoffice: config.backofficeIdentityProviders,
+              memberCallbackPath: MEMBER_EXTERNAL_SIGN_IN_PATH,
+              backofficeCallbackPath: BACKOFFICE_EXTERNAL_PATH,
+              groups: async (audience) =>
+                audience === 'user'
+                  ? (await new UserGroupRepository(db).all()).map((g) => ({
+                      value: g.alias,
+                      name: g.name,
+                    }))
+                  : (
+                      await db.query<{ text: string }>(
+                        'SELECT text FROM node WHERE node_object_type = ? ORDER BY text',
+                        [ObjectTypes.MemberGroup],
+                      )
+                    ).map((g) => ({ value: String(g.text), name: String(g.text) })),
+            }),
+          },
+          log: (id) => bundleLog(id),
+          callerHost: {
+            media: (caller, bundle) => {
+              bundleMedia ??= createBundleMedia({
+                db,
+                operations: managementDeps.mediaOperations as MediaOperations,
+                files: mediaFiles,
+                cache: mediaCache,
+                folders: (id) => bundleMediaFolders.get(id) ?? [],
+                bundleName: (id) => bundles?.mounted.find((b) => b.id === id)?.name ?? id,
+                stream: (src, search) => streamMemberFile(src, search),
+              })
+              return bundleMedia(caller, bundle)
             },
           },
-          log: bundleLog('bundle'),
-          identityProviders: createBundleIdentityProviders({
-            overrides: new IdentityProviderOverrides(db, config.secretKey),
-            members: config.memberIdentityProviders,
-            backoffice: config.backofficeIdentityProviders,
-            memberCallbackPath: MEMBER_EXTERNAL_SIGN_IN_PATH,
-            backofficeCallbackPath: BACKOFFICE_EXTERNAL_PATH,
-            groups: async (audience) =>
-              audience === 'user'
-                ? (await new UserGroupRepository(db).all()).map((g) => ({
-                    value: g.alias,
-                    name: g.name,
-                  }))
-                : (
-                    await db.query<{ text: string }>(
-                      'SELECT text FROM node WHERE node_object_type = ? ORDER BY text',
-                      [ObjectTypes.MemberGroup],
-                    )
-                  ).map((g) => ({ value: String(g.text), name: String(g.text) })),
-          }),
-        },
-        log: (id) => bundleLog(id),
+          site: {
+            session: async (request) => {
+              const session = await members.session(request)
+              return session && { member: asBundleMember(session.member), verify: session.verify }
+            },
+            memberByToken: memberAuthorizationEnabled(deliverySettings)
+              ? async (token) => {
+                  const named = await deliveryMembers.member(token)
+                  if (!named?.approved || named.lockedOut) return undefined
+                  const member = await new MemberRepository(db).byKey(named.key)
+                  return member && asBundleMember(member)
+                }
+              : undefined,
+            cors: formCors,
+            callerAddress: (request) =>
+              callerAddress(peers.get(request), request.headers.get('x-forwarded-for')),
+          },
+        })
+      : undefined
+  if (bundles) {
+    // A declared folder that is not there would fail on the first upload; the
+    // boot says so instead, naming the bundle and the path.
+    const names = new Map(bundles.mounted.map((bundle) => [bundle.id, bundle.name]))
+    const resolved = await resolveBundleMediaFolders(
+      db,
+      config.bundles,
+      (id) => names.get(id) ?? id,
+    )
+    if (resolved.problems.length > 0)
+      throw new Error(
+        `The configured bundles cannot be mounted:\n- ${resolved.problems.join('\n- ')}`,
+      )
+    bundleMediaFolders = resolved.folders
+  }
+  for (const bundle of bundles?.mounted ?? []) {
+    if (servesBackOffice)
+      log.info('Bundle {name} answering below {prefix} for the {section} section', {
+        name: bundle.name,
+        prefix: bundle.prefix,
+        section: bundle.section,
       })
-    : undefined
-  for (const bundle of bundles?.mounted ?? [])
-    log.info('Bundle {name} answering below {prefix} for the {section} section', {
-      name: bundle.name,
-      prefix: bundle.prefix,
-      section: bundle.section,
-    })
+    if (config.role !== 'api' && bundle.routes.some((route) => route.audience !== 'backoffice'))
+      log.info('Bundle {name} answering members and visitors below {prefix}', {
+        name: bundle.name,
+        prefix: bundle.sitePrefix,
+      })
+  }
+  {
+    const named = bundleRouteGroups(config.bundles)
+    if (named.length > 0) {
+      const existing = new Set(
+        (
+          await db.query<{ text: string }>('SELECT text FROM node WHERE node_object_type = ?', [
+            ObjectTypes.MemberGroup,
+          ])
+        ).map((row) => String(row.text).toLowerCase()),
+      )
+      for (const group of named.filter((name) => !existing.has(name.toLowerCase())))
+        log.warning(
+          'A bundle route is limited to the member group {group}, which does not exist, so no member can call it yet',
+          { group },
+        )
+    }
+  }
   for (const name of unknownHostProvided(config))
     log.warning(
       '{name} is listed as host-provided but is not installed here; exports leave it out regardless',
@@ -745,6 +871,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     // read, so an idle node catches up and says so (story 174).
     content: {
       served: () => cache.served(),
+      covered: (checkpoint) => cache.covered(checkpoint),
       behind: () => {
         cache.invalidate()
         void cache
@@ -753,6 +880,10 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
             renderLog.error('Could not rebuild the published cache: {error}', { error }),
           )
       },
+    },
+    media: {
+      apply: (change) => mediaCache.apply(change),
+      clear: () => mediaCache.clear(),
     },
   })
   await poller.start(config.development ? 2_000 : 5_000)
@@ -764,6 +895,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
           { nodeId: schema.nodeId, revision: config.schemaRevision },
           (report: SyncReport) => {
             cache.invalidate()
+            mediaCache.clear()
             void afterSync(report).catch((error: unknown) =>
               schemaLog.error('Recording redirects after an address change failed: {error}', {
                 error: String(error),
@@ -789,14 +921,20 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
           },
         )
       : undefined
-  const remote = createRemote({ db, config, authenticate, onApplied: () => cache.invalidate() })
+  const remote = createRemote({
+    db,
+    config,
+    authenticate,
+    onApplied: () => {
+      cache.invalidate()
+      mediaCache.clear()
+    },
+  })
   const members = createMemberAuth(db, config, {
     nodeState: schema.nodeState,
     nodeId: schema.nodeId,
   })
-  const deliverySettings = resolveDeliveryApiSettings(config.deliveryApi)
   const caching = resolveCacheSettings(config.cache)
-  const formCors = corsPolicy(deliverySettings)
   const deliveryPrefix = DELIVERY_API_PREFIX
   const deliveryMembers = createDeliveryMemberSecurity({
     db,
@@ -805,6 +943,33 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
   })
   for (const problem of deliveryMembers.problems)
     log.warning('Delivery API: {problem}', { problem })
+  // Story 196: who may read a protected media file, and the back office's permissions for media.
+  const mediaAccess = createMediaAccess({
+    db,
+    member: async (request) => {
+      const member = await members.resolve(request)
+      return member && { key: member.key, groups: member.roles }
+    },
+    memberByToken: memberAuthorizationEnabled(deliverySettings)
+      ? async (token) => {
+          const member = await deliveryMembers.member(token)
+          return member?.approved && !member.lockedOut
+            ? { key: member.key, groups: member.groups }
+            : undefined
+        }
+      : undefined,
+    principal: (request) => authenticate(request),
+    onChange: (key) => mediaCache.drop([key]),
+    nodeId: schema.nodeId,
+    bundleFolders: () =>
+      [...bundleMediaFolders].flatMap(([id, folders]) =>
+        folders.map((folder) => ({
+          bundle: bundles?.mounted.find((b) => b.id === id)?.name ?? id,
+          nodePath: folder.nodePath,
+        })),
+      ),
+  })
+  const mediaAccessPath = `${paths.pluginPath}/api/media-access`
   for (const problem of previewProblems(deliverySettings))
     log.warning('Delivery API: {problem}', { problem })
 
@@ -892,6 +1057,8 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
           },
           protection: () => new PublicAccessRepository(db).allRules(),
           member: (token) => deliveryMembers.member(token),
+          mediaRules: () => new MediaAccessRepository(db).allRules(),
+          media: createDeliveryMediaPort(db, mediaCache),
           security: (request, action) => deliveryMembers.handle(request, action),
           search: (term, options) => new SiteSearch(db).query(term, options),
         })
@@ -968,6 +1135,12 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
   const notifier = createContentNotifier(db, { canSend: Boolean(email) })
   const mediaFiles = new MediaFileStore(mediaStore)
   const images = new ImageProcessor(mediaStore)
+  const publicMedia = mediaStore.publicUrl?.('media/file')
+  if (publicMedia)
+    log.warning(
+      'Media files are also served from {where}. Protected files are always sent by this site and never from there, but anyone with a file’s address there can open it: keep protected files in a store nothing public serves.',
+      { where: publicMedia.replace(/media\/file$/, '') },
+    )
   const webhooks = createWebhookService({
     db,
     schemaDir: config.schemaDir,
@@ -1289,11 +1462,24 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
         : new Response('Method Not Allowed', { status: 405, headers: { allow: 'POST' } })
     }
 
+    // A bundle's member and public routes (story 186), wherever the site is served.
+    if (config.role !== 'api') {
+      if (pathname === BUNDLE_SCRIPT_PATH)
+        return new Response(BUNDLE_SCRIPT, {
+          headers: {
+            'content-type': 'text/javascript; charset=utf-8',
+            'cache-control': config.development ? 'no-cache' : 'public, max-age=3600',
+          },
+        })
+      if (pathname.startsWith(`${BUNDLE_SITE_PATH}/`))
+        return (await bundles?.site(request, url)) ?? new Response('Not Found', { status: 404 })
+    }
+
     // Not on an `api` node, which serves no public site to describe.
     if ((pathname === '/sitemap.xml' || pathname === '/robots.txt') && config.role !== 'api')
       return pathname === '/sitemap.xml' ? seo.sitemap(request, url.host) : seo.robots(request)
 
-    if (pathname.startsWith('/media/')) return serveMedia(pathname, url.searchParams)
+    if (pathname.startsWith('/media/')) return serveMedia(request, pathname, url.searchParams)
     if (pathname.startsWith('/css/')) return serveSiteFile(config.stylesheetsDir, pathname, '.css')
     if (pathname.startsWith('/scripts/')) return serveSiteFile(config.scriptsDir, pathname, '.js')
     return renderSite(request, pathname, url.host)
@@ -1355,6 +1541,18 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
       const principal = await authenticate(request)
       if (!principal) return new Response('Unauthorized', { status: 401 })
       const response = await seo.handle(request, pathname.slice(seoPath.length), principal)
+      if (response) return response
+    }
+
+    // Non-contract, Media: who may read and change a media folder or item (story 196).
+    if (pathname.startsWith(`${mediaAccessPath}/`)) {
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      const response = await mediaAccess.handle(
+        request,
+        pathname.slice(mediaAccessPath.length),
+        principal,
+      )
       if (response) return response
     }
 
@@ -1465,6 +1663,23 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
           installs: config.runtimeInstalls,
           installsElsewhere: config.runtimeInstalls ? null : (config.installsElsewhere ?? null),
           items: await marketplace.search(url.searchParams.get('q') ?? undefined),
+        })
+      }
+
+      // A created bundle's package, downloaded from the Created view with or
+      // without its media files (story 195), on the session cookie the
+      // plugin's endpoints use rather than the contract's bearer token.
+      const download = /^created\/([0-9a-f-]{36})\/download$/i.exec(action)
+      if (download && request.method === 'GET') {
+        const built = await managementDeps.packages?.build(download[1] as string, {
+          withMedia: url.searchParams.get('withMedia') === 'true',
+        })
+        if (!built) return new Response('Not Found', { status: 404 })
+        return new Response(built.bytes, {
+          headers: {
+            'content-type': built.contentType,
+            'content-disposition': `attachment; filename="${built.fileName}"`,
+          },
         })
       }
 
@@ -1961,7 +2176,10 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
         db,
         config,
         user: principal.email,
-        onApplied: () => cache.invalidate(),
+        onApplied: () => {
+          cache.invalidate()
+          mediaCache.clear()
+        },
       })
       if (response) {
         if (request.method === 'POST')
@@ -2162,17 +2380,37 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
    * An uploaded file from the media store; an image with a resize or crop query
    * is served as that variant, computed once and cached in the store.
    *
-   * A store that serves its own bytes (a CDN, a presigned bucket URL) gets the
-   * browser sent straight there. Otherwise this streams them — from the local
-   * file when there is one, so a disk-backed site still gets sendfile.
+   * Only a file something owns is served (story 196): a media item, found
+   * through its indexed `file_url`, or a page's upload value (`node_file`). A protected one, and its crops, go only to someone who
+   * may read it, streamed by this server and kept by nobody; anyone else gets
+   * 404, so a guessed or shared address does not say the file exists.
+   *
+   * An open file whose store serves its own bytes (a CDN, a presigned bucket
+   * URL) gets the browser sent straight there. Otherwise this streams them —
+   * from the local file when there is one, so a disk-backed site still gets
+   * sendfile.
    */
-  async function serveMedia(pathname: string, search: URLSearchParams): Promise<Response> {
+  async function serveMedia(
+    request: Request,
+    pathname: string,
+    search: URLSearchParams,
+  ): Promise<Response> {
+    const key = mediaFiles.key(pathname)
+    if (!key) return new Response('Not Found', { status: 404 })
+    const owners = new MediaAccessRepository(db)
+    const urls = [`/media/${key}`, pathname]
+    const owner = await owners.byUrl(urls)
+    if (!owner && !(await owners.ownedElsewhere(urls)))
+      return new Response('Not Found', { status: 404 })
+    const isProtected = owner ? mediaAccess.isProtected(owner) : false
+    if (owner && isProtected && !(await mediaAccess.mayRead(request, owner)))
+      return new Response('Not Found', { status: 404 })
     // Media is what someone else uploaded, served from this origin, so a browser
     // must not guess a type the store did not give.
     // A file's bytes never change at its address — a replacement is placed in a
     // new folder — so it is kept for a year unless its media item or type says
     // otherwise (story 057). Resized images follow their original.
-    const item = await cache.mediaAt(pathname)
+    const item = isProtected || !owner ? undefined : await mediaCache.byKey(owner.key)
     const chosen = item
       ? lifetimeFor(
           caching,
@@ -2181,7 +2419,9 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
         )
       : undefined
     const cacheable = {
-      'cache-control': cacheControl(chosen) ?? 'public, max-age=31536000, immutable',
+      'cache-control': isProtected
+        ? PRIVATE_NO_STORE
+        : (cacheControl(chosen) ?? 'public, max-age=31536000, immutable'),
       'x-content-type-options': 'nosniff',
       ...(caching.tagHeader && item ? { [caching.tagHeader]: item.key } : {}),
     }
@@ -2199,20 +2439,21 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
         ? { ...cacheable, 'content-security-policy': 'sandbox' }
         : cacheable
     // A prefix may be a path on this host as well as an absolute URL, and
-    // Response.redirect insists on the latter.
+    // Response.redirect insists on the latter. A protected file is never sent
+    // elsewhere, where nobody would check who asked.
+    const elsewhereFor = (storeKey: string) =>
+      isProtected ? undefined : mediaStore.publicUrl?.(storeKey)
     const sendTo = (location: string) =>
       new Response(null, { status: 302, headers: { location, ...cacheable } })
-    const key = mediaFiles.key(pathname)
-    if (!key) return new Response('Not Found', { status: 404 })
-    const request = parseImagingQuery(search)
+    const imaging = parseImagingQuery(search)
     const extension = key.split('.').pop()?.toLowerCase() ?? ''
 
-    if (request && DEFAULT_UPLOAD_SETTINGS.imageFileTypes.includes(extension)) {
+    if (imaging && DEFAULT_UPLOAD_SETTINGS.imageFileTypes.includes(extension)) {
       const source = await mediaStore.get(key)
       if (source) {
         try {
-          const variant = await images.variant(source, request)
-          const elsewhere = mediaStore.publicUrl?.(variant.key)
+          const variant = await images.variant(source, imaging)
+          const elsewhere = elsewhereFor(variant.key)
           if (elsewhere) return sendTo(elsewhere)
           return new Response(variant.bytes as Uint8Array<ArrayBuffer>, {
             headers: { ...cacheable, 'content-type': variant.contentType },
@@ -2223,13 +2464,44 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
       }
     }
 
-    const elsewhere = mediaStore.publicUrl?.(key)
+    const elsewhere = elsewhereFor(key)
     if (elsewhere) return sendTo(elsewhere)
     const stored = await mediaStore.get(key)
     if (!stored) return new Response('Not Found', { status: 404 })
     const headers = { ...protective(stored.contentType), 'content-type': stored.contentType }
     if (stored.localPath) return new Response(Bun.file(stored.localPath), { headers })
     return new Response((await stored.bytes()) as Uint8Array<ArrayBuffer>, { headers })
+  }
+
+  /**
+   * A media file, or a variant of an image, sent to someone the media
+   * capability has already let read it (story 198): streamed by this server
+   * and kept by nobody, as a protected file is.
+   */
+  async function streamMemberFile(src: string, search: URLSearchParams): Promise<Response> {
+    const key = mediaFiles.key(src)
+    const source = key ? await mediaStore.get(key) : undefined
+    if (!key || !source)
+      return new Response('Not Found', {
+        status: 404,
+        headers: { 'cache-control': PRIVATE_NO_STORE },
+      })
+    const headers = { 'cache-control': PRIVATE_NO_STORE, 'x-content-type-options': 'nosniff' }
+    const imaging = parseImagingQuery(search)
+    const extension = key.split('.').pop()?.toLowerCase() ?? ''
+    if (imaging && DEFAULT_UPLOAD_SETTINGS.imageFileTypes.includes(extension)) {
+      try {
+        const variant = await images.variant(source, imaging)
+        return new Response(variant.bytes as Uint8Array<ArrayBuffer>, {
+          headers: { ...headers, 'content-type': variant.contentType },
+        })
+      } catch (error) {
+        log.error('Could not process image {path}', { path: src, error })
+      }
+    }
+    return new Response((await source.bytes()) as Uint8Array<ArrayBuffer>, {
+      headers: { ...headers, 'content-type': source.contentType },
+    })
   }
 
   /**
@@ -2394,7 +2666,8 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
         status: 404,
         headers: { 'content-type': 'text/plain; charset=utf-8' },
       })
-    const member = preview ? undefined : await members.resolve(request)
+    const session = preview ? undefined : await members.session(request)
+    const member = session?.member
     // What a submission redirected back with, if anything. Read once and
     // cleared, so a reload shows the page rather than the thank-you again.
     const cookie = readCookie(request, FORM_FLASH_COOKIE)
@@ -2407,6 +2680,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
       preview ??
       (await renderer.render(pathname, host, {
         member,
+        antiforgery: session?.antiforgery,
         submission,
         access: async (content) => {
           if ((await members.decide(content, undefined)).status !== 'allowed') personal = true

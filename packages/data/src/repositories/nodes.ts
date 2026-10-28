@@ -397,9 +397,20 @@ export class NodeRepository {
   }
 
   async #nextSortOrder(parentId: number, objectType: string): Promise<number> {
+    // One maximum per `trashed`, so each is read off the end of `ix_node_parent_sort`
+    // rather than across every child: a folder may hold a million files (story 197).
+    const max =
+      'SELECT MAX(sort_order) AS m FROM node WHERE parent_id = ? AND node_object_type = ? AND trashed = ?'
     const rows = await this.#db.query<{ next: number | null }>(
-      'SELECT MAX(sort_order) AS next FROM node WHERE parent_id = ? AND node_object_type = ?',
-      [parentId, objectType],
+      `SELECT MAX(m) AS next FROM (${max} UNION ALL ${max}) maxima`,
+      [
+        parentId,
+        objectType,
+        this.#db.dialect.boolValue(false),
+        parentId,
+        objectType,
+        this.#db.dialect.boolValue(true),
+      ],
     )
     const current = rows[0]?.next
     return current === null || current === undefined ? 0 : Number(current) + 1

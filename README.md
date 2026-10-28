@@ -354,12 +354,7 @@ Open the backoffice at `http://localhost:8080/crombolo` and sign in.
                 </head>
                 <body>
                     <h1>{model.text("title")}</h1>
-                    <div
-                        setInnerHTML={{
-                            __html: model.text("bodyText"),
-                            dangerously: true,
-                        }}
-                    />
+                    <div>{model.html("bodyText")}</div>
                     <nav>
                         {nav.children(model).map((child) => (
                             <a href={child.url}>{child.name}</a>

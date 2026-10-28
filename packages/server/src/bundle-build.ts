@@ -35,6 +35,12 @@ export interface BundleBuildOptions {
    * `package.json` (story 192). Neither: the bundle carries no code.
    */
   code?: readonly string[]
+  /**
+   * Carry the seed's media files (story 195). On unless turned off, so seeding
+   * a site still brings its media; `crombolo bundle build` turns it off unless
+   * `--with-media` is passed.
+   */
+  media?: boolean
 }
 
 export interface BundleBuildResult {
@@ -140,7 +146,7 @@ export async function buildBundleFromDirectory(
         },
       }
       const files = writeBundlePackage(
-        writeBundle(set, seed.blobs, [
+        writeBundle(set, options.media === false ? new Map() : seed.blobs, [
           ...sections,
           ...(code ? readCodeFiles(dir, code.paths) : []),
         ]),

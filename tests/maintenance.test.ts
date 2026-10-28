@@ -16,11 +16,9 @@ import {
   appendSchemaState,
   assertNodeMayWrite,
   connect,
-  cromboloPlan,
   currentSchemaState,
   type Db,
   liveNodes,
-  migrate,
   pauseWrites,
   readWritesPaused,
   recordInLedger,
@@ -29,7 +27,7 @@ import {
   WritesPausedError,
 } from '@crombolo/data'
 import { type CromboloConfig, createServer, loadConfig, type ServerHandle } from '@crombolo/server'
-import { dialectUnderTest, freshDb } from './support/db.ts'
+import { dialectUnderTest, migratedDb } from './support/db.ts'
 
 const open: Db[] = []
 afterEach(async () => {
@@ -41,9 +39,8 @@ afterEach(async () => {
 })
 
 async function installed(): Promise<Db> {
-  const db = await freshDb()
+  const db = await migratedDb()
   open.push(db)
-  await migrate(db, cromboloPlan)
   return db
 }
 

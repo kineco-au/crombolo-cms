@@ -170,7 +170,7 @@ acme-tasks-1.0.0.tgz
     └── content/
         ├── bundle.json        the payload's manifest: what it is, and which sections it carries
         ├── nodes/<uuid>.json  picked content, media and element nodes   ┐
-        ├── blobs/<key>        the media bytes                          │
+        ├── media/<key>        the media bytes, listed in media.json      │
         ├── schema/*.toml      types and languages, canonical TOML       │ each
         ├── components/…       components, at whatever depth             │ optional
         ├── styles/…           stylesheets                               │
@@ -208,11 +208,18 @@ exactly as a missing blob already was. It also carries `label`, the package's
 name, so a downloaded artifact still knows what it is; without it two downloads
 are distinguishable only by filename, which is the first thing to be lost.
 
-Every bundle says `formatVersion: 4`, whatever it carries. A content-only bundle
-carries no `carries` key. An older node refuses a format-4 bundle by name,
-with "upgrade crombolo to import it", rather than failing an integrity check it
-cannot explain. A node refuses a bundle older than 4, which kept its payload in
-`content/`, with a message saying to rebuild it (story 193).
+Every bundle says `formatVersion: 5`, whatever it carries. A content-only bundle
+carries no `carries` key. An older node refuses a newer bundle by name, with
+"upgrade crombolo to import it", rather than failing an integrity check it
+cannot explain. A node refuses a bundle older than 5 with a message saying to
+rebuild it (stories 193 and 195).
+
+A created package downloads **without its media files** unless asked
+(story 195). The Created view's Download offers "Include media files",
+unticked, and the plugin route takes `?withMedia=true`. Umbraco's own Download
+button, on the contract's route, always downloads without them. Either way
+`media.json` lists every file the picked media items name, so the destination
+knows what to expect.
 
 Three existing exporters compose it, and the build writes no new serialization
 format of its own:
@@ -1086,6 +1093,7 @@ export interface ServerBundle {
   capabilities: readonly BundleCapability[]
   routes: readonly ServerBundleRoute[]
   tables?: BundleTables   // Part 4
+  media?: BundleMediaDeclaration // the media folders it uses, below
   forms?: BundleForms     // form field and workflow types, docs/forms.md
   events?: BundleEvents   // webhook event handlers, docs/webhooks.md
 }
@@ -1111,30 +1119,248 @@ what `crombolo.config.ts` imports.
 `section` is a core section by its application alias (`settings`, `content`) or
 a section of the bundle's own by its manifest alias (`Acme.Section.Design`).
 
-- **Its own namespace.** Routes mount at
-  `<backoffice>/crombolo/api/bundle/<id>/`. The id is lowercase letters, digits
+- **Its own namespace.** Back-office routes mount at
+  `<backoffice>/crombolo/api/bundle/<id>/`, and member and public routes at
+  `/crombolo/bundle/<id>/` ([below](#routes-for-members-and-visitors)). The id is lowercase letters, digits
   and hyphens, so it cannot climb out of its segment however it is spelled, and
   each route path is validated as a plain path of segments with at most one
   `:name` each. Two bundles cannot claim one id.
-- **No anonymous traffic and no self-granted access.** The server authenticates
-  before dispatch and the registry checks the declared section before calling
-  anything. There is no per-route override and no public route, so a bundle has
-  no way to widen its own authorisation — the test asserts the handler is never
-  reached by a caller without the section.
+- **No anonymous traffic unless declared, and no self-granted access.** A route
+  is a back-office route unless it declares another `audience`. For those the
+  server authenticates before dispatch and the registry checks the declared
+  section before calling anything, so a bundle has no way to widen a back-office
+  route's authorisation — the test asserts the handler is never reached by a
+  caller without the section. A route reaches members or visitors only by
+  saying so, and then only on the site's path.
 - **Only the capabilities it declared**, as a frozen object. No `Db`, no config,
   no filesystem. A capability is an interface `bundles.ts` owns and implements,
   so the reachable surface is what core decided to expose rather than what the
   bundle can find.
 - **Its own failures.** A handler that throws becomes a 500 and a log line naming
   the bundle; the request path stays up and the other bundles keep answering.
-- **No routes on a `web` node.** These are backoffice endpoints, so they mount
-  only where `servesBackOffice`. The bundle itself is still validated on every
-  node, because its `forms` types are needed where forms render and submit
-  (story `095`).
+- **No back-office routes on a `web` node.** These are backoffice endpoints, so
+  they answer only where `servesBackOffice`. Member and public routes answer
+  where the site is served: `all` and `web` nodes, never `api` nodes. The bundle
+  itself is validated on every node, because its `forms` types are needed where
+  forms render and submit (story `095`).
+
+### Routes for members and visitors
+
+A route declares who may call it (story 186):
+
+```ts
+routes: [
+  { method: 'GET', path: 'species', audience: 'public', handler: listSpecies },
+  { method: 'GET', path: 'records', audience: 'member', handler: myRecords },
+  {
+    method: 'POST',
+    path: 'records',
+    audience: 'member',
+    rateLimit: { max: 30, perSeconds: 60, by: 'member' },
+    handler: addRecord,
+  },
+  { method: 'GET', path: 'reviews', audience: { member: { groups: ['Staff'] } }, handler: review },
+]
+```
+
+| `audience` | Where it answers | Who gets in | The handler is given |
+| --- | --- | --- | --- |
+| `'backoffice'`, or none | `<backoffice>/crombolo/api/bundle/<id>/…` | a back-office user holding the bundle's `section` | `principal` |
+| `'member'` | `/crombolo/bundle/<id>/…` | any signed-in member | `member` |
+| `{ member: { groups } }` | `/crombolo/bundle/<id>/…` | a member of one of the groups, in any case | `member` |
+| `'public'` | `/crombolo/bundle/<id>/…` | anyone | neither |
+
+`/crombolo/` is the site's own namespace, beside the form submissions and the
+form script, so no page address can collide with a route. A back-office route
+is not a route on the site's path, and a site route is not one under the back
+office: each answers 404 on the other's.
+
+**The member** comes from the site's member cookie, which templates already
+read, or from a Delivery API member bearer token (`docs/delivery-api.md`,
+"Member sign-in") for an app. Either way the member must be approved and not
+locked out, and the handler gets the same frozen `BundleMember`: `key`, `name`,
+`username`, `email` and `groups` (names). Nothing of the back office. A token's
+scopes never widen what the route allows. A visitor on a member route gets 401,
+and a member outside its groups 403, before the handler runs. A bearer token
+that is not live answers 401 rather than falling back to the cookie. A member
+route's answer is `cache-control: private, no-store` unless the handler sets
+its own.
+
+A group a route names that does not exist is reported at boot as a warning,
+not refused: groups are made in the back office while the site runs, and until
+it exists no member is in it.
+
+**Writes driven by the cookie need an anti-forgery token.** A browser sends the
+member cookie with a request whichever site started it, so a cookie-
+authenticated `POST`, `PUT` or `DELETE` to a member route must carry a
+`Crombolo-Antiforgery` header, or it is refused with 403 and a message naming
+the fix. The site's layout writes the token and its script sends it:
+
+```tsx
+import { AntiforgeryMeta } from '@crombolo/crombolo'
+
+<head>
+  <AntiforgeryMeta />
+  <script src="/crombolo/bundle.js" defer />
+</head>
+```
+
+```js
+await crombolo.fetch('/crombolo/bundle/visits/records', { method: 'POST', body })
+```
+
+`<AntiforgeryMeta />` writes `<meta name="crombolo-antiforgery" content="…">`
+while a member is signed in, and nothing for a visitor. `crombolo.fetch` is
+`fetch` with the header added from that tag, for this site's own address only.
+The token is an HMAC of the member's session (`auth/src/antiforgery.ts`): the
+member, the security stamp and the session's expiry, keyed by the member
+cookie's signing key. Nothing is stored, so every node can check it, and it
+stops working when the session ends or the stamp rotates. A request with a
+bearer token is not driven by a cookie and needs no anti-forgery token; nor
+does a `GET`, nor a public route.
+
+**Rate limits** are per route: `rateLimit: { max, perSeconds, by }`, on member
+and public routes only. `by: 'member'` counts the member's key, however they
+signed in; `by: 'caller'` counts the caller's address, which is the
+connection's, or the last `X-Forwarded-For` entry when the connection comes
+from a private address (a proxy or load balancer in front of the site). A
+caller over the limit gets 429 with `retry-after`. Each server counts in its
+own memory, as sign-in throttling does, so **behind N servers a route allows
+up to N times its limit** in all, and a restart forgets the count.
+
+**Other origins** use the Delivery API's allow-list
+(`deliveryApi.cors.allowedOrigins`, `docs/delivery-api.md`): an allowed origin
+gets CORS headers and its pre-flight is answered; any other gets none. Cookies
+are not sent across sites, so a member call from another origin uses a bearer
+token.
+
+**Capabilities stay per bundle.** A member or public route gets the
+capabilities its bundle declared, frozen, exactly as a back-office route does;
+a public route reaches nothing a back-office one could not.
+
+### Who is asking: `caller`
+
+Every handler is given `context.caller`, frozen, which says who the host
+resolved the request to before dispatch:
+
+```ts
+type BundleCaller =
+  | { kind: 'backoffice'; principal: Principal }
+  | { kind: 'member'; member: BundleMember; via: 'cookie' | 'token' }
+  | { kind: 'public' }
+```
+
+A public route's caller is always `public`, even when a member happens to be
+signed in. Core builds a capability that acts for the caller from it: the host
+passes `callerHost`, a factory per capability taking the caller and the bundle,
+and the registry calls it for each request, so a capability can write as the
+member a route was given and refuse a public caller ([`media`](#media-as-the-member)).
+A capability without a factory is the one shared object, as before.
+
+### Media as the member
+
+A bundle whose members upload files, such as a photo attached to an
+observation, asks for the `media` capability and declares the folders it uses
+by path (story 198):
+
+```ts
+export const observations = (): ServerBundle<'media'> => ({
+  id: 'observations',
+  section: 'content',
+  capabilities: ['media'],
+  media: {
+    folders: ['/Observations/Photos'],
+    types: ['jpeg', 'png', 'heic'], // optional: narrows each folder's list
+    maxBytes: 10 * 1024 * 1024,     // the largest upload; a folder's own limit may be smaller
+  },
+  routes: [
+    {
+      method: 'POST',
+      path: 'photos',
+      audience: 'member',
+      handler: async ({ request, host }) => {
+        const year = String(new Date().getFullYear())
+        const result = await host.media.create({
+          folder: `/Observations/Photos/${year}`,
+          name: 'Sighting',
+          file: request, // or a File from request.formData()
+          fileName: 'sighting.jpg',
+        })
+        if (!result.ok) return Response.json(result, { status: result.status })
+        // result.metadata: { width, height, location?, takenAt? } — keep it in the
+        // bundle's own tables if the observation needs it; the stored file has none.
+        return Response.json({ key: result.key, url: result.url })
+      },
+    },
+  ],
+})
+```
+
+**Folders by path.** The capability reads and writes only in the declared
+folders and the subfolders below them; `create` makes a missing subfolder,
+such as one per year, which follows its folder's permissions rather than
+belonging to the member who caused it. The boot resolves every path, matched
+in any case, and **refuses a path that does not exist**, naming the bundle and
+the path: create the folder in Media first, or leave the bundle out of
+`crombolo.config.ts` until it exists. Because a path breaks when a folder is
+renamed, the back office shows "Used by <bundle>" on the folder and on every
+folder above it, and asks before renaming, moving or deleting one (the
+Permissions panel's API lists them at `<backoffice>/crombolo/api/media-access/used`).
+After the boot the capability holds the folders by key, so a rename while the
+site runs takes effect at the next boot, which is the one that would refuse.
+
+**As whom.** On a member route it acts as the member: a `member` actor
+(`content/src/actor.ts`) that only media operations take, so it can never reach
+a page. The audit log names the member and the bundle, and change events carry
+the member's key. On a back-office route it acts as the route's user, with
+their media permissions and start nodes. On a public route every call is
+refused (`401`), since there is nobody to act as.
+
+| Call | Needs | Gives |
+| --- | --- | --- |
+| `create({ folder, name, file, fileName?, mediaType? })` | write permission on the folder | `{ ok, key, url, metadata }` |
+| `get(key)` | read permission | the item, its URL and its crops, or undefined |
+| `update(key, { name?, file?, fileName? })` | write permission on the item | `{ ok, url, metadata }` |
+| `delete(key)` | write permission on the item | `{ ok }`; the item goes to the recycle bin |
+| `list(folder, { skip, take })` | — | `{ ok, total, items }`: what the caller may read, 20 a page (100 at most) |
+| `crop(key, request?)` | read permission | a `Response`: the file, or a named crop or `{ width, height }`, `private, no-store`; 404 otherwise |
+
+Permissions are 196's (`docs/rendering.md`, "Protected media"): a member may
+create where they are in one of the folder's write groups, change or delete an
+item its own write policy allows (a folder can give each file to the member who
+added it), and read what its read policy allows. A refusal is
+`{ ok: false, status, message }`, the message written for the member.
+
+**Everything is checked before anything is stored:** the declared folder, the
+permission, then the file. A member's upload is accepted only when
+- its first bytes say what it is (`detectFileType`, `core/src/uploads.ts`) and
+  its extension agrees: an HTML page named `photo.jpg` is refused;
+- that type is on the folder's list of "File types members may upload here",
+  set by an administrator in the Permissions panel, narrowed by the bundle's
+  `types`; an empty list, or a folder with no rule, accepts nothing;
+- the site's own disallowed extensions do not refuse it;
+- it is within the smallest of the bundle's `maxBytes`, the folder's limit and
+  the site's, counted as it is read, so an upload past it stops being read
+  there (`413`).
+
+A back-office user's upload keeps to the bundle's list and limits, since the
+folder's list is about members.
+
+**Images are stored upright and stripped.** A JPEG, PNG, WebP, HEIC or AVIF is
+turned the way its EXIF orientation says, re-encoded in its own format, and
+stored with every metadata block gone (EXIF, XMP, IPTC, comments, text
+chunks), so a phone's location is never served; the colour profile is kept.
+A GIF keeps its frames and loses its comments and application blocks. What the
+metadata said is returned as `metadata`: `width` and `height` as stored,
+`location` (`latitude`, `longitude`, `altitude?`) and `takenAt` (the camera's
+local time, with its offset when it wrote one). An image that cannot be
+re-encoded on this server — HEIC and AVIF need an operating system codec Linux
+does not have — is refused rather than stored with its metadata. Uploads made
+in the back office are not changed.
 
 ### What a handler knows about the caller
 
-`context.principal` is the authenticated backoffice user, already holding the
+On a back-office route, `context.principal` is the authenticated backoffice user, already holding the
 section the bundle declared. Everything a finer check needs is on it:
 
 | Field | What it is |

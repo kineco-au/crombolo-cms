@@ -139,6 +139,7 @@ rather than the running server. Secret ones are never printed or logged.
 | Setting | Takes | Default | Description |
 | --- | --- | --- | --- |
 | `CROMBOLO_MEDIA_DIR` | string | `media` | Where uploaded files live on this disk, served at `/media/`. |
+| `CROMBOLO_MEDIA_CACHE_MB` | number | `64` | How much memory, in megabytes, each server gives to the media items it has used most recently. Others are looked up when asked for. |
 | `CROMBOLO_MEDIA_STORE` | `filesystem`, `s3`, `azure` | `filesystem` | Where media files are kept. An unrecognised value falls back to the file system. |
 | `CROMBOLO_MEDIA_PUBLIC_URL` | string | — | A CDN in front of the media folder: browsers are sent there instead of being served by this server. |
 | `CROMBOLO_MEDIA_S3_BUCKET` | string | — | S3: the bucket. |

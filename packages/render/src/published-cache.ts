@@ -19,8 +19,9 @@ import {
   type SchemaForm,
   withResolvedChoices,
 } from '@crombolo/core'
-import { PublishedMedia } from './media.ts'
-import { buildMenu, type Menu } from './menus.ts'
+import type { PublishedMedia } from './media.ts'
+import type { MediaCache } from './media-cache.ts'
+import { buildMenu, type Menu, type MenuItem, menuMediaKeys } from './menus.ts'
 import { type Navigation, PublishedContent, type PublishedProperty } from './model.ts'
 import { matchRedirect, type RedirectRule } from './redirects.ts'
 import {
@@ -72,8 +73,6 @@ export interface PublishedContentSource {
   loadPublished(): Promise<PublishedNode[]>
   /** Culture and hostnames, in sort order; none when omitted. */
   loadDomains?(): Promise<PublishedDomain[]>
-  /** Every media item not in the recycle bin, for pickers; none when omitted. */
-  loadMedia?(): Promise<PublishedMediaNode[]>
   /** The site's languages; an invariant site when omitted. */
   loadLanguages?(): Promise<PublishedLanguage[]>
   /** Dictionary translations, by item key then culture; none when omitted. */
@@ -148,19 +147,6 @@ export interface PublishedElementNode {
   properties: PublishedProperty[]
 }
 
-export interface PublishedMediaNode {
-  key: string
-  id: number
-  name: string
-  mediaTypeAlias: string
-  properties: PublishedProperty[]
-  /** Its place in the media tree; a root item's parent is -1. */
-  parentId?: number
-  sortOrder?: number
-  createDate?: Date
-  updateDate?: Date
-}
-
 /** The published tree in one culture. */
 export interface CultureView {
   culture: string | null
@@ -197,7 +183,6 @@ export interface CacheSnapshot {
   /** Configured rules first, in their declared order, then the tracked ones. */
   redirects: RedirectRule[]
   languages: PublishedLanguage[]
-  media: Map<string, PublishedMedia>
   /** Item key (lowercase) → culture (lowercase) → translation. */
   dictionary: Map<string, Map<string, string>>
   /** Every dictionary item, for a choice list drawn from one item's children. */
@@ -253,7 +238,6 @@ const EMPTY: CacheSnapshot = {
   routeKeys: new Map(),
   redirects: [],
   languages: [],
-  media: new Map(),
   dictionary: new Map(),
   dictionaryOutline: [],
   contentTypeAliases: new Map(),
@@ -296,37 +280,75 @@ export interface PublishedCacheOptions {
   form?: (key: string) => SchemaForm | undefined
   /** Told on every invalidation, for whatever else is built from the same content. */
   onInvalidate?: () => void
+  /**
+   * Media, which the snapshot does not hold (story 197): pickers, links and
+   * menus look items up here. Without one, nothing resolves to media.
+   */
+  media?: MediaCache
 }
 
-/** A menu's items in a culture, from a snapshot already in hand; empty when there is none. Pure. */
-export function menuItemsIn(snapshot: CacheSnapshot, culture: string | null, alias: string) {
+const NO_MEDIA = () => Promise.resolve(undefined)
+
+/** A menu's items in a culture, from a snapshot already in hand; empty when there is none. */
+export async function menuItemsIn(
+  snapshot: CacheSnapshot,
+  culture: string | null,
+  alias: string,
+  media?: MediaCache,
+): Promise<MenuItem[]> {
   const view =
     snapshot.views.get(viewKey(culture ?? snapshot.defaultCulture)) ??
     snapshot.views.get(viewKey(snapshot.defaultCulture))
-  return view ? (menuIn(snapshot, view, alias)?.items ?? []) : []
+  return view ? ((await menuIn(view, alias, media))?.items ?? []) : []
 }
 
-/** The menu published under `alias` in a view, built against that view's pages. Pure. */
-export function menuIn(
-  snapshot: CacheSnapshot,
+const menuElements = (view: CultureView) =>
+  [...view.elements.values()].filter((element) => element.contentType.alias === 'menu')
+
+const menuAliasOf = (element: PublishedElement) => {
+  const own = element.properties.find((p) => p.alias === MENU_ALIAS_PROPERTY)?.value
+  return typeof own === 'string' ? own.trim().toLowerCase() : undefined
+}
+
+/** The menu published under `alias` in a view, its media looked up in one query. */
+export async function menuIn(
   view: CultureView,
   alias: string,
-): Menu | undefined {
+  media?: MediaCache,
+): Promise<Menu | undefined> {
   const wanted = alias.trim().toLowerCase()
-  for (const element of view.elements.values()) {
-    if (element.contentType.alias !== 'menu') continue
-    const own = element.properties.find((p) => p.alias === MENU_ALIAS_PROPERTY)?.value
-    if (typeof own !== 'string' || own.trim().toLowerCase() !== wanted) continue
-    return buildMenu(element, {
-      content: (key) => view.byKey.get(key.toLowerCase()),
-      media: (key) => snapshot.media.get(key.toLowerCase()),
-    })
-  }
-  return undefined
+  const element = menuElements(view).find((e) => menuAliasOf(e) === wanted)
+  if (!element) return undefined
+  const items = media ? await media.byKeys(menuMediaKeys(element)) : new Map()
+  return buildMenu(element, {
+    content: (key) => view.byKey.get(key.toLowerCase()),
+    media: (key) => items.get(key.toLowerCase()),
+  })
 }
 
-/** Built the first time a snapshot is asked for a file, and gone with the snapshot. */
-const mediaByUrl = new WeakMap<CacheSnapshot, Map<string, PublishedMedia>>()
+/** Every menu in a view by alias, their media looked up together: what a page render offers. */
+export async function menusIn(
+  view: CultureView | undefined,
+  media?: MediaCache,
+): Promise<Map<string, Menu>> {
+  const out = new Map<string, Menu>()
+  if (!view) return out
+  const elements = menuElements(view)
+  if (elements.length === 0) return out
+  const items = media ? await media.byKeys(elements.flatMap(menuMediaKeys)) : new Map()
+  for (const element of elements) {
+    const alias = menuAliasOf(element)
+    if (alias === undefined || out.has(alias)) continue
+    out.set(
+      alias,
+      buildMenu(element, {
+        content: (key) => view.byKey.get(key.toLowerCase()),
+        media: (key) => items.get(key.toLowerCase()),
+      }),
+    )
+  }
+  return out
+}
 
 export class PublishedCache {
   #source: PublishedContentSource
@@ -337,6 +359,8 @@ export class PublishedCache {
   #generation = 0
   #building: { generation: number; done: Promise<CacheSnapshot> } | undefined
   #snapshotGeneration = -1
+  /** A checkpoint past the snapshot's own that it is known to hold, every change between being media only. */
+  #coveredTo: number | undefined
 
   constructor(source: PublishedContentSource, options: PublishedCacheOptions = {}) {
     this.#source = source
@@ -369,6 +393,7 @@ export class PublishedCache {
       if (generation >= this.#snapshotGeneration && !older) {
         this.#snapshot = snapshot
         this.#snapshotGeneration = generation
+        this.#coveredTo = undefined
       }
       if (this.#generation === generation) this.#loaded = true
       return snapshot
@@ -534,24 +559,18 @@ export class PublishedCache {
   async menu(alias: string, culture?: string | null): Promise<Menu | undefined> {
     const snapshot = await this.snapshot()
     const view = this.#view(snapshot, culture)
-    return view ? menuIn(snapshot, view, alias) : undefined
+    return view ? menuIn(view, alias, this.#options.media) : undefined
   }
 
-  /** Every media item, in tree order. */
-  async allMedia(): Promise<PublishedMedia[]> {
-    return [...(await this.snapshot()).media.values()]
-  }
-
-  /** The media item whose file is served at this address, `/media/<folder>/<name>`. */
-  async mediaAt(url: string): Promise<PublishedMedia | undefined> {
+  /** Every menu a culture's view publishes, by lowercase alias. */
+  async menus(culture?: string | null): Promise<Map<string, Menu>> {
     const snapshot = await this.snapshot()
-    let byUrl = mediaByUrl.get(snapshot)
-    if (!byUrl) {
-      byUrl = new Map()
-      for (const media of snapshot.media.values()) if (media.url) byUrl.set(media.url, media)
-      mediaByUrl.set(snapshot, byUrl)
-    }
-    return byUrl.get(url)
+    return menusIn(this.#view(snapshot, culture), this.#options.media)
+  }
+
+  /** Where media is looked up (story 197); undefined when this cache resolves none. */
+  get media(): MediaCache | undefined {
+    return this.#options.media
   }
 
   /** How URLs are built here: whether the top-level page is left out of paths. */
@@ -601,7 +620,7 @@ export class PublishedCache {
     const view = this.#view(snapshot, culture)
     return {
       content: (key) => view?.byKey.get(key.toLowerCase()),
-      media: (key) => snapshot.media.get(key.toLowerCase()),
+      media: this.#mediaLookup(),
       form: this.#formsIn(snapshot, view, culture ?? null),
       contentTypeAlias: (key) => snapshot.contentTypeAliases.get(key.toLowerCase()),
       urlOf: (content) => content.url,
@@ -667,7 +686,21 @@ export class PublishedCache {
   /** The checkpoint and build time of the snapshot served now; nothing before the first build. */
   served(): { checkpoint: number | undefined; builtAt: Date } | undefined {
     if (this.#snapshot === EMPTY || !this.#snapshot.builtAt) return undefined
-    return { checkpoint: this.#snapshot.checkpoint, builtAt: this.#snapshot.builtAt }
+    const own = this.#snapshot.checkpoint
+    const checkpoint =
+      own === undefined || this.#coveredTo === undefined ? own : Math.max(own, this.#coveredTo)
+    return { checkpoint, builtAt: this.#snapshot.builtAt }
+  }
+
+  /**
+   * Records that the snapshot served now also holds everything up to
+   * `checkpoint`, because every change since its own left the pages alone: a
+   * media change does not rebuild it (story 197). Ignored while it is being
+   * rebuilt, when the next one will say for itself.
+   */
+  covered(checkpoint: number): void {
+    if (!this.#loaded || this.#snapshot.checkpoint === undefined) return
+    if (checkpoint > (this.#coveredTo ?? this.#snapshot.checkpoint)) this.#coveredTo = checkpoint
   }
 
   async #build(): Promise<CacheSnapshot> {
@@ -692,9 +725,7 @@ export class PublishedCache {
         key.toLowerCase(),
         new Map([...translations].map(([culture, text]) => [culture.toLowerCase(), text])),
       )
-    const media = new Map(
-      ((await source.loadMedia?.()) ?? []).map((m) => [m.key.toLowerCase(), new PublishedMedia(m)]),
-    )
+    const media = this.#mediaLookup()
     const redirects = (await source.loadRedirects?.()) ?? []
     const elementNodes = (await source.loadElements?.()) ?? []
     const contentTypeAliases = new Map(
@@ -911,7 +942,7 @@ export class PublishedCache {
       // Pickers and links resolve against this culture's view.
       const context: ValueContext<PublishedContent, PublishedMedia> = {
         content: (key) => view.byKey.get(key.toLowerCase()),
-        media: (key) => media.get(key.toLowerCase()),
+        media,
         // Read lazily: the map is filled just below, with this very context, so an
         // element picking another element resolves too.
         element: (key) => view.elements.get(key.toLowerCase()),
@@ -977,13 +1008,17 @@ export class PublishedCache {
       routeKeys,
       redirects,
       languages,
-      media,
       dictionary,
       dictionaryOutline,
       contentTypeAliases,
       ...(checkpoint === undefined ? {} : { checkpoint }),
       builtAt,
     }
+  }
+
+  #mediaLookup(): (key: string) => Promise<PublishedMedia | undefined> {
+    const media = this.#options.media
+    return media ? (key) => media.byKey(key) : NO_MEDIA
   }
 
   /** Form lookups whose source-backed choices resolve against this view and culture. */

@@ -9,13 +9,11 @@ import {
   CACHE_INSTRUCTION_CHANNEL,
   type CacheInstructionKind,
   connect,
-  cromboloPlan,
   currentSchemaState,
   type Db,
-  migrate,
 } from '@crombolo/data'
 import { CacheInstructionPoller } from '@crombolo/server'
-import { dialectUnderTest, freshDb } from './support/db.ts'
+import { dialectUnderTest, migratedDb } from './support/db.ts'
 
 const open: Db[] = []
 const pollers: CacheInstructionPoller[] = []
@@ -29,9 +27,8 @@ afterEach(async () => {
 })
 
 async function installed(): Promise<Db> {
-  const db = await freshDb()
+  const db = await migratedDb()
   open.push(db)
-  await migrate(db, cromboloPlan)
   return db
 }
 

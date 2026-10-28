@@ -22,6 +22,68 @@ export interface CacheInstruction {
   checkpoint: number | null
 }
 
+/**
+ * What a media change touched (story 197), as a `content` instruction carries
+ * it: `{ media: [keys], moved?: [paths] }`. `moved` holds the old paths
+ * (`-1,1050`) of items that moved, so the items below them are dropped too.
+ */
+export interface MediaChangePayload {
+  media: string[]
+  moved?: string[]
+}
+
+/** What an instruction changes: the page snapshot, and the media cache. */
+export interface InstructionEffects {
+  pages: boolean
+  media: 'keep' | 'clear' | { keys: string[]; moved: string[] }
+}
+
+/** Payload fields that change only what the page snapshot holds. */
+const PAGE_ONLY = new Set(['key', 'redirects', 'domains', 'dictionary', 'elements', 'urls'])
+
+const strings = (value: unknown): string[] | undefined =>
+  Array.isArray(value) && value.every((v) => typeof v === 'string')
+    ? (value as string[])
+    : undefined
+
+/**
+ * What an instruction asks of a node's caches (story 197). A media change names
+ * its items and leaves the pages alone; a page change leaves media alone; a
+ * schema change, a bulk change such as an import, or anything not recognised
+ * empties both, which is never wrong, only slower. Pure.
+ */
+export function instructionEffects(
+  kind: CacheInstructionKind,
+  payload: Record<string, unknown>,
+): InstructionEffects {
+  if (kind === 'components') return { pages: false, media: 'keep' }
+  if (kind === 'schema') return { pages: true, media: 'clear' }
+  const fields = Object.keys(payload)
+  const keys = strings(payload.media)
+  if (keys) {
+    const pages = fields.some((field) => field !== 'media' && field !== 'moved')
+    return { pages, media: { keys, moved: strings(payload.moved) ?? [] } }
+  }
+  if (payload.media === true)
+    return { pages: fields.some((field) => field !== 'media'), media: 'clear' }
+  const pagesOnly = fields.length > 0 && fields.every((field) => PAGE_ONLY.has(field))
+  return { pages: true, media: pagesOnly ? 'keep' : 'clear' }
+}
+
+/** The instructions numbered after `after` up to `upTo`, in checkpoint order: what a node missed. */
+export async function instructionsBetween(
+  db: Db,
+  after: number,
+  upTo: number,
+): Promise<CacheInstruction[]> {
+  const rows = await db.query(
+    `SELECT id, kind, payload, created_by, checkpoint FROM cache_instruction
+      WHERE checkpoint > ? AND checkpoint <= ? ORDER BY checkpoint`,
+    [after, upTo],
+  )
+  return rows.map(instructionOf)
+}
+
 /** Where Postgres says an instruction was written, so nodes poll now rather than on their timer. */
 export const CACHE_INSTRUCTION_CHANNEL = 'crombolo_cache_instruction'
 
@@ -128,15 +190,17 @@ export async function cacheInstructionsAfter(db: Db, afterId: number): Promise<C
     'SELECT id, kind, payload, created_by, checkpoint FROM cache_instruction WHERE id > ? ORDER BY id',
     [afterId],
   )
-  return rows.map((row) => ({
-    id: Number(row.id),
-    kind: String(row.kind) as CacheInstructionKind,
-    payload: row.payload ? (JSON.parse(String(row.payload)) as Record<string, unknown>) : {},
-    createdBy: (row.created_by as string | null) ?? null,
-    checkpoint:
-      row.checkpoint === null || row.checkpoint === undefined ? null : Number(row.checkpoint),
-  }))
+  return rows.map(instructionOf)
 }
+
+const instructionOf = (row: Record<string, unknown>): CacheInstruction => ({
+  id: Number(row.id),
+  kind: String(row.kind) as CacheInstructionKind,
+  payload: row.payload ? (JSON.parse(String(row.payload)) as Record<string, unknown>) : {},
+  createdBy: (row.created_by as string | null) ?? null,
+  checkpoint:
+    row.checkpoint === null || row.checkpoint === undefined ? null : Number(row.checkpoint),
+})
 
 export interface ServerIdentity {
   nodeId: string

@@ -14,11 +14,11 @@ import {
   readLedger,
   readState,
   STATE_CONTENT_APPLIED,
-  STATE_DROP_ASSISTANT,
+  STATE_MEDIA_MEMBER_UPLOADS,
   seedIdentity,
 } from '@crombolo/data'
 import { summariseUpgrades, VERSION } from '@crombolo/server'
-import { freshDb } from './support/db.ts'
+import { migratedDb, undoMediaAccess } from './support/db.ts'
 import { BACKOFFICE, type Harness, signedInServer } from './support/harness.ts'
 
 const row = (id: number, appliedAt: string, extra: Partial<LedgerRow> = {}): LedgerRow => ({
@@ -80,14 +80,14 @@ describe('summarising the ledger', () => {
 })
 
 /**
- * Puts a current database back the way 0.27.0 left it, a day ago: before what
- * imports applied was recorded (049).
+ * Puts a current database back the way 0.34.0 left it, a day ago: before media
+ * permissions (050), the media paging indexes (051) and members' uploads (052).
  */
 async function asPreviousRelease(db: Db): Promise<void> {
-  await db.exec('DROP TABLE IF EXISTS content_applied')
-  await db.exec("DELETE FROM migration_history WHERE name = 'AddContentApplied'")
+  await undoMediaAccess(db)
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddMediaAccess'")
   await db.exec('UPDATE key_value SET value = ? WHERE key = ?', [
-    STATE_DROP_ASSISTANT,
+    STATE_CONTENT_APPLIED,
     MIGRATION_STATE_KEY,
   ])
   const yesterday = new Date(Date.now() - 24 * 3600_000).toISOString()
@@ -105,22 +105,25 @@ afterEach(async () => {
 
 describe('upgrading from the previous release', () => {
   test('applies only what is new, records it, and the summary calls it an upgrade', async () => {
-    const db = await freshDb()
+    const db = await migratedDb()
     dbs.push(db)
-    await migrate(db, cromboloPlan)
     await seedIdentity(db, {
       admin: { name: 'A', login: 'a@b.c', email: 'a@b.c', password: 'x' },
       hashPassword,
       passwordConfig: passwordConfigJson(),
     })
     await asPreviousRelease(db)
-    expect(await readState(db)).toBe(STATE_DROP_ASSISTANT)
+    expect(await readState(db)).toBe(STATE_CONTENT_APPLIED)
 
     const result = await migrate(db, cromboloPlan, { by: 'upgrade' })
-    expect(result.applied).toEqual(['AddContentApplied'])
-    expect(await readState(db)).toBe(STATE_CONTENT_APPLIED)
+    expect(result.applied).toEqual([
+      'AddMediaAccess',
+      'AddMediaPagingIndexes',
+      'AddMediaMemberUploads',
+    ])
+    expect(await readState(db)).toBe(STATE_MEDIA_MEMBER_UPLOADS)
     const summary = summariseUpgrades(await readLedger(db), VERSION)
-    expect(summary.lastUpgrade).toMatchObject({ release: '0.28.0', steps: 1 })
+    expect(summary.lastUpgrade).toMatchObject({ release: '0.35.0', steps: 3 })
   })
 
   test('the Changes dashboard reports the version, the install and the last upgrade', async () => {

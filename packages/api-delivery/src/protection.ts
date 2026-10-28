@@ -4,7 +4,13 @@
  * (`memberMayOpen`, shared with the site). Umbraco's `PublicAccessChecker`,
  * over rules read once per request.
  */
-import { memberMayOpen } from '@crombolo/core'
+import {
+  type MediaItemAccess,
+  type MediaRule,
+  memberMay,
+  memberMayOpen,
+  nearestMediaRule,
+} from '@crombolo/core'
 
 export interface ProtectionRule {
   /** The protected node's id: its own, or the ancestor whose rule covers it. */
@@ -49,4 +55,27 @@ export function accessTo(
   return memberMayOpen(rule, { username: member.userName, groups: member.groups })
     ? 'allowed'
     : 'forbidden'
+}
+
+/**
+ * What a caller may do with a media item (story 196): its own policy, else the
+ * nearest media rule on its path. A member who may not sign in now is nobody. Pure.
+ */
+export function mediaAccessTo(
+  media: { path: string; access: MediaItemAccess },
+  rules: ReadonlyMap<number, MediaRule>,
+  member: DeliveryMember | undefined,
+): Access {
+  const signedIn = member?.approved && !member.lockedOut ? member : undefined
+  const rule = nearestMediaRule(media.path, rules)
+  if (
+    memberMay(
+      'read',
+      media.access,
+      rule,
+      signedIn && { key: signedIn.key, groups: signedIn.groups },
+    )
+  )
+    return 'allowed'
+  return signedIn ? 'forbidden' : 'unauthorized'
 }

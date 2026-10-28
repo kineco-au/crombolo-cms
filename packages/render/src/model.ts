@@ -8,12 +8,19 @@
  */
 
 import type { FormSubmissionState } from '@crombolo/core'
-import { RawHtml } from './html.ts'
-import { MediaWithCrops } from './media.ts'
+import type { RawHtml } from './html.ts'
+import type { MediaWithCrops } from './media.ts'
 import type { MenuItem } from './menus.ts'
 import type { SeoSiteDefaults } from './seo.ts'
 import { NAVI_HIDE_ALIAS } from './url-segment.ts'
-import { convertValue, type ValueContext } from './values.ts'
+import {
+  convertValue,
+  convertValueNow,
+  htmlOf,
+  picksOf,
+  textOf,
+  type ValueContext,
+} from './values.ts'
 
 export type FallbackStrategy = 'none' | 'defaultValue' | 'language' | 'ancestors'
 
@@ -130,21 +137,28 @@ export class PublishedContent<Properties = any> {
     return this
   }
 
-  #convert(property: PublishedProperty): unknown {
-    return convertValue(
+  #convert = (property: PublishedProperty): unknown =>
+    convertValue(
       property.editorAlias,
       property.value,
       this.#context as ValueContext,
       property.config,
     )
-  }
 
-  /** A Media Picker's picks as a list, whether the picker allows one or many. */
-  media(alias: AliasOf<Properties>, options: ValueOptions = {}): MediaWithCrops[] {
-    const value = this.#read(alias, options)
-    if (Array.isArray(value))
-      return value.filter((v): v is MediaWithCrops => v instanceof MediaWithCrops)
-    return value instanceof MediaWithCrops ? [value] : []
+  #convertNow = (property: PublishedProperty): unknown =>
+    convertValueNow(
+      property.editorAlias,
+      property.value,
+      this.#context as ValueContext,
+      property.config,
+    )
+
+  /**
+   * A Media Picker's picks as a list, whether the picker allows one or many.
+   * Media is looked up as it is read (story 197): `await model.media('hero')`.
+   */
+  async media(alias: AliasOf<Properties>, options: ValueOptions = {}): Promise<MediaWithCrops[]> {
+    return picksOf(await this.#read(alias, options))
   }
 
   /** Ancestors, nearest first; used by the `ancestors` fallback strategy. */
@@ -173,9 +187,10 @@ export class PublishedContent<Properties = any> {
     return this.#read(alias, options) as ValueOf<Properties, Alias>
   }
 
-  #read(alias: string, options: ValueOptions): unknown {
+  #read(alias: string, options: ValueOptions, now = false): unknown {
+    const convert = now ? this.#convertNow : this.#convert
     const exact = this.#find(alias, options)
-    if (exact && exact.value !== null && exact.value !== '') return this.#convert(exact)
+    if (exact && exact.value !== null && exact.value !== '') return convert(exact)
 
     switch (options.fallback) {
       case 'defaultValue':
@@ -183,13 +198,13 @@ export class PublishedContent<Properties = any> {
       case 'language': {
         for (const culture of this.#fallbackChain) {
           const found = this.#find(alias, { ...options, culture })
-          if (found && found.value !== null && found.value !== '') return this.#convert(found)
+          if (found && found.value !== null && found.value !== '') return convert(found)
         }
         break
       }
       case 'ancestors': {
         for (const ancestor of this.#ancestors) {
-          const found = ancestor.#read(alias, { ...options, fallback: 'none' })
+          const found = ancestor.#read(alias, { ...options, fallback: 'none' }, now)
           if (found !== null && found !== undefined && found !== '') return found
         }
         break
@@ -202,15 +217,21 @@ export class PublishedContent<Properties = any> {
     return exact?.value ?? null
   }
 
-  /** `value()` coerced to a string, for direct use in markup. */
+  /**
+   * `value()` coerced to a string, for direct use in markup. It never waits: a
+   * rich text's links to media, which have to be looked up, are `#` here, so
+   * rich text is written with `html()`.
+   */
   text(alias: AliasOf<Properties>, options: ValueOptions = {}): string {
-    const value = this.#read(alias, options)
-    return value === null || value === undefined ? '' : String(value)
+    return textOf(this.#read(alias, options, true))
   }
 
-  /** A rich-text value, marked so the renderer does not escape it. */
-  html(alias: AliasOf<Properties>, options: ValueOptions = {}): RawHtml {
-    return new RawHtml(this.text(alias, options))
+  /**
+   * A rich-text value, marked so the renderer does not escape it. A promise when
+   * it links to media, which JSX renders as it is: `{model.html('body')}`.
+   */
+  html(alias: AliasOf<Properties>, options: ValueOptions = {}): RawHtml | Promise<RawHtml> {
+    return htmlOf(this.#read(alias, options))
   }
 
   #find(alias: string, options: ValueOptions): PublishedProperty | undefined {
@@ -257,6 +278,7 @@ export interface PageProps<Properties = any> {
   dictionary: (key: string) => string
   /**
    * A menu's items by the menu's alias, in the request's culture: `menu('header')`.
+   * Read before the page renders, media included, so it stays synchronous.
    * Empty when there is no such menu (story 141; docs/rendering.md, "Menus").
    */
   menu: (alias: string) => MenuItem[]

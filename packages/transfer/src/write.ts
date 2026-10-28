@@ -14,6 +14,7 @@
 import {
   BUNDLE_FORMAT_VERSION,
   BUNDLE_SECTIONS,
+  type BundleBlob,
   type BundleContentMode,
   type BundleManifest,
   type BundleNode,
@@ -88,6 +89,23 @@ export function writeNode(node: BundleNode, sealed = false): string {
             memberGroups: [...node.access.memberGroups].sort(),
             ...(!sealed && node.access.memberUserNames
               ? { memberUserNames: [...node.access.memberUserNames].sort() }
+              : {}),
+          },
+        }
+      : {}),
+    ...(node.mediaAccess
+      ? {
+          mediaAccess: {
+            ...node.mediaAccess,
+            ...(node.mediaAccess.rule
+              ? {
+                  rule: {
+                    ...node.mediaAccess.rule,
+                    groups: [...node.mediaAccess.rule.groups].sort((a, b) =>
+                      a.name.localeCompare(b.name),
+                    ),
+                  },
+                }
               : {}),
           },
         }
@@ -176,15 +194,9 @@ export function writeManifest(manifest: BundleManifest): string {
         languages: [...d.schema.languages].sort(),
       },
     },
-    blobs: [...manifest.blobs]
-      .sort((a, b) => a.key.localeCompare(b.key))
-      .map((b) => ({
-        key: b.key,
-        node: b.node,
-        etag: b.etag,
-        size: b.size,
-        included: b.included,
-      })),
+    // The files themselves are listed in `media.json`, which the hash covers;
+    // this file, which holds the hash, only says that there is one (story 195).
+    ...(manifest.blobs.length > 0 ? { mediaManifest: MEDIA_MANIFEST } : {}),
     // Absent on a content-only bundle, so version 1 output is unchanged.
     ...(manifest.carries && Object.keys(manifest.carries).length > 0
       ? { carries: sortedCarries(manifest.carries) }
@@ -224,7 +236,41 @@ export function sectionOf(path: string): BundleSection | undefined {
 }
 
 /** Where a media file's bytes sit when the bundle carries them. */
-export const blobPath = (key: string): string => `blobs/${key}`
+export const mediaPath = (key: string): string => `${MEDIA_DIR}/${key}`
+
+/** The directory a bundle's media files sit in. */
+export const MEDIA_DIR = 'media'
+
+/** The media manifest, at the package root beside `bundle.json` (story 195). */
+export const MEDIA_MANIFEST = 'media.json'
+
+/**
+ * A carried media file's address: `bundle://<id>/media/<key>`, absolute and
+ * naming the bundle, so it means the same wherever the package is copied.
+ */
+export function mediaUri(bundleId: string, key: string): string {
+  const path = key.split('/').map(encodeURIComponent).join('/')
+  return `bundle://${encodeURIComponent(bundleId)}/${MEDIA_DIR}/${path}`
+}
+
+/**
+ * `media.json`: every media file the content names, with a URI for each the
+ * bundle carries. A file listed without one is left out or, in a remote's
+ * referenced file, fetched from that remote by key.
+ */
+export function writeMediaManifest(bundleId: string, blobs: readonly BundleBlob[]): string {
+  return json({
+    files: [...blobs]
+      .sort((a, b) => a.key.localeCompare(b.key))
+      .map((b) => ({
+        key: b.key,
+        node: b.node,
+        etag: b.etag,
+        size: b.size,
+        ...(b.included ? { uri: mediaUri(bundleId, b.key) } : {}),
+      })),
+  })
+}
 
 export const MANIFEST_FILE = 'bundle.json'
 
@@ -296,7 +342,7 @@ export function writeBundle(
   const sizes = new Map([...blobs].map(([key, bytes]) => [key, bytes.length]))
   const planned = planBundle(set, sizes, sections, options)
   const carried: BundleFile[] = planned.blobs.map((key) => {
-    const path = blobPath(key)
+    const path = mediaPath(key)
     const bytes = blobs.get(key) as Uint8Array
     return {
       path,
@@ -313,7 +359,7 @@ export function writeBundle(
 /**
  * A bundle whose media files the caller streams (story 104): the manifest and
  * every other file, from each carried file's size alone. The caller writes
- * `blobs` at `blobPath` — sealed with `sealBytes` under the seal when `sealing`
+ * `blobs` at `mediaPath` — sealed with `sealBytes` under the seal when `sealing`
  * — computes `bundleIntegrity` over those and `files` in path order, and writes
  * the manifest with it.
  */
@@ -379,9 +425,13 @@ function planBundle(
     content: content === 'open' ? undefined : content,
     integrity: '',
   }
+  const media: BundleFile[] =
+    manifest.blobs.length > 0
+      ? [{ path: MEDIA_MANIFEST, text: writeMediaManifest(manifest.id, manifest.blobs) }]
+      : []
   return {
     manifest,
-    files: [...nodes, ...sealedFiles, ...extra, ...(people?.files ?? [])],
+    files: [...nodes, ...sealedFiles, ...extra, ...(people?.files ?? []), ...media],
     blobs: [...carriedSizes.keys()].sort((a, b) => a.localeCompare(b)),
     sealing,
   }

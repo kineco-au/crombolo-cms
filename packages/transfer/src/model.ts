@@ -16,14 +16,17 @@ import type { SealParameters } from './seal.ts'
  * a bundle. Every bundle is written at this version.
  *
  * 4 (0.33.1): `bundle.json` at the package root, with what it carries beside
- * it, and a site's code as a section (stories 192, 193). Versions 1–3 kept the
- * payload in `content/`, and are refused rather than read (no older layout is
- * kept up), with a message saying to rebuild them.
+ * it, and a site's code as a section (stories 192, 193).
+ * 5: media listed in `media.json` at the root, each carried file at
+ * `media/<key>` with a `bundle://` URI (story 195).
+ *
+ * An older version is refused rather than read (no older layout is kept up),
+ * with a message saying to rebuild it.
  */
-export const BUNDLE_FORMAT_VERSION = 4
+export const BUNDLE_FORMAT_VERSION = 5
 
-/** The oldest version this reader reads: the first with the payload at the package root. */
-export const OLDEST_BUNDLE_FORMAT_VERSION = 4
+/** The oldest version this reader reads: the first with media listed in `media.json`. */
+export const OLDEST_BUNDLE_FORMAT_VERSION = 5
 
 /**
  * The sections a bundle can carry beyond its content, and the directory each
@@ -99,6 +102,25 @@ export interface BundleAccess {
   memberUserNames?: string[]
 }
 
+/**
+ * Who may read and change a media folder or item (story 196): the rule set on
+ * it, its own policies, and the member who created it, by key.
+ */
+export interface BundleMediaAccess {
+  rule?: {
+    publicRead: boolean
+    groups: Array<{ name: string; read: boolean; write: boolean }>
+    newRead: 'public' | 'groups' | 'creator' | null
+    newWrite: 'groups' | 'creator' | 'none' | null
+    /** File types members may upload below (story 198); absent is none. */
+    memberTypes?: string[]
+    memberMaxBytes?: number
+  }
+  readPolicy?: 'public' | 'groups' | 'creator' | 'none'
+  writePolicy?: 'public' | 'groups' | 'creator' | 'none'
+  creator?: string
+}
+
 /** A publish or unpublish waiting for its time. */
 export interface BundleSchedule {
   culture: string | null
@@ -127,6 +149,7 @@ export interface BundleNode {
   variants: BundleVariant[]
   values: BundleValue[]
   access?: BundleAccess
+  mediaAccess?: BundleMediaAccess
   schedule?: BundleSchedule[]
   redirects?: BundleRedirect[]
 }
@@ -209,6 +232,11 @@ export interface BundleManifest {
   counts: Partial<Record<BundleKind, number>>
   dependencies: BundleDependencies
   blobs: BundleBlob[]
+  /**
+   * `media.json`, when the bundle names any media file: the list of them, at
+   * the package root and inside the hash (story 195). `blobs` is read from it.
+   */
+  mediaManifest?: string
   /**
    * The files this bundle carries beyond its content and media, by section, in
    * path order — the structure and the views that make a bundle installable

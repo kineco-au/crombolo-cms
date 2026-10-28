@@ -46,7 +46,8 @@ bundles/campaign-x/
 ├── bundle.json              manifest, including an integrity hash over everything below
 ├── nodes/<uuid>.json        one file per node, every kind: its place, name and rules
 ├── values/<uuid>.json       the node's values, sealed, with --include-content
-├── blobs/<key>              the media bytes, with --with-blobs (sealed with the values)
+├── media.json               every media file the content names, with a URI for each one carried
+├── media/<key>              the media bytes, with --with-media (sealed with the values)
 ├── people/                  members, users and their groups, always sealed
 ├── schema/, components/, …  the sections, when the bundle carries structure
 ├── code/                    a site's own code, when it carries some (bundles.md)
@@ -85,7 +86,7 @@ passphrase apart from a damaged file. The key is never written anywhere.
 | Readable | Sealed |
 |---|---|
 | The manifest, with the seal's salt and cost and the counts of people | Property values (`values/`) |
-| Each node's key, kind, type, parent, order and template | Media files (`blobs/`) |
+| Each node's key, kind, type, parent, order and template | Media files (`media/`) |
 | Names, cultures and whether each was published | Usernames on a protected page's rules |
 | Each value's property, culture, editor and the keys it refers to | `people/` |
 | Schema, components, styles, scripts and dictionary | |
@@ -112,6 +113,13 @@ for their time, in UTC) and `redirects` (the routes it used to answer on, as
 whose sign-in page is in neither the bundle nor the site is blocking; a member
 group that does not exist here is reported, and nobody can see the page until
 it does.
+
+A media node carries `mediaAccess` when it sets anything (story 196): `rule`
+(whether anyone may see it, its member groups with whether each may see and
+change, and what files added later get), its own `readPolicy` and
+`writePolicy`, and `creator`, the key of the member who created it. They are
+applied after every node exists, and the creator is kept as a key, which is
+that member wherever one has it. An older bundle without it changes nothing.
 
 ### People
 
@@ -163,10 +171,10 @@ checkout ([`bundles.md`](bundles.md)). The manifest's `carries` declares every o
 integrity hash covers them, and `bundle install` applies them before the content
 that needs them. A content-only bundle carries no `carries` key.
 
-Every bundle is written as `formatVersion` 4, whatever it carries: the first
-format with `bundle.json` at the package root (story 193). A reader refuses a
-newer format with "upgrade crombolo to import it", and anything older than 4,
-whose payload sat in `content/`, with a message saying to rebuild it.
+Every bundle is written as `formatVersion` 5, whatever it carries: `bundle.json`
+at the package root (story 193), and its media listed in `media.json` (story
+195). A reader refuses a newer format with "upgrade crombolo to import it", and
+anything older than 5 with a message saying to rebuild it.
 
 `label` is the bundle's own name, when it has one — a created package's name
 travels in the artifact rather than being supplied at import time, so a
@@ -611,7 +619,7 @@ as installing a bundle is; everyone with Settings still sees the findings.
 ```
 crombolo bundle export --root <path|uuid> [--root …] --out <dir>
                         [--only] [--drafts] [--with-blueprints]
-                        [--include-content [--with-blobs] [--allow-content-unencrypted]]
+                        [--include-content [--with-media] [--allow-content-unencrypted]]
                         [--with-members] [--with-users]
 
 crombolo bundle export … [--name <npm name>] [--package-version <version>]
@@ -683,21 +691,32 @@ Two things a bundle carries were being dropped on import, and are not any more:
 
 ### Media
 
-`--with-blobs` carries the bytes. Each media file is written to `blobs/<key>`,
+`--with-media` carries the bytes. Each media file is written to `media/<key>`,
 the integrity hash covers it, and the import puts it into the destination's
 store under the same key — through the `MediaStore` interface, so it lands on a
 disk, in a bucket or in a container according to what that environment uses, and
 the value that already names `/media/<key>` finds its file.
 
+**`media.json`** lists every media file the content names, carried or not: key,
+size, etag, owning node and, for a carried file, its URI,
+`bundle://<bundle id>/media/<key>` (key segments percent-encoded). It sits at
+the package root and the integrity hash covers it. `bundle.json` cannot list
+the files, because it holds the hash, so it only names `media.json`. The URI
+names the bundle, so it means the same wherever the package is copied, and the
+reader refuses one that points anywhere else: another bundle, or a scheme such
+as `https:` (fetching from outside the package is a later story). A file under
+`media/` that `media.json` does not list is refused too, so a file added after
+the export is caught as surely as one edited.
+
 Whether a file is carried is decided by the writer, from the bytes the exporter
 managed to read, not by the flag: a key the source store has not got is reported
-and marked `included: false`, so the manifest says what is true. At the
+and listed without a URI, so the manifest says what is true. At the
 destination, a carried file needs no check, and one that is *not* carried is
 looked up in the local store — `missing-blob`, a person's decision, which
 `--allow-missing-blobs` answers.
 
 Without the flag the bundle carries no media file, and the export says so
-rather than leaving it to be discovered at the other end. `--with-blobs` needs
+rather than leaving it to be discovered at the other end. `--with-media` needs
 `--include-content`: a media file is content, and is sealed with the values.
 
 ### Still open
@@ -712,7 +731,7 @@ Stories `104`–`106`. A bundle with **every** section and every node is a whole
 site, and moving one is two commands:
 
 ```bash
-bunx crombolo export --site --out site.tgz     # [--no-media] [--drafts] [--with-members] [--with-users] [--anonymise]
+bunx crombolo export --site --out site.tgz     # [--with-media] [--drafts] [--with-members] [--with-users] [--anonymise]
 bunx crombolo start --from site.tgz            # in an empty folder: scaffold, bun install, import, serve
 bunx crombolo import site.tgz --replace        # or replace a site that already exists
 ```
@@ -723,7 +742,7 @@ manifest fields beyond the usual:
 | Field | Means |
 | --- | --- |
 | `scope: "site"` | a whole site: `import` replaces with it, and refuses to replace with anything else |
-| `media: "omitted"` | written with `--no-media`: importing it needs `--allow-missing-media`, so arriving without the files is a decision |
+| `media: "omitted"` | written without `--with-media`, the default since story 195: importing it needs `--allow-missing-media`, so arriving without the files is a decision |
 | `requires` | the server bundles the site wires, by package name and version, leaving out the packages the installation lists as `hostProvided` (story 177); an import refuses while one is missing or older here |
 
 `provenance.cmsVersion` records the CMS that wrote it, and the package's peer range
@@ -822,7 +841,7 @@ no credentials for one stored in another; the bundle travels as a file does.
 # where the content is
 bunx crombolo bundle export --root "/Campaigns/Autumn 2026" --out bundles/campaign-x
 bunx crombolo bundle export --root 9a1f3c2e-… --only --drafts --out bundles/one-page
-bunx crombolo bundle export --root "/Campaigns" --include-content --with-blobs --out bundles/campaign-x
+bunx crombolo bundle export --root "/Campaigns" --include-content --with-media --out bundles/campaign-x
                                       # values and media bytes, sealed: the bundle is self-contained
 
 # where it is going: read-only, and non-zero while anything is outstanding

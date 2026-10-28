@@ -15,7 +15,7 @@ import type { EmailProps, EmailRenderResult } from './email.ts'
 import { RawHtml } from './html.ts'
 import { type Child, renderToString } from './jsx-runtime.ts'
 import type { PageProps, PublishedContent, RequestMember } from './model.ts'
-import { menuItemsIn, type PublishedCache, translate, urlsIn } from './published-cache.ts'
+import { type PublishedCache, translate, urlsIn } from './published-cache.ts'
 import type { SiteSearchPort } from './search.ts'
 import { absoluteUrl, type SeoSiteDefaults } from './seo.ts'
 import type { ViewSnapshots } from './snapshots.ts'
@@ -101,6 +101,8 @@ export interface RenderRequest {
   search?: SiteSearchPort
   /** A back-office preview of a draft: blocks with no component say so (story 184). */
   preview?: boolean
+  /** The signed-in member's anti-forgery token, written by `<AntiforgeryMeta />` (story 186). */
+  antiforgery?: string
 }
 
 /**
@@ -350,7 +352,10 @@ export class Renderer {
     const nav = await this.#cache.navigation(culture)
     const snapshot = await this.#cache.snapshot()
     const dictionary = (key: string) => translate(snapshot, key, culture)
-    const menu = (alias: string) => menuItemsIn(snapshot, culture, alias)
+    // Menus are few, so all of them are read now, their media in one lookup,
+    // and `menu()` stays synchronous for the views.
+    const menus = await this.#cache.menus(culture)
+    const menu = (alias: string) => menus.get(alias.trim().toLowerCase())?.items ?? []
     const origin = (request.origin ?? 'http://localhost').replace(/\/$/, '')
     const props: PageProps = {
       model: content,
@@ -373,6 +378,7 @@ export class Renderer {
     return renderScope(props, () => this.#renderLayouts(alias, props, rendering), {
       search: request.search,
       preview: request.preview,
+      antiforgery: request.antiforgery,
       blockComponent: (blockAlias) => this.blockComponent(blockAlias),
     })
   }

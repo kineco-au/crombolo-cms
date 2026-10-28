@@ -3,10 +3,10 @@ import { HighlightRows, highlightsOf } from '../shared/highlights.tsx'
 import { Layout } from '../shared/layout.tsx'
 import { PageHeader, SectionIntro } from '../shared/section-intro.tsx'
 
-export default function ContentPage({ model, nav }: PageProps) {
-  const image = model.media('heroImage')[0]
+export default async function ContentPage({ model, nav }: PageProps) {
+  const image = (await model.media('heroImage'))[0]
   const highlights = highlightsOf(model.value('highlights'))
-  const highlightsImage = model.media('highlightsImage')[0]
+  const highlightsImage = (await model.media('highlightsImage'))[0]
   return (
     <Layout model={model} nav={nav}>
       <PageHeader model={model} />
@@ -24,7 +24,7 @@ export default function ContentPage({ model, nav }: PageProps) {
             eyebrow={model.text('sectionEyebrow')}
             heading={model.text('sectionHeading')}
           />
-          <div class="prose" setInnerHTML={{ __html: model.text('bodyText'), dangerously: true }} />
+          <div class="prose">{model.html('bodyText')}</div>
         </div>
       </section>
 

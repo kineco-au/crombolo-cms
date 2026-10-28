@@ -54,6 +54,9 @@ export interface PackagePort {
   create(input: PackageDefinitionInput, id: string | undefined): Promise<PackageWriteResult>
   update(id: string, input: PackageDefinitionInput): Promise<PackageWriteResult>
   remove(id: string): Promise<'deleted' | 'notFound'>
-  /** Serializes and packs the definition now; undefined when it is gone. */
-  build(id: string): Promise<BuiltPackage | undefined>
+  /**
+   * Serializes and packs the definition now; undefined when it is gone. Media
+   * files are carried only when asked for (story 195).
+   */
+  build(id: string, options?: { withMedia?: boolean }): Promise<BuiltPackage | undefined>
 }

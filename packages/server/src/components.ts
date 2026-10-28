@@ -121,6 +121,9 @@ export async function checkComponents(options: {
       })
     }
 
+    for (const found of unawaitedMedia(source))
+      problems.push({ file: `${where}:${found.line}`, message: found.message })
+
     try {
       // A query does not bust Bun's module cache, so a path imported once in
       // this process answers from the registry. Harmless: the CLI checks each
@@ -156,6 +159,60 @@ export async function checkComponents(options: {
   }
 }
 
+const MEDIA_CALL = /(\bawait\s+)?((?:[A-Za-z_$][\w$]*)(?:\??\.[A-Za-z_$][\w$]*)*)\.media\(/g
+
+/** The index just past the parenthesis that closes the one opened before `from`. */
+function closingParen(source: string, from: number): number {
+  let depth = 1
+  for (let at = from; at < source.length; at++) {
+    const c = source[at]
+    if (c === '(') depth += 1
+    else if (c === ')' && --depth === 0) return at + 1
+  }
+  return source.length
+}
+
+/**
+ * `media()` read as if it were not a promise (story 197): indexed, a property
+ * read off it, destructured or iterated without `await`. Without the type
+ * checker this is the check that catches a view written before media was read
+ * asynchronously. A promise passed on, or returned, is left alone. Pure.
+ */
+export function unawaitedMedia(source: string): Array<{ line: number; message: string }> {
+  const out: Array<{ line: number; message: string }> = []
+  for (const match of source.matchAll(MEDIA_CALL)) {
+    if (match[1]) continue
+    const start = match.index ?? 0
+    const end = closingParen(source, start + match[0].length)
+    const call = source.slice(start, end)
+    const after = source.slice(end).trimStart()
+    const before = source.slice(Math.max(0, start - 200), start)
+    const synchronous =
+      /^(\[|\??\.(?!\.|then\b|catch\b|finally\b))/.test(after) ||
+      /\[[^\]=]*\]\s*=\s*$/.test(before) ||
+      /\bof\s+$/.test(before) ||
+      /\.\.\.\s*$/.test(before)
+    if (!synchronous) continue
+    out.push({
+      line: source.slice(0, start).split('\n').length,
+      message:
+        `${call} is read asynchronously: write (await ${call}) in an async component. ` +
+        'Media is looked up as it is read, so it is awaited like any other promise.',
+    })
+  }
+  return out
+}
+
+/** The values read asynchronously since media left the page snapshot (story 197). */
+const ASYNC_VALUE = /Promise<(?:MediaWithCrops|Link|PublishedContent|RawHtml|string)\b/
+
+/** A compiler message about one of them, with the change to make. Pure. */
+export function withAwaitHint(line: string): string {
+  return ASYNC_VALUE.test(line)
+    ? `${line} (media, rich text and link values are read asynchronously: await them in an async component)`
+    : line
+}
+
 /**
  * `tsc --noEmit` with the site's own tsconfig, when the site has the compiler.
  *
@@ -187,6 +244,7 @@ async function checkTypes(siteDir: string): Promise<ComponentCheckReport['types'
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line.length > 0 && !/^Found \d+ error/.test(line))
+    .map(withAwaitHint)
   return { checked: true, problems: lines }
 }
 

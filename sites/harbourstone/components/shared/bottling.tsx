@@ -30,14 +30,14 @@ export function TastingNotes({ notes }: { notes: PublishedElement[] }) {
  * One bottling, as it appears in a list. `detailed` is what the range page
  * shows and the home page does not: the bottle itself and the tasting notes.
  */
-export function BottlingCard({
+export async function BottlingCard({
   bottling,
   detailed,
 }: {
   bottling: PublishedContent
   detailed?: boolean
 }) {
-  const bottle = bottling.media('bottleImage')[0]
+  const bottle = (await bottling.media('bottleImage'))[0]
   const notes = (bottling.value('tastingNotes') ?? []) as PublishedElement[]
   return (
     <li class="bottling-card">

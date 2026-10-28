@@ -33,7 +33,13 @@ import {
   readUrlOptions,
   WriteRejectedError,
 } from '@crombolo/data'
-import type { PublishedCache, PublishedContentSource, PublishedNode } from '@crombolo/render'
+import type {
+  MediaSource,
+  PublishedCache,
+  PublishedContentSource,
+  PublishedMediaNode,
+  PublishedNode,
+} from '@crombolo/render'
 import {
   DOMAINS_FILE,
   nodeReferenceFor,
@@ -519,27 +525,6 @@ export function createPublishedContentSource(
         })),
       }))
     },
-    async loadMedia() {
-      const media = new DocumentRepository(db, { ...options, kind: 'media' })
-      return (await media.loadCurrent()).map((item) => ({
-        key: item.key,
-        id: item.id,
-        name: item.name,
-        mediaTypeAlias: item.contentTypeAlias,
-        parentId: item.parentId,
-        sortOrder: item.sortOrder,
-        createDate: item.createDate,
-        updateDate: item.updateDate,
-        properties: item.values.map((value) => ({
-          alias: value.alias,
-          editorAlias: value.editorAlias ?? '',
-          culture: value.culture,
-          segment: value.segment,
-          value: toPublishedValue(value.editorAlias, value.value),
-          config: value.config,
-        })),
-      }))
-    },
     async loadLanguages() {
       return (await new LanguageRepository(db).all()).map((l) => ({
         isoCode: l.isoCode,
@@ -618,6 +603,47 @@ export function createPublishedContentSource(
         const checkpoint = await latestCheckpoint(reader)
         return fn(createPublishedContentSource(reader, options), checkpoint)
       }),
+  }
+}
+
+/**
+ * Where the media cache fills from (story 197): items by key, and by the file
+ * address `file_url` indexes, with the values an editor sees now — media has
+ * no publish — and its own access settings.
+ */
+export function createMediaSource(
+  db: Db,
+  options: Omit<DocumentRepositoryOptions, 'kind'> = {},
+): MediaSource {
+  const media = new DocumentRepository(db, { ...options, kind: 'media' })
+  const shaped = (items: Awaited<ReturnType<DocumentRepository['loadCurrent']>>) =>
+    items.map(
+      (item): PublishedMediaNode => ({
+        key: item.key,
+        id: item.id,
+        name: item.name,
+        mediaTypeAlias: item.contentTypeAlias,
+        parentId: item.parentId,
+        path: item.path,
+        access: item.access,
+        sortOrder: item.sortOrder,
+        createDate: item.createDate,
+        updateDate: item.updateDate,
+        properties: item.values.map((value) => ({
+          alias: value.alias,
+          editorAlias: value.editorAlias ?? '',
+          culture: value.culture,
+          segment: value.segment,
+          value: toPublishedValue(value.editorAlias, value.value),
+          config: value.config,
+        })),
+      }),
+    )
+  return {
+    loadMediaByKeys: async (keys) =>
+      keys.length === 0 ? [] : shaped(await media.loadCurrent({ keys })),
+    loadMediaByUrls: async (urls) =>
+      urls.length === 0 ? [] : shaped(await media.loadCurrent({ urls })),
   }
 }
 

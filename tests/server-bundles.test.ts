@@ -43,7 +43,7 @@ const admin: Principal = {
 const editor: Principal = { ...admin, isAdmin: false, allowedSections: ['content'] }
 
 /** Enough of a host to see what a handler is given, without a database. */
-const stubHost = (): Omit<BundleHost, 'tables'> => ({
+const stubHost = (): Omit<BundleHost, 'tables' | 'media'> => ({
   redirects: {
     list: async () => ({ total: 0, items: [] }),
     byKey: async () => undefined,
@@ -474,6 +474,46 @@ describe('what a handler is given', () => {
   })
 })
 
+describe('who a route answers (story 186)', () => {
+  const SITE = '/crombolo/bundle/'
+  const site = (bundles: ReturnType<typeof mount>, path: string, init: RequestInit = {}) => {
+    const url = new URL(`http://localhost${path}`)
+    return bundles.site(new Request(url, init), url)
+  }
+
+  test('a route that names no audience is a back-office route', () => {
+    const bundles = mount([simple()])
+    expect(bundles.mounted[0]?.routes).toEqual([
+      { method: 'GET', path: 'things', audience: 'backoffice' },
+    ])
+    expect(bundles.mounted[0]?.sitePrefix).toBe(`${SITE}demo`)
+  })
+
+  test('no route answers on the site unless it declares a member or public audience', async () => {
+    const bundles = mount([
+      simple({
+        routes: [
+          { method: 'GET', path: 'things', handler: () => ok() },
+          { method: 'GET', path: 'admin', audience: 'backoffice', handler: () => ok() },
+        ],
+      }),
+    ])
+    expect((await site(bundles, `${SITE}demo/things`))?.status).toBe(404)
+    expect((await site(bundles, `${SITE}demo/admin`))?.status).toBe(404)
+    expect((await call(bundles, `${BASE}demo/things`))?.status).toBe(200)
+  })
+
+  test('a public route is not reachable under the back office', async () => {
+    const bundles = mount([
+      simple({
+        routes: [{ method: 'GET', path: 'open', audience: 'public', handler: () => ok() }],
+      }),
+    ])
+    expect((await call(bundles, `${BASE}demo/open`))?.status).toBe(404)
+    expect((await site(bundles, `${SITE}demo/open`))?.status).toBe(200)
+  })
+})
+
 describe('a bundle that misbehaves', () => {
   test('becomes its own 500 rather than an unhandled rejection', async () => {
     const bundles = mount([
@@ -573,11 +613,14 @@ describe('nothing mounts a bundle except the site’s own configuration', () => 
     expect(marketplace).not.toMatch(/\bimport\s*\(\s*(?:name|`|resolved)/)
   })
 
-  test('a web node serves no bundle route at all', () => {
-    // These are backoffice endpoints; a public node has no business holding them.
-    expect(read('packages/server/src/server.ts')).toMatch(
-      /const bundles = servesBackOffice\s*\?\s*createServerBundles\(/,
-    )
+  test('a web node serves no back-office bundle route', () => {
+    // Those are backoffice endpoints, reached only through `serveBackOffice`,
+    // which a public node never calls. Member and public routes are the site's.
+    const server = read('packages/server/src/server.ts')
+    const backOffice = server.slice(server.indexOf('async function serveBackOffice('))
+    expect(backOffice).toContain('bundles.handle(request, url, principal)')
+    expect(server.match(/bundles\.handle\(/g)).toHaveLength(1)
+    expect(server).toMatch(/if \(servesBackOffice\) \{\s*const response = await serveBackOffice\(/)
   })
 })
 

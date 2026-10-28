@@ -304,7 +304,7 @@ describe(`a whole-site export (${dialectUnderTest})`, () => {
     expect(loaded.problems).toEqual([])
     expect(loaded.set.manifest.media).toBe('omitted')
     expect(loaded.set.manifest.counts.media).toBe(1)
-    expect(existsSync(join(dir, 'blobs'))).toBe(false)
+    expect(existsSync(join(dir, 'media'))).toBe(false)
     expect(result.media.omitted).toBe(true)
   })
 

@@ -9,6 +9,9 @@ import { dryRun } from '../../support/flags.ts'
 import { childrenByName, mediaParent, openMedia, sha256 } from '../../support/media-tree.ts'
 import { siteConfig } from '../../support/site.ts'
 
+/** How many new items one cache instruction names. */
+const IMPORT_BATCH = 500
+
 interface Outcome {
   path: string
   action: 'created' | 'folder' | 'skipped' | 'differs' | 'unsupported'
@@ -69,6 +72,21 @@ export default class MediaImport extends BaseCommand {
       const typeFor = new Map<string, { key: string; name: string } | undefined>()
       const outcomes: Outcome[] = []
       const dry = flags['dry-run']
+      // The servers drop just these items, a batch at a time (story 197).
+      let batch: string[] = []
+      const announce = async () => {
+        if (batch.length === 0) return
+        await appendCacheInstruction(db, {
+          kind: 'content',
+          payload: { media: batch },
+          by: `cli:${config.nodeId}`,
+        })
+        batch = []
+      }
+      const created = async (key: string) => {
+        batch.push(key)
+        if (batch.length >= IMPORT_BATCH) await announce()
+      }
 
       const walk = async (dir: string, into: NodeRow | null, intoKey: string | null) => {
         const existing =
@@ -91,6 +109,7 @@ export default class MediaImport extends BaseCommand {
                   values: [],
                   variants: [{ culture: null, segment: null, name }],
                 })
+                await created(key)
                 folder = (await tree.nodes.byKey(key)) ?? null
               }
             }
@@ -121,8 +140,9 @@ export default class MediaImport extends BaseCommand {
           if (dry) continue
           const upload = crypto.randomUUID()
           await tree.files.saveTemporary(upload, new File([bytes], name))
+          const key = crypto.randomUUID()
           await tree.repo.create({
-            key: crypto.randomUUID(),
+            key,
             contentTypeKey: type.key,
             componentKey: null,
             parentKey: intoKey,
@@ -136,11 +156,13 @@ export default class MediaImport extends BaseCommand {
             ],
             variants: [{ culture: null, segment: null, name }],
           })
+          await created(key)
           const made = outcomes.filter((o) => o.action === 'created').length
           if (made % 25 === 0) this.progress(`  imported ${made}`)
         }
       }
       await walk(root, parent, parent?.key ?? null)
+      await announce()
 
       const count = (action: Outcome['action']) => outcomes.filter((o) => o.action === action)
       const verb = dry ? 'would create' : 'created'
@@ -154,13 +176,6 @@ export default class MediaImport extends BaseCommand {
       )
       const changed = !dry && (count('created').length > 0 || count('folder').length > 0)
       if (dry) this.changedNothing = true
-      // Once for the run: the nodes refresh what shows media.
-      if (changed)
-        await appendCacheInstruction(db, {
-          kind: 'content',
-          payload: { media: true },
-          by: `cli:${config.nodeId}`,
-        })
       return {
         created: count('created').length,
         folders: count('folder').length,

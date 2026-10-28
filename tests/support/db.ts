@@ -9,6 +9,7 @@ import {
   type DialectName,
   LogSearchRepository,
   MIGRATION_STATE_KEY,
+  migrate,
   pendingMigrations,
   resolveDialectName,
 } from '@crombolo/data'
@@ -85,6 +86,55 @@ export async function freshDb(): Promise<Db> {
 }
 
 /**
+ * A connected database with every framework migration applied and nothing in
+ * it: what a test that only needs a clean, current schema asks for.
+ *
+ * On Postgres it empties the run's already-migrated schema (the same fast path
+ * a server boot takes, `resetPostgresSchema`) rather than dropping it. Dropping
+ * it costs a full migration here, and another one at the next server boot.
+ * `freshDb` stays for a test that needs the schema empty: one about migrations
+ * themselves.
+ */
+export async function migratedDb(): Promise<Db> {
+  if (dialectUnderTest === 'sqlite') {
+    const db = await connect({ dialect: 'sqlite', file: ':memory:' })
+    await migrate(db, cromboloPlan)
+    return db
+  }
+  await resetPostgresSchema()
+  const db = await connect({ dialect: 'postgres' })
+  // Nothing to do when the reset kept the schema; the full plan when it rebuilt.
+  await migrate(db, cromboloPlan)
+  return db
+}
+
+/** Undoes migration 050, media permissions: its index before its columns, then its tables. */
+export async function undoMediaAccess(db: Db): Promise<void> {
+  await undoMediaMemberUploads(db)
+  await undoMediaPagingIndexes(db)
+  await db.exec('DROP INDEX IF EXISTS ix_content_file_url')
+  for (const column of ['file_url', 'creator_member_key', 'read_policy', 'write_policy'])
+    await db.exec(`ALTER TABLE content DROP COLUMN ${column}`)
+  await db.exec('DROP TABLE IF EXISTS node_file')
+  await db.exec('DROP TABLE IF EXISTS media_access_rule')
+  await db.exec('DROP TABLE IF EXISTS media_access')
+}
+
+/** Undoes 052, which 050's undo calls first: it comes after it. */
+export async function undoMediaMemberUploads(db: Db): Promise<void> {
+  for (const column of ['member_types', 'member_max_bytes'])
+    await db.exec(`ALTER TABLE media_access DROP COLUMN ${column}`)
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddMediaMemberUploads'")
+}
+
+/** Undoes 051, which 050's undo calls first: it comes after it. */
+export async function undoMediaPagingIndexes(db: Db): Promise<void> {
+  await db.exec('DROP INDEX IF EXISTS ix_node_parent_sort')
+  await db.exec('DROP INDEX IF EXISTS ix_cache_instruction_checkpoint')
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddMediaPagingIndexes'")
+}
+
+/**
  * Undoes what migrations 010 onward did — their tables, dependants first, 011's
  * column rename, the table renames in 018 and 027, 031–032's search index, 033's
  * audit log and 034's columns —
@@ -94,6 +144,8 @@ export async function freshDb(): Promise<Db> {
  * replay runs its `CREATE TABLE` against a table that is already there.
  */
 export async function undoMigrationsSinceContentEditing(db: Db): Promise<void> {
+  // 052, 051 and 050
+  await undoMediaAccess(db)
   // 049
   await db.exec('DROP TABLE IF EXISTS content_applied')
   // 047

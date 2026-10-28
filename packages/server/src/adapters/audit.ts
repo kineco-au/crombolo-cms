@@ -186,6 +186,7 @@ const PLUGIN_AREAS: Record<string, { category: AuditCategory; entityType: string
   seo: { category: 'settings', entityType: 'SeoSettings' },
   bundles: { category: 'system', entityType: 'Bundle' },
   forms: { category: 'content', entityType: 'Form' },
+  'media-access': { category: 'media', entityType: 'MediaAccess' },
 }
 
 const PLUGIN_ACTIONS: Record<string, string> = {

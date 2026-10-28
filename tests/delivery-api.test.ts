@@ -425,6 +425,69 @@ describe('the Delivery API over HTTP', () => {
     expect((await json<{ id: string }>('/media/item/photos/harbour view')).id).toBe(image.key)
     expect((await json<{ id: string }>(`/media/item/${image.key}`)).id).toBe(image.key)
   })
+
+  test('media lists are paged by the database: Umbraco’s order, sorts, filters and the total', async () => {
+    const { h, json } = await site({ enabled: true, media: { enabled: true } })
+    const media = new DocumentRepository(h.server.db, {
+      kind: 'media',
+      nodeState: h.server.schema.nodeState,
+    })
+    const folder = await media.create({
+      key: crypto.randomUUID(),
+      contentTypeKey: SYSTEM_MEDIA_TYPE_KEYS.Folder,
+      componentKey: null,
+      parentKey: null,
+      variants: [{ culture: null, segment: null, name: 'Library' }],
+      values: [],
+    })
+    const names = ['Kestrel', 'avocet', 'Bittern', 'Curlew', 'dunlin', 'Egret', 'Fulmar']
+    const made: string[] = []
+    for (const [index, name] of names.entries())
+      made.push(
+        (
+          await media.create({
+            key: crypto.randomUUID(),
+            contentTypeKey:
+              index === 3 ? SYSTEM_MEDIA_TYPE_KEYS.Folder : SYSTEM_MEDIA_TYPE_KEYS.Image,
+            componentKey: null,
+            parentKey: folder.key,
+            variants: [{ culture: null, segment: null, name }],
+            values: [],
+          })
+        ).key,
+      )
+    type Listing = { total: number; items: Array<{ id: string; name: string; path: string }> }
+    const list = (query: string) => json<Listing>(`/media?fetch=children:/library${query}`)
+
+    // Sort order, then the node id: the order they were made
+    const page = await list('&skip=2&take=3')
+    expect(page.total).toBe(7)
+    expect(page.items.map((m) => m.name)).toEqual(['Bittern', 'Curlew', 'dunlin'])
+    expect(page.items[0]?.path).toBe('/library/bittern/')
+    // By name, in any case, with the rest kept in order
+    expect((await list('&sort=name:asc&take=3')).items.map((m) => m.name)).toEqual([
+      'avocet',
+      'Bittern',
+      'Curlew',
+    ])
+    expect((await list('&sort=name:desc&take=2')).items.map((m) => m.name)).toEqual([
+      'Kestrel',
+      'Fulmar',
+    ])
+    // Filters narrow the total too
+    const birds = await list('&filter=mediaType:Image&filter=name:L&take=10')
+    expect(birds.items.map((m) => m.name)).toEqual(['Kestrel', 'dunlin', 'Fulmar'])
+    expect(birds.total).toBe(3)
+    // Past the end: the total, and nothing
+    expect(await list('&skip=50&take=10')).toEqual({ total: 7, items: [] })
+    // Items keep the order asked for, and leave out what is not there
+    const items = await json<Array<{ id: string }>>(
+      `/media/items?id=${made[4]}&id=${crypto.randomUUID()}&id=${made[0]}`,
+    )
+    expect(items.map((m) => m.id)).toEqual([made[4] as string, made[0] as string])
+    // By path, in any case
+    expect((await json<{ id: string }>('/media/item/LIBRARY/EGRET')).id).toBe(made[5] as string)
+  })
 })
 
 describe('requests from another origin', () => {

@@ -591,7 +591,8 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
       },
       events: createMediaEventSink({ webhooks: options.webhooks, nudge: options.nudgeEvents }),
       files: mediaFiles,
-      onChange: () => options.cache?.invalidate(),
+      // Only the items it touched: a media change leaves the pages alone (story 197).
+      onChange: (change) => options.cache?.media?.apply(change),
       refusalReason: (error) =>
         error instanceof TemporaryFileMissingError ? error.message : undefined,
     })
@@ -672,9 +673,13 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
       })
       deps.searchIndex = createSearchIndexPort(options.db, options.onSearchQueued)
       deps.publishedCache = {
-        reload: () => cache.invalidate(),
+        reload: () => {
+          cache.invalidate()
+          cache.media?.clear()
+        },
         rebuild: async () => {
           cache.invalidate()
+          cache.media?.clear()
           await cache.snapshot()
         },
         isRebuilding: () => false,

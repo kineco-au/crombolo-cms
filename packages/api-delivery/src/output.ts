@@ -37,6 +37,8 @@ export interface OutputContext {
   allowedType(alias: string): boolean
   /** Whether the caller may see a page's properties when a reference to it is expanded. */
   access(content: PublishedContent): Access
+  /** Whether the caller may read a media item; a reference to one they may not is its key and name. */
+  mediaAccess?(media: PublishedMedia): Access
   /** An expanded form picker's form, as `v2/forms/{key}` answers it (story 056). */
   form?(form: SchemaForm): Record<string, unknown>
 }
@@ -64,13 +66,13 @@ const empty = (value: unknown): boolean =>
   (Array.isArray(value) && value.length === 0)
 
 /** A page as a reference: everything but `cultures`, its properties only when expanded. */
-export function apiContent(
+export async function apiContent(
   content: PublishedContent,
   ctx: OutputContext,
   expand: ExpansionNode | undefined,
   include: ExpansionNode | undefined,
   topLevel = false,
-): Record<string, unknown> | null {
+): Promise<Record<string, unknown> | null> {
   const route = ctx.route(content)
   if (!route) return null
   const showProperties = topLevel || (expand !== undefined && ctx.access(content) === 'allowed')
@@ -81,24 +83,27 @@ export function apiContent(
     updateDate: iso(content.updateDate),
     route,
     id: content.key,
-    properties: showProperties ? properties(content, ctx, expand, include) : {},
+    properties: showProperties ? await properties(content, ctx, expand, include) : {},
   }
 }
 
-function properties(
+async function properties(
   item: PublishedContent | PublishedElement,
   ctx: OutputContext,
   expand: ExpansionNode | undefined,
   include: ExpansionNode | undefined,
-): Record<string, unknown> {
+): Promise<Record<string, unknown>> {
   const culture = item instanceof PublishedContent ? item.culture : null
   const out: Record<string, unknown> = {}
-  const aliases = [...new Set(item.properties.map((p) => p.alias))]
-  for (const alias of aliases) {
-    if (!keeps(include, alias)) continue
+  const aliases = [...new Set(item.properties.map((p) => p.alias))].filter((alias) =>
+    keeps(include, alias),
+  )
+  // Values that name media are looked up in the media cache together (story 197).
+  const values = await Promise.all(aliases.map((alias) => item.value(alias)))
+  for (const [index, alias] of aliases.entries()) {
     const property = propertyOf(item.properties, alias, culture) as PublishedProperty
-    const converted = item.value(alias)
-    out[alias] = deliveryValue(
+    const converted = values[index]
+    out[alias] = await deliveryValue(
       property,
       converted,
       ctx,
@@ -110,18 +115,18 @@ function properties(
 }
 
 /** An element (a block, a library element): its properties are always mapped. */
-function apiElement(
+async function apiElement(
   element: PublishedElement | null,
   ctx: OutputContext,
   expand: ExpansionNode | undefined,
   include: ExpansionNode | undefined,
-): Record<string, unknown> | null {
+): Promise<Record<string, unknown> | null> {
   if (!element) return null
   return {
     contentType: element.contentType.alias ?? '',
     id: element.key,
     name: '',
-    properties: properties(element, ctx, expand, include ?? { key: '', children: [] }),
+    properties: await properties(element, ctx, expand, include ?? { key: '', children: [] }),
   }
 }
 
@@ -131,11 +136,11 @@ const numberOf = (media: PublishedMedia, alias: string): number | null => {
 }
 
 /** Media's own fields; its properties exclude the `umbraco*` ones, and appear only when expanded. */
-function mediaCore(
+async function mediaCore(
   media: PublishedMedia,
   expand: ExpansionNode | undefined,
   topLevel: boolean,
-): Record<string, unknown> {
+): Promise<Record<string, unknown>> {
   const extension = media.value('umbracoExtension')
   return {
     id: media.key,
@@ -146,15 +151,20 @@ function mediaCore(
     width: numberOf(media, 'umbracoWidth'),
     height: numberOf(media, 'umbracoHeight'),
     bytes: numberOf(media, 'umbracoBytes'),
-    properties: topLevel || expand !== undefined ? mediaProperties(media) : {},
+    properties: topLevel || expand !== undefined ? await mediaProperties(media) : {},
   }
 }
 
-function mediaProperties(media: PublishedMedia): Record<string, unknown> {
+async function mediaProperties(media: PublishedMedia): Promise<Record<string, unknown>> {
   const out: Record<string, unknown> = {}
   for (const property of media.properties) {
     if (property.alias.toLowerCase().startsWith('umbraco')) continue
-    const value = convertValue(property.editorAlias, property.value, undefined, property.config)
+    const value = await convertValue(
+      property.editorAlias,
+      property.value,
+      undefined,
+      property.config,
+    )
     out[property.alias] = empty(value) ? null : plain(value)
   }
   return out
@@ -169,22 +179,31 @@ const crops = (value: ImageCropperValue) =>
   }))
 
 /** A media item as a query or item endpoint answers it: its tree path, dates, crops. */
-export function apiMediaResponse(media: PublishedMedia, path: string): Record<string, unknown> {
+export async function apiMediaResponse(
+  media: PublishedMedia,
+  path: string,
+): Promise<Record<string, unknown>> {
   const image = media.image
   return {
     path,
     createDate: iso(media.createDate),
     updateDate: iso(media.updateDate),
-    ...mediaCore(media, undefined, true),
+    ...(await mediaCore(media, undefined, true)),
     focalPoint: image.focalPoint,
     crops: image.src || image.crops.length > 0 ? crops(image) : null,
   }
 }
 
-function mediaWithCrops(
+/** A media reference the caller may not read: only what names it (story 196). */
+function closedMedia(media: PublishedMedia, ctx: OutputContext): Record<string, unknown> | null {
+  if (!ctx.mediaAccess || ctx.mediaAccess(media) === 'allowed') return null
+  return { id: media.key, name: media.name }
+}
+
+async function mediaWithCrops(
   pick: MediaWithCrops,
   expand: ExpansionNode | undefined,
-): Record<string, unknown> {
+): Promise<Record<string, unknown>> {
   // The pick's own crops and focal point win; the media's fill in what it lacks.
   const own = pick.media.image
   const merged = own.crops.map((crop) => {
@@ -194,7 +213,7 @@ function mediaWithCrops(
   return {
     focalPoint: pick.focalPoint ?? own.focalPoint ?? null,
     crops: crops(new ImageCropperValue({ crops: merged })),
-    ...mediaCore(pick.media, expand, false),
+    ...(await mediaCore(pick.media, expand, false)),
   }
 }
 
@@ -229,37 +248,45 @@ function link(linkValue: Link, ctx: OutputContext): Record<string, unknown> | nu
   }
 }
 
-function blockItem(
+async function blockItem(
   item: BlockItem,
   ctx: OutputContext,
   expand: ExpansionNode | undefined,
   include: ExpansionNode | undefined,
 ) {
   return {
-    content: apiElement(item.content, ctx, expand, include),
-    settings: apiElement(item.settings, ctx, expand, include),
+    content: await apiElement(item.content, ctx, expand, include),
+    settings: await apiElement(item.settings, ctx, expand, include),
   }
 }
 
-function gridItem(
+async function gridItem(
   item: BlockGridItem,
   ctx: OutputContext,
   columns: number,
   expand: ExpansionNode | undefined,
   include: ExpansionNode | undefined,
-): Record<string, unknown> {
+): Promise<Record<string, unknown>> {
+  const areas = []
+  for (const area of item.areas) {
+    const items = []
+    for (const inner of area.items) items.push(await gridItem(inner, ctx, columns, expand, include))
+    areas.push({ alias: area.key, rowSpan: 1, columnSpan: columns, items })
+  }
   return {
     rowSpan: item.rowSpan ?? 1,
     columnSpan: item.columnSpan ?? columns,
     areaGridColumns: columns,
-    areas: item.areas.map((area) => ({
-      alias: area.key,
-      rowSpan: 1,
-      columnSpan: columns,
-      items: area.items.map((inner) => gridItem(inner, ctx, columns, expand, include)),
-    })),
-    ...blockItem(item, ctx, expand, include),
+    areas,
+    ...(await blockItem(item, ctx, expand, include)),
   }
+}
+
+/** Each item mapped in turn, so the answer keeps its order. */
+async function inOrder<T, U>(items: readonly T[], map: (item: T) => Promise<U>): Promise<U[]> {
+  const out: U[] = []
+  for (const item of items) out.push(await map(item))
+  return out
 }
 
 /** What a value is when nothing more specific applies: dates as ISO, markup as text. */
@@ -276,13 +303,13 @@ const list = <T>(value: unknown): T[] =>
   Array.isArray(value) ? (value as T[]) : value === null || value === undefined ? [] : [value as T]
 
 /** One property's Delivery API value. Empty is `null`, as in Umbraco. */
-export function deliveryValue(
+export async function deliveryValue(
   property: PublishedProperty,
   converted: unknown,
   ctx: OutputContext,
   expand: ExpansionNode | undefined,
   include: ExpansionNode | undefined,
-): unknown {
+): Promise<unknown> {
   if (empty(property.value) || empty(converted)) return null
   const config = property.config ?? {}
   switch (property.editorAlias) {
@@ -298,39 +325,45 @@ export function deliveryValue(
     case 'Umbraco.ContentPicker': {
       const content = converted instanceof PublishedContent ? converted : undefined
       if (!content || !ctx.allowedType(content.contentType.alias)) return null
-      return apiContent(content, ctx, expand, include)
+      return await apiContent(content, ctx, expand, include)
     }
     case 'Umbraco.MultiNodeTreePicker':
-      return list<unknown>(converted).flatMap((item) => {
-        if (item instanceof PublishedContent)
-          return ctx.allowedType(item.contentType.alias)
-            ? [apiContent(item, ctx, expand, include)].filter(Boolean)
-            : []
-        if (item instanceof PublishedMedia) return [mediaCore(item, expand, false)]
-        return []
-      })
+      return (
+        await inOrder(list<unknown>(converted), async (item) => {
+          if (item instanceof PublishedContent)
+            return ctx.allowedType(item.contentType.alias)
+              ? [await apiContent(item, ctx, expand, include)].filter(Boolean)
+              : []
+          if (item instanceof PublishedMedia)
+            return [closedMedia(item, ctx) ?? (await mediaCore(item, expand, false))]
+          return []
+        })
+      ).flat()
     case 'Umbraco.MediaPicker3':
-      return list<MediaWithCrops>(converted)
-        .filter((pick) => pick instanceof MediaWithCrops)
-        .map((pick) => mediaWithCrops(pick, expand))
+      return inOrder(
+        list<MediaWithCrops>(converted).filter((pick) => pick instanceof MediaWithCrops),
+        async (pick) => closedMedia(pick.media, ctx) ?? (await mediaWithCrops(pick, expand)),
+      )
     case 'Umbraco.MultiUrlPicker':
       return list<Link>(converted).flatMap((l) => {
         const built = link(l, ctx)
         return built ? [built] : []
       })
     case 'Umbraco.BlockList':
-      return { items: list<BlockItem>(converted).map((i) => blockItem(i, ctx, expand, include)) }
+      return {
+        items: await inOrder(list<BlockItem>(converted), (i) => blockItem(i, ctx, expand, include)),
+      }
     case 'Umbraco.BlockGrid': {
       const columns = Number(config.gridColumns) || 12
       return {
         gridColumns: columns,
-        items: list<BlockGridItem>(converted).map((i) =>
+        items: await inOrder(list<BlockGridItem>(converted), (i) =>
           gridItem(i, ctx, columns, expand, include),
         ),
       }
     }
     case 'Umbraco.ElementPicker':
-      return list<PublishedElement>(converted).map((e) => apiElement(e, ctx, expand, include))
+      return inOrder(list<PublishedElement>(converted), (e) => apiElement(e, ctx, expand, include))
     case 'Umbraco.DropDown.Flexible': {
       const values = list<string>(converted)
       return config.multiple === true ? values : (values[0] ?? null)
@@ -355,14 +388,14 @@ export function deliveryValue(
 }
 
 /** A page as an item or query endpoint answers it: a reference, plus its routes per culture. */
-export function apiContentResponse(
+export async function apiContentResponse(
   content: PublishedContent,
   ctx: OutputContext,
   routeIn: (culture: string) => ApiRoute | undefined,
   expand: ExpansionNode | undefined,
   include: ExpansionNode | undefined,
-): Record<string, unknown> | null {
-  const built = apiContent(content, ctx, expand, include, true)
+): Promise<Record<string, unknown> | null> {
+  const built = await apiContent(content, ctx, expand, include, true)
   if (!built) return null
   const cultures: Record<string, ApiRoute> = {}
   for (const culture of content.cultures) {

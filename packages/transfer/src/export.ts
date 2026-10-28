@@ -10,7 +10,7 @@
  * carries its draft and says so. `--drafts` takes the current draft throughout,
  * for the case where the point is to move work in progress.
  */
-import type { DocumentAggregate, DocumentValue } from '@crombolo/core'
+import type { DocumentAggregate, DocumentValue, MediaItemAccess } from '@crombolo/core'
 import { isSystemContentType, ObjectTypes } from '@crombolo/core'
 import {
   ComponentRepository,
@@ -18,6 +18,8 @@ import {
   currentSchemaState,
   type Db,
   DocumentRepository,
+  type MediaAccessEntry,
+  MediaAccessRepository,
   type NodeRow,
   PublicAccessRepository,
   RedirectRepository,
@@ -27,6 +29,7 @@ import {
   type BundleBlob,
   type BundleDependency,
   type BundleKind,
+  type BundleMediaAccess,
   type BundleNode,
   type BundleSnapshot,
   type BundleValue,
@@ -112,6 +115,31 @@ function toBundleValue(value: DocumentValue, references: readonly string[]): Bun
     value: value.value,
     references: references.length > 0 ? [...references] : undefined,
   }
+}
+
+/** What a media node carries of its permissions; undefined when it sets none. Pure. */
+export function mediaAccessOf(
+  rule: MediaAccessEntry | undefined,
+  item: MediaItemAccess | undefined,
+): BundleMediaAccess | undefined {
+  const carried: BundleMediaAccess = {
+    ...(rule
+      ? {
+          rule: {
+            publicRead: rule.publicRead,
+            groups: rule.groups.map((g) => ({ name: g.name, read: g.read, write: g.write })),
+            newRead: rule.newRead,
+            newWrite: rule.newWrite,
+            ...(rule.memberTypes.length > 0 ? { memberTypes: [...rule.memberTypes] } : {}),
+            ...(rule.memberMaxBytes ? { memberMaxBytes: rule.memberMaxBytes } : {}),
+          },
+        }
+      : {}),
+    ...(item && item.readPolicy !== 'inherit' ? { readPolicy: item.readPolicy } : {}),
+    ...(item && item.writePolicy !== 'inherit' ? { writePolicy: item.writePolicy } : {}),
+    ...(item?.creatorMemberKey ? { creator: item.creatorMemberKey } : {}),
+  }
+  return Object.keys(carried).length > 0 ? carried : undefined
 }
 
 function toBundleNode(
@@ -251,7 +279,16 @@ export async function exportBundle(db: Db, options: ExportOptions): Promise<Expo
   // routes it used to answer on.
   const access = new PublicAccessRepository(db)
   const redirects = new RedirectRepository(db)
+  const mediaAccess = new MediaAccessRepository(db)
   for (const node of bundleNodes) {
+    if (node.kind === 'media') {
+      const carried = mediaAccessOf(
+        await mediaAccess.byNodeKey(node.key),
+        await mediaAccess.itemAccess(node.key),
+      )
+      if (carried) node.mediaAccess = carried
+      continue
+    }
     if (node.kind !== 'document') continue
     const entry = await access.byNodeKey(node.key)
     if (entry)

@@ -14,7 +14,8 @@ import { css, html, nothing, repeat } from '@umbraco-cms/backoffice/external/lit
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { umbConfirmModal } from '@umbraco-cms/backoffice/modal'
 import { UmbPackageRepository } from '@umbraco-cms/backoffice/package'
-import { readCreatedPackage, saveCreatedPackage } from './bundles-client.js'
+import { createdDownloadUrl, readCreatedPackage, saveCreatedPackage } from './bundles-client.js'
+import { downloadFile } from './download.js'
 
 const TAKE = 10
 
@@ -30,6 +31,8 @@ export default class CromboloBundlesCreatedOverviewElement extends UmbLitElement
     _packages: { state: true },
     _editing: { state: true },
     _draft: { state: true },
+    _downloading: { state: true },
+    _withMedia: { state: true },
     _problem: { state: true },
   }
 
@@ -117,6 +120,39 @@ export default class CromboloBundlesCreatedOverviewElement extends UmbLitElement
     `
   }
 
+  #toggleDownload(item) {
+    this._downloading = this._downloading === item.unique ? '' : item.unique
+    this._withMedia = false
+  }
+
+  /** The package, with its media files only when ticked: off by default (story 195). */
+  async #download(item) {
+    const query = this._withMedia ? '?withMedia=true' : ''
+    const pkg = this._packages[item.unique]
+    await downloadFile(
+      createdDownloadUrl(item.unique, query),
+      pkg ? `${pkg.name}-${pkg.version}.tgz` : 'bundle.tgz',
+    )
+    this._downloading = ''
+  }
+
+  #renderDownload(item) {
+    if (this._downloading !== item.unique) return nothing
+    return html`
+      <div class="package-editor">
+        <uui-checkbox
+          label="Include media files"
+          .checked=${this._withMedia}
+          @change=${(event) => (this._withMedia = event.target.checked)}></uui-checkbox>
+        <p>
+          Without them, installing the bundle brings its media items without their files.
+        </p>
+        <uui-button look="primary" label="Download" @click=${() => this.#download(item)}></uui-button>
+        <uui-button label="Cancel" @click=${() => (this._downloading = '')}></uui-button>
+      </div>
+    `
+  }
+
   #detail(item) {
     const pkg = this._packages[item.unique]
     return pkg ? `${pkg.name}@${pkg.version}` : ''
@@ -198,6 +234,10 @@ export default class CromboloBundlesCreatedOverviewElement extends UmbLitElement
                           @click=${() => this.#edit(item)}></uui-button>
                         <uui-button
                           look="secondary"
+                          label="Download"
+                          @click=${() => this.#toggleDownload(item)}></uui-button>
+                        <uui-button
+                          look="secondary"
                           color="danger"
                           label=${this.localize.term('general_delete')}
                           @click=${() => this.#remove(item)}></uui-button>
@@ -207,6 +247,7 @@ export default class CromboloBundlesCreatedOverviewElement extends UmbLitElement
                 )}
               </uui-table>
               ${this._items.map((item) => this.#renderEditor(item))}
+              ${this._items.map((item) => this.#renderDownload(item))}
             </uui-box>
           `
       }

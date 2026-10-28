@@ -22,7 +22,7 @@ import {
   mayChangeMedia,
 } from '../packages/backoffice-host/plugin/media-permissions.js'
 import umbracoPackage from '../packages/backoffice-host/plugin/umbraco-package.json'
-import { freshDb, undoMigrationsSinceContentEditing } from './support/db.ts'
+import { migratedDb, undoMediaAccess, undoMigrationsSinceContentEditing } from './support/db.ts'
 import { type Harness, signedInServer, V1 } from './support/harness.ts'
 
 const open: Harness[] = []
@@ -56,9 +56,8 @@ describe('permission verbs', () => {
   })
 
   test('migration 007 grants the defaults to a database seeded without them, once', async () => {
-    const db = await freshDb()
+    const db = await migratedDb()
     dbs.push(db)
-    await migrate(db, cromboloPlan)
     await seedIdentity(db, {
       admin: { name: 'A', login: 'a@b.c', email: 'a@b.c', password: 'x' },
       hashPassword,
@@ -106,9 +105,8 @@ describe('the media verbs (story 088)', () => {
   })
 
   test('migration 045 gives both to every group that had the Media section, built-in or not', async () => {
-    const db = await freshDb()
+    const db = await migratedDb()
     dbs.push(db)
-    await migrate(db, cromboloPlan)
     await seedIdentity(db, {
       admin: { name: 'A', login: 'a@b.c', email: 'a@b.c', password: 'x' },
       hashPassword,
@@ -136,6 +134,8 @@ describe('the media verbs (story 088)', () => {
     const imported = await custom('imported', 'Umb.Section.Media')
     const authors = await custom('authors', 'content')
     // As 0.20.0 left it: nobody holds a media verb, and nothing since 045 is there.
+    await undoMediaAccess(db)
+    await db.exec("DELETE FROM migration_history WHERE name = 'AddMediaAccess'")
     await db.exec('DROP TABLE IF EXISTS content_applied')
     await db.exec("DELETE FROM migration_history WHERE name = 'AddContentApplied'")
     await db.exec('DROP TABLE IF EXISTS content_checkpoint')
@@ -164,6 +164,9 @@ describe('the media verbs (story 088)', () => {
       'AddContentCheckpoint',
       'DropAssistantTables',
       'AddContentApplied',
+      'AddMediaAccess',
+      'AddMediaPagingIndexes',
+      'AddMediaMemberUploads',
     ])
     const held = async (key: string) =>
       (

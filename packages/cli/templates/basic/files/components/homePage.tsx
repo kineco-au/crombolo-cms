@@ -14,7 +14,7 @@ export default function HomePage(props: PageProps) {
         <main>
           <h1>{model.text('title')}</h1>
           {/* Rich text is stored as HTML, so it is written out as HTML. */}
-          <div setInnerHTML={{ __html: model.text('bodyText'), dangerously: true }} />
+          <div>{model.html('bodyText')}</div>
         </main>
       </body>
     </html>

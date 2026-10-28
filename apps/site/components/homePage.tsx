@@ -13,7 +13,7 @@ export default function HomePage(props: PageProps) {
       <body>
         <main>
           <h1>{model.text('title')}</h1>
-          <div setInnerHTML={{ __html: model.text('bodyText'), dangerously: true }} />
+          <div>{model.html('bodyText')}</div>
           {quotes.map((quote) => (
             <blockquote>
               <p>{quote.text('body')}</p>

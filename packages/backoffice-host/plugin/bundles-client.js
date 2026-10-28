@@ -36,6 +36,10 @@ export const installBundle = (name, version, applyContent = true, acceptServerCo
 export const uninstallBundle = (name) =>
   json('/uninstall', { method: 'POST', body: JSON.stringify({ name }) })
 
+/** Where a created bundle's package downloads from, with `?withMedia=true` to carry its media files. */
+export const createdDownloadUrl = (id, query = '') =>
+  `${base()}/created/${encodeURIComponent(id)}/download${query}`
+
 /** The npm package a created bundle downloads as. */
 export const readCreatedPackage = (id) => json(`/created/${encodeURIComponent(id)}/package`)
 

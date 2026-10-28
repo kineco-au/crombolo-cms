@@ -4,7 +4,7 @@
  * Every answer is read from memory, so it scales with the nodes that render.
  * docs/delivery-api.md.
  */
-import { branchAccess, type SchemaForm } from '@crombolo/core'
+import { branchAccess, type MediaMember, type MediaRule, type SchemaForm } from '@crombolo/core'
 import type {
   PublishedCache,
   PublishedContent,
@@ -37,7 +37,7 @@ import {
   apiMediaResponse,
   type OutputContext,
 } from './output.ts'
-import { accessTo, type DeliveryMember, type ProtectionRule } from './protection.ts'
+import { accessTo, type DeliveryMember, mediaAccessTo, type ProtectionRule } from './protection.ts'
 import {
   compareBy,
   parseContentFilters,
@@ -47,6 +47,7 @@ import {
   passesFilters,
   QUERY_ERRORS,
   type QueryError,
+  type Sort,
 } from './query.ts'
 import {
   type DeliveryApiSettings,
@@ -63,6 +64,13 @@ export interface DeliveryApiPorts {
   protection(): Promise<ProtectionRule[]>
   /** The member an access token names; undefined for none, or one not valid now. */
   member(token: string): Promise<DeliveryMember | undefined>
+  /** Every media rule (story 196): few, one per folder given permissions, read once a request. */
+  mediaRules?(): Promise<MediaRule[]>
+  /**
+   * The media library a page at a time, from the database (story 197); the
+   * media endpoints answer nothing without it.
+   */
+  media?: DeliveryMediaPort
   /**
    * Drafts for a `Preview: true` request (story 053): given whether it carries
    * the API key, the draft cache and, for a preview token, which pages its
@@ -110,6 +118,31 @@ export interface DeliveryApiPorts {
       access: { denied: readonly number[]; allowed: readonly number[] }
     },
   ): Promise<{ total: number; items: Array<{ key: string; score: number; text: SearchableText }> }>
+}
+
+/** The media tree as the media endpoints read it: by key, by path, and a page of children. */
+export interface DeliveryMediaPort {
+  /** Items by key, in the order asked; one gone or in the recycle bin is left out. */
+  byKeys(keys: readonly string[]): Promise<PublishedMedia[]>
+  /** The item at a path of names below the top level, matched in any case. */
+  byPath(path: string): Promise<PublishedMedia | undefined>
+  /**
+   * A page of a parent's children: those passing every filter and readable by
+   * `member`, in `sort` order and then Umbraco's (sort order, then id), with
+   * how many there are in all.
+   */
+  children(
+    parent: PublishedMedia | 'root',
+    query: {
+      filters: ReadonlyArray<{ kind: 'mediaType' | 'name'; value: string }>
+      sort: Sort | undefined
+      skip: number
+      take: number
+      readable: { rules: ReadonlyMap<number, MediaRule>; member: MediaMember | undefined }
+    },
+  ): Promise<{ total: number; items: PublishedMedia[] }>
+  /** Each item's path of lowercased names, `/folder/item/`, by id. */
+  paths(items: readonly PublishedMedia[]): Promise<Map<number, string>>
 }
 
 export interface PreviewAccess {
@@ -297,6 +330,15 @@ export function createDeliveryApi(ports: DeliveryApiPorts): DeliveryApi {
     return cacheable(request, response, body, { lifetime, tags, tagHeader: caching.tagHeader })
   }
 
+  /** The member a request's token names, when member sign-in is on. */
+  async function memberOf(request: Request): Promise<DeliveryMember | undefined> {
+    const token = bearerToken(request)
+    return token && memberAuthorizationEnabled(settings) ? ports.member(token) : undefined
+  }
+
+  const loadMediaRules = async () =>
+    new Map(((await ports.mediaRules?.()) ?? []).map((rule) => [rule.nodeId, rule]))
+
   /**
    * Everything a content request decides once: culture, member, rules, routes.
    * A preview reads the draft cache, and an editor's sees only what they may read.
@@ -319,10 +361,9 @@ export function createDeliveryApi(ports: DeliveryApiPorts): DeliveryApi {
     const roots = nav.root()
     const rtl = isRightToLeft(culture)
 
-    let member: DeliveryMember | undefined
-    const token = bearerToken(request)
-    if (token && memberAuthorizationEnabled(settings)) member = await ports.member(token)
+    const member = await memberOf(request)
     const loadedRules = new Map((await ports.protection()).map((rule) => [rule.nodeId, rule]))
+    const mediaRules = await loadMediaRules()
 
     const routeIn = async (inCulture: string | null) => {
       const view = await source.navigation(inCulture)
@@ -370,6 +411,7 @@ export function createDeliveryApi(ports: DeliveryApiPorts): DeliveryApi {
       // A page the previewing editor may not read keeps its route in a picker, never its properties.
       access: (content) =>
         readable(content) ? accessTo(content.path, loadedRules, member) : 'forbidden',
+      mediaAccess: (media) => mediaAccessTo(media, mediaRules, member),
     }
 
     /** Below a node by URL segments, exactly as stored. */
@@ -431,7 +473,7 @@ export function createDeliveryApi(ports: DeliveryApiPorts): DeliveryApi {
       if (expansion instanceof Response) return expansion
       const routes = new Map<string, (c: PublishedContent) => ApiRoute | undefined>()
       for (const c of content.cultures) routes.set(c, await routeIn(c))
-      const body = apiContentResponse(
+      const body = await apiContentResponse(
         content,
         ctx,
         (c) => routes.get(c)?.(content),
@@ -575,50 +617,38 @@ export function createDeliveryApi(ports: DeliveryApiPorts): DeliveryApi {
     )
   }
 
-  /** Media's tree, by parent, and each item's path of lowercased names. */
-  async function mediaTree() {
-    const media = await cache.allMedia()
-    const byId = new Map(media.map((m) => [m.id, m]))
-    const childrenOf = new Map<number, PublishedMedia[]>()
-    for (const m of media) childrenOf.set(m.parentId, [...(childrenOf.get(m.parentId) ?? []), m])
-    for (const list of childrenOf.values()) list.sort((a, b) => a.sortOrder - b.sortOrder)
-    const pathOf = (m: PublishedMedia): string => {
-      const names: string[] = []
-      for (let at: PublishedMedia | undefined = m; at; at = byId.get(at.parentId))
-        names.unshift(at.name.toLowerCase())
-      return `/${names.join('/')}/`
-    }
-    const byPath = (raw: string): PublishedMedia | undefined => {
-      let level = childrenOf.get(-1) ?? []
-      let found: PublishedMedia | undefined
-      for (const segment of decodeURIComponent(raw).split('/').filter(Boolean)) {
-        found = level.find((m) => m.name.toLowerCase() === segment.toLowerCase())
-        if (!found) return undefined
-        level = childrenOf.get(found.id) ?? []
-      }
-      return found
-    }
-    const byKey = new Map(media.map((m) => [m.key.toLowerCase(), m]))
-    return { media, childrenOf, pathOf, byPath, byKey }
-  }
-
   async function handleMedia(request: Request, url: URL, rest: string) {
     if (!mediaAccess(settings, request)) return bare(401)
-    const tree = await mediaTree()
-    const answer = (m: PublishedMedia) => apiMediaResponse(m, tree.pathOf(m))
+    const library = ports.media
+    // A protected item is left out of every list for a caller who cannot read it.
+    const member = await memberOf(request)
+    const rules = await loadMediaRules()
+    const accessOf = (m: PublishedMedia) => mediaAccessTo(m, rules, member)
+    const readable = (m: PublishedMedia) => accessOf(m) === 'allowed'
+    const answer = async (items: readonly PublishedMedia[]) => {
+      const paths = library ? await library.paths(items) : new Map<number, string>()
+      const out = []
+      for (const m of items) out.push(await apiMediaResponse(m, paths.get(m.id) ?? '/'))
+      return out
+    }
     if (rest === 'items') {
       const ids = [...new Set(url.searchParams.getAll('id').map((id) => id.toLowerCase()))]
       for (const id of ids) if (!GUID.test(id)) return invalid('id', id)
-      const found = ids.flatMap((id) => {
-        const media = tree.byKey.get(id)
-        return media ? [media] : []
-      })
-      return holding(Response.json(found.map(answer)), found.map(mediaItem))
+      const found = (library ? await library.byKeys(ids) : []).filter(readable)
+      return holding(Response.json(await answer(found)), found.map(mediaItem))
     }
     if (rest.startsWith('item/')) {
       const target = rest.slice('item/'.length)
-      const found = GUID.test(target) ? tree.byKey.get(target.toLowerCase()) : tree.byPath(target)
-      return found ? holding(Response.json(answer(found)), [mediaItem(found)]) : bare(404)
+      const found = !library
+        ? undefined
+        : GUID.test(target)
+          ? (await library.byKeys([target.toLowerCase()]))[0]
+          : await library.byPath(decodeURIComponent(target))
+      if (!found) return bare(404)
+      const access = accessOf(found)
+      if (access !== 'allowed') return bare(access === 'unauthorized' ? 401 : 403)
+      const [body] = await answer([found])
+      return holding(Response.json(body), [mediaItem(found)])
     }
     if (rest !== '') return undefined
     const query = parseMediaQuery({
@@ -632,27 +662,31 @@ export function createDeliveryApi(ports: DeliveryApiPorts): DeliveryApi {
     const take = intParam(url, 'take', 10)
     if (take instanceof Response) return take
     let parent: PublishedMedia | 'root' | undefined
-    if (query.parent === '') parent = undefined
+    if (!library || query.parent === '') parent = undefined
     else if (/^\/+$/.test(query.parent)) parent = 'root'
-    else if (GUID.test(query.parent)) parent = tree.byKey.get(query.parent.toLowerCase())
-    else parent = tree.byPath(query.parent)
-    const children = parent ? (tree.childrenOf.get(parent === 'root' ? -1 : parent.id) ?? []) : []
-    const filtered = children.filter((m) =>
-      query.filters.every((f) =>
-        f.kind === 'mediaType'
-          ? m.mediaType.alias === f.value
-          : m.name.toLowerCase().includes(f.value.toLowerCase()),
-      ),
-    )
-    const ordered = query.sort
-      ? [...filtered].sort(
-          compareBy([query.sort]) as unknown as (a: PublishedMedia, b: PublishedMedia) => number,
-        )
-      : filtered
-    const shown = ordered.slice(skip, skip + take)
+    else if (GUID.test(query.parent))
+      parent = (await library.byKeys([query.parent.toLowerCase()]))[0]
+    else parent = await library.byPath(decodeURIComponent(query.parent))
+    // Paged by the database, readable items only, so `total` counts what this caller may see.
+    const page =
+      parent && library
+        ? await library.children(parent, {
+            filters: query.filters,
+            sort: query.sort,
+            skip,
+            take,
+            readable: {
+              rules,
+              member:
+                member?.approved && !member.lockedOut
+                  ? { key: member.key, groups: member.groups }
+                  : undefined,
+            },
+          })
+        : { total: 0, items: [] }
     return holding(
-      Response.json({ total: ordered.length, items: shown.map(answer) }),
-      shown.map(mediaItem),
+      Response.json({ total: page.total, items: await answer(page.items) }),
+      page.items.map(mediaItem),
     )
   }
 

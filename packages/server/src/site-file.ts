@@ -16,12 +16,12 @@ import {
   BUNDLE_SECTIONS,
   type BundleFile,
   type BundlePackageInfo,
-  blobPath,
   bundleIdFor,
   bundlePackageJson,
   exportBundle,
   exportPeople,
   MANIFEST_FILE,
+  mediaPath,
   newSeal,
   packageNameFor,
   planStreamedBundle,
@@ -242,7 +242,7 @@ export async function exportSite(
   let bytes = 0
   try {
     const small = new Map(planned.files.map((file) => [file.path, file]))
-    const blobs = new Map(planned.blobs.map((key) => [blobPath(key), key]))
+    const blobs = new Map(planned.blobs.map((key) => [mediaPath(key), key]))
     const paths = [...small.keys(), ...blobs.keys()].sort((a, b) => a.localeCompare(b))
     for (const path of paths) {
       hasher.update(path)

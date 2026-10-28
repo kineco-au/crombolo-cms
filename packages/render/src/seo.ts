@@ -98,12 +98,12 @@ function truthy(value: unknown): boolean {
   return value === true || value === 1 || value === '1' || value === 'true'
 }
 
-/** The values a page offers, each with where it came from. */
-export function effectiveMeta(
+/** The values a page offers, each with where it came from; its image is looked up in the media cache. */
+export async function effectiveMeta(
   content: PublishedContent,
   context: MetaContext,
   overrides: SeoOverrides = {},
-): EffectiveMeta {
+): Promise<EffectiveMeta> {
   const { origin, site } = context
   const own = (alias: string) => content.text(alias).trim()
 
@@ -121,7 +121,7 @@ export function effectiveMeta(
       ? { value: overrides.description, source: 'template' }
       : { value: undefined, source: 'none' }
 
-  const picked = content.media(SEO_ALIASES.image)[0]?.url
+  const picked = (await content.media(SEO_ALIASES.image))[0]?.url
   const image: MetaValue<string | undefined> = filled(picked)
     ? { value: absoluteUrl(picked, origin), source: 'page' }
     : filled(overrides.image)
@@ -175,9 +175,9 @@ export interface SeoHeadProps extends SeoOverrides {
 }
 
 /** The head tags for search and sharing. Spread a page's props into it: `<SeoHead {...props} />`. */
-export function SeoHead(props: SeoHeadProps): RawHtml {
+export async function SeoHead(props: SeoHeadProps): Promise<RawHtml> {
   const { model, request, urls, seo, ...overrides } = props
-  const meta = effectiveMeta(
+  const meta = await effectiveMeta(
     model,
     { origin: request.origin, alternates: urls.alternates(model), site: seo },
     overrides,

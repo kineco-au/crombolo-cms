@@ -95,7 +95,7 @@ if (args[0] === 'tree') {
   console.log('edited')
 } else if (args[0] === 'media') {
   // A media item with real bytes in this environment's store, which is what
-  // --with-blobs has to carry.
+  // --with-media has to carry.
   const { mediaStoreFor } = await import('@crombolo/server')
   const media = new DocumentRepository(db, {
     kind: 'media',
@@ -420,7 +420,7 @@ describe('content transfer, end to end through the CLI', () => {
     expect(result.out).toContain('Campaigns')
   })
 
-  test('--with-blobs carries the media bytes, and the import places them', async () => {
+  test('--with-media carries the media bytes, and the import places them', async () => {
     const seeded = await seed('source', 'media', 'Carried')
     expect(seeded.code, seeded.out).toBe(0)
     const media = JSON.parse(seeded.out.trim().split('\n').at(-1) as string) as {
@@ -428,7 +428,7 @@ describe('content transfer, end to end through the CLI', () => {
       blob: string
     }
 
-    const out = join(dir, 'with-blobs')
+    const out = join(dir, 'with-media')
     const exported = await cli(
       'source',
       'bundle',
@@ -436,13 +436,14 @@ describe('content transfer, end to end through the CLI', () => {
       '--include-content',
       '--root',
       media.key,
-      '--with-blobs',
+      '--with-media',
       '--out',
       out,
     )
     expect(exported.code, exported.out).toBe(0)
     expect(exported.out, exported.out).toContain('1 media file(s),')
-    expect(existsSync(join(out, 'blobs', media.blob)), exported.out).toBe(true)
+    expect(existsSync(join(out, 'media', media.blob)), exported.out).toBe(true)
+    expect(existsSync(join(out, 'media.json')), exported.out).toBe(true)
 
     // The destination has the node nowhere and the file nowhere.
     const before = await seed('target', 'blob', media.blob)
@@ -482,8 +483,8 @@ describe('content transfer, end to end through the CLI', () => {
       out,
     )
     expect(exported.code, exported.out).toBe(0)
-    expect(exported.out).toContain('pass --with-blobs')
-    expect(existsSync(join(out, 'blobs'))).toBe(false)
+    expect(exported.out).toContain('pass --with-media')
+    expect(existsSync(join(out, 'media'))).toBe(false)
 
     const checked = await cli('target', 'content', 'check', out)
     // A person has to decide: the metadata can land without the file, but

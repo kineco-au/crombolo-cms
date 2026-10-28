@@ -8,8 +8,8 @@
  * changes its client ID and keeps its secret.
  */
 import { beforeAll, describe, expect, test } from 'bun:test'
-import { clientIdPrefixMigration, cromboloPlan, type Db, DbDate, migrate } from '@crombolo/data'
-import { canConnect, dialectUnderTest, freshDb } from './support/db.ts'
+import { clientIdPrefixMigration, type Db, DbDate } from '@crombolo/data'
+import { canConnect, dialectUnderTest, migratedDb } from './support/db.ts'
 
 type Credential = { client_id: string; secret_hash: string }
 
@@ -19,8 +19,7 @@ describe(`the client ID prefix (${dialectUnderTest})`, () => {
 
   beforeAll(async () => {
     if (!(await canConnect())) throw new Error(`no ${dialectUnderTest} to test against`)
-    db = await freshDb()
-    await migrate(db, cromboloPlan)
+    db = await migratedDb()
     // Column list and binding follow the seeder: `is_disabled` was renamed to
     // `is_locked_out` by the users-localisation migration, and both dialects
     // need their own spelling of a boolean and a timestamp.

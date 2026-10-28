@@ -225,11 +225,6 @@ describe('the media route and resize URLs', () => {
     mkdirSync(join(root, 'components'), { recursive: true })
     writeFileSync(join(root, 'schema', 'schema.toml'), '[schema]\nversion = "1.0.0"\n')
     const mediaDir = join(root, 'media')
-    mkdirSync(join(mediaDir, 'abcd1234'), { recursive: true })
-    writeFileSync(
-      join(mediaDir, 'abcd1234', 'logo.svg'),
-      '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>',
-    )
     const h = await signedInServer({
       config: {
         schemaDir: join(root, 'schema'),
@@ -238,8 +233,29 @@ describe('the media route and resize URLs', () => {
       },
     })
     open.push(h)
+    const id = crypto.randomUUID()
+    const form = new FormData()
+    form.set('Id', id)
+    form.set(
+      'File',
+      new File(['<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>'], 'logo.svg'),
+    )
+    await h.call(`${V1}/temporary-file`, { method: 'POST', body: form })
+    const created = await h.post(`${V1}/media`, {
+      mediaType: { id: SYSTEM_MEDIA_TYPE_KEYS.File },
+      parent: null,
+      values: [
+        { alias: 'umbracoFile', culture: null, segment: null, value: { temporaryFileId: id } },
+      ],
+      variants: [{ culture: null, segment: null, name: 'Logo' }],
+    })
+    expect(created.status).toBe(201)
+    const key = created.headers.get('umb-generated-resource') as string
+    const urls = await h.json<Array<{ urlInfos: Array<{ url: string }> }>>(
+      `${V1}/media/urls?id=${key}`,
+    )
 
-    const served = await h.call('/media/abcd1234/logo.svg')
+    const served = await h.call(urls[0]?.urlInfos[0]?.url as string)
     expect(served.status).toBe(200)
     expect(served.headers.get('content-type')).toBe('image/svg+xml')
     // Opened as a page it gets an opaque origin and no script; as an `<img src>`

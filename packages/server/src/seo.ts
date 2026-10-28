@@ -281,8 +281,7 @@ export function createSeoHost(options: SeoHostOptions): SeoHost {
     const trimmed = value.trim()
     if (!trimmed) return undefined
     if (!UUID.test(trimmed)) return trimmed
-    const snapshot = await cache.snapshot()
-    return snapshot.media.get(trimmed.toLowerCase())?.url
+    return (await cache.media?.byKey(trimmed))?.url
   }
 
   const siteDefaults: SeoHost['siteDefaults'] = async () => {
@@ -320,7 +319,7 @@ export function createSeoHost(options: SeoHostOptions): SeoHost {
   const details: SeoHost['details'] = async (content, request) => {
     const snapshot = await cache.snapshot()
     const { effective } = await settings()
-    const meta = effectiveMeta(content, {
+    const meta = await effectiveMeta(content, {
       origin: publicOrigin(request, config),
       alternates: urlsIn(snapshot, content.key),
       site: await siteDefaults(),
@@ -328,9 +327,9 @@ export function createSeoHost(options: SeoHostOptions): SeoHost {
     // A size only when the image is a media item: the page's own, or a site default given by key.
     const media =
       meta.image.source === 'page'
-        ? content.media(SEO_ALIASES.image)[0]?.media
+        ? (await content.media(SEO_ALIASES.image))[0]?.media
         : meta.image.source === 'site' && UUID.test(effective.defaultImage.trim())
-          ? snapshot.media.get(effective.defaultImage.trim().toLowerCase())
+          ? await cache.media?.byKey(effective.defaultImage.trim())
           : undefined
     const size = (alias: string) => {
       const value = Number(media?.value(alias))
@@ -413,7 +412,7 @@ export function createSeoHost(options: SeoHostOptions): SeoHost {
     if (!draft) return Response.json({ message: 'That page could not be found.' }, { status: 404 })
     const origin = publicOrigin(request, config)
     const snapshot = await cache.snapshot()
-    const meta = effectiveMeta(draft.content, {
+    const meta = await effectiveMeta(draft.content, {
       origin,
       alternates: urlsIn(snapshot, key),
       site: await siteDefaults(),

@@ -10,7 +10,7 @@ import { mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { packageFileName } from '@crombolo/api-management'
-import type { ContentTypeAggregate } from '@crombolo/core'
+import { type ContentTypeAggregate, SYSTEM_MEDIA_TYPE_KEYS } from '@crombolo/core'
 import { ContentTypeRepository } from '@crombolo/data'
 import { readBundle, VERSION } from '@crombolo/server'
 import { BUNDLE_FORMAT_VERSION, loadBundle } from '@crombolo/transfer'
@@ -407,7 +407,7 @@ describe('the download', () => {
       if (
         !path.startsWith('bundle.json') &&
         !path.startsWith('nodes/') &&
-        !path.startsWith('blobs/')
+        !path.startsWith('media')
       )
         continue
       await mkdir(dirname(join(dir, path)), { recursive: true })
@@ -418,6 +418,50 @@ describe('the download', () => {
     expect(
       loaded.set?.nodes.some((node) => node.key.toLowerCase() === document.toLowerCase()),
     ).toBe(true)
+  })
+
+  test('downloads without media files unless asked, listing them either way (story 195)', async () => {
+    const { h, create } = await site()
+    const upload = crypto.randomUUID()
+    const form = new FormData()
+    form.set('Id', upload)
+    form.set('File', new File([new Uint8Array([1, 2, 3, 4])], 'photo.png'))
+    expect((await h.call(`${V1}/temporary-file`, { method: 'POST', body: form })).status).toBe(201)
+    const made = await h.post(`${V1}/media`, {
+      mediaType: { id: SYSTEM_MEDIA_TYPE_KEYS.Image },
+      parent: null,
+      values: [
+        {
+          alias: 'umbracoFile',
+          culture: null,
+          segment: null,
+          value: { src: '', temporaryFileId: upload, crops: [], focalPoint: null },
+        },
+      ],
+      variants: [{ culture: null, segment: null, name: 'Photo' }],
+    })
+    expect(made.status).toBe(201)
+    const id = await create({
+      name: 'With a photo',
+      mediaIds: [made.headers.get('umb-generated-resource') as string],
+    })
+    const listed = (entries: Map<string, Uint8Array>) =>
+      (JSON.parse(text(entries, 'media.json')) as { files: Array<{ uri?: string }> }).files
+
+    // Umbraco's own Download button: the contract's route, with no choice.
+    const without = await download(h, id)
+    expect([...without.keys()].some((path) => path.startsWith('media/'))).toBe(false)
+    expect(listed(without)).toHaveLength(1)
+    expect(listed(without)[0]?.uri).toBeUndefined()
+
+    // The Created view's own download, ticked.
+    const response = await h.call(
+      `${BACKOFFICE}/crombolo/api/bundles/created/${id}/download?withMedia=true`,
+    )
+    expect(response.status).toBe(200)
+    const withMedia = payloadOf(untar(new Uint8Array(await response.arrayBuffer())))
+    expect([...withMedia.keys()].some((path) => path.startsWith('media/'))).toBe(true)
+    expect(listed(withMedia)[0]?.uri?.startsWith('bundle://')).toBe(true)
   })
 
   /**

@@ -155,7 +155,7 @@ export default function EventsPage(props: PageProps<Page>) {
   return (
     <Layout {...props}>
       <h1>{model.text('title')}</h1>
-      <div setInnerHTML={{ __html: model.text('intro'), dangerously: true }} />
+      <div>{model.html('intro')}</div>
       <EventList feedUrl={model.text('feedUrl')} signal={signal} />
     </Layout>
   )

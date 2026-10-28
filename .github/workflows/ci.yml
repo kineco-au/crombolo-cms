@@ -109,20 +109,24 @@ jobs:
                   bun -e 'const s = await Bun.file("score.json").json(); if (s.score !== s.max) { console.error(`clispec: ${s.score}/${s.max}`); process.exit(1) }'
 
     test:
-        name: test (${{ matrix.dialect }})
+        name: test (${{ matrix.dialect }}${{ matrix.shards > 1 && format(' {0}/{1}', matrix.shard, matrix.shards) || '' }})
         needs: [client, check]
         runs-on: ubuntu-latest
         strategy:
             fail-fast: false
-            matrix:
-                # SQLite always; Postgres for a release, or when the commit asks.
-                dialect: >-
-                    ${{ fromJSON(
-                      (inputs.postgres_tests ||
-                       (github.event_name == 'push' &&
-                        github.ref == 'refs/heads/main' &&
-                        contains(github.event.head_commit.message, '--postgres-tests')))
-                      && '["sqlite", "postgres"]' || '["sqlite"]') }}
+            # SQLite always, in one job; Postgres for a release, or when the commit
+            # asks, in four. Postgres runs the suite about twice as slowly, and its
+            # one job had set the release's length (17 to 28 minutes), so it is
+            # split by measured time (scripts/test-shard.ts). Each shard is a run of
+            # its own, with its own database (tests/support/isolate.ts).
+            matrix: >-
+                ${{ fromJSON(
+                  (inputs.postgres_tests ||
+                   (github.event_name == 'push' &&
+                    github.ref == 'refs/heads/main' &&
+                    contains(github.event.head_commit.message, '--postgres-tests')))
+                  && '{"include":[{"dialect":"sqlite","shard":1,"shards":1},{"dialect":"postgres","shard":1,"shards":4},{"dialect":"postgres","shard":2,"shards":4},{"dialect":"postgres","shard":3,"shards":4},{"dialect":"postgres","shard":4,"shards":4}]}'
+                  || '{"include":[{"dialect":"sqlite","shard":1,"shards":1}]}') }}
         services:
             # Started for every leg; the sqlite leg simply never connects to it.
             db:
@@ -178,14 +182,20 @@ jobs:
                       'packages/backoffice-dist/upstream-static/**') }}
                   fail-on-cache-miss: true
             # Postgres gets the same 20 s a local `bun run test:postgres` gives it,
-            # rather than bun's 5 s default. Every Postgres test rebuilds the
-            # `public` schema and replays the migrations, so the dialect is several
-            # times slower by construction, and a runner is several times slower
-            # again: `redirects > a rule naming a document follows it` takes 252 ms
+            # rather than bun's 5 s default. Every boot and query is a round trip,
+            # so the dialect is slower by construction, and a runner is several
+            # times slower again: `redirects > a rule naming a document follows it` takes 252 ms
             # on sqlite, 883 ms on Postgres here, and over 5 s on a runner. It had
             # been failing CI only, because this step was the one place the suite
             # ran against Postgres without the longer timeout.
-            - run: bun run test:ci --timeout ${{ matrix.dialect == 'postgres' && 20000 || 5000 }}
+            - name: Run the suite${{ matrix.shards > 1 && format(', shard {0} of {1}', matrix.shard, matrix.shards) || '' }}
+              run: |
+                  files=""
+                  if [ "${{ matrix.shards }}" -gt 1 ]; then
+                    files=$(bun run scripts/test-shard.ts ${{ matrix.shard }} ${{ matrix.shards }})
+                  fi
+                  # Unquoted on purpose: one argument per file.
+                  bun run test:ci --timeout ${{ matrix.dialect == 'postgres' && 20000 || 5000 }} $files
 
     # The integration suites drive the real CLI as a pipeline would: a process per
     # step and two SQLite databases, for content transfer (a bundle written to disk

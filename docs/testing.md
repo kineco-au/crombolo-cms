@@ -16,7 +16,7 @@
 | `bun run docker:test` / `docker:test:sqlite` / `docker:test:postgres` / `docker:test:all` | the same four, inside a container over the mounted source |
 | `bun run test:integration` / `docker:test:integration` | the CLI suites: creating a site, importing an Umbraco site, content transfer, a split deployment and the upgrade, spawned per step |
 | `bun run test:load` / `docker:test:load` | concurrent edits on overlapping branches and an invariant pass; release pipeline only |
-| `bun run test:bench` / `docker:test:bench` | a generated 25,000-page site timed against its budgets; release pipeline only, or run small |
+| `bun run test:bench` / `docker:test:bench` | a generated 25,000-page site, and a library of a million media items, timed against their budgets; release pipeline only, or run small |
 | `bun run docker:test:browser` | the browser suite in its own Playwright image, against Chromium |
 | `bun run coverage:api` | implemented vs. total OpenAPI operations |
 | `bun run conformance` | replay recorded request sequences, validate against schemas |
@@ -92,6 +92,14 @@ and that anything else connected to that database while the run goes has its
 tables dropped mid-query. Each run's own database, above, keeps runs apart. That is why the stack provisions two
 databases: `crombolo` for the CMS and `crombolo_test` for the suite, so a running
 CMS container cannot collide with a test run.
+
+A test that needs a clean, current schema asks for `migratedDb()`
+(`tests/support/db.ts`), not `freshDb()` followed by a migration. On Postgres it
+empties the already-migrated schema in one `TRUNCATE`, the same fast path a
+server boot takes, instead of dropping it. Dropping it costs a full migration
+there, and another at the next server boot, which then finds nothing migrated.
+`freshDb()` is for a test that needs the schema empty: one about migrations
+themselves. The 11 files that moved went from 24 s to 15 s on Postgres locally.
 
 ## Layers
 
@@ -232,6 +240,40 @@ looks each content type up once. Readers arriving while the cache builds share
 the one build, rather than each starting their own. What stays per-item is held
 to that in `tests/large-site-paths.test.ts`, which counts the statements a page
 of three and a page of thirty cost and expects the same number.
+
+**Media at scale** — story `197`. Two tests, one small enough for every run:
+
+- `tests/media-scale.test.ts`, in the default suite on both dialects: 20,000
+  media items made in SQL (`tests/support/media-library.ts`;
+  `CROMBOLO_MEDIA_SCALE_ITEMS` changes the size) behind one page. It holds the
+  shape rather than a time: the page snapshot reads no media; every query that
+  reads media by key, by address or a page of a folder has no whole-table scan
+  of `node`, `content`, `content_version` or `property_value` in its plan
+  (`EXPLAIN QUERY PLAN` on SQLite, `EXPLAIN` on Postgres); the media cache stays
+  within a 1 MB budget after 6,000 reads; and the Delivery API pages the folder.
+- `tests/load/media-library.bench.ts`, in `test:bench` with the large-site
+  budgets: a million items, then 10,000 uploads through the API into the same
+  folder while pages are served, which must not rebuild the page snapshot.
+  `CROMBOLO_BENCH_LIBRARY` and `CROMBOLO_BENCH_UPLOADS` scale it.
+
+| Path, with 1,000,000 media items | Budget | SQLite | Postgres |
+| --- | --- | --- | --- |
+| the page snapshot build | 1 s | 1.2 ms | 5.5 ms |
+| the first page render, three items looked up | 500 ms | 10.4 ms | 12.8 ms |
+| a page render, the items held | 50 ms | 0.9 ms | 1.6 ms |
+| a file served | 50 ms | 1.6 ms | 2.3 ms |
+| the Delivery API's last page of the folder (`skip` 999,990) | 1 s on SQLite, 2 s on Postgres | 143 ms | 640 ms |
+| heap growth while serving | 200 MB | 1.5 MB | 1.5 MB |
+| 10,000 uploads while pages are served | no snapshot rebuild | none; 195 s, 20,420 pages served | none; 140 s, 58,946 pages served |
+
+Measured 2026-10-28 in the Docker test services on a developer machine.
+Generating the library took 8 s on SQLite and 69 s on Postgres. The Delivery
+API's time is the count of the folder's children and an `OFFSET` near its end;
+a page near the start is a few milliseconds. The cache's estimate of a
+generated image is about 850 bytes, so the default 64 MB budget holds some
+tens of thousands of items. The upload run found that a new item's sort order
+was read across every sibling, a second an upload at this size; it is now read
+off the end of `ix_node_parent_sort`.
 
 Writing the transfer suite found two things the unit tests could not: `content
 check` printed a failed integrity hash and then exited 0, so a half-copied bundle
@@ -521,10 +563,17 @@ it takes ~7 minutes at one worker and is the most runner-sensitive thing here. O
 always runs, because `release.yml` calls `ci.yml` with `browser_tests: true` and
 nothing should be published without it. Pull requests never run it.
 
-The Postgres leg of the unit suite is the other. It rebuilds the `public` schema and
-replays the migrations per test, which is several times slower than SQLite and
-slower again on a runner, so a push to `main` and a pull request run the suite on
-SQLite alone. `--postgres-tests` in the commit message adds the Postgres leg on
+The Postgres leg of the unit suite is the other. Each server boot and each query
+is a network round trip, which makes it about twice as slow as SQLite, so a
+push to `main` and a pull request run the suite on SQLite alone.
+
+Its one job took 17 to 28 minutes and set the length of every release, so it
+runs as four shards, `test (postgres 1/4)` to `4/4`, each a run of its own with
+its own database. `scripts/test-shard.ts` splits the files by their measured
+Postgres time in `tests/shard-weights.json`, heaviest first onto the lightest
+shard. A file with no time counts as the median, so a new file needs nothing.
+To refresh the times, take them from a Release run's per-file groups.
+`test (sqlite)` stays one job, under the same name. `--postgres-tests` in the commit message adds the Postgres leg on
 `main`, and a release always runs both dialects (`postgres_tests: true` from
 `release.yml`), since both are what it publishes. Locally, `docker:test:all` is
 the release's matrix.

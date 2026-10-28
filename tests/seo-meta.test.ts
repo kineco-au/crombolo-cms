@@ -89,8 +89,8 @@ describe('absoluteUrl', () => {
 })
 
 describe('effectiveMeta', () => {
-  test('falls back to the page name and its own address', () => {
-    const meta = effectiveMeta(content(), { origin: ORIGIN, alternates: [], site: SITE })
+  test('falls back to the page name and its own address', async () => {
+    const meta = await effectiveMeta(content(), { origin: ORIGIN, alternates: [], site: SITE })
     expect(meta.title).toEqual({ value: 'About us', source: 'name' })
     expect(meta.fullTitle).toBe('About us')
     expect(meta.description).toEqual({ value: undefined, source: 'none' })
@@ -99,8 +99,8 @@ describe('effectiveMeta', () => {
     expect(meta.type).toBe('website')
   })
 
-  test("the page's own fields win over the template's", () => {
-    const meta = effectiveMeta(
+  test("the page's own fields win over the template's", async () => {
+    const meta = await effectiveMeta(
       content([
         text('seoTitle', 'Who we are'),
         text('seoDescription', 'Our story'),
@@ -114,8 +114,8 @@ describe('effectiveMeta', () => {
     expect(meta.canonical).toEqual({ value: 'https://acme.test/story', source: 'page' })
   })
 
-  test('the template fills what the page leaves empty, then the site', () => {
-    const meta = effectiveMeta(
+  test('the template fills what the page leaves empty, then the site', async () => {
+    const meta = await effectiveMeta(
       content([text('seoTitle', '  ')]),
       {
         origin: ORIGIN,
@@ -130,8 +130,8 @@ describe('effectiveMeta', () => {
     expect(meta.image).toEqual({ value: 'https://acme.test/media/share.png', source: 'site' })
   })
 
-  test('a template can drop the site suffix', () => {
-    const meta = effectiveMeta(
+  test('a template can drop the site suffix', async () => {
+    const meta = await effectiveMeta(
       content(),
       { origin: ORIGIN, alternates: [], site: { ...SITE, titleSuffix: ' | Acme' } },
       { titleSuffix: null },
@@ -139,14 +139,14 @@ describe('effectiveMeta', () => {
     expect(meta.fullTitle).toBe('About us')
   })
 
-  test('a site kept out of search hides every page, whatever the page says', () => {
-    const hidden = effectiveMeta(content(), {
+  test('a site kept out of search hides every page, whatever the page says', async () => {
+    const hidden = await effectiveMeta(content(), {
       origin: ORIGIN,
       alternates: [],
       site: { ...SITE, indexable: false },
     })
     expect(hidden.noindex).toEqual({ value: true, source: 'site' })
-    const page = effectiveMeta(content([flag('seoNoindex', true)]), {
+    const page = await effectiveMeta(content([flag('seoNoindex', true)]), {
       origin: ORIGIN,
       alternates: [],
       site: SITE,
@@ -154,15 +154,15 @@ describe('effectiveMeta', () => {
     expect(page.noindex).toEqual({ value: true, source: 'page' })
   })
 
-  test('offers language versions only when there is more than one', () => {
-    const one = effectiveMeta(content(), {
+  test('offers language versions only when there is more than one', async () => {
+    const one = await effectiveMeta(content(), {
       origin: ORIGIN,
       alternates: [{ culture: 'en-US', url: '/about', isDefault: true }],
       site: SITE,
     })
     expect(one.alternates).toEqual([])
     expect(one.xDefault).toBeUndefined()
-    const two = effectiveMeta(content(), {
+    const two = await effectiveMeta(content(), {
       origin: ORIGIN,
       alternates: [
         { culture: 'en-US', url: '/about', isDefault: true },
@@ -180,17 +180,19 @@ describe('effectiveMeta', () => {
 })
 
 describe('<SeoHead>', () => {
-  const head = (model: PublishedContent, extra: Record<string, unknown> = {}) =>
-    SeoHead({
-      model,
-      request: { origin: ORIGIN, url: `${ORIGIN}/about` },
-      urls: { alternates: () => [] },
-      seo: { ...SITE, titleSuffix: ' | Acme' },
-      ...extra,
-    }).value
+  const head = async (model: PublishedContent, extra: Record<string, unknown> = {}) =>
+    (
+      await SeoHead({
+        model,
+        request: { origin: ORIGIN, url: `${ORIGIN}/about` },
+        urls: { alternates: () => [] },
+        seo: { ...SITE, titleSuffix: ' | Acme' },
+        ...extra,
+      })
+    ).value
 
-  test('writes the title, description, address and sharing tags', () => {
-    const html = head(content([text('seoDescription', 'Our <story>')]))
+  test('writes the title, description, address and sharing tags', async () => {
+    const html = await head(content([text('seoDescription', 'Our <story>')]))
     expect(html).toContain('<title>About us | Acme</title>')
     expect(html).toContain('<meta name="description" content="Our &lt;story&gt;" />')
     expect(html).toContain('<link rel="canonical" href="https://acme.test/about" />')
@@ -202,14 +204,14 @@ describe('<SeoHead>', () => {
     expect(html).not.toContain('og:image')
   })
 
-  test('asks search engines to stay away from a hidden page', () => {
-    expect(head(content([flag('seoNoindex', true)]))).toContain(
+  test('asks search engines to stay away from a hidden page', async () => {
+    expect(await head(content([flag('seoNoindex', true)]))).toContain(
       '<meta name="robots" content="noindex" />',
     )
   })
 
-  test('lists language versions with a default', () => {
-    const html = head(content(), {
+  test('lists language versions with a default', async () => {
+    const html = await head(content(), {
       urls: {
         alternates: () => [
           { culture: 'en-US', url: '/about', isDefault: true },
