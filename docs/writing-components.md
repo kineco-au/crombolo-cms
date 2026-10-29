@@ -589,6 +589,32 @@ Lit component, or plain TypeScript, joins a page.
 own bundled script with `<script type="module" src="/scripts/…">`. A page that
 does this needs no islands at all.
 
+## The development loop
+
+`bun run dev` serves the site and restarts it when `crombolo.config.ts`, or
+code it imports, changes. Open pages keep up by themselves (story 214):
+
+- **They reload** when you save under `components/` (on disk or in the back
+  office's template editor, islands included), change `schema/`, publish,
+  unpublish or delete content, or the server restarts. A burst of changes is
+  one reload.
+- **A template error** answers the error page with the message, the file and
+  line, the code around that line with it marked, the components that were
+  rendering (`homePage › Layout › Card`), and the stack. Fix the file and the
+  page reloads.
+- **Type errors** are checked in the background after each save
+  (`crombolo components check`'s `tsc`, when the site has `typescript`
+  installed). They are printed in the terminal, and a banner on open pages
+  shows how many there are and the first one, until they are fixed. A type
+  error never stops a page rendering.
+
+Pages carry a small script, `/crombolo/dev/live.js`, served as a file so a
+strict `script-src 'self'` still holds. It listens on `/crombolo/dev/events`.
+`CROMBOLO_LIVE_RELOAD` turns this on or off. It is on in development, and off
+in production and under `bun test`, where pages carry nothing and both paths
+answer 404. The error page's details follow `CROMBOLO_SHOW_ERROR_DETAILS` as
+before.
+
 ## When something is refused
 
 | Written | Why it fails | Instead |

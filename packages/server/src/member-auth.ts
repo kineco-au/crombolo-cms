@@ -199,10 +199,12 @@ export function createMemberAuth(
   const groupKeysFor = async (names: readonly string[]): Promise<string[]> => {
     const keys: string[] = []
     for (const groupName of names) {
-      const rows = await db.query<{ unique_id: string }>(
-        'SELECT unique_id FROM node WHERE text = ? AND node_object_type = ?',
-        [groupName, ObjectTypes.MemberGroup],
-      )
+      const rows = await db.q
+        .selectFrom('node')
+        .select('unique_id')
+        .where('text', '=', groupName)
+        .where('node_object_type', '=', ObjectTypes.MemberGroup)
+        .execute()
       if (rows[0]) keys.push(String(rows[0].unique_id))
     }
     return keys

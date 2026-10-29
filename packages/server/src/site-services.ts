@@ -75,10 +75,15 @@ export function createSiteServices(deps: SiteServicesDeps) {
         if (!UUID.test(folderKey)) return notFound
         const folder = await cache.media?.byKey(folderKey)
         if (!folder || !(await readable(folder))) return notFound
-        const rows = await db.query<{ unique_id: string }>(
-          'SELECT unique_id FROM node WHERE parent_id = ? AND node_object_type = ? AND trashed = ? ORDER BY sort_order, id',
-          [folder.id, ObjectTypes.Media, db.dialect.boolValue(false)],
-        )
+        const rows = await db.q
+          .selectFrom('node')
+          .select('unique_id')
+          .where('parent_id', '=', folder.id)
+          .where('node_object_type', '=', ObjectTypes.Media)
+          .where('trashed', '=', db.dialect.boolValue(false) as boolean)
+          .orderBy('sort_order')
+          .orderBy('id')
+          .execute()
         const found = (await cache.media?.byKeys(rows.map((row) => row.unique_id))) ?? new Map()
         const items: PublishedMedia[] = []
         for (const row of rows) {

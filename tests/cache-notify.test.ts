@@ -11,6 +11,7 @@ import {
   connect,
   currentSchemaState,
   type Db,
+  queryFor,
 } from '@crombolo/data'
 import { CacheInstructionPoller } from '@crombolo/server'
 import { dialectUnderTest, migratedDb } from './support/db.ts'
@@ -40,6 +41,9 @@ function observed(db: Db) {
   const wrapped: Db = {
     dialect: db.dialect,
     locks: db.locks,
+    get q() {
+      return queryFor(this)
+    },
     query: (sql, params) => {
       statements.push(sql)
       return db.query(sql, params)
@@ -92,7 +96,7 @@ async function within(ms: number, done: () => boolean): Promise<number> {
 }
 
 const readsOfInstructions = (statements: string[]) =>
-  statements.filter((sql) => sql.includes('FROM cache_instruction WHERE id >')).length
+  statements.filter((sql) => sql.includes('from "cache_instruction" where "id" >')).length
 
 describe(`the poller wakes on notification (${dialectUnderTest})`, () => {
   test('listens where the database can, and a notification polls at once', async () => {

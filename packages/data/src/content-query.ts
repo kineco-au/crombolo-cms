@@ -14,6 +14,7 @@ import {
 } from '@crombolo/core'
 import type { Db } from './database.ts'
 import { DbDate, fromDbBool } from './dialect.ts'
+import { type Expression, sql } from './query.ts'
 import { escapeLike, searchTerms } from './search-text.ts'
 
 export const QUERY_STATES = ['published', 'draft', 'changed', 'trashed'] as const
@@ -288,39 +289,53 @@ export async function queryDocuments(
 }
 
 async function runQuery(db: Db, query: ContentQuery, scope: QueryScope): Promise<QueryResult> {
-  const bool = (value: boolean) => db.dialect.boolValue(value)
-  const where: string[] = ['n.node_object_type = ?']
-  const params: unknown[] = [ObjectTypes.Document]
-  const joins: string[] = []
-  const joinParams: unknown[] = []
+  const bool = (value: boolean) => db.dialect.boolValue(value) as boolean
 
   // ---- culture
   let languageId: number | undefined
   if (query.culture) {
-    const [language] = await db.query<{ id: number }>(
-      'SELECT id FROM language WHERE LOWER(iso_code) = LOWER(?)',
-      [query.culture],
-    )
+    const culture = query.culture
+    const language = await db.q
+      .selectFrom('language')
+      .select('id')
+      .where((eb) => eb(eb.fn('lower', ['iso_code']), '=', eb.fn('lower', [eb.val(culture)])))
+      .executeTakeFirst()
     if (!language) throw new ContentQueryRefused(`There is no language "${query.culture}".`)
     languageId = Number(language.id)
-    joins.push(
-      'LEFT JOIN document_culture_variation dcv ON dcv.node_id = n.id AND dcv.language_id = ?',
-    )
-    joinParams.push(languageId)
   }
-  const published =
-    languageId === undefined ? 'd.published' : 'COALESCE(dcv.published, d.published)'
-  const edited = languageId === undefined ? 'd.edited' : 'COALESCE(dcv.edited, d.edited)'
-  const nameColumn = languageId === undefined ? 'n.text' : 'COALESCE(dcv.name, n.text)'
+  const byCulture = <T>(column: 'published' | 'edited' | 'name', fallback: string) =>
+    languageId === undefined
+      ? sql.ref<T>(fallback)
+      : sql<T>`coalesce(${sql.ref(`dcv.${column}`)}, ${sql.ref(fallback)})`
+  const published = byCulture<unknown>('published', 'd.published')
+  const edited = byCulture<unknown>('edited', 'd.edited')
+  const nameColumn = byCulture<string | null>('name', 'n.text')
+
+  let q = db.q
+    .selectFrom('node as n')
+    .innerJoin('content as c', 'c.node_id', 'n.id')
+    .innerJoin('content_type as ct', 'ct.node_id', 'c.content_type_id')
+    .innerJoin('node as tn', 'tn.id', 'ct.node_id')
+    .innerJoin('document as d', 'd.node_id', 'n.id')
+    .innerJoin('content_version as cv', (join) =>
+      join.onRef('cv.node_id', '=', 'n.id').on('cv.current', '=', bool(true)),
+    )
+    .$if(languageId !== undefined, (qb) =>
+      qb.leftJoin('document_culture_variation as dcv', (join) =>
+        join.onRef('dcv.node_id', '=', 'n.id').on('dcv.language_id', '=', languageId as number),
+      ),
+    )
+    .where('n.node_object_type', '=', ObjectTypes.Document)
 
   // ---- types
   let typeIds: number[] | undefined
   if (query.contentTypes?.length) {
-    const rows = await db.query<{ node_id: number; alias: string; unique_id: string }>(
-      `SELECT ct.node_id, ct.alias, tn.unique_id FROM content_type ct JOIN node tn ON tn.id = ct.node_id
-       WHERE tn.node_object_type = ?`,
-      [ObjectTypes.DocumentType],
-    )
+    const rows = await db.q
+      .selectFrom('content_type as ct')
+      .innerJoin('node as tn', 'tn.id', 'ct.node_id')
+      .select(['ct.node_id', 'ct.alias', 'tn.unique_id'])
+      .where('tn.node_object_type', '=', ObjectTypes.DocumentType)
+      .execute()
     typeIds = []
     for (const wanted of query.contentTypes) {
       const found = rows.find(
@@ -331,80 +346,81 @@ async function runQuery(db: Db, query: ContentQuery, scope: QueryScope): Promise
       if (!found) throw new ContentQueryRefused(`There is no content type "${wanted}".`)
       typeIds.push(Number(found.node_id))
     }
-    where.push(`c.content_type_id IN (${typeIds.map(() => '?').join(', ')})`)
-    params.push(...typeIds)
+    q = q.where('c.content_type_id', 'in', typeIds)
   }
 
   // ---- place
   const nodeByKey = async (key: string, field: string) => {
-    const [row] = await db.query<{ id: number; path: string; level: number }>(
-      'SELECT id, path, level FROM node WHERE unique_id = ? AND node_object_type = ?',
-      [key.toLowerCase(), ObjectTypes.Document],
-    )
+    const row = await db.q
+      .selectFrom('node')
+      .select(['id', 'path', 'level'])
+      .where('unique_id', '=', key.toLowerCase())
+      .where('node_object_type', '=', ObjectTypes.Document)
+      .executeTakeFirst()
     if (!row) throw new ContentQueryRefused(`"${field}" names no page: ${key}.`)
     return { id: Number(row.id), path: String(row.path), level: Number(row.level) }
   }
   const under = query.under ? await nodeByKey(query.under, 'under') : undefined
   const parent = query.parent ? await nodeByKey(query.parent, 'parent') : undefined
-  if (under) {
-    where.push(`n.path LIKE ? ESCAPE '\\'`)
-    params.push(`${escapeLike(under.path)},%`)
-  }
-  if (parent) {
-    where.push('n.parent_id = ?')
-    params.push(parent.id)
-  }
+  if (under) q = q.where(like(sql.ref('n.path'), `${escapeLike(under.path)},%`))
+  if (parent) q = q.where('n.parent_id', '=', parent.id)
   if (query.maxDepth !== undefined) {
     const from = (under ?? parent) as { level: number }
-    where.push('n.level <= ?')
-    params.push(from.level + query.maxDepth)
+    q = q.where('n.level', '<=', from.level + query.maxDepth)
   }
 
   // ---- start nodes: the statement itself stays inside them
   if (!scope.start.root) {
     if (scope.start.keys.length === 0) return { total: 0, exact: true, items: [] }
-    const starts = await db.query<{ path: string }>(
-      `SELECT path FROM node WHERE unique_id IN (${scope.start.keys.map(() => '?').join(', ')})`,
-      scope.start.keys.map((k) => k.toLowerCase()),
-    )
+    const starts = await db.q
+      .selectFrom('node')
+      .select('path')
+      .where(
+        'unique_id',
+        'in',
+        scope.start.keys.map((k) => k.toLowerCase()),
+      )
+      .execute()
     if (starts.length === 0) return { total: 0, exact: true, items: [] }
-    where.push(`(${starts.map(() => `(n.path = ? OR n.path LIKE ? ESCAPE '\\')`).join(' OR ')})`)
-    for (const s of starts) params.push(String(s.path), `${escapeLike(String(s.path))},%`)
+    q = q.where((eb) =>
+      eb.or(
+        starts.map((s) =>
+          eb.or([
+            eb('n.path', '=', String(s.path)),
+            like(eb.ref('n.path'), `${escapeLike(String(s.path))},%`),
+          ]),
+        ),
+      ),
+    )
   }
 
   // ---- state; trashed only when asked for, and never outside root access
   const states = query.state?.length ? query.state : ['published', 'draft', 'changed']
   const wantsTrashed = states.includes('trashed') && scope.start.root
   const live = states.filter((s) => s !== 'trashed')
-  const stateClauses: string[] = []
-  if (live.length > 0) {
-    const liveParts: string[] = []
-    if (live.includes('published')) liveParts.push(`(${published} = ? AND ${edited} = ?)`)
-    if (live.includes('changed')) liveParts.push(`(${published} = ? AND ${edited} = ?)`)
-    if (live.includes('draft')) liveParts.push(`(${published} = ?)`)
-    stateClauses.push(`(n.trashed = ? AND (${liveParts.join(' OR ')}))`)
-    params.push(bool(false))
-    if (live.includes('published')) params.push(bool(true), bool(false))
-    if (live.includes('changed')) params.push(bool(true), bool(true))
-    if (live.includes('draft')) params.push(bool(false))
-  }
-  if (wantsTrashed) {
-    stateClauses.push('n.trashed = ?')
-    params.push(bool(true))
-  }
-  if (stateClauses.length === 0) return { total: 0, exact: true, items: [] }
-  where.push(`(${stateClauses.join(' OR ')})`)
+  if (live.length === 0 && !wantsTrashed) return { total: 0, exact: true, items: [] }
+  q = q.where((eb) => {
+    const clauses: Expression<boolean | 0 | 1>[] = []
+    if (live.length > 0) {
+      const parts: Expression<boolean | 0 | 1>[] = []
+      if (live.includes('published'))
+        parts.push(eb.and([eb(published, '=', bool(true)), eb(edited, '=', bool(false))]))
+      if (live.includes('changed'))
+        parts.push(eb.and([eb(published, '=', bool(true)), eb(edited, '=', bool(true))]))
+      if (live.includes('draft')) parts.push(eb(published, '=', bool(false)))
+      clauses.push(eb.and([eb('n.trashed', '=', bool(false)), eb.or(parts)]))
+    }
+    if (wantsTrashed) clauses.push(eb('n.trashed', '=', bool(true)))
+    return eb.or(clauses)
+  })
 
   // ---- dates
-  const between = (column: string, range: { from?: Date; to?: Date } | undefined) => {
-    if (range?.from) {
-      where.push(`${column} >= ?`)
-      params.push(DbDate.toDb(range.from))
-    }
-    if (range?.to) {
-      where.push(`${column} <= ?`)
-      params.push(DbDate.toDb(range.to))
-    }
+  const between = (
+    column: 'n.create_date' | 'cv.version_date',
+    range: { from?: Date; to?: Date } | undefined,
+  ) => {
+    if (range?.from) q = q.where(column, '>=', DbDate.toDb(range.from))
+    if (range?.to) q = q.where(column, '<=', DbDate.toDb(range.to))
   }
   between('n.create_date', query.created)
   between('cv.version_date', query.updated)
@@ -412,112 +428,104 @@ async function runQuery(db: Db, query: ContentQuery, scope: QueryScope): Promise
   // ---- name
   if (query.name) {
     const value = query.name.value.toLowerCase()
-    if (query.name.op === 'equals') {
-      where.push(`LOWER(${nameColumn}) = ?`)
-      params.push(value)
-    } else {
-      where.push(`LOWER(${nameColumn}) LIKE ? ESCAPE '\\'`)
-      params.push(
-        query.name.op === 'startsWith' ? `${escapeLike(value)}%` : `%${escapeLike(value)}%`,
+    const lowered = sql`lower(${nameColumn})`
+    if (query.name.op === 'equals') q = q.where((eb) => eb(lowered, '=', value))
+    else
+      q = q.where(
+        like(
+          lowered,
+          query.name.op === 'startsWith' ? `${escapeLike(value)}%` : `%${escapeLike(value)}%`,
+        ),
       )
-    }
   }
 
   // ---- full text, through the existing index
   if (query.text) {
-    where.push(`n.id IN (SELECT h.node_id FROM (${db.dialect.fullTextHits}) h)`)
-    params.push(db.dialect.fullTextQuery(searchTerms(query.text)))
+    const hits = db.dialect.fullTextMatches(db.dialect.fullTextQuery(searchTerms(query.text)))
+    q = q.where((eb) => eb('n.id', 'in', eb.selectFrom(hits.as('h')).select('h.node_id')))
   }
 
   // ---- properties
   for (const clause of query.properties ?? []) {
     const target = await propertyTarget(db, clause.alias, typeIds, scope, clause.op)
-    const owners = target.ids.map(() => '?').join(', ')
-    const language =
-      languageId === undefined ? '' : ' AND (pv.language_id = ? OR pv.language_id IS NULL)'
-    const row = `SELECT 1 FROM property_value pv WHERE pv.node_id = n.id AND pv.is_current = ?
-      AND pv.segment IS NULL AND pv.property_type_id IN (${owners})${language}`
-    const rowParams = [bool(true), ...target.ids, ...(languageId === undefined ? [] : [languageId])]
-    const col = `pv.${target.column}`
+    const col = sql.ref(`pv.${target.column}`)
     const text = target.storage === 'Ntext' || target.storage === 'Nvarchar'
-    const hasValue = text ? `${col} IS NOT NULL AND ${col} <> ''` : `${col} IS NOT NULL`
-    if (clause.op === 'exists' || clause.op === 'empty') {
-      where.push(`${clause.op === 'empty' ? 'NOT ' : ''}EXISTS (${row} AND ${hasValue})`)
-      params.push(...rowParams)
-      continue
-    }
-    const value = comparable(clause.value, target.storage, clause.alias)
-    if (clause.op === 'contains') {
-      if (!text)
+    let value: unknown
+    if (clause.op !== 'exists' && clause.op !== 'empty') {
+      value = comparable(clause.value, target.storage, clause.alias)
+      if (clause.op === 'contains' && !text)
         throw new ContentQueryRefused(`"contains" compares text; "${clause.alias}" is not text.`)
-      where.push(`EXISTS (${row} AND LOWER(${col}) LIKE ? ESCAPE '\\')`)
-      params.push(...rowParams, `%${escapeLike(String(value).toLowerCase())}%`)
-      continue
     }
-    const operator = { eq: '=', ne: '=', gt: '>', gte: '>=', lt: '<', lte: '<=' }[clause.op]
-    const left = text ? `LOWER(${col})` : col
-    const right = text ? String(value).toLowerCase() : value
-    // `ne` is "has no value equal to this", so a page without the value matches too.
-    where.push(`${clause.op === 'ne' ? 'NOT ' : ''}EXISTS (${row} AND ${left} ${operator} ?)`)
-    params.push(...rowParams, right)
+    q = q.where((eb) => {
+      const row = eb
+        .selectFrom('property_value as pv')
+        .select(eb.lit(1).as('one'))
+        .whereRef('pv.node_id', '=', 'n.id')
+        .where('pv.is_current', '=', bool(true))
+        .where('pv.segment', 'is', null)
+        .where('pv.property_type_id', 'in', target.ids)
+        .$if(languageId !== undefined, (sub) =>
+          sub.where((e) =>
+            e.or([e('pv.language_id', '=', languageId as number), e('pv.language_id', 'is', null)]),
+          ),
+        )
+      if (clause.op === 'exists' || clause.op === 'empty') {
+        const hasValue = row.where(col, 'is not', null).$if(text, (sub) => sub.where(col, '<>', ''))
+        return clause.op === 'empty' ? eb.not(eb.exists(hasValue)) : eb.exists(hasValue)
+      }
+      if (clause.op === 'contains')
+        return eb.exists(
+          row.where(like(sql`lower(${col})`, `%${escapeLike(String(value).toLowerCase())}%`)),
+        )
+      const operator = ({ eq: '=', ne: '=', gt: '>', gte: '>=', lt: '<', lte: '<=' } as const)[
+        clause.op
+      ]
+      const left = text ? sql`lower(${col})` : col
+      const right = text ? String(value).toLowerCase() : value
+      // `ne` is "has no value equal to this", so a page without the value matches too.
+      const matches = eb.exists(row.where(left, operator, right))
+      return clause.op === 'ne' ? eb.not(matches) : matches
+    })
   }
 
   // ---- sort
   const by = query.sort?.by ?? 'name'
-  const dir = query.sort?.dir === 'desc' ? 'DESC' : 'ASC'
+  const dir = query.sort?.dir === 'desc' ? 'desc' : 'asc'
   const sortColumn = {
-    name: `LOWER(${nameColumn})`,
-    createDate: 'n.create_date',
-    updateDate: 'cv.version_date',
-    path: 'n.path',
-    sortOrder: 'n.sort_order',
+    name: sql`lower(${nameColumn})`,
+    createDate: sql.ref('n.create_date'),
+    updateDate: sql.ref('cv.version_date'),
+    path: sql.ref('n.path'),
+    sortOrder: sql.ref('n.sort_order'),
   }[by]
 
-  const from = `node n
-    JOIN content c ON c.node_id = n.id
-    JOIN content_type ct ON ct.node_id = c.content_type_id
-    JOIN node tn ON tn.id = ct.node_id
-    JOIN document d ON d.node_id = n.id
-    JOIN content_version cv ON cv.node_id = n.id AND cv.current = ?
-    ${joins.join('\n')}`
-  const fromParams = [bool(true), ...joinParams]
-  const select = `SELECT n.id, n.unique_id, n.path, n.trashed, n.create_date, ${nameColumn} AS name,
-      ct.alias AS type_alias, tn.unique_id AS type_key, cv.version_date,
-      ${published} AS published, ${edited} AS edited
-    FROM ${from} WHERE ${where.join(' AND ')}
-    ORDER BY ${sortColumn} ${dir}, n.id ${dir}`
+  const select = q
+    .select([
+      'n.id',
+      'n.unique_id',
+      'n.path',
+      'n.trashed',
+      'n.create_date',
+      nameColumn.as('name'),
+      'ct.alias as type_alias',
+      'tn.unique_id as type_key',
+      'cv.version_date',
+      published.as('published'),
+      edited.as('edited'),
+    ])
+    .orderBy(sortColumn, dir)
+    .orderBy('n.id', dir)
 
-  type Row = {
-    id: number
-    unique_id: string
-    path: string
-    trashed: unknown
-    create_date: unknown
-    name: string | null
-    type_alias: string
-    type_key: string
-    version_date: unknown
-    published: unknown
-    edited: unknown
-  }
   let rows: Row[]
   let total: number
   let exact = true
   if (!scope.browses) {
-    const [count] = await db.query<{ n: number }>(
-      `SELECT COUNT(*) AS n FROM ${from} WHERE ${where.join(' AND ')}`,
-      [...fromParams, ...params],
-    )
+    const count = await q.select((eb) => eb.fn.countAll().as('n')).executeTakeFirst()
     total = Number(count?.n ?? 0)
-    rows = await db.query<Row>(`${select} LIMIT ? OFFSET ?`, [
-      ...fromParams,
-      ...params,
-      query.take,
-      query.skip,
-    ])
+    rows = await select.limit(query.take).offset(query.skip).execute()
   } else {
     const limit = scope.window ?? QUERY_WINDOW
-    const window = await db.query<Row>(`${select} LIMIT ?`, [...fromParams, ...params, limit + 1])
+    const window = await select.limit(limit + 1).execute()
     exact = window.length <= limit
     const keys = await keysByIds(db, window.slice(0, limit))
     const visible = window
@@ -529,6 +537,24 @@ async function runQuery(db: Db, query: ContentQuery, scope: QueryScope): Promise
   return { total, exact, items: await toItems(db, rows) }
 }
 
+type Row = {
+  id: number
+  unique_id: string
+  path: string
+  trashed: unknown
+  create_date: unknown
+  name: string | null
+  type_alias: string
+  type_key: string
+  version_date: unknown
+  published: unknown
+  edited: unknown
+}
+
+/** `left LIKE pattern`, with `\` escaping the pattern's wildcards as `escapeLike` writes them. */
+const like = (left: Expression<unknown>, pattern: string) =>
+  sql<boolean>`${left} like ${pattern} escape '\\'`
+
 /** The property types a clause compares, checked for reading and for being comparable. */
 async function propertyTarget(
   db: Db,
@@ -538,20 +564,17 @@ async function propertyTarget(
   op: PropertyOp,
 ): Promise<PropertyTarget> {
   const owners = typeIds ? await withCompositions(db, typeIds) : undefined
-  const rows = await db.query<{
-    id: number
-    unique_id: string
-    db_type: string
-    editor_alias: string
-  }>(
-    `SELECT pt.id, pt.unique_id, dt.db_type, dt.editor_alias FROM property_type pt
-     JOIN data_type dt ON dt.node_id = pt.data_type_id
-     JOIN content_type ct ON ct.node_id = pt.content_type_id
-     JOIN node tn ON tn.id = ct.node_id
-     WHERE LOWER(pt.alias) = LOWER(?) AND pt.retired_at IS NULL AND tn.node_object_type = ?
-     ${owners ? `AND pt.content_type_id IN (${owners.map(() => '?').join(', ')})` : ''}`,
-    [alias, ObjectTypes.DocumentType, ...(owners ?? [])],
-  )
+  const rows = await db.q
+    .selectFrom('property_type as pt')
+    .innerJoin('data_type as dt', 'dt.node_id', 'pt.data_type_id')
+    .innerJoin('content_type as ct', 'ct.node_id', 'pt.content_type_id')
+    .innerJoin('node as tn', 'tn.id', 'ct.node_id')
+    .select(['pt.id', 'pt.unique_id', 'dt.db_type', 'dt.editor_alias'])
+    .where((eb) => eb(eb.fn('lower', ['pt.alias']), '=', eb.fn('lower', [eb.val(alias)])))
+    .where('pt.retired_at', 'is', null)
+    .where('tn.node_object_type', '=', ObjectTypes.DocumentType)
+    .$if(owners !== undefined, (qb) => qb.where('pt.content_type_id', 'in', owners as number[]))
+    .execute()
   if (rows.length === 0)
     throw new ContentQueryRefused(
       `There is no property "${alias}"${typeIds ? ' on the content types given' : ''}.`,
@@ -577,9 +600,10 @@ async function propertyTarget(
 
 /** The types and every type they are composed of, transitively. */
 async function withCompositions(db: Db, typeIds: number[]): Promise<number[]> {
-  const links = await db.query<{ parent: number; child: number }>(
-    'SELECT parent_content_type_id AS parent, child_content_type_id AS child FROM content_type_composition',
-  )
+  const links = await db.q
+    .selectFrom('content_type_composition')
+    .select(['parent_content_type_id as parent', 'child_content_type_id as child'])
+    .execute()
   const found = new Set(typeIds)
   let grew = true
   while (grew) {
@@ -629,10 +653,11 @@ async function keysByIds(
   const all = [...ids]
   for (let i = 0; i < all.length; i += 500) {
     const chunk = all.slice(i, i + 500)
-    const found = await db.query<{ id: number; unique_id: string; text: string | null }>(
-      `SELECT id, unique_id, text FROM node WHERE id IN (${chunk.map(() => '?').join(', ')})`,
-      chunk,
-    )
+    const found = await db.q
+      .selectFrom('node')
+      .select(['id', 'unique_id', 'text'])
+      .where('id', 'in', chunk)
+      .execute()
     for (const f of found)
       map.set(Number(f.id), { key: String(f.unique_id).toLowerCase(), name: String(f.text ?? '') })
   }
@@ -654,38 +679,18 @@ function chainOf(
   return [...ancestors.filter(Boolean), String(key).toLowerCase()]
 }
 
-async function toItems(
-  db: Db,
-  rows: ReadonlyArray<{
-    id: number
-    unique_id: string
-    path: string
-    trashed: unknown
-    create_date: unknown
-    name: string | null
-    type_alias: string
-    type_key: string
-    version_date: unknown
-    published: unknown
-    edited: unknown
-  }>,
-): Promise<QueryItem[]> {
+async function toItems(db: Db, rows: readonly Row[]): Promise<QueryItem[]> {
   if (rows.length === 0) return []
   const keys = await keysByIds(db, rows)
   const ids = rows.map((r) => Number(r.id))
-  const cultures = await db.query<{
-    node_id: number
-    iso_code: string
-    name: string | null
-    published: unknown
-    edited: unknown
-  }>(
-    `SELECT dcv.node_id, l.iso_code, dcv.name, dcv.published, dcv.edited
-     FROM document_culture_variation dcv JOIN language l ON l.id = dcv.language_id
-     WHERE dcv.available = ? AND dcv.node_id IN (${ids.map(() => '?').join(', ')})
-     ORDER BY l.iso_code`,
-    [db.dialect.boolValue(true), ...ids],
-  )
+  const cultures = await db.q
+    .selectFrom('document_culture_variation as dcv')
+    .innerJoin('language as l', 'l.id', 'dcv.language_id')
+    .select(['dcv.node_id', 'l.iso_code', 'dcv.name', 'dcv.published', 'dcv.edited'])
+    .where('dcv.available', '=', db.dialect.boolValue(true) as boolean)
+    .where('dcv.node_id', 'in', ids)
+    .orderBy('l.iso_code')
+    .execute()
   const iso = (value: unknown) => (DbDate.fromDb(value) ?? new Date(0)).toISOString()
   return rows.map((row) => {
     const trashed = fromDbBool(row.trashed)

@@ -225,18 +225,18 @@ export function createUserPorts(
   }
 
   const setPassword = async (user: UserRecord, password: string) => {
-    await db.exec(
-      `UPDATE user_account SET password_hash = ?, password_config = ?, security_stamp = ?,
-         last_password_change_date = ?, failed_login_attempts = 0, update_date = ? WHERE id = ?`,
-      [
-        await hashPassword(password),
-        passwordConfigJson(),
-        crypto.randomUUID(),
-        DbDate.toDb(new Date()),
-        DbDate.toDb(new Date()),
-        user.id,
-      ],
-    )
+    await db.q
+      .updateTable('user_account')
+      .set({
+        password_hash: await hashPassword(password),
+        password_config: passwordConfigJson(),
+        security_stamp: crypto.randomUUID(),
+        last_password_change_date: DbDate.toDb(new Date()),
+        failed_login_attempts: 0,
+        update_date: DbDate.toDb(new Date()),
+      })
+      .where('id', '=', user.id)
+      .execute()
   }
 
   async function create(

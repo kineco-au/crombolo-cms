@@ -13,6 +13,7 @@ import {
   type Db,
   DocumentRepository,
   publishedValueRows,
+  queryFor,
 } from '@crombolo/data'
 import { PublishedCache, type PublishedNode } from '@crombolo/render'
 import { type Harness, signedInServer } from './support/harness.ts'
@@ -48,6 +49,9 @@ function counted(db: Db) {
   const wrap = (inner: Db): Db => ({
     dialect: inner.dialect,
     locks: inner.locks,
+    get q() {
+      return queryFor(this)
+    },
     query: (sql, params) => {
       statements += 1
       return inner.query(sql, params)

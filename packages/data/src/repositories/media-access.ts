@@ -26,6 +26,7 @@ import {
 } from '@crombolo/core'
 import type { Db } from '../database.ts'
 import { DbDate, fromDbBool } from '../dialect.ts'
+import { sql } from '../query.ts'
 import { NodeRepository, type NodeRow } from './nodes.ts'
 
 export interface MediaAccessGroup {
@@ -141,15 +142,16 @@ export async function recordFiles(
   aggregate: Pick<DocumentAggregate, 'values'>,
 ): Promise<void> {
   if (kind === 'media') {
-    await db.exec('UPDATE content SET file_url = ? WHERE node_id = ?', [
-      mediaFileOf(aggregate),
-      nodeId,
-    ])
+    await db.q
+      .updateTable('content')
+      .set({ file_url: mediaFileOf(aggregate) })
+      .where('node_id', '=', nodeId)
+      .execute()
     return
   }
-  await db.exec('DELETE FROM node_file WHERE node_id = ?', [nodeId])
+  await db.q.deleteFrom('node_file').where('node_id', '=', nodeId).execute()
   for (const url of filesOf(aggregate.values))
-    await db.exec('INSERT INTO node_file (node_id, url) VALUES (?, ?)', [nodeId, url])
+    await db.q.insertInto('node_file').values({ node_id: nodeId, url }).execute()
 }
 
 interface EntryRow {
@@ -163,9 +165,20 @@ interface EntryRow {
   member_max_bytes: unknown
 }
 
-const SELECT = `SELECT a.id, a.node_id, n.unique_id AS node_key, a.public_read, a.new_read, a.new_write,
-       a.member_types, a.member_max_bytes
-    FROM media_access a JOIN node n ON n.id = a.node_id`
+const entries = (db: Db) =>
+  db.q
+    .selectFrom('media_access as a')
+    .innerJoin('node as n', 'n.id', 'a.node_id')
+    .select([
+      'a.id',
+      'a.node_id',
+      'n.unique_id as node_key',
+      'a.public_read',
+      'a.new_read',
+      'a.new_write',
+      'a.member_types',
+      'a.member_max_bytes',
+    ])
 
 export class MediaAccessRepository {
   #db: Db
@@ -184,25 +197,18 @@ export class MediaAccessRepository {
   async #hydrate(rows: readonly EntryRow[]): Promise<MediaAccessEntry[]> {
     if (rows.length === 0) return []
     const ids = rows.map((row) => Number(row.id))
-    const groups = await this.#db.query<{
-      media_access_id: number
-      member_group: string
-      can_read: unknown
-      can_write: unknown
-    }>(
-      `SELECT media_access_id, member_group, can_read, can_write FROM media_access_rule
-        WHERE media_access_id IN (${ids.map(() => '?').join(', ')}) ORDER BY member_group`,
-      ids,
-    )
-    const members = await this.#db.query<{
-      media_access_id: number
-      member_key: string
-      can_read: unknown
-      can_write: unknown
-    }>(
-      `SELECT media_access_id, member_key, can_read, can_write FROM media_access_member WHERE media_access_id IN (${ids.map(() => '?').join(', ')}) ORDER BY member_key`,
-      ids,
-    )
+    const groups = await this.#db.q
+      .selectFrom('media_access_rule')
+      .select(['media_access_id', 'member_group', 'can_read', 'can_write'])
+      .where('media_access_id', 'in', ids)
+      .orderBy('member_group')
+      .execute()
+    const members = await this.#db.q
+      .selectFrom('media_access_member')
+      .select(['media_access_id', 'member_key', 'can_read', 'can_write'])
+      .where('media_access_id', 'in', ids)
+      .orderBy('member_key')
+      .execute()
     return rows.map((row) => ({
       ...(members.some((m) => Number(m.media_access_id) === Number(row.id))
         ? {
@@ -238,15 +244,13 @@ export class MediaAccessRepository {
 
   /** Every rule, in three queries: what a request deciding over many items reads. */
   async allRules(): Promise<MediaRule[]> {
-    const rows = await this.#db.query<EntryRow>(SELECT)
+    const rows = await entries(this.#db).execute()
     return (await this.#hydrate(rows)).map(ruleOf)
   }
 
   /** The rule set on this folder or item itself, if any. */
   async byNodeKey(nodeKey: string): Promise<MediaAccessEntry | undefined> {
-    const rows = await this.#db.query<EntryRow>(`${SELECT} WHERE n.unique_id = ?`, [
-      normaliseUuid(nodeKey),
-    ])
+    const rows = await entries(this.#db).where('n.unique_id', '=', normaliseUuid(nodeKey)).execute()
     return (await this.#hydrate(rows))[0]
   }
 
@@ -268,10 +272,11 @@ export class MediaAccessRepository {
       .map(Number)
       .filter((id) => Number.isFinite(id) && id > 0 && id !== skip)
     if (ids.length === 0) return undefined
-    const rows = await this.#db.query<EntryRow>(
-      `${SELECT} WHERE a.node_id IN (${ids.map(() => '?').join(', ')}) ORDER BY n.level DESC LIMIT 1`,
-      ids,
-    )
+    const rows = await entries(this.#db)
+      .where('a.node_id', 'in', ids)
+      .orderBy('n.level', 'desc')
+      .limit(1)
+      .execute()
     return (await this.#hydrate(rows))[0]
   }
 
@@ -281,57 +286,68 @@ export class MediaAccessRepository {
     if (!node) return undefined
     const now = DbDate.toDb(new Date())
     await this.#db.transaction(async (tx) => {
-      const existing = await tx.query<{ id: number }>(
-        'SELECT id FROM media_access WHERE node_id = ?',
-        [node.id],
-      )
-      let id = existing[0] ? Number(existing[0].id) : undefined
-      const values = [
-        tx.dialect.boolValue(input.publicRead),
-        input.newRead,
-        input.newWrite,
-        storedTypes(input.memberTypes),
-        storedBytes(input.memberMaxBytes),
-      ]
+      const existing = await tx.q
+        .selectFrom('media_access')
+        .select('id')
+        .where('node_id', '=', node.id)
+        .executeTakeFirst()
+      let id = existing ? Number(existing.id) : undefined
+      const values = {
+        public_read: tx.dialect.boolValue(input.publicRead) as boolean | number,
+        new_read: input.newRead,
+        new_write: input.newWrite,
+        member_types: storedTypes(input.memberTypes),
+        member_max_bytes: storedBytes(input.memberMaxBytes),
+      }
       if (id === undefined) {
-        await tx.exec(
-          `INSERT INTO media_access (node_id, public_read, new_read, new_write, member_types, member_max_bytes, create_date, update_date)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [node.id, ...values, now, now],
-        )
-        const created = await tx.query<{ id: number }>(
-          'SELECT id FROM media_access WHERE node_id = ?',
-          [node.id],
-        )
-        id = Number(created[0]?.id)
+        await tx.q
+          .insertInto('media_access')
+          .values({ node_id: node.id, ...values, create_date: now, update_date: now })
+          .execute()
+        const created = await tx.q
+          .selectFrom('media_access')
+          .select('id')
+          .where('node_id', '=', node.id)
+          .executeTakeFirst()
+        id = Number(created?.id)
       } else {
-        await tx.exec(
-          `UPDATE media_access SET public_read = ?, new_read = ?, new_write = ?, member_types = ?,
-             member_max_bytes = ?, update_date = ? WHERE id = ?`,
-          [...values, now, id],
-        )
-        await tx.exec('DELETE FROM media_access_rule WHERE media_access_id = ?', [id])
+        await tx.q
+          .updateTable('media_access')
+          .set({ ...values, update_date: now })
+          .where('id', '=', id)
+          .execute()
+        await tx.q.deleteFrom('media_access_rule').where('media_access_id', '=', id).execute()
       }
       const seen = new Set<string>()
-      await tx.exec('DELETE FROM media_access_member WHERE media_access_id = ?', [id])
+      await tx.q.deleteFrom('media_access_member').where('media_access_id', '=', id).execute()
       const memberKeys = new Set<string>()
       for (const member of input.members ?? []) {
         const key = normaliseUuid(member.key)
         if (memberKeys.has(key) || (!member.read && !member.write)) continue
         memberKeys.add(key)
-        await tx.exec(
-          'INSERT INTO media_access_member (media_access_id, member_key, can_read, can_write) VALUES (?, ?, ?, ?)',
-          [id, key, tx.dialect.boolValue(member.read), tx.dialect.boolValue(member.write)],
-        )
+        await tx.q
+          .insertInto('media_access_member')
+          .values({
+            media_access_id: id,
+            member_key: key,
+            can_read: tx.dialect.boolValue(member.read) as boolean | number,
+            can_write: tx.dialect.boolValue(member.write) as boolean | number,
+          })
+          .execute()
       }
       for (const group of input.groups) {
         const name = group.name.trim()
         if (name === '' || seen.has(name.toLowerCase()) || (!group.read && !group.write)) continue
         seen.add(name.toLowerCase())
-        await tx.exec(
-          'INSERT INTO media_access_rule (media_access_id, member_group, can_read, can_write) VALUES (?, ?, ?, ?)',
-          [id, name, tx.dialect.boolValue(group.read), tx.dialect.boolValue(group.write)],
-        )
+        await tx.q
+          .insertInto('media_access_rule')
+          .values({
+            media_access_id: id,
+            member_group: name,
+            can_read: tx.dialect.boolValue(group.read) as boolean | number,
+            can_write: tx.dialect.boolValue(group.write) as boolean | number,
+          })
+          .execute()
       }
     })
     return this.byNodeKey(input.nodeKey)
@@ -342,24 +358,27 @@ export class MediaAccessRepository {
     const own = await this.byNodeKey(nodeKey)
     if (!own) return false
     await this.#db.transaction(async (tx) => {
-      await tx.exec(
-        'DELETE FROM media_access_rule WHERE media_access_id IN (SELECT id FROM media_access WHERE node_id = ?)',
-        [own.nodeId],
-      )
-      await tx.exec('DELETE FROM media_access WHERE node_id = ?', [own.nodeId])
+      await tx.q
+        .deleteFrom('media_access_rule')
+        .where('media_access_id', 'in', (eb) =>
+          eb.selectFrom('media_access').select('id').where('node_id', '=', own.nodeId),
+        )
+        .execute()
+      await tx.q.deleteFrom('media_access').where('node_id', '=', own.nodeId).execute()
     })
     return true
   }
 
   /** An item's own settings; undefined when it is not media. */
   async itemAccess(nodeKey: string): Promise<MediaItemAccess | undefined> {
-    const rows = await this.#db.query(
-      `SELECT c.read_policy, c.write_policy, c.creator_member_key
-         FROM content c JOIN node n ON n.id = c.node_id
-        WHERE n.unique_id = ? AND n.node_object_type = ?`,
-      [normaliseUuid(nodeKey), ObjectTypes.Media],
-    )
-    return rows[0] ? itemAccessOf(rows[0]) : undefined
+    const row = await this.#db.q
+      .selectFrom('content as c')
+      .innerJoin('node as n', 'n.id', 'c.node_id')
+      .select(['c.read_policy', 'c.write_policy', 'c.creator_member_key'])
+      .where('n.unique_id', '=', normaliseUuid(nodeKey))
+      .where('n.node_object_type', '=', ObjectTypes.Media)
+      .executeTakeFirst()
+    return row ? itemAccessOf(row) : undefined
   }
 
   /** Sets who may see and change an item itself; false when it is not media. */
@@ -369,11 +388,11 @@ export class MediaAccessRepository {
   ): Promise<boolean> {
     const node = await this.#media(nodeKey)
     if (!node) return false
-    await this.#db.exec('UPDATE content SET read_policy = ?, write_policy = ? WHERE node_id = ?', [
-      stored(policies.readPolicy),
-      stored(policies.writePolicy),
-      node.id,
-    ])
+    await this.#db.q
+      .updateTable('content')
+      .set({ read_policy: stored(policies.readPolicy), write_policy: stored(policies.writePolicy) })
+      .where('node_id', '=', node.id)
+      .execute()
     return true
   }
 
@@ -381,10 +400,11 @@ export class MediaAccessRepository {
   async setCreator(nodeKey: string, memberKey: string | null): Promise<boolean> {
     const node = await this.#media(nodeKey)
     if (!node) return false
-    await this.#db.exec('UPDATE content SET creator_member_key = ? WHERE node_id = ?', [
-      memberKey ? normaliseUuid(memberKey) : null,
-      node.id,
-    ])
+    await this.#db.q
+      .updateTable('content')
+      .set({ creator_member_key: memberKey ? normaliseUuid(memberKey) : null })
+      .where('node_id', '=', node.id)
+      .execute()
     return true
   }
 
@@ -401,10 +421,15 @@ export class MediaAccessRepository {
     const above = await this.#nearest(node.path, node.id)
     const policies = stampedPolicies(above ? ruleOf(above) : undefined)
     const creator = creatorMemberKey ? normaliseUuid(creatorMemberKey) : null
-    await this.#db.exec(
-      'UPDATE content SET read_policy = ?, write_policy = ?, creator_member_key = ? WHERE node_id = ?',
-      [stored(policies.readPolicy), stored(policies.writePolicy), creator, node.id],
-    )
+    await this.#db.q
+      .updateTable('content')
+      .set({
+        read_policy: stored(policies.readPolicy),
+        write_policy: stored(policies.writePolicy),
+        creator_member_key: creator,
+      })
+      .where('node_id', '=', node.id)
+      .execute()
     return { ...policies, creatorMemberKey: creator }
   }
 
@@ -416,22 +441,39 @@ export class MediaAccessRepository {
   async byUrl(urls: string | readonly string[]): Promise<MediaByUrl | undefined> {
     const wanted = [...new Set(typeof urls === 'string' ? [urls] : urls)]
     if (wanted.length === 0) return undefined
-    const rows = await this.#db.query(
-      `SELECT n.id, n.unique_id, n.path, n.trashed, c.read_policy, c.write_policy, c.creator_member_key,
-              (SELECT a.id FROM media_access a JOIN node an ON an.id = a.node_id
-                WHERE (',' || n.path || ',') LIKE ('%,' || CAST(a.node_id AS VARCHAR(20)) || ',%')
-                ORDER BY an.level DESC LIMIT 1) AS rule_id
-         FROM content c JOIN node n ON n.id = c.node_id
-        WHERE c.file_url IN (${wanted.map(() => '?').join(', ')}) AND n.node_object_type = ?
-        ORDER BY n.id LIMIT 1`,
-      [...wanted, ObjectTypes.Media],
-    )
-    const row = rows[0]
+    const row = await this.#db.q
+      .selectFrom('content as c')
+      .innerJoin('node as n', 'n.id', 'c.node_id')
+      .select((eb) => [
+        'n.id',
+        'n.unique_id',
+        'n.path',
+        'n.trashed',
+        'c.read_policy',
+        'c.write_policy',
+        'c.creator_member_key',
+        eb
+          .selectFrom('media_access as a')
+          .innerJoin('node as an', 'an.id', 'a.node_id')
+          .select('a.id')
+          .where(
+            (inner) =>
+              sql<boolean>`(',' || ${inner.ref('n.path')} || ',') like ('%,' || cast(${inner.ref('a.node_id')} as varchar(20)) || ',%')`,
+          )
+          .orderBy('an.level', 'desc')
+          .limit(1)
+          .as('rule_id'),
+      ])
+      .where('c.file_url', 'in', wanted)
+      .where('n.node_object_type', '=', ObjectTypes.Media)
+      .orderBy('n.id')
+      .limit(1)
+      .executeTakeFirst()
     if (!row) return undefined
     const ruleRows =
       row.rule_id === null || row.rule_id === undefined
         ? []
-        : await this.#db.query<EntryRow>(`${SELECT} WHERE a.id = ?`, [Number(row.rule_id)])
+        : await entries(this.#db).where('a.id', '=', Number(row.rule_id)).execute()
     const entry = (await this.#hydrate(ruleRows))[0]
     return {
       id: Number(row.id),
@@ -450,24 +492,32 @@ export class MediaAccessRepository {
    */
   async ownedElsewhere(urls: readonly string[]): Promise<boolean> {
     if (urls.length === 0) return false
-    const holes = urls.map(() => '?').join(', ')
-    const rows = await this.#db.query(
-      `SELECT node_id FROM node_file WHERE url IN (${holes})
-       UNION ALL SELECT id FROM user_account WHERE avatar IN (${holes})`,
-      [...urls, ...urls],
-    )
+    const rows = await this.#db.q
+      .selectFrom('node_file')
+      .select('node_id')
+      .where('url', 'in', urls)
+      .unionAll((eb) =>
+        eb.selectFrom('user_account').select('id as node_id').where('avatar', 'in', urls),
+      )
+      .execute()
     return rows.length > 0
   }
 
   /** Every media item that says something of its own, by node id: for the published cache. */
   async itemSettings(): Promise<Map<number, MediaItemAccess>> {
-    const rows = await this.#db.query(
-      `SELECT c.node_id, c.read_policy, c.write_policy, c.creator_member_key
-         FROM content c JOIN node n ON n.id = c.node_id
-        WHERE n.node_object_type = ?
-          AND (c.read_policy IS NOT NULL OR c.write_policy IS NOT NULL OR c.creator_member_key IS NOT NULL)`,
-      [ObjectTypes.Media],
-    )
+    const rows = await this.#db.q
+      .selectFrom('content as c')
+      .innerJoin('node as n', 'n.id', 'c.node_id')
+      .select(['c.node_id', 'c.read_policy', 'c.write_policy', 'c.creator_member_key'])
+      .where('n.node_object_type', '=', ObjectTypes.Media)
+      .where((eb) =>
+        eb.or([
+          eb('c.read_policy', 'is not', null),
+          eb('c.write_policy', 'is not', null),
+          eb('c.creator_member_key', 'is not', null),
+        ]),
+      )
+      .execute()
     return new Map(rows.map((row) => [Number(row.node_id), itemAccessOf(row)]))
   }
 }

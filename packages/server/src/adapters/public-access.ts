@@ -40,10 +40,12 @@ export function createPublicAccessPort(
   const groupsNamed = async (names: readonly string[]): Promise<MemberGroupItem[]> => {
     const found: MemberGroupItem[] = []
     for (const name of names) {
-      const rows = await db.query<{ unique_id: string; text: string | null }>(
-        'SELECT unique_id, text FROM node WHERE node_object_type = ? AND text = ?',
-        [ObjectTypes.MemberGroup, name],
-      )
+      const rows = await db.q
+        .selectFrom('node')
+        .select(['unique_id', 'text'])
+        .where('node_object_type', '=', ObjectTypes.MemberGroup)
+        .where('text', '=', name)
+        .execute()
       const row = rows[0]
       if (row) found.push({ id: String(row.unique_id), name: String(row.text ?? ''), flags: [] })
     }

@@ -863,9 +863,11 @@ export async function checkBundle(
   // pages, and names groups that may not exist here yet.
   const groupsHere = new Set(
     (
-      await db.query<{ text: string }>('SELECT text FROM node WHERE node_object_type = ?', [
-        ObjectTypes.MemberGroup,
-      ])
+      await db.q
+        .selectFrom('node')
+        .select('text')
+        .where('node_object_type', '=', ObjectTypes.MemberGroup)
+        .execute()
     ).map((row) => String(row.text)),
   )
   const carriedPeople = options.excludePeople ? undefined : set.people

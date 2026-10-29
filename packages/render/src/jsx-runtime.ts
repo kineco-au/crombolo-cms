@@ -51,6 +51,19 @@ export type Component = (props: ElementProps) => Child
 
 export const Fragment = Symbol.for('crombolo.fragment')
 
+/**
+ * Where a development server installs its component tracker (story 214), on the
+ * global object so a view generation imported from another path finds it too.
+ */
+export const COMPONENT_TRACKER = Symbol.for('crombolo.componentTracker')
+
+type ComponentTracker = (name: string, call: () => Child) => Child
+
+function callComponent(type: Component, props: ElementProps): Child {
+  const track = (globalThis as { [COMPONENT_TRACKER]?: ComponentTracker })[COMPONENT_TRACKER]
+  return track ? track(type.name || 'Anonymous', () => type(props)) : type(props)
+}
+
 export function isPromise(value: unknown): value is Promise<unknown> {
   return typeof (value as { then?: unknown } | null | undefined)?.then === 'function'
 }
@@ -252,7 +265,7 @@ export function jsx(type: string | Component | typeof Fragment, props: ElementPr
 
   if (type === Fragment) return toHtml(renderChild(actual.children))
 
-  if (typeof type === 'function') return toHtml(renderChild(type(actual)))
+  if (typeof type === 'function') return toHtml(renderChild(callComponent(type, actual)))
 
   if (type === 'select' && (actual.value != null || actual.defaultValue != null))
     return select(actual)

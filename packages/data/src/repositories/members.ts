@@ -12,8 +12,10 @@
  * `data` depends on nothing but types.
  */
 import { normaliseUuid, ObjectTypes } from '@crombolo/core'
+import type { SqlBool } from 'kysely'
 import type { Db } from '../database.ts'
 import { DbDate, fromDbBool } from '../dialect.ts'
+import { type Expression, sql } from '../query.ts'
 import { queueForSearch } from '../search.ts'
 import { searchTerms } from '../search-text.ts'
 import {
@@ -79,14 +81,16 @@ export interface MemberFilter {
 }
 
 /** Umbraco's `MemberFilterRepository` order columns; anything else is username. */
-const ORDER_COLUMNS: Record<string, string> = {
+const ORDER_COLUMNS = {
   email: 'm.email',
   name: 'n.text',
   username: 'm.login_name',
   isapproved: 'm.is_approved',
   islockedout: 'm.is_locked_out',
   lastlogindate: 'm.last_login_date',
-}
+} as const
+
+type OrderColumn = (typeof ORDER_COLUMNS)[keyof typeof ORDER_COLUMNS]
 
 interface MemberRow {
   unique_id: string
@@ -108,13 +112,19 @@ interface MemberRow {
   type_icon: string | null
 }
 
-const SELECT = `SELECT n.unique_id, n.text, m.*,
-         tn.unique_id AS type_key, ct.alias AS type_alias, ct.icon AS type_icon
-    FROM member m
-    JOIN node n ON n.id = m.node_id
-    JOIN content c ON c.node_id = m.node_id
-    JOIN content_type ct ON ct.node_id = c.content_type_id
-    JOIN node tn ON tn.id = ct.node_id`
+const joined = (db: Db) =>
+  db.q
+    .selectFrom('member as m')
+    .innerJoin('node as n', 'n.id', 'm.node_id')
+    .innerJoin('content as c', 'c.node_id', 'm.node_id')
+    .innerJoin('content_type as ct', 'ct.node_id', 'c.content_type_id')
+    .innerJoin('node as tn', 'tn.id', 'ct.node_id')
+
+const memberColumns = (query: ReturnType<typeof joined>) =>
+  query
+    .select(['n.unique_id', 'n.text'])
+    .selectAll('m')
+    .select(['tn.unique_id as type_key', 'ct.alias as type_alias', 'ct.icon as type_icon'])
 
 export class MemberRepository {
   #db: Db
@@ -128,20 +138,24 @@ export class MemberRepository {
   }
 
   async #rolesOf(nodeId: number): Promise<string[]> {
-    const rows = await this.#db.query<{ text: string | null }>(
-      `SELECT g.text FROM member_group_member mg JOIN node g ON g.id = mg.member_group_id
-        WHERE mg.member_id = ? ORDER BY g.text`,
-      [nodeId],
-    )
+    const rows = await this.#db.q
+      .selectFrom('member_group_member as mg')
+      .innerJoin('node as g', 'g.id', 'mg.member_group_id')
+      .select('g.text')
+      .where('mg.member_id', '=', nodeId)
+      .orderBy('g.text')
+      .execute()
     return rows.map((row) => String(row.text ?? '')).filter(Boolean)
   }
 
   async #groupKeysOf(nodeId: number): Promise<string[]> {
-    const rows = await this.#db.query<{ unique_id: string }>(
-      `SELECT g.unique_id FROM member_group_member mg JOIN node g ON g.id = mg.member_group_id
-        WHERE mg.member_id = ? ORDER BY g.text`,
-      [nodeId],
-    )
+    const rows = await this.#db.q
+      .selectFrom('member_group_member as mg')
+      .innerJoin('node as g', 'g.id', 'mg.member_group_id')
+      .select('g.unique_id')
+      .where('mg.member_id', '=', nodeId)
+      .orderBy('g.text')
+      .execute()
     return rows.map((row) => normaliseUuid(String(row.unique_id)))
   }
 
@@ -169,21 +183,24 @@ export class MemberRepository {
     }
   }
 
-  async #one(where: string, parameters: unknown[]): Promise<MemberCredentials | undefined> {
-    const rows = await this.#db.query<MemberRow>(`${SELECT} WHERE ${where}`, parameters)
+  async #one(
+    column: 'n.unique_id' | 'm.login_name' | 'm.email',
+    value: string,
+  ): Promise<MemberCredentials | undefined> {
+    const rows = await memberColumns(joined(this.#db)).where(column, '=', value).execute()
     return rows[0] ? this.#hydrate(rows[0]) : undefined
   }
 
   byKey(key: string): Promise<MemberCredentials | undefined> {
-    return this.#one('n.unique_id = ?', [normaliseUuid(key)])
+    return this.#one('n.unique_id', normaliseUuid(key))
   }
 
   byUsername(username: string): Promise<MemberCredentials | undefined> {
-    return this.#one('m.login_name = ?', [username])
+    return this.#one('m.login_name', username)
   }
 
   byEmail(email: string): Promise<MemberCredentials | undefined> {
-    return this.#one('m.email = ?', [email])
+    return this.#one('m.email', email)
   }
 
   /** The group keys a member belongs to, for the editor's Groups picker. */
@@ -195,10 +212,12 @@ export class MemberRepository {
   /** Whether a username or an e-mail is taken by anyone other than `exceptKey`. */
   async taken(field: 'username' | 'email', value: string, exceptKey?: string): Promise<boolean> {
     const column = field === 'username' ? 'm.login_name' : 'm.email'
-    const rows = await this.#db.query<{ unique_id: string }>(
-      `SELECT n.unique_id FROM member m JOIN node n ON n.id = m.node_id WHERE ${column} = ?`,
-      [value],
-    )
+    const rows = await this.#db.q
+      .selectFrom('member as m')
+      .innerJoin('node as n', 'n.id', 'm.node_id')
+      .select('n.unique_id')
+      .where(column, '=', value)
+      .execute()
     return rows.some(
       (row) => !exceptKey || normaliseUuid(String(row.unique_id)) !== normaliseUuid(exceptKey),
     )
@@ -212,14 +231,14 @@ export class MemberRepository {
   }
 
   async #writeGroups(nodeId: number, groupKeys: readonly string[]): Promise<void> {
-    await this.#db.exec('DELETE FROM member_group_member WHERE member_id = ?', [nodeId])
+    await this.#db.q.deleteFrom('member_group_member').where('member_id', '=', nodeId).execute()
     for (const key of groupKeys) {
       const group = await this.#nodes.byKey(key)
       if (!group || group.objectType !== ObjectTypes.MemberGroup) continue
-      await this.#db.exec(
-        'INSERT INTO member_group_member (member_id, member_group_id) VALUES (?, ?)',
-        [nodeId, group.id],
-      )
+      await this.#db.q
+        .insertInto('member_group_member')
+        .values({ member_id: nodeId, member_group_id: group.id })
+        .execute()
     }
   }
 
@@ -232,24 +251,21 @@ export class MemberRepository {
     const node = await this.#nodes.byKey(created.key)
     if (!node) throw new Error(`the member node ${created.key} vanished while being created`)
     const now = new Date()
-    await this.#db.exec(
-      `INSERT INTO member (node_id, email, login_name, password, password_config,
-                           security_stamp_token, failed_password_attempts, is_locked_out,
-                           is_approved, last_password_change_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        node.id,
-        identity.email,
-        identity.username,
-        identity.passwordHash ?? null,
-        identity.passwordConfig ?? null,
-        crypto.randomUUID(),
-        0,
-        this.#db.dialect.boolValue(identity.isLockedOut),
-        this.#db.dialect.boolValue(identity.isApproved),
-        identity.passwordHash ? DbDate.toDb(now) : null,
-      ],
-    )
+    await this.#db.q
+      .insertInto('member')
+      .values({
+        node_id: node.id,
+        email: identity.email,
+        login_name: identity.username,
+        password: identity.passwordHash ?? null,
+        password_config: identity.passwordConfig ?? null,
+        security_stamp_token: crypto.randomUUID(),
+        failed_password_attempts: 0,
+        is_locked_out: this.#db.dialect.boolValue(identity.isLockedOut) as boolean | number,
+        is_approved: this.#db.dialect.boolValue(identity.isApproved) as boolean | number,
+        last_password_change_date: identity.passwordHash ? DbDate.toDb(now) : null,
+      })
+      .execute()
     await this.#writeGroups(node.id, identity.groupKeys ?? [])
     // Again, now the e-mail and username it is found by are written.
     await queueForSearch(this.#db, [node.id])
@@ -272,35 +288,25 @@ export class MemberRepository {
     const updated = await this.content.update({ ...content, key, componentKey: null })
     if (!updated) return undefined
     const now = new Date()
-    const sets = ['email = ?', 'login_name = ?', 'is_approved = ?', 'is_locked_out = ?']
-    const values: unknown[] = [
-      identity.email,
-      identity.username,
-      this.#db.dialect.boolValue(identity.isApproved),
-      this.#db.dialect.boolValue(identity.isLockedOut),
-    ]
-    if (!identity.isLockedOut) {
-      sets.push('failed_password_attempts = ?')
-      values.push(0)
-    }
-    if (identity.passwordHash) {
-      sets.push(
-        'password = ?',
-        'password_config = ?',
-        'last_password_change_date = ?',
-        'security_stamp_token = ?',
-      )
-      values.push(
-        identity.passwordHash,
-        identity.passwordConfig ?? null,
-        DbDate.toDb(now),
-        crypto.randomUUID(),
-      )
-    }
-    await this.#db.exec(`UPDATE member SET ${sets.join(', ')} WHERE node_id = ?`, [
-      ...values,
-      node.id,
-    ])
+    await this.#db.q
+      .updateTable('member')
+      .set({
+        email: identity.email,
+        login_name: identity.username,
+        is_approved: this.#db.dialect.boolValue(identity.isApproved) as boolean | number,
+        is_locked_out: this.#db.dialect.boolValue(identity.isLockedOut) as boolean | number,
+        ...(identity.isLockedOut ? {} : { failed_password_attempts: 0 }),
+        ...(identity.passwordHash
+          ? {
+              password: identity.passwordHash,
+              password_config: identity.passwordConfig ?? null,
+              last_password_change_date: DbDate.toDb(now),
+              security_stamp_token: crypto.randomUUID(),
+            }
+          : {}),
+      })
+      .where('node_id', '=', node.id)
+      .execute()
     await queueForSearch(this.#db, [node.id])
     if (identity.groupKeys) await this.#writeGroups(node.id, identity.groupKeys)
     return this.byKey(key)
@@ -312,19 +318,23 @@ export class MemberRepository {
    * password is the same, so the security stamp and change date stand.
    */
   async rehashPassword(key: string, passwordHash: string, passwordConfig: string): Promise<void> {
-    await this.#db.exec(
-      'UPDATE member SET password = ?, password_config = ? WHERE node_id = (SELECT id FROM node WHERE unique_id = ?)',
-      [passwordHash, passwordConfig, normaliseUuid(key)],
-    )
+    await this.#db.q
+      .updateTable('member')
+      .set({ password: passwordHash, password_config: passwordConfig })
+      .where('node_id', '=', (eb) =>
+        eb.selectFrom('node').select('id').where('unique_id', '=', normaliseUuid(key)),
+      )
+      .execute()
   }
 
   async recordLogin(key: string): Promise<void> {
     const node = await this.#nodes.byKey(key)
     if (!node) return
-    await this.#db.exec(
-      'UPDATE member SET last_login_date = ?, failed_password_attempts = 0 WHERE node_id = ?',
-      [DbDate.toDb(new Date()), node.id],
-    )
+    await this.#db.q
+      .updateTable('member')
+      .set({ last_login_date: DbDate.toDb(new Date()), failed_password_attempts: 0 })
+      .where('node_id', '=', node.id)
+      .execute()
   }
 
   /**
@@ -334,95 +344,112 @@ export class MemberRepository {
   async recordFailedLogin(key: string, maxAttempts: number): Promise<{ lockedOut: boolean }> {
     const node = await this.#nodes.byKey(key)
     if (!node) return { lockedOut: false }
-    const rows = await this.#db.query<{ failed_password_attempts: number }>(
-      'SELECT failed_password_attempts FROM member WHERE node_id = ?',
-      [node.id],
-    )
-    const attempts = Number(rows[0]?.failed_password_attempts ?? 0) + 1
+    const row = await this.#db.q
+      .selectFrom('member')
+      .select('failed_password_attempts')
+      .where('node_id', '=', node.id)
+      .executeTakeFirst()
+    const attempts = Number(row?.failed_password_attempts ?? 0) + 1
     const lockedOut = maxAttempts > 0 && attempts >= maxAttempts
-    await this.#db.exec(
-      `UPDATE member SET failed_password_attempts = ?, is_locked_out = ?${lockedOut ? ', last_lockout_date = ?' : ''}
-        WHERE node_id = ?`,
-      lockedOut
-        ? [attempts, this.#db.dialect.boolValue(true), DbDate.toDb(new Date()), node.id]
-        : [attempts, this.#db.dialect.boolValue(false), node.id],
-    )
+    await this.#db.q
+      .updateTable('member')
+      .set({
+        failed_password_attempts: attempts,
+        is_locked_out: this.#db.dialect.boolValue(lockedOut) as boolean | number,
+        ...(lockedOut ? { last_lockout_date: DbDate.toDb(new Date()) } : {}),
+      })
+      .where('node_id', '=', node.id)
+      .execute()
     return { lockedOut }
   }
 
   async delete(key: string): Promise<boolean> {
     const node = await this.#nodes.byKey(key)
     if (!node || node.objectType !== ObjectTypes.Member) return false
-    await this.#db.exec('DELETE FROM member_group_member WHERE member_id = ?', [node.id])
-    await this.#db.exec(
-      'DELETE FROM external_login_token WHERE external_login_id IN (SELECT id FROM external_login WHERE user_or_member_key = ?)',
-      [node.key],
-    )
-    await this.#db.exec('DELETE FROM external_login WHERE user_or_member_key = ?', [node.key])
-    await this.#db.exec('DELETE FROM two_factor_login WHERE owner_key = ?', [node.key])
-    await this.#db.exec('DELETE FROM two_factor_recovery_code WHERE owner_key = ?', [node.key])
-    await this.#db.exec('DELETE FROM member WHERE node_id = ?', [node.id])
+    const q = this.#db.q
+    await q.deleteFrom('member_group_member').where('member_id', '=', node.id).execute()
+    await q
+      .deleteFrom('external_login_token')
+      .where('external_login_id', 'in', (eb) =>
+        eb.selectFrom('external_login').select('id').where('user_or_member_key', '=', node.key),
+      )
+      .execute()
+    await q.deleteFrom('external_login').where('user_or_member_key', '=', node.key).execute()
+    await q.deleteFrom('two_factor_login').where('owner_key', '=', node.key).execute()
+    await q.deleteFrom('two_factor_recovery_code').where('owner_key', '=', node.key).execute()
+    await q.deleteFrom('member').where('node_id', '=', node.id).execute()
     return this.content.delete(key)
   }
 
   /** The Members collection: Umbraco's member filter, with the same columns and defaults. */
   async filter(criteria: MemberFilter): Promise<{ total: number; items: MemberCredentials[] }> {
-    const wheres: string[] = []
-    const values: unknown[] = []
-    if (criteria.memberTypeKey) {
-      wheres.push('tn.unique_id = ?')
-      values.push(normaliseUuid(criteria.memberTypeKey))
-    }
-    if (criteria.isApproved !== undefined) {
-      wheres.push('m.is_approved = ?')
-      values.push(this.#db.dialect.boolValue(criteria.isApproved))
-    }
-    if (criteria.isLockedOut !== undefined) {
-      wheres.push('m.is_locked_out = ?')
-      values.push(this.#db.dialect.boolValue(criteria.isLockedOut))
-    }
-    if (criteria.memberGroupName) {
-      wheres.push(
-        `EXISTS (SELECT 1 FROM member_group_member mg JOIN node g ON g.id = mg.member_group_id
-                  WHERE mg.member_id = m.node_id AND g.text = ?)`,
-      )
-      values.push(criteria.memberGroupName)
-    }
+    const db = this.#db
     const text = criteria.filter?.trim()
-    if (text) {
-      const like = `%${text.toLowerCase()}%`
-      const terms = searchTerms(text)
-      // The index adds what a member's properties say to the name, username and e-mail.
-      const indexed =
-        terms.length > 0
-          ? ` OR m.node_id IN (SELECT node_id FROM (${this.#db.dialect.fullTextHits}) h)`
-          : ''
-      wheres.push(
-        `(LOWER(m.email) LIKE ? OR LOWER(m.login_name) LIKE ? OR LOWER(n.text) LIKE ?${indexed})`,
-      )
-      values.push(like, like, like)
-      if (indexed) values.push(this.#db.dialect.fullTextQuery(terms))
-    }
-    const where = wheres.length > 0 ? `WHERE ${wheres.join(' AND ')}` : ''
-    const order = ORDER_COLUMNS[(criteria.orderBy ?? '').toLowerCase()] ?? ORDER_COLUMNS.username
-    const direction = criteria.orderDirection === 'Descending' ? 'DESC' : 'ASC'
+    const terms = text ? searchTerms(text) : []
+    const base = joined(db).where((eb) => {
+      const all: Expression<SqlBool>[] = []
+      if (criteria.memberTypeKey)
+        all.push(eb('tn.unique_id', '=', normaliseUuid(criteria.memberTypeKey)))
+      if (criteria.isApproved !== undefined)
+        all.push(
+          eb('m.is_approved', '=', db.dialect.boolValue(criteria.isApproved) as boolean | number),
+        )
+      if (criteria.isLockedOut !== undefined)
+        all.push(
+          eb(
+            'm.is_locked_out',
+            '=',
+            db.dialect.boolValue(criteria.isLockedOut) as boolean | number,
+          ),
+        )
+      if (criteria.memberGroupName)
+        all.push(
+          eb.exists(
+            eb
+              .selectFrom('member_group_member as mg')
+              .innerJoin('node as g', 'g.id', 'mg.member_group_id')
+              .select(sql<number>`1`.as('one'))
+              .whereRef('mg.member_id', '=', 'm.node_id')
+              .where('g.text', '=', criteria.memberGroupName),
+          ),
+        )
+      if (text) {
+        const like = `%${text.toLowerCase()}%`
+        const any: Expression<SqlBool>[] = [
+          eb(eb.fn('lower', ['m.email']), 'like', like),
+          eb(eb.fn('lower', ['m.login_name']), 'like', like),
+          eb(eb.fn('lower', ['n.text']), 'like', like),
+        ]
+        // The index adds what a member's properties say to the name, username and e-mail.
+        if (terms.length > 0)
+          any.push(
+            eb(
+              'm.node_id',
+              'in',
+              eb
+                .selectFrom(db.dialect.fullTextMatches(db.dialect.fullTextQuery(terms)).as('h'))
+                .select(sql<number>`node_id`.as('node_id')),
+            ),
+          )
+        all.push(eb.or(any))
+      }
+      return eb.and(all)
+    })
+    const order: OrderColumn =
+      ORDER_COLUMNS[(criteria.orderBy ?? '').toLowerCase() as keyof typeof ORDER_COLUMNS] ??
+      ORDER_COLUMNS.username
+    const direction = criteria.orderDirection === 'Descending' ? 'desc' : 'asc'
 
-    const counted = await this.#db.query<{ total: number }>(
-      `SELECT COUNT(*) AS total FROM member m
-         JOIN node n ON n.id = m.node_id
-         JOIN content c ON c.node_id = m.node_id
-         JOIN content_type ct ON ct.node_id = c.content_type_id
-         JOIN node tn ON tn.id = ct.node_id
-       ${where}`,
-      values,
-    )
-    const rows = await this.#db.query<MemberRow>(
-      `${SELECT} ${where} ORDER BY ${order} ${direction}, n.id LIMIT ? OFFSET ?`,
-      [...values, criteria.take, criteria.skip],
-    )
+    const counted = await base.select(sql<number>`count(*)`.as('total')).executeTakeFirst()
+    const rows = await memberColumns(base)
+      .orderBy(order, direction)
+      .orderBy('n.id')
+      .limit(criteria.take)
+      .offset(criteria.skip)
+      .execute()
     const items = []
     for (const row of rows) items.push(await this.#hydrate(row))
-    return { total: Number(counted[0]?.total ?? 0), items }
+    return { total: Number(counted?.total ?? 0), items }
   }
 
   /** The member picker's search: name, username or e-mail, within the types allowed. */

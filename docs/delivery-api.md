@@ -491,7 +491,7 @@ my-site/
     lib/crombolo.ts      createCrombolo({ url, apiKey, cache: cache16 })
     proxy.ts             cromboloMiddleware(crombolo)
     app/[[...slug]]/page.tsx   every CMS address, generateMetadata included
-    app/api/crombolo/…   preview, exit-preview, revalidate, sign-in, callback, sign-out
+    app/api/crombolo/…   preview, exit-preview, revalidate, sign-in, callback, sign-out, live
     app/media/[...path]/route.ts   media, with a member's token
 ```
 
@@ -540,6 +540,16 @@ payload (`payload = "crombolo"`, [`webhooks.md`](webhooks.md)) to
 - Its `X-Crombolo-Secret` header is checked in constant time against
   `CROMBOLO_REVALIDATE_SECRET`.
 - The item's and each ancestor's tags are cleared.
+
+**Live reload** in development (story 214). `<CromboloLiveReload />` from
+`@crombolo/next-integration/client`, in the root layout, refreshes the page's
+server components when the CMS's content or schema changes, keeping client
+state. Next.js already reloads the app's own code.
+- It listens on `/api/crombolo/live` (`liveReloadHandler(crombolo)`). That
+  route passes on the CMS's change stream, plus a `revalidated` event once the
+  revalidate route has cleared what a webhook named, so the refresh after it
+  shows the new content.
+- Outside development the component renders nothing and the route answers 404.
 
 **Members** sign in with PKCE through the CMS's member authorization.
 - **Tokens:** the access and refresh tokens are sealed with AES-GCM under

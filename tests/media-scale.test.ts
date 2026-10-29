@@ -16,6 +16,7 @@ import {
   ContentTypeRepository,
   type Db,
   MediaListingRepository,
+  queryFor,
 } from '@crombolo/data'
 import { PublishedCache } from '@crombolo/render'
 import { createMediaSource, createPublishedContentSource } from '@crombolo/server'
@@ -58,6 +59,9 @@ async function statementsOf(db: Db, run: (db: Db) => Promise<unknown>) {
   const seen: Array<{ sql: string; params: unknown[] }> = []
   const watched: Db = {
     ...db,
+    get q() {
+      return queryFor(this)
+    },
     query: (sql, params) => {
       seen.push({ sql, params: params ?? [] })
       return db.query(sql, params)
@@ -194,7 +198,7 @@ describe(`a library of ${ITEMS.toLocaleString('en')} media items (${dialectUnder
         readable: { rules: new Map(), member: undefined },
       })
     })
-    const pageQuery = listing.find((s) => s.sql.includes('LIMIT'))
+    const pageQuery = listing.find((s) => /\blimit\b/i.test(s.sql))
     expect(pageQuery).toBeDefined()
     expect(await fullScans(h.server.db, pageQuery?.sql ?? '', pageQuery?.params ?? [])).toEqual([])
   })

@@ -180,10 +180,12 @@ export function createMediaAccess(deps: MediaAccessDeps) {
   const isProtected = (item: MediaByUrl) => item.trashed || isProtectedMedia(item.access, item.rule)
 
   const memberGroups = async (): Promise<string[]> => {
-    const rows = await db.query<{ text: string | null }>(
-      'SELECT text FROM node WHERE node_object_type = ? ORDER BY text',
-      [ObjectTypes.MemberGroup],
-    )
+    const rows = await db.q
+      .selectFrom('node')
+      .select('text')
+      .where('node_object_type', '=', ObjectTypes.MemberGroup)
+      .orderBy('text')
+      .execute()
     return rows.flatMap((row) => (row.text ? [String(row.text)] : []))
   }
 
@@ -222,10 +224,11 @@ export function createMediaAccess(deps: MediaAccessDeps) {
       writePolicy: 'inherit' as const,
       creatorMemberKey: null,
     }
-    const fileRows = await db.query<{ file_url: string | null }>(
-      'SELECT file_url FROM content WHERE node_id = ?',
-      [node.id],
-    )
+    const fileRows = await db.q
+      .selectFrom('content')
+      .select('file_url')
+      .where('node_id', '=', node.id)
+      .execute()
     const from = inherited ? await nodes.byKey(inherited.nodeKey) : undefined
     const creator = item.creatorMemberKey
       ? await new MemberRepository(db).byKey(item.creatorMemberKey)

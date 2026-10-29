@@ -226,9 +226,11 @@ export function createMediaOperations(options: MediaOperationsOptions) {
 
   const userIdOf = async (actor: MediaActor): Promise<number | undefined> => {
     if (actor.kind !== 'user') return undefined
-    const rows = await db.query<{ id: number }>('SELECT id FROM user_account WHERE key = ?', [
-      actor.principal.id,
-    ])
+    const rows = await db.q
+      .selectFrom('user_account')
+      .select('id')
+      .where('key', '=', actor.principal.id)
+      .execute()
     return rows[0] ? Number(rows[0].id) : undefined
   }
 
@@ -252,10 +254,12 @@ export function createMediaOperations(options: MediaOperationsOptions) {
   const childKeys = async (parentKey: string | null): Promise<string[]> => {
     const parentId = parentKey ? (await nodes.byKey(parentKey))?.id : SystemNodes.Root
     if (parentId === undefined) return []
-    const rows = await db.query<{ unique_id: string }>(
-      'SELECT unique_id FROM node WHERE parent_id = ? AND node_object_type = ?',
-      [parentId, ObjectTypes.Media],
-    )
+    const rows = await db.q
+      .selectFrom('node')
+      .select('unique_id')
+      .where('parent_id', '=', parentId)
+      .where('node_object_type', '=', ObjectTypes.Media)
+      .execute()
     return rows.map((row) => normaliseUuid(String(row.unique_id)))
   }
 
@@ -308,20 +312,24 @@ export function createMediaOperations(options: MediaOperationsOptions) {
   const placement = async (actor: MediaActor, typeKey: string, parentKey: string | null) =>
     actor.kind === 'system' ? undefined : types.placementRefusal(typeKey, parentKey)
   const typeOf = async (key: string): Promise<string | undefined> => {
-    const rows = await db.query<{ unique_id: string }>(
-      `SELECT t.unique_id FROM node n JOIN content c ON c.node_id = n.id
-       JOIN node t ON t.id = c.content_type_id WHERE n.unique_id = ?`,
-      [normaliseUuid(key)],
-    )
+    const rows = await db.q
+      .selectFrom('node as n')
+      .innerJoin('content as c', 'c.node_id', 'n.id')
+      .innerJoin('node as t', 't.id', 'c.content_type_id')
+      .select('t.unique_id')
+      .where('n.unique_id', '=', normaliseUuid(key))
+      .execute()
     return rows[0] ? normaliseUuid(String(rows[0].unique_id)) : undefined
   }
 
   /** The files a branch holds, read before its rows go. */
   const filesIn = async (root: NodeRow): Promise<string[]> => {
-    const rows = await db.query<{ unique_id: string }>(
-      'SELECT unique_id FROM node WHERE (id = ? OR path LIKE ?) AND node_object_type = ?',
-      [root.id, `${root.path},%`, ObjectTypes.Media],
-    )
+    const rows = await db.q
+      .selectFrom('node')
+      .select('unique_id')
+      .where((eb) => eb.or([eb('id', '=', root.id), eb('path', 'like', `${root.path},%`)]))
+      .where('node_object_type', '=', ObjectTypes.Media)
+      .execute()
     const found: string[] = []
     for (const row of rows) {
       const media = await repo.byKey(normaliseUuid(String(row.unique_id)))

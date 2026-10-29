@@ -17,10 +17,18 @@ export class LanguageRepository {
   }
 
   async all(): Promise<LanguageModel[]> {
-    const rows = await this.#db.query(
-      `SELECT l.iso_code, l.culture_name, l.is_default, l.is_mandatory, f.iso_code AS fallback
-       FROM language l LEFT JOIN language f ON f.id = l.fallback_language_id ORDER BY l.id`,
-    )
+    const rows = await this.#db.q
+      .selectFrom('language as l')
+      .leftJoin('language as f', 'f.id', 'l.fallback_language_id')
+      .select([
+        'l.iso_code',
+        'l.culture_name',
+        'l.is_default',
+        'l.is_mandatory',
+        'f.iso_code as fallback',
+      ])
+      .orderBy('l.id')
+      .execute()
     return rows.map((row) => ({
       isoCode: String(row.iso_code),
       cultureName: String(row.culture_name),
@@ -38,10 +46,11 @@ export class LanguageRepository {
   async save(language: LanguageModel): Promise<LanguageModel> {
     const bool = (v: boolean) => this.#db.dialect.boolValue(v)
     if (language.isDefault)
-      await this.#db.exec('UPDATE language SET is_default = ? WHERE iso_code <> ?', [
-        bool(false),
-        language.isoCode,
-      ])
+      await this.#db.q
+        .updateTable('language')
+        .set({ is_default: bool(false) })
+        .where('iso_code', '<>', language.isoCode)
+        .execute()
     await this.upsertAll([language])
     return (await this.byIso(language.isoCode)) as LanguageModel
   }
@@ -52,7 +61,7 @@ export class LanguageRepository {
     if (!language) return 'not-found'
     if (language.isDefault) return 'default'
     if ((await this.all()).some((l) => l.fallbackIsoCode === language.isoCode)) return 'in-use'
-    await this.#db.exec('DELETE FROM language WHERE iso_code = ?', [language.isoCode])
+    await this.#db.q.deleteFrom('language').where('iso_code', '=', language.isoCode).execute()
     return 'deleted'
   }
 
@@ -64,44 +73,48 @@ export class LanguageRepository {
     let updated = 0
     const bool = (v: boolean) => this.#db.dialect.boolValue(v)
     for (const language of languages) {
-      const existing = await this.#db.query<{ id: number }>(
-        'SELECT id FROM language WHERE iso_code = ?',
-        [language.isoCode],
-      )
+      const existing = await this.#db.q
+        .selectFrom('language')
+        .select('id')
+        .where('iso_code', '=', language.isoCode)
+        .execute()
       if (existing[0]) {
-        await this.#db.exec(
-          'UPDATE language SET culture_name = ?, is_default = ?, is_mandatory = ? WHERE id = ?',
-          [
-            language.cultureName,
-            bool(language.isDefault),
-            bool(language.isMandatory),
-            Number(existing[0].id),
-          ],
-        )
+        await this.#db.q
+          .updateTable('language')
+          .set({
+            culture_name: language.cultureName,
+            is_default: bool(language.isDefault),
+            is_mandatory: bool(language.isMandatory),
+          })
+          .where('id', '=', Number(existing[0].id))
+          .execute()
         updated += 1
       } else {
-        await this.#db.exec(
-          'INSERT INTO language (iso_code, culture_name, is_default, is_mandatory) VALUES (?, ?, ?, ?)',
-          [
-            language.isoCode,
-            language.cultureName,
-            bool(language.isDefault),
-            bool(language.isMandatory),
-          ],
-        )
+        await this.#db.q
+          .insertInto('language')
+          .values({
+            iso_code: language.isoCode,
+            culture_name: language.cultureName,
+            is_default: bool(language.isDefault),
+            is_mandatory: bool(language.isMandatory),
+          })
+          .execute()
         created += 1
       }
     }
     for (const language of languages) {
       const fallback = language.fallbackIsoCode
-        ? await this.#db.query<{ id: number }>('SELECT id FROM language WHERE iso_code = ?', [
-            language.fallbackIsoCode,
-          ])
+        ? await this.#db.q
+            .selectFrom('language')
+            .select('id')
+            .where('iso_code', '=', language.fallbackIsoCode)
+            .execute()
         : []
-      await this.#db.exec('UPDATE language SET fallback_language_id = ? WHERE iso_code = ?', [
-        fallback[0] ? Number(fallback[0].id) : null,
-        language.isoCode,
-      ])
+      await this.#db.q
+        .updateTable('language')
+        .set({ fallback_language_id: fallback[0] ? Number(fallback[0].id) : null })
+        .where('iso_code', '=', language.isoCode)
+        .execute()
     }
     return { created, updated }
   }

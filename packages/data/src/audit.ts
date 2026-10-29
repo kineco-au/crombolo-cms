@@ -3,10 +3,13 @@
  * added, read and aged out; nothing edits one. docs/audit-log.md.
  */
 import { normaliseUuid } from '@crombolo/core'
+import type { Expression, ExpressionBuilder, SqlBool } from 'kysely'
 import type { Db } from './database.ts'
 import { DbDate } from './dialect.ts'
+import { sql } from './query.ts'
 import { STATE_AUDIT_LOG } from './schema/audit-log.ts'
 import { escapeLike } from './search-text.ts'
+import type { CoreTables } from './tables.gen.ts'
 
 export type AuditCategory =
   | 'content'
@@ -138,6 +141,11 @@ const LIMITS = {
   detail: 4000,
 } as const
 
+type Condition = (eb: ExpressionBuilder<CoreTables, 'audit_entry'>) => Expression<SqlBool>
+
+const likeLower = (column: string, pattern: string) =>
+  sql<SqlBool>`lower(${sql.ref(column)}) like ${pattern} escape '\\'`
+
 function clip(value: string | null | undefined, limit: number): string | null {
   if (value === null || value === undefined || value === '') return null
   return value.length > limit ? value.slice(0, limit) : value
@@ -181,106 +189,114 @@ export class AuditLog {
         entry.entityKey && UUID.test(entry.entityKey)
           ? normaliseUuid(entry.entityKey)
           : entry.entityKey
-      await this.#db.exec(
-        `INSERT INTO audit_entry (occurred_at, category, action, user_key, user_name, entity_type,
-           entity_key, entity_name, source, ip_address, forwarded_for, detail)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          DbDate.toDb(entry.occurredAt ?? new Date()),
-          entry.category,
-          clip(entry.action, LIMITS.action),
-          userKey,
-          clip(entry.userName, LIMITS.userName),
-          clip(entry.entityType, LIMITS.entityType),
-          clip(entityKey, LIMITS.entityKey),
-          clip(entry.entityName, LIMITS.entityName),
-          entry.source,
-          clip(entry.ipAddress, LIMITS.ipAddress),
-          clip(entry.forwardedFor, LIMITS.forwardedFor),
-          clip(entry.detail, LIMITS.detail),
-        ],
-      )
+      await this.#db.q
+        .insertInto('audit_entry')
+        .values({
+          occurred_at: DbDate.toDb(entry.occurredAt ?? new Date()),
+          category: entry.category,
+          action: clip(entry.action, LIMITS.action) as string,
+          user_key: userKey,
+          user_name: clip(entry.userName, LIMITS.userName),
+          entity_type: clip(entry.entityType, LIMITS.entityType),
+          entity_key: clip(entityKey, LIMITS.entityKey),
+          entity_name: clip(entry.entityName, LIMITS.entityName),
+          source: entry.source,
+          ip_address: clip(entry.ipAddress, LIMITS.ipAddress),
+          forwarded_for: clip(entry.forwardedFor, LIMITS.forwardedFor),
+          detail: clip(entry.detail, LIMITS.detail),
+        })
+        .execute()
     }
   }
 
   /** The conditions a filter comes to, or undefined when it can match nothing. */
-  async #where(filter: AuditFilter): Promise<{ where: string[]; params: unknown[] } | undefined> {
-    const where: string[] = []
-    const params: unknown[] = []
+  async #where(filter: AuditFilter): Promise<Condition[] | undefined> {
+    const where: Condition[] = []
     if (filter.userKey !== undefined) {
       if (!UUID.test(filter.userKey)) return undefined
-      where.push('user_key = ?')
-      params.push(normaliseUuid(filter.userKey))
+      const userKey = normaliseUuid(filter.userKey)
+      where.push((eb) => eb('user_key', '=', userKey))
     }
     if (filter.entityKey !== undefined) {
-      where.push('entity_key = ?')
-      params.push(UUID.test(filter.entityKey) ? normaliseUuid(filter.entityKey) : filter.entityKey)
+      const entityKey = UUID.test(filter.entityKey)
+        ? normaliseUuid(filter.entityKey)
+        : filter.entityKey
+      where.push((eb) => eb('entity_key', '=', entityKey))
     }
-    if (filter.category !== undefined) {
-      where.push('category = ?')
-      params.push(filter.category)
-    }
-    if (filter.action !== undefined) {
-      where.push('action = ?')
-      params.push(filter.action)
-    }
-    if (filter.since !== undefined) {
-      where.push('occurred_at >= ?')
-      params.push(DbDate.toDb(filter.since))
-    }
-    if (filter.until !== undefined) {
-      where.push('occurred_at < ?')
-      params.push(DbDate.toDb(filter.until))
-    }
+    const { category, action, since, until } = filter
+    if (category !== undefined) where.push((eb) => eb('category', '=', category))
+    if (action !== undefined) where.push((eb) => eb('action', '=', action))
+    if (since !== undefined) where.push((eb) => eb('occurred_at', '>=', DbDate.toDb(since)))
+    if (until !== undefined) where.push((eb) => eb('occurred_at', '<', DbDate.toDb(until)))
     const needle = filter.text?.trim().toLowerCase()
     if (needle) {
       const like = `%${escapeLike(needle)}%`
-      where.push(
-        `(LOWER(entity_name) LIKE ? ESCAPE '\\' OR LOWER(entity_key) LIKE ? ESCAPE '\\' OR LOWER(user_name) LIKE ? ESCAPE '\\')`,
+      where.push((eb) =>
+        eb.or([
+          likeLower('entity_name', like),
+          likeLower('entity_key', like),
+          likeLower('user_name', like),
+        ]),
       )
-      params.push(like, like, like)
     }
     if (filter.user !== undefined) {
       const who = filter.user.trim()
-      const accounts = await this.#db.query<{ key: string }>(
-        UUID.test(who)
-          ? 'SELECT key FROM user_account WHERE key = ?'
-          : 'SELECT key FROM user_account WHERE LOWER(email) = LOWER(?) OR LOWER(login) = LOWER(?) OR LOWER(user_name) = LOWER(?)',
-        UUID.test(who) ? [normaliseUuid(who)] : [who, who, who],
-      )
-      const account = accounts[0]
+      const account = await this.#db.q
+        .selectFrom('user_account')
+        .select('key')
+        .$if(UUID.test(who), (q) => q.where('key', '=', normaliseUuid(who)))
+        .$if(!UUID.test(who), (q) =>
+          q.where((eb) =>
+            eb.or([
+              eb(eb.fn('lower', ['email']), '=', eb.fn('lower', [eb.val(who)])),
+              eb(eb.fn('lower', ['login']), '=', eb.fn('lower', [eb.val(who)])),
+              eb(eb.fn('lower', ['user_name']), '=', eb.fn('lower', [eb.val(who)])),
+            ]),
+          ),
+        )
+        .executeTakeFirst()
       if (account) {
-        where.push('user_key = ?')
-        params.push(normaliseUuid(String(account.key)))
+        const userKey = normaliseUuid(String(account.key))
+        where.push((eb) => eb('user_key', '=', userKey))
       } else if (UUID.test(who)) {
-        where.push('user_key = ?')
-        params.push(normaliseUuid(who))
+        const userKey = normaliseUuid(who)
+        where.push((eb) => eb('user_key', '=', userKey))
       } else {
-        where.push('user_key IS NULL AND LOWER(user_name) = LOWER(?)')
-        params.push(who)
+        where.push((eb) =>
+          eb.and([
+            eb('user_key', 'is', null),
+            eb(eb.fn('lower', ['user_name']), '=', eb.fn('lower', [eb.val(who)])),
+          ]),
+        )
       }
     }
-    return { where, params }
+    return where
+  }
+
+  #entries(where: Condition[]) {
+    let query = this.#db.q.selectFrom('audit_entry')
+    for (const condition of where) query = query.where(condition)
+    return query
   }
 
   async query(
     filter: AuditFilter = {},
     page: { skip: number; take: number } = { skip: 0, take: 100 },
   ): Promise<{ total: number; items: AuditEntry[] }> {
-    const conditions = await this.#where(filter)
-    if (!conditions) return { total: 0, items: [] }
-    const { where, params } = conditions
-    const clause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
-    const counted = await this.#db.query<{ total: number }>(
-      `SELECT COUNT(*) AS total FROM audit_entry ${clause}`,
-      params,
-    )
-    const order = filter.ascending ? 'ASC' : 'DESC'
-    const rows = await this.#db.query(
-      `SELECT * FROM audit_entry ${clause} ORDER BY occurred_at ${order}, id ${order} LIMIT ? OFFSET ?`,
-      [...params, page.take, page.skip],
-    )
-    return { total: Number(counted[0]?.total ?? 0), items: rows.map(toEntry) }
+    const where = await this.#where(filter)
+    if (!where) return { total: 0, items: [] }
+    const counted = await this.#entries(where)
+      .select((eb) => eb.fn.countAll().as('total'))
+      .executeTakeFirst()
+    const order = filter.ascending ? 'asc' : 'desc'
+    const rows = await this.#entries(where)
+      .selectAll()
+      .orderBy('occurred_at', order)
+      .orderBy('id', order)
+      .limit(page.take)
+      .offset(page.skip)
+      .execute()
+    return { total: Number(counted?.total ?? 0), items: rows.map(toEntry) }
   }
 
   /**
@@ -290,24 +306,17 @@ export class AuditLog {
    */
   async page(filter: AuditFilter, cursor: AuditCursor): Promise<AuditPage> {
     const ascending = cursor.after !== undefined
-    const conditions = await this.#where(filter)
-    if (!conditions)
+    const where = await this.#where(filter)
+    if (!where)
       return { items: [], next: ascending ? (cursor.after ?? null) : null, truncated: false }
-    const { where, params } = conditions
-    if (cursor.after !== undefined) {
-      where.push('id > ?')
-      params.push(cursor.after)
-    }
-    if (cursor.before !== undefined) {
-      where.push('id < ?')
-      params.push(cursor.before)
-    }
-    const clause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
-    const order = ascending ? 'ASC' : 'DESC'
-    const rows = await this.#db.query(
-      `SELECT * FROM audit_entry ${clause} ORDER BY id ${order} LIMIT ?`,
-      [...params, cursor.limit],
-    )
+    const { after, before } = cursor
+    if (after !== undefined) where.push((eb) => eb('id', '>', after))
+    if (before !== undefined) where.push((eb) => eb('id', '<', before))
+    const rows = await this.#entries(where)
+      .selectAll()
+      .orderBy('id', ascending ? 'asc' : 'desc')
+      .limit(cursor.limit)
+      .execute()
     const items = rows.map(toEntry)
     const last = items.at(-1)?.id
     const next = ascending
@@ -321,13 +330,18 @@ export class AuditLog {
   /** Whether the entry a cursor names has gone while older ones are kept no longer. */
   async #pruned(after: number): Promise<boolean> {
     if (after <= 0) return false
-    const rows = await this.#db.query<{ oldest: number | null; there: number }>(
-      'SELECT MIN(id) AS oldest, SUM(CASE WHEN id = ? THEN 1 ELSE 0 END) AS there FROM audit_entry',
-      [after],
-    )
-    const oldest = rows[0]?.oldest
+    const row = await this.#db.q
+      .selectFrom('audit_entry')
+      .select((eb) => [
+        eb.fn.min('id').as('oldest'),
+        eb.fn
+          .sum<number | string | null>(eb.case().when('id', '=', after).then(1).else(0).end())
+          .as('there'),
+      ])
+      .executeTakeFirst()
+    const oldest = row?.oldest
     return (
-      Number(rows[0]?.there ?? 0) === 0 &&
+      Number(row?.there ?? 0) === 0 &&
       oldest !== null &&
       oldest !== undefined &&
       Number(oldest) > after
@@ -336,12 +350,21 @@ export class AuditLog {
 
   /** Everyone the log names, by the name they had most recently. */
   async users(): Promise<Array<{ key: string; name: string }>> {
-    const rows = await this.#db.query<{ user_key: string; user_name: string | null }>(
-      `SELECT e.user_key, e.user_name FROM audit_entry e
-       JOIN (SELECT user_key, MAX(id) AS id FROM audit_entry WHERE user_key IS NOT NULL GROUP BY user_key) latest
-         ON latest.id = e.id
-       ORDER BY e.user_name`,
-    )
+    const rows = await this.#db.q
+      .selectFrom('audit_entry as e')
+      .innerJoin(
+        (eb) =>
+          eb
+            .selectFrom('audit_entry')
+            .select((eb) => ['user_key', eb.fn.max('id').as('id')])
+            .where('user_key', 'is not', null)
+            .groupBy('user_key')
+            .as('latest'),
+        (join) => join.onRef('latest.id', '=', 'e.id'),
+      )
+      .select(['e.user_key', 'e.user_name'])
+      .orderBy('e.user_name')
+      .execute()
     return rows.map((row) => ({
       key: normaliseUuid(String(row.user_key)),
       name: row.user_name ? String(row.user_name) : '',
@@ -350,23 +373,28 @@ export class AuditLog {
 
   /** Deletes entries older than `before`, and returns how many went. */
   async prune(before: Date): Promise<number> {
-    const counted = await this.#db.query<{ total: number }>(
-      'SELECT COUNT(*) AS total FROM audit_entry WHERE occurred_at < ?',
-      [DbDate.toDb(before)],
-    )
-    const total = Number(counted[0]?.total ?? 0)
+    const counted = await this.#db.q
+      .selectFrom('audit_entry')
+      .select((eb) => eb.fn.countAll().as('total'))
+      .where('occurred_at', '<', DbDate.toDb(before))
+      .executeTakeFirst()
+    const total = Number(counted?.total ?? 0)
     if (total > 0)
-      await this.#db.exec('DELETE FROM audit_entry WHERE occurred_at < ?', [DbDate.toDb(before)])
+      await this.#db.q
+        .deleteFrom('audit_entry')
+        .where('occurred_at', '<', DbDate.toDb(before))
+        .execute()
     return total
   }
 
   /** When this database began keeping the log; history before it is in the content versions. */
   async startedAt(): Promise<Date | undefined> {
-    const rows = await this.#db.query<{ applied_at: unknown }>(
-      'SELECT MIN(applied_at) AS applied_at FROM migration_history WHERE to_state = ?',
-      [STATE_AUDIT_LOG],
-    )
-    return DbDate.fromDb(rows[0]?.applied_at)
+    const row = await this.#db.q
+      .selectFrom('migration_history')
+      .select((eb) => eb.fn.min('applied_at').as('applied_at'))
+      .where('to_state', '=', STATE_AUDIT_LOG)
+      .executeTakeFirst()
+    return DbDate.fromDb(row?.applied_at)
   }
 
   /**
@@ -380,32 +408,34 @@ export class AuditLog {
       entityName: entityName === null || entityName === undefined ? null : String(entityName),
     })
     if (entityType.endsWith('Version') && /^\d+$/.test(key)) {
-      const rows = await this.#db.query<{ unique_id: string; text: string | null }>(
-        'SELECT n.unique_id, n.text FROM content_version cv JOIN node n ON n.id = cv.node_id WHERE cv.id = ?',
-        [Number(key)],
-      )
-      const row = rows[0]
+      const row = await this.#db.q
+        .selectFrom('content_version as cv')
+        .innerJoin('node as n', 'n.id', 'cv.node_id')
+        .select(['n.unique_id', 'n.text'])
+        .where('cv.id', '=', Number(key))
+        .executeTakeFirst()
       const owner = entityType.slice(0, -'Version'.length)
       return row ? named(row.text, owner, normaliseUuid(String(row.unique_id))) : named(null)
     }
     if (entityType === 'Language') {
-      const rows = await this.#db.query<{ culture_name: string }>(
-        'SELECT culture_name FROM language WHERE iso_code = ?',
-        [key],
-      )
-      return named(rows[0]?.culture_name ?? null)
+      const row = await this.#db.q
+        .selectFrom('language')
+        .select('culture_name')
+        .where('iso_code', '=', key)
+        .executeTakeFirst()
+      return named(row?.culture_name ?? null)
     }
     if (!UUID.test(key)) return named(null)
     const uuid = normaliseUuid(key)
-    const sql =
-      entityType === 'User'
-        ? 'SELECT user_name AS name FROM user_account WHERE key = ?'
-        : entityType === 'UserGroup'
-          ? 'SELECT name FROM user_group WHERE key = ?'
-          : entityType === 'DictionaryItem'
-            ? 'SELECT item_key AS name FROM dictionary_item WHERE key = ?'
-            : 'SELECT text AS name FROM node WHERE unique_id = ?'
-    const rows = await this.#db.query<{ name: string | null }>(sql, [uuid])
-    return named(rows[0]?.name ?? null, entityType, uuid)
+    const q = this.#db.q
+    const row = await (entityType === 'User'
+      ? q.selectFrom('user_account').select('user_name as name').where('key', '=', uuid)
+      : entityType === 'UserGroup'
+        ? q.selectFrom('user_group').select('name').where('key', '=', uuid)
+        : entityType === 'DictionaryItem'
+          ? q.selectFrom('dictionary_item').select('item_key as name').where('key', '=', uuid)
+          : q.selectFrom('node').select('text as name').where('unique_id', '=', uuid)
+    ).executeTakeFirst()
+    return named(row?.name ?? null, entityType, uuid)
   }
 }

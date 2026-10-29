@@ -28,6 +28,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@crombolo/core": "workspace:*"
+    "@crombolo/core": "workspace:*",
+    "kysely": "0.29.6"
   }
 }

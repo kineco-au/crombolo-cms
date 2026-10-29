@@ -7,7 +7,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { SYSTEM_MEDIA_TYPE_KEYS } from '@crombolo/core'
-import { ComponentRepository, ContentTypeRepository } from '@crombolo/data'
+import { ComponentRepository, ContentTypeRepository, queryFor } from '@crombolo/data'
 import { PublishedCache } from '@crombolo/render'
 import { siteMediaTypeFiles } from '@crombolo/schema'
 import { createPublishedContentSource, decodePng, encodePng } from '@crombolo/server'
@@ -272,6 +272,9 @@ describe('media cached apart from the pages (story 197)', () => {
       const db = h.server.db
       const counting = {
         ...db,
+        get q(): typeof db.q {
+          return queryFor(this as unknown as typeof db)
+        },
         query: (sql: string, params?: unknown[]) => {
           seen.push(sql)
           return db.query(sql, params)
@@ -280,6 +283,9 @@ describe('media cached apart from the pages (story 197)', () => {
           db.readSnapshot((reader) =>
             fn({
               ...reader,
+              get q() {
+                return queryFor(this)
+              },
               query: (sql: string, params?: unknown[]) => {
                 seen.push(sql)
                 return reader.query(sql, params)

@@ -321,6 +321,59 @@ const cookieValue = (response: Response, name: string) => {
 }
 
 describe('route handlers', () => {
+  test("in development, the live route passes on the CMS's changes and says when it revalidated", async () => {
+    const upstream = Bun.serve({
+      port: 0,
+      fetch: (request) =>
+        new URL(request.url).pathname === '/crombolo/dev/events'
+          ? new Response(
+              new ReadableStream({
+                start(controller) {
+                  // Split mid-frame, as a network may.
+                  controller.enqueue(new TextEncoder().encode('event: hello\ndata: {"boot"'))
+                  controller.enqueue(new TextEncoder().encode(':"b1"}\n\n'))
+                },
+              }),
+              { headers: { 'content-type': 'text/event-stream' } },
+            )
+          : new Response('Not Found', { status: 404 }),
+    })
+    const env = process.env as Record<string, string | undefined>
+    const was = env.NODE_ENV
+    try {
+      const cms = crombolo({ url: upstream.url.origin, cache: cache16 })
+      const live = handlers.liveReloadHandler(cms)
+      const revalidate = handlers.revalidateHandler(cms, { secret: 'shh' })
+      env.NODE_ENV = 'production'
+      expect((await live(new Request('http://app/api/crombolo/live'))).status).toBe(404)
+      env.NODE_ENV = 'development'
+      const leaving = new AbortController()
+      const answer = await live(
+        new Request('http://app/api/crombolo/live', { signal: leaving.signal }),
+      )
+      expect(answer.headers.get('content-type')).toBe('text/event-stream; charset=utf-8')
+      const reader = (answer.body as ReadableStream<Uint8Array>).getReader()
+      const decoder = new TextDecoder()
+      let text = ''
+      while (!text.includes('\n\n')) text += decoder.decode((await reader.read()).value)
+      expect(text).toBe('event: hello\ndata: {"boot":"b1"}\n\n')
+      await revalidate(
+        new Request('http://app/api/crombolo/revalidate', {
+          method: 'POST',
+          headers: { 'x-crombolo-secret': 'shh' },
+          body: JSON.stringify({ Id: keys.story }),
+        }),
+      )
+      text = decoder.decode((await reader.read()).value)
+      expect(text).toBe(`event: revalidated\ndata: {"keys":["${keys.story}"]}\n\n`)
+      await reader.cancel()
+      leaving.abort()
+    } finally {
+      env.NODE_ENV = was
+      upstream.stop(true)
+    }
+  })
+
   test('revalidation needs the secret, and clears the item and its ancestors', async () => {
     const cms16 = crombolo({ cache: cache16 })
     const handle = handlers.revalidateHandler(cms16, { secret: 'shh' })

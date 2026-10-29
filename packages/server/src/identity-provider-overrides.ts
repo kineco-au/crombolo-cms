@@ -5,7 +5,7 @@
  * the provider; these are only the fields changed, put on top of it at every
  * sign-in, so a change reaches every node with nothing to invalidate.
  */
-import type { Db, ExternalLoginAudience } from '@crombolo/data'
+import { type Db, type ExternalLoginAudience, now } from '@crombolo/data'
 import { entraIssuer, type IdentityProvider } from './identity-providers.ts'
 import { openSecret, SECRET_KEY_VARIABLE, sealSecret, usableSecretKey } from './secrets.ts'
 
@@ -85,10 +85,11 @@ export class IdentityProviderOverrides {
   }
 
   async #read(audience: ExternalLoginAudience, id: string): Promise<Stored> {
-    const rows = await this.#db.query<{ value: string | null }>(
-      'SELECT value FROM key_value WHERE key = ?',
-      [keyOf(audience, id)],
-    )
+    const rows = await this.#db.q
+      .selectFrom('key_value')
+      .select('value')
+      .where('key', '=', keyOf(audience, id))
+      .execute()
     try {
       return rows[0]?.value ? (JSON.parse(rows[0].value) as Stored) : {}
     } catch {
@@ -148,26 +149,27 @@ export class IdentityProviderOverrides {
 
   /** Puts a provider back to what the config says. */
   async reset(audience: ExternalLoginAudience, id: string): Promise<void> {
-    await this.#db.exec('DELETE FROM key_value WHERE key = ?', [keyOf(audience, id)])
+    await this.#db.q.deleteFrom('key_value').where('key', '=', keyOf(audience, id)).execute()
   }
 
   async #write(audience: ExternalLoginAudience, id: string, stored: Stored): Promise<void> {
     const key = keyOf(audience, id)
-    const now = this.#db.dialect.now()
     if (Object.keys(stored).length === 0) {
-      await this.#db.exec('DELETE FROM key_value WHERE key = ?', [key])
+      await this.#db.q.deleteFrom('key_value').where('key', '=', key).execute()
       return
     }
     const value = JSON.stringify(stored)
-    const updated = await this.#db.query<{ key: string }>(
-      `UPDATE key_value SET value = ?, update_date = ${now} WHERE key = ? RETURNING key`,
-      [value, key],
-    )
+    const updated = await this.#db.q
+      .updateTable('key_value')
+      .set({ value, update_date: now(this.#db) })
+      .where('key', '=', key)
+      .returning('key')
+      .execute()
     if (updated.length === 0)
-      await this.#db.exec(`INSERT INTO key_value (key, value, update_date) VALUES (?, ?, ${now})`, [
-        key,
-        value,
-      ])
+      await this.#db.q
+        .insertInto('key_value')
+        .values({ key, value, update_date: now(this.#db) })
+        .execute()
   }
 }
 

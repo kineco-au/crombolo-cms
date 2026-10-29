@@ -9,6 +9,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Db } from '../database.ts'
 import { DbDate, fromDbBool } from '../dialect.ts'
+import { sql } from '../query.ts'
 
 export interface Bundle {
   id: string
@@ -64,12 +65,45 @@ interface Row {
   update_date: unknown
 }
 
-const SELECT = `SELECT id, name, content_node_id, content_load_child_nodes,
-                       media_load_child_nodes, media_ids, element_ids, content_types,
-                       media_types, data_types, components, stylesheets,
-                       scripts, languages, dictionary_items, package_name, package_version,
-                       create_date, update_date
-                  FROM bundle`
+const COLUMNS = [
+  'id',
+  'name',
+  'content_node_id',
+  'content_load_child_nodes',
+  'media_load_child_nodes',
+  'media_ids',
+  'element_ids',
+  'content_types',
+  'media_types',
+  'data_types',
+  'components',
+  'stylesheets',
+  'scripts',
+  'languages',
+  'dictionary_items',
+  'package_name',
+  'package_version',
+  'create_date',
+  'update_date',
+] as const
+
+/** The selection lists as stored: JSON text, one column each. */
+const selections = (db: Db, input: BundleInput) => ({
+  name: input.name,
+  content_node_id: input.contentNodeId,
+  content_load_child_nodes: db.dialect.boolValue(input.contentLoadChildNodes),
+  media_load_child_nodes: db.dialect.boolValue(input.mediaLoadChildNodes),
+  media_ids: JSON.stringify(input.mediaIds),
+  element_ids: input.elementIds === null ? null : JSON.stringify(input.elementIds),
+  content_types: JSON.stringify(input.contentTypes),
+  media_types: JSON.stringify(input.mediaTypes),
+  data_types: JSON.stringify(input.dataTypes),
+  components: JSON.stringify(input.components),
+  stylesheets: JSON.stringify(input.stylesheets),
+  scripts: JSON.stringify(input.scripts),
+  languages: JSON.stringify(input.languages),
+  dictionary_items: JSON.stringify(input.dictionaryItems),
+})
 
 const list = (value: string | null): string[] => {
   if (!value) return []
@@ -115,57 +149,49 @@ export class BundleRepository {
   async list(
     options: { skip?: number; take?: number } = {},
   ): Promise<{ total: number; items: Bundle[] }> {
-    const counted = await this.#db.query<{ total: number }>('SELECT COUNT(*) AS total FROM bundle')
-    const rows = await this.#db.query<Row>(`${SELECT} ORDER BY name LIMIT ? OFFSET ?`, [
-      options.take ?? 100,
-      options.skip ?? 0,
-    ])
-    return { total: Number(counted[0]?.total ?? 0), items: rows.map(hydrate) }
+    const counted = await this.#db.q
+      .selectFrom('bundle')
+      .select(sql<number>`count(*)`.as('total'))
+      .executeTakeFirst()
+    const rows = await this.#db.q
+      .selectFrom('bundle')
+      .select(COLUMNS)
+      .orderBy('name')
+      .limit(options.take ?? 100)
+      .offset(options.skip ?? 0)
+      .execute()
+    return { total: Number(counted?.total ?? 0), items: rows.map(hydrate) }
   }
 
   async byId(id: string): Promise<Bundle | undefined> {
-    const rows = await this.#db.query<Row>(`${SELECT} WHERE id = ?`, [id])
-    const row = rows[0]
+    const row = await this.#db.q
+      .selectFrom('bundle')
+      .select(COLUMNS)
+      .where('id', '=', id)
+      .executeTakeFirst()
     return row ? hydrate(row) : undefined
   }
 
   async byName(name: string): Promise<Bundle | undefined> {
-    const rows = await this.#db.query<Row>(`${SELECT} WHERE LOWER(name) = ?`, [
-      name.trim().toLowerCase(),
-    ])
-    const row = rows[0]
+    const row = await this.#db.q
+      .selectFrom('bundle')
+      .select(COLUMNS)
+      .where((eb) => eb(eb.fn('lower', ['name']), '=', name.trim().toLowerCase()))
+      .executeTakeFirst()
     return row ? hydrate(row) : undefined
   }
 
   async create(input: BundleInput, id: string = randomUUID()): Promise<Bundle> {
     const now = new Date()
-    await this.#db.exec(
-      `INSERT INTO bundle
-         (id, name, content_node_id, content_load_child_nodes, media_load_child_nodes,
-          media_ids, element_ids, content_types, media_types, data_types, components,
-          stylesheets, scripts, languages, dictionary_items,
-          create_date, update_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
+    await this.#db.q
+      .insertInto('bundle')
+      .values({
         id,
-        input.name,
-        input.contentNodeId,
-        this.#db.dialect.boolValue(input.contentLoadChildNodes),
-        this.#db.dialect.boolValue(input.mediaLoadChildNodes),
-        JSON.stringify(input.mediaIds),
-        input.elementIds === null ? null : JSON.stringify(input.elementIds),
-        JSON.stringify(input.contentTypes),
-        JSON.stringify(input.mediaTypes),
-        JSON.stringify(input.dataTypes),
-        JSON.stringify(input.components),
-        JSON.stringify(input.stylesheets),
-        JSON.stringify(input.scripts),
-        JSON.stringify(input.languages),
-        JSON.stringify(input.dictionaryItems),
-        DbDate.toDb(now),
-        DbDate.toDb(now),
-      ],
-    )
+        ...selections(this.#db, input),
+        create_date: DbDate.toDb(now),
+        update_date: DbDate.toDb(now),
+      })
+      .execute()
     return {
       ...input,
       id,
@@ -177,33 +203,11 @@ export class BundleRepository {
   }
 
   async update(id: string, input: BundleInput): Promise<void> {
-    await this.#db.exec(
-      `UPDATE bundle
-          SET name = ?, content_node_id = ?, content_load_child_nodes = ?,
-              media_load_child_nodes = ?, media_ids = ?, element_ids = ?,
-              content_types = ?, media_types = ?, data_types = ?, components = ?,
-              stylesheets = ?, scripts = ?, languages = ?,
-              dictionary_items = ?, update_date = ?
-        WHERE id = ?`,
-      [
-        input.name,
-        input.contentNodeId,
-        this.#db.dialect.boolValue(input.contentLoadChildNodes),
-        this.#db.dialect.boolValue(input.mediaLoadChildNodes),
-        JSON.stringify(input.mediaIds),
-        input.elementIds === null ? null : JSON.stringify(input.elementIds),
-        JSON.stringify(input.contentTypes),
-        JSON.stringify(input.mediaTypes),
-        JSON.stringify(input.dataTypes),
-        JSON.stringify(input.components),
-        JSON.stringify(input.stylesheets),
-        JSON.stringify(input.scripts),
-        JSON.stringify(input.languages),
-        JSON.stringify(input.dictionaryItems),
-        DbDate.toDb(new Date()),
-        id,
-      ],
-    )
+    await this.#db.q
+      .updateTable('bundle')
+      .set({ ...selections(this.#db, input), update_date: DbDate.toDb(new Date()) })
+      .where('id', '=', id)
+      .execute()
   }
 
   /** The npm package a definition is built as; null clears a value back to its default. */
@@ -211,13 +215,18 @@ export class BundleRepository {
     id: string,
     pkg: { name: string | null; version: string | null },
   ): Promise<void> {
-    await this.#db.exec(
-      'UPDATE bundle SET package_name = ?, package_version = ?, update_date = ? WHERE id = ?',
-      [pkg.name, pkg.version, DbDate.toDb(new Date()), id],
-    )
+    await this.#db.q
+      .updateTable('bundle')
+      .set({
+        package_name: pkg.name,
+        package_version: pkg.version,
+        update_date: DbDate.toDb(new Date()),
+      })
+      .where('id', '=', id)
+      .execute()
   }
 
   async delete(id: string): Promise<void> {
-    await this.#db.exec('DELETE FROM bundle WHERE id = ?', [id])
+    await this.#db.q.deleteFrom('bundle').where('id', '=', id).execute()
   }
 }

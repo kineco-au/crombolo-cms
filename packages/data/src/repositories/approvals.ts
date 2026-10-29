@@ -94,7 +94,7 @@ const scheduleFrom = (json: string): ApprovalScheduleEntry[] =>
   }))
 
 /** States a request is still open in: it holds the page until it ends. */
-const OPEN = "state IN ('waiting', 'scheduled')"
+const OPEN = ['waiting', 'scheduled']
 
 const requestFrom = (row: Record<string, unknown>): ApprovalRequest => ({
   id: Number(row.id),
@@ -157,96 +157,127 @@ export class ApprovalRepository {
     schedule?: ApprovalScheduleEntry[] | null
   }): Promise<ApprovalRequest> {
     const key = crypto.randomUUID()
-    await this.#db.exec(
-      `INSERT INTO approval_request (key, node_key, cultures, action, event_id, workflow_key,
-         workflow_version, workflow, state, requested_by, requested_at, schedule)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'waiting', ?, ?, ?)`,
-      [
+    await this.#db.q
+      .insertInto('approval_request')
+      .values({
         key,
-        normaliseUuid(input.nodeKey),
-        input.cultures ? JSON.stringify(input.cultures) : null,
-        input.action,
-        input.eventId,
-        workflowIdentity(input.workflow),
-        input.workflowVersion,
-        JSON.stringify(input.workflow),
-        normaliseUuid(input.requestedBy),
-        DbDate.toDb(new Date()),
-        input.schedule?.length ? JSON.stringify(input.schedule) : null,
-      ],
-    )
+        node_key: normaliseUuid(input.nodeKey),
+        cultures: input.cultures ? JSON.stringify(input.cultures) : null,
+        action: input.action,
+        event_id: input.eventId,
+        workflow_key: workflowIdentity(input.workflow),
+        workflow_version: input.workflowVersion,
+        workflow: JSON.stringify(input.workflow),
+        state: 'waiting',
+        requested_by: normaliseUuid(input.requestedBy),
+        requested_at: DbDate.toDb(new Date()),
+        schedule: input.schedule?.length ? JSON.stringify(input.schedule) : null,
+      })
+      .execute()
     return (await this.byKey(key)) as ApprovalRequest
   }
 
   async byKey(key: string): Promise<ApprovalRequest | undefined> {
-    const rows = await this.#db.query('SELECT * FROM approval_request WHERE key = ?', [
-      normaliseUuid(key),
-    ])
-    return rows[0] ? requestFrom(rows[0]) : undefined
+    const row = await this.#db.q
+      .selectFrom('approval_request')
+      .selectAll()
+      .where('key', '=', normaliseUuid(key))
+      .executeTakeFirst()
+    return row ? requestFrom(row) : undefined
   }
 
   /** The request a page is waiting on or scheduled under, if any: at most one at a time. */
   async openFor(nodeKey: string): Promise<ApprovalRequest | undefined> {
-    const rows = await this.#db.query(
-      `SELECT * FROM approval_request WHERE node_key = ? AND ${OPEN} ORDER BY id DESC`,
-      [normaliseUuid(nodeKey)],
-    )
-    return rows[0] ? requestFrom(rows[0]) : undefined
+    const row = await this.#db.q
+      .selectFrom('approval_request')
+      .selectAll()
+      .where('node_key', '=', normaliseUuid(nodeKey))
+      .where('state', 'in', OPEN)
+      .orderBy('id', 'desc')
+      .executeTakeFirst()
+    return row ? requestFrom(row) : undefined
   }
 
   /** A page's requests, newest first. */
   async forNode(nodeKey: string, limit = 20): Promise<ApprovalRequest[]> {
-    const rows = await this.#db.query(
-      'SELECT * FROM approval_request WHERE node_key = ? ORDER BY id DESC LIMIT ?',
-      [normaliseUuid(nodeKey), limit],
-    )
+    const rows = await this.#db.q
+      .selectFrom('approval_request')
+      .selectAll()
+      .where('node_key', '=', normaliseUuid(nodeKey))
+      .orderBy('id', 'desc')
+      .limit(limit)
+      .execute()
     return rows.map(requestFrom)
   }
 
   /** Every request still open (waiting or scheduled), oldest first. */
   async open(): Promise<ApprovalRequest[]> {
-    const rows = await this.#db.query(`SELECT * FROM approval_request WHERE ${OPEN} ORDER BY id`)
+    const rows = await this.#db.q
+      .selectFrom('approval_request')
+      .selectAll()
+      .where('state', 'in', OPEN)
+      .orderBy('id')
+      .execute()
     return rows.map(requestFrom)
   }
 
   /** Every request approved and waiting for its time, oldest first. */
   async scheduled(): Promise<ApprovalRequest[]> {
-    const rows = await this.#db.query(
-      "SELECT * FROM approval_request WHERE state = 'scheduled' ORDER BY id",
-    )
+    const rows = await this.#db.q
+      .selectFrom('approval_request')
+      .selectAll()
+      .where('state', '=', 'scheduled')
+      .orderBy('id')
+      .execute()
     return rows.map(requestFrom)
   }
 
   /** Requests that have finished, newest first. */
   async finished(skip: number, take: number): Promise<{ total: number; items: ApprovalRequest[] }> {
-    const counted = await this.#db.query<{ n: number }>(
-      `SELECT COUNT(*) AS n FROM approval_request WHERE NOT ${OPEN}`,
-    )
-    const rows = await this.#db.query(
-      `SELECT * FROM approval_request WHERE NOT ${OPEN} ORDER BY id DESC LIMIT ? OFFSET ?`,
-      [take, skip],
-    )
-    return { total: Number(counted[0]?.n ?? 0), items: rows.map(requestFrom) }
+    const counted = await this.#db.q
+      .selectFrom('approval_request')
+      .select((eb) => eb.fn.countAll<number>().as('n'))
+      .where('state', 'not in', OPEN)
+      .executeTakeFirst()
+    const rows = await this.#db.q
+      .selectFrom('approval_request')
+      .selectAll()
+      .where('state', 'not in', OPEN)
+      .orderBy('id', 'desc')
+      .limit(take)
+      .offset(skip)
+      .execute()
+    return { total: Number(counted?.n ?? 0), items: rows.map(requestFrom) }
   }
 
   async waitingUnder(workflowKey: string): Promise<ApprovalRequest[]> {
-    const rows = await this.#db.query(
-      "SELECT * FROM approval_request WHERE workflow_key = ? AND state = 'waiting' ORDER BY id",
-      [workflowKey],
-    )
+    const rows = await this.#db.q
+      .selectFrom('approval_request')
+      .selectAll()
+      .where('workflow_key', '=', workflowKey)
+      .where('state', '=', 'waiting')
+      .orderBy('id')
+      .execute()
     return rows.map(requestFrom)
   }
 
   async setState(id: number, state: ApprovalState): Promise<void> {
-    await this.#db.exec('UPDATE approval_request SET state = ?, finished_at = ? WHERE id = ?', [
-      state,
-      state === 'waiting' || state === 'scheduled' ? null : DbDate.toDb(new Date()),
-      id,
-    ])
+    await this.#db.q
+      .updateTable('approval_request')
+      .set({
+        state,
+        finished_at: state === 'waiting' || state === 'scheduled' ? null : DbDate.toDb(new Date()),
+      })
+      .where('id', '=', id)
+      .execute()
   }
 
   async setEvent(id: number, eventId: number | null): Promise<void> {
-    await this.#db.exec('UPDATE approval_request SET event_id = ? WHERE id = ?', [eventId, id])
+    await this.#db.q
+      .updateTable('approval_request')
+      .set({ event_id: eventId })
+      .where('id', '=', id)
+      .execute()
   }
 
   /**
@@ -254,35 +285,44 @@ export class ApprovalRepository {
    * stage visits are cleared, and its history keeps what happened.
    */
   async rebase(id: number, workflow: SchemaWorkflow, version: string): Promise<void> {
-    await this.#db.exec(
-      'UPDATE approval_request SET workflow = ?, workflow_version = ? WHERE id = ?',
-      [JSON.stringify(workflow), version, id],
-    )
-    await this.#db.exec('DELETE FROM approval_step WHERE request_id = ?', [id])
+    await this.#db.q
+      .updateTable('approval_request')
+      .set({ workflow: JSON.stringify(workflow), workflow_version: version })
+      .where('id', '=', id)
+      .execute()
+    await this.#db.q.deleteFrom('approval_step').where('request_id', '=', id).execute()
   }
 
   async steps(requestId: number): Promise<ApprovalStep[]> {
-    const rows = await this.#db.query(
-      'SELECT * FROM approval_step WHERE request_id = ? ORDER BY id',
-      [requestId],
-    )
+    const rows = await this.#db.q
+      .selectFrom('approval_step')
+      .selectAll()
+      .where('request_id', '=', requestId)
+      .orderBy('id')
+      .execute()
     return rows.map(stepFrom)
   }
 
   async addStep(requestId: number, stage: string): Promise<number> {
-    const rows = await this.#db.query<{ id: number }>(
-      "INSERT INTO approval_step (request_id, stage, state, reached_at) VALUES (?, ?, 'waiting', ?) RETURNING id",
-      [requestId, stage, DbDate.toDb(new Date())],
-    )
-    return Number(rows[0]?.id)
+    const row = await this.#db.q
+      .insertInto('approval_step')
+      .values({
+        request_id: requestId,
+        stage,
+        state: 'waiting',
+        reached_at: DbDate.toDb(new Date()),
+      })
+      .returning('id')
+      .executeTakeFirst()
+    return Number(row?.id)
   }
 
   async setStepState(id: number, state: ApprovalStepState): Promise<void> {
-    await this.#db.exec('UPDATE approval_step SET state = ?, done_at = ? WHERE id = ?', [
-      state,
-      state === 'waiting' ? null : DbDate.toDb(new Date()),
-      id,
-    ])
+    await this.#db.q
+      .updateTable('approval_step')
+      .set({ state, done_at: state === 'waiting' ? null : DbDate.toDb(new Date()) })
+      .where('id', '=', id)
+      .execute()
   }
 
   async record(
@@ -295,26 +335,27 @@ export class ApprovalRepository {
       comment?: string | null
     },
   ): Promise<void> {
-    await this.#db.exec(
-      `INSERT INTO approval_history (request_id, step_id, stage, kind, user_key, comment, create_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [
-        requestId,
-        entry.stepId ?? null,
-        entry.stage ?? null,
-        entry.kind,
-        entry.userKey ? normaliseUuid(entry.userKey) : null,
-        entry.comment ?? null,
-        DbDate.toDb(new Date()),
-      ],
-    )
+    await this.#db.q
+      .insertInto('approval_history')
+      .values({
+        request_id: requestId,
+        step_id: entry.stepId ?? null,
+        stage: entry.stage ?? null,
+        kind: entry.kind,
+        user_key: entry.userKey ? normaliseUuid(entry.userKey) : null,
+        comment: entry.comment ?? null,
+        create_date: DbDate.toDb(new Date()),
+      })
+      .execute()
   }
 
   async history(requestId: number): Promise<ApprovalHistoryEntry[]> {
-    const rows = await this.#db.query(
-      'SELECT * FROM approval_history WHERE request_id = ? ORDER BY id',
-      [requestId],
-    )
+    const rows = await this.#db.q
+      .selectFrom('approval_history')
+      .selectAll()
+      .where('request_id', '=', requestId)
+      .orderBy('id')
+      .execute()
     return rows.map(historyFrom)
   }
 }

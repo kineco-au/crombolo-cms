@@ -72,9 +72,12 @@ export function createMediaPort(
     originalParent: (key) => repo.originalParent(key),
     versions: (key) => repo.versions(key),
     async systemUserKey() {
-      const rows = await db.query<{ key: string }>(
-        'SELECT key FROM user_account ORDER BY id LIMIT 1',
-      )
+      const rows = await db.q
+        .selectFrom('user_account')
+        .select('key')
+        .orderBy('id')
+        .limit(1)
+        .execute()
       return rows[0] ? normaliseUuid(String(rows[0].key)) : null
     },
 
@@ -118,10 +121,11 @@ export function createMediaPort(
         const latest = (await repo.versions(node.key))[0]
         const creator = latest?.userKey
           ? ((
-              await db.query<{ user_name: string }>(
-                'SELECT user_name FROM user_account WHERE key = ?',
-                [latest.userKey],
-              )
+              await db.q
+                .selectFrom('user_account')
+                .select('user_name')
+                .where('key', '=', latest.userKey)
+                .execute()
             )[0]?.user_name ?? null)
           : null
         loaded.push({ ...media, sortOrder: node.sortOrder, creator })

@@ -82,10 +82,13 @@ export class FolderRepository {
     let parentId: number = SystemNodes.Root
     let key: string | null = null
     for (const name of names) {
-      const found = await this.#db.query<{ unique_id: string; id: number }>(
-        'SELECT unique_id, id FROM node WHERE parent_id = ? AND node_object_type = ? AND text = ?',
-        [parentId, this.#objectType, name],
-      )
+      const found = await this.#db.q
+        .selectFrom('node')
+        .select(['unique_id', 'id'])
+        .where('parent_id', '=', parentId)
+        .where('node_object_type', '=', this.#objectType)
+        .where('text', '=', name)
+        .execute()
       if (found[0]) {
         parentId = Number(found[0].id)
         key = String(found[0].unique_id).toLowerCase()

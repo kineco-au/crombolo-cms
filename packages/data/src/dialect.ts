@@ -3,7 +3,19 @@
  * `?` placeholders and rendered per dialect, so no service ever needs to know
  * which database it is talking to.
  */
+import { type RawBuilder, sql } from 'kysely'
+
 export type DialectName = 'sqlite' | 'postgres'
+
+export interface FullTextHit {
+  node_id: number
+  score: number
+}
+
+export interface SiteSearchHitRow {
+  row_id: number
+  score: number
+}
 
 export interface ColumnTypes {
   identity: string
@@ -32,7 +44,7 @@ export interface Dialect {
   /** Rewrites `?` placeholders into the dialect's own form. */
   render(sql: string): string
   now(): string
-  boolValue(value: boolean): unknown
+  boolValue(value: boolean): boolean | number
   /** Appended to a SELECT that must block a concurrent state change; empty where the engine is single-writer. */
   readonly forShare: string
   readonly forUpdate: string
@@ -41,15 +53,16 @@ export interface Dialect {
   /**
    * The full-text match over `search_document`: a subquery of `node_id` and
    * `score`, higher being better, for each item holding every term as a word
-   * prefix. Its one parameter is `fullTextQuery(terms)`. docs/search.md.
+   * prefix, for `query` from `fullTextQuery(terms)`. Parenthesised, to alias
+   * with `.as(…)` in a FROM or JOIN. docs/search.md.
    */
-  readonly fullTextHits: string
+  fullTextMatches(query: string): RawBuilder<FullTextHit>
   /**
    * Site search's matching rows of `site_search_document`, as `row_id` and
-   * `score`, weighted name 10, high 5, normal 2, low 1 on both engines. Its one
-   * parameter is `fullTextQuery(terms)`.
+   * `score`, weighted name 10, high 5, normal 2, low 1 on both engines, for
+   * `query` from `fullTextQuery(terms)`. Parenthesised, like `fullTextMatches`.
    */
-  readonly siteSearchHits: string
+  siteSearchMatches(query: string): RawBuilder<SiteSearchHitRow>
   /** Terms are already folded words: letters and digits only. */
   fullTextQuery(terms: readonly string[]): string
   /**
@@ -57,6 +70,10 @@ export interface Dialect {
    * undefined where the engine does that itself.
    */
   syncIdentity(table: string): string | undefined
+  /** The names of a table's columns, as rows of `name`; its one parameter is the table. */
+  readonly columnsOf: string
+  /** The names of the tables in the database, as rows of `name`. */
+  readonly tableNames: string
 }
 
 const RESERVED_RENDER = /\?/g
@@ -91,14 +108,17 @@ export const sqliteDialect: Dialect = {
   // Name hits weigh ten times body hits; bm25 is lower-is-better, so negated.
   // bm25 cannot be called under an aggregate, and `LIMIT -1` (no limit) keeps
   // SQLite from flattening the inner query into the outer one, which would.
-  fullTextHits: `SELECT sd.node_id AS node_id, MAX(f.score) AS score
+  fullTextMatches: (query) => sql<FullTextHit>`(SELECT sd.node_id AS node_id, MAX(f.score) AS score
     FROM (SELECT rowid AS id, -bm25(search_document_fts, 10.0, 1.0) AS score
-          FROM search_document_fts WHERE search_document_fts MATCH ? LIMIT -1) f
-    JOIN search_document sd ON sd.id = f.id GROUP BY sd.node_id`,
+          FROM search_document_fts WHERE search_document_fts MATCH ${query} LIMIT -1) f
+    JOIN search_document sd ON sd.id = f.id GROUP BY sd.node_id)`,
   fullTextQuery: (terms) => terms.map((term) => `"${term}"*`).join(' AND '),
-  siteSearchHits: `SELECT rowid AS row_id, -bm25(site_search_document_fts, 10.0, 5.0, 2.0, 1.0) AS score
-    FROM site_search_document_fts WHERE site_search_document_fts MATCH ? LIMIT -1`,
+  siteSearchMatches: (query) => sql<SiteSearchHitRow>`(SELECT rowid AS row_id,
+      -bm25(site_search_document_fts, 10.0, 5.0, 2.0, 1.0) AS score
+    FROM site_search_document_fts WHERE site_search_document_fts MATCH ${query} LIMIT -1)`,
   syncIdentity: () => undefined,
+  columnsOf: 'SELECT name FROM pragma_table_info(?)',
+  tableNames: "SELECT name FROM sqlite_master WHERE type = 'table'",
 }
 
 export const postgresDialect: Dialect = {
@@ -130,13 +150,20 @@ export const postgresDialect: Dialect = {
   forShare: 'FOR SHARE',
   forUpdate: 'FOR UPDATE',
   forUpdateSkipLocked: 'FOR UPDATE SKIP LOCKED',
-  fullTextHits: `SELECT sd.node_id AS node_id, MAX(ts_rank(sd.terms, q)) AS score
-    FROM search_document sd, to_tsquery('simple', ?) q
-    WHERE sd.terms @@ q GROUP BY sd.node_id`,
+  fullTextMatches: (
+    query,
+  ) => sql<FullTextHit>`(SELECT sd.node_id AS node_id, MAX(ts_rank(sd.terms, q)) AS score
+    FROM search_document sd, to_tsquery('simple', ${query}) q
+    WHERE sd.terms @@ q GROUP BY sd.node_id)`,
   fullTextQuery: (terms) => terms.map((term) => `${term}:*`).join(' & '),
   // ts_rank's weights run D, C, B, A: the same 1, 2, 5, 10 as SQLite's bm25 weights.
-  siteSearchHits: `SELECT s.id AS row_id, ts_rank('{0.1, 0.2, 0.5, 1.0}', s.terms, q) AS score
-    FROM site_search_document s, to_tsquery('simple', ?) q WHERE s.terms @@ q`,
+  siteSearchMatches: (query) => sql<SiteSearchHitRow>`(SELECT s.id AS row_id,
+      ts_rank('{0.1, 0.2, 0.5, 1.0}', s.terms, q) AS score
+    FROM site_search_document s, to_tsquery('simple', ${query}) q WHERE s.terms @@ q)`,
+  columnsOf:
+    'SELECT column_name AS name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = ?',
+  tableNames:
+    "SELECT table_name AS name FROM information_schema.tables WHERE table_schema = current_schema() AND table_type = 'BASE TABLE'",
   syncIdentity: (table) =>
     `SELECT setval(pg_get_serial_sequence('${table}', 'id'), (SELECT COALESCE(MAX(id), 1) FROM ${table}))`,
 }

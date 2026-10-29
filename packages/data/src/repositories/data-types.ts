@@ -40,12 +40,21 @@ export class DataTypeRepository {
   }
 
   async byKey(key: string): Promise<DataTypeModel | undefined> {
-    const rows = await this.#db.query(
-      `SELECT n.unique_id, n.text, n.parent_id, d.alias, d.editor_alias, d.editor_ui_alias, d.db_type, d.config
-       FROM data_type d JOIN node n ON n.id = d.node_id
-       WHERE n.unique_id = ?`,
-      [normaliseUuid(key)],
-    )
+    const rows = await this.#db.q
+      .selectFrom('data_type as d')
+      .innerJoin('node as n', 'n.id', 'd.node_id')
+      .select([
+        'n.unique_id',
+        'n.text',
+        'n.parent_id',
+        'd.alias',
+        'd.editor_alias',
+        'd.editor_ui_alias',
+        'd.db_type',
+        'd.config',
+      ])
+      .where('n.unique_id', '=', normaliseUuid(key))
+      .execute()
     const row = rows[0]
     if (!row) return undefined
     const parent =
@@ -63,10 +72,12 @@ export class DataTypeRepository {
   }
 
   async byAlias(alias: string): Promise<DataTypeModel | undefined> {
-    const rows = await this.#db.query<{ unique_id: string }>(
-      'SELECT n.unique_id FROM data_type d JOIN node n ON n.id = d.node_id WHERE d.alias = ?',
-      [alias],
-    )
+    const rows = await this.#db.q
+      .selectFrom('data_type as d')
+      .innerJoin('node as n', 'n.id', 'd.node_id')
+      .select('n.unique_id')
+      .where('d.alias', '=', alias)
+      .execute()
     return rows[0] ? this.byKey(String(rows[0].unique_id)) : undefined
   }
 
@@ -81,11 +92,12 @@ export class DataTypeRepository {
 
   /** The storage type, which decides which `property_data` column a value uses. */
   async storageTypeByPropertyTypeId(propertyTypeId: number): Promise<string | undefined> {
-    const rows = await this.#db.query<{ db_type: string }>(
-      `SELECT d.db_type FROM property_type p JOIN data_type d ON d.node_id = p.data_type_id
-       WHERE p.id = ?`,
-      [propertyTypeId],
-    )
+    const rows = await this.#db.q
+      .selectFrom('property_type as p')
+      .innerJoin('data_type as d', 'd.node_id', 'p.data_type_id')
+      .select('d.db_type')
+      .where('p.id', '=', propertyTypeId)
+      .execute()
     return rows[0] ? String(rows[0].db_type) : undefined
   }
 
@@ -100,9 +112,12 @@ export class DataTypeRepository {
   }
 
   async all(): Promise<DataTypeModel[]> {
-    const rows = await this.#db.query<{ unique_id: string }>(
-      'SELECT n.unique_id FROM data_type d JOIN node n ON n.id = d.node_id ORDER BY n.text',
-    )
+    const rows = await this.#db.q
+      .selectFrom('data_type as d')
+      .innerJoin('node as n', 'n.id', 'd.node_id')
+      .select('n.unique_id')
+      .orderBy('n.text')
+      .execute()
     return this.byKeys(rows.map((r) => String(r.unique_id)))
   }
 
@@ -125,7 +140,7 @@ export class DataTypeRepository {
   async isUsed(key: string): Promise<boolean | undefined> {
     const node = await this.#nodes.byKey(key)
     if (!node || node.objectType !== ObjectTypes.DataType) return undefined
-    return this.#hasValues('p.data_type_id = ?', [node.id])
+    return this.#hasValues('p.data_type_id', node.id)
   }
 
   /**
@@ -133,29 +148,39 @@ export class DataTypeRepository {
    * undefined when the type or the property does not exist.
    */
   async isPropertyUsed(contentTypeKey: string, alias: string): Promise<boolean | undefined> {
-    const rows = await this.#db.query<{ id: number }>(
-      `SELECT p.id FROM property_type p
-       JOIN node ctn ON ctn.id = p.content_type_id
-       WHERE ctn.unique_id = ? AND p.alias = ? AND p.retired_at IS NULL`,
-      [normaliseUuid(contentTypeKey), alias],
-    )
+    const rows = await this.#db.q
+      .selectFrom('property_type as p')
+      .innerJoin('node as ctn', 'ctn.id', 'p.content_type_id')
+      .select('p.id')
+      .where('ctn.unique_id', '=', normaliseUuid(contentTypeKey))
+      .where('p.alias', '=', alias)
+      .where('p.retired_at', 'is', null)
+      .execute()
     const property = rows[0]
     if (!property) return undefined
-    return this.#hasValues('p.id = ?', [Number(property.id)])
+    return this.#hasValues('p.id', Number(property.id))
   }
 
   /** A current value that holds something: an empty string or an all-null row is not a use. */
-  async #hasValues(where: string, params: unknown[]): Promise<boolean> {
-    const rows = await this.#db.query(
-      `SELECT 1 AS used FROM property_value v
-       JOIN property_type p ON p.id = v.property_type_id
-       WHERE ${where} AND v.is_current = ? AND p.retired_at IS NULL
-         AND (v.int_value IS NOT NULL OR v.decimal_value IS NOT NULL OR v.date_value IS NOT NULL
-           OR (v.varchar_value IS NOT NULL AND v.varchar_value <> '')
-           OR (v.text_value IS NOT NULL AND v.text_value <> ''))
-       LIMIT 1`,
-      [...params, this.#db.dialect.boolValue(true)],
-    )
+  async #hasValues(column: 'p.data_type_id' | 'p.id', id: number): Promise<boolean> {
+    const rows = await this.#db.q
+      .selectFrom('property_value as v')
+      .innerJoin('property_type as p', 'p.id', 'v.property_type_id')
+      .select((eb) => eb.lit(1).as('used'))
+      .where(column, '=', id)
+      .where('v.is_current', '=', this.#db.dialect.boolValue(true))
+      .where('p.retired_at', 'is', null)
+      .where((eb) =>
+        eb.or([
+          eb('v.int_value', 'is not', null),
+          eb('v.decimal_value', 'is not', null),
+          eb('v.date_value', 'is not', null),
+          eb.and([eb('v.varchar_value', 'is not', null), eb('v.varchar_value', '<>', '')]),
+          eb.and([eb('v.text_value', 'is not', null), eb('v.text_value', '<>', '')]),
+        ]),
+      )
+      .limit(1)
+      .execute()
     return rows.length > 0
   }
 
@@ -170,15 +195,25 @@ export class DataTypeRepository {
   > {
     const node = await this.#nodes.byKey(key)
     if (!node) return []
-    const rows = await this.#db.query(
-      `SELECT p.unique_id, p.alias, p.name, ctn.unique_id AS type_key, ct.alias AS type_alias, ctn.text AS type_name, ct.icon
-       FROM property_type p
-       JOIN content_type ct ON ct.node_id = p.content_type_id
-       JOIN node ctn ON ctn.id = ct.node_id
-       WHERE p.data_type_id = ? AND p.retired_at IS NULL AND ct.retired_at IS NULL
-       ORDER BY ctn.text, p.sort_order`,
-      [node.id],
-    )
+    const rows = await this.#db.q
+      .selectFrom('property_type as p')
+      .innerJoin('content_type as ct', 'ct.node_id', 'p.content_type_id')
+      .innerJoin('node as ctn', 'ctn.id', 'ct.node_id')
+      .select([
+        'p.unique_id',
+        'p.alias',
+        'p.name',
+        'ctn.unique_id as type_key',
+        'ct.alias as type_alias',
+        'ctn.text as type_name',
+        'ct.icon',
+      ])
+      .where('p.data_type_id', '=', node.id)
+      .where('p.retired_at', 'is', null)
+      .where('ct.retired_at', 'is', null)
+      .orderBy('ctn.text')
+      .orderBy('p.sort_order')
+      .execute()
     return rows.map((row) => ({
       propertyKey: normaliseUuid(String(row.unique_id)),
       alias: String(row.alias),
@@ -222,10 +257,17 @@ export class DataTypeRepository {
       )
       if (existing) {
         await repo.nodes.rename(existing.id, model.name)
-        await tx.exec(
-          'UPDATE data_type SET alias = ?, editor_alias = ?, editor_ui_alias = ?, db_type = ?, config = ? WHERE node_id = ?',
-          [model.alias, model.editorAlias, model.editorUiAlias, model.dbType, config, existing.id],
-        )
+        await tx.q
+          .updateTable('data_type')
+          .set({
+            alias: model.alias ?? null,
+            editor_alias: model.editorAlias,
+            editor_ui_alias: model.editorUiAlias ?? null,
+            db_type: model.dbType,
+            config,
+          })
+          .where('node_id', '=', existing.id)
+          .execute()
       } else {
         const parentId = model.parentKey
           ? ((await repo.nodes.byKey(model.parentKey))?.id ?? SystemNodes.Root)
@@ -237,10 +279,17 @@ export class DataTypeRepository {
           text: model.name,
           userId,
         })
-        await tx.exec(
-          'INSERT INTO data_type (node_id, alias, editor_alias, editor_ui_alias, db_type, config) VALUES (?, ?, ?, ?, ?, ?)',
-          [node.id, model.alias, model.editorAlias, model.editorUiAlias, model.dbType, config],
-        )
+        await tx.q
+          .insertInto('data_type')
+          .values({
+            node_id: node.id,
+            alias: model.alias ?? null,
+            editor_alias: model.editorAlias,
+            editor_ui_alias: model.editorUiAlias ?? null,
+            db_type: model.dbType,
+            config,
+          })
+          .execute()
       }
       const saved = await repo.byKey(model.key)
       if (!saved) throw new Error('Data type could not be read back after saving.')
@@ -252,8 +301,8 @@ export class DataTypeRepository {
     const node = await this.#nodes.byKey(key)
     if (!node || node.objectType !== ObjectTypes.DataType) return false
     return this.#db.transaction(async (tx) => {
-      await tx.exec('DELETE FROM data_type WHERE node_id = ?', [node.id])
-      await tx.exec('DELETE FROM node WHERE id = ?', [node.id])
+      await tx.q.deleteFrom('data_type').where('node_id', '=', node.id).execute()
+      await tx.q.deleteFrom('node').where('id', '=', node.id).execute()
       return true
     })
   }

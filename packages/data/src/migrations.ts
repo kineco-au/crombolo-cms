@@ -11,6 +11,7 @@ import type { Db } from './database.ts'
 import type { Dialect } from './dialect.ts'
 import type { LockManager } from './locks.ts'
 import { Locks } from './locks.ts'
+import { now, type Query, queryFor, sql } from './query.ts'
 
 export const MIGRATION_STATE_KEY = 'Crombolo.Core.Upgrader.State'
 export const INITIAL_STATE = '{00000000-0000-0000-0000-000000000000}'
@@ -169,44 +170,42 @@ const ensured = new WeakSet<Db>()
 async function ensureTables(db: Db): Promise<void> {
   if (ensured.has(db)) return
   const t = db.dialect.types
-  await db.exec(
-    `CREATE TABLE IF NOT EXISTS key_value (
-       key ${t.text} PRIMARY KEY,
-       value ${t.text},
-       update_date ${t.timestamp} NOT NULL
-     )`,
-  )
-  await db.exec(
-    `CREATE TABLE IF NOT EXISTS migration_history (
-       id ${t.identity},
-       name ${t.varchar(255)} NOT NULL,
-       kind ${t.varchar(20)} NOT NULL,
-       from_state ${t.varchar(255)},
-       to_state ${t.varchar(255)},
-       applied_at ${t.timestamp} NOT NULL,
-       duration_ms ${t.integer} NOT NULL,
-       checksum ${t.varchar(64)},
-       applied_by ${t.varchar(255)},
-       note ${t.text},
-       bundle ${t.varchar(64)}
-     )`,
-  )
+  const type = (definition: string) => sql.raw(definition)
+  await db.q.schema
+    .createTable('key_value')
+    .ifNotExists()
+    .addColumn('key', type(t.text), (c) => c.primaryKey())
+    .addColumn('value', type(t.text))
+    .addColumn('update_date', type(t.timestamp), (c) => c.notNull())
+    .execute()
+  await db.q.schema
+    .createTable('migration_history')
+    .ifNotExists()
+    .addColumn('id', type(t.identity))
+    .addColumn('name', type(t.varchar(255)), (c) => c.notNull())
+    .addColumn('kind', type(t.varchar(20)), (c) => c.notNull())
+    .addColumn('from_state', type(t.varchar(255)))
+    .addColumn('to_state', type(t.varchar(255)))
+    .addColumn('applied_at', type(t.timestamp), (c) => c.notNull())
+    .addColumn('duration_ms', type(t.integer), (c) => c.notNull())
+    .addColumn('checksum', type(t.varchar(64)))
+    .addColumn('applied_by', type(t.varchar(255)))
+    .addColumn('note', type(t.text))
+    .addColumn('bundle', type(t.varchar(64)))
+    .execute()
   // A ledger from before bundles could own tables has no `bundle` column. It is
   // added here, where the table is, rather than by a core migration: the ledger
   // has to be able to record a bundle's step whatever state core is at.
   if (!(await hasColumn(db, 'migration_history', 'bundle')))
-    await db.exec(`ALTER TABLE migration_history ADD COLUMN bundle ${t.varchar(64)}`)
+    await db.q.schema
+      .alterTable('migration_history')
+      .addColumn('bundle', type(t.varchar(64)))
+      .execute()
   ensured.add(db)
 }
 
 async function hasColumn(db: Db, table: string, column: string): Promise<boolean> {
-  const rows =
-    db.dialect.name === 'sqlite'
-      ? await db.query<{ name: string }>(`SELECT name FROM pragma_table_info('${table}')`)
-      : await db.query<{ name: string }>(
-          'SELECT column_name AS name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = ?',
-          [table],
-        )
+  const rows = await db.query<{ name: string }>(db.dialect.columnsOf, [table])
   return rows.some((row) => row.name === column)
 }
 
@@ -219,28 +218,41 @@ export async function readState(
   },
 ): Promise<string> {
   await ensureTables(db)
-  const rows = await db.query<{ value: string }>('SELECT value FROM key_value WHERE key = ?', [
-    chain.stateKey,
-  ])
-  return rows[0]?.value ?? chain.initialState
+  const row = await db.q
+    .selectFrom('key_value')
+    .select('value')
+    .where('key', '=', chain.stateKey)
+    .executeTakeFirst()
+  return row?.value ?? chain.initialState
 }
 
 async function writeState(db: Db, state: string, key = MIGRATION_STATE_KEY): Promise<void> {
-  const now = db.dialect.now()
-  await db.query(`UPDATE key_value SET value = ?, update_date = ${now} WHERE key = ?`, [state, key])
-  const rows = await db.query<{ value: string }>('SELECT value FROM key_value WHERE key = ?', [key])
-  if (rows.length === 0) {
-    await db.exec(
-      `INSERT INTO key_value (key, value, update_date) VALUES (${db.dialect.placeholder(1)}, ${db.dialect.placeholder(2)}, ${now})`,
-      [key, state],
-    )
-  }
+  await upsertKeyValue(db, key, state)
+}
+
+/** Updates a setting, then inserts it if the update found no row: two statements, as ever. */
+async function upsertKeyValue(db: Db, key: string, value: string): Promise<void> {
+  await db.q
+    .updateTable('key_value')
+    .set({ value, update_date: now(db) })
+    .where('key', '=', key)
+    .execute()
+  const row = await db.q
+    .selectFrom('key_value')
+    .select('value')
+    .where('key', '=', key)
+    .executeTakeFirst()
+  if (!row)
+    await db.q
+      .insertInto('key_value')
+      .values({ key, value, update_date: now(db) })
+      .execute()
 }
 
 /** Forgets a setting entirely, as a purged bundle's state is forgotten. */
 export async function deleteKeyValue(db: Db, key: string): Promise<void> {
   await ensureTables(db)
-  await db.exec('DELETE FROM key_value WHERE key = ?', [key])
+  await db.q.deleteFrom('key_value').where('key', '=', key).execute()
 }
 
 export interface LedgerEntry {
@@ -264,23 +276,17 @@ export interface LedgerEntry {
  */
 export async function readKeyValue(db: Db, key: string): Promise<string | undefined> {
   await ensureTables(db)
-  const rows = await db.query<{ value: string | null }>(
-    'SELECT value FROM key_value WHERE key = ?',
-    [key],
-  )
-  return rows[0]?.value ?? undefined
+  const row = await db.q
+    .selectFrom('key_value')
+    .select('value')
+    .where('key', '=', key)
+    .executeTakeFirst()
+  return row?.value ?? undefined
 }
 
 export async function writeKeyValue(db: Db, key: string, value: string): Promise<void> {
   await ensureTables(db)
-  const now = db.dialect.now()
-  await db.exec(`UPDATE key_value SET value = ?, update_date = ${now} WHERE key = ?`, [value, key])
-  const rows = await db.query('SELECT value FROM key_value WHERE key = ?', [key])
-  if (rows.length === 0)
-    await db.exec(`INSERT INTO key_value (key, value, update_date) VALUES (?, ?, ${now})`, [
-      key,
-      value,
-    ])
+  await upsertKeyValue(db, key, value)
 }
 
 /**
@@ -297,28 +303,31 @@ export async function ensureKeyValue(db: Db, key: string, create: () => string):
 /** Appends a row to `migration_history`. */
 export async function recordInLedger(db: Db, entry: LedgerEntry): Promise<void> {
   await ensureTables(db)
-  await db.exec(
-    `INSERT INTO migration_history (name, kind, from_state, to_state, applied_at, duration_ms, checksum, applied_by, note, bundle)
-     VALUES (?, ?, ?, ?, ${db.dialect.now()}, ?, ?, ?, ?, ?)`,
-    [
-      entry.name,
-      entry.kind,
-      entry.fromState ?? null,
-      entry.toState ?? null,
-      entry.durationMs,
-      entry.checksum ?? null,
-      entry.appliedBy ?? null,
-      entry.note ?? null,
-      entry.bundle ?? null,
-    ],
-  )
+  await db.q
+    .insertInto('migration_history')
+    .values({
+      name: entry.name,
+      kind: entry.kind,
+      from_state: entry.fromState ?? null,
+      to_state: entry.toState ?? null,
+      applied_at: now(db),
+      duration_ms: entry.durationMs,
+      checksum: entry.checksum ?? null,
+      applied_by: entry.appliedBy ?? null,
+      note: entry.note ?? null,
+      bundle: entry.bundle ?? null,
+    })
+    .execute()
 }
 
 /** The newest ledger row's id, so a node can later ask what was ledgered after it booted. */
 export async function latestLedgerId(db: Db): Promise<number> {
   await ensureTables(db)
-  const rows = await db.query<{ n: number | null }>('SELECT MAX(id) AS n FROM migration_history')
-  return Number(rows[0]?.n ?? 0)
+  const row = await db.q
+    .selectFrom('migration_history')
+    .select((eb) => eb.fn.max('id').as('n'))
+    .executeTakeFirst()
+  return Number(row?.n ?? 0)
 }
 
 /**
@@ -327,11 +336,14 @@ export async function latestLedgerId(db: Db): Promise<number> {
  * bundle's own tables, which no read of core's depends on.
  */
 export async function contractsLedgeredAfter(db: Db, afterId: number): Promise<number> {
-  const rows = await db.query<{ n: number }>(
-    "SELECT COUNT(*) AS n FROM migration_history WHERE id > ? AND kind = 'contract' AND bundle IS NULL",
-    [afterId],
-  )
-  return Number(rows[0]?.n ?? 0)
+  const row = await db.q
+    .selectFrom('migration_history')
+    .select((eb) => eb.fn.countAll().as('n'))
+    .where('id', '>', afterId)
+    .where('kind', '=', 'contract')
+    .where('bundle', 'is', null)
+    .executeTakeFirst()
+  return Number(row?.n ?? 0)
 }
 
 export interface LedgerRow extends LedgerEntry {
@@ -341,9 +353,23 @@ export interface LedgerRow extends LedgerEntry {
 
 export async function readLedger(db: Db): Promise<LedgerRow[]> {
   await ensureTables(db)
-  const rows = await db.query(
-    'SELECT id, name, kind, from_state, to_state, applied_at, duration_ms, checksum, applied_by, note, bundle FROM migration_history ORDER BY id',
-  )
+  const rows = await db.q
+    .selectFrom('migration_history')
+    .select([
+      'id',
+      'name',
+      'kind',
+      'from_state',
+      'to_state',
+      'applied_at',
+      'duration_ms',
+      'checksum',
+      'applied_by',
+      'note',
+      'bundle',
+    ])
+    .orderBy('id')
+    .execute()
   return rows.map((row) => ({
     id: Number(row.id),
     name: String(row.name),
@@ -426,10 +452,12 @@ async function verifyApplied(db: Db, plan: MigrationPlan, state: string): Promis
   if (!plan.bundle) return
   const applied = plan.appliedAt(state) ?? []
   if (applied.length === 0) return
-  const rows = await db.query<{ name: string; kind: string; checksum: string | null }>(
-    'SELECT name, kind, checksum FROM migration_history WHERE bundle = ? ORDER BY id',
-    [plan.bundle],
-  )
+  const rows = await db.q
+    .selectFrom('migration_history')
+    .select(['name', 'kind', 'checksum'])
+    .where('bundle', '=', plan.bundle)
+    .orderBy('id')
+    .execute()
   const purged = rows.map((row) => row.kind).lastIndexOf('purge')
   const ran = new Map(
     rows
@@ -519,6 +547,10 @@ class RecordingDb implements Db {
   readonly dialect: Dialect
   readonly locks: LockManager
   readonly statements: string[]
+
+  get q(): Query {
+    return queryFor(this)
+  }
 
   constructor(dialect: Dialect, locks: LockManager, statements: string[] = []) {
     this.dialect = dialect

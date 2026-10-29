@@ -38,15 +38,18 @@ const GROUP_TYPE_NAMES = ['Group', 'Tab'] as const
  * settings, and whether the type is in site search: what its items are indexed by.
  */
 async function propertySignature(db: Db, contentTypeNodeId: number): Promise<string> {
-  const rows = await db.query<Record<string, unknown>>(
-    `SELECT p.id, p.alias, p.variations, p.data_type_id, p.searchable, p.site_search FROM property_type p
-     WHERE p.content_type_id = ? AND p.retired_at IS NULL ORDER BY p.id`,
-    [contentTypeNodeId],
-  )
-  const [type] = await db.query<{ site_search: unknown }>(
-    'SELECT site_search FROM content_type WHERE node_id = ?',
-    [contentTypeNodeId],
-  )
+  const rows = await db.q
+    .selectFrom('property_type as p')
+    .select(['p.id', 'p.alias', 'p.variations', 'p.data_type_id', 'p.searchable', 'p.site_search'])
+    .where('p.content_type_id', '=', contentTypeNodeId)
+    .where('p.retired_at', 'is', null)
+    .orderBy('p.id')
+    .execute()
+  const [type] = await db.q
+    .selectFrom('content_type')
+    .select('site_search')
+    .where('node_id', '=', contentTypeNodeId)
+    .execute()
   return [
     `site:${type ? fromDbBool(type.site_search) : true}`,
     ...rows.map(
@@ -145,22 +148,27 @@ export class ContentTypeRepository {
     alias: string,
     options: { includeRetired?: boolean } = {},
   ): Promise<ContentTypeAggregate | undefined> {
-    const rows = await this.#db.query<{ unique_id: string }>(
-      `SELECT n.unique_id FROM content_type ct JOIN node n ON n.id = ct.node_id
-       WHERE ct.alias = ? AND n.node_object_type = ?${options.includeRetired ? '' : ' AND ct.retired_at IS NULL'}`,
-      [alias, this.#objectType],
-    )
+    const rows = await this.#db.q
+      .selectFrom('content_type as ct')
+      .innerJoin('node as n', 'n.id', 'ct.node_id')
+      .select('n.unique_id')
+      .where('ct.alias', '=', alias)
+      .where('n.node_object_type', '=', this.#objectType)
+      .$if(!options.includeRetired, (q) => q.where('ct.retired_at', 'is', null))
+      .execute()
     return rows[0] ? this.byKey(String(rows[0].unique_id)) : undefined
   }
 
   async aliasExists(alias: string, exceptKey?: string): Promise<boolean> {
-    // Built conditionally rather than with `? IS NULL`: Postgres cannot infer a
-    // type for a bare parameter used only in a null test.
-    const sql = `SELECT COUNT(*) AS n FROM content_type ct
-       JOIN node n ON n.id = ct.node_id
-       WHERE ct.alias = ?${exceptKey ? ' AND n.unique_id <> ?' : ''}`
-    const params = exceptKey ? [alias, normaliseUuid(exceptKey)] : [alias]
-    const rows = await this.#db.query<{ n: number }>(sql, params)
+    const rows = await this.#db.q
+      .selectFrom('content_type as ct')
+      .innerJoin('node as n', 'n.id', 'ct.node_id')
+      .select((eb) => eb.fn.countAll().as('n'))
+      .where('ct.alias', '=', alias)
+      .$if(Boolean(exceptKey), (q) =>
+        q.where('n.unique_id', '<>', normaliseUuid(exceptKey as string)),
+      )
+      .execute()
     return Number(rows[0]?.n ?? 0) > 0
   }
 
@@ -169,17 +177,19 @@ export class ContentTypeRepository {
     skip: number,
     take: number,
   ): Promise<{ total: number; items: ContentTypeAggregate[] }> {
-    const totals = await this.#db.query<{ n: number }>(
-      `SELECT COUNT(*) AS n FROM content_type ct JOIN node n ON n.id = ct.node_id
-       WHERE ct.allow_at_root = ? AND ct.retired_at IS NULL AND n.node_object_type = ?`,
-      [this.#db.dialect.boolValue(true), this.#objectType],
-    )
-    const rows = await this.#db.query<{ unique_id: string }>(
-      `SELECT n.unique_id FROM content_type ct JOIN node n ON n.id = ct.node_id
-       WHERE ct.allow_at_root = ? AND ct.retired_at IS NULL AND n.node_object_type = ?
-       ORDER BY n.text LIMIT ? OFFSET ?`,
-      [this.#db.dialect.boolValue(true), this.#objectType, take, skip],
-    )
+    const matching = this.#db.q
+      .selectFrom('content_type as ct')
+      .innerJoin('node as n', 'n.id', 'ct.node_id')
+      .where('ct.allow_at_root', '=', this.#db.dialect.boolValue(true))
+      .where('ct.retired_at', 'is', null)
+      .where('n.node_object_type', '=', this.#objectType)
+    const totals = await matching.select((eb) => eb.fn.countAll().as('n')).execute()
+    const rows = await matching
+      .select('n.unique_id')
+      .orderBy('n.text')
+      .limit(take)
+      .offset(skip)
+      .execute()
     const items: ContentTypeAggregate[] = []
     let hidden = 0
     for (const row of rows) {
@@ -200,22 +210,20 @@ export class ContentTypeRepository {
     skip: number,
     take: number,
   ): Promise<{ total: number; items: ContentTypeAggregate[] }> {
-    const where = `WHERE ct.is_element = ? AND ct.allow_in_library = ? AND ct.retired_at IS NULL
-       AND n.node_object_type = ?`
-    const params = [
-      this.#db.dialect.boolValue(true),
-      this.#db.dialect.boolValue(true),
-      this.#objectType,
-    ]
-    const totals = await this.#db.query<{ n: number }>(
-      `SELECT COUNT(*) AS n FROM content_type ct JOIN node n ON n.id = ct.node_id ${where}`,
-      params,
-    )
-    const rows = await this.#db.query<{ unique_id: string }>(
-      `SELECT n.unique_id FROM content_type ct JOIN node n ON n.id = ct.node_id ${where}
-       ORDER BY n.text LIMIT ? OFFSET ?`,
-      [...params, take, skip],
-    )
+    const matching = this.#db.q
+      .selectFrom('content_type as ct')
+      .innerJoin('node as n', 'n.id', 'ct.node_id')
+      .where('ct.is_element', '=', this.#db.dialect.boolValue(true))
+      .where('ct.allow_in_library', '=', this.#db.dialect.boolValue(true))
+      .where('ct.retired_at', 'is', null)
+      .where('n.node_object_type', '=', this.#objectType)
+    const totals = await matching.select((eb) => eb.fn.countAll().as('n')).execute()
+    const rows = await matching
+      .select('n.unique_id')
+      .orderBy('n.text')
+      .limit(take)
+      .offset(skip)
+      .execute()
     const items: ContentTypeAggregate[] = []
     let hidden = 0
     for (const row of rows) {
@@ -232,11 +240,12 @@ export class ContentTypeRepository {
    * level), as its parent's type allows children; nothing when it may.
    */
   async placementRefusal(typeKey: string, parentKey: string | null): Promise<string | undefined> {
-    const types = await this.#db.query<{ id: number; text: string | null; allow_at_root: unknown }>(
-      `SELECT n.id, n.text, ct.allow_at_root FROM node n JOIN content_type ct ON ct.node_id = n.id
-       WHERE n.unique_id = ?`,
-      [normaliseUuid(typeKey)],
-    )
+    const types = await this.#db.q
+      .selectFrom('node as n')
+      .innerJoin('content_type as ct', 'ct.node_id', 'n.id')
+      .select(['n.id', 'n.text', 'ct.allow_at_root'])
+      .where('n.unique_id', '=', normaliseUuid(typeKey))
+      .execute()
     const type = types[0]
     if (!type) return undefined
     const typeName = String(type.text ?? typeKey)
@@ -244,18 +253,20 @@ export class ContentTypeRepository {
       return fromDbBool(type.allow_at_root)
         ? undefined
         : `"${typeName}" isn't allowed at the top level.`
-    const parents = await this.#db.query<{ text: string | null; content_type_id: number }>(
-      `SELECT n.text, c.content_type_id FROM node n JOIN content c ON c.node_id = n.id
-       WHERE n.unique_id = ?`,
-      [normaliseUuid(parentKey)],
-    )
+    const parents = await this.#db.q
+      .selectFrom('node as n')
+      .innerJoin('content as c', 'c.node_id', 'n.id')
+      .select(['n.text', 'c.content_type_id'])
+      .where('n.unique_id', '=', normaliseUuid(parentKey))
+      .execute()
     const parent = parents[0]
     if (!parent) return undefined
-    const allowed = await this.#db.query<{ n: number }>(
-      `SELECT COUNT(*) AS n FROM content_type_allowed_child
-       WHERE content_type_id = ? AND allowed_content_type_id = ?`,
-      [parent.content_type_id, type.id],
-    )
+    const allowed = await this.#db.q
+      .selectFrom('content_type_allowed_child')
+      .select((eb) => eb.fn.countAll().as('n'))
+      .where('content_type_id', '=', parent.content_type_id)
+      .where('allowed_content_type_id', '=', type.id)
+      .execute()
     return Number(allowed[0]?.n ?? 0) > 0
       ? undefined
       : `"${typeName}" isn't allowed under "${parent.text ?? parentKey}".`
@@ -268,12 +279,13 @@ export class ContentTypeRepository {
   ): Promise<{ total: number; items: ContentTypeAggregate[] }> {
     const node = await this.#nodes.byKey(key)
     if (!node) return { total: 0, items: [] }
-    const rows = await this.#db.query<{ unique_id: string }>(
-      `SELECT child.unique_id FROM content_type_allowed_child ac
-       JOIN node child ON child.id = ac.allowed_content_type_id
-       WHERE ac.content_type_id = ? ORDER BY ac.sort_order`,
-      [node.id],
-    )
+    const rows = await this.#db.q
+      .selectFrom('content_type_allowed_child as ac')
+      .innerJoin('node as child', 'child.id', 'ac.allowed_content_type_id')
+      .select('child.unique_id')
+      .where('ac.content_type_id', '=', node.id)
+      .orderBy('ac.sort_order')
+      .execute()
     const items: ContentTypeAggregate[] = []
     for (const row of rows.slice(skip, skip + take)) {
       const aggregate = await this.byKey(String(row.unique_id))
@@ -316,76 +328,92 @@ export class ContentTypeRepository {
       }
 
       const variations = variationFlags(aggregate.variesByCulture, aggregate.variesBySegment)
-      const typeValues = [
-        aggregate.alias,
-        aggregate.icon,
-        aggregate.description,
-        aggregate.collectionKey,
-        bool(aggregate.isElement),
-        bool(aggregate.allowedInLibrary),
-        bool(aggregate.allowedAsRoot),
+      const typeValues = {
+        alias: aggregate.alias,
+        icon: aggregate.icon ?? null,
+        description: aggregate.description ?? null,
+        list_view: aggregate.collectionKey ?? null,
+        is_element: bool(aggregate.isElement),
+        allow_in_library: bool(aggregate.allowedInLibrary),
+        allow_at_root: bool(aggregate.allowedAsRoot),
         variations,
-        bool(aggregate.cleanup.preventCleanup),
-        aggregate.cleanup.keepAllVersionsNewerThanDays,
-        aggregate.cleanup.keepLatestVersionPerDayForDays,
-        aggregate.sinceVersion ?? null,
-      ]
+        prevent_cleanup: bool(aggregate.cleanup.preventCleanup),
+        keep_all_versions_newer_than_days: aggregate.cleanup.keepAllVersionsNewerThanDays ?? null,
+        keep_latest_version_per_day_for_days:
+          aggregate.cleanup.keepLatestVersionPerDayForDays ?? null,
+        since_version: aggregate.sinceVersion ?? null,
+      }
       if (existing) {
-        await tx.exec(
-          `UPDATE content_type SET alias = ?, icon = ?, description = ?, list_view = ?, is_element = ?,
-             allow_in_library = ?, allow_at_root = ?, variations = ?, prevent_cleanup = ?,
-             keep_all_versions_newer_than_days = ?, keep_latest_version_per_day_for_days = ?, since_version = ?, retired_at = NULL
-           WHERE node_id = ?`,
-          [...typeValues, nodeId],
-        )
+        await tx.q
+          .updateTable('content_type')
+          .set({ ...typeValues, retired_at: null })
+          .where('node_id', '=', nodeId)
+          .execute()
       } else {
-        await tx.exec(
-          `INSERT INTO content_type
-             (node_id, alias, icon, thumbnail, description, list_view, is_element, allow_in_library, allow_at_root,
-              variations, prevent_cleanup, keep_all_versions_newer_than_days, keep_latest_version_per_day_for_days, since_version, since_state_id)
-           VALUES (?, ?, ?, 'folder.png', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [nodeId, ...typeValues, options.sinceStateId ?? null],
-        )
+        await tx.q
+          .insertInto('content_type')
+          .values({
+            node_id: nodeId,
+            ...typeValues,
+            thumbnail: 'folder.png',
+            since_state_id: options.sinceStateId ?? null,
+          })
+          .execute()
       }
       // As for a property's flags: only a schema sync says.
       if (aggregate.siteSearch !== undefined)
-        await tx.exec('UPDATE content_type SET site_search = ? WHERE node_id = ?', [
-          bool(aggregate.siteSearch),
-          nodeId,
-        ])
+        await tx.q
+          .updateTable('content_type')
+          .set({ site_search: bool(aggregate.siteSearch) })
+          .where('node_id', '=', nodeId)
+          .execute()
 
       // ---- groups: upsert by key
       const groupIdByKey = new Map<string, number>()
       for (const container of aggregate.containers) {
         const type = container.type === 'Tab' ? PropertyGroupType.Tab : PropertyGroupType.Group
-        const found = await tx.query<{ id: number }>(
-          'SELECT id FROM property_type_group WHERE unique_id = ?',
-          [container.key],
-        )
+        const groupId = () =>
+          tx.q
+            .selectFrom('property_type_group')
+            .select('id')
+            .where('unique_id', '=', container.key)
+            .execute()
+        const found = await groupId()
         if (found[0]) {
-          await tx.exec(
-            'UPDATE property_type_group SET type = ?, text = ?, alias = ?, sort_order = ? WHERE id = ?',
-            [type, container.name, container.alias, container.sortOrder, Number(found[0].id)],
-          )
+          await tx.q
+            .updateTable('property_type_group')
+            .set({
+              type,
+              text: container.name ?? null,
+              alias: container.alias ?? null,
+              sort_order: container.sortOrder,
+            })
+            .where('id', '=', Number(found[0].id))
+            .execute()
           groupIdByKey.set(container.key, Number(found[0].id))
         } else {
-          await tx.exec(
-            'INSERT INTO property_type_group (unique_id, content_type_node_id, type, text, alias, sort_order) VALUES (?, ?, ?, ?, ?, ?)',
-            [container.key, nodeId, type, container.name, container.alias, container.sortOrder],
-          )
-          const created = await tx.query<{ id: number }>(
-            'SELECT id FROM property_type_group WHERE unique_id = ?',
-            [container.key],
-          )
+          await tx.q
+            .insertInto('property_type_group')
+            .values({
+              unique_id: container.key,
+              content_type_node_id: nodeId,
+              type,
+              text: container.name ?? null,
+              alias: container.alias ?? null,
+              sort_order: container.sortOrder,
+            })
+            .execute()
+          const created = await groupId()
           groupIdByKey.set(container.key, Number(created[0]?.id))
         }
       }
       for (const container of aggregate.containers) {
         const parent = container.parentKey ? groupIdByKey.get(container.parentKey) : undefined
-        await tx.exec('UPDATE property_type_group SET parent_id = ? WHERE unique_id = ?', [
-          parent ?? null,
-          container.key,
-        ])
+        await tx.q
+          .updateTable('property_type_group')
+          .set({ parent_id: parent ?? null })
+          .where('unique_id', '=', container.key)
+          .execute()
       }
 
       // ---- properties: upsert by key; retire the absent; revive the returning
@@ -399,151 +427,177 @@ export class ContentTypeRepository {
         // A key the type has never had, but an alias it has (live or retired), is
         // that property coming back: reuse the row, so its values return with it.
         let key = normaliseUuid(property.key)
-        const byKey = await tx.query('SELECT id FROM property_type WHERE unique_id = ?', [key])
+        const byKey = await tx.q
+          .selectFrom('property_type')
+          .select('id')
+          .where('unique_id', '=', key)
+          .execute()
         if (byKey.length === 0) {
-          const sameAlias = await tx.query<{ unique_id: string }>(
-            'SELECT unique_id FROM property_type WHERE content_type_id = ? AND alias = ?',
-            [nodeId, property.alias],
-          )
+          const sameAlias = await tx.q
+            .selectFrom('property_type')
+            .select('unique_id')
+            .where('content_type_id', '=', nodeId)
+            .where('alias', '=', property.alias)
+            .execute()
           if (sameAlias[0]) key = normaliseUuid(String(sameAlias[0].unique_id))
         }
         kept.add(key)
         const groupId = property.containerKey
           ? (groupIdByKey.get(property.containerKey) ?? null)
           : null
-        const columns = [
-          dataTypeNode.id,
-          groupId,
-          property.alias,
-          property.name,
-          property.description,
-          property.sortOrder,
-          bool(property.mandatory),
-          property.mandatoryMessage,
-          property.regEx,
-          property.regExMessage,
-          bool(property.labelOnTop),
-          variationFlags(property.variesByCulture, property.variesBySegment),
-          property.sinceVersion ?? null,
-        ]
-        const found = await tx.query<{ id: number }>(
-          'SELECT id FROM property_type WHERE unique_id = ?',
-          [key],
-        )
+        const columns = {
+          data_type_id: dataTypeNode.id,
+          property_type_group_id: groupId,
+          alias: property.alias,
+          name: property.name,
+          description: property.description ?? null,
+          sort_order: property.sortOrder,
+          mandatory: bool(property.mandatory),
+          mandatory_message: property.mandatoryMessage ?? null,
+          validation_reg_exp: property.regEx ?? null,
+          validation_reg_exp_message: property.regExMessage ?? null,
+          label_on_top: bool(property.labelOnTop),
+          variations: variationFlags(property.variesByCulture, property.variesBySegment),
+          since_version: property.sinceVersion ?? null,
+        }
+        const found = await tx.q
+          .selectFrom('property_type')
+          .select('id')
+          .where('unique_id', '=', key)
+          .execute()
         if (found[0]) {
-          await tx.exec(
-            `UPDATE property_type SET data_type_id = ?, property_type_group_id = ?, alias = ?, name = ?, description = ?,
-               sort_order = ?, mandatory = ?, mandatory_message = ?, validation_reg_exp = ?, validation_reg_exp_message = ?,
-               label_on_top = ?, variations = ?, since_version = ?, retired_at = NULL
-             WHERE id = ?`,
-            [...columns, Number(found[0].id)],
-          )
+          const id = Number(found[0].id)
+          await tx.q
+            .updateTable('property_type')
+            .set({ ...columns, retired_at: null })
+            .where('id', '=', id)
+            .execute()
           // Only a schema sync says; a backoffice save leaves it as it was.
           if (property.searchable !== undefined)
-            await tx.exec('UPDATE property_type SET searchable = ? WHERE id = ?', [
-              bool(property.searchable),
-              Number(found[0].id),
-            ])
+            await tx.q
+              .updateTable('property_type')
+              .set({ searchable: bool(property.searchable) })
+              .where('id', '=', id)
+              .execute()
           if (property.siteSearch !== undefined)
-            await tx.exec('UPDATE property_type SET site_search = ? WHERE id = ?', [
-              siteSearchColumn(property.siteSearch),
-              Number(found[0].id),
-            ])
+            await tx.q
+              .updateTable('property_type')
+              .set({ site_search: siteSearchColumn(property.siteSearch) })
+              .where('id', '=', id)
+              .execute()
         } else {
-          await tx.exec(
-            `INSERT INTO property_type
-               (unique_id, content_type_id, data_type_id, property_type_group_id, alias, name, description, sort_order,
-                mandatory, mandatory_message, validation_reg_exp, validation_reg_exp_message, label_on_top, variations, since_version, since_state_id, searchable, site_search)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              key,
-              nodeId,
+          await tx.q
+            .insertInto('property_type')
+            .values({
+              unique_id: key,
+              content_type_id: nodeId,
               ...columns,
-              options.sinceStateId ?? null,
-              bool(property.searchable !== false),
-              siteSearchColumn(property.siteSearch),
-            ],
-          )
+              since_state_id: options.sinceStateId ?? null,
+              searchable: bool(property.searchable !== false),
+              site_search: siteSearchColumn(property.siteSearch),
+            })
+            .execute()
         }
       }
       if (this.#kind === 'member') {
         const bool = (v: boolean) => tx.dialect.boolValue(v)
         for (const property of aggregate.properties) {
           // By alias: the row may have been reused under its old key above.
-          const row = await tx.query<{ id: number }>(
-            'SELECT id FROM property_type WHERE content_type_id = ? AND alias = ?',
-            [nodeId, property.alias],
-          )
+          const row = await tx.q
+            .selectFrom('property_type')
+            .select('id')
+            .where('content_type_id', '=', nodeId)
+            .where('alias', '=', property.alias)
+            .execute()
           const id = Number(row[0]?.id)
           if (!id) continue
-          await tx.exec('DELETE FROM member_property_type WHERE property_type_id = ?', [id])
-          await tx.exec(
-            'INSERT INTO member_property_type (property_type_id, member_can_edit, member_can_view, is_sensitive) VALUES (?, ?, ?, ?)',
-            [
-              id,
-              bool(property.memberCanEdit === true),
-              bool(property.memberCanView === true),
-              bool(property.isSensitive === true),
-            ],
-          )
+          await tx.q.deleteFrom('member_property_type').where('property_type_id', '=', id).execute()
+          await tx.q
+            .insertInto('member_property_type')
+            .values({
+              property_type_id: id,
+              member_can_edit: bool(property.memberCanEdit === true),
+              member_can_view: bool(property.memberCanView === true),
+              is_sensitive: bool(property.isSensitive === true),
+            })
+            .execute()
         }
       }
-      const present = await tx.query(
-        'SELECT id, unique_id, retired_at FROM property_type WHERE content_type_id = ?',
-        [nodeId],
-      )
+      const present = await tx.q
+        .selectFrom('property_type')
+        .select(['id', 'unique_id', 'retired_at'])
+        .where('content_type_id', '=', nodeId)
+        .execute()
       for (const row of present) {
         if (kept.has(normaliseUuid(String(row.unique_id)))) continue
         if (row.retired_at !== null && row.retired_at !== undefined) continue
         // Retired: hidden and detached from its group; every value stays.
-        await tx.exec(
-          'UPDATE property_type SET retired_at = ?, property_type_group_id = NULL WHERE id = ?',
-          [now, Number(row.id)],
-        )
+        await tx.q
+          .updateTable('property_type')
+          .set({ retired_at: now, property_type_group_id: null })
+          .where('id', '=', Number(row.id))
+          .execute()
       }
       const containerKeys = new Set(aggregate.containers.map((c) => c.key))
-      for (const group of await tx.query(
-        'SELECT id, unique_id FROM property_type_group WHERE content_type_node_id = ?',
-        [nodeId],
-      )) {
+      for (const group of await tx.q
+        .selectFrom('property_type_group')
+        .select(['id', 'unique_id'])
+        .where('content_type_node_id', '=', nodeId)
+        .execute()) {
         if (containerKeys.has(String(group.unique_id))) continue
-        const inUse = await tx.query<{ n: number }>(
-          'SELECT COUNT(*) AS n FROM property_type WHERE property_type_group_id = ?',
-          [Number(group.id)],
-        )
+        const inUse = await tx.q
+          .selectFrom('property_type')
+          .select((eb) => eb.fn.countAll().as('n'))
+          .where('property_type_group_id', '=', Number(group.id))
+          .execute()
         if (Number(inUse[0]?.n ?? 0) === 0)
-          await tx.exec('DELETE FROM property_type_group WHERE id = ?', [Number(group.id)])
+          await tx.q.deleteFrom('property_type_group').where('id', '=', Number(group.id)).execute()
       }
 
       // ---- relations: replaced wholesale; nothing references these rows
-      await tx.exec('DELETE FROM content_type_composition WHERE child_content_type_id = ?', [
-        nodeId,
-      ])
+      await tx.q
+        .deleteFrom('content_type_composition')
+        .where('child_content_type_id', '=', nodeId)
+        .execute()
       for (const composition of aggregate.compositions) {
         const parent = await repo.nodes.byKey(composition.contentTypeKey)
         if (parent)
-          await tx.exec(
-            'INSERT INTO content_type_composition (parent_content_type_id, child_content_type_id) VALUES (?, ?)',
-            [parent.id, nodeId],
-          )
+          await tx.q
+            .insertInto('content_type_composition')
+            .values({ parent_content_type_id: parent.id, child_content_type_id: nodeId })
+            .execute()
       }
-      await tx.exec('DELETE FROM content_type_allowed_child WHERE content_type_id = ?', [nodeId])
+      await tx.q
+        .deleteFrom('content_type_allowed_child')
+        .where('content_type_id', '=', nodeId)
+        .execute()
       for (const allowed of aggregate.allowedContentTypes) {
         const child = await repo.nodes.byKey(allowed.contentTypeKey)
         if (child)
-          await tx.exec(
-            'INSERT INTO content_type_allowed_child (content_type_id, allowed_content_type_id, sort_order) VALUES (?, ?, ?)',
-            [nodeId, child.id, allowed.sortOrder],
-          )
+          await tx.q
+            .insertInto('content_type_allowed_child')
+            .values({
+              content_type_id: nodeId,
+              allowed_content_type_id: child.id,
+              sort_order: allowed.sortOrder,
+            })
+            .execute()
       }
-      await tx.exec('DELETE FROM content_type_template WHERE content_type_node_id = ?', [nodeId])
+      await tx.q
+        .deleteFrom('content_type_template')
+        .where('content_type_node_id', '=', nodeId)
+        .execute()
       for (const componentKey of aggregate.allowedComponentKeys) {
         const template = await repo.nodes.byKey(componentKey)
         if (template)
-          await tx.exec(
-            'INSERT INTO content_type_template (content_type_node_id, template_node_id, is_default) VALUES (?, ?, ?)',
-            [nodeId, template.id, bool(componentKey === aggregate.defaultComponentKey)],
-          )
+          await tx.q
+            .insertInto('content_type_template')
+            .values({
+              content_type_node_id: nodeId,
+              template_node_id: template.id,
+              is_default: bool(componentKey === aggregate.defaultComponentKey),
+            })
+            .execute()
       }
 
       if (existing && propertiesBefore !== (await propertySignature(tx, nodeId))) {
@@ -560,10 +614,12 @@ export class ContentTypeRepository {
   async retiredProperties(typeKey: string): Promise<RetiredProperty[]> {
     const node = await this.#nodes.byKey(typeKey)
     if (!node) return []
-    const rows = await this.#db.query(
-      'SELECT unique_id, alias, retired_at FROM property_type WHERE content_type_id = ? AND retired_at IS NOT NULL',
-      [node.id],
-    )
+    const rows = await this.#db.q
+      .selectFrom('property_type')
+      .select(['unique_id', 'alias', 'retired_at'])
+      .where('content_type_id', '=', node.id)
+      .where('retired_at', 'is not', null)
+      .execute()
     return rows.map((row) => ({
       key: normaliseUuid(String(row.unique_id)),
       alias: String(row.alias),
@@ -577,20 +633,20 @@ export class ContentTypeRepository {
    * ever held. The contract step; nothing else in the system deletes values.
    */
   async purgeRetired(olderThan: Date): Promise<Array<{ type: string; alias: string }>> {
-    const rows = await this.#db.query<{ id: number; alias: string; type_alias: string }>(
-      `SELECT p.id, p.alias, ct.alias AS type_alias FROM property_type p
-       JOIN content_type ct ON ct.node_id = p.content_type_id
-       WHERE p.retired_at IS NOT NULL AND p.retired_at < ?`,
-      [DbDate.toDb(olderThan)],
-    )
+    const rows = await this.#db.q
+      .selectFrom('property_type as p')
+      .innerJoin('content_type as ct', 'ct.node_id', 'p.content_type_id')
+      .select(['p.id', 'p.alias', 'ct.alias as type_alias'])
+      .where('p.retired_at', 'is not', null)
+      .where('p.retired_at', '<', DbDate.toDb(olderThan))
+      .execute()
     const purged: Array<{ type: string; alias: string }> = []
     await this.#db.transaction(async (tx) => {
       for (const row of rows) {
-        await tx.exec('DELETE FROM property_value WHERE property_type_id = ?', [Number(row.id)])
-        await tx.exec('DELETE FROM member_property_type WHERE property_type_id = ?', [
-          Number(row.id),
-        ])
-        await tx.exec('DELETE FROM property_type WHERE id = ?', [Number(row.id)])
+        const id = Number(row.id)
+        await tx.q.deleteFrom('property_value').where('property_type_id', '=', id).execute()
+        await tx.q.deleteFrom('member_property_type').where('property_type_id', '=', id).execute()
+        await tx.q.deleteFrom('property_type').where('id', '=', id).execute()
         purged.push({ type: String(row.type_alias), alias: String(row.alias) })
       }
     })
@@ -609,21 +665,26 @@ export class ContentTypeRepository {
 
   /** Every live type, cheap enough while types number in the dozens. */
   async all(): Promise<ContentTypeAggregate[]> {
-    const rows = await this.#db.query<{ unique_id: string }>(
-      `SELECT n.unique_id FROM content_type ct JOIN node n ON n.id = ct.node_id
-       WHERE ct.retired_at IS NULL AND n.node_object_type = ? ORDER BY n.text`,
-      [this.#objectType],
-    )
+    const rows = await this.#db.q
+      .selectFrom('content_type as ct')
+      .innerJoin('node as n', 'n.id', 'ct.node_id')
+      .select('n.unique_id')
+      .where('ct.retired_at', 'is', null)
+      .where('n.node_object_type', '=', this.#objectType)
+      .orderBy('n.text')
+      .execute()
     return this.byKeys(rows.map((r) => String(r.unique_id)))
   }
 
   /** Every live type's alias by its key, without loading the types themselves. */
   async aliasesByKey(): Promise<Map<string, string>> {
-    const rows = await this.#db.query<{ unique_id: string; alias: string }>(
-      `SELECT n.unique_id, ct.alias FROM content_type ct JOIN node n ON n.id = ct.node_id
-       WHERE ct.retired_at IS NULL AND n.node_object_type = ?`,
-      [this.#objectType],
-    )
+    const rows = await this.#db.q
+      .selectFrom('content_type as ct')
+      .innerJoin('node as n', 'n.id', 'ct.node_id')
+      .select(['n.unique_id', 'ct.alias'])
+      .where('ct.retired_at', 'is', null)
+      .where('n.node_object_type', '=', this.#objectType)
+      .execute()
     return new Map(rows.map((r) => [normaliseUuid(String(r.unique_id)), String(r.alias)]))
   }
 
@@ -684,11 +745,12 @@ export class ContentTypeRepository {
   async compositionReferences(key: string): Promise<ContentTypeAggregate[]> {
     const node = await this.#nodes.byKey(key)
     if (!node) return []
-    const rows = await this.#db.query<{ unique_id: string }>(
-      `SELECT child.unique_id FROM content_type_composition c JOIN node child ON child.id = c.child_content_type_id
-       WHERE c.parent_content_type_id = ?`,
-      [node.id],
-    )
+    const rows = await this.#db.q
+      .selectFrom('content_type_composition as c')
+      .innerJoin('node as child', 'child.id', 'c.child_content_type_id')
+      .select('child.unique_id')
+      .where('c.parent_content_type_id', '=', node.id)
+      .execute()
     return this.byKeys(rows.map((r) => String(r.unique_id)))
   }
 
@@ -696,11 +758,12 @@ export class ContentTypeRepository {
   async allowedParents(key: string): Promise<string[]> {
     const node = await this.#nodes.byKey(key)
     if (!node) return []
-    const rows = await this.#db.query<{ unique_id: string }>(
-      `SELECT parent.unique_id FROM content_type_allowed_child ac JOIN node parent ON parent.id = ac.content_type_id
-       WHERE ac.allowed_content_type_id = ?`,
-      [node.id],
-    )
+    const rows = await this.#db.q
+      .selectFrom('content_type_allowed_child as ac')
+      .innerJoin('node as parent', 'parent.id', 'ac.content_type_id')
+      .select('parent.unique_id')
+      .where('ac.allowed_content_type_id', '=', node.id)
+      .execute()
     return rows.map((r) => normaliseUuid(String(r.unique_id)))
   }
 
@@ -749,10 +812,11 @@ export class ContentTypeRepository {
   async contentCount(typeKey: string): Promise<number> {
     const node = await this.#nodes.byKey(typeKey)
     if (!node) return 0
-    const rows = await this.#db.query<{ n: number }>(
-      'SELECT COUNT(*) AS n FROM content WHERE content_type_id = ?',
-      [node.id],
-    )
+    const rows = await this.#db.q
+      .selectFrom('content')
+      .select((eb) => eb.fn.countAll().as('n'))
+      .where('content_type_id', '=', node.id)
+      .execute()
     return Number(rows[0]?.n ?? 0)
   }
 
@@ -760,27 +824,42 @@ export class ContentTypeRepository {
     const node = await this.#nodes.byKey(key)
     if (!node || node.objectType !== this.#objectType) return false
     return this.#db.transaction(async (tx) => {
-      await tx.exec(
-        'DELETE FROM property_value WHERE property_type_id IN (SELECT id FROM property_type WHERE content_type_id = ?)',
-        [node.id],
-      )
-      await tx.exec(
-        'DELETE FROM member_property_type WHERE property_type_id IN (SELECT id FROM property_type WHERE content_type_id = ?)',
-        [node.id],
-      )
-      await tx.exec('DELETE FROM property_type WHERE content_type_id = ?', [node.id])
-      await tx.exec('DELETE FROM property_type_group WHERE content_type_node_id = ?', [node.id])
-      await tx.exec(
-        'DELETE FROM content_type_composition WHERE child_content_type_id = ? OR parent_content_type_id = ?',
-        [node.id, node.id],
-      )
-      await tx.exec(
-        'DELETE FROM content_type_allowed_child WHERE content_type_id = ? OR allowed_content_type_id = ?',
-        [node.id, node.id],
-      )
-      await tx.exec('DELETE FROM content_type_template WHERE content_type_node_id = ?', [node.id])
-      await tx.exec('DELETE FROM content_type WHERE node_id = ?', [node.id])
-      await tx.exec('DELETE FROM node WHERE id = ?', [node.id])
+      const ownProperties = () =>
+        tx.q.selectFrom('property_type').select('id').where('content_type_id', '=', node.id)
+      await tx.q
+        .deleteFrom('property_value')
+        .where('property_type_id', 'in', ownProperties())
+        .execute()
+      await tx.q
+        .deleteFrom('member_property_type')
+        .where('property_type_id', 'in', ownProperties())
+        .execute()
+      await tx.q.deleteFrom('property_type').where('content_type_id', '=', node.id).execute()
+      await tx.q
+        .deleteFrom('property_type_group')
+        .where('content_type_node_id', '=', node.id)
+        .execute()
+      await tx.q
+        .deleteFrom('content_type_composition')
+        .where((eb) =>
+          eb.or([
+            eb('child_content_type_id', '=', node.id),
+            eb('parent_content_type_id', '=', node.id),
+          ]),
+        )
+        .execute()
+      await tx.q
+        .deleteFrom('content_type_allowed_child')
+        .where((eb) =>
+          eb.or([eb('content_type_id', '=', node.id), eb('allowed_content_type_id', '=', node.id)]),
+        )
+        .execute()
+      await tx.q
+        .deleteFrom('content_type_template')
+        .where('content_type_node_id', '=', node.id)
+        .execute()
+      await tx.q.deleteFrom('content_type').where('node_id', '=', node.id).execute()
+      await tx.q.deleteFrom('node').where('id', '=', node.id).execute()
       return true
     })
   }
@@ -808,22 +887,46 @@ export class ContentTypeRepository {
     name: string,
     parentId: number,
   ): Promise<ContentTypeAggregate | undefined> {
-    const typeRows = await this.#db.query(
-      `SELECT ct.alias, ct.icon, ct.description, ct.list_view, ct.is_element, ct.allow_in_library, ct.allow_at_root, ct.variations,
-              ct.prevent_cleanup, ct.keep_all_versions_newer_than_days, ct.keep_latest_version_per_day_for_days,
-              ct.since_version, ct.site_search, ss.version AS since_v, ss.revision AS since_r
-       FROM content_type ct LEFT JOIN schema_state ss ON ss.id = ct.since_state_id WHERE ct.node_id = ?`,
-      [nodeId],
-    )
+    const typeRows = await this.#db.q
+      .selectFrom('content_type as ct')
+      .leftJoin('schema_state as ss', 'ss.id', 'ct.since_state_id')
+      .select([
+        'ct.alias',
+        'ct.icon',
+        'ct.description',
+        'ct.list_view',
+        'ct.is_element',
+        'ct.allow_in_library',
+        'ct.allow_at_root',
+        'ct.variations',
+        'ct.prevent_cleanup',
+        'ct.keep_all_versions_newer_than_days',
+        'ct.keep_latest_version_per_day_for_days',
+        'ct.since_version',
+        'ct.site_search',
+        'ss.version as since_v',
+        'ss.revision as since_r',
+      ])
+      .where('ct.node_id', '=', nodeId)
+      .execute()
     const type = typeRows[0]
     if (!type) return undefined
 
-    const groupRows = await this.#db.query(
-      `SELECT g.unique_id, g.text, g.alias, g.type, g.sort_order, parent.unique_id AS parent_key
-       FROM property_type_group g LEFT JOIN property_type_group parent ON parent.id = g.parent_id
-       WHERE g.content_type_node_id = ? ORDER BY g.sort_order, g.id`,
-      [nodeId],
-    )
+    const groupRows = await this.#db.q
+      .selectFrom('property_type_group as g')
+      .leftJoin('property_type_group as parent', 'parent.id', 'g.parent_id')
+      .select([
+        'g.unique_id',
+        'g.text',
+        'g.alias',
+        'g.type',
+        'g.sort_order',
+        'parent.unique_id as parent_key',
+      ])
+      .where('g.content_type_node_id', '=', nodeId)
+      .orderBy('g.sort_order')
+      .orderBy('g.id')
+      .execute()
     const containers: PropertyGroupModel[] = groupRows.map((row) => ({
       key: normaliseUuid(String(row.unique_id)),
       name: (row.text as string | null) ?? null,
@@ -834,21 +937,40 @@ export class ContentTypeRepository {
     }))
 
     // Retired properties are hidden here; `retiredProperties()` lists them.
-    const propertyRows = await this.#db.query(
-      `SELECT p.unique_id, p.alias, p.name, p.description, p.sort_order, p.mandatory, p.mandatory_message,
-              p.validation_reg_exp, p.validation_reg_exp_message, p.label_on_top, p.variations,
-              dtn.unique_id AS data_type_key, g.unique_id AS container_key,
-              p.since_version, ss.version AS since_v, ss.revision AS since_r,
-              m.member_can_edit, m.member_can_view, m.is_sensitive, p.searchable, p.site_search
-       FROM property_type p
-       JOIN node dtn ON dtn.id = p.data_type_id
-       LEFT JOIN property_type_group g ON g.id = p.property_type_group_id
-       LEFT JOIN schema_state ss ON ss.id = p.since_state_id
-       LEFT JOIN member_property_type m ON m.property_type_id = p.id
-       WHERE p.content_type_id = ? AND p.retired_at IS NULL
-       ORDER BY p.sort_order, p.id`,
-      [nodeId],
-    )
+    const propertyRows = await this.#db.q
+      .selectFrom('property_type as p')
+      .innerJoin('node as dtn', 'dtn.id', 'p.data_type_id')
+      .leftJoin('property_type_group as g', 'g.id', 'p.property_type_group_id')
+      .leftJoin('schema_state as ss', 'ss.id', 'p.since_state_id')
+      .leftJoin('member_property_type as m', 'm.property_type_id', 'p.id')
+      .select([
+        'p.unique_id',
+        'p.alias',
+        'p.name',
+        'p.description',
+        'p.sort_order',
+        'p.mandatory',
+        'p.mandatory_message',
+        'p.validation_reg_exp',
+        'p.validation_reg_exp_message',
+        'p.label_on_top',
+        'p.variations',
+        'dtn.unique_id as data_type_key',
+        'g.unique_id as container_key',
+        'p.since_version',
+        'ss.version as since_v',
+        'ss.revision as since_r',
+        'm.member_can_edit',
+        'm.member_can_view',
+        'm.is_sensitive',
+        'p.searchable',
+        'p.site_search',
+      ])
+      .where('p.content_type_id', '=', nodeId)
+      .where('p.retired_at', 'is', null)
+      .orderBy('p.sort_order')
+      .orderBy('p.id')
+      .execute()
     const properties: PropertyTypeModel[] = propertyRows.map((row) => ({
       key: normaliseUuid(String(row.unique_id)),
       alias: String(row.alias),
@@ -877,18 +999,25 @@ export class ContentTypeRepository {
         : {}),
     }))
 
-    const compositionRows = await this.#db.query<{ unique_id: string }>(
-      'SELECT parent.unique_id FROM content_type_composition c JOIN node parent ON parent.id = c.parent_content_type_id WHERE c.child_content_type_id = ?',
-      [nodeId],
-    )
-    const allowedRows = await this.#db.query(
-      'SELECT child.unique_id, ac.sort_order FROM content_type_allowed_child ac JOIN node child ON child.id = ac.allowed_content_type_id WHERE ac.content_type_id = ? ORDER BY ac.sort_order',
-      [nodeId],
-    )
-    const templateRows = await this.#db.query(
-      'SELECT tn.unique_id, ctt.is_default FROM content_type_template ctt JOIN node tn ON tn.id = ctt.template_node_id WHERE ctt.content_type_node_id = ?',
-      [nodeId],
-    )
+    const compositionRows = await this.#db.q
+      .selectFrom('content_type_composition as c')
+      .innerJoin('node as parent', 'parent.id', 'c.parent_content_type_id')
+      .select('parent.unique_id')
+      .where('c.child_content_type_id', '=', nodeId)
+      .execute()
+    const allowedRows = await this.#db.q
+      .selectFrom('content_type_allowed_child as ac')
+      .innerJoin('node as child', 'child.id', 'ac.allowed_content_type_id')
+      .select(['child.unique_id', 'ac.sort_order'])
+      .where('ac.content_type_id', '=', nodeId)
+      .orderBy('ac.sort_order')
+      .execute()
+    const templateRows = await this.#db.q
+      .selectFrom('content_type_template as ctt')
+      .innerJoin('node as tn', 'tn.id', 'ctt.template_node_id')
+      .select(['tn.unique_id', 'ctt.is_default'])
+      .where('ctt.content_type_node_id', '=', nodeId)
+      .execute()
     const parentNode = parentId > 0 ? await this.#nodes.byId(parentId) : undefined
     const flags = Number(type.variations ?? ContentVariation.Nothing)
     const num = (value: unknown) => (value === null || value === undefined ? null : Number(value))

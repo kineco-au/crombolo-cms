@@ -28,10 +28,12 @@ export class NotificationRepository {
   }
 
   async subscribed(userId: number, nodeId: number): Promise<string[]> {
-    const rows = await this.#db.query<{ action: string }>(
-      'SELECT action FROM user_notification WHERE user_id = ? AND node_id = ?',
-      [userId, nodeId],
-    )
+    const rows = await this.#db.q
+      .selectFrom('user_notification')
+      .select('action')
+      .where('user_id', '=', userId)
+      .where('node_id', '=', nodeId)
+      .execute()
     return rows.map((row) => String(row.action))
   }
 
@@ -39,16 +41,17 @@ export class NotificationRepository {
   async set(userId: number, nodeId: number, actionIds: readonly string[]): Promise<void> {
     const known = new Set(NOTIFIABLE_ACTIONS.map((a) => a.actionId))
     await this.#db.transaction(async (tx) => {
-      await tx.exec('DELETE FROM user_notification WHERE user_id = ? AND node_id = ?', [
-        userId,
-        nodeId,
-      ])
+      await tx.q
+        .deleteFrom('user_notification')
+        .where('user_id', '=', userId)
+        .where('node_id', '=', nodeId)
+        .execute()
       for (const action of new Set(actionIds))
         if (known.has(action))
-          await tx.exec(
-            'INSERT INTO user_notification (user_id, node_id, action) VALUES (?, ?, ?)',
-            [userId, nodeId, action],
-          )
+          await tx.q
+            .insertInto('user_notification')
+            .values({ user_id: userId, node_id: nodeId, action })
+            .execute()
     })
   }
 
@@ -58,11 +61,13 @@ export class NotificationRepository {
    */
   async subscribersFor(actionId: string, pathNodeIds: readonly number[]): Promise<number[]> {
     if (pathNodeIds.length === 0) return []
-    const rows = await this.#db.query<{ user_id: number }>(
-      `SELECT DISTINCT user_id FROM user_notification
-        WHERE action = ? AND node_id IN (${pathNodeIds.map(() => '?').join(', ')})`,
-      [actionId, ...pathNodeIds],
-    )
+    const rows = await this.#db.q
+      .selectFrom('user_notification')
+      .select('user_id')
+      .distinct()
+      .where('action', '=', actionId)
+      .where('node_id', 'in', pathNodeIds)
+      .execute()
     return rows.map((row) => Number(row.user_id))
   }
 }

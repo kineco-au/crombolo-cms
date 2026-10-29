@@ -13,6 +13,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Db } from '../database.ts'
 import { DbDate, fromDbBool } from '../dialect.ts'
+import { sql } from '../query.ts'
 
 /** Where an entry is in its life: approval is the only transition. */
 export type FormEntryState = 'submitted' | 'approved' | 'rejected'
@@ -91,9 +92,19 @@ interface ValueRow {
   label: string | null
 }
 
-const SELECT = `SELECT id, form_key, form_alias, state, culture, page_key, ip_hash,
-                       user_agent, spam, create_date, update_date
-                  FROM form_entry`
+const COLUMNS = [
+  'id',
+  'form_key',
+  'form_alias',
+  'state',
+  'culture',
+  'page_key',
+  'ip_hash',
+  'user_agent',
+  'spam',
+  'create_date',
+  'update_date',
+] as const
 
 const state = (value: string): FormEntryState =>
   FORM_ENTRY_STATES.includes(value as FormEntryState) ? (value as FormEntryState) : 'submitted'
@@ -146,104 +157,98 @@ export class FormEntryRepository {
   /** The values for a page of entries, in one query rather than one each. */
   async #valuesFor(ids: readonly string[]): Promise<Map<string, FormEntryValue[]>> {
     if (ids.length === 0) return new Map()
-    const placeholders = ids.map(() => '?').join(', ')
-    const rows = await this.#db.query<ValueRow>(
-      `SELECT entry_id, field_alias, sort_order, value, label
-         FROM form_entry_value
-        WHERE entry_id IN (${placeholders})
-        ORDER BY field_alias, sort_order`,
-      [...ids],
-    )
+    const rows = await this.#db.q
+      .selectFrom('form_entry_value')
+      .select(['entry_id', 'field_alias', 'sort_order', 'value', 'label'])
+      .where('entry_id', 'in', [...ids])
+      .orderBy('field_alias')
+      .orderBy('sort_order')
+      .execute()
     return group(rows)
   }
 
   async byId(id: string): Promise<FormEntry | undefined> {
-    const rows = await this.#db.query<EntryRow>(`${SELECT} WHERE id = ?`, [id])
-    const row = rows[0]
+    const row = await this.#db.q
+      .selectFrom('form_entry')
+      .select(COLUMNS)
+      .where('id', '=', id)
+      .executeTakeFirst()
     if (!row) return undefined
     return hydrate(row, (await this.#valuesFor([id])).get(id) ?? [])
   }
 
   async list(query: FormEntryQuery): Promise<{ total: number; items: FormEntry[] }> {
-    const where: string[] = ['form_key = ?']
-    const params: unknown[] = [query.formKey]
-    if (query.state) {
-      where.push('state = ?')
-      params.push(query.state)
-    }
-    if (query.from) {
-      where.push('create_date >= ?')
-      params.push(DbDate.toDb(query.from))
-    }
-    if (query.to) {
-      where.push('create_date <= ?')
-      params.push(DbDate.toDb(query.to))
-    }
-    // Spam is stored and flagged rather than dropped — a false positive that
-    // silently discarded an enquiry is worse than one to review — so it is
-    // hidden from the list by default rather than absent from the table.
-    if (!query.includeSpam) {
-      where.push('spam = ?')
-      params.push(this.#db.dialect.boolValue(false))
-    }
-    if (query.search) {
-      where.push(
-        `id IN (SELECT entry_id FROM form_entry_value WHERE LOWER(value) LIKE ? OR LOWER(label) LIKE ?)`,
+    const search = query.search ? `%${query.search.toLowerCase()}%` : undefined
+    const matching = this.#db.q
+      .selectFrom('form_entry')
+      .where('form_key', '=', query.formKey)
+      .$if(Boolean(query.state), (q) => q.where('state', '=', query.state as FormEntryState))
+      .$if(Boolean(query.from), (q) =>
+        q.where('create_date', '>=', DbDate.toDb(query.from as Date)),
       )
-      params.push(`%${query.search.toLowerCase()}%`, `%${query.search.toLowerCase()}%`)
-    }
-    const clause = `WHERE ${where.join(' AND ')}`
+      .$if(Boolean(query.to), (q) => q.where('create_date', '<=', DbDate.toDb(query.to as Date)))
+      // Spam is stored and flagged rather than dropped — a false positive that
+      // silently discarded an enquiry is worse than one to review — so it is
+      // hidden from the list by default rather than absent from the table.
+      .$if(!query.includeSpam, (q) => q.where('spam', '=', this.#db.dialect.boolValue(false)))
+      .$if(search !== undefined, (q) =>
+        q.where('id', 'in', (eb) =>
+          eb
+            .selectFrom('form_entry_value')
+            .select('entry_id')
+            .where((v) =>
+              v.or([
+                v(v.fn('lower', ['value']), 'like', search as string),
+                v(v.fn('lower', ['label']), 'like', search as string),
+              ]),
+            ),
+        ),
+      )
 
-    const counted = await this.#db.query<{ total: number }>(
-      `SELECT COUNT(*) AS total FROM form_entry ${clause}`,
-      params,
-    )
-    const rows = await this.#db.query<EntryRow>(
-      `${SELECT} ${clause} ORDER BY create_date DESC, id LIMIT ? OFFSET ?`,
-      [...params, query.take ?? 100, query.skip ?? 0],
-    )
+    const counted = await matching.select(sql<number>`count(*)`.as('total')).executeTakeFirst()
+    const rows = await matching
+      .select(COLUMNS)
+      .orderBy('create_date', 'desc')
+      .orderBy('id')
+      .limit(query.take ?? 100)
+      .offset(query.skip ?? 0)
+      .execute()
     const values = await this.#valuesFor(rows.map((row) => row.id))
     return {
-      total: Number(counted[0]?.total ?? 0),
+      total: Number(counted?.total ?? 0),
       items: rows.map((row) => hydrate(row, values.get(row.id) ?? [])),
     }
   }
 
   /** How many entries a form has, for a form with a hard cap. */
   async count(formKey: string, options: { includeSpam?: boolean } = {}): Promise<number> {
-    const rows = options.includeSpam
-      ? await this.#db.query<{ total: number }>(
-          'SELECT COUNT(*) AS total FROM form_entry WHERE form_key = ?',
-          [formKey],
-        )
-      : await this.#db.query<{ total: number }>(
-          'SELECT COUNT(*) AS total FROM form_entry WHERE form_key = ? AND spam = ?',
-          [formKey, this.#db.dialect.boolValue(false)],
-        )
-    return Number(rows[0]?.total ?? 0)
+    const row = await this.#db.q
+      .selectFrom('form_entry')
+      .select(sql<number>`count(*)`.as('total'))
+      .where('form_key', '=', formKey)
+      .$if(!options.includeSpam, (q) => q.where('spam', '=', this.#db.dialect.boolValue(false)))
+      .executeTakeFirst()
+    return Number(row?.total ?? 0)
   }
 
   async create(input: FormEntryInput, id: string = randomUUID()): Promise<FormEntry> {
     const now = new Date()
-    await this.#db.exec(
-      `INSERT INTO form_entry
-         (id, form_key, form_alias, state, culture, page_key, ip_hash, user_agent,
-          spam, create_date, update_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
+    await this.#db.q
+      .insertInto('form_entry')
+      .values({
         id,
-        input.formKey,
-        input.formAlias,
-        input.state ?? 'submitted',
-        input.culture,
-        input.pageKey,
-        input.ipHash,
-        input.userAgent,
-        this.#db.dialect.boolValue(input.spam ?? false),
-        DbDate.toDb(now),
-        DbDate.toDb(now),
-      ],
-    )
+        form_key: input.formKey,
+        form_alias: input.formAlias,
+        state: input.state ?? 'submitted',
+        culture: input.culture,
+        page_key: input.pageKey,
+        ip_hash: input.ipHash,
+        user_agent: input.userAgent,
+        spam: this.#db.dialect.boolValue(input.spam ?? false),
+        create_date: DbDate.toDb(now),
+        update_date: DbDate.toDb(now),
+      })
+      .execute()
     await this.#writeValues(id, input.values)
     return (await this.byId(id)) as FormEntry
   }
@@ -254,11 +259,16 @@ export class FormEntryRepository {
       // is different from the field being absent; one empty row records it.
       const list = value.values.length === 0 ? [''] : value.values
       for (const [sort, text] of list.entries())
-        await this.#db.exec(
-          `INSERT INTO form_entry_value (entry_id, field_alias, sort_order, value, label)
-           VALUES (?, ?, ?, ?, ?)`,
-          [id, value.fieldAlias, sort, text, value.labels?.[sort] ?? null],
-        )
+        await this.#db.q
+          .insertInto('form_entry_value')
+          .values({
+            entry_id: id,
+            field_alias: value.fieldAlias,
+            sort_order: sort,
+            value: text,
+            label: value.labels?.[sort] ?? null,
+          })
+          .execute()
     }
   }
 
@@ -269,11 +279,11 @@ export class FormEntryRepository {
   async setState(id: string, next: FormEntryState): Promise<FormEntry | undefined> {
     const existing = await this.byId(id)
     if (!existing) return undefined
-    await this.#db.exec('UPDATE form_entry SET state = ?, update_date = ? WHERE id = ?', [
-      next,
-      DbDate.toDb(new Date()),
-      id,
-    ])
+    await this.#db.q
+      .updateTable('form_entry')
+      .set({ state: next, update_date: DbDate.toDb(new Date()) })
+      .where('id', '=', id)
+      .execute()
     return this.byId(id)
   }
 
@@ -281,11 +291,11 @@ export class FormEntryRepository {
   async setSpam(id: string, spam: boolean): Promise<FormEntry | undefined> {
     const existing = await this.byId(id)
     if (!existing) return undefined
-    await this.#db.exec('UPDATE form_entry SET spam = ?, update_date = ? WHERE id = ?', [
-      this.#db.dialect.boolValue(spam),
-      DbDate.toDb(new Date()),
-      id,
-    ])
+    await this.#db.q
+      .updateTable('form_entry')
+      .set({ spam: this.#db.dialect.boolValue(spam), update_date: DbDate.toDb(new Date()) })
+      .where('id', '=', id)
+      .execute()
     return this.byId(id)
   }
 
@@ -301,12 +311,13 @@ export class FormEntryRepository {
       const labels = value.values.map((v) => old.labels?.[old.values.indexOf(v)] ?? v)
       return { ...value, labels }
     })
-    await this.#db.exec('DELETE FROM form_entry_value WHERE entry_id = ?', [id])
+    await this.#db.q.deleteFrom('form_entry_value').where('entry_id', '=', id).execute()
     await this.#writeValues(id, kept)
-    await this.#db.exec('UPDATE form_entry SET update_date = ? WHERE id = ?', [
-      DbDate.toDb(new Date()),
-      id,
-    ])
+    await this.#db.q
+      .updateTable('form_entry')
+      .set({ update_date: DbDate.toDb(new Date()) })
+      .where('id', '=', id)
+      .execute()
     return this.byId(id)
   }
 
@@ -315,17 +326,23 @@ export class FormEntryRepository {
     if (!existing) return false
     // Explicit rather than relying on the cascade: SQLite enforces foreign keys
     // only when the pragma is on, and this must not depend on that.
-    await this.#db.exec('DELETE FROM form_entry_value WHERE entry_id = ?', [id])
-    await this.#db.exec('DELETE FROM form_entry WHERE id = ?', [id])
+    await this.#db.q.deleteFrom('form_entry_value').where('entry_id', '=', id).execute()
+    await this.#db.q.deleteFrom('form_entry').where('id', '=', id).execute()
     return true
   }
 
   /** Every form that has entries, with how many — including orphaned ones. */
   async forms(): Promise<{ formKey: string; formAlias: string; total: number }[]> {
-    const rows = await this.#db.query<{ form_key: string; form_alias: string; total: number }>(
-      `SELECT form_key, MAX(form_alias) AS form_alias, COUNT(*) AS total
-         FROM form_entry GROUP BY form_key ORDER BY MAX(form_alias)`,
-    )
+    const rows = await this.#db.q
+      .selectFrom('form_entry')
+      .select((eb) => [
+        'form_key',
+        eb.fn.max('form_alias').as('form_alias'),
+        sql<number>`count(*)`.as('total'),
+      ])
+      .groupBy('form_key')
+      .orderBy((eb) => eb.fn.max('form_alias'))
+      .execute()
     return rows.map((row) => ({
       formKey: row.form_key,
       formAlias: row.form_alias,

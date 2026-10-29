@@ -13,10 +13,12 @@ export function createMemberGroupPort(db: Db): MemberGroupPort {
   const nodes = new NodeRepository(db)
 
   const named = async (name: string): Promise<{ key: string } | undefined> => {
-    const rows = await db.query<{ unique_id: string }>(
-      'SELECT n.unique_id FROM node n WHERE n.node_object_type = ? AND n.text = ?',
-      [TYPE, name],
-    )
+    const rows = await db.q
+      .selectFrom('node as n')
+      .select('n.unique_id')
+      .where('n.node_object_type', '=', TYPE)
+      .where('n.text', '=', name)
+      .execute()
     const key = rows[0]?.unique_id
     return key ? { key: String(key) } : undefined
   }
@@ -82,7 +84,7 @@ export function createMemberGroupPort(db: Db): MemberGroupPort {
     async remove(key): Promise<MemberGroupStatus> {
       const node = await nodes.byKey(key)
       if (!node || node.objectType !== TYPE) return 'not-found'
-      await db.exec('DELETE FROM member_group_member WHERE member_group_id = ?', [node.id])
+      await db.q.deleteFrom('member_group_member').where('member_group_id', '=', node.id).execute()
       await nodes.delete(node.id)
       return 'ok'
     },

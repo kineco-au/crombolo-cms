@@ -43,16 +43,17 @@ export class TagRepository {
   async all(
     filter: { query?: string; group?: string; culture?: string | null } = {},
   ): Promise<TagRow[]> {
-    const rows = await this.#db.query(
-      `SELECT pv.node_id, pv.text_value, pv.varchar_value, d.config, l.iso_code
-       FROM property_value pv
-       JOIN property_type p ON p.id = pv.property_type_id
-       JOIN data_type d ON d.node_id = p.data_type_id
-       JOIN node n ON n.id = pv.node_id
-       LEFT JOIN language l ON l.id = pv.language_id
-       WHERE pv.is_current = ? AND d.editor_alias = ? AND n.trashed = ?`,
-      [this.#db.dialect.boolValue(true), 'Umbraco.Tags', this.#db.dialect.boolValue(false)],
-    )
+    const rows = await this.#db.q
+      .selectFrom('property_value as pv')
+      .innerJoin('property_type as p', 'p.id', 'pv.property_type_id')
+      .innerJoin('data_type as d', 'd.node_id', 'p.data_type_id')
+      .innerJoin('node as n', 'n.id', 'pv.node_id')
+      .leftJoin('language as l', 'l.id', 'pv.language_id')
+      .select(['pv.node_id', 'pv.text_value', 'pv.varchar_value', 'd.config', 'l.iso_code'])
+      .where('pv.is_current', '=', this.#db.dialect.boolValue(true))
+      .where('d.editor_alias', '=', 'Umbraco.Tags')
+      .where('n.trashed', '=', this.#db.dialect.boolValue(false))
+      .execute()
     const tags = new Map<string, TagRow & { nodes: Set<number> }>()
     for (const row of rows) {
       let group = 'default'

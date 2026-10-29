@@ -11,10 +11,12 @@
   "scripts": {
     "brochureware:publish": "bun run scripts/publish-brochureware.ts",
     "build:template": "bun run scripts/build-template.ts",
-    "check": "biome check . && bun run typecheck",
+    "check": "biome check . && bun run typecheck && bun run check:sql",
     "check:modules": "bun run scripts/check-module-graph.ts",
+    "check:sql": "bun run scripts/check-sql.ts",
     "api:snapshot": "bun run scripts/api-surface.ts",
     "coverage:api": "bun run scripts/api-coverage.ts",
+    "db:types": "bun run scripts/db-types.ts",
     "db:up": "docker compose up -d --wait db",
     "dev": "bun run --cwd apps/site dev",
     "docker:build": "docker compose build",

@@ -6,8 +6,6 @@ import type { NodeChain, NodeLookup, Principal } from '@crombolo/api-management'
 import { combineStartNodes, normaliseUuid, ObjectTypes } from '@crombolo/core'
 import { type Db, fromDbBool, UserRepository } from '@crombolo/data'
 
-const inList = (values: readonly unknown[]) => values.map(() => '?').join(', ')
-
 async function chains(
   db: Db,
   rows: Array<{ id: number; unique_id: string; path: string; trashed: unknown }>,
@@ -24,10 +22,11 @@ async function chains(
   ]
   const keys = new Map<number, string>()
   if (ids.length > 0)
-    for (const row of await db.query<{ id: number; unique_id: string }>(
-      `SELECT id, unique_id FROM node WHERE id IN (${inList(ids)})`,
-      ids,
-    ))
+    for (const row of await db.q
+      .selectFrom('node')
+      .select(['id', 'unique_id'])
+      .where('id', 'in', ids)
+      .execute())
       keys.set(Number(row.id), normaliseUuid(String(row.unique_id)))
   return new Map(
     rows.map((row) => [
@@ -53,31 +52,34 @@ export function createNodeLookup(db: Db): NodeLookup {
     if (wanted.length === 0) return new Map<string, NodeChain>()
     return chains(
       db,
-      await db.query(
-        `SELECT id, unique_id, path, trashed FROM node
-         WHERE node_object_type = ? AND unique_id IN (${inList(wanted)})`,
-        [objectType, ...wanted],
-      ),
+      await db.q
+        .selectFrom('node')
+        .select(['id', 'unique_id', 'path', 'trashed'])
+        .where('node_object_type', '=', objectType)
+        .where('unique_id', 'in', wanted)
+        .execute(),
     )
   }
   return {
     documents: (keys) => byKeys(ObjectTypes.Document, keys),
     media: (keys) => byKeys(ObjectTypes.Media, keys),
     async documentDescendants(key) {
-      const node = (
-        await db.query<{ path: string }>('SELECT path FROM node WHERE unique_id = ?', [
-          normaliseUuid(key),
-        ])
-      )[0]
+      const node = await db.q
+        .selectFrom('node')
+        .select('path')
+        .where('unique_id', '=', normaliseUuid(key))
+        .executeTakeFirst()
       if (!node) return []
       return [
         ...(
           await chains(
             db,
-            await db.query(
-              'SELECT id, unique_id, path, trashed FROM node WHERE node_object_type = ? AND path LIKE ?',
-              [ObjectTypes.Document, `${node.path},%`],
-            ),
+            await db.q
+              .selectFrom('node')
+              .select(['id', 'unique_id', 'path', 'trashed'])
+              .where('node_object_type', '=', ObjectTypes.Document)
+              .where('path', 'like', `${node.path},%`)
+              .execute(),
           )
         ).values(),
       ]
@@ -85,12 +87,12 @@ export function createNodeLookup(db: Db): NodeLookup {
     async versionDocument(versionId) {
       const id = Number(versionId)
       if (!Number.isInteger(id)) return undefined
-      const row = (
-        await db.query<{ unique_id: string }>(
-          'SELECT n.unique_id FROM content_version cv JOIN node n ON n.id = cv.node_id WHERE cv.id = ?',
-          [id],
-        )
-      )[0]
+      const row = await db.q
+        .selectFrom('content_version as cv')
+        .innerJoin('node as n', 'n.id', 'cv.node_id')
+        .select('n.unique_id')
+        .where('cv.id', '=', id)
+        .executeTakeFirst()
       return row ? normaliseUuid(String(row.unique_id)) : undefined
     },
   }

@@ -8,6 +8,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Db } from '../database.ts'
 import { DbDate } from '../dialect.ts'
+import { sql } from '../query.ts'
 
 export type FormWorkflowState = 'pending' | 'running' | 'done' | 'failed'
 
@@ -52,10 +53,22 @@ interface Row {
   update_date: unknown
 }
 
-const SELECT = `SELECT id, form_key, form_alias, workflow_name, workflow_type, run_on,
-                       entry_id, payload, state, attempts, last_error, run_after,
-                       create_date, update_date
-                  FROM form_workflow_run`
+const COLUMNS = [
+  'id',
+  'form_key',
+  'form_alias',
+  'workflow_name',
+  'workflow_type',
+  'run_on',
+  'entry_id',
+  'payload',
+  'state',
+  'attempts',
+  'last_error',
+  'run_after',
+  'create_date',
+  'update_date',
+] as const
 
 const STATES: readonly FormWorkflowState[] = ['pending', 'running', 'done', 'failed']
 
@@ -99,28 +112,25 @@ export class FormWorkflowRepository {
     const ids: string[] = []
     for (const run of runs) {
       const id = randomUUID()
-      await this.#db.exec(
-        `INSERT INTO form_workflow_run
-           (id, form_key, form_alias, workflow_name, workflow_type, run_on, entry_id,
-            payload, state, attempts, last_error, run_after, create_date, update_date)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
+      await this.#db.q
+        .insertInto('form_workflow_run')
+        .values({
           id,
-          run.formKey,
-          run.formAlias,
-          run.workflowName,
-          run.workflowType,
-          run.runOn,
-          run.entryId,
-          JSON.stringify(run.payload),
-          'pending',
-          0,
-          null,
-          DbDate.toDb(now),
-          DbDate.toDb(now),
-          DbDate.toDb(now),
-        ],
-      )
+          form_key: run.formKey,
+          form_alias: run.formAlias,
+          workflow_name: run.workflowName,
+          workflow_type: run.workflowType,
+          run_on: run.runOn,
+          entry_id: run.entryId,
+          payload: JSON.stringify(run.payload),
+          state: 'pending',
+          attempts: 0,
+          last_error: null,
+          run_after: DbDate.toDb(now),
+          create_date: DbDate.toDb(now),
+          update_date: DbDate.toDb(now),
+        })
+        .execute()
       ids.push(id)
     }
     return ids
@@ -128,10 +138,15 @@ export class FormWorkflowRepository {
 
   /** What is ready to run, oldest first so a backlog drains in order. */
   async due(now = new Date(), limit = 25): Promise<FormWorkflowRun[]> {
-    const rows = await this.#db.query<Row>(
-      `${SELECT} WHERE state = ? AND run_after <= ? ORDER BY run_after, create_date LIMIT ?`,
-      ['pending', DbDate.toDb(now), limit],
-    )
+    const rows = await this.#db.q
+      .selectFrom('form_workflow_run')
+      .select(COLUMNS)
+      .where('state', '=', 'pending')
+      .where('run_after', '<=', DbDate.toDb(now))
+      .orderBy('run_after')
+      .orderBy('create_date')
+      .limit(limit)
+      .execute()
     return rows.map(hydrate)
   }
 
@@ -142,24 +157,26 @@ export class FormWorkflowRepository {
    * the same UPDATE, and only the first one changes a row.
    */
   async claim(id: string): Promise<FormWorkflowRun | undefined> {
-    const rows = await this.#db.query<Row>(
-      `UPDATE form_workflow_run
-          SET state = ?, attempts = attempts + 1, update_date = ?
-        WHERE id = ? AND state = ?
-        RETURNING id, form_key, form_alias, workflow_name, workflow_type, run_on,
-                  entry_id, payload, state, attempts, last_error, run_after,
-                  create_date, update_date`,
-      ['running', DbDate.toDb(new Date()), id, 'pending'],
-    )
-    const row = rows[0]
+    const row = await this.#db.q
+      .updateTable('form_workflow_run')
+      .set((eb) => ({
+        state: 'running',
+        attempts: eb('attempts', '+', 1),
+        update_date: DbDate.toDb(new Date()),
+      }))
+      .where('id', '=', id)
+      .where('state', '=', 'pending')
+      .returning(COLUMNS)
+      .executeTakeFirst()
     return row ? hydrate(row) : undefined
   }
 
   async succeed(id: string): Promise<void> {
-    await this.#db.exec(
-      'UPDATE form_workflow_run SET state = ?, last_error = NULL, update_date = ? WHERE id = ?',
-      ['done', DbDate.toDb(new Date()), id],
-    )
+    await this.#db.q
+      .updateTable('form_workflow_run')
+      .set({ state: 'done', last_error: null, update_date: DbDate.toDb(new Date()) })
+      .where('id', '=', id)
+      .execute()
   }
 
   /**
@@ -167,38 +184,46 @@ export class FormWorkflowRepository {
    * finished and a person has to look.
    */
   async fail(id: string, error: string, retryAt?: Date): Promise<void> {
-    await this.#db.exec(
-      'UPDATE form_workflow_run SET state = ?, last_error = ?, run_after = ?, update_date = ? WHERE id = ?',
-      [
-        retryAt ? 'pending' : 'failed',
-        error.slice(0, 2000),
-        DbDate.toDb(retryAt ?? new Date()),
-        DbDate.toDb(new Date()),
-        id,
-      ],
-    )
+    await this.#db.q
+      .updateTable('form_workflow_run')
+      .set({
+        state: retryAt ? 'pending' : 'failed',
+        last_error: error.slice(0, 2000),
+        run_after: DbDate.toDb(retryAt ?? new Date()),
+        update_date: DbDate.toDb(new Date()),
+      })
+      .where('id', '=', id)
+      .execute()
   }
 
   async byId(id: string): Promise<FormWorkflowRun | undefined> {
-    const rows = await this.#db.query<Row>(`${SELECT} WHERE id = ?`, [id])
-    const row = rows[0]
+    const row = await this.#db.q
+      .selectFrom('form_workflow_run')
+      .select(COLUMNS)
+      .where('id', '=', id)
+      .executeTakeFirst()
     return row ? hydrate(row) : undefined
   }
 
   /** Every run for a form, newest first; what the backoffice would show. */
   async forForm(formKey: string, limit = 100): Promise<FormWorkflowRun[]> {
-    const rows = await this.#db.query<Row>(
-      `${SELECT} WHERE form_key = ? ORDER BY create_date DESC LIMIT ?`,
-      [formKey, limit],
-    )
+    const rows = await this.#db.q
+      .selectFrom('form_workflow_run')
+      .select(COLUMNS)
+      .where('form_key', '=', formKey)
+      .orderBy('create_date', 'desc')
+      .limit(limit)
+      .execute()
     return rows.map(hydrate)
   }
 
   /** How many runs sit in each state, for a status line. */
   async counts(): Promise<Record<FormWorkflowState, number>> {
-    const rows = await this.#db.query<{ state: string; n: number }>(
-      'SELECT state, COUNT(*) AS n FROM form_workflow_run GROUP BY state',
-    )
+    const rows = await this.#db.q
+      .selectFrom('form_workflow_run')
+      .select(['state', sql<number>`count(*)`.as('n')])
+      .groupBy('state')
+      .execute()
     const out: Record<FormWorkflowState, number> = {
       pending: 0,
       running: 0,

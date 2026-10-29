@@ -102,10 +102,13 @@ export function createContentNotifier(db: Db, options: ContentNotifierOptions): 
     }
     let summary = detail ?? null
     if (change.withDescendants) {
-      const [row] = await on.query<{ n: number }>(
-        'SELECT COUNT(*) AS n FROM node WHERE path LIKE ? AND node_object_type = ? AND trashed = ?',
-        [`${node.path},%`, ObjectTypes.Document, on.dialect.boolValue(false)],
-      )
+      const row = await on.q
+        .selectFrom('node')
+        .select((eb) => eb.fn.countAll().as('n'))
+        .where('path', 'like', `${node.path},%`)
+        .where('node_object_type', '=', ObjectTypes.Document)
+        .where('trashed', '=', on.dialect.boolValue(false) as boolean)
+        .executeTakeFirst()
       const under = Number(row?.n ?? 0)
       if (under > 0) summary = `and ${under} page${under === 1 ? '' : 's'} under it`
     }
@@ -136,10 +139,11 @@ export function createContentNotifier(db: Db, options: ContentNotifierOptions): 
         (id) => id !== actorId,
       )
       if (userIds.length === 0) continue
-      const keys = await on.query<{ key: string }>(
-        `SELECT key FROM user_account WHERE id IN (${userIds.map(() => '?').join(', ')})`,
-        userIds,
-      )
+      const keys = await on.q
+        .selectFrom('user_account')
+        .select('key')
+        .where('id', 'in', userIds)
+        .execute()
       for (const { key } of keys)
         rows.push({
           recipientUserKey: String(key),

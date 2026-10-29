@@ -78,18 +78,12 @@ export async function previewUser(
   db: Db,
   where: { id: number } | { key: string },
 ): Promise<{ id: number; stamp: string } | undefined> {
-  const rows = await db.query<{
-    id: number
-    security_stamp: string | null
-    is_locked_out: unknown
-    is_approved: unknown
-  }>(
-    `SELECT id, security_stamp, is_locked_out, is_approved FROM user_account WHERE ${
-      'id' in where ? 'id' : 'key'
-    } = ?`,
-    ['id' in where ? where.id : where.key],
-  )
-  const row = rows[0]
+  const row = await db.q
+    .selectFrom('user_account')
+    .select(['id', 'security_stamp', 'is_locked_out', 'is_approved'])
+    .$if('id' in where, (q) => q.where('id', '=', (where as { id: number }).id))
+    .$if(!('id' in where), (q) => q.where('key', '=', (where as { key: string }).key))
+    .executeTakeFirst()
   if (!row || fromDbBool(row.is_locked_out) || !fromDbBool(row.is_approved)) return undefined
   return { id: Number(row.id), stamp: stampDigest(row.security_stamp) }
 }

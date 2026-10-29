@@ -6,10 +6,11 @@
  * `export const layout = 'alias'` names the layout template, which is how Umbraco
  * declares it too — in the file, not the database.
  */
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { basename, join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { type FormSubmissionState, isOutcome, type Outcome } from '@crombolo/core'
+import { componentStackOf, trackComponent } from './component-stack.ts'
 import { emailScope, markPersonal, renderScope } from './context.ts'
 import type { EmailProps, EmailRenderResult } from './email.ts'
 import { RawHtml } from './html.ts'
@@ -379,18 +380,26 @@ export class Renderer {
 
   /**
    * What a template threw, for a person to act on: its message, the first line
-   * under `components/` it failed on, and the stack, all naming files somebody
-   * can open.
+   * under `components/` it failed on with the code around it, the component
+   * stack where one was recorded, and the stack, all naming files somebody can
+   * open.
    */
-  describeError(error: unknown): { message: string; location?: string; stack: string } {
+  describeError(error: unknown): ErrorDescription {
     const root = `${this.#componentsDir}${sep}`
     const shown = `${basename(this.#componentsDir)}/`
     const readable = (text: string) => this.inSource(text).replaceAll(root, shown)
     const message = readable(error instanceof Error ? error.message : String(error)).trim()
     const stack = error instanceof Error ? readable(error.stack ?? '') : ''
     const escaped = shown.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const frame = new RegExp(`${escaped}[^\\s:()]+\\.[jt]sx?:\\d+`).exec(stack)
-    return frame ? { message, location: frame[0], stack } : { message, stack }
+    const frame = new RegExp(`${escaped}([^\\s:()]+\\.[jt]sx?):(\\d+)`).exec(stack)
+    const components = componentStackOf(error)
+    return {
+      message,
+      stack,
+      ...(frame ? { location: frame[0] } : {}),
+      ...(frame ? codeAround(this.#componentsDir, frame[1] as string, Number(frame[2])) : {}),
+      ...(components ? { components } : {}),
+    }
   }
 
   /** Runs a render under the time limit; the signal it hands on aborts when that runs out. */
@@ -527,8 +536,10 @@ export class Renderer {
       const module = await this.#load(currentAlias)
       if (!module) return depth === 0 || body === undefined ? undefined : withDoctype(body.value)
       const render = module.default as unknown as (props: object) => Child | Promise<Child>
-      const rendered = body === undefined ? render(props) : render({ ...props, children: body })
-      body = new RawHtml(await renderToString(rendered as Child))
+      const layoutProps = body === undefined ? props : { ...props, children: body }
+      body = new RawHtml(
+        await trackComponent(currentAlias, () => renderToString(render(layoutProps) as Child)),
+      )
       currentAlias = module.layout
       depth += 1
     }
@@ -566,4 +577,42 @@ export class Renderer {
     this.#modules.set(file, module)
     return module
   }
+}
+
+/** What a template threw, for a person to act on (`Renderer.describeError`). */
+export interface ErrorDescription {
+  message: string
+  /** The first line under `components/` it failed on: `components/card.tsx:12`. */
+  location?: string
+  stack: string
+  /** The lines around that one (story 214). */
+  code?: { line: number; lines: Array<{ number: number; text: string }> }
+  /** The components rendering when it was thrown, outermost first (story 214). */
+  components?: readonly string[]
+}
+
+const CODE_CONTEXT = 5
+
+/** The lines either side of `line` in a file under `components/`, or nothing when it can't be read. */
+function codeAround(
+  componentsDir: string,
+  file: string,
+  line: number,
+): Pick<ErrorDescription, 'code'> {
+  const path = resolve(componentsDir, file)
+  if (!path.startsWith(`${resolve(componentsDir)}${sep}`)) return {}
+  let text: string
+  try {
+    text = readFileSync(path, 'utf8')
+  } catch {
+    return {}
+  }
+  const all = text.split('\n')
+  if (line < 1 || line > all.length) return {}
+  const from = Math.max(1, line - CODE_CONTEXT)
+  const to = Math.min(all.length, line + CODE_CONTEXT)
+  const lines = []
+  for (let number = from; number <= to; number++)
+    lines.push({ number, text: all[number - 1] as string })
+  return { code: { line, lines } }
 }

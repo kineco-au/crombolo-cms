@@ -4,6 +4,7 @@
  * `RENAME COLUMN`, so nothing here needs the copy-table dance.
  */
 import type { Db } from './database.ts'
+import { sql } from './query.ts'
 
 export interface SchemaOps {
   addColumn(table: string, column: string, definition: string): Promise<void>
@@ -16,20 +17,22 @@ export interface SchemaOps {
 }
 
 export function schemaOps(db: Db): SchemaOps {
-  const q = (identifier: string) => db.dialect.quote(identifier)
+  const schema = db.q.schema
   return {
     addColumn: (table, column, definition) =>
-      db.exec(`ALTER TABLE ${q(table)} ADD COLUMN ${q(column)} ${definition}`),
-    dropColumn: (table, column) => db.exec(`ALTER TABLE ${q(table)} DROP COLUMN ${q(column)}`),
-    renameColumn: (table, from, to) =>
-      db.exec(`ALTER TABLE ${q(table)} RENAME COLUMN ${q(from)} TO ${q(to)}`),
-    renameTable: (from, to) => db.exec(`ALTER TABLE ${q(from)} RENAME TO ${q(to)}`),
-    addIndex: (name, table, columns, unique = false) =>
-      db.exec(
-        `CREATE ${unique ? 'UNIQUE ' : ''}INDEX ${q(name)} ON ${q(table)} (${columns.map(q).join(', ')})`,
-      ),
+      schema.alterTable(table).addColumn(column, sql.raw(definition)).execute(),
+    dropColumn: (table, column) => schema.alterTable(table).dropColumn(column).execute(),
+    renameColumn: (table, from, to) => schema.alterTable(table).renameColumn(from, to).execute(),
+    renameTable: (from, to) => schema.alterTable(from).renameTo(to).execute(),
+    addIndex: (name, table, columns, unique = false) => {
+      const index = schema
+        .createIndex(name)
+        .on(table)
+        .columns([...columns])
+      return (unique ? index.unique() : index).execute()
+    },
     // Postgres drops an index by name alone; SQLite too. `table` documents intent.
-    dropIndex: (name) => db.exec(`DROP INDEX ${q(name)}`),
-    dropTable: (table) => db.exec(`DROP TABLE ${q(table)}`),
+    dropIndex: (name) => schema.dropIndex(name).execute(),
+    dropTable: (table) => schema.dropTable(table).execute(),
   }
 }

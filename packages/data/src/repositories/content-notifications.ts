@@ -6,6 +6,7 @@
  */
 import type { Db } from '../database.ts'
 import { DbDate } from '../dialect.ts'
+import { sql } from '../query.ts'
 
 export type ContentNotificationState = 'pending' | 'running' | 'done' | 'failed' | 'skipped'
 
@@ -39,8 +40,21 @@ export interface NewContentNotification {
   eventId?: string
 }
 
-const COLUMNS = `id, recipient_user_key, action_id, node_key, node_name, actor_user_key, actor_name,
-  detail, occurred_at, state, attempts, last_error, run_after`
+const COLUMNS = [
+  'id',
+  'recipient_user_key',
+  'action_id',
+  'node_key',
+  'node_name',
+  'actor_user_key',
+  'actor_name',
+  'detail',
+  'occurred_at',
+  'state',
+  'attempts',
+  'last_error',
+  'run_after',
+] as const
 
 function hydrate(row: Record<string, unknown>): ContentNotification {
   const text = (value: unknown) => (value === null || value === undefined ? null : String(value))
@@ -73,51 +87,55 @@ export class ContentNotificationRepository {
     const now = DbDate.toDb(new Date())
     await this.#db.transaction(async (tx) => {
       for (const row of rows)
-        await tx.exec(
-          `INSERT INTO content_notification (id, recipient_user_key, action_id, node_key, node_name,
-             actor_user_key, actor_name, detail, occurred_at, state, attempts, last_error, run_after,
-             create_date, update_date, event_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, NULL, ?, ?, ?, ?)
-           ON CONFLICT DO NOTHING`,
-          [
-            crypto.randomUUID(),
-            row.recipientUserKey,
-            row.actionId,
-            row.nodeKey,
-            row.nodeName,
-            row.actorUserKey,
-            row.actorName,
-            row.detail,
-            DbDate.toDb(row.occurredAt),
-            DbDate.toDb(row.runAfter),
-            now,
-            now,
-            row.eventId ?? null,
-          ],
-        )
+        await tx.q
+          .insertInto('content_notification')
+          .values({
+            id: crypto.randomUUID(),
+            recipient_user_key: row.recipientUserKey,
+            action_id: row.actionId,
+            node_key: row.nodeKey,
+            node_name: row.nodeName,
+            actor_user_key: row.actorUserKey,
+            actor_name: row.actorName,
+            detail: row.detail,
+            occurred_at: DbDate.toDb(row.occurredAt),
+            state: 'pending',
+            attempts: 0,
+            last_error: null,
+            run_after: DbDate.toDb(row.runAfter),
+            create_date: now,
+            update_date: now,
+            event_id: row.eventId ?? null,
+          })
+          .onConflict((oc) => oc.doNothing())
+          .execute()
     })
   }
 
   /** The people with something due to them: each one is a single e-mail. */
   async dueRecipients(now = new Date(), limit = 25): Promise<string[]> {
-    const rows = await this.#db.query<{ recipient_user_key: string }>(
-      `SELECT recipient_user_key FROM content_notification
-        WHERE state = 'pending' AND run_after <= ?
-        GROUP BY recipient_user_key ORDER BY MIN(run_after) LIMIT ?`,
-      [DbDate.toDb(now), limit],
-    )
+    const rows = await this.#db.q
+      .selectFrom('content_notification')
+      .select('recipient_user_key')
+      .where('state', '=', 'pending')
+      .where('run_after', '<=', DbDate.toDb(now))
+      .groupBy('recipient_user_key')
+      .orderBy((eb) => eb.fn.min('run_after'))
+      .limit(limit)
+      .execute()
     return rows.map((row) => String(row.recipient_user_key))
   }
 
   /** Takes everything due to one person, or nothing when another node got there first. */
   async claimFor(recipientUserKey: string, now = new Date()): Promise<ContentNotification[]> {
-    const rows = await this.#db.query(
-      `UPDATE content_notification
-          SET state = 'running', attempts = attempts + 1, update_date = ?
-        WHERE recipient_user_key = ? AND state = 'pending' AND run_after <= ?
-        RETURNING ${COLUMNS}`,
-      [DbDate.toDb(now), recipientUserKey, DbDate.toDb(now)],
-    )
+    const rows = await this.#db.q
+      .updateTable('content_notification')
+      .set({ state: 'running', attempts: sql<number>`attempts + 1`, update_date: DbDate.toDb(now) })
+      .where('recipient_user_key', '=', recipientUserKey)
+      .where('state', '=', 'pending')
+      .where('run_after', '<=', DbDate.toDb(now))
+      .returning(COLUMNS)
+      .execute()
     return rows.map(hydrate).sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime())
   }
 
@@ -128,18 +146,16 @@ export class ContentNotificationRepository {
     runAfter?: Date,
   ) {
     if (ids.length === 0) return
-    const marks = ids.map(() => '?').join(', ')
-    await this.#db.exec(
-      `UPDATE content_notification SET state = ?, last_error = ?, update_date = ?${runAfter ? ', run_after = ?' : ''}
-        WHERE id IN (${marks})`,
-      [
+    await this.#db.q
+      .updateTable('content_notification')
+      .set({
         state,
-        error?.slice(0, 2000) ?? null,
-        DbDate.toDb(new Date()),
-        ...(runAfter ? [DbDate.toDb(runAfter)] : []),
-        ...ids,
-      ],
-    )
+        last_error: error?.slice(0, 2000) ?? null,
+        update_date: DbDate.toDb(new Date()),
+        ...(runAfter ? { run_after: DbDate.toDb(runAfter) } : {}),
+      })
+      .where('id', 'in', ids)
+      .execute()
   }
 
   succeed(ids: readonly string[]): Promise<void> {
@@ -158,54 +174,66 @@ export class ContentNotificationRepository {
 
   /** Rows a node took and never finished — it died — go back in the queue. */
   async releaseStale(olderThan: Date): Promise<number> {
-    const rows = await this.#db.query(
-      `UPDATE content_notification SET state = 'pending', update_date = ?
-        WHERE state = 'running' AND update_date < ? RETURNING id`,
-      [DbDate.toDb(new Date()), DbDate.toDb(olderThan)],
-    )
+    const rows = await this.#db.q
+      .updateTable('content_notification')
+      .set({ state: 'pending', update_date: DbDate.toDb(new Date()) })
+      .where('state', '=', 'running')
+      .where('update_date', '<', DbDate.toDb(olderThan))
+      .returning('id')
+      .execute()
     return rows.length
   }
 
   /** Puts failed notifications back, all or one; answers how many. */
   async retry(id?: string): Promise<number> {
     const now = DbDate.toDb(new Date())
-    const rows = await this.#db.query(
-      `UPDATE content_notification SET state = 'pending', attempts = 0, run_after = ?, update_date = ?
-        WHERE state = 'failed'${id ? ' AND id = ?' : ''} RETURNING id`,
-      id ? [now, now, id] : [now, now],
-    )
+    const rows = await this.#db.q
+      .updateTable('content_notification')
+      .set({ state: 'pending', attempts: 0, run_after: now, update_date: now })
+      .where('state', '=', 'failed')
+      .$if(Boolean(id), (q) => q.where('id', '=', id as string))
+      .returning('id')
+      .execute()
     return rows.length
   }
 
   async failed(limit = 100): Promise<ContentNotification[]> {
-    const rows = await this.#db.query(
-      `SELECT ${COLUMNS} FROM content_notification WHERE state = 'failed'
-        ORDER BY occurred_at DESC LIMIT ?`,
-      [limit],
-    )
+    const rows = await this.#db.q
+      .selectFrom('content_notification')
+      .select(COLUMNS)
+      .where('state', '=', 'failed')
+      .orderBy('occurred_at', 'desc')
+      .limit(limit)
+      .execute()
     return rows.map(hydrate)
   }
 
   async prune(before: Date): Promise<number> {
-    const rows = await this.#db.query(
-      `DELETE FROM content_notification WHERE state IN ('done', 'skipped') AND update_date < ? RETURNING id`,
-      [DbDate.toDb(before)],
-    )
+    const rows = await this.#db.q
+      .deleteFrom('content_notification')
+      .where('state', 'in', ['done', 'skipped'])
+      .where('update_date', '<', DbDate.toDb(before))
+      .returning('id')
+      .execute()
     return rows.length
   }
 
   async forRecipient(recipientUserKey: string): Promise<ContentNotification[]> {
-    const rows = await this.#db.query(
-      `SELECT ${COLUMNS} FROM content_notification WHERE recipient_user_key = ? ORDER BY occurred_at`,
-      [recipientUserKey],
-    )
+    const rows = await this.#db.q
+      .selectFrom('content_notification')
+      .select(COLUMNS)
+      .where('recipient_user_key', '=', recipientUserKey)
+      .orderBy('occurred_at')
+      .execute()
     return rows.map(hydrate)
   }
 
   async all(): Promise<ContentNotification[]> {
-    const rows = await this.#db.query(
-      `SELECT ${COLUMNS} FROM content_notification ORDER BY occurred_at`,
-    )
+    const rows = await this.#db.q
+      .selectFrom('content_notification')
+      .select(COLUMNS)
+      .orderBy('occurred_at')
+      .execute()
     return rows.map(hydrate)
   }
 }

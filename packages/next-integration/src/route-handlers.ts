@@ -1,7 +1,8 @@
 /**
  * Route handlers a Next.js app mounts (story 208): Draft Mode on and off from
  * the CMS's Preview button, revalidation from its webhook, a member's sign-in
- * and sign-out with PKCE, and media fetched with the member's token.
+ * and sign-out with PKCE, media fetched with the member's token, and the CMS's
+ * changes for live reload in development (story 214).
  *
  * ```ts
  * // web/app/api/crombolo/preview/route.ts
@@ -112,6 +113,7 @@ export function revalidateHandler(
     )
     if (keys.length === 0) return new Response('The payload names no item.', { status: 400 })
     crombolo.revalidate(keys)
+    announceRevalidation(keys)
     return Response.json({ revalidated: keys })
   }
 }
@@ -285,5 +287,82 @@ export function mediaHandler(crombolo: Crombolo) {
     // An answer to a member's token is theirs alone.
     if (headers.has('authorization')) out.set('cache-control', 'private, no-store')
     return new Response(answer.body, { status: answer.status, headers: out })
+  }
+}
+
+/** Where the CMS streams its changes in development. */
+export const CMS_LIVE_EVENTS_PATH = '/crombolo/dev/events'
+
+/**
+ * On the global object: Next.js may bundle this module once per route, and
+ * the revalidate route must reach the live route's listeners.
+ */
+const REVALIDATED = Symbol.for('crombolo.next.revalidated')
+
+function revalidationListeners(): Set<(keys: readonly string[]) => void> {
+  const holder = globalThis as { [REVALIDATED]?: Set<(keys: readonly string[]) => void> }
+  holder[REVALIDATED] ??= new Set()
+  return holder[REVALIDATED]
+}
+
+function announceRevalidation(keys: readonly string[]): void {
+  for (const listener of revalidationListeners()) listener(keys)
+}
+
+const encoder = new TextEncoder()
+
+/**
+ * `GET` for `<CromboloLiveReload />` in development: the CMS's change stream,
+ * and a `revalidated` event once this app has cleared what a webhook named, so
+ * a refresh after it shows the new content. 404 outside development.
+ */
+export function liveReloadHandler(crombolo: Crombolo) {
+  return async (request: Request): Promise<Response> => {
+    if (process.env.NODE_ENV !== 'development') return new Response('Not Found', { status: 404 })
+    const upstream = await fetch(new URL(CMS_LIVE_EVENTS_PATH, crombolo.options.url), {
+      headers: { accept: 'text/event-stream' },
+      signal: request.signal,
+    }).catch(() => undefined)
+    if (!upstream?.ok || !upstream.body)
+      return new Response('The CMS is not streaming its changes.', { status: 502 })
+    const reader = upstream.body.getReader()
+    const decoder = new TextDecoder()
+    let listener: ((keys: readonly string[]) => void) | undefined
+    const body = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        listener = (keys) =>
+          controller.enqueue(
+            encoder.encode(`event: revalidated\ndata: ${JSON.stringify({ keys })}\n\n`),
+          )
+        revalidationListeners().add(listener)
+        // Whole frames only, so a `revalidated` event never lands inside one of the CMS's.
+        let buffered = ''
+        try {
+          for (;;) {
+            const { done, value } = await reader.read()
+            if (done) break
+            buffered += decoder.decode(value, { stream: true })
+            const end = buffered.lastIndexOf('\n\n')
+            if (end < 0) continue
+            controller.enqueue(encoder.encode(buffered.slice(0, end + 2)))
+            buffered = buffered.slice(end + 2)
+          }
+        } catch {
+          // The page left, or the CMS restarted; the browser reconnects either way.
+        } finally {
+          if (listener) revalidationListeners().delete(listener)
+          try {
+            controller.close()
+          } catch {}
+        }
+      },
+      cancel() {
+        if (listener) revalidationListeners().delete(listener)
+        void reader.cancel().catch(() => {})
+      },
+    })
+    return new Response(body, {
+      headers: { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-store' },
+    })
   }
 }

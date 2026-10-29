@@ -34,11 +34,12 @@ export class ComponentRepository {
   }
 
   async byKey(key: string): Promise<ComponentModel | undefined> {
-    const rows = await this.#db.query(
-      `SELECT n.unique_id, n.text, t.alias FROM template t
-       JOIN node n ON n.id = t.node_id WHERE n.unique_id = ?`,
-      [normaliseUuid(key)],
-    )
+    const rows = await this.#db.q
+      .selectFrom('template as t')
+      .innerJoin('node as n', 'n.id', 't.node_id')
+      .select(['n.unique_id', 'n.text', 't.alias'])
+      .where('n.unique_id', '=', normaliseUuid(key))
+      .execute()
     const row = rows[0]
     if (!row) return undefined
     const alias = String(row.alias)
@@ -51,10 +52,12 @@ export class ComponentRepository {
   }
 
   async byAlias(alias: string): Promise<ComponentModel | undefined> {
-    const rows = await this.#db.query<{ unique_id: string }>(
-      'SELECT n.unique_id FROM template t JOIN node n ON n.id = t.node_id WHERE t.alias = ?',
-      [alias],
-    )
+    const rows = await this.#db.q
+      .selectFrom('template as t')
+      .innerJoin('node as n', 'n.id', 't.node_id')
+      .select('n.unique_id')
+      .where('t.alias', '=', alias)
+      .execute()
     return rows[0] ? this.byKey(String(rows[0].unique_id)) : undefined
   }
 
@@ -78,7 +81,11 @@ export class ComponentRepository {
       const existing = await repo.nodes.byKey(model.key)
       if (existing) {
         await repo.nodes.rename(existing.id, model.name)
-        await tx.exec('UPDATE template SET alias = ? WHERE node_id = ?', [model.alias, existing.id])
+        await tx.q
+          .updateTable('template')
+          .set({ alias: model.alias })
+          .where('node_id', '=', existing.id)
+          .execute()
       } else {
         const node = await repo.nodes.create({
           key: model.key,
@@ -87,7 +94,7 @@ export class ComponentRepository {
           text: model.name,
           userId,
         })
-        await tx.exec('INSERT INTO template (node_id, alias) VALUES (?, ?)', [node.id, model.alias])
+        await tx.q.insertInto('template').values({ node_id: node.id, alias: model.alias }).execute()
       }
       return model
     })
@@ -104,9 +111,12 @@ export class ComponentRepository {
     const node = await this.#nodes.byKey(key)
     if (!template || !node) return false
     await this.#db.transaction(async (tx) => {
-      await tx.exec('DELETE FROM content_type_template WHERE template_node_id = ?', [node.id])
-      await tx.exec('DELETE FROM template WHERE node_id = ?', [node.id])
-      await tx.exec('DELETE FROM node WHERE id = ?', [node.id])
+      await tx.q
+        .deleteFrom('content_type_template')
+        .where('template_node_id', '=', node.id)
+        .execute()
+      await tx.q.deleteFrom('template').where('node_id', '=', node.id).execute()
+      await tx.q.deleteFrom('node').where('id', '=', node.id).execute()
     })
     await this.#files?.remove(template.alias)
     return true

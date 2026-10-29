@@ -6,6 +6,7 @@
 import { ObjectTypes } from '@crombolo/core'
 import type { Db } from './database.ts'
 import { DbDate, fromDbBool } from './dialect.ts'
+import { type Expression, now, rowLock } from './query.ts'
 import { searchTerms, searchWords, type UnsearchableProperty, valueText } from './search-text.ts'
 import { siteEntriesFor, writeSiteEntries } from './site-search.ts'
 
@@ -35,11 +36,29 @@ const INDEX_TYPE: Record<string, string> = {
   [ObjectTypes.Member]: 'member',
 }
 
-const marks = (n: number) => Array.from({ length: n }, () => '?').join(', ')
+/** Queues the rows a select of `node_id, generation, queued_at` answers, bumping any already queued. */
+async function enqueue(db: Db, rows: Expression<unknown>): Promise<void> {
+  await db.q
+    .insertInto('search_index_queue')
+    .columns(['node_id', 'generation', 'queued_at'])
+    .expression(rows)
+    .onConflict((oc) =>
+      oc.column('node_id').doUpdateSet((eb) => ({
+        generation: eb('search_index_queue.generation', '+', 1),
+        queued_at: eb.ref('excluded.queued_at'),
+      })),
+    )
+    .execute()
+}
 
-const ENQUEUE = `INSERT INTO search_index_queue (node_id, generation, queued_at)`
-const ON_CONFLICT = `ON CONFLICT (node_id) DO UPDATE
-  SET generation = search_index_queue.generation + 1, queued_at = excluded.queued_at`
+/** Every node of these object types, as rows to queue. */
+function nodesOfTypes(db: Db, objectTypes: readonly string[], ids?: readonly number[]) {
+  return db.q
+    .selectFrom('node')
+    .select((eb) => ['id', eb.lit(1).as('generation'), now(db).as('queued_at')])
+    .$if(ids !== undefined, (q) => q.where('id', 'in', ids ?? []))
+    .where('node_object_type', 'in', objectTypes)
+}
 
 /**
  * Queues items for the indexer. Called inside the write's own transaction, so
@@ -50,13 +69,7 @@ export async function queueForSearch(db: Db, nodeIds: Iterable<number>): Promise
   const ids = [...new Set(nodeIds)]
   if (ids.length === 0) return
   for (let i = 0; i < ids.length; i += 500) {
-    const chunk = ids.slice(i, i + 500)
-    await db.exec(
-      `${ENQUEUE} SELECT id, 1, ${db.dialect.now()} FROM node
-       WHERE id IN (${marks(chunk.length)}) AND node_object_type IN (${marks(INDEXED_TYPES.length)})
-       ${ON_CONFLICT}`,
-      [...chunk, ...INDEXED_TYPES],
-    )
+    await enqueue(db, nodesOfTypes(db, INDEXED_TYPES, ids.slice(i, i + 500)))
   }
 }
 
@@ -68,21 +81,21 @@ export async function queueContentTypesForSearch(
   const types = new Set(contentTypeNodeIds)
   let frontier = [...types]
   while (frontier.length > 0) {
-    const children = await db.query<{ id: number }>(
-      `SELECT child_content_type_id AS id FROM content_type_composition
-       WHERE parent_content_type_id IN (${marks(frontier.length)})`,
-      frontier,
-    )
+    const children = await db.q
+      .selectFrom('content_type_composition')
+      .select('child_content_type_id as id')
+      .where('parent_content_type_id', 'in', frontier)
+      .execute()
     frontier = children.map((row) => Number(row.id)).filter((id) => !types.has(id))
     for (const id of frontier) types.add(id)
   }
   if (types.size === 0) return
-  const ids = [...types]
-  await db.exec(
-    `${ENQUEUE} SELECT node_id, 1, ${db.dialect.now()} FROM content
-     WHERE content_type_id IN (${marks(ids.length)})
-     ${ON_CONFLICT}`,
-    ids,
+  await enqueue(
+    db,
+    db.q
+      .selectFrom('content')
+      .select((eb) => ['node_id', eb.lit(1).as('generation'), now(db).as('queued_at')])
+      .where('content_type_id', 'in', [...types]),
   )
 }
 
@@ -91,12 +104,7 @@ export async function queueContentTypesForSearch(
  * read inside blocks wherever they are used, which no query can narrow.
  */
 export async function queueEverythingForSearch(db: Db): Promise<void> {
-  await db.exec(
-    `${ENQUEUE} SELECT id, 1, ${db.dialect.now()} FROM node
-     WHERE node_object_type IN (${marks(INDEXED_TYPES.length)})
-     ${ON_CONFLICT}`,
-    [...INDEXED_TYPES],
-  )
+  await enqueue(db, nodesOfTypes(db, INDEXED_TYPES))
 }
 
 /** One row of `search_document`: an item in one culture, '' when invariant. */
@@ -142,26 +150,33 @@ export class SearchIndex {
    * generation, so the row outlives this run and the item is indexed once more.
    */
   async indexQueued(limit = 200): Promise<number> {
-    const queued = await this.#db.query<{ node_id: number; generation: number }>(
-      'SELECT node_id, generation FROM search_index_queue ORDER BY queued_at, node_id LIMIT ?',
-      [limit],
-    )
+    const queued = await this.#db.q
+      .selectFrom('search_index_queue')
+      .select(['node_id', 'generation'])
+      .orderBy('queued_at')
+      .orderBy('node_id')
+      .limit(limit)
+      .execute()
     let indexed = 0
     for (const row of queued) {
       const nodeId = Number(row.node_id)
       const generation = Number(row.generation)
       const done = await this.#db.transaction(async (tx) => {
-        const claimed = await tx.query(
-          `SELECT node_id FROM search_index_queue WHERE node_id = ? AND generation = ? ${tx.dialect.forUpdateSkipLocked}`,
-          [nodeId, generation],
-        )
+        const claimed = await tx.q
+          .selectFrom('search_index_queue')
+          .select('node_id')
+          .where('node_id', '=', nodeId)
+          .where('generation', '=', generation)
+          .$call(rowLock(tx, 'update skip locked'))
+          .execute()
         if (claimed.length === 0) return false
         await writeEntries(tx, nodeId, await entriesFor(tx, nodeId))
         await writeSiteEntries(tx, nodeId, await siteEntriesFor(tx, nodeId))
-        await tx.exec('DELETE FROM search_index_queue WHERE node_id = ? AND generation = ?', [
-          nodeId,
-          generation,
-        ])
+        await tx.q
+          .deleteFrom('search_index_queue')
+          .where('node_id', '=', nodeId)
+          .where('generation', '=', generation)
+          .execute()
         return true
       })
       if (done) indexed++
@@ -181,27 +196,26 @@ export class SearchIndex {
 
   /** Queues every item the index covers; the index keeps answering meanwhile. */
   async rebuild(index: SearchIndexDefinition): Promise<void> {
-    await this.#db.exec(
-      `${ENQUEUE} SELECT id, 1, ${this.#db.dialect.now()} FROM node
-       WHERE node_object_type IN (${marks(index.objectTypes.length)})
-       ${ON_CONFLICT}`,
-      [...index.objectTypes],
-    )
+    await enqueue(this.#db, nodesOfTypes(this.#db, index.objectTypes))
   }
 
   async stats(index: SearchIndexDefinition): Promise<SearchIndexStats> {
     const types = index.objectTypes
-    const [documents] = await this.#db.query<{ n: number; fields: number | null }>(
-      `SELECT COUNT(DISTINCT sd.node_id) AS n, MAX(sd.field_count) AS fields
-       FROM search_document sd JOIN node n ON n.id = sd.node_id
-       WHERE n.node_object_type IN (${marks(types.length)})`,
-      [...types],
-    )
-    const [pending] = await this.#db.query<{ n: number }>(
-      `SELECT COUNT(*) AS n FROM search_index_queue q JOIN node n ON n.id = q.node_id
-       WHERE n.node_object_type IN (${marks(types.length)})`,
-      [...types],
-    )
+    const documents = await this.#db.q
+      .selectFrom('search_document as sd')
+      .innerJoin('node as n', 'n.id', 'sd.node_id')
+      .select((eb) => [
+        eb.fn.count('sd.node_id').distinct().as('n'),
+        eb.fn.max('sd.field_count').as('fields'),
+      ])
+      .where('n.node_object_type', 'in', types)
+      .executeTakeFirst()
+    const pending = await this.#db.q
+      .selectFrom('search_index_queue as q')
+      .innerJoin('node as n', 'n.id', 'q.node_id')
+      .select((eb) => eb.fn.countAll().as('n'))
+      .where('n.node_object_type', 'in', types)
+      .executeTakeFirst()
     return {
       documentCount: Number(documents?.n ?? 0),
       fieldCount: Number(documents?.fields ?? 0),
@@ -218,20 +232,27 @@ export class SearchIndex {
     const terms = searchTerms(term)
     if (terms.length === 0) return { total: 0, items: [] }
     const types = index.objectTypes
-    const from = `FROM (${this.#db.dialect.fullTextHits}) h JOIN node n ON n.id = h.node_id
-      WHERE n.node_object_type IN (${marks(types.length)})`
-    const params = [this.#db.dialect.fullTextQuery(terms), ...types]
-    const [count] = await this.#db.query<{ n: number }>(`SELECT COUNT(*) AS n ${from}`, params)
-    const rows = await this.#db.query<{ id: number; key: string; score: number }>(
-      `SELECT n.id, n.unique_id AS key, h.score ${from} ORDER BY h.score DESC, n.id LIMIT ? OFFSET ?`,
-      [...params, paging.take, paging.skip],
-    )
+    const dialect = this.#db.dialect
+    const hits = this.#db.q
+      .selectFrom(dialect.fullTextMatches(dialect.fullTextQuery(terms)).as('h'))
+      .innerJoin('node as n', 'n.id', 'h.node_id')
+      .where('n.node_object_type', 'in', types)
+    const count = await hits.select((eb) => eb.fn.countAll().as('n')).executeTakeFirst()
+    const rows = await hits
+      .select(['n.id', 'n.unique_id as key', 'h.score'])
+      .orderBy('h.score', 'desc')
+      .orderBy('n.id')
+      .limit(paging.take)
+      .offset(paging.skip)
+      .execute()
     const items: SearchHit[] = []
     for (const row of rows) {
-      const stored = await this.#db.query<{ fields: string }>(
-        'SELECT fields FROM search_document WHERE node_id = ? ORDER BY culture',
-        [Number(row.id)],
-      )
+      const stored = await this.#db.q
+        .selectFrom('search_document')
+        .select('fields')
+        .where('node_id', '=', Number(row.id))
+        .orderBy('culture')
+        .execute()
       const merged = new Map<string, string[]>()
       for (const entry of stored)
         for (const [name, values] of Object.entries(
@@ -249,22 +270,21 @@ export class SearchIndex {
 }
 
 async function writeEntries(tx: Db, nodeId: number, entries: readonly SearchEntry[]) {
-  await tx.exec('DELETE FROM search_document WHERE node_id = ?', [nodeId])
-  const now = DbDate.toDb(new Date())
+  await tx.q.deleteFrom('search_document').where('node_id', '=', nodeId).execute()
+  const indexedAt = DbDate.toDb(new Date())
   for (const entry of entries)
-    await tx.exec(
-      `INSERT INTO search_document (node_id, culture, name, body, fields, field_count, indexed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [
-        nodeId,
-        entry.culture,
-        entry.name,
-        entry.body,
-        JSON.stringify(entry.fields),
-        Object.keys(entry.fields).length,
-        now,
-      ],
-    )
+    await tx.q
+      .insertInto('search_document')
+      .values({
+        node_id: nodeId,
+        culture: entry.culture,
+        name: entry.name,
+        body: entry.body,
+        fields: JSON.stringify(entry.fields),
+        field_count: Object.keys(entry.fields).length,
+        indexed_at: indexedAt,
+      })
+      .execute()
 }
 
 const folded = (texts: readonly string[]) => texts.flatMap(searchWords).join(' ')
@@ -275,36 +295,43 @@ const folded = (texts: readonly string[]) => texts.flatMap(searchWords).join(' '
  * counts on every type composing it, which is the key a block carries.
  */
 function unsearchableElementProperties(db: Db): Promise<UnsearchableProperty> {
-  return hiddenElementProperties(db, 'p.searchable = ?', [db.dialect.boolValue(false)])
+  return hiddenElementProperties(db, false)
 }
 
 /**
- * The properties a condition on `property_type p` picks out, as a test by type
- * key and alias: what a block's text is checked against. Shared with site search.
+ * The properties marked `searchable = false`, and with `siteSearch` those whose
+ * site search is `off` too, as a test by type key and alias: what a block's
+ * text is checked against. Shared with site search.
  */
 export async function hiddenElementProperties(
   db: Db,
-  condition: string,
-  params: readonly unknown[],
+  siteSearch: boolean,
 ): Promise<UnsearchableProperty> {
-  const rows = await db.query<{ type_id: number; alias: string }>(
-    `SELECT p.content_type_id AS type_id, p.alias FROM property_type p
-     WHERE (${condition}) AND p.retired_at IS NULL`,
-    [...params],
-  )
+  const rows = await db.q
+    .selectFrom('property_type as p')
+    .select(['p.content_type_id as type_id', 'p.alias'])
+    .where((eb) => {
+      const unsearchable = eb('p.searchable', '=', db.dialect.boolValue(false))
+      return siteSearch ? eb.or([unsearchable, eb('p.site_search', '=', 'off')]) : unsearchable
+    })
+    .where('p.retired_at', 'is', null)
+    .execute()
   if (rows.length === 0) return () => false
   const composedBy = new Map<number, number[]>()
-  for (const row of await db.query<{ parent: number; child: number }>(
-    'SELECT parent_content_type_id AS parent, child_content_type_id AS child FROM content_type_composition',
-  ))
+  for (const row of await db.q
+    .selectFrom('content_type_composition')
+    .select(['parent_content_type_id as parent', 'child_content_type_id as child'])
+    .execute())
     composedBy.set(Number(row.parent), [
       ...(composedBy.get(Number(row.parent)) ?? []),
       Number(row.child),
     ])
   const keys = new Map<number, string>()
-  for (const row of await db.query<{ id: number; unique_id: string }>(
-    `SELECT n.id, n.unique_id FROM node n JOIN content_type ct ON ct.node_id = n.id`,
-  ))
+  for (const row of await db.q
+    .selectFrom('node as n')
+    .innerJoin('content_type as ct', 'ct.node_id', 'n.id')
+    .select(['n.id', 'n.unique_id'])
+    .execute())
     keys.set(Number(row.id), String(row.unique_id).toLowerCase())
   const hidden = new Set<string>()
   for (const row of rows) {
@@ -329,41 +356,60 @@ export async function hiddenElementProperties(
  * items are kept and filtered when searched, so the recycle bin is searchable.
  */
 export async function entriesFor(db: Db, nodeId: number): Promise<SearchEntry[]> {
-  const [node] = await db.query<Record<string, unknown>>(
-    `SELECT n.id, n.unique_id, n.text, n.path, n.node_object_type, n.trashed, ct.alias AS type_alias
-     FROM node n JOIN content c ON c.node_id = n.id JOIN content_type ct ON ct.node_id = c.content_type_id
-     WHERE n.id = ?`,
-    [nodeId],
-  )
+  const node = await db.q
+    .selectFrom('node as n')
+    .innerJoin('content as c', 'c.node_id', 'n.id')
+    .innerJoin('content_type as ct', 'ct.node_id', 'c.content_type_id')
+    .select([
+      'n.id',
+      'n.unique_id',
+      'n.text',
+      'n.path',
+      'n.node_object_type',
+      'n.trashed',
+      'ct.alias as type_alias',
+    ])
+    .where('n.id', '=', nodeId)
+    .executeTakeFirst()
   if (!node || !INDEXED_TYPES.includes(String(node.node_object_type))) return []
 
-  const values = await db.query<Record<string, unknown>>(
-    `SELECT p.alias, l.iso_code, pv.varchar_value, pv.text_value
-     FROM property_value pv
-     JOIN property_type p ON p.id = pv.property_type_id
-     LEFT JOIN language l ON l.id = pv.language_id
-     LEFT JOIN member_property_type mpt ON mpt.property_type_id = p.id
-     WHERE pv.node_id = ? AND pv.is_current = ? AND p.retired_at IS NULL AND p.searchable = ?
-       AND (mpt.is_sensitive IS NULL OR mpt.is_sensitive = ?)
-     ORDER BY p.sort_order, p.id`,
-    [nodeId, db.dialect.boolValue(true), db.dialect.boolValue(true), db.dialect.boolValue(false)],
-  )
+  const values = await db.q
+    .selectFrom('property_value as pv')
+    .innerJoin('property_type as p', 'p.id', 'pv.property_type_id')
+    .leftJoin('language as l', 'l.id', 'pv.language_id')
+    .leftJoin('member_property_type as mpt', 'mpt.property_type_id', 'p.id')
+    .select(['p.alias', 'l.iso_code', 'pv.varchar_value', 'pv.text_value'])
+    .where('pv.node_id', '=', nodeId)
+    .where('pv.is_current', '=', db.dialect.boolValue(true) as boolean)
+    .where('p.retired_at', 'is', null)
+    .where('p.searchable', '=', db.dialect.boolValue(true))
+    .where((eb) =>
+      eb.or([
+        eb('mpt.is_sensitive', 'is', null),
+        eb('mpt.is_sensitive', '=', db.dialect.boolValue(false) as boolean),
+      ]),
+    )
+    .orderBy('p.sort_order')
+    .orderBy('p.id')
+    .execute()
   const unsearchable = await unsearchableElementProperties(db)
-  const names = await db.query<{ iso_code: string; name: string }>(
-    `SELECT l.iso_code, cvcv.name FROM content_version cv
-     JOIN content_version_culture_variation cvcv ON cvcv.version_id = cv.id
-     JOIN language l ON l.id = cvcv.language_id
-     WHERE cv.node_id = ? AND cv.current = ?
-     ORDER BY l.iso_code`,
-    [nodeId, db.dialect.boolValue(true)],
-  )
+  const names = await db.q
+    .selectFrom('content_version as cv')
+    .innerJoin('content_version_culture_variation as cvcv', 'cvcv.version_id', 'cv.id')
+    .innerJoin('language as l', 'l.id', 'cvcv.language_id')
+    .select(['l.iso_code', 'cvcv.name'])
+    .where('cv.node_id', '=', nodeId)
+    .where('cv.current', '=', db.dialect.boolValue(true) as boolean)
+    .orderBy('l.iso_code')
+    .execute()
   const extraNames: string[] = []
   const extraFields: Record<string, string[]> = {}
   if (String(node.node_object_type) === ObjectTypes.Member) {
-    const [member] = await db.query<{ email: string; login_name: string }>(
-      'SELECT email, login_name FROM member WHERE node_id = ?',
-      [nodeId],
-    )
+    const member = await db.q
+      .selectFrom('member')
+      .select(['email', 'login_name'])
+      .where('node_id', '=', nodeId)
+      .executeTakeFirst()
     if (member) {
       extraNames.push(String(member.email), String(member.login_name))
       extraFields.email = [String(member.email)]

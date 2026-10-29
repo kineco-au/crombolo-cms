@@ -11,7 +11,10 @@ import {
   normaliseUuid,
   ObjectTypes,
 } from '@crombolo/core'
+import type { ExpressionBuilder, SelectQueryBuilder, SqlBool } from 'kysely'
 import type { Db } from '../database.ts'
+import { type Expression, sql } from '../query.ts'
+import type { CoreTables } from '../tables.gen.ts'
 
 export type MediaSortField = 'createDate' | 'updateDate' | 'name' | 'sortOrder'
 
@@ -31,29 +34,35 @@ export interface MediaListingQuery {
   readable?: { rules: ReadonlyMap<number, MediaRule>; member: MediaMember | undefined }
 }
 
-const NAME = 'COALESCE(head.text, n.text)'
-const FROM = `FROM node n
-  JOIN content c ON c.node_id = n.id
-  JOIN content_type ct ON ct.node_id = c.content_type_id
-  LEFT JOIN content_version head ON head.node_id = n.id AND head.current = ?`
+type Listed = {
+  n: CoreTables['node']
+  c: CoreTables['content']
+  ct: CoreTables['content_type']
+  head: CoreTables['content_version']
+}
+type Aliases = keyof Listed
+type Eb = ExpressionBuilder<CoreTables & Listed, Aliases>
 
-const SORT_COLUMNS: Record<MediaSortField, string> = {
-  createDate: 'n.create_date',
-  updateDate: 'COALESCE(head.version_date, n.create_date)',
-  name: `LOWER(${NAME})`,
-  sortOrder: 'n.sort_order',
+const nameOf = (eb: Eb) => eb.fn.coalesce('head.text', 'n.text')
+
+const SORT_COLUMNS: Record<MediaSortField, (eb: Eb) => Expression<unknown>> = {
+  createDate: (eb) => eb.ref('n.create_date'),
+  updateDate: (eb) => eb.fn.coalesce('head.version_date', 'n.create_date'),
+  name: (eb) => eb.fn('lower', [nameOf(eb)]),
+  sortOrder: (eb) => eb.ref('n.sort_order'),
 }
 
 const likeEscape = (value: string) => value.replace(/[\\%_]/g, (c) => `\\${c}`)
 
 /**
- * Who may read a child, as SQL, under one rule: `memberMay('read', …)` with
- * everything but the item's own columns worked out here. Pure.
+ * Who may read a child, as a condition, under one rule: `memberMay('read', …)`
+ * with everything but the item's own columns worked out here. Pure.
  */
 function readableUnder(
+  eb: Eb,
   rule: MediaRule | undefined,
   member: MediaMember | undefined,
-): { sql: string; params: unknown[] } {
+): Expression<SqlBool> {
   const held = new Set(member?.groups.map((g) => g.toLowerCase()) ?? [])
   const inGroups = (names: readonly string[]) => names.some((n) => held.has(n.toLowerCase()))
   const groups =
@@ -62,16 +71,20 @@ function readableUnder(
       member && rule?.readMembers?.some((key) => key.toLowerCase() === member.key.toLowerCase()),
     )
   const inherited = !rule || rule.publicRead || groups
-  const parts = ["c.read_policy = 'public'"]
-  const params: unknown[] = []
-  if (groups) parts.push("c.read_policy = 'groups'")
+  const parts: Expression<SqlBool>[] = [eb('c.read_policy', '=', 'public')]
+  if (groups) parts.push(eb('c.read_policy', '=', 'groups'))
   if (member) {
-    parts.push("c.read_policy = 'members'")
-    parts.push("(c.read_policy = 'creator' AND c.creator_member_key = ?)")
-    params.push(normaliseUuid(member.key))
+    parts.push(eb('c.read_policy', '=', 'members'))
+    parts.push(
+      eb.and([
+        eb('c.read_policy', '=', 'creator'),
+        eb('c.creator_member_key', '=', normaliseUuid(member.key)),
+      ]),
+    )
   }
-  if (inherited) parts.push("(c.read_policy IS NULL OR c.read_policy = 'inherit')")
-  return { sql: `(${parts.join(' OR ')})`, params }
+  if (inherited)
+    parts.push(eb.or([eb('c.read_policy', 'is', null), eb('c.read_policy', '=', 'inherit')]))
+  return eb.or(parts)
 }
 
 export class MediaListingRepository {
@@ -90,60 +103,87 @@ export class MediaListingRepository {
     const mediaTypes = query.mediaTypes ?? []
     const names = query.names ?? []
     const sortsByHead = query.sort?.field === 'name' || query.sort?.field === 'updateDate'
-    const joins: string[] = []
-    const joinParams: unknown[] = []
-    if (query.readable || mediaTypes.length > 0) joins.push('JOIN content c ON c.node_id = n.id')
-    if (mediaTypes.length > 0) joins.push('JOIN content_type ct ON ct.node_id = c.content_type_id')
-    const head = 'LEFT JOIN content_version head ON head.node_id = n.id AND head.current = ?'
-    const where = ['n.parent_id = ?', 'n.node_object_type = ?', 'n.trashed = ?']
-    const params: unknown[] = [query.parentId, ObjectTypes.Media, this.#db.dialect.boolValue(false)]
-    for (const alias of mediaTypes) {
-      where.push('ct.alias = ?')
-      params.push(alias)
-    }
-    for (const part of names) {
-      where.push(`LOWER(${NAME}) LIKE ? ESCAPE '\\'`)
-      params.push(`%${likeEscape(part.toLowerCase())}%`)
-    }
-    if (query.readable) {
-      // The children share the rule above them, except one with a rule of its own.
-      const { rules, member } = query.readable
-      const own = [...rules.values()]
-      const above = readableUnder(nearestMediaRule(query.parentPath, rules), member)
-      const clauses: string[] = []
-      if (own.length === 0) clauses.push(above.sql)
-      else
-        clauses.push(
-          `(n.id NOT IN (${own.map(() => '?').join(', ')}) AND ${above.sql})`,
-          ...own.map((rule) => `(n.id = ? AND ${readableUnder(rule, member).sql})`),
+    const db = this.#db
+    const listing = (withHead: boolean) =>
+      (
+        db.q.selectFrom('node as n') as unknown as SelectQueryBuilder<
+          CoreTables & Listed,
+          Aliases,
+          object
+        >
+      )
+        .$if(Boolean(query.readable) || mediaTypes.length > 0, (q) =>
+          q.innerJoin('content as c', 'c.node_id', 'n.id'),
         )
-      where.push(`(${clauses.join(' OR ')})`)
-      if (own.length > 0) params.push(...own.map((rule) => rule.nodeId))
-      params.push(...above.params)
-      for (const rule of own) params.push(rule.nodeId, ...readableUnder(rule, member).params)
-    }
-    const from = (withHead: boolean) =>
-      `FROM node n ${[...joins, ...(withHead ? [head] : [])].join(' ')} WHERE ${where.join(' AND ')}`
-    const headParams = (withHead: boolean) =>
-      withHead ? [...joinParams, this.#db.dialect.boolValue(true)] : joinParams
+        .$if(mediaTypes.length > 0, (q) =>
+          q.innerJoin('content_type as ct', 'ct.node_id', 'c.content_type_id'),
+        )
+        .$if(withHead, (q) =>
+          q.leftJoin('content_version as head', (join) =>
+            join
+              .onRef('head.node_id', '=', 'n.id')
+              .on('head.current', '=', db.dialect.boolValue(true)),
+          ),
+        )
+        .where('n.parent_id', '=', query.parentId)
+        .where('n.node_object_type', '=', ObjectTypes.Media)
+        .where('n.trashed', '=', db.dialect.boolValue(false))
+        .$call((q) => mediaTypes.reduce((acc, alias) => acc.where('ct.alias', '=', alias), q))
+        .$call((q) =>
+          names.reduce(
+            (acc, part) =>
+              acc.where(
+                (eb) =>
+                  sql<SqlBool>`${eb.fn('lower', [nameOf(eb)])} like ${`%${likeEscape(part.toLowerCase())}%`} escape '\\'`,
+              ),
+            q,
+          ),
+        )
+        .$if(Boolean(query.readable), (q) =>
+          q.where((eb) => {
+            // The children share the rule above them, except one with a rule of its own.
+            const { rules, member } = query.readable as NonNullable<MediaListingQuery['readable']>
+            const own = [...rules.values()]
+            const above = readableUnder(eb, nearestMediaRule(query.parentPath, rules), member)
+            if (own.length === 0) return eb.or([above])
+            return eb.or([
+              eb.and([
+                eb(
+                  'n.id',
+                  'not in',
+                  own.map((rule) => rule.nodeId),
+                ),
+                above,
+              ]),
+              ...own.map((rule) =>
+                eb.and([eb('n.id', '=', rule.nodeId), readableUnder(eb, rule, member)]),
+              ),
+            ])
+          }),
+        )
     const countHead = names.length > 0
-    const counted = await this.#db.query<{ n: unknown }>(
-      `SELECT COUNT(*) AS n ${from(countHead)}`,
-      [...headParams(countHead), ...params],
-    )
+    const counted = await listing(countHead)
+      .select(sql<number>`count(*)`.as('n'))
+      .executeTakeFirst()
     const pageHead = countHead || sortsByHead
-    const order = query.sort
-      ? `${SORT_COLUMNS[query.sort.field]} ${query.sort.ascending ? 'ASC' : 'DESC'}, n.sort_order, n.id`
-      : 'n.sort_order, n.id'
+    const sort = query.sort
     const rows =
       query.take <= 0
         ? []
-        : await this.#db.query<{ unique_id: string }>(
-            `SELECT n.unique_id ${from(pageHead)} ORDER BY ${order} LIMIT ? OFFSET ?`,
-            [...headParams(pageHead), ...params, query.take, Math.max(0, query.skip)],
-          )
+        : await listing(pageHead)
+            .select('n.unique_id')
+            .$call((q) =>
+              sort
+                ? q.orderBy((eb) => SORT_COLUMNS[sort.field](eb), sort.ascending ? 'asc' : 'desc')
+                : q,
+            )
+            .orderBy('n.sort_order')
+            .orderBy('n.id')
+            .limit(query.take)
+            .offset(Math.max(0, query.skip))
+            .execute()
     return {
-      total: Number(counted[0]?.n ?? 0),
+      total: Number(counted?.n ?? 0),
       keys: rows.map((row) => normaliseUuid(String(row.unique_id))),
     }
   }
@@ -162,11 +202,13 @@ export class MediaListingRepository {
 
   /** A node's id and path, by key; undefined for anything not media or in the bin. */
   async byKey(key: string): Promise<{ id: number; key: string; path: string } | undefined> {
-    const rows = await this.#db.query<{ id: number; unique_id: string; path: string }>(
-      'SELECT id, unique_id, path FROM node WHERE unique_id = ? AND node_object_type = ? AND trashed = ?',
-      [normaliseUuid(key), ObjectTypes.Media, this.#db.dialect.boolValue(false)],
-    )
-    const row = rows[0]
+    const row = await this.#db.q
+      .selectFrom('node')
+      .select(['id', 'unique_id', 'path'])
+      .where('unique_id', '=', normaliseUuid(key))
+      .where('node_object_type', '=', ObjectTypes.Media)
+      .where('trashed', '=', this.#db.dialect.boolValue(false))
+      .executeTakeFirst()
     return row
       ? { id: Number(row.id), key: normaliseUuid(String(row.unique_id)), path: String(row.path) }
       : undefined
@@ -174,23 +216,35 @@ export class MediaListingRepository {
 
   async #childNamed(parentId: number, name: string) {
     const lowered = name.toLowerCase()
-    const query = (extra: string, params: unknown[], limit = '') =>
-      this.#db.query<{ id: number; unique_id: string; path: string; name: string }>(
-        `SELECT n.id, n.unique_id, n.path, ${NAME} AS name ${FROM}
-          WHERE n.parent_id = ? AND n.node_object_type = ? AND n.trashed = ? ${extra}
-          ORDER BY n.sort_order, n.id ${limit}`,
-        [
-          this.#db.dialect.boolValue(true),
-          parentId,
-          ObjectTypes.Media,
-          this.#db.dialect.boolValue(false),
-          ...params,
-        ],
+    const db = this.#db
+    const query = (exact: boolean) =>
+      (
+        db.q.selectFrom('node as n') as unknown as SelectQueryBuilder<
+          CoreTables & Listed,
+          Aliases,
+          object
+        >
       )
-    let rows = await query(`AND LOWER(${NAME}) = ?`, [lowered], 'LIMIT 1')
+        .innerJoin('content as c', 'c.node_id', 'n.id')
+        .innerJoin('content_type as ct', 'ct.node_id', 'c.content_type_id')
+        .leftJoin('content_version as head', (join) =>
+          join
+            .onRef('head.node_id', '=', 'n.id')
+            .on('head.current', '=', db.dialect.boolValue(true)),
+        )
+        .select((eb) => ['n.id', 'n.unique_id', 'n.path', nameOf(eb).as('name')])
+        .where('n.parent_id', '=', parentId)
+        .where('n.node_object_type', '=', ObjectTypes.Media)
+        .where('n.trashed', '=', db.dialect.boolValue(false))
+        .$if(exact, (q) => q.where((eb) => eb(eb.fn('lower', [nameOf(eb)]), '=', lowered)))
+        .orderBy('n.sort_order')
+        .orderBy('n.id')
+        .$if(exact, (q) => q.limit(1))
+        .execute()
+    let rows = await query(true)
     // SQLite lowers only ASCII, so a name with other letters is matched here.
     if (rows.length === 0 && this.#db.dialect.name === 'sqlite' && /[^ -~]/.test(name))
-      rows = (await query('', [])).filter((row) => String(row.name).toLowerCase() === lowered)
+      rows = (await query(false)).filter((row) => String(row.name).toLowerCase() === lowered)
     const row = rows[0]
     return row
       ? { id: Number(row.id), key: normaliseUuid(String(row.unique_id)), path: String(row.path) }
@@ -203,12 +257,21 @@ export class MediaListingRepository {
     const out = new Map<number, string>()
     for (let at = 0; at < wanted.length; at += 500) {
       const slice = wanted.slice(at, at + 500)
-      const rows = await this.#db.query<{ id: number; name: string }>(
-        `SELECT n.id, ${NAME} AS name FROM node n
-          LEFT JOIN content_version head ON head.node_id = n.id AND head.current = ?
-          WHERE n.id IN (${slice.map(() => '?').join(', ')})`,
-        [this.#db.dialect.boolValue(true), ...slice],
+      const rows = await (
+        this.#db.q.selectFrom('node as n') as unknown as SelectQueryBuilder<
+          CoreTables & Listed,
+          'n',
+          object
+        >
       )
+        .leftJoin('content_version as head', (join) =>
+          join
+            .onRef('head.node_id', '=', 'n.id')
+            .on('head.current', '=', this.#db.dialect.boolValue(true)),
+        )
+        .select((eb) => ['n.id', eb.fn.coalesce('head.text', 'n.text').as('name')])
+        .where('n.id', 'in', slice)
+        .execute()
       for (const row of rows) out.set(Number(row.id), String(row.name ?? ''))
     }
     return out

@@ -238,10 +238,12 @@ export async function planPeople(
 }
 
 async function memberGroupNamed(db: Db, name: string): Promise<string | undefined> {
-  const rows = await db.query<{ unique_id: string }>(
-    'SELECT unique_id FROM node WHERE node_object_type = ? AND text = ?',
-    [ObjectTypes.MemberGroup, name],
-  )
+  const rows = await db.q
+    .selectFrom('node')
+    .select('unique_id')
+    .where('node_object_type', '=', ObjectTypes.MemberGroup)
+    .where('text', '=', name)
+    .execute()
   return rows[0] ? normaliseUuid(String(rows[0].unique_id)) : undefined
 }
 
@@ -250,10 +252,12 @@ async function memberKeyWhere(
   column: 'email' | 'login_name',
   value: string,
 ): Promise<string | undefined> {
-  const rows = await db.query<{ unique_id: string }>(
-    `SELECT n.unique_id FROM member m JOIN node n ON n.id = m.node_id WHERE LOWER(m.${column}) = LOWER(?)`,
-    [value],
-  )
+  const rows = await db.q
+    .selectFrom('member as m')
+    .innerJoin('node as n', 'n.id', 'm.node_id')
+    .select('n.unique_id')
+    .where((eb) => eb(eb.fn('lower', [`m.${column}`]), '=', eb.fn('lower', [eb.val(value)])))
+    .execute()
   return rows[0] ? normaliseUuid(String(rows[0].unique_id)) : undefined
 }
 
@@ -417,11 +421,11 @@ export async function applyPeople(
 }
 
 async function setUserPassword(tx: Db, key: string, user: BundleUser): Promise<void> {
-  await tx.exec('UPDATE user_account SET password_hash = ?, password_config = ? WHERE key = ?', [
-    user.passwordHash,
-    user.passwordConfig,
-    normaliseUuid(key),
-  ])
+  await tx.q
+    .updateTable('user_account')
+    .set({ password_hash: user.passwordHash, password_config: user.passwordConfig })
+    .where('key', '=', normaliseUuid(key))
+    .execute()
 }
 
 async function currentValues(members: MemberRepository, key: string) {
@@ -475,8 +479,8 @@ export async function removePerson(tx: Db, kind: PersonKind, key: string): Promi
       const nodes = new NodeRepository(tx)
       const node = await nodes.byKey(key)
       if (!node || node.objectType !== ObjectTypes.MemberGroup) return false
-      await tx.exec('DELETE FROM member_group_member WHERE member_group_id = ?', [node.id])
-      await tx.exec('DELETE FROM node WHERE id = ?', [node.id])
+      await tx.q.deleteFrom('member_group_member').where('member_group_id', '=', node.id).execute()
+      await tx.q.deleteFrom('node').where('id', '=', node.id).execute()
       return true
     }
     case 'user-group': {
@@ -495,10 +499,12 @@ export async function exportPeople(
   const people: BundlePeople = { memberGroups: [], members: [], userGroups: [], users: [] }
   const state = await currentSchemaState(db)
   if (options.members) {
-    const groups = await db.query<{ unique_id: string; text: string }>(
-      'SELECT unique_id, text FROM node WHERE node_object_type = ? ORDER BY text',
-      [ObjectTypes.MemberGroup],
-    )
+    const groups = await db.q
+      .selectFrom('node')
+      .select(['unique_id', 'text'])
+      .where('node_object_type', '=', ObjectTypes.MemberGroup)
+      .orderBy('text')
+      .execute()
     people.memberGroups = groups.map((g) => ({
       key: normaliseUuid(String(g.unique_id)),
       name: String(g.text),
@@ -551,10 +557,11 @@ export async function exportPeople(
     const users = new UserRepository(db)
     for (const user of await users.all()) {
       if (user.kind !== 'Default') continue
-      const [row] = await db.query<{
-        password_hash: string | null
-        password_config: string | null
-      }>('SELECT password_hash, password_config FROM user_account WHERE id = ?', [user.id])
+      const row = await db.q
+        .selectFrom('user_account')
+        .select(['password_hash', 'password_config'])
+        .where('id', '=', user.id)
+        .executeTakeFirst()
       people.users.push({
         key: user.key,
         name: user.name,

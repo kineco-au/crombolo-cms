@@ -3,7 +3,9 @@
  * resolved schema and is quoted here, every default is a literal the builder
  * already checked, and every statement passes the guard before it is returned.
  */
+import type { ColumnDefinitionBuilder, Compilable } from 'kysely'
 import type { Dialect } from '../dialect.ts'
+import { compilerFor, sql } from '../query.ts'
 import type { ColumnSpec, Operation } from './builder.ts'
 import { guardStatement } from './guard.ts'
 import type { ResolvedSchema } from './schema.ts'
@@ -38,11 +40,15 @@ function literal(dialect: Dialect, value: string | number | boolean): string {
   return `'${value.replaceAll("'", "''")}'`
 }
 
-function columnDefinition(dialect: Dialect, name: string, spec: ColumnSpec): string {
-  const parts = [dialect.quote(name), columnType(dialect, spec)]
-  if (!spec.nullable) parts.push('NOT NULL')
-  if (spec.default !== undefined) parts.push(`DEFAULT ${literal(dialect, spec.default)}`)
-  return parts.join(' ')
+/** A column's type and constraints, as the schema builder takes them. */
+function defineColumn(dialect: Dialect, spec: ColumnSpec) {
+  return (column: ColumnDefinitionBuilder): ColumnDefinitionBuilder => {
+    let defined = column
+    if (!spec.nullable) defined = defined.notNull()
+    if (spec.default !== undefined)
+      defined = defined.defaultTo(sql.raw(literal(dialect, spec.default)))
+    return defined
+  }
 }
 
 /** The statements one operation runs, against the schema as it stood before it. */
@@ -52,11 +58,11 @@ export function renderOperation(
   after: ResolvedSchema,
   op: Operation,
 ): string[] {
-  const q = (identifier: string) => dialect.quote(identifier)
-  const guard = (sql: string) => guardStatement(before.id, before.prefix, sql)
+  const schema = compilerFor(dialect).schema
+  const type = (spec: ColumnSpec) => sql.raw(columnType(dialect, spec))
   const table = after.tables.get(op.table) ?? before.tables.get(op.table)
   if (!table) throw new Error(`no table "${op.table}" to render ${op.op} against`)
-  const statements: string[] = []
+  const statements: Compilable[] = []
   const indexFor = (columns: readonly string[]) => {
     const index = (after.tables.get(op.table) ?? table).indexes.get(columns.join(','))
     if (!index) throw new Error(`no index on "${op.table}" (${columns.join(',')})`)
@@ -64,27 +70,31 @@ export function renderOperation(
   }
   const createIndex = (columns: readonly string[]) => {
     const index = indexFor(columns)
-    statements.push(
-      `CREATE ${index.unique ? 'UNIQUE ' : ''}INDEX ${q(index.name)} ON ${q(table.physical)} (${index.columns.map(q).join(', ')})`,
-    )
+    const create = schema
+      .createIndex(index.name)
+      .on(table.physical)
+      .columns([...index.columns])
+    statements.push(index.unique ? create.unique() : create)
   }
 
   switch (op.op) {
     case 'createTable': {
-      const columns = Object.entries(op.columns).map(([name, spec]) =>
-        columnDefinition(dialect, name, spec),
-      )
-      const key = Object.entries(op.columns).find(([, spec]) => spec.primaryKey)?.[0] as string
-      statements.push(
-        `CREATE TABLE ${q(table.physical)} (${columns.join(', ')}, PRIMARY KEY (${q(key)}))`,
-      )
+      let create = schema.createTable(table.physical)
+      for (const [name, spec] of Object.entries(op.columns))
+        create = create.addColumn(name, type(spec), (column) => {
+          const defined = defineColumn(dialect, spec)(column)
+          return spec.primaryKey ? defined.primaryKey() : defined
+        })
+      statements.push(create)
       for (const [name, spec] of Object.entries(op.columns))
         if (spec.indexed && !spec.primaryKey) createIndex([name])
       break
     }
     case 'addColumn':
       statements.push(
-        `ALTER TABLE ${q(table.physical)} ADD COLUMN ${columnDefinition(dialect, op.column, op.spec)}`,
+        schema
+          .alterTable(table.physical)
+          .addColumn(op.column, type(op.spec), defineColumn(dialect, op.spec)),
       )
       if (op.spec.indexed) createIndex([op.column])
       break
@@ -96,23 +106,27 @@ export function renderOperation(
       // already what it holds; only Postgres has anything to change.
       if (dialect.name === 'postgres')
         statements.push(
-          `ALTER TABLE ${q(table.physical)} ALTER COLUMN ${q(op.column)} TYPE ${columnType(dialect, op.spec)}`,
+          schema
+            .alterTable(table.physical)
+            .alterColumn(op.column, (column) => column.setDataType(type(op.spec))),
         )
       break
     case 'dropTable':
-      statements.push(`DROP TABLE ${q(table.physical)}`)
+      statements.push(schema.dropTable(table.physical))
       break
     case 'dropColumn':
-      statements.push(`ALTER TABLE ${q(table.physical)} DROP COLUMN ${q(op.column)}`)
+      statements.push(schema.alterTable(table.physical).dropColumn(op.column))
       break
     case 'dropIndex': {
       const index = before.tables.get(op.table)?.indexes.get(op.columns.join(','))
       if (!index) throw new Error(`no index on "${op.table}" (${op.columns.join(',')})`)
-      statements.push(`DROP INDEX ${q(index.name)}`)
+      statements.push(schema.dropIndex(index.name))
       break
     }
   }
-  return statements.map(guard)
+  return statements.map((statement) =>
+    guardStatement(before.id, before.prefix, statement.compile().sql),
+  )
 }
 
 /** Every statement a step runs, in order. */

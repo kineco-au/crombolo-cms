@@ -42,12 +42,19 @@ interface EntryRow {
   error_key: string
 }
 
-const SELECT = `SELECT a.id, a.key,
-         n.unique_id AS node_key, l.unique_id AS login_key, e.unique_id AS error_key
-    FROM public_access a
-    JOIN node n ON n.id = a.node_id
-    JOIN node l ON l.id = a.login_node_id
-    JOIN node e ON e.id = a.error_node_id`
+const entries = (db: Db) =>
+  db.q
+    .selectFrom('public_access as a')
+    .innerJoin('node as n', 'n.id', 'a.node_id')
+    .innerJoin('node as l', 'l.id', 'a.login_node_id')
+    .innerJoin('node as e', 'e.id', 'a.error_node_id')
+    .select([
+      'a.id',
+      'a.key',
+      'n.unique_id as node_key',
+      'l.unique_id as login_key',
+      'e.unique_id as error_key',
+    ])
 
 export class PublicAccessRepository {
   #db: Db
@@ -59,10 +66,12 @@ export class PublicAccessRepository {
   }
 
   async #rules(id: number): Promise<{ groups: string[]; users: string[] }> {
-    const rows = await this.#db.query<{ rule_type: string; rule_value: string }>(
-      'SELECT rule_type, rule_value FROM public_access_rule WHERE public_access_id = ? ORDER BY rule_value',
-      [id],
-    )
+    const rows = await this.#db.q
+      .selectFrom('public_access_rule')
+      .select(['rule_type', 'rule_value'])
+      .where('public_access_id', '=', id)
+      .orderBy('rule_value')
+      .execute()
     return {
       groups: rows
         .filter((r) => r.rule_type === MEMBER_GROUP_RULE)
@@ -92,16 +101,13 @@ export class PublicAccessRepository {
   async allRules(): Promise<
     Array<{ nodeId: number; memberGroupNames: string[]; memberUserNames: string[] }>
   > {
-    const entries = await this.#db.query<{ id: number; node_id: number }>(
-      'SELECT id, node_id FROM public_access',
-    )
-    if (entries.length === 0) return []
-    const rules = await this.#db.query<{
-      public_access_id: number
-      rule_type: string
-      rule_value: string
-    }>('SELECT public_access_id, rule_type, rule_value FROM public_access_rule')
-    return entries.map((entry) => {
+    const all = await this.#db.q.selectFrom('public_access').select(['id', 'node_id']).execute()
+    if (all.length === 0) return []
+    const rules = await this.#db.q
+      .selectFrom('public_access_rule')
+      .select(['public_access_id', 'rule_type', 'rule_value'])
+      .execute()
+    return all.map((entry) => {
       const own = rules.filter((r) => Number(r.public_access_id) === Number(entry.id))
       return {
         nodeId: Number(entry.node_id),
@@ -117,10 +123,10 @@ export class PublicAccessRepository {
 
   /** The entry protecting this page itself, if any. */
   async byNodeKey(nodeKey: string): Promise<PublicAccessEntry | undefined> {
-    const rows = await this.#db.query<EntryRow>(`${SELECT} WHERE n.unique_id = ?`, [
-      normaliseUuid(nodeKey),
-    ])
-    return rows[0] ? this.#hydrate(rows[0]) : undefined
+    const row = await entries(this.#db)
+      .where('n.unique_id', '=', normaliseUuid(nodeKey))
+      .executeTakeFirst()
+    return row ? this.#hydrate(row) : undefined
   }
 
   /**
@@ -137,12 +143,12 @@ export class PublicAccessRepository {
       .map((part) => Number(part))
       .filter((id) => Number.isFinite(id))
     if (ids.length === 0) return undefined
-    const holes = ids.map(() => '?').join(', ')
-    const rows = await this.#db.query<EntryRow>(
-      `${SELECT} WHERE a.node_id IN (${holes}) ORDER BY n.level DESC LIMIT 1`,
-      [...ids],
-    )
-    return rows[0] ? this.#hydrate(rows[0]) : undefined
+    const row = await entries(this.#db)
+      .where('a.node_id', 'in', ids)
+      .orderBy('n.level', 'desc')
+      .limit(1)
+      .executeTakeFirst()
+    return row ? this.#hydrate(row) : undefined
   }
 
   /** Whether an ancestor above this page is protected, which the editor shows. */
@@ -162,39 +168,48 @@ export class PublicAccessRepository {
     if (!node || !login || !error) return undefined
     const now = DbDate.toDb(new Date())
     await this.#db.transaction(async (tx) => {
-      const existing = await tx.query<{ id: number }>(
-        'SELECT id FROM public_access WHERE node_id = ?',
-        [node.id],
-      )
-      let id = existing[0] ? Number(existing[0].id) : undefined
+      const existing = await tx.q
+        .selectFrom('public_access')
+        .select('id')
+        .where('node_id', '=', node.id)
+        .executeTakeFirst()
+      let id = existing ? Number(existing.id) : undefined
       if (id === undefined) {
         const key = crypto.randomUUID()
-        await tx.exec(
-          `INSERT INTO public_access (key, node_id, login_node_id, error_node_id, create_date, update_date)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          [key, node.id, login.id, error.id, now, now],
-        )
-        const created = await tx.query<{ id: number }>(
-          'SELECT id FROM public_access WHERE node_id = ?',
-          [node.id],
-        )
-        id = Number(created[0]?.id)
+        await tx.q
+          .insertInto('public_access')
+          .values({
+            key,
+            node_id: node.id,
+            login_node_id: login.id,
+            error_node_id: error.id,
+            create_date: now,
+            update_date: now,
+          })
+          .execute()
+        const created = await tx.q
+          .selectFrom('public_access')
+          .select('id')
+          .where('node_id', '=', node.id)
+          .executeTakeFirst()
+        id = Number(created?.id)
       } else {
-        await tx.exec(
-          'UPDATE public_access SET login_node_id = ?, error_node_id = ?, update_date = ? WHERE id = ?',
-          [login.id, error.id, now, id],
-        )
-        await tx.exec('DELETE FROM public_access_rule WHERE public_access_id = ?', [id])
+        await tx.q
+          .updateTable('public_access')
+          .set({ login_node_id: login.id, error_node_id: error.id, update_date: now })
+          .where('id', '=', id)
+          .execute()
+        await tx.q.deleteFrom('public_access_rule').where('public_access_id', '=', id).execute()
       }
       for (const [type, names] of [
         [MEMBER_GROUP_RULE, input.memberGroupNames],
         [MEMBER_USERNAME_RULE, input.memberUserNames],
       ] as const) {
         for (const name of new Set(names.filter((value) => value.trim() !== ''))) {
-          await tx.exec(
-            'INSERT INTO public_access_rule (public_access_id, rule_type, rule_value, create_date) VALUES (?, ?, ?, ?)',
-            [id, type, name, now],
-          )
+          await tx.q
+            .insertInto('public_access_rule')
+            .values({ public_access_id: id, rule_type: type, rule_value: name, create_date: now })
+            .execute()
         }
       }
     })
@@ -204,14 +219,15 @@ export class PublicAccessRepository {
   async remove(nodeKey: string): Promise<boolean> {
     const node = await this.#nodes.byKey(nodeKey)
     if (!node) return false
-    const rows = await this.#db.query<{ id: number }>(
-      'SELECT id FROM public_access WHERE node_id = ?',
-      [node.id],
-    )
-    const id = rows[0]?.id
+    const row = await this.#db.q
+      .selectFrom('public_access')
+      .select('id')
+      .where('node_id', '=', node.id)
+      .executeTakeFirst()
+    const id = row?.id
     if (id === undefined) return false
-    await this.#db.exec('DELETE FROM public_access_rule WHERE public_access_id = ?', [id])
-    await this.#db.exec('DELETE FROM public_access WHERE id = ?', [id])
+    await this.#db.q.deleteFrom('public_access_rule').where('public_access_id', '=', id).execute()
+    await this.#db.q.deleteFrom('public_access').where('id', '=', id).execute()
     return true
   }
 }

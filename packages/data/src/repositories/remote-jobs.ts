@@ -4,6 +4,8 @@
  */
 import type { Db } from '../database.ts'
 import { DbDate } from '../dialect.ts'
+import type { Updateable } from '../query.ts'
+import type { CoreTables } from '../tables.gen.ts'
 
 export type RemoteJobKind = 'pull' | 'push'
 export type RemoteJobState =
@@ -90,7 +92,7 @@ export type RemoteJobUpdate = Partial<
   >
 >
 
-const COLUMNS: Record<keyof RemoteJobUpdate, string> = {
+const COLUMNS: Record<keyof RemoteJobUpdate, keyof CoreTables['remote_job']> = {
   state: 'state',
   stage: 'stage',
   progress: 'progress',
@@ -123,55 +125,61 @@ export class RemoteJobRepository {
     expiresAt: Date
   }): Promise<void> {
     const now = DbDate.toDb(new Date())
-    await this.#db.exec(
-      `INSERT INTO remote_job
-         (id, kind, environment, requested_by, requested_by_name, options, state, heartbeat_at, expires_at, create_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        job.id,
-        job.kind,
-        job.environment,
-        job.requestedBy,
-        job.requestedByName,
-        JSON.stringify(job.options),
-        job.state,
-        now,
-        DbDate.toDb(job.expiresAt),
-        now,
-      ],
-    )
+    await this.#db.q
+      .insertInto('remote_job')
+      .values({
+        id: job.id,
+        kind: job.kind,
+        environment: job.environment,
+        requested_by: job.requestedBy,
+        requested_by_name: job.requestedByName,
+        options: JSON.stringify(job.options),
+        state: job.state,
+        heartbeat_at: now,
+        expires_at: DbDate.toDb(job.expiresAt),
+        create_date: now,
+      })
+      .execute()
   }
 
   async get(id: string): Promise<RemoteJob | undefined> {
-    const rows = await this.#db.query('SELECT * FROM remote_job WHERE id = ?', [id])
-    return rows[0] ? mapJob(rows[0]) : undefined
+    const row = await this.#db.q
+      .selectFrom('remote_job')
+      .selectAll()
+      .where('id', '=', id)
+      .executeTakeFirst()
+    return row ? mapJob(row) : undefined
   }
 
   /** Records progress, and that the node running it is still alive. */
   async update(id: string, change: RemoteJobUpdate): Promise<void> {
-    const sets: string[] = ['heartbeat_at = ?']
-    const values: unknown[] = [DbDate.toDb(new Date())]
+    const sets: Record<string, unknown> = { heartbeat_at: DbDate.toDb(new Date()) }
     for (const [field, value] of Object.entries(change) as [keyof RemoteJobUpdate, unknown][]) {
-      sets.push(`${COLUMNS[field]} = ?`)
-      values.push(
+      sets[COLUMNS[field]] =
         field === 'problem'
           ? value === null
             ? null
             : JSON.stringify(value)
           : value instanceof Date
             ? DbDate.toDb(value)
-            : value,
-      )
+            : (value ?? null)
     }
-    await this.#db.exec(`UPDATE remote_job SET ${sets.join(', ')} WHERE id = ?`, [...values, id])
+    await this.#db.q
+      .updateTable('remote_job')
+      .set(sets as Updateable<CoreTables['remote_job']>)
+      .where('id', '=', id)
+      .execute()
   }
 
   /** Moves a job from one state to another only if it is still in the first; true when it moved. */
   async transition(id: string, from: RemoteJobState, change: RemoteJobUpdate): Promise<boolean> {
-    const rows = await this.#db.query<{ id: string }>(
-      'UPDATE remote_job SET state = ?, heartbeat_at = ? WHERE id = ? AND state = ? RETURNING id',
-      [change.state ?? from, DbDate.toDb(new Date()), id, from],
-    )
+    const rows = await this.#db.q
+      .updateTable('remote_job')
+      .set({ state: change.state ?? from, heartbeat_at: DbDate.toDb(new Date()) })
+      .where('id', '=', id)
+      .where('state', '=', from)
+      .returning('id')
+      .execute()
     if (rows.length === 0) return false
     await this.update(id, change)
     return true
@@ -179,13 +187,15 @@ export class RemoteJobRepository {
 
   /** Jobs past their expiry, whose files are to be swept. */
   async expired(now = new Date()): Promise<RemoteJob[]> {
-    const rows = await this.#db.query('SELECT * FROM remote_job WHERE expires_at < ?', [
-      DbDate.toDb(now),
-    ])
+    const rows = await this.#db.q
+      .selectFrom('remote_job')
+      .selectAll()
+      .where('expires_at', '<', DbDate.toDb(now))
+      .execute()
     return rows.map(mapJob)
   }
 
   async delete(id: string): Promise<void> {
-    await this.#db.exec('DELETE FROM remote_job WHERE id = ?', [id])
+    await this.#db.q.deleteFrom('remote_job').where('id', '=', id).execute()
   }
 }

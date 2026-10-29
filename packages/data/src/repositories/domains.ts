@@ -44,10 +44,14 @@ export class DomainRepository {
   }
 
   async all(): Promise<DomainRow[]> {
-    const rows = await this.#db.query(
-      `SELECT d.node_id, d.domain_name, d.sort_order, l.iso_code FROM domain d
-       LEFT JOIN language l ON l.id = d.language_id ORDER BY d.node_id, d.sort_order, d.id`,
-    )
+    const rows = await this.#db.q
+      .selectFrom('domain as d')
+      .leftJoin('language as l', 'l.id', 'd.language_id')
+      .select(['d.node_id', 'd.domain_name', 'd.sort_order', 'l.iso_code'])
+      .orderBy('d.node_id')
+      .orderBy('d.sort_order')
+      .orderBy('d.id')
+      .execute()
     return rows.map((row) => ({
       nodeId: Number(row.node_id),
       domainName: String(row.domain_name),
@@ -69,9 +73,7 @@ export class DomainRepository {
 
   /** Replaces a node's domains. Names are unique across the site, and each culture must exist. */
   async setForNode(nodeId: number, assignment: DomainAssignment): Promise<SetDomainsResult> {
-    const languages = await this.#db.query<{ id: number; iso_code: string }>(
-      'SELECT id, iso_code FROM language',
-    )
+    const languages = await this.#db.q.selectFrom('language').select(['id', 'iso_code']).execute()
     const languageId = (iso: string) =>
       languages.find((l) => String(l.iso_code).toLowerCase() === iso.toLowerCase())?.id
     if (assignment.defaultIsoCode && languageId(assignment.defaultIsoCode) === undefined)
@@ -91,17 +93,27 @@ export class DomainRepository {
     if (taken[0]) return { status: 'conflict', domainName: taken[0].domainName }
 
     await this.#db.transaction(async (tx) => {
-      await tx.exec('DELETE FROM domain WHERE node_id = ?', [nodeId])
+      await tx.q.deleteFrom('domain').where('node_id', '=', nodeId).execute()
       if (assignment.defaultIsoCode)
-        await tx.exec(
-          'INSERT INTO domain (node_id, language_id, domain_name, sort_order) VALUES (?, ?, ?, ?)',
-          [nodeId, languageId(assignment.defaultIsoCode), `*${nodeId}`, 0],
-        )
+        await tx.q
+          .insertInto('domain')
+          .values({
+            node_id: nodeId,
+            language_id: languageId(assignment.defaultIsoCode),
+            domain_name: `*${nodeId}`,
+            sort_order: 0,
+          })
+          .execute()
       for (const [index, domain] of assignment.domains.entries())
-        await tx.exec(
-          'INSERT INTO domain (node_id, language_id, domain_name, sort_order) VALUES (?, ?, ?, ?)',
-          [nodeId, languageId(domain.isoCode), names[index], index],
-        )
+        await tx.q
+          .insertInto('domain')
+          .values({
+            node_id: nodeId,
+            language_id: languageId(domain.isoCode),
+            domain_name: names[index] as string,
+            sort_order: index,
+          })
+          .execute()
     })
     return { status: 'ok' }
   }

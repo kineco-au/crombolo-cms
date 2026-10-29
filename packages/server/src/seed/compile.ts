@@ -170,11 +170,13 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
       return { key: keyOf.get(seeded) as string, typeAlias: mediaTypeAlias.get(seeded) ?? 'Image' }
     const key = looksLikeKey(ref) ? normaliseUuid(ref) : await siteNode(ref, ObjectTypes.Media, why)
     if (!key) return undefined
-    const rows = await db.query<{ alias: string }>(
-      `SELECT ct.alias FROM node n JOIN content c ON c.node_id = n.id
-       JOIN content_type ct ON ct.node_id = c.content_type_id WHERE n.unique_id = ?`,
-      [key],
-    )
+    const rows = await db.q
+      .selectFrom('node as n')
+      .innerJoin('content as c', 'c.node_id', 'n.id')
+      .innerJoin('content_type as ct', 'ct.node_id', 'c.content_type_id')
+      .select('ct.alias')
+      .where('n.unique_id', '=', key)
+      .execute()
     return { key, typeAlias: rows[0] ? String(rows[0].alias) : 'Image' }
   }
   const libraryKey = async (ref: string, why: string) => {

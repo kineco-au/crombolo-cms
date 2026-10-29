@@ -9,6 +9,7 @@
 import type { Db } from './database.ts'
 import { DbDate } from './dialect.ts'
 import { parseWritesPaused, WRITES_PAUSED_KEY, type WritesPaused } from './maintenance.ts'
+import { rowLock } from './query.ts'
 
 export interface SchemaStateRow {
   id: number
@@ -78,12 +79,14 @@ export class WritesPausedError extends WriteRejectedError {
 
 /** The latest current state. Takes a shared lock where the engine has one, so an upgrade cannot slip between the check and the write. */
 export async function currentSchemaState(db: Db, lock = false): Promise<SchemaStateRow> {
-  const suffix = lock ? db.dialect.forShare : ''
-  const rows = await db.query(
-    `SELECT id, version, revision, hash, status FROM schema_state
-     WHERE status = 'current' ORDER BY id DESC LIMIT 1 ${suffix}`,
-  )
-  const row = rows[0]
+  const row = await db.q
+    .selectFrom('schema_state')
+    .select(['id', 'version', 'revision', 'hash', 'status'])
+    .where('status', '=', 'current')
+    .orderBy('id', 'desc')
+    .limit(1)
+    .$if(lock, (q) => q.$call(rowLock(db, 'share')))
+    .executeTakeFirst()
   if (!row) throw new Error('schema_state has no current row; the database is not installed.')
   return {
     id: Number(row.id),
@@ -101,11 +104,12 @@ export async function currentSchemaState(db: Db, lock = false): Promise<SchemaSt
 export async function assertNodeMayWrite(db: Db, node: NodeSchemaState): Promise<SchemaStateRow> {
   const current = await currentSchemaState(db, true)
   if (compareStates(node, current) < 0) throw new WriteRejectedError(node, current)
-  const rows = await db.query<{ value: string | null }>(
-    'SELECT value FROM key_value WHERE key = ?',
-    [WRITES_PAUSED_KEY],
-  )
-  const paused = parseWritesPaused(rows[0]?.value)
+  const pausedRow = await db.q
+    .selectFrom('key_value')
+    .select('value')
+    .where('key', '=', WRITES_PAUSED_KEY)
+    .executeTakeFirst()
+  const paused = parseWritesPaused(pausedRow?.value)
   if (paused) throw new WritesPausedError(node, current, paused)
   return current
 }
@@ -120,25 +124,24 @@ export interface AdvanceOptions {
 
 /** Appends a schema state row. Under `FOR UPDATE` on the previous current row, so it serialises against writers. */
 export async function appendSchemaState(db: Db, options: AdvanceOptions): Promise<SchemaStateRow> {
-  await db.query(
-    `SELECT id FROM schema_state WHERE status = 'current' ORDER BY id DESC LIMIT 1 ${db.dialect.forUpdate}`,
-  )
-  await db.exec(
-    `INSERT INTO schema_state (version, revision, hash, status, synced_at, synced_by)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [
-      options.version,
-      options.revision,
-      options.hash ?? null,
-      options.status,
-      DbDate.toDb(new Date()),
-      options.by ?? null,
-    ],
-  )
-  const rows = await db.query(
-    'SELECT id, version, revision, hash, status FROM schema_state ORDER BY id DESC LIMIT 1',
-  )
-  const row = rows[0] as Record<string, unknown>
+  await lockCurrentState(db)
+  await db.q
+    .insertInto('schema_state')
+    .values({
+      version: options.version,
+      revision: options.revision,
+      hash: options.hash ?? null,
+      status: options.status,
+      synced_at: DbDate.toDb(new Date()),
+      synced_by: options.by ?? null,
+    })
+    .execute()
+  const row = await db.q
+    .selectFrom('schema_state')
+    .select(['id', 'version', 'revision', 'hash', 'status'])
+    .orderBy('id', 'desc')
+    .limit(1)
+    .executeTakeFirstOrThrow()
   return {
     id: Number(row.id),
     version: String(row.version),
@@ -150,14 +153,16 @@ export async function appendSchemaState(db: Db, options: AdvanceOptions): Promis
 
 /** Key write-back changes the files after they were hashed; the state records the files as they now are. */
 export async function updateSchemaStateHash(db: Db, id: number, hash: string): Promise<void> {
-  await db.exec('UPDATE schema_state SET hash = ? WHERE id = ?', [hash, id])
+  await db.q.updateTable('schema_state').set({ hash }).where('id', '=', id).execute()
 }
 
 /** Every state row, oldest first. The table is small: one row per deployment. */
 export async function allSchemaStates(db: Db): Promise<SchemaStateRow[]> {
-  const rows = await db.query(
-    'SELECT id, version, revision, hash, status FROM schema_state ORDER BY id',
-  )
+  const rows = await db.q
+    .selectFrom('schema_state')
+    .select(['id', 'version', 'revision', 'hash', 'status'])
+    .orderBy('id')
+    .execute()
   return rows.map((row) => ({
     id: Number(row.id),
     version: String(row.version),
@@ -189,8 +194,18 @@ export async function visibleStateIdFor(
 
 /** Marks a prepared state current — the cut-over. */
 export async function makeStateCurrent(db: Db, id: number): Promise<void> {
-  await db.query(
-    `SELECT id FROM schema_state WHERE status = 'current' ORDER BY id DESC LIMIT 1 ${db.dialect.forUpdate}`,
-  )
-  await db.exec("UPDATE schema_state SET status = 'current' WHERE id = ?", [id])
+  await lockCurrentState(db)
+  await db.q.updateTable('schema_state').set({ status: 'current' }).where('id', '=', id).execute()
+}
+
+/** Locks the current state row where the engine can, so state changes serialise against writers. */
+async function lockCurrentState(db: Db): Promise<void> {
+  await db.q
+    .selectFrom('schema_state')
+    .select('id')
+    .where('status', '=', 'current')
+    .orderBy('id', 'desc')
+    .limit(1)
+    .$call(rowLock(db, 'update'))
+    .execute()
 }

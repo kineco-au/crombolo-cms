@@ -105,6 +105,7 @@ import {
   contentForNode,
   DEFAULT_MEDIA_CACHE_MEGABYTES,
   DEVELOPMENT_LIMITS,
+  enableComponentStack,
   FORM_SCRIPT,
   FORM_SCRIPT_PATH,
   FORM_SUBMIT_PATH,
@@ -113,6 +114,9 @@ import {
   ISLAND_LOADER_SCRIPT,
   ISLANDS_PATH,
   islandTransform,
+  LIVE_EVENTS_PATH,
+  LIVE_RELOAD_SCRIPT,
+  LIVE_RELOAD_SCRIPT_PATH,
   type Lifetime,
   lifetimeFor,
   MEMBER_EXTERNAL_SIGN_IN_PATH,
@@ -128,6 +132,7 @@ import {
   setFormFieldTypes,
   setFormTokenSigner,
   ViewSnapshots,
+  withLiveReload,
 } from '@crombolo/render'
 import type { SyncReport } from '@crombolo/schema'
 import { choicesFor } from '@crombolo/transfer'
@@ -158,7 +163,7 @@ import {
   validateServerBundles,
 } from './bundles.ts'
 import { busyResponse } from './busy.ts'
-import { listEmailTemplates } from './components.ts'
+import { checkTypes, listEmailTemplates } from './components.ts'
 import {
   type CromboloConfig,
   listeningBodyLimit,
@@ -203,6 +208,7 @@ import {
 import { HOST_TOKEN_SECONDS, issueHostToken } from './host-token.ts'
 import { ImageProcessor, parseImagingQuery } from './imaging.ts'
 import { type BackgroundJobs, createBackgroundJobs } from './jobs.ts'
+import { createLiveReload, createTypeWatch, watchDirectory } from './live-reload.ts'
 import { configureLogging, logger } from './logging.ts'
 import { createMarketplace } from './marketplace.ts'
 import { createMediaAccess } from './media-access.ts'
@@ -625,6 +631,10 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     { budgetBytes: (config.mediaCacheMegabytes ?? DEFAULT_MEDIA_CACHE_MEGABYTES) * 1024 * 1024 },
   )
   const cacheOptions = { form: (key: string) => forms.byKey(key), media: mediaCache }
+  // Story 214: in development, open pages reload when what they show changes,
+  // and a template error says which components were rendering.
+  const live = config.liveReload ? createLiveReload() : undefined
+  if (config.errors.showDetails) enableComponentStack()
   // Every page as last saved, for previewing in an app (story 053). Built on the
   // first preview after a change and dropped with the published cache, so a site
   // nobody previews never holds it. A save on another node announces nothing,
@@ -645,6 +655,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     ...cacheOptions,
     onInvalidate: () => {
       drafts = undefined
+      live?.changed('content')
     },
   })
   // A sync or a Settings change that alters how URLs are built moves every URL:
@@ -688,11 +699,17 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     // Only a change: every boot takes a generation, and saying so each time is
     // noise. The start banner names the one a node came up on.
     onSwap: (hash, previous) => {
-      if (previous)
-        renderLog.info('Views changed: generation {previous} to {hash}', {
-          previous: previous.slice(0, 8),
-          hash: hash.slice(0, 8),
-        })
+      if (!previous) return
+      renderLog.info('Views changed: generation {previous} to {hash}', {
+        previous: previous.slice(0, 8),
+        hash: hash.slice(0, 8),
+      })
+      live?.changed('views')
+      void typeWatch
+        ?.schedule()
+        .catch((error: unknown) =>
+          renderLog.error('The type check failed to run: {error}', { error: String(error) }),
+        )
     },
     // Story 209: a `'use client'` view is a stub on the server, and its browser
     // code is built with the generation, unless a site's Vite build supplies it.
@@ -712,6 +729,34 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     },
   })
   await snapshots.prepare()
+  // Story 214: a save under components/ swaps the views now rather than at the
+  // next render, and each swap checks the types again in the background.
+  const viewWatcher =
+    live && existsSync(config.componentsDir)
+      ? watchDirectory(config.componentsDir, () => {
+          void snapshots
+            .refresh()
+            .catch((error: unknown) =>
+              renderLog.error('Could not refresh the views: {error}', { error: String(error) }),
+            )
+        })
+      : undefined
+  const typesLog = logger('types')
+  const typeWatch = live
+    ? createTypeWatch({
+        check: (signal) => checkTypes(config.siteDir, { signal }),
+        onFindings: ({ problems, types }) => {
+          if (types.count === 0) typesLog.info('The components type-check cleanly')
+          else for (const problem of problems) typesLog.warning('{problem}', { problem })
+          live?.types(types)
+        },
+      })
+    : undefined
+  void typeWatch
+    ?.schedule()
+    .catch((error: unknown) =>
+      typesLog.error('The type check failed to run: {error}', { error: String(error) }),
+    )
   // Before the poller, which tells it to look again on a `views` instruction
   // from another node: a closure over a `const` declared later would be a
   // temporal dead zone waiting for the first instruction to land.
@@ -803,10 +848,12 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
                       name: g.name,
                     }))
                   : (
-                      await db.query<{ text: string }>(
-                        'SELECT text FROM node WHERE node_object_type = ? ORDER BY text',
-                        [ObjectTypes.MemberGroup],
-                      )
+                      await db.q
+                        .selectFrom('node')
+                        .select('text')
+                        .where('node_object_type', '=', ObjectTypes.MemberGroup)
+                        .orderBy('text')
+                        .execute()
                     ).map((g) => ({ value: String(g.text), name: String(g.text) })),
             }),
           },
@@ -868,9 +915,11 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     if (named.length > 0) {
       const existing = new Set(
         (
-          await db.query<{ text: string }>('SELECT text FROM node WHERE node_object_type = ?', [
-            ObjectTypes.MemberGroup,
-          ])
+          await db.q
+            .selectFrom('node')
+            .select('text')
+            .where('node_object_type', '=', ObjectTypes.MemberGroup)
+            .execute()
         ).map((row) => String(row.text).toLowerCase()),
       )
       for (const group of named.filter((name) => !existing.has(name.toLowerCase())))
@@ -955,6 +1004,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
               // the path it owns.
               if (report.state?.version) schema.nodeState.version = report.state.version
               schemaLog.info('Schema {version} applied', { version: report.state?.version ?? '' })
+              live?.changed('schema')
             }
           },
         )
@@ -1568,7 +1618,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
         : new Response('Method Not Allowed', { status: 405, headers: { allow: 'POST' } })
     }
 
-    // A bundle's member and public routes (story 186), wherever the site is served.
+    // The script that calls the site's routes as a member, wherever the site is served.
     if (config.role !== 'api') {
       if (pathname === BUNDLE_SCRIPT_PATH)
         return new Response(BUNDLE_SCRIPT, {
@@ -1584,7 +1634,31 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
       return pathname === '/sitemap.xml' ? seo.sitemap(request, url.host) : seo.robots(request)
 
     if (pathname.startsWith('/media/')) return serveMedia(request, pathname, url.searchParams)
+    if (live && config.role !== 'api') {
+      if (pathname === LIVE_EVENTS_PATH) return live.stream(request)
+      if (pathname === LIVE_RELOAD_SCRIPT_PATH)
+        return new Response(LIVE_RELOAD_SCRIPT, {
+          headers: {
+            'content-type': 'text/javascript; charset=utf-8',
+            'cache-control': 'no-cache',
+          },
+        })
+      return withLiveReloadScript(await siteRequest(request, url))
+    }
     return siteRequest(request, url)
+  }
+
+  /** A site page in development, carrying the live-reload script (story 214). */
+  async function withLiveReloadScript(response: Response): Promise<Response> {
+    if (!response.body || !response.headers.get('content-type')?.startsWith('text/html'))
+      return response
+    const headers = new Headers(response.headers)
+    headers.delete('content-length')
+    return new Response(withLiveReload(await response.text()), {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    })
   }
 
   /** What a chain is carrying through one request (story 210). */
@@ -3335,6 +3409,8 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
           if (!request.headers.has('content-length') && request.headers.has('transfer-encoding'))
             return new Response('Length Required', { status: 411 })
         }
+        // An open event stream outlives Bun's idle timeout.
+        if (live && pathname === LIVE_EVENTS_PATH) bunServer.timeout(request, 0)
         const hubAt = contractPathFor(paths.backOfficePath, pathname) ?? pathname
         if (hubAt === hubPath || hubAt === previewHubPath) {
           const principal = await authenticate(request)
@@ -3355,6 +3431,9 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
       events.stop()
       previewHub.stop()
       watcher?.close()
+      viewWatcher?.close()
+      typeWatch?.stop()
+      live?.close()
       poller.stop()
       await db.close()
     },

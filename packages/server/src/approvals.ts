@@ -273,10 +273,12 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
       .filter((id) => id > 0)
     const rows = await nodes.byIds(ids)
     const keyOf = new Map(rows.map((r) => [r.id, r.key]))
-    const type = await db.query<{ alias: string; variations: number }>(
-      `SELECT ct.alias, ct.variations FROM content c JOIN content_type ct ON ct.node_id = c.content_type_id WHERE c.node_id = ?`,
-      [node.id],
-    )
+    const type = await db.q
+      .selectFrom('content as c')
+      .innerJoin('content_type as ct', 'ct.node_id', 'c.content_type_id')
+      .select(['ct.alias', 'ct.variations'])
+      .where('c.node_id', '=', node.id)
+      .execute()
     return {
       key: node.key,
       name: node.text ?? node.key,
@@ -341,11 +343,12 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
 
   const membersOf = async (aliases: readonly string[]): Promise<number> => {
     if (aliases.length === 0) return 0
-    const rows = await db.query<{ n: number }>(
-      `SELECT COUNT(DISTINCT m.user_id) AS n FROM user_group_member m
-       JOIN user_group g ON g.id = m.user_group_id WHERE g.alias IN (${aliases.map(() => '?').join(', ')})`,
-      [...aliases],
-    )
+    const rows = await db.q
+      .selectFrom('user_group_member as m')
+      .innerJoin('user_group as g', 'g.id', 'm.user_group_id')
+      .select((eb) => eb.fn.count('m.user_id').distinct().as('n'))
+      .where('g.alias', 'in', aliases)
+      .execute()
     return Number(rows[0]?.n ?? 0)
   }
 
@@ -376,20 +379,24 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
     if (!options.email) return
     let emails: string[] = []
     if (to === 'editor') {
-      const rows = await db.query<{ email: string }>(
-        'SELECT email FROM user_account WHERE key = ?',
-        [request.requestedBy],
-      )
+      const rows = await db.q
+        .selectFrom('user_account')
+        .select('email')
+        .where('key', '=', request.requestedBy)
+        .execute()
       emails = rows.map((r) => r.email)
     } else {
       const aliases = stages.flatMap((s) => stageOf(request.workflow, s)?.approvers ?? [])
       if (aliases.length === 0) return
-      const rows = await db.query<{ email: string }>(
-        `SELECT DISTINCT u.email FROM user_account u
-         JOIN user_group_member m ON m.user_id = u.id JOIN user_group g ON g.id = m.user_group_id
-         WHERE g.alias IN (${aliases.map(() => '?').join(', ')}) AND u.is_approved = ?`,
-        [...aliases, db.dialect.boolValue(true)],
-      )
+      const rows = await db.q
+        .selectFrom('user_account as u')
+        .innerJoin('user_group_member as m', 'm.user_id', 'u.id')
+        .innerJoin('user_group as g', 'g.id', 'm.user_group_id')
+        .select('u.email')
+        .distinct()
+        .where('g.alias', 'in', aliases)
+        .where('u.is_approved', '=', db.dialect.boolValue(true) as boolean)
+        .execute()
       emails = rows.map((r) => r.email)
     }
     if (emails.length === 0) return
@@ -435,11 +442,14 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
       const stepId = await repo.addStep(request.id, stage)
       if (request.workflow.selfApproval !== 'automatic') continue
       const approvers = stageOf(request.workflow, stage)?.approvers ?? []
-      const member = await db.query<{ n: number }>(
-        `SELECT COUNT(*) AS n FROM user_group_member m JOIN user_group g ON g.id = m.user_group_id
-         JOIN user_account u ON u.id = m.user_id WHERE u.key = ? AND g.alias IN (${approvers.map(() => '?').join(', ') || "''"})`,
-        [request.requestedBy, ...approvers],
-      )
+      const member = await db.q
+        .selectFrom('user_group_member as m')
+        .innerJoin('user_group as g', 'g.id', 'm.user_group_id')
+        .innerJoin('user_account as u', 'u.id', 'm.user_id')
+        .select((eb) => eb.fn.countAll().as('n'))
+        .where('u.key', '=', request.requestedBy)
+        .where('g.alias', 'in', approvers.length > 0 ? approvers : [''])
+        .execute()
       if (Number(member[0]?.n ?? 0) > 0)
         await repo.record(request.id, {
           kind: 'approved',
@@ -684,10 +694,11 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
     const ownChange = normaliseUuid(principal.id) === request.requestedBy
     let variant = 'invariant'
     if (facts?.variesByCulture) {
-      const fallback = await db.query<{ iso_code: string }>(
-        'SELECT iso_code FROM language WHERE is_default = ?',
-        [db.dialect.boolValue(true)],
-      )
+      const fallback = await db.q
+        .selectFrom('language')
+        .select('iso_code')
+        .where('is_default', '=', db.dialect.boolValue(true) as boolean)
+        .execute()
       variant = request.cultures?.[0] ?? fallback[0]?.iso_code ?? 'invariant'
     }
     return {
@@ -766,10 +777,12 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
       if (!root) return undefined
       const workflows = (await readWorkflows(db)).map((s) => s.workflow)
       if (workflows.length === 0) return undefined
-      const below = await db.query<{ unique_id: string }>(
-        'SELECT unique_id FROM node WHERE id = ? OR path LIKE ? ORDER BY level',
-        [root.id, `${root.path},%`],
-      )
+      const below = await db.q
+        .selectFrom('node')
+        .select('unique_id')
+        .where((eb) => eb.or([eb('id', '=', root.id), eb('path', 'like', `${root.path},%`)]))
+        .orderBy('level')
+        .execute()
       for (const row of below) {
         const facts = await page(String(row.unique_id))
         if (!facts) continue
@@ -781,10 +794,12 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
 
     async newPageRefusal(principal, parentKey, contentTypeKey) {
       const parent = parentKey ? await page(parentKey) : undefined
-      const type = await db.query<{ alias: string }>(
-        'SELECT ct.alias FROM content_type ct JOIN node n ON n.id = ct.node_id WHERE n.unique_id = ?',
-        [normaliseUuid(contentTypeKey)],
-      )
+      const type = await db.q
+        .selectFrom('content_type as ct')
+        .innerJoin('node as n', 'n.id', 'ct.node_id')
+        .select('ct.alias')
+        .where('n.unique_id', '=', normaliseUuid(contentTypeKey))
+        .execute()
       const facts: PageFacts = {
         key: '',
         name: 'This page',

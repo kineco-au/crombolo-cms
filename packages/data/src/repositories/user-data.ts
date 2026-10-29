@@ -1,6 +1,7 @@
 /** Per-user key/value data the backoffice keeps between sessions (Umbraco's `umbracoUserData`). */
 import { normaliseUuid } from '@crombolo/core'
 import type { Db } from '../database.ts'
+import { sql } from '../query.ts'
 
 export interface UserDataEntry {
   key: string
@@ -31,60 +32,77 @@ export class UserDataRepository {
     skip: number,
     take: number,
   ): Promise<{ total: number; items: UserDataEntry[] }> {
-    const where = ['user_id = ?']
-    const params: unknown[] = [userId]
-    if (filter.groups?.length) {
-      where.push(`data_group IN (${filter.groups.map(() => '?').join(', ')})`)
-      params.push(...filter.groups)
-    }
-    if (filter.identifiers?.length) {
-      where.push(`identifier IN (${filter.identifiers.map(() => '?').join(', ')})`)
-      params.push(...filter.identifiers)
-    }
-    const rows = await this.#db.query(
-      `SELECT key, data_group, identifier, value FROM user_data WHERE ${where.join(' AND ')}
-       ORDER BY data_group, identifier`,
-      params,
-    )
+    const { groups, identifiers } = filter
+    const rows = await this.#db.q
+      .selectFrom('user_data')
+      .select(['key', 'data_group', 'identifier', 'value'])
+      .where('user_id', '=', userId)
+      .$if(!!groups?.length, (q) => q.where('data_group', 'in', groups ?? []))
+      .$if(!!identifiers?.length, (q) => q.where('identifier', 'in', identifiers ?? []))
+      .orderBy('data_group')
+      .orderBy('identifier')
+      .execute()
     return { total: rows.length, items: rows.slice(skip, skip + take).map(map) }
   }
 
   async get(userId: number, key: string): Promise<UserDataEntry | undefined> {
-    const rows = await this.#db.query(
-      'SELECT key, data_group, identifier, value FROM user_data WHERE user_id = ? AND key = ?',
-      [userId, normaliseUuid(key)],
-    )
-    return rows[0] ? map(rows[0]) : undefined
+    const row = await this.#db.q
+      .selectFrom('user_data')
+      .select(['key', 'data_group', 'identifier', 'value'])
+      .where('user_id', '=', userId)
+      .where('key', '=', normaliseUuid(key))
+      .executeTakeFirst()
+    return row ? map(row) : undefined
   }
 
   async create(userId: number, entry: UserDataEntry): Promise<UserDataResult> {
-    const clash = await this.#db.query(
-      'SELECT 1 FROM user_data WHERE key = ? OR (user_id = ? AND data_group = ? AND identifier = ?)',
-      [normaliseUuid(entry.key), userId, entry.group, entry.identifier],
-    )
+    const key = normaliseUuid(entry.key)
+    const clash = await this.#db.q
+      .selectFrom('user_data')
+      .select(sql<number>`1`.as('one'))
+      .where((eb) =>
+        eb.or([
+          eb('key', '=', key),
+          eb.and([
+            eb('user_id', '=', userId),
+            eb('data_group', '=', entry.group),
+            eb('identifier', '=', entry.identifier),
+          ]),
+        ]),
+      )
+      .execute()
     if (clash.length > 0) return 'AlreadyExists'
-    await this.#db.exec(
-      'INSERT INTO user_data (key, user_id, data_group, identifier, value) VALUES (?, ?, ?, ?, ?)',
-      [normaliseUuid(entry.key), userId, entry.group, entry.identifier, entry.value],
-    )
+    await this.#db.q
+      .insertInto('user_data')
+      .values({
+        key,
+        user_id: userId,
+        data_group: entry.group,
+        identifier: entry.identifier,
+        value: entry.value,
+      })
+      .execute()
     return 'Success'
   }
 
   async update(userId: number, entry: UserDataEntry): Promise<UserDataResult> {
     if (!(await this.get(userId, entry.key))) return 'NotFound'
-    await this.#db.exec(
-      'UPDATE user_data SET data_group = ?, identifier = ?, value = ? WHERE user_id = ? AND key = ?',
-      [entry.group, entry.identifier, entry.value, userId, normaliseUuid(entry.key)],
-    )
+    await this.#db.q
+      .updateTable('user_data')
+      .set({ data_group: entry.group, identifier: entry.identifier, value: entry.value })
+      .where('user_id', '=', userId)
+      .where('key', '=', normaliseUuid(entry.key))
+      .execute()
     return 'Success'
   }
 
   async delete(userId: number, key: string): Promise<UserDataResult> {
     if (!(await this.get(userId, key))) return 'NotFound'
-    await this.#db.exec('DELETE FROM user_data WHERE user_id = ? AND key = ?', [
-      userId,
-      normaliseUuid(key),
-    ])
+    await this.#db.q
+      .deleteFrom('user_data')
+      .where('user_id', '=', userId)
+      .where('key', '=', normaliseUuid(key))
+      .execute()
     return 'Success'
   }
 }

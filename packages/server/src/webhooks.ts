@@ -607,24 +607,26 @@ async function itemFacts(
   db: Db,
   key: string,
 ): Promise<Pick<WebhookFacts, 'contentTypeKey' | 'contentTypeAlias' | 'ancestors'> | undefined> {
-  const rows = await db.query<{
-    type_key: string
-    type_alias: string | null
-    path: string
-    original_path: string | null
-    original_parent_id: number | null
-  }>(
-    `SELECT tn.unique_id AS type_key, ct.alias AS type_alias, n.path AS path,
-            op.path AS original_path, d.original_parent_id AS original_parent_id
-       FROM node n
-       JOIN content c ON c.node_id = n.id
-       JOIN node tn ON tn.id = c.content_type_id
-       LEFT JOIN content_type ct ON ct.node_id = tn.id
-       LEFT JOIN document d ON d.node_id = n.id AND n.trashed = ?
-       LEFT JOIN node op ON op.id = d.original_parent_id
-      WHERE n.unique_id = ?`,
-    [db.dialect.boolValue(true), key],
-  )
+  const rows = await db.q
+    .selectFrom('node as n')
+    .innerJoin('content as c', 'c.node_id', 'n.id')
+    .innerJoin('node as tn', 'tn.id', 'c.content_type_id')
+    .leftJoin('content_type as ct', 'ct.node_id', 'tn.id')
+    .leftJoin('document as d', (join) =>
+      join
+        .onRef('d.node_id', '=', 'n.id')
+        .on('n.trashed', '=', db.dialect.boolValue(true) as boolean),
+    )
+    .leftJoin('node as op', 'op.id', 'd.original_parent_id')
+    .select([
+      'tn.unique_id as type_key',
+      'ct.alias as type_alias',
+      'n.path as path',
+      'op.path as original_path',
+      'd.original_parent_id as original_parent_id',
+    ])
+    .where('n.unique_id', '=', key)
+    .execute()
   const row = rows[0]
   if (!row) return undefined
   // In the recycle bin its path is the bin's, so its ancestors are where it was.
@@ -635,10 +637,7 @@ async function itemFacts(
   const found =
     ids.length === 0
       ? []
-      : await db.query<{ id: number; unique_id: string }>(
-          `SELECT id, unique_id FROM node WHERE id IN (${ids.map(() => '?').join(', ')})`,
-          ids,
-        )
+      : await db.q.selectFrom('node').select(['id', 'unique_id']).where('id', 'in', ids).execute()
   const keyOf = new Map(found.map((r) => [Number(r.id), String(r.unique_id).toLowerCase()]))
   return {
     contentTypeKey: String(row.type_key).toLowerCase(),

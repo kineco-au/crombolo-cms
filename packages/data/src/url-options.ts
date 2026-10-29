@@ -4,6 +4,7 @@
  * the published cache. docs/rendering.md, "URLs".
  */
 import type { Db } from './database.ts'
+import { now } from './query.ts'
 
 export const URL_OPTIONS_KEY = 'crombolo:urls'
 
@@ -35,10 +36,12 @@ export function parseUrlOptions(value: string | undefined): UrlOptions {
 }
 
 export async function readUrlOptions(db: Db): Promise<UrlOptions> {
-  const rows = await db.query<{ value: string }>('SELECT value FROM key_value WHERE key = ?', [
-    URL_OPTIONS_KEY,
-  ])
-  return parseUrlOptions(rows[0]?.value)
+  const rows = await db.q
+    .selectFrom('key_value')
+    .select('value')
+    .where('key', '=', URL_OPTIONS_KEY)
+    .execute()
+  return parseUrlOptions(rows[0]?.value ?? undefined)
 }
 
 /** Stores the setting; answers what it was before. */
@@ -46,16 +49,17 @@ export async function writeUrlOptions(db: Db, options: UrlOptions): Promise<UrlO
   return db.transaction(async (tx) => {
     const before = await readUrlOptions(tx)
     const value = JSON.stringify({ hideTopLevel: options.hideTopLevel })
-    const now = tx.dialect.now()
-    const updated = await tx.query<{ key: string }>(
-      `UPDATE key_value SET value = ?, update_date = ${now} WHERE key = ? RETURNING key`,
-      [value, URL_OPTIONS_KEY],
-    )
+    const updated = await tx.q
+      .updateTable('key_value')
+      .set({ value, update_date: now(tx) })
+      .where('key', '=', URL_OPTIONS_KEY)
+      .returning('key')
+      .execute()
     if (updated.length === 0)
-      await tx.exec(`INSERT INTO key_value (key, value, update_date) VALUES (?, ?, ${now})`, [
-        URL_OPTIONS_KEY,
-        value,
-      ])
+      await tx.q
+        .insertInto('key_value')
+        .values({ key: URL_OPTIONS_KEY, value, update_date: now(tx) })
+        .execute()
     return before
   })
 }

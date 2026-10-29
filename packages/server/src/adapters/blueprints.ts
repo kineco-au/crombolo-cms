@@ -36,9 +36,11 @@ export function createBlueprintPort(
   const tree = createSettingsTree(repo.nodes, container, ObjectTypes.DocumentBlueprint, decorate)
 
   const userIdOf = async (principal: Principal): Promise<number | undefined> => {
-    const rows = await db.query<{ id: number }>('SELECT id FROM user_account WHERE key = ?', [
-      principal.id,
-    ])
+    const rows = await db.q
+      .selectFrom('user_account')
+      .select('id')
+      .where('key', '=', principal.id)
+      .execute()
     return rows[0] ? Number(rows[0].id) : undefined
   }
   const failure = (error: unknown) => {
@@ -115,19 +117,26 @@ export function createBlueprintPort(
 
     versions: (key) => repo.versions(key),
     async systemUserKey() {
-      const rows = await db.query<{ key: string }>(
-        'SELECT key FROM user_account ORDER BY id LIMIT 1',
-      )
+      const rows = await db.q
+        .selectFrom('user_account')
+        .select('key')
+        .orderBy('id')
+        .limit(1)
+        .execute()
       return rows[0] ? String(rows[0].key).toLowerCase() : null
     },
 
     async forContentType(contentTypeKey, paging) {
-      const rows = await db.query(
-        `SELECT n.unique_id, n.text FROM node n JOIN content c ON c.node_id = n.id
-         JOIN node t ON t.id = c.content_type_id
-         WHERE n.node_object_type = ? AND t.unique_id = ? ORDER BY n.text, n.id`,
-        [ObjectTypes.DocumentBlueprint, contentTypeKey.toLowerCase()],
-      )
+      const rows = await db.q
+        .selectFrom('node as n')
+        .innerJoin('content as c', 'c.node_id', 'n.id')
+        .innerJoin('node as t', 't.id', 'c.content_type_id')
+        .select(['n.unique_id', 'n.text'])
+        .where('n.node_object_type', '=', ObjectTypes.DocumentBlueprint)
+        .where('t.unique_id', '=', contentTypeKey.toLowerCase())
+        .orderBy('n.text')
+        .orderBy('n.id')
+        .execute()
       const all = rows.map((row) => ({
         key: String(row.unique_id).toLowerCase(),
         name: String(row.text ?? ''),

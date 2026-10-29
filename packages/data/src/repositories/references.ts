@@ -42,14 +42,22 @@ export class ReferenceRepository {
     const found = new Map<string, number[]>()
     for (const key of keys) {
       const [dashed, plain] = patterns(key)
-      const rows = await this.#db.query<{ id: number }>(
-        `SELECT DISTINCT pv.node_id AS id
-           FROM property_value pv
-          WHERE pv.is_current = ?
-            AND ( LOWER(pv.varchar_value) LIKE ? OR LOWER(pv.text_value) LIKE ?
-               OR LOWER(pv.varchar_value) LIKE ? OR LOWER(pv.text_value) LIKE ? )`,
-        [this.#db.dialect.boolValue(true), dashed, dashed, plain, plain],
-      )
+      const rows = await this.#db.q
+        .selectFrom('property_value as pv')
+        .select('pv.node_id as id')
+        .distinct()
+        .where('pv.is_current', '=', this.#db.dialect.boolValue(true))
+        .where((eb) => {
+          const varchar = eb.fn<string>('lower', ['pv.varchar_value'])
+          const text = eb.fn<string>('lower', ['pv.text_value'])
+          return eb.or([
+            eb(varchar, 'like', dashed),
+            eb(text, 'like', dashed),
+            eb(varchar, 'like', plain),
+            eb(text, 'like', plain),
+          ])
+        })
+        .execute()
       found.set(
         normaliseUuid(key),
         rows.map((row) => Number(row.id)),
@@ -60,28 +68,24 @@ export class ReferenceRepository {
 
   async #describe(ids: readonly number[]): Promise<ReferencingNode[]> {
     if (ids.length === 0) return []
-    const holes = ids.map(() => '?').join(', ')
-    const rows = await this.#db.query<{
-      unique_id: string
-      text: string | null
-      node_object_type: string | null
-      published: unknown
-      type_key: string | null
-      type_alias: string | null
-      type_icon: string | null
-    }>(
-      `SELECT n.unique_id, n.text, n.node_object_type,
-              d.published AS published,
-              tn.unique_id AS type_key, ct.alias AS type_alias, ct.icon AS type_icon
-         FROM node n
-         LEFT JOIN content c ON c.node_id = n.id
-         LEFT JOIN content_type ct ON ct.node_id = c.content_type_id
-         LEFT JOIN node tn ON tn.id = ct.node_id
-         LEFT JOIN document d ON d.node_id = n.id
-        WHERE n.id IN (${holes})
-        ORDER BY n.text`,
-      [...ids],
-    )
+    const rows = await this.#db.q
+      .selectFrom('node as n')
+      .leftJoin('content as c', 'c.node_id', 'n.id')
+      .leftJoin('content_type as ct', 'ct.node_id', 'c.content_type_id')
+      .leftJoin('node as tn', 'tn.id', 'ct.node_id')
+      .leftJoin('document as d', 'd.node_id', 'n.id')
+      .select([
+        'n.unique_id',
+        'n.text',
+        'n.node_object_type',
+        'd.published as published',
+        'tn.unique_id as type_key',
+        'ct.alias as type_alias',
+        'ct.icon as type_icon',
+      ])
+      .where('n.id', 'in', [...ids])
+      .orderBy('n.text')
+      .execute()
     return rows.map((row) => ({
       key: String(row.unique_id),
       name: row.text,
@@ -99,9 +103,11 @@ export class ReferenceRepository {
     skip: number,
     take: number,
   ): Promise<{ total: number; items: ReferencingNode[] }> {
-    const self = await this.#db.query<{ id: number }>('SELECT id FROM node WHERE unique_id = ?', [
-      normaliseUuid(key),
-    ])
+    const self = await this.#db.q
+      .selectFrom('node')
+      .select('id')
+      .where('unique_id', '=', normaliseUuid(key))
+      .execute()
     const selfId = self[0]?.id
     const ids = (await this.#referencingIds([key])).get(normaliseUuid(key)) ?? []
     const others = ids.filter((id) => id !== Number(selfId))
@@ -117,16 +123,19 @@ export class ReferenceRepository {
     skip: number,
     take: number,
   ): Promise<{ total: number; items: string[] }> {
-    const self = await this.#db.query<{ id: number; path: string }>(
-      'SELECT id, path FROM node WHERE unique_id = ?',
-      [normaliseUuid(key)],
-    )
+    const self = await this.#db.q
+      .selectFrom('node')
+      .select(['id', 'path'])
+      .where('unique_id', '=', normaliseUuid(key))
+      .execute()
     const node = self[0]
     if (!node) return { total: 0, items: [] }
-    const descendants = await this.#db.query<{ id: number; unique_id: string }>(
-      'SELECT id, unique_id FROM node WHERE path LIKE ? AND id <> ?',
-      [`${node.path},%`, node.id],
-    )
+    const descendants = await this.#db.q
+      .selectFrom('node')
+      .select(['id', 'unique_id'])
+      .where('path', 'like', `${node.path},%`)
+      .where('id', '<>', node.id)
+      .execute()
     const referenced: string[] = []
     for (const descendant of descendants) {
       const ids = (await this.#referencingIds([String(descendant.unique_id)])).values().next()
@@ -150,9 +159,11 @@ export class ReferenceRepository {
     const found = await this.#referencingIds(wanted)
     const selfIds = new Map<string, number>()
     for (const key of wanted) {
-      const rows = await this.#db.query<{ id: number }>('SELECT id FROM node WHERE unique_id = ?', [
-        key,
-      ])
+      const rows = await this.#db.q
+        .selectFrom('node')
+        .select('id')
+        .where('unique_id', '=', key)
+        .execute()
       if (rows[0]) selfIds.set(key, Number(rows[0].id))
     }
     const referenced = wanted.filter((key) =>

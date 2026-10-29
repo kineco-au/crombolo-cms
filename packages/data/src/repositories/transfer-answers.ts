@@ -63,51 +63,58 @@ export class TransferAnswerRepository {
   async recordCheck(pending: PendingTransfer): Promise<void> {
     const bool = (value: boolean) => this.#db.dialect.boolValue(value)
     await this.#db.transaction(async (tx) => {
-      await tx.exec('DELETE FROM transfer_pending WHERE bundle_id = ?', [pending.bundleId])
-      await tx.exec(
-        `INSERT INTO transfer_pending
-           (bundle_id, label, target, target_kind, under_target, publish, allow_missing_blobs, checked_at, checked_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          pending.bundleId,
-          pending.label,
-          pending.target,
-          pending.targetKind,
-          pending.under,
-          bool(pending.publish),
-          bool(pending.allowMissingBlobs),
-          DbDate.toDb(pending.checkedAt),
-          pending.checkedBy,
-        ],
-      )
+      await tx.q.deleteFrom('transfer_pending').where('bundle_id', '=', pending.bundleId).execute()
+      await tx.q
+        .insertInto('transfer_pending')
+        .values({
+          bundle_id: pending.bundleId,
+          label: pending.label,
+          target: pending.target,
+          target_kind: pending.targetKind,
+          under_target: pending.under,
+          publish: bool(pending.publish),
+          allow_missing_blobs: bool(pending.allowMissingBlobs),
+          checked_at: DbDate.toDb(pending.checkedAt),
+          checked_by: pending.checkedBy,
+        })
+        .execute()
     })
   }
 
   async pending(bundleId: string): Promise<PendingTransfer | undefined> {
-    const rows = await this.#db.query('SELECT * FROM transfer_pending WHERE bundle_id = ?', [
-      bundleId,
-    ])
-    return rows[0] ? pendingFrom(rows[0]) : undefined
+    const row = await this.#db.q
+      .selectFrom('transfer_pending')
+      .selectAll()
+      .where('bundle_id', '=', bundleId)
+      .executeTakeFirst()
+    return row ? pendingFrom(row) : undefined
   }
 
   async allPending(): Promise<PendingTransfer[]> {
-    return (await this.#db.query('SELECT * FROM transfer_pending ORDER BY checked_at DESC')).map(
-      pendingFrom,
-    )
+    const rows = await this.#db.q
+      .selectFrom('transfer_pending')
+      .selectAll()
+      .orderBy('checked_at', 'desc')
+      .execute()
+    return rows.map(pendingFrom)
   }
 
   async setAllowMissingBlobs(bundleId: string, allow: boolean): Promise<void> {
-    await this.#db.exec('UPDATE transfer_pending SET allow_missing_blobs = ? WHERE bundle_id = ?', [
-      this.#db.dialect.boolValue(allow),
-      bundleId,
-    ])
+    await this.#db.q
+      .updateTable('transfer_pending')
+      .set({ allow_missing_blobs: this.#db.dialect.boolValue(allow) })
+      .where('bundle_id', '=', bundleId)
+      .execute()
   }
 
   async answers(bundleId: string): Promise<TransferAnswer[]> {
-    const rows = await this.#db.query(
-      'SELECT * FROM transfer_answer WHERE bundle_id = ? ORDER BY node_key, handle',
-      [bundleId],
-    )
+    const rows = await this.#db.q
+      .selectFrom('transfer_answer')
+      .selectAll()
+      .where('bundle_id', '=', bundleId)
+      .orderBy('node_key')
+      .orderBy('handle')
+      .execute()
     return rows.map((row) => ({
       nodeKey: row.node_key as string,
       handle: row.handle as string,
@@ -123,29 +130,30 @@ export class TransferAnswerRepository {
     answer: { nodeKey: string; handle: string; resolution: string | null; by: string | null },
   ): Promise<void> {
     await this.#db.transaction(async (tx) => {
-      await tx.exec(
-        'DELETE FROM transfer_answer WHERE bundle_id = ? AND node_key = ? AND handle = ?',
-        [bundleId, answer.nodeKey, answer.handle],
-      )
+      await tx.q
+        .deleteFrom('transfer_answer')
+        .where('bundle_id', '=', bundleId)
+        .where('node_key', '=', answer.nodeKey)
+        .where('handle', '=', answer.handle)
+        .execute()
       if (answer.resolution === null) return
-      await tx.exec(
-        `INSERT INTO transfer_answer (bundle_id, node_key, handle, resolution, answered_by, answered_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [
-          bundleId,
-          answer.nodeKey,
-          answer.handle,
-          answer.resolution,
-          answer.by,
-          DbDate.toDb(new Date()),
-        ],
-      )
+      await tx.q
+        .insertInto('transfer_answer')
+        .values({
+          bundle_id: bundleId,
+          node_key: answer.nodeKey,
+          handle: answer.handle,
+          resolution: answer.resolution,
+          answered_by: answer.by,
+          answered_at: DbDate.toDb(new Date()),
+        })
+        .execute()
     })
   }
 
   /** Once the import is applied there is nothing pending, and nothing left to answer. */
   async clear(bundleId: string): Promise<void> {
-    await this.#db.exec('DELETE FROM transfer_answer WHERE bundle_id = ?', [bundleId])
-    await this.#db.exec('DELETE FROM transfer_pending WHERE bundle_id = ?', [bundleId])
+    await this.#db.q.deleteFrom('transfer_answer').where('bundle_id', '=', bundleId).execute()
+    await this.#db.q.deleteFrom('transfer_pending').where('bundle_id', '=', bundleId).execute()
   }
 }

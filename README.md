@@ -139,7 +139,7 @@ both need it.
 bun install
 bun run vendor:backoffice     # builds packages/backoffice-dist/dist (~90 MB, ~2s)
 bun run generate:types        # contract types -> packages/contracts/generated/
-bun run check                 # format + lint + typecheck
+bun run check                 # format + lint + typecheck + SQL rule
 bun run hooks:install         # pre-push hook: the same gate, before you push
 ```
 
@@ -386,7 +386,7 @@ development, so editing a `.tsx` file and refreshing is enough.
 ### Running the tests
 
 ```bash
-bun run check                 # Biome + tsc, the gate
+bun run check                 # Biome + tsc + the no-hand-written-SQL rule, the gate
 bun run docker:test:sqlite    # the suite in a container
 bun run docker:test:all       # both dialects, the real gate
 ```
@@ -489,7 +489,7 @@ crombolo/
 │   │                              #    the media store seam (file system, S3, Azure), imaging and the bundle installer
 │   ├── core/                      # domain primitives — problem details, notifications, paging
 │   ├── contracts/                 # OpenApi.json (vendored from Umbraco release-18.2.0, never edited; src/overrides.ts) + types
-│   ├── data/                      # dialect seam, drivers, migrations, repositories, bundle tables
+│   ├── data/                      # dialect seam, drivers, Kysely query layer, migrations, repositories, bundle tables
 │   ├── content/                   # every page and media write and its rules, whoever starts it (docs/architecture.md)
 │   ├── auth/                      # OAuth2 + PKCE, reference tokens, cookie redaction
 │   ├── api-management/            # contract-first router, authorization, ports, handlers

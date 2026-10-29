@@ -72,7 +72,7 @@ export async function importDictionaryUdt(
     return { ok: false, reason: 'the parent item does not exist', imported: 0, skipped: [] }
 
   const languages = new Set(
-    (await db.query<{ iso_code: string }>('SELECT iso_code FROM language')).map((row) =>
+    (await db.q.selectFrom('language').select('iso_code').execute()).map((row) =>
       String(row.iso_code).toLowerCase(),
     ),
   )

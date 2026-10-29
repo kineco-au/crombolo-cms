@@ -168,7 +168,7 @@ requests, only server-side and build-time front ends can call it.
 | `187` | Background and scheduled work for server bundles | should | M | ready | 063, 171 |
 | `188` | File storage for server bundles | should | M | ready | 063 |
 | `198` | Server bundles create media as the member | should | M | done | 186, 196 |
-| `189` | A schema of the site's own | should | L | ready | 062, 173 |
+| `189` | A schema of the site's own | should | L | ready | 062, 173, 221 |
 | `194` | Installing server code takes an explicit yes | must | S | done | 063, 181 |
 
 ### Epic H — Importing a site
@@ -266,10 +266,11 @@ requests, only server-side and build-time front ends can call it.
 | `211` | Route handlers | should | L | done | — |
 | `212` | Streaming and Suspense | could | L | ready | 206 |
 | `213` | Image, Link and Script components | should | M | backlog | 199 |
-| `214` | Live reload and an error overlay | should | M | ready | — |
+| `214` | Live reload and an error overlay | should | L | done | — |
 | `215` | React on the server | could | XL | on hold | 206, 209, 212 |
 | `218` | Build islands ahead of time | could | S | ready | 209 |
 | `219` | Server actions | should | L | ready | — |
+| `220` | `/crombolo/bundle.js` is served on every node | should | S | ready | 211 |
 
 ### Epic P — The command line
 
@@ -344,3 +345,4 @@ implementation; creating them does not settle those architectural choices.
 | `174` | Renderers know which published changes they serve | should | L | done | 011, 120 |
 | `175` | Published cache growth stays within measured limits | could | L | ready | 086, 174 |
 | `176` | Background jobs run independently | could | L | ready | 171 |
+| `221` | Kysely as the query layer | should | XL | done | — |

@@ -103,14 +103,28 @@ export function genericStatusPage(outcome: PageOutcome): string {
         .join('')}</ul>`,
     )
   if (outcome.details) {
-    parts.push(`<p>${escapeHtml(outcome.details.message)}</p>`)
-    if (outcome.details.location)
-      parts.push(`<p><code>${escapeHtml(outcome.details.location)}</code></p>`)
-    if (outcome.details.stack) parts.push(`<pre>${escapeHtml(outcome.details.stack)}</pre>`)
+    const { message, location, code, components, stack } = outcome.details
+    parts.push(`<p>${escapeHtml(message)}</p>`)
+    if (location) parts.push(`<p><code>${escapeHtml(location)}</code></p>`)
+    if (code) parts.push(codeFrame(code))
+    if (components?.length)
+      parts.push(`<p>While rendering <code>${escapeHtml(components.join(' › '))}</code></p>`)
+    if (stack) parts.push(`<pre>${escapeHtml(stack)}</pre>`)
   }
   if (outcome.reference)
     parts.push(`<p>Reference: <code>${escapeHtml(outcome.reference)}</code></p>`)
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>${escapeHtml(heading)}</title><style>body{font-family:system-ui,sans-serif;max-width:40rem;margin:4rem auto;padding:0 1rem;line-height:1.5;color:#222}pre{overflow:auto;background:#f4f4f4;padding:1rem;font-size:.85rem}</style></head><body><main>${parts.join('')}</main></body></html>`
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>${escapeHtml(heading)}</title><style>body{font-family:system-ui,sans-serif;max-width:40rem;margin:4rem auto;padding:0 1rem;line-height:1.5;color:#222}pre{overflow:auto;background:#f4f4f4;padding:1rem;font-size:.85rem}.code span{display:block}.code .at{background:#fde2e2;font-weight:600}</style></head><body><main>${parts.join('')}</main></body></html>`
+}
+
+/** The lines around a failing one, numbered, that line marked. */
+function codeFrame(code: NonNullable<PageOutcome['details']>['code'] & object): string {
+  const width = String(code.lines.at(-1)?.number ?? code.line).length
+  const rows = code.lines.map(({ number, text }) => {
+    const mark = number === code.line ? '>' : ' '
+    const label = `${mark} ${String(number).padStart(width)} | `
+    return `<span${number === code.line ? ' class="at"' : ''}>${escapeHtml(label + text)}</span>`
+  })
+  return `<pre class="code">${rows.join('')}</pre>`
 }
 
 const REDIRECT_NAMES: Record<number, string> = {

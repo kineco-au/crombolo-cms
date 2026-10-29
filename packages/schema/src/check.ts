@@ -125,15 +125,22 @@ export async function affectedProperties(
 
 /** A type's node id plus every type that composes it, transitively: their documents carry its properties. */
 export async function typeNodeIdsCarrying(db: Db, typeKey: string): Promise<number[]> {
-  const rows = await db.query<{ id: number }>(
-    `WITH RECURSIVE carriers(id) AS (
-       SELECT id FROM node WHERE unique_id = ?
-       UNION
-       SELECT c.child_content_type_id FROM content_type_composition c JOIN carriers p ON p.id = c.parent_content_type_id
-     )
-     SELECT id FROM carriers`,
-    [typeKey],
-  )
+  const rows = await db.q
+    .withRecursive('carriers(id)', (qb) =>
+      qb
+        .selectFrom('node')
+        .select('id')
+        .where('unique_id', '=', typeKey)
+        .union(
+          qb
+            .selectFrom('content_type_composition as c')
+            .innerJoin('carriers as p', 'p.id', 'c.parent_content_type_id')
+            .select('c.child_content_type_id as id'),
+        ),
+    )
+    .selectFrom('carriers')
+    .select('id')
+    .execute()
   return rows.map((r) => Number(r.id))
 }
 
@@ -245,10 +252,13 @@ export async function runCheck(
   for (const { kind, files, noun, items } of kinds) {
     const repo = kind === 'document' ? types : new ContentTypeRepository(db, { kind })
     const inFiles = new Set(files.map((t) => t.alias.toLowerCase()))
-    const dbTypes = await db.query<{ unique_id: string; alias: string }>(
-      'SELECT n.unique_id, ct.alias FROM content_type ct JOIN node n ON n.id = ct.node_id WHERE ct.retired_at IS NULL AND n.node_object_type = ?',
-      [repo.objectType],
-    )
+    const dbTypes = await db.q
+      .selectFrom('content_type as ct')
+      .innerJoin('node as n', 'n.id', 'ct.node_id')
+      .select(['n.unique_id', 'ct.alias'])
+      .where('ct.retired_at', 'is', null)
+      .where('n.node_object_type', '=', repo.objectType)
+      .execute()
     for (const row of dbTypes) {
       const key = String(row.unique_id).toLowerCase()
       if (inFiles.has(String(row.alias).toLowerCase()) || shipped.has(key)) continue

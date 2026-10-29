@@ -198,12 +198,19 @@ export function deriveReferences(
 
 /** Every reference the current values make. A scan, which is the price of never going stale. */
 export async function loadReferences(db: Db): Promise<ReferenceEdge[]> {
-  const values = await db.query<{ node_id: number; v: string | null; t: string | null }>(
-    `SELECT node_id, varchar_value AS v, text_value AS t FROM property_value
-      WHERE is_current = ? AND (varchar_value LIKE '%-%-%-%-%' OR text_value LIKE '%-%-%-%-%'
-         OR varchar_value LIKE '%umb://%' OR text_value LIKE '%umb://%')`,
-    [db.dialect.boolValue(true)],
-  )
+  const values = await db.q
+    .selectFrom('property_value')
+    .select(['node_id', 'varchar_value as v', 'text_value as t'])
+    .where('is_current', '=', db.dialect.boolValue(true))
+    .where((eb) =>
+      eb.or([
+        eb('varchar_value', 'like', '%-%-%-%-%'),
+        eb('text_value', 'like', '%-%-%-%-%'),
+        eb('varchar_value', 'like', '%umb://%'),
+        eb('text_value', 'like', '%umb://%'),
+      ]),
+    )
+    .execute()
   const texts: ValueText[] = []
   for (const row of values) {
     const text = `${row.v ?? ''} ${row.t ?? ''}`
@@ -211,9 +218,10 @@ export async function loadReferences(db: Db): Promise<ReferenceEdge[]> {
   }
   const wanted = new Set(texts.flatMap((value) => referencedKeysIn(value.text)))
   if (wanted.size === 0) return []
-  const nodes = await db.query<{ id: number; unique_id: string; node_object_type: string }>(
-    'SELECT id, unique_id, node_object_type FROM node',
-  )
+  const nodes = await db.q
+    .selectFrom('node')
+    .select(['id', 'unique_id', 'node_object_type'])
+    .execute()
   const byKey = new Map<string, KnownNode>()
   for (const node of nodes) {
     const key = normaliseUuid(String(node.unique_id))
@@ -244,13 +252,24 @@ interface NodeFacts {
 async function describeNodes(db: Db, ids: readonly number[]): Promise<Map<number, NodeFacts>> {
   const facts = new Map<number, NodeFacts>()
   if (ids.length === 0) return facts
-  const holes = ids.map(() => '?').join(', ')
-  const rows = await db.query<{ id: number; unique_id: string; text: string | null; d: unknown }>(
-    `SELECT n.id, n.unique_id, n.text,
-            COALESCE((SELECT MAX(cv.version_date) FROM content_version cv WHERE cv.node_id = n.id), n.create_date) AS d
-       FROM node n WHERE n.id IN (${holes})`,
-    [...ids],
-  )
+  const rows = await db.q
+    .selectFrom('node as n')
+    .select((eb) => [
+      'n.id',
+      'n.unique_id',
+      'n.text',
+      eb.fn
+        .coalesce(
+          eb
+            .selectFrom('content_version as cv')
+            .select((sub) => sub.fn.max('cv.version_date').as('latest'))
+            .whereRef('cv.node_id', '=', 'n.id'),
+          'n.create_date',
+        )
+        .as('d'),
+    ])
+    .where('n.id', 'in', [...ids])
+    .execute()
   for (const row of rows)
     facts.set(Number(row.id), {
       key: normaliseUuid(String(row.unique_id)),
@@ -306,14 +325,14 @@ export class RelationRepository {
         .filter((edge) => edge.toObjectType === type.target)
         .map((edge) => [edge.fromId, edge.toId])
     if (type.derivation === 'original-parent') {
-      const rows = await this.#db.query<{ id: number; parent: number; parent_type: string }>(
-        `SELECT n.id, d.original_parent_id AS parent, p.node_object_type AS parent_type
-           FROM node n
-           JOIN document d ON d.node_id = n.id
-           JOIN node p ON p.id = d.original_parent_id
-          WHERE n.trashed = ? AND n.node_object_type = ?`,
-        [this.#db.dialect.boolValue(true), type.target],
-      )
+      const rows = await this.#db.q
+        .selectFrom('node as n')
+        .innerJoin('document as d', 'd.node_id', 'n.id')
+        .innerJoin('node as p', 'p.id', 'd.original_parent_id')
+        .select(['n.id', 'd.original_parent_id as parent', 'p.node_object_type as parent_type'])
+        .where('n.trashed', '=', this.#db.dialect.boolValue(true))
+        .where('n.node_object_type', '=', type.target)
+        .execute()
       return rows
         .filter(
           (row) =>
@@ -329,10 +348,12 @@ export class RelationRepository {
   async referencingRecycleBin(objectType: string): Promise<number[]> {
     const trashed = new Set(
       (
-        await this.#db.query<{ id: number; trashed: unknown }>(
-          'SELECT id, trashed FROM node WHERE node_object_type = ? AND trashed = ?',
-          [objectType, this.#db.dialect.boolValue(true)],
-        )
+        await this.#db.q
+          .selectFrom('node')
+          .select(['id', 'trashed'])
+          .where('node_object_type', '=', objectType)
+          .where('trashed', '=', this.#db.dialect.boolValue(true))
+          .execute()
       )
         .filter((row) => fromDbBool(row.trashed))
         .map((row) => Number(row.id)),

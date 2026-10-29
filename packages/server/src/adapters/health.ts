@@ -16,6 +16,7 @@ import {
   pendingMigrations,
   type QueueCounts,
   queueCounts,
+  sql,
 } from '@crombolo/data'
 import { BundleConfigurationError, bundleChainsFor, pendingBundleSteps } from '../bundle-tables.ts'
 import { type CromboloConfig, describeDatabase, VERSION } from '../config.ts'
@@ -199,7 +200,7 @@ export function createDiagnosticsPort(options: HealthCheckOptions): DiagnosticsP
   async function database(): Promise<HealthCheckResult[]> {
     const dialect = db.dialect.name === 'postgres' ? 'PostgreSQL' : 'SQLite'
     try {
-      await db.query('SELECT 1 AS ok')
+      await db.q.selectNoFrom(sql<number>`1`.as('ok')).execute()
       return [result('Success', `${dialect} is answering (${describeDatabase(config)}).`)]
     } catch (error) {
       return [result('Error', `${dialect} is not answering: ${failure(error)}`)]

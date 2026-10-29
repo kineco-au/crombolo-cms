@@ -24,6 +24,7 @@ import {
   readLedger,
   readReport,
   readState,
+  sql,
   TransferRunRepository,
 } from '@crombolo/data'
 import { loadSchemaDirectory } from '@crombolo/schema'
@@ -97,11 +98,12 @@ function compareVersions(a: string, b: string): number {
 }
 
 async function contentCounts(db: Db): Promise<SiteStatus['content']> {
-  const rows = await db.query<{ node_object_type: string; n: number }>(
-    `SELECT node_object_type, COUNT(*) AS n FROM node
-     WHERE trashed = ? GROUP BY node_object_type`,
-    [db.dialect.boolValue(false)],
-  )
+  const rows = await db.q
+    .selectFrom('node')
+    .select(['node_object_type', sql<number>`COUNT(*)`.as('n')])
+    .where('trashed', '=', db.dialect.boolValue(false) as boolean)
+    .groupBy('node_object_type')
+    .execute()
   const of = (objectType: string) =>
     Number(rows.find((row) => row.node_object_type === objectType)?.n ?? 0)
   return {

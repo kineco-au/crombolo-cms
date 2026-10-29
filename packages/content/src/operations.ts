@@ -25,6 +25,7 @@ import {
   PublishBlockedError,
   type SetDomainsResult,
   StaleRevisionError,
+  sql,
   WriteRejectedError,
 } from '@crombolo/data'
 import type { Actor, ContentPrincipal } from './actor.ts'
@@ -226,9 +227,11 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
   /** The version author: the user's row, when the actor is one. */
   const userIdOf = async (actor: Actor): Promise<number | undefined> => {
     if (actor.kind !== 'user') return undefined
-    const rows = await db.query<{ id: number }>('SELECT id FROM user_account WHERE key = ?', [
-      actor.principal.id,
-    ])
+    const rows = await db.q
+      .selectFrom('user_account')
+      .select('id')
+      .where('key', '=', actor.principal.id)
+      .execute()
     return rows[0] ? Number(rows[0].id) : undefined
   }
 
@@ -313,16 +316,22 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
   const propertiesOfType = async (contentTypeKey: string) => {
     const type = await nodes.byKey(contentTypeKey)
     if (!type) return undefined
-    const rows = await db.query<{ alias: string; unique_id: string; name: string }>(
-      `WITH RECURSIVE ancestry(id) AS (
-         SELECT ?
-         UNION
-         SELECT c.parent_content_type_id FROM content_type_composition c JOIN ancestry a ON a.id = c.child_content_type_id
-       )
-       SELECT p.alias, p.unique_id, p.name FROM property_type p
-       WHERE p.content_type_id IN (SELECT id FROM ancestry) AND p.retired_at IS NULL`,
-      [type.id],
-    )
+    const rows = await db.q
+      .withRecursive('ancestry(id)', (qb) =>
+        qb
+          .selectNoFrom(sql<number>`${type.id}`.as('id'))
+          .union(
+            qb
+              .selectFrom('content_type_composition as c')
+              .innerJoin('ancestry as a', 'a.id', 'c.child_content_type_id')
+              .select('c.parent_content_type_id as id'),
+          ),
+      )
+      .selectFrom('property_type as p')
+      .select(['p.alias', 'p.unique_id', 'p.name'])
+      .where('p.content_type_id', 'in', (eb) => eb.selectFrom('ancestry').select('id'))
+      .where('p.retired_at', 'is', null)
+      .execute()
     return rows.map((row) => ({
       alias: String(row.alias),
       key: normaliseUuid(String(row.unique_id)),
@@ -336,11 +345,13 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
       ? undefined
       : types.placementRefusal(typeKey, parentKey)
   const typeOf = async (key: string): Promise<string | undefined> => {
-    const rows = await db.query<{ unique_id: string }>(
-      `SELECT t.unique_id FROM node n JOIN content c ON c.node_id = n.id
-       JOIN node t ON t.id = c.content_type_id WHERE n.unique_id = ?`,
-      [normaliseUuid(key)],
-    )
+    const rows = await db.q
+      .selectFrom('node as n')
+      .innerJoin('content as c', 'c.node_id', 'n.id')
+      .innerJoin('node as t', 't.id', 'c.content_type_id')
+      .select('t.unique_id')
+      .where('n.unique_id', '=', normaliseUuid(key))
+      .execute()
     return rows[0] ? normaliseUuid(String(rows[0].unique_id)) : undefined
   }
   const misplacedAt = async (actor: Actor, key: string, parentKey: string | null) => {
@@ -888,10 +899,13 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
       const root = await placeOf(key)
       if (!root) return refuse('notFound', 404, NOT_FOUND)
       if (actor.kind === 'user') {
-        const below = await db.query<{ unique_id: string }>(
-          'SELECT unique_id FROM node WHERE id = ? OR path LIKE ?',
-          [root.node.id, `${root.node.path},%`],
-        )
+        const below = await db.q
+          .selectFrom('node')
+          .select('unique_id')
+          .where((eb) =>
+            eb.or([eb('id', '=', root.node.id), eb('path', 'like', `${root.node.path},%`)]),
+          )
+          .execute()
         for (const row of below)
           if (!(await permits(actor, 'publish', normaliseUuid(String(row.unique_id)))))
             return forbidden()

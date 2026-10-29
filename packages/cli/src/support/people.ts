@@ -84,11 +84,17 @@ export async function openPeople(config: CromboloConfig): Promise<People> {
 /** A user by e-mail or username, whatever the casing; `not_found` otherwise. */
 export async function userNamed(people: People, who: string) {
   const wanted = who.trim().toLowerCase()
-  const rows = await people.db.query<{ key: string }>(
-    'SELECT key FROM user_account WHERE LOWER(email) = ? OR LOWER(user_name) = ?',
-    [wanted, wanted],
-  )
-  const key = rows[0]?.key
+  const row = await people.db.q
+    .selectFrom('user_account')
+    .select('key')
+    .where((eb) =>
+      eb.or([
+        eb(eb.fn('lower', ['email']), '=', wanted),
+        eb(eb.fn('lower', ['user_name']), '=', wanted),
+      ]),
+    )
+    .executeTakeFirst()
+  const key = row?.key
   const user = key ? await people.repository.byKey(String(key)) : undefined
   if (!user)
     throw new CliError('not_found', `No user "${who}".`, {

@@ -7,6 +7,7 @@
 import { normaliseUuid, ObjectTypes, type Page, SystemNodes } from '@crombolo/core'
 import type { Db } from '../database.ts'
 import { DbDate, fromDbBool } from '../dialect.ts'
+import { sql } from '../query.ts'
 import { searchTerms } from '../search-text.ts'
 
 export interface NodeRow {
@@ -37,8 +38,18 @@ export function mapNode(row: Record<string, unknown>): NodeRow {
   }
 }
 
-const NODE_COLUMNS =
-  'id, unique_id, parent_id, level, path, sort_order, trashed, text, node_object_type, create_date'
+const NODE_COLUMNS = [
+  'id',
+  'unique_id',
+  'parent_id',
+  'level',
+  'path',
+  'sort_order',
+  'trashed',
+  'text',
+  'node_object_type',
+  'create_date',
+] as const
 
 export interface CreateNodeInit {
   key?: string
@@ -57,24 +68,30 @@ export class NodeRepository {
   }
 
   async byKey(key: string): Promise<NodeRow | undefined> {
-    const rows = await this.#db.query(`SELECT ${NODE_COLUMNS} FROM node WHERE unique_id = ?`, [
-      normaliseUuid(key),
-    ])
+    const rows = await this.#db.q
+      .selectFrom('node')
+      .select(NODE_COLUMNS)
+      .where('unique_id', '=', normaliseUuid(key))
+      .execute()
     return rows[0] ? mapNode(rows[0]) : undefined
   }
 
   async byId(id: number): Promise<NodeRow | undefined> {
-    const rows = await this.#db.query(`SELECT ${NODE_COLUMNS} FROM node WHERE id = ?`, [id])
+    const rows = await this.#db.q
+      .selectFrom('node')
+      .select(NODE_COLUMNS)
+      .where('id', '=', id)
+      .execute()
     return rows[0] ? mapNode(rows[0]) : undefined
   }
 
   async byKeys(keys: readonly string[]): Promise<NodeRow[]> {
     if (keys.length === 0) return []
-    const placeholders = keys.map(() => '?').join(', ')
-    const rows = await this.#db.query(
-      `SELECT ${NODE_COLUMNS} FROM node WHERE unique_id IN (${placeholders})`,
-      keys.map(normaliseUuid),
-    )
+    const rows = await this.#db.q
+      .selectFrom('node')
+      .select(NODE_COLUMNS)
+      .where('unique_id', 'in', keys.map(normaliseUuid))
+      .execute()
     return rows.map(mapNode)
   }
 
@@ -89,37 +106,35 @@ export class NodeRepository {
     const sortOrder = init.sortOrder ?? (await this.#nextSortOrder(init.parentId, init.objectType))
     const now = DbDate.toDb(new Date())
 
-    await this.#db.exec(
-      `INSERT INTO node
-         (unique_id, parent_id, level, path, sort_order, trashed, node_user, text, node_object_type, create_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        key,
-        init.parentId,
+    await this.#db.q
+      .insertInto('node')
+      .values({
+        unique_id: key,
+        parent_id: init.parentId,
         level,
-        '',
-        sortOrder,
-        this.#db.dialect.boolValue(false),
-        init.userId ?? null,
-        init.text,
-        init.objectType,
-        now,
-      ],
-    )
+        path: '',
+        sort_order: sortOrder,
+        trashed: this.#db.dialect.boolValue(false),
+        node_user: init.userId ?? null,
+        text: init.text,
+        node_object_type: init.objectType,
+        create_date: now,
+      })
+      .execute()
     const created = await this.byKey(key)
     if (!created) throw new Error('Node insert did not produce a row.')
 
     const path = parent ? `${parent.path},${created.id}` : `${SystemNodes.Root},${created.id}`
-    await this.#db.exec('UPDATE node SET path = ? WHERE id = ?', [path, created.id])
+    await this.#db.q.updateTable('node').set({ path }).where('id', '=', created.id).execute()
     return { ...created, path }
   }
 
   async rename(id: number, text: string): Promise<void> {
-    await this.#db.exec('UPDATE node SET text = ? WHERE id = ?', [text, id])
+    await this.#db.q.updateTable('node').set({ text }).where('id', '=', id).execute()
   }
 
   async delete(id: number): Promise<void> {
-    await this.#db.exec('DELETE FROM node WHERE id = ?', [id])
+    await this.#db.q.deleteFrom('node').where('id', '=', id).execute()
   }
 
   /** Root-level items of a type, i.e. those parented to the system root. */
@@ -135,28 +150,22 @@ export class NodeRepository {
     trashed = false,
     excludeKeys: readonly string[] = [],
   ): Promise<Page<NodeRow>> {
-    const where = `parent_id = ? AND node_object_type = ? AND trashed = ?${
-      excludeKeys.length > 0
-        ? ` AND unique_id NOT IN (${excludeKeys.map(() => '?').join(', ')})`
-        : ''
-    }`
-    const params = [
-      parentId,
-      objectType,
-      this.#db.dialect.boolValue(trashed),
-      ...excludeKeys.map(normaliseUuid),
-    ]
-    const totals = await this.#db.query<{ n: number }>(
-      `SELECT COUNT(*) AS n FROM node WHERE ${where}`,
-      params,
-    )
-    const rows = await this.#db.query(
-      `SELECT ${NODE_COLUMNS} FROM node
-       WHERE ${where}
-       ORDER BY sort_order, id
-       LIMIT ? OFFSET ?`,
-      [...params, take, skip],
-    )
+    const matching = this.#db.q
+      .selectFrom('node')
+      .where('parent_id', '=', parentId)
+      .where('node_object_type', '=', objectType)
+      .where('trashed', '=', this.#db.dialect.boolValue(trashed))
+      .$if(excludeKeys.length > 0, (q) =>
+        q.where('unique_id', 'not in', excludeKeys.map(normaliseUuid)),
+      )
+    const totals = await matching.select((eb) => eb.fn.countAll().as('n')).execute()
+    const rows = await matching
+      .select(NODE_COLUMNS)
+      .orderBy('sort_order')
+      .orderBy('id')
+      .limit(take)
+      .offset(skip)
+      .execute()
     return { total: Number(totals[0]?.n ?? 0), items: rows.map(mapNode) }
   }
 
@@ -168,19 +177,27 @@ export class NodeRepository {
     take: number,
   ): Promise<Page<NodeRow>> {
     if (objectTypes.length === 0) return { total: 0, items: [] }
-    const marks = objectTypes.map(() => '?').join(', ')
-    const f = this.#db.dialect.boolValue(false)
-    const totals = await this.#db.query<{ n: number }>(
-      `SELECT COUNT(*) AS n FROM node WHERE parent_id = ? AND node_object_type IN (${marks}) AND trashed = ?`,
-      [parentId, ...objectTypes, f],
-    )
-    const rows = await this.#db.query(
-      `SELECT ${NODE_COLUMNS} FROM node
-       WHERE parent_id = ? AND node_object_type IN (${marks}) AND trashed = ?
-       ORDER BY CASE WHEN node_object_type = ? THEN 0 ELSE 1 END, text, id
-       LIMIT ? OFFSET ?`,
-      [parentId, ...objectTypes, f, objectTypes[0], take, skip],
-    )
+    const matching = this.#db.q
+      .selectFrom('node')
+      .where('parent_id', '=', parentId)
+      .where('node_object_type', 'in', objectTypes)
+      .where('trashed', '=', this.#db.dialect.boolValue(false))
+    const totals = await matching.select((eb) => eb.fn.countAll().as('n')).execute()
+    const rows = await matching
+      .select(NODE_COLUMNS)
+      .orderBy((eb) =>
+        eb
+          .case()
+          .when('node_object_type', '=', objectTypes[0] as string)
+          .then(0)
+          .else(1)
+          .end(),
+      )
+      .orderBy('text')
+      .orderBy('id')
+      .limit(take)
+      .offset(skip)
+      .execute()
     return { total: Number(totals[0]?.n ?? 0), items: rows.map(mapNode) }
   }
 
@@ -193,22 +210,25 @@ export class NodeRepository {
     const newLevel = parent ? parent.level + 1 : 1
     const delta = newLevel - node.level
     const oldPath = node.path
-    await this.#db.exec('UPDATE node SET parent_id = ?, level = ?, path = ? WHERE id = ?', [
-      newParentId,
-      newLevel,
-      newPath,
-      node.id,
-    ])
-    const descendants = await this.#db.query<{ id: number; path: string; level: number }>(
-      'SELECT id, path, level FROM node WHERE path LIKE ?',
-      [`${oldPath},%`],
-    )
+    await this.#db.q
+      .updateTable('node')
+      .set({ parent_id: newParentId, level: newLevel, path: newPath })
+      .where('id', '=', node.id)
+      .execute()
+    const descendants = await this.#db.q
+      .selectFrom('node')
+      .select(['id', 'path', 'level'])
+      .where('path', 'like', `${oldPath},%`)
+      .execute()
     for (const d of descendants) {
-      await this.#db.exec('UPDATE node SET path = ?, level = ? WHERE id = ?', [
-        `${newPath}${String(d.path).slice(oldPath.length)}`,
-        Number(d.level) + delta,
-        Number(d.id),
-      ])
+      await this.#db.q
+        .updateTable('node')
+        .set({
+          path: `${newPath}${String(d.path).slice(oldPath.length)}`,
+          level: Number(d.level) + delta,
+        })
+        .where('id', '=', Number(d.id))
+        .execute()
     }
   }
 
@@ -222,21 +242,27 @@ export class NodeRepository {
     const target = await this.byKey(key)
     if (!target) return undefined
     const types = typeof objectType === 'string' ? [objectType] : [...objectType]
-    const marks = types.map(() => '?').join(', ')
-    const order =
-      types.length > 1
-        ? 'CASE WHEN node_object_type = ? THEN 0 ELSE 1 END, text, id'
-        : 'sort_order, id'
-    const all = await this.#db.query(
-      `SELECT ${NODE_COLUMNS} FROM node WHERE parent_id = ? AND node_object_type IN (${marks}) AND trashed = ?
-       ORDER BY ${order}`,
-      [
-        target.parentId,
-        ...types,
-        this.#db.dialect.boolValue(target.trashed),
-        ...(types.length > 1 ? [types[0]] : []),
-      ],
-    )
+    const all = await this.#db.q
+      .selectFrom('node')
+      .select(NODE_COLUMNS)
+      .where('parent_id', '=', target.parentId)
+      .where('node_object_type', 'in', types)
+      .where('trashed', '=', this.#db.dialect.boolValue(target.trashed))
+      .$if(types.length > 1, (q) =>
+        q
+          .orderBy((eb) =>
+            eb
+              .case()
+              .when('node_object_type', '=', types[0] as string)
+              .then(0)
+              .else(1)
+              .end(),
+          )
+          .orderBy('text'),
+      )
+      .$if(types.length <= 1, (q) => q.orderBy('sort_order'))
+      .orderBy('id')
+      .execute()
     const rows = all.map(mapNode)
     const index = rows.findIndex((row) => row.id === target.id)
     const start = Math.max(0, index - before)
@@ -263,47 +289,59 @@ export class NodeRepository {
     const like = `%${query.toLowerCase().replaceAll('%', '').replaceAll('_', '')}%`
     const terms = options.fullText ? searchTerms(query) : []
     const indexed = terms.length > 0
-    const conditions = [
-      'node_object_type = ?',
-      'trashed = ?',
-      indexed ? '(LOWER(text) LIKE ? OR h.node_id IS NOT NULL)' : 'LOWER(text) LIKE ?',
-    ]
-    const params: unknown[] = [
-      ...(indexed ? [this.#db.dialect.fullTextQuery(terms)] : []),
-      objectType,
-      this.#db.dialect.boolValue(options.trashed ?? false),
-      like,
-    ]
-    if (options.parentId !== undefined) {
-      conditions.push('parent_id = ?')
-      params.push(options.parentId)
-    }
-    const from = indexed
-      ? `node LEFT JOIN (${this.#db.dialect.fullTextHits}) h ON h.node_id = node.id`
-      : 'node'
-    const where = conditions.join(' AND ')
-    const totals = await this.#db.query<{ n: number }>(
-      `SELECT COUNT(*) AS n FROM ${from} WHERE ${where}`,
-      params,
-    )
-    const order = indexed
-      ? 'CASE WHEN LOWER(text) LIKE ? THEN 0 ELSE 1 END, COALESCE(h.score, 0) DESC, text, id'
-      : 'text, id'
-    const rows = await this.#db.query(
-      `SELECT ${NODE_COLUMNS} FROM ${from} WHERE ${where} ORDER BY ${order} LIMIT ? OFFSET ?`,
-      [...params, ...(indexed ? [like] : []), options.take, options.skip],
-    )
+    const dialect = this.#db.dialect
+    const hitNode = sql.ref<number | null>('h.node_id')
+    const hitScore = sql.ref<number | null>('h.score')
+    const { parentId } = options
+    const matching = this.#db.q
+      .selectFrom('node')
+      .$if(
+        indexed,
+        (q) =>
+          q.leftJoin(
+            dialect.fullTextMatches(dialect.fullTextQuery(terms)).as('h'),
+            'h.node_id',
+            'node.id',
+          ) as unknown as typeof q,
+      )
+      .where('node_object_type', '=', objectType)
+      .where('trashed', '=', dialect.boolValue(options.trashed ?? false))
+      .where((eb) => {
+        const named = eb(eb.fn('lower', ['text']), 'like', like)
+        return indexed ? eb.or([named, eb(hitNode, 'is not', null)]) : named
+      })
+      .$if(parentId !== undefined, (q) => q.where('parent_id', '=', parentId as number))
+    const totals = await matching.select((eb) => eb.fn.countAll().as('n')).execute()
+    const rows = await matching
+      .select(NODE_COLUMNS)
+      .$if(indexed, (q) =>
+        q
+          .orderBy((eb) =>
+            eb
+              .case()
+              .when(eb(eb.fn('lower', ['text']), 'like', like))
+              .then(0)
+              .else(1)
+              .end(),
+          )
+          .orderBy(sql`coalesce(${hitScore}, 0)`, 'desc'),
+      )
+      .orderBy('text')
+      .orderBy('id')
+      .limit(options.take)
+      .offset(options.skip)
+      .execute()
     return { total: Number(totals[0]?.n ?? 0), items: rows.map(mapNode) }
   }
 
   /** The nodes with these ids, in no particular order; one query. */
   async byIds(ids: readonly number[]): Promise<NodeRow[]> {
     if (ids.length === 0) return []
-    const placeholders = ids.map(() => '?').join(', ')
-    const rows = await this.#db.query(
-      `SELECT ${NODE_COLUMNS} FROM node WHERE id IN (${placeholders})`,
-      [...ids],
-    )
+    const rows = await this.#db.q
+      .selectFrom('node')
+      .select(NODE_COLUMNS)
+      .where('id', 'in', [...ids])
+      .execute()
     return rows.map(mapNode)
   }
 
@@ -316,11 +354,12 @@ export class NodeRepository {
       .map((part) => Number(part))
       .filter((id) => id > 0 && id !== node.id)
     if (ids.length === 0) return []
-    const placeholders = ids.map(() => '?').join(', ')
-    const rows = await this.#db.query(
-      `SELECT ${NODE_COLUMNS} FROM node WHERE id IN (${placeholders}) ORDER BY level`,
-      ids,
-    )
+    const rows = await this.#db.q
+      .selectFrom('node')
+      .select(NODE_COLUMNS)
+      .where('id', 'in', ids)
+      .orderBy('level')
+      .execute()
     return rows.map(mapNode)
   }
 
@@ -334,13 +373,16 @@ export class NodeRepository {
    */
   async descendants(node: NodeRow, objectTypes: readonly string[]): Promise<NodeRow[]> {
     if (objectTypes.length === 0) return []
-    const marks = objectTypes.map(() => '?').join(', ')
-    const rows = await this.#db.query(
-      `SELECT ${NODE_COLUMNS} FROM node
-       WHERE path LIKE ? AND node_object_type IN (${marks}) AND trashed = ?
-       ORDER BY level, sort_order, id`,
-      [`${node.path},%`, ...objectTypes, this.#db.dialect.boolValue(false)],
-    )
+    const rows = await this.#db.q
+      .selectFrom('node')
+      .select(NODE_COLUMNS)
+      .where('path', 'like', `${node.path},%`)
+      .where('node_object_type', 'in', objectTypes)
+      .where('trashed', '=', this.#db.dialect.boolValue(false))
+      .orderBy('level')
+      .orderBy('sort_order')
+      .orderBy('id')
+      .execute()
     return rows.map(mapNode)
   }
 
@@ -351,67 +393,71 @@ export class NodeRepository {
     name: string,
   ): Promise<NodeRow[]> {
     if (objectTypes.length === 0) return []
-    const marks = objectTypes.map(() => '?').join(', ')
-    const rows = await this.#db.query(
-      `SELECT ${NODE_COLUMNS} FROM node
-       WHERE parent_id = ? AND node_object_type IN (${marks}) AND trashed = ?
-         AND LOWER(text) = LOWER(?)
-       ORDER BY sort_order, id`,
-      [parentId, ...objectTypes, this.#db.dialect.boolValue(false), name],
-    )
+    const rows = await this.#db.q
+      .selectFrom('node')
+      .select(NODE_COLUMNS)
+      .where('parent_id', '=', parentId)
+      .where('node_object_type', 'in', objectTypes)
+      .where('trashed', '=', this.#db.dialect.boolValue(false))
+      .where((eb) => eb(eb.fn('lower', ['text']), '=', eb.fn('lower', [eb.val(name)])))
+      .orderBy('sort_order')
+      .orderBy('id')
+      .execute()
     return rows.map(mapNode)
   }
 
   /** The names under a node, so a failed path resolution can say what was there. */
   async childNames(parentId: number, objectTypes: readonly string[]): Promise<string[]> {
     if (objectTypes.length === 0) return []
-    const marks = objectTypes.map(() => '?').join(', ')
-    const rows = await this.#db.query<{ text: string | null }>(
-      `SELECT text FROM node
-       WHERE parent_id = ? AND node_object_type IN (${marks}) AND trashed = ?
-       ORDER BY sort_order, id`,
-      [parentId, ...objectTypes, this.#db.dialect.boolValue(false)],
-    )
+    const rows = await this.#db.q
+      .selectFrom('node')
+      .select('text')
+      .where('parent_id', '=', parentId)
+      .where('node_object_type', 'in', objectTypes)
+      .where('trashed', '=', this.#db.dialect.boolValue(false))
+      .orderBy('sort_order')
+      .orderBy('id')
+      .execute()
     return rows.flatMap((row) => (row.text ? [String(row.text)] : []))
   }
 
   async hasChildren(id: number, objectType: string): Promise<boolean> {
-    const rows = await this.#db.query<{ n: number }>(
-      'SELECT COUNT(*) AS n FROM node WHERE parent_id = ? AND node_object_type = ?',
-      [id, objectType],
-    )
+    const rows = await this.#db.q
+      .selectFrom('node')
+      .select((eb) => eb.fn.countAll().as('n'))
+      .where('parent_id', '=', id)
+      .where('node_object_type', '=', objectType)
+      .execute()
     return Number(rows[0]?.n ?? 0) > 0
   }
 
   /** Bulk `hasChildren`, so a tree page costs one query instead of one per row. */
   async childCounts(ids: readonly number[], objectType: string): Promise<Map<number, number>> {
     if (ids.length === 0) return new Map()
-    const placeholders = ids.map(() => '?').join(', ')
-    const rows = await this.#db.query<{ parent_id: number; n: number }>(
-      `SELECT parent_id, COUNT(*) AS n FROM node
-       WHERE parent_id IN (${placeholders}) AND node_object_type = ?
-       GROUP BY parent_id`,
-      [...ids, objectType],
-    )
+    const rows = await this.#db.q
+      .selectFrom('node')
+      .select((eb) => ['parent_id', eb.fn.countAll().as('n')])
+      .where('parent_id', 'in', [...ids])
+      .where('node_object_type', '=', objectType)
+      .groupBy('parent_id')
+      .execute()
     return new Map(rows.map((row) => [Number(row.parent_id), Number(row.n)]))
   }
 
   async #nextSortOrder(parentId: number, objectType: string): Promise<number> {
     // One maximum per `trashed`, so each is read off the end of `ix_node_parent_sort`
     // rather than across every child: a folder may hold a million files (story 197).
-    const max =
-      'SELECT MAX(sort_order) AS m FROM node WHERE parent_id = ? AND node_object_type = ? AND trashed = ?'
-    const rows = await this.#db.query<{ next: number | null }>(
-      `SELECT MAX(m) AS next FROM (${max} UNION ALL ${max}) maxima`,
-      [
-        parentId,
-        objectType,
-        this.#db.dialect.boolValue(false),
-        parentId,
-        objectType,
-        this.#db.dialect.boolValue(true),
-      ],
-    )
+    const max = (trashed: boolean) =>
+      this.#db.q
+        .selectFrom('node')
+        .select((eb) => eb.fn.max('sort_order').as('m'))
+        .where('parent_id', '=', parentId)
+        .where('node_object_type', '=', objectType)
+        .where('trashed', '=', this.#db.dialect.boolValue(trashed))
+    const rows = await this.#db.q
+      .selectFrom(max(false).unionAll(max(true)).as('maxima'))
+      .select((eb) => eb.fn.max('m').as('next'))
+      .execute()
     const current = rows[0]?.next
     return current === null || current === undefined ? 0 : Number(current) + 1
   }

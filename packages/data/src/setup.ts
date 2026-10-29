@@ -4,6 +4,7 @@
  */
 import type { Db } from './database.ts'
 import { Locks } from './locks.ts'
+import { now } from './query.ts'
 import { insertSuperUser, type SeedAdmin, type SeedOptions } from './schema/seed.ts'
 
 export const SETUP_STATE_KEY = 'crombolo:setup'
@@ -12,24 +13,27 @@ export const SETUP_STATE_KEY = 'crombolo:setup'
 export type SetupState = 'pending' | 'complete' | 'none'
 
 export async function readSetupState(db: Db): Promise<SetupState> {
-  const rows = await db.query<{ value: string }>('SELECT value FROM key_value WHERE key = ?', [
-    SETUP_STATE_KEY,
-  ])
-  const value = rows[0]?.value
+  const row = await db.q
+    .selectFrom('key_value')
+    .select('value')
+    .where('key', '=', SETUP_STATE_KEY)
+    .executeTakeFirst()
+  const value = row?.value
   return value === 'pending' || value === 'complete' ? value : 'none'
 }
 
 async function writeSetupState(db: Db, state: 'pending' | 'complete'): Promise<void> {
-  const now = db.dialect.now()
-  const updated = await db.query<{ key: string }>(
-    `UPDATE key_value SET value = ?, update_date = ${now} WHERE key = ? RETURNING key`,
-    [state, SETUP_STATE_KEY],
-  )
+  const updated = await db.q
+    .updateTable('key_value')
+    .set({ value: state, update_date: now(db) })
+    .where('key', '=', SETUP_STATE_KEY)
+    .returning('key')
+    .execute()
   if (updated.length === 0)
-    await db.exec(`INSERT INTO key_value (key, value, update_date) VALUES (?, ?, ${now})`, [
-      SETUP_STATE_KEY,
-      state,
-    ])
+    await db.q
+      .insertInto('key_value')
+      .values({ key: SETUP_STATE_KEY, value: state, update_date: now(db) })
+      .execute()
 }
 
 /** Opens setup on a database that has just been created with no administrator. */

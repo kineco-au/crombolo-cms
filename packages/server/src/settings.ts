@@ -734,6 +734,13 @@ const DECLARED = [
       "Shows a server error's message, the template file and line, and the stack on the error page. On in development, off otherwise; with it off a visitor sees only the error's reference, which the log carries too.",
   },
   {
+    env: 'CROMBOLO_LIVE_RELOAD',
+    kind: 'boolean',
+    section: 'Public site',
+    description:
+      'Reloads open pages when the components, the schema or the content change, and shows type errors on them. On in development, off in production and under `bun test`.',
+  },
+  {
     env: 'CROMBOLO_SITEMAP',
     kind: 'boolean',
     default: 'true',

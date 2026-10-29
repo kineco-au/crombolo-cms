@@ -75,9 +75,11 @@ export function createMemberPort(db: Db, options: MemberPortOptions = {}): Membe
   const twoFactor = new TwoFactorRepository(db)
 
   const userIdOf = async (principal: Principal): Promise<number | undefined> => {
-    const rows = await db.query<{ id: number }>('SELECT id FROM user_account WHERE key = ?', [
-      principal.id,
-    ])
+    const rows = await db.q
+      .selectFrom('user_account')
+      .select('id')
+      .where('key', '=', principal.id)
+      .execute()
     return rows[0] ? Number(rows[0].id) : undefined
   }
 

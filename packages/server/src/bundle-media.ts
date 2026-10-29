@@ -314,20 +314,21 @@ export function createBundleMedia(deps: BundleMediaDeps) {
       return { at, missing: [] as string[] }
     }
     const childFolder = async (parentId: number, name: string) => {
-      const rows = await db.query<{ id: number; unique_id: string; path: string; text: string }>(
-        'SELECT id, unique_id, path, text FROM node WHERE parent_id = ? AND node_object_type = ? AND trashed = ? AND LOWER(text) = ?',
-        [parentId, ObjectTypes.Media, db.dialect.boolValue(false), lower(name)],
-      )
+      const siblings = () =>
+        db.q
+          .selectFrom('node')
+          .select(['id', 'unique_id', 'path', 'text'])
+          .where('parent_id', '=', parentId)
+          .where('node_object_type', '=', ObjectTypes.Media)
+          .where('trashed', '=', db.dialect.boolValue(false) as boolean)
+      const rows = await siblings()
+        .where((eb) => eb(eb.fn('lower', ['text']), '=', lower(name)))
+        .execute()
       const row =
         rows[0] ??
         // SQLite lowers only ASCII.
         (/[^ -~]/.test(name)
-          ? (
-              await db.query<{ id: number; unique_id: string; path: string; text: string }>(
-                'SELECT id, unique_id, path, text FROM node WHERE parent_id = ? AND node_object_type = ? AND trashed = ?',
-                [parentId, ObjectTypes.Media, db.dialect.boolValue(false)],
-              )
-            ).find((r) => lower(String(r.text)) === lower(name))
+          ? (await siblings().execute()).find((r) => lower(String(r.text)) === lower(name))
           : undefined)
       return row
         ? { id: Number(row.id), key: normaliseUuid(String(row.unique_id)), path: String(row.path) }

@@ -41,19 +41,23 @@ export class ExternalLoginRepository {
 
   /** Who an account at a provider is linked to, if anyone. */
   async find(loginProvider: string, providerKey: string): Promise<ExternalLogin | undefined> {
-    const rows = await this.#db.query(
-      'SELECT * FROM external_login WHERE login_provider = ? AND provider_key = ?',
-      [loginProvider, providerKey],
-    )
-    return rows[0] ? toLogin(rows[0]) : undefined
+    const row = await this.#db.q
+      .selectFrom('external_login')
+      .selectAll()
+      .where('login_provider', '=', loginProvider)
+      .where('provider_key', '=', providerKey)
+      .executeTakeFirst()
+    return row ? toLogin(row) : undefined
   }
 
   /** Every provider account linked to a member or user. */
   async forOwner(ownerKey: string): Promise<ExternalLogin[]> {
-    const rows = await this.#db.query(
-      'SELECT * FROM external_login WHERE user_or_member_key = ? ORDER BY login_provider',
-      [normaliseUuid(ownerKey)],
-    )
+    const rows = await this.#db.q
+      .selectFrom('external_login')
+      .selectAll()
+      .where('user_or_member_key', '=', normaliseUuid(ownerKey))
+      .orderBy('login_provider')
+      .execute()
     return rows.map(toLogin)
   }
 
@@ -61,11 +65,15 @@ export class ExternalLoginRepository {
   async link(ownerKey: string, loginProvider: string, providerKey: string): Promise<void> {
     await this.#db.transaction(async (tx) => {
       await removeLink(tx, ownerKey, loginProvider)
-      await tx.exec(
-        `INSERT INTO external_login (user_or_member_key, login_provider, provider_key, create_date)
-         VALUES (?, ?, ?, ?)`,
-        [normaliseUuid(ownerKey), loginProvider, providerKey, DbDate.toDb(new Date())],
-      )
+      await tx.q
+        .insertInto('external_login')
+        .values({
+          user_or_member_key: normaliseUuid(ownerKey),
+          login_provider: loginProvider,
+          provider_key: providerKey,
+          create_date: DbDate.toDb(new Date()),
+        })
+        .execute()
     })
   }
 
@@ -76,14 +84,20 @@ export class ExternalLoginRepository {
 
 /** A link and the tokens kept for it, which reference it. */
 async function removeLink(tx: Db, ownerKey: string, loginProvider: string): Promise<void> {
-  const params = [loginProvider, normaliseUuid(ownerKey)]
-  await tx.exec(
-    `DELETE FROM external_login_token WHERE external_login_id IN
-       (SELECT id FROM external_login WHERE login_provider = ? AND user_or_member_key = ?)`,
-    params,
-  )
-  await tx.exec(
-    'DELETE FROM external_login WHERE login_provider = ? AND user_or_member_key = ?',
-    params,
-  )
+  const owner = normaliseUuid(ownerKey)
+  await tx.q
+    .deleteFrom('external_login_token')
+    .where('external_login_id', 'in', (eb) =>
+      eb
+        .selectFrom('external_login')
+        .select('id')
+        .where('login_provider', '=', loginProvider)
+        .where('user_or_member_key', '=', owner),
+    )
+    .execute()
+  await tx.q
+    .deleteFrom('external_login')
+    .where('login_provider', '=', loginProvider)
+    .where('user_or_member_key', '=', owner)
+    .execute()
 }

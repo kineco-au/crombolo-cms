@@ -43,31 +43,30 @@ export class DeliveryMemberTokenRepository {
     const { token: value, hash } = newToken()
     const now = new Date()
     const expiresAt = new Date(now.getTime() + token.lifetimeMs)
-    await this.#db.exec(
-      `INSERT INTO delivery_member_token
-         (hash, kind, member_key, client_id, scopes, redirect_uri, code_challenge, expires_at, create_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
+    await this.#db.q
+      .insertInto('delivery_member_token')
+      .values({
         hash,
-        token.kind,
-        token.memberKey,
-        token.clientId,
-        token.scopes.join(' '),
-        token.redirectUri,
-        token.codeChallenge,
-        DbDate.toDb(expiresAt),
-        DbDate.toDb(now),
-      ],
-    )
+        kind: token.kind,
+        member_key: token.memberKey,
+        client_id: token.clientId,
+        scopes: token.scopes.join(' '),
+        redirect_uri: token.redirectUri,
+        code_challenge: token.codeChallenge,
+        expires_at: DbDate.toDb(expiresAt),
+        create_date: DbDate.toDb(now),
+      })
+      .execute()
     return { token: value, expiresAt }
   }
 
   /** The token a client presents, whatever its state; the caller judges it. */
   async find(token: string): Promise<MemberToken | undefined> {
-    const rows = await this.#db.query('SELECT * FROM delivery_member_token WHERE hash = ?', [
-      hashToken(token),
-    ])
-    const row = rows[0]
+    const row = await this.#db.q
+      .selectFrom('delivery_member_token')
+      .selectAll()
+      .where('hash', '=', hashToken(token))
+      .executeTakeFirst()
     if (!row) return undefined
     return {
       kind: String(row.kind) as MemberTokenKind,
@@ -85,26 +84,36 @@ export class DeliveryMemberTokenRepository {
 
   /** Marks a code or refresh token used; false when it already was, so only one redemption wins. */
   async redeem(token: string): Promise<boolean> {
-    const rows = await this.#db.query<{ hash: string }>(
-      'UPDATE delivery_member_token SET redeemed_at = ? WHERE hash = ? AND redeemed_at IS NULL RETURNING hash',
-      [DbDate.toDb(new Date()), hashToken(token)],
-    )
+    const rows = await this.#db.q
+      .updateTable('delivery_member_token')
+      .set({ redeemed_at: DbDate.toDb(new Date()) })
+      .where('hash', '=', hashToken(token))
+      .where('redeemed_at', 'is', null)
+      .returning('hash')
+      .execute()
     return rows.length > 0
   }
 
   async revoke(token: string): Promise<void> {
-    await this.#db.exec('DELETE FROM delivery_member_token WHERE hash = ?', [hashToken(token)])
+    await this.#db.q
+      .deleteFrom('delivery_member_token')
+      .where('hash', '=', hashToken(token))
+      .execute()
   }
 
   /** Every token a member holds, as signing out ends them. */
   async revokeMember(memberKey: string): Promise<void> {
-    await this.#db.exec('DELETE FROM delivery_member_token WHERE member_key = ?', [memberKey])
+    await this.#db.q
+      .deleteFrom('delivery_member_token')
+      .where('member_key', '=', memberKey)
+      .execute()
   }
 
   /** Expired tokens, which nothing will accept again. */
   async purgeExpired(): Promise<void> {
-    await this.#db.exec('DELETE FROM delivery_member_token WHERE expires_at < ?', [
-      DbDate.toDb(new Date()),
-    ])
+    await this.#db.q
+      .deleteFrom('delivery_member_token')
+      .where('expires_at', '<', DbDate.toDb(new Date()))
+      .execute()
   }
 }

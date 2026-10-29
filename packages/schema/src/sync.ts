@@ -632,10 +632,13 @@ export async function syncSchema(
 
           // ---- types in the database but not in files: retire, unless they have content
           const inFiles = new Set(typeKeyByAlias.values())
-          const dbTypes = await tx.query<{ unique_id: string; alias: string }>(
-            'SELECT n.unique_id, ct.alias FROM content_type ct JOIN node n ON n.id = ct.node_id WHERE ct.retired_at IS NULL AND n.node_object_type = ?',
-            [kind.repo.objectType],
-          )
+          const dbTypes = await tx.q
+            .selectFrom('content_type as ct')
+            .innerJoin('node as n', 'n.id', 'ct.node_id')
+            .select(['n.unique_id', 'ct.alias'])
+            .where('ct.retired_at', 'is', null)
+            .where('n.node_object_type', '=', kind.repo.objectType)
+            .execute()
           for (const row of dbTypes) {
             const key = String(row.unique_id).toLowerCase()
             if (inFiles.has(key)) continue
@@ -653,10 +656,13 @@ export async function syncSchema(
                 `${kind.noun} "${row.alias}" was removed from schema/ but ${count} ${kind.items} of it exist; restore the file, or retire it deliberately with --force-retire-types`,
               )
             }
-            await tx.exec(
-              'UPDATE content_type SET retired_at = ? WHERE node_id = (SELECT id FROM node WHERE unique_id = ?)',
-              [DbDate.toDb(new Date()), key],
-            )
+            await tx.q
+              .updateTable('content_type')
+              .set({ retired_at: DbDate.toDb(new Date()) })
+              .where('node_id', '=', (eb) =>
+                eb.selectFrom('node').select('id').where('unique_id', '=', key),
+              )
+              .execute()
             report.retiredTypes.push(String(row.alias))
           }
         }

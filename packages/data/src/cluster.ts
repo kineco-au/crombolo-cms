@@ -5,6 +5,7 @@
  */
 import type { Db } from './database.ts'
 import { DbDate } from './dialect.ts'
+import { sql } from './query.ts'
 
 /**
  * `views` is a code change, not a data one: a template was written, so every
@@ -76,11 +77,13 @@ export async function instructionsBetween(
   after: number,
   upTo: number,
 ): Promise<CacheInstruction[]> {
-  const rows = await db.query(
-    `SELECT id, kind, payload, created_by, checkpoint FROM cache_instruction
-      WHERE checkpoint > ? AND checkpoint <= ? ORDER BY checkpoint`,
-    [after, upTo],
-  )
+  const rows = await db.q
+    .selectFrom('cache_instruction')
+    .select(INSTRUCTION_COLUMNS)
+    .where('checkpoint', '>', after)
+    .where('checkpoint', '<=', upTo)
+    .orderBy('checkpoint')
+    .execute()
   return rows.map(instructionOf)
 }
 
@@ -101,19 +104,21 @@ export async function appendCacheInstruction(
 ): Promise<number | null> {
   return db.transaction(async (tx) => {
     const checkpoint = instruction.kind === 'components' ? null : await advanceCheckpoint(tx)
-    await tx.exec(
-      'INSERT INTO cache_instruction (kind, payload, created_at, created_by, checkpoint) VALUES (?, ?, ?, ?, ?)',
-      [
-        instruction.kind,
-        JSON.stringify(instruction.payload ?? {}),
-        DbDate.toDb(new Date()),
-        instruction.by ?? null,
+    await tx.q
+      .insertInto('cache_instruction')
+      .values({
+        kind: instruction.kind,
+        payload: JSON.stringify(instruction.payload ?? {}),
+        created_at: DbDate.toDb(new Date()),
+        created_by: instruction.by ?? null,
         checkpoint,
-      ],
-    )
+      })
+      .execute()
     // Delivered at commit, so a write that rolls back wakes nobody.
     if (tx.dialect.name === 'postgres')
-      await tx.exec('SELECT pg_notify(?, ?)', [CACHE_INSTRUCTION_CHANNEL, instruction.kind])
+      await tx.q
+        .selectNoFrom(sql`pg_notify(${CACHE_INSTRUCTION_CHANNEL}, ${instruction.kind})`.as('n'))
+        .execute()
     return checkpoint
   })
 }
@@ -123,11 +128,15 @@ export async function appendCacheInstruction(
  * so a row lost to a truncate is started again rather than silently not counted.
  */
 async function advanceCheckpoint(tx: Db): Promise<number> {
-  const rows = await tx.query<{ n: unknown }>(
-    `INSERT INTO content_checkpoint (id, n) VALUES (1, 1)
-       ON CONFLICT (id) DO UPDATE SET n = content_checkpoint.n + 1 RETURNING n`,
-  )
-  return Number(rows[0]?.n ?? 0)
+  const row = await tx.q
+    .insertInto('content_checkpoint')
+    .values({ id: 1, n: 1 })
+    .onConflict((oc) =>
+      oc.column('id').doUpdateSet((eb) => ({ n: eb('content_checkpoint.n', '+', 1) })),
+    )
+    .returning('n')
+    .executeTakeFirst()
+  return Number(row?.n ?? 0)
 }
 
 /**
@@ -152,17 +161,22 @@ export async function waitForCheckpoint(
 
 /** When the first change after `checkpoint` was recorded: how long a node serving it has been behind. */
 export async function changedSince(db: Db, checkpoint: number): Promise<Date | undefined> {
-  const rows = await db.query<{ at: unknown }>(
-    'SELECT MIN(created_at) AS at FROM cache_instruction WHERE checkpoint > ?',
-    [checkpoint],
-  )
-  return DbDate.fromDb(rows[0]?.at) ?? undefined
+  const row = await db.q
+    .selectFrom('cache_instruction')
+    .select((eb) => eb.fn.min('created_at').as('at'))
+    .where('checkpoint', '>', checkpoint)
+    .executeTakeFirst()
+  return DbDate.fromDb(row?.at) ?? undefined
 }
 
 /** The latest committed checkpoint: every change numbered at or below it has committed. */
 export async function latestCheckpoint(db: Db): Promise<number> {
-  const rows = await db.query<{ n: unknown }>('SELECT n FROM content_checkpoint WHERE id = 1')
-  return Number(rows[0]?.n ?? 0)
+  const row = await db.q
+    .selectFrom('content_checkpoint')
+    .select('n')
+    .where('id', '=', 1)
+    .executeTakeFirst()
+  return Number(row?.n ?? 0)
 }
 
 /**
@@ -171,27 +185,35 @@ export async function latestCheckpoint(db: Db): Promise<number> {
  * nothing older is ever read again.
  */
 export async function pruneCacheInstructions(db: Db, before: Date): Promise<number> {
-  const rows = await db.query(
-    `DELETE FROM cache_instruction WHERE created_at < ?
-       AND id < (SELECT MAX(id) FROM cache_instruction) RETURNING id`,
-    [DbDate.toDb(before)],
-  )
+  const rows = await db.q
+    .deleteFrom('cache_instruction')
+    .where('created_at', '<', DbDate.toDb(before))
+    .where('id', '<', (eb) => eb.selectFrom('cache_instruction').select(eb.fn.max('id').as('max')))
+    .returning('id')
+    .execute()
   return rows.length
 }
 
 /** The highest instruction id, so a fresh node ignores history. */
 export async function latestCacheInstructionId(db: Db): Promise<number> {
-  const rows = await db.query<{ n: number | null }>('SELECT MAX(id) AS n FROM cache_instruction')
-  return Number(rows[0]?.n ?? 0)
+  const row = await db.q
+    .selectFrom('cache_instruction')
+    .select((eb) => eb.fn.max('id').as('n'))
+    .executeTakeFirst()
+  return Number(row?.n ?? 0)
 }
 
 export async function cacheInstructionsAfter(db: Db, afterId: number): Promise<CacheInstruction[]> {
-  const rows = await db.query(
-    'SELECT id, kind, payload, created_by, checkpoint FROM cache_instruction WHERE id > ? ORDER BY id',
-    [afterId],
-  )
+  const rows = await db.q
+    .selectFrom('cache_instruction')
+    .select(INSTRUCTION_COLUMNS)
+    .where('id', '>', afterId)
+    .orderBy('id')
+    .execute()
   return rows.map(instructionOf)
 }
+
+const INSTRUCTION_COLUMNS = ['id', 'kind', 'payload', 'created_by', 'checkpoint'] as const
 
 const instructionOf = (row: Record<string, unknown>): CacheInstruction => ({
   id: Number(row.id),
@@ -219,25 +241,41 @@ export async function touchServer(db: Db, identity: ServerIdentity): Promise<voi
   const now = DbDate.toDb(new Date())
   const role = identity.role ?? null
   const crombolo = identity.cromboloVersion ?? null
-  const existing = await db.query<{ node_id: string }>(
-    'SELECT node_id FROM server WHERE node_id = ?',
-    [identity.nodeId],
-  )
+  const existing = await db.q
+    .selectFrom('server')
+    .select('node_id')
+    .where('node_id', '=', identity.nodeId)
+    .executeTakeFirst()
   const served = identity.served?.checkpoint ?? null
   const servedAt = identity.served ? DbDate.toDb(identity.served.at) : null
-  if (existing[0]) {
-    await db.exec(
-      `UPDATE server SET version = ?, revision = ?, role = ?, crombolo_version = ?, last_seen = ?,
-         served_checkpoint = COALESCE(?, served_checkpoint), served_at = COALESCE(?, served_at)
-       WHERE node_id = ?`,
-      [identity.version, identity.revision, role, crombolo, now, served, servedAt, identity.nodeId],
-    )
+  if (existing) {
+    await db.q
+      .updateTable('server')
+      .set({
+        version: identity.version,
+        revision: identity.revision,
+        role,
+        crombolo_version: crombolo,
+        last_seen: now,
+        served_checkpoint: sql<number>`coalesce(${served}, ${sql.ref('served_checkpoint')})`,
+        served_at: sql<string>`coalesce(${servedAt}, ${sql.ref('served_at')})`,
+      })
+      .where('node_id', '=', identity.nodeId)
+      .execute()
   } else {
-    await db.exec(
-      `INSERT INTO server (node_id, version, revision, role, crombolo_version, last_seen,
-         served_checkpoint, served_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [identity.nodeId, identity.version, identity.revision, role, crombolo, now, served, servedAt],
-    )
+    await db.q
+      .insertInto('server')
+      .values({
+        node_id: identity.nodeId,
+        version: identity.version,
+        revision: identity.revision,
+        role,
+        crombolo_version: crombolo,
+        last_seen: now,
+        served_checkpoint: served,
+        served_at: servedAt,
+      })
+      .execute()
   }
 }
 
@@ -257,11 +295,21 @@ export interface LiveNode {
 
 /** The nodes that have polled within `seenWithinMs`: the cluster as it stands. */
 export async function liveNodes(db: Db, options: { seenWithinMs: number }): Promise<LiveNode[]> {
-  const rows = await db.query(
-    `SELECT node_id, role, version, revision, crombolo_version, last_seen, served_checkpoint, served_at
-       FROM server WHERE last_seen >= ? ORDER BY node_id`,
-    [DbDate.toDb(new Date(Date.now() - options.seenWithinMs))],
-  )
+  const rows = await db.q
+    .selectFrom('server')
+    .select([
+      'node_id',
+      'role',
+      'version',
+      'revision',
+      'crombolo_version',
+      'last_seen',
+      'served_checkpoint',
+      'served_at',
+    ])
+    .where('last_seen', '>=', DbDate.toDb(new Date(Date.now() - options.seenWithinMs)))
+    .orderBy('node_id')
+    .execute()
   return rows.map((row) => ({
     nodeId: String(row.node_id),
     role: (row.role as string | null) ?? null,

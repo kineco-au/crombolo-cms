@@ -6,6 +6,7 @@
 import { normaliseUuid } from '@crombolo/core'
 import type { Db } from '../database.ts'
 import { DbDate } from '../dialect.ts'
+import { sql } from '../query.ts'
 
 export interface TwoFactorLogin {
   ownerKey: string
@@ -23,10 +24,12 @@ export class TwoFactorRepository {
 
   /** The providers an owner has turned on. */
   async providers(ownerKey: string): Promise<string[]> {
-    const rows = await this.#db.query<{ provider_name: string }>(
-      'SELECT provider_name FROM two_factor_login WHERE owner_key = ? ORDER BY provider_name',
-      [normaliseUuid(ownerKey)],
-    )
+    const rows = await this.#db.q
+      .selectFrom('two_factor_login')
+      .select('provider_name')
+      .where('owner_key', '=', normaliseUuid(ownerKey))
+      .orderBy('provider_name')
+      .execute()
     return rows.map((row) => String(row.provider_name))
   }
 
@@ -34,19 +37,22 @@ export class TwoFactorRepository {
   async enabledAmong(ownerKeys: readonly string[]): Promise<Set<string>> {
     if (ownerKeys.length === 0) return new Set()
     const keys = ownerKeys.map(normaliseUuid)
-    const rows = await this.#db.query<{ owner_key: string }>(
-      `SELECT DISTINCT owner_key FROM two_factor_login WHERE owner_key IN (${keys.map(() => '?').join(', ')})`,
-      keys,
-    )
+    const rows = await this.#db.q
+      .selectFrom('two_factor_login')
+      .select('owner_key')
+      .distinct()
+      .where('owner_key', 'in', keys)
+      .execute()
     return new Set(rows.map((row) => normaliseUuid(String(row.owner_key))))
   }
 
   async get(ownerKey: string, providerName: string): Promise<TwoFactorLogin | undefined> {
-    const rows = await this.#db.query<Record<string, unknown>>(
-      'SELECT * FROM two_factor_login WHERE owner_key = ? AND provider_name = ?',
-      [normaliseUuid(ownerKey), providerName],
-    )
-    const row = rows[0]
+    const row = await this.#db.q
+      .selectFrom('two_factor_login')
+      .selectAll()
+      .where('owner_key', '=', normaliseUuid(ownerKey))
+      .where('provider_name', '=', providerName)
+      .executeTakeFirst()
     if (!row) return undefined
     return {
       ownerKey: normaliseUuid(String(row.owner_key)),
@@ -69,69 +75,82 @@ export class TwoFactorRepository {
   ): Promise<void> {
     const owner = normaliseUuid(ownerKey)
     await this.#db.transaction(async (tx) => {
-      await tx.exec('DELETE FROM two_factor_login WHERE owner_key = ? AND provider_name = ?', [
-        owner,
-        providerName,
-      ])
-      await tx.exec(
-        `INSERT INTO two_factor_login (owner_key, provider_name, secret, last_used_step, create_date)
-         VALUES (?, ?, ?, ?, ?)`,
-        [owner, providerName, sealedSecret, acceptedStep, DbDate.toDb(new Date())],
-      )
-      await tx.exec('DELETE FROM two_factor_recovery_code WHERE owner_key = ?', [owner])
+      await tx.q
+        .deleteFrom('two_factor_login')
+        .where('owner_key', '=', owner)
+        .where('provider_name', '=', providerName)
+        .execute()
+      await tx.q
+        .insertInto('two_factor_login')
+        .values({
+          owner_key: owner,
+          provider_name: providerName,
+          secret: sealedSecret,
+          last_used_step: acceptedStep,
+          create_date: DbDate.toDb(new Date()),
+        })
+        .execute()
+      await tx.q.deleteFrom('two_factor_recovery_code').where('owner_key', '=', owner).execute()
       for (const hash of recoveryHashes)
-        await tx.exec('INSERT INTO two_factor_recovery_code (owner_key, code_hash) VALUES (?, ?)', [
-          owner,
-          hash,
-        ])
+        await tx.q
+          .insertInto('two_factor_recovery_code')
+          .values({ owner_key: owner, code_hash: hash })
+          .execute()
     })
   }
 
   /** Records a step a code was accepted for, refusing one at or before the last; true when recorded. */
   async useStep(ownerKey: string, providerName: string, step: number): Promise<boolean> {
-    const rows = await this.#db.query<{ owner_key: string }>(
-      `UPDATE two_factor_login SET last_used_step = ?
-       WHERE owner_key = ? AND provider_name = ? AND (last_used_step IS NULL OR last_used_step < ?)
-       RETURNING owner_key`,
-      [step, normaliseUuid(ownerKey), providerName, step],
-    )
+    const rows = await this.#db.q
+      .updateTable('two_factor_login')
+      .set({ last_used_step: step })
+      .where('owner_key', '=', normaliseUuid(ownerKey))
+      .where('provider_name', '=', providerName)
+      .where((eb) => eb.or([eb('last_used_step', 'is', null), eb('last_used_step', '<', step)]))
+      .returning('owner_key')
+      .execute()
     return rows.length > 0
   }
 
   /** Spends a recovery code by its hash; true when it was there and unused. */
   async useRecoveryCode(ownerKey: string, hash: string): Promise<boolean> {
-    const rows = await this.#db.query<{ id: number }>(
-      `UPDATE two_factor_recovery_code SET used_date = ?
-       WHERE owner_key = ? AND code_hash = ? AND used_date IS NULL RETURNING id`,
-      [DbDate.toDb(new Date()), normaliseUuid(ownerKey), hash],
-    )
+    const rows = await this.#db.q
+      .updateTable('two_factor_recovery_code')
+      .set({ used_date: DbDate.toDb(new Date()) })
+      .where('owner_key', '=', normaliseUuid(ownerKey))
+      .where('code_hash', '=', hash)
+      .where('used_date', 'is', null)
+      .returning('id')
+      .execute()
     return rows.length > 0
   }
 
   async recoveryCodesLeft(ownerKey: string): Promise<number> {
-    const rows = await this.#db.query<{ n: number }>(
-      'SELECT COUNT(*) AS n FROM two_factor_recovery_code WHERE owner_key = ? AND used_date IS NULL',
-      [normaliseUuid(ownerKey)],
-    )
-    return Number(rows[0]?.n ?? 0)
+    const row = await this.#db.q
+      .selectFrom('two_factor_recovery_code')
+      .select(sql<number>`count(*)`.as('n'))
+      .where('owner_key', '=', normaliseUuid(ownerKey))
+      .where('used_date', 'is', null)
+      .executeTakeFirst()
+    return Number(row?.n ?? 0)
   }
 
   /** Turns a provider off, or every provider when none is named, with the recovery codes once none is left. */
   async disable(ownerKey: string, providerName?: string): Promise<void> {
     const owner = normaliseUuid(ownerKey)
     await this.#db.transaction(async (tx) => {
-      if (providerName)
-        await tx.exec('DELETE FROM two_factor_login WHERE owner_key = ? AND provider_name = ?', [
-          owner,
-          providerName,
-        ])
-      else await tx.exec('DELETE FROM two_factor_login WHERE owner_key = ?', [owner])
-      const left = await tx.query<{ n: number }>(
-        'SELECT COUNT(*) AS n FROM two_factor_login WHERE owner_key = ?',
-        [owner],
-      )
-      if (Number(left[0]?.n ?? 0) === 0)
-        await tx.exec('DELETE FROM two_factor_recovery_code WHERE owner_key = ?', [owner])
+      await tx.q
+        .deleteFrom('two_factor_login')
+        .where('owner_key', '=', owner)
+        .$if(!!providerName, (q) => q.where('provider_name', '=', providerName ?? ''))
+        .execute()
+      const left = await tx.q
+        .selectFrom('two_factor_login')
+        .select(sql<number>`count(*)`.as('n'))
+        .where('owner_key', '=', owner)
+        .executeTakeFirst()
+      if (Number(left?.n ?? 0) === 0)
+        await tx.q.deleteFrom('two_factor_recovery_code').where('owner_key', '=', owner).execute()
     })
   }
 }

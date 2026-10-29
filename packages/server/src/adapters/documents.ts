@@ -92,9 +92,11 @@ export function createDocumentPort(
   /** The signed-in user's row id, which versions record as their author. */
   const userIdOf = async (principal: Principal | undefined): Promise<number | undefined> => {
     if (!principal) return undefined
-    const rows = await db.query<{ id: number }>('SELECT id FROM user_account WHERE key = ?', [
-      principal.id,
-    ])
+    const rows = await db.q
+      .selectFrom('user_account')
+      .select('id')
+      .where('key', '=', principal.id)
+      .execute()
     return rows[0] ? Number(rows[0].id) : undefined
   }
 
@@ -437,9 +439,12 @@ export function createDocumentPort(
 
     versions: (key) => repo.versions(key),
     async systemUserKey() {
-      const rows = await db.query<{ key: string }>(
-        'SELECT key FROM user_account ORDER BY id LIMIT 1',
-      )
+      const rows = await db.q
+        .selectFrom('user_account')
+        .select('key')
+        .orderBy('id')
+        .limit(1)
+        .execute()
       return rows[0] ? normaliseUuid(String(rows[0].key)) : null
     },
 
@@ -661,9 +666,11 @@ export async function loadDraftNode(
   const template = draft.componentKey ? await repo.nodes.byKey(draft.componentKey) : undefined
   const componentAlias = template
     ? ((
-        await db.query<{ alias: string }>('SELECT alias FROM template WHERE node_id = ?', [
-          template.id,
-        ])
+        await db.q
+          .selectFrom('template')
+          .select('alias')
+          .where('node_id', '=', template.id)
+          .execute()
       )[0]?.alias ?? null)
     : null
   const invariant = draft.variants.find((v) => v.culture === null) ?? draft.variants[0]

@@ -100,9 +100,10 @@ A search box query matches an item when either:
 
 Name matches rank first, then index matches by relevance. A name match weighs
 ten times a body match, through `bm25` weights on SQLite and `setweight` on
-Postgres. The dialect-specific SQL is `fullTextHits` / `fullTextQuery` on the
-dialect seam (`packages/data/src/dialect.ts`); nothing else knows which engine
-it is talking to.
+Postgres. The dialect-specific SQL is `fullTextMatches` / `fullTextQuery` on the
+dialect seam (`packages/data/src/dialect.ts`), and `siteSearchMatches` for site
+search: each match is a Kysely subquery taking the folded query as its one
+parameter, so nothing else knows which engine it is talking to.
 
 ## Who sees a result
 

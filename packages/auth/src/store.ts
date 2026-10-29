@@ -84,8 +84,21 @@ function mapUser(row: Record<string, unknown>): UserRow {
   }
 }
 
-const USER_COLUMNS =
-  'id, key, user_name, login, email, password_hash, password_config, language, avatar, is_locked_out, is_approved, failed_login_attempts, kind'
+const USER_COLUMNS = [
+  'id',
+  'key',
+  'user_name',
+  'login',
+  'email',
+  'password_hash',
+  'password_config',
+  'language',
+  'avatar',
+  'is_locked_out',
+  'is_approved',
+  'failed_login_attempts',
+  'kind',
+] as const
 
 export class AuthStore {
   #db: Db
@@ -99,62 +112,80 @@ export class AuthStore {
 
   async findUserByLogin(login: string): Promise<UserRow | undefined> {
     // login is a case-insensitive column in both dialects, so no lower() needed.
-    const rows = await this.#db.query(`SELECT ${USER_COLUMNS} FROM user_account WHERE login = ?`, [
-      login,
-    ])
-    return rows[0] ? mapUser(rows[0]) : undefined
+    const row = await this.#db.q
+      .selectFrom('user_account')
+      .select(USER_COLUMNS)
+      .where('login', '=', login)
+      .executeTakeFirst()
+    return row ? mapUser(row) : undefined
   }
 
   async findUserById(id: number): Promise<UserRow | undefined> {
-    const rows = await this.#db.query(`SELECT ${USER_COLUMNS} FROM user_account WHERE id = ?`, [id])
-    return rows[0] ? mapUser(rows[0]) : undefined
+    const row = await this.#db.q
+      .selectFrom('user_account')
+      .select(USER_COLUMNS)
+      .where('id', '=', id)
+      .executeTakeFirst()
+    return row ? mapUser(row) : undefined
   }
 
   /** An API user's client credential: whose it is, and the secret's hash. */
   async findClientCredential(
     clientId: string,
   ): Promise<{ userId: number; secretHash: string } | undefined> {
-    const rows = await this.#db.query<{ user_id: number; secret_hash: string }>(
-      'SELECT user_id, secret_hash FROM user_client_credential WHERE client_id = ?',
-      [clientId],
-    )
-    return rows[0]
-      ? { userId: Number(rows[0].user_id), secretHash: String(rows[0].secret_hash) }
-      : undefined
+    const row = await this.#db.q
+      .selectFrom('user_client_credential')
+      .select(['user_id', 'secret_hash'])
+      .where('client_id', '=', clientId)
+      .executeTakeFirst()
+    return row ? { userId: Number(row.user_id), secretHash: String(row.secret_hash) } : undefined
   }
 
   async recordLoginSuccess(userId: number, sessionId: string, ipAddress?: string): Promise<void> {
     const now = DbDate.toDb(new Date())
-    await this.#db.exec(
-      'UPDATE user_account SET failed_login_attempts = 0, last_login_date = ?, update_date = ? WHERE id = ?',
-      [now, now, userId],
-    )
-    await this.#db.exec(
-      `INSERT INTO user_login_session (session_id, user_id, logged_in_utc, last_validated_utc, ip_address)
-       VALUES (?, ?, ?, ?, ?)`,
-      [sessionId, userId, now, now, ipAddress ?? null],
-    )
+    await this.#db.q
+      .updateTable('user_account')
+      .set({ failed_login_attempts: 0, last_login_date: now, update_date: now })
+      .where('id', '=', userId)
+      .execute()
+    await this.#db.q
+      .insertInto('user_login_session')
+      .values({
+        session_id: sessionId,
+        user_id: userId,
+        logged_in_utc: now,
+        last_validated_utc: now,
+        ip_address: ipAddress ?? null,
+      })
+      .execute()
   }
 
   async recordLoginFailure(userId: number): Promise<number> {
-    const rows = await this.#db.query<{ failed_login_attempts: number }>(
-      'SELECT failed_login_attempts FROM user_account WHERE id = ?',
-      [userId],
-    )
-    const attempts = Number(rows[0]?.failed_login_attempts ?? 0) + 1
-    await this.#db.exec(
-      'UPDATE user_account SET failed_login_attempts = ?, update_date = ? WHERE id = ?',
-      [attempts, DbDate.toDb(new Date()), userId],
-    )
+    const row = await this.#db.q
+      .selectFrom('user_account')
+      .select('failed_login_attempts')
+      .where('id', '=', userId)
+      .executeTakeFirst()
+    const attempts = Number(row?.failed_login_attempts ?? 0) + 1
+    await this.#db.q
+      .updateTable('user_account')
+      .set({ failed_login_attempts: attempts, update_date: DbDate.toDb(new Date()) })
+      .where('id', '=', userId)
+      .execute()
     return attempts
   }
 
   async lockOut(userId: number): Promise<void> {
     const now = DbDate.toDb(new Date())
-    await this.#db.exec(
-      'UPDATE user_account SET is_locked_out = ?, last_lockout_date = ?, update_date = ? WHERE id = ?',
-      [this.#db.dialect.boolValue(true), now, now, userId],
-    )
+    await this.#db.q
+      .updateTable('user_account')
+      .set({
+        is_locked_out: this.#db.dialect.boolValue(true) as boolean | number,
+        last_lockout_date: now,
+        update_date: now,
+      })
+      .where('id', '=', userId)
+      .execute()
   }
 
   /**
@@ -170,85 +201,97 @@ export class AuthStore {
     passwordHash: string,
     passwordConfig: string,
   ): Promise<void> {
-    await this.#db.exec(
-      'UPDATE user_account SET password_hash = ?, password_config = ? WHERE id = ?',
-      [passwordHash, passwordConfig, userId],
-    )
+    await this.#db.q
+      .updateTable('user_account')
+      .set({ password_hash: passwordHash, password_config: passwordConfig })
+      .where('id', '=', userId)
+      .execute()
   }
 
   async setPassword(userId: number, passwordHash: string, passwordConfig: string): Promise<void> {
     const now = DbDate.toDb(new Date())
-    await this.#db.exec(
-      `UPDATE user_account
-       SET password_hash = ?, password_config = ?, security_stamp = ?,
-           last_password_change_date = ?, failed_login_attempts = 0, update_date = ?
-       WHERE id = ?`,
-      [passwordHash, passwordConfig, crypto.randomUUID(), now, now, userId],
-    )
+    await this.#db.q
+      .updateTable('user_account')
+      .set({
+        password_hash: passwordHash,
+        password_config: passwordConfig,
+        security_stamp: crypto.randomUUID(),
+        last_password_change_date: now,
+        failed_login_attempts: 0,
+        update_date: now,
+      })
+      .where('id', '=', userId)
+      .execute()
   }
 
   /** Ends every session a user holds, so a password change logs them out. */
   async endAllSessionsForUser(userId: number): Promise<number> {
-    const sessions = await this.#db.query<{ session_id: string }>(
-      'SELECT session_id FROM user_login_session WHERE user_id = ? AND logged_out_utc IS NULL',
-      [userId],
-    )
+    const sessions = await this.#db.q
+      .selectFrom('user_login_session')
+      .select('session_id')
+      .where('user_id', '=', userId)
+      .where('logged_out_utc', 'is', null)
+      .execute()
     for (const session of sessions) await this.endSession(String(session.session_id))
     return sessions.length
   }
 
   /** Clears a lockout without touching the password. */
   async enable(userId: number): Promise<void> {
-    await this.#db.exec(
-      'UPDATE user_account SET is_locked_out = ?, is_approved = ?, failed_login_attempts = 0, update_date = ? WHERE id = ?',
-      [
-        this.#db.dialect.boolValue(false),
-        this.#db.dialect.boolValue(true),
-        DbDate.toDb(new Date()),
-        userId,
-      ],
-    )
+    await this.#db.q
+      .updateTable('user_account')
+      .set({
+        is_locked_out: this.#db.dialect.boolValue(false) as boolean | number,
+        is_approved: this.#db.dialect.boolValue(true) as boolean | number,
+        failed_login_attempts: 0,
+        update_date: DbDate.toDb(new Date()),
+      })
+      .where('id', '=', userId)
+      .execute()
   }
 
   async findSession(sessionId: string): Promise<{ userId: number } | undefined> {
-    const rows = await this.#db.query<{ user_id: number }>(
-      'SELECT user_id FROM user_login_session WHERE session_id = ? AND logged_out_utc IS NULL',
-      [sessionId],
-    )
-    return rows[0] ? { userId: Number(rows[0].user_id) } : undefined
+    const row = await this.#db.q
+      .selectFrom('user_login_session')
+      .select('user_id')
+      .where('session_id', '=', sessionId)
+      .where('logged_out_utc', 'is', null)
+      .executeTakeFirst()
+    return row ? { userId: Number(row.user_id) } : undefined
   }
 
   async endSession(sessionId: string): Promise<void> {
     const now = DbDate.toDb(new Date())
-    await this.#db.exec(
-      'UPDATE user_login_session SET logged_out_utc = ? WHERE session_id = ? AND logged_out_utc IS NULL',
-      [now, sessionId],
-    )
-    await this.#db.exec(
-      'UPDATE auth_token SET revoked_at = ? WHERE session_id = ? AND revoked_at IS NULL',
-      [now, sessionId],
-    )
+    await this.#db.q
+      .updateTable('user_login_session')
+      .set({ logged_out_utc: now })
+      .where('session_id', '=', sessionId)
+      .where('logged_out_utc', 'is', null)
+      .execute()
+    await this.#db.q
+      .updateTable('auth_token')
+      .set({ revoked_at: now })
+      .where('session_id', '=', sessionId)
+      .where('revoked_at', 'is', null)
+      .execute()
   }
 
   async createAuthorizationCode(init: AuthorizationCodeInit): Promise<void> {
-    await this.#db.exec(
-      `INSERT INTO auth_code
-         (code_hash, user_id, session_id, client_id, redirect_uri, code_challenge,
-          code_challenge_method, scope, expires_at, create_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        hashToken(init.code),
-        init.userId,
-        init.sessionId,
-        init.clientId,
-        init.redirectUri,
-        init.codeChallenge,
-        init.codeChallengeMethod,
-        init.scope,
-        DbDate.toDb(init.expiresAt),
-        DbDate.toDb(new Date()),
-      ],
-    )
+    await this.#db.q
+      .insertInto('auth_code')
+      .values({
+        code_hash: hashToken(init.code),
+        user_id: init.userId,
+        session_id: init.sessionId,
+        client_id: init.clientId,
+        redirect_uri: init.redirectUri,
+        code_challenge: init.codeChallenge,
+        code_challenge_method: init.codeChallengeMethod,
+        scope: init.scope,
+        expires_at: DbDate.toDb(init.expiresAt),
+        create_date: DbDate.toDb(new Date()),
+      })
+      .execute()
   }
 
   /**
@@ -258,18 +301,27 @@ export class AuthStore {
   async consumeAuthorizationCode(code: string): Promise<AuthorizationCodeRow | undefined> {
     return this.#db.locks.withLock(Locks.KeyValues, async () => {
       const hash = hashToken(code)
-      const rows = await this.#db.query(
-        `SELECT user_id, session_id, client_id, redirect_uri, code_challenge,
-                code_challenge_method, scope, expires_at, consumed_at
-         FROM auth_code WHERE code_hash = ?`,
-        [hash],
-      )
-      const row = rows[0]
+      const row = await this.#db.q
+        .selectFrom('auth_code')
+        .select([
+          'user_id',
+          'session_id',
+          'client_id',
+          'redirect_uri',
+          'code_challenge',
+          'code_challenge_method',
+          'scope',
+          'expires_at',
+          'consumed_at',
+        ])
+        .where('code_hash', '=', hash)
+        .executeTakeFirst()
       if (!row) return undefined
-      await this.#db.exec('UPDATE auth_code SET consumed_at = ? WHERE code_hash = ?', [
-        DbDate.toDb(new Date()),
-        hash,
-      ])
+      await this.#db.q
+        .updateTable('auth_code')
+        .set({ consumed_at: DbDate.toDb(new Date()) })
+        .where('code_hash', '=', hash)
+        .execute()
       return {
         userId: Number(row.user_id),
         sessionId: String(row.session_id),
@@ -285,36 +337,44 @@ export class AuthStore {
   }
 
   async createToken(init: TokenInit): Promise<number> {
-    await this.#db.exec(
-      `INSERT INTO auth_token
-         (token_hash, token_type, user_id, session_id, client_id, scope, expires_at, create_date, parent_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        hashToken(init.token),
-        init.type,
-        init.userId,
-        init.sessionId,
-        init.clientId,
-        init.scope,
-        DbDate.toDb(init.expiresAt),
-        DbDate.toDb(new Date()),
-        init.parentId ?? null,
-      ],
-    )
-    const rows = await this.#db.query<{ id: number }>(
-      'SELECT id FROM auth_token WHERE token_hash = ?',
-      [hashToken(init.token)],
-    )
-    return Number(rows[0]?.id ?? 0)
+    await this.#db.q
+      .insertInto('auth_token')
+      .values({
+        token_hash: hashToken(init.token),
+        token_type: init.type,
+        user_id: init.userId,
+        session_id: init.sessionId,
+        client_id: init.clientId,
+        scope: init.scope,
+        expires_at: DbDate.toDb(init.expiresAt),
+        create_date: DbDate.toDb(new Date()),
+        parent_id: init.parentId ?? null,
+      })
+      .execute()
+    const row = await this.#db.q
+      .selectFrom('auth_token')
+      .select('id')
+      .where('token_hash', '=', hashToken(init.token))
+      .executeTakeFirst()
+    return Number(row?.id ?? 0)
   }
 
   async findToken(token: string, type: TokenType): Promise<TokenRow | undefined> {
-    const rows = await this.#db.query(
-      `SELECT id, token_type, user_id, session_id, client_id, scope, expires_at, revoked_at
-       FROM auth_token WHERE token_hash = ? AND token_type = ?`,
-      [hashToken(token), type],
-    )
-    const row = rows[0]
+    const row = await this.#db.q
+      .selectFrom('auth_token')
+      .select([
+        'id',
+        'token_type',
+        'user_id',
+        'session_id',
+        'client_id',
+        'scope',
+        'expires_at',
+        'revoked_at',
+      ])
+      .where('token_hash', '=', hashToken(token))
+      .where('token_type', '=', type)
+      .executeTakeFirst()
     if (!row) return undefined
     return {
       id: Number(row.id),
@@ -329,17 +389,19 @@ export class AuthStore {
   }
 
   async revokeToken(id: number): Promise<void> {
-    await this.#db.exec(
-      'UPDATE auth_token SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL',
-      [DbDate.toDb(new Date()), id],
-    )
+    await this.#db.q
+      .updateTable('auth_token')
+      .set({ revoked_at: DbDate.toDb(new Date()) })
+      .where('id', '=', id)
+      .where('revoked_at', 'is', null)
+      .execute()
   }
 
   /** Removes expired codes and tokens; called by the background job. */
   async pruneExpired(now = new Date()): Promise<void> {
     const cutoff = DbDate.toDb(now)
-    await this.#db.exec('DELETE FROM auth_code WHERE expires_at < ?', [cutoff])
-    await this.#db.exec('DELETE FROM auth_token WHERE expires_at < ?', [cutoff])
+    await this.#db.q.deleteFrom('auth_code').where('expires_at', '<', cutoff).execute()
+    await this.#db.q.deleteFrom('auth_token').where('expires_at', '<', cutoff).execute()
   }
 
   /** Section aliases and admin membership, unioned across the user's groups. */
@@ -351,13 +413,12 @@ export class AuthStore {
     permissions: string[]
     granular: Array<{ nodeKey: string; permission: string; context: string }>
   }> {
-    const groups = await this.#db.query(
-      `SELECT g.id, g.key, g.alias, g.has_access_to_all_languages
-       FROM user_group g
-       JOIN user_group_member m ON m.user_group_id = g.id
-       WHERE m.user_id = ?`,
-      [userId],
-    )
+    const groups = await this.#db.q
+      .selectFrom('user_group as g')
+      .innerJoin('user_group_member as m', 'm.user_group_id', 'g.id')
+      .select(['g.id', 'g.key', 'g.alias', 'g.has_access_to_all_languages'])
+      .where('m.user_id', '=', userId)
+      .execute()
     const groupKeys = groups.map((g) => String(g.key))
     const isAdmin = groups.some((g) => String(g.alias) === 'admin')
     const hasAccessToAllLanguages = groups.some((g) => fromDbBool(g.has_access_to_all_languages))
@@ -373,29 +434,29 @@ export class AuthStore {
       }
     }
 
-    const sections = await this.#db.query<{ app_alias: string }>(
-      `SELECT DISTINCT s.app_alias
-       FROM user_group_section s
-       JOIN user_group_member m ON m.user_group_id = s.user_group_id
-       WHERE m.user_id = ?`,
-      [userId],
-    )
-    const permissions = await this.#db.query<{ permission: string }>(
-      `SELECT DISTINCT p.permission
-       FROM user_group_permission p
-       JOIN user_group g ON g.key = p.user_group_key
-       JOIN user_group_member m ON m.user_group_id = g.id
-       WHERE m.user_id = ?`,
-      [userId],
-    )
-    const granular = await this.#db.query(
-      `SELECT gp.unique_id, gp.permission, gp.context
-       FROM user_group_granular_permission gp
-       JOIN user_group g ON g.key = gp.user_group_key
-       JOIN user_group_member m ON m.user_group_id = g.id
-       WHERE m.user_id = ? AND gp.unique_id IS NOT NULL`,
-      [userId],
-    )
+    const sections = await this.#db.q
+      .selectFrom('user_group_section as s')
+      .innerJoin('user_group_member as m', 'm.user_group_id', 's.user_group_id')
+      .select('s.app_alias')
+      .distinct()
+      .where('m.user_id', '=', userId)
+      .execute()
+    const permissions = await this.#db.q
+      .selectFrom('user_group_permission as p')
+      .innerJoin('user_group as g', 'g.key', 'p.user_group_key')
+      .innerJoin('user_group_member as m', 'm.user_group_id', 'g.id')
+      .select('p.permission')
+      .distinct()
+      .where('m.user_id', '=', userId)
+      .execute()
+    const granular = await this.#db.q
+      .selectFrom('user_group_granular_permission as gp')
+      .innerJoin('user_group as g', 'g.key', 'gp.user_group_key')
+      .innerJoin('user_group_member as m', 'm.user_group_id', 'g.id')
+      .select(['gp.unique_id', 'gp.permission', 'gp.context'])
+      .where('m.user_id', '=', userId)
+      .where('gp.unique_id', 'is not', null)
+      .execute()
 
     return {
       appAliases: sections.map((s) => String(s.app_alias)),

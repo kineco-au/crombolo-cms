@@ -5,10 +5,13 @@ import { existsSync } from 'node:fs'
 import { ambient, ambientFor } from './ambient.ts'
 import { type Dialect, type DialectName, dialectFor } from './dialect.ts'
 import { createLockManager, DEFAULT_LOCK_TIMEOUT_MS, type LockManager } from './locks.ts'
+import { type Query, queryFor } from './query.ts'
 
 export interface Db {
   readonly dialect: Dialect
   readonly locks: LockManager
+  /** The query builder over this handle (story 221); inside a transaction, the transaction's. */
+  readonly q: Query
   query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]>
   exec(sql: string, params?: unknown[]): Promise<void>
   transaction<T>(fn: (tx: Db) => Promise<T>): Promise<T>
@@ -56,6 +59,9 @@ export function resolveLockTimeoutMs(options: ConnectOptions = {}): number {
 class SqliteDb implements Db {
   readonly dialect = dialectFor('sqlite')
   readonly locks: LockManager
+  get q(): Query {
+    return queryFor(this)
+  }
   #db: BunSqlite
   #inTransaction: boolean
   #gate: { tail: Promise<void> }
@@ -165,6 +171,9 @@ interface SqlTag {
 class PostgresDb implements Db {
   readonly dialect = dialectFor('postgres')
   readonly locks: LockManager
+  get q(): Query {
+    return queryFor(this)
+  }
   #sql: SqlTag
   #inTransaction: boolean
 

@@ -114,10 +114,12 @@ export async function exportSeed(
   const aliasOf = async (typeKey: string) => {
     const key = normaliseUuid(typeKey)
     if (!typeAliases.has(key)) {
-      const rows = await db.query<{ alias: string }>(
-        'SELECT ct.alias FROM node n JOIN content_type ct ON ct.node_id = n.id WHERE n.unique_id = ?',
-        [key],
-      )
+      const rows = await db.q
+        .selectFrom('node as n')
+        .innerJoin('content_type as ct', 'ct.node_id', 'n.id')
+        .select('ct.alias')
+        .where('n.unique_id', '=', key)
+        .execute()
       typeAliases.set(key, rows[0] ? String(rows[0].alias) : typeKey)
     }
     return typeAliases.get(key) as string

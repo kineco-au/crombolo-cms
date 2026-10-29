@@ -195,6 +195,7 @@ rather than the running server. Secret ones are never printed or logged.
 | `CROMBOLO_INDEXABLE` | `true` / `false` | `true` | Off keeps search engines out entirely, for a staging site: robots are refused, there is no sitemap and every page asks not to be indexed. |
 | `CROMBOLO_PUBLIC_URL` | string | — | Where visitors see the site, when that is an app on another address, such as https://www.example.com. Used for preferred addresses, the sitemap and robots.txt. |
 | `CROMBOLO_SHOW_ERROR_DETAILS` | `true` / `false` | — | Shows a server error's message, the template file and line, and the stack on the error page. On in development, off otherwise; with it off a visitor sees only the error's reference, which the log carries too. |
+| `CROMBOLO_LIVE_RELOAD` | `true` / `false` | — | Reloads open pages when the components, the schema or the content change, and shows type errors on them. On in development, off in production and under `bun test`. |
 | `CROMBOLO_SITEMAP` | `true` / `false` | `true` | Serves `/sitemap.xml`. |
 | `CROMBOLO_TRACK_REDIRECTS` | `true` / `false` | `true` | Renaming or moving a page records a redirect from the address it had. |
 | `CROMBOLO_DELIVERY_API` | `true` / `false` | `false` | Turns on the Delivery API, which serves content as JSON. |
@@ -334,6 +335,7 @@ is code rather than a value:
 | `islands` | where `'use client'` islands' browser code comes from: built with each generation of views by default, or `{ manifest, devServer }` for a site's own Vite build ([`rendering.md`](rendering.md#islands)) |
 | `middleware` | the site's middleware by stage, `{ request, route, page }`, each run in the order listed; its time limit is `CROMBOLO_MIDDLEWARE_TIMEOUT_MS` ([`rendering.md`](rendering.md#middleware)) |
 | `routes` | the site's route handlers, `route(path, handlers, options)`, answered at their paths ahead of content finding; limits `CROMBOLO_ROUTE_TIMEOUT_MS` and `CROMBOLO_ROUTE_RATE_LIMIT_PER_MINUTE` ([`rendering.md`](rendering.md#route-handlers)) |
+| `liveReload` | open pages reload when the components, the schema or the content change, and show the background type check's findings; `CROMBOLO_LIVE_RELOAD`, on in development except under `bun test` ([`writing-components.md`](writing-components.md#the-development-loop)) |
 | `pages` | the pages in the content tree, by path, that answer `notFound`, `unauthorized` and `error` outcomes from a page's code, per hostname or language if need be ([`rendering.md`](rendering.md#status-pages)) |
 
 `deliveryApi` is the same: its switches and key have environment variables

@@ -127,13 +127,42 @@ export interface UserAccessData {
   userStartNodes: Record<StartNodeTree, StartNodePath[]>
 }
 
-const USER_COLUMNS = `id, key, user_name, login, email, language, avatar, kind, is_approved,
-  is_locked_out, failed_login_attempts, last_login_date, last_lockout_date,
-  last_password_change_date, invited_date, create_date, update_date`
+const USER_COLUMNS = [
+  'id',
+  'key',
+  'user_name',
+  'login',
+  'email',
+  'language',
+  'avatar',
+  'kind',
+  'is_approved',
+  'is_locked_out',
+  'failed_login_attempts',
+  'last_login_date',
+  'last_lockout_date',
+  'last_password_change_date',
+  'invited_date',
+  'create_date',
+  'update_date',
+] as const
+
+const NODE_COLUMNS = [
+  'id',
+  'unique_id',
+  'parent_id',
+  'level',
+  'path',
+  'sort_order',
+  'trashed',
+  'text',
+  'node_object_type',
+  'create_date',
+] as const
 
 const TREES: StartNodeTree[] = ['document', 'media', 'element']
 
-const inList = (values: readonly unknown[]) => values.map(() => '?').join(', ')
+const users = (db: Db) => db.q.selectFrom('user_account').select(USER_COLUMNS)
 
 export class UserRepository {
   #db: Db
@@ -145,11 +174,11 @@ export class UserRepository {
   async #nodeKeys(ids: readonly number[]): Promise<Map<number, NodeRow>> {
     const wanted = [...new Set(ids.filter((id) => id > 0))]
     if (wanted.length === 0) return new Map()
-    const rows = await this.#db.query(
-      `SELECT id, unique_id, parent_id, level, path, sort_order, trashed, text, node_object_type, create_date
-       FROM node WHERE id IN (${inList(wanted)})`,
-      wanted,
-    )
+    const rows = await this.#db.q
+      .selectFrom('node')
+      .select(NODE_COLUMNS)
+      .where('id', 'in', wanted)
+      .execute()
     return new Map(rows.map((row) => [Number(row.id), mapNode(row)]))
   }
 
@@ -157,10 +186,11 @@ export class UserRepository {
   async nodeIds(keys: readonly string[]): Promise<Map<string, number> | undefined> {
     if (keys.length === 0) return new Map()
     const wanted = keys.map(normaliseUuid)
-    const rows = await this.#db.query<{ id: number; unique_id: string }>(
-      `SELECT id, unique_id FROM node WHERE unique_id IN (${inList(wanted)})`,
-      wanted,
-    )
+    const rows = await this.#db.q
+      .selectFrom('node')
+      .select(['id', 'unique_id'])
+      .where('unique_id', 'in', wanted)
+      .execute()
     const map = new Map(rows.map((r) => [normaliseUuid(String(r.unique_id)), Number(r.id)]))
     return wanted.every((k) => map.has(k)) ? map : undefined
   }
@@ -168,19 +198,18 @@ export class UserRepository {
   async #hydrate(rows: Record<string, unknown>[]): Promise<UserRecord[]> {
     if (rows.length === 0) return []
     const ids = rows.map((r) => Number(r.id))
-    const memberships = await this.#db.query<{ user_id: number; key: string }>(
-      `SELECT m.user_id, g.key FROM user_group_member m JOIN user_group g ON g.id = m.user_group_id
-       WHERE m.user_id IN (${inList(ids)}) ORDER BY g.id`,
-      ids,
-    )
-    const starts = await this.#db.query<{
-      user_id: number
-      start_node: number
-      start_node_type: number
-    }>(
-      `SELECT user_id, start_node, start_node_type FROM user_start_node WHERE user_id IN (${inList(ids)})`,
-      ids,
-    )
+    const memberships = await this.#db.q
+      .selectFrom('user_group_member as m')
+      .innerJoin('user_group as g', 'g.id', 'm.user_group_id')
+      .select(['m.user_id', 'g.key'])
+      .where('m.user_id', 'in', ids)
+      .orderBy('g.id')
+      .execute()
+    const starts = await this.#db.q
+      .selectFrom('user_start_node')
+      .select(['user_id', 'start_node', 'start_node_type'])
+      .where('user_id', 'in', ids)
+      .execute()
     const nodes = await this.#nodeKeys(starts.map((s) => Number(s.start_node)))
     return rows.map((row) => {
       const id = Number(row.id)
@@ -228,20 +257,13 @@ export class UserRepository {
   }
 
   async all(): Promise<UserRecord[]> {
-    return this.#hydrate(
-      await this.#db.query(`SELECT ${USER_COLUMNS} FROM user_account ORDER BY id`),
-    )
+    return this.#hydrate(await users(this.#db).orderBy('id').execute())
   }
 
   async byKeys(keys: readonly string[]): Promise<UserRecord[]> {
     const wanted = keys.filter((k) => /^[0-9a-f-]{32,36}$/i.test(k)).map(normaliseUuid)
     if (wanted.length === 0) return []
-    return this.#hydrate(
-      await this.#db.query(
-        `SELECT ${USER_COLUMNS} FROM user_account WHERE key IN (${inList(wanted)}) ORDER BY id`,
-        wanted,
-      ),
-    )
+    return this.#hydrate(await users(this.#db).where('key', 'in', wanted).orderBy('id').execute())
   }
 
   async byKey(key: string): Promise<UserRecord | undefined> {
@@ -249,48 +271,35 @@ export class UserRepository {
   }
 
   async byId(id: number): Promise<UserRecord | undefined> {
-    return (
-      await this.#hydrate(
-        await this.#db.query(`SELECT ${USER_COLUMNS} FROM user_account WHERE id = ?`, [id]),
-      )
-    )[0]
+    return (await this.#hydrate(await users(this.#db).where('id', '=', id).execute()))[0]
   }
 
   async byUserName(userName: string): Promise<UserRecord | undefined> {
-    return (
-      await this.#hydrate(
-        await this.#db.query(`SELECT ${USER_COLUMNS} FROM user_account WHERE login = ?`, [
-          userName,
-        ]),
-      )
-    )[0]
+    return (await this.#hydrate(await users(this.#db).where('login', '=', userName).execute()))[0]
   }
 
   async byEmail(email: string): Promise<UserRecord | undefined> {
-    return (
-      await this.#hydrate(
-        await this.#db.query(`SELECT ${USER_COLUMNS} FROM user_account WHERE email = ?`, [email]),
-      )
-    )[0]
+    return (await this.#hydrate(await users(this.#db).where('email', '=', email).execute()))[0]
   }
 
   async #groupIds(keys: readonly string[]): Promise<number[] | undefined> {
     if (keys.length === 0) return []
     const wanted = keys.map(normaliseUuid)
-    const rows = await this.#db.query<{ id: number }>(
-      `SELECT id FROM user_group WHERE key IN (${inList(wanted)})`,
-      wanted,
-    )
+    const rows = await this.#db.q
+      .selectFrom('user_group')
+      .select('id')
+      .where('key', 'in', wanted)
+      .execute()
     return rows.length === new Set(wanted).size ? rows.map((r) => Number(r.id)) : undefined
   }
 
   async #setGroups(userId: number, groupIds: readonly number[]): Promise<void> {
-    await this.#db.exec('DELETE FROM user_group_member WHERE user_id = ?', [userId])
+    await this.#db.q.deleteFrom('user_group_member').where('user_id', '=', userId).execute()
     for (const groupId of new Set(groupIds))
-      await this.#db.exec('INSERT INTO user_group_member (user_id, user_group_id) VALUES (?, ?)', [
-        userId,
-        groupId,
-      ])
+      await this.#db.q
+        .insertInto('user_group_member')
+        .values({ user_id: userId, user_group_id: groupId })
+        .execute()
   }
 
   /** Creates the user; undefined when a group does not exist. */
@@ -300,28 +309,25 @@ export class UserRepository {
       const groupIds = await repo.#groupIds(input.groupKeys)
       if (!groupIds) return undefined
       const now = DbDate.toDb(new Date())
-      const bool = (v: boolean) => tx.dialect.boolValue(v)
-      await tx.exec(
-        `INSERT INTO user_account
-           (key, user_name, login, email, security_stamp, language, kind, is_locked_out, is_approved,
-            failed_login_attempts, invited_date, create_date, update_date)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          normaliseUuid(input.key),
-          input.name,
-          input.userName,
-          input.email,
-          crypto.randomUUID(),
-          input.languageIsoCode,
-          input.kind === 'Api' ? 1 : 0,
-          bool(false),
-          bool(!input.invited),
-          0,
-          input.invited ? now : null,
-          now,
-          now,
-        ],
-      )
+      const bool = (v: boolean) => tx.dialect.boolValue(v) as boolean | number
+      await tx.q
+        .insertInto('user_account')
+        .values({
+          key: normaliseUuid(input.key),
+          user_name: input.name,
+          login: input.userName,
+          email: input.email,
+          security_stamp: crypto.randomUUID(),
+          language: input.languageIsoCode,
+          kind: input.kind === 'Api' ? 1 : 0,
+          is_locked_out: bool(false),
+          is_approved: bool(!input.invited),
+          failed_login_attempts: 0,
+          invited_date: input.invited ? now : null,
+          create_date: now,
+          update_date: now,
+        })
+        .execute()
       const created = await repo.byKey(input.key)
       if (!created) return undefined
       await repo.#setGroups(created.id, groupIds)
@@ -348,24 +354,24 @@ export class UserRepository {
         if (!ids) return tree
         for (const id of ids.values()) nodeIds.push({ tree, id })
       }
-      await tx.exec(
-        'UPDATE user_account SET user_name = ?, login = ?, email = ?, language = ?, update_date = ? WHERE id = ?',
-        [
-          change.name,
-          change.userName,
-          change.email,
-          change.languageIsoCode,
-          DbDate.toDb(new Date()),
-          user.id,
-        ],
-      )
+      await tx.q
+        .updateTable('user_account')
+        .set({
+          user_name: change.name,
+          login: change.userName,
+          email: change.email,
+          language: change.languageIsoCode,
+          update_date: DbDate.toDb(new Date()),
+        })
+        .where('id', '=', user.id)
+        .execute()
       await repo.#setGroups(user.id, groupIds)
-      await tx.exec('DELETE FROM user_start_node WHERE user_id = ?', [user.id])
+      await tx.q.deleteFrom('user_start_node').where('user_id', '=', user.id).execute()
       for (const { tree, id } of nodeIds)
-        await tx.exec(
-          'INSERT INTO user_start_node (user_id, start_node, start_node_type) VALUES (?, ?, ?)',
-          [user.id, id, START_NODE_TYPE[tree]],
-        )
+        await tx.q
+          .insertInto('user_start_node')
+          .values({ user_id: user.id, start_node: id, start_node_type: START_NODE_TYPE[tree] })
+          .execute()
       return 'updated'
     })
   }
@@ -385,61 +391,71 @@ export class UserRepository {
     if (groupId === undefined) return
     for (const user of await this.byKeys(userKeys))
       if (!(await this.#groupIds(user.groupKeys))?.includes(groupId))
-        await this.#db.exec(
-          'INSERT INTO user_group_member (user_id, user_group_id) VALUES (?, ?)',
-          [user.id, groupId],
-        )
+        await this.#db.q
+          .insertInto('user_group_member')
+          .values({ user_id: user.id, user_group_id: groupId })
+          .execute()
   }
 
   async removeFromGroup(groupKey: string, userKeys: readonly string[]): Promise<void> {
     const [groupId] = (await this.#groupIds([groupKey])) ?? []
     if (groupId === undefined) return
     for (const user of await this.byKeys(userKeys))
-      await this.#db.exec('DELETE FROM user_group_member WHERE user_id = ? AND user_group_id = ?', [
-        user.id,
-        groupId,
-      ])
+      await this.#db.q
+        .deleteFrom('user_group_member')
+        .where('user_id', '=', user.id)
+        .where('user_group_id', '=', groupId)
+        .execute()
   }
 
   async setApproved(keys: readonly string[], approved: boolean): Promise<void> {
     for (const user of await this.byKeys(keys))
-      await this.#db.exec('UPDATE user_account SET is_approved = ?, update_date = ? WHERE id = ?', [
-        this.#db.dialect.boolValue(approved),
-        DbDate.toDb(new Date()),
-        user.id,
-      ])
+      await this.#db.q
+        .updateTable('user_account')
+        .set({
+          is_approved: this.#db.dialect.boolValue(approved) as boolean | number,
+          update_date: DbDate.toDb(new Date()),
+        })
+        .where('id', '=', user.id)
+        .execute()
   }
 
   async unlock(keys: readonly string[]): Promise<void> {
     for (const user of await this.byKeys(keys))
-      await this.#db.exec(
-        'UPDATE user_account SET is_locked_out = ?, failed_login_attempts = 0, update_date = ? WHERE id = ?',
-        [this.#db.dialect.boolValue(false), DbDate.toDb(new Date()), user.id],
-      )
+      await this.#db.q
+        .updateTable('user_account')
+        .set({
+          is_locked_out: this.#db.dialect.boolValue(false) as boolean | number,
+          failed_login_attempts: 0,
+          update_date: DbDate.toDb(new Date()),
+        })
+        .where('id', '=', user.id)
+        .execute()
   }
 
   async setLanguage(key: string, isoCode: string): Promise<void> {
-    await this.#db.exec('UPDATE user_account SET language = ?, update_date = ? WHERE key = ?', [
-      isoCode,
-      DbDate.toDb(new Date()),
-      normaliseUuid(key),
-    ])
+    await this.#db.q
+      .updateTable('user_account')
+      .set({ language: isoCode, update_date: DbDate.toDb(new Date()) })
+      .where('key', '=', normaliseUuid(key))
+      .execute()
   }
 
   async setAvatar(key: string, avatar: string | null): Promise<void> {
-    await this.#db.exec('UPDATE user_account SET avatar = ?, update_date = ? WHERE key = ?', [
-      avatar,
-      DbDate.toDb(new Date()),
-      normaliseUuid(key),
-    ])
+    await this.#db.q
+      .updateTable('user_account')
+      .set({ avatar, update_date: DbDate.toDb(new Date()) })
+      .where('key', '=', normaliseUuid(key))
+      .execute()
   }
 
   async passwordHash(key: string): Promise<string | null> {
-    const rows = await this.#db.query<{ password_hash: string | null }>(
-      'SELECT password_hash FROM user_account WHERE key = ?',
-      [normaliseUuid(key)],
-    )
-    return rows[0]?.password_hash ?? null
+    const row = await this.#db.q
+      .selectFrom('user_account')
+      .select('password_hash')
+      .where('key', '=', normaliseUuid(key))
+      .executeTakeFirst()
+    return row?.password_hash ?? null
   }
 
   /** An accepted invitation: the user becomes approved and gets their password. */
@@ -462,17 +478,19 @@ export class UserRepository {
         'auth_code',
         'auth_token',
         'user_login_session',
-      ])
-        await tx.exec(`DELETE FROM ${table} WHERE user_id = ?`, [user.id])
+      ] as const)
+        await tx.q.deleteFrom(table).where('user_id', '=', user.id).execute()
       // Their provider accounts too, which are keyed by the user rather than the row.
-      await tx.exec(
-        'DELETE FROM external_login_token WHERE external_login_id IN (SELECT id FROM external_login WHERE user_or_member_key = ?)',
-        [user.key],
-      )
-      await tx.exec('DELETE FROM external_login WHERE user_or_member_key = ?', [user.key])
-      await tx.exec('DELETE FROM two_factor_login WHERE owner_key = ?', [user.key])
-      await tx.exec('DELETE FROM two_factor_recovery_code WHERE owner_key = ?', [user.key])
-      await tx.exec('DELETE FROM user_account WHERE id = ?', [user.id])
+      await tx.q
+        .deleteFrom('external_login_token')
+        .where('external_login_id', 'in', (eb) =>
+          eb.selectFrom('external_login').select('id').where('user_or_member_key', '=', user.key),
+        )
+        .execute()
+      await tx.q.deleteFrom('external_login').where('user_or_member_key', '=', user.key).execute()
+      await tx.q.deleteFrom('two_factor_login').where('owner_key', '=', user.key).execute()
+      await tx.q.deleteFrom('two_factor_recovery_code').where('owner_key', '=', user.key).execute()
+      await tx.q.deleteFrom('user_account').where('id', '=', user.id).execute()
     })
   }
 
@@ -483,14 +501,20 @@ export class UserRepository {
     tokenHash: string,
     expiresAt: Date,
   ): Promise<void> {
-    await this.#db.exec('DELETE FROM user_token WHERE user_id = ? AND purpose = ?', [
-      userId,
-      purpose,
-    ])
-    await this.#db.exec(
-      'INSERT INTO user_token (token_hash, user_id, purpose, expires_at) VALUES (?, ?, ?, ?)',
-      [tokenHash, userId, purpose, DbDate.toDb(expiresAt)],
-    )
+    await this.#db.q
+      .deleteFrom('user_token')
+      .where('user_id', '=', userId)
+      .where('purpose', '=', purpose)
+      .execute()
+    await this.#db.q
+      .insertInto('user_token')
+      .values({
+        token_hash: tokenHash,
+        user_id: userId,
+        purpose,
+        expires_at: DbDate.toDb(expiresAt),
+      })
+      .execute()
   }
 
   /** Whether the token is the user's live one for `purpose`; consuming removes it. */
@@ -501,34 +525,39 @@ export class UserRepository {
     consume: boolean,
     now = new Date(),
   ): Promise<boolean> {
-    const rows = await this.#db.query<{ expires_at: unknown }>(
-      'SELECT expires_at FROM user_token WHERE token_hash = ? AND user_id = ? AND purpose = ?',
-      [tokenHash, userId, purpose],
-    )
-    const expires = DbDate.fromDb(rows[0]?.expires_at)
+    const row = await this.#db.q
+      .selectFrom('user_token')
+      .select('expires_at')
+      .where('token_hash', '=', tokenHash)
+      .where('user_id', '=', userId)
+      .where('purpose', '=', purpose)
+      .executeTakeFirst()
+    const expires = DbDate.fromDb(row?.expires_at)
     if (!expires || expires.getTime() < now.getTime()) return false
-    if (consume) await this.#db.exec('DELETE FROM user_token WHERE token_hash = ?', [tokenHash])
+    if (consume)
+      await this.#db.q.deleteFrom('user_token').where('token_hash', '=', tokenHash).execute()
     return true
   }
 
   async clientCredentials(userId: number): Promise<string[]> {
-    const rows = await this.#db.query<{ client_id: string }>(
-      'SELECT client_id FROM user_client_credential WHERE user_id = ? ORDER BY client_id',
-      [userId],
-    )
+    const rows = await this.#db.q
+      .selectFrom('user_client_credential')
+      .select('client_id')
+      .where('user_id', '=', userId)
+      .orderBy('client_id')
+      .execute()
     return rows.map((r) => String(r.client_id))
   }
 
   async clientCredentialOwner(
     clientId: string,
   ): Promise<{ userId: number; secretHash: string } | undefined> {
-    const rows = await this.#db.query<{ user_id: number; secret_hash: string }>(
-      'SELECT user_id, secret_hash FROM user_client_credential WHERE client_id = ?',
-      [clientId],
-    )
-    return rows[0]
-      ? { userId: Number(rows[0].user_id), secretHash: String(rows[0].secret_hash) }
-      : undefined
+    const row = await this.#db.q
+      .selectFrom('user_client_credential')
+      .select(['user_id', 'secret_hash'])
+      .where('client_id', '=', clientId)
+      .executeTakeFirst()
+    return row ? { userId: Number(row.user_id), secretHash: String(row.secret_hash) } : undefined
   }
 
   async addClientCredential(
@@ -537,18 +566,24 @@ export class UserRepository {
     secretHash: string,
   ): Promise<boolean> {
     if (await this.clientCredentialOwner(clientId)) return false
-    await this.#db.exec(
-      'INSERT INTO user_client_credential (client_id, user_id, secret_hash, create_date) VALUES (?, ?, ?, ?)',
-      [clientId, userId, secretHash, DbDate.toDb(new Date())],
-    )
+    await this.#db.q
+      .insertInto('user_client_credential')
+      .values({
+        client_id: clientId,
+        user_id: userId,
+        secret_hash: secretHash,
+        create_date: DbDate.toDb(new Date()),
+      })
+      .execute()
     return true
   }
 
   async removeClientCredential(userId: number, clientId: string): Promise<void> {
-    await this.#db.exec('DELETE FROM user_client_credential WHERE user_id = ? AND client_id = ?', [
-      userId,
-      clientId,
-    ])
+    await this.#db.q
+      .deleteFrom('user_client_credential')
+      .where('user_id', '=', userId)
+      .where('client_id', '=', clientId)
+      .execute()
   }
 
   /** The user's groups' grants, languages and start node positions, for access checks. */
@@ -565,11 +600,11 @@ export class UserRepository {
     const keys = Object.keys(nodeIds)
     const rows =
       keys.length > 0
-        ? await this.#db.query(
-            `SELECT id, unique_id, parent_id, level, path, sort_order, trashed, text, node_object_type, create_date
-             FROM node WHERE unique_id IN (${inList(keys)})`,
-            keys,
-          )
+        ? await this.#db.q
+            .selectFrom('node')
+            .select(NODE_COLUMNS)
+            .where('unique_id', 'in', keys)
+            .execute()
         : []
     const byKey = new Map(rows.map((r) => [normaliseUuid(String(r.unique_id)), mapNode(r)]))
     const chains = await this.#chains([...byKey.values()])
@@ -586,12 +621,17 @@ export class UserRepository {
     ]
     const languageRows =
       groups.length > 0
-        ? await this.#db.query<{ iso_code: string }>(
-            `SELECT DISTINCT l.iso_code FROM user_group_language gl
-             JOIN language l ON l.id = gl.language_id
-             WHERE gl.user_group_id IN (${inList(groups.map((g) => g.id))})`,
-            groups.map((g) => g.id),
-          )
+        ? await this.#db.q
+            .selectFrom('user_group_language as gl')
+            .innerJoin('language as l', 'l.id', 'gl.language_id')
+            .select('l.iso_code')
+            .distinct()
+            .where(
+              'gl.user_group_id',
+              'in',
+              groups.map((g) => g.id),
+            )
+            .execute()
         : []
     return {
       groups: groups.map((group) => {
@@ -663,14 +703,26 @@ export class UserRepository {
   }
 }
 
-const GROUP_COLUMNS = `id, key, alias, name, description, icon, has_access_to_all_languages,
-  start_content_id, start_media_id, start_element_id`
+const GROUP_COLUMNS = [
+  'id',
+  'key',
+  'alias',
+  'name',
+  'description',
+  'icon',
+  'has_access_to_all_languages',
+  'start_content_id',
+  'start_media_id',
+  'start_element_id',
+] as const
 
 const GROUP_START_COLUMN: Record<StartNodeTree, string> = {
   document: 'start_content_id',
   media: 'start_media_id',
   element: 'start_element_id',
 }
+
+const groups = (db: Db) => db.q.selectFrom('user_group').select(GROUP_COLUMNS)
 
 export class UserGroupRepository {
   #db: Db
@@ -683,41 +735,41 @@ export class UserGroupRepository {
     if (rows.length === 0) return []
     const ids = rows.map((r) => Number(r.id))
     const keys = rows.map((r) => normaliseUuid(String(r.key)))
-    const sections = await this.#db.query<{ user_group_id: number; app_alias: string }>(
-      `SELECT user_group_id, app_alias FROM user_group_section WHERE user_group_id IN (${inList(ids)})`,
-      ids,
-    )
-    const languages = await this.#db.query<{ user_group_id: number; iso_code: string }>(
-      `SELECT gl.user_group_id, l.iso_code FROM user_group_language gl
-       JOIN language l ON l.id = gl.language_id WHERE gl.user_group_id IN (${inList(ids)})
-       ORDER BY l.iso_code`,
-      ids,
-    )
-    const permissions = await this.#db.query<{ user_group_key: string; permission: string }>(
-      `SELECT user_group_key, permission FROM user_group_permission
-       WHERE user_group_key IN (${inList(keys)}) ORDER BY id`,
-      keys,
-    )
-    const granular = await this.#db.query<{
-      user_group_key: string
-      unique_id: string | null
-      permission: string
-      context: string
-    }>(
-      `SELECT user_group_key, unique_id, permission, context FROM user_group_granular_permission
-       WHERE user_group_key IN (${inList(keys)}) ORDER BY id`,
-      keys,
-    )
+    const sections = await this.#db.q
+      .selectFrom('user_group_section')
+      .select(['user_group_id', 'app_alias'])
+      .where('user_group_id', 'in', ids)
+      .execute()
+    const languages = await this.#db.q
+      .selectFrom('user_group_language as gl')
+      .innerJoin('language as l', 'l.id', 'gl.language_id')
+      .select(['gl.user_group_id', 'l.iso_code'])
+      .where('gl.user_group_id', 'in', ids)
+      .orderBy('l.iso_code')
+      .execute()
+    const permissions = await this.#db.q
+      .selectFrom('user_group_permission')
+      .select(['user_group_key', 'permission'])
+      .where('user_group_key', 'in', keys)
+      .orderBy('id')
+      .execute()
+    const granular = await this.#db.q
+      .selectFrom('user_group_granular_permission')
+      .select(['user_group_key', 'unique_id', 'permission', 'context'])
+      .where('user_group_key', 'in', keys)
+      .orderBy('id')
+      .execute()
     const startIds = rows.flatMap((r) =>
       TREES.map((tree) => Number(r[GROUP_START_COLUMN[tree]] ?? 0)),
     )
     const nodes = new Map<number, string>()
     const positive = [...new Set(startIds.filter((id) => id > 0))]
     if (positive.length > 0)
-      for (const row of await this.#db.query<{ id: number; unique_id: string }>(
-        `SELECT id, unique_id FROM node WHERE id IN (${inList(positive)})`,
-        positive,
-      ))
+      for (const row of await this.#db.q
+        .selectFrom('node')
+        .select(['id', 'unique_id'])
+        .where('id', 'in', positive)
+        .execute())
         nodes.set(Number(row.id), normaliseUuid(String(row.unique_id)))
 
     return rows.map((row) => {
@@ -764,19 +816,14 @@ export class UserGroupRepository {
   }
 
   async all(): Promise<UserGroupRecord[]> {
-    return this.#hydrate(
-      await this.#db.query(`SELECT ${GROUP_COLUMNS} FROM user_group ORDER BY name`),
-    )
+    return this.#hydrate(await groups(this.#db).orderBy('name').execute())
   }
 
   async byKeys(keys: readonly string[]): Promise<UserGroupRecord[]> {
     const wanted = keys.filter((k) => /^[0-9a-f-]{32,36}$/i.test(k)).map(normaliseUuid)
     if (wanted.length === 0) return []
     return this.#hydrate(
-      await this.#db.query(
-        `SELECT ${GROUP_COLUMNS} FROM user_group WHERE key IN (${inList(wanted)}) ORDER BY name`,
-        wanted,
-      ),
+      await groups(this.#db).where('key', 'in', wanted).orderBy('name').execute(),
     )
   }
 
@@ -785,19 +832,17 @@ export class UserGroupRepository {
   }
 
   async byAlias(alias: string): Promise<UserGroupRecord | undefined> {
-    return (
-      await this.#hydrate(
-        await this.#db.query(`SELECT ${GROUP_COLUMNS} FROM user_group WHERE alias = ?`, [alias]),
-      )
-    )[0]
+    return (await this.#hydrate(await groups(this.#db).where('alias', '=', alias).execute()))[0]
   }
 
   /** How many users each group has, by group key. */
   async memberCounts(): Promise<Map<string, number>> {
-    const rows = await this.#db.query<{ key: string; n: number }>(
-      `SELECT g.key, COUNT(m.user_id) AS n FROM user_group g
-       LEFT JOIN user_group_member m ON m.user_group_id = g.id GROUP BY g.key`,
-    )
+    const rows = await this.#db.q
+      .selectFrom('user_group as g')
+      .leftJoin('user_group_member as m', 'm.user_group_id', 'g.id')
+      .select((eb) => ['g.key', eb.fn.count<number>('m.user_id').as('n')])
+      .groupBy('g.key')
+      .execute()
     return new Map(rows.map((r) => [normaliseUuid(String(r.key)), Number(r.n)]))
   }
 
@@ -826,80 +871,76 @@ export class UserGroupRepository {
       }
       const languageIds: number[] = []
       if (input.languages.length > 0) {
-        const rows = await tx.query<{ id: number; iso_code: string }>(
-          `SELECT id, iso_code FROM language WHERE iso_code IN (${inList(input.languages)})`,
-          input.languages,
-        )
+        const rows = await tx.q
+          .selectFrom('language')
+          .select(['id', 'iso_code'])
+          .where('iso_code', 'in', input.languages)
+          .execute()
         if (rows.length !== new Set(input.languages).size) return 'missing-language'
         languageIds.push(...rows.map((r) => Number(r.id)))
       }
       const key = normaliseUuid(input.key)
       const now = DbDate.toDb(new Date())
-      const bool = (v: boolean) => tx.dialect.boolValue(v)
+      const values = {
+        alias: input.alias,
+        name: input.name,
+        description: input.description,
+        icon: input.icon,
+        has_access_to_all_languages: tx.dialect.boolValue(input.hasAccessToAllLanguages) as
+          | boolean
+          | number,
+        start_content_id: starts.document,
+        start_media_id: starts.media,
+        start_element_id: starts.element,
+      }
       const existing = await new UserGroupRepository(tx).byKey(key)
       if (existing)
-        await tx.exec(
-          `UPDATE user_group SET alias = ?, name = ?, description = ?, icon = ?, has_access_to_all_languages = ?,
-             start_content_id = ?, start_media_id = ?, start_element_id = ?, update_date = ? WHERE id = ?`,
-          [
-            input.alias,
-            input.name,
-            input.description,
-            input.icon,
-            bool(input.hasAccessToAllLanguages),
-            starts.document,
-            starts.media,
-            starts.element,
-            now,
-            existing.id,
-          ],
-        )
+        await tx.q
+          .updateTable('user_group')
+          .set({ ...values, update_date: now })
+          .where('id', '=', existing.id)
+          .execute()
       else
-        await tx.exec(
-          `INSERT INTO user_group (key, alias, name, description, icon, has_access_to_all_languages,
-             start_content_id, start_media_id, start_element_id, create_date, update_date)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            key,
-            input.alias,
-            input.name,
-            input.description,
-            input.icon,
-            bool(input.hasAccessToAllLanguages),
-            starts.document,
-            starts.media,
-            starts.element,
-            now,
-            now,
-          ],
-        )
+        await tx.q
+          .insertInto('user_group')
+          .values({ key, ...values, create_date: now, update_date: now })
+          .execute()
       const id = Number(
-        (await tx.query<{ id: number }>('SELECT id FROM user_group WHERE key = ?', [key]))[0]?.id,
+        (await tx.q.selectFrom('user_group').select('id').where('key', '=', key).executeTakeFirst())
+          ?.id,
       )
-      await tx.exec('DELETE FROM user_group_section WHERE user_group_id = ?', [id])
+      await tx.q.deleteFrom('user_group_section').where('user_group_id', '=', id).execute()
       for (const section of new Set(input.sections))
-        await tx.exec('INSERT INTO user_group_section (user_group_id, app_alias) VALUES (?, ?)', [
-          id,
-          section,
-        ])
-      await tx.exec('DELETE FROM user_group_language WHERE user_group_id = ?', [id])
+        await tx.q
+          .insertInto('user_group_section')
+          .values({ user_group_id: id, app_alias: section })
+          .execute()
+      await tx.q.deleteFrom('user_group_language').where('user_group_id', '=', id).execute()
       for (const languageId of languageIds)
-        await tx.exec(
-          'INSERT INTO user_group_language (user_group_id, language_id) VALUES (?, ?)',
-          [id, languageId],
-        )
-      await tx.exec('DELETE FROM user_group_permission WHERE user_group_key = ?', [key])
+        await tx.q
+          .insertInto('user_group_language')
+          .values({ user_group_id: id, language_id: languageId })
+          .execute()
+      await tx.q.deleteFrom('user_group_permission').where('user_group_key', '=', key).execute()
       for (const permission of new Set(input.permissions))
-        await tx.exec(
-          'INSERT INTO user_group_permission (user_group_key, permission) VALUES (?, ?)',
-          [key, permission],
-        )
-      await tx.exec('DELETE FROM user_group_granular_permission WHERE user_group_key = ?', [key])
+        await tx.q
+          .insertInto('user_group_permission')
+          .values({ user_group_key: key, permission })
+          .execute()
+      await tx.q
+        .deleteFrom('user_group_granular_permission')
+        .where('user_group_key', '=', key)
+        .execute()
       for (const row of input.granular)
-        await tx.exec(
-          'INSERT INTO user_group_granular_permission (user_group_key, unique_id, permission, context) VALUES (?, ?, ?, ?)',
-          [key, row.key ? normaliseUuid(row.key) : null, row.permission, row.context],
-        )
+        await tx.q
+          .insertInto('user_group_granular_permission')
+          .values({
+            user_group_key: key,
+            unique_id: row.key ? normaliseUuid(row.key) : null,
+            permission: row.permission,
+            context: row.context,
+          })
+          .execute()
       return 'saved'
     })
   }
@@ -908,14 +949,18 @@ export class UserGroupRepository {
     const group = await this.byKey(key)
     if (!group) return
     await this.#db.transaction(async (tx) => {
-      await tx.exec('DELETE FROM user_group_member WHERE user_group_id = ?', [group.id])
-      await tx.exec('DELETE FROM user_group_section WHERE user_group_id = ?', [group.id])
-      await tx.exec('DELETE FROM user_group_language WHERE user_group_id = ?', [group.id])
-      await tx.exec('DELETE FROM user_group_permission WHERE user_group_key = ?', [group.key])
-      await tx.exec('DELETE FROM user_group_granular_permission WHERE user_group_key = ?', [
-        group.key,
-      ])
-      await tx.exec('DELETE FROM user_group WHERE id = ?', [group.id])
+      await tx.q.deleteFrom('user_group_member').where('user_group_id', '=', group.id).execute()
+      await tx.q.deleteFrom('user_group_section').where('user_group_id', '=', group.id).execute()
+      await tx.q.deleteFrom('user_group_language').where('user_group_id', '=', group.id).execute()
+      await tx.q
+        .deleteFrom('user_group_permission')
+        .where('user_group_key', '=', group.key)
+        .execute()
+      await tx.q
+        .deleteFrom('user_group_granular_permission')
+        .where('user_group_key', '=', group.key)
+        .execute()
+      await tx.q.deleteFrom('user_group').where('id', '=', group.id).execute()
     })
   }
 }

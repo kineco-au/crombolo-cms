@@ -95,21 +95,20 @@ export class DeviceStore {
     for (let attempt = 0; ; attempt++) {
       const code = userCode()
       try {
-        await this.#db.exec(
-          `INSERT INTO device_authorization
-             (device_code_hash, user_code, client_id, client_name, scope, status, interval_seconds, expires_at, create_date)
-           VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
-          [
-            hashToken(deviceCode),
-            code,
-            init.clientId,
-            init.clientName,
-            init.scope,
-            DEVICE_POLL_SECONDS,
-            DbDate.toDb(expiresAt),
-            DbDate.toDb(new Date()),
-          ],
-        )
+        await this.#db.q
+          .insertInto('device_authorization')
+          .values({
+            device_code_hash: hashToken(deviceCode),
+            user_code: code,
+            client_id: init.clientId,
+            client_name: init.clientName,
+            scope: init.scope,
+            status: 'pending',
+            interval_seconds: DEVICE_POLL_SECONDS,
+            expires_at: DbDate.toDb(expiresAt),
+            create_date: DbDate.toDb(new Date()),
+          })
+          .execute()
         return { deviceCode, userCode: code, expiresAt }
       } catch (error) {
         if (attempt >= 4) throw error
@@ -118,56 +117,70 @@ export class DeviceStore {
   }
 
   async byDeviceCode(deviceCode: string): Promise<DeviceAuthorizationRow | undefined> {
-    const rows = await this.#db.query(
-      'SELECT * FROM device_authorization WHERE device_code_hash = ?',
-      [hashToken(deviceCode)],
-    )
-    return rows[0] ? mapRow(rows[0]) : undefined
+    const row = await this.#db.q
+      .selectFrom('device_authorization')
+      .selectAll()
+      .where('device_code_hash', '=', hashToken(deviceCode))
+      .executeTakeFirst()
+    return row ? mapRow(row) : undefined
   }
 
   async byUserCode(code: string): Promise<DeviceAuthorizationRow | undefined> {
-    const rows = await this.#db.query('SELECT * FROM device_authorization WHERE user_code = ?', [
-      normaliseUserCode(code),
-    ])
-    return rows[0] ? mapRow(rows[0]) : undefined
+    const row = await this.#db.q
+      .selectFrom('device_authorization')
+      .selectAll()
+      .where('user_code', '=', normaliseUserCode(code))
+      .executeTakeFirst()
+    return row ? mapRow(row) : undefined
   }
 
   async polled(id: number, intervalSeconds: number): Promise<void> {
-    await this.#db.exec(
-      'UPDATE device_authorization SET last_polled_at = ?, interval_seconds = ? WHERE id = ?',
-      [DbDate.toDb(new Date()), intervalSeconds, id],
-    )
+    await this.#db.q
+      .updateTable('device_authorization')
+      .set({ last_polled_at: DbDate.toDb(new Date()), interval_seconds: intervalSeconds })
+      .where('id', '=', id)
+      .execute()
   }
 
   /** Approves or denies a pending one; false when it was no longer pending. */
   async decide(id: number, userId: number, approve: boolean): Promise<boolean> {
-    const rows = await this.#db.query<{ id: number }>(
-      `UPDATE device_authorization SET status = ?, user_id = ?, decided_at = ?
-       WHERE id = ? AND status = 'pending' RETURNING id`,
-      [approve ? 'approved' : 'denied', userId, DbDate.toDb(new Date()), id],
-    )
+    const rows = await this.#db.q
+      .updateTable('device_authorization')
+      .set({
+        status: approve ? 'approved' : 'denied',
+        user_id: userId,
+        decided_at: DbDate.toDb(new Date()),
+      })
+      .where('id', '=', id)
+      .where('status', '=', 'pending')
+      .returning('id')
+      .execute()
     return rows.length > 0
   }
 
   /** Marks an approved one as having had its tokens issued, once; false if it already had. */
   async issued(id: number, sessionId: string): Promise<boolean> {
-    const rows = await this.#db.query<{ id: number }>(
-      `UPDATE device_authorization SET status = 'issued', session_id = ?
-       WHERE id = ? AND status = 'approved' RETURNING id`,
-      [sessionId, id],
-    )
+    const rows = await this.#db.q
+      .updateTable('device_authorization')
+      .set({ status: 'issued', session_id: sessionId })
+      .where('id', '=', id)
+      .where('status', '=', 'approved')
+      .returning('id')
+      .execute()
     return rows.length > 0
   }
 
   /** The devices signed in as this user, whose sessions are still open. */
   async signedIn(userId: number): Promise<SignedInDevice[]> {
-    const rows = await this.#db.query<Record<string, unknown>>(
-      `SELECT d.id, d.client_name, s.logged_in_utc, s.last_validated_utc
-       FROM device_authorization d JOIN user_login_session s ON s.session_id = d.session_id
-       WHERE d.user_id = ? AND d.status = 'issued' AND s.logged_out_utc IS NULL
-       ORDER BY s.logged_in_utc DESC`,
-      [userId],
-    )
+    const rows = await this.#db.q
+      .selectFrom('device_authorization as d')
+      .innerJoin('user_login_session as s', 's.session_id', 'd.session_id')
+      .select(['d.id', 'd.client_name', 's.logged_in_utc', 's.last_validated_utc'])
+      .where('d.user_id', '=', userId)
+      .where('d.status', '=', 'issued')
+      .where('s.logged_out_utc', 'is', null)
+      .orderBy('s.logged_in_utc', 'desc')
+      .execute()
     return rows.map((row) => ({
       id: Number(row.id),
       clientName: row.client_name === null ? null : String(row.client_name),
@@ -177,7 +190,11 @@ export class DeviceStore {
   }
 
   async byId(id: number): Promise<DeviceAuthorizationRow | undefined> {
-    const rows = await this.#db.query('SELECT * FROM device_authorization WHERE id = ?', [id])
-    return rows[0] ? mapRow(rows[0]) : undefined
+    const row = await this.#db.q
+      .selectFrom('device_authorization')
+      .selectAll()
+      .where('id', '=', id)
+      .executeTakeFirst()
+    return row ? mapRow(row) : undefined
   }
 }

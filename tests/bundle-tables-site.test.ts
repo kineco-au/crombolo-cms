@@ -109,8 +109,8 @@ describe(`the upgrade commands (${dialectUnderTest})`, () => {
     expect(
       plan.bundles.map((bundle) => [bundle.id, bundle.steps.map((step) => step.name)]),
     ).toEqual([[TASKS_ID, ['tasks', 'task-priority']]])
-    expect(plan.bundles[0]?.steps[0]?.statements[0]).toContain(
-      'CREATE TABLE "bundle_acme_tasks__task"',
+    expect(plan.bundles[0]?.steps[0]?.statements[0]).toMatch(
+      /^create table "bundle_acme_tasks__task"/i,
     )
     expect(plan.bundles[0]?.steps[1]?.unplannable).toContain('backfills data')
 

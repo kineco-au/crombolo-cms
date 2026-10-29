@@ -245,7 +245,10 @@ export function withAwaitHint(line: string): string {
  * `typescript` is not a dependency of crombolo — a site that has not installed
  * it is told so rather than being made to carry one.
  */
-async function checkTypes(siteDir: string): Promise<ComponentCheckReport['types']> {
+export async function checkTypes(
+  siteDir: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<ComponentCheckReport['types']> {
   const tsc = join(siteDir, 'node_modules', 'typescript', 'bin', 'tsc')
   if (!existsSync(tsc))
     return {
@@ -261,6 +264,8 @@ async function checkTypes(siteDir: string): Promise<ComponentCheckReport['types'
     stdout: 'pipe',
     stderr: 'pipe',
   })
+  // A newer change has made this check's answer stale (story 214).
+  options.signal?.addEventListener('abort', () => proc.kill(), { once: true })
   const [out, err] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),

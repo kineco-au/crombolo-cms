@@ -13,6 +13,14 @@
  * - **Every statement passes the guard**, which refuses one naming any table
  *   that is not this bundle's.
  */
+import type {
+  ComparisonOperator,
+  Compilable,
+  Expression,
+  ExpressionBuilder,
+  Kysely,
+  SqlBool,
+} from 'kysely'
 import type { Db } from '../database.ts'
 import { DbDate, fromDbBool } from '../dialect.ts'
 import type { ColumnSpec, Columns, InsertOf, JsonValue, RowOf, TablesShape } from './builder.ts'
@@ -184,29 +192,34 @@ function columnOf(c: Compiler, table: ResolvedTable, name: string): ColumnSpec {
   return column.spec
 }
 
+// biome-ignore lint/suspicious/noExplicitAny: a bundle's tables are not crombolo's, and are typed by its declaration
+type Untyped = Kysely<any>
+// biome-ignore lint/suspicious/noExplicitAny: as above
+type Builder = ExpressionBuilder<any, any>
+
 function compileWhere(
   c: Compiler,
   table: ResolvedTable,
   where: unknown,
-  params: unknown[],
+  eb: Builder,
   depth: number,
-): string {
+): Expression<SqlBool> {
   if (depth > MAX_DEPTH) refuse(c.bundle, `a filter is nested more than ${MAX_DEPTH} deep`)
   if (!isPlain(where)) refuse(c.bundle, 'a filter must be a plain object')
-  const parts: string[] = []
+  const parts: Expression<SqlBool>[] = []
   for (const key of Object.keys(where)) {
     const value = where[key]
     if (key === 'and' || key === 'or') {
       if (!Array.isArray(value) || value.length === 0)
         refuse(c.bundle, `"${key}" takes a non-empty list of filters`)
-      const inner = value.map((item) => compileWhere(c, table, item, params, depth + 1))
-      parts.push(`(${inner.join(key === 'and' ? ' AND ' : ' OR ')})`)
+      const inner = value.map((item) => compileWhere(c, table, item, eb, depth + 1))
+      parts.push(key === 'and' ? eb.and(inner) : eb.or(inner))
       continue
     }
     const spec = columnOf(c, table, key)
-    const col = c.quote(key)
+    const col = eb.ref(key)
     if (value === null) {
-      parts.push(`${col} IS NULL`)
+      parts.push(eb(col, 'is', null))
       continue
     }
     if (isPlain(value)) {
@@ -217,7 +230,7 @@ function compileWhere(
         const operand = value[op]
         if (op === 'isNull' || op === 'notNull') {
           if (operand !== true) refuse(c.bundle, `"${op}" takes true`)
-          parts.push(`${col} ${op === 'isNull' ? 'IS NULL' : 'IS NOT NULL'}`)
+          parts.push(eb(col, op === 'isNull' ? 'is' : 'is not', null))
           continue
         }
         if (spec.type === 'json')
@@ -225,23 +238,23 @@ function compileWhere(
         if (op === 'in') {
           if (!Array.isArray(operand) || operand.length === 0 || operand.length > MAX_IN)
             refuse(c.bundle, `"in" takes a list of 1 to ${MAX_IN} values`)
-          for (const item of operand)
-            params.push(toDb(c, table, key, { ...spec, nullable: false }, item))
-          parts.push(`${col} IN (${operand.map(() => '?').join(', ')})`)
+          const values = operand.map((item) =>
+            toDb(c, table, key, { ...spec, nullable: false }, item),
+          )
+          parts.push(eb(col, 'in', values))
           continue
         }
-        params.push(toDb(c, table, key, { ...spec, nullable: false }, operand))
-        parts.push(`${col} ${COMPARISONS[op]} ?`)
+        const bound = toDb(c, table, key, { ...spec, nullable: false }, operand)
+        parts.push(eb(col, COMPARISONS[op] as ComparisonOperator, bound))
       }
       continue
     }
     if (spec.type === 'json')
       refuse(c.bundle, `"${key}" is json, which can only be tested for null`)
-    params.push(toDb(c, table, key, { ...spec, nullable: false }, value))
-    parts.push(`${col} = ?`)
+    parts.push(eb(col, '=', toDb(c, table, key, { ...spec, nullable: false }, value)))
   }
   if (parts.length === 0) refuse(c.bundle, 'a filter names no condition')
-  return parts.join(' AND ')
+  return parts.length === 1 ? (parts[0] as Expression<SqlBool>) : eb.and(parts)
 }
 
 function readRow(table: ResolvedTable, row: Record<string, unknown>): Record<string, unknown> {
@@ -257,34 +270,41 @@ function tableHandle(db: Db, schema: ResolvedSchema, table: ResolvedTable): Tabl
     boolValue: (value) => db.dialect.boolValue(value),
     quote: (identifier) => db.dialect.quote(identifier),
   }
-  const name = c.quote(table.physical)
-  const guard = (sql: string) => guardStatement(schema.id, schema.prefix, sql)
-  const columnList = [...table.columns.keys()].map(c.quote).join(', ')
+  const k = db.q as unknown as Untyped
+  const name = table.physical
+  const columns = [...table.columns.keys()]
 
-  const whereClause = (where: unknown, params: unknown[], required: boolean): string => {
+  /** Every statement is compiled, then passes the guard, before it runs. */
+  const run = async (query: Compilable): Promise<Record<string, unknown>[]> => {
+    const compiled = query.compile()
+    guardStatement(schema.id, schema.prefix, compiled.sql)
+    return (await k.executeQuery<Record<string, unknown>>(compiled)).rows
+  }
+
+  const filter = (where: unknown, required: boolean) => {
     if (where === undefined) {
       if (required)
         refuse(c.bundle, 'an update or a delete needs a "where"; use truncate to empty a table')
-      return ''
+      return undefined
     }
-    return ` WHERE ${compileWhere(c, table, where, params, 0)}`
+    return (eb: Builder) => compileWhere(c, table, where, eb, 0)
   }
 
   return frozen({
     async select(query: SelectQuery<Record<string, unknown>> = {}) {
       if (!isPlain(query)) refuse(c.bundle, 'a query must be a plain object')
-      const params: unknown[] = []
-      let sql = `SELECT ${columnList} FROM ${name}${whereClause(query.where, params, false)}`
+      const where = filter(query.where, false)
+      let select = k.selectFrom(name).select(columns)
+      if (where) select = select.where(where)
       if (query.orderBy !== undefined) {
         if (!isPlain(query.orderBy)) refuse(c.bundle, '"orderBy" must be a plain object')
-        const order = Object.keys(query.orderBy).map((key) => {
+        for (const key of Object.keys(query.orderBy)) {
           columnOf(c, table, key)
           const direction = (query.orderBy as Record<string, unknown>)[key]
           if (direction !== 'asc' && direction !== 'desc')
             refuse(c.bundle, `the order of "${key}" is "asc" or "desc"`)
-          return `${c.quote(key)} ${direction === 'asc' ? 'ASC' : 'DESC'}`
-        })
-        if (order.length > 0) sql += ` ORDER BY ${order.join(', ')}`
+          select = select.orderBy(key, direction)
+        }
       }
       const limit: unknown = query.limit ?? DEFAULT_LIMIT
       const offset: unknown = query.offset ?? 0
@@ -292,17 +312,16 @@ function tableHandle(db: Db, schema: ResolvedSchema, table: ResolvedTable): Tabl
         refuse(c.bundle, `"limit" is a whole number from 0 to ${MAX_LIMIT}`)
       if (typeof offset !== 'number' || !Number.isInteger(offset) || offset < 0)
         refuse(c.bundle, '"offset" is a whole number from 0')
-      sql += ' LIMIT ? OFFSET ?'
-      params.push(limit, offset)
-      const rows = await db.query<Record<string, unknown>>(guard(sql), params)
+      const rows = await run(select.limit(limit).offset(offset))
       return rows.map((row) => readRow(table, row))
     },
 
     async count(query: { where?: unknown } = {}) {
       if (!isPlain(query)) refuse(c.bundle, 'a query must be a plain object')
-      const params: unknown[] = []
-      const sql = `SELECT COUNT(*) AS ${c.quote('n')} FROM ${name}${whereClause(query.where, params, false)}`
-      const rows = await db.query<{ n: unknown }>(guard(sql), params)
+      const where = filter(query.where, false)
+      let select = k.selectFrom(name).select((eb) => eb.fn.countAll().as('n'))
+      if (where) select = select.where(where)
+      const rows = await run(select)
       return Number(rows[0]?.n ?? 0)
     },
 
@@ -312,23 +331,16 @@ function tableHandle(db: Db, schema: ResolvedSchema, table: ResolvedTable): Tabl
       for (const row of rows) {
         if (!isPlain(row)) refuse(c.bundle, 'a row must be a plain object')
         for (const key of Object.keys(row)) columnOf(c, table, key)
-        const names: string[] = []
-        const params: unknown[] = []
+        const values: Record<string, unknown> = {}
         for (const [column, resolved] of table.columns) {
           const given = Object.hasOwn(row, column)
           if (!given) {
             if (resolved.spec.default !== undefined || resolved.spec.nullable) continue
             refuse(c.bundle, `a row of "${table.name}" needs "${column}"`)
           }
-          names.push(c.quote(column))
-          params.push(toDb(c, table, column, resolved.spec, row[column]))
+          values[column] = toDb(c, table, column, resolved.spec, row[column])
         }
-        await db.exec(
-          guard(
-            `INSERT INTO ${name} (${names.join(', ')}) VALUES (${names.map(() => '?').join(', ')})`,
-          ),
-          params,
-        )
+        await run(k.insertInto(name).values(values))
       }
     },
 
@@ -337,23 +349,21 @@ function tableHandle(db: Db, schema: ResolvedSchema, table: ResolvedTable): Tabl
       if (!isPlain(query.set) || Object.keys(query.set).length === 0)
         refuse(c.bundle, 'an update needs a "set" naming at least one column')
       const set = query.set
-      const params: unknown[] = []
-      const assignments = Object.keys(set).map((column) => {
-        params.push(toDb(c, table, column, columnOf(c, table, column), set[column]))
-        return `${c.quote(column)} = ?`
-      })
-      const where = whereClause(query.where, params, true)
-      await db.exec(guard(`UPDATE ${name} SET ${assignments.join(', ')}${where}`), params)
+      const assignments: Record<string, unknown> = {}
+      for (const column of Object.keys(set))
+        assignments[column] = toDb(c, table, column, columnOf(c, table, column), set[column])
+      const where = filter(query.where, true) as (eb: Builder) => Expression<SqlBool>
+      await run(k.updateTable(name).set(assignments).where(where))
     },
 
     async delete(query: { where?: unknown }) {
       if (!isPlain(query)) refuse(c.bundle, 'a delete must be a plain object')
-      const params: unknown[] = []
-      await db.exec(guard(`DELETE FROM ${name}${whereClause(query.where, params, true)}`), params)
+      const where = filter(query.where, true) as (eb: Builder) => Expression<SqlBool>
+      await run(k.deleteFrom(name).where(where))
     },
 
     async truncate() {
-      await db.exec(guard(`DELETE FROM ${name}`))
+      await run(k.deleteFrom(name))
     },
   }) as TableHandle<Columns>
 }

@@ -25,6 +25,7 @@ import {
   pendingMigrations,
   planUpgrade,
   purgeBundleTables,
+  queryFor,
   readLedger,
   readState,
   UpgradeStateError,
@@ -96,9 +97,9 @@ describe(`the chain (${dialectUnderTest})`, () => {
     const d = await db()
     await migrate(d, cromboloPlan)
     const steps = await planUpgrade(d, planV1())
-    expect(steps[0]?.statements?.[0]).toContain('CREATE TABLE "bundle_acme_tasks__task"')
+    expect(steps[0]?.statements?.[0]).toMatch(/^create table "bundle_acme_tasks__task"/i)
     expect(steps[0]?.unplannable).toBeUndefined()
-    expect(steps[1]?.statements?.some((sql) => sql.includes('ADD COLUMN "priority"'))).toBe(true)
+    expect(steps[1]?.statements?.some((sql) => /add column "priority"/i.test(sql))).toBe(true)
     expect(steps[1]?.unplannable).toContain('backfills data')
     expect(await bundleTablesIn(d, TASKS_ID)).toEqual([])
   })
@@ -278,6 +279,9 @@ describe(`guards (${dialectUnderTest})`, () => {
     const wrap = (inner: Db): Db => ({
       dialect: inner.dialect,
       locks: inner.locks,
+      get q() {
+        return queryFor(this)
+      },
       query: (sql, params) => {
         statements.push(sql)
         return inner.query(sql, params)

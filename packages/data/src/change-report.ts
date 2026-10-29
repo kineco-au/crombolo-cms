@@ -91,39 +91,48 @@ export async function writeReport(
     seen.add(key)
     const existing = openByIdentity.get(key)
     if (existing) {
-      await db.exec(
-        'UPDATE change_report SET run_id = ?, kind = ?, subject_name = ?, message = ?, link = ?, last_seen = ? WHERE id = ?',
-        [runId, finding.kind, finding.subjectName, finding.message, finding.link, now, existing.id],
-      )
+      await db.q
+        .updateTable('change_report')
+        .set({
+          run_id: runId,
+          kind: finding.kind,
+          subject_name: finding.subjectName,
+          message: finding.message,
+          link: finding.link,
+          last_seen: now,
+        })
+        .where('id', '=', existing.id)
+        .execute()
     } else {
-      await db.exec(
-        `INSERT INTO change_report (run_id, source, scope, kind, code, subject_type, subject_key, subject_name, property_alias, culture, message, link, status, first_seen, last_seen)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)`,
-        [
-          runId,
+      await db.q
+        .insertInto('change_report')
+        .values({
+          run_id: runId,
           source,
           scope,
-          finding.kind,
-          finding.code,
-          finding.subjectType,
-          finding.subjectKey,
-          finding.subjectName,
-          finding.propertyAlias,
-          finding.culture,
-          finding.message,
-          finding.link,
-          now,
-          now,
-        ],
-      )
+          kind: finding.kind,
+          code: finding.code,
+          subject_type: finding.subjectType,
+          subject_key: finding.subjectKey,
+          subject_name: finding.subjectName,
+          property_alias: finding.propertyAlias,
+          culture: finding.culture,
+          message: finding.message,
+          link: finding.link,
+          status: 'open',
+          first_seen: now,
+          last_seen: now,
+        })
+        .execute()
     }
   }
   for (const [key, existing] of openByIdentity) {
     if (seen.has(key)) continue
-    await db.exec("UPDATE change_report SET status = 'resolved', resolved_at = ? WHERE id = ?", [
-      now,
-      existing.id,
-    ])
+    await db.q
+      .updateTable('change_report')
+      .set({ status: 'resolved', resolved_at: now })
+      .where('id', '=', existing.id)
+      .execute()
   }
   return runId
 }
@@ -132,24 +141,38 @@ export async function readReport(
   db: Db,
   options: ReadReportOptions = {},
 ): Promise<ReportedFinding[]> {
-  const where: string[] = []
-  const params: unknown[] = []
-  if (!options.includeResolved) where.push("status = 'open'")
-  if (options.source !== undefined) {
-    where.push('source = ?')
-    params.push(options.source)
-  }
+  const { source } = options
   // `scope` is meaningful when null, so only an explicit key filters.
-  if ('scope' in options) {
-    const scope = options.scope ?? null
-    where.push(scope === null ? 'scope IS NULL' : 'scope = ?')
-    if (scope !== null) params.push(scope)
-  }
-  const rows = await db.query(
-    `SELECT id, run_id, source, scope, kind, code, subject_type, subject_key, subject_name, property_alias, culture, message, link, status, first_seen, last_seen, resolved_at
-     FROM change_report ${where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY id`,
-    params,
-  )
+  const scoped = 'scope' in options
+  const scope = options.scope ?? null
+  const rows = await db.q
+    .selectFrom('change_report')
+    .select([
+      'id',
+      'run_id',
+      'source',
+      'scope',
+      'kind',
+      'code',
+      'subject_type',
+      'subject_key',
+      'subject_name',
+      'property_alias',
+      'culture',
+      'message',
+      'link',
+      'status',
+      'first_seen',
+      'last_seen',
+      'resolved_at',
+    ])
+    .$if(!options.includeResolved, (q) => q.where('status', '=', 'open'))
+    .$if(source !== undefined, (q) => q.where('source', '=', source as FindingSource))
+    .$if(scoped, (q) =>
+      scope === null ? q.where('scope', 'is', null) : q.where('scope', '=', scope),
+    )
+    .orderBy('id')
+    .execute()
   return rows.map((row) => ({
     id: Number(row.id),
     runId: String(row.run_id),

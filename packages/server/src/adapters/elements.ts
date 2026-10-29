@@ -62,9 +62,11 @@ export function createElementPort(
   const tree = createSettingsTree(nodes, ObjectTypes.ElementContainer, ObjectTypes.Element, changed)
 
   const userIdOf = async (principal: Principal): Promise<number | undefined> => {
-    const rows = await db.query<{ id: number }>('SELECT id FROM user_account WHERE key = ?', [
-      principal.id,
-    ])
+    const rows = await db.q
+      .selectFrom('user_account')
+      .select('id')
+      .where('key', '=', principal.id)
+      .execute()
     return rows[0] ? Number(rows[0].id) : undefined
   }
   const notFound = (reason = 'The element could not be found.') => ({
@@ -87,22 +89,23 @@ export function createElementPort(
 
   /** Whether another menu, not in the bin, already answers to `alias`. */
   const menuAliasTaken = async (alias: string, key: string | undefined): Promise<boolean> => {
-    const rows = await db.query<{ unique_id: string }>(
-      `SELECT n.unique_id FROM property_value pv
-       JOIN property_type p ON p.id = pv.property_type_id
-       JOIN node n ON n.id = pv.node_id
-       JOIN content c ON c.node_id = n.id
-       JOIN node ct ON ct.id = c.content_type_id
-       WHERE p.alias = ? AND pv.is_current = ? AND n.trashed = ? AND ct.unique_id = ?
-         AND LOWER(COALESCE(pv.varchar_value, pv.text_value)) = ?`,
-      [
-        MENU_ALIAS_PROPERTY,
-        db.dialect.boolValue(true),
-        db.dialect.boolValue(false),
-        SYSTEM_CONTENT_TYPE_KEYS.Menu,
+    const rows = await db.q
+      .selectFrom('property_value as pv')
+      .innerJoin('property_type as p', 'p.id', 'pv.property_type_id')
+      .innerJoin('node as n', 'n.id', 'pv.node_id')
+      .innerJoin('content as c', 'c.node_id', 'n.id')
+      .innerJoin('node as ct', 'ct.id', 'c.content_type_id')
+      .select('n.unique_id')
+      .where('p.alias', '=', MENU_ALIAS_PROPERTY)
+      .where('pv.is_current', '=', db.dialect.boolValue(true) as boolean)
+      .where('n.trashed', '=', db.dialect.boolValue(false) as boolean)
+      .where('ct.unique_id', '=', SYSTEM_CONTENT_TYPE_KEYS.Menu)
+      .where(
+        (eb) => eb.fn('lower', [eb.fn.coalesce('pv.varchar_value', 'pv.text_value')]),
+        '=',
         alias.toLowerCase(),
-      ],
-    )
+      )
+      .execute()
     return rows.some((row) => normaliseUuid(String(row.unique_id)) !== key?.toLowerCase())
   }
 
@@ -404,21 +407,25 @@ export function createElementPort(
       // The whole branch is trashed, elements inside it included, and an element
       // stays unpublished while it is in the bin.
       const moved = await nodes.byKey(key)
-      await db.exec('UPDATE node SET trashed = ? WHERE id = ? OR path LIKE ?', [
-        db.dialect.boolValue(true),
-        node.id,
-        `${moved?.path ?? node.path},%`,
-      ])
-      await db.exec(
-        `UPDATE document SET published = ?, edited = ?
-          WHERE node_id IN (SELECT id FROM node WHERE id = ? OR path LIKE ?)`,
-        [
-          db.dialect.boolValue(false),
-          db.dialect.boolValue(true),
-          node.id,
-          `${moved?.path ?? node.path},%`,
-        ],
-      )
+      const branch = `${moved?.path ?? node.path},%`
+      await db.q
+        .updateTable('node')
+        .set({ trashed: db.dialect.boolValue(true) as boolean })
+        .where((eb) => eb.or([eb('id', '=', node.id), eb('path', 'like', branch)]))
+        .execute()
+      await db.q
+        .updateTable('document')
+        .set({
+          published: db.dialect.boolValue(false) as boolean,
+          edited: db.dialect.boolValue(true) as boolean,
+        })
+        .where('node_id', 'in', (eb) =>
+          eb
+            .selectFrom('node')
+            .select('id')
+            .where((w) => w.or([w('id', '=', node.id), w('path', 'like', branch)])),
+        )
+        .execute()
       await changed()
       return true
     },
@@ -430,9 +437,12 @@ export function createElementPort(
       )
     },
     async systemUserKey() {
-      const rows = await db.query<{ key: string }>(
-        'SELECT key FROM user_account ORDER BY id LIMIT 1',
-      )
+      const rows = await db.q
+        .selectFrom('user_account')
+        .select('key')
+        .orderBy('id')
+        .limit(1)
+        .execute()
       return rows[0] ? normaliseUuid(String(rows[0].key)) : null
     },
   }

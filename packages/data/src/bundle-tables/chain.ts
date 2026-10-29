@@ -63,12 +63,7 @@ export async function applyBundleStepsUnledgered(db: Db, compiled: CompiledTable
 /** Every table in the database under a bundle's prefix. */
 export async function bundleTablesIn(db: Db, id: string): Promise<string[]> {
   const prefix = bundlePrefix(id)
-  const rows =
-    db.dialect.name === 'sqlite'
-      ? await db.query<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table'")
-      : await db.query<{ name: string }>(
-          "SELECT table_name AS name FROM information_schema.tables WHERE table_schema = current_schema() AND table_type = 'BASE TABLE'",
-        )
+  const rows = await db.query<{ name: string }>(db.dialect.tableNames)
   // Compared as text rather than with LIKE, where `_` is a wildcard.
   return rows
     .map((row) => row.name)
@@ -90,7 +85,7 @@ export async function purgeBundleTables(
   const started = performance.now()
   await db.transaction(async (tx) => {
     for (const table of tables)
-      await tx.exec(guardStatement(id, prefix, `DROP TABLE ${tx.dialect.quote(table)}`))
+      await tx.exec(guardStatement(id, prefix, tx.q.schema.dropTable(table).compile().sql))
   })
   await deleteKeyValue(db, options.stateKey)
   await recordInLedger(db, {

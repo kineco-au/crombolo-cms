@@ -77,10 +77,12 @@ export async function pruneSite(
   const nodeState = { version: state.version, revision: state.revision }
   const pruned: PrunedNode[] = []
   for (const { objectType, kind } of PRUNED_KINDS) {
-    const rows = await tx.query<{ id: number; unique_id: string; parent_id: number }>(
-      'SELECT id, unique_id, parent_id FROM node WHERE node_object_type = ? AND trashed = ?',
-      [objectType, tx.dialect.boolValue(false)],
-    )
+    const rows = await tx.q
+      .selectFrom('node')
+      .select(['id', 'unique_id', 'parent_id'])
+      .where('node_object_type', '=', objectType)
+      .where('trashed', '=', tx.dialect.boolValue(false) as boolean)
+      .execute()
     const leaving = rows.filter((row) => !inFile.has(String(row.unique_id).toLowerCase()))
     const leavingIds = new Set(leaving.map((row) => Number(row.id)))
     // The top of each branch: recycling or deleting it takes its children too.
@@ -108,15 +110,16 @@ export async function prunePeople(tx: Db, people: BundlePeople | undefined): Pro
   const memberRepo = new MemberRepository(tx, {
     nodeState: { version: state.version, revision: state.revision },
   })
-  const memberRows = await tx.query<{ unique_id: string }>(
-    'SELECT unique_id FROM node WHERE node_object_type = ?',
-    [ObjectTypes.Member],
-  )
+  const memberRows = await tx.q
+    .selectFrom('node')
+    .select('unique_id')
+    .where('node_object_type', '=', ObjectTypes.Member)
+    .execute()
   for (const row of memberRows)
     if (!members.has(String(row.unique_id).toLowerCase()))
       await memberRepo.delete(String(row.unique_id))
   const userRepo = new UserRepository(tx)
-  for (const row of await tx.query<{ key: string }>('SELECT key FROM user_account'))
+  for (const row of await tx.q.selectFrom('user_account').select('key').execute())
     if (!users.has(String(row.key).toLowerCase())) await userRepo.delete(String(row.key))
 }
 
@@ -155,10 +158,12 @@ export async function replaceSummary(
   const inFile = new Set(set.nodes.map((node) => node.key.toLowerCase()))
   const leaving: Record<string, number> = {}
   for (const { objectType, kind } of PRUNED_KINDS) {
-    const rows = await db.query<{ unique_id: string }>(
-      'SELECT unique_id FROM node WHERE node_object_type = ? AND trashed = ?',
-      [objectType, db.dialect.boolValue(false)],
-    )
+    const rows = await db.q
+      .selectFrom('node')
+      .select('unique_id')
+      .where('node_object_type', '=', objectType)
+      .where('trashed', '=', db.dialect.boolValue(false) as boolean)
+      .execute()
     const count = rows.filter((row) => !inFile.has(String(row.unique_id).toLowerCase())).length
     if (count > 0) leaving[kind] = count
   }
@@ -174,11 +179,12 @@ export async function replaceSummary(
   if (mode === 'replace-all') {
     const members = new Set((set.people?.members ?? []).map((m) => m.key.toLowerCase()))
     const users = new Set((set.people?.users ?? []).map((u) => u.key.toLowerCase()))
-    const memberRows = await db.query<{ unique_id: string }>(
-      'SELECT unique_id FROM node WHERE node_object_type = ?',
-      [ObjectTypes.Member],
-    )
-    const userRows = await db.query<{ key: string }>('SELECT key FROM user_account')
+    const memberRows = await db.q
+      .selectFrom('node')
+      .select('unique_id')
+      .where('node_object_type', '=', ObjectTypes.Member)
+      .execute()
+    const userRows = await db.q.selectFrom('user_account').select('key').execute()
     people = {
       members: memberRows.filter((r) => !members.has(String(r.unique_id).toLowerCase())).length,
       users: userRows.filter((r) => !users.has(String(r.key).toLowerCase())).length,

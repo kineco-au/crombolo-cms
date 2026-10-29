@@ -122,6 +122,12 @@ export interface CromboloConfig {
   signalRSkipNegotiation: boolean
   development: boolean
   /**
+   * Open pages reload when the views, the schema or the content change, and
+   * show the background type check's findings (story 214). On in development,
+   * except under `bun test`.
+   */
+  liveReload: boolean
+  /**
    * Whether the cache-busted asset path may be cached immutably. Defaults to
    * `!development`.
    *
@@ -755,6 +761,7 @@ export function loadConfig(
     runtimeInstalls: setting('CROMBOLO_RUNTIME_INSTALLS') !== 'false',
     // Resolved again below, once it is known whether this is development.
     errors: { showDetails: envFlag(setting('CROMBOLO_SHOW_ERROR_DETAILS')) ?? false },
+    liveReload: envFlag(setting('CROMBOLO_LIVE_RELOAD')) ?? false,
     seo: stripUndefined({
       sitemap: envFlag(setting('CROMBOLO_SITEMAP')),
       indexable: envFlag(setting('CROMBOLO_INDEXABLE')),
@@ -813,6 +820,10 @@ export function loadConfig(
       envFlag(setting('CROMBOLO_SHOW_ERROR_DETAILS')) ??
       merged.development,
   }
+  merged.liveReload =
+    overrides.liveReload ??
+    envFlag(setting('CROMBOLO_LIVE_RELOAD')) ??
+    (merged.development && setting('NODE_ENV') !== 'test')
   checkApiClient(merged.apiClient)
   checkHost(merged.host)
   // The key itself is refused, so a config left over from before says so rather

@@ -25,10 +25,19 @@ interface Node {
 /** The virtual root above the tree: ContentRoot's origin, which descendant steps start from. */
 const CONTENT_ROOT: Node = { id: -1, key: '', level: 0, path: '-1', typeKey: '' }
 
-const SELECT = `SELECT n.id, n.unique_id, n.level, n.path, t.unique_id AS type_key
-  FROM node n
-  JOIN content c ON c.node_id = n.id
-  JOIN node t ON t.id = c.content_type_id`
+function documents(db: Db) {
+  return db.q
+    .selectFrom('node as n')
+    .innerJoin('content as c', 'c.node_id', 'n.id')
+    .innerJoin('node as t', 't.id', 'c.content_type_id')
+    .select(['n.id', 'n.unique_id', 'n.level', 'n.path', 't.unique_id as type_key'])
+    .where('n.node_object_type', '=', ObjectTypes.Document)
+    .where('n.trashed', '=', db.dialect.boolValue(false))
+    .orderBy('n.level')
+    .orderBy('n.sort_order')
+}
+
+type Documents = ReturnType<typeof documents>
 
 export class DynamicRootRepository {
   #db: Db
@@ -96,11 +105,8 @@ export class DynamicRootRepository {
     }
   }
 
-  async #query(where: string, params: unknown[]): Promise<Node[]> {
-    const rows = await this.#db.query(
-      `${SELECT} WHERE n.node_object_type = ? AND n.trashed = ? AND ${where} ORDER BY n.level, n.sort_order`,
-      [ObjectTypes.Document, this.#db.dialect.boolValue(false), ...params],
-    )
+  async #query(narrow: (query: Documents) => Documents): Promise<Node[]> {
+    const rows = await narrow(documents(this.#db)).execute()
     return rows.map((row) => ({
       id: Number(row.id),
       key: normaliseUuid(String(row.unique_id)),
@@ -111,7 +117,7 @@ export class DynamicRootRepository {
   }
 
   async #byKey(key: string): Promise<Node | undefined> {
-    return (await this.#query('n.unique_id = ?', [normaliseUuid(key)]))[0]
+    return (await this.#query((q) => q.where('n.unique_id', '=', normaliseUuid(key))))[0]
   }
 
   /** Top of the tree first, `node` last. */
@@ -122,12 +128,14 @@ export class DynamicRootRepository {
       .map(Number)
       .filter((id) => id > 0)
     if (ids.length === 0) return []
-    return this.#query(`n.id IN (${ids.map(() => '?').join(', ')})`, ids)
+    return this.#query((q) => q.where('n.id', 'in', ids))
   }
 
   async #descendantsOrSelf(node: Node): Promise<Node[]> {
-    if (node.id === CONTENT_ROOT.id) return this.#query('n.level >= 1', [])
-    return this.#query('(n.id = ? OR n.path LIKE ?)', [node.id, `${node.path},%`])
+    if (node.id === CONTENT_ROOT.id) return this.#query((q) => q.where('n.level', '>=', 1))
+    return this.#query((q) =>
+      q.where((eb) => eb.or([eb('n.id', '=', node.id), eb('n.path', 'like', `${node.path},%`)])),
+    )
   }
 
   async #root(key: string): Promise<Node | undefined> {
@@ -141,10 +149,17 @@ export class DynamicRootRepository {
     if (!node) return undefined
     const line = await this.#ancestorsOrSelf(node)
     if (line.length === 0) return undefined
-    const rows = await this.#db.query<{ node_id: number }>(
-      `SELECT DISTINCT node_id FROM domain WHERE domain_name NOT LIKE '*%' AND node_id IN (${line.map(() => '?').join(', ')})`,
-      line.map((candidate) => candidate.id),
-    )
+    const rows = await this.#db.q
+      .selectFrom('domain')
+      .select('node_id')
+      .distinct()
+      .where('domain_name', 'not like', '*%')
+      .where(
+        'node_id',
+        'in',
+        line.map((candidate) => candidate.id),
+      )
+      .execute()
     const sites = new Set(rows.map((row) => Number(row.node_id)))
     return line.filter((candidate) => sites.has(candidate.id)).at(-1)
   }

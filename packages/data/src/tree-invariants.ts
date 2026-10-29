@@ -128,19 +128,28 @@ export async function loadTreeSnapshot(
   db: Db,
   objectTypes: readonly string[] = TREE_OBJECT_TYPES,
 ): Promise<TreeSnapshot> {
-  const marks = objectTypes.map(() => '?').join(', ')
-  const scoped = `SELECT id FROM node WHERE node_object_type IN (${marks})`
+  const scoped = () =>
+    db.q
+      .selectFrom('node')
+      .select('id')
+      .where('node_object_type', 'in', [...objectTypes])
   const [nodes, documents, versions, content] = await Promise.all([
-    db.query('SELECT id, parent_id, level, path, sort_order, trashed, node_object_type FROM node'),
-    db.query(`SELECT node_id, published FROM document WHERE node_id IN (${scoped})`, [
-      ...objectTypes,
-    ]),
-    db.query(
-      `SELECT cv.id, cv.node_id, cv.current, dv.published FROM content_version cv
-       LEFT JOIN document_version dv ON dv.id = cv.id WHERE cv.node_id IN (${scoped})`,
-      [...objectTypes],
-    ),
-    db.query(`SELECT node_id FROM content WHERE node_id IN (${scoped})`, [...objectTypes]),
+    db.q
+      .selectFrom('node')
+      .select(['id', 'parent_id', 'level', 'path', 'sort_order', 'trashed', 'node_object_type'])
+      .execute(),
+    db.q
+      .selectFrom('document')
+      .select(['node_id', 'published'])
+      .where('node_id', 'in', scoped())
+      .execute(),
+    db.q
+      .selectFrom('content_version as cv')
+      .leftJoin('document_version as dv', 'dv.id', 'cv.id')
+      .select(['cv.id', 'cv.node_id', 'cv.current', 'dv.published'])
+      .where('cv.node_id', 'in', scoped())
+      .execute(),
+    db.q.selectFrom('content').select('node_id').where('node_id', 'in', scoped()).execute(),
   ])
   return {
     nodes: nodes.map((row) => ({

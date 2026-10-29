@@ -6,6 +6,27 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+- **Live reload and a better error page in development** (story 214).
+  - **Open pages reload** when you save a component (on disk or in the back
+    office's template editor), change the schema, publish, unpublish or delete
+    content, or the server restarts.
+  - **A template error** shows the code around the failing line and the
+    components that were rendering, as well as the message and stack.
+  - **Type errors** are checked in the background after each save. They're
+    printed in the terminal and shown in a banner on open pages, and never
+    stop a page rendering.
+  - **Next.js front ends** get `<CromboloLiveReload />`, which refreshes the
+    page when content or the schema changes. The `next` template includes it.
+  - `CROMBOLO_LIVE_RELOAD` turns it on or off. It is on in development, and
+    off in production and under `bun test`.
+
+- **One way of building SQL** (story 221). crombolo's queries are now built
+  with Kysely, a typed query builder, in place of hand-written SQL strings, and
+  checked against the types of its tables on SQLite and Postgres both. Nothing
+  changes for a site or its editors: no migration, no setting, and the same
+  behaviour on both databases. `crombolo upgrade --plan` shows a bundle's
+  table changes in lower-case SQL.
+
 ## v0.37.0 — 2026-10-29
 
 - **Pages with the site's own logic, the Next.js way** (story 206). A template

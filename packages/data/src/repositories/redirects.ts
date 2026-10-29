@@ -14,8 +14,11 @@
  * ends up behaving without the duplicates.
  */
 import { normaliseUuid } from '@crombolo/core'
+import type { SelectQueryBuilder } from 'kysely'
 import type { Db } from '../database.ts'
 import { DbDate } from '../dialect.ts'
+import { sql } from '../query.ts'
+import type { CoreTables } from '../tables.gen.ts'
 
 export type RedirectMatchKind = 'exact' | 'prefix' | 'regex'
 export type RedirectTargetKind = 'document' | 'path' | 'url'
@@ -59,12 +62,30 @@ interface Row {
   create_date: unknown
 }
 
-const SELECT = `SELECT key, source, match_kind, pattern, root_key, culture,
-                       target_kind, target, status_code, sort_order, create_date
-                  FROM redirect_url`
+const COLUMNS = [
+  'key',
+  'source',
+  'match_kind',
+  'pattern',
+  'root_key',
+  'culture',
+  'target_kind',
+  'target',
+  'status_code',
+  'sort_order',
+  'create_date',
+] as const
+
+const selectRules = (db: Db) => db.q.selectFrom('redirect_url').select(COLUMNS)
 
 /** By source — see `RedirectSource` — then by the rule's own order, newest first. */
-const ORDER = 'ORDER BY source, sort_order, create_date DESC, id DESC'
+// biome-ignore lint/suspicious/noExplicitAny: any select over redirect_url
+const ordered = <Q extends SelectQueryBuilder<CoreTables, 'redirect_url', any>>(query: Q): Q =>
+  query
+    .orderBy('source')
+    .orderBy('sort_order')
+    .orderBy('create_date', 'desc')
+    .orderBy('id', 'desc') as Q
 
 const hydrate = (row: Row): RedirectRow => ({
   key: normaliseUuid(String(row.key)),
@@ -107,13 +128,13 @@ export class RedirectRepository {
 
   /** Every rule, in the order they are matched. */
   async all(): Promise<RedirectRow[]> {
-    const rows = await this.#db.query<Row>(`${SELECT} ${ORDER}`)
+    const rows = await selectRules(this.#db).$call(ordered).execute()
     return rows.map(hydrate)
   }
 
   async byKey(key: string): Promise<RedirectRow | undefined> {
-    const rows = await this.#db.query<Row>(`${SELECT} WHERE key = ?`, [normaliseUuid(key)])
-    return rows[0] ? hydrate(rows[0]) : undefined
+    const row = await selectRules(this.#db).where('key', '=', normaliseUuid(key)).executeTakeFirst()
+    return row ? hydrate(row) : undefined
   }
 
   /**
@@ -127,18 +148,29 @@ export class RedirectRepository {
     items: RedirectRow[]
   }> {
     const filter = options.filter?.trim().toLowerCase()
-    const where = filter ? 'WHERE LOWER(pattern) LIKE ? OR LOWER(target) LIKE ?' : ''
-    const params = filter ? [`%${filter}%`, `%${filter}%`] : []
-    const counted = await this.#db.query<{ total: number }>(
-      `SELECT COUNT(*) AS total FROM redirect_url ${where}`,
-      params,
-    )
-    const rows = await this.#db.query<Row>(`${SELECT} ${where} ${ORDER} LIMIT ? OFFSET ?`, [
-      ...params,
-      options.take ?? 100,
-      options.skip ?? 0,
-    ])
-    return { total: Number(counted[0]?.total ?? 0), items: rows.map(hydrate) }
+    const matching = <Q extends SelectQueryBuilder<CoreTables, 'redirect_url', object>>(
+      query: Q,
+    ): Q =>
+      filter
+        ? (query.where((eb) =>
+            eb.or([
+              eb(eb.fn('lower', ['pattern']), 'like', `%${filter}%`),
+              eb(eb.fn('lower', ['target']), 'like', `%${filter}%`),
+            ]),
+          ) as Q)
+        : query
+    const counted = await this.#db.q
+      .selectFrom('redirect_url')
+      .select(sql<number>`count(*)`.as('total'))
+      .$call(matching)
+      .executeTakeFirst()
+    const rows = await selectRules(this.#db)
+      .$call(matching)
+      .$call(ordered)
+      .limit(options.take ?? 100)
+      .offset(options.skip ?? 0)
+      .execute()
+    return { total: Number(counted?.total ?? 0), items: rows.map(hydrate) }
   }
 
   /** The rules pointing at one document, newest first. */
@@ -147,17 +179,24 @@ export class RedirectRepository {
     options: { skip?: number; take?: number } = {},
   ): Promise<{ total: number; items: RedirectRow[] }> {
     const target = normaliseUuid(documentKey)
-    const where = "WHERE target_kind = 'document' AND LOWER(target) = ?"
-    const counted = await this.#db.query<{ total: number }>(
-      `SELECT COUNT(*) AS total FROM redirect_url ${where}`,
-      [target],
-    )
-    const rows = await this.#db.query<Row>(`${SELECT} ${where} ${ORDER} LIMIT ? OFFSET ?`, [
-      target,
-      options.take ?? 100,
-      options.skip ?? 0,
-    ])
-    return { total: Number(counted[0]?.total ?? 0), items: rows.map(hydrate) }
+    const pointing = <Q extends SelectQueryBuilder<CoreTables, 'redirect_url', object>>(
+      query: Q,
+    ): Q =>
+      query
+        .where('target_kind', '=', 'document')
+        .where((eb) => eb(eb.fn('lower', ['target']), '=', target)) as Q
+    const counted = await this.#db.q
+      .selectFrom('redirect_url')
+      .select(sql<number>`count(*)`.as('total'))
+      .$call(pointing)
+      .executeTakeFirst()
+    const rows = await selectRules(this.#db)
+      .$call(pointing)
+      .$call(ordered)
+      .limit(options.take ?? 100)
+      .offset(options.skip ?? 0)
+      .execute()
+    return { total: Number(counted?.total ?? 0), items: rows.map(hydrate) }
   }
 
   /**
@@ -171,39 +210,41 @@ export class RedirectRepository {
   async save(input: RedirectInput): Promise<RedirectRow> {
     const hash = matchHash(input)
     const now = new Date()
-    const rows = await this.#db.query<{ key: string }>(
-      `INSERT INTO redirect_url
-         (key, source, match_kind, pattern, root_key, culture,
-          target_kind, target, status_code, sort_order, match_hash, create_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (match_hash) DO UPDATE SET
-         target_kind = excluded.target_kind, target = excluded.target,
-         status_code = excluded.status_code, sort_order = excluded.sort_order,
-         create_date = excluded.create_date
-       RETURNING key`,
-      [
-        crypto.randomUUID(),
-        input.source,
-        input.matchKind,
-        input.pattern,
-        input.rootKey,
-        input.culture,
-        input.targetKind,
-        input.target,
-        input.statusCode,
-        input.sortOrder,
-        hash,
-        DbDate.toDb(now),
-      ],
-    )
-    return { ...input, key: normaliseUuid(String(rows[0]?.key)), createDate: now }
+    const row = await this.#db.q
+      .insertInto('redirect_url')
+      .values({
+        key: crypto.randomUUID(),
+        source: input.source,
+        match_kind: input.matchKind,
+        pattern: input.pattern,
+        root_key: input.rootKey,
+        culture: input.culture,
+        target_kind: input.targetKind,
+        target: input.target,
+        status_code: input.statusCode,
+        sort_order: input.sortOrder,
+        match_hash: hash,
+        create_date: DbDate.toDb(now),
+      })
+      .onConflict((oc) =>
+        oc.column('match_hash').doUpdateSet((eb) => ({
+          target_kind: eb.ref('excluded.target_kind'),
+          target: eb.ref('excluded.target'),
+          status_code: eb.ref('excluded.status_code'),
+          sort_order: eb.ref('excluded.sort_order'),
+          create_date: eb.ref('excluded.create_date'),
+        })),
+      )
+      .returning('key')
+      .executeTakeFirst()
+    return { ...input, key: normaliseUuid(String(row?.key)), createDate: now }
   }
 
   /** Deletes one rule. `false` means there was nothing with that key. */
   async delete(key: string): Promise<boolean> {
     const found = await this.byKey(key)
     if (!found) return false
-    await this.#db.exec('DELETE FROM redirect_url WHERE key = ?', [normaliseUuid(key)])
+    await this.#db.q.deleteFrom('redirect_url').where('key', '=', normaliseUuid(key)).execute()
     return true
   }
 
@@ -217,15 +258,15 @@ export class RedirectRepository {
     rootKey: string | null,
     path: string,
   ): Promise<void> {
-    await this.#db.exec(
-      `DELETE FROM redirect_url
-        WHERE source = 'tracked' AND target_kind = 'document'
-          AND LOWER(target) = ? AND match_kind = 'exact' AND LOWER(pattern) = ?
-          AND ${rootKey === null ? 'root_key IS NULL' : 'root_key = ?'}`,
-      rootKey === null
-        ? [normaliseUuid(documentKey), path.toLowerCase()]
-        : [normaliseUuid(documentKey), path.toLowerCase(), rootKey],
-    )
+    await this.#db.q
+      .deleteFrom('redirect_url')
+      .where('source', '=', 'tracked')
+      .where('target_kind', '=', 'document')
+      .where((eb) => eb(eb.fn('lower', ['target']), '=', normaliseUuid(documentKey)))
+      .where('match_kind', '=', 'exact')
+      .where((eb) => eb(eb.fn('lower', ['pattern']), '=', path.toLowerCase()))
+      .where('root_key', rootKey === null ? 'is' : '=', rootKey)
+      .execute()
   }
 
   /**
@@ -244,14 +285,16 @@ export class RedirectRepository {
       kept.add(matchHash(rule))
       await this.save(rule)
     }
-    const stale = await this.#db.query<{ match_hash: string }>(
-      "SELECT match_hash FROM redirect_url WHERE source = 'config'",
-    )
+    const stale = await this.#db.q
+      .selectFrom('redirect_url')
+      .select('match_hash')
+      .where('source', '=', 'config')
+      .execute()
     let removed = 0
     for (const row of stale) {
       const hash = String(row.match_hash)
       if (kept.has(hash)) continue
-      await this.#db.exec('DELETE FROM redirect_url WHERE match_hash = ?', [hash])
+      await this.#db.q.deleteFrom('redirect_url').where('match_hash', '=', hash).execute()
       removed += 1
     }
     return { stored: kept.size, removed }

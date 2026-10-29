@@ -31,6 +31,7 @@ import type { Db } from '../database.ts'
 import { DbDate, fromDbBool } from '../dialect.ts'
 import { type LockId, Locks } from '../locks.ts'
 import { isPending } from '../pending.ts'
+import { type Insertable, sql } from '../query.ts'
 import {
   assertNodeMayWrite,
   BASELINE_NODE_STATE,
@@ -39,6 +40,7 @@ import {
   visibleStateIdFor,
 } from '../schema-state.ts'
 import { queueForSearch } from '../search.ts'
+import type { CoreTables } from '../tables.gen.ts'
 import { recordFiles } from './media-access.ts'
 import { NodeRepository, type NodeRow } from './nodes.ts'
 
@@ -452,15 +454,22 @@ export class DocumentRepository {
   async versions(key: string): Promise<DocumentVersionSummary[]> {
     const node = await this.#nodes.byKey(key)
     if (!node) return []
-    const rows = await this.#db.query(
-      `SELECT cv.id, cv.kind, cv.version_date, cv.current, cv.prevent_cleanup, dv.published, u.key AS user_key
-       FROM content_version cv
-       JOIN document_version dv ON dv.id = cv.id
-       LEFT JOIN user_account u ON u.id = cv.user_id
-       WHERE cv.node_id = ?
-       ORDER BY cv.id DESC`,
-      [node.id],
-    )
+    const rows = await this.#db.q
+      .selectFrom('content_version as cv')
+      .innerJoin('document_version as dv', 'dv.id', 'cv.id')
+      .leftJoin('user_account as u', 'u.id', 'cv.user_id')
+      .select([
+        'cv.id',
+        'cv.kind',
+        'cv.version_date',
+        'cv.current',
+        'cv.prevent_cleanup',
+        'dv.published',
+        'u.key as user_key',
+      ])
+      .where('cv.node_id', '=', node.id)
+      .orderBy('cv.id', 'desc')
+      .execute()
     return rows.map((row) => ({
       id: String(row.id),
       documentKey: node.key,
@@ -481,23 +490,40 @@ export class DocumentRepository {
    */
   /** Every published node of this kind, for the published cache. Elements too. */
   async loadPublished(asOfSchemaStateId?: number): Promise<PublishedNodeRow[]> {
-    const t = this.#db.dialect.boolValue(true)
-    const f = this.#db.dialect.boolValue(false)
-    const rows = await this.#db.query(
-      `SELECT n.id, n.unique_id, n.parent_id, n.level, n.path, n.sort_order, n.create_date,
-              cv.id AS event_id, cv.text AS name, cv.version_date,
-              ct.alias AS content_type_alias, c.content_type_id, tpl.alias AS template_alias
-       FROM node n
-       JOIN content c ON c.node_id = n.id
-       JOIN content_type ct ON ct.node_id = c.content_type_id
-       JOIN document d ON d.node_id = n.id
-       JOIN content_version cv ON cv.node_id = n.id
-       JOIN document_version dv ON dv.id = cv.id AND dv.published = ?
-       LEFT JOIN template tpl ON tpl.node_id = dv.template_id
-       WHERE d.published = ? AND n.trashed = ? AND n.node_object_type = ?
-       ORDER BY n.level, n.sort_order, n.id`,
-      [t, t, f, this.objectType],
-    )
+    const t = this.#db.dialect.boolValue(true) as boolean
+    const f = this.#db.dialect.boolValue(false) as boolean
+    const rows = await this.#db.q
+      .selectFrom('node as n')
+      .innerJoin('content as c', 'c.node_id', 'n.id')
+      .innerJoin('content_type as ct', 'ct.node_id', 'c.content_type_id')
+      .innerJoin('document as d', 'd.node_id', 'n.id')
+      .innerJoin('content_version as cv', 'cv.node_id', 'n.id')
+      .innerJoin('document_version as dv', (join) =>
+        join.onRef('dv.id', '=', 'cv.id').on('dv.published', '=', t),
+      )
+      .leftJoin('template as tpl', 'tpl.node_id', 'dv.template_id')
+      .select([
+        'n.id',
+        'n.unique_id',
+        'n.parent_id',
+        'n.level',
+        'n.path',
+        'n.sort_order',
+        'n.create_date',
+        'cv.id as event_id',
+        'cv.text as name',
+        'cv.version_date',
+        'ct.alias as content_type_alias',
+        'c.content_type_id',
+        'tpl.alias as template_alias',
+      ])
+      .where('d.published', '=', t)
+      .where('n.trashed', '=', f)
+      .where('n.node_object_type', '=', this.objectType)
+      .orderBy('n.level')
+      .orderBy('n.sort_order')
+      .orderBy('n.id')
+      .execute()
     const languages = await this.#languages()
     // Read in slices rather than per node: a large site is tens of thousands
     // of nodes, and a query each is most of a rebuild's time.
@@ -555,19 +581,36 @@ export class DocumentRepository {
    * id or (media) file address — through indexed lookups, in the order asked.
    */
   async loadCurrent(filter?: CurrentFilter): Promise<CurrentNodeRow[]> {
-    const t = this.#db.dialect.boolValue(true)
-    const select = `SELECT n.id, n.unique_id, n.text, n.parent_id, n.path, n.sort_order, n.create_date,
-              head.text AS draft_name, head.version_date,
-              ct.alias AS content_type_alias, c.content_type_id,
-              c.read_policy, c.write_policy, c.creator_member_key, c.file_url
-       FROM node n
-       JOIN content c ON c.node_id = n.id
-       JOIN content_type ct ON ct.node_id = c.content_type_id
-       JOIN content_version head ON head.node_id = n.id AND head.current = ?
-       WHERE n.node_object_type = ? AND n.trashed = ?`
-    const base = [t, this.objectType, this.#db.dialect.boolValue(false)]
-    let rows: Record<string, unknown>[]
-    if (!filter) rows = await this.#db.query(`${select} ORDER BY n.level, n.sort_order, n.id`, base)
+    const t = this.#db.dialect.boolValue(true) as boolean
+    const select = this.#db.q
+      .selectFrom('node as n')
+      .innerJoin('content as c', 'c.node_id', 'n.id')
+      .innerJoin('content_type as ct', 'ct.node_id', 'c.content_type_id')
+      .innerJoin('content_version as head', (join) =>
+        join.onRef('head.node_id', '=', 'n.id').on('head.current', '=', t),
+      )
+      .select([
+        'n.id',
+        'n.unique_id',
+        'n.text',
+        'n.parent_id',
+        'n.path',
+        'n.sort_order',
+        'n.create_date',
+        'head.text as draft_name',
+        'head.version_date',
+        'ct.alias as content_type_alias',
+        'c.content_type_id',
+        'c.read_policy',
+        'c.write_policy',
+        'c.creator_member_key',
+        'c.file_url',
+      ])
+      .where('n.node_object_type', '=', this.objectType)
+      .where('n.trashed', '=', this.#db.dialect.boolValue(false) as boolean)
+    let rows: Awaited<ReturnType<typeof select.execute>>
+    if (!filter)
+      rows = await select.orderBy('n.level').orderBy('n.sort_order').orderBy('n.id').execute()
     else {
       const [column, wanted] =
         filter.keys !== undefined
@@ -577,14 +620,9 @@ export class DocumentRepository {
             : ['c.file_url', [...new Set(filter.urls ?? [])]]
       rows = []
       for (const slice of slices<string | number>(wanted))
-        rows.push(
-          ...(await this.#db.query(
-            `${select} AND ${column} IN (${slice.map(() => '?').join(', ')})`,
-            [...base, ...slice],
-          )),
-        )
+        rows.push(...(await select.where(sql.ref(column), 'in', slice).execute()))
       const order = new Map(wanted.map((value, index) => [String(value), index]))
-      const at = (row: Record<string, unknown>) =>
+      const at = (row: (typeof rows)[number]) =>
         order.get(
           column === 'n.unique_id'
             ? normaliseUuid(String(row.unique_id))
@@ -634,17 +672,29 @@ export class DocumentRepository {
    * reading an older schema state, the latest at or before it. Read in slices.
    */
   async #currentValueRowsFor(ids: number[]): Promise<Map<number, ValueRow[]>> {
-    const t = this.#db.dialect.boolValue(true)
+    const t = this.#db.dialect.boolValue(true) as boolean
     const stateId = await visibleStateIdFor(this.#db, this.#nodeState)
     const rowsById = new Map<number, ValueRow[]>()
     for (const slice of slices(ids)) {
       if (stateId === undefined) {
-        const current = await this.#db.query(
-          `SELECT id, node_id, event_id, property_type_id, language_id, segment,
-                  int_value, decimal_value, date_value, varchar_value, text_value
-           FROM property_value WHERE node_id IN (${slice.map(() => '?').join(', ')}) AND is_current = ?`,
-          [...slice, t],
-        )
+        const current = await this.#db.q
+          .selectFrom('property_value')
+          .select([
+            'id',
+            'node_id',
+            'event_id',
+            'property_type_id',
+            'language_id',
+            'segment',
+            'int_value',
+            'decimal_value',
+            'date_value',
+            'varchar_value',
+            'text_value',
+          ])
+          .where('node_id', 'in', slice)
+          .where('is_current', '=', t)
+          .execute()
         for (const row of current) {
           const id = Number(row.node_id)
           rowsById.set(id, [...(rowsById.get(id) ?? []), this.#toValueRow(row)])
@@ -668,32 +718,49 @@ export class DocumentRepository {
    * (story 053). A culture is there once it has a name.
    */
   async loadDrafts(): Promise<PublishedNodeRow[]> {
-    const t = this.#db.dialect.boolValue(true)
-    const rows = await this.#db.query(
-      `SELECT n.id, n.unique_id, n.parent_id, n.level, n.path, n.sort_order, n.create_date, n.text,
-              head.text AS draft_name, head.version_date,
-              ct.alias AS content_type_alias, c.content_type_id, tpl.alias AS template_alias
-       FROM node n
-       JOIN content c ON c.node_id = n.id
-       JOIN content_type ct ON ct.node_id = c.content_type_id
-       JOIN content_version head ON head.node_id = n.id AND head.current = ?
-       JOIN document_version hv ON hv.id = head.id
-       LEFT JOIN template tpl ON tpl.node_id = hv.template_id
-       WHERE n.node_object_type = ? AND n.trashed = ?
-       ORDER BY n.level, n.sort_order, n.id`,
-      [t, this.objectType, this.#db.dialect.boolValue(false)],
-    )
+    const t = this.#db.dialect.boolValue(true) as boolean
+    const rows = await this.#db.q
+      .selectFrom('node as n')
+      .innerJoin('content as c', 'c.node_id', 'n.id')
+      .innerJoin('content_type as ct', 'ct.node_id', 'c.content_type_id')
+      .innerJoin('content_version as head', (join) =>
+        join.onRef('head.node_id', '=', 'n.id').on('head.current', '=', t),
+      )
+      .innerJoin('document_version as hv', 'hv.id', 'head.id')
+      .leftJoin('template as tpl', 'tpl.node_id', 'hv.template_id')
+      .select([
+        'n.id',
+        'n.unique_id',
+        'n.parent_id',
+        'n.level',
+        'n.path',
+        'n.sort_order',
+        'n.create_date',
+        'n.text',
+        'head.text as draft_name',
+        'head.version_date',
+        'ct.alias as content_type_alias',
+        'c.content_type_id',
+        'tpl.alias as template_alias',
+      ])
+      .where('n.node_object_type', '=', this.objectType)
+      .where('n.trashed', '=', this.#db.dialect.boolValue(false) as boolean)
+      .orderBy('n.level')
+      .orderBy('n.sort_order')
+      .orderBy('n.id')
+      .execute()
     const ids = rows.map((row) => Number(row.id))
     const languages = await this.#languages()
     const valuesById = await this.#currentValueRowsFor(ids)
     const culturesById = new Map<number, Array<{ isoCode: string; name: string }>>()
     for (const slice of slices(ids)) {
-      const cultureRows = await this.#db.query(
-        `SELECT dcv.node_id, dcv.name, l.iso_code
-         FROM document_culture_variation dcv JOIN language l ON l.id = dcv.language_id
-         WHERE dcv.node_id IN (${slice.map(() => '?').join(', ')}) AND dcv.available = ?`,
-        [...slice, t],
-      )
+      const cultureRows = await this.#db.q
+        .selectFrom('document_culture_variation as dcv')
+        .innerJoin('language as l', 'l.id', 'dcv.language_id')
+        .select(['dcv.node_id', 'dcv.name', 'l.iso_code'])
+        .where('dcv.node_id', 'in', slice)
+        .where('dcv.available', '=', t)
+        .execute()
       for (const row of cultureRows) {
         const id = Number(row.node_id)
         culturesById.set(id, [
@@ -762,15 +829,18 @@ export class DocumentRepository {
           userId: input.userId,
         })
 
-        await tx.exec('INSERT INTO content (node_id, content_type_id) VALUES (?, ?)', [
-          node.id,
-          contentTypeNode.id,
-        ])
-        await tx.exec('INSERT INTO document (node_id, published, edited) VALUES (?, ?, ?)', [
-          node.id,
-          tx.dialect.boolValue(false),
-          tx.dialect.boolValue(true),
-        ])
+        await tx.q
+          .insertInto('content')
+          .values({ node_id: node.id, content_type_id: contentTypeNode.id })
+          .execute()
+        await tx.q
+          .insertInto('document')
+          .values({
+            node_id: node.id,
+            published: tx.dialect.boolValue(false) as boolean,
+            edited: tx.dialect.boolValue(true) as boolean,
+          })
+          .execute()
 
         const templateId = input.componentKey
           ? ((await repo.nodes.byKey(input.componentKey))?.id ?? null)
@@ -805,13 +875,15 @@ export class DocumentRepository {
     }>
   > {
     if (contentTypeNodeIds.length === 0) return []
-    const rows = await this.#db.query(
-      `SELECT n.id, n.unique_id, n.text, c.content_type_id, d.published FROM content c
-       JOIN node n ON n.id = c.node_id JOIN document d ON d.node_id = n.id
-       WHERE c.content_type_id IN (${contentTypeNodeIds.map(() => '?').join(', ')}) AND n.trashed = ?
-       ORDER BY n.path`,
-      [...contentTypeNodeIds, this.#db.dialect.boolValue(false)],
-    )
+    const rows = await this.#db.q
+      .selectFrom('content as c')
+      .innerJoin('node as n', 'n.id', 'c.node_id')
+      .innerJoin('document as d', 'd.node_id', 'n.id')
+      .select(['n.id', 'n.unique_id', 'n.text', 'c.content_type_id', 'd.published'])
+      .where('c.content_type_id', 'in', contentTypeNodeIds)
+      .where('n.trashed', '=', this.#db.dialect.boolValue(false) as boolean)
+      .orderBy('n.path')
+      .execute()
     return rows.map((row) => ({
       key: normaliseUuid(String(row.unique_id)),
       nodeId: Number(row.id),
@@ -830,15 +902,28 @@ export class DocumentRepository {
     if (aliases.length === 0) return []
     const languages = await this.#languages()
     const isoById = new Map(languages.map((l) => [l.id, l.isoCode]))
-    const rows = await this.#db.query(
-      `SELECT pv.id, pv.event_id, pv.schema_state_id, pv.language_id, pv.segment, pv.int_value, pv.decimal_value,
-              pv.date_value, pv.varchar_value, pv.text_value, p.alias, d.db_type
-       FROM property_value pv
-       JOIN property_type p ON p.id = pv.property_type_id
-       JOIN data_type d ON d.node_id = p.data_type_id
-       WHERE pv.node_id = ? AND pv.is_current = ? AND p.alias IN (${aliases.map(() => '?').join(', ')})`,
-      [nodeId, this.#db.dialect.boolValue(true), ...aliases],
-    )
+    const rows = await this.#db.q
+      .selectFrom('property_value as pv')
+      .innerJoin('property_type as p', 'p.id', 'pv.property_type_id')
+      .innerJoin('data_type as d', 'd.node_id', 'p.data_type_id')
+      .select([
+        'pv.id',
+        'pv.event_id',
+        'pv.schema_state_id',
+        'pv.language_id',
+        'pv.segment',
+        'pv.int_value',
+        'pv.decimal_value',
+        'pv.date_value',
+        'pv.varchar_value',
+        'pv.text_value',
+        'p.alias',
+        'd.db_type',
+      ])
+      .where('pv.node_id', '=', nodeId)
+      .where('pv.is_current', '=', this.#db.dialect.boolValue(true) as boolean)
+      .where('p.alias', 'in', aliases)
+      .execute()
     const out: CurrentValue[] = []
     for (const row of rows) {
       const storage = String(row.db_type) as ValueStorageTypeName
@@ -895,10 +980,18 @@ export class DocumentRepository {
         ]),
       )
       const head = await repo.#headEvent(node.id)
-      const published = await tx.query<{ id: number }>(
-        'SELECT cv.id FROM content_version cv JOIN document_version dv ON dv.id = cv.id AND dv.published = ? WHERE cv.node_id = ? ORDER BY cv.id DESC LIMIT 1',
-        [tx.dialect.boolValue(true), node.id],
-      )
+      const published = await tx.q
+        .selectFrom('content_version as cv')
+        .innerJoin('document_version as dv', (join) =>
+          join
+            .onRef('dv.id', '=', 'cv.id')
+            .on('dv.published', '=', tx.dialect.boolValue(true) as boolean),
+        )
+        .select('cv.id')
+        .where('cv.node_id', '=', node.id)
+        .orderBy('cv.id', 'desc')
+        .limit(1)
+        .execute()
       const fallbackEvent = Number(published[0]?.id ?? head?.id ?? 0)
       let written = false
       for (const value of values) {
@@ -1030,12 +1123,15 @@ export class DocumentRepository {
         await repo.#assertMandatoryFilled(node, targets)
 
         const head = await repo.#headEvent(node.id)
-        const t = tx.dialect.boolValue(true)
-        const f = tx.dialect.boolValue(false)
-        await tx.exec(
-          'UPDATE document_version SET published = ? WHERE id IN (SELECT id FROM content_version WHERE node_id = ?)',
-          [f, node.id],
-        )
+        const t = tx.dialect.boolValue(true) as boolean
+        const f = tx.dialect.boolValue(false) as boolean
+        await tx.q
+          .updateTable('document_version')
+          .set({ published: f })
+          .where('id', 'in', (eb) =>
+            eb.selectFrom('content_version').select('id').where('node_id', '=', node.id),
+          )
+          .execute()
         const eventId = await repo.#insertEvent(
           node.id,
           'publish',
@@ -1044,7 +1140,11 @@ export class DocumentRepository {
           head?.templateId ?? null,
           true,
         )
-        await tx.exec('UPDATE document SET published = ? WHERE node_id = ?', [t, node.id])
+        await tx.q
+          .updateTable('document')
+          .set({ published: t })
+          .where('node_id', '=', node.id)
+          .execute()
         for (const iso of targets ?? []) await repo.#setCulturePublished(node.id, iso, eventId)
         await repo.#recomputeEdited(node.id)
         await repo.#instructContent(node.key)
@@ -1134,15 +1234,21 @@ export class DocumentRepository {
       for (const iso of isoCodes) await repo.#setCulturePublished(node.id, iso, null)
       if (everything || !(await repo.#anyCulturePublished(node.id))) {
         // Events survive an unpublish; only the flags change.
-        await tx.exec(
-          'UPDATE document_version SET published = ? WHERE id IN (SELECT id FROM content_version WHERE node_id = ?)',
-          [tx.dialect.boolValue(false), node.id],
-        )
-        await tx.exec('UPDATE document SET published = ?, edited = ? WHERE node_id = ?', [
-          tx.dialect.boolValue(false),
-          tx.dialect.boolValue(true),
-          node.id,
-        ])
+        await tx.q
+          .updateTable('document_version')
+          .set({ published: tx.dialect.boolValue(false) as boolean })
+          .where('id', 'in', (eb) =>
+            eb.selectFrom('content_version').select('id').where('node_id', '=', node.id),
+          )
+          .execute()
+        await tx.q
+          .updateTable('document')
+          .set({
+            published: tx.dialect.boolValue(false) as boolean,
+            edited: tx.dialect.boolValue(true) as boolean,
+          })
+          .where('node_id', '=', node.id)
+          .execute()
       }
       // Site search holds published values only; what this took offline leaves it.
       await queueForSearch(tx, [node.id])
@@ -1186,11 +1292,20 @@ export class DocumentRepository {
   }
 
   async #revision(nodeId: number): Promise<string> {
-    const rows = await this.#db.query<{ head: number | null; value: number | null }>(
-      `SELECT (SELECT MAX(id) FROM content_version WHERE node_id = ?) AS head,
-              (SELECT MAX(id) FROM property_value WHERE node_id = ?) AS value`,
-      [nodeId, nodeId],
-    )
+    const rows = await this.#db.q
+      .selectNoFrom((eb) => [
+        eb
+          .selectFrom('content_version')
+          .select((e) => e.fn.max('id').as('id'))
+          .where('node_id', '=', nodeId)
+          .as('head'),
+        eb
+          .selectFrom('property_value')
+          .select((e) => e.fn.max('id').as('id'))
+          .where('node_id', '=', nodeId)
+          .as('value'),
+      ])
+      .execute()
     return revisionString(rows[0]?.head, rows[0]?.value)
   }
 
@@ -1208,10 +1323,11 @@ export class DocumentRepository {
       const repo = this.#child(tx)
       const state = await assertNodeMayWrite(tx, this.#nodeState)
       const targetId = Number(versionId)
-      const rows = await tx.query<{ node_id: number; text: string | null; user_id: number | null }>(
-        'SELECT node_id, text, user_id FROM content_version WHERE id = ?',
-        [targetId],
-      )
+      const rows = await tx.q
+        .selectFrom('content_version')
+        .select(['node_id', 'text', 'user_id'])
+        .where('id', '=', targetId)
+        .execute()
       const target = rows[0]
       if (!target) return undefined
       const node = await repo.nodes.byId(Number(target.node_id))
@@ -1220,10 +1336,11 @@ export class DocumentRepository {
       const contentTypeNodeId = await repo.#contentTypeNodeId(node.id)
       if (!contentTypeNodeId) return undefined
 
-      const templateRows = await tx.query<{ template_id: number | null }>(
-        'SELECT template_id FROM document_version WHERE id = ?',
-        [targetId],
-      )
+      const templateRows = await tx.q
+        .selectFrom('document_version')
+        .select('template_id')
+        .where('id', '=', targetId)
+        .execute()
       const name = String(target.text ?? node.text ?? '')
       const eventId = await repo.#insertEvent(
         node.id,
@@ -1247,15 +1364,17 @@ export class DocumentRepository {
   }
 
   async setPreventCleanup(versionId: string, prevent: boolean): Promise<boolean> {
-    const rows = await this.#db.query<{ id: number }>(
-      'SELECT id FROM content_version WHERE id = ?',
-      [Number(versionId)],
-    )
+    const rows = await this.#db.q
+      .selectFrom('content_version')
+      .select('id')
+      .where('id', '=', Number(versionId))
+      .execute()
     if (!rows[0]) return false
-    await this.#db.exec('UPDATE content_version SET prevent_cleanup = ? WHERE id = ?', [
-      this.#db.dialect.boolValue(prevent),
-      Number(versionId),
-    ])
+    await this.#db.q
+      .updateTable('content_version')
+      .set({ prevent_cleanup: this.#db.dialect.boolValue(prevent) as boolean })
+      .where('id', '=', Number(versionId))
+      .execute()
     return true
   }
 
@@ -1275,36 +1394,44 @@ export class DocumentRepository {
         if (node.parentId === bin) return true
         // Read before the move, while the branch's paths are still under the node's own.
         const branch = (
-          await tx.query<{ id: number }>('SELECT id FROM node WHERE id = ? OR path LIKE ?', [
-            node.id,
-            `${node.path},%`,
-          ])
+          await tx.q
+            .selectFrom('node')
+            .select('id')
+            .where((eb) => eb.or([eb('id', '=', node.id), eb('path', 'like', `${node.path},%`)]))
+            .execute()
         ).map((row) => Number(row.id))
-        const t = tx.dialect.boolValue(true)
-        const f = tx.dialect.boolValue(false)
-        await tx.exec(
-          'UPDATE document SET original_parent_id = ?, trashed_date = ? WHERE node_id = ?',
-          [
-            node.parentId === SystemNodes.Root ? null : node.parentId,
-            DbDate.toDb(new Date()),
-            node.id,
-          ],
-        )
+        const t = tx.dialect.boolValue(true) as boolean
+        const f = tx.dialect.boolValue(false) as boolean
+        await tx.q
+          .updateTable('document')
+          .set({
+            original_parent_id: node.parentId === SystemNodes.Root ? null : node.parentId,
+            trashed_date: DbDate.toDb(new Date()),
+          })
+          .where('node_id', '=', node.id)
+          .execute()
         // The whole branch goes with it, and stays unpublished while trashed.
-        await tx.exec('UPDATE node SET trashed = ? WHERE id = ? OR path LIKE ?', [
-          t,
-          node.id,
-          `${node.path},%`,
-        ])
-        await tx.exec(
-          `UPDATE document SET published = ?, edited = ? WHERE node_id IN (SELECT id FROM node WHERE id = ? OR path LIKE ?)`,
-          [f, t, node.id, `${node.path},%`],
-        )
+        await tx.q
+          .updateTable('node')
+          .set({ trashed: t })
+          .where((eb) => eb.or([eb('id', '=', node.id), eb('path', 'like', `${node.path},%`)]))
+          .execute()
+        await tx.q
+          .updateTable('document')
+          .set({ published: f, edited: t })
+          .where('node_id', 'in', (eb) =>
+            eb
+              .selectFrom('node')
+              .select('id')
+              .where((w) => w.or([w('id', '=', node.id), w('path', 'like', `${node.path},%`)])),
+          )
+          .execute()
         await repo.nodes.move(node.id, bin)
-        await tx.exec('UPDATE node SET sort_order = ? WHERE id = ?', [
-          await repo.#nextSortOrder(bin, node.id),
-          node.id,
-        ])
+        await tx.q
+          .updateTable('node')
+          .set({ sort_order: await repo.#nextSortOrder(bin, node.id) })
+          .where('id', '=', node.id)
+          .execute()
         // The branch is no longer published: other nodes drop it, and so does site search.
         await queueForSearch(tx, branch)
         await repo.#instructContent(node.key)
@@ -1321,34 +1448,35 @@ export class DocumentRepository {
     return this.#db.transaction(async (tx) => {
       const node = await new NodeRepository(tx).byKey(key)
       if (!node) return false
-      const ids = await tx.query<{ id: number }>(
-        'SELECT id FROM node WHERE id = ? OR path LIKE ?',
-        [node.id, `${node.path},%`],
-      )
+      const ids = await tx.q
+        .selectFrom('node')
+        .select('id')
+        .where((eb) => eb.or([eb('id', '=', node.id), eb('path', 'like', `${node.path},%`)]))
+        .execute()
       for (const row of ids.map((r) => Number(r.id)).reverse()) {
-        await tx.exec('DELETE FROM property_value WHERE node_id = ?', [row])
-        await tx.exec('DELETE FROM content_schedule WHERE node_id = ?', [row])
-        await tx.exec('DELETE FROM user_notification WHERE node_id = ?', [row])
-        await tx.exec('DELETE FROM domain WHERE node_id = ?', [row])
-        await tx.exec(
-          'DELETE FROM media_access_rule WHERE media_access_id IN (SELECT id FROM media_access WHERE node_id = ?)',
-          [row],
-        )
-        await tx.exec('DELETE FROM media_access WHERE node_id = ?', [row])
-        await tx.exec('DELETE FROM node_file WHERE node_id = ?', [row])
-        await tx.exec(
-          'DELETE FROM content_version_culture_variation WHERE version_id IN (SELECT id FROM content_version WHERE node_id = ?)',
-          [row],
-        )
-        await tx.exec('DELETE FROM document_culture_variation WHERE node_id = ?', [row])
-        await tx.exec(
-          'DELETE FROM document_version WHERE id IN (SELECT id FROM content_version WHERE node_id = ?)',
-          [row],
-        )
-        await tx.exec('DELETE FROM content_version WHERE node_id = ?', [row])
-        await tx.exec('DELETE FROM document WHERE node_id = ?', [row])
-        await tx.exec('DELETE FROM content WHERE node_id = ?', [row])
-        await tx.exec('DELETE FROM node WHERE id = ?', [row])
+        const versions = tx.q.selectFrom('content_version').select('id').where('node_id', '=', row)
+        await tx.q.deleteFrom('property_value').where('node_id', '=', row).execute()
+        await tx.q.deleteFrom('content_schedule').where('node_id', '=', row).execute()
+        await tx.q.deleteFrom('user_notification').where('node_id', '=', row).execute()
+        await tx.q.deleteFrom('domain').where('node_id', '=', row).execute()
+        await tx.q
+          .deleteFrom('media_access_rule')
+          .where('media_access_id', 'in', (eb) =>
+            eb.selectFrom('media_access').select('id').where('node_id', '=', row),
+          )
+          .execute()
+        await tx.q.deleteFrom('media_access').where('node_id', '=', row).execute()
+        await tx.q.deleteFrom('node_file').where('node_id', '=', row).execute()
+        await tx.q
+          .deleteFrom('content_version_culture_variation')
+          .where('version_id', 'in', versions)
+          .execute()
+        await tx.q.deleteFrom('document_culture_variation').where('node_id', '=', row).execute()
+        await tx.q.deleteFrom('document_version').where('id', 'in', versions).execute()
+        await tx.q.deleteFrom('content_version').where('node_id', '=', row).execute()
+        await tx.q.deleteFrom('document').where('node_id', '=', row).execute()
+        await tx.q.deleteFrom('content').where('node_id', '=', row).execute()
+        await tx.q.deleteFrom('node').where('id', '=', row).execute()
       }
       // A page deleted from the bin was never served, but an item deleted
       // directly may have been: every node is told (story 174).
@@ -1381,21 +1509,23 @@ export class DocumentRepository {
         const parentId = target?.id ?? SystemNodes.Root
         // Out of the bin is a restore, as Umbraco's Move treats it.
         if (node.trashed) {
-          await tx.exec('UPDATE node SET trashed = ? WHERE id = ? OR path LIKE ?', [
-            tx.dialect.boolValue(false),
-            node.id,
-            `${node.path},%`,
-          ])
-          await tx.exec(
-            'UPDATE document SET original_parent_id = NULL, trashed_date = NULL WHERE node_id = ?',
-            [node.id],
-          )
+          await tx.q
+            .updateTable('node')
+            .set({ trashed: tx.dialect.boolValue(false) as boolean })
+            .where((eb) => eb.or([eb('id', '=', node.id), eb('path', 'like', `${node.path},%`)]))
+            .execute()
+          await tx.q
+            .updateTable('document')
+            .set({ original_parent_id: null, trashed_date: null })
+            .where('node_id', '=', node.id)
+            .execute()
         }
         await repo.nodes.move(node.id, parentId)
-        await tx.exec('UPDATE node SET sort_order = ? WHERE id = ?', [
-          await repo.#nextSortOrder(parentId, node.id),
-          node.id,
-        ])
+        await tx.q
+          .updateTable('node')
+          .set({ sort_order: await repo.#nextSortOrder(parentId, node.id) })
+          .where('id', '=', node.id)
+          .execute()
         await repo.#instructContent(node.key)
         return 'moved'
       }),
@@ -1470,7 +1600,11 @@ export class DocumentRepository {
         }
         for (const item of sorting) {
           const node = byKey.get(normaliseUuid(item.key)) as NodeRow
-          await tx.exec('UPDATE node SET sort_order = ? WHERE id = ?', [item.sortOrder, node.id])
+          await tx.q
+            .updateTable('node')
+            .set({ sort_order: item.sortOrder })
+            .where('id', '=', node.id)
+            .execute()
           await this.#child(tx).#instructContent(node.key)
         }
         return 'sorted'
@@ -1528,20 +1662,22 @@ export class DocumentRepository {
         if (parentKey && (!parent || parent.trashed)) return 'invalid'
         await assertNodeMayWrite(tx, this.#nodeState)
         const parentId = parent?.id ?? SystemNodes.Root
-        await tx.exec('UPDATE node SET trashed = ? WHERE id = ? OR path LIKE ?', [
-          tx.dialect.boolValue(false),
-          node.id,
-          `${node.path},%`,
-        ])
+        await tx.q
+          .updateTable('node')
+          .set({ trashed: tx.dialect.boolValue(false) as boolean })
+          .where((eb) => eb.or([eb('id', '=', node.id), eb('path', 'like', `${node.path},%`)]))
+          .execute()
         await repo.nodes.move(node.id, parentId)
-        await tx.exec('UPDATE node SET sort_order = ? WHERE id = ?', [
-          await repo.#nextSortOrder(parentId, node.id),
-          node.id,
-        ])
-        await tx.exec(
-          'UPDATE document SET original_parent_id = NULL, trashed_date = NULL WHERE node_id = ?',
-          [node.id],
-        )
+        await tx.q
+          .updateTable('node')
+          .set({ sort_order: await repo.#nextSortOrder(parentId, node.id) })
+          .where('id', '=', node.id)
+          .execute()
+        await tx.q
+          .updateTable('document')
+          .set({ original_parent_id: null, trashed_date: null })
+          .where('node_id', '=', node.id)
+          .execute()
         // Nothing published comes back, but a preview's drafts do.
         await repo.#instructContent(node.key)
         return 'restored' as const
@@ -1579,12 +1715,17 @@ export class DocumentRepository {
       if (!(error instanceof PublishBlockedError)) throw error
       return { published, failed: [{ key: root.key, reason: error.message }] }
     }
-    const rows = await this.#db.query(
-      `SELECT n.id, n.unique_id, n.path, d.published FROM node n JOIN document d ON d.node_id = n.id
-       WHERE n.path LIKE ? AND n.node_object_type = ? AND n.trashed = ?
-       ORDER BY n.level, n.sort_order, n.id`,
-      [`${root.path},%`, this.objectType, this.#db.dialect.boolValue(false)],
-    )
+    const rows = await this.#db.q
+      .selectFrom('node as n')
+      .innerJoin('document as d', 'd.node_id', 'n.id')
+      .select(['n.id', 'n.unique_id', 'n.path', 'd.published'])
+      .where('n.path', 'like', `${root.path},%`)
+      .where('n.node_object_type', '=', this.objectType)
+      .where('n.trashed', '=', this.#db.dialect.boolValue(false) as boolean)
+      .orderBy('n.level')
+      .orderBy('n.sort_order')
+      .orderBy('n.id')
+      .execute()
     const skipped: string[] = []
     for (const row of rows) {
       const path = String(row.path)
@@ -1612,10 +1753,11 @@ export class DocumentRepository {
   ): Promise<{ versionId: string; document: DocumentAggregate } | undefined> {
     const id = Number(versionId)
     if (!Number.isInteger(id)) return undefined
-    const rows = await this.#db.query<{ node_id: number; text: string | null }>(
-      'SELECT node_id, text FROM content_version WHERE id = ?',
-      [id],
-    )
+    const rows = await this.#db.q
+      .selectFrom('content_version')
+      .select(['node_id', 'text'])
+      .where('id', '=', id)
+      .execute()
     const row = rows[0]
     if (!row) return undefined
     const node = await this.#nodes.byId(Number(row.node_id))
@@ -1670,16 +1812,17 @@ export class DocumentRepository {
           ? (languages.find((l) => l.isoCode.toLowerCase() === entry.culture?.toLowerCase())?.id ??
             null)
           : null
-        await tx.exec(
-          `DELETE FROM content_schedule WHERE node_id = ? AND ${languageId === null ? 'language_id IS NULL' : 'language_id = ?'}`,
-          languageId === null ? [node.id] : [node.id, languageId],
-        )
+        await tx.q
+          .deleteFrom('content_schedule')
+          .where('node_id', '=', node.id)
+          .where('language_id', languageId === null ? 'is' : '=', languageId)
+          .execute()
         const add = async (action: 'Release' | 'Expire', date: Date | null) => {
           if (!date) return
-          await tx.exec(
-            'INSERT INTO content_schedule (node_id, language_id, action, date) VALUES (?, ?, ?, ?)',
-            [node.id, languageId, action, DbDate.toDb(date)],
-          )
+          await tx.q
+            .insertInto('content_schedule')
+            .values({ node_id: node.id, language_id: languageId, action, date: DbDate.toDb(date) })
+            .execute()
         }
         await add('Release', entry.publishTime)
         await add('Expire', entry.unpublishTime)
@@ -1695,11 +1838,13 @@ export class DocumentRepository {
   > {
     const node = await this.#nodes.byKey(key)
     if (!node) return []
-    const rows = await this.#db.query(
-      `SELECT s.id, s.action, s.date, l.iso_code FROM content_schedule s
-       LEFT JOIN language l ON l.id = s.language_id WHERE s.node_id = ? ORDER BY s.date`,
-      [node.id],
-    )
+    const rows = await this.#db.q
+      .selectFrom('content_schedule as s')
+      .leftJoin('language as l', 'l.id', 's.language_id')
+      .select(['s.id', 's.action', 's.date', 'l.iso_code'])
+      .where('s.node_id', '=', node.id)
+      .orderBy('s.date')
+      .execute()
     return rows.map((row) => ({
       id: Number(row.id),
       culture: (row.iso_code as string | null) ?? null,
@@ -1714,12 +1859,16 @@ export class DocumentRepository {
   ): Promise<
     Array<{ id: number; key: string; culture: string | null; action: 'Release' | 'Expire' }>
   > {
-    const rows = await this.#db.query(
-      `SELECT s.id, s.action, n.unique_id, l.iso_code FROM content_schedule s
-       JOIN node n ON n.id = s.node_id LEFT JOIN language l ON l.id = s.language_id
-       WHERE s.date <= ? AND n.node_object_type = ? ORDER BY s.date, s.id`,
-      [DbDate.toDb(now), this.objectType],
-    )
+    const rows = await this.#db.q
+      .selectFrom('content_schedule as s')
+      .innerJoin('node as n', 'n.id', 's.node_id')
+      .leftJoin('language as l', 'l.id', 's.language_id')
+      .select(['s.id', 's.action', 'n.unique_id', 'l.iso_code'])
+      .where('s.date', '<=', DbDate.toDb(now))
+      .where('n.node_object_type', '=', this.objectType)
+      .orderBy('s.date')
+      .orderBy('s.id')
+      .execute()
     return rows.map((row) => ({
       id: Number(row.id),
       key: normaliseUuid(String(row.unique_id)),
@@ -1730,9 +1879,11 @@ export class DocumentRepository {
 
   /** Takes a due schedule for this process; false when another node already did. */
   async claimSchedule(id: number): Promise<boolean> {
-    const rows = await this.#db.query('DELETE FROM content_schedule WHERE id = ? RETURNING id', [
-      id,
-    ])
+    const rows = await this.#db.q
+      .deleteFrom('content_schedule')
+      .where('id', '=', id)
+      .returning('id')
+      .execute()
     return rows.length > 0
   }
 
@@ -1751,13 +1902,18 @@ export class DocumentRepository {
     now: Date,
     global: { keepAllVersionsNewerThanDays: number; keepLatestVersionPerDayForDays: number },
   ): Promise<{ nodes: number; versionsDeleted: number }> {
-    const types = await this.#db.query(
-      `SELECT c.node_id, ct.prevent_cleanup, ct.keep_all_versions_newer_than_days AS keep_all,
-              ct.keep_latest_version_per_day_for_days AS keep_latest
-       FROM content c JOIN content_type ct ON ct.node_id = c.content_type_id
-       JOIN node n ON n.id = c.node_id WHERE n.node_object_type = ?`,
-      [this.objectType],
-    )
+    const types = await this.#db.q
+      .selectFrom('content as c')
+      .innerJoin('content_type as ct', 'ct.node_id', 'c.content_type_id')
+      .innerJoin('node as n', 'n.id', 'c.node_id')
+      .select([
+        'c.node_id',
+        'ct.prevent_cleanup',
+        'ct.keep_all_versions_newer_than_days as keep_all',
+        'ct.keep_latest_version_per_day_for_days as keep_latest',
+      ])
+      .where('n.node_object_type', '=', this.objectType)
+      .execute()
     const day = 24 * 60 * 60 * 1000
     let nodes = 0
     let versionsDeleted = 0
@@ -1790,12 +1946,13 @@ export class DocumentRepository {
     keepLatestAfter: number,
   ): Promise<number> {
     const events = (
-      await this.#db.query(
-        `SELECT cv.id, cv.version_date, cv.current, cv.prevent_cleanup, dv.published
-         FROM content_version cv JOIN document_version dv ON dv.id = cv.id
-         WHERE cv.node_id = ? ORDER BY cv.id`,
-        [nodeId],
-      )
+      await this.#db.q
+        .selectFrom('content_version as cv')
+        .innerJoin('document_version as dv', 'dv.id', 'cv.id')
+        .select(['cv.id', 'cv.version_date', 'cv.current', 'cv.prevent_cleanup', 'dv.published'])
+        .where('cv.node_id', '=', nodeId)
+        .orderBy('cv.id')
+        .execute()
     ).map((row) => ({
       id: Number(row.id),
       date: (DbDate.fromDb(row.version_date) ?? new Date(0)).getTime(),
@@ -1817,17 +1974,13 @@ export class DocumentRepository {
     const keptAscending = [...kept].sort((a, b) => a - b)
     const prunedSet = new Set(pruned)
 
-    const rows = await this.#db.query<{
-      id: number
-      property_type_id: number
-      language_id: number | null
-      segment: string | null
-      event_id: number
-    }>(
-      `SELECT id, property_type_id, language_id, segment, event_id FROM property_value
-       WHERE node_id = ? ORDER BY event_id, id`,
-      [nodeId],
-    )
+    const rows = await this.#db.q
+      .selectFrom('property_value')
+      .select(['id', 'property_type_id', 'language_id', 'segment', 'event_id'])
+      .where('node_id', '=', nodeId)
+      .orderBy('event_id')
+      .orderBy('id')
+      .execute()
     // Per key, the distinct events that wrote it, ascending.
     const eventsByKey = new Map<string, number[]>()
     for (const row of rows) {
@@ -1852,19 +2005,19 @@ export class DocumentRepository {
       const next = written[written.indexOf(eventId) + 1] ?? Number.POSITIVE_INFINITY
       const reader = keptAscending.find((k) => k >= eventId)
       if (reader !== undefined && reader < next)
-        await this.#db.exec('UPDATE property_value SET event_id = ? WHERE id = ?', [
-          reader,
-          Number(row.id),
-        ])
-      else await this.#db.exec('DELETE FROM property_value WHERE id = ?', [Number(row.id)])
+        await this.#db.q
+          .updateTable('property_value')
+          .set({ event_id: reader })
+          .where('id', '=', Number(row.id))
+          .execute()
+      else await this.#db.q.deleteFrom('property_value').where('id', '=', Number(row.id)).execute()
     }
-    const marks = pruned.map(() => '?').join(', ')
-    await this.#db.exec(
-      `DELETE FROM content_version_culture_variation WHERE version_id IN (${marks})`,
-      pruned,
-    )
-    await this.#db.exec(`DELETE FROM document_version WHERE id IN (${marks})`, pruned)
-    await this.#db.exec(`DELETE FROM content_version WHERE id IN (${marks})`, pruned)
+    await this.#db.q
+      .deleteFrom('content_version_culture_variation')
+      .where('version_id', 'in', pruned)
+      .execute()
+    await this.#db.q.deleteFrom('document_version').where('id', 'in', pruned).execute()
+    await this.#db.q.deleteFrom('content_version').where('id', 'in', pruned).execute()
     return pruned.length
   }
 
@@ -1876,10 +2029,12 @@ export class DocumentRepository {
   /** When each item went into the recycle bin; absent for one trashed before that was recorded. */
   async trashedDates(nodeIds: readonly number[]): Promise<Map<number, Date>> {
     if (nodeIds.length === 0) return new Map()
-    const rows = await this.#db.query<{ node_id: number; trashed_date: unknown }>(
-      `SELECT node_id, trashed_date FROM document WHERE trashed_date IS NOT NULL AND node_id IN (${nodeIds.map(() => '?').join(', ')})`,
-      [...nodeIds],
-    )
+    const rows = await this.#db.q
+      .selectFrom('document')
+      .select(['node_id', 'trashed_date'])
+      .where('trashed_date', 'is not', null)
+      .where('node_id', 'in', nodeIds)
+      .execute()
     const out = new Map<number, Date>()
     for (const row of rows) {
       const date = DbDate.fromDb(row.trashed_date)
@@ -1889,10 +2044,13 @@ export class DocumentRepository {
   }
 
   async #nextSortOrder(parentId: number, excludingId: number): Promise<number> {
-    const rows = await this.#db.query<{ next: number | null }>(
-      'SELECT MAX(sort_order) AS next FROM node WHERE parent_id = ? AND node_object_type = ? AND id <> ?',
-      [parentId, this.objectType, excludingId],
-    )
+    const rows = await this.#db.q
+      .selectFrom('node')
+      .select((eb) => eb.fn.max('sort_order').as('next'))
+      .where('parent_id', '=', parentId)
+      .where('node_object_type', '=', this.objectType)
+      .where('id', '<>', excludingId)
+      .execute()
     const current = rows[0]?.next
     return current === null || current === undefined ? 0 : Number(current) + 1
   }
@@ -1905,31 +2063,55 @@ export class DocumentRepository {
   // ------------------------------------------------------------ internals
 
   async #load(node: NodeRow): Promise<DocumentAggregate | undefined> {
-    const t = this.#db.dialect.boolValue(true)
-    const rows = await this.#db.query(
-      `SELECT c.content_type_id, ct.alias AS content_type_alias, ct.icon AS content_type_icon,
-              ct.list_view AS content_type_collection,
-              ctn.unique_id AS content_type_key, d.published, d.edited,
-              head.text AS draft_name, head.version_date AS draft_date,
-              hv.template_id, tn.unique_id AS template_key,
-              pub.version_date AS published_date,
-              (SELECT MAX(cvm.id) FROM content_version cvm WHERE cvm.node_id = n.id) AS head_id,
-              (SELECT MAX(pvm.id) FROM property_value pvm WHERE pvm.node_id = n.id) AS last_value_id
-       FROM node n
-       JOIN content c ON c.node_id = n.id
-       JOIN content_type ct ON ct.node_id = c.content_type_id
-       JOIN node ctn ON ctn.id = ct.node_id
-       JOIN document d ON d.node_id = n.id
-       JOIN content_version head ON head.node_id = n.id AND head.current = ?
-       JOIN document_version hv ON hv.id = head.id
-       LEFT JOIN node tn ON tn.id = hv.template_id
-       LEFT JOIN (
-         SELECT pc.node_id, pc.version_date FROM content_version pc
-         JOIN document_version pd ON pd.id = pc.id AND pd.published = ?
-       ) pub ON pub.node_id = n.id
-       WHERE n.id = ?`,
-      [t, t, node.id],
-    )
+    const t = this.#db.dialect.boolValue(true) as boolean
+    const rows = await this.#db.q
+      .selectFrom('node as n')
+      .innerJoin('content as c', 'c.node_id', 'n.id')
+      .innerJoin('content_type as ct', 'ct.node_id', 'c.content_type_id')
+      .innerJoin('node as ctn', 'ctn.id', 'ct.node_id')
+      .innerJoin('document as d', 'd.node_id', 'n.id')
+      .innerJoin('content_version as head', (join) =>
+        join.onRef('head.node_id', '=', 'n.id').on('head.current', '=', t),
+      )
+      .innerJoin('document_version as hv', 'hv.id', 'head.id')
+      .leftJoin('node as tn', 'tn.id', 'hv.template_id')
+      .leftJoin(
+        (eb) =>
+          eb
+            .selectFrom('content_version as pc')
+            .innerJoin('document_version as pd', (join) =>
+              join.onRef('pd.id', '=', 'pc.id').on('pd.published', '=', t),
+            )
+            .select(['pc.node_id', 'pc.version_date'])
+            .as('pub'),
+        (join) => join.onRef('pub.node_id', '=', 'n.id'),
+      )
+      .select((eb) => [
+        'c.content_type_id',
+        'ct.alias as content_type_alias',
+        'ct.icon as content_type_icon',
+        'ct.list_view as content_type_collection',
+        'ctn.unique_id as content_type_key',
+        'd.published',
+        'd.edited',
+        'head.text as draft_name',
+        'head.version_date as draft_date',
+        'hv.template_id',
+        'tn.unique_id as template_key',
+        'pub.version_date as published_date',
+        eb
+          .selectFrom('content_version as cvm')
+          .select((e) => e.fn.max('cvm.id').as('id'))
+          .whereRef('cvm.node_id', '=', 'n.id')
+          .as('head_id'),
+        eb
+          .selectFrom('property_value as pvm')
+          .select((e) => e.fn.max('pvm.id').as('id'))
+          .whereRef('pvm.node_id', '=', 'n.id')
+          .as('last_value_id'),
+      ])
+      .where('n.id', '=', node.id)
+      .execute()
     const row = rows[0]
     if (!row) return undefined
 
@@ -1960,15 +2142,19 @@ export class DocumentRepository {
   }
 
   async #contentTypeNodeId(nodeId: number): Promise<number | undefined> {
-    const rows = await this.#db.query<{ content_type_id: number }>(
-      'SELECT content_type_id FROM content WHERE node_id = ?',
-      [nodeId],
-    )
+    const rows = await this.#db.q
+      .selectFrom('content')
+      .select('content_type_id')
+      .where('node_id', '=', nodeId)
+      .execute()
     return rows[0] ? Number(rows[0].content_type_id) : undefined
   }
 
   async #languages(): Promise<LanguageRow[]> {
-    const rows = await this.#db.query('SELECT id, iso_code, is_default, is_mandatory FROM language')
+    const rows = await this.#db.q
+      .selectFrom('language')
+      .select(['id', 'iso_code', 'is_default', 'is_mandatory'])
+      .execute()
     return rows.map((row) => ({
       id: Number(row.id),
       isoCode: String(row.iso_code),
@@ -1994,16 +2180,12 @@ export class DocumentRepository {
     if (!node) return undefined
     const contentTypeNodeId = await this.#contentTypeNodeId(node.id)
     if (!contentTypeNodeId) return undefined
-    const rows = await this.#db.query<{ alias: string; unique_id: string; name: string }>(
-      `WITH RECURSIVE ancestry(id) AS (
-         SELECT ?
-         UNION
-         SELECT c.parent_content_type_id FROM content_type_composition c JOIN ancestry a ON a.id = c.child_content_type_id
-       )
-       SELECT p.alias, p.unique_id, p.name FROM property_type p
-       WHERE p.content_type_id IN (SELECT id FROM ancestry) AND p.retired_at IS NULL`,
-      [contentTypeNodeId],
-    )
+    const rows = await this.#withAncestry(contentTypeNodeId)
+      .selectFrom('property_type as p')
+      .select(['p.alias', 'p.unique_id', 'p.name'])
+      .where('p.content_type_id', 'in', (eb) => eb.selectFrom('ancestry').select('id'))
+      .where('p.retired_at', 'is', null)
+      .execute()
     return rows.map((row) => ({
       alias: String(row.alias),
       key: normaliseUuid(String(row.unique_id)),
@@ -2011,23 +2193,47 @@ export class DocumentRepository {
     }))
   }
 
+  /** A content type and every type it composes, transitively, as the CTE `ancestry(id)`. */
+  #withAncestry(contentTypeNodeId: number) {
+    return this.#db.q.withRecursive('ancestry(id)', (db) =>
+      db
+        .selectNoFrom((eb) => eb.val(contentTypeNodeId).as('id'))
+        .union(
+          db
+            .selectFrom('content_type_composition as c')
+            .innerJoin('ancestry as a', 'a.id', 'c.child_content_type_id')
+            .select('c.parent_content_type_id as id'),
+        ),
+    )
+  }
+
   /** Property types of a content type, including everything it composes; retired ones excluded. */
   async #propertyTypes(contentTypeNodeId: number): Promise<PropertyTypeRow[]> {
-    const rows = await this.#db.query(
-      `WITH RECURSIVE ancestry(id) AS (
-         SELECT ?
-         UNION
-         SELECT c.parent_content_type_id FROM content_type_composition c JOIN ancestry a ON a.id = c.child_content_type_id
-       )
-       SELECT p.id, p.alias, p.name, p.variations, p.mandatory, p.mandatory_message,
-              p.validation_reg_exp, p.validation_reg_exp_message, d.db_type, d.editor_alias, d.config,
-              p.since_version, ss.version AS since_v, ss.revision AS since_r
-       FROM property_type p JOIN data_type d ON d.node_id = p.data_type_id
-       LEFT JOIN schema_state ss ON ss.id = p.since_state_id
-       WHERE p.content_type_id IN (SELECT id FROM ancestry) AND p.retired_at IS NULL
-       ORDER BY p.sort_order, p.id`,
-      [contentTypeNodeId],
-    )
+    const rows = await this.#withAncestry(contentTypeNodeId)
+      .selectFrom('property_type as p')
+      .innerJoin('data_type as d', 'd.node_id', 'p.data_type_id')
+      .leftJoin('schema_state as ss', 'ss.id', 'p.since_state_id')
+      .select([
+        'p.id',
+        'p.alias',
+        'p.name',
+        'p.variations',
+        'p.mandatory',
+        'p.mandatory_message',
+        'p.validation_reg_exp',
+        'p.validation_reg_exp_message',
+        'd.db_type',
+        'd.editor_alias',
+        'd.config',
+        'p.since_version',
+        'ss.version as since_v',
+        'ss.revision as since_r',
+      ])
+      .where('p.content_type_id', 'in', (eb) => eb.selectFrom('ancestry').select('id'))
+      .where('p.retired_at', 'is', null)
+      .orderBy('p.sort_order')
+      .orderBy('p.id')
+      .execute()
     return rows.map((row) => ({
       id: Number(row.id),
       alias: String(row.alias),
@@ -2066,11 +2272,23 @@ export class DocumentRepository {
   }
 
   async #currentValueRows(nodeId: number): Promise<ValueRow[]> {
-    const rows = await this.#db.query(
-      `SELECT id, event_id, property_type_id, language_id, segment, int_value, decimal_value, date_value, varchar_value, text_value
-       FROM property_value WHERE node_id = ? AND is_current = ?`,
-      [nodeId, this.#db.dialect.boolValue(true)],
-    )
+    const rows = await this.#db.q
+      .selectFrom('property_value')
+      .select([
+        'id',
+        'event_id',
+        'property_type_id',
+        'language_id',
+        'segment',
+        'int_value',
+        'decimal_value',
+        'date_value',
+        'varchar_value',
+        'text_value',
+      ])
+      .where('node_id', '=', nodeId)
+      .where('is_current', '=', this.#db.dialect.boolValue(true) as boolean)
+      .execute()
     return rows.map((row) => this.#toValueRow(row))
   }
 
@@ -2079,27 +2297,36 @@ export class DocumentRepository {
     nodeId: number,
     asOf: { eventId?: number; schemaStateId?: number },
   ): Promise<ValueRow[]> {
-    const conditions = ['node_id = ?']
-    const params: unknown[] = [nodeId]
-    if (asOf.eventId !== undefined) {
-      conditions.push('event_id <= ?')
-      params.push(asOf.eventId)
-    }
-    if (asOf.schemaStateId !== undefined) {
-      conditions.push('schema_state_id <= ?')
-      params.push(asOf.schemaStateId)
-    }
-    const rows = await this.#db.query(
-      `SELECT pv.id, pv.event_id, pv.property_type_id, pv.language_id, pv.segment,
-              pv.int_value, pv.decimal_value, pv.date_value, pv.varchar_value, pv.text_value
-       FROM property_value pv
-       JOIN (
-         SELECT property_type_id, language_id, segment, MAX(id) AS id
-         FROM property_value WHERE ${conditions.join(' AND ')}
-         GROUP BY property_type_id, language_id, segment
-       ) latest ON latest.id = pv.id`,
-      params,
-    )
+    const { eventId, schemaStateId } = asOf
+    const rows = await this.#db.q
+      .selectFrom('property_value as pv')
+      .innerJoin(
+        (eb) =>
+          eb
+            .selectFrom('property_value')
+            .select((e) => ['property_type_id', 'language_id', 'segment', e.fn.max('id').as('id')])
+            .where('node_id', '=', nodeId)
+            .$if(eventId !== undefined, (q) => q.where('event_id', '<=', eventId as number))
+            .$if(schemaStateId !== undefined, (q) =>
+              q.where('schema_state_id', '<=', schemaStateId as number),
+            )
+            .groupBy(['property_type_id', 'language_id', 'segment'])
+            .as('latest'),
+        (join) => join.onRef('latest.id', '=', 'pv.id'),
+      )
+      .select([
+        'pv.id',
+        'pv.event_id',
+        'pv.property_type_id',
+        'pv.language_id',
+        'pv.segment',
+        'pv.int_value',
+        'pv.decimal_value',
+        'pv.date_value',
+        'pv.varchar_value',
+        'pv.text_value',
+      ])
+      .execute()
     return rows.map((row) => this.#toValueRow(row))
   }
 
@@ -2289,10 +2516,12 @@ export class DocumentRepository {
     const types = new Map<number, PropertyTypeRow>()
     for (const row of [...target, ...current]) {
       if (types.has(row.propertyTypeId)) continue
-      const found = await this.#db.query(
-        'SELECT p.id, p.alias, p.variations, d.db_type, d.editor_alias FROM property_type p JOIN data_type d ON d.node_id = p.data_type_id WHERE p.id = ?',
-        [row.propertyTypeId],
-      )
+      const found = await this.#db.q
+        .selectFrom('property_type as p')
+        .innerJoin('data_type as d', 'd.node_id', 'p.data_type_id')
+        .select(['p.id', 'p.alias', 'p.variations', 'd.db_type', 'd.editor_alias'])
+        .where('p.id', '=', row.propertyTypeId)
+        .execute()
       const r = found[0]
       if (r)
         types.set(row.propertyTypeId, {
@@ -2375,26 +2604,26 @@ export class DocumentRepository {
   ): Promise<void> {
     const column = STORAGE_COLUMN[propertyType.storage]
     if (supersedes !== undefined) {
-      await this.#db.exec('UPDATE property_value SET is_current = ? WHERE id = ?', [
-        this.#db.dialect.boolValue(false),
-        supersedes,
-      ])
+      await this.#db.q
+        .updateTable('property_value')
+        .set({ is_current: this.#db.dialect.boolValue(false) as boolean })
+        .where('id', '=', supersedes)
+        .execute()
     }
-    await this.#db.exec(
-      `INSERT INTO property_value (node_id, property_type_id, language_id, segment, event_id, schema_state_id, is_current, ${column}, sortable_value)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        nodeId,
-        propertyType.id,
-        languageId,
+    await this.#db.q
+      .insertInto('property_value')
+      .values({
+        node_id: nodeId,
+        property_type_id: propertyType.id,
+        language_id: languageId,
         segment,
-        eventId,
-        schemaStateId,
-        this.#db.dialect.boolValue(true),
-        this.#toStorage(value, propertyType.storage),
-        typeof value === 'string' ? value.slice(0, 512) : null,
-      ],
-    )
+        event_id: eventId,
+        schema_state_id: schemaStateId,
+        is_current: this.#db.dialect.boolValue(true) as boolean,
+        [column]: this.#toStorage(value, propertyType.storage),
+        sortable_value: typeof value === 'string' ? value.slice(0, 512) : null,
+      } as Insertable<CoreTables['property_value']>)
+      .execute()
   }
 
   /**
@@ -2493,10 +2722,18 @@ export class DocumentRepository {
     if (!node) return undefined
     const draft = await this.#load(node)
     if (!draft?.published) return undefined
-    const published = await this.#db.query<{ id: number }>(
-      'SELECT cv.id FROM content_version cv JOIN document_version dv ON dv.id = cv.id AND dv.published = ? WHERE cv.node_id = ? ORDER BY cv.id DESC LIMIT 1',
-      [this.#db.dialect.boolValue(true), node.id],
-    )
+    const published = await this.#db.q
+      .selectFrom('content_version as cv')
+      .innerJoin('document_version as dv', (join) =>
+        join
+          .onRef('dv.id', '=', 'cv.id')
+          .on('dv.published', '=', this.#db.dialect.boolValue(true) as boolean),
+      )
+      .select('cv.id')
+      .where('cv.node_id', '=', node.id)
+      .orderBy('cv.id', 'desc')
+      .limit(1)
+      .execute()
     const eventId = Number(published[0]?.id)
     const contentTypeNodeId = await this.#contentTypeNodeId(node.id)
     if (!contentTypeNodeId || !eventId) return undefined
@@ -2519,29 +2756,44 @@ export class DocumentRepository {
   async treeItems(rows: readonly NodeRow[]): Promise<DocumentTreeItem[]> {
     if (rows.length === 0) return []
     const ids = rows.map((row) => row.id)
-    const placeholders = ids.map(() => '?').join(', ')
     const counts = await this.#nodes.childCounts(ids, this.objectType)
-    const facts = await this.#db.query(
-      `SELECT n.id, ctn.unique_id AS content_type_key, ct.icon AS content_type_icon,
-              ct.list_view AS content_type_collection, d.published, d.edited,
-              head.text AS draft_name
-       FROM node n
-       JOIN content c ON c.node_id = n.id
-       JOIN content_type ct ON ct.node_id = c.content_type_id
-       JOIN node ctn ON ctn.id = ct.node_id
-       JOIN document d ON d.node_id = n.id
-       JOIN content_version head ON head.node_id = n.id AND head.current = ?
-       WHERE n.id IN (${placeholders})`,
-      [this.#db.dialect.boolValue(true), ...ids],
-    )
+    const facts = await this.#db.q
+      .selectFrom('node as n')
+      .innerJoin('content as c', 'c.node_id', 'n.id')
+      .innerJoin('content_type as ct', 'ct.node_id', 'c.content_type_id')
+      .innerJoin('node as ctn', 'ctn.id', 'ct.node_id')
+      .innerJoin('document as d', 'd.node_id', 'n.id')
+      .innerJoin('content_version as head', (join) =>
+        join
+          .onRef('head.node_id', '=', 'n.id')
+          .on('head.current', '=', this.#db.dialect.boolValue(true) as boolean),
+      )
+      .select([
+        'n.id',
+        'ctn.unique_id as content_type_key',
+        'ct.icon as content_type_icon',
+        'ct.list_view as content_type_collection',
+        'd.published',
+        'd.edited',
+        'head.text as draft_name',
+      ])
+      .where('n.id', 'in', ids)
+      .execute()
     const factsById = new Map(facts.map((row) => [Number(row.id), row]))
-    const cultures = await this.#db.query(
-      `SELECT dcv.node_id, dcv.name, dcv.published, dcv.edited, dcv.available, l.iso_code
-       FROM document_culture_variation dcv JOIN language l ON l.id = dcv.language_id
-       WHERE dcv.node_id IN (${placeholders})`,
-      ids,
-    )
-    const culturesById = new Map<number, Record<string, unknown>[]>()
+    const cultures = await this.#db.q
+      .selectFrom('document_culture_variation as dcv')
+      .innerJoin('language as l', 'l.id', 'dcv.language_id')
+      .select([
+        'dcv.node_id',
+        'dcv.name',
+        'dcv.published',
+        'dcv.edited',
+        'dcv.available',
+        'l.iso_code',
+      ])
+      .where('dcv.node_id', 'in', ids)
+      .execute()
+    const culturesById = new Map<number, typeof cultures>()
     for (const row of cultures)
       culturesById.set(Number(row.node_id), [...(culturesById.get(Number(row.node_id)) ?? []), row])
     // Every ancestor the page's paths name, parents included, in one read.
@@ -2604,10 +2856,11 @@ export class DocumentRepository {
   async originalParent(key: string): Promise<string | null | undefined> {
     const node = await this.#nodes.byKey(key)
     if (!node) return undefined
-    const rows = await this.#db.query<{ original_parent_id: number | null }>(
-      'SELECT original_parent_id FROM document WHERE node_id = ?',
-      [node.id],
-    )
+    const rows = await this.#db.q
+      .selectFrom('document')
+      .select('original_parent_id')
+      .where('node_id', '=', node.id)
+      .execute()
     const parentId = rows[0]?.original_parent_id
     if (parentId === null || parentId === undefined) return null
     return (await this.#nodes.byId(Number(parentId)))?.key ?? null
@@ -2630,22 +2883,39 @@ export class DocumentRepository {
     templateId: number | null,
     published: boolean,
   ): Promise<number> {
-    const t = this.#db.dialect.boolValue(true)
-    const f = this.#db.dialect.boolValue(false)
-    await this.#db.exec('UPDATE content_version SET current = ? WHERE node_id = ?', [f, nodeId])
-    await this.#db.exec(
-      `INSERT INTO content_version (node_id, kind, version_date, user_id, current, text, prevent_cleanup) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [nodeId, kind, DbDate.toDb(new Date()), userId ?? null, t, name, f],
-    )
-    const rows = await this.#db.query<{ id: number }>(
-      'SELECT MAX(id) AS id FROM content_version WHERE node_id = ?',
-      [nodeId],
-    )
+    const t = this.#db.dialect.boolValue(true) as boolean
+    const f = this.#db.dialect.boolValue(false) as boolean
+    await this.#db.q
+      .updateTable('content_version')
+      .set({ current: f })
+      .where('node_id', '=', nodeId)
+      .execute()
+    await this.#db.q
+      .insertInto('content_version')
+      .values({
+        node_id: nodeId,
+        kind,
+        version_date: DbDate.toDb(new Date()),
+        user_id: userId ?? null,
+        current: t,
+        text: name,
+        prevent_cleanup: f,
+      })
+      .execute()
+    const rows = await this.#db.q
+      .selectFrom('content_version')
+      .select((eb) => eb.fn.max('id').as('id'))
+      .where('node_id', '=', nodeId)
+      .execute()
     const eventId = Number(rows[0]?.id)
-    await this.#db.exec(
-      'INSERT INTO document_version (id, template_id, published) VALUES (?, ?, ?)',
-      [eventId, templateId, this.#db.dialect.boolValue(published)],
-    )
+    await this.#db.q
+      .insertInto('document_version')
+      .values({
+        id: eventId,
+        template_id: templateId,
+        published: this.#db.dialect.boolValue(published) as boolean,
+      })
+      .execute()
     // Every change to what an item says is an event, so this is where the search index hears of it.
     await queueForSearch(this.#db, [nodeId])
     return eventId
@@ -2656,11 +2926,14 @@ export class DocumentRepository {
   ): Promise<
     { id: number; name: string; userId: number | undefined; templateId: number | null } | undefined
   > {
-    const rows = await this.#db.query(
-      `SELECT cv.id, cv.text, cv.user_id, dv.template_id FROM content_version cv JOIN document_version dv ON dv.id = cv.id
-       WHERE cv.node_id = ? ORDER BY cv.id DESC LIMIT 1`,
-      [nodeId],
-    )
+    const rows = await this.#db.q
+      .selectFrom('content_version as cv')
+      .innerJoin('document_version as dv', 'dv.id', 'cv.id')
+      .select(['cv.id', 'cv.text', 'cv.user_id', 'dv.template_id'])
+      .where('cv.node_id', '=', nodeId)
+      .orderBy('cv.id', 'desc')
+      .limit(1)
+      .execute()
     const row = rows[0]
     if (!row) return undefined
     return {
@@ -2673,10 +2946,13 @@ export class DocumentRepository {
   }
 
   async #publishedEventId(nodeId: number): Promise<number | undefined> {
-    const rows = await this.#db.query<{ id: number }>(
-      'SELECT cv.id FROM content_version cv JOIN document_version dv ON dv.id = cv.id WHERE cv.node_id = ? AND dv.published = ?',
-      [nodeId, this.#db.dialect.boolValue(true)],
-    )
+    const rows = await this.#db.q
+      .selectFrom('content_version as cv')
+      .innerJoin('document_version as dv', 'dv.id', 'cv.id')
+      .select('cv.id')
+      .where('cv.node_id', '=', nodeId)
+      .where('dv.published', '=', this.#db.dialect.boolValue(true) as boolean)
+      .execute()
     return rows[0] ? Number(rows[0].id) : undefined
   }
 
@@ -2685,38 +2961,56 @@ export class DocumentRepository {
     const publishedId = await this.#publishedEventId(nodeId)
     let edited = true
     if (publishedId !== undefined) {
-      const newer = await this.#db.query<{ n: number }>(
-        'SELECT COUNT(*) AS n FROM property_value WHERE node_id = ? AND event_id > ?',
-        [nodeId, publishedId],
-      )
-      const names = await this.#db.query<{ head: string | null; pub: string | null }>(
-        `SELECT (SELECT text FROM content_version WHERE node_id = ? ORDER BY id DESC LIMIT 1) AS head,
-                (SELECT text FROM content_version WHERE id = ?) AS pub`,
-        [nodeId, publishedId],
-      )
+      const newer = await this.#db.q
+        .selectFrom('property_value')
+        .select((eb) => eb.fn.countAll().as('n'))
+        .where('node_id', '=', nodeId)
+        .where('event_id', '>', publishedId)
+        .execute()
+      const names = await this.#db.q
+        .selectNoFrom((eb) => [
+          eb
+            .selectFrom('content_version')
+            .select('text')
+            .where('node_id', '=', nodeId)
+            .orderBy('id', 'desc')
+            .limit(1)
+            .as('head'),
+          eb.selectFrom('content_version').select('text').where('id', '=', publishedId).as('pub'),
+        ])
+        .execute()
       edited = Number(newer[0]?.n ?? 0) > 0 || (names[0]?.head ?? '') !== (names[0]?.pub ?? '')
     }
-    await this.#db.exec('UPDATE document SET edited = ? WHERE node_id = ?', [
-      this.#db.dialect.boolValue(edited),
-      nodeId,
-    ])
+    await this.#db.q
+      .updateTable('document')
+      .set({ edited: this.#db.dialect.boolValue(edited) as boolean })
+      .where('node_id', '=', nodeId)
+      .execute()
     // A published culture is edited when its values, the invariant ones, or its name moved on
     for (const culture of await this.#publishedCultureEvents(nodeId)) {
-      const newer = await this.#db.query<{ n: number }>(
-        `SELECT COUNT(*) AS n FROM property_value
-         WHERE node_id = ? AND event_id > ? AND (language_id = ? OR language_id IS NULL)`,
-        [nodeId, culture.eventId, culture.languageId],
-      )
-      const names = await this.#db.query<{ name: string | null; published_name: string | null }>(
-        'SELECT name, published_name FROM document_culture_variation WHERE node_id = ? AND language_id = ?',
-        [nodeId, culture.languageId],
-      )
+      const newer = await this.#db.q
+        .selectFrom('property_value')
+        .select((eb) => eb.fn.countAll().as('n'))
+        .where('node_id', '=', nodeId)
+        .where('event_id', '>', culture.eventId)
+        .where((eb) =>
+          eb.or([eb('language_id', '=', culture.languageId), eb('language_id', 'is', null)]),
+        )
+        .execute()
+      const names = await this.#db.q
+        .selectFrom('document_culture_variation')
+        .select(['name', 'published_name'])
+        .where('node_id', '=', nodeId)
+        .where('language_id', '=', culture.languageId)
+        .execute()
       const cultureEdited =
         Number(newer[0]?.n ?? 0) > 0 || (names[0]?.name ?? '') !== (names[0]?.published_name ?? '')
-      await this.#db.exec(
-        'UPDATE document_culture_variation SET edited = ? WHERE node_id = ? AND language_id = ?',
-        [this.#db.dialect.boolValue(cultureEdited), nodeId, culture.languageId],
-      )
+      await this.#db.q
+        .updateTable('document_culture_variation')
+        .set({ edited: this.#db.dialect.boolValue(cultureEdited) as boolean })
+        .where('node_id', '=', nodeId)
+        .where('language_id', '=', culture.languageId)
+        .execute()
     }
   }
 
@@ -2745,11 +3039,12 @@ export class DocumentRepository {
     const createDate = node.createDate ?? new Date()
     const updateDate = DbDate.fromDb(row.draft_date) ?? createDate
     const publishDate = DbDate.fromDb(row.published_date) ?? null
-    const cultureRows = await this.#db.query(
-      `SELECT dcv.name, dcv.published, dcv.edited, dcv.available, l.iso_code
-       FROM document_culture_variation dcv JOIN language l ON l.id = dcv.language_id WHERE dcv.node_id = ?`,
-      [node.id],
-    )
+    const cultureRows = await this.#db.q
+      .selectFrom('document_culture_variation as dcv')
+      .innerJoin('language as l', 'l.id', 'dcv.language_id')
+      .select(['dcv.name', 'dcv.published', 'dcv.edited', 'dcv.available', 'l.iso_code'])
+      .where('dcv.node_id', '=', node.id)
+      .execute()
     if (cultureRows.length === 0) {
       return [
         {
@@ -2789,54 +3084,81 @@ export class DocumentRepository {
     const languages = await this.#languages()
     const idByIso = new Map(languages.map((l) => [l.isoCode.toLowerCase(), l.id]))
     const now = DbDate.toDb(new Date())
-    const t = this.#db.dialect.boolValue(true)
-    const f = this.#db.dialect.boolValue(false)
+    const t = this.#db.dialect.boolValue(true) as boolean
+    const f = this.#db.dialect.boolValue(false) as boolean
     for (const variant of cultured) {
       const languageId = idByIso.get(String(variant.culture).toLowerCase())
       if (!languageId) continue
-      await this.#db.exec(
-        'INSERT INTO content_version_culture_variation (version_id, language_id, name, date) VALUES (?, ?, ?, ?)',
-        [eventId, languageId, variant.name, now],
-      )
-      const existing = await this.#db.query<{ id: number }>(
-        'SELECT id FROM document_culture_variation WHERE node_id = ? AND language_id = ?',
-        [nodeId, languageId],
-      )
+      await this.#db.q
+        .insertInto('content_version_culture_variation')
+        .values({ version_id: eventId, language_id: languageId, name: variant.name, date: now })
+        .execute()
+      const existing = await this.#db.q
+        .selectFrom('document_culture_variation')
+        .select('id')
+        .where('node_id', '=', nodeId)
+        .where('language_id', '=', languageId)
+        .execute()
       if (existing[0]) {
-        await this.#db.exec(
-          'UPDATE document_culture_variation SET name = ?, available = ?, edited = ? WHERE id = ?',
-          [variant.name, t, t, Number(existing[0].id)],
-        )
+        await this.#db.q
+          .updateTable('document_culture_variation')
+          .set({ name: variant.name, available: t, edited: t })
+          .where('id', '=', Number(existing[0].id))
+          .execute()
       } else {
-        await this.#db.exec(
-          'INSERT INTO document_culture_variation (node_id, language_id, edited, available, published, name) VALUES (?, ?, ?, ?, ?, ?)',
-          [nodeId, languageId, t, t, f, variant.name],
-        )
+        await this.#db.q
+          .insertInto('document_culture_variation')
+          .values({
+            node_id: nodeId,
+            language_id: languageId,
+            edited: t,
+            available: t,
+            published: f,
+            name: variant.name,
+          })
+          .execute()
       }
     }
   }
 
   async #copyCultureVariations(fromEventId: number, toEventId: number): Promise<void> {
-    await this.#db.exec(
-      `INSERT INTO content_version_culture_variation (version_id, language_id, name, date, available_user_id)
-       SELECT ?, language_id, name, date, available_user_id FROM content_version_culture_variation WHERE version_id = ?`,
-      [toEventId, fromEventId],
-    )
+    await this.#db.q
+      .insertInto('content_version_culture_variation')
+      .columns(['version_id', 'language_id', 'name', 'date', 'available_user_id'])
+      .expression((eb) =>
+        eb
+          .selectFrom('content_version_culture_variation')
+          .select([
+            eb.val(toEventId).as('version_id'),
+            'language_id',
+            'name',
+            'date',
+            'available_user_id',
+          ])
+          .where('version_id', '=', fromEventId),
+      )
+      .execute()
   }
 
   async #availableCultures(nodeId: number): Promise<string[]> {
-    const rows = await this.#db.query<{ iso_code: string }>(
-      'SELECT l.iso_code FROM document_culture_variation dcv JOIN language l ON l.id = dcv.language_id WHERE dcv.node_id = ? AND dcv.available = ?',
-      [nodeId, this.#db.dialect.boolValue(true)],
-    )
+    const rows = await this.#db.q
+      .selectFrom('document_culture_variation as dcv')
+      .innerJoin('language as l', 'l.id', 'dcv.language_id')
+      .select('l.iso_code')
+      .where('dcv.node_id', '=', nodeId)
+      .where('dcv.available', '=', this.#db.dialect.boolValue(true) as boolean)
+      .execute()
     return rows.map((row) => String(row.iso_code))
   }
 
   async #publishedCultures(nodeId: number): Promise<string[]> {
-    const rows = await this.#db.query<{ iso_code: string }>(
-      'SELECT l.iso_code FROM document_culture_variation dcv JOIN language l ON l.id = dcv.language_id WHERE dcv.node_id = ? AND dcv.published = ?',
-      [nodeId, this.#db.dialect.boolValue(true)],
-    )
+    const rows = await this.#db.q
+      .selectFrom('document_culture_variation as dcv')
+      .innerJoin('language as l', 'l.id', 'dcv.language_id')
+      .select('l.iso_code')
+      .where('dcv.node_id', '=', nodeId)
+      .where('dcv.published', '=', this.#db.dialect.boolValue(true) as boolean)
+      .execute()
     return rows.map((row) => String(row.iso_code))
   }
 
@@ -2846,22 +3168,27 @@ export class DocumentRepository {
     const languageId = languages.find((l) => l.isoCode.toLowerCase() === iso.toLowerCase())?.id
     if (!languageId) return
     if (eventId === null)
-      await this.#db.exec(
-        'UPDATE document_culture_variation SET published = ?, edited = ? WHERE node_id = ? AND language_id = ?',
-        [this.#db.dialect.boolValue(false), this.#db.dialect.boolValue(true), nodeId, languageId],
-      )
+      await this.#db.q
+        .updateTable('document_culture_variation')
+        .set({
+          published: this.#db.dialect.boolValue(false) as boolean,
+          edited: this.#db.dialect.boolValue(true) as boolean,
+        })
+        .where('node_id', '=', nodeId)
+        .where('language_id', '=', languageId)
+        .execute()
     else
-      await this.#db.exec(
-        `UPDATE document_culture_variation SET published = ?, edited = ?, published_event_id = ?,
-           published_name = name WHERE node_id = ? AND language_id = ?`,
-        [
-          this.#db.dialect.boolValue(true),
-          this.#db.dialect.boolValue(false),
-          eventId,
-          nodeId,
-          languageId,
-        ],
-      )
+      await this.#db.q
+        .updateTable('document_culture_variation')
+        .set((eb) => ({
+          published: this.#db.dialect.boolValue(true) as boolean,
+          edited: this.#db.dialect.boolValue(false) as boolean,
+          published_event_id: eventId,
+          published_name: eb.ref('name'),
+        }))
+        .where('node_id', '=', nodeId)
+        .where('language_id', '=', languageId)
+        .execute()
   }
 
   /** Each published culture: its language, the event it was published at, and its published name. */
@@ -2870,12 +3197,20 @@ export class DocumentRepository {
   ): Promise<Map<number, PublishedCulture[]>> {
     const out = new Map<number, PublishedCulture[]>()
     if (ids.length === 0) return out
-    const rows = await this.#db.query(
-      `SELECT dcv.node_id, dcv.language_id, l.iso_code, dcv.published_event_id, dcv.published_name, dcv.name
-       FROM document_culture_variation dcv JOIN language l ON l.id = dcv.language_id
-       WHERE dcv.node_id IN (${ids.map(() => '?').join(', ')}) AND dcv.published = ?`,
-      [...ids, this.#db.dialect.boolValue(true)],
-    )
+    const rows = await this.#db.q
+      .selectFrom('document_culture_variation as dcv')
+      .innerJoin('language as l', 'l.id', 'dcv.language_id')
+      .select([
+        'dcv.node_id',
+        'dcv.language_id',
+        'l.iso_code',
+        'dcv.published_event_id',
+        'dcv.published_name',
+        'dcv.name',
+      ])
+      .where('dcv.node_id', 'in', ids)
+      .where('dcv.published', '=', this.#db.dialect.boolValue(true) as boolean)
+      .execute()
     for (const row of rows) {
       const id = Number(row.node_id)
       out.set(id, [
@@ -2898,18 +3233,28 @@ export class DocumentRepository {
   ): Promise<Map<number, ValueRow[]>> {
     const out = new Map<number, ValueRow[]>()
     if (ids.length === 0) return out
-    const params: unknown[] = [...ids]
-    let where = `node_id IN (${ids.map(() => '?').join(', ')})`
-    if (schemaStateId !== undefined) {
-      where += ' AND schema_state_id <= ?'
-      params.push(schemaStateId)
-    }
-    const rows = await this.#db.query(
-      `SELECT id, node_id, event_id, property_type_id, language_id, segment,
-              int_value, decimal_value, date_value, varchar_value, text_value
-       FROM property_value WHERE ${where} ORDER BY node_id, id`,
-      params,
-    )
+    const rows = await this.#db.q
+      .selectFrom('property_value')
+      .select([
+        'id',
+        'node_id',
+        'event_id',
+        'property_type_id',
+        'language_id',
+        'segment',
+        'int_value',
+        'decimal_value',
+        'date_value',
+        'varchar_value',
+        'text_value',
+      ])
+      .where('node_id', 'in', ids)
+      .$if(schemaStateId !== undefined, (q) =>
+        q.where('schema_state_id', '<=', schemaStateId as number),
+      )
+      .orderBy('node_id')
+      .orderBy('id')
+      .execute()
     for (const row of rows) {
       const id = Number(row.node_id)
       const list = out.get(id)
@@ -2920,12 +3265,19 @@ export class DocumentRepository {
   }
 
   async #publishedCultureEvents(nodeId: number): Promise<PublishedCulture[]> {
-    const rows = await this.#db.query(
-      `SELECT dcv.language_id, l.iso_code, dcv.published_event_id, dcv.published_name, dcv.name
-       FROM document_culture_variation dcv JOIN language l ON l.id = dcv.language_id
-       WHERE dcv.node_id = ? AND dcv.published = ?`,
-      [nodeId, this.#db.dialect.boolValue(true)],
-    )
+    const rows = await this.#db.q
+      .selectFrom('document_culture_variation as dcv')
+      .innerJoin('language as l', 'l.id', 'dcv.language_id')
+      .select([
+        'dcv.language_id',
+        'l.iso_code',
+        'dcv.published_event_id',
+        'dcv.published_name',
+        'dcv.name',
+      ])
+      .where('dcv.node_id', '=', nodeId)
+      .where('dcv.published', '=', this.#db.dialect.boolValue(true) as boolean)
+      .execute()
     return rows.map((row) => ({
       languageId: Number(row.language_id),
       isoCode: String(row.iso_code),
@@ -2935,10 +3287,12 @@ export class DocumentRepository {
   }
 
   async #variesByCulture(nodeId: number): Promise<boolean> {
-    const rows = await this.#db.query<{ variations: number }>(
-      'SELECT ct.variations FROM content c JOIN content_type ct ON ct.node_id = c.content_type_id WHERE c.node_id = ?',
-      [nodeId],
-    )
+    const rows = await this.#db.q
+      .selectFrom('content as c')
+      .innerJoin('content_type as ct', 'ct.node_id', 'c.content_type_id')
+      .select('ct.variations')
+      .where('c.node_id', '=', nodeId)
+      .execute()
     return flagVariesByCulture(Number(rows[0]?.variations ?? 0))
   }
 
@@ -2955,19 +3309,28 @@ export class DocumentRepository {
     schemaStateId?: number,
   ): Promise<DocumentValue[]> {
     const latest = Math.max(invariantEventId, ...cultures.map((c) => c.eventId))
-    const conditions = ['node_id = ?', 'event_id <= ?']
-    const params: unknown[] = [nodeId, latest]
-    if (schemaStateId !== undefined) {
-      conditions.push('schema_state_id <= ?')
-      params.push(schemaStateId)
-    }
     const all = (
-      await this.#db.query(
-        `SELECT id, event_id, property_type_id, language_id, segment,
-                int_value, decimal_value, date_value, varchar_value, text_value
-         FROM property_value WHERE ${conditions.join(' AND ')} ORDER BY id`,
-        params,
-      )
+      await this.#db.q
+        .selectFrom('property_value')
+        .select([
+          'id',
+          'event_id',
+          'property_type_id',
+          'language_id',
+          'segment',
+          'int_value',
+          'decimal_value',
+          'date_value',
+          'varchar_value',
+          'text_value',
+        ])
+        .where('node_id', '=', nodeId)
+        .where('event_id', '<=', latest)
+        .$if(schemaStateId !== undefined, (q) =>
+          q.where('schema_state_id', '<=', schemaStateId as number),
+        )
+        .orderBy('id')
+        .execute()
     ).map((row) => this.#toValueRow(row))
     return this.#valuesFromRows(
       publishedValueRows(all, invariantEventId, cultures),
@@ -2977,10 +3340,12 @@ export class DocumentRepository {
   }
 
   async #anyCulturePublished(nodeId: number): Promise<boolean> {
-    const rows = await this.#db.query<{ n: number }>(
-      'SELECT COUNT(*) AS n FROM document_culture_variation WHERE node_id = ? AND published = ?',
-      [nodeId, this.#db.dialect.boolValue(true)],
-    )
+    const rows = await this.#db.q
+      .selectFrom('document_culture_variation')
+      .select((eb) => eb.fn.countAll().as('n'))
+      .where('node_id', '=', nodeId)
+      .where('published', '=', this.#db.dialect.boolValue(true) as boolean)
+      .execute()
     return Number(rows[0]?.n ?? 0) > 0
   }
 
@@ -2993,10 +3358,12 @@ export class DocumentRepository {
       .map(Number)
       .filter((id) => id > 0 && id !== node.id && !alsoPublishing.has(id))
     if (ids.length === 0) return true
-    const rows = await this.#db.query<{ n: number }>(
-      `SELECT COUNT(*) AS n FROM document WHERE node_id IN (${ids.map(() => '?').join(', ')}) AND published = ?`,
-      [...ids, this.#db.dialect.boolValue(false)],
-    )
+    const rows = await this.#db.q
+      .selectFrom('document')
+      .select((eb) => eb.fn.countAll().as('n'))
+      .where('node_id', 'in', ids)
+      .where('published', '=', this.#db.dialect.boolValue(false) as boolean)
+      .execute()
     return Number(rows[0]?.n ?? 0) === 0
   }
 }
@@ -3037,6 +3404,9 @@ function parseConfig(raw: unknown): Record<string, unknown> {
  * draft cache knows it is stale when the save happened on another node.
  */
 export async function latestContentVersionId(db: Db): Promise<number> {
-  const rows = await db.query<{ n: number | null }>('SELECT MAX(id) AS n FROM content_version')
+  const rows = await db.q
+    .selectFrom('content_version')
+    .select((eb) => eb.fn.max('id').as('n'))
+    .execute()
   return Number(rows[0]?.n ?? 0)
 }

@@ -36,10 +36,11 @@ export class ContentAppliedRepository {
     for (let i = 0; i < keys.length; i += 500) {
       const chunk = keys.slice(i, i + 500).map(normaliseUuid)
       if (chunk.length === 0) continue
-      const rows = await this.#db.query<{ node_key: string; state: string }>(
-        `SELECT node_key, state FROM content_applied WHERE node_key IN (${chunk.map(() => '?').join(', ')})`,
-        chunk,
-      )
+      const rows = await this.#db.q
+        .selectFrom('content_applied')
+        .select(['node_key', 'state'])
+        .where('node_key', 'in', chunk)
+        .execute()
       for (const row of rows) {
         const state = parse(row.state)
         if (state) out.set(normaliseUuid(String(row.node_key)), state)
@@ -51,37 +52,55 @@ export class ContentAppliedRepository {
   /** Records what a run applied to a node, keeping what it replaced. */
   async record(key: string, runId: string, state: AppliedState): Promise<void> {
     const nodeKey = normaliseUuid(key)
-    const rows = await this.#db.query<{ run_id: string; state: string }>(
-      'SELECT run_id, state FROM content_applied WHERE node_key = ?',
-      [nodeKey],
-    )
-    const was = rows[0]
+    const was = await this.#db.q
+      .selectFrom('content_applied')
+      .select(['run_id', 'state'])
+      .where('node_key', '=', nodeKey)
+      .executeTakeFirst()
     const now = DbDate.toDb(new Date())
     if (!was) {
-      await this.#db.exec(
-        `INSERT INTO content_applied (node_key, run_id, state, applied_at, previous_run_id, previous_state)
-         VALUES (?, ?, ?, ?, NULL, NULL)`,
-        [nodeKey, runId, JSON.stringify(state), now],
-      )
+      await this.#db.q
+        .insertInto('content_applied')
+        .values({
+          node_key: nodeKey,
+          run_id: runId,
+          state: JSON.stringify(state),
+          applied_at: now,
+          previous_run_id: null,
+          previous_state: null,
+        })
+        .execute()
       return
     }
-    await this.#db.exec(
-      `UPDATE content_applied SET run_id = ?, state = ?, applied_at = ?, previous_run_id = ?, previous_state = ?
-       WHERE node_key = ?`,
-      [runId, JSON.stringify(state), now, String(was.run_id), String(was.state), nodeKey],
-    )
+    await this.#db.q
+      .updateTable('content_applied')
+      .set({
+        run_id: runId,
+        state: JSON.stringify(state),
+        applied_at: now,
+        previous_run_id: String(was.run_id),
+        previous_state: String(was.state),
+      })
+      .where('node_key', '=', nodeKey)
+      .execute()
   }
 
   /** Undoes what a run recorded: the state before it, or no record where it made the first. */
   async revert(runId: string): Promise<void> {
-    await this.#db.exec('DELETE FROM content_applied WHERE run_id = ? AND previous_state IS NULL', [
-      runId,
-    ])
-    await this.#db.exec(
-      `UPDATE content_applied SET run_id = previous_run_id, state = previous_state,
-         previous_run_id = NULL, previous_state = NULL
-       WHERE run_id = ?`,
-      [runId],
-    )
+    await this.#db.q
+      .deleteFrom('content_applied')
+      .where('run_id', '=', runId)
+      .where('previous_state', 'is', null)
+      .execute()
+    await this.#db.q
+      .updateTable('content_applied')
+      .set((eb) => ({
+        run_id: eb.ref('previous_run_id').$notNull(),
+        state: eb.ref('previous_state').$notNull(),
+        previous_run_id: null,
+        previous_state: null,
+      }))
+      .where('run_id', '=', runId)
+      .execute()
   }
 }

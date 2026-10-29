@@ -220,11 +220,14 @@ export async function exportSchemaSet(db: Db, version: string): Promise<SchemaSe
 
   const mediaTypeRepo = new ContentTypeRepository(db, { kind: 'media' })
   const liveTypes = async (repo: ContentTypeRepository) => {
-    const rows = await db.query<{ unique_id: string }>(
-      `SELECT n.unique_id FROM content_type ct JOIN node n ON n.id = ct.node_id
-       WHERE ct.retired_at IS NULL AND n.node_object_type = ? ORDER BY ct.alias`,
-      [repo.objectType],
-    )
+    const rows = await db.q
+      .selectFrom('content_type as ct')
+      .innerJoin('node as n', 'n.id', 'ct.node_id')
+      .select('n.unique_id')
+      .where('ct.retired_at', 'is', null)
+      .where('n.node_object_type', '=', repo.objectType)
+      .orderBy('ct.alias')
+      .execute()
     const out: ContentTypeAggregate[] = []
     for (const row of rows) {
       const aggregate = await repo.byKey(String(row.unique_id))
@@ -244,9 +247,12 @@ export async function exportSchemaSet(db: Db, version: string): Promise<SchemaSe
   )
   const typeAliasOf = (key: string) => typeAliasByKey.get(key.toLowerCase())
 
-  const dataTypeRows = await db.query<{ unique_id: string }>(
-    'SELECT n.unique_id FROM data_type d JOIN node n ON n.id = d.node_id ORDER BY n.text',
-  )
+  const dataTypeRows = await db.q
+    .selectFrom('data_type as d')
+    .innerJoin('node as n', 'n.id', 'd.node_id')
+    .select('n.unique_id')
+    .orderBy('n.text')
+    .execute()
   const dataTypeAliasByKey = new Map<string, string>()
   const exportedDataTypes: SchemaDataType[] = []
   const taken = new Set<string>()

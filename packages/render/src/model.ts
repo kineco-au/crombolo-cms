@@ -279,8 +279,17 @@ export interface PageOutcome {
   errors: readonly FieldError[]
   /** A 500's reference, which the log line carries too. */
   reference?: string
-  /** A 500's message, source and stack, when `errors.showDetails` allows. */
-  details?: { message: string; location?: string; stack?: string }
+  /**
+   * A 500's message, source and stack, when `errors.showDetails` allows; for a
+   * template error also the code around the line and the component stack.
+   */
+  details?: {
+    message: string
+    location?: string
+    stack?: string
+    code?: { line: number; lines: ReadonlyArray<{ number: number; text: string }> }
+    components?: readonly string[]
+  }
 }
 
 /**

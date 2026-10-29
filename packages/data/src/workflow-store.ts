@@ -5,6 +5,7 @@
  */
 import { type SchemaWorkflow, startStages } from '@crombolo/core'
 import type { Db } from './database.ts'
+import { now } from './query.ts'
 import { ApprovalRepository } from './repositories/approvals.ts'
 
 export const WORKFLOWS_KEY = 'crombolo:workflows'
@@ -31,10 +32,12 @@ export function parseStoredWorkflows(value: string | undefined): StoredWorkflow[
 }
 
 export async function readWorkflows(db: Db): Promise<StoredWorkflow[]> {
-  const rows = await db.query<{ value: string }>('SELECT value FROM key_value WHERE key = ?', [
-    WORKFLOWS_KEY,
-  ])
-  return parseStoredWorkflows(rows[0]?.value)
+  const row = await db.q
+    .selectFrom('key_value')
+    .select('value')
+    .where('key', '=', WORKFLOWS_KEY)
+    .executeTakeFirst()
+  return parseStoredWorkflows(row?.value ?? undefined)
 }
 
 /** Stores the workflows; answers what was there before. */
@@ -45,16 +48,17 @@ export async function writeWorkflows(
   return db.transaction(async (tx) => {
     const before = await readWorkflows(tx)
     const value = JSON.stringify(workflows)
-    const now = tx.dialect.now()
-    const updated = await tx.query<{ key: string }>(
-      `UPDATE key_value SET value = ?, update_date = ${now} WHERE key = ? RETURNING key`,
-      [value, WORKFLOWS_KEY],
-    )
+    const updated = await tx.q
+      .updateTable('key_value')
+      .set({ value, update_date: now(tx) })
+      .where('key', '=', WORKFLOWS_KEY)
+      .returning('key')
+      .execute()
     if (updated.length === 0)
-      await tx.exec(`INSERT INTO key_value (key, value, update_date) VALUES (?, ?, ${now})`, [
-        WORKFLOWS_KEY,
-        value,
-      ])
+      await tx.q
+        .insertInto('key_value')
+        .values({ key: WORKFLOWS_KEY, value, update_date: now(tx) })
+        .execute()
     return before
   })
 }
