@@ -6,6 +6,13 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.36.2 — 2026-10-29
+
+- v0.36.1 was tagged but never published: the server-bundle routes tests reset
+  the Postgres database while the previous test's site was still running,
+  which could deadlock. Each site now closes before the next starts, as the
+  import tests do (story 200). No change to the CMS itself.
+
 ## v0.36.1 — 2026-10-29
 
 - v0.36.0 was tagged but never published: the browser test for media Public

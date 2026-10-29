@@ -935,8 +935,9 @@ Because the harness boots a server per test, each one must close through
 closing its database, or Postgres runs out of client slots. Sequential source
 and target fixtures reuse the run's Postgres database, so the source must close
 before the target boots and resets it. The import fixture does this before
-starting each site (story `200`); otherwise pending source notifications can
-deadlock with the target's `TRUNCATE`.
+starting each site (story `200`), as does the server-bundle routes fixture;
+otherwise pending source notifications can deadlock with the target's
+`TRUNCATE`.
 
 ### Two suites at once
 

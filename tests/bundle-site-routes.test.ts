@@ -601,6 +601,9 @@ afterAll(async () => {
 })
 
 async function realSite(extra: Record<string, unknown> = {}) {
+  // The previous site must finish its background work before this one resets the database.
+  while (servers.length > 0) await servers.pop()?.close()
+  while (open.length > 0) await open.pop()?.db.close()
   const root = siteDeclaring('bundle-site-routes', PACKAGE)
   dirs.push(root)
   mkdirSync(join(root, 'schema', 'content-types'), { recursive: true })
