@@ -30,7 +30,6 @@
       "type BundleRedirectRule",
       "type BundleRedirects",
       "type BundleReload",
-      "type BundleRequest",
       "type BundleSection",
       "type BundleStep",
       "type BundleTables",
@@ -78,6 +77,9 @@
       "type IdentityProviderOptions",
       "type InnerHTML",
       "installBundleCode",
+      "Island",
+      "type IslandLoad",
+      "type IslandProps",
       "type Link",
       "type LiveNode",
       "liveNodes",
@@ -88,9 +90,11 @@
       "type MediaWithCrops",
       "type Menu",
       "type MenuItem",
+      "type Metadata",
       "type Navigation",
       "oidc",
       "type PackageJson",
+      "type PageOutcome",
       "type PageProps",
       "peerRangeProblem",
       "postmarkEmail",
@@ -119,6 +123,7 @@
       "type SchemaStore",
       "search",
       "type SearchOptions",
+      "type SearchParams",
       "type SearchResult",
       "type SearchResults",
       "SeoHead",
@@ -126,7 +131,6 @@
       "type SeoOverrides",
       "type SeoSiteDefaults",
       "type ServerBundle",
-      "type ServerBundleRoute",
       "type ServerHandle",
       "sesEmail",
       "type SesOptions",
@@ -157,7 +161,6 @@
       "BundleRedirectRule",
       "BundleRedirects",
       "BundleReload",
-      "BundleRequest",
       "BundleSection",
       "BundleStep",
       "BundleTables",
@@ -176,7 +179,6 @@
       "Principal",
       "ReloadedBundle",
       "ServerBundle",
-      "ServerBundleRoute",
       "TableHandle",
       "validateBundlePackage",
       "Where"
@@ -186,8 +188,6 @@
     "names": [
       "type AppAlias",
       "assertBundleTables",
-      "type BackofficeBundleRoute",
-      "type BundleAudience",
       "type BundleCaller",
       "type BundleCapability",
       "type BundleDocuments",
@@ -205,14 +205,12 @@
       "type BundleMediaRefusal",
       "type BundleMediaUpdate",
       "type BundleMember",
-      "type BundleMemberRequest",
       "type BundleMethod",
-      "type BundlePublicRequest",
-      "type BundleRateLimit",
       "type BundleRedirectInput",
       "type BundleRedirectRule",
       "type BundleRedirects",
-      "type BundleRequest",
+      "type BundleRoute",
+      "type BundleRouteContext",
       "type BundleSection",
       "type BundleStep",
       "type BundleTables",
@@ -221,12 +219,14 @@
       "defineBundleTables",
       "type ExtensionSectionAlias",
       "type ImageLocation",
-      "type MemberBundleRoute",
       "type Principal",
       "type ProviderOverrideInput",
-      "type PublicBundleRoute",
+      "route",
+      "type RouteContext",
+      "type RouteHandler",
+      "type RouteMethod",
+      "type RouteOptions",
       "type ServerBundle",
-      "type ServerBundleRoute",
       "type TableHandle",
       "type Where"
     ],
@@ -278,6 +278,96 @@
   },
   "@crombolo/crombolo/branding": {
     "names": ["brandPalette", "type BrandPalette", "faviconSvg", "logoSvg"],
+    "deprecated": []
+  },
+  "@crombolo/crombolo/navigation": {
+    "names": [
+      "badRequest",
+      "forbidden",
+      "foundAt",
+      "gone",
+      "movedPermanentlyTo",
+      "notFound",
+      "permanentRedirect",
+      "redirect",
+      "rethrow",
+      "seeOther",
+      "unauthorized",
+      "unprocessableContent"
+    ],
+    "deprecated": []
+  },
+  "@crombolo/crombolo/headers": {
+    "names": [
+      "cookies",
+      "headers",
+      "type ReadonlyHeaders",
+      "type ReadonlyRequestCookies",
+      "type RequestCookie"
+    ],
+    "deprecated": []
+  },
+  "@crombolo/crombolo/server": {
+    "names": [
+      "assertSafeLocation",
+      "type FieldError",
+      "isOk",
+      "isOutcome",
+      "type MatchHandlers",
+      "ok",
+      "Ok",
+      "Outcome",
+      "type OutcomeStatus",
+      "type RedirectStatus",
+      "type RefusalStatus",
+      "Result",
+      "site",
+      "type SiteMedia",
+      "type SiteMembers",
+      "type SiteServices",
+      "type SiteSql"
+    ],
+    "deprecated": []
+  },
+  "@crombolo/crombolo/middleware": {
+    "names": [
+      "type CookieOptions",
+      "fromNextMiddleware",
+      "type Matcher",
+      "type MatcherCondition",
+      "type Middleware",
+      "type MiddlewareContext",
+      "type MiddlewareHandler",
+      "type MiddlewareStage",
+      "type NextMiddleware",
+      "type NextRequest",
+      "NextResponse",
+      "type ReadonlyRequestCookies",
+      "type RequestCookie",
+      "rewrite",
+      "withCookie"
+    ],
+    "deprecated": []
+  },
+  "@crombolo/crombolo/routes": {
+    "names": [
+      "type CookieOptions",
+      "type FieldError",
+      "fromRouteModule",
+      "ok",
+      "Outcome",
+      "route",
+      "ROUTE_METHODS",
+      "type RouteContext",
+      "type RouteHandler",
+      "type RouteMethod",
+      "type RouteOptions",
+      "type SiteRoute"
+    ],
+    "deprecated": []
+  },
+  "@crombolo/crombolo/islands-react": {
+    "names": ["mount"],
     "deprecated": []
   }
 }

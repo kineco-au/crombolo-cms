@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/cli",
-  "version": "0.36.2",
+  "version": "0.37.0",
   "description": "The crombolo command line: scaffolding a site, schema, views, domains, content transfer and upgrades.",
   "license": "MIT",
   "author": "Crombolo",
@@ -29,6 +29,7 @@
     "src",
     "bin",
     "templates",
+    "next-app",
     "oclif.manifest.json",
     "NOTICE"
   ],

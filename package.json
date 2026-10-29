@@ -5,7 +5,8 @@
   "workspaces": [
     "packages/*",
     "apps/*",
-    "sites/*"
+    "sites/*",
+    "sites/*/web"
   ],
   "scripts": {
     "brochureware:publish": "bun run scripts/publish-brochureware.ts",
@@ -54,10 +55,11 @@
     "test:ci": "CROMBOLO_SQLITE_FILE=:memory: CROMBOLO_ADMIN_PASSWORD=test-password CROMBOLO_COMPONENTS_DIR=output/test-views CROMBOLO_MEDIA_DIR=output/test-media CROMBOLO_LOGS_DIR=output/test-logs CROMBOLO_LOG_TO_CONSOLE=false bun test",
     "test:bench": "CROMBOLO_SQLITE_FILE=:memory: CROMBOLO_ADMIN_PASSWORD=test-password CROMBOLO_COMPONENTS_DIR=output/test-views CROMBOLO_MEDIA_DIR=output/test-media CROMBOLO_LOGS_DIR=output/test-logs CROMBOLO_LOG_TO_CONSOLE=false bun test ./tests/load/*.bench.ts --timeout 600000",
     "test:load": "CROMBOLO_SQLITE_FILE=:memory: CROMBOLO_ADMIN_PASSWORD=test-password CROMBOLO_COMPONENTS_DIR=output/test-views CROMBOLO_MEDIA_DIR=output/test-media CROMBOLO_LOGS_DIR=output/test-logs CROMBOLO_LOG_TO_CONSOLE=false bun test ./tests/load/*.load.ts --timeout 600000",
+    "smoke:next": "bun run scripts/next-smoke.ts",
     "test:integration": "CROMBOLO_ADMIN_PASSWORD=test-password CROMBOLO_LOG_TO_CONSOLE=false bun test ./tests/integration/*.integration.ts --timeout 180000",
     "test:postgres": "bun run db:up && CROMBOLO_DB=postgres CROMBOLO_POSTGRES_URL=postgres://crombolo:crombolo@localhost:5433/crombolo_test CROMBOLO_SQLITE_FILE=:memory: CROMBOLO_ADMIN_PASSWORD=test-password CROMBOLO_COMPONENTS_DIR=output/test-views CROMBOLO_MEDIA_DIR=output/test-media CROMBOLO_LOGS_DIR=output/test-logs CROMBOLO_LOG_TO_CONSOLE=false bun test --timeout 20000",
     "test:sqlite": "CROMBOLO_DB=sqlite CROMBOLO_SQLITE_FILE=:memory: CROMBOLO_ADMIN_PASSWORD=test-password CROMBOLO_COMPONENTS_DIR=output/test-views CROMBOLO_MEDIA_DIR=output/test-media CROMBOLO_LOGS_DIR=output/test-logs CROMBOLO_LOG_TO_CONSOLE=false bun test",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p sites/harbourstone-next/web --noEmit",
     "vendor:backoffice": "bun run scripts/vendor-backoffice.ts",
     "vendor:refresh-static": "bun run scripts/vendor-backoffice.ts --refresh-static",
     "cli:manifest": "bun run scripts/cli-manifest.ts"
@@ -70,6 +72,7 @@
     "@crombolo/backoffice-dist": "workspace:*",
     "@crombolo/backoffice-host": "workspace:*",
     "@crombolo/cli": "workspace:*",
+    "@crombolo/common": "workspace:*",
     "@crombolo/content": "workspace:*",
     "@crombolo/contracts": "workspace:*",
     "@crombolo/core": "workspace:*",
@@ -78,6 +81,7 @@
     "@crombolo/delivery-client": "workspace:*",
     "@crombolo/entra": "workspace:*",
     "@crombolo/import-umbraco": "workspace:*",
+    "@crombolo/next-integration": "workspace:*",
     "@crombolo/remote-conformance": "workspace:*",
     "@crombolo/render": "workspace:*",
     "@crombolo/schema": "workspace:*",
@@ -86,9 +90,15 @@
     "@crombolo/transfer": "workspace:*",
     "@playwright/test": "^1.63.0",
     "@types/bun": "^1.4.2",
+    "@types/node": "26.6.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
     "ajv": "^8.17.1",
     "jose": "^6.2.12",
+    "next": "16.4.3",
     "openapi-typescript": "^6.7.6",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
     "typescript": "^7.0.2"
   },
   "dependencies": {

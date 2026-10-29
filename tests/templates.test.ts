@@ -11,7 +11,7 @@
  * the same rules as the ones that ship.
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import {
   findTemplate,
@@ -23,7 +23,13 @@ import {
 import { allFormFields, type SchemaForm } from '@crombolo/core'
 import { SYSTEM_CONTENT_TYPES } from '@crombolo/data'
 import { allProperties, loadSchemaDirectory, validateSchemaSet } from '@crombolo/schema'
-import { type BundleBuildResult, buildBundleFromDirectory, listComponents } from '@crombolo/server'
+import {
+  type BundleBuildResult,
+  buildBundleFromDirectory,
+  listComponents,
+  parseWebhookFile,
+  VERSION,
+} from '@crombolo/server'
 import type { BundleNode } from '@crombolo/transfer'
 import { ROOT } from '../scripts/packages.ts'
 import { listSites, stageTemplates } from '../scripts/sites.ts'
@@ -34,6 +40,8 @@ stageTemplates(STAGED, listSites())
 afterAll(() => rmSync(STAGED, { recursive: true, force: true }))
 
 const templates = [...listTemplates(), ...listTemplates(STAGED)]
+/** Those that ship files; `next` is the empty site with a front end. */
+const withFiles = templates.filter((t) => existsSync(join(t.dir, 'files')))
 const byId = (id: string): SiteTemplate => {
   const found = findTemplate(id) ?? findTemplate(id, STAGED)
   if (!found) throw new Error(`no template "${id}"`)
@@ -51,15 +59,17 @@ const templateBundle = (template: SiteTemplate): Promise<BundleBuildResult> => {
 }
 
 describe('the starter templates', () => {
-  test('are only basic in the CLI itself; the rest are sites staged at pack time', () => {
-    expect(listTemplates().map((t) => t.id)).toEqual(['basic'])
+  test('are basic and next in the CLI itself; the rest are sites staged at pack time', () => {
+    expect(listTemplates().map((t) => t.id)).toEqual(['basic', 'next'])
   })
 
   test('are listed with what they contain, and an unknown one is not invented', () => {
     expect(templates.map((t) => t.id)).toEqual([
       'basic',
+      'next',
       'demo/crombolo',
       'demo/harbourstone',
+      'demo/harbourstone-next',
       'starter',
     ])
     for (const template of templates) {
@@ -72,7 +82,7 @@ describe('the starter templates', () => {
     expect(findTemplate('nope')).toBeUndefined()
   })
 
-  test.each(templates.map((t) => [t.id] as const))('%s has schema a site would accept', (id) => {
+  test.each(withFiles.map((t) => [t.id] as const))('%s has schema a site would accept', (id) => {
     const template = byId(id)
     const loaded = loadSchemaDirectory(join(template.dir, 'files', 'schema'))
     // Every component at any depth, keyed by the path that is its alias —
@@ -97,7 +107,7 @@ describe('the starter templates', () => {
       expect(dataType.key, dataType.alias).toBeUndefined()
   })
 
-  test.each(templates.map((t) => [t.id] as const))(
+  test.each(withFiles.map((t) => [t.id] as const))(
     '%s ships a seed that builds into a bundle',
     async (id) => {
       const template = byId(id)
@@ -194,6 +204,106 @@ describe('the demo’s form', () => {
   })
 })
 
+describe('a Next.js front end (story 208)', () => {
+  const at = (files: ReturnType<typeof scaffoldFiles>, path: string) =>
+    files.find((f) => f.path === path)
+
+  test('the next template is the empty site with an app in web/, wired to it', () => {
+    const files = scaffoldFiles({ template: byId('next'), siteName: 'Acme' })
+    const paths = files.map((f) => f.path)
+    for (const path of [
+      'web/package.json',
+      'web/next.config.ts',
+      'web/proxy.ts',
+      'web/lib/crombolo.ts',
+      'web/app/[[...slug]]/page.tsx',
+      'web/app/crombolo/not-found/page.tsx',
+      'web/app/api/crombolo/revalidate/route.ts',
+      'web/app/media/[...path]/route.ts',
+      'dev.ts',
+      'schema/webhooks/next-revalidate.toml',
+    ])
+      expect(paths).toContain(path)
+    expect(paths.filter((p) => p.startsWith('seed/'))).toEqual([])
+
+    const web = JSON.parse(at(files, 'web/package.json')?.text ?? '{}')
+    expect(web.name).toBe('acme-web')
+    expect(web.dependencies).toMatchObject({
+      '@crombolo/next-integration': `^${VERSION}`,
+      next: expect.stringMatching(/^\^16\./),
+    })
+    const site = JSON.parse(at(files, 'package.json')?.text ?? '{}')
+    expect(site.workspaces).toEqual(['web'])
+    expect(site.scripts.dev).toBe('bun dev.ts')
+
+    const config = at(files, 'crombolo.config.ts')?.text ?? ''
+    expect(config).toContain(
+      `preview: { url: \`\${APP}/api/crombolo/preview?path={path}&token={token}\` }`,
+    )
+    expect(config).toContain(`loginRedirectUrls: [\`\${APP}/api/crombolo/callback\`]`)
+    expect(config).toContain('seo: { publicUrl: APP }')
+  })
+
+  test('the CMS and the app share fresh secrets, and the webhook sends Crombolo’s payload', () => {
+    const files = scaffoldFiles({ template: byId('next') })
+    const env = at(files, '.env')?.text ?? ''
+    const local = at(files, 'web/.env.local')?.text ?? ''
+    const value = (text: string, name: string) => new RegExp(`${name}=(.+)`).exec(text)?.[1]
+    for (const name of ['CROMBOLO_DELIVERY_API_KEY', 'CROMBOLO_REVALIDATE_SECRET'])
+      expect(value(env, name)).toBe(value(local, name) as string)
+    expect(value(local, 'CROMBOLO_NEXT_SECRET')?.length).toBeGreaterThanOrEqual(32)
+    const again = at(scaffoldFiles({ template: byId('next') }), '.env')?.text ?? ''
+    expect(value(again, 'CROMBOLO_REVALIDATE_SECRET')).not.toBe(
+      value(env, 'CROMBOLO_REVALIDATE_SECRET'),
+    )
+
+    const parsed = parseWebhookFile(
+      'next-revalidate.toml',
+      at(files, 'schema/webhooks/next-revalidate.toml')?.text ?? '',
+    )
+    expect(parsed.problems).toEqual([])
+    expect(parsed.webhook).toMatchObject({
+      payload: 'crombolo',
+      headers: { 'X-Crombolo-Secret': 'env:CROMBOLO_REVALIDATE_SECRET' },
+    })
+  })
+
+  test('--next adds the app to any template, and without it there is none', () => {
+    const withApp = scaffoldFiles({ template: byId('basic'), next: true }).map((f) => f.path)
+    expect(withApp).toContain('web/lib/crombolo.ts')
+    expect(withApp.some((p) => p.startsWith('components/'))).toBe(true)
+    expect(scaffoldFiles({ template: byId('basic') }).some((f) => f.path.startsWith('web/'))).toBe(
+      false,
+    )
+    expect(
+      scaffoldFiles({ template: byId('next'), next: false }).some((f) => f.path.startsWith('web/')),
+    ).toBe(false)
+  })
+
+  test('Harbourstone on Next.js ships its own app, which wins over the skeleton', () => {
+    const template = byId('demo/harbourstone-next')
+    expect(template.next).toBe(true)
+    const files = scaffoldFiles({ template })
+    const page = at(files, 'web/app/[[...slug]]/page.tsx')
+    expect(page?.copyFrom).toContain(template.dir)
+    expect(files.some((f) => f.path.includes('node_modules') || f.path.includes('/.next/'))).toBe(
+      false,
+    )
+  })
+})
+
+describe('a template with islands (story 209)', () => {
+  test('depends on React, which its islands run on', () => {
+    const template = byId('demo/harbourstone')
+    expect(template.dependencies).toEqual({ react: '^19.3.1', 'react-dom': '^19.3.1' })
+    const manifest = JSON.parse(
+      scaffoldFiles({ template }).find((f) => f.path === 'package.json')?.text ?? '{}',
+    )
+    expect(manifest.dependencies).toMatchObject({ react: '^19.3.1', 'react-dom': '^19.3.1' })
+    expect(byId('basic').dependencies).toEqual({})
+  })
+})
+
 describe('a template that wires a server bundle', () => {
   test('adds the dependency and the import that turns it on', () => {
     const files = scaffoldFiles({ template: byId('demo/harbourstone'), siteName: 'Harbourstone' })
@@ -202,7 +312,9 @@ describe('a template that wires a server bundle', () => {
     ) as { dependencies?: Record<string, string>; peerDependencies: Record<string, string> }
     // A peer, as every @crombolo package is: a host that runs the site provides it.
     expect(Object.keys(manifest.peerDependencies)).toContain('@crombolo/simple-redirects')
-    expect(manifest.dependencies).toBeUndefined()
+    expect(
+      Object.keys(manifest.dependencies ?? {}).filter((n) => n.startsWith('@crombolo/')),
+    ).toEqual([])
 
     const config = files.find((file) => file.path === 'crombolo.config.ts')?.text as string
     expect(config).toContain("import { redirects } from '@crombolo/simple-redirects'")

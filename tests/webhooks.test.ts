@@ -4,7 +4,7 @@
  * delivered once across a cluster — and a bundle's handlers on the same queue.
  */
 import { afterEach, describe, expect, test } from 'bun:test'
-import { readdirSync, readFileSync } from 'node:fs'
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   bundleEventProblems,
@@ -396,6 +396,51 @@ describe('delivery', () => {
     await s.h.server.jobs.runScheduledPublishing(new Date(Date.now() + 2 * 60_000))
     await s.h.server.jobs.runWebhooks()
     expect(remote.received.map((r) => r.body)).toEqual([{ Id: page }])
+  })
+})
+
+describe("Crombolo's payload (story 208)", () => {
+  test('a file may ask for it, the database may not hold it, and it reads back', () => {
+    const file = writeWebhookFile(definition({ payload: 'crombolo' }))
+    expect(file).toContain('payload = "crombolo"')
+    expect(parseWebhookFile('x.toml', file).webhook?.payload).toBe('crombolo')
+    expect(parseWebhookFile('x.toml', file.replace('"crombolo"', '"full"')).problems).toEqual([
+      'x.toml: webhook.payload must be "minimal" or "crombolo"',
+    ])
+    expect(webhookProblems(definition({ payload: 'crombolo' }), 'database')).toEqual([
+      "This webhook sends Crombolo's payload, which is set in its file, so it stays with the site's files.",
+    ])
+  })
+
+  test('carries the content type and the ancestors, nearest first, as they were at the change', async () => {
+    const remote = receiver()
+    const s = await site()
+    const dir = join(s.h.server.config.schemaDir, 'webhooks')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(
+      join(dir, 'next.toml'),
+      `[webhook]\nalias = "next"\nurl = "${remote.url}"\nevents = ["Umbraco.ContentPublish", "Umbraco.ContentUnpublish", "Umbraco.ContentMovedToRecycleBin"]\npayload = "crombolo"\n`,
+    )
+    const home = await createPage(s, 'Home')
+    const section = await createPage(s, 'Section', home)
+    const page = await createPage(s, 'Page', section)
+    const ops = treeOps(s)
+    for (const key of [home, section, page]) expect((await ops.publish(key)).status).toBe(200)
+    await s.h.server.jobs.runWebhooks()
+    const published = remote.received.at(-1)?.body as Record<string, unknown>
+    expect(published).toEqual({
+      Id: page,
+      ContentType: expect.any(String),
+      Ancestors: [section, home],
+    })
+    expect(remote.received[0]?.body).toMatchObject({ Id: home, Ancestors: [] })
+
+    expect((await ops.unpublish(page)).status).toBe(200)
+    expect((await ops.trash(page)).status).toBe(200)
+    await s.h.server.jobs.runWebhooks()
+    const later = remote.received.slice(3).map((r) => r.body as Record<string, unknown>)
+    expect(later.length).toBeGreaterThanOrEqual(2)
+    for (const body of later) expect(body).toMatchObject({ Id: page, Ancestors: [section, home] })
   })
 })
 

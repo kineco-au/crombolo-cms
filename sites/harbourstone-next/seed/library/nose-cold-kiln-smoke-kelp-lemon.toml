@@ -1,0 +1,8 @@
+type = "tastingNote"
+key = "22144db2-e214-4006-a0bb-53b5bd121fd6"
+name = "Nose — Cold kiln smoke, kelp, lemon…"
+order = 11
+
+[values]
+aspect = "Nose"
+note = "Cold kiln smoke, kelp, lemon oil, crushed shells."

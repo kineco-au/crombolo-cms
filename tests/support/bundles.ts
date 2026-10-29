@@ -17,7 +17,7 @@ export function stubBundlePackage(id: string, over: Partial<BundlePackage> = {})
     name: id,
     peerRange: `^${VERSION}`,
     private: false,
-    field: { id, server: id },
+    field: { id, server: id, schemaVersion: 2 },
     contentDir: undefined,
     carries: { extensions: false, content: false, server: true },
     ...over,
@@ -57,15 +57,22 @@ export function siteDeclaring(
     if (!fixture) continue
     const dir = join(root, 'node_modules', name)
     mkdirSync(dir, { recursive: true })
-    writeFileSync(
-      join(dir, 'package.json'),
-      JSON.stringify({
-        name,
-        version: '1.0.0',
-        peerDependencies: { '@crombolo/crombolo': `^${VERSION}` },
-        ...fixture.json,
-      }),
+    const json: Record<string, unknown> = {
+      name,
+      version: '1.0.0',
+      peerDependencies: { '@crombolo/crombolo': `^${VERSION}` },
+      ...fixture.json,
+    }
+    // A server half is written for this release's bundle schema unless a test says otherwise.
+    const field = json.crombolo as Record<string, unknown> | undefined
+    if (
+      field &&
+      typeof field === 'object' &&
+      field.server !== undefined &&
+      field.schemaVersion === undefined
     )
+      json.crombolo = { ...field, schemaVersion: 2 }
+    writeFileSync(join(dir, 'package.json'), JSON.stringify(json))
     for (const [path, content] of Object.entries(fixture.files ?? {})) {
       const file = join(dir, path)
       mkdirSync(join(file, '..'), { recursive: true })

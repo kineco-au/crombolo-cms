@@ -40,6 +40,12 @@ describe('the supported surface', () => {
         './bundle',
         './host',
         './branding',
+        './navigation',
+        './headers',
+        './server',
+        './middleware',
+        './routes',
+        './islands-react',
         './jsx-runtime',
         './jsx-dev-runtime',
         './loose/jsx-runtime',
@@ -80,10 +86,27 @@ const ALLOWED = new Set([
   '@crombolo/crombolo/bundle',
   '@crombolo/crombolo/host',
   '@crombolo/crombolo/branding',
+  '@crombolo/crombolo/navigation',
+  '@crombolo/crombolo/headers',
+  '@crombolo/crombolo/server',
+  '@crombolo/crombolo/middleware',
+  '@crombolo/crombolo/routes',
+  '@crombolo/crombolo/islands-react',
+  '@crombolo/common',
   '@crombolo/crombolo/jsx-runtime',
   '@crombolo/crombolo/jsx-dev-runtime',
   '@crombolo/simple-redirects',
   '@crombolo/entra',
+  // Supported in their own right (docs/api.md), for a site's Next.js front end.
+  '@crombolo/delivery-client',
+  '@crombolo/next-integration',
+  '@crombolo/next-integration/cache-15',
+  '@crombolo/next-integration/cache-16',
+  '@crombolo/next-integration/client',
+  '@crombolo/next-integration/components',
+  '@crombolo/next-integration/image-loader',
+  '@crombolo/next-integration/middleware',
+  '@crombolo/next-integration/route-handlers',
 ])
 
 /** The code held to the boundary: first-party bundles, the sites, and the outside consumer. */
@@ -142,7 +165,9 @@ describe('the import boundary', () => {
 describe('an outside consumer', () => {
   test('boots a site with its own bundle wired, through supported entry points only', async () => {
     const dir = siteDeclaring('api-consumer', {
-      'greetings-bundle': { json: { crombolo: { id: GREETINGS_ID, server: 'greetings' } } },
+      'greetings-bundle': {
+        json: { crombolo: { id: GREETINGS_ID, server: 'greetings', schemaVersion: 2 } },
+      },
     })
     expect(config.bundles?.map((b) => b.id)).toEqual([GREETINGS_ID])
     const h = await signedInServer({
@@ -162,7 +187,7 @@ describe('an outside consumer', () => {
       name: '@acme/greetings',
       version: '1.0.0',
       peerDependencies: { '@crombolo/crombolo': '>=0.1.0' },
-      crombolo: { id: 'greetings', server: 'greetings' },
+      crombolo: { id: 'greetings', server: 'greetings', schemaVersion: 2 },
     }
     expect(vet(valid)).toEqual([])
     expect(vet({ ...valid, peerDependencies: { '@crombolo/crombolo': '<0.1.0' } })[0]).toContain(

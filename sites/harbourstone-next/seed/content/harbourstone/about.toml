@@ -1,0 +1,22 @@
+type = "contentPage"
+key = "cb4c569e-c28a-43b6-a4d7-d33bb544e973"
+name = "About"
+order = 0
+
+[values]
+eyebrow = "The distillery"
+title = "Built for weather, not for show."
+standfirst = "Harbourstone was raised in 1894 by the MacLeod shipping family, who wanted a malt that tasted of the coast their herring boats worked. The stillhouse has never moved from the shelf of rock above Stenwick cove."
+heroImage = "/distillery-from-the-cliff-path.jpg"
+sectionEyebrow = "Place"
+sectionHeading = "A working shore, not a postcard."
+bodyText = { html = "<p>Barley is malted to order, a portion of it dried over coastal peat cut behind Dunnet. Fermentation runs long — usually eighty hours — so the wash arrives at the stills bright and estery. The spirit still is narrow-necked, and the cut is kept tight.</p><p>Warehouses 1 and 2 stand on the old boat green. Casks are racked three high so the sea air can move between them.</p>" }
+highlightsEyebrow = "How it is made"
+highlightsHeading = "Four decisions that set the style."
+highlights = [
+  { type = "highlight", values = { heading = "Water", detail = "Hill spring above the cove, soft and cold." } },
+  { type = "highlight", values = { heading = "Malt", detail = "Concerto barley, with a little local peat." } },
+  { type = "highlight", values = { heading = "Copper", detail = "One wash still, one tall spirit still." } },
+  { type = "highlight", values = { heading = "Wood", detail = "Bourbon hogsheads, refill, and sherry butts." } },
+]
+highlightsImage = "/casks-in-the-sea-facing-warehouse.jpg"

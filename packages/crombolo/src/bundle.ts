@@ -6,6 +6,14 @@
  * A wired bundle is trusted code in the server process; this is a stability
  * boundary, not a sandbox.
  */
+
+export {
+  type RouteContext,
+  type RouteHandler,
+  type RouteMethod,
+  type RouteOptions,
+  route,
+} from '@crombolo/common'
 export {
   assertBundleTables,
   type BundleStep,
@@ -18,8 +26,6 @@ export {
 } from '@crombolo/data'
 export type {
   AppAlias,
-  BackofficeBundleRoute,
-  BundleAudience,
   BundleCaller,
   BundleCapability,
   BundleDocuments,
@@ -37,21 +43,16 @@ export type {
   BundleMediaRefusal,
   BundleMediaUpdate,
   BundleMember,
-  BundleMemberRequest,
   BundleMethod,
-  BundlePublicRequest,
-  BundleRateLimit,
   BundleRedirectInput,
   BundleRedirectRule,
   BundleRedirects,
-  BundleRequest,
+  BundleRoute,
+  BundleRouteContext,
   BundleSection,
   ExtensionSectionAlias,
   ImageLocation,
-  MemberBundleRoute,
   Principal,
   ProviderOverrideInput,
-  PublicBundleRoute,
   ServerBundle,
-  ServerBundleRoute,
 } from '@crombolo/server'

@@ -4,7 +4,7 @@ name = "Home Page"
 description = "The site's landing page"
 icon = "icon-home"
 allow-at-root = true
-allow-children = ["contentPage", "whiskyList", "contactPage", "searchPage"]
+allow-children = ["contentPage", "whiskyList", "comparisonPage", "contactPage", "searchPage"]
 components = ["pages/homePage"]
 default-component = "pages/homePage"
 

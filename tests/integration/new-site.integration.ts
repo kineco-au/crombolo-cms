@@ -315,6 +315,7 @@ describe('creating a site, end to end through the CLI', () => {
       'Home',
       'About',
       'Bottlings',
+      'Compare',
       'Contact',
     ])
     // Each bottling card carries its own summary, so the type travelled whole.
@@ -398,10 +399,20 @@ describe('creating a site, end to end through the CLI', () => {
   })
 
   test('the demo site is a working site, not a fixture: every page in the nav answers', async () => {
-    for (const path of ['/about', '/bottlings', '/contact']) {
+    for (const path of ['/about', '/bottlings', '/compare', '/contact']) {
       const response = await get(demo, path)
       expect(response.status, path).toBe(200)
     }
+    // The comparison is an island (story 209): the range as links until it
+    // mounts, and its browser code built with the site's views.
+    const compare = await page(demo, '/compare')
+    expect(compare).toContain('data-module="shared/compare.tsx"')
+    expect(compare).toContain('href="/bottlings/the-cove"')
+    const manifest = /name="crombolo-islands" content="([^"]+)"/.exec(compare)?.[1] as string
+    const built = await get(demo, manifest)
+    expect(built.status).toBe(200)
+    const modules = ((await built.json()) as { modules: Record<string, string> }).modules
+    expect((await get(demo, modules['shared/compare.tsx'] as string)).status).toBe(200)
     // The dark band on the About page is the same element type the home page
     // picks its figures from, so this proves the reuse travelled.
     const about = await page(demo, '/about')
@@ -560,7 +571,7 @@ describe('creating a site, end to end through the CLI', () => {
     expect(status.out).toContain('up to date')
     expect(status.out).toContain('no migration pending')
     // The demo's own content, counted.
-    expect(status.out).toMatch(/content\s+9 document\(s\), 7 media/)
+    expect(status.out).toMatch(/content\s+10 document\(s\), 7 media/)
 
     const json = await cli('demo', 'status', '--json')
     expect(json.code, json.out).toBe(0)
@@ -572,7 +583,7 @@ describe('creating a site, end to end through the CLI', () => {
     }
     expect(report.database.installed).toBe(true)
     expect(report.schema.files).toBe(report.schema.database.version)
-    expect(report.content.documents).toBe(9)
+    expect(report.content.documents).toBe(10)
     expect(report.content.media).toBe(7)
     expect(report.versions.crombolo).toMatch(/^\d+\.\d+\.\d+$/)
   }, 60_000)

@@ -4,6 +4,7 @@
  * Umbraco keeps templates at ~/components/{alias}.cshtml and treats the file as the
  * source of truth for its content; we do the same with .tsx.
  */
+import { existsSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ComponentFileStore } from '@crombolo/data'
@@ -26,7 +27,11 @@ export function createTemplateFileStore(
 ): ComponentFileStore {
   const fileFor = (alias: string): string | undefined => {
     const safe = safeAlias(alias)
-    return safe ? join(dir, `${safe}.tsx`) : undefined
+    if (!safe) return undefined
+    const file = join(dir, `${safe}.tsx`)
+    // A folder template (story 206) is edited where it lives.
+    const folder = join(dir, safe, 'page.tsx')
+    return !existsSync(file) && existsSync(folder) ? folder : file
   }
 
   return {

@@ -1,0 +1,94 @@
+[content-type]
+alias = "homePage"
+name = "Home Page"
+description = "The site's landing page"
+icon = "icon-home"
+allow-at-root = true
+allow-children = ["contentPage", "whiskyList", "comparisonPage", "contactPage", "searchPage"]
+components = ["pages/homePage"]
+default-component = "pages/homePage"
+
+[[tab]]
+name = "Hero"
+
+[[tab.property]]
+alias = "eyebrow"
+name = "Eyebrow"
+description = "The small line above the heading"
+type = "textstring"
+site-search = "low"
+
+[[tab.property]]
+alias = "title"
+name = "Title"
+description = "Shown as the page heading"
+type = "textstring"
+mandatory = true
+site-search = "high"
+
+[[tab.property]]
+alias = "strapline"
+name = "Strapline"
+description = "One line under the heading"
+type = "textarea"
+
+[[tab.property]]
+alias = "heroImage"
+name = "Hero image"
+type = "imageMediaPicker"
+
+[[tab.property]]
+alias = "heroCtaLabel"
+name = "Hero button"
+description = "Links to the range. Leave empty for no button."
+type = "textstring"
+site-search = false
+
+[[tab]]
+name = "House style"
+
+[[tab.property]]
+alias = "styleEyebrow"
+name = "Eyebrow"
+type = "textstring"
+
+[[tab.property]]
+alias = "styleHeading"
+name = "Heading"
+type = "textstring"
+
+[[tab.property]]
+alias = "styleIntro"
+name = "Introduction"
+type = "richtext"
+
+[[tab.property]]
+alias = "stats"
+name = "Figures"
+description = "Shown as a grid under the introduction"
+type = "highlightBlocks"
+
+[[tab.property]]
+alias = "styleImage"
+name = "Image"
+type = "imageMediaPicker"
+
+[[tab]]
+name = "Range"
+
+[[tab.property]]
+alias = "rangeEyebrow"
+name = "Eyebrow"
+type = "textstring"
+
+[[tab.property]]
+alias = "rangeHeading"
+name = "Heading"
+type = "textstring"
+
+[[tab.property]]
+alias = "rangeCtaLabel"
+name = "Button"
+description = "Links to the range. Leave empty for no button."
+type = "textstring"
+site-search = false

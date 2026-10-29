@@ -41,7 +41,7 @@ function vendorBundle(site: string, id: string, peerRange = '>=0.1.0'): void {
       version: '1.0.0',
       type: 'module',
       main: 'index.js',
-      crombolo: { id, server: id },
+      crombolo: { id, server: id, schemaVersion: 2 },
       peerDependencies: { '@crombolo/crombolo': peerRange },
     }),
   )

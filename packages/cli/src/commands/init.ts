@@ -17,12 +17,20 @@ export default class Init extends BaseCommand {
   static override summary = 'scaffold a site in the current, empty directory'
   static override description =
     'Either a plain site, or one from a --template with its schema, views and content; `--template list` prints the templates. Run it once, in an empty directory.'
-  static override examples = ['<%= config.bin %> init', '<%= config.bin %> init --template list']
+  static override examples = [
+    '<%= config.bin %> init',
+    '<%= config.bin %> init --template list',
+    '<%= config.bin %> init --template next',
+  ]
   static override flags = {
     force: Flags.boolean({
       summary: 'scaffold into a directory that is not empty, overwriting its files',
     }),
     name: Flags.string({ summary: "the site's name", helpValue: '<site name>' }),
+    next: Flags.boolean({
+      summary: 'add a Next.js front end in web/, whatever the template',
+      allowNo: true,
+    }),
     postgres: Flags.boolean({ summary: 'configure Postgres rather than SQLite' }),
     template: Flags.string({ summary: 'a starter template, or `list`', helpValue: '<id>' }),
   }
@@ -66,6 +74,7 @@ export default class Init extends BaseCommand {
       siteName: flags.name,
       postgres: flags.postgres,
       template,
+      next: flags.next,
     })) {
       const target = join(cwd(), file.path)
       await mkdir(join(target, '..'), { recursive: true })
@@ -75,7 +84,12 @@ export default class Init extends BaseCommand {
       this.say(`  created  ${file.path}`)
     }
 
-    this.say('\nNext:\n  bun install\n  bun start')
+    const next = flags.next ?? template?.next ?? false
+    this.say(
+      next
+        ? '\nNext:\n  bun install\n  bun run dev     # the CMS on :8080, the Next.js app in web/ on :3000'
+        : '\nNext:\n  bun install\n  bun start',
+    )
     if (template?.seed)
       this.say(
         '\n`bun start` applies seed/ on the first boot, and again after you change it:\n' +

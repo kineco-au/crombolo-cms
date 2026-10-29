@@ -30,6 +30,10 @@
     "enabled": true,
     "rules": {
       "preset": "recommended"
+    },
+    "domains": {
+      "react": "none",
+      "next": "none"
     }
   },
   "javascript": {
@@ -37,5 +41,16 @@
       "quoteStyle": "single",
       "semicolons": "asNeeded"
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["sites/*/web/**", "packages/cli/next-app/**", "packages/next-integration/**"],
+      "linter": {
+        "domains": {
+          "react": "recommended",
+          "next": "recommended"
+        }
+      }
+    }
+  ]
 }

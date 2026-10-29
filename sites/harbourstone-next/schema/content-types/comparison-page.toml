@@ -1,0 +1,32 @@
+# Rendered by the Next.js app in web/ (story 208): the bottlings side by side,
+# chosen in the browser. Its body is the range itself, so the page holds only
+# the words around it.
+[content-type]
+alias = "comparisonPage"
+name = "Comparison Page"
+description = "The bottlings side by side, chosen by the visitor"
+icon = "icon-split-alt"
+components = ["pages/comparisonPage"]
+default-component = "pages/comparisonPage"
+
+[[tab]]
+name = "Header"
+
+[[tab.property]]
+alias = "eyebrow"
+name = "Eyebrow"
+type = "textstring"
+site-search = "low"
+
+[[tab.property]]
+alias = "title"
+name = "Title"
+type = "textstring"
+mandatory = true
+site-search = "high"
+
+[[tab.property]]
+alias = "standfirst"
+name = "Introduction"
+description = "A sentence under the heading"
+type = "textarea"

@@ -26,6 +26,9 @@ import { setting, VERSION } from '@crombolo/server'
 export const TEMPLATES_DIR =
   setting('CROMBOLO_TEMPLATES_DIR') || join(import.meta.dir, '..', 'templates')
 
+/** The Next.js app a site with a front end gets as `web/` (story 208), beside `templates/`. */
+export const NEXT_APP_DIR = join(import.meta.dir, '..', 'next-app')
+
 /**
  * A bundle whose server half a template wires into the site it scaffolds: the
  * dependency, plus the import and the `bundles` entry in `crombolo.config.ts`.
@@ -57,6 +60,10 @@ export interface SiteTemplate {
   seed: boolean
   /** Server bundles the scaffolded site runs; empty for most templates. */
   serverBundles: TemplateServerBundle[]
+  /** The site has a Next.js front end in `web/` (story 208). */
+  next: boolean
+  /** Packages the site depends on, such as React for its islands (story 209). */
+  dependencies: Record<string, string>
 }
 
 const MANIFEST = 'template.json'
@@ -72,7 +79,19 @@ function read(dir: string, id: string): SiteTemplate | undefined {
     dir,
     seed: existsSync(join(dir, 'files', 'seed')),
     serverBundles: readServerBundles(raw.bundles),
+    next: raw.next === true,
+    dependencies: readDependencies(raw.dependencies),
   }
+}
+
+/** `dependencies` in `template.json`: package names to ranges, anything else dropped. */
+function readDependencies(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  return Object.fromEntries(
+    Object.entries(raw).filter(
+      ([name, range]) => /^(@[a-z0-9-]+\/)?[a-z0-9._-]+$/.test(name) && typeof range === 'string',
+    ),
+  ) as Record<string, string>
 }
 
 /** `bundles` in `template.json`; anything malformed is dropped rather than guessed at. */
@@ -130,6 +149,16 @@ export interface ScaffoldOptions {
    * `--publish`. A template's own seed is used when this is absent.
    */
   bundle?: { path: string; flags?: readonly string[] }
+  /** `--next`: a Next.js front end in `web/`, whatever the template says. */
+  next?: boolean
+  /** Secrets for a front end's `.env` files; random ones when unset. */
+  secrets?: NextSecrets
+}
+
+export interface NextSecrets {
+  apiKey: string
+  revalidate: string
+  session: string
 }
 
 /** One file to write: literal text, or a path to copy (a template's files and media). */
@@ -190,10 +219,39 @@ const SEO_EXAMPLE = `  // Search & sharing defaults; each can also be set in Set
  * answer — so the scaffolded file carries a note saying so, and deleting the
  * line is how a site declines one.
  */
-function config(siteName: string, bundles: readonly TemplateServerBundle[]): string {
+/** What a site with a Next.js front end in `web/` sets: the API, preview, member sign-in and its public address. */
+const NEXT_CONFIG = `  // The Next.js app in web/ reads the site through the Delivery API (story 208).
+  // The key is CROMBOLO_DELIVERY_API_KEY, in .env.
+  deliveryApi: {
+    enabled: true,
+    preview: { url: \`\${APP}/api/crombolo/preview?path={path}&token={token}\` },
+    memberAuthorization: {
+      authorizationCodeFlow: {
+        enabled: true,
+        loginRedirectUrls: [\`\${APP}/api/crombolo/callback\`],
+        logoutRedirectUrls: [\`\${APP}/\`],
+        // A page on this site holding the member login form; add one before members sign in.
+        loginPage: '/login',
+      },
+    },
+  },
+  seo: { publicUrl: APP },
+`
+
+function config(siteName: string, bundles: readonly TemplateServerBundle[], next = false): string {
   const imports = bundles
     .map((bundle) => `import { ${bundle.import} } from ${quote(bundle.package)}\n`)
     .join('')
+  if (next)
+    return `${imports}import { defineConfig } from '@crombolo/crombolo'
+
+/** Where visitors see the site: the Next.js app in web/. */
+const APP = process.env.CROMBOLO_APP_URL ?? 'http://localhost:3000'
+
+export default defineConfig({
+  siteName: ${quote(siteName)},
+${bundles.length > 0 ? `  bundles: [${bundles.map((bundle) => `${bundle.import}()`).join(', ')}],\n` : ''}${NEXT_CONFIG}})
+`
   if (bundles.length === 0)
     return `import { defineConfig } from '@crombolo/crombolo'
 
@@ -216,18 +274,26 @@ function packageJson(options: {
   name: string
   start: string
   bundles: readonly TemplateServerBundle[]
+  next?: boolean
+  dependencies?: Record<string, string>
 }): string {
   const ranges = options.bundles.map(
     (bundle) => [bundle.package, bundle.version ?? `^${VERSION}`] as const,
   )
   const provided = ranges.filter(([name]) => name.startsWith('@crombolo/'))
-  const own = ranges.filter(([name]) => !name.startsWith('@crombolo/'))
+  const own = [
+    ...ranges.filter(([name]) => !name.startsWith('@crombolo/')),
+    ...Object.entries(options.dependencies ?? {}),
+  ]
   return `${JSON.stringify(
     {
       name: options.name,
       private: true,
       type: 'module',
-      scripts: { start: options.start, dev: 'bun --watch server.ts' },
+      ...(options.next ? { workspaces: ['web'] } : {}),
+      scripts: options.next
+        ? { start: options.start, dev: 'bun dev.ts', 'dev:cms': 'bun --watch server.ts' }
+        : { start: options.start, dev: 'bun --watch server.ts' },
       ...(own.length > 0 ? { dependencies: Object.fromEntries(own) } : {}),
       // Peers, because a host that runs the site provides the CMS; `bun install`
       // still installs them here (story 192).
@@ -254,6 +320,7 @@ export function scaffoldFiles(options: ScaffoldOptions = {}): ScaffoldFile[] {
       ? 'crombolo start --seed --publish'
       : 'crombolo start'
   const serverBundles = options.template?.serverBundles ?? []
+  const next = options.next ?? options.template?.next ?? false
   const files: ScaffoldFile[] = [
     {
       path: 'package.json',
@@ -263,9 +330,11 @@ export function scaffoldFiles(options: ScaffoldOptions = {}): ScaffoldFile[] {
         // visible here, and so that dropping it is editing one line.
         start,
         bundles: serverBundles,
+        next,
+        dependencies: options.template?.dependencies,
       }),
     },
-    { path: 'crombolo.config.ts', text: config(siteName, serverBundles) },
+    { path: 'crombolo.config.ts', text: config(siteName, serverBundles, next) },
     {
       path: 'server.ts',
       // `crombolo start` reads the config itself; `server.ts` is what `dev` and
@@ -289,10 +358,18 @@ export default await crombolo(config)
     },
   ]
 
+  const secrets = next ? (options.secrets ?? randomSecrets()) : undefined
+  if (next && secrets) files.push(...nextFiles(siteName, secrets))
+  const nextEnv = secrets
+    ? `CROMBOLO_DELIVERY_API_KEY=${secrets.apiKey}
+CROMBOLO_REVALIDATE_SECRET=${secrets.revalidate}
+`
+    : ''
+  if (nextEnv && !options.postgres) files.push({ path: '.env', text: nextEnv })
   if (options.postgres)
     files.push({
       path: '.env',
-      text: `CROMBOLO_DB=postgres
+      text: `${nextEnv}CROMBOLO_DB=postgres
 CROMBOLO_POSTGRES_URL=postgres://crombolo:crombolo@localhost:5432/${packageNameFor(siteName)}
 
 # Postgres has no file to copy, so anything that writes needs a backup first:
@@ -305,6 +382,102 @@ CROMBOLO_POSTGRES_URL=postgres://crombolo:crombolo@localhost:5432/${packageNameF
   // One entry per path, the last winning, so a template's own `schema.toml` is
   // the one written rather than being skipped as a file that already exists.
   return [...new Map(files.map((file) => [file.path, file])).values()]
+}
+
+/** Secrets a front end and its CMS share, made fresh for each site. */
+function randomSecrets(): NextSecrets {
+  const secret = () => `${crypto.randomUUID()}${crypto.randomUUID()}`.replaceAll('-', '')
+  return { apiKey: secret(), revalidate: secret(), session: secret() }
+}
+
+/** The pinned versions a front end starts on, as crombolo's own suite builds it. */
+const NEXT_VERSIONS = { next: '^16.4.3', react: '^19.3.1', types: '^19.3.0', node: '^26.6.2' }
+
+/**
+ * The Next.js app in `web/` (story 208), the CMS's webhook that clears its
+ * cache, and the script that starts both.
+ */
+function nextFiles(siteName: string, secrets: NextSecrets): ScaffoldFile[] {
+  const out: ScaffoldFile[] = []
+  if (existsSync(NEXT_APP_DIR))
+    for (const entry of readdirSync(NEXT_APP_DIR, { recursive: true, withFileTypes: true })) {
+      if (!entry.isFile()) continue
+      const source = join(entry.parentPath, entry.name)
+      out.push({
+        path: `web/${relative(NEXT_APP_DIR, source).split(sepRe).join('/')}`,
+        copyFrom: source,
+      })
+    }
+  out.push(
+    {
+      path: 'web/package.json',
+      text: `${JSON.stringify(
+        {
+          name: `${packageNameFor(siteName)}-web`,
+          private: true,
+          type: 'module',
+          scripts: {
+            dev: 'next dev --port 3000',
+            build: 'next build',
+            start: 'next start --port 3000',
+          },
+          dependencies: {
+            '@crombolo/next-integration': `^${VERSION}`,
+            next: NEXT_VERSIONS.next,
+            react: NEXT_VERSIONS.react,
+            'react-dom': NEXT_VERSIONS.react,
+          },
+          devDependencies: {
+            '@types/node': NEXT_VERSIONS.node,
+            '@types/react': NEXT_VERSIONS.types,
+            typescript: TYPESCRIPT_VERSION,
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    },
+    {
+      path: 'web/.env.local',
+      text: `CROMBOLO_URL=http://localhost:8080
+CROMBOLO_APP_URL=http://localhost:3000
+CROMBOLO_DELIVERY_API_KEY=${secrets.apiKey}
+CROMBOLO_REVALIDATE_SECRET=${secrets.revalidate}
+CROMBOLO_NEXT_SECRET=${secrets.session}
+`,
+    },
+    {
+      path: 'schema/webhooks/next-revalidate.toml',
+      text: `[webhook]
+alias = "nextRevalidate"
+name = "Next.js front end"
+description = "Clears the Next.js app's cache for a changed page and its ancestors."
+url = "http://localhost:3000/api/crombolo/revalidate"
+events = ["Umbraco.ContentPublish", "Umbraco.ContentUnpublish", "Umbraco.ContentDelete", "Umbraco.ContentMovedToRecycleBin", "Umbraco.ContentMoved", "Umbraco.ContentSorted"]
+payload = "crombolo"
+
+[webhook.headers]
+X-Crombolo-Secret = "env:CROMBOLO_REVALIDATE_SECRET"
+`,
+    },
+    {
+      path: 'dev.ts',
+      text: `/** Starts the CMS on port 8080 and the Next.js app in web/ on 3000, and stops both together. */
+const children = [
+  Bun.spawn(['bun', 'run', 'dev:cms'], { stdout: 'inherit', stderr: 'inherit' }),
+  Bun.spawn(['bun', 'run', 'dev'], { cwd: 'web', stdout: 'inherit', stderr: 'inherit' }),
+]
+const stop = () => {
+  for (const child of children) child.kill()
+}
+process.on('SIGINT', stop)
+process.on('SIGTERM', stop)
+await Promise.race(children.map((child) => child.exited))
+stop()
+`,
+    },
+  )
+  return out
 }
 
 /** `files/` into the site root, its seed among them. */

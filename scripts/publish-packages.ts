@@ -16,6 +16,7 @@
  */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { BUILT_PACKAGES, buildPackage, builtPackageManifest } from './built-package.ts'
 import { CLI_MANIFEST, writeCliManifest } from './cli-manifest.ts'
 import { buildDeliveryClient, builtManifest, DELIVERY_CLIENT } from './delivery-client.ts'
 import {
@@ -142,6 +143,13 @@ for (const pkg of packages) {
       await buildDeliveryClient(pkg.dir)
       writeFileSync(manifestFile, `${JSON.stringify(builtManifest(pkg.manifest), null, 2)}\n`)
     }
+    if (BUILT_PACKAGES.has(name)) {
+      await buildPackage(pkg.dir)
+      writeFileSync(
+        manifestFile,
+        `${JSON.stringify(builtPackageManifest(pkg.manifest), null, 2)}\n`,
+      )
+    }
     await run(['bun', 'pm', 'pack', '--destination', OUT], pkg.dir, true)
     const tarball = join(OUT, `${name.replace('@', '').replace('/', '-')}-${version}.tgz`)
     if (!existsSync(tarball)) throw new Error(`Expected ${tarball}`)
@@ -185,7 +193,7 @@ for (const pkg of packages) {
     for (const file of LICENCE_FILES) rmSync(join(pkg.dir, file), { force: true })
     unstage(staged, templates)
     if (name === CLI) rmSync(CLI_MANIFEST, { force: true })
-    if (name === DELIVERY_CLIENT) {
+    if (name === DELIVERY_CLIENT || BUILT_PACKAGES.has(name)) {
       writeFileSync(manifestFile, sourceManifest)
       rmSync(join(pkg.dir, 'dist'), { recursive: true, force: true })
     }

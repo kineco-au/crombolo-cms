@@ -6,6 +6,7 @@
  * editor's preview both call it, so what an editor is shown is what is served.
  */
 
+import { currentMetadata } from './context.ts'
 import { RawHtml } from './html.ts'
 import { element } from './jsx-runtime.ts'
 import type { PublishedContent } from './model.ts'
@@ -43,8 +44,24 @@ export interface SeoOverrides {
   noindex?: boolean
 }
 
+/**
+ * What a page's `generateMetadata` returns (story 206): the part of Next.js's
+ * `Metadata` that `<SeoHead>` writes. Each value given wins over the page's own.
+ */
+export interface Metadata {
+  title?: string
+  description?: string
+  alternates?: {
+    canonical?: string
+    /** Addresses by culture, replacing the page's language versions. */
+    languages?: Record<string, string>
+  }
+  robots?: string | { index?: boolean }
+  openGraph?: { images?: string | { url: string } | Array<string | { url: string }> }
+}
+
 /** Where a value came from: the page's own field, the template, the site, or the page name. */
-export type MetaSource = 'page' | 'template' | 'site' | 'name' | 'none'
+export type MetaSource = 'page' | 'metadata' | 'template' | 'site' | 'name' | 'none'
 
 export interface MetaValue<T> {
   value: T
@@ -103,6 +120,50 @@ export async function effectiveMeta(
   content: PublishedContent,
   context: MetaContext,
   overrides: SeoOverrides = {},
+  metadata: Metadata = {},
+): Promise<EffectiveMeta> {
+  const meta = await pageMeta(content, context, overrides)
+  return withMetadata(meta, metadata, context.origin)
+}
+
+function firstImage(images: NonNullable<Metadata['openGraph']>['images']): string | undefined {
+  const first = Array.isArray(images) ? images[0] : images
+  return typeof first === 'string' ? first : first?.url
+}
+
+/** A page's values with what its `generateMetadata` returned laid over them. Pure. */
+function withMetadata(meta: EffectiveMeta, metadata: Metadata, origin: string): EffectiveMeta {
+  const out = { ...meta }
+  if (filled(metadata.title)) {
+    const suffix = meta.fullTitle.slice(meta.title.value.length)
+    out.title = { value: metadata.title, source: 'metadata' }
+    out.fullTitle = `${metadata.title}${suffix}`
+  }
+  if (filled(metadata.description))
+    out.description = { value: metadata.description, source: 'metadata' }
+  const canonical = metadata.alternates?.canonical
+  if (filled(canonical))
+    out.canonical = { value: absoluteUrl(canonical, origin), source: 'metadata' }
+  const image = firstImage(metadata.openGraph?.images)
+  if (filled(image)) out.image = { value: absoluteUrl(image, origin), source: 'metadata' }
+  const robots = metadata.robots
+  const noindex = typeof robots === 'string' ? /\bnoindex\b/i.test(robots) : robots?.index === false
+  if (noindex && !meta.noindex.value) out.noindex = { value: true, source: 'metadata' }
+  const languages = metadata.alternates?.languages
+  if (languages) {
+    out.alternates = Object.entries(languages).flatMap(([culture, url]) => {
+      const absolute = absoluteUrl(url, origin)
+      return absolute && culture !== 'x-default' ? [{ culture, url: absolute }] : []
+    })
+    out.xDefault = languages['x-default'] ? absoluteUrl(languages['x-default'], origin) : undefined
+  }
+  return out
+}
+
+async function pageMeta(
+  content: PublishedContent,
+  context: MetaContext,
+  overrides: SeoOverrides,
 ): Promise<EffectiveMeta> {
   const { origin, site } = context
   const own = (alias: string) => content.text(alias).trim()
@@ -181,6 +242,7 @@ export async function SeoHead(props: SeoHeadProps): Promise<RawHtml> {
     model,
     { origin: request.origin, alternates: urls.alternates(model), site: seo },
     overrides,
+    currentMetadata(),
   )
   const tag = (name: string, attributes: Record<string, string | undefined>) =>
     Object.values(attributes).some((v) => v === undefined) ? '' : element(name, attributes).value

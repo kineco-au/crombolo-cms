@@ -1,14 +1,11 @@
 /**
- * What a page needs to call a bundle's member and public routes (story 186):
- * the anti-forgery meta tag, and the script that sends it back.
- * `docs/bundles.md`, Part 3.
+ * What a page needs to call the site's route handlers as a signed-in member
+ * (stories 186 and 211): the anti-forgery meta tag, and the script that sends
+ * it back. docs/rendering.md, "Route handlers".
  */
 import { currentAntiforgery } from './context.ts'
 import { RawHtml } from './html.ts'
 import { element } from './jsx-runtime.ts'
-
-/** Where a bundle's member and public routes answer: `/crombolo/bundle/<id>/<path>`. */
-export const BUNDLE_SITE_PATH = '/crombolo/bundle'
 
 /** The header a cookie-authenticated member write carries. */
 export const ANTIFORGERY_HEADER = 'Crombolo-Antiforgery'
@@ -31,7 +28,7 @@ export function AntiforgeryMeta(): RawHtml {
  * `crombolo.fetch(input, init)`: `fetch`, with the page's anti-forgery token
  * on requests to this site. Never sent to another origin.
  */
-export const BUNDLE_SCRIPT = `/* crombolo bundle routes: fetch with the member's anti-forgery token */
+export const BUNDLE_SCRIPT = `/* crombolo: fetch with the member's anti-forgery token, for the site's routes */
 (function () {
   var crombolo = (window.crombolo = window.crombolo || {})
   if (crombolo.fetch) return

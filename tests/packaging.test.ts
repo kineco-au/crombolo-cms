@@ -28,6 +28,7 @@ const OPT_IN = new Set([
   '@crombolo/delivery-client',
   '@crombolo/entra',
   '@crombolo/import-umbraco',
+  '@crombolo/next-integration',
   '@crombolo/remote-conformance',
   '@crombolo/simple-redirects',
 ])
@@ -38,13 +39,15 @@ const BUNDLES = new Set(['@crombolo/entra', '@crombolo/simple-redirects'])
 /** A sibling package in an import or export specifier, subpath and all. */
 const SIBLING_IMPORT = /from '(@crombolo\/[^']+)'/g
 
-/** The TypeScript a package ships, skipping generated output and vendored dist. */
+/**
+ * The TypeScript a package ships, skipping generated output, vendored dist, and
+ * the Next.js app the CLI writes into a new site, which is that site's code.
+ */
 function sourceFiles(dir: string): string[] {
   const out: string[] = []
   const walk = (current: string) => {
     for (const entry of readdirSync(current, { withFileTypes: true })) {
-      if (entry.name === 'node_modules' || entry.name === 'generated' || entry.name === 'dist')
-        continue
+      if (['node_modules', 'generated', 'dist', 'next-app'].includes(entry.name)) continue
       const path = join(current, entry.name)
       if (entry.isDirectory()) walk(path)
       else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.d.ts')) out.push(path)
@@ -71,6 +74,7 @@ describe('the published package set', () => {
       '@crombolo/backoffice-dist',
       '@crombolo/backoffice-host',
       '@crombolo/cli',
+      '@crombolo/common',
       '@crombolo/content',
       '@crombolo/contracts',
       '@crombolo/core',
@@ -79,6 +83,7 @@ describe('the published package set', () => {
       '@crombolo/delivery-client',
       '@crombolo/entra',
       '@crombolo/import-umbraco',
+      '@crombolo/next-integration',
       '@crombolo/remote-conformance',
       '@crombolo/render',
       '@crombolo/schema',
@@ -251,9 +256,10 @@ describe('publishOrder', () => {
           expect(ordered.indexOf(name)).toBeLessThan(ordered.indexOf(pkg.name))
   })
 
-  test('puts core first and the umbrella package last', () => {
+  test('puts common and core first and the umbrella package last', () => {
     const ordered = publishOrder(packages).map((pkg) => pkg.name)
-    expect(ordered[0]).toBe('@crombolo/core')
+    // `common` depends on nothing, and `core` on it alone (story 210).
+    expect(ordered.slice(0, 2)).toEqual(['@crombolo/common', '@crombolo/core'])
     expect(ordered.at(-1)).toBe('@crombolo/crombolo')
   })
 })

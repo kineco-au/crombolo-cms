@@ -55,6 +55,8 @@ these packages. All four are fixed:
 | `@crombolo/core`, `data`, `auth`, `api-management`, `backoffice-host`, `render`, `contracts`, `schema`, `transfer` | as today, plus the schema package and `transfer` (the content bundle format — `content-transfer.md`) | `@crombolo/server` |
 | `@crombolo/content` | every page and media write and the rules it follows (`architecture.md`, "Content writes"); `@crombolo/content/rules` is the part without the database | `@crombolo/server`, `api-management`, the CLI |
 | `@crombolo/delivery-client` | a typed client for the Delivery API, built to JavaScript (`delivery-api.md`, "Typed apps") | **apps**, never a site |
+| `@crombolo/common` | the contracts outside code is written against (`Result`, the middleware contract), built to JavaScript, no dependencies | `@crombolo/core`, sites, apps and packages |
+| `@crombolo/next-integration` | a Next.js App Router front end, built to JavaScript, Next.js and React as peers (`delivery-api.md`, "A Next.js front end") | **Next.js apps**, in a site's `web/` |
 
 **Why the built backoffice is its own package.** It changes only when the pinned
 Umbraco version changes; the code packages change every release. Shipping it
@@ -710,6 +712,13 @@ app, not a site, and an app's toolchain cannot be assumed to run TypeScript from
 builds `dist/index.js` and `dist/index.d.ts` and packs it under a manifest whose
 `exports` point there (`scripts/delivery-client.ts`), then puts the source
 manifest back. It has no dependencies, and no site depends on it.
+
+`@crombolo/next-integration` and `@crombolo/common` are built the same way, for the same reason. `tsc`
+emits it file for file (`scripts/next-integration.ts`), so the `'use client'` and
+`'use cache'` directives Next.js reads stay at the top of their modules, and
+relative imports are rewritten to `.js`. It depends on the delivery client
+alone; Next.js and React are peers. In the workspace a site's `web/` reads its
+source through `transpilePackages`.
 
 The runtime dependencies include `@logtape/logtape` and `jose`, and no cloud
 SDK: the AWS SDK left with the assistant (story 179), and a test keeps it out.

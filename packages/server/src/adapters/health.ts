@@ -35,6 +35,7 @@ const CHECKS = {
   email: { id: '6f1d4a8e-0047-4c1a-9e7d-000000000004', name: 'E-mail delivery' },
   nodes: { id: '6f1d4a8e-0047-4c1a-9e7d-000000000005', name: 'Servers' },
   outgoing: { id: '6f1d4a8e-0047-4c1a-9e7d-000000000006', name: 'Outgoing changes' },
+  routes: { id: '6f1d4a8e-0047-4c1a-9e7d-000000000007', name: 'Routes and pages' },
 } as const
 
 /** Waiting longer than this means nothing is sending: no server is running its jobs, or one is stuck. */
@@ -70,6 +71,16 @@ const GROUPS: HealthCheckGroup[] = [
         ...CHECKS.outgoing,
         description:
           'Whether changes are reaching webhooks and the people who asked to hear of them.',
+      },
+    ],
+  },
+  {
+    name: 'Site',
+    checks: [
+      {
+        ...CHECKS.routes,
+        description:
+          "Whether a route in the site's code answers at an address a published page also has, which hides the page.",
       },
     ],
   },
@@ -148,6 +159,8 @@ export interface HealthCheckOptions {
   nodeState?: NodeSchemaState
   fetch?: typeof fetch
   now?: () => Date
+  /** Published pages a route answers in place of (story 211). */
+  hiddenByRoutes?: () => Promise<Array<{ route: string; owner: string; page: string; url: string }>>
 }
 
 const result = (
@@ -323,6 +336,16 @@ export function createDiagnosticsPort(options: HealthCheckOptions): DiagnosticsP
     [CHECKS.media.id]: mediaStorage,
     [CHECKS.email.id]: email,
     [CHECKS.nodes.id]: nodes,
+    [CHECKS.routes.id]: async () => {
+      const hidden = (await options.hiddenByRoutes?.()) ?? []
+      if (hidden.length === 0) return [result('Success', 'No route hides a published page.')]
+      return hidden.map((h) =>
+        result(
+          'Warning',
+          `The route ${h.route} (${h.owner}) answers ${h.url}, so the page "${h.page}" published there is never shown.`,
+        ),
+      )
+    },
     [CHECKS.outgoing.id]: async () =>
       outgoingResults(
         {

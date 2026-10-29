@@ -40,11 +40,19 @@ export interface CromboloField {
   /** The factory the package exports for the server half. Never imported by core. */
   server?: string
   /**
+   * The bundle schema its server half is written for; absent means 1. This
+   * release reads `BUNDLE_SCHEMA_VERSION`.
+   */
+  schemaVersion?: number
+  /**
    * What this release's table steps promise a running site, for a bundle that
    * owns tables: `breaking` exactly when it ships a contract.
    */
   migrations?: 'compatible' | 'breaking'
 }
+
+/** The bundle schema a server half must be written for: 2 since its routes became route handlers (story 211). */
+export const BUNDLE_SCHEMA_VERSION = 2
 
 /** A bundle as read from its package. */
 export interface BundlePackage {
@@ -125,6 +133,18 @@ export function validateBundlePackage(json: PackageJson, directory?: string): st
     problems.push('"crombolo.migrations" is "compatible" or "breaking"')
   if (f.server !== undefined && (typeof f.server !== 'string' || !EXPORT_NAME.test(f.server)))
     problems.push('"crombolo.server" must name the factory the package exports')
+  if (
+    f.schemaVersion !== undefined &&
+    (!Number.isInteger(f.schemaVersion) || (f.schemaVersion as number) < 1)
+  )
+    problems.push('"crombolo.schemaVersion" is a whole number')
+  else if (
+    f.server !== undefined &&
+    ((f.schemaVersion as number | undefined) ?? 1) < BUNDLE_SCHEMA_VERSION
+  )
+    problems.push(
+      `its server half is written for bundle schema ${(f.schemaVersion as number | undefined) ?? 1}, and this release reads ${BUNDLE_SCHEMA_VERSION}: its routes are route handlers since 0.37 (docs/bundles.md, "Routes"), with "crombolo.schemaVersion": ${BUNDLE_SCHEMA_VERSION}`,
+    )
   if (f.content !== undefined) {
     if (typeof f.content === 'string')
       problems.push(

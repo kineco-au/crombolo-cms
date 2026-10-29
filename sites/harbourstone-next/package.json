@@ -1,0 +1,15 @@
+{
+  "name": "@crombolo/site-harbourstone-next",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "crombolo start --seed --publish",
+    "dev": "bun dev.ts",
+    "dev:cms": "bun --watch server.ts"
+  },
+  "dependencies": {
+    "@crombolo/simple-redirects": "workspace:*",
+    "@crombolo/crombolo": "workspace:*"
+  }
+}

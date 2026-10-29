@@ -121,7 +121,11 @@ function registry(options: {
     if (!options.hits.includes(name)) return new Response('Not Found', { status: 404 })
     const at = (version: string) =>
       options.declaring.includes(name)
-        ? manifest(name, version, options.server?.includes(name) ? { server: 'serve' } : {})
+        ? manifest(
+            name,
+            version,
+            options.server?.includes(name) ? { server: 'serve', schemaVersion: 2 } : {},
+          )
         : // Claims the field, but is no valid bundle: no id, no peer range.
           { name, version, crombolo: { extensions: [{ type: 'dashboard' }] } }
     return Response.json({
@@ -488,7 +492,13 @@ describe('installing', () => {
 describe('a bundle that runs code on the server (story 194)', () => {
   /** Stands in for `bun add` leaving a bundle behind, with a server half or not. */
   const leaves = (root: string, server: boolean) => () => {
-    addPackage(root, '@acme/tasks', true, '1.2.3', server ? { server: 'serve' } : {})
+    addPackage(
+      root,
+      '@acme/tasks',
+      true,
+      '1.2.3',
+      server ? { server: 'serve', schemaVersion: 2 } : {},
+    )
     writeFileSync(
       join(root, 'package.json'),
       JSON.stringify({ name: 'a-site', dependencies: { '@acme/tasks': '^1.2.3' } }),
@@ -687,7 +697,9 @@ describe('the endpoints', () => {
       fetch: () =>
         Response.json({
           'dist-tags': { latest: '1.2.3' },
-          versions: { '1.2.3': manifest('@acme/tasks', '1.2.3', { server: 'serve' }) },
+          versions: {
+            '1.2.3': manifest('@acme/tasks', '1.2.3', { server: 'serve', schemaVersion: 2 }),
+          },
         }),
     })
     try {

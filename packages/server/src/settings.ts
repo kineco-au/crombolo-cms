@@ -433,6 +433,30 @@ const DECLARED = [
     description:
       'How long a page may take to render, layouts included, before it fails, in milliseconds. `0` for no limit.',
   },
+  {
+    env: 'CROMBOLO_ROUTE_RATE_LIMIT_PER_MINUTE',
+    kind: 'number',
+    default: '2000',
+    section: 'Components',
+    description:
+      "Requests a minute each caller may make to the site's route handlers, on each server, before a 429. High enough to stop only a flood. `0` for no limit.",
+  },
+  {
+    env: 'CROMBOLO_ROUTE_TIMEOUT_MS',
+    kind: 'number',
+    default: '10000',
+    section: 'Components',
+    description:
+      'How long a route handler may take before it answers 504, in milliseconds. `0` for no limit.',
+  },
+  {
+    env: 'CROMBOLO_MIDDLEWARE_TIMEOUT_MS',
+    kind: 'number',
+    default: '2000',
+    section: 'Components',
+    description:
+      "How long a site's whole middleware chain may take, in milliseconds, not counting the page it renders. `0` for no limit.",
+  },
 
   // Media
   {
@@ -701,6 +725,13 @@ const DECLARED = [
     section: 'Public site',
     description:
       'Where visitors see the site, when that is an app on another address, such as https://www.example.com. Used for preferred addresses, the sitemap and robots.txt.',
+  },
+  {
+    env: 'CROMBOLO_SHOW_ERROR_DETAILS',
+    kind: 'boolean',
+    section: 'Public site',
+    description:
+      "Shows a server error's message, the template file and line, and the stack on the error page. On in development, off otherwise; with it off a visitor sees only the error's reference, which the log carries too.",
   },
   {
     env: 'CROMBOLO_SITEMAP',

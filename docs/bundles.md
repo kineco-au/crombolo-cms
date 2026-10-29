@@ -30,7 +30,8 @@ possible halves:
     "name": "Tasks",
     "extensions": [],
     "content": true,
-    "server": "tasks"
+    "server": "tasks",
+    "schemaVersion": 2
   }
 }
 ```
@@ -42,6 +43,7 @@ possible halves:
 | `extensions` | the backoffice half, Umbraco extension manifests (Part 2) |
 | `content` | `true` when the package carries a payload: `bundle.json` at its root, and the content, schema, components, styles, scripts, dictionary items and code it lists, beside it (Part 1) |
 | `server` | the factory the package exports for its server half (Part 3). A declaration only: core never imports it |
+| `schemaVersion` | the bundle contract the package is written for; absent means `1`. A package with a `server` must say `2` (0.37, story 211's [routes](#routes)), or it is refused at install and at boot |
 
 A manifest with none of the three halves is refused, because it declares a
 bundle that does nothing. `peerDependencies["@crombolo/crombolo"]` is required of
@@ -1093,12 +1095,26 @@ export interface ServerBundle {
   id: string              // the crombolo.id of the package that exports it
   section: BundleSection  // what a caller must have access to
   capabilities: readonly BundleCapability[]
-  routes: readonly ServerBundleRoute[]
+  routes?: readonly BundleRoute[] // below
   tables?: BundleTables   // Part 4
   media?: BundleMediaDeclaration // the media folders it uses, below
   forms?: BundleForms     // form field and workflow types, docs/forms.md
   events?: BundleEvents   // webhook event handlers, docs/webhooks.md
+  middleware?: Middleware // offered to the site's chain, below
 }
+```
+
+**A bundle may offer middleware** (story 210), in the published contract
+(`@crombolo/common`; [`rendering.md`](rendering.md#middleware)). It runs only
+where the site lists it, so installing a bundle never changes request handling
+by itself:
+
+```ts
+const redirects = redirectsBundle()
+export default defineConfig({
+  bundles: [redirects],
+  middleware: { request: [redirects.middleware!] },
+})
 ```
 
 **A wired bundle belongs to a package.** Its id must be the `crombolo.id` of a
@@ -1122,81 +1138,90 @@ what `crombolo.config.ts` imports.
 a section of the bundle's own by its manifest alias (`Acme.Section.Design`).
 
 - **Its own namespace.** Back-office routes mount at
-  `<backoffice>/crombolo/api/bundle/<id>/`, and member and public routes at
-  `/crombolo/bundle/<id>/` ([below](#routes-for-members-and-visitors)). The id is lowercase letters, digits
-  and hyphens, so it cannot climb out of its segment however it is spelled, and
-  each route path is validated as a plain path of segments with at most one
-  `:name` each. Two bundles cannot claim one id.
-- **No anonymous traffic unless declared, and no self-granted access.** A route
-  is a back-office route unless it declares another `audience`. For those the
-  server authenticates before dispatch and the registry checks the declared
-  section before calling anything, so a bundle has no way to widen a back-office
-  route's authorisation — the test asserts the handler is never reached by a
-  caller without the section. A route reaches members or visitors only by
-  saying so, and then only on the site's path.
+  `<backoffice>/crombolo/api/bundle/<id>/`. The id is lowercase letters,
+  digits and hyphens, so it cannot climb out of its segment however it is
+  spelled, and each back-office path is validated as a plain path of segments
+  with at most one `:name` each. Two bundles cannot claim one id. Site routes
+  answer at the paths they declare ([below](#routes)).
+- **No anonymous traffic unless declared, and no self-granted access.** For a
+  back-office route the server authenticates before dispatch and the registry
+  checks the declared section before calling anything, so a bundle has no way
+  to widen a back-office route's authorisation — the test asserts the handler
+  is never reached by a caller without the section. A route reaches members or
+  visitors only by being a site route, which answers only where the site lists
+  the bundle.
 - **Only the capabilities it declared**, as a frozen object. No `Db`, no config,
   no filesystem. A capability is an interface `bundles.ts` owns and implements,
   so the reachable surface is what core decided to expose rather than what the
   bundle can find.
-- **Its own failures.** A handler that throws becomes a 500 and a log line naming
-  the bundle; the request path stays up and the other bundles keep answering.
+- **Its own failures.** A handler that throws becomes a 500 with a reference and
+  a log line naming the bundle; the request path stays up and the other bundles
+  keep answering.
 - **No back-office routes on a `web` node.** These are backoffice endpoints, so
-  they answer only where `servesBackOffice`. Member and public routes answer
-  where the site is served: `all` and `web` nodes, never `api` nodes. The bundle
-  itself is validated on every node, because its `forms` types are needed where
-  forms render and submit (story `095`).
+  they answer only where `servesBackOffice`. Site routes answer where the site
+  is served: `all` and `web` nodes, never `api` nodes. The bundle itself is
+  validated on every node, because its `forms` types are needed where forms
+  render and submit (story `095`).
 
-### Routes for members and visitors
+### Routes
 
-A route declares who may call it (story 186):
+A bundle's routes are route handlers, the contract a site's own routes use
+([`rendering.md`](rendering.md#route-handlers)), declared with `route()`
+(story 211):
 
 ```ts
-routes: [
-  { method: 'GET', path: 'species', audience: 'public', handler: listSpecies },
-  { method: 'GET', path: 'records', audience: 'member', handler: myRecords },
-  {
-    method: 'POST',
-    path: 'records',
-    audience: 'member',
-    rateLimit: { max: 30, perSeconds: 60, by: 'member' },
-    handler: addRecord,
-  },
-  { method: 'GET', path: 'reviews', audience: { member: { groups: ['Staff'] } }, handler: review },
-]
+import { type BundleRouteContext, route, type ServerBundle } from '@crombolo/crombolo/bundle'
+
+type Ctx = BundleRouteContext<'tables'>
+
+export const visits = (options: { routesAt?: string } = {}): ServerBundle<'tables'> => {
+  const at = options.routesAt ?? '/visits'
+  return {
+    id: 'visits',
+    section: 'content',
+    capabilities: ['tables'],
+    routes: [
+      route<unknown, unknown, Ctx>(`${at}/species`, { GET: listSpecies }),
+      route<unknown, unknown, Ctx>(
+        `${at}/records`,
+        { GET: myRecords, POST: addRecord },
+        { members: true, rateLimit: { perMinute: 30, by: 'member' } },
+      ),
+      route<unknown, unknown, Ctx>(`${at}/reviews`, { GET: review }, { members: { groups: ['Staff'] } }),
+      route<unknown, unknown, Ctx>('stats', { GET: stats }, { audience: 'backoffice' }),
+    ],
+  }
+}
 ```
 
-| `audience` | Where it answers | Who gets in | The handler is given |
+| `audience` | Where it answers | Who gets in | The context adds |
 | --- | --- | --- | --- |
-| `'backoffice'`, or none | `<backoffice>/crombolo/api/bundle/<id>/…` | a back-office user holding the bundle's `section` | `principal` |
-| `'member'` | `/crombolo/bundle/<id>/…` | any signed-in member | `member` |
-| `{ member: { groups } }` | `/crombolo/bundle/<id>/…` | a member of one of the groups, in any case | `member` |
-| `'public'` | `/crombolo/bundle/<id>/…` | anyone | neither |
+| `'site'`, or none | the path it declares, starting with `/` | as its `members` option says; anyone by default | `bundle`, `caller` |
+| `'backoffice'` | `<backoffice>/crombolo/api/bundle/<id>/<path>` | a back-office user holding the bundle's `section` | `bundle`, `caller`, `principal` |
 
-`/crombolo/` is the site's own namespace, beside the form submissions and the
-form script, so no page address can collide with a route. A back-office route
-is not a route on the site's path, and a site route is not one under the back
-office: each answers 404 on the other's.
+- **Site routes** are mounted only when the site lists the bundle in
+  `bundles`, and they sit in the site's one route table with its own routes.
+  The same rules apply: the reserved paths and a clash refuse the boot,
+  naming the bundle, and a route hiding a published page is a status-check
+  finding. A factory option such as `routesAt` lets a site move them.
+- **Their options** are the site's: `members`, `csrf`, `rateLimit` and `cors`
+  ([`rendering.md`](rendering.md#route-handlers)). A back-office route takes
+  none of them, since the back office does its own checks, and declaring one
+  refuses the boot.
+- **The member** comes from the site's member cookie, or from a Delivery API
+  member bearer token (`docs/delivery-api.md`, "Member sign-in") for an app.
+  Either way the member must be approved and not locked out. A token's scopes
+  never widen what the route allows, and a bearer token that is not live
+  counts as nobody rather than falling back to the cookie.
+- **A group** a route names that does not exist is reported at boot as a
+  warning, not refused: groups are made in the back office while the site
+  runs, and until it exists no member is in it.
+- **Capabilities stay per bundle.** `context.bundle` holds the capabilities
+  the bundle declared, frozen, on either kind of route. A site route reaches
+  nothing a back-office one could not.
 
-**The member** comes from the site's member cookie, which templates already
-read, or from a Delivery API member bearer token (`docs/delivery-api.md`,
-"Member sign-in") for an app. Either way the member must be approved and not
-locked out, and the handler gets the same frozen `BundleMember`: `key`, `name`,
-`username`, `email` and `groups` (names). Nothing of the back office. A token's
-scopes never widen what the route allows. A visitor on a member route gets 401,
-and a member outside its groups 403, before the handler runs. A bearer token
-that is not live answers 401 rather than falling back to the cookie. A member
-route's answer is `cache-control: private, no-store` unless the handler sets
-its own.
-
-A group a route names that does not exist is reported at boot as a warning,
-not refused: groups are made in the back office while the site runs, and until
-it exists no member is in it.
-
-**Writes driven by the cookie need an anti-forgery token.** A browser sends the
-member cookie with a request whichever site started it, so a cookie-
-authenticated `POST`, `PUT` or `DELETE` to a member route must carry a
-`Crombolo-Antiforgery` header, or it is refused with 403 and a message naming
-the fix. The site's layout writes the token and its script sends it:
+**From the browser**, the layout writes the anti-forgery token and
+`crombolo.fetch` sends it with a cookie-authenticated write:
 
 ```tsx
 import { AntiforgeryMeta } from '@crombolo/crombolo'
@@ -1208,7 +1233,7 @@ import { AntiforgeryMeta } from '@crombolo/crombolo'
 ```
 
 ```js
-await crombolo.fetch('/crombolo/bundle/visits/records', { method: 'POST', body })
+await crombolo.fetch('/visits/records', { method: 'POST', body })
 ```
 
 `<AntiforgeryMeta />` writes `<meta name="crombolo-antiforgery" content="…">`
@@ -1217,28 +1242,21 @@ while a member is signed in, and nothing for a visitor. `crombolo.fetch` is
 The token is an HMAC of the member's session (`auth/src/antiforgery.ts`): the
 member, the security stamp and the session's expiry, keyed by the member
 cookie's signing key. Nothing is stored, so every node can check it, and it
-stops working when the session ends or the stamp rotates. A request with a
-bearer token is not driven by a cookie and needs no anti-forgery token; nor
-does a `GET`, nor a public route.
+stops working when the session ends or the stamp rotates.
 
-**Rate limits** are per route: `rateLimit: { max, perSeconds, by }`, on member
-and public routes only. `by: 'member'` counts the member's key, however they
-signed in; `by: 'caller'` counts the caller's address, which is the
-connection's, or the last `X-Forwarded-For` entry when the connection comes
-from a private address (a proxy or load balancer in front of the site). A
-caller over the limit gets 429 with `retry-after`. Each server counts in its
-own memory, as sign-in throttling does, so **behind N servers a route allows
-up to N times its limit** in all, and a restart forgets the count.
-
-**Other origins** use the Delivery API's allow-list
-(`deliveryApi.cors.allowedOrigins`, `docs/delivery-api.md`): an allowed origin
-gets CORS headers and its pre-flight is answered; any other gets none. Cookies
-are not sent across sites, so a member call from another origin uses a bearer
-token.
-
-**Capabilities stay per bundle.** A member or public route gets the
-capabilities its bundle declared, frozen, exactly as a back-office route does;
-a public route reaches nothing a back-office one could not.
+**Upgrading a bundle written before 0.37.** Bundle routes before story 211
+were `{ method, path, audience, handler }` objects whose handler took
+`{ request, host, principal | member }`. Site routes answered under
+`/crombolo/bundle/<id>/`. Those are gone, with no compatibility layer:
+1. Declare each route with `route(path, { METHOD: handler }, options)`.
+2. A back-office route takes `{ audience: 'backoffice' }` and keeps its
+   relative path.
+3. A member or public route gets a path of its own, starting with `/`. A
+   member route also takes `members: true` or `{ groups }`.
+4. A handler is `(request, context)`: `host` becomes `context.bundle`, and
+   `principal` and `caller` are on the context.
+5. `rateLimit: { max, perSeconds }` becomes `{ perMinute }`.
+6. Add `"schemaVersion": 2` to the package's `crombolo` field.
 
 ### Who is asking: `caller`
 
@@ -1252,12 +1270,13 @@ type BundleCaller =
   | { kind: 'public' }
 ```
 
-A public route's caller is always `public`, even when a member happens to be
-signed in. Core builds a capability that acts for the caller from it: the host
-passes `callerHost`, a factory per capability taking the caller and the bundle,
-and the registry calls it for each request, so a capability can write as the
-member a route was given and refuse a public caller ([`media`](#media-as-the-member)).
-A capability without a factory is the one shared object, as before.
+A site route's caller is the member when one is signed in, by cookie or
+token, and `public` otherwise. Core builds a capability that acts for the
+caller from it. The host passes `callerHost`, a factory per capability that
+takes the caller and the bundle, and the registry calls it for each request.
+That lets a capability write as the member who called and refuse a public
+caller ([`media`](#media-as-the-member)). A capability without a factory is
+one shared object.
 
 ### Media as the member
 
@@ -1276,24 +1295,25 @@ export const observations = (): ServerBundle<'media'> => ({
     maxBytes: 10 * 1024 * 1024,     // the largest upload; a folder's own limit may be smaller
   },
   routes: [
-    {
-      method: 'POST',
-      path: 'photos',
-      audience: 'member',
-      handler: async ({ request, host }) => {
-        const year = String(new Date().getFullYear())
-        const result = await host.media.create({
-          folder: `/Observations/Photos/${year}`,
-          name: 'Sighting',
-          file: request, // or a File from request.formData()
-          fileName: 'sighting.jpg',
-        })
-        if (!result.ok) return Response.json(result, { status: result.status })
-        // result.metadata: { width, height, location?, takenAt? } — keep it in the
-        // bundle's own tables if the observation needs it; the stored file has none.
-        return Response.json({ key: result.key, url: result.url })
+    route<unknown, unknown, BundleRouteContext<'media'>>(
+      '/observations/photos',
+      {
+        POST: async (request, { bundle }) => {
+          const year = String(new Date().getFullYear())
+          const result = await bundle.media.create({
+            folder: `/Observations/Photos/${year}`,
+            name: 'Sighting',
+            file: request, // or a File from request.formData()
+            fileName: 'sighting.jpg',
+          })
+          if (!result.ok) return Response.json(result, { status: result.status })
+          // result.metadata: { width, height, location?, takenAt? } — keep it in the
+          // bundle's own tables if the observation needs it; the stored file has none.
+          return Response.json({ key: result.key, url: result.url })
+        },
       },
-    },
+      { members: true },
+    ),
   ],
 })
 ```
@@ -1311,11 +1331,11 @@ Permissions panel's API lists them at `<backoffice>/crombolo/api/media-access/us
 After the boot the capability holds the folders by key, so a rename while the
 site runs takes effect at the next boot, which is the one that would refuse.
 
-**As whom.** On a member route it acts as the member: a `member` actor
+**As whom.** On a site route with a signed-in member it acts as the member: a `member` actor
 (`content/src/actor.ts`) that only media operations take, so it can never reach
 a page. The audit log names the member and the bundle, and change events carry
 the member's key. On a back-office route it acts as the route's user, with
-their media permissions and start nodes. On a public route every call is
+their media permissions and start nodes. For a visitor every call is
 refused (`401`), since there is nobody to act as.
 
 | Call | Needs | Gives |
@@ -1665,7 +1685,7 @@ and `_ . : @ / -`, and `json` and `timestamp` take none.
 transaction once `up` has, over the tables as that step leaves them. Keeping it
 out of `up` means a step's checksum and its plan never depend on data, and
 that the final shape of every table can be worked out from the declaration's
-types: `context.host.tables.task` is typed, and `context.host.tables.node` does
+types: `context.bundle.tables.task` is typed, and `context.bundle.tables.node` does
 not exist. `upgrade --plan` reports a step with a backfill as unplannable.
 
 ## Names
@@ -1750,12 +1770,12 @@ Offered only to a bundle that declares tables, and resolved against that
 bundle's final schema alone:
 
 ```ts
-const open = await context.host.tables.task.select({
+const open = await context.bundle.tables.task.select({
   where: { status: 'open', due: { lt: now } },
   orderBy: { due: 'asc' },
   limit: 50,
 })
-await context.host.tables.transaction(async (t) => {
+await context.bundle.tables.transaction(async (t) => {
   await t.task.update({ where: { id }, set: { status: 'done' } })
 })
 ```
@@ -1821,7 +1841,7 @@ the capability, the guards and purge. Its core-upgrade guarantee installs the
 fixture's tables and rows at core's first state and walks the whole core plan
 forward, and the tables come through untouched.
 `tests/bundle-tables-site.test.ts` boots a real site wiring the fixture: a route
-using `context.host.tables`, the dashboard's report, `upgrade --plan`, `check`,
+using `context.bundle.tables`, the dashboard's report, `upgrade --plan`, `check`,
 `/status` and `upgrade`, and `bundle purge`.
 
 ## Out of scope

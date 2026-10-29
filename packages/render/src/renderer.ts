@@ -9,21 +9,37 @@
 import { existsSync } from 'node:fs'
 import { basename, join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import type { FormSubmissionState } from '@crombolo/core'
-import { emailScope, renderScope } from './context.ts'
+import { type FormSubmissionState, isOutcome, type Outcome } from '@crombolo/core'
+import { emailScope, markPersonal, renderScope } from './context.ts'
 import type { EmailProps, EmailRenderResult } from './email.ts'
 import { RawHtml } from './html.ts'
+import { ISLANDS_PATH, withIslandTags } from './islands.ts'
 import { type Child, renderToString } from './jsx-runtime.ts'
-import type { PageProps, PublishedContent, RequestMember } from './model.ts'
+import type {
+  PageOutcome,
+  PageProps,
+  PublishedContent,
+  RequestMember,
+  SearchParams,
+} from './model.ts'
 import { type PublishedCache, translate, urlsIn } from './published-cache.ts'
 import type { SiteSearchPort } from './search.ts'
-import { absoluteUrl, type SeoSiteDefaults } from './seo.ts'
+import { absoluteUrl, type Metadata, type SeoSiteDefaults } from './seo.ts'
 import type { ViewSnapshots } from './snapshots.ts'
 
 export interface ComponentModule {
   default: (props: PageProps) => Child | Promise<Child>
   /** Alias of the layout template to wrap this one in. */
   layout?: string
+  /**
+   * As Next.js's route segment config: `force-dynamic` is always personal;
+   * `force-static` empties the request's values so the page can be shared.
+   */
+  dynamic?: 'auto' | 'force-dynamic' | 'force-static'
+  /** Seconds copies of the page may be kept, or false for as long as it is unchanged. */
+  revalidate?: number | false
+  /** Search and sharing values worked out per request, laid over the page's own. */
+  generateMetadata?: (props: PageProps) => Metadata | Promise<Metadata>
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: an untyped page, as `PageProps` defaults to.
@@ -44,12 +60,27 @@ export interface RenderOptions {
   snapshots?: ViewSnapshots
   /** How long a page may take to render, layouts included; 0 for no limit. */
   renderTimeoutMs?: number
+  /**
+   * Where a page's island code is described, for the generation it rendered
+   * with (story 209); by default the generation's own build.
+   */
+  islandsManifest?: (generation: string | undefined) => string | undefined
 }
 
 export const DEFAULT_RENDER_TIMEOUT_MS = 10_000
 
+/** What a rendered page says about how its answer may be kept. */
+export interface RenderedCaching {
+  /** It read something that depends on who is asking, so it is never shared. */
+  personal: boolean
+  /** The template's own `revalidate`, overriding its type's and the site's lifetime. */
+  revalidate?: number | false
+}
+
 export type RenderResult =
-  | { status: 'ok'; html: string; content: PublishedContent }
+  | ({ status: 'ok'; html: string; content: PublishedContent } & RenderedCaching)
+  /** A component threw a redirect or a refusal (story 206). */
+  | ({ status: 'outcome'; outcome: Outcome; content: PublishedContent } & RenderedCaching)
   | { status: 'notFound' }
   /** The page names another to send its visitors to (`umbracoRedirect`). */
   | { status: 'redirect'; location: string; content: PublishedContent }
@@ -103,6 +134,52 @@ export interface RenderRequest {
   preview?: boolean
   /** The signed-in member's anti-forgery token, written by `<AntiforgeryMeta />` (story 186). */
   antiforgery?: string
+  /** The request's headers, cookies among them, for `cookies()` and `headers()` (story 206). */
+  headers?: Headers
+  /** The site's services as whoever is asking, for `site()`. */
+  site?: () => unknown
+  /** On a status page, the outcome it is answering, for `usePage().outcome`. */
+  outcome?: PageOutcome
+}
+
+/** The query string as Next.js hands it to a page: a name given twice becomes an array. */
+function queryOf(url: string): SearchParams {
+  const query: SearchParams = {}
+  let params: URLSearchParams
+  try {
+    params = new URL(url).searchParams
+  } catch {
+    return query
+  }
+  for (const [name, value] of params) {
+    const seen = query[name]
+    query[name] =
+      seen === undefined ? value : Array.isArray(seen) ? [...seen, value] : [seen, value]
+  }
+  return query
+}
+
+/**
+ * The query as a promise that marks the page personal once anything awaits it.
+ * Handing the promise on, as spreading a page's props does, marks nothing. A
+ * subclass, because `await` on a plain promise never calls its own `then`.
+ */
+class PersonalPromise<T> extends Promise<T> {
+  static override get [Symbol.species]() {
+    return Promise
+  }
+  // biome-ignore lint/suspicious/noThenProperty: marking the read is the point of it.
+  override then<A = T, B = never>(
+    onFulfilled?: ((value: T) => A | PromiseLike<A>) | null,
+    onRejected?: ((reason: unknown) => B | PromiseLike<B>) | null,
+  ): Promise<A | B> {
+    markPersonal()
+    return super.then(onFulfilled, onRejected)
+  }
+}
+
+function personalPromise(query: SearchParams): Promise<SearchParams> {
+  return new PersonalPromise<SearchParams>((resolve) => resolve(query))
 }
 
 /**
@@ -126,6 +203,7 @@ export class Renderer {
   #modules = new Map<string, ComponentModule>()
   #importedFrom: string | undefined
   #renderTimeoutMs: number
+  #islandsManifest: (generation: string | undefined) => string | undefined
 
   constructor(options: RenderOptions) {
     this.#cache = options.cache
@@ -134,6 +212,9 @@ export class Renderer {
     this.#componentsDir = resolve(options.componentsDir)
     this.#snapshots = options.snapshots
     this.#renderTimeoutMs = options.renderTimeoutMs ?? DEFAULT_RENDER_TIMEOUT_MS
+    this.#islandsManifest =
+      options.islandsManifest ??
+      ((generation) => (generation ? `${ISLANDS_PATH}/${generation}/manifest.json` : undefined))
   }
 
   /**
@@ -177,8 +258,11 @@ export class Renderer {
     // `..`, an absolute path and a drive letter are all refused while
     // `pages/homePage` resolves.
     if (!isSafeComponentAlias(alias)) return undefined
-    const file = join(this.#importDir(), `${alias}.tsx`)
-    return existsSync(file) ? file : undefined
+    const dir = this.#importDir()
+    // A template may be a folder, as a Next.js route is, so its partials sit beside it.
+    for (const file of [join(dir, `${alias}.tsx`), join(dir, alias, 'page.tsx')])
+      if (existsSync(file)) return file
+    return undefined
   }
 
   /**
@@ -209,14 +293,7 @@ export class Renderer {
     const content = permitted
     if (!content.componentAlias) return { status: 'noTemplate', content }
 
-    try {
-      const html = await this.#renderContent(content, content.componentAlias, culture, request)
-      return html === undefined
-        ? { status: 'noTemplate', content }
-        : { status: 'ok', html, content }
-    } catch (error) {
-      return { status: 'error', error: error as Error, content }
-    }
+    return this.#renderPage(content, content.componentAlias, culture, request)
   }
 
   /**
@@ -252,12 +329,25 @@ export class Renderer {
     request: RenderRequest = {},
   ): Promise<RenderResult> {
     if (!content.componentAlias) return { status: 'noTemplate', content }
+    return this.#renderPage(content, content.componentAlias, culture, request)
+  }
+
+  async #renderPage(
+    content: PublishedContent,
+    alias: string,
+    culture: string | null,
+    request: RenderRequest,
+  ): Promise<RenderResult> {
+    const caching: RenderedCaching = { personal: false }
     try {
-      const html = await this.#renderContent(content, content.componentAlias, culture, request)
+      const html = await this.#withDeadline(alias, request.signal, (signal, rendering) =>
+        this.#renderChain(content, alias, culture, request, signal, rendering, caching),
+      )
       return html === undefined
         ? { status: 'noTemplate', content }
-        : { status: 'ok', html, content }
+        : { status: 'ok', html, content, ...caching }
     } catch (error) {
+      if (isOutcome(error)) return { status: 'outcome', outcome: error, content, ...caching }
       return { status: 'error', error: error as Error, content }
     }
   }
@@ -283,6 +373,16 @@ export class Renderer {
 
   /** `The e-mail template 'x' failed at components/x.tsx:12: <what it threw>`. */
   #emailFailure(alias: string, error: unknown): string {
+    const { message, location } = this.describeError(error)
+    return `The e-mail template '${alias}' failed${location ? ` at ${location}` : ''}: ${message}`
+  }
+
+  /**
+   * What a template threw, for a person to act on: its message, the first line
+   * under `components/` it failed on, and the stack, all naming files somebody
+   * can open.
+   */
+  describeError(error: unknown): { message: string; location?: string; stack: string } {
     const root = `${this.#componentsDir}${sep}`
     const shown = `${basename(this.#componentsDir)}/`
     const readable = (text: string) => this.inSource(text).replaceAll(root, shown)
@@ -290,18 +390,7 @@ export class Renderer {
     const stack = error instanceof Error ? readable(error.stack ?? '') : ''
     const escaped = shown.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const frame = new RegExp(`${escaped}[^\\s:()]+\\.[jt]sx?:\\d+`).exec(stack)
-    return `The e-mail template '${alias}' failed${frame ? ` at ${frame[0]}` : ''}: ${message}`
-  }
-
-  async #renderContent(
-    content: PublishedContent,
-    alias: string,
-    culture: string | null,
-    request: RenderRequest = {},
-  ): Promise<string | undefined> {
-    return this.#withDeadline(alias, request.signal, (signal, rendering) =>
-      this.#renderChain(content, alias, culture, request, signal, rendering),
-    )
+    return frame ? { message, location: frame[0], stack } : { message, stack }
   }
 
   /** Runs a render under the time limit; the signal it hands on aborts when that runs out. */
@@ -348,7 +437,17 @@ export class Renderer {
     request: RenderRequest,
     signal: AbortSignal,
     rendering: { alias: string },
+    caching: RenderedCaching,
   ): Promise<string | undefined> {
+    const page = await this.#load(alias)
+    if (!page) return undefined
+    const dynamic = page.dynamic ?? 'auto'
+    const shared = dynamic === 'force-static'
+    if (typeof page.revalidate === 'number' || page.revalidate === false)
+      caching.revalidate = page.revalidate
+    // A static page reads nothing of the request, so what it marks is thrown away.
+    const personal = { value: dynamic === 'force-dynamic' }
+    const member = shared ? undefined : request.member
     const nav = await this.#cache.navigation(culture)
     const snapshot = await this.#cache.snapshot()
     const dictionary = (key: string) => translate(snapshot, key, culture)
@@ -363,9 +462,13 @@ export class Renderer {
       culture,
       dictionary,
       menu,
-      member: request.member,
+      member,
       submission: request.submission,
       request: { origin, url: request.url ?? `${origin}/` },
+      searchParams: shared
+        ? Promise.resolve({})
+        : personalPromise(queryOf(request.url ?? `${origin}/`)),
+      outcome: request.outcome,
       urls: {
         absolute: (target) => absoluteUrl(target.url, origin),
         alternates: (target) => urlsIn(snapshot, target.key),
@@ -374,13 +477,37 @@ export class Renderer {
       signal,
     }
 
+    const metadata: { value?: Metadata } = {}
+    const islands = { used: false }
     // Inside the page's scope, so any component can ask for it with `usePage()`.
-    return renderScope(props, () => this.#renderLayouts(alias, props, rendering), {
-      search: request.search,
-      preview: request.preview,
-      antiforgery: request.antiforgery,
-      blockComponent: (blockAlias) => this.blockComponent(blockAlias),
-    })
+    try {
+      const html = await renderScope(
+        props,
+        async () => {
+          if (page.generateMetadata) metadata.value = await page.generateMetadata(props)
+          return this.#renderLayouts(alias, props, rendering)
+        },
+        {
+          search: request.search,
+          preview: request.preview,
+          antiforgery: request.antiforgery,
+          blockComponent: (blockAlias) => this.blockComponent(blockAlias),
+          request: { headers: shared ? new Headers() : (request.headers ?? new Headers()) },
+          site: request.site,
+          personal: shared ? { value: false } : personal,
+          metadata,
+          islands,
+        },
+      )
+      if (html === undefined || !islands.used) return html
+      // The generation the views were imported from, so the page loads the code built with them.
+      const manifest = this.#islandsManifest(
+        this.#importedFrom && this.#snapshots ? basename(this.#importedFrom) : undefined,
+      )
+      return manifest ? withIslandTags(html, manifest) : html
+    } finally {
+      caching.personal = !shared && (personal.value || member !== undefined)
+    }
   }
 
   /** Generic over its props: a page's, or an e-mail's. */

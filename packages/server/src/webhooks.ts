@@ -144,9 +144,25 @@ export interface WebhookServiceOptions {
   now?: () => Date
 }
 
-/** An event as a webhook delivers it, with the item's type as it was when it happened. */
+/** An event as a webhook delivers it, with the item's type and place as they were when it happened. */
 export interface WebhookFacts extends RaisedWebhookEvent {
   contentTypeKey?: string
+  contentTypeAlias?: string
+  /** Its ancestors' keys, nearest first, for Crombolo's payload (story 208). */
+  ancestors?: string[]
+}
+
+/** What a webhook is posted. Pure. */
+export function webhookPayload(
+  facts: WebhookFacts,
+  payload: WebhookDefinition['payload'],
+): Record<string, unknown> {
+  if (payload !== 'crombolo') return { Id: facts.key }
+  return {
+    Id: facts.key,
+    ContentType: facts.contentTypeAlias ?? null,
+    Ancestors: facts.ancestors ?? [],
+  }
 }
 
 export interface WebhookService {
@@ -498,6 +514,10 @@ export function createWebhookService(options: WebhookServiceOptions): WebhookSer
         ...definition,
         key: existing.key,
         headers: unmask(definition.headers, existing.headers),
+        // The back office has no field for it, so an edit there keeps the file's choice.
+        ...((definition.payload ?? existing.payload)
+          ? { payload: definition.payload ?? existing.payload }
+          : {}),
       }
       return store(next, existing.store)
     },
@@ -522,17 +542,20 @@ export function createWebhookService(options: WebhookServiceOptions): WebhookSer
       return written
     },
     async factsFor(db, event) {
-      const contentTypeKey = await itemType(db, event.key)
-      return contentTypeKey ? { ...event, contentTypeKey } : { ...event }
+      const item = await itemFacts(db, event.key)
+      return item ? { ...event, ...item } : { ...event }
     },
     async enqueueFor(db, eventId, facts) {
-      const subscribers = subscribersFor(facts, facts.contentTypeKey, await all(), bundles)
+      const webhooks = await all()
+      const subscribers = subscribersFor(facts, facts.contentTypeKey, webhooks, bundles)
       if (subscribers.length === 0) return 0
+      const payloadOf = (subscriber: string) =>
+        webhookPayload(facts, webhooks.find((webhook) => webhook.key === subscriber)?.payload)
       const queued = await new WebhookDeliveryRepository(db).enqueue(
         subscribers.map((subscriber) => ({
           subscriber,
           eventAlias: facts.alias,
-          payload: { Id: facts.key },
+          payload: payloadOf(subscriber),
           eventId,
         })),
         now(),
@@ -579,13 +602,50 @@ export function createWebhookService(options: WebhookServiceOptions): WebhookSer
 }
 
 /** An item's type, while it still exists. */
-async function itemType(db: Db, key: string): Promise<string | undefined> {
-  const rows = await db.query<{ type_key: string }>(
-    `SELECT tn.unique_id AS type_key FROM node n
+/** The item's type and ancestors, read in the change's transaction so a delete still knows them. */
+async function itemFacts(
+  db: Db,
+  key: string,
+): Promise<Pick<WebhookFacts, 'contentTypeKey' | 'contentTypeAlias' | 'ancestors'> | undefined> {
+  const rows = await db.query<{
+    type_key: string
+    type_alias: string | null
+    path: string
+    original_path: string | null
+    original_parent_id: number | null
+  }>(
+    `SELECT tn.unique_id AS type_key, ct.alias AS type_alias, n.path AS path,
+            op.path AS original_path, d.original_parent_id AS original_parent_id
+       FROM node n
        JOIN content c ON c.node_id = n.id
        JOIN node tn ON tn.id = c.content_type_id
+       LEFT JOIN content_type ct ON ct.node_id = tn.id
+       LEFT JOIN document d ON d.node_id = n.id AND n.trashed = ?
+       LEFT JOIN node op ON op.id = d.original_parent_id
       WHERE n.unique_id = ?`,
-    [key],
+    [db.dialect.boolValue(true), key],
   )
-  return rows[0] ? String(rows[0].type_key).toLowerCase() : undefined
+  const row = rows[0]
+  if (!row) return undefined
+  // In the recycle bin its path is the bin's, so its ancestors are where it was.
+  const chain = row.original_path
+    ? String(row.original_path).split(',')
+    : String(row.path).split(',').slice(0, -1)
+  const ids = chain.map(Number).filter((id) => id > 0)
+  const found =
+    ids.length === 0
+      ? []
+      : await db.query<{ id: number; unique_id: string }>(
+          `SELECT id, unique_id FROM node WHERE id IN (${ids.map(() => '?').join(', ')})`,
+          ids,
+        )
+  const keyOf = new Map(found.map((r) => [Number(r.id), String(r.unique_id).toLowerCase()]))
+  return {
+    contentTypeKey: String(row.type_key).toLowerCase(),
+    ...(row.type_alias ? { contentTypeAlias: String(row.type_alias) } : {}),
+    ancestors: ids
+      .reverse()
+      .map((id) => keyOf.get(id))
+      .filter((k): k is string => Boolean(k)),
+  }
 }

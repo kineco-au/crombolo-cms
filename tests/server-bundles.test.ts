@@ -12,9 +12,12 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Principal } from '@crombolo/api-management'
+import { route } from '@crombolo/common'
 import {
   BUNDLE_API_SEGMENT,
   type BundleHost,
+  type BundleRoute,
+  createRoutes,
   createServerBundles,
   loadConfig,
   type ServerBundle,
@@ -85,14 +88,77 @@ function mount(bundles: ServerBundle[]) {
 
 const ok = (body: unknown = { ok: true }) => Response.json(body)
 
-const simple = (overrides: Partial<ServerBundle> = {}): ServerBundle =>
+/**
+ * Routes as these tests write them, one method each: grouped by path into 211's
+ * route handlers, the handler given what it reads from the context.
+ */
+interface Compact {
+  method: string
+  path: string
+  audience?: 'backoffice' | 'site'
+  // biome-ignore lint/suspicious/noExplicitAny: the tests reach into whatever the context holds.
+  handler: (context: any) => Response | Promise<Response>
+}
+
+function routesOf(compact: readonly Compact[]): BundleRoute[] {
+  const grouped = new Map<
+    string,
+    { audience: 'backoffice' | 'site'; handlers: Record<string, Compact['handler']> }
+  >()
+  for (const entry of compact) {
+    const audience = entry.audience ?? 'backoffice'
+    const key = `${audience} ${entry.path}`
+    const group = grouped.get(key) ?? { audience, handlers: {} }
+    group.handlers[entry.method] = entry.handler
+    grouped.set(key, group)
+  }
+  return [...grouped.entries()].map(
+    ([key, group]) =>
+      route(
+        key.slice(group.audience.length + 1),
+        Object.fromEntries(
+          Object.entries(group.handlers).map(([method, handler]) => [
+            method,
+            // biome-ignore lint/suspicious/noExplicitAny: as above.
+            (request: Request, context: any) =>
+              handler({
+                request,
+                url: context.url,
+                params: context.params,
+                host: context.bundle,
+                principal: context.principal,
+                caller: context.caller,
+              }),
+          ]),
+        ),
+        { audience: group.audience },
+      ) as BundleRoute,
+  )
+}
+
+const simple = (
+  overrides: Partial<Omit<ServerBundle, 'routes'>> & { routes?: Compact[] } = {},
+): ServerBundle =>
   ({
     id: 'demo',
     section: 'settings',
     capabilities: ['log'],
-    routes: [{ method: 'GET', path: 'things', handler: () => ok() }],
     ...overrides,
+    routes: routesOf(overrides.routes ?? [{ method: 'GET', path: 'things', handler: () => ok() }]),
   }) as ServerBundle
+
+/** 211's pipeline with nothing behind it, which is all a back-office route needs. */
+const pipeline = createRoutes([], {
+  backOfficePath: '/umbraco',
+  timeoutMs: 0,
+  defaultPerMinute: 0,
+  siteFor: () => () => ({}),
+  session: async () => undefined,
+  callerAddress: () => 'test',
+  statusPage: async (_request, outcome) => new Response('status page', { status: outcome.status }),
+  logError: () => {},
+  showDetails: false,
+})
 
 const call = (
   bundles: ReturnType<typeof mount>,
@@ -101,7 +167,7 @@ const call = (
   principal = admin,
 ) => {
   const url = new URL(`http://localhost${path}`)
-  return bundles.handle(new Request(url, init), url, principal)
+  return bundles.handle(new Request(url, init), url, principal, pipeline.invoke)
 }
 
 describe('what a bundle may declare', () => {
@@ -162,16 +228,30 @@ describe('what a bundle may declare', () => {
     ).toEqual([])
   })
 
-  test('refuses the same method and path twice', () => {
-    const problems = validate([
-      simple({
-        routes: [
-          { method: 'GET', path: 'things', handler: () => ok() },
-          { method: 'GET', path: 'things', handler: () => ok() },
-        ],
-      }),
-    ])
-    expect(problems.join('\n')).toContain('declares "GET things" twice')
+  test('refuses the same path twice', () => {
+    const things = route('things', { GET: () => ok() }, { audience: 'backoffice' }) as BundleRoute
+    const problems = validate([{ ...simple(), routes: [things, things] }])
+    expect(problems.join('\n')).toContain('declares the route "things" twice')
+  })
+
+  test('refuses a server half written for an older bundle schema (story 211)', () => {
+    const owner = stubBundlePackage('demo', {
+      field: { id: 'demo', server: 'demo', schemaVersion: 1 },
+    })
+    expect(validateServerBundles([simple()], [owner], VERSION).join('\n')).toContain(
+      'written for bundle schema 1; this release reads 2',
+    )
+  })
+
+  test('refuses members or a rate limit on a back-office route, which apply on the site', () => {
+    const limited = route(
+      'things',
+      { GET: () => ok() },
+      { audience: 'backoffice', members: true },
+    ) as BundleRoute
+    expect(validate([{ ...simple(), routes: [limited] }]).join('\n')).toContain(
+      'members, rateLimit and cors apply to site routes',
+    )
   })
 
   test('refuses a wired bundle that no declared package owns', () => {
@@ -474,43 +554,41 @@ describe('what a handler is given', () => {
   })
 })
 
-describe('who a route answers (story 186)', () => {
-  const SITE = '/crombolo/bundle/'
-  const site = (bundles: ReturnType<typeof mount>, path: string, init: RequestInit = {}) => {
-    const url = new URL(`http://localhost${path}`)
-    return bundles.site(new Request(url, init), url)
-  }
-
-  test('a route that names no audience is a back-office route', () => {
-    const bundles = mount([simple()])
-    expect(bundles.mounted[0]?.routes).toEqual([
-      { method: 'GET', path: 'things', audience: 'backoffice' },
-    ])
-    expect(bundles.mounted[0]?.sitePrefix).toBe(`${SITE}demo`)
-  })
-
-  test('no route answers on the site unless it declares a member or public audience', async () => {
+describe('where a route answers (story 211)', () => {
+  test("a back-office route below the namespace, a site route only in the site's route table", async () => {
     const bundles = mount([
       simple({
         routes: [
           { method: 'GET', path: 'things', handler: () => ok() },
-          { method: 'GET', path: 'admin', audience: 'backoffice', handler: () => ok() },
+          { method: 'GET', path: '/open', audience: 'site', handler: () => ok() },
         ],
       }),
     ])
-    expect((await site(bundles, `${SITE}demo/things`))?.status).toBe(404)
-    expect((await site(bundles, `${SITE}demo/admin`))?.status).toBe(404)
+    expect(bundles.mounted[0]?.routes).toEqual([
+      { methods: ['GET'], path: 'things', audience: 'backoffice' },
+      { methods: ['GET'], path: '/open', audience: 'site' },
+    ])
     expect((await call(bundles, `${BASE}demo/things`))?.status).toBe(200)
+    expect((await call(bundles, `${BASE}demo/open`))?.status).toBe(404)
+    const site = bundles.siteRoutes()
+    expect(site.map((entry) => [entry.route.path, entry.owner])).toEqual([
+      ['/open', 'the bundle demo'],
+    ])
   })
 
-  test('a public route is not reachable under the back office', async () => {
+  test("a site route is given its bundle's capabilities, acting for the caller", () => {
     const bundles = mount([
-      simple({
-        routes: [{ method: 'GET', path: 'open', audience: 'public', handler: () => ok() }],
-      }),
+      simple({ routes: [{ method: 'GET', path: '/open', audience: 'site', handler: () => ok() }] }),
     ])
-    expect((await call(bundles, `${BASE}demo/open`))?.status).toBe(404)
-    expect((await site(bundles, `${SITE}demo/open`))?.status).toBe(200)
+    const extra = bundles.siteRoutes()[0]?.extra?.({ via: 'cookie' }) as Record<string, unknown>
+    expect(Object.keys(extra.bundle as object)).toEqual(['log'])
+    expect(extra.caller).toEqual({ kind: 'public' })
+    const forMember = bundles.siteRoutes()[0]?.extra?.({
+      member: { key: 'm1', roles: ['Readers'] },
+      via: 'token',
+    } as never) as { caller: { kind: string; via: string } }
+    expect(forMember.caller.kind).toBe('member')
+    expect(forMember.caller.via).toBe('token')
   })
 })
 
@@ -531,33 +609,42 @@ describe('a bundle that misbehaves', () => {
     ])
     const response = await call(bundles, `${BASE}demo/things`)
     expect(response?.status).toBe(500)
+    expect(response?.headers.get('content-type')).toBe('application/problem+json')
     expect(await response?.text()).not.toContain('boom')
   })
 
-  test('is named in the log when it fails', async () => {
-    const errors: string[] = []
-    const bundles = createServerBundles({
-      bundles: [
-        simple({
-          routes: [
-            {
-              method: 'GET',
-              path: 'things',
-              handler: () => {
-                throw new Error('boom')
-              },
-            },
-          ],
-        }),
-      ],
-      packages: [stubBundlePackage('demo')],
-      coreVersion: VERSION,
-      pluginApiPath: PLUGIN_API,
-      host: stubHost(),
-      log: () => ({ info: () => {}, warn: () => {}, error: (message) => errors.push(message) }),
+  test('is named in the log when it fails, with a reference', async () => {
+    const logged: Array<Record<string, unknown>> = []
+    const logging = createRoutes([], {
+      backOfficePath: '/umbraco',
+      timeoutMs: 0,
+      defaultPerMinute: 0,
+      siteFor: () => () => ({}),
+      session: async () => undefined,
+      callerAddress: () => 'test',
+      statusPage: async () => new Response(''),
+      logError: (_message, properties) => logged.push(properties),
+      showDetails: false,
     })
-    await call(bundles, `${BASE}demo/things`)
-    expect(errors.join('\n')).toContain('{bundle}')
+    const bundles = mount([
+      simple({
+        routes: [
+          {
+            method: 'GET',
+            path: 'things',
+            handler: () => {
+              throw new Error('boom')
+            },
+          },
+        ],
+      }),
+    ])
+    const url = new URL(`http://localhost${BASE}demo/things`)
+    const response = await bundles.handle(new Request(url), url, admin, logging.invoke)
+    expect(logged[0]?.owner).toBe('the bundle demo')
+    expect(((await (response as Response).json()) as { reference: string }).reference).toBe(
+      logged[0]?.reference as string,
+    )
   })
 
   test('cannot take another bundle down with it', async () => {
@@ -618,7 +705,7 @@ describe('nothing mounts a bundle except the site’s own configuration', () => 
     // which a public node never calls. Member and public routes are the site's.
     const server = read('packages/server/src/server.ts')
     const backOffice = server.slice(server.indexOf('async function serveBackOffice('))
-    expect(backOffice).toContain('bundles.handle(request, url, principal)')
+    expect(backOffice).toContain('bundles.handle(request, url, principal, siteRoutes.invoke)')
     expect(server.match(/bundles\.handle\(/g)).toHaveLength(1)
     expect(server).toMatch(/if \(servesBackOffice\) \{\s*const response = await serveBackOffice\(/)
   })

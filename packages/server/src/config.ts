@@ -1,6 +1,7 @@
 import { hostname, tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import type { DeliveryApiOptions } from '@crombolo/api-delivery'
+import type { MiddlewareChain, SiteRoute } from '@crombolo/common'
 import {
   DEFAULT_BACKOFFICE_PATH,
   DEFAULT_PASSWORD_CONFIGURATION,
@@ -9,7 +10,10 @@ import {
 import {
   type CacheOptions,
   DEFAULT_RENDER_TIMEOUT_MS,
+  type PublishedContent,
   type RedirectRule,
+  type RequestMember,
+  type SiteServices,
   type SnapshotLimits,
 } from '@crombolo/render'
 import type { ServerBundle } from './bundles.ts'
@@ -192,6 +196,22 @@ export interface CromboloConfig {
    * template error and its `signal` aborts; 0 for no limit.
    */
   renderTimeoutMs: number
+  /**
+   * The site's middleware, by stage (story 210): code it imports and lists,
+   * each run in the order given. docs/rendering.md, "Middleware".
+   */
+  middleware?: MiddlewareChain<SiteServices, PublishedContent, RequestMember>
+  /** How long the whole middleware chain may take, crombolo's own work aside; 0 for no limit. */
+  middlewareTimeoutMs: number
+  /**
+   * The site's own endpoints (story 211), at their paths, ahead of content
+   * finding. docs/rendering.md, "Route handlers".
+   */
+  routes?: SiteRoute<SiteServices, RequestMember>[]
+  /** How long a route handler may take before it answers 504; 0 for no limit. */
+  routeTimeoutMs: number
+  /** Requests a minute each caller may make to the site's routes, on each server; 0 for no limit. */
+  routeRateLimitPerMinute: number
   /** Where `schema/*.toml` lives; sync is skipped when the directory is absent. */
   schemaDir: string
   /** Supplied at deploy time (CROMBOLO_SCHEMA_REVISION); orders deploys within one schema version. */
@@ -362,6 +382,15 @@ export interface CromboloConfig {
    */
   seo: SeoConfig
   /**
+   * Pages in the content tree, by path, that answer a status a page's code ends
+   * with (story 206): `notFound`, `unauthorized`, and `error` for the rest.
+   */
+  pages?: StatusPagesConfig
+  /** Whether a server error shows its message and stack. CROMBOLO_SHOW_ERROR_DETAILS. */
+  errors: ErrorsConfig
+  /** Where `'use client'` islands' browser code comes from (story 209): built here, unless Vite builds it. */
+  islands?: IslandsConfig
+  /**
    * Umbraco's Delivery API (`docs/delivery-api.md`): off unless enabled.
    * `CROMBOLO_DELIVERY_API`, `CROMBOLO_DELIVERY_API_KEY`,
    * `CROMBOLO_DELIVERY_API_PUBLIC`, `CROMBOLO_DELIVERY_API_MEDIA`,
@@ -466,6 +495,9 @@ export const DEFAULTS = {
   componentsDir: 'components',
   componentsCacheDir: join('.crombolo', 'components'),
   renderTimeoutMs: DEFAULT_RENDER_TIMEOUT_MS,
+  middlewareTimeoutMs: 2_000,
+  routeTimeoutMs: 10_000,
+  routeRateLimitPerMinute: 2_000,
   schemaDir: 'schema',
   schemaRevision: '0',
   mediaDir: 'media',
@@ -509,6 +541,38 @@ export interface NotFoundRule {
   culture?: string
 }
 
+/** A status page for one hostname or language; the most specific match wins. */
+export interface StatusPageRule {
+  /** The page's path in the content tree, as a visitor would ask for it. */
+  path: string
+  host?: string
+  culture?: string
+}
+
+/** A status page: a path, or rules choosing one per hostname or language. */
+export type StatusPage = string | StatusPageRule[]
+
+export interface StatusPagesConfig {
+  /** 404; wins over `seo.notFoundPage`. */
+  notFound?: StatusPage
+  /** 401. */
+  unauthorized?: StatusPage
+  /** 400, 403, 410, 422 and 500. */
+  error?: StatusPage
+}
+
+export interface IslandsConfig {
+  /** A Vite manifest, relative to the site: its build is served, and Crombolo bundles nothing. */
+  manifest?: string
+  /** A running Vite dev server, such as `http://localhost:5173`, to load islands from in development. */
+  devServer?: string
+}
+
+export interface ErrorsConfig {
+  /** A server error's message, source and stack on the error page. Default: in development only. */
+  showDetails: boolean
+}
+
 export interface SeoConfig {
   /** Serve `/sitemap.xml`. Default true; CROMBOLO_SITEMAP. */
   sitemap?: boolean
@@ -522,7 +586,7 @@ export interface SeoConfig {
   titleSuffix?: string
   /** Shown when a page without its own image is shared: an address, or a media item's key. */
   defaultImage?: string
-  /** A page key, or rules choosing one per hostname or language. */
+  /** A page key, or rules choosing one per hostname or language; `pages.notFound` wins. */
   notFoundPage?: string | NotFoundRule[]
   /**
    * Where visitors see the site, when that is not here — an app on another host
@@ -597,6 +661,13 @@ export function loadConfig(
         : {}),
     },
     renderTimeoutMs: Number(setting('CROMBOLO_RENDER_TIMEOUT_MS') ?? DEFAULTS.renderTimeoutMs),
+    middlewareTimeoutMs: Number(
+      setting('CROMBOLO_MIDDLEWARE_TIMEOUT_MS') ?? DEFAULTS.middlewareTimeoutMs,
+    ),
+    routeTimeoutMs: Number(setting('CROMBOLO_ROUTE_TIMEOUT_MS') ?? DEFAULTS.routeTimeoutMs),
+    routeRateLimitPerMinute: Number(
+      setting('CROMBOLO_ROUTE_RATE_LIMIT_PER_MINUTE') ?? DEFAULTS.routeRateLimitPerMinute,
+    ),
     schemaDir: setting('CROMBOLO_SCHEMA_DIR') ?? DEFAULTS.schemaDir,
     schemaRevision: setting('CROMBOLO_SCHEMA_REVISION') ?? DEFAULTS.schemaRevision,
     nodeId: setting('CROMBOLO_NODE_ID') ?? `${hostname()}:${process.pid}`,
@@ -682,6 +753,8 @@ export function loadConfig(
     applyBundleContentOnInstall: setting('CROMBOLO_APPLY_BUNDLE_CONTENT') !== 'false',
     // Resolved again below, once it is known whether a store was configured.
     runtimeInstalls: setting('CROMBOLO_RUNTIME_INSTALLS') !== 'false',
+    // Resolved again below, once it is known whether this is development.
+    errors: { showDetails: envFlag(setting('CROMBOLO_SHOW_ERROR_DETAILS')) ?? false },
     seo: stripUndefined({
       sitemap: envFlag(setting('CROMBOLO_SITEMAP')),
       indexable: envFlag(setting('CROMBOLO_INDEXABLE')),
@@ -734,6 +807,12 @@ export function loadConfig(
   // Field by field, so a site setting its title suffix keeps the environment's switches.
   merged.seo = { ...fromEnv.seo, ...stripUndefined(overrides.seo ?? {}) }
   merged.remote = { ...fromEnv.remote, ...stripUndefined(overrides.remote ?? {}) }
+  merged.errors = {
+    showDetails:
+      overrides.errors?.showDetails ??
+      envFlag(setting('CROMBOLO_SHOW_ERROR_DETAILS')) ??
+      merged.development,
+  }
   checkApiClient(merged.apiClient)
   checkHost(merged.host)
   // The key itself is refused, so a config left over from before says so rather
@@ -839,7 +918,7 @@ export function describeDatabase(
   }
 }
 
-export const VERSION = '0.36.2'
+export const VERSION = '0.37.0'
 
 /** A whole number of seconds from the environment; undefined when unset or not one. */
 /** A positive number from a setting, else the default. */

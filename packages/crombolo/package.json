@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/crombolo",
-  "version": "0.36.2",
+  "version": "0.37.0",
   "crombolo": {
     "migrations": "compatible"
   },
@@ -35,6 +35,12 @@
     "./bundle": "./src/bundle.ts",
     "./host": "./src/host.ts",
     "./branding": "./src/branding.ts",
+    "./navigation": "./src/navigation.ts",
+    "./headers": "./src/headers.ts",
+    "./server": "./src/server.ts",
+    "./middleware": "./src/middleware.ts",
+    "./routes": "./src/routes.ts",
+    "./islands-react": "./src/islands-react.ts",
     "./jsx-runtime": "./src/jsx-runtime.ts",
     "./jsx-dev-runtime": "./src/jsx-runtime.ts",
     "./loose/jsx-runtime": "./src/loose/jsx-runtime.ts",
@@ -55,6 +61,7 @@
     "@crombolo/backoffice-dist": "workspace:*",
     "@crombolo/backoffice-host": "workspace:*",
     "@crombolo/cli": "workspace:*",
+    "@crombolo/common": "workspace:*",
     "@crombolo/content": "workspace:*",
     "@crombolo/contracts": "workspace:*",
     "@crombolo/core": "workspace:*",
@@ -63,5 +70,17 @@
     "@crombolo/schema": "workspace:*",
     "@crombolo/server": "workspace:*",
     "@crombolo/transfer": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": ">=19",
+    "react-dom": ">=19"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    }
   }
 }

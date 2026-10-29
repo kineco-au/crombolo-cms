@@ -1,0 +1,19 @@
+type = "expression"
+key = "cd681b4b-9c4e-4624-9c13-450aa6a9c135"
+name = "Oloroso Pier"
+order = 2
+
+[values]
+title = "Oloroso Pier"
+kind = "Sherry matured"
+productType = "Whisky"
+abv = "46%"
+age = 18
+summary = "First-fill oloroso butts. 1,800 bottles from the boat-green warehouses."
+bottleImage = "/bottle-oloroso-pier.jpg"
+bodyText = { html = "<p>Eighteen years in first-fill oloroso butts racked on the boat green, where the air is wettest. Sherry wood can bury a coastal spirit; this one is still recognisably ours, which is why there are only 1,800 bottles of it.</p>" }
+tastingNotes = [
+  "nose-fig-orange-marmalade-walnu",
+  "palate-dark-honey-cocoa-nib-salte",
+  "finish-dry-and-long-tannin-held-in",
+]

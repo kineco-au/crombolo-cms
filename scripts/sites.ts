@@ -37,6 +37,18 @@ const MANIFEST = 'site.json'
 /** What a template carries as `files/`; everything else in a site is its own. */
 const TEMPLATE_FILES = ['components', 'css', 'schema', 'seed']
 
+/**
+ * A site with a Next.js front end ships its `web/` too (story 208), less what
+ * is installed, built or secret, and less `package.json`, which `init` writes.
+ */
+const WEB_SKIPPED = new Set([
+  'node_modules',
+  '.next',
+  '.env.local',
+  'next-env.d.ts',
+  'package.json',
+])
+
 /** Shipped beside `template.json` rather than copied into a new site. */
 const TEMPLATE_EXTRAS = ['CREDITS.md']
 
@@ -50,6 +62,10 @@ export interface RepoSite {
   distribute: boolean
   /** The server bundles a scaffold of it wires, verbatim from `site.json`. */
   bundles: unknown[]
+  /** It has a Next.js front end in `web/` (story 208). */
+  next: boolean
+  /** Packages a scaffold of it depends on: React, for its islands (story 209). */
+  dependencies: Record<string, string>
   /** `bundles/<slug>`, relative to the site. */
   bundle: string
 }
@@ -85,6 +101,11 @@ function read(dir: string): RepoSite | undefined {
     dir,
     distribute: raw.distribute === true,
     bundles: Array.isArray(raw.bundles) ? raw.bundles : [],
+    next: raw.next === true,
+    dependencies:
+      raw.dependencies && typeof raw.dependencies === 'object'
+        ? (raw.dependencies as Record<string, string>)
+        : {},
     bundle: `bundles/${slugOf(raw.id)}`,
   }
 }
@@ -125,6 +146,13 @@ export function copyTemplateFiles(site: RepoSite, dir: string): void {
     if (!existsSync(source)) continue
     cpSync(source, join(dir, entry), { recursive: true, filter: shipped })
   }
+  const web = join(site.dir, 'web')
+  if (site.next && existsSync(web))
+    cpSync(web, join(dir, 'web'), {
+      recursive: true,
+      filter: (path) =>
+        path === web || !WEB_SKIPPED.has(relative(web, path).split(sep)[0] as string),
+    })
 }
 
 /** Writes a site out as a template under `<into>/<id>`, in the layout `@crombolo/cli` reads. */
@@ -139,6 +167,8 @@ export function stageTemplate(site: RepoSite, into: string): string {
       name: site.name,
       description: site.description,
       ...(site.bundles.length > 0 ? { bundles: site.bundles } : {}),
+      ...(site.next ? { next: true } : {}),
+      ...(Object.keys(site.dependencies).length > 0 ? { dependencies: site.dependencies } : {}),
     }
     writeFileSync(join(target, 'template.json'), `${JSON.stringify(manifest, null, 2)}\n`)
   } catch (error) {

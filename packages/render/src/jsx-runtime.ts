@@ -285,6 +285,23 @@ export const jsxDEV = jsx
  * `jsx-attributes.ts`), and markup out. `@crombolo/crombolo/loose` is the same runtime
  * with any attribute on any tag, for a site not ready to be checked.
  */
+/** What a React component returns, which is how a `'use client'` component is recognised. */
+interface ClientElement {
+  type: unknown
+  props: unknown
+  key: unknown
+}
+
+/** What a template may give a `'use client'` component besides its own props. */
+interface IslandAttributes {
+  /** Content it wraps, rendered here; shown until it mounts. */
+  children?: Child
+  /** When it loads: as it scrolls into view (the default), when the browser is idle, or at once. */
+  load?: 'visible' | 'idle' | 'load'
+  /** Shown until it mounts, instead of its children; never passed to it. */
+  fallback?: Child
+}
+
 export declare namespace JSX {
   /** What a JSX expression is: markup, or a promise of it once anything in it is async. */
   type Element = Html
@@ -300,7 +317,15 @@ export declare namespace JSX {
    * against the component's own signature regardless; this constrains only what
    * may stand in the tag position.
    */
-  type ElementType = string | ((props: never) => Child)
+  type ElementType = string | ((props: never) => Child) | ((props: never) => ClientElement)
+  /**
+   * A `'use client'` component (story 209) is typed with React's JSX but renders
+   * here as an island: it takes server-rendered children, and `load` and
+   * `fallback`, which never reach it.
+   */
+  type LibraryManagedAttributes<C, P> = C extends (props: never) => ClientElement
+    ? Omit<P, 'children'> & IslandAttributes
+    : P
   interface IntrinsicElements extends KnownElements {
     [custom: `${string}-${string}`]: CustomElementAttributes
   }

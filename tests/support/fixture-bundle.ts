@@ -3,8 +3,10 @@
  * 1.x only expands — a table, then a column with a backfill and an index — and
  * 2.0.0 contracts, removing a column 1.0.0 added.
  */
+
+import { route } from '@crombolo/common'
 import { defineBundleTables } from '@crombolo/data'
-import type { ServerBundle } from '@crombolo/server'
+import type { BundleRouteContext, ServerBundle } from '@crombolo/server'
 import { stubBundlePackage } from './bundles.ts'
 
 export const TASKS_ID = 'acme-tasks'
@@ -57,6 +59,7 @@ export const tasksPackage = (version: '1.1.0' | '2.0.0') =>
     field: {
       id: TASKS_ID,
       server: 'tasks',
+      schemaVersion: 2,
       migrations: version === '2.0.0' ? 'breaking' : 'compatible',
     },
   })
@@ -69,17 +72,19 @@ export function tasksBundle(tables: typeof tasksV1 | typeof tasksV2 = tasksV1): 
     capabilities: ['tables'],
     tables: tasksV1,
     routes: [
-      {
-        method: 'POST',
-        path: 'tasks',
-        async handler({ request, host }) {
-          const body = (await request.json()) as { id: string; node: string }
-          await host.tables.task.insert({ id: body.id, node_key: body.node })
-          // @ts-expect-error The capability is typed from the declaration: there is no `node` table.
-          void host.tables.node
-          return Response.json({ count: await host.tables.task.count() })
+      route<unknown, unknown, BundleRouteContext<'tables', typeof tasksV1>>(
+        'tasks',
+        {
+          async POST(request, { bundle }) {
+            const body = (await request.json()) as { id: string; node: string }
+            await bundle.tables.task.insert({ id: body.id, node_key: body.node })
+            // @ts-expect-error The capability is typed from the declaration: there is no `node` table.
+            void bundle.tables.node
+            return Response.json({ count: await bundle.tables.task.count() })
+          },
         },
-      },
+        { audience: 'backoffice' },
+      ),
     ],
   }
   return { ...bundle, tables } as unknown as ServerBundle

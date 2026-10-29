@@ -1,0 +1,56 @@
+{
+  "name": "@crombolo/next-integration",
+  "version": "0.37.0",
+  "description": "A Next.js App Router front end for a crombolo site: pages, metadata, preview, revalidation, members, images and content components.",
+  "license": "MIT",
+  "author": "Crombolo",
+  "homepage": "https://github.com/kineco-au/crombolo-cms#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kineco-au/crombolo-cms.git",
+    "directory": "packages/next-integration"
+  },
+  "bugs": {
+    "url": "https://github.com/kineco-au/crombolo-cms/issues"
+  },
+  "keywords": [
+    "crombolo",
+    "nextjs",
+    "headless"
+  ],
+  "engines": {
+    "bun": ">=1.3.0"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./cache-16": "./src/cache-16.ts",
+    "./cache-15": "./src/cache-15.ts",
+    "./route-handlers": "./src/route-handlers.ts",
+    "./middleware": "./src/middleware.ts",
+    "./components": "./src/components.tsx",
+    "./client": "./src/client.tsx",
+    "./image-loader": "./src/image-loader.ts"
+  },
+  "files": [
+    "src",
+    "NOTICE"
+  ],
+  "dependencies": {
+    "@crombolo/common": "workspace:*",
+    "@crombolo/delivery-client": "workspace:*"
+  },
+  "peerDependencies": {
+    "next": ">=15.5 <17",
+    "react": ">=19"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "next": "16.4.3",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

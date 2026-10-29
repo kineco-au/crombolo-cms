@@ -96,6 +96,29 @@ Every delivery carries:
 Umbraco's `Umb-` prefix is not used. A webhook may not set these, nor
 `Content-Type` or `Host`, itself.
 
+**Crombolo's payload.** A webhook file may set `payload = "crombolo"` to be sent
+`{ "Id": "<key>", "ContentType": "<alias>", "Ancestors": ["<parent key>", …] }`,
+the ancestors nearest first (story 208). It is what a front end needs to clear
+its cache for a page and every page that lists it.
+- **Captured with the change,** in the same transaction, so a delete still
+  names where the page was.
+- **For a page in the recycle bin,** the ancestors are where it was before it
+  was trashed.
+- **Set in the file only:** the back office has no field for it, and keeps the
+  file's choice when it edits the webhook. Such a webhook cannot move into the
+  database.
+
+```toml
+[webhook]
+alias = "nextRevalidate"
+url = "https://www.example.com/api/crombolo/revalidate"
+events = ["Umbraco.ContentPublish", "Umbraco.ContentUnpublish", "Umbraco.ContentDelete"]
+payload = "crombolo"
+
+[webhook.headers]
+X-Crombolo-Secret = "env:CROMBOLO_REVALIDATE_SECRET"
+```
+
 ## Delivery
 
 Delivery is **at least once**, and nothing a committed change raises is lost

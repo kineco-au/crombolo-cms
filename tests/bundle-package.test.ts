@@ -28,7 +28,7 @@ const valid = (over: Record<string, unknown> = {}, crombolo: Record<string, unkn
     name: '@acme/tasks',
     version: '1.0.0',
     peerDependencies: { [CORE_PACKAGE]: `^${VERSION}` },
-    crombolo: { id: 'acme-tasks', name: 'Tasks', server: 'tasks', ...crombolo },
+    crombolo: { id: 'acme-tasks', name: 'Tasks', server: 'tasks', schemaVersion: 2, ...crombolo },
     ...over,
   }) as PackageJson
 

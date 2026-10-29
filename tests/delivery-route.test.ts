@@ -14,6 +14,7 @@ import {
   RedirectRepository,
 } from '@crombolo/data'
 import { type RedirectRule, redirect } from '@crombolo/render'
+import type { StatusPagesConfig } from '@crombolo/server'
 import { BACKOFFICE, type Harness, ORIGIN, signedInServer, V1 } from './support/harness.ts'
 
 const PAGE_TOML = `[content-type]
@@ -56,7 +57,11 @@ type Answer = {
 }
 
 async function site(
-  options: { redirects?: RedirectRule[]; deliveryApi?: DeliveryApiOptions } = {},
+  options: {
+    redirects?: RedirectRule[]
+    deliveryApi?: DeliveryApiOptions
+    pages?: StatusPagesConfig
+  } = {},
 ) {
   const root = mkdtempSync(join(process.cwd(), 'output', 'delivery-route-'))
   dirs.push(root)
@@ -71,6 +76,7 @@ async function site(
       componentsDir: join(root, 'components'),
       deliveryApi: options.deliveryApi ?? { enabled: true, apiKey: 'key' },
       redirects: options.redirects ?? [],
+      ...(options.pages ? { pages: options.pages } : {}),
     },
   })
   open.push(h)
@@ -246,6 +252,16 @@ describe('not found', () => {
     expect(configured.body).toMatchObject({
       kind: 'notFound',
       item: { id: missing, name: 'Not found' },
+    })
+  })
+
+  test('names the page `pages.notFound` gives by path, over Search & sharing (story 208)', async () => {
+    const { h, route, home, page } = await site({ pages: { notFound: '/lost' } })
+    const lost = await page('Lost', home)
+    h.server.cache.invalidate()
+    expect((await route('path=/nowhere')).body).toMatchObject({
+      kind: 'notFound',
+      item: { id: lost, name: 'Lost' },
     })
   })
 

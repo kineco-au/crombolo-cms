@@ -1,0 +1,13 @@
+# Highlights are blocks of the one `highlight` element type, written in place on
+# the page rather than picked from the Library. The Next.js app renders each
+# through `<BlockList>` with a component per type (`web/components/highlights.tsx`);
+# the home page maps the same type to a figure instead.
+[data-type]
+alias = "highlightBlocks"
+name = "Highlight Blocks"
+editor = "Umbraco.BlockList"
+editor-ui = "Umb.PropertyEditorUi.BlockList"
+
+[[data-type.block]]
+element = "highlight"
+label = "{{heading}}"

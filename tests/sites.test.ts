@@ -34,7 +34,12 @@ describe('the sites', () => {
   const sites = listSites()
 
   test('are found by their site.json, by id or by directory', () => {
-    expect(sites.map((site) => site.id)).toEqual(['demo/crombolo', 'demo/harbourstone', 'starter'])
+    expect(sites.map((site) => site.id)).toEqual([
+      'demo/crombolo',
+      'demo/harbourstone',
+      'demo/harbourstone-next',
+      'starter',
+    ])
     expect(findSite('demo/harbourstone')?.dir).toBe(join(SITES_DIR, 'harbourstone'))
     expect(findSite('harbourstone')?.id).toBe('demo/harbourstone')
     expect(findSite('nope')).toBeUndefined()
@@ -54,7 +59,8 @@ describe('the sites', () => {
         dependencies: Record<string, string>
       }
       expect(manifest.private).toBe(true)
-      for (const range of Object.values(manifest.dependencies)) expect(range).toBe('workspace:*')
+      for (const [name, range] of Object.entries(manifest.dependencies))
+        if (name.startsWith('@crombolo/')) expect(range).toBe('workspace:*')
       // Its content is its seed (story 164), applied once for each change to it.
       expect(manifest.scripts.start).toBe('crombolo start --seed --publish')
       expect(existsSync(join(site.dir, 'seed', 'content'))).toBe(true)
@@ -80,6 +86,7 @@ describe('the sites', () => {
   test('ship only when they opt in', () => {
     expect(sites.filter((site) => site.distribute).map((site) => site.id)).toEqual([
       'demo/harbourstone',
+      'demo/harbourstone-next',
       'starter',
     ])
   })
@@ -91,6 +98,7 @@ describe('staging a site as a template', () => {
     stageTemplates(into)
     expect(listTemplates(into).map((template) => template.id)).toEqual([
       'demo/harbourstone',
+      'demo/harbourstone-next',
       'starter',
     ])
   })
@@ -108,6 +116,20 @@ describe('staging a site as a template', () => {
     // The content is the seed among the files; there is no bundle (story 164).
     expect(readdirSync(dir).sort()).toEqual(['CREDITS.md', 'files', 'template.json'])
     expect(readdirSync(join(dir, 'files')).sort()).toEqual(['components', 'css', 'schema', 'seed'])
+  })
+
+  test('a site with a Next.js front end ships its web/, less what is installed, built or secret', () => {
+    const into = tempDir()
+    const site = findSite('demo/harbourstone-next')
+    if (!site) throw new Error('no harbourstone-next')
+    stageTemplates(into, [site])
+    const template = findTemplate('demo/harbourstone-next', into)
+    expect(template?.next).toBe(true)
+    const web = join(into, 'demo', 'harbourstone-next', 'files', 'web')
+    expect(existsSync(join(web, 'components', 'compare.tsx'))).toBe(true)
+    expect(existsSync(join(web, 'app', '[[...slug]]', 'page.tsx'))).toBe(true)
+    for (const left of ['node_modules', '.next', '.env.local', 'package.json'])
+      expect([left, existsSync(join(web, left))]).toEqual([left, false])
   })
 
   test('leaves out the media types init writes for itself', () => {
@@ -137,7 +159,7 @@ describe('staging a site as a template', () => {
     const into = tempDir()
     mkdirSync(join(into, 'basic'))
     const staged = stageTemplates(into, listSites())
-    expect(staged).toHaveLength(3)
+    expect(staged).toHaveLength(4)
     unstage(staged, into)
     expect(readdirSync(into)).toEqual(['basic'])
   })

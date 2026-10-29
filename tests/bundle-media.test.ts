@@ -7,6 +7,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { route } from '@crombolo/common'
 import { mediaAuditEntryFor, memberActor } from '@crombolo/content'
 import {
   checkMemberUpload,
@@ -16,6 +17,7 @@ import {
 } from '@crombolo/core'
 import { MediaAccessRepository, SYSTEM_MEMBER_TYPE } from '@crombolo/data'
 import {
+  type BundleRouteContext,
   createServer,
   decodePng,
   encodePng,
@@ -396,7 +398,8 @@ describe('the member in the audit log', () => {
 // --- On a real site -----------------------------------------------------------
 
 const BUNDLE = 'observations'
-const SITE = `/crombolo/bundle/${BUNDLE}`
+const SITE = `/${BUNDLE}`
+type Obs = BundleRouteContext<'media'>
 const PASSWORD = 'correct-horse-battery'
 const PACKAGE = {
   '@acme/observations': {
@@ -414,83 +417,77 @@ const observations = (media: Record<string, unknown> = {}): ServerBundle =>
     capabilities: ['media'],
     media: { folders: ['/Observations/Photos'], maxBytes: 300_000, ...media },
     routes: [
-      {
-        method: 'POST',
-        path: 'photos',
-        audience: 'member',
-        handler: async ({ request, url, host }) =>
-          answer(
-            await host.media.create({
-              folder: url.searchParams.get('folder') ?? '',
-              name: url.searchParams.get('name') ?? 'Photo',
-              fileName: url.searchParams.get('file') ?? undefined,
-              file: request,
-            }),
-          ),
-      },
-      {
-        method: 'GET',
-        path: 'photos/:key',
-        audience: 'member',
-        handler: async ({ params, host }) => {
-          const item = await host.media.get(params.key as string)
-          return item ? Response.json(item) : new Response('Not Found', { status: 404 })
+      route<unknown, unknown, Obs>(
+        `${SITE}/photos`,
+        {
+          POST: async (request, { url, bundle }) =>
+            answer(
+              await bundle.media.create({
+                folder: url.searchParams.get('folder') ?? '',
+                name: url.searchParams.get('name') ?? 'Photo',
+                fileName: url.searchParams.get('file') ?? undefined,
+                file: request,
+              }),
+            ),
         },
-      },
-      {
-        method: 'PUT',
-        path: 'photos/:key',
-        audience: 'member',
-        handler: async ({ request, url, params, host }) =>
+        { members: true },
+      ),
+      route<unknown, unknown, Obs>(
+        `${SITE}/photos/:key`,
+        {
+          GET: async (_request, { params, bundle }) => {
+            const item = await bundle.media.get(params.key as string)
+            return item ? Response.json(item) : new Response('Not Found', { status: 404 })
+          },
+          PUT: async (request, { url, params, bundle }) =>
+            answer(
+              await bundle.media.update(params.key as string, {
+                name: url.searchParams.get('name') ?? undefined,
+                ...(url.searchParams.get('file')
+                  ? { file: request, fileName: url.searchParams.get('file') as string }
+                  : {}),
+              }),
+            ),
+          DELETE: async (_request, { params, bundle }) =>
+            answer(await bundle.media.delete(params.key as string)),
+        },
+        { members: true },
+      ),
+      route<unknown, unknown, Obs>(
+        `${SITE}/list`,
+        {
+          GET: async (_request, { url, bundle }) =>
+            answer(await bundle.media.list(url.searchParams.get('folder') ?? '')),
+        },
+        { members: true },
+      ),
+      route<unknown, unknown, Obs>(
+        `${SITE}/file/:key`,
+        {
+          GET: (_request, { params, url, bundle }) =>
+            bundle.media.crop(
+              params.key as string,
+              url.searchParams.get('width')
+                ? { width: Number(url.searchParams.get('width')) }
+                : undefined,
+            ),
+        },
+        { members: true },
+      ),
+      route<unknown, unknown, Obs>(`${SITE}/anyone`, {
+        POST: async (request, { bundle }) =>
           answer(
-            await host.media.update(params.key as string, {
-              name: url.searchParams.get('name') ?? undefined,
-              ...(url.searchParams.get('file')
-                ? { file: request, fileName: url.searchParams.get('file') as string }
-                : {}),
-            }),
+            await bundle.media.create({ folder: '/Observations/Photos', name: 'x', file: request }),
           ),
-      },
-      {
-        method: 'DELETE',
-        path: 'photos/:key',
-        audience: 'member',
-        handler: async ({ params, host }) => answer(await host.media.delete(params.key as string)),
-      },
-      {
-        method: 'GET',
-        path: 'list',
-        audience: 'member',
-        handler: async ({ url, host }) =>
-          answer(await host.media.list(url.searchParams.get('folder') ?? '')),
-      },
-      {
-        method: 'GET',
-        path: 'file/:key',
-        audience: 'member',
-        handler: ({ params, url, host }) =>
-          host.media.crop(
-            params.key as string,
-            url.searchParams.get('width')
-              ? { width: Number(url.searchParams.get('width')) }
-              : undefined,
-          ),
-      },
-      {
-        method: 'POST',
-        path: 'anyone',
-        audience: 'public',
-        handler: async ({ request, host }) =>
-          answer(
-            await host.media.create({ folder: '/Observations/Photos', name: 'x', file: request }),
-          ),
-      },
-      {
-        method: 'GET',
-        path: 'list',
-        handler: async ({ url, host }) =>
-          answer(await host.media.list(url.searchParams.get('folder') ?? '')),
-      },
+      }),
+      route<unknown, unknown, Obs>(
+        'list',
+        {
+          GET: async (_request, { url, bundle }) =>
+            answer(await bundle.media.list(url.searchParams.get('folder') ?? '')),
+        },
+        { audience: 'backoffice' },
+      ),
     ],
   }) as ServerBundle
 

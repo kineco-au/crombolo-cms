@@ -1,0 +1,10 @@
+# Umbraco ships the Element Picker's schema but seeds no data type for it, so a
+# site declares its own. `allowedContentTypes` names element types by alias; it
+# narrows the picker, and `crombolo generate` reads it to type the
+# value as `Array<TypedElement<TastingNote>>` rather than `Array<PublishedElement>`.
+[data-type]
+alias = "tastingNotePicker"
+name = "Tasting Note Picker"
+editor = "Umbraco.ElementPicker"
+editor-ui = "Umb.PropertyEditorUi.ElementPicker"
+config = { allowedContentTypes = ["tastingNote"] }

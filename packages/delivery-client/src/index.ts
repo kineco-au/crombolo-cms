@@ -41,6 +41,8 @@ export interface ApiContentResponse<
 > extends ApiContent<Alias, Properties> {
   /** Its route in each culture; empty for a page that does not vary. */
   cultures: Record<string, ApiRoute>
+  /** Search and sharing details, when asked for with `seo: true`. */
+  seo?: ApiSeo
 }
 
 /** A block or picked element: its properties are always there. */
@@ -239,6 +241,93 @@ type Narrowed<Item> = Item extends { properties: infer Properties }
 
 type Fielded<Item, Options> = Options extends { fields: string } ? Narrowed<Item> : Item
 
+/** A page's search and sharing details, with `seo: true` (story 055). */
+export interface ApiSeo {
+  title: string
+  description: string | null
+  image: { url: string; width: number | null; height: number | null } | null
+  canonical: string | null
+  robots: string | null
+  alternates: Array<{ culture: string; url: string }>
+  xDefault: string | null
+  siteName: string
+}
+
+/** One page `sitemap(host)` lists. */
+export interface ApiSitemapItem {
+  id: string
+  url: string
+  lastmod: string
+  alternates: Array<{ culture: string; url: string }>
+}
+
+/** What a request learned, for a cache that tags what it keeps. */
+export interface DeliveryAnswer {
+  url: string
+  status: number
+  /** Every page and media key the answer holds, lower case. */
+  keys: string[]
+  /** The purge tags the site sent, when it sends them. */
+  tags: string[]
+  etag: string | null
+  cacheControl: string | null
+  /** The answer came from a kept copy after a `304`. */
+  revalidated: boolean
+}
+
+/** Copies kept for `If-None-Match`, by address. */
+export interface ConditionalStore {
+  get(url: string): { etag: string; body: string } | undefined
+  set(url: string, copy: { etag: string; body: string }): void
+}
+
+/** A store of the most recent `limit` copies, in memory. */
+export function memoryConditionalStore(limit = 500): ConditionalStore {
+  const copies = new Map<string, { etag: string; body: string }>()
+  return {
+    get(url) {
+      const copy = copies.get(url)
+      if (copy) {
+        copies.delete(url)
+        copies.set(url, copy)
+      }
+      return copy
+    },
+    set(url, copy) {
+      copies.delete(url)
+      copies.set(url, copy)
+      while (copies.size > limit) copies.delete(copies.keys().next().value as string)
+    },
+  }
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** Every page and media key in an answer, lower case: items, pickers, links, list entries. */
+export function contentKeysIn(body: unknown): string[] {
+  const keys = new Set<string>()
+  const walk = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      for (const item of value) walk(item)
+      return
+    }
+    if (!value || typeof value !== 'object') return
+    const record = value as Record<string, unknown>
+    const id = record.id
+    if (
+      typeof id === 'string' &&
+      UUID.test(id) &&
+      ('contentType' in record || 'mediaType' in record)
+    )
+      keys.add(id.toLowerCase())
+    if (typeof record.destinationId === 'string' && UUID.test(record.destinationId))
+      keys.add(record.destinationId.toLowerCase())
+    for (const child of Object.values(record)) walk(child)
+  }
+  walk(body)
+  return [...keys]
+}
+
 export interface RequestOptions {
   /** A culture name, such as `en-US`; otherwise the client's, then the site's default. */
   culture?: string
@@ -248,6 +337,8 @@ export interface RequestOptions {
   expand?: string
   /** Which properties to include: `properties[title,image]`. */
   fields?: string
+  /** Adds each page's search and sharing details as `seo`. */
+  seo?: boolean
   signal?: AbortSignal
 }
 
@@ -299,6 +390,21 @@ export interface DeliveryClientOptions {
   memberToken?: () => string | undefined | Promise<string | undefined>
   /** Headers sent with every request. */
   headers?: Record<string, string>
+  /**
+   * Drafts instead of what is published (story 053): `Preview: true`, with the
+   * editor's preview token when there is one. Asked for on every request.
+   */
+  preview?: () =>
+    | boolean
+    | { token?: string }
+    | undefined
+    | Promise<boolean | { token?: string } | undefined>
+  /** Told about every answer: its keys and tags, for a cache to tag what it keeps. */
+  onAnswer?: (answer: DeliveryAnswer) => void
+  /** Keeps copies and revalidates them with `If-None-Match`; a `304` reuses the copy. */
+  conditional?: ConditionalStore
+  /** Where the site sends purge tags; `Surrogate-Key` and `Cache-Tag` are read when unset. */
+  tagHeader?: string
   /** Defaults to the global `fetch`. */
   fetch?: (input: string, init: RequestInit) => Promise<Response>
 }
@@ -360,6 +466,16 @@ export interface DeliveryClient<Schema extends DeliverySchema = DeliverySchema> 
     path: string,
     options?: Omit<RequestOptions, 'culture' | 'fields'> & { host?: string },
   ): Promise<RouteAnswer<Schema>>
+  /** The pages `/sitemap.xml` lists for a hostname; undefined when the site serves none. */
+  sitemap(
+    host?: string,
+    options?: Pick<RequestOptions, 'signal'>,
+  ): Promise<Paged<ApiSitemapItem> | undefined>
+  /** A form to draw, by key or alias (story 056); undefined when there is none. */
+  form(
+    keyOrAlias: string,
+    options?: Pick<RequestOptions, 'culture' | 'signal'>,
+  ): Promise<Record<string, unknown> | undefined>
 }
 
 /** Where a crombolo site serves it; Umbraco's own path, `/umbraco/delivery/api/v2`, answers too. */
@@ -398,10 +514,37 @@ export function createDeliveryClient<Schema extends DeliverySchema = DeliverySch
     if (startItem) headers['start-item'] = startItem
     const token = await options.memberToken?.()
     if (token) headers.authorization = `Bearer ${token}`
+    const preview = await options.preview?.()
+    if (preview) {
+      headers.preview = 'true'
+      if (typeof preview === 'object' && preview.token) headers['preview-token'] = preview.token
+    }
+    // A member's or a preview's answer is theirs alone, so it is never kept.
+    const keeps = options.conditional && !token && !preview ? options.conditional : undefined
+    const kept = keeps?.get(url)
+    if (kept) headers['if-none-match'] = kept.etag
     const response = await send(url, { headers, signal: request.signal })
     if (response.status === 404 && missing === 'undefined') return undefined
-    const text = await response.text()
+    const revalidated = response.status === 304 && kept !== undefined
+    const text = revalidated ? kept.body : await response.text()
     const body = text ? (JSON.parse(text) as unknown) : null
+    const etag = revalidated ? kept.etag : response.headers.get('etag')
+    if (keeps && etag && response.ok && !revalidated) keeps.set(url, { etag, body: text })
+    if (options.onAnswer) {
+      const tagged =
+        response.headers.get(options.tagHeader ?? 'surrogate-key') ??
+        (options.tagHeader ? null : response.headers.get('cache-tag'))
+      options.onAnswer({
+        url,
+        status: revalidated ? 200 : response.status,
+        keys: contentKeysIn(body),
+        tags: tagged ? tagged.split(/[\s,]+/).filter(Boolean) : [],
+        etag,
+        cacheControl: response.headers.get('cache-control'),
+        revalidated,
+      })
+    }
+    if (revalidated) return body
     if (response.status === 404 && missing === 'body') return body
     if (!response.ok) throw new DeliveryError(response.status, body, url)
     return body
@@ -410,6 +553,7 @@ export function createDeliveryClient<Schema extends DeliverySchema = DeliverySch
   const shaping = (request: RequestOptions): Array<[string, string]> => [
     ...(request.expand ? [['expand', request.expand] as [string, string]] : []),
     ...(request.fields ? [['fields', request.fields] as [string, string]] : []),
+    ...(request.seo ? [['seo', 'true'] as [string, string]] : []),
   ]
 
   const paging = (query: {
@@ -484,6 +628,10 @@ export function createDeliveryClient<Schema extends DeliverySchema = DeliverySch
         request,
         'body',
       ) as never,
+    sitemap: (host, request = {}) =>
+      get('sitemap', host ? [['host', host]] : [], request, 'undefined') as never,
+    form: (keyOrAlias, request = {}) =>
+      get(`forms/${encodeURIComponent(keyOrAlias)}`, [], request, 'undefined') as never,
     search: (term, search = {}) =>
       get(
         'search',

@@ -3,14 +3,20 @@
 What a site, a bundle's author and a host may depend on across releases, and
 what they may not (story 173).
 
-## Three entry points, one package
+## The entry points, one package
 
 Everything supported comes from `@crombolo/crombolo`, split by who is using it:
 
 | Entry point | For | What is in it |
 | --- | --- | --- |
-| `@crombolo/crombolo` | a site | `defineConfig`, `crombolo()`, `cromboloServer()` and `ServerHandle`; the presets for identity providers, e-mail and media stores; the view API (`Blocks`, `Form`, `SeoHead`, `AntiforgeryMeta`, `search`, `usePage` and their types); `VERSION` |
-| `@crombolo/crombolo/bundle` | a server bundle's author | `ServerBundle` and `ServerBundleRoute` (with `BackofficeBundleRoute`, `MemberBundleRoute`, `PublicBundleRoute`, `BundleAudience` and `BundleRateLimit`); what a handler is given (`BundleRequest`, `BundleMemberRequest`, `BundlePublicRequest`, `Principal`, `BundleMember`, `BundleCaller`, `BundleHost` and the capabilities, `BundleMedia` and its types among them); `BundleSection`; `defineBundleTables` and its types |
+| `@crombolo/crombolo` | a site | `defineConfig`, `crombolo()`, `cromboloServer()` and `ServerHandle`; the presets for identity providers, e-mail and media stores; the view API (`Blocks`, `Form`, `Island`, `SeoHead`, `AntiforgeryMeta`, `search`, `usePage` and their types); `VERSION` |
+| `@crombolo/crombolo/bundle` | a server bundle's author | `ServerBundle`; its routes (`route`, `BundleRoute`, `RouteHandler`, `RouteContext`, `RouteMethod`, `RouteOptions`); what a handler is given (`BundleRouteContext`, `Principal`, `BundleMember`, `BundleCaller`, `BundleHost` and the capabilities, `BundleMedia` and its types among them); `BundleSection`; `defineBundleTables` and its types |
+| `@crombolo/crombolo/navigation` | a site's page code | the functions that end a page early, mirroring `next/navigation`: `redirect`, `permanentRedirect`, `notFound`, `forbidden`, `unauthorized`, the HTTP-named extras (`foundAt`, `movedPermanentlyTo`, `seeOther`, `badRequest`, `gone`, `unprocessableContent`) and `rethrow` (story 206) |
+| `@crombolo/crombolo/headers` | a site's page code | `cookies()` and `headers()`, read-only, mirroring `next/headers` |
+| `@crombolo/crombolo/server` | a site's page and data code | `site()`, the site's services acting as the visitor; `Result`, `Ok`, `Outcome`, `ok`, `isOk`, `isOutcome` and their types |
+| `@crombolo/crombolo/routes` | a site's route handlers | the route contract bound to crombolo's types (`route`, `RouteHandler`, `RouteContext`, `SiteRoute`, `RouteOptions`, `RouteMethod`, `ROUTE_METHODS`), `Outcome`, `ok`, `FieldError`, `CookieOptions` and `fromRouteModule` (story 211) |
+| `@crombolo/crombolo/middleware` | a site's middleware | the middleware contract bound to crombolo's types (`Middleware`, `MiddlewareHandler`, `MiddlewareContext`), `rewrite`, `withCookie`, `NextResponse` and `fromNextMiddleware` (story 210) |
+| `@crombolo/crombolo/islands-react` | the browser | `mount`, which renders a `'use client'` island with React; Crombolo's island build includes it, and a Vite build lists it as an input (story 209) |
 | `@crombolo/crombolo/host` | whoever runs sites | `createServer`, `loadConfig`, `cromboloServer` and `ServerHandle`; the media and schema stores; `liveNodes`; the bundle checks (`validateBundlePackage`, `peerRangeProblem`, `checkBundleCode`, `installBundleCode`); and the operations a deploy runs (`upgradePlan`, `upgradeFix`, `contentImport`, `siteExport`, `findTemplate`) |
 
 `@crombolo/crombolo/branding` (the marks and the palette) and the JSX runtimes
@@ -35,7 +41,9 @@ These packages are supported in their own right:
 | Package | What is supported |
 | --- | --- |
 | `@crombolo/cli` | the `crombolo` command and its documented flags (its JavaScript exports are internal: use `./host`) |
+| `@crombolo/common` | the contracts outside code is written against: `Result` and `Outcome`, the middleware contract with `rewrite` and `withCookie` (story 210), and the route contract with `route` (story 211); no dependencies |
 | `@crombolo/delivery-client` | the typed Delivery API client |
+| `@crombolo/next-integration` | the Next.js front end: `createCrombolo`, the caching adapters, route handlers, middleware, components and image loader (story 208) |
 | `@crombolo/contracts`, `@crombolo/remote-conformance` | the API documents and the remote protocol's conformance checks (`docs/remote-protocol.md`) |
 | `@crombolo/simple-redirects`, `@crombolo/entra` | as bundles: the factory a site wires, and the screens |
 
@@ -126,3 +134,16 @@ is given `BundleRequest` as before; a `MemberBundleRoute`'s handler is given
 `PublicBundleRoute`'s is given `BundlePublicRequest`, with neither. Every
 request also carries `caller: BundleCaller`. `bundles.md`, Part 3, "Routes for
 members and visitors".
+
+## Route handlers replace bundle routes (0.37.0)
+
+**An exception to the promise above.** Story 211 retired 186's bundle routes
+with no minor of deprecation, at the maintainer's decision.
+`ServerBundleRoute`, `BackofficeBundleRoute`, `MemberBundleRoute`,
+`PublicBundleRoute`, `BundleAudience`, `BundleRateLimit`, `BundleRequest`,
+`BundleMemberRequest` and `BundlePublicRequest` are gone. A bundle's routes
+are `route()` handlers (`BundleRoute`), given `(request, context)` with the
+capabilities on `context.bundle`. Site routes no longer answer under
+`/crombolo/bundle/<id>/`. A package with a server half declares
+`"schemaVersion": 2`, and one that does not is refused. `bundles.md`, Part 3,
+"Routes", lists the changes to make.

@@ -8,5 +8,9 @@
       "package": "@crombolo/simple-redirects",
       "import": "redirects"
     }
-  ]
+  ],
+  "dependencies": {
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  }
 }

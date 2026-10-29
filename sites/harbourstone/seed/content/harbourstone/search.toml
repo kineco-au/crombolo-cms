@@ -1,7 +1,7 @@
 type = "searchPage"
 key = "9468d1b4-f521-48ef-b044-2ab07b461b96"
 name = "Search"
-order = 3
+order = 4
 
 [values]
 eyebrow = "Search"

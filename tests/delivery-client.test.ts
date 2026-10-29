@@ -7,10 +7,13 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { join } from 'node:path'
 import { ComponentRepository, ContentTypeRepository, DocumentRepository } from '@crombolo/data'
 import {
+  contentKeysIn,
   createDeliveryClient,
+  type DeliveryAnswer,
   type DeliveryClientOptions,
   DeliveryError,
   isExpanded,
+  memoryConditionalStore,
 } from '@crombolo/delivery-client'
 import { buildDeliveryClient, builtManifest } from '../scripts/delivery-client.ts'
 import { type Manifest, ROOT } from '../scripts/packages.ts'
@@ -216,6 +219,52 @@ describe('the delivery client', () => {
   })
 })
 
+describe('what an app framework needs (story 208)', () => {
+  test('preview sends Preview and the token; seo asks for the details', async () => {
+    const { client, sent, story } = await site({ enabled: true, apiKey: 'key' })
+    await client({ apiKey: 'key', preview: () => ({ token: 'tok' }) }).item(story, { seo: true })
+    expect(sent[0]?.headers.get('preview')).toBe('true')
+    expect(sent[0]?.headers.get('preview-token')).toBe('tok')
+    expect(new URL(sent[0]?.url ?? '').searchParams.get('seo')).toBe('true')
+    const item = await client().item(story, { seo: true })
+    expect(item?.seo?.title).toContain('Story')
+  })
+
+  test('every answer reports the keys it holds and the purge tags sent', async () => {
+    const { client, story, home } = await site()
+    const answers: DeliveryAnswer[] = []
+    await client({ onAnswer: (a) => answers.push(a) }).item(story)
+    expect(answers[0]?.keys).toContain(story)
+    expect(answers[0]?.keys).toContain(home)
+    expect(answers[0]?.etag).toStartWith('W/"')
+    expect(contentKeysIn({ items: [{ id: story.toUpperCase(), contentType: 'page' }] })).toEqual([
+      story,
+    ])
+  })
+
+  test('a kept copy is revalidated with If-None-Match, and a 304 reuses it', async () => {
+    const { client, sent, story } = await site()
+    const answers: DeliveryAnswer[] = []
+    const cms = client({ conditional: memoryConditionalStore(), onAnswer: (a) => answers.push(a) })
+    const first = await cms.item(story)
+    const again = await cms.item(story)
+    expect(again).toEqual(first)
+    expect(sent[1]?.headers.get('if-none-match')).toBe(answers[0]?.etag ?? '')
+    expect(answers[1]?.revalidated).toBe(true)
+    await client({ conditional: memoryConditionalStore(), memberToken: () => 'm' })
+      .item(story)
+      .catch(() => {})
+    expect(sent.at(-1)?.headers.get('if-none-match')).toBeNull()
+  })
+
+  test('the sitemap and a form that does not exist', async () => {
+    const { client } = await site()
+    const map = await client().sitemap('localhost')
+    expect(map?.total).toBeGreaterThan(0)
+    expect(await client().form('nope')).toBeUndefined()
+  })
+})
+
 describe('the published package', () => {
   test('is built to JavaScript with declarations, and packed under a manifest pointing there', async () => {
     const dir = join(ROOT, 'packages/delivery-client')
@@ -230,8 +279,10 @@ describe('the published package', () => {
       expect(Object.keys(built).sort()).toEqual([
         'DELIVERY_API_PATH',
         'DeliveryError',
+        'contentKeysIn',
         'createDeliveryClient',
         'isExpanded',
+        'memoryConditionalStore',
       ])
     } finally {
       rmSync(join(dir, 'dist'), { recursive: true, force: true })

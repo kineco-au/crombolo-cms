@@ -11,6 +11,7 @@ import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { authorize, type NodeLookup, type Principal, sectionsOf } from '@crombolo/api-management'
 import { AuthService, type AuthStore, hashPassword, isSameOrigin } from '@crombolo/auth'
+import { route } from '@crombolo/common'
 import { listOperations, loadSpec, type OperationInfo } from '@crombolo/contracts'
 import { localReturnUrl, sectionKey, toSectionAliases } from '@crombolo/core'
 import { loadConfig, type ServerBundle } from '@crombolo/server'
@@ -173,7 +174,7 @@ describe('a section an extension registers', () => {
     id: 'acme',
     section: SECTION,
     capabilities: [],
-    routes: [{ method: 'GET', path: '', handler: () => Response.json({ ok: true }) }],
+    routes: [route('', { GET: () => Response.json({ ok: true }) }, { audience: 'backoffice' })],
   }
 
   test('can be granted to a group, reaches the signed-in user, and opens the bundle', async () => {

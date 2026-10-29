@@ -227,6 +227,38 @@ jobs:
                   fail-on-cache-miss: true
             - run: bun run test:integration
 
+    # The Next.js front end (story 208), built and run on each supported major:
+    # the packages packed as they publish, a site scaffolded by `crombolo init`,
+    # its CMS and its built app answering real requests. Locally:
+    # `bun run smoke:next --next 16`.
+    next:
+        name: Next.js ${{ matrix.next }} front end (${{ matrix.template }})
+        needs: [client, check]
+        runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix:
+                next: ['15', '16']
+                template: ['next', 'demo/harbourstone-next']
+        steps:
+            - uses: actions/checkout@v5
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: ${{ env.BUN_VERSION }}
+            - uses: actions/setup-node@v5
+              with:
+                  node-version: '24'
+            - run: bun install --frozen-lockfile
+            - run: bun run generate:types
+            - uses: actions/cache/restore@v6
+              with:
+                  path: ${{ env.DIST_PATH }}
+                  key: >-
+                      backoffice-dist-${{ hashFiles('bun.lock', 'scripts/vendor-backoffice.ts',
+                      'packages/backoffice-dist/upstream-static/**') }}
+                  fail-on-cache-miss: true
+            - run: bun run smoke:next --next ${{ matrix.next }} --template ${{ matrix.template }}
+
     # The browser suite drives the real backoffice, so it is the slowest thing here
     # (~7 minutes at one worker) and the most sensitive to a busy runner. It is
     # therefore opt-in on main — put `--browser-tests` in the commit message — and

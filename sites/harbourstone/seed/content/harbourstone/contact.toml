@@ -1,7 +1,7 @@
 type = "contactPage"
 key = "3d312cc8-2937-40e1-ba14-fd781c9a862d"
 name = "Contact"
-order = 2
+order = 3
 
 [values]
 eyebrow = "Visitors and trade"

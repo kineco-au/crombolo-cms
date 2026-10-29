@@ -309,12 +309,20 @@ the `expand` string itself was rejected as too fragile to keep right. A request
 with `fields` types every property as possibly missing.
 
 **The client** has `item`, `items`, `content` (queries), `mediaItem`,
-`mediaItems`, `media`, `search` and `route`. It sends `Api-Key`, `Accept-Language`,
+`mediaItems`, `media`, `search`, `route`, `menu`, `sitemap` and `form`. It sends `Api-Key`, `Accept-Language`,
 `Start-Item` and a member's bearer token from its options, each overridable per
 request; answers `undefined` for an item that is not there; and throws a
-`DeliveryError` carrying the status and body for anything else refused. It has
-no dependencies and is published as built JavaScript with declarations, unlike
-every other crombolo package ([`packaging-and-upgrades.md`](packaging-and-upgrades.md),
+`DeliveryError` carrying the status and body for anything else refused. Story
+208 added what an app framework needs:
+- `preview`, which sends `Preview: true` and the editor's token;
+- `seo: true` per request;
+- `onAnswer`, which reports each answer's content keys (`contentKeysIn`), purge
+  tags and ETag;
+- `conditional`, a store of copies revalidated with `If-None-Match`
+  (`memoryConditionalStore`). A member's and a preview's answers are never kept.
+
+It has no dependencies and is published as built JavaScript with declarations,
+as `@crombolo/next-integration` is and every other crombolo package is not ([`packaging-and-upgrades.md`](packaging-and-upgrades.md),
 "Releasing to npm").
 
 ## Search and sharing details
@@ -467,9 +475,124 @@ answers JSON, `invalid_client` with 401.
 A misconfigured flow — no or relative redirect URLs, no login page — is said at
 boot, and the flow is off, as Umbraco turns it off.
 
+## A Next.js front end
+
+`crombolo init --template next` scaffolds an empty site with a Next.js App
+Router app in `web/`. `--next` adds the same app to any template, and
+`demo/harbourstone-next` is Harbourstone built that way. `bun run dev` starts
+the CMS on `:8080` and the app on `:3000`. Story 208;
+`packages/next-integration`, `packages/cli/next-app`.
+
+```
+my-site/
+  crombolo.config.ts  server.ts  schema/  components/  seed/   the CMS
+  schema/webhooks/next-revalidate.toml                          clears the app's cache
+  web/                                                          the Next.js app
+    lib/crombolo.ts      createCrombolo({ url, apiKey, cache: cache16 })
+    proxy.ts             cromboloMiddleware(crombolo)
+    app/[[...slug]]/page.tsx   every CMS address, generateMetadata included
+    app/api/crombolo/…   preview, exit-preview, revalidate, sign-in, callback, sign-out
+    app/media/[...path]/route.ts   media, with a member's token
+```
+
+**Reading pages.** `crombolo.page(path)` is the route lookup as a `Result`.
+- **The answers:** a page is `Ok`; a redirect is `foundAt` (302),
+  `movedPermanentlyTo` (301), `redirect` (307) or `permanentRedirect` (308); a
+  miss is `notFound`; a members-only page is `unauthorized` or `forbidden`.
+  This is 206's `Result`, copied into the package and kept identical by a test.
+- **`resolvePage(path)`** ends the lookup with Next's own `redirect`,
+  `permanentRedirect`, `notFound`, `unauthorized` or `forbidden`.
+- **`metadata(item)`** is Next's `Metadata`, from the page's search and sharing
+  details.
+- **The rest:** `item`, `content`, `menu`, `search`, `form`, `sitemap` and
+  `notFoundPage()`. The not-found page is `pages.notFound` when it is set, as
+  the route lookup's is.
+
+**Caching** is hybrid:
+
+| What is read | How it is kept |
+| --- | --- |
+| Public content | Kept in Next's cache, tagged with every content key the answer holds and the site's purge tags. The webhook clears exactly what holds a changed page and its ancestors, and any kept not-found, as a new page may answer one |
+| `crombolo.fresh.*`, for a page rendered per request | Revalidated with `If-None-Match` against a kept copy on every call. A `304` reuses it. `revalidate: 'etag'` reads everything this way, for a site with no webhook |
+| `await crombolo.member()`, and anything in Draft Mode | Never kept |
+
+**The proxy** (`proxy.ts`; `middleware.ts` on Next.js 15) runs before a page:
+- **Sessions.** It refreshes a member's session, since a page cannot set
+  cookies.
+- **Status.** It answers what a page can no longer change once Partial
+  Prerendering has sent its status:
+  - a CMS redirect keeps its exact status, 301 and 302 included;
+  - a miss is rewritten to `app/crombolo/not-found` and answers 404;
+  - a members-only page sends a visitor who is not signed in to sign-in.
+
+  Each lookup is revalidated by ETag, so it is a `304` from the CMS.
+
+**Preview.** `deliveryApi.preview.url` points the Preview button at
+`/api/crombolo/preview`.
+1. The handler checks the token with a route lookup, which answers 401 for a
+   bad one.
+2. It turns on Draft Mode and keeps the token in an http-only cookie.
+3. Reads then send `Preview: true` with that token.
+
+**Revalidation.** `schema/webhooks/next-revalidate.toml` posts Crombolo's
+payload (`payload = "crombolo"`, [`webhooks.md`](webhooks.md)) to
+`/api/crombolo/revalidate`.
+- Its `X-Crombolo-Secret` header is checked in constant time against
+  `CROMBOLO_REVALIDATE_SECRET`.
+- The item's and each ancestor's tags are cleared.
+
+**Members** sign in with PKCE through the CMS's member authorization.
+- **Tokens:** the access and refresh tokens are sealed with AES-GCM under
+  `CROMBOLO_NEXT_SECRET` (32 or more characters) in one http-only cookie.
+- **Refresh:** the proxy refreshes them before they expire.
+- **Sign-out:** it revokes the refresh token and ends the CMS session.
+- **Media:** `/media/…` passes the member's token, so protected media reaches
+  who may read it, `private, no-store`.
+
+**Content.**
+- `<RichText>` renders the API's HTML and makes links to the site's pages
+  client-side navigations. Rich text as a tree is story `216`.
+- `<BlockList>` and `<BlockGrid>` take a component per element type. An
+  unknown block renders nothing, or a notice in Draft Mode.
+- The image loader writes the CMS's imaging query, and `cromboloImage(media,
+  { crop })` carries a crop or focal point.
+
+**Settings.**
+
+| Where | Setting | What it is |
+| --- | --- | --- |
+| CMS `.env` | `CROMBOLO_DELIVERY_API_KEY` | the API key the app reads with, for preview |
+| CMS `.env` and `web/.env.local` | `CROMBOLO_REVALIDATE_SECRET` | the webhook's shared secret |
+| `web/.env.local` | `CROMBOLO_URL` | the CMS's address |
+| `web/.env.local` | `CROMBOLO_APP_URL` | the app's own address, for sign-in redirects |
+| `web/.env.local` | `CROMBOLO_NEXT_SECRET` | seals members' sessions |
+| `web/.env.local` | `CROMBOLO_HOST` | the hostname routes resolve for, when the CMS has several |
+
+`init` writes them all, the secrets made fresh for each site.
+
+**Keep a template per page type.** The sitemap, and so the pages built ahead,
+and site search count only pages whose type has a template, as Umbraco does.
+That holds even when the app renders them. Story `217` would lift that.
+
+**Next.js 16 and 15.** The scaffold is for 16:
+- `cacheComponents` and `partialPrefetching` on;
+- `'use cache'` through `@crombolo/next-integration/cache-16`;
+- `proxy.ts`.
+
+A site on 15 needs four changes:
+- import `cache15` from `./cache-15`;
+- rename `proxy.ts` to `middleware.ts`;
+- drop `cacheComponents` and `partialPrefetching`;
+- keep TypeScript at 5, since Next.js 15 reads `next.config.ts` through
+  TypeScript's JavaScript API, which TypeScript 7 has not got.
+
+Next.js 15 tags a fetch before it runs, so there every answer is kept under the
+site's tag and any change clears them all. `bun run smoke:next --next 15|16`
+builds and runs a scaffolded app on either, as CI does.
+
 ## Not built
 
-`Accept-Segment`, rich text as JSON, domain cultures in path resolution, and
+`Accept-Segment`, rich text as JSON (story `216`), domain cultures in path resolution, and
 external login providers in the sign-in flow.
 
 Planned as a story: translations, menus and site settings (`058`).

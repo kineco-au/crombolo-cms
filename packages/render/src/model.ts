@@ -7,7 +7,7 @@
  * ambient, so `model.value('title')` returns the current request's culture.
  */
 
-import type { FormSubmissionState } from '@crombolo/core'
+import type { FieldError, FormSubmissionState } from '@crombolo/core'
 import type { RawHtml } from './html.ts'
 import type { MediaWithCrops } from './media.ts'
 import type { MenuItem } from './menus.ts'
@@ -263,7 +263,26 @@ export interface RequestMember {
   roles: string[]
 }
 
-/** What a template receives. */
+/** The query string, as Next.js hands it to a page: repeated names become arrays. */
+export type SearchParams = Record<string, string | string[] | undefined>
+
+/**
+ * What a status page is told about the outcome it is answering (story 206):
+ * the status, the words the code gave, any field errors, and for a server
+ * error its reference, with the details only where they may be shown.
+ */
+export interface PageOutcome {
+  status: number
+  /** The helper's name, `notFound`; `serverError` for a 500. */
+  name: string
+  message?: string
+  errors: readonly FieldError[]
+  /** A 500's reference, which the log line carries too. */
+  reference?: string
+  /** A 500's message, source and stack, when `errors.showDetails` allows. */
+  details?: { message: string; location?: string; stack?: string }
+}
+
 /**
  * What a template receives. Name the page's interface from `crombolo generate`
  * to have its properties checked: `PageProps<HomePage>`.
@@ -292,6 +311,13 @@ export interface PageProps<Properties = any> {
   submission: FormSubmissionState | undefined
   /** The address requested, and the scheme and host it came in on. */
   request: { origin: string; url: string }
+  /**
+   * The query string, as a promise as in Next.js 15. Awaiting it makes the page
+   * personal; empty on a page that exports `dynamic = 'force-static'`.
+   */
+  searchParams: Promise<SearchParams>
+  /** On a status page, what it is answering; undefined on any other page. */
+  outcome?: PageOutcome
   urls: {
     /** A page's address with scheme and host; undefined for one with no address here. */
     absolute(content: PublishedContent): string | undefined

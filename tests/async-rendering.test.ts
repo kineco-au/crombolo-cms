@@ -204,7 +204,7 @@ export default async function Home({ model }) {
     const h = await site({ 'homePage.tsx': HANGS }, 100)
     const response = await h.server.fetch(new Request(`${ORIGIN}/`))
     expect(response.status).toBe(500)
-    expect(await response.text()).toContain("Rendering 'homePage' took longer than 100ms.")
+    expect(await response.text()).toContain('Rendering &#39;homePage&#39; took longer than 100ms.')
     expect((globalThis as { __renderAborted?: string }).__renderAborted).toContain(
       'took longer than 100ms',
     )

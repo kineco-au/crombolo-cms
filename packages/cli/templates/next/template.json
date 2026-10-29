@@ -1,0 +1,5 @@
+{
+  "name": "Next.js",
+  "description": "an empty site with a Next.js front end in web/, wired for preview, revalidation and member sign-in",
+  "next": true
+}

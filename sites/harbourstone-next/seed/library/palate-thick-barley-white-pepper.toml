@@ -1,0 +1,8 @@
+type = "tastingNote"
+key = "26e87610-e2d6-4b47-bf92-3967f7186907"
+name = "Palate — Thick barley, white pepper, …"
+order = 18
+
+[values]
+aspect = "Palate"
+note = "Thick barley, white pepper, brine, toasted hazelnut."

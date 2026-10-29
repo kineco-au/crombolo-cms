@@ -1,5 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, resolve, sep } from 'node:path'
+import { isClientModule } from '@crombolo/render'
+import { isServerOnly } from './islands.ts'
 
 /**
  * A `.tsx` under the site's `components/` directory.
@@ -24,6 +26,9 @@ export interface ComponentFile {
 
 const SOURCE = /\.(tsx|jsx)$/
 
+/** Folders whose files are one component each, where a `page.tsx` is just a component named page. */
+const FLAT_FOLDERS = new Set(['blocks', 'emails'])
+
 /** An alias that stays inside the root: no climbing, no absolute path, no drive. */
 export function isSafeAlias(alias: string): boolean {
   if (alias.length === 0 || alias.startsWith('/') || alias.includes('\\')) return false
@@ -47,12 +52,21 @@ export function listComponents(root: string): ComponentFile[] {
     }
   }
   walk(root)
-  return out.sort((a, b) => a.alias.localeCompare(b.alias))
+  // `x.tsx` wins over `x/page.tsx`, as it does when rendering.
+  const seen = new Set<string>()
+  return out
+    .sort((a, b) => a.alias.localeCompare(b.alias) || a.path.length - b.path.length)
+    .filter((file) => !seen.has(file.alias) && Boolean(seen.add(file.alias)))
 }
 
-/** The alias a file answers to: its path under the root, without the extension. */
+/**
+ * The alias a file answers to: its path under the root, without the extension.
+ * A folder's `page.tsx` answers to the folder, as a Next.js route does (story 206).
+ */
 export function aliasOf(root: string, path: string): string {
-  return relative(root, path).split(sep).join('/').replace(SOURCE, '')
+  const alias = relative(root, path).split(sep).join('/').replace(SOURCE, '')
+  const folder = alias.endsWith('/page') ? alias.slice(0, -'/page'.length) : undefined
+  return folder && !FLAT_FOLDERS.has(folder) ? folder : alias
 }
 
 export interface ComponentProblem {
@@ -123,6 +137,18 @@ export async function checkComponents(options: {
 
     for (const found of unawaitedMedia(source))
       problems.push({ file: `${where}:${found.line}`, message: found.message })
+
+    // Browser code (story 209): never imported here, where React or Vue would
+    // load into the CMS, and held to the boundary instead.
+    if (isClientModule(source) || component.alias.startsWith('client/')) {
+      for (const specifier of transpiler.scanImports(source))
+        if (isServerOnly(specifier.path))
+          problems.push({
+            file: where,
+            message: `imports ${specifier.path}, which only runs on the server. Code that runs in the browser cannot use it.`,
+          })
+      continue
+    }
 
     try {
       // A query does not bust Bun's module cache, so a path imported once in
@@ -248,10 +274,20 @@ async function checkTypes(siteDir: string): Promise<ComponentCheckReport['types'
   return { checked: true, problems: lines }
 }
 
-/** Where a component with this alias lives. The alias is the path. */
-export function componentFileFor(root: string, alias: string): string {
+/** Where a component with this alias lives: `<alias>.tsx`, or `<alias>/page.tsx` as a folder. */
+export function componentFileFor(
+  root: string,
+  alias: string,
+  options: { folder?: boolean } = {},
+): string {
   if (!isSafeAlias(alias)) throw new Error(`"${alias}" is not a path inside components/`)
-  return join(root, `${alias}.tsx`)
+  if (
+    !options.folder &&
+    existsSync(join(root, alias, 'page.tsx')) &&
+    !existsSync(join(root, `${alias}.tsx`))
+  )
+    return join(root, alias, 'page.tsx')
+  return options.folder ? join(root, alias, 'page.tsx') : join(root, `${alias}.tsx`)
 }
 
 /** What an e-mail template looks like: a default export over `EmailProps`. */

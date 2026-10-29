@@ -19,6 +19,10 @@ const NOT_SETTINGS: Record<string, string> = {
   CROMBOLO_BACKUP_REASON: 'given to the backup command, not read',
   CROMBOLO_PORT: "the container stack's published port, read by compose.yaml",
   CROMBOLO_EMAIL_SES_: 'the family of SES variables, named in a comment',
+  CROMBOLO_URL: "a Next.js front end's: the CMS's address (story 208)",
+  CROMBOLO_APP_URL: "a Next.js front end's address, read by its scaffolded crombolo.config.ts",
+  CROMBOLO_NEXT_SECRET: "a Next.js front end's: seals members' sessions",
+  CROMBOLO_REVALIDATE_SECRET: "a Next.js front end's webhook secret, named by the webhook file",
 }
 
 function sourceFiles(dir: string): string[] {

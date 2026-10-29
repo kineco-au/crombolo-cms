@@ -6,6 +6,149 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.37.0 — 2026-10-29
+
+- **Pages with the site's own logic, the Next.js way** (story 206). A template
+  can read the request and end the page early, with the App Router's names:
+  - `@crombolo/crombolo/navigation`: `redirect` (307), `permanentRedirect`,
+    `notFound`, `forbidden`, `unauthorized` and `rethrow`, plus `foundAt` (302),
+    `movedPermanentlyTo`, `seeOther`, `badRequest`, `gone` and
+    `unprocessableContent`. Each throws from any depth and the page answers its
+    status. Unsafe redirect targets are refused.
+  - `@crombolo/crombolo/headers`: `cookies()` and `headers()`. Pages get
+    `searchParams` as a promise.
+  - `@crombolo/crombolo/server`: `site()`, the site's services as the visitor,
+    returning a `Result` that ends with `unwrap()`. `site().media` answers only
+    what the visitor may read.
+  - **Status pages**: `pages: { notFound, unauthorized, error }` in
+    `crombolo.config.ts` name pages by path, rendered with the status at the
+    address asked for and told what happened through `usePage().outcome`. Any
+    other case shows a generic page.
+  - **Caching is inferred**: a page that reads the request is sent
+    `private, no-store`. `export const dynamic` and `revalidate` override that.
+  - `generateMetadata` feeds `<SeoHead>`, and a template may be a folder with a
+    `page.tsx` (`crombolo components new --folder`).
+  - In preview, a page that redirects shows the editor a notice instead.
+
+- **A Next.js front end** (story 208).
+  - **`crombolo init --template next`** scaffolds an empty site with a Next.js
+    App Router app in `web/`, already wired for preview, revalidation and member
+    sign-in. `--next` adds the same app to any template. `bun run dev` starts the
+    CMS and the app together.
+  - **`@crombolo/next-integration`** reads the site:
+    - `page()` returns a `Result`, and `resolvePage()` ends it with Next's own
+      `redirect` or `notFound`;
+    - `metadata()` gives Next's `Metadata`;
+    - answers are cached by tag on Next.js 16, or under one site tag on 15;
+    - pages rendered per request revalidate with `If-None-Match`;
+    - it handles Draft Mode, members' sessions (sealed and refreshed),
+      protected media, an image loader, `<RichText>`, and block lists and grids.
+  - **The proxy** answers CMS redirects with their own status, misses with a
+    real 404, and sends visitors to sign in for members-only pages.
+  - **`demo/harbourstone-next`** is Harbourstone on Next.js, with a whisky
+    comparison page. Visitors choose up to four bottlings, side by side, and
+    the selection is kept in the link.
+  - **A webhook file can set `payload = "crombolo"`** to be sent the item's
+    content type and its ancestors. They are captured with the change, so a
+    delete still says where the page was.
+  - **The Delivery API's route lookup** names the page `pages.notFound` gives.
+  - **The delivery client** gained preview, `seo`, sitemap, forms, answer keys
+    and tags, and conditional requests.
+  - **CI** builds and runs a scaffolded app on Next.js 15 and 16
+    (`bun run smoke:next`).
+
+- **Interactive islands** (story 209).
+  - **A component whose first line is `'use client'` runs in the browser,** as
+    in Next.js. A template uses it like any other. Its props travel as JSON,
+    its `children` are rendered on the server and passed to it, and `load`
+    and `fallback` say when it mounts and what shows until then.
+  - **The browser code is built with each generation of views** and served
+    for good, so a page and its islands always match.
+  - **`<Island name>`** mounts a Vue, Lit or plain module's
+    `mount(element, props)`.
+  - **`islands.manifest`** serves a site's own Vite build instead.
+  - **A client component importing server code** is refused, naming both
+    files.
+  - **No inline script:** a strict `script-src 'self'` policy works, and pages
+    stay cacheable.
+  - **The TSX `demo/harbourstone`** gains the whisky comparison page as an
+    island, the same page harbourstone-next draws in Next.js.
+
+- **Middleware** (story 210).
+  - **A site lists its middleware in `crombolo.config.ts`** by stage:
+    - `request` runs before redirects and content finding;
+    - `route` runs once the page is found;
+    - `page` runs after public access.
+
+    Each stage is an onion: answer outright, change the request (headers and
+    cookies reach the page), rewrite to another of the site's pages, or change
+    the answer.
+  - **Public access is always checked** on the page that finally renders.
+  - **The contract is published** in the new `@crombolo/common`, so a package
+    or a server bundle can offer middleware. Only the config adds it to the
+    chain.
+  - **Matchers** take Next.js's syntax, and `fromNextMiddleware` brings an
+    existing Next.js middleware in as one link.
+  - **Caching and limits:** reading or setting cookies keeps the answer
+    private. The whole chain has one time limit,
+    `CROMBOLO_MIDDLEWARE_TIMEOUT_MS`, which doesn't count the page's
+    rendering.
+- **Route handlers** (story 211).
+  - **A site lists its own endpoints in `crombolo.config.ts`**:
+    `routes: [route('/api/records/:species', { GET, POST }, options)]`, from
+    `@crombolo/crombolo/routes`. A route answers at its path ahead of content
+    finding. When it hides a published page, the new "Routes and pages" status
+    check says so.
+  - **A handler** gets the request and a context: `params`, `cookies`,
+    `setCookie`, `site()`, `member()` and an abort `signal`. It returns a
+    `Response`, or a `Result`: the value is sent as JSON, and an outcome
+    answers its status. Errors are problem+json, or the status page for a
+    browser. A 500 carries a reference that the log line shares too.
+  - **Safe by default:**
+    - answers are `private, no-store` unless a read sets its own caching;
+    - a member's cookie-authenticated write must come from the site itself,
+      or carry the anti-forgery token;
+    - every route has a flood limit of 2000 requests a minute per caller
+      (`CROMBOLO_ROUTE_RATE_LIMIT_PER_MINUTE`);
+    - a handler has 10 seconds (`CROMBOLO_ROUTE_TIMEOUT_MS`).
+
+    Per route: `members`, `csrf`, `rateLimit` and `cors`.
+  - **`fromRouteModule`** takes a Next.js `route.ts` as it is.
+  - **A server bundle's routes are route handlers too.** Its site routes
+    answer at the paths it declares, wherever the site lists the bundle, and
+    its back-office routes stay under the back office with
+    `audience: 'backoffice'`. `simple-redirects` and `entra` have moved over.
+- **`@crombolo/common`** holds the contracts outside code is written against:
+  `Result` and `Outcome` (from 206), the middleware contract and the route
+  contract.
+  `@crombolo/next-integration` now uses it rather than a copy. The same names
+  come from the same entry points as before.
+
+### Upgrade notes
+
+- **Bundles with a server half must be updated** (story 211, no
+  compatibility layer).
+  - **Removed:** the old route objects (`ServerBundleRoute`, `audience:
+    'member' | 'public'`, `BundleRequest` and their kin), and the site
+    routes under `/crombolo/bundle/<id>/`.
+  - **What a bundle changes:** it declares its routes with `route()` and adds
+    `"schemaVersion": 2` to its package's `crombolo` field.
+  - **Refused until then:** a server bundle without it, at install and at
+    boot.
+  - **The steps:** `docs/bundles.md`, "Routes". Browser code that called
+    `/crombolo/bundle/<id>/…` calls the route's new path.
+- **A site that uses islands installs `react` and `react-dom`.** Crombolo
+  depends on neither, and a site without islands needs neither.
+- **A template error now answers an HTML error page**, not plain text. It shows
+  a reference that the log line carries too. `CROMBOLO_SHOW_ERROR_DETAILS`
+  (`errors.showDetails`) adds the message, file and line, and stack. It is on
+  when `NODE_ENV` is not `production`, as the old development text was.
+- **A page rendered for a signed-in member** is still never cached. A template
+  that exports `dynamic = 'force-static'` is the exception: it renders without
+  the member, so it can be shared.
+- **`pages.notFound` wins over Settings → Search & sharing's not-found page**
+  when set. A site that sets neither keeps the plain `Not Found`.
+
 ## v0.36.2 — 2026-10-29
 
 - v0.36.1 was tagged but never published: the server-bundle routes tests reset

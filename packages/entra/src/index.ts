@@ -8,11 +8,13 @@
  * Reading is for anyone with the Settings section. Changing is for
  * administrators only, because a group mapping can make someone an administrator.
  */
-import type {
-  BundleRequest,
-  BundleSection,
-  ProviderOverrideInput,
-  ServerBundle,
+import {
+  type BundleRouteContext,
+  type BundleSection,
+  type ProviderOverrideInput,
+  type RouteContext,
+  route,
+  type ServerBundle,
 } from '@crombolo/crombolo/bundle'
 import manifest from '../package.json' with { type: 'json' }
 
@@ -71,13 +73,13 @@ const parseBody = async (request: Request): Promise<Record<string, unknown>> => 
   return body && typeof body === 'object' ? (body as Record<string, unknown>) : {}
 }
 
-type Context = BundleRequest<Capability>
+type Context = RouteContext & BundleRouteContext<Capability>
 
 /** The provider a route names, when it is an Entra one the config declares. */
 async function entraProvider(context: Context) {
   const { audience, id } = context.params
   if (!audience || !AUDIENCES.has(audience)) return undefined
-  const all = await context.host.identityProviders.list()
+  const all = await context.bundle.identityProviders.list()
   return all.find((p) => p.kind === 'entra' && p.audience === audience && p.id === id)
 }
 
@@ -90,72 +92,85 @@ export function entraSettings(options: EntraSettingsOptions = {}): ServerBundle<
     id: ENTRA_BUNDLE_ID,
     section: options.section ?? 'settings',
     capabilities: CAPABILITIES,
+    // Back-office routes (story 211), behind the user and the section.
     routes: [
-      {
-        method: 'GET',
-        path: 'providers',
-        async handler({ host, principal }) {
-          const providers = (await host.identityProviders.list()).filter((p) => p.kind === 'entra')
-          return json({ canEdit: principal.isAdmin, providers })
+      route<unknown, unknown, BundleRouteContext<Capability>>(
+        'providers',
+        {
+          async GET(_request, { bundle, principal }) {
+            const providers = (await bundle.identityProviders.list()).filter(
+              (p) => p.kind === 'entra',
+            )
+            return json({ canEdit: principal?.isAdmin === true, providers })
+          },
         },
-      },
-      {
-        method: 'GET',
-        path: 'groups/:audience',
-        async handler({ host, params }) {
-          if (!params.audience || !AUDIENCES.has(params.audience))
-            return json({ ok: false, message: 'Groups are for members or users.' }, 404)
-          return json({
-            groups: await host.identityProviders.groups(params.audience as 'member' | 'user'),
-          })
+        { audience: 'backoffice' },
+      ),
+      route<unknown, unknown, BundleRouteContext<Capability>>(
+        'groups/:audience',
+        {
+          async GET(_request, { bundle, params }) {
+            if (!params.audience || !AUDIENCES.has(params.audience))
+              return json({ ok: false, message: 'Groups are for members or users.' }, 404)
+            return json({
+              groups: await bundle.identityProviders.groups(params.audience as 'member' | 'user'),
+            })
+          },
         },
-      },
-      {
-        method: 'PUT',
-        path: 'providers/:audience/:id',
-        async handler(context) {
-          if (!context.principal.isAdmin) return adminOnly()
-          const provider = await entraProvider(context)
-          if (!provider) return json({ ok: false, message: 'There is no such Entra sign-in.' }, 404)
-          const outcome = await context.host.identityProviders.update(
-            provider.audience,
-            provider.id,
-            readOverrides(await parseBody(context.request)),
-          )
-          if (!outcome.ok) return json({ ok: false, message: outcome.error }, 400)
-          context.host.log.info('{user} changed the {audience} Entra sign-in {id}', {
-            user: context.principal.email,
-            audience: provider.audience,
-            id: provider.id,
-          })
-          return json({ ok: true, provider: await entraProvider(context) })
+        { audience: 'backoffice' },
+      ),
+      route<unknown, unknown, BundleRouteContext<Capability>>(
+        'providers/:audience/:id',
+        {
+          async PUT(request, context) {
+            if (!context.principal?.isAdmin) return adminOnly()
+            const provider = await entraProvider(context as Context)
+            if (!provider)
+              return json({ ok: false, message: 'There is no such Entra sign-in.' }, 404)
+            const outcome = await context.bundle.identityProviders.update(
+              provider.audience,
+              provider.id,
+              readOverrides(await parseBody(request)),
+            )
+            if (!outcome.ok) return json({ ok: false, message: outcome.error }, 400)
+            context.bundle.log.info('{user} changed the {audience} Entra sign-in {id}', {
+              user: context.principal.email,
+              audience: provider.audience,
+              id: provider.id,
+            })
+            return json({ ok: true, provider: await entraProvider(context as Context) })
+          },
+          async DELETE(_request, context) {
+            if (!context.principal?.isAdmin) return adminOnly()
+            const provider = await entraProvider(context as Context)
+            if (!provider)
+              return json({ ok: false, message: 'There is no such Entra sign-in.' }, 404)
+            await context.bundle.identityProviders.reset(provider.audience, provider.id)
+            context.bundle.log.info(
+              '{user} put the {audience} Entra sign-in {id} back to the code',
+              {
+                user: context.principal.email,
+                audience: provider.audience,
+                id: provider.id,
+              },
+            )
+            return json({ ok: true, provider: await entraProvider(context as Context) })
+          },
         },
-      },
-      {
-        method: 'DELETE',
-        path: 'providers/:audience/:id',
-        async handler(context) {
-          if (!context.principal.isAdmin) return adminOnly()
-          const provider = await entraProvider(context)
-          if (!provider) return json({ ok: false, message: 'There is no such Entra sign-in.' }, 404)
-          await context.host.identityProviders.reset(provider.audience, provider.id)
-          context.host.log.info('{user} put the {audience} Entra sign-in {id} back to the code', {
-            user: context.principal.email,
-            audience: provider.audience,
-            id: provider.id,
-          })
-          return json({ ok: true, provider: await entraProvider(context) })
+        { audience: 'backoffice' },
+      ),
+      route<unknown, unknown, BundleRouteContext<Capability>>(
+        'providers/:audience/:id/test',
+        {
+          async POST(_request, context) {
+            const provider = await entraProvider(context as Context)
+            if (!provider)
+              return json({ ok: false, message: 'There is no such Entra sign-in.' }, 404)
+            return json(await context.bundle.identityProviders.test(provider.audience, provider.id))
+          },
         },
-      },
-      {
-        method: 'POST',
-        path: 'providers/:audience/:id/test',
-        async handler(context) {
-          const provider = await entraProvider(context)
-          if (!provider) return json({ ok: false, message: 'There is no such Entra sign-in.' }, 404)
-          return json(await context.host.identityProviders.test(provider.audience, provider.id))
-        },
-      },
+        { audience: 'backoffice' },
+      ),
     ],
   }
 }

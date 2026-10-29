@@ -13,6 +13,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import type { Child } from './jsx-runtime.ts'
 import type { PageProps } from './model.ts'
 import type { SiteSearchPort } from './search.ts'
+import type { Metadata } from './seo.ts'
 
 interface RenderScope {
   page: PageProps | undefined
@@ -29,6 +30,21 @@ interface RenderScope {
   preview?: boolean
   /** The signed-in member's anti-forgery token, for `<AntiforgeryMeta />`. */
   antiforgery?: string
+  /** The request's own values, for `cookies()` and `headers()`; empty for a static page. */
+  request?: RequestValues
+  /** The site's services as the visitor, for `site()`. */
+  site?: () => unknown
+  /** Set once the page reads anything that depends on who is asking (story 206). */
+  personal?: { value: boolean }
+  /** What the page's `generateMetadata` returned, for `<SeoHead>`. */
+  metadata?: { value?: Metadata }
+  /** Set once anything on the page renders an island, so the loader is linked (story 209). */
+  islands?: { used: boolean }
+}
+
+/** What `cookies()` and `headers()` read: the request's, or nothing for a static page. */
+export interface RequestValues {
+  headers: Headers
 }
 
 /** Loads `components/blocks/<alias>.tsx`'s default export, or nothing when there is none. */
@@ -42,6 +58,11 @@ export interface RenderScopeOptions {
   blockComponent?: BlockComponentLoader
   preview?: boolean
   antiforgery?: string
+  request?: RequestValues
+  site?: () => unknown
+  personal?: { value: boolean }
+  metadata?: { value?: Metadata }
+  islands?: { used: boolean }
 }
 
 /**
@@ -60,6 +81,14 @@ export function renderScope<T>(
   options: RenderScopeOptions = {},
 ): T {
   return store.run({ page, ...options, contexts: new Map(), ids: { next: 0 } }, render)
+}
+
+/**
+ * Runs a route handler (story 211): 206's `cookies()`, `headers()` and `site()`
+ * read this request, and there is no page.
+ */
+export function requestScope<T>(request: RequestValues, site: () => unknown, run: () => T): T {
+  return store.run({ page: undefined, request, site, contexts: new Map(), ids: { next: 0 } }, run)
 }
 
 /** Runs an e-mail template's render: ids and context work, and there is no page. */
@@ -152,13 +181,7 @@ export function createContext<T>(defaultValue: T): Context<T> {
     const contexts = new Map(outer?.contexts)
     contexts.set(key, value)
     return store.run(
-      {
-        page: outer?.page,
-        email: outer?.email,
-        search: outer?.search,
-        contexts,
-        ids: outer?.ids ?? { next: 0 },
-      },
+      { ...outer, page: outer?.page, contexts, ids: outer?.ids ?? { next: 0 } },
       children,
     )
   }
@@ -179,4 +202,37 @@ export function blockComponentLoader(): BlockComponentLoader | undefined {
 /** Whether the page rendering is a back-office preview, which shows what visitors do not. */
 export function isPreview(): boolean {
   return store.getStore()?.preview === true
+}
+
+/** Records that the page depends on who is asking, so it is never shared. */
+export function markPersonal(): void {
+  const personal = store.getStore()?.personal
+  if (personal) personal.value = true
+}
+
+/** The request's values for `cookies()` and `headers()`, which name themselves as `caller`. */
+export function currentRequest(caller: string): RequestValues {
+  const scope = within(caller)
+  if (scope.email) throw new Error(`${caller} was called while ${NO_PAGE_IN_EMAIL}`)
+  markPersonal()
+  return scope.request ?? { headers: new Headers() }
+}
+
+/** The site's services for this render, built by the server for whoever is asking. */
+export function currentSite(caller: string): unknown {
+  const scope = within(caller)
+  if (scope.email) throw new Error(`${caller} was called while ${NO_PAGE_IN_EMAIL}`)
+  if (!scope.site) throw new Error(`${caller} has no site services in this render.`)
+  return scope.site()
+}
+
+/** What the page's `generateMetadata` returned, when it has one. */
+export function currentMetadata(): Metadata | undefined {
+  return store.getStore()?.metadata?.value
+}
+
+/** Records that the page holds an island, so it links the island loader. */
+export function markIslands(): void {
+  const islands = store.getStore()?.islands
+  if (islands) islands.used = true
 }

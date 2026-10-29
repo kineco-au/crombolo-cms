@@ -1,0 +1,79 @@
+[content-type]
+alias = "contentPage"
+name = "Content Page"
+description = "A page of prose with an image section and a band of highlights"
+icon = "icon-document"
+allow-children = ["contentPage"]
+components = ["pages/contentPage"]
+default-component = "pages/contentPage"
+
+[[tab]]
+name = "Header"
+
+[[tab.property]]
+alias = "eyebrow"
+name = "Eyebrow"
+description = "The small line above the heading"
+type = "textstring"
+site-search = "low"
+
+[[tab.property]]
+alias = "title"
+name = "Title"
+type = "textstring"
+mandatory = true
+site-search = "high"
+
+[[tab.property]]
+alias = "standfirst"
+name = "Standfirst"
+description = "A paragraph under the title"
+type = "textarea"
+
+[[tab]]
+name = "Section"
+
+[[tab.property]]
+alias = "heroImage"
+name = "Image"
+type = "imageMediaPicker"
+
+[[tab.property]]
+alias = "sectionEyebrow"
+name = "Eyebrow"
+type = "textstring"
+
+[[tab.property]]
+alias = "sectionHeading"
+name = "Heading"
+type = "textstring"
+
+[[tab.property]]
+alias = "bodyText"
+name = "Body"
+type = "richtext"
+
+[[tab]]
+name = "Highlights"
+
+[[tab.property]]
+alias = "highlightsEyebrow"
+name = "Eyebrow"
+type = "textstring"
+
+[[tab.property]]
+alias = "highlightsHeading"
+name = "Heading"
+type = "textstring"
+
+# Blocks of the same element type as the home page's figures. Leave this empty
+# and the whole dark band disappears — see `web/components/content-page.tsx`.
+[[tab.property]]
+alias = "highlights"
+name = "Highlights"
+type = "highlightBlocks"
+
+[[tab.property]]
+alias = "highlightsImage"
+name = "Image"
+type = "imageMediaPicker"

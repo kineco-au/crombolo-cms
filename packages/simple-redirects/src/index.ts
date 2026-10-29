@@ -13,11 +13,12 @@
  * because a site imported `redirects()` into its `crombolo.config.ts` — see
  * `docs/bundles.md` for why that asymmetry is the whole security story.
  */
-import type {
-  BundleRedirectInput,
-  BundleRequest,
-  BundleSection,
-  ServerBundle,
+import {
+  type BundleRedirectInput,
+  type BundleRouteContext,
+  type BundleSection,
+  route,
+  type ServerBundle,
 } from '@crombolo/crombolo/bundle'
 import manifest from '../package.json' with { type: 'json' }
 
@@ -25,6 +26,8 @@ import manifest from '../package.json' with { type: 'json' }
 const CAPABILITIES = ['redirects', 'documents', 'log'] as const
 
 type Capability = (typeof CAPABILITIES)[number]
+
+type Host = BundleRouteContext<Capability>['bundle']
 
 /** The URL segment the endpoints answer below, and the name in the log: the package's `crombolo.id`. */
 export const REDIRECTS_BUNDLE_ID = manifest.crombolo.id
@@ -67,8 +70,8 @@ const parseBody = async (request: Request): Promise<Record<string, unknown>> => 
  * own redirect listing does.
  */
 async function present(
-  rule: Awaited<ReturnType<BundleRequest<Capability>['host']['redirects']['byKey']>>,
-  documents: BundleRequest<Capability>['host']['documents'],
+  rule: Awaited<ReturnType<Host['redirects']['byKey']>>,
+  documents: Host['documents'],
 ) {
   if (!rule) return undefined
   return {
@@ -102,79 +105,77 @@ export function redirects(options: RedirectsBundleOptions = {}): ServerBundle<Ca
     id: REDIRECTS_BUNDLE_ID,
     section,
     capabilities: CAPABILITIES,
+    // Back-office routes (story 211): the screen calls them below the bundle's
+    // namespace, and the host has checked the user and the section first.
     routes: [
-      {
-        method: 'GET',
-        path: 'rules',
-        async handler({ url, host }) {
-          const take = Math.min(Math.max(Number(url.searchParams.get('take') ?? 100), 1), 500)
-          const skip = Math.max(Number(url.searchParams.get('skip') ?? 0), 0)
-          const result = await host.redirects.list({
-            filter: url.searchParams.get('filter') ?? undefined,
-            skip,
-            take,
-          })
-          return json({
-            total: result.total,
-            items: await Promise.all(result.items.map((rule) => present(rule, host.documents))),
-          })
+      route<unknown, unknown, BundleRouteContext<Capability>>(
+        'rules',
+        {
+          async GET(_request, { url, bundle }) {
+            const take = Math.min(Math.max(Number(url.searchParams.get('take') ?? 100), 1), 500)
+            const skip = Math.max(Number(url.searchParams.get('skip') ?? 0), 0)
+            const result = await bundle.redirects.list({
+              filter: url.searchParams.get('filter') ?? undefined,
+              skip,
+              take,
+            })
+            return json({
+              total: result.total,
+              items: await Promise.all(result.items.map((rule) => present(rule, bundle.documents))),
+            })
+          },
+          async POST(request, { principal, bundle }) {
+            const outcome = await bundle.redirects.save(readInput(await parseBody(request)))
+            if (!outcome.ok) return json({ ok: false, message: outcome.message }, 400)
+            bundle.log.info('{user} added the redirect {pattern} -> {target}', {
+              user: principal?.email,
+              pattern: outcome.rule.pattern,
+              target: outcome.rule.target,
+            })
+            return json({ ok: true, rule: await present(outcome.rule, bundle.documents) })
+          },
         },
-      },
-      {
-        method: 'POST',
-        path: 'rules',
-        async handler({ request, principal, host }) {
-          const outcome = await host.redirects.save(readInput(await parseBody(request)))
-          if (!outcome.ok) return json({ ok: false, message: outcome.message }, 400)
-          host.log.info('{user} added the redirect {pattern} -> {target}', {
-            user: principal.email,
-            pattern: outcome.rule.pattern,
-            target: outcome.rule.target,
-          })
-          return json({ ok: true, rule: await present(outcome.rule, host.documents) })
-        },
-      },
-      {
-        method: 'PUT',
-        path: 'rules/:key',
-        async handler({ request, params, principal, host }) {
-          const outcome = await host.redirects.replace(
-            params.key as string,
-            readInput(await parseBody(request)),
-          )
-          if (!outcome.ok)
-            return json(
-              { ok: false, message: outcome.message },
-              outcome.reason === 'notFound' ? 404 : outcome.reason === 'notEditable' ? 409 : 400,
+        { audience: 'backoffice' },
+      ),
+      route<unknown, unknown, BundleRouteContext<Capability>>(
+        'rules/:key',
+        {
+          async PUT(request, { params, principal, bundle }) {
+            const outcome = await bundle.redirects.replace(
+              params.key as string,
+              readInput(await parseBody(request)),
             )
-          host.log.info('{user} changed the redirect {pattern} -> {target}', {
-            user: principal.email,
-            pattern: outcome.rule.pattern,
-            target: outcome.rule.target,
-          })
-          return json({ ok: true, rule: await present(outcome.rule, host.documents) })
+            if (!outcome.ok)
+              return json(
+                { ok: false, message: outcome.message },
+                outcome.reason === 'notFound' ? 404 : outcome.reason === 'notEditable' ? 409 : 400,
+              )
+            bundle.log.info('{user} changed the redirect {pattern} -> {target}', {
+              user: principal?.email,
+              pattern: outcome.rule.pattern,
+              target: outcome.rule.target,
+            })
+            return json({ ok: true, rule: await present(outcome.rule, bundle.documents) })
+          },
+          async DELETE(_request, { params, principal, bundle }) {
+            const outcome = await bundle.redirects.remove(params.key as string)
+            if (outcome === 'notFound')
+              return json({ ok: false, message: 'That redirect no longer exists.' }, 404)
+            if (outcome === 'notEditable')
+              return json(
+                {
+                  ok: false,
+                  message:
+                    'Only a redirect added here can be deleted here. A configured rule belongs to the site, and a tracked one to the page that was renamed.',
+                },
+                409,
+              )
+            bundle.log.info('{user} deleted a redirect', { user: principal?.email })
+            return json({ ok: true })
+          },
         },
-      },
-      {
-        method: 'DELETE',
-        path: 'rules/:key',
-        async handler({ params, principal, host }) {
-          const outcome = await host.redirects.remove(params.key as string)
-          if (outcome === 'notFound')
-            return json({ ok: false, message: 'That redirect no longer exists.' }, 404)
-          if (outcome === 'notEditable')
-            return json(
-              {
-                ok: false,
-                message:
-                  'Only a redirect added here can be deleted here. A configured rule belongs to the site, and a tracked one to the page that was renamed.',
-              },
-              409,
-            )
-          host.log.info('{user} deleted a redirect', { user: principal.email })
-          return json({ ok: true })
-        },
-      },
+        { audience: 'backoffice' },
+      ),
     ],
   }
 }

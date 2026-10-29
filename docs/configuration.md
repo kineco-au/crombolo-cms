@@ -133,6 +133,9 @@ rather than the running server. Secret ones are never printed or logged.
 | `CROMBOLO_COMPONENTS_GENERATION_LIMIT` | number | `250` | How many changes a node picks up before it stops taking more and keeps serving the last. |
 | `CROMBOLO_COMPONENTS_KEEP` | number | 3, all in development | How many earlier copies are kept on disk, for an instant return to one. |
 | `CROMBOLO_RENDER_TIMEOUT_MS` | number | `10000` | How long a page may take to render, layouts included, before it fails, in milliseconds. `0` for no limit. |
+| `CROMBOLO_ROUTE_RATE_LIMIT_PER_MINUTE` | number | `2000` | Requests a minute each caller may make to the site's route handlers, on each server, before a 429. High enough to stop only a flood. `0` for no limit. |
+| `CROMBOLO_ROUTE_TIMEOUT_MS` | number | `10000` | How long a route handler may take before it answers 504, in milliseconds. `0` for no limit. |
+| `CROMBOLO_MIDDLEWARE_TIMEOUT_MS` | number | `2000` | How long a site's whole middleware chain may take, in milliseconds, not counting the page it renders. `0` for no limit. |
 
 ### Media
 
@@ -191,6 +194,7 @@ rather than the running server. Secret ones are never printed or logged.
 | --- | --- | --- | --- |
 | `CROMBOLO_INDEXABLE` | `true` / `false` | `true` | Off keeps search engines out entirely, for a staging site: robots are refused, there is no sitemap and every page asks not to be indexed. |
 | `CROMBOLO_PUBLIC_URL` | string | — | Where visitors see the site, when that is an app on another address, such as https://www.example.com. Used for preferred addresses, the sitemap and robots.txt. |
+| `CROMBOLO_SHOW_ERROR_DETAILS` | `true` / `false` | — | Shows a server error's message, the template file and line, and the stack on the error page. On in development, off otherwise; with it off a visitor sees only the error's reference, which the log carries too. |
 | `CROMBOLO_SITEMAP` | `true` / `false` | `true` | Serves `/sitemap.xml`. |
 | `CROMBOLO_TRACK_REDIRECTS` | `true` / `false` | `true` | Renaming or moving a page records a redirect from the address it had. |
 | `CROMBOLO_DELIVERY_API` | `true` / `false` | `false` | Turns on the Delivery API, which serves content as JSON. |
@@ -316,7 +320,7 @@ would not show you your own changes.
 
 ## Settings with no environment variable
 
-Five things a site declares only in `crombolo.config.ts`, because each of them
+Nine things a site declares only in `crombolo.config.ts`, because each of them
 is code rather than a value:
 
 | Setting | What it is |
@@ -327,6 +331,10 @@ is code rather than a value:
 | `hostProvided` | package names the installation provides to every site it runs; a whole-site file leaves them out of what it requires ([`bundles.md`](bundles.md#bundles-a-host-provides)) |
 | `memberIdentityProviders` | identity providers members sign in with on the site: `entra()`, `awsIdentityCenter()`, `oidc()` ([`operations.md`](operations.md#signing-in-through-an-identity-provider)) |
 | `backofficeIdentityProviders` | the same, for backoffice users; a separate list, so staff and members can use different providers |
+| `islands` | where `'use client'` islands' browser code comes from: built with each generation of views by default, or `{ manifest, devServer }` for a site's own Vite build ([`rendering.md`](rendering.md#islands)) |
+| `middleware` | the site's middleware by stage, `{ request, route, page }`, each run in the order listed; its time limit is `CROMBOLO_MIDDLEWARE_TIMEOUT_MS` ([`rendering.md`](rendering.md#middleware)) |
+| `routes` | the site's route handlers, `route(path, handlers, options)`, answered at their paths ahead of content finding; limits `CROMBOLO_ROUTE_TIMEOUT_MS` and `CROMBOLO_ROUTE_RATE_LIMIT_PER_MINUTE` ([`rendering.md`](rendering.md#route-handlers)) |
+| `pages` | the pages in the content tree, by path, that answer `notFound`, `unauthorized` and `error` outcomes from a page's code, per hostname or language if need be ([`rendering.md`](rendering.md#status-pages)) |
 
 `deliveryApi` is the same: its switches and key have environment variables
 above, and member sign-in — clients, secrets, redirect URLs, the login page — is
@@ -335,7 +343,10 @@ set in `crombolo.config.ts` ([`delivery-api.md`](delivery-api.md)).
 `seo` sits between the two: its two switches have environment variables above,
 and the rest — robots rules, site name, title suffix, sharing image, not-found
 page — are set in `crombolo.config.ts` or in Settings → Search & sharing, which
-wins field by field ([`seo.md`](seo.md)).
+wins field by field ([`seo.md`](seo.md)). `pages.notFound`, when set, wins over
+the not-found page.
+
+`errors.showDetails` has `CROMBOLO_SHOW_ERROR_DETAILS` above; the config file wins.
 
 `bundles` has no environment variable deliberately, and the absence is tested. A
 variable naming a package would be a way to start third-party code in the server

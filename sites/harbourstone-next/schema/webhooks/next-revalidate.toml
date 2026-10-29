@@ -1,0 +1,10 @@
+[webhook]
+alias = "nextRevalidate"
+name = "Next.js front end"
+description = "Clears the Next.js app's cache for a changed page and its ancestors."
+url = "http://localhost:3000/api/crombolo/revalidate"
+events = ["Umbraco.ContentPublish", "Umbraco.ContentUnpublish", "Umbraco.ContentDelete", "Umbraco.ContentMovedToRecycleBin", "Umbraco.ContentMoved", "Umbraco.ContentSorted"]
+payload = "crombolo"
+
+[webhook.headers]
+X-Crombolo-Secret = "env:CROMBOLO_REVALIDATE_SECRET"

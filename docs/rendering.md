@@ -497,19 +497,24 @@ database as one query, so a page's pickers read together cost one.
 
 ## Request pipeline
 
-Mirrors `PublishedRouter` → `UmbracoRouteValuesFactory`:
+Mirrors `PublishedRouter` → `UmbracoRouteValuesFactory`. A site's middleware
+runs around these steps, in the stages "Middleware" below describes: the
+`request` stage before step 1, the `route` stage after step 2, and the `page`
+stage after step 5.
 
 1. **Resolve the domain** for the request URI → sets the request's domain and culture
 2. **Run content finders in order** until one sets content:
    by page-id query → by URL → by key/id path → by URL alias → by redirect →
    last chance: the configured 404. A page with `umbracoRedirect` answers 302 to
    the page it picks instead of rendering ([`seo.md`](seo.md))
-3. **Pick the template** → look for a route hijack: a controller whose name equals
-   `content.contentType.alias` (Umbraco's "route hijacking"). In our stack the
-   equivalent is an optional `apps/site/Controllers/{alias}.ts` exporting a
-   handler that can run logic and choose a view.
-4. **No template and no hijack ⇒ 404**, re-run through the last-chance finders
+3. **Pick the template** the content names: `components/<alias>.tsx`, or
+   `components/<alias>/page.tsx` for a folder template
+4. **No template ⇒ 404**, re-run through the last-chance finders
 5. **Enforce public access** (`public_access` + `public_access_rule`) before rendering
+6. **Render**, the page's own code included: it can read the request, load data
+   as the visitor and end the page with a redirect or a refusal. What Umbraco does
+   with a controller named for a content type, a template does in itself, the
+   Next.js way. See "Server code" below.
 
 Step 5, in detail, because it is the one that surprises people: a protected page
 is **rewritten**, not redirected. The visitor keeps the URL they asked for and the
@@ -582,6 +587,164 @@ segment comes from the name — but `HideTopLevelNodeFromPath` makes the *first*
 page `/` and the others `/<segment>`, so re-ordering the roots moves them. The
 capture is by parent rather than by node there, because the write is on the parent
 and the URLs that move belong to its children.
+
+## Server code
+
+A template is close to a React server component already: an async function that
+renders on the server and awaits what it needs. Story 206 lets it do what a
+Next.js App Router page does, with the same names (a table mapping each
+convention is in [`writing-components.md`](writing-components.md), "Coming from
+Next.js").
+
+```tsx
+// components/pages/my-records.tsx
+import { notFound, redirect } from '@crombolo/crombolo/navigation'
+import { site } from '@crombolo/crombolo/server'
+
+export default async function MyRecords({ member, searchParams }: PageProps<MyRecordsPage>) {
+  if (!member) redirect('/sign-in')
+  const { folder } = await searchParams
+  if (typeof folder !== 'string') notFound('Choose a folder')
+  const photos = (await site().media.children(folder)).unwrap()
+  return <PhotoList photos={photos} />
+}
+```
+
+### Ending a page early
+
+`@crombolo/crombolo/navigation` mirrors `next/navigation`. Each function throws
+from any component, layout or block, and the page answers its status:
+
+| Function | Status | |
+|---|---|---|
+| `redirect(url)` | 307 | as in Next.js |
+| `permanentRedirect(url)` | 308 | as in Next.js |
+| `notFound(message?)` | 404 | as in Next.js |
+| `forbidden(message?)` | 403 | as in Next.js |
+| `unauthorized(message?)` | 401 | as in Next.js |
+| `foundAt(url)` | 302 | the everyday redirect `umbracoRedirect` answers |
+| `movedPermanentlyTo(url)` | 301 | |
+| `seeOther(url)` | 303 | after a POST |
+| `badRequest(message?, errors?)` | 400 | a request the page cannot use |
+| `gone(message?)` | 410 | |
+| `unprocessableContent(errors, message?)` | 422 | input that failed validation |
+
+Throwing is safe here, unlike in Next.js's streamed responses: Crombolo renders
+the whole page before it answers, so nothing has been sent when an outcome is
+thrown. An outcome thrown after the render's time limit is ignored. Errors are
+`{ field, message }[]`. A message is visitor-facing text for the status page.
+Code that catches errors for its own reasons calls `rethrow(error)` first, as
+Next.js's `unstable_rethrow`, so outcomes pass through.
+
+A redirect target must be a path or an `http(s)` address. A protocol-relative
+address (`//host`), any other scheme (`javascript:`) or a value with control
+characters is refused as a template error, a 500, never sent as a `Location`.
+
+### The request
+
+- `await searchParams`, a page prop, is the query as Next.js 15 hands it: a
+  name given twice is an array.
+- `await cookies()` and `await headers()` from `@crombolo/crombolo/headers`
+  are read-only. Outside a page render they throw, naming themselves.
+- There are no `params`: a page's address comes from the content tree, and its
+  content is `model`.
+
+### `site()` and `Result`
+
+`site()` from `@crombolo/crombolo/server` is the site's services acting as
+whoever is asking. Each returns a `Result<T>`, either `Ok<T>` or an `Outcome`
+tagged by status. Data code composes with `map`, `andThen` (and `mapAsync`,
+`andThenAsync`), `match` (exhaustive over the statuses it can hold, or with an
+`outcome` catch-all) and `Result.all`, and builds failures with
+`Outcome.notFound()`, `Outcome.forbidden()` and the rest. These are values:
+only the navigation functions and `unwrap()` throw. A component ends the chain
+with `unwrap()` (the value, or the outcome thrown) or `unwrapOr(fallback)`.
+
+- `site().media.get(key)` and `site().media.children(folderKey)` answer only
+  what the visitor may read ("Protected media", below). Anything else is
+  `notFound`, never `forbidden`, so code cannot learn a protected file exists.
+- `site().sql` (story 189) and `site().members` (story 207) are slots. Until
+  they are filled each call answers `notFound`, saying so.
+- In preview the visitor is the previewing editor, with no member. Templates
+  are trusted code; the scoping keeps one member's page from reaching another
+  member's data by mistake, not a sandbox.
+
+### Status pages
+
+`pages` in `crombolo.config.ts` names a page in the content tree, by path, for
+each status a visitor can be shown:
+
+```ts
+export default defineConfig({
+  pages: {
+    notFound: '/not-found',          // 404, and any address nothing answers
+    unauthorized: '/sign-in',        // 401
+    error: '/something-went-wrong',  // 400, 403, 410, 422 and 500
+  },
+})
+```
+
+- A path resolves as a request for it would, on the request's hostname, and
+  renders in the request's culture. A rule list, `[{ path, host?, culture? }]`,
+  picks one per hostname or language, the most specific match winning.
+- The page renders in its own template, with the outcome's status, at the
+  address the visitor asked for. It is not a redirect. Its template reads
+  `usePage().outcome`: `status`, `name`, `message`, `errors`, and for a 500 a
+  `reference` and, when allowed, `details` (message, `location`, `stack`).
+- `pages.notFound` wins over Search & sharing's not-found page
+  (`seo.notFoundPage`, a page key), which still answers when `pages.notFound`
+  is unset.
+- A path that resolves to nothing, or a status page that fails or itself
+  throws an outcome, falls back to a generic page for the status, once. The
+  boot logs a warning for each configured path no page answers. An address
+  nothing answers, on a site with no not-found page at all, keeps the plain
+  `Not Found`.
+- A server error logs a reference with its stack, and the page shows the same
+  reference. `CROMBOLO_SHOW_ERROR_DETAILS` (`errors.showDetails`), on in
+  development and off otherwise, also shows the message, the template's file
+  and line, and the stack.
+
+### Caching, inferred
+
+A page that reads nothing about the request is cached exactly as before
+(["Behind a CDN"](operations.md)). One that awaits `searchParams`, calls
+`cookies()` or `headers()`, or reads media from `site()` that is closed to
+strangers, is sent `private, no-store`, as reading request-time values makes a
+Next.js route dynamic. A page rendered for a signed-in member always is.
+
+Handing `searchParams` on, as spreading a page's props does, reads nothing;
+only awaiting it does. Reading `member` on a signed-out request does not make
+the page personal, for the same reason: spreading props reads every one.
+
+A template's route segment config overrides the inference:
+
+- `export const dynamic = 'force-dynamic'`: always personal;
+- `export const dynamic = 'force-static'`: `cookies()`, `headers()` and
+  `searchParams` are empty and `member` is undefined, so the page can always
+  be shared, even with a member signed in;
+- `export const revalidate = <seconds> | false`: the page's lifetime,
+  overriding its content type's and the site's, while a page's own "Keep
+  copies for" still wins. `0` keeps nothing; `false` keeps it a year, for a
+  CDN that purges by tag.
+
+### Metadata
+
+An optional `export async function generateMetadata(props)` returns the part
+of Next.js's `Metadata` that `<SeoHead>` writes: `title`, `description`,
+`alternates.canonical`, `alternates.languages`, `robots` and
+`openGraph.images`. Each value given wins over the page's own search and
+sharing fields. It runs before the page, in its render, so it may await
+`searchParams` or call `site()`, and may throw an outcome.
+
+### Folder templates
+
+A template may be a folder, as a Next.js route is: the alias `pages/my-records`
+resolves to `pages/my-records.tsx` or `pages/my-records/page.tsx`, the file
+winning if both exist, so a page's own parts can sit beside it.
+`crombolo components new --folder` makes one. In `blocks/` and `emails/`,
+where each file is one component, `page.tsx` is a component named `page`.
+Next.js's `not-found.tsx` and `error.tsx` beside a page are not supported; the
+status pages and the message an outcome carries cover them.
 
 ## URLs
 
@@ -938,6 +1101,9 @@ that document: the Content section, a start node above it, and Read on it
 preview to reload over `/umbraco/PreviewHub` (`refreshed`).
 `DELETE /umbraco/management/api/v1/preview` ends it.
 
+A page whose code redirects shows the editor a notice naming the status and
+the target instead, so the preview frame stays where it is (story 206).
+
 A preview, like a member's page, is sent `private, no-store`, so nothing in
 front of the site keeps it ([`operations.md`](operations.md), "Behind a CDN").
 
@@ -1153,6 +1319,243 @@ template (over `EmailProps`) for one a form's Send email workflow names as its
 `template` ([`forms.md`](forms.md#an-e-mail-template)), and a plain component
 otherwise. An e-mail template renders through `Renderer.renderEmail`, with the
 same time limit and layout chain as a page.
+
+## Middleware
+
+A site's middleware is code it imports and lists in `crombolo.config.ts`, by
+stage, each run in the order given (story 210):
+
+```ts
+import { securityHeaders } from '@acme/crombolo-security'
+import { regionRedirect } from './middleware/region.ts'
+
+export default defineConfig({
+  middleware: {
+    request: [securityHeaders(), regionRedirect({ default: 'en' })],
+    route: [legacyPaths()],
+    page: [auditTrail],
+  },
+})
+```
+
+**The contract** is `@crombolo/common`'s, re-exported by
+`@crombolo/crombolo/middleware` with crombolo's types bound. Anything that meets
+it can be listed: the site's own code, an npm package's factory, or a server
+bundle's `middleware`. Nothing joins the chain without a line in the config.
+
+```ts
+type MiddlewareHandler = (request: Request, next: (request?: Request) => Promise<Response>, context: MiddlewareContext) => Response | Promise<Response>
+type Middleware = MiddlewareHandler | { name: string; matcher?: Matcher | Matcher[]; handle: MiddlewareHandler }
+// context: url, cookies, site(), page, member, preview, signal, stage
+```
+
+Each stage is an onion, outermost first:
+- **Answer outright:** don't call `next`, for example
+  `Response.redirect(url, 308)` or a `401`.
+- **Change the request:** call `next(changed)`. Changed headers and cookies
+  reach 206's `headers()` and `cookies()`.
+- **Rewrite:** call `next(rewrite(request, '/other'))`.
+- **Change the answer:** return `next()`'s `Response` altered.
+  `withCookie(response, name, value)` sets a cookie.
+
+| Stage | Runs | Sees | May |
+|---|---|---|---|
+| `request` | first, before the redirect tables and content finding | the request | answer, redirect, rewrite, change headers and cookies |
+| `route` | after content finding; an address the redirect tables answer skips it | `context.page` | redirect, rewrite (resolved again from the start), answer |
+| *public access* | *always, on the page that finally renders* | | |
+| `page` | after access, before rendering | `context.page`, `context.member` | change the answer; a rewrite is refused |
+
+- **Site requests only:** pages, the not-found page included, story 211's
+  routes, `/css/` and `/scripts/`.
+  - **Never** the back office, the APIs, member, form, island and bundle
+    endpoints, `/media/`, `/sitemap.xml`, `/robots.txt` or `/health`. They
+    are answered before the chain is reached.
+  - **A rewrite into any of them is refused,** as is one to another origin.
+- **Rewrites** are resolved in full at the new path, so redirects and public
+  access apply there too.
+  - **Query:** the page sees the rewritten query, or the original one when the
+    rewrite gives none.
+  - **Address and caching:** the address stays as the visitor asked, and the
+    answer is cached under it. `<SeoHead>`'s canonical names the page that
+    rendered.
+- **Matchers** use the built-in `URLPattern`, with Next.js's syntax:
+  - `'/shop/:path*'`;
+  - `'/((?!api|_next).*)'`;
+  - `{ source, has, missing }` on headers, cookies and the query.
+
+  A middleware that doesn't match costs nothing.
+- **Caching.** Reading `context.cookies`, or a `Set-Cookie` on the answer,
+  makes it `private, no-store`. A redirect or rewrite decided from the path
+  alone stays cacheable. A middleware deciding per visitor from the raw
+  request must say so with `context.cookies` or a `Cache-Control` of its own.
+- **Time limit.** The whole chain shares one,
+  `CROMBOLO_MIDDLEWARE_TIMEOUT_MS` (2 seconds). A middleware's clock stops
+  while it awaits `next()`, so crombolo's own work and the page's rendering
+  never count. A throw, or running past the limit, answers the error page with
+  a reference, and the log names the middleware.
+- **Preview.** The chain runs with the previewing editor as the visitor and
+  `context.preview` true. A redirect shows the editor a notice instead of
+  moving the frame.
+- **The member's session** is looked up only when it is needed: for the `page`
+  stage, or when `context.site()` reads something personal.
+- **Next.js code.** `fromNextMiddleware(fn, { matcher })` runs a Next.js-style
+  middleware as one link: `NextResponse.next()` carries on (with replaced
+  request headers if given), `rewrite()` renders another site path,
+  `redirect()` and any other response answer, and headers and cookies set on a
+  `NextResponse` reach the final answer. This is unrelated to
+  `@crombolo/next-integration/middleware`, which is a Next.js app's own.
+
+The runner is `packages/server/src/middleware.ts`, and the stages are wired in
+`server.ts` (`siteRequest`, `renderSite`, `pageStage`).
+
+## Route handlers
+
+A site's own endpoints are listed in `crombolo.config.ts` (story 211):
+
+```ts
+import { Outcome, ok, route } from '@crombolo/crombolo/routes'
+
+export default defineConfig({
+  routes: [
+    route('/api/records/:species', {
+      GET: (_request, { params, site }) => site().sql.recordsFor(params.species),
+      POST: async (request, { member }) => {
+        const signedIn = await member()
+        if (!signedIn) return Outcome.unauthorized('Sign in to add a record.')
+        return Response.json(await addRecord(signedIn, await request.json()), { status: 201 })
+      },
+    }, { members: true }),
+  ],
+})
+```
+
+**The contract** is `@crombolo/common`'s (`route`, `RouteHandler`,
+`RouteContext`, `SiteRoute`), re-exported by `@crombolo/crombolo/routes` with
+crombolo's types bound. A server bundle declares its routes the same way
+([`bundles.md`](bundles.md#routes)).
+
+- **A handler** is `(request, context) => Response | Result`:
+  - a `Response` is sent as it is;
+  - an `Ok` is sent as JSON, so a `Result`-returning query can be the answer;
+  - an `Outcome`, returned or thrown, answers its status. A redirect redirects,
+    and an error is problem+json (`{ type, title, status, detail, errors }`).
+    A request that prefers HTML gets the status page instead.
+- **The context** holds `params`, `url`, `cookies`, `setCookie(name, value,
+  options)`, `site()` (206's services, acting as the caller), `member()` (the
+  signed-in member by cookie or bearer token, looked up when asked) and
+  `signal`. 206's `cookies()`, `headers()` and navigation work inside a
+  handler too.
+- **Paths** use `URLPattern` syntax (`/api/:id`, `/files/:path*`) and start
+  with `/`. The boot refuses, by name:
+  - a path under `/umbraco`, `/crombolo`, `/media` or the back office;
+  - two routes on one path.
+- **A route wins at its path**, ahead of content finding. When it hides a
+  published page, the "Routes and pages" status check (group Site) names both.
+- **Methods:** as declared. `HEAD` comes from `GET`, `OPTIONS` answers with
+  `Allow`, and any other method gets a 405 with `Allow`.
+- **Middleware:** only the `request` stage runs before a route; `route` and
+  `page` are about pages.
+- **Errors and time.** A throw is a 500 with a reference that the log line
+  shares; the message is shown only where error details are.
+  `CROMBOLO_ROUTE_TIMEOUT_MS` (10 seconds) answers 504 and aborts `signal`.
+- **Caching.** Every answer is `private, no-store` unless a `GET` or `HEAD`
+  handler sets its own `Cache-Control`.
+- **Nodes:** routes answer where the site is served (`all` and `web`), never
+  on an `api` node.
+
+| Option | Default | |
+|---|---|---|
+| `members` | anyone | `true` for any signed-in member, or `{ groups: [...] }` (in any case): 401 or 403 before the handler runs |
+| `csrf` | on | a cookie-authenticated `POST`, `PUT`, `PATCH` or `DELETE` must come from this site or carry the anti-forgery token; `false` for a webhook receiver |
+| `rateLimit` | the site's | `{ perMinute, by: 'member' \| 'caller' }`, or `false` for none |
+| `cors` | off | answers the Delivery API's allowed origins (`deliveryApi.cors.allowedOrigins`), pre-flights included |
+
+**CSRF.** A request counts as from this site when its `Sec-Fetch-Site` says
+`same-origin`, or its `Origin` is the site's. Otherwise it needs the member's
+anti-forgery token: a `Crombolo-Antiforgery` header, or an `__antiforgery`
+form field. The layout writes the token with `<AntiforgeryMeta />`, and
+`crombolo.fetch` from `/crombolo/bundle.js` sends it. A bearer-token call is
+never checked, and neither is a visitor's.
+
+**Rate limits.** Every route has the site-wide default:
+`CROMBOLO_ROUTE_RATE_LIMIT_PER_MINUTE` (2000 a minute per caller; 0 for none).
+That is high enough to stop only a flood. A caller is the member when signed
+in, otherwise the address, which is the connection's or the last
+`X-Forwarded-For` entry behind a private proxy. Each server counts in its own
+memory, so behind N servers the limit is N times as large. A caller over the
+limit gets 429 with `retry-after`.
+
+**Next.js route modules.** `fromRouteModule('/api/hello', module)` takes a
+Next.js-style `route.ts`: its exported `GET`, `POST` and so on, called with
+`{ params }` as a promise. Its exported `csrf`, `rateLimit` and `members` are
+honoured.
+
+The pipeline is `packages/server/src/routes.ts`.
+
+## Islands
+
+A view whose first statement is `'use client'` runs in the browser (story 209;
+writing one: [`writing-components.md`](writing-components.md), "Interactive
+parts").
+
+1. **On the server it is a stub.** While views are copied into a snapshot
+   generation, a client module is written as a stub:
+   - each of its exports renders a `<crombolo-island>` holding its props as
+     JSON in a `<script type="application/json">`, then its `fallback` or its
+     `children`;
+   - the JSON has `<`, `>`, `&`, U+2028 and U+2029 escaped, so nothing in it
+     can close the script;
+   - the source is kept under the generation's `.islands/src/`.
+
+   The server never imports React. The snapshot transform is
+   `islandTransform` (`packages/render/src/islands.ts`).
+2. **Its browser code is built with the generation.** `buildIslands`
+   (`packages/server/src/islands.ts`) bundles, in one `Bun.build` before the
+   generation is rendered:
+   - the client modules, from their source;
+   - `components/client/*`, which `<Island>` mounts;
+   - React's mount, `@crombolo/crombolo/islands-react`.
+
+   The output, with code splitting and hashed names, goes to `.islands/out/`
+   with a `manifest.json`, and is served at `/crombolo/islands/<generation>/…`
+   with immutable caching. A page always loads the code built from the views
+   it rendered with, and an edit in development is a new generation like any
+   other. A failed build is logged and the generation still serves: its
+   islands show their fallback.
+3. **A page with an island ends with two tags**, before `</body>`: a `<meta
+   name="crombolo-islands">` naming its manifest, and `<script type="module"
+   src="/crombolo/islands.js">`.
+   - **The loader** finds each island, waits for its `data-load` (`visible`,
+     `idle` or `load`), imports its module once however many islands share
+     it, and mounts it. A client component is rendered with React, with the
+     server-rendered children as its `children`. An `<Island>` module is
+     given the element and its props. A missing or failing island keeps its
+     fallback and says so in the console.
+   - **No inline script.** Crombolo writes no inline executable script: the
+     props are data and everything else is a file. A strict `script-src
+     'self'` policy works, and the pages stay cacheable at a CDN, where a
+     per-request nonce could not.
+
+**The boundary.** A client module importing server-only code
+(`@crombolo/crombolo/server`, `/headers`, `/navigation`, Crombolo's internal
+packages, `node:` and `bun:` modules) fails the build with both files named,
+and `crombolo components check` reports it without importing the module.
+Those three entry points also throw if a browser ever loads them.
+
+**A Vite build instead.** With `islands: { manifest: 'dist/.vite/manifest.json' }`:
+- **Production:** Crombolo bundles nothing. It serves the files Vite built at
+  `/crombolo/islands/vite/…`, and makes Vite's manifest over into its own by
+  source path. The site's Vite config lists its client modules,
+  `components/client/*` and `@crombolo/crombolo/islands-react` as inputs.
+- **Development:** `islands.devServer` points at Vite's dev server, and the
+  islands load from it.
+
+Templates are the same either way. Building ahead, for hosts that cannot
+write at runtime, is story `218`.
+
+Islands need snapshots, which the server always takes. A `Renderer` built
+without them, as some unit tests build one, imports client modules as they
+are.
 
 ## Blocks
 

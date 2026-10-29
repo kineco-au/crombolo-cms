@@ -1,0 +1,75 @@
+[content-type]
+alias = "expression"
+name = "Expression"
+description = "One bottling in the range"
+icon = "icon-wine-glass"
+components = ["pages/expression"]
+default-component = "pages/expression"
+
+[[tab]]
+name = "Content"
+
+[[tab.property]]
+alias = "title"
+name = "Title"
+type = "textstring"
+mandatory = true
+site-search = "high"
+
+[[tab.property]]
+alias = "kind"
+name = "Kind"
+description = "House malt, Lightly peated, Sherry matured, Cask strength"
+type = "textstring"
+
+[[tab.property]]
+alias = "productType"
+name = "Product type"
+description = "What the bottling is, e.g. Whisky"
+type = "textstring"
+
+[[tab.property]]
+alias = "summary"
+name = "Summary"
+description = "One line, shown wherever this bottling is listed"
+type = "textarea"
+
+[[tab.property]]
+alias = "bottleImage"
+name = "Bottle"
+type = "imageMediaPicker"
+
+[[tab.property]]
+alias = "bodyText"
+name = "Body"
+type = "richtext"
+
+[[tab]]
+name = "Specification"
+
+[[tab.property]]
+alias = "abv"
+name = "ABV"
+description = "As it is printed on the label, e.g. 46%"
+type = "textstring"
+
+[[tab.property]]
+alias = "age"
+name = "Age"
+description = "Years in cask. Leave empty for a batch release."
+type = "numeric"
+
+[[tab.property]]
+alias = "batch"
+name = "Batch"
+description = "Shown instead of an age, e.g. 07"
+type = "textstring"
+
+[[tab]]
+name = "Tasting"
+
+[[tab.property]]
+alias = "tastingNotes"
+name = "Tasting notes"
+description = "Nose, palate and finish, picked from the Library"
+type = "tastingNotePicker"

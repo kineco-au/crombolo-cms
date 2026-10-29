@@ -25,7 +25,14 @@ export interface WebhookDefinition {
   contentTypeKeys: string[]
   /** A value is either `env:NAME` or, kept in the database only, the secret itself. */
   headers: Record<string, string>
+  /**
+   * What is posted: Umbraco's Minimal `{ Id }`, or `crombolo`, which adds the
+   * item's content type and its ancestors' keys (story 208). Set in the file only.
+   */
+  payload?: WebhookPayload
 }
+
+export type WebhookPayload = 'minimal' | 'crombolo'
 
 const ENV_REFERENCE = /^env:([A-Za-z_][A-Za-z0-9_]*)$/
 const HEADER_NAME = /^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/
@@ -51,6 +58,10 @@ export function webhookProblems(webhook: WebhookDefinition, store: WebhookStore)
   if (!/^https?:\/\/[^\s/]+/.test(webhook.url))
     problems.push('The URL must be a web address starting http:// or https://.')
   if (webhook.events.length === 0) problems.push('Choose at least one event.')
+  if (webhook.payload === 'crombolo' && store === 'database')
+    problems.push(
+      "This webhook sends Crombolo's payload, which is set in its file, so it stays with the site's files.",
+    )
   for (const event of webhook.events)
     if (!WEBHOOK_EVENT_ALIASES.has(event))
       problems.push(`"${event}" is not an event this site raises.`)
@@ -102,6 +113,7 @@ export function writeWebhookFile(
   if (!webhook.enabled) out.push('enabled = false')
   out.push(`events = ${list(webhook.events)}`)
   if (contentTypes.length > 0) out.push(`content-types = ${list(contentTypes)}`)
+  if (webhook.payload === 'crombolo') out.push('payload = "crombolo"')
   const headers = Object.keys(webhook.headers).sort()
   if (headers.length > 0) {
     out.push('', '[webhook.headers]')
@@ -120,6 +132,7 @@ const KEYS = new Set([
   'events',
   'content-types',
   'headers',
+  'payload',
 ])
 
 /** A file back to a webhook, or what is wrong with it. Unknown keys are refused, as in every schema file. */
@@ -151,6 +164,9 @@ export function parseWebhookFile(
     for (const [name, value] of Object.entries(table.headers as Record<string, unknown>))
       if (typeof value === 'string') headers[name] = value
       else problems.push(`${file}: webhook.headers.${name} must be text`)
+  const payload = text('payload')
+  if (table.payload !== undefined && payload !== 'minimal' && payload !== 'crombolo')
+    problems.push(`${file}: webhook.payload must be "minimal" or "crombolo"`)
   const webhookAlias = text('alias') ?? undefined
   const written = text('key')
   if (written !== null && !/^[0-9a-f-]{36}$/i.test(written))
@@ -169,6 +185,7 @@ export function parseWebhookFile(
       /^[0-9a-f-]{36}$/i.test(value) ? value.toLowerCase() : value,
     ),
     headers,
+    ...(payload === 'crombolo' ? { payload } : {}),
   }
   problems.push(...webhookProblems(webhook, 'files').map((message) => `${file}: ${message}`))
   return problems.length > 0 ? { problems } : { webhook, problems }

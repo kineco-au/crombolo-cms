@@ -155,6 +155,10 @@ the most specific match wins: hostname and language, then either, then neither. 
 page that fails to render leaves the plain `Not Found`, rather than a second
 error.
 
+`pages.notFound` in `crombolo.config.ts` names the page by path instead, and
+wins when set. It also answers a page's own `notFound()`, with the message that
+call gave ([`rendering.md`](rendering.md#status-pages), story 206).
+
 ## Reserved properties
 
 These work on any type that declares them, as in Umbraco; none is part of

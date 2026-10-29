@@ -1,0 +1,13 @@
+{
+  "id": "demo/harbourstone-next",
+  "name": "Harbourstone Distillery (Next.js)",
+  "description": "the Harbourstone distillery with a Next.js front end in web/: the same content, drafts in Draft Mode, a cache cleared by webhook, and a comparison of the bottlings chosen in the browser",
+  "distribute": true,
+  "next": true,
+  "bundles": [
+    {
+      "package": "@crombolo/simple-redirects",
+      "import": "redirects"
+    }
+  ]
+}

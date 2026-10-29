@@ -151,6 +151,8 @@ requests, only server-side and build-time front ends can call it.
 | `056` | An app renders a form itself | could | M | done | 051 |
 | `057` | A CDN can cache the site and the API | should | L | done | — |
 | `058` | Translations, menus and site settings reach the app | could | M | ready | 141 |
+| `216` | Rich text as JSON | should | M | ready | — |
+| `217` | Pages only an app renders | could | S | ready | 208 |
 
 ### Epic G — Trusting and extending bundles
 
@@ -256,6 +258,18 @@ requests, only server-side and build-time front ends can call it.
 | `144` | Themes configured without code | could | L | on hold | — |
 | `184` | Blocks render their own components | should | M | done | — |
 | `199` | Crop URLs with Umbraco's options | should | S | ready | 197 |
+| `206` | Pages with the site's own logic | should | L | done | — |
+| `207` | Members from the site's own code | should | M | ready | 206 |
+| `208` | A Next.js front end | should | L | done | — |
+| `209` | Interactive islands | should | M | done | — |
+| `210` | Middleware | should | M | done | — |
+| `211` | Route handlers | should | L | done | — |
+| `212` | Streaming and Suspense | could | L | ready | 206 |
+| `213` | Image, Link and Script components | should | M | backlog | 199 |
+| `214` | Live reload and an error overlay | should | M | ready | — |
+| `215` | React on the server | could | XL | on hold | 206, 209, 212 |
+| `218` | Build islands ahead of time | could | S | ready | 209 |
+| `219` | Server actions | should | L | ready | — |
 
 ### Epic P — The command line
 

@@ -20,6 +20,7 @@ export default class ComponentsNew extends BaseCommand {
   static override examples = [
     '<%= config.bin %> components new pages/article',
     '<%= config.bin %> components new --block quote',
+    '<%= config.bin %> components new --folder pages/my-records',
   ]
   static override args = {
     alias: Args.string({ description: "the component's alias" }),
@@ -28,6 +29,9 @@ export default class ComponentsNew extends BaseCommand {
     block: Flags.string({
       summary: "an element type's block component: components/blocks/<alias>.tsx",
       helpValue: '<element alias>',
+    }),
+    folder: Flags.boolean({
+      summary: "components/<alias>/page.tsx, so the page's own parts can sit beside it",
     }),
   }
   static override spec = {
@@ -50,8 +54,9 @@ export default class ComponentsNew extends BaseCommand {
     const alias = args.alias
     if (!isSafeAlias(args.alias))
       this.fail('usage', `"${args.alias}" is not a path inside ${here(config.componentsDir)}.`)
-    const file = componentFileFor(config.componentsDir, args.alias)
-    if (existsSync(file)) this.fail('conflict', `${here(file)} already exists.`)
+    const existing = componentFileFor(config.componentsDir, args.alias)
+    if (existsSync(existing)) this.fail('conflict', `${here(existing)} already exists.`)
+    const file = componentFileFor(config.componentsDir, args.alias, { folder: flags.folder })
     // A content type that names this alias gets the page scaffold, which takes
     // PageProps; one in emails/, or one a form's Send email names, gets the
     // e-mail one, which takes EmailProps; anything else gets the plain one.

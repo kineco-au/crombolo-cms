@@ -1,7 +1,7 @@
 /**
- * `@crombolo/delivery-client` is the one package published as built JavaScript:
- * an app's toolchain cannot be assumed to run TypeScript from `node_modules`, as
- * Bun does. In the workspace it is source like every other package; publishing
+ * `@crombolo/delivery-client` is published as built JavaScript, as
+ * `@crombolo/next-integration` is: an app's toolchain cannot be assumed to run
+ * TypeScript from `node_modules`, as Bun does. In the workspace it is source like every other package; publishing
  * builds `dist/` and packs it under a manifest that points there.
  * docs/packaging-and-upgrades.md, "Packages".
  */

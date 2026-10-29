@@ -61,6 +61,7 @@ import {
 import type { DocumentOperations, MediaOperations } from '@crombolo/content'
 import { servedContract } from '@crombolo/contracts'
 import {
+  CACHE_KEEP_FOR_ALIAS,
   CHOICE_SOURCE_KINDS,
   type ChoiceSourceKind,
   contractPathFor,
@@ -98,9 +99,9 @@ import {
 import {
   BUNDLE_SCRIPT,
   BUNDLE_SCRIPT_PATH,
-  BUNDLE_SITE_PATH,
   cacheable,
   cacheControl,
+  chosenLifetime,
   contentForNode,
   DEFAULT_MEDIA_CACHE_MEGABYTES,
   DEVELOPMENT_LIMITS,
@@ -108,12 +109,20 @@ import {
   FORM_SCRIPT_PATH,
   FORM_SUBMIT_PATH,
   formAction,
+  ISLAND_LOADER_PATH,
+  ISLAND_LOADER_SCRIPT,
+  ISLANDS_PATH,
+  islandTransform,
+  type Lifetime,
   lifetimeFor,
   MEMBER_EXTERNAL_SIGN_IN_PATH,
   MediaCache,
+  type PageOutcome,
   PRIVATE_NO_STORE,
   PublishedCache,
+  type PublishedContent,
   Renderer,
+  type RequestMember,
   resolveCacheSettings,
   type SnapshotStatus,
   setFormFieldTypes,
@@ -143,7 +152,6 @@ import {
 import { BUNDLES_CHANGED_EVENT, type BundleReload, createBundleReloader } from './bundle-reload.ts'
 import { bundleChains, bundleTablesReport } from './bundle-tables.ts'
 import {
-  type BundleMember,
   bundleRouteGroups,
   createBundleRedirects,
   createServerBundles,
@@ -224,14 +232,31 @@ import {
 
 export { PREVIEW_COOKIE }
 
+import type { SiteRoute } from '@crombolo/common'
 import { BACKOFFICE_EXTERNAL_PATH, backofficeAudience } from './backoffice-external.ts'
 import { createExternalSignIn } from './external-sign-in.ts'
 import {
   createBundleIdentityProviders,
   IdentityProviderOverrides,
 } from './identity-provider-overrides.ts'
+import {
+  buildIslands,
+  builtIslandFile,
+  devServerIslandManifest,
+  viteIslandManifest,
+  viteOutDir,
+} from './islands.ts'
+import {
+  hasMiddleware,
+  isSitePath,
+  type MiddlewareBudget,
+  MiddlewareError,
+  requestCookies,
+  runStage,
+} from './middleware.ts'
 import { callerAddress } from './rate-limit.ts'
 import { syncConfiguredRedirects } from './redirects.ts'
+import { createRoutes, type DeclaredRoute, siteRouteProblems } from './routes.ts'
 import {
   bootSchema,
   CacheInstructionPoller,
@@ -250,6 +275,14 @@ import {
 } from './server-events.ts'
 import { AttemptLimiter, createSetupRoutes } from './setup.ts'
 import { siteSearchFor } from './site-search.ts'
+import { createSiteServices } from './site-services.ts'
+import {
+  genericStatusPage,
+  previewRedirectNotice,
+  resolveStatusPage,
+  statusPageKind,
+  unresolvedStatusPages,
+} from './status-pages.ts'
 import { TwoFactorService, USER_TWO_FACTOR_PROVIDER } from './two-factor.ts'
 import { summariseUpgrades } from './upgrade-summary.ts'
 import { assertViewRuntime } from './view-runtime.ts'
@@ -661,6 +694,22 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
           hash: hash.slice(0, 8),
         })
     },
+    // Story 209: a `'use client'` view is a stub on the server, and its browser
+    // code is built with the generation, unless a site's Vite build supplies it.
+    transform: islandTransform,
+    beforeSwap: async (generation) => {
+      if (config.islands?.manifest || (config.development && config.islands?.devServer)) return
+      try {
+        await buildIslands({ ...generation, development: config.development })
+      } catch (error) {
+        renderLog.error(
+          "The views' islands did not build; their pages show each island's fallback: {problems}",
+          {
+            problems: error instanceof Error ? error.message : String(error),
+          },
+        )
+      }
+    },
   })
   await snapshots.prepare()
   // Before the poller, which tells it to look again on a `views` instruction
@@ -671,6 +720,12 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     componentsDir: config.componentsDir,
     snapshots,
     renderTimeoutMs: config.renderTimeoutMs,
+    islandsManifest: (generation) =>
+      config.development && config.islands?.devServer
+        ? `${ISLANDS_PATH}/dev/manifest.json`
+        : config.islands?.manifest
+          ? `${ISLANDS_PATH}/vite/manifest.json`
+          : generation && `${ISLANDS_PATH}/${generation}/manifest.json`,
   })
   // The site's own redirects are code, so the database follows the file: rules it
   // no longer declares are removed, which is what makes deleting one from config
@@ -704,26 +759,13 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
   const formCors = corsPolicy(deliverySettings)
   /**
    * The server halves of the site's bundles. Back-office routes answer only
-   * where the backoffice is; member and public routes (story 186) wherever the
-   * site is served.
+   * where the backoffice is; site routes (story 211) wherever the site is
+   * served, through the site's route table.
    *
    * Capabilities are built here, from what this node already holds, so a bundle
    * is handed a narrow interface rather than the database. A bad bundle fails the
    * boot — see `createServerBundles`.
    */
-  const asBundleMember = (member: {
-    key: string
-    name: string
-    username: string
-    email: string
-    roles: string[]
-  }): BundleMember => ({
-    key: member.key,
-    name: member.name,
-    username: member.username,
-    email: member.email,
-    groups: member.roles,
-  })
   // Story 198: media as the member, built at the first request, when the media
   // operations and the store it writes through exist.
   let bundleMedia: BundleMediaFactory | undefined
@@ -783,23 +825,6 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
               return bundleMedia(caller, bundle)
             },
           },
-          site: {
-            session: async (request) => {
-              const session = await members.session(request)
-              return session && { member: asBundleMember(session.member), verify: session.verify }
-            },
-            memberByToken: memberAuthorizationEnabled(deliverySettings)
-              ? async (token) => {
-                  const named = await deliveryMembers.member(token)
-                  if (!named?.approved || named.lockedOut) return undefined
-                  const member = await new MemberRepository(db).byKey(named.key)
-                  return member && asBundleMember(member)
-                }
-              : undefined,
-            cors: formCors,
-            callerAddress: (request) =>
-              callerAddress(peers.get(request), request.headers.get('x-forwarded-for')),
-          },
         })
       : undefined
   if (bundles) {
@@ -824,14 +849,22 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
         prefix: bundle.prefix,
         section: bundle.section,
       })
-    if (config.role !== 'api' && bundle.routes.some((route) => route.audience !== 'backoffice'))
-      log.info('Bundle {name} answering members and visitors below {prefix}', {
+    const paths = bundle.routes
+      .filter((route) => route.audience === 'site')
+      .map((route) => route.path)
+    if (config.role !== 'api' && paths.length > 0)
+      log.info('Bundle {name} answering on the site at {paths}', {
         name: bundle.name,
-        prefix: bundle.sitePrefix,
+        paths: paths.join(', '),
       })
   }
   {
-    const named = bundleRouteGroups(config.bundles)
+    const named = [
+      ...bundleRouteGroups(config.bundles),
+      ...(config.routes ?? []).flatMap((route) =>
+        typeof route.options.members === 'object' ? route.options.members.groups : [],
+      ),
+    ]
     if (named.length > 0) {
       const existing = new Set(
         (
@@ -887,6 +920,11 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     },
   })
   await poller.start(config.development ? 2_000 : 5_000)
+  for (const { kind, path } of await unresolvedStatusPages(cache, config.pages).catch(() => []))
+    renderLog.warning(
+      "pages.{kind} is '{path}', which no published page answers; that status shows a plain page until one does.",
+      { kind, path },
+    )
   const watcher =
     config.development && owns
       ? watchSchema(
@@ -1042,7 +1080,10 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
           },
           sitemap: (request, host) => seo.sitemapItems(request, host),
           notFound: async (host, path) => {
-            const found = await seo.notFound(host, path)
+            // The page a rendered site answers with, so an app shows the same one (story 208).
+            const found =
+              (await resolveStatusPage(cache, config.pages, 'notFound', host, path)) ??
+              (await seo.notFound(host, path))
             return found && { key: found.content.key, culture: found.culture }
           },
           preview: async (request, keyed) => {
@@ -1106,6 +1147,45 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     draft: draftModel,
   })
   const seoPath = `${paths.pluginPath}/api/seo`
+  const siteServicesFor = createSiteServices({ db, cache })
+
+  // Story 211: the site's routes and its bundles' site routes, at their own
+  // paths, ahead of content finding; one pipeline answers bundles' back-office
+  // routes too.
+  const declaredRoutes: DeclaredRoute[] = [
+    ...(config.routes ?? []).map(
+      (route): DeclaredRoute => ({ route: route as SiteRoute, owner: 'the site' }),
+    ),
+    ...(bundles?.siteRoutes() ?? []),
+  ]
+  {
+    const problems = siteRouteProblems(declaredRoutes, config.backOfficePath)
+    if (problems.length > 0)
+      throw new Error(`The site's routes cannot be mounted:\n- ${problems.join('\n- ')}`)
+  }
+  const siteRoutes = createRoutes<RequestMember>(declaredRoutes, {
+    backOfficePath: config.backOfficePath,
+    timeoutMs: config.routeTimeoutMs,
+    defaultPerMinute: config.routeRateLimitPerMinute,
+    siteFor: (member) => siteServicesFor(member),
+    session: (request) => members.session(request),
+    memberByToken: memberAuthorizationEnabled(deliverySettings)
+      ? async (token) => {
+          const named = await deliveryMembers.member(token)
+          if (!named?.approved || named.lockedOut) return undefined
+          return (await new MemberRepository(db).byKey(named.key)) ?? undefined
+        }
+      : undefined,
+    callerAddress: (request) =>
+      callerAddress(peers.get(request), request.headers.get('x-forwarded-for')) ?? 'unknown',
+    statusPage: (request, outcome) => {
+      const url = new URL(request.url)
+      return statusResponse(request, url.pathname, url.host, undefined, outcome)
+    },
+    logError: (message, properties) => renderLog.error(message, properties),
+    showDetails: config.errors.showDetails,
+    cors: formCors,
+  })
 
   const notImplementedLog = logger('not-implemented')
   const notImplemented = new NotImplementedLog((line, entry) => {
@@ -1177,6 +1257,21 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
   const managementDeps = createDeps({
     config,
     paths,
+    hiddenByRoutes: async () => {
+      const snapshot = await cache.snapshot()
+      const hidden: Array<{ route: string; owner: string; page: string; url: string }> = []
+      for (const [url, content] of snapshot.byRoute) {
+        const found = siteRoutes.match(url)
+        if (found)
+          hidden.push({
+            route: found.entry.route.path,
+            owner: found.entry.owner,
+            page: content.name,
+            url,
+          })
+      }
+      return hidden
+    },
     extensions,
     db,
     webhooks,
@@ -1441,6 +1536,17 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
       if (response) return response
     }
 
+    // Islands (story 209): the loader, and each generation's browser code.
+    if (pathname === ISLAND_LOADER_PATH)
+      return new Response(ISLAND_LOADER_SCRIPT, {
+        headers: {
+          'content-type': 'text/javascript; charset=utf-8',
+          'cache-control': config.development ? 'no-cache' : 'public, max-age=3600',
+        },
+      })
+    if (pathname.startsWith(`${ISLANDS_PATH}/`))
+      return islandFile(pathname.slice(ISLANDS_PATH.length + 1))
+
     // The progressive-enhancement script. A site adds it to a layout; a form
     // works without it, so nothing emits it automatically.
     if (pathname === FORM_SCRIPT_PATH)
@@ -1471,8 +1577,6 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
             'cache-control': config.development ? 'no-cache' : 'public, max-age=3600',
           },
         })
-      if (pathname.startsWith(`${BUNDLE_SITE_PATH}/`))
-        return (await bundles?.site(request, url)) ?? new Response('Not Found', { status: 404 })
     }
 
     // Not on an `api` node, which serves no public site to describe.
@@ -1480,9 +1584,165 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
       return pathname === '/sitemap.xml' ? seo.sitemap(request, url.host) : seo.robots(request)
 
     if (pathname.startsWith('/media/')) return serveMedia(request, pathname, url.searchParams)
+    return siteRequest(request, url)
+  }
+
+  /** What a chain is carrying through one request (story 210). */
+  interface ChainRun {
+    original: URL
+    budget: MiddlewareBudget
+    preview: boolean
+    /** Something read in the chain depends on who is asking. */
+    personal: boolean
+    /** The route stage has run; a rewrite it made is not routed through it again. */
+    routed: boolean
+  }
+
+  const chainOf = () => config.middleware
+  const anyMiddleware = () => {
+    const chain = chainOf()
+    return Boolean(
+      chain &&
+        (hasMiddleware(chain.request) || hasMiddleware(chain.route) || hasMiddleware(chain.page)),
+    )
+  }
+
+  /** A site request: the middleware chain around crombolo's own handling, when the site has one. */
+  async function siteRequest(request: Request, url: URL): Promise<Response> {
+    if (!anyMiddleware()) return siteFiles(request)
+    const run: ChainRun = {
+      original: url,
+      budget: {
+        remainingMs:
+          config.middlewareTimeoutMs > 0 ? config.middlewareTimeoutMs : Number.POSITIVE_INFINITY,
+      },
+      preview: Boolean(readCookie(request, PREVIEW_COOKIE) && (await authenticate(request))),
+      personal: false,
+      routed: false,
+    }
+    try {
+      const response = await runStage({
+        stage: 'request',
+        chain: chainOf()?.request,
+        request,
+        budget: run.budget,
+        context: (current) => chainContext(current, run, {}),
+        inner: (current) => {
+          assertSiteTarget(new URL(current.url), run)
+          return siteFiles(current, run)
+        },
+      })
+      return finishChain(response, run)
+    } catch (error) {
+      return middlewareFailure(request, url, error)
+    }
+  }
+
+  /** The site's stylesheets and scripts, or its pages. */
+  async function siteFiles(request: Request, run?: ChainRun): Promise<Response> {
+    const url = new URL(request.url)
+    const pathname = url.pathname
+    // A route wins at its path (story 211); an `api` node serves no site.
+    if (config.role !== 'api') {
+      const routed = await siteRoutes.handle(request, url)
+      if (routed) return routed
+    }
     if (pathname.startsWith('/css/')) return serveSiteFile(config.stylesheetsDir, pathname, '.css')
     if (pathname.startsWith('/scripts/')) return serveSiteFile(config.scriptsDir, pathname, '.js')
-    return renderSite(request, pathname, url.host)
+    return renderSite(request, pathname, url.host, run)
+  }
+
+  /** A rewrite stays on this site, among its own pages. */
+  function assertSiteTarget(target: URL, run: ChainRun): void {
+    if (target.origin !== run.original.origin)
+      throw new MiddlewareError(
+        'the middleware chain',
+        `A rewrite goes to a path on this site, not to ${target.origin}.`,
+      )
+    if (
+      target.pathname !== run.original.pathname &&
+      !isSitePath(target.pathname, config.backOfficePath)
+    )
+      throw new MiddlewareError(
+        'the middleware chain',
+        `A rewrite cannot go to ${target.pathname}, which is not one of this site's pages.`,
+      )
+  }
+
+  /** What a middleware is given: its cookies mark the answer personal when read. */
+  function chainContext(
+    request: Request,
+    run: ChainRun,
+    extra: { page?: PublishedContent; member?: Awaited<ReturnType<typeof members.resolve>> },
+  ) {
+    return {
+      url: new URL(request.url),
+      get cookies() {
+        run.personal = true
+        return requestCookies(request)
+      },
+      site: () =>
+        siteServicesFor(
+          run.preview ? undefined : async () => (await members.session(request))?.member,
+        )(),
+      preview: run.preview,
+      signal: request.signal,
+      ...extra,
+    }
+  }
+
+  /** The chain's answer, kept private when it depended on who asked, and shown to an editor in preview. */
+  function finishChain(response: Response, run: ChainRun): Response {
+    const location = response.headers.get('location')
+    if (run.preview && response.status >= 300 && response.status < 400 && location)
+      return new Response(previewRedirectNotice(response.status, location), {
+        headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': PRIVATE_NO_STORE },
+      })
+    if (!run.personal && !response.headers.has('set-cookie')) return response
+    const headers = new Headers(response.headers)
+    headers.set('cache-control', PRIVATE_NO_STORE)
+    headers.delete('etag')
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    })
+  }
+
+  /** A middleware that failed: logged by name with a reference, and answered with the error page. */
+  async function middlewareFailure(request: Request, url: URL, error: unknown): Promise<Response> {
+    if (request.signal.aborted) return new Response(null, { status: 499 })
+    const name = error instanceof MiddlewareError ? error.middleware : 'the middleware chain'
+    const message = error instanceof Error ? error.message : String(error)
+    const cause = error instanceof MiddlewareError ? error.cause : error
+    const reference = errorReference()
+    renderLog.error('Middleware {name} failed on {path}, reference {reference}: {detail}', {
+      name,
+      path: url.pathname,
+      reference,
+      detail: cause instanceof Error ? (cause.stack ?? message) : message,
+    })
+    return statusResponse(
+      request,
+      url.pathname,
+      url.host,
+      undefined,
+      {
+        status: 500,
+        name: 'serverError',
+        errors: [],
+        reference,
+        ...(config.errors.showDetails
+          ? {
+              details: {
+                message,
+                ...(cause instanceof Error && cause.stack ? { stack: cause.stack } : {}),
+              },
+            }
+          : {}),
+      },
+      { 'cache-control': PRIVATE_NO_STORE },
+    )
   }
 
   /**
@@ -1639,7 +1899,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     if (bundles && pathname.startsWith(bundles.basePath)) {
       const principal = await authenticate(request)
       if (!principal) return new Response('Unauthorized', { status: 401 })
-      const answered = await bundles.handle(request, url, principal)
+      const answered = await bundles.handle(request, url, principal, siteRoutes.invoke)
       if (answered) return answered
     }
 
@@ -2523,6 +2783,8 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     return renderer.renderModel(draft.content, draft.culture, {
       ...(await pageRequest(request)),
       search: siteSearchFor(db, cache, undefined),
+      // The previewing editor is the visitor, with no member.
+      site: siteServicesFor(undefined),
       // Blocks with no component say so here, and only here (story 184).
       preview: true,
     })
@@ -2533,6 +2795,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     return {
       origin: publicOrigin(request, config),
       url: request.url,
+      headers: request.headers,
       seo: await seo.siteDefaults(),
       signal: request.signal,
     }
@@ -2655,7 +2918,90 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     }
   }
 
-  async function renderSite(request: Request, pathname: string, host: string): Promise<Response> {
+  /**
+   * A page, through the route and page stages of the chain when it has them:
+   * the route stage once the page is found (a redirect the tables answer comes
+   * first), the page stage once its access is decided. Access is always checked
+   * on the page that finally renders.
+   */
+  async function renderSite(
+    request: Request,
+    pathname: string,
+    host: string,
+    run?: ChainRun,
+  ): Promise<Response> {
+    const chain = chainOf()
+    if (!run || !chain) return renderPage(request, pathname, host)
+    if (hasMiddleware(chain.route) && !run.routed) {
+      const resolved = run.preview ? undefined : await cache.resolve(host, pathname)
+      const redirected =
+        resolved?.redirect !== undefined ||
+        (!resolved && !run.preview && (await cache.redirect(host, pathname)) !== undefined)
+      // The redirect tables answer first, and there is no page for the later stages.
+      if (redirected) return renderPage(request, pathname, host)
+      run.routed = true
+      return runStage({
+        stage: 'route',
+        chain: chain.route,
+        request,
+        budget: run.budget,
+        context: (current) => chainContext(current, run, { page: resolved?.content }),
+        inner: (current) => {
+          const to = new URL(current.url)
+          if (to.pathname === pathname)
+            return pageStage(current, pathname, host, run, resolved?.content)
+          // Resolved again from the start: redirects, access, the page found there.
+          assertSiteTarget(to, run)
+          return renderSite(current, to.pathname, host, run)
+        },
+      })
+    }
+    return pageStage(request, pathname, host, run)
+  }
+
+  /** The page stage: after access is decided, so it sees the page that renders and may not change it. */
+  async function pageStage(
+    request: Request,
+    pathname: string,
+    host: string,
+    run: ChainRun,
+    found?: PublishedContent,
+  ): Promise<Response> {
+    const chain = chainOf()
+    if (!hasMiddleware(chain?.page)) return renderPage(request, pathname, host)
+    const resolved = found || run.preview ? undefined : await cache.resolve(host, pathname)
+    const content = found ?? resolved?.content
+    // A redirect has no page to see, so the redirect tables and `umbracoRedirect` answer first.
+    if (
+      resolved?.redirect !== undefined ||
+      (!content && !run.preview && (await cache.redirect(host, pathname)) !== undefined)
+    )
+      return renderPage(request, pathname, host)
+    const member = run.preview ? undefined : (await members.session(request))?.member
+    let shown = content
+    if (content) {
+      const decision = await members.decide(content, member)
+      if (decision.status === 'substitute')
+        shown = (await cache.byKey(decision.contentKey, content.culture)) ?? content
+    }
+    return runStage({
+      stage: 'page',
+      chain: chain?.page,
+      request,
+      budget: run.budget,
+      context: (current) => chainContext(current, run, { page: shown, member }),
+      inner: (current) => {
+        if (new URL(current.url).pathname !== pathname)
+          throw new MiddlewareError(
+            'the page stage',
+            'A rewrite is refused in the page stage: which page renders, and who may see it, is already decided.',
+          )
+        return renderPage(current, pathname, host)
+      },
+    })
+  }
+
+  async function renderPage(request: Request, pathname: string, host: string): Promise<Response> {
     const preview = await renderPreview(request, pathname, host)
     // An `api` node renders for preview and nothing else. The backoffice opens a
     // site URL to preview a draft, so the renderer has to be here; serving the
@@ -2675,7 +3021,9 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     // A page that is not the same for everyone is never kept: a member's, a
     // preview, a form's answer, or anything in a members-only branch — which a
     // visitor sees as the login page, at the same address.
-    let personal = Boolean(preview || member || submission || cookie)
+    // Whether the page itself read anything personal, the member included, it
+    // says in its result (story 206).
+    let personal = Boolean(preview || submission || cookie)
     const result =
       preview ??
       (await renderer.render(pathname, host, {
@@ -2687,6 +3035,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
           return members.decide(content, member)
         },
         search: siteSearchFor(db, cache, member),
+        site: siteServicesFor(member),
         ...(await pageRequest(request)),
       }))
     const cleared: Record<string, string> = cookie
@@ -2697,16 +3046,23 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
         const response = new Response(result.html, {
           headers: { 'content-type': 'text/html; charset=utf-8', ...cleared },
         })
-        if (personal) {
+        if (personal || result.personal) {
           response.headers.set('cache-control', PRIVATE_NO_STORE)
           return response
         }
         const ancestors = (await cache.navigation(result.content.culture)).ancestors(result.content)
+        const item = {
+          typeAlias: result.content.contentType.alias,
+          value: (alias: string) => result.content.value(alias),
+        }
         return cacheable(request, response, result.html, {
-          lifetime: lifetimeFor(caching, {
-            typeAlias: result.content.contentType.alias,
-            value: (alias) => result.content.value(alias),
-          }),
+          // A page's own "Keep copies for" still wins over its template's `revalidate`.
+          lifetime:
+            (result.revalidate === undefined
+              ? undefined
+              : chosenLifetime(result.content.value(CACHE_KEEP_FOR_ALIAS))) ??
+            revalidateLifetime(result.revalidate) ??
+            lifetimeFor(caching, item),
           tags: [result.content.key, ...ancestors.map((a) => a.key)],
           tagHeader: caching.tagHeader,
         })
@@ -2723,6 +3079,36 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
           status: 404,
           headers: { 'content-type': 'text/plain; charset=utf-8' },
         })
+      case 'outcome': {
+        const { outcome } = result
+        const shared = !(personal || result.personal)
+        const headers: Record<string, string> = {
+          ...cleared,
+          ...(shared ? {} : { 'cache-control': PRIVATE_NO_STORE }),
+        }
+        if (outcome.isRedirect) {
+          const location = outcome.location as string
+          // The preview frame stays put, and the editor is told where visitors go.
+          if (preview)
+            return new Response(previewRedirectNotice(outcome.status, location), {
+              headers: { 'content-type': 'text/html; charset=utf-8', ...headers },
+            })
+          return new Response(null, { status: outcome.status, headers: { location, ...headers } })
+        }
+        return statusResponse(
+          request,
+          pathname,
+          host,
+          member,
+          {
+            status: outcome.status,
+            name: outcome.name,
+            message: outcome.message,
+            errors: outcome.errors,
+          },
+          headers,
+        )
+      }
       case 'error': {
         // The visitor left and the render was stopped for it: nobody reads this
         // response, and it says nothing about the template.
@@ -2730,16 +3116,30 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
         // Through `inSource`, so the file named is the one somebody can open
         // rather than the snapshot generation it was imported from.
         const detail = renderer.inSource(result.error.stack ?? result.error.message)
-        renderLog.error('Template error while rendering {name} ({key}): {detail}', {
-          name: result.content.name,
-          key: result.content.key,
-          detail,
-        })
-        return new Response(
-          config.development
-            ? `Template error while rendering '${result.content.name}':\n\n${detail}`
-            : 'Server Error',
-          { status: 500, headers: { 'content-type': 'text/plain; charset=utf-8' } },
+        const reference = errorReference()
+        renderLog.error(
+          'Template error while rendering {name} ({key}), reference {reference}: {detail}',
+          {
+            name: result.content.name,
+            key: result.content.key,
+            reference,
+            detail,
+          },
+        )
+        const described = renderer.describeError(result.error)
+        return statusResponse(
+          request,
+          pathname,
+          host,
+          member,
+          {
+            status: 500,
+            name: 'serverError',
+            errors: [],
+            reference,
+            ...(config.errors.showDetails ? { details: described } : {}),
+          },
+          { ...cleared, 'cache-control': PRIVATE_NO_STORE },
         )
       }
       default: {
@@ -2766,6 +3166,13 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
             noNodesPage({ siteName: config.siteName, backOfficePath: config.backOfficePath }),
             { status: 404, headers: { 'content-type': 'text/html; charset=utf-8' } },
           )
+        const configured = config.pages?.notFound !== undefined
+        if (configured)
+          return statusResponse(request, pathname, host, member, {
+            status: 404,
+            name: 'notFound',
+            errors: [],
+          })
         const page = await renderNotFoundPage(request, pathname, host, member)
         if (page) return page
         return new Response('Not Found', {
@@ -2774,6 +3181,88 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
         })
       }
     }
+  }
+
+  /** A file of the islands' browser code, or their manifest, by the mode the site is in. */
+  async function islandFile(path: string): Promise<Response> {
+    const missing = () => new Response('Not Found', { status: 404 })
+    const typed = (file: string, cache: string) =>
+      new Response(Bun.file(file), {
+        headers: {
+          'content-type': file.endsWith('.json')
+            ? 'application/json; charset=utf-8'
+            : file.endsWith('.css')
+              ? 'text/css; charset=utf-8'
+              : 'text/javascript; charset=utf-8',
+          'cache-control': cache,
+        },
+      })
+    const [mode, ...rest] = path.split('/')
+    if (mode === 'dev') {
+      if (!config.development || !config.islands?.devServer || rest.join('/') !== 'manifest.json')
+        return missing()
+      return Response.json(
+        devServerIslandManifest(config.islands.devServer, config.componentsDir),
+        {
+          headers: { 'cache-control': 'no-cache' },
+        },
+      )
+    }
+    if (mode === 'vite') {
+      const manifestPath = config.islands?.manifest
+      if (!manifestPath) return missing()
+      const file = rest.join('/')
+      if (file === 'manifest.json')
+        return Response.json(viteIslandManifest(config.siteDir, manifestPath), {
+          headers: { 'cache-control': config.development ? 'no-cache' : 'public, max-age=60' },
+        })
+      if (!file || rest.some((part) => part === '' || part === '.' || part === '..'))
+        return missing()
+      const built = join(viteOutDir(config.siteDir, manifestPath), ...rest)
+      return existsSync(built) ? typed(built, 'public, max-age=31536000, immutable') : missing()
+    }
+    const built = builtIslandFile(config.componentsCacheDir, mode ?? '', rest.join('/'))
+    return built ? typed(built, 'public, max-age=31536000, immutable') : missing()
+  }
+
+  /**
+   * A status answered by the site's own page for it, rendered at the address
+   * asked for (story 206); else, for a 404, the page `seo.notFoundPage` names;
+   * else a generic page. A status page that fails or throws an outcome falls to
+   * the generic page, so it never loops.
+   */
+  async function statusResponse(
+    request: Request,
+    pathname: string,
+    host: string,
+    member: Awaited<ReturnType<typeof members.resolve>>,
+    outcome: PageOutcome,
+    headers: Record<string, string> = {},
+  ): Promise<Response> {
+    const html = { 'content-type': 'text/html; charset=utf-8', ...headers }
+    const kind = statusPageKind(outcome.status)
+    const found = await resolveStatusPage(cache, config.pages, kind, host, pathname)
+    if (found) {
+      const result = await renderer.renderModel(found.content, found.culture, {
+        member,
+        outcome,
+        search: siteSearchFor(db, cache, member),
+        site: siteServicesFor(member),
+        ...(await pageRequest(request)),
+      })
+      if (result.status === 'ok')
+        return new Response(result.html, { status: outcome.status, headers: html })
+      if (result.status === 'error' && !request.signal.aborted)
+        renderLog.error('Template error while rendering the {kind} page {name}: {detail}', {
+          kind,
+          name: found.content.name,
+          detail: renderer.inSource(result.error.stack ?? result.error.message),
+        })
+    } else if (outcome.status === 404) {
+      const page = await renderNotFoundPage(request, pathname, host, member)
+      if (page) return page
+    }
+    return new Response(genericStatusPage(outcome), { status: outcome.status, headers: html })
   }
 
   /**
@@ -2884,4 +3373,17 @@ function html(body: string): Response {
 function withQuery(location: string, requestUrl: string): string {
   const query = new URL(requestUrl).search
   return query && !location.includes('?') ? `${location}${query}` : location
+}
+
+/** A short code a visitor can quote, which the log line carries too. */
+function errorReference(): string {
+  return crypto.randomUUID().replaceAll('-', '').slice(0, 10).toUpperCase()
+}
+
+/** A template's `revalidate` as a lifetime: seconds, or false for as long as it is unchanged. */
+function revalidateLifetime(revalidate: number | false | undefined): Lifetime {
+  if (revalidate === undefined) return undefined
+  if (revalidate === false) return { maxAge: 31_536_000 }
+  if (!Number.isFinite(revalidate) || revalidate < 0) return undefined
+  return revalidate === 0 ? 'none' : { maxAge: Math.floor(revalidate) }
 }

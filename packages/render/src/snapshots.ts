@@ -98,8 +98,23 @@ export interface SnapshotOptions {
    * which is every boot and not an event worth reporting.
    */
   onSwap?: (hash: string, previous: string | undefined) => void
+  /**
+   * What a file is written as instead of its own bytes, or undefined for those:
+   * a `'use client'` module becomes its island stub (story 209). The hash still
+   * covers the source, and the source is kept under `.islands/src/`.
+   */
+  transform?: (key: string, bytes: Uint8Array) => Uint8Array | undefined
+  /**
+   * A generation is in place and about to be rendered: its browser code is
+   * built here, from the files the transform rewrote. A failure is reported,
+   * and the generation still serves.
+   */
+  beforeSwap?: (generation: { dir: string; hash: string; transformed: string[] }) => Promise<void>
   now?: () => number
 }
+
+/** Beside a generation's views: the client sources and their built browser code. */
+export const ISLANDS_DIR = '.islands'
 
 interface FileEntry {
   /** Path relative to the source root, `/`-separated so a hash is portable. */
@@ -137,6 +152,8 @@ export class ViewSnapshots {
   #limits: SnapshotLimits
   #onProblem: (message: string) => void
   #onSwap: (hash: string, previous: string | undefined) => void
+  #transform: SnapshotOptions['transform']
+  #beforeSwap: SnapshotOptions['beforeSwap']
   #now: () => number
 
   #current: { hash: string; dir: string } | undefined
@@ -159,6 +176,8 @@ export class ViewSnapshots {
     this.#limits = { ...SNAPSHOT_LIMITS, ...options.limits }
     this.#onProblem = options.onProblem ?? (() => {})
     this.#onSwap = options.onSwap ?? (() => {})
+    this.#transform = options.transform
+    this.#beforeSwap = options.beforeSwap
     this.#now = options.now ?? Date.now
     if (!relative(this.#sourceDir, this.#cacheDir).startsWith('..')) {
       throw new Error(
@@ -324,6 +343,7 @@ export class ViewSnapshots {
   async #materialise(files: FileEntry[]): Promise<void> {
     const partial = join(this.#cacheDir, `${PARTIAL}${crypto.randomUUID().slice(0, 8)}`)
     const hasher = createHash('sha256')
+    const transformed: string[] = []
     try {
       mkdirSync(partial, { recursive: true })
       for (const file of files) {
@@ -333,7 +353,14 @@ export class ViewSnapshots {
         hasher.update('\n')
         const target = join(partial, ...file.key.split('/'))
         mkdirSync(join(target, '..'), { recursive: true })
-        writeFileSync(target, bytes)
+        const written = this.#transform?.(file.key, bytes)
+        if (written) {
+          transformed.push(file.key)
+          const kept = join(partial, ISLANDS_DIR, 'src', ...file.key.split('/'))
+          mkdirSync(join(kept, '..'), { recursive: true })
+          writeFileSync(kept, bytes)
+        }
+        writeFileSync(target, written ?? bytes)
       }
       const hash = hasher.digest('hex').slice(0, 16)
 
@@ -357,6 +384,10 @@ export class ViewSnapshots {
       const dir = join(this.#cacheDir, hash)
       if (existsSync(dir)) rmSync(partial, { recursive: true, force: true })
       else renameSync(partial, dir)
+      if (this.#beforeSwap)
+        await this.#beforeSwap({ dir, hash, transformed }).catch((error: unknown) =>
+          this.#problem(`Could not build the islands for these views: ${String(error)}`),
+        )
 
       const previous = this.#current?.hash
       this.#current = { hash, dir }

@@ -1,0 +1,8 @@
+type = "tastingNote"
+key = "483a0d3b-a10c-4c9d-8c81-d9607d37e968"
+name = "Nose — Lemon zest, warm porridge, w…"
+order = 8
+
+[values]
+aspect = "Nose"
+note = "Lemon zest, warm porridge, wet slate, a thread of vanilla."

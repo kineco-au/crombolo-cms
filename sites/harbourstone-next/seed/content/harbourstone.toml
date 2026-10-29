@@ -1,0 +1,24 @@
+type = "homePage"
+key = "d60ef12b-0f0a-4db5-9763-21fa52b8d4da"
+name = "Harbourstone"
+order = 0
+
+[values]
+eyebrow = "Caithness · North coast of Scotland"
+title = "Harbourstone"
+strapline = "A cliff-side distillery where Atlantic weather, pale malt, and warehouse salt shape a coastal single malt."
+heroImage = "/distillery-from-the-cliff-path.jpg"
+heroCtaLabel = "The bottlings"
+styleEyebrow = "The house style"
+styleHeading = "Salt on the rim of the glass."
+styleIntro = { html = "<p>Spring water comes off the peat-dark hills behind the stillhouse. Spirit is filled into casks that sleep in stone warehouses open to the sea wind. We do not chill-filter, and we do not colour.</p>" }
+stats = [
+  { type = "highlight", values = { heading = "1894", detail = "First season on this rock" } },
+  { type = "highlight", values = { heading = "2", detail = "Pot stills, wash and spirit" } },
+  { type = "highlight", values = { heading = "46%", detail = "Core range, bottled here" } },
+  { type = "highlight", values = { heading = "12–21", detail = "Years in the current make" } },
+]
+styleImage = "/copper-pot-stills.jpg"
+rangeEyebrow = "On offer"
+rangeHeading = "Four expressions, one shoreline."
+rangeCtaLabel = "Tasting notes"

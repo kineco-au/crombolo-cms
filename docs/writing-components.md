@@ -425,6 +425,50 @@ export default function ShowcasePage({ model, nav }: PageProps<Page>) {
 its content type, so `model.value('title')` is a `string` and a misspelt alias
 is a type error.
 
+## Server code, coming from Next.js
+
+A page can read the request, load data as the visitor and end early with a
+redirect or a refusal, with the App Router's names (story 206;
+[`rendering.md`](rendering.md), "Server code"):
+
+```tsx
+import { cookies } from '@crombolo/crombolo/headers'
+import { notFound, redirect } from '@crombolo/crombolo/navigation'
+import { site } from '@crombolo/crombolo/server'
+
+export async function generateMetadata({ searchParams }: PageProps) {
+  return { title: `Photos: ${(await searchParams).folder}` }
+}
+
+export default async function Photos({ member, searchParams }: PageProps) {
+  if (!member) redirect('/sign-in')
+  const { folder } = await searchParams
+  if (typeof folder !== 'string') notFound('Choose a folder')
+  const theme = (await cookies()).get('theme')?.value ?? 'light'
+  const photos = (await site().media.children(folder)).unwrap()
+  return <ul class={theme}>{photos.map((photo) => <li>{photo.name}</li>)}</ul>
+}
+```
+
+| Next.js | Crombolo |
+|---|---|
+| `app/…/page.tsx` | a template a content type names: `components/<alias>.tsx` or `components/<alias>/page.tsx` |
+| `params` | none: the address comes from the content tree, the content is `model` |
+| `searchParams` (a promise) | the same prop, the same shape |
+| `cookies()`, `headers()` from `next/headers` | the same, from `@crombolo/crombolo/headers` |
+| `redirect`, `permanentRedirect`, `notFound`, `forbidden`, `unauthorized`, `unstable_rethrow` | the same from `@crombolo/crombolo/navigation`, `rethrow` for the last; plus `foundAt`, `movedPermanentlyTo`, `seeOther`, `badRequest`, `gone`, `unprocessableContent` |
+| `not-found.tsx`, `unauthorized.tsx`, `error.tsx` | pages in the content tree named by `pages` in the config, reading `usePage().outcome` |
+| `export const dynamic`, `revalidate` | the same; caching is inferred from reading the request as in Next.js |
+| `generateMetadata` | the same, for what `<SeoHead>` writes |
+| `'use client'` | the same: an island, mounted in the browser with React (story 209) |
+| fetching in a server component | `site()`, the site's services as the visitor, returning `Result`s you `unwrap()` |
+| `middleware.ts` | `middleware` in the config, by stage; `fromNextMiddleware` runs a Next.js one ([`rendering.md`](rendering.md#middleware)) |
+| `app/api/…/route.ts` | `routes` in the config, `route(path, { GET, POST })` from `@crombolo/crombolo/routes`; `fromRouteModule` takes a `route.ts` as it is ([`rendering.md`](rendering.md#route-handlers)) |
+| server actions | not yet (story 219); a `POST` route handler |
+
+A page that awaits `searchParams` or reads `cookies()` or `headers()` is never
+shared by a cache; one that reads none is kept as the site is configured.
+
 ## An e-mail
 
 A form's Send email workflow can name a component as its e-mail design, with
@@ -493,23 +537,57 @@ export default function Shell({ site, subject, children }: EmailLayoutProps) {
 
 ## Interactive parts
 
-A page is static HTML: nothing in it runs in the browser, so an `onClick` is
-refused. Interactive code is a script of its own, bundled for the browser and
-mounted on an element the page renders:
+A page is static HTML. Code that runs in the browser goes in a component whose
+first line is `'use client'`, as in Next.js; a template uses it like any other
+(story 209; [`rendering.md`](rendering.md), "Islands"):
 
 ```tsx
-<div id="price-calculator" data-props={JSON.stringify({ currency: 'AUD' })} />
-<script type="module" src="/scripts/price-calculator.js" />
-```
+/** @jsxImportSource react */
+'use client'
+import { useState } from 'react'
 
-```ts
-// client/price-calculator.ts, bundled with: bun build client/price-calculator.ts --outdir scripts
-const mount = document.getElementById('price-calculator')
-if (mount) {
-  const { currency } = JSON.parse(mount.dataset.props ?? '{}')
-  // ...render into `mount`, with any library or none
+export default function Counter({ start, children }: { start: number; children?: React.ReactNode }) {
+  const [count, setCount] = useState(start)
+  return <button type="button" onClick={() => setCount(count + 1)}>{count} {children}</button>
 }
 ```
+
+```tsx
+import Counter from '../shared/counter.tsx'
+
+export default function Page() {
+  return (
+    <Counter start={2} load="idle" fallback={<p>Loading…</p>}>
+      <span>votes</span>
+    </Counter>
+  )
+}
+```
+
+- **React** runs it in the browser, and the site installs it (`react`,
+  `react-dom`). The `@jsxImportSource react` line makes TypeScript and the
+  build read its JSX as React's. Crombolo's own JSX types accept it in a
+  template, with `load` and `fallback` as well as its own props.
+- **Its props travel as JSON,** so they are data: a function, a class instance,
+  a `Date` or a cycle is a template error naming the prop.
+- **`children`** are rendered on the server, shown until the component mounts,
+  and passed to it as `children`. **`fallback`** shows instead until it
+  mounts, and never reaches it.
+- **`load`**: `visible` (the default, as it scrolls into view), `idle`, or
+  `load` for at once.
+- **The boundary:** browser code cannot import
+  `@crombolo/crombolo/server`, `/headers` or `/navigation`, or anything else
+  that runs only on the server. The build refuses it, naming both files, and
+  `crombolo components check` says so too.
+
+**Other frameworks.** `<Island name="species-map" props={{ speciesId }} />`
+mounts `components/client/species-map.ts`, whose default export is
+`mount(element, props)`, returning an optional unmount. That is how a Vue or
+Lit component, or plain TypeScript, joins a page.
+
+**By hand**, as a last resort: render an element with its props, and add your
+own bundled script with `<script type="module" src="/scripts/…">`. A page that
+does this needs no islands at all.
 
 ## When something is refused
 

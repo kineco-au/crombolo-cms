@@ -13,6 +13,7 @@ sites/*/media/
 # Sites staged as templates while packing; see scripts/sites.ts
 packages/cli/templates/*
 !packages/cli/templates/basic/
+!packages/cli/templates/next/
 packages/backoffice-dist/dist/
 packages/contracts/generated/
 # Uploaded media belongs to the site's content, not the repository

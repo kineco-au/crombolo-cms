@@ -393,6 +393,8 @@ export function schemaFiles(config: CromboloConfig): SchemaFiles {
 }
 
 export interface DepsOptions {
+  /** Published pages a site route answers in place of, for the health check (story 211). */
+  hiddenByRoutes?: () => Promise<Array<{ route: string; owner: string; page: string; url: string }>>
   config: CromboloConfig
   paths: BackOfficePaths
   /** The site's installed npm extensions, which contribute their manifests. */
@@ -518,6 +520,7 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
       email,
       nodeState: options.schema?.nodeState,
       fetch: options.fetch,
+      hiddenByRoutes: options.hiddenByRoutes,
     })
     const tags = new TagRepository(options.db)
     deps.tags = { list: (filter) => tags.all(filter) }
