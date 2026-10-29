@@ -6,6 +6,13 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.36.1 — 2026-10-29
+
+- v0.36.0 was tagged but never published: the browser test for media Public
+  Access (story 205) opened the item's actions menu before it was ready. It
+  now retries opening it, and names its member group and member uniquely so a
+  retry can run. No change to the CMS itself.
+
 ## v0.36.0 — 2026-10-29
 
 - **Media permissions are a Public Access section that inherits** (stories
