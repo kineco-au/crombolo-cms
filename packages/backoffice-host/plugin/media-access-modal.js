@@ -1,30 +1,31 @@
 /**
- * The Permissions dialog for a media folder or item (story 196): who may see
- * and change it, by member group, and for a folder what files added to it
- * later get. Registered by `media-access.js`.
+ * The Permissions dialog for a media folder or item (story 205): whether it
+ * inherits the folder above's Public Access, or who may read and change it, by
+ * group or individual member. Registered by `media-access.js`.
  */
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbModalBaseElement } from '@umbraco-cms/backoffice/modal'
+import '@umbraco-cms/backoffice/member'
 import {
   bytesOf,
-  FILE_READ_CHOICES,
-  FILE_WRITE_CHOICES,
-  groupRows,
+  describeAccess,
+  formFor,
+  inheritedForm,
   megabytesOf,
-  NEW_READ_CHOICES,
-  NEW_WRITE_CHOICES,
-  PUBLIC_WARNING,
+  PUBLIC_NOTE,
+  READ_MODES,
   readMediaAccess,
   requestFor,
   saveMediaAccess,
-  summarise,
   usedByText,
+  WRITE_MODES,
 } from './media-access.js'
 
 export default class CromboloMediaAccessModalElement extends UmbModalBaseElement {
   static properties = {
     _state: { state: true },
     _form: { state: true },
+    _changed: { state: true },
     _busy: { state: true },
     _message: { state: true },
   }
@@ -33,6 +34,7 @@ export default class CromboloMediaAccessModalElement extends UmbModalBaseElement
     super()
     this._state = undefined
     this._form = undefined
+    this._changed = false
     this._busy = false
     this._message = ''
   }
@@ -52,50 +54,54 @@ export default class CromboloMediaAccessModalElement extends UmbModalBaseElement
 
   #show(state) {
     this._state = state
-    this._form = {
-      hasFile: state.hasFile,
-      own: state.own
-        ? { ...state.own, groups: groupRows(state.own, state.memberGroups) }
-        : undefined,
-      item: { readPolicy: state.item.readPolicy, writePolicy: state.item.writePolicy },
-    }
+    this._form = formFor(state)
+    this._changed = false
   }
 
-  #setOwn() {
-    const from = this._state.inherited
-    this._form = {
-      ...this._form,
-      own: {
-        publicRead: from?.publicRead ?? false,
-        groups: groupRows(from, this._state.memberGroups),
-        newRead: from?.newRead ?? null,
-        newWrite: from?.newWrite ?? null,
-        memberTypes: [...(from?.memberTypes ?? [])],
-        memberMaxBytes: from?.memberMaxBytes ?? null,
-      },
-    }
-  }
-
-  #tickType(id, on) {
-    const types = this._form.own.memberTypes ?? []
-    this.#change({ memberTypes: on ? [...types, id] : types.filter((t) => t !== id) })
-  }
-
+  /** Any edit gives the item settings of its own, starting from those it inherited. */
   #change(patch) {
-    this._form = { ...this._form, own: { ...this._form.own, ...patch } }
+    this._form = { ...this._form, inherit: false, ...patch }
+    this._changed = true
   }
 
-  #tick(name, which, on) {
+  #setInherit(on) {
+    if (on) {
+      this._form = inheritedForm(this._state)
+      this._changed = true
+    } else this.#change({})
+  }
+
+  #setMode(action, mode) {
+    this.#change({ [action]: mode, ...(action === 'read' ? { allMembers: false } : {}) })
+  }
+
+  #tick(name, action, on) {
     this.#change({
-      groups: this._form.own.groups.map((g) => (g.name === name ? { ...g, [which]: on } : g)),
+      groups: this._form.groups.map((g) => (g.name === name ? { ...g, [action]: on } : g)),
+      ...(action === 'read' ? { allMembers: false } : {}),
     })
   }
 
+  #setMembers(action, keys) {
+    const selected = new Set(keys)
+    const members = this._form.members.map((m) => ({ ...m, [action]: selected.has(m.key) }))
+    for (const key of keys)
+      if (!members.some((m) => m.key === key))
+        members.push({ key, read: action === 'read', write: action === 'write' })
+    this.#change({ members, ...(action === 'read' ? { allMembers: false } : {}) })
+  }
+
+  #tickType(id, on) {
+    const types = this._form.memberTypes
+    this.#change({ memberTypes: on ? [...types, id] : types.filter((t) => t !== id) })
+  }
+
   async #save() {
+    if (!this._changed) return this._submitModal()
     this._busy = true
     this._message = ''
     try {
-      this.#show(await saveMediaAccess(this.data?.unique, requestFor(this._form)))
+      this.#show(await saveMediaAccess(this.data?.unique, requestFor(this._form, this._state.item)))
       this._submitModal()
     } catch (error) {
       this._message = error.message
@@ -104,159 +110,88 @@ export default class CromboloMediaAccessModalElement extends UmbModalBaseElement
     }
   }
 
-  #choices(label, choices, value, onPick) {
-    return html`<div class="choices" role="radiogroup" aria-label=${label}>
-      <p class="label">${label}</p>
-      ${choices.map(
-        (choice) => html`<label>
-          <input
-            type="radio"
-            .checked=${value === choice.value}
-            @change=${() => onPick(choice.value)}
-          />
-          ${choice.label}
-        </label>`,
-      )}
-      ${value === 'public' ? html`<p class="warning">${PUBLIC_WARNING}</p>` : nothing}
-    </div>`
+  #toggle(label, modes, value, onPick) {
+    const locked = this._form.inherit
+    return html`<p class="label" id=${`${label}-label`}>${label}</p>
+      <uui-button-group role="radiogroup" aria-labelledby=${`${label}-label`}>
+        ${modes.map(
+          (mode) => html`<uui-button
+            role="radio"
+            aria-checked=${value === mode.value ? 'true' : 'false'}
+            label=${mode.label}
+            look=${value === mode.value ? 'primary' : 'outline'}
+            ?disabled=${locked}
+            @click=${() => onPick(mode.value)}
+            >${mode.label}</uui-button
+          >`,
+        )}
+      </uui-button-group>`
+  }
+
+  #access(action) {
+    const form = this._form
+    const mode = form[action]
+    const label = action === 'read' ? 'Read' : 'Write'
+    const members = form.members.filter((m) => m[action]).map((m) => m.key)
+    return html`<section class="access" aria-label=${label}>
+      ${this.#toggle(label, action === 'read' ? READ_MODES : WRITE_MODES, mode, (v) => this.#setMode(action, v))}
+      ${mode === 'public' ? html`<p class="fine">${PUBLIC_NOTE}</p>` : nothing}
+      ${mode === 'private' ? html`<p class="fine">Only back-office users with the required permissions.</p>` : nothing}
+      ${
+        mode === 'custom'
+          ? html`<div class="custom">
+        ${action === 'read' && form.allMembers ? html`<p>All signed-in members currently have read access. Choose groups or members to replace that setting.</p>` : nothing}
+        <h4>Member groups</h4>
+        ${
+          form.groups.length
+            ? form.groups.map(
+                (g) =>
+                  html`<label><input type="checkbox" .checked=${g[action]} ?disabled=${form.inherit}
+                    @change=${(e) => this.#tick(g.name, action, e.target.checked)} />${g.name}</label>`,
+              )
+            : html`<p>No member groups are available.</p>`
+        }
+        <h4>Members</h4>
+        <umb-input-member .selection=${members} ?readonly=${form.inherit}
+          @change=${(e) => this.#setMembers(action, e.target.selection ?? [])}></umb-input-member>
+      </div>`
+          : nothing
+      }
+    </section>`
   }
 
   #renderRule() {
-    const own = this._form.own
-    if (!own) {
-      const from = this._state.inherited
-      return html`<uui-box headline="Who can see and change it">
-        <p>
-          ${
-            from
-              ? html`Follows the permissions set on <strong>${from.from.name}</strong>.`
-              : 'Nothing above it sets permissions, so anyone with the link can see it.'
-          }
-        </p>
-        <uui-button look="secondary" label="Set its own" @click=${() => this.#setOwn()}
-          >Set its own</uui-button
-        >
+    const form = this._form
+    return html`<uui-box headline="Public Access">
+        ${
+          this._state.hasParent
+            ? html`<label class="inherit"><input type="checkbox" .checked=${form.inherit}
+                @change=${(e) => this.#setInherit(e.target.checked)} />Inherit parent permissions</label>`
+            : nothing
+        }
+        ${this.#access('read')}${this.#access('write')}
+        ${
+          form.newRead === 'creator' || form.newWrite === 'creator'
+            ? html`<p class="fine">Files members add here can only be seen or changed by the member who added them, as set before.</p>`
+            : nothing
+        }
+      </uui-box>
+      ${
+        !this._state.hasFile
+          ? html`<uui-box headline="Member uploads">
+        ${form.inherit ? html`<p class="fine">Inherited from the folder above. Changing these gives this folder permissions of its own.</p>` : nothing}
+        <h4>File types members may upload here</h4>
+        ${(this._state.memberFileTypes ?? []).map(
+          (type) => html`<label class="public"><input type="checkbox"
+          .checked=${form.memberTypes.includes(type.id)}
+          @change=${(e) => this.#tickType(type.id, e.target.checked)} />${type.label}</label>`,
+        )}
+        <label>Largest file, in MB<input type="number" min="0" step="0.5"
+          .value=${megabytesOf(form.memberMaxBytes)}
+          @change=${(e) => this.#change({ memberMaxBytes: bytesOf(e.target.value) })} /></label>
       </uui-box>`
-    }
-    return html`<uui-box headline="Who can see and change it">
-      <label class="public">
-        <input
-          type="checkbox"
-          .checked=${own.publicRead}
-          @change=${(e) => this.#change({ publicRead: e.target.checked })}
-        />
-        Anyone with the link can see it
-      </label>
-      ${own.publicRead ? html`<p class="warning">${PUBLIC_WARNING}</p>` : nothing}
-      ${
-        own.groups.length === 0
-          ? html`<p class="fine">This site has no member groups yet.</p>`
-          : html`<table>
-              <thead>
-                <tr><th>Member group</th><th>Can see</th><th>Can change</th></tr>
-              </thead>
-              <tbody>
-                ${own.groups.map(
-                  (g) => html`<tr>
-                    <td>${g.name}</td>
-                    <td>
-                      <input
-                        type="checkbox"
-                        aria-label=${`${g.name} can see`}
-                        .checked=${g.read}
-                        @change=${(e) => this.#tick(g.name, 'read', e.target.checked)}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="checkbox"
-                        aria-label=${`${g.name} can change`}
-                        .checked=${g.write}
-                        @change=${(e) => this.#tick(g.name, 'write', e.target.checked)}
-                      />
-                    </td>
-                  </tr>`,
-                )}
-              </tbody>
-            </table>`
-      }
-      ${
-        this._state.inherited
-          ? html`<uui-button
-              look="secondary"
-              label="Follow the folder above instead"
-              @click=${() => {
-                this._form = { ...this._form, own: undefined }
-              }}
-              >Follow the folder above instead</uui-button
-            >`
           : nothing
-      }
-    </uui-box>
-    ${
-      this._form.hasFile
-        ? nothing
-        : html`<uui-box headline="Files added here later">
-            ${this.#choices('Who can see them', NEW_READ_CHOICES, own.newRead, (v) =>
-              this.#change({ newRead: v }),
-            )}
-            ${this.#choices('Who can change them', NEW_WRITE_CHOICES, own.newWrite, (v) =>
-              this.#change({ newWrite: v }),
-            )}
-            <p class="fine">Files already here keep what they have.</p>
-          </uui-box>
-          <uui-box headline="File types members may upload here">
-            <p class="fine">
-              Members can add files only through a feature of this site that offers it. Nothing
-              is accepted unless it is ticked here.
-            </p>
-            <div class="types">
-              ${this._state.memberFileTypes.map(
-                (type) => html`<label>
-                  <input
-                    type="checkbox"
-                    .checked=${(own.memberTypes ?? []).includes(type.id)}
-                    @change=${(e) => this.#tickType(type.id, e.target.checked)}
-                  />
-                  ${type.label}
-                </label>`,
-              )}
-            </div>
-            <label class="size">
-              Largest file, in MB
-              <input
-                type="number"
-                min="0"
-                step="0.5"
-                placeholder="No limit of its own"
-                .value=${megabytesOf(own.memberMaxBytes)}
-                @change=${(e) => this.#change({ memberMaxBytes: bytesOf(e.target.value) })}
-              />
-            </label>
-          </uui-box>`
-    }`
-  }
-
-  #renderFile() {
-    if (!this._form.hasFile) return nothing
-    const item = this._form.item
-    const setItem = (patch) => {
-      this._form = { ...this._form, item: { ...item, ...patch } }
-    }
-    const creator = this._state.item.creator
-    return html`<uui-box headline="This file">
-      ${
-        creator
-          ? html`<p>Added by ${creator.name ?? 'a member who is no longer here'}.</p>`
-          : nothing
-      }
-      ${this.#choices('Who can see it', FILE_READ_CHOICES, item.readPolicy, (v) =>
-        setItem({ readPolicy: v }),
-      )}
-      ${this.#choices('Who can change it', FILE_WRITE_CHOICES, item.writePolicy, (v) =>
-        setItem({ writePolicy: v }),
-      )}
-    </uui-box>`
+      }`
   }
 
   render() {
@@ -264,14 +199,14 @@ export default class CromboloMediaAccessModalElement extends UmbModalBaseElement
     return html`<umb-body-layout headline=${headline}>
       ${
         this._state && this._form
-          ? html`<p class="summary">${summarise(this._state)}</p>
+          ? html`<p class="summary">${describeAccess(this._form, this._state)}</p>
               <p class="fine">Editors who can open this in Media can always see it.</p>
               ${
                 this._state.usedBy?.length
                   ? html`<p class="warning">${usedByText(this._state.usedBy)}</p>`
                   : nothing
               }
-              ${this.#renderRule()} ${this.#renderFile()}`
+              ${this.#renderRule()}`
           : this._message
             ? nothing
             : html`<uui-loader></uui-loader>`
@@ -315,10 +250,23 @@ export default class CromboloMediaAccessModalElement extends UmbModalBaseElement
       margin-left: var(--uui-size-space-3, 9px);
       width: 8rem;
     }
-    .choices label,
+    .inherit,
+    .custom label,
     .public {
       display: block;
       margin: var(--uui-size-space-2, 6px) 0;
+    }
+    .inherit {
+      font-weight: bold;
+      margin-bottom: var(--uui-size-space-4, 12px);
+    }
+    uui-button-group {
+      margin: var(--uui-size-space-2, 6px) 0;
+    }
+    .access + .access {
+      margin-top: var(--uui-size-space-5, 18px);
+      border-top: 1px solid var(--uui-color-border, #ddd);
+      padding-top: var(--uui-size-space-3, 9px);
     }
     .label {
       font-weight: bold;

@@ -1,8 +1,8 @@
 /**
- * "Permissions" on media folders and items (story 196): which member groups
- * may see and change them, and what files added to a folder later get. The
+ * "Permissions" on media folders and items (story 204): who may read and
+ * change them, and what files added to a folder later get. The
  * server keeps them at <backoffice>/crombolo/api/media-access/{key}, and
- * refuses what the user may not do whatever this shows. docs/media.md.
+ * refuses what the user may not do whatever this shows. docs/rendering.md, "Protected media".
  */
 
 export const MEDIA_ACCESS_MODAL = 'Crombolo.Modal.MediaAccess'
@@ -40,44 +40,11 @@ export const problemFor = (status) =>
       ? 'This media item could not be found.'
       : 'The permissions could not be loaded. Try again.'
 
-export const NEW_READ_CHOICES = [
-  { value: null, label: 'As this folder says' },
-  { value: 'public', label: 'Anyone with the link' },
-  { value: 'groups', label: 'Members of the groups that can see this folder' },
-  { value: 'creator', label: 'Only the member who added it' },
-]
-
-export const NEW_WRITE_CHOICES = [
-  { value: null, label: 'As this folder says' },
-  { value: 'groups', label: 'Members of the groups that can change this folder' },
-  { value: 'creator', label: 'Only the member who added it' },
-  { value: 'none', label: 'No member' },
-]
-
-export const FILE_READ_CHOICES = [
-  { value: 'inherit', label: 'As its folder says' },
-  { value: 'public', label: 'Anyone with the link' },
-  { value: 'groups', label: 'Members of the groups that can see it' },
-  { value: 'creator', label: 'Only the member who added it' },
-  { value: 'none', label: 'No member' },
-]
-
-export const FILE_WRITE_CHOICES = [
-  { value: 'inherit', label: 'As its folder says' },
-  { value: 'groups', label: 'Members of the groups that can change it' },
-  { value: 'creator', label: 'Only the member who added it' },
-  { value: 'none', label: 'No member' },
-]
-
-export const PUBLIC_WARNING =
+export const PUBLIC_NOTE =
   'Anyone who has the link can open these files, without signing in, and can pass the link on.'
 
-/** One line saying who can see a folder or file. */
-export function summarise(state) {
-  if (!state) return ''
-  if (!state.protected) return 'Anyone with the link can see this.'
-  return 'Only the members chosen here, and editors who can open it in Media, can see this.'
-}
+/** One line saying who can see and change a folder or file, as saved. */
+export const summarise = (state) => (state ? describeAccess(formFor(state), state) : '')
 
 /**
  * The groups a rule shows: every member group on the site, ticked as the rule
@@ -106,22 +73,148 @@ export const bytesOf = (megabytes) => {
     : null
 }
 
-/** What the dialog sends: the rule (null to follow the folder above) and a file's own setting. */
-export function requestFor(form) {
+/** Read audiences; the default, Enabled, lets anyone with the link see a file. */
+export const READ_MODES = [
+  { value: 'public', label: 'Enabled' },
+  { value: 'private', label: 'Disabled' },
+  { value: 'custom', label: 'Custom' },
+]
+/** Write audiences: members are never allowed to change files publicly. */
+export const WRITE_MODES = [
+  { value: 'private', label: 'No Public Access' },
+  { value: 'custom', label: 'Custom' },
+]
+
+/** An existing setting shown without broadening its audience. */
+export function accessMode(policy, action, rule) {
+  if (policy === 'none' || (action === 'write' && ['public', 'members'].includes(policy)))
+    return 'private'
+  if (policy === 'public') return 'public'
+  if (policy !== 'inherit') return 'custom'
+  if (action === 'read' && (!rule || rule.publicRead)) return 'public'
+  const flag = action === 'read' ? 'read' : 'write'
+  return [...(rule?.groups ?? []), ...(rule?.members ?? [])].some((grant) => grant[flag])
+    ? 'custom'
+    : 'private'
+}
+
+/** Whether a folder or item follows the folder above it, with no settings of its own. */
+export const inheritsParent = (state) =>
+  Boolean(state.hasParent) &&
+  !state.own &&
+  state.item.readPolicy === 'inherit' &&
+  state.item.writePolicy === 'inherit'
+
+/**
+ * The dialog's form: the audiences a rule and an item's own policies come to.
+ * A file that may only be seen by the member who added it lists that member.
+ */
+export function viewOf(rule, item, state) {
+  const members = (rule?.members ?? []).map((m) => ({ ...m }))
+  const creator = item.creator?.key
+  for (const action of ['read', 'write']) {
+    if (item[`${action}Policy`] !== 'creator' || !creator) continue
+    const existing = members.find((m) => m.key === creator)
+    if (existing) existing[action] = true
+    else members.push({ key: creator, read: action === 'read', write: action === 'write' })
+  }
+  const kept = (value) => (value === 'creator' ? value : null)
   return {
-    rule: form.own
-      ? {
-          publicRead: form.own.publicRead,
-          groups: form.own.groups.filter((g) => g.read || g.write),
-          newRead: form.own.newRead ?? null,
-          newWrite: form.own.newWrite ?? null,
-          memberTypes: form.own.memberTypes ?? [],
-          memberMaxBytes: form.own.memberMaxBytes ?? null,
-        }
-      : null,
-    ...(form.hasFile
-      ? { item: { readPolicy: form.item.readPolicy, writePolicy: form.item.writePolicy } }
-      : {}),
+    read: accessMode(item.readPolicy, 'read', rule),
+    write: accessMode(item.writePolicy, 'write', rule),
+    allMembers: item.readPolicy === 'members',
+    groups: groupRows(rule, state.memberGroups ?? []),
+    members,
+    newRead: kept(state.own?.newRead),
+    newWrite: kept(state.own?.newWrite),
+    memberTypes: [...(rule?.memberTypes ?? [])],
+    memberMaxBytes: rule?.memberMaxBytes ?? null,
+  }
+}
+
+const INHERITED_ITEM = { readPolicy: 'inherit', writePolicy: 'inherit' }
+
+/** The form for a folder or item as saved: following the folder above, or its own settings. */
+export function formFor(state) {
+  const inherit = inheritsParent(state)
+  return {
+    inherit,
+    ...(inherit
+      ? viewOf(state.inherited, INHERITED_ITEM, state)
+      : viewOf(state.own ?? state.inherited, state.item, state)),
+  }
+}
+
+/** The form when "Inherit parent permissions" is ticked again: the folder above's settings. */
+export const inheritedForm = (state) => ({
+  inherit: true,
+  ...viewOf(state.inherited, INHERITED_ITEM, state),
+})
+
+const listed = (names) =>
+  names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`
+
+const chosen = (form, action) => {
+  const groups = form.groups.filter((g) => g[action]).map((g) => g.name)
+  const count = form.members.filter((m) => m[action]).length
+  return listed([...groups, ...(count ? [`${count} chosen member${count === 1 ? '' : 's'}`] : [])])
+}
+
+/** Where a form's settings come from and who they let in, in a sentence or two. */
+export function describeAccess(form, state) {
+  const source = form.inherit
+    ? state.inherited?.from
+      ? `Inherited from ${state.inherited.from.name}.`
+      : 'Default permissions.'
+    : state.hasParent
+      ? 'Set for this item.'
+      : ''
+  const readers = chosen(form, 'read')
+  const writers = chosen(form, 'write')
+  const read =
+    form.read === 'public'
+      ? 'Anyone with the link can see this.'
+      : form.read === 'private'
+        ? 'Only back-office users can see this.'
+        : form.allMembers
+          ? 'All signed-in members can see this.'
+          : readers
+            ? `Only ${readers} can see this.`
+            : 'Nobody has been chosen to see this yet.'
+  const write =
+    form.write === 'custom' && writers ? `${writers} can change it.` : 'No members can change it.'
+  return [source, read, write].filter(Boolean).join(' ')
+}
+
+/**
+ * What the dialog sends: no settings of its own when it inherits, else a rule
+ * holding both audiences. An all-members read nobody changed is kept as it was.
+ */
+export function requestFor(form, original = INHERITED_ITEM) {
+  if (form.inherit) return { rule: null, item: { ...INHERITED_ITEM } }
+  const grants = (list) =>
+    list
+      .map((g) => ({
+        ...g,
+        read: form.read === 'custom' && g.read,
+        write: form.write === 'custom' && g.write,
+      }))
+      .filter((g) => g.read || g.write)
+  const members = grants(form.members)
+  return {
+    rule: {
+      publicRead: form.read === 'public',
+      groups: grants(form.groups),
+      ...(members.length ? { members } : {}),
+      newRead: form.newRead ?? null,
+      newWrite: form.newWrite ?? null,
+      memberTypes: form.memberTypes ?? [],
+      memberMaxBytes: form.memberMaxBytes ?? null,
+    },
+    item: {
+      readPolicy: form.allMembers && original.readPolicy === 'members' ? 'members' : 'inherit',
+      writePolicy: 'inherit',
+    },
   }
 }
 

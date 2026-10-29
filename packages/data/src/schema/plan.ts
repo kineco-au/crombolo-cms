@@ -42,6 +42,7 @@ import { identityMigration } from './identity.ts'
 import { logViewerMigration } from './log-viewer.ts'
 import { mediaAccessMigration } from './media-access.ts'
 import { mediaCacheMigration } from './media-cache.ts'
+import { mediaMemberGrantsMigration } from './media-member-grants.ts'
 import { mediaMemberUploadsMigration } from './media-member-uploads.ts'
 import { mediaPermissionsMigration } from './media-permissions.ts'
 import { memberPropertyTypeMigration } from './member-property-type.ts'
@@ -119,4 +120,5 @@ export const cromboloPlan = new MigrationPlan([
   mediaAccessMigration,
   mediaCacheMigration,
   mediaMemberUploadsMigration,
+  mediaMemberGrantsMigration,
 ])

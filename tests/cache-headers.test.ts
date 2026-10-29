@@ -236,6 +236,10 @@ describe('lifetimes', () => {
       })
       expect(created.status).toBe(201)
       const key = created.headers.get('umb-generated-resource') as string
+      const access = await h.put(`/crombolo/crombolo/api/media-access/${key}`, {
+        item: { readPolicy: 'public', writePolicy: 'none' },
+      })
+      expect(access.status).toBe(200)
       const media = await h.json<{ values: Array<{ alias: string; value: { src: string } }> }>(
         `${V1}/media/${key}`,
       )

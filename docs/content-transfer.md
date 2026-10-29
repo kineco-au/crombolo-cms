@@ -707,6 +707,11 @@ as `https:` (fetching from outside the package is a later story). A file under
 `media/` that `media.json` does not list is refused too, so a file added after
 the export is caught as surely as one edited.
 
+Media permissions travel with their files: public/private policies, selected
+member groups and individual-member UUID grants (story 204). Member keys stay
+the same even when people are omitted; an absent member gains no access.
+Imports preserve these restrictions rather than applying the site's defaults.
+
 Whether a file is carried is decided by the writer, from the bytes the exporter
 managed to read, not by the flag: a key the source store has not got is reported
 and listed without a URI, so the manifest says what is true. At the

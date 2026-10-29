@@ -128,6 +128,7 @@ export function mediaAccessOf(
           rule: {
             publicRead: rule.publicRead,
             groups: rule.groups.map((g) => ({ name: g.name, read: g.read, write: g.write })),
+            ...(rule.members?.length ? { members: [...rule.members] } : {}),
             newRead: rule.newRead,
             newWrite: rule.newWrite,
             ...(rule.memberTypes.length > 0 ? { memberTypes: [...rule.memberTypes] } : {}),

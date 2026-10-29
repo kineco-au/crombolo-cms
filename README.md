@@ -108,7 +108,7 @@ Crombolo is in active development. What is built and planned is tracked as [stor
 | **Upgrades** | Check, fix, then cut over, with old nodes serving reads throughout a rolling deploy |
 | **Content transfer** | Export, check and import content between environments as a bundle of files |
 | **Bundles** | Every bundle is an npm package whose `crombolo` field declares what it adds: backoffice screens, content (schema, views, content and media) and server endpoints. Build one from a slice of the site and download it as a `.tgz`, install one from the Marketplace or with `bun add`, and apply its content with `bundle install`. Server endpoints run only once the site imports them into `crombolo.config.ts` |
-| **Storage** | SQLite by default, Postgres as an option. Media on the file system, S3 or Azure |
+| **Storage** | SQLite by default, Postgres as an option. Media on the file system, S3 or Azure; Public / Private / Custom read access and Private / Custom write access, with group and individual-member grants ([protected media](docs/rendering.md#protected-media)) |
 | **Forms** | Form building in core, not an add-on: definitions as TOML in `schema/forms/`, a Forms section with a designer and an entries view, rendering and submission with no JavaScript required, and workflows on a retrying queue |
 | **E-mail** | Opt-in, over a provider's HTTPS API — Resend, Postmark, Amazon SES, or an endpoint of your own. Off by default, and what needs it says so rather than failing |
 | **Umbraco import** | A compatibility report for an existing Umbraco site, then its content types, content and media converted into a new site |
@@ -241,25 +241,22 @@ suite uses — see [Running the tests](#running-the-tests).
 
 ### Start a site of your own
 
-`apps/site` is this repository's reference site. A new one is three files plus its
-views and its schema, and `crombolo init` writes them:
+`apps/site` is this repository's reference site. `crombolo init` scaffolds a new
+one, **once**, in an empty directory (it refuses one that is not, `.git` aside;
+`--force` overwrites): **either** a plain site with no content types, which
+serves a holding page until something is published, **or** one from a starter
+template with its schema, views and content. A template is not added later.
 
 ```bash
 mkdir my-site && cd my-site
-bunx @crombolo/cli init --name "My Site"     # add --postgres for a Postgres .env
-bun install && bun start
+bunx @crombolo/cli init --name "My Site"                    # either: a plain site
+bunx @crombolo/cli init --name "My Site" --template basic   # or: one template, instead
+bun install && bun start                                    # --postgres for a Postgres .env
 ```
 
-That gives you a site with no content types, so the first thing it serves is a
-holding page saying nothing is published yet, with a link to the backoffice. To
-start from something instead, scaffold a **starter template**:
-
-```bash
-bunx @crombolo/cli init --template list                   # what there is
-bunx @crombolo/cli init --template basic                  # a home page type, a view, one page
-bunx @crombolo/cli init --template starter                # header, footer, two columns, placeholder pages
-bunx @crombolo/cli init --template demo/harbourstone      # a whole brochure site, content and all
-```
+`init --template list` prints the templates: `basic` (a home page type, a view,
+one page), `starter` (header, footer, two columns, placeholder pages) and
+`demo/harbourstone` (a whole brochure site, content and all).
 
 ### The sites in this repository
 
@@ -402,6 +399,10 @@ Postgres tests skip themselves when no server is reachable, so a clone without
 Docker is never blocked — but a skip is not a pass.
 [`docs/testing.md`](docs/testing.md) has the layers, the containers and the
 browser suite.
+
+Releases shard Postgres unit tests into four jobs and load tests/benchmarks into
+three, using `scripts/test-shard.ts` and separate timings per suite. Full fixtures
+stay intact; see [the pipeline matrix](docs/testing.md#in-the-pipeline) (story `201`).
 
 ### Publishing the product site
 

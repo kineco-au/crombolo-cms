@@ -228,6 +228,39 @@ describe('the permission verbs', () => {
 })
 
 describe('the designer', () => {
+  test('the Harbourstone picker summary and field preview describe the same contact form', async () => {
+    const { h } = await site(
+      readFileSync(
+        join(import.meta.dir, '../sites/harbourstone/schema/forms/contact.toml'),
+        'utf8',
+      ),
+    )
+    const listed = await h.json<{
+      items: { key: string; name: string; fieldCount: number; pageCount: number }[]
+    }>(FORMS)
+    const contact = listed.items.find((form) => form.name === 'Write to the cove')
+    expect(contact).toMatchObject({ fieldCount: 7, pageCount: 1 })
+    const detail = await h.json<{
+      definition: {
+        pages: { groups: { fields: { alias: string; mandatory: boolean; values: string[] }[] }[] }[]
+      }
+    }>(`${FORMS}/${contact?.key}`)
+    const fields = detail.definition.pages.flatMap((page) => page.groups.flatMap((g) => g.fields))
+    expect(fields.map((field) => field.alias)).toEqual([
+      'visitorName',
+      'visitorEmail',
+      'topic',
+      'company',
+      'phone',
+      'message',
+      'consent',
+    ])
+    expect(fields.find((field) => field.alias === 'visitorEmail')?.mandatory).toBe(true)
+    expect(fields.find((field) => field.alias === 'topic')?.values).toContain(
+      'Trade and allocation',
+    )
+  })
+
   test('a saved form is written to schema/forms as TOML', async () => {
     const { h, root } = await site()
     const detail = await h.json<{ definition: Record<string, unknown> }>(`${FORMS}/${FORM_KEY}`)

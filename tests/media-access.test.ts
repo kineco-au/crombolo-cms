@@ -6,7 +6,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { createMediaOperations, systemActor } from '@crombolo/content'
+import { createMediaOperations, memberActor, systemActor } from '@crombolo/content'
 import {
   isProtectedMedia,
   type MediaItemAccess,
@@ -21,6 +21,7 @@ import {
   ContentTypeRepository,
   cromboloPlan,
   MediaAccessRepository,
+  MediaListingRepository,
   MIGRATION_STATE_KEY,
   migrate,
   NodeRepository,
@@ -30,10 +31,15 @@ import {
 import { type CromboloConfig, fileSystemMediaStore } from '@crombolo/server'
 import { type BundleNode, exportBundle, importBundle, writeNode } from '@crombolo/transfer'
 import {
-  FILE_READ_CHOICES,
+  accessMode,
+  formFor,
   groupRows,
+  inheritedForm,
+  inheritsParent,
+  READ_MODES,
   requestFor,
   summarise,
+  WRITE_MODES,
 } from '../packages/backoffice-host/plugin/media-access.js'
 import { dialectUnderTest, undoMediaAccess } from './support/db.ts'
 import { BACKOFFICE, type Harness, signedInServer, signInAsGroup, V1 } from './support/harness.ts'
@@ -96,6 +102,16 @@ describe('who may read and change a media item', () => {
     expect(memberMay('read', item({ readPolicy: 'creator' }), r, ada)).toBe(false)
   })
 
+  test('All members allows signed-in members without a group, excludes visitors and grants no write', () => {
+    const all = item({ readPolicy: 'members', writePolicy: 'none' })
+    expect(memberMay('read', all, undefined, undefined)).toBe(false)
+    expect(memberMay('read', all, undefined, { key: 'member', groups: [] })).toBe(true)
+    expect(memberMay('read', all, rule({ readGroups: ['Staff'] }), ada)).toBe(true)
+    expect(memberMay('write', all, rule({ writeGroups: ['Observers'] }), ada)).toBe(false)
+    expect(memberMay('write', { ...all, writePolicy: 'members' }, undefined, ada)).toBe(false)
+    expect(isProtectedMedia(all, undefined)).toBe(true)
+  })
+
   test('the nearest rule on the path replaces the ones above it', () => {
     const rules = new Map([
       [10, rule({ nodeId: 10, readGroups: ['Staff'] })],
@@ -106,58 +122,180 @@ describe('who may read and change a media item', () => {
     expect(nearestMediaRule('-1,30', rules)).toBeUndefined()
   })
 
-  test('a new file gets what the rule above it sets for new files', () => {
-    expect(stampedPolicies(undefined)).toEqual({ readPolicy: 'inherit', writePolicy: 'inherit' })
+  test('a new file follows the rule above it unless that rule sets a default for new files', () => {
+    const follows = { readPolicy: 'inherit', writePolicy: 'inherit' } as const
+    expect(stampedPolicies(undefined)).toEqual(follows)
+    expect(stampedPolicies(rule())).toEqual(follows)
+    expect(stampedPolicies(rule({ publicRead: true }))).toEqual(follows)
     expect(stampedPolicies(rule({ newRead: 'creator', newWrite: 'none' }))).toEqual({
       readPolicy: 'creator',
       writePolicy: 'none',
     })
+    expect(stampedPolicies(rule({ newRead: 'members', newWrite: 'groups' }))).toEqual({
+      readPolicy: 'members',
+      writePolicy: 'groups',
+    })
   })
 })
 
+const described = (over: Record<string, unknown> = {}) => ({
+  name: 'Photo',
+  hasParent: true,
+  hasFile: true,
+  own: null,
+  inherited: null,
+  item: { readPolicy: 'inherit', writePolicy: 'inherit', creator: null },
+  memberGroups: ['Observers', 'Staff'],
+  ...over,
+})
+
 describe('the Permissions dialog', () => {
-  test('shows every member group, keeps one that has gone, and sends only those ticked', () => {
-    const rows = groupRows(
-      {
-        groups: [
-          { name: 'staff', read: true, write: false },
-          { name: 'Old', read: true, write: true },
-        ],
-      },
-      ['Observers', 'Staff'],
-    )
-    expect(rows).toEqual([
+  test('Read offers Enabled, Disabled, Custom and Write never offers public access', () => {
+    expect(READ_MODES.map((m) => m.label)).toEqual(['Enabled', 'Disabled', 'Custom'])
+    expect(WRITE_MODES.map((m) => m.label)).toEqual(['No Public Access', 'Custom'])
+    expect(WRITE_MODES.map((m) => m.value)).not.toContain('public')
+    expect(accessMode('public', 'read', null)).toBe('public')
+    expect(accessMode('none', 'write', null)).toBe('private')
+    expect(accessMode('members', 'read', null)).toBe('custom')
+    expect(accessMode('creator', 'read', null)).toBe('custom')
+    expect(accessMode('inherit', 'read', null)).toBe('public')
+    expect(accessMode('inherit', 'write', null)).toBe('private')
+    expect(
+      accessMode('inherit', 'read', {
+        publicRead: false,
+        members: [{ key: ada.key, read: true, write: false }],
+      }),
+    ).toBe('custom')
+  })
+
+  test('Custom matches a selected group or member independently for each operation', () => {
+    const r = rule({
+      readGroups: ['Staff'],
+      readMembers: [ada.key.toUpperCase()],
+      writeMembers: [ada.key],
+    })
+    const custom = item({ readPolicy: 'groups', writePolicy: 'groups' })
+    expect(memberMay('read', custom, r, ada)).toBe(true)
+    expect(memberMay('write', custom, r, ada)).toBe(true)
+    expect(memberMay('read', custom, r, bob)).toBe(true)
+    expect(memberMay('write', custom, r, bob)).toBe(false)
+    expect(memberMay('read', custom, r, undefined)).toBe(false)
+  })
+
+  test('shows every member group and keeps one that has gone', () => {
+    expect(
+      groupRows(
+        {
+          groups: [
+            { name: 'staff', read: true, write: false },
+            { name: 'Old', read: true, write: true },
+          ],
+        },
+        ['Observers', 'Staff'],
+      ),
+    ).toEqual([
       { name: 'Observers', read: false, write: false },
       { name: 'Staff', read: true, write: false },
       { name: 'Old', read: true, write: true },
     ])
+  })
+
+  test('a child with no settings of its own inherits; a root item or one with settings does not', () => {
+    expect(inheritsParent(described())).toBe(true)
+    expect(inheritsParent(described({ hasParent: false }))).toBe(false)
+    expect(inheritsParent(described({ own: { publicRead: true, groups: [] } }))).toBe(false)
     expect(
-      requestFor({
-        hasFile: true,
-        own: { publicRead: false, groups: rows, newRead: null, newWrite: 'creator' },
-        item: { readPolicy: 'creator', writePolicy: 'inherit' },
-      }),
-    ).toEqual({
+      inheritsParent(
+        described({ item: { readPolicy: 'public', writePolicy: 'inherit', creator: null } }),
+      ),
+    ).toBe(false)
+  })
+
+  test('an inheriting item shows the nearest folder’s settings, or the defaults when none has any', () => {
+    expect(formFor(described())).toMatchObject({ inherit: true, read: 'public', write: 'private' })
+    expect(summarise(described())).toBe(
+      'Default permissions. Anyone with the link can see this. No members can change it.',
+    )
+    const inherited = {
+      from: { key: 'f', name: 'Reports' },
+      publicRead: false,
+      groups: [{ name: 'Staff', read: true, write: true }],
+      members: [{ key: ada.key, read: false, write: true }],
+    }
+    expect(formFor(described({ inherited }))).toMatchObject({
+      inherit: true,
+      read: 'custom',
+      write: 'custom',
+    })
+    expect(summarise(described({ inherited }))).toBe(
+      'Inherited from Reports. Only Staff can see this. Staff and 1 chosen member can change it.',
+    )
+  })
+
+  test('an overridden item shows its own settings, including older per-file ones', () => {
+    const own = { publicRead: false, groups: [], members: [] }
+    expect(summarise(described({ own }))).toBe(
+      'Set for this item. Only back-office users can see this. No members can change it.',
+    )
+    const creator = { key: ada.key, name: 'Ada' }
+    const form = formFor(
+      described({ item: { readPolicy: 'creator', writePolicy: 'none', creator } }),
+    )
+    expect(form).toMatchObject({ inherit: false, read: 'custom', write: 'private' })
+    expect(form.members).toEqual([{ key: ada.key, read: true, write: false }])
+    expect(summarise(described({ hasParent: false, own: { publicRead: true, groups: [] } }))).toBe(
+      'Anyone with the link can see this. No members can change it.',
+    )
+  })
+
+  test('ticking Inherit takes the item’s own settings off; otherwise both audiences go in its rule', () => {
+    expect(requestFor(inheritedForm(described()))).toEqual({
+      rule: null,
+      item: { readPolicy: 'inherit', writePolicy: 'inherit' },
+    })
+    const form = {
+      ...formFor(described()),
+      inherit: false,
+      read: 'custom',
+      write: 'private',
+      groups: [
+        { name: 'Observers', read: false, write: true },
+        { name: 'Staff', read: true, write: false },
+      ],
+      members: [{ key: ada.key, read: true, write: true }],
+    }
+    expect(requestFor(form)).toEqual({
       rule: {
         publicRead: false,
-        groups: [
-          { name: 'Staff', read: true, write: false },
-          { name: 'Old', read: true, write: true },
-        ],
+        groups: [{ name: 'Staff', read: true, write: false }],
+        members: [{ key: ada.key, read: true, write: false }],
         newRead: null,
-        newWrite: 'creator',
+        newWrite: null,
         memberTypes: [],
         memberMaxBytes: null,
       },
-      item: { readPolicy: 'creator', writePolicy: 'inherit' },
+      item: { readPolicy: 'inherit', writePolicy: 'inherit' },
     })
-    expect(requestFor({ hasFile: false, own: undefined, item: {} })).toEqual({ rule: null })
+    expect(requestFor({ ...form, read: 'public' }).rule).toMatchObject({
+      publicRead: true,
+      groups: [],
+    })
   })
 
-  test('says who can see it, in words an editor uses', () => {
-    expect(summarise({ protected: false })).toBe('Anyone with the link can see this.')
-    expect(summarise({ protected: true })).toContain('Only the members chosen here')
-    for (const choice of FILE_READ_CHOICES) expect(choice.label).not.toMatch(/policy|inherit|rule/i)
+  test('an all-members read and an only-the-member-who-added-it default survive an edit elsewhere', () => {
+    const state = described({
+      own: { publicRead: false, groups: [], newRead: 'creator', newWrite: 'groups' },
+      item: { readPolicy: 'members', writePolicy: 'inherit', creator: null },
+    })
+    const form = formFor(state)
+    expect(form).toMatchObject({ allMembers: true, newRead: 'creator', newWrite: null })
+    expect(summarise(state)).toContain('All signed-in members can see this.')
+    const sent = requestFor({ ...form, write: 'custom' }, state.item)
+    expect(sent.item.readPolicy).toBe('members')
+    expect(sent.rule).toMatchObject({ newRead: 'creator', newWrite: null })
+    expect(requestFor({ ...form, allMembers: false }, state.item).item.readPolicy).toBe('inherit')
+    for (const choice of [...READ_MODES, ...WRITE_MODES])
+      expect(choice.label).not.toMatch(/policy|inherit|rule/i)
   })
 })
 
@@ -276,6 +414,12 @@ async function site(config: Partial<CromboloConfig> = {}) {
     return { cookie: (response.headers.getSetCookie()[0] ?? '').split(';')[0] ?? '' }
   }
   const access = new MediaAccessRepository(h.server.db)
+  /** Existing files retain their saved inheritance settings when the defaults change. */
+  const legacyImage = async (name: string, parent: string | null = null) => {
+    const photo = await image(name, parent)
+    await access.setItemAccess(photo.key, OPEN_MEDIA)
+    return photo
+  }
   const protect = async (key: string, groups: string[], extra: Record<string, unknown> = {}) => {
     const saved = await h.put(`${API}/${key}`, {
       rule: {
@@ -318,6 +462,7 @@ async function site(config: Partial<CromboloConfig> = {}) {
     mediaDir,
     folder,
     image,
+    legacyImage,
     group,
     member,
     visit,
@@ -329,6 +474,147 @@ async function site(config: Partial<CromboloConfig> = {}) {
 }
 
 describe(`protected media (${dialectUnderTest})`, () => {
+  test('individual grants persist, protect files and crops, and can be revoked', async () => {
+    const s = await site()
+    const ada = await s.member('ada', [])
+    await s.member('bob', [])
+    const photo = await s.image('Custom')
+    const body = {
+      rule: {
+        publicRead: false,
+        groups: [],
+        members: [{ key: ada, read: true, write: true }],
+        newRead: 'groups',
+        newWrite: 'groups',
+      },
+      item: { readPolicy: 'groups', writePolicy: 'groups' },
+    }
+    expect((await s.h.put(`${API}/${photo.key}`, body)).status).toBe(200)
+    expect(await s.access.byNodeKey(photo.key)).toMatchObject({
+      members: [{ key: ada, read: true, write: true }],
+    })
+    expect(
+      (await s.access.allRules()).find((r) => r.readMembers?.includes(ada))?.writeMembers,
+    ).toEqual([ada])
+    expect((await s.visit(photo.src)).status).toBe(404)
+    expect((await s.visit(photo.src, await s.signIn('bob'))).status).toBe(404)
+    const headers = await s.signIn('ada')
+    expect((await s.visit(photo.src, headers)).status).toBe(200)
+    expect(
+      (await s.visit(`${photo.src}?width=2&height=2`, headers)).headers.get('cache-control'),
+    ).toBe('private, no-store')
+    const rules = new Map((await s.access.allRules()).map((r) => [r.nodeId, r]))
+    const listing = new MediaListingRepository(s.h.server.db)
+    const query = { parentId: -1, parentPath: '-1', skip: 0, take: 100 }
+    expect(
+      (await listing.children({ ...query, readable: { rules, member: { key: ada, groups: [] } } }))
+        .keys,
+    ).toContain(photo.key)
+    expect(
+      (await listing.children({ ...query, readable: { rules, member: undefined } })).keys,
+    ).not.toContain(photo.key)
+    const operations = createMediaOperations({
+      db: s.h.server.db,
+      repository: { nodeState: s.h.server.schema.nodeState },
+      events: { record: async () => {} },
+    })
+    const current = await operations.repository.byKey(photo.key)
+    if (!current) throw new Error('missing photo')
+    const input = {
+      contentTypeKey: IMAGE,
+      parentKey: null,
+      values: current.values,
+      variants: [{ culture: null, segment: null, name: 'Updated' }],
+    }
+    expect(
+      (await operations.save(memberActor({ key: ada, name: 'Ada', groups: [] }), photo.key, input))
+        .ok,
+    ).toBe(true)
+    expect(
+      (
+        await operations.save(
+          memberActor({ key: 'bbbbbbbb-0000-4000-8000-000000000002', name: 'Other', groups: [] }),
+          photo.key,
+          input,
+        )
+      ).ok,
+    ).toBe(false)
+    expect(
+      (await s.h.put(`${API}/${photo.key}`, { ...body, rule: { ...body.rule, members: [] } }))
+        .status,
+    ).toBe(200)
+    expect((await s.visit(photo.src, headers)).status).toBe(404)
+    expect(
+      (
+        await s.h.put(`${API}/${photo.key}`, {
+          ...body,
+          rule: { ...body.rule, members: [{ key: 'not-a-member', read: true }] },
+        })
+      ).status,
+    ).toBe(400)
+  })
+  test('new files inherit: public read and no member writes by default, and a folder’s later change applies to them', async () => {
+    const s = await site()
+    const observers = await s.group('Observers')
+    await s.member('obi', [observers])
+    await s.member('cy', [])
+    const folder = await s.folder('Unconfigured')
+    const root = await s.image('Root')
+    const child = await s.image('Child', folder)
+    expect(await s.access.itemAccess(folder)).toEqual(OPEN_MEDIA)
+    for (const photo of [root, child]) {
+      expect(await s.access.itemAccess(photo.key)).toEqual(OPEN_MEDIA)
+      expect((await s.visit(photo.src)).status).toBe(200)
+      const response = await s.visit(photo.src, await s.signIn('cy'))
+      expect(response.status).toBe(200)
+      expect(response.headers.get('cache-control')).toContain('public')
+    }
+    expect(await s.h.json(`${API}/${root.key}`)).toMatchObject({ hasParent: false })
+    expect(await s.h.json(`${API}/${child.key}`)).toMatchObject({ hasParent: true })
+    expect((await s.h.put(`${API}/${root.key}`, { item: { writePolicy: 'members' } })).status).toBe(
+      400,
+    )
+
+    // Restricting the folder afterwards restricts the file already in it.
+    await s.protect(folder, ['Observers'])
+    expect((await s.visit(child.src)).status).toBe(404)
+    expect((await s.visit(child.src, await s.signIn('cy'))).status).toBe(404)
+    expect((await s.visit(child.src, await s.signIn('obi'))).status).toBe(200)
+    expect((await s.visit(root.src)).status).toBe(200)
+
+    // Its own settings win; taking them off inherits the folder's again.
+    const own = {
+      rule: { publicRead: true, groups: [], newRead: null, newWrite: null },
+      item: { readPolicy: 'inherit', writePolicy: 'inherit' },
+    }
+    expect((await s.h.put(`${API}/${child.key}`, own)).status).toBe(200)
+    expect((await s.visit(child.src)).status).toBe(200)
+    const inherit = { rule: null, item: { readPolicy: 'inherit', writePolicy: 'inherit' } }
+    expect((await s.h.put(`${API}/${child.key}`, inherit)).status).toBe(200)
+    expect((await s.visit(child.src)).status).toBe(404)
+    expect(await s.h.json(`${API}/${child.key}`)).toMatchObject({
+      own: null,
+      item: { readPolicy: 'inherit', writePolicy: 'inherit' },
+      inherited: { from: { name: 'Unconfigured' } },
+    })
+  })
+
+  test('a folder’s explicit default for new files is still given to each', async () => {
+    const s = await site()
+    const observers = await s.group('Observers')
+    await s.member('obi', [observers])
+    await s.member('cy', [])
+    const folder = await s.folder('Restricted')
+    await s.protect(folder, ['Observers'], { newRead: 'members', newWrite: 'none' })
+    const all = await s.image('All members photo', folder)
+    expect(await s.access.itemAccess(all.key)).toMatchObject({
+      readPolicy: 'members',
+      writePolicy: 'none',
+    })
+    expect((await s.visit(all.src, await s.signIn('cy'))).status).toBe(200)
+    expect((await s.visit(all.src)).status).toBe(404)
+  })
+
   test('a folder protects what is in it: members of its groups and editors may read, nobody else, and never from a cache', async () => {
     const s = await site()
     const observers = await s.group('Observers')
@@ -336,8 +622,8 @@ describe(`protected media (${dialectUnderTest})`, () => {
     await s.member('cy', [])
     await s.member('obi', [observers])
     const photos = await s.folder('Photos')
-    const photo = await s.image('Heron', photos)
-    const open = await s.image('Open')
+    const photo = await s.legacyImage('Heron', photos)
+    const open = await s.legacyImage('Open')
 
     // Before any rule, as today.
     const before = await s.visit(photo.src)
@@ -375,8 +661,8 @@ describe(`protected media (${dialectUnderTest})`, () => {
     await s.group('Observers')
     const outer = await s.folder('Outer')
     const inner = await s.folder('Inner', outer)
-    const deep = await s.image('Deep', inner)
-    const shallow = await s.image('Shallow', outer)
+    const deep = await s.legacyImage('Deep', inner)
+    const shallow = await s.legacyImage('Shallow', outer)
     await s.protect(outer, ['Observers'])
     expect((await s.visit(deep.src)).status).toBe(404)
 
@@ -477,8 +763,8 @@ describe(`protected media (${dialectUnderTest})`, () => {
     await s.group('Observers')
     const theirs = await s.folder('Theirs')
     const others = await s.folder('Others')
-    const inside = await s.image('Inside', theirs)
-    const outside = await s.image('Outside', others)
+    const inside = await s.legacyImage('Inside', theirs)
+    const outside = await s.legacyImage('Outside', others)
     await s.protect(theirs, ['Observers'])
     await s.protect(others, ['Observers'])
     const created = await s.h.post(`${V1}/user-group`, {
@@ -558,6 +844,8 @@ describe(`protected media (${dialectUnderTest})`, () => {
     expect(refused.status).toBe(400)
     expect(((await refused.json()) as { reason: string }).reason).toContain('new files')
     expect((await s.h.put(`${API}/${folder}`, { item: { readPolicy: 'anyone' } })).status).toBe(400)
+    for (const writePolicy of ['public', 'members'])
+      expect((await s.h.put(`${API}/${folder}`, { item: { writePolicy } })).status).toBe(400)
     expect((await s.h.call(`${API}/${crypto.randomUUID()}`)).status).toBe(404)
     expect((await s.visit(`${API}/${folder}`)).status).toBe(401)
 
@@ -577,8 +865,9 @@ describe(`protected media (${dialectUnderTest})`, () => {
     })
     await s.group('Observers')
     const open = await s.image('Open')
+    await s.access.setItemAccess(open.key, { readPolicy: 'public', writePolicy: 'none' })
     const folder = await s.folder('Private')
-    const closed = await s.image('Closed', folder)
+    const closed = await s.legacyImage('Closed', folder)
     await s.protect(folder, ['Observers'])
 
     const sent = await s.visit(open.src)
@@ -617,10 +906,12 @@ describe(`protected media in the Delivery API (${dialectUnderTest})`, () => {
     await s.member('obi', [observers])
     await s.member('cy', [])
     const photos = await s.folder('Photos')
-    const photo = await s.image('Heron', photos)
+    const photo = await s.legacyImage('Heron', photos)
     const open = await s.image('Open', photos)
     await s.protect(photos, ['Observers'])
     await s.h.put(`${API}/${open.key}`, { item: { readPolicy: 'public', writePolicy: 'inherit' } })
+    const all = await s.image('Members', photos)
+    await s.access.setItemAccess(all.key, { readPolicy: 'members', writePolicy: 'none' })
     s.h.server.cache.invalidate()
 
     const token = async (id: string) => {
@@ -651,9 +942,17 @@ describe(`protected media in the Delivery API (${dialectUnderTest})`, () => {
     expect((await api(`/item/${photo.key}`)).status).toBe(401)
     const outsider = await token('cy')
     expect((await api(`/item/${photo.key}`, outsider)).status).toBe(403)
+    expect((await api(`/item/${all.key}`, outsider)).status).toBe(200)
+    expect(await names(await api('?fetch=children:/photos', outsider))).toEqual(['Open', 'Members'])
+    expect((await s.visit(all.src)).status).toBe(404)
+    expect((await s.visit(all.src, outsider)).status).toBe(200)
     const observer = await token('obi')
     expect((await api(`/item/${photo.key}`, observer)).status).toBe(200)
-    expect(await names(await api('?fetch=children:/photos', observer))).toEqual(['Heron', 'Open'])
+    expect(await names(await api('?fetch=children:/photos', observer))).toEqual([
+      'Heron',
+      'Open',
+      'Members',
+    ])
     const items = (await (await api(`/items?id=${photo.key}&id=${open.key}`)).json()) as Array<{
       name: string
     }>
@@ -708,6 +1007,9 @@ describe(`media permissions travel (${dialectUnderTest})`, () => {
     const folder = await source.folder('Uploads')
     const photo = await source.image('Photo', folder)
     await source.protect(folder, ['Observers'], { newRead: 'creator', newWrite: 'none' })
+    const savedRule = await source.access.byNodeKey(folder)
+    if (!savedRule) throw new Error('missing rule')
+    await source.access.save({ ...savedRule, members: [{ key: ada, read: true, write: true }] })
     await source.access.setItemAccess(photo.key, { readPolicy: 'creator', writePolicy: 'none' })
     await source.access.setCreator(photo.key, ada)
     const root = await new NodeRepository(source.h.server.db).byKey(folder)
@@ -727,6 +1029,7 @@ describe(`media permissions travel (${dialectUnderTest})`, () => {
       rule: {
         publicRead: false,
         groups: [{ name: 'Observers', read: true, write: false }],
+        members: [{ key: ada, read: true, write: true }],
         newRead: 'creator',
         newWrite: 'none',
       },
@@ -748,6 +1051,7 @@ describe(`media permissions travel (${dialectUnderTest})`, () => {
     expect(await target.access.byNodeKey(folder)).toMatchObject({
       publicRead: false,
       groups: [{ name: 'Observers', read: true, write: false }],
+      members: [{ key: ada, read: true, write: true }],
       newRead: 'creator',
       newWrite: 'none',
     })
@@ -779,6 +1083,7 @@ describe(`the migration (${dialectUnderTest})`, () => {
       'AddMediaAccess',
       'AddMediaPagingIndexes',
       'AddMediaMemberUploads',
+      'AddMediaMemberGrants',
     ])
     const found = await new MediaAccessRepository(db).byUrl(photo.src)
     expect(found?.key).toBe(photo.key)

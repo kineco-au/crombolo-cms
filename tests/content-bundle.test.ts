@@ -96,6 +96,27 @@ function onDisk(
 }
 
 describe('the bundle format', () => {
+  test('preserves All members read and No members write in media and folder defaults', () => {
+    const mediaAccess = {
+      readPolicy: 'members' as const,
+      writePolicy: 'none' as const,
+      rule: {
+        publicRead: false,
+        groups: [],
+        members: [{ key: KEY_B, read: true, write: false }],
+        newRead: 'members' as const,
+        newWrite: 'none' as const,
+      },
+    }
+    const dir = onDisk(set([node({ kind: 'media', mediaAccess })]))
+    try {
+      const loaded = loadBundle(dir)
+      expect(loaded.problems).toEqual([])
+      expect(loaded.set?.nodes[0]?.mediaAccess).toEqual(mediaAccess)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
   test('writes one file per node, named after its key, plus a manifest', () => {
     const files = writeBundle(set([node(), node({ key: KEY_B })]))
     expect(files.map((f) => f.path)).toEqual([

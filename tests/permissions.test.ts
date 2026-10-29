@@ -167,6 +167,7 @@ describe('the media verbs (story 088)', () => {
       'AddMediaAccess',
       'AddMediaPagingIndexes',
       'AddMediaMemberUploads',
+      'AddMediaMemberGrants',
     ])
     const held = async (key: string) =>
       (

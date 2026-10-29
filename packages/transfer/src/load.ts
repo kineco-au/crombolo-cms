@@ -221,8 +221,8 @@ function parseAccess(raw: unknown): BundleAccess | undefined {
   }
 }
 
-const ITEM_POLICIES = ['public', 'groups', 'creator', 'none'] as const
-const NEW_READ = ['public', 'groups', 'creator'] as const
+const ITEM_POLICIES = ['public', 'members', 'groups', 'creator', 'none'] as const
+const NEW_READ = ['public', 'none', 'members', 'groups', 'creator'] as const
 const NEW_WRITE = ['groups', 'creator', 'none'] as const
 const oneOf = <T extends string>(values: readonly T[], v: unknown): T | undefined =>
   values.includes(v as T) ? (v as T) : undefined
@@ -240,6 +240,17 @@ function parseMediaAccess(raw: unknown): BundleMediaAccess | undefined {
             )
           : [],
         newRead: oneOf(NEW_READ, raw.rule.newRead) ?? null,
+        ...(Array.isArray(raw.rule.members)
+          ? {
+              members: raw.rule.members.flatMap((m) =>
+                isRecord(m) &&
+                typeof m.key === 'string' &&
+                /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(m.key)
+                  ? [{ key: m.key.toLowerCase(), read: m.read === true, write: m.write === true }]
+                  : [],
+              ),
+            }
+          : {}),
         newWrite: oneOf(NEW_WRITE, raw.rule.newWrite) ?? null,
         ...(Array.isArray(raw.rule.memberTypes)
           ? {

@@ -631,6 +631,13 @@ Here there is no contract to match, so the API is designed for this CMS.
 - A **Forms section** (`Crombolo.Section.Forms`) with two views, Forms and Entries.
   The alias resolves now: Umbraco seeds the stored `forms` alias and then has no
   section for it, so `toSectionAliases` used to drop it
+- A page's **Form picker** shows its saved form and offers **View form fields**
+  (story `202`). This expands the selected form's pages, groups, field names,
+  required markers, help and fixed choices in place. It reads the same definition
+  as the designer, without changing the form or the page. Changing or clearing
+  the dropdown changes only the page's form reference; editing the form itself
+  stays in the Forms section. An unavailable saved form stays visible until
+  deliberately cleared, and a failed field load can be retried.
 - The **designer** is a table, not a canvas. A form is a file, and what somebody
   edits here is written straight back to TOML, so the shape that matters is the
   one a diff shows. Saving sends the whole definition; the server writes it to

@@ -286,6 +286,36 @@ describe('the oclif manifest', () => {
   })
 })
 
+describe('init', () => {
+  test('scaffolds into an empty directory, or one holding only a fresh repository', () => {
+    mkdirSync(join(dir, '.git'))
+    const result = run(['init', '--name', 'Empty'])
+    expect(result.code, result.err).toBe(0)
+    expect(existsSync(join(dir, 'package.json'))).toBe(true)
+  })
+
+  test('refuses a directory that is not empty, writing nothing, unless --force', () => {
+    writeFileSync(join(dir, 'package.json'), '{"name":"mine"}')
+    const refused = run(['init', '--template', 'basic', '--json'])
+    expect(refused.code).toBe(ERROR_KINDS.refused.exitCode)
+    expect(refused.envelope()).toMatchObject({ kind: 'refused' })
+    expect(String(refused.envelope().message)).toContain('package.json')
+    expect(readFileSync(join(dir, 'package.json'), 'utf8')).toBe('{"name":"mine"}')
+    expect(existsSync(join(dir, 'crombolo.config.ts'))).toBe(false)
+
+    const forced = run(['init', '--name', 'Forced', '--force'])
+    expect(forced.code, forced.err).toBe(0)
+    expect(readFileSync(join(dir, 'package.json'), 'utf8')).not.toBe('{"name":"mine"}')
+  })
+
+  test('lists the templates in any directory', () => {
+    writeFileSync(join(dir, 'notes.txt'), 'here')
+    const result = run(['init', '--template', 'list'])
+    expect(result.code, result.err).toBe(0)
+    expect(result.out).toContain('basic')
+  })
+})
+
 describe('components new', () => {
   test("writes an e-mail template when a form's Send email names the alias", () => {
     mkdirSync(join(dir, 'schema', 'forms'), { recursive: true })

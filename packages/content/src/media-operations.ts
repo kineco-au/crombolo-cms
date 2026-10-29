@@ -11,6 +11,7 @@ import {
   memberMay,
   normaliseUuid,
   ObjectTypes,
+  SYSTEM_MEDIA_TYPE_KEYS,
   SystemNodes,
 } from '@crombolo/core'
 import {
@@ -398,7 +399,11 @@ export function createMediaOperations(options: MediaOperationsOptions) {
             const doc = await tx.create({ ...fields, componentKey: null, userId })
             // What the folder above says files created in it get.
             const access = new MediaAccessRepository(txDb)
-            if (stamp === false) await access.setCreator(doc.key, creator)
+            if (
+              stamp === false ||
+              input.contentTypeKey.toLowerCase() === SYSTEM_MEDIA_TYPE_KEYS.Folder
+            )
+              await access.setCreator(doc.key, creator)
             else await access.stampNew(doc.key, creator)
             return doc
           },

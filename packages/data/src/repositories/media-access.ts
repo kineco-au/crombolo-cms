@@ -34,11 +34,18 @@ export interface MediaAccessGroup {
   write: boolean
 }
 
+export interface MediaAccessMember {
+  key: string
+  read: boolean
+  write: boolean
+}
+
 /** A rule as it is set on one folder or item. */
 export interface MediaAccessInput {
   nodeKey: string
   publicRead: boolean
   groups: readonly MediaAccessGroup[]
+  members?: readonly MediaAccessMember[]
   newRead: NewMediaRead | null
   newWrite: NewMediaWrite | null
   /** File types a member may upload below (story 198); none when absent. */
@@ -69,6 +76,8 @@ export const ruleOf = (entry: MediaAccessEntry): MediaRule => ({
   publicRead: entry.publicRead,
   readGroups: entry.groups.filter((g) => g.read).map((g) => g.name),
   writeGroups: entry.groups.filter((g) => g.write).map((g) => g.name),
+  readMembers: entry.members?.filter((m) => m.read).map((m) => m.key),
+  writeMembers: entry.members?.filter((m) => m.write).map((m) => m.key),
   newRead: entry.newRead,
   newWrite: entry.newWrite,
   memberTypes: entry.memberTypes,
@@ -185,7 +194,27 @@ export class MediaAccessRepository {
         WHERE media_access_id IN (${ids.map(() => '?').join(', ')}) ORDER BY member_group`,
       ids,
     )
+    const members = await this.#db.query<{
+      media_access_id: number
+      member_key: string
+      can_read: unknown
+      can_write: unknown
+    }>(
+      `SELECT media_access_id, member_key, can_read, can_write FROM media_access_member WHERE media_access_id IN (${ids.map(() => '?').join(', ')}) ORDER BY member_key`,
+      ids,
+    )
     return rows.map((row) => ({
+      ...(members.some((m) => Number(m.media_access_id) === Number(row.id))
+        ? {
+            members: members
+              .filter((m) => Number(m.media_access_id) === Number(row.id))
+              .map((m) => ({
+                key: normaliseUuid(m.member_key),
+                read: fromDbBool(m.can_read),
+                write: fromDbBool(m.can_write),
+              })),
+          }
+        : {}),
       nodeId: Number(row.node_id),
       nodeKey: normaliseUuid(String(row.node_key)),
       publicRead: fromDbBool(row.public_read),
@@ -207,7 +236,7 @@ export class MediaAccessRepository {
     }))
   }
 
-  /** Every rule, in two queries: what a request deciding over many items reads. */
+  /** Every rule, in three queries: what a request deciding over many items reads. */
   async allRules(): Promise<MediaRule[]> {
     const rows = await this.#db.query<EntryRow>(SELECT)
     return (await this.#hydrate(rows)).map(ruleOf)
@@ -284,6 +313,17 @@ export class MediaAccessRepository {
         await tx.exec('DELETE FROM media_access_rule WHERE media_access_id = ?', [id])
       }
       const seen = new Set<string>()
+      await tx.exec('DELETE FROM media_access_member WHERE media_access_id = ?', [id])
+      const memberKeys = new Set<string>()
+      for (const member of input.members ?? []) {
+        const key = normaliseUuid(member.key)
+        if (memberKeys.has(key) || (!member.read && !member.write)) continue
+        memberKeys.add(key)
+        await tx.exec(
+          'INSERT INTO media_access_member (media_access_id, member_key, can_read, can_write) VALUES (?, ?, ?, ?)',
+          [id, key, tx.dialect.boolValue(member.read), tx.dialect.boolValue(member.write)],
+        )
+      }
       for (const group of input.groups) {
         const name = group.name.trim()
         if (name === '' || seen.has(name.toLowerCase()) || (!group.read && !group.write)) continue

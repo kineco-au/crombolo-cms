@@ -135,6 +135,8 @@ describe('the first boot of a self-hosted site', () => {
   test('a database the previous release left is upgraded by `crombolo upgrade`, and then starts', async () => {
     const file = readdirSync(site()).find((name) => name.endsWith('.sqlite')) as string
     const sqlite = new Database(join(site(), file))
+    sqlite.exec('DROP TABLE IF EXISTS media_access_member')
+    sqlite.exec("DELETE FROM migration_history WHERE name = 'AddMediaMemberGrants'")
     // As 0.34.0 left it: before media permissions (050), the media paging
     // indexes (051) and members' uploads (052). Every migration since the last
     // release has to be undone here, an index before its columns.

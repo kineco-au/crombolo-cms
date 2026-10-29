@@ -1,0 +1,5 @@
+{
+  "tests/load/concurrency.load.ts": 25,
+  "tests/load/large-site.bench.ts": 937,
+  "tests/load/media-library.bench.ts": 760
+}

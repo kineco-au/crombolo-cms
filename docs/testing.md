@@ -578,12 +578,40 @@ To refresh the times, take them from a Release run's per-file groups.
 `release.yml`), since both are what it publishes. Locally, `docker:test:all` is
 the release's matrix.
 
+The release's `load (postgres)` leg is also sharded (story `201`): three jobs
+run the concurrency test, large-site benchmark and media-library benchmark in
+parallel. The selector takes an optional suite:
+`bun run scripts/test-shard.ts <shard> <total> load`. It discovers both
+`*.load.ts` and `*.bench.ts` under `tests/load/`, using that directory's
+`shard-weights.json`; the unit selector's existing invocation and weights stay
+separate. Unknown files get the suite's median time, as in the unit split.
+Every job has its own Postgres service and per-process database, and registry
+publishing waits for every matrix job. `load (sqlite)` keeps its existing
+sequential `test:load` and `test:bench` steps.
+
+The large fixtures stay whole: 25,000 pages in three cultures, a million media
+items, 10,000 uploads and 1,500 concurrent-edit operations. Sharding removes
+the wait between workloads; the slowest fixture still sets the lower bound.
+To run one Postgres shard locally, with small benchmark fixtures:
+
+```sh
+docker compose run --rm \
+  -e CROMBOLO_BENCH_PAGES=120 -e CROMBOLO_BENCH_MEDIA=10 \
+  -e CROMBOLO_BENCH_WIDE=20 -e CROMBOLO_BENCH_SAMPLES=5 \
+  -e CROMBOLO_BENCH_LIBRARY=3000 -e CROMBOLO_BENCH_UPLOADS=20 \
+  -e CROMBOLO_LOAD_OPS=1500 \
+  cms-test sh -c 'files=$(bun run scripts/test-shard.ts 1 3 load); test -n "$files" && bun run test:ci --timeout 600000 $files'
+```
+
+Change `1` to `2` or `3` for the other shards. Omitting the benchmark size
+overrides runs the release-sized fixtures; the CI jobs set none of them.
+
 In the pipeline, Postgres runs with `fsync`, `synchronous_commit` and
 `full_page_writes` off: its data is thrown away with the runner, so there is no
 durability to pay for. A step sets them with `ALTER SYSTEM` and a reload,
 because a service container takes no command line. It does this for the unit
-suite's Postgres leg and for the release's load and benchmark job. The local
-`db` container keeps the defaults, since it also holds development data.
+suite's Postgres leg and for each of the release's load and benchmark shards.
+The local `db` container keeps the defaults, since it also holds development data.
 
 Three settings exist for CI specifically. `retries: 2` applies only when `CI` is set,
 so a flake on a laptop stays a flake worth chasing rather than being retried away.

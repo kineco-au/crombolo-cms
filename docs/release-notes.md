@@ -6,6 +6,13 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+- **`crombolo init` needs an empty directory.** It scaffolds either a plain
+  site or one from `--template`, once; in a directory that is not empty (a
+  `.git` folder aside) it now fails with exit code 8 rather than skipping the
+  files already there and leaving a template half-applied. `--force`
+  scaffolds anyway, overwriting them. Its JSON output no longer has
+  `existing`.
+
 ## v0.35.1 — 2026-10-28
 
 - v0.35.0 was tagged but never published: the browser suite's own test page

@@ -56,12 +56,17 @@ function readableUnder(
 ): { sql: string; params: unknown[] } {
   const held = new Set(member?.groups.map((g) => g.toLowerCase()) ?? [])
   const inGroups = (names: readonly string[]) => names.some((n) => held.has(n.toLowerCase()))
-  const groups = inGroups(rule?.readGroups ?? [])
+  const groups =
+    inGroups(rule?.readGroups ?? []) ||
+    Boolean(
+      member && rule?.readMembers?.some((key) => key.toLowerCase() === member.key.toLowerCase()),
+    )
   const inherited = !rule || rule.publicRead || groups
   const parts = ["c.read_policy = 'public'"]
   const params: unknown[] = []
   if (groups) parts.push("c.read_policy = 'groups'")
   if (member) {
+    parts.push("c.read_policy = 'members'")
     parts.push("(c.read_policy = 'creator' AND c.creator_member_key = ?)")
     params.push(normaliseUuid(member.key))
   }

@@ -1020,24 +1020,39 @@ codec in `@crombolo/server` `imaging.ts`.
 
 ### Protected media
 
-A media folder or item can say which member groups may see it and which may
-change it (story 196), from **Permissions** on its actions menu in the back
-office. A file whose folder sets nothing is open to anyone with its address,
-as before.
+A media folder or item's **Permissions** (in its actions menu) hold a **Public
+Access** section (story 205) with two toggles. Read offers **Enabled** (the
+default: anyone with the link), **Disabled** (back-office users only) and
+**Custom**; Write offers **No Public Access** and **Custom**. Custom grants
+access to the selected member groups or individual members, independently for
+reading and writing. Public write is never allowed.
+
+A child file or folder shows **Inherit parent permissions**, ticked unless it
+has settings of its own. Inheritance is live: it follows the nearest folder
+above that has settings, or the defaults (Enabled / No Public Access) when none
+has, so changing a folder applies at once to everything below that inherits.
+Unticking it starts the item's own settings from what it inherited; ticking it
+again takes them off. The line above the section, and the media workspace's
+info panel, say where the settings come from and who they let in.
+
+Existing saved settings are preserved, including older all-members and creator
+settings on files, which show as overrides.
 
 - **The nearest rule wins.** A folder's rule governs everything below it, and
   a rule on a child folder or item replaces it: stricter, looser, or open to
   anyone again. Rules are rows in `media_access` and `media_access_rule`, one
   per folder or item given permissions, with groups named as page rules name
-  them.
-- **A folder sets what files added later get**: who may see them (anyone with
-  the link, members of its groups, or only the member who added the file) and
-  who may change them (its groups, the member who added it, or no member).
-  These are stamped on each new file as it is created, as its `read_policy` and
-  `write_policy` columns on `content`, so changing a folder's defaults later
-  affects only files created afterwards, and millions of files cost no rule
-  rows. A file's own setting can be changed at any time; `inherit` (stored as
-  null) follows the nearest rule.
+  them. `media_access_member` holds individual member UUIDs with independent
+  read/write flags. Custom accepts a matching group or a selected member.
+- **New files inherit.** A file is created with `inherit` (null) in its
+  `read_policy` and `write_policy` columns on `content`, following the nearest
+  rule live, so millions of files cost no rule rows. An override from the
+  dialog is a rule on the item itself, with its policies left at `inherit`.
+  A rule may still carry an explicit default for new files (`new_read`,
+  `new_write`: all signed-in members, members of its groups, only the member
+  who added the file, or no member), from older settings or a transfer; it is
+  stamped on each new file as it is created. The dialog no longer offers it,
+  and keeps only "only the member who added it" when a folder is saved.
 - **The creator.** `content.creator_member_key` records the member who created
   a file. "Only the member who added it" means that member, and being its
   creator grants nothing else. Members create media through a server bundle

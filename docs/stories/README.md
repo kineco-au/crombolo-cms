@@ -113,6 +113,9 @@ not cover.
 | `034` | An unattended install seeds an API client | should | S | done | 031 |
 | `035` | A member created without a password | should | S | done | 031 |
 | `196` | Media only the right people can read | should | L | done | 030, 031 |
+| `203` | Media member permission defaults | must | M | done | 196 |
+| `204` | Public, Private and Custom media access | should | M | done | 203 |
+| `205` | Media Public Access with inherited permissions | should | M | done | 204 |
 | `191` | Azure AD B2C user flows for members | should | M | ready | 031 |
 
 ### Epic E — Cross-cutting
@@ -191,6 +194,7 @@ requests, only server-side and build-time front ends can call it.
 | `087` | A ready-to-run container image | should | M | ready | — |
 | `088` | A read-only group changes nothing | must | M | done | 023, 026, 027, 028 |
 | `200` | Bundle import fixtures close before reset | must | S | done | — |
+| `201` | Postgres load and benchmark shards | should | S | done | — |
 
 ### Epic J — Forms
 
@@ -202,6 +206,7 @@ requests, only server-side and build-time front ends can call it.
 | `093` | A multi-page form steps a page at a time | could | M | done | — |
 | `094` | The form designer edits layout | should | M | done | — |
 | `095` | Field and workflow types from a bundle | could | L | done | — |
+| `202` | A page's form picker shows its fields | must | S | done | — |
 
 ### Epic K — Moving content
 

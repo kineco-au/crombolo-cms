@@ -14,7 +14,7 @@ import {
   readLedger,
   readState,
   STATE_CONTENT_APPLIED,
-  STATE_MEDIA_MEMBER_UPLOADS,
+  STATE_MEDIA_MEMBER_GRANTS,
   seedIdentity,
 } from '@crombolo/data'
 import { summariseUpgrades, VERSION } from '@crombolo/server'
@@ -120,10 +120,11 @@ describe('upgrading from the previous release', () => {
       'AddMediaAccess',
       'AddMediaPagingIndexes',
       'AddMediaMemberUploads',
+      'AddMediaMemberGrants',
     ])
-    expect(await readState(db)).toBe(STATE_MEDIA_MEMBER_UPLOADS)
+    expect(await readState(db)).toBe(STATE_MEDIA_MEMBER_GRANTS)
     const summary = summariseUpgrades(await readLedger(db), VERSION)
-    expect(summary.lastUpgrade).toMatchObject({ release: '0.35.0', steps: 3 })
+    expect(summary.lastUpgrade).toMatchObject({ release: '0.35.3', steps: 4 })
   })
 
   test('the Changes dashboard reports the version, the install and the last upgrade', async () => {

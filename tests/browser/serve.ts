@@ -37,6 +37,29 @@ const root = mkdtempSync(join(repo, 'output', 'browser-site-'))
 cpSync(join(repo, 'apps/site/schema'), join(root, 'schema'), { recursive: true })
 cpSync(join(repo, 'apps/site/components'), join(root, 'components'), { recursive: true })
 
+// The demo's real contact form, for the page editor's form picker regression.
+mkdirSync(join(root, 'schema', 'forms'), { recursive: true })
+cpSync(
+  join(repo, 'sites/harbourstone/schema/forms/contact.toml'),
+  join(root, 'schema/forms/harbourstone-contact.toml'),
+)
+writeFileSync(
+  join(root, 'schema/content-types/contact-form-test.toml'),
+  `[content-type]
+alias = "contactFormTest"
+name = "Contact form test"
+allow-at-root = true
+
+[[tab]]
+name = "Form"
+
+[[tab.property]]
+alias = "enquiryForm"
+name = "Form"
+type = "formPicker"
+`,
+)
+
 // A content type with a property for every built-in data type, for the
 // editor-coverage tests, and a view that renders a crop of its image picker.
 const editors = DEFAULT_DATA_TYPES.filter((d) => d.editorAlias !== 'Umbraco.ListView')

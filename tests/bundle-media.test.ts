@@ -358,15 +358,15 @@ describe('the back office', () => {
     expect(megabytesOf(1.5 * 1024 * 1024)).toBe('1.5')
     expect(megabytesOf(null)).toBe('')
     const sent = requestFor({
-      hasFile: false,
-      own: {
-        publicRead: false,
-        groups: [],
-        newRead: null,
-        newWrite: null,
-        memberTypes: ['jpeg'],
-        memberMaxBytes: 1000,
-      },
+      inherit: false,
+      read: 'private',
+      write: 'private',
+      groups: [],
+      members: [],
+      newRead: null,
+      newWrite: null,
+      memberTypes: ['jpeg'],
+      memberMaxBytes: 1000,
     })
     expect(sent.rule).toMatchObject({ memberTypes: ['jpeg'], memberMaxBytes: 1000 })
   })
@@ -594,6 +594,8 @@ async function realSite(media: Record<string, unknown> = {}) {
     (await first.put(`${BACKOFFICE}/crombolo/api/media-access/${closed}`, rule([], null))).status,
   ).toBe(200)
 
+  await first.db.close()
+  harnesses.splice(harnesses.indexOf(first), 1)
   const h = await signedInServer({
     keepDatabase: true,
     config: { ...config, bundles: [observations(media)], nodeId: 'with-bundle' },
@@ -680,7 +682,7 @@ describe(`server bundles create media as the member (${dialectUnderTest})`, () =
       expect(contains(file, secret)).toBe(false)
     expect(await new Bun.Image(file).metadata()).toMatchObject({ width: 20, height: 30 })
 
-    // The creator, and the folder's defaults stamped: only she may change it.
+    // The creator, and the folder's write default stamped: only she may change it.
     const access = new MediaAccessRepository(s.h.server.db)
     expect(await access.itemAccess(body.key)).toEqual({
       readPolicy: 'inherit',
@@ -829,6 +831,8 @@ describe(`server bundles create media as the member (${dialectUnderTest})`, () =
     expect((await s.upload('ada', pdf, 'a.pdf')).status).toBe(415)
 
     // The bundle narrows the folder's list, never widens it.
+    await s.h.db.close()
+    harnesses.splice(harnesses.indexOf(s.h), 1)
     const narrow = await realSite({ types: ['png'] })
     expect((await narrow.upload('ada', await phonePhoto(), 'a.jpg')).status).toBe(415)
     expect((await narrow.upload('ada', marked(2, 2), 'a.png')).status).toBe(200)
@@ -846,6 +850,8 @@ describe(`server bundles create media as the member (${dialectUnderTest})`, () =
     expect(tooBig.status).toBe(413)
     expect(((await tooBig.json()) as { message: string }).message).toContain('98 KB')
 
+    await s.h.db.close()
+    harnesses.splice(harnesses.indexOf(s.h), 1)
     const roomy = await realSite({ maxBytes: 5_000_000 })
     expect((await roomy.upload('ada', big(250_000), 'a.png')).status).toBe(413)
 

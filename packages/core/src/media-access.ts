@@ -6,21 +6,28 @@
  */
 
 /** An item's own setting: `inherit` follows the nearest rule. */
-export type MediaPolicy = 'inherit' | 'public' | 'groups' | 'creator' | 'none'
+export type MediaPolicy = 'inherit' | 'public' | 'members' | 'groups' | 'creator' | 'none'
 
 /** Who may see a file created in a folder later. */
-export type NewMediaRead = 'public' | 'groups' | 'creator'
+export type NewMediaRead = 'public' | 'members' | 'groups' | 'creator' | 'none'
 /** Who may change a file created in a folder later. */
 export type NewMediaWrite = 'groups' | 'creator' | 'none'
 
 export const MEDIA_POLICIES: readonly MediaPolicy[] = [
   'inherit',
   'public',
+  'members',
   'groups',
   'creator',
   'none',
 ]
-export const NEW_MEDIA_READ: readonly NewMediaRead[] = ['public', 'groups', 'creator']
+export const NEW_MEDIA_READ: readonly NewMediaRead[] = [
+  'public',
+  'none',
+  'members',
+  'groups',
+  'creator',
+]
 export const NEW_MEDIA_WRITE: readonly NewMediaWrite[] = ['groups', 'creator', 'none']
 
 /** A rule set on a media folder or item, governing it and everything below that sets none. */
@@ -31,6 +38,8 @@ export interface MediaRule {
   publicRead: boolean
   readGroups: readonly string[]
   writeGroups: readonly string[]
+  readMembers?: readonly string[]
+  writeMembers?: readonly string[]
   /** What files created below get; null leaves them following the rule. */
   newRead: NewMediaRead | null
   newWrite: NewMediaWrite | null
@@ -96,11 +105,17 @@ export function memberMay(
 ): boolean {
   const policy = action === 'read' ? item.readPolicy : item.writePolicy
   const groups = action === 'read' ? (rule?.readGroups ?? []) : (rule?.writeGroups ?? [])
+  const selected = action === 'read' ? rule?.readMembers : rule?.writeMembers
+  const allowed =
+    inGroups(groups, member) ||
+    Boolean(member && selected?.some((key) => key.toLowerCase() === member.key.toLowerCase()))
   switch (policy) {
     case 'public':
       return action === 'read'
+    case 'members':
+      return action === 'read' && member !== undefined
     case 'groups':
-      return inGroups(groups, member)
+      return allowed
     case 'creator':
       return (
         member !== undefined &&
@@ -110,8 +125,8 @@ export function memberMay(
     case 'none':
       return false
     case 'inherit':
-      if (action === 'read') return !rule || rule.publicRead || inGroups(groups, member)
-      return inGroups(groups, member)
+      if (action === 'read') return !rule || rule.publicRead || allowed
+      return allowed
   }
 }
 
@@ -119,7 +134,10 @@ export function memberMay(
 export const isProtectedMedia = (item: MediaItemAccess, rule: MediaRule | undefined): boolean =>
   !memberMay('read', item, rule, undefined)
 
-/** The policies a new file gets from the rule above it. Pure. */
+/**
+ * The policies a new file gets from the rule above it: `inherit`, following
+ * the folder live, unless the rule sets an explicit default for new files. Pure.
+ */
 export function stampedPolicies(rule: MediaRule | undefined): {
   readPolicy: MediaPolicy
   writePolicy: MediaPolicy

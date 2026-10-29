@@ -409,7 +409,10 @@ three is `(node_id, property_type_id, language_id, segment, id DESC)`.
   `content`, a media item's `file_url` (indexed, the `/media/…` path its file
   is served at, backfilled), `creator_member_key`, `read_policy` and
   `write_policy`; and `node_file(node_id, url)`, the files any other node's
-  upload values name. `rendering.md`, "Protected media".
+  upload values name. `read_policy = 'members'` permits signed-in members,
+  including members without groups. New files are created with null (inherit)
+  policies and follow the nearest rule live, unless that rule sets an explicit
+  new-file default (205). `rendering.md`, "Protected media".
 - **Migration 051, story `197`:** `ix_node_parent_sort` on `node(parent_id,
   node_object_type, trashed, sort_order, id)`, which pages a folder's children
   in Umbraco's order in the database, and `ix_cache_instruction_checkpoint`,
@@ -419,6 +422,11 @@ three is `(node_id, property_type_id, language_id, segment, id DESC)`.
   types members may upload below the folder, a comma-separated list of names
   such as `jpeg,png`; null is none) and `member_max_bytes` (the largest such
   upload, or null). `rendering.md`, "What members may upload".
+- **Migration 053, story `204`, release 0.35.3:**
+  `media_access_member(media_access_id, member_key, can_read, can_write)` stores
+  individual member grants alongside group grants. Its composite primary key
+  allows one row per rule/member; deleting a rule cascades to these rows.
+  Member keys travel with bundles without requiring people to be included.
 - **Media and blueprints are documents** of their own object types. The
   document repository takes a `kind` (document, media, blueprint), which picks
   the object type, the recycle bin and the folder type; media and blueprints

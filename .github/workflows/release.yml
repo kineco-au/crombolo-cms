@@ -35,14 +35,19 @@ jobs:
     # Postgres. It runs here rather than in CI: it is minutes of hammering that
     # guards what a release ships, not what every push to main changes. Locally:
     # `bun run docker:test:load`. The seed is printed, so a failure replays with
-    # CROMBOLO_LOAD_SEED.
+    # CROMBOLO_LOAD_SEED. Postgres splits the load test and the two benchmarks
+    # across three independent runners; their full-sized fixtures stay intact.
     load:
-        name: load (${{ matrix.dialect }})
+        name: load (${{ matrix.dialect }}${{ matrix.shards > 1 && format(' {0}/{1}', matrix.shard, matrix.shards) || '' }})
         runs-on: ubuntu-latest
         strategy:
             fail-fast: false
             matrix:
-                dialect: [sqlite, postgres]
+                include:
+                    - { dialect: sqlite, shard: 1, shards: 1 }
+                    - { dialect: postgres, shard: 1, shards: 3 }
+                    - { dialect: postgres, shard: 2, shards: 3 }
+                    - { dialect: postgres, shard: 3, shards: 3 }
         services:
             db:
                 image: postgres:18-alpine
@@ -86,10 +91,19 @@ jobs:
                   bun-version: ${{ env.BUN_VERSION }}
             - run: bun install --frozen-lockfile
             - run: bun run generate:types
-            - run: bun run test:load
+            - name: Run load and benchmark shard ${{ matrix.shard }} of ${{ matrix.shards }}
+              if: matrix.shards > 1
+              run: |
+                  files=$(bun run scripts/test-shard.ts ${{ matrix.shard }} ${{ matrix.shards }} load)
+                  test -n "$files"
+                  # Unquoted on purpose: one argument per file, as in the unit shards.
+                  bun run test:ci --timeout 600000 $files
+            - if: matrix.shards == 1
+              run: bun run test:load
             # Story 086's benchmark: a generated 25,000-page site, timed against
             # the budgets in docs/testing.md. Release only; locally, run it small.
-            - run: bun run test:bench
+            - if: matrix.shards == 1
+              run: bun run test:bench
 
     publish:
         needs: [ci, load]

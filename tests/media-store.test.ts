@@ -231,6 +231,13 @@ describe('a store the file system knows nothing about', () => {
     const store = memoryMediaStore({ publicUrlPrefix: 'https://cdn.example.test/media' })
     const { h, image } = await site(store)
     const placed = await image('Photo', await png())
+    expect(
+      (
+        await h.put(`/crombolo/crombolo/api/media-access/${placed.key}`, {
+          item: { readPolicy: 'public', writePolicy: 'none' },
+        })
+      ).status,
+    ).toBe(200)
     const key = placed.src.slice('/media/'.length)
 
     const served = await h.call(placed.src, { redirect: 'manual' })
@@ -319,6 +326,13 @@ describe('the file system store', () => {
     const store = memoryMediaStore({ publicUrlPrefix: '/static/media' })
     const { h, image } = await site(store)
     const placed = await image('Photo', await png())
+    expect(
+      (
+        await h.put(`/crombolo/crombolo/api/media-access/${placed.key}`, {
+          item: { readPolicy: 'public', writePolicy: 'none' },
+        })
+      ).status,
+    ).toBe(200)
     const key = placed.src.slice('/media/'.length)
 
     const served = await h.call(placed.src, { redirect: 'manual' })

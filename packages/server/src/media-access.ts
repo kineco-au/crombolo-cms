@@ -31,6 +31,7 @@ import {
   type Db,
   type MediaAccessEntry,
   type MediaAccessGroup,
+  type MediaAccessMember,
   MediaAccessRepository,
   type MediaByUrl,
   MemberRepository,
@@ -66,6 +67,7 @@ const isUuid = (value: string) =>
 interface RuleBody {
   publicRead: boolean
   groups: MediaAccessGroup[]
+  members?: MediaAccessMember[]
   newRead: NewMediaRead | null
   newWrite: NewMediaWrite | null
   /** File types members may upload below (story 198); empty is none. */
@@ -77,6 +79,7 @@ interface RuleBody {
 const ruleBody = (entry: MediaAccessEntry): RuleBody => ({
   publicRead: entry.publicRead,
   groups: entry.groups,
+  ...(entry.members?.length ? { members: [...entry.members] } : {}),
   newRead: entry.newRead,
   newWrite: entry.newWrite,
   memberTypes: entry.memberTypes,
@@ -95,11 +98,20 @@ export function parseRuleBody(raw: unknown): RuleBody | string {
     parsed.push({ name: g.name.trim(), read: g.read === true, write: g.write === true })
   }
   const newRead = body.newRead ?? null
+  if (body.members !== undefined && !Array.isArray(body.members))
+    return 'Choose members from the member picker.'
+  const members: MediaAccessMember[] = []
+  for (const rawMember of (body.members ?? []) as unknown[]) {
+    const m = rawMember as Record<string, unknown> | null
+    if (!m || typeof m.key !== 'string' || !isUuid(m.key))
+      return 'Choose members from the member picker.'
+    members.push({ key: normaliseUuid(m.key), read: m.read === true, write: m.write === true })
+  }
   if (newRead !== null && !NEW_MEDIA_READ.includes(newRead as NewMediaRead))
-    return 'Choose who may see new files: everyone, the groups, or the member who added it.'
+    return 'Choose who may see new files.'
   const newWrite = body.newWrite ?? null
   if (newWrite !== null && !NEW_MEDIA_WRITE.includes(newWrite as NewMediaWrite))
-    return 'Choose who may change new files: the groups, the member who added it, or no member.'
+    return 'Choose who may change new files.'
   const known = MEMBER_FILE_TYPES.map((type) => type.id)
   const memberTypes = body.memberTypes ?? []
   if (!Array.isArray(memberTypes) || memberTypes.some((t) => !known.includes(t as string)))
@@ -113,6 +125,7 @@ export function parseRuleBody(raw: unknown): RuleBody | string {
   return {
     publicRead: body.publicRead === true,
     groups: parsed,
+    ...(members.length ? { members } : {}),
     newRead: newRead as NewMediaRead | null,
     newWrite: newWrite as NewMediaWrite | null,
     memberTypes: [...new Set(memberTypes as string[])],
@@ -221,6 +234,7 @@ export function createMediaAccess(deps: MediaAccessDeps) {
     return {
       key: node.key,
       name: node.text ?? '',
+      hasParent: node.parentId > 0,
       hasFile: Boolean(fileRows[0]?.file_url),
       own: own ? ruleBody(own) : null,
       inherited:
@@ -284,7 +298,11 @@ export function createMediaAccess(deps: MediaAccessDeps) {
         const write = raw.writePolicy ?? 'inherit'
         if (!MEDIA_POLICIES.includes(read as MediaPolicy))
           return Response.json({ reason: 'Choose who may see this file.' }, { status: 400 })
-        if (!MEDIA_POLICIES.includes(write as MediaPolicy) || write === 'public')
+        if (
+          !MEDIA_POLICIES.includes(write as MediaPolicy) ||
+          write === 'public' ||
+          write === 'members'
+        )
           return Response.json({ reason: 'Choose who may change this file.' }, { status: 400 })
         item = { readPolicy: read as MediaPolicy, writePolicy: write as MediaPolicy }
       }

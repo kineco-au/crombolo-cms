@@ -110,14 +110,15 @@ export interface BundleMediaAccess {
   rule?: {
     publicRead: boolean
     groups: Array<{ name: string; read: boolean; write: boolean }>
-    newRead: 'public' | 'groups' | 'creator' | null
+    members?: Array<{ key: string; read: boolean; write: boolean }>
+    newRead: 'public' | 'members' | 'groups' | 'creator' | 'none' | null
     newWrite: 'groups' | 'creator' | 'none' | null
     /** File types members may upload below (story 198); absent is none. */
     memberTypes?: string[]
     memberMaxBytes?: number
   }
-  readPolicy?: 'public' | 'groups' | 'creator' | 'none'
-  writePolicy?: 'public' | 'groups' | 'creator' | 'none'
+  readPolicy?: 'public' | 'members' | 'groups' | 'creator' | 'none'
+  writePolicy?: 'public' | 'members' | 'groups' | 'creator' | 'none'
   creator?: string
 }
 

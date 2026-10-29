@@ -122,6 +122,8 @@ export async function undoMediaAccess(db: Db): Promise<void> {
 
 /** Undoes 052, which 050's undo calls first: it comes after it. */
 export async function undoMediaMemberUploads(db: Db): Promise<void> {
+  await db.exec('DROP TABLE IF EXISTS media_access_member')
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddMediaMemberGrants'")
   for (const column of ['member_types', 'member_max_bytes'])
     await db.exec(`ALTER TABLE media_access DROP COLUMN ${column}`)
   await db.exec("DELETE FROM migration_history WHERE name = 'AddMediaMemberUploads'")

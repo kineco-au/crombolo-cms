@@ -35,7 +35,7 @@ export default class CromboloMediaAccessInfoElement extends UmbLitElement {
 
   render() {
     if (!this._state) return nothing
-    return html`<umb-workspace-info-app-layout headline="Who can see it">
+    return html`<umb-workspace-info-app-layout headline="Public Access">
       <div class="body">
         ${this._state.protected ? html`<uui-tag color="warning" look="primary">Protected</uui-tag>` : nothing}
         <span>${summarise(this._state)}</span>

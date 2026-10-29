@@ -300,6 +300,9 @@ describe('media cached apart from the pages (story 197)', () => {
   test('a file is found through its address in the media cache, and its type decides how long it is kept', async () => {
     const { h, image } = await site()
     const hero = await image('Hero')
+    await h.put(`/crombolo/crombolo/api/media-access/${hero.key}`, {
+      item: { readPolicy: 'public', writePolicy: 'none' },
+    })
     const response = await h.call(hero.src)
     expect(response.status).toBe(200)
     expect(response.headers.get('cache-control')).toContain('max-age')

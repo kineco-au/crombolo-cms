@@ -1,27 +1,28 @@
 /**
- * One shard of the unit suite, for CI to run in parallel jobs: the test files
- * `bun test` collects, split into `total` sets of about equal time, printed one
- * per line as paths `bun test` takes.
+ * One shard of a suite, for CI to run in parallel jobs: files split into `total`
+ * sets of about equal time, printed one per line as paths `bun test` takes.
  *
- *   bun run scripts/test-shard.ts <shard> <total>    1-based shard
+ *   bun run scripts/test-shard.ts <shard> <total> [unit|load]    1-based shard
  *
- * Times come from `tests/shard-weights.json`, each file's seconds on Postgres in
- * CI, where sharding pays. A file with no time, such as a new one, counts as the
- * median. The split is deterministic, so every job agrees on which file is
- * whose, and the shards together are always the whole suite.
+ * Times come from `shard-weights.json` in `tests/` or `tests/load/`, each file's
+ * seconds on Postgres in CI. A file with no time counts as the median. The split
+ * is deterministic, so the shards together are always the whole suite.
  */
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { ROOT } from './packages.ts'
 
 const TESTS = join(ROOT, 'tests')
-const WEIGHTS = join(TESTS, 'shard-weights.json')
+type Suite = 'unit' | 'load'
 
-/** What `bun test` collects here: `*.test.ts(x)` directly under `tests/`. */
-export function testFiles(): string[] {
-  return readdirSync(TESTS)
-    .filter((name) => /\.test\.tsx?$/.test(name))
-    .map((name) => `tests/${name}`)
+const directory = (suite: Suite) => (suite === 'load' ? join(TESTS, 'load') : TESTS)
+
+/** Unit tests by default; `load` includes both load tests and benchmarks. */
+export function testFiles(suite: Suite = 'unit'): string[] {
+  const pattern = suite === 'load' ? /\.(load|bench)\.ts$/ : /\.test\.tsx?$/
+  return readdirSync(directory(suite))
+    .filter((name) => pattern.test(name))
+    .map((name) => `${suite === 'load' ? 'tests/load' : 'tests'}/${name}`)
     .sort()
 }
 
@@ -47,10 +48,22 @@ export function shards(
 if (import.meta.main) {
   const shard = Number(process.argv[2])
   const total = Number(process.argv[3])
-  if (!Number.isInteger(shard) || !Number.isInteger(total) || shard < 1 || shard > total) {
-    console.error('usage: bun run scripts/test-shard.ts <shard> <total>, with 1 <= shard <= total')
+  const suite = process.argv[4] ?? 'unit'
+  if (
+    !Number.isInteger(shard) ||
+    !Number.isInteger(total) ||
+    shard < 1 ||
+    shard > total ||
+    (suite !== 'unit' && suite !== 'load')
+  ) {
+    console.error(
+      'usage: bun run scripts/test-shard.ts <shard> <total> [unit|load], with 1 <= shard <= total',
+    )
     process.exit(2)
   }
-  const weights = JSON.parse(readFileSync(WEIGHTS, 'utf8')) as Record<string, number>
-  for (const file of shards(testFiles(), total, weights)[shard - 1] ?? []) console.log(`./${file}`)
+  const weights = JSON.parse(
+    readFileSync(join(directory(suite), 'shard-weights.json'), 'utf8'),
+  ) as Record<string, number>
+  for (const file of shards(testFiles(suite), total, weights)[shard - 1] ?? [])
+    console.log(`./${file}`)
 }

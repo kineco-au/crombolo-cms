@@ -4,6 +4,85 @@
 import { expect, signIn, test } from './fixtures.ts'
 
 const FORMS_API = '/crombolo/crombolo/api/forms'
+const API = '/crombolo/management/api/v1'
+const CONTACT = '7b1f4c20-9a63-4e18-8d25-3c6f5a1e9b04'
+
+test('a page shows its saved form, offers choices, and reveals the Harbourstone fields', async ({
+  page,
+  diagnostics,
+}) => {
+  await signIn(page)
+  const types = await (
+    await page.request.get(`${API}/document-type/allowed-at-root?take=100`)
+  ).json()
+  const type = types.items.find((item: { name: string }) => item.name === 'Contact form test')
+  const made = await page.request.post(`${API}/document`, {
+    data: {
+      documentType: { id: type.id },
+      template: null,
+      parent: null,
+      values: [{ alias: 'enquiryForm', culture: null, segment: null, value: CONTACT }],
+      variants: [{ culture: null, segment: null, name: 'Contact form picker' }],
+    },
+  })
+  expect(made.status()).toBe(201)
+  const key = made.headers()['umb-generated-resource']
+  const url = `/crombolo/section/content/workspace/document/edit/${key}`
+  await page.goto(url)
+  const picker = page.locator('crombolo-form-picker')
+  const select = picker.getByRole('combobox', { name: 'Form', exact: true })
+  await expect(select).toHaveValue(CONTACT)
+  await expect(select.locator('option')).toContainText(['No form', 'Write to the cove'])
+  await expect(picker).toContainText('7 fields over 1 page')
+  await picker.getByText('View form fields', { exact: true }).click()
+  const preview = picker.locator('details')
+  await expect(preview.locator('.fields > li')).toHaveCount(7)
+  for (const caption of ['Name', 'Email', 'Subject', 'Company', 'Phone', 'Message'])
+    await expect(preview.getByText(caption, { exact: true })).toBeVisible()
+  await expect(preview).toContainText('Trade and allocation')
+  await expect(preview).toContainText('Required')
+
+  await select.selectOption({ label: 'No form' })
+  await expect(picker.locator('details')).toHaveCount(0)
+  await page.getByTestId('workspace-action:Umb.WorkspaceAction.Document.Save').click()
+  await expect
+    .poll(async () => {
+      const doc = await (await page.request.get(`${API}/document/${key}`)).json()
+      return (
+        doc.values.find((value: { alias: string }) => value.alias === 'enquiryForm')?.value ?? null
+      )
+    })
+    .toBeNull()
+
+  await select.selectOption(CONTACT)
+  await page.getByTestId('workspace-action:Umb.WorkspaceAction.Document.Save').click()
+  await expect
+    .poll(async () => {
+      const doc = await (await page.request.get(`${API}/document/${key}`)).json()
+      return doc.values.find((value: { alias: string }) => value.alias === 'enquiryForm')?.value
+    })
+    .toBe(CONTACT)
+  await page.goto(url)
+  await expect(picker.getByRole('combobox', { name: 'Form', exact: true })).toHaveValue(CONTACT)
+
+  diagnostics.allowed.push(`503 GET ${FORMS_API}/${CONTACT}`, 'status of 503 (Service Unavailable)')
+  await page.route(`${FORMS_API}/${CONTACT}`, (route) => route.fulfill({ status: 503, json: {} }))
+  await page.goto(url)
+  await picker.getByText('View form fields', { exact: true }).click()
+  await expect(picker.getByRole('alert')).toHaveText('The form fields could not be loaded.')
+  await page.unroute(`${FORMS_API}/${CONTACT}`)
+  await picker.getByRole('button', { name: 'Try again', exact: true }).click()
+  await expect(picker.locator('.fields > li')).toHaveCount(7)
+
+  // A form removed after the page was saved remains visible until deliberately cleared.
+  await page.route(FORMS_API, (route) => route.fulfill({ json: { items: [] } }))
+  await page.goto(url)
+  await expect(select).toHaveValue(CONTACT)
+  await expect(picker).toContainText('The selected form is no longer available.')
+  await expect(picker.locator('details')).toHaveCount(0)
+  await select.selectOption({ label: 'No form' })
+  await expect(picker).toContainText('This site has no forms yet.')
+})
 
 test('a Send email workflow is given an e-mail design, and saved', async ({
   page,
