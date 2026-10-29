@@ -1045,6 +1045,10 @@ describe(`media permissions travel (${dialectUnderTest})`, () => {
       { name: 'Observers', read: true, write: false },
     ])
 
+    // The target's boot resets the database on Postgres, which must not race the
+    // source's background work: what travels is already in `set`.
+    open.splice(open.indexOf(source.h), 1)
+    await source.h.db.close()
     const target = await site()
     await target.group('Observers')
     await importBundle(target.h.server.db, set, { nodeId: 'target' })

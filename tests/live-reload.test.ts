@@ -63,10 +63,10 @@ function listen(response: Response) {
   return {
     seen,
     /** The next event after those already taken that matches, within `ms`. */
-    async next(event: string, ms = 5_000): Promise<Event> {
+    async next(event: string, ms = 5_000, matches = (_: Event) => true): Promise<Event> {
       const deadline = Date.now() + ms
       for (;;) {
-        const at = seen.findIndex((e, i) => i >= from && e.event === event)
+        const at = seen.findIndex((e, i) => i >= from && e.event === event && matches(e))
         if (at >= 0) {
           from = at + 1
           return seen[at] as Event
@@ -391,18 +391,23 @@ describe('on a real site', () => {
     )
     await events.next('hello')
 
+    // A real site may also reload for content a moment after boot, so each
+    // change waits for the reload that names it.
+    const reloadFor = (reason: string, ms = 10_000) =>
+      events.next('reload', ms, (e) => (e.data.reasons as string[]).includes(reason))
+
     writeFileSync(join(root, 'components', 'extra.tsx'), 'export const Extra = () => <b>new</b>\n')
-    expect((await events.next('reload', 10_000)).data.reasons).toContain('views')
+    await reloadFor('views')
 
     writeFileSync(
       join(root, 'schema', 'content-types', 'note.toml'),
       '[content-type]\nalias = "note"\nname = "Note"\n',
     )
     writeFileSync(join(root, 'schema', 'schema.toml'), '[schema]\nversion = "1.1.0"\n')
-    expect((await events.next('reload', 10_000)).data.reasons).toContain('schema')
+    await reloadFor('schema')
 
     await publish(await page('Later'))
-    expect((await events.next('reload')).data.reasons).toContain('content')
+    await reloadFor('content', 5_000)
     leaving.abort()
   })
 

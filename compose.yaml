@@ -132,7 +132,7 @@ services:
     <<: *cms-image
     profiles: ['test']
     working_dir: /app
-    command: ['bun', 'test']
+    command: ['bun', 'run', 'scripts/test-parallel.ts']
     environment:
       <<: *test-environment
       CROMBOLO_DB: sqlite
@@ -146,7 +146,7 @@ services:
     # Several sit at one to two seconds, so bun's 5s default leaves too little
     # headroom and the heaviest times out when the host is busy rather than when
     # anything is wrong. The SQLite services keep the default.
-    command: ['bun', 'test', '--timeout', '20000']
+    command: ['bun', 'run', 'scripts/test-parallel.ts', '--timeout', '20000']
     environment:
       <<: *test-environment
       CROMBOLO_DB: postgres

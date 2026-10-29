@@ -10,7 +10,7 @@
 | `bun run lint` / `lint:fix` | lint only, verify or fix |
 | `bun run typecheck` | `tsc --noEmit` across the workspace |
 | `bun run check:modules` | verify the vendored backoffice links in a browser |
-| `bun test` | the whole suite against SQLite |
+| `bun run test` | the whole suite against SQLite, in parallel shards (below); name a file or a filter and it is one plain `bun test` |
 | `bun run test:sqlite` / `test:postgres` | pin the dialect explicitly; `test:postgres` starts the `db` container first |
 | `bun run test:all` | both dialects in sequence — the real gate |
 | `bun run docker:test` / `docker:test:sqlite` / `docker:test:postgres` / `docker:test:all` | the same four, inside a container over the mounted source |
@@ -23,6 +23,17 @@
 | `bun run conformance` | replay recorded request sequences, validate against schemas |
 | `bun run vendor:backoffice` | rebuild `packages/backoffice-dist/dist/` from npm (not committed) |
 | `bun run vendor:refresh-static` | re-seed `packages/backoffice-dist/upstream-static/` from `$UMBRACO_SRC` |
+
+**Local runs are sharded.** `bun run test`, `test:sqlite` and `test:postgres`,
+and the `cms-test-sqlite` and `cms-test` containers, run
+`scripts/test-parallel.ts`: the unit files split into shards of about equal time
+by `scripts/test-shard.ts` (the weights CI uses), one `bun test` process each,
+side by side. `tests/support/isolate.ts` gives each process its own directories
+and Postgres database, so they share nothing. Half the processors, at most six;
+`CROMBOLO_TEST_SHARDS=n` sets it, and `1` runs one process. Each shard's output
+prints as it finishes, then the totals. On 14 cores the SQLite suite takes about
+two minutes and Postgres under four, against 7.5 and 13 in one process. CI keeps
+`test:ci` and shards across jobs instead.
 
 `check` and `fix` are deliberately symmetric: both run Biome's own `check`, which
 covers formatting, lint *and* assist actions such as import ordering. Using
