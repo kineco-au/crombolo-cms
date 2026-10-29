@@ -25,7 +25,7 @@ and no member changes, while I can grant access to selected groups or members.
 ## Decisions and implementation
 
 Approved: no public write access, and a dedicated individual-member grants table
-in release 0.35.3. The version wrapper advanced all publishable CMS packages and
+in release 0.36.0. The version wrapper advanced all publishable CMS packages and
 the migration release together; nothing has been published.
 
 - Separate Read and Write radio controls, with member-group checkboxes and the

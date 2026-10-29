@@ -6,12 +6,61 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.36.0 — 2026-10-29
+
+- **Media permissions are a Public Access section that inherits** (stories
+  203–205). A media folder or item's **Permissions** dialog holds **Public
+  Access** with two toggles. Read is **Enabled** (the default: anyone with the
+  link), **Disabled** (back-office users only) or **Custom**. Write is **No
+  Public Access** or **Custom**. Public write is never allowed.
+  - **Custom names member groups, individual members, or both**, separately
+    for reading and writing. A member in a chosen group or chosen by name
+    gets in.
+  - **Inherit parent permissions** is ticked on a child file or folder unless
+    it has settings of its own. It follows the nearest folder above that has
+    settings, or the defaults when none has. Unticking it starts the item's
+    own settings from what it inherited. A root item has no checkbox.
+  - **Inheritance is live.** New files and folders follow their folder, so a
+    change to a folder applies straight away to everything below that
+    inherits. Before, a new file was given a copy of the folder's settings
+    when it was added.
+  - The line above the section, and the media workspace's info panel, say
+    where the settings come from and who they let in.
+  - Serving, crops, the Delivery API's media lists and items, member writes
+    through server bundles, caching and content bundles all apply the same
+    grants. A bundle carries individual grants by member key, without needing
+    the members in it; a member who is absent gains no access.
+
+  **Upgrade notes.** Existing settings are kept. Files given a copy of their
+  folder's settings by an earlier release show as overrides, with
+  **Inherit parent permissions** unticked: tick it to have them follow the
+  folder. An "all signed-in members" read and a folder's "only the member who
+  added it" setting for new uploads keep working, though the dialog no longer
+  offers them. `docs/rendering.md`, "Protected media".
+
+  **Migration:** 053 `AddMediaMemberGrants` (expand): `media_access_member`,
+  one row per rule and member with separate read and write flags.
+
+- **A page's form picker shows its form and its fields** (story 202). The
+  dropdown was empty even with a form saved. It now lists the forms and shows
+  the saved one, and **View form fields** expands the form's pages, groups,
+  fields, required markers, help and choices without changing it. An
+  unavailable saved form stays visible until cleared. `docs/forms.md`.
 - **`crombolo init` needs an empty directory.** It scaffolds either a plain
-  site or one from `--template`, once; in a directory that is not empty (a
-  `.git` folder aside) it now fails with exit code 8 rather than skipping the
+  site or one from `--template`, once. In a directory that is not empty (a
+  `.git` folder aside) it now fails with exit code 8, rather than skipping the
   files already there and leaving a template half-applied. `--force`
   scaffolds anyway, overwriting them. Its JSON output no longer has
   `existing`.
+- The release's Postgres load tests and benchmarks run as three parallel jobs
+  (story 201), so publishing waits for the slowest rather than all three in
+  turn.
+
+## v0.35.2 — 2026-10-28
+
+- The bundle import tests finish the source site's background work before
+  resetting the database for the target (story 200), which could deadlock on
+  Postgres and had failed a release run. No change to the CMS itself.
 
 ## v0.35.1 — 2026-10-28
 

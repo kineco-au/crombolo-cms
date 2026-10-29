@@ -422,7 +422,7 @@ three is `(node_id, property_type_id, language_id, segment, id DESC)`.
   types members may upload below the folder, a comma-separated list of names
   such as `jpeg,png`; null is none) and `member_max_bytes` (the largest such
   upload, or null). `rendering.md`, "What members may upload".
-- **Migration 053, story `204`, release 0.35.3:**
+- **Migration 053, story `204`, release 0.36.0:**
   `media_access_member(media_access_id, member_key, can_read, can_write)` stores
   individual member grants alongside group grants. Its composite primary key
   allows one row per rule/member; deleting a rule cascades to these rows.

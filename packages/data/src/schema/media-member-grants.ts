@@ -9,7 +9,7 @@ export const mediaMemberGrantsMigration: Migration = {
   to: STATE_MEDIA_MEMBER_GRANTS,
   name: 'AddMediaMemberGrants',
   kind: 'expand',
-  release: '0.35.3',
+  release: '0.36.0',
   async up(db: Db) {
     const t = db.dialect.types
     await db.exec(`CREATE TABLE media_access_member (
