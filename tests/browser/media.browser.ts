@@ -130,7 +130,9 @@ test('an image uploaded to Media, picked on a page and published renders as a re
   await expect.poll(urls).not.toBeNull()
   const html = await (await page.request.get(await urls())).text()
   const hero = /class="hero" src="([^"]+)"/.exec(html)?.[1]?.replaceAll('&amp;', '&') as string
-  expect(hero).toMatch(/^\/media\/[0-9a-f]{8}\/halves-[a-z0-9]+\.png\?width=40&height=40$/)
+  expect(hero).toMatch(
+    /^\/media\/[0-9a-f]{8}\/halves-[a-z0-9]+\.png\?width=40&height=40&rnd=[a-z0-9]+$/,
+  )
 
   // The rich text image renders, and its URL serves
   const doc = await (await page.request.get(`${API}/document/${key}`)).json()

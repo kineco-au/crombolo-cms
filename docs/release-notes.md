@@ -6,6 +6,17 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.38.1 — 2026-10-30
+
+v0.38.0 was tagged but never published: its release checks failed. This is
+v0.38.0 with those fixed, and nothing else changed for a site.
+
+- The browser test of a picked image expects the `rnd` cache buster crop URLs
+  carry since story 199.
+- The release's Small benchmark, and the weekly Large one, name the benchmark
+  as a path, so it runs; a failed Large run now fails its workflow.
+- Migrations 054 and 055 record v0.38.1, the release they reach sites in.
+
 ## v0.38.0 — 2026-10-30
 
 - **A node that runs only the background jobs** (story 223). Set

@@ -16,7 +16,7 @@ export const bundleGrantsMigration: Migration = {
   to: STATE_BUNDLE_GRANTS,
   name: 'AddBundleGrants',
   kind: 'expand',
-  release: '0.38.0',
+  release: '0.38.1',
   async up(db: Db) {
     const t = db.dialect.types
     await db.q.schema

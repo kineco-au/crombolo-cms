@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/next-integration",
-  "version": "0.38.0",
+  "version": "0.38.1",
   "description": "A Next.js App Router front end for a crombolo site: pages, metadata, preview, revalidation, members, images and content components.",
   "license": "MIT",
   "author": "Crombolo",

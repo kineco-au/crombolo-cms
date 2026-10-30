@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/transfer",
-  "version": "0.38.0",
+  "version": "0.38.1",
   "description": "Internal to crombolo, with no compatibility promise: use @crombolo/crombolo. Content transfer for crombolo: bundles of content moved between environments.",
   "license": "MIT",
   "author": "Crombolo",

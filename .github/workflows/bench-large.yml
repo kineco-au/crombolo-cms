@@ -66,7 +66,9 @@ jobs:
             - run: bun install --frozen-lockfile
             - run: bun run generate:types
             - name: Benchmark the large site
-              run: bun run test:ci --timeout 18000000 tests/load/large-site.bench.ts 2>&1 | tee bench-large.txt
+              # bash names pipefail, so a failed run is not hidden by tee.
+              shell: bash
+              run: bun run test:ci --timeout 18000000 ./tests/load/large-site.bench.ts 2>&1 | tee bench-large.txt
             - uses: actions/upload-artifact@v4
               if: always()
               with:
