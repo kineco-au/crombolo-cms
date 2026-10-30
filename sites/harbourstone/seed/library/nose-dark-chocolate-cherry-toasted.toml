@@ -1,0 +1,8 @@
+type = "tastingNote"
+key = "e37da7f2-b19f-4aeb-84fd-4f19adf528b3"
+name = "Nose — Dark chocolate, cherry, toas…"
+order = 30
+
+[values]
+aspect = "Nose"
+note = "Dark chocolate, cherry, toasted oak."

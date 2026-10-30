@@ -35,17 +35,17 @@ export type Query<Tables = CoreTables> = Kysely<Tables>
  * every statement, so a wrapped or recording `Db` sees Kysely's SQL as it would
  * any other.
  */
-class PlaceholderCompiler extends PostgresQueryCompiler {
+export class PlaceholderCompiler extends PostgresQueryCompiler {
   protected override getCurrentParameterPlaceholder(): string {
     return '?'
   }
 }
 
-const READS = /^\s*(select|with|values|pragma|explain)\b/i
+const READS = /^\s*(select|with|values|pragma|explain|show)\b/i
 const RETURNS = /\breturning\b/i
 
 /** Whether a statement answers with rows, so it runs as a query rather than an exec. */
-function readsRows(compiled: CompiledQuery): boolean {
+export function readsRows(compiled: CompiledQuery): boolean {
   const kind = compiled.query.kind
   if (kind === 'SelectQueryNode') return true
   if (kind === 'InsertQueryNode' || kind === 'UpdateQueryNode' || kind === 'DeleteQueryNode')

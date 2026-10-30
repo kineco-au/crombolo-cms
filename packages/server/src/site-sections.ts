@@ -6,7 +6,7 @@
  */
 import { readdir, readFile } from 'node:fs/promises'
 import { join, relative, sep } from 'node:path'
-import type { FileSystemPort } from '@crombolo/api-management'
+import type { FileSystemPort } from '@crombolo/api-management/domain'
 import {
   type ComponentFileStore,
   ComponentRepository,

@@ -27,9 +27,9 @@ default, and a module whose first statement is `'use client'` runs in the
 browser. A server component imports a client one and passes it props; the
 framework does the rest. Story 206 brought the App Router's server conventions
 to Crombolo's templates. This brings its client boundary, rendered as islands,
-as Astro and Fresh do, rather than by hydrating whole pages. Nature's Calendar
-plans interactive parts on server-rendered pages (`wt-natures-calendar` stories
-060–068), some in Vue.
+as Astro and Fresh do, rather than by hydrating whole pages. Sites being
+rebuilt on crombolo plan interactive parts on server-rendered pages, some in
+Vue.
 
 ## Decided (2026-10-29)
 

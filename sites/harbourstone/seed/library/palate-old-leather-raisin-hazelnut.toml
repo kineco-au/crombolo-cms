@@ -1,0 +1,8 @@
+type = "tastingNote"
+key = "3b0a50a5-2a36-4560-9e55-7e475e547ec7"
+name = "Palate — Old leather, raisin, hazelnu…"
+order = 28
+
+[values]
+aspect = "Palate"
+note = "Old leather, raisin, hazelnut praline."

@@ -25,6 +25,7 @@ import {
 } from './model.ts'
 import { type BundlePeople, sealPeople } from './people.ts'
 import { type Seal, sealBytes } from './seal.ts'
+import { type SiteDataTable, sealSiteData } from './site-data.ts'
 
 /** One file of a written bundle, ready to be put on disk or into a store. */
 export interface BundleFile {
@@ -202,6 +203,7 @@ export function writeManifest(manifest: BundleManifest): string {
       ? { carries: sortedCarries(manifest.carries) }
       : {}),
     ...(manifest.people ? { people: manifest.people } : {}),
+    ...(manifest.siteData ? { siteData: manifest.siteData } : {}),
     ...(manifest.seal ? { seal: manifest.seal } : {}),
     ...(manifest.content ? { content: manifest.content } : {}),
     ...(manifest.scope ? { scope: manifest.scope } : {}),
@@ -303,6 +305,8 @@ export interface WriteOptions {
   seal?: Seal
   /** Members and users: always sealed. */
   people?: BundlePeople
+  /** The site's and bundles' own tables: always sealed. */
+  siteData?: readonly SiteDataTable[]
 }
 
 /** Without values, media files or usernames: what `omitted` writes. Pure. */
@@ -380,8 +384,8 @@ function planBundle(
 ): { manifest: BundleManifest; files: BundleFile[]; blobs: string[]; sealing: boolean } {
   const seal = options.seal
   const content = options.content ?? (seal ? 'sealed' : 'open')
-  if ((content === 'sealed' || options.people) && !seal)
-    throw new Error('Sealed content and people need a seal: give a passphrase.')
+  if ((content === 'sealed' || options.people || options.siteData) && !seal)
+    throw new Error('Sealed content, people and site data need a seal: give a passphrase.')
   const sealing = content === 'sealed'
   const source = content === 'omitted' ? set.nodes.map(withoutContent) : set.nodes
   const carriedSizes: ReadonlyMap<string, number> = content === 'omitted' ? new Map() : blobSizes
@@ -411,6 +415,7 @@ function planBundle(
   }
 
   const people = options.people && seal ? sealPeople(options.people, seal) : undefined
+  const siteData = options.siteData && seal ? sealSiteData(options.siteData, seal) : undefined
   const manifest: BundleManifest = {
     ...set.manifest,
     formatVersion: BUNDLE_FORMAT_VERSION,
@@ -421,7 +426,8 @@ function planBundle(
     }),
     carries: extra.length > 0 ? carries : undefined,
     people: people?.block,
-    seal: seal && (sealing || people) ? seal.params : undefined,
+    siteData: siteData?.block,
+    seal: seal && (sealing || people || siteData) ? seal.params : undefined,
     content: content === 'open' ? undefined : content,
     integrity: '',
   }
@@ -431,7 +437,14 @@ function planBundle(
       : []
   return {
     manifest,
-    files: [...nodes, ...sealedFiles, ...extra, ...(people?.files ?? []), ...media],
+    files: [
+      ...nodes,
+      ...sealedFiles,
+      ...extra,
+      ...(people?.files ?? []),
+      ...(siteData?.files ?? []),
+      ...media,
+    ],
     blobs: [...carriedSizes.keys()].sort((a, b) => a.localeCompare(b)),
     sealing,
   }

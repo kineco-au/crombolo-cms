@@ -2,8 +2,8 @@ import type {
   ApiBlockList,
   ApiElement,
   ApiMediaWithCrops,
-  ApiRichText,
   ContentItem,
+  RichTextValue,
 } from '@crombolo/next-integration'
 import { crombolo } from './crombolo'
 
@@ -24,8 +24,8 @@ export function image(item: { properties: object }, alias: string): ApiMediaWith
   return Array.isArray(value) ? (value[0] as ApiMediaWithCrops | undefined) : undefined
 }
 
-export function richText(item: { properties: object }, alias: string): ApiRichText | undefined {
-  return props(item)[alias] as ApiRichText | undefined
+export function richText(item: { properties: object }, alias: string): RichTextValue | undefined {
+  return props(item)[alias] as RichTextValue | undefined
 }
 
 export function blocks(item: { properties: object }, alias: string): ApiBlockList | undefined {

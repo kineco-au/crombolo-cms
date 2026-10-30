@@ -166,6 +166,40 @@ describe('a snapshot is one consistent state', () => {
     await Promise.all([older, newer])
     expect(cache.served()?.checkpoint).toBe(6)
   })
+
+  test('while it rebuilds, readers have the previous snapshot; the first build and fresh() wait', async () => {
+    let next = 5
+    let release = () => {}
+    let held: Promise<void> | undefined
+    const source: PublishedContentSource = {
+      loadPublished: async () => [],
+      withSnapshot: async (fn) => {
+        const checkpoint = next++
+        if (held) await held
+        return fn(source, checkpoint)
+      },
+    }
+    const cache = new PublishedCache(source)
+    held = new Promise<void>((resolve) => (release = resolve))
+    const first = cache.snapshot()
+    const sharing = cache.snapshot()
+    expect(cache.stale).toBe(false)
+    release()
+    expect((await first).checkpoint).toBe(5)
+    expect(await sharing).toBe(await first)
+
+    held = new Promise<void>((resolve) => (release = resolve))
+    cache.invalidate()
+    expect(cache.stale).toBe(true)
+    const starter = cache.snapshot()
+    expect((await cache.snapshot()).checkpoint).toBe(5)
+    const fresh = cache.fresh()
+    release()
+    expect((await starter).checkpoint).toBe(6)
+    expect((await fresh).checkpoint).toBe(6)
+    expect(cache.stale).toBe(false)
+    expect((await cache.snapshot()).checkpoint).toBe(6)
+  })
 })
 
 describe('SQLite reads a snapshot on a connection of its own', () => {

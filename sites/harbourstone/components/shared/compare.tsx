@@ -1,6 +1,15 @@
 /** @jsxImportSource react */
 'use client'
-import { type ReactNode, useEffect, useId, useMemo, useState } from 'react'
+import {
+  type KeyboardEvent,
+  type ReactNode,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 export interface Bottling {
   id: string
@@ -50,7 +59,10 @@ function aspectRows(bottlings: readonly Bottling[]): Row[] {
 const differs = (row: Row, chosen: readonly Bottling[]) =>
   chosen.length > 1 && new Set(chosen.map(row.value)).size > 1
 
-const unique = (values: string[]) => [...new Set(values.filter(Boolean))].sort()
+/** The kinds, in the order the range first lists them: the category headers. */
+const categoriesOf = (bottlings: readonly Bottling[]) => [
+  ...new Set(bottlings.map((b) => b.kind || 'Other')),
+]
 
 /** The address's `?compare=`, as the browser has it now. */
 const inAddressNow = () =>
@@ -71,8 +83,8 @@ export default function Compare({ bottlings }: { bottlings: Bottling[]; children
     addEventListener('popstate', follow)
     return () => removeEventListener('popstate', follow)
   }, [])
-  const [kind, setKind] = useState('')
-  const [productType, setProductType] = useState('')
+  const categories = useMemo(() => categoriesOf(bottlings), [bottlings])
+  const [category, setCategory] = useState(categories[0] ?? '')
 
   const byId = useMemo(() => new Map(bottlings.map((b) => [b.id, b])), [bottlings])
   const fromAddress = (value: string) =>
@@ -86,9 +98,7 @@ export default function Compare({ bottlings }: { bottlings: Bottling[]; children
   useEffect(() => setChosenIds(fromAddress(inAddress)), [inAddress])
   const chosen = chosenIds.map((id) => byId.get(id) as Bottling)
   const rows = [...FACTS, ...aspectRows(chosen)]
-  const listed = bottlings.filter(
-    (b) => (!kind || b.kind === kind) && (!productType || b.productType === productType),
-  )
+  const listed = bottlings.filter((b) => (b.kind || 'Other') === category)
 
   const choose = (next: string[]) => {
     setChosenIds(next)
@@ -106,48 +116,21 @@ export default function Compare({ bottlings }: { bottlings: Bottling[]; children
     <div className="compare">
       <section className="compare__picker" aria-labelledby={`${ids}-pick`}>
         <h2 id={`${ids}-pick`}>Choose up to {MOST}</h2>
-        <div className="compare__filters">
-          <label>
-            Kind
-            <select value={kind} onChange={(e) => setKind(e.target.value)}>
-              <option value="">Any</option>
-              {unique(bottlings.map((b) => b.kind)).map((value) => (
-                <option key={value}>{value}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Product type
-            <select value={productType} onChange={(e) => setProductType(e.target.value)}>
-              <option value="">Any</option>
-              {unique(bottlings.map((b) => b.productType)).map((value) => (
-                <option key={value}>{value}</option>
-              ))}
-            </select>
-          </label>
-        </div>
-        <ul className="compare__choices">
-          {listed.map((b) => {
-            const on = chosenIds.includes(b.id)
-            const full = !on && chosenIds.length >= MOST
-            return (
-              <li key={b.id}>
-                <button
-                  type="button"
-                  className={on ? 'compare__choice compare__choice--on' : 'compare__choice'}
-                  aria-pressed={on}
-                  disabled={full}
-                  title={full ? `Up to ${MOST} at once: remove one first` : undefined}
-                  onClick={() => toggle(b.id)}
-                >
-                  <span className="compare__choice-name">{b.title}</span>
-                  <span className="eyebrow">{[b.kind, b.abv].filter(Boolean).join(' · ')}</span>
-                </button>
-              </li>
-            )
-          })}
-          {listed.length === 0 ? <li>No bottling matches those filters.</li> : null}
-        </ul>
+        <Categories
+          id={ids}
+          categories={categories}
+          counts={categories.map((c) => bottlings.filter((b) => (b.kind || 'Other') === c).length)}
+          current={category}
+          onChoose={setCategory}
+        />
+        <Carousel
+          key={category}
+          id={`${ids}-panel`}
+          label={category}
+          bottlings={listed}
+          chosen={chosenIds}
+          onToggle={toggle}
+        />
         <p className="compare__status" role="status">
           {chosen.length === 0 ? 'Nothing chosen yet.' : `${chosen.length} of ${MOST} chosen.`}{' '}
           {chosen.length > 0 ? (
@@ -237,6 +220,165 @@ export default function Compare({ bottlings }: { bottlings: Bottling[]; children
           </ul>
         </section>
       ) : null}
+    </div>
+  )
+}
+
+/**
+ * The category headers: tabs, with an underline that slides to the one chosen.
+ * Arrow keys move between them, as a tab list's do.
+ */
+function Categories(props: {
+  id: string
+  categories: string[]
+  counts: number[]
+  current: string
+  onChoose(category: string): void
+}) {
+  const list = useRef<HTMLDivElement>(null)
+  const [bar, setBar] = useState({ left: 0, width: 0 })
+  // Measured after layout, so the underline sits under the tab as drawn, and
+  // again whenever another tab is chosen.
+  useLayoutEffect(() => {
+    const measure = () => {
+      const tab = list.current?.querySelector<HTMLElement>('[aria-selected="true"]')
+      if (tab) setBar({ left: tab.offsetLeft, width: tab.offsetWidth })
+    }
+    measure()
+    addEventListener('resize', measure)
+    return () => removeEventListener('resize', measure)
+  }, [props.current])
+  const move = (event: KeyboardEvent, index: number) => {
+    const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0
+    if (!step) return
+    event.preventDefault()
+    const next =
+      props.categories[(index + step + props.categories.length) % props.categories.length]
+    if (next === undefined) return
+    props.onChoose(next)
+    list.current?.querySelector<HTMLElement>(`[data-category="${CSS.escape(next)}"]`)?.focus()
+  }
+  return (
+    <div className="compare__tabs" role="tablist" aria-label="Kind" ref={list}>
+      {props.categories.map((category, index) => {
+        const on = category === props.current
+        return (
+          <button
+            key={category}
+            type="button"
+            role="tab"
+            id={`${props.id}-tab-${index}`}
+            aria-selected={on}
+            aria-controls={`${props.id}-panel`}
+            tabIndex={on ? 0 : -1}
+            data-category={category}
+            className={on ? 'compare__tab compare__tab--on' : 'compare__tab'}
+            onClick={() => props.onChoose(category)}
+            onKeyDown={(event) => move(event, index)}
+          >
+            {category} <span className="compare__tab-count">{props.counts[index]}</span>
+          </button>
+        )
+      })}
+      <span
+        className="compare__tab-bar"
+        aria-hidden="true"
+        style={{ transform: `translateX(${bar.left}px)`, width: `${bar.width}px` }}
+      />
+    </div>
+  )
+}
+
+/**
+ * One category's bottlings in a horizontal scroll that snaps card by card, with
+ * buttons that glide a page at a time. Remounted per category, so the cards
+ * come in afresh. Clicking a card adds it to the comparison, or takes it out.
+ */
+function Carousel(props: {
+  id: string
+  label: string
+  bottlings: Bottling[]
+  chosen: string[]
+  onToggle(id: string): void
+}) {
+  const track = useRef<HTMLUListElement>(null)
+  const [ends, setEnds] = useState({ start: true, end: true })
+  const update = () => {
+    const el = track.current
+    if (!el) return
+    setEnds({
+      start: el.scrollLeft <= 1,
+      end: el.scrollLeft + el.clientWidth >= el.scrollWidth - 1,
+    })
+  }
+  useLayoutEffect(update, [])
+  const page = (direction: 1 | -1) => {
+    const el = track.current
+    if (!el) return
+    const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches
+    el.scrollBy({ left: direction * el.clientWidth * 0.8, behavior: smooth ? 'smooth' : 'auto' })
+  }
+  return (
+    <div className="compare__carousel" role="tabpanel" id={props.id} aria-label={props.label}>
+      <button
+        type="button"
+        className="compare__nudge compare__nudge--back"
+        aria-label="Earlier bottlings"
+        disabled={ends.start}
+        onClick={() => page(-1)}
+      >
+        ‹
+      </button>
+      <ul className="compare__track" ref={track} onScroll={update}>
+        {props.bottlings.map((b, index) => {
+          const on = props.chosen.includes(b.id)
+          const full = !on && props.chosen.length >= MOST
+          return (
+            <li key={b.id} className="compare__slide" style={{ animationDelay: `${index * 60}ms` }}>
+              <button
+                type="button"
+                className={
+                  on ? 'compare__card-choice compare__card-choice--on' : 'compare__card-choice'
+                }
+                aria-pressed={on}
+                disabled={full}
+                title={full ? `Up to ${MOST} at once: remove one first` : undefined}
+                onClick={() => props.onToggle(b.id)}
+              >
+                {b.bottle ? (
+                  <img
+                    className="compare__card-image"
+                    src={b.bottle.src}
+                    alt=""
+                    width={b.bottle.width || 380}
+                    height={b.bottle.height || 570}
+                    loading="lazy"
+                  />
+                ) : null}
+                <span className="compare__choice-name">{b.title}</span>
+                <span className="eyebrow">
+                  {[b.abv, b.age ? `${b.age} years` : b.batch ? `Batch ${b.batch}` : '']
+                    .filter(Boolean)
+                    .join(' · ')}
+                </span>
+                <span className="compare__card-mark" aria-hidden="true">
+                  {on ? '✓ Comparing' : '+ Compare'}
+                </span>
+              </button>
+            </li>
+          )
+        })}
+        {props.bottlings.length === 0 ? <li>Nothing of this kind yet.</li> : null}
+      </ul>
+      <button
+        type="button"
+        className="compare__nudge compare__nudge--on"
+        aria-label="Later bottlings"
+        disabled={ends.end}
+        onClick={() => page(1)}
+      >
+        ›
+      </button>
     </div>
   )
 }

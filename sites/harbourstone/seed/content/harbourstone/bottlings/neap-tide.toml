@@ -9,7 +9,7 @@ kind = "Cask strength"
 productType = "Whisky"
 abv = "58.4%"
 batch = "07"
-summary = "Unreduced vatting of first-fill bourbon. Add water when you are ready."
+summary = "Unreduced vatting of first-fill bourbon. A few drops of water accentuate the complex nose of ripe pear and cinnamon."
 bottleImage = "/bottle-neap-tide.jpg"
 bodyText = { html = "<p>No age statement and no reduction: a small vatting of first-fill bourbon barrels taken at the strength they came out at. Batch 07 is 58.4%. Water is not cheating.</p>" }
 tastingNotes = [

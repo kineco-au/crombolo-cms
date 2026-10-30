@@ -328,12 +328,15 @@ export type {
   ApiMediaWithCrops,
   ApiMenu,
   ApiMenuItem,
-  ApiRichText,
   ApiRoute,
   ApiSeo,
   MediaItem,
   Paged,
+  RichTextElement,
+  RichTextGenericElement,
+  RichTextTextElement,
+  RichTextValue,
   SearchHit,
 } from '@crombolo/delivery-client'
-export { isExpanded } from '@crombolo/delivery-client'
+export { decodeEntities, isExpanded, walkRichText } from '@crombolo/delivery-client'
 export type { ContentItem, ContentQuery, DeliverySchema, RequestOptions }

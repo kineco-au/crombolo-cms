@@ -190,6 +190,11 @@ type = "textstring"
 alias = "related"
 name = "Related"
 type = "contentPicker"
+
+[[property]]
+alias = "body"
+name = "Body"
+type = "richtext"
 `
 
 const open: Harness[] = []
@@ -226,7 +231,7 @@ async function site(deliveryApi: DeliveryApiOptions = { enabled: true }) {
   const docs = new DocumentRepository(db, { nodeState: h.server.schema.nodeState })
   const typeKey = (await new ContentTypeRepository(db).byAlias('page'))?.key as string
   const componentKey = (await new ComponentRepository(db).byAlias('page'))?.key as string
-  const page = async (name: string, parentKey: string | null, related?: string) => {
+  const page = async (name: string, parentKey: string | null, related?: string, body?: string) => {
     const doc = await docs.create({
       key: crypto.randomUUID(),
       contentTypeKey: typeKey,
@@ -244,6 +249,9 @@ async function site(deliveryApi: DeliveryApiOptions = { enabled: true }) {
                 value: `umb://document/${related.replaceAll('-', '')}`,
               },
             ]
+          : []),
+        ...(body
+          ? [{ alias: 'body', culture: null, segment: null, value: { markup: body, blocks: null } }]
           : []),
       ],
     })
@@ -265,7 +273,7 @@ async function site(deliveryApi: DeliveryApiOptions = { enabled: true }) {
     expect(response.status, `${path}`).toBe(200)
     return (await response.json()) as T
   }
-  return { h, home, news, story, other, get, json }
+  return { h, home, news, story, other, page, get, json }
 }
 
 type Item = {
@@ -424,6 +432,81 @@ describe('the Delivery API over HTTP', () => {
     expect(inside.items).toMatchObject([{ id: image.key, path: '/photos/harbour view/' }])
     expect((await json<{ id: string }>('/media/item/photos/harbour view')).id).toBe(image.key)
     expect((await json<{ id: string }>(`/media/item/${image.key}`)).id).toBe(image.key)
+  })
+
+  test('rich text is the tree: links to pages and media resolved, comments dropped', async () => {
+    const { h, json, page, news, other } = await site()
+    const media = new DocumentRepository(h.server.db, {
+      kind: 'media',
+      nodeState: h.server.schema.nodeState,
+    })
+    const image = await media.create({
+      key: crypto.randomUUID(),
+      contentTypeKey: SYSTEM_MEDIA_TYPE_KEYS.Image,
+      componentKey: null,
+      parentKey: null,
+      variants: [{ culture: null, segment: null, name: 'Harbour' }],
+      values: [
+        {
+          alias: 'umbracoFile',
+          culture: null,
+          segment: null,
+          value: { src: '/media/abc/harbour.jpg' },
+        },
+      ],
+    })
+    const hex = (key: string) => key.replaceAll('-', '')
+    const key = await page(
+      'Article',
+      news,
+      undefined,
+      `<p>Read <a href="/{localLink:umb://document/${hex(other)}}#top">other</a><!-- note --></p>\n<p><img src="/old.jpg?width=200" data-udi="umb://media/${hex(image.key)}"></p>`,
+    )
+    h.server.cache.invalidate()
+    const item = await json<Item>(`/content/item/${key}`)
+    expect(item.properties.body).toEqual({
+      tag: '#root',
+      attributes: {},
+      elements: [
+        {
+          $type: 'RichTextGenericElement',
+          tag: 'p',
+          attributes: {},
+          elements: [
+            { $type: 'RichTextTextElement', text: 'Read ', tag: '#text' },
+            {
+              $type: 'RichTextGenericElement',
+              tag: 'a',
+              attributes: {
+                destinationId: other,
+                destinationType: 'page',
+                linkType: 'Content',
+                route: {
+                  path: '/other',
+                  queryString: '#top',
+                  startItem: { id: other, path: 'other' },
+                },
+              },
+              elements: [{ $type: 'RichTextTextElement', text: 'other', tag: '#text' }],
+            },
+          ],
+        },
+        {
+          $type: 'RichTextGenericElement',
+          tag: 'p',
+          attributes: {},
+          elements: [
+            {
+              $type: 'RichTextGenericElement',
+              tag: 'img',
+              attributes: { src: '/media/abc/harbour.jpg?width=200' },
+              elements: [],
+            },
+          ],
+        },
+      ],
+      blocks: [],
+    })
   })
 
   test('media lists are paged by the database: Umbraco’s order, sorts, filters and the total', async () => {

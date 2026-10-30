@@ -2,7 +2,11 @@
  * The diagnostics port: health checks for what actually goes wrong on a site,
  * the troubleshooting report and the upgrade check. docs/diagnostics.md.
  */
-import type { DiagnosticsPort, HealthCheckGroup, HealthCheckResult } from '@crombolo/api-management'
+import type {
+  DiagnosticsPort,
+  HealthCheckGroup,
+  HealthCheckResult,
+} from '@crombolo/api-management/domain'
 import {
   changedSince,
   compareStates,
@@ -18,8 +22,8 @@ import {
   queueCounts,
   sql,
 } from '@crombolo/data'
-import { BundleConfigurationError, bundleChainsFor, pendingBundleSteps } from '../bundle-tables.ts'
 import { type CromboloConfig, describeDatabase, VERSION } from '../config.ts'
+import { BundleConfigurationError, pendingTablesSteps, tablesChainsFor } from '../custom-tables.ts'
 import { type EmailPort, emailAvailability } from '../email.ts'
 import type { MediaStore } from '../media-store.ts'
 import { backofficeVersion } from '../status.ts'
@@ -219,12 +223,12 @@ export function createDiagnosticsPort(options: HealthCheckOptions): DiagnosticsP
               `${pending.length} database upgrade(s) for Crombolo ${VERSION} have not run yet: ${pending.map((m) => m.name).join(', ')}. Run \`crombolo upgrade\`.`,
             ),
       )
-      for (const bundle of await pendingBundleSteps(db, bundleChainsFor(config)))
+      for (const bundle of await pendingTablesSteps(db, tablesChainsFor(config)))
         if (bundle.pending.length > 0)
           results.push(
             result(
               'Error',
-              `The bundle "${bundle.name}" has ${bundle.pending.length} upgrade step(s) that have not run yet. Run \`crombolo upgrade\`.`,
+              `${bundle.id === 'site' ? "The site's own tables have" : `The bundle "${bundle.name}" has`} ${bundle.pending.length} upgrade step(s) that have not run yet. Run \`crombolo upgrade\`.`,
             ),
           )
       if (options.nodeState) {

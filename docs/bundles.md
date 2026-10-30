@@ -500,25 +500,30 @@ the exact version, the highest a range admits, or the latest.
   installs an arbitrary package.
 - A registry that cannot be read is refused too, because what the package
   carries cannot be checked.
-- A bundle that declares `server` is refused, with `needsServerConsent`, unless
-  the request carries `acceptServerCode: true`.
+- A bundle that declares `server` is refused, with `needsServerConsent` and the
+  permissions it asks for, unless the request carries `acceptServerCode: true`
+  and grants exactly those permissions (`grant`), no fewer and no others
+  ([Permissions](#permissions)).
 - After `bun add`, the installed package's own manifest is checked again. A
-  version that turned out to have a server half nobody accepted is removed,
-  and the install is refused. This catches a `latest` that moved between the
-  listing and the install.
+  version that turned out to have a server half nobody accepted, or to ask for
+  more than was granted, is removed, and the install is refused. This catches a
+  `latest` that moved between the listing and the install. Otherwise the grant
+  is recorded against the version that landed.
 
 The Marketplace asks for the yes in the bundle's own card:
 - The tag reads "Runs code on the server", in warning colour.
 - **Install** opens a panel. It says the code can read and change the site's
-  data, files and settings once the developers turn it on, and names the
-  publisher with links to npm and the source.
-- The panel has an unticked "I trust this publisher with the site's server"
-  box, and **Install server code** stays disabled until it is ticked.
+  data, files and settings once the developers turn it on, lists in plain words
+  what the bundle asks to do, and names the publisher with links to npm and the
+  source.
+- The panel has an unticked "I trust this publisher, and approve what it asks
+  to do" box, and **Approve and install** stays disabled until it is ticked.
 
 The yes is for what the code may do once wired. Installing still does not wire
 it: that takes the import in `crombolo.config.ts` and a deploy, as before. The
 audit log records each install and uninstall once: `system` / `Install` /
-`Bundle`, naming `package@version`, with `accepted server code` when it was.
+`Bundle`, naming `package@version`, with `accepted server code; granted …`
+when it was.
 A bundle with screens says, after install, that they run in the browser of
 everyone who uses the back office.
 
@@ -1101,6 +1106,8 @@ export interface ServerBundle {
   forms?: BundleForms     // form field and workflow types, docs/forms.md
   events?: BundleEvents   // webhook event handlers, docs/webhooks.md
   middleware?: Middleware // offered to the site's chain, below
+  jobs?: Record<string, BundleJob> // background jobs, below
+  schedules?: JobSchedule[] // when they run by themselves
 }
 ```
 
@@ -1150,10 +1157,11 @@ a section of the bundle's own by its manifest alias (`Acme.Section.Design`).
   is never reached by a caller without the section. A route reaches members or
   visitors only by being a site route, which answers only where the site lists
   the bundle.
-- **Only the capabilities it declared**, as a frozen object. No `Db`, no config,
-  no filesystem. A capability is an interface `bundles.ts` owns and implements,
-  so the reachable surface is what core decided to expose rather than what the
-  bundle can find.
+- **Only the capabilities it declared**, as a frozen object, and of each only
+  what its granted permissions allow ([Permissions](#permissions)). No `Db`, no
+  config, no filesystem. A capability is an interface `bundles.ts` owns and
+  implements, so the reachable surface is what core decided to expose rather
+  than what the bundle can find.
 - **Its own failures.** A handler that throws becomes a 500 with a reference and
   a log line naming the bundle; the request path stays up and the other bundles
   keep answering.
@@ -1162,6 +1170,98 @@ a section of the bundle's own by its manifest alias (`Acme.Section.Design`).
   is served: `all` and `web` nodes, never `api` nodes. The bundle itself is
   validated on every node, because its `forms` types are needed where forms
   render and submit (story `095`).
+
+### Permissions
+
+Story 222. A bundle's package says what its server half may do with the site,
+and an administrator approves all of it, or the bundle stays off.
+
+```json
+"crombolo": {
+  "id": "redirects",
+  "server": "redirects",
+  "schemaVersion": 3,
+  "permissions": ["redirects.read", "redirects.write", "documents.read"]
+}
+```
+
+| Permission | Allows | Capability |
+| --- | --- | --- |
+| `redirects.read` | `list`, `byKey` | `redirects` |
+| `redirects.write` | `save`, `replace`, `remove` | `redirects` |
+| `documents.read` | `url` | `documents` |
+| `identityProviders.read` | `list`, `test`, `groups` | `identityProviders` |
+| `identityProviders.write` | `update`, `reset` | `identityProviders` |
+| `media.read` | `get`, `list`, `crop` | `media` |
+| `media.write` | `create`, `update`, `delete` | `media` |
+| `member.delegate` | acting as the signed-in member calling a route | `media`, which always acts as the caller |
+
+Each has a plain sentence the install panel and the Installed view show
+(`BUNDLE_PERMISSIONS` in `@crombolo/backoffice-host`). `log` and a bundle's own
+`database` (Part 4) need none: neither reaches the site's data.
+
+- **Declared, and held to the code.** Schema 3 makes `permissions` required of
+  a server half; `[]` is a bundle that asks for nothing. A package written for
+  an earlier schema, or naming a permission this release does not offer, is
+  refused by name. At boot each capability must have one of its permissions
+  (`media` also `member.delegate`), and each permission must be used by a
+  capability the bundle declares.
+- **Only what is declared.** A capability method whose permission is not
+  declared throws `PermissionRefusedError`, naming it: a bundle that asked only
+  to read redirects cannot save one.
+- **All or nothing.** An administrator grants a bundle's whole list, in the
+  install panel or with **Approve and turn on** on its card in Installed, and
+  withdraws it there. A bundle is on while its grant covers everything it
+  declares. One that is off is still mounted: its routes answer 503 saying it
+  is waiting for approval, its events are not delivered, its screens are left
+  out of the back office, the boot log names it, and `crombolo start` lists it.
+  A new version that asks for more is off until the new list is approved.
+- **Per environment, by the people who install.** Grants are rows in
+  `bundle_grant` (migration 054), in each environment's own database, made by
+  anyone with the Packages section, and audited (`system` / `Grant` or
+  `Withdraw` / `Bundle`). They are never in the repository and do not travel in
+  an export or a pull, so a developer cannot grant a bundle by committing a file.
+- **From a pipeline:** `crombolo bundle grant <id>` grants a bundle's list as
+  an operator of that environment, audited as a grant in the back office is.
+  A bundle added with `bun add` and wired in code is off until one or the other.
+
+### Jobs
+
+A bundle declares background jobs and schedules on its `ServerBundle`, run by
+the same queue as the site's ([`rendering.md`](rendering.md#background-jobs);
+story 187):
+
+```ts
+export const sweeper = (): ServerBundle<'redirects', typeof tables> => ({
+  id: 'sweeper',
+  section: 'settings',
+  capabilities: ['redirects'],
+  tables,
+  jobs: {
+    async sweep(payload: { since: string }, { bundle, job }) {
+      const stale = await bundle.database.selectFrom('visit').selectAll().execute()
+      await job.progress(stale.length)
+    },
+  },
+  schedules: [{ job: 'sweep', cron: '*/30 * * * *' }],
+  routes: [
+    route('sweep', { POST: async (_r, { bundle }) => Response.json({ id: await bundle.jobs.enqueue('sweep', {}) }) },
+      { audience: 'backoffice' }),
+  ],
+})
+```
+
+- **`context.bundle.jobs`**, on a bundle that declares jobs, queues one of its
+  own (`enqueue(name, payload)`) and reads one (`status(id)`); another bundle's
+  job is not found.
+- **A job sees what the bundle's public route sees.** Its `bundle` holds the
+  capabilities that do not act for a caller, and its own `database`; its caller
+  is `{ kind: 'job' }`, treated as the public, so `media` refuses there as on a
+  public route. Powers a public route lacks come from permissions an
+  administrator grants ([Permissions](#permissions)), checked in a job as in a
+  route. Nothing acts as the site.
+- **A bundle that is off** (not granted) keeps its jobs waiting, and queues
+  none of its schedules, until it is on again.
 
 ### Routes
 
@@ -1172,14 +1272,15 @@ A bundle's routes are route handlers, the contract a site's own routes use
 ```ts
 import { type BundleRouteContext, route, type ServerBundle } from '@crombolo/crombolo/bundle'
 
-type Ctx = BundleRouteContext<'tables'>
+type Ctx = BundleRouteContext<'log', typeof tables>
 
-export const visits = (options: { routesAt?: string } = {}): ServerBundle<'tables'> => {
+export const visits = (options: { routesAt?: string } = {}): ServerBundle<'log', typeof tables> => {
   const at = options.routesAt ?? '/visits'
   return {
     id: 'visits',
     section: 'content',
-    capabilities: ['tables'],
+    capabilities: ['log'],
+    tables, // Part 4: its handlers get `bundle.database`
     routes: [
       route<unknown, unknown, Ctx>(`${at}/species`, { GET: listSpecies }),
       route<unknown, unknown, Ctx>(
@@ -1431,12 +1532,14 @@ administrator, who was never granted it, is refused.
 
 ### Deliberately not offered
 
-Raw SQL, a `Db`, migrations of core's tables, and writing the site's files. The
-original objection to a bundle's migrations still stands: a migration arriving
-with a dependency would be a schema change no `migration_history` could account
-for. What a bundle may have instead is tables of its **own**, under its own
-ledgered chain and its own prefix, which [Part 4](#part-4--tables-a-bundle-owns)
-describes — and nothing that reaches a table of core's.
+crombolo's own `Db`, migrations of core's tables, writing the site's files, and
+any capability an administrator has not granted.
+The original objection to a bundle's migrations still stands: a migration
+arriving with a dependency would be a schema change no `migration_history` could
+account for. What a bundle may have instead is tables of its **own**, under its
+own ledgered chain, in a schema or file of its own, which
+[Part 4](#part-4--tables-a-bundle-owns) describes — and nothing that reaches a
+table of core's.
 
 A capability is therefore the unit of negotiation. Adding one is a deliberate act
 in core — which is the point, because it is also the moment somebody decides what
@@ -1632,16 +1735,18 @@ template cannot wire a bundle into a site without the site's code saying so.
 # Part 4 — Tables a bundle owns
 
 A bundle that keeps state alongside content — a task list, an approval step, a
-log of its own — can now declare tables and evolve them across its own
-releases, without being able to break a site's core upgrades. This is story
-`062`, and every piece below is the answer to the objection in Part 3: core
-can see, verify and order a bundle's schema changes, because they are declared,
-ledgered and confined.
+log of its own — can declare tables and evolve them across its own releases,
+without being able to break a site's core upgrades. Story `062` gave bundles
+declared, ledgered tables; story `189` moved them out of crombolo's schema into
+a place of the bundle's own and gave its handlers full queries over them. The
+site's own tables work the same way ([`data-model.md`](data-model.md#custom-tables)).
+Core can see, verify and order a bundle's schema changes because they are
+declared, ledgered and confined.
 
 ## Declaring tables
 
 ```ts
-import { defineBundleTables } from '@crombolo/crombolo'
+import { defineBundleTables } from '@crombolo/crombolo/bundle'
 
 export const tables = defineBundleTables('acme-tasks', [
   {
@@ -1660,189 +1765,207 @@ export const tables = defineBundleTables('acme-tasks', [
     name: 'task-priority',
     release: '1.1.0',
     up: (s) => s.addColumn('task', 'priority', s.integer().default(0)),
-    backfill: (data) => data.task.update({ where: { status: 'urgent' }, set: { priority: 9 } }),
+    backfill: (db) =>
+      db.updateTable('task').set({ priority: 9 }).where('status', '=', 'urgent').execute(),
   },
 ])
 ```
 
-The bundle hands it to its `ServerBundle` as `tables`, and asks for the `tables`
-capability to use them at runtime. A step's `up` returns the builder's
-operations as plain data — there is no SQL in a declaration, and no escape hatch
-to some:
+The bundle hands it to its `ServerBundle` as `tables`. Declaring tables is the
+whole declaration: there is no capability to ask for, and asking for the old
+`tables` capability refuses the boot. A step's `up` returns the builder's
+operations as plain data:
 
 | Kind | Operations |
 | --- | --- |
-| Expand | `createTable` (exactly one primary key), `addColumn` (nullable or defaulted only), `addIndex`, `widenColumn` (a longer varchar, varchar to text, integer to bigint) |
-| Contract | `dropTable`, `dropColumn` (not one an index covers), `dropIndex` |
-| Column types | `uuid`, `varchar(n)`, `text`, `integer`, `bigint`, `boolean`, `timestamp`, `json`, from the dialect seam |
+| Expand | `createTable` (exactly one primary key), `addColumn` (nullable or defaulted only), `addIndex`, `widenColumn` (a longer varchar, varchar to text, integer to bigint, a decimal that holds more) |
+| Contract | `dropTable` (not one another table points at), `dropColumn` (not one an index covers, nor a foreign key), `dropIndex` |
+| Column types | `uuid`, `varchar(n)`, `text`, `integer`, `bigint`, `boolean`, `timestamp`, `json`, `decimal(precision, scale)` |
+| Column options | `nullable()`, `default(v)`, `primaryKey()`, `indexed()`, `unique()`, `references(table, { column?, onDelete? })` |
+| Index options | `unique`, `descending: [columns]`, `where: { column, is: 'null' \| 'not null' }` |
 
-`json` is TEXT on both dialects, serialised and parsed by the capability, and
-can only be tested for null. Text compares case-sensitively on both. A default
-is a literal in DDL, so a string default is limited to letters, digits, spaces
-and `_ . : @ / -`, and `json` and `timestamp` take none.
+A foreign key points at another of the **same owner's** tables, at its primary
+key or a unique column of a type that joins; `onDelete` is `restrict` (the
+default), `cascade` or `set null`. A column added later with a foreign key must
+start out nullable without a default, because SQLite adds one no other way. A
+default is a literal in DDL, so a string default is limited to letters, digits,
+spaces and `_ . : @ / -`, and `json` and `timestamp` take none.
 
-**A backfill is the step's own `backfill(data)`**, run in the step's
-transaction once `up` has, over the tables as that step leaves them. Keeping it
-out of `up` means a step's checksum and its plan never depend on data, and
-that the final shape of every table can be worked out from the declaration's
-types: `context.bundle.tables.task` is typed, and `context.bundle.tables.node` does
-not exist. `upgrade --plan` reports a step with a backfill as unplannable.
+**A backfill is the step's own `backfill(db)`**, run in the step's transaction
+once `up` has, through the bundle's Kysely handle over the tables as that step
+leaves them. Keeping it out of `up` means a step's checksum and its plan never
+depend on data, and that the final shape of every table can be worked out from
+the declaration's types: `context.bundle.database.selectFrom('task')` is typed,
+and `selectFrom('node')` does not compile. `upgrade --plan` reports a step with
+a backfill as unplannable.
 
-## Names
+## Where they live
 
-| What | Physical name |
-| --- | --- |
-| A table | `bundle_<id>__<table>`, the id's hyphens written as underscores |
-| An index | `bundle_<id>__ix_<hash>`, generated from what it covers, never chosen |
+| | Postgres | SQLite |
+| --- | --- | --- |
+| A bundle's tables | the schema `bundle_<id>`, the id's hyphens as underscores | the file `<crombolo>.bundle.<id>.sqlite` beside crombolo's |
+| Owned by | a login-less role, `{site}_{id}_{hash}` (below) | — |
+| A table, an index | its logical name; an index's is `ix_<hash>`, generated, never chosen | the same |
 
-An id with tables may not contain `--` or end with `-`, and a table or column
-name is `[a-z][a-z0-9_]*` without `__`, so the double underscore is an
-unambiguous separator and no two bundles can produce the same physical name. A
-table may not start with `ix_`, the indexes' namespace, nor be called
-`transaction`; a column may not be called `and` or `or`. Boot refuses any
-physical name past Postgres's 63-character limit, which Postgres would
-otherwise truncate silently.
+Statements are unqualified: they run on the bundle's own connection, in its own
+schema or file, so a table needs no prefix and two bundles cannot collide. A
+table may not start with `ix_`, the indexes' namespace; any name past Postgres's
+63-character limit is refused at boot. A bundle may not have the id `site`,
+which names the site's own tables.
 
-**Core reserves `bundle_`.** `tests/bundle-tables.test.ts` records every core
-migration's statements through the recording `Db` and fails if one names a
-`bundle_` table, which is what lets the guard treat a prefix match as proof.
+Roles and connections are described in
+[`data-model.md`](data-model.md#custom-tables): every transaction on the
+handle begins `SET LOCAL ROLE`, the role has no privilege on crombolo's tables or
+another owner's, and on SQLite crombolo's file and the others are never
+attached. The CMS creates the role and schema when the bundle is first migrated,
+or prints the SQL for an operator where its database user may not.
 
 ## The ledger
 
 | | Where |
 | --- | --- |
-| A bundle's state | `key_value`, under `Crombolo.Bundle.<id>.State` |
+| A bundle's state | `key_value`, under `Crombolo.Tables.<id>.State` |
+| Its role's name | `key_value`, under `Crombolo.Tables.<id>.Role`, recorded when it was made |
 | Its steps | `migration_history`, with the bundle's id in the `bundle` column; null for core |
-| A step's state | derived from its position and name: `bundle:<id>:<n>:<name>` |
+| A step's state | derived from its position and name: `tables:<id>:<n>:<name>` |
 | A step's checksum | a hash of its recorded operations, not their SQL, so it is the same on both dialects |
 
-`migrate` is generalised over a chain's state key and initial state
-(`MigrationPlan` takes them), runs a bundle's chain under the same lock as
-core's, and writes through the same `recordInLedger`. Core's rows are exactly
-what they were. A bundle's chain is also verified before it runs: a step whose
-operations no longer match the checksum ledgered when it ran is refused,
-naming the step, because a shipped step is never edited.
-
-The `bundle` column is created with `migration_history`, and a table from
-before it gains it the first time the ledger is read, so a bundle's step can be
-ledgered whatever state core is at. A bundle's contract does not count toward
-the contracts a `web` node watches for: it removes only the bundle's tables,
-which no core read depends on.
+`migrate` is generalised over a chain's state key, initial state and where its
+steps run (`MigrationPlan` takes them). A bundle's chain runs under the same lock
+as core's and writes through the same `recordInLedger`. On Postgres a step runs
+in crombolo's transaction with the bundle's role and search path taken for it,
+so the step and its ledger row commit together; on SQLite the step commits on the
+bundle's file just before its ledger row on crombolo's. A bundle's chain is also
+verified before it runs: a step whose operations no longer match the checksum
+ledgered when it ran is refused, naming the step, because a shipped step is
+never edited. A bundle's contract does not count toward the contracts a `web`
+node watches for: it removes only the bundle's tables, which no core read
+depends on.
 
 ## Expand and contract, per bundle
 
 The rules core's plan is held to, with `release` read as the **bundle's**
 version: from the bundle's 1.0 a contract may only ship in a bundle major
-(`x.0.0`), and before it in any release, and it may only
-remove what an earlier bundle release added; a step is an expand or a
-contract, never both; no step may claim a release later than the package's
-own version. `compileBundleTables` collects every problem and
-`validateServerBundles` reports them at boot. A bundle's own test suite can
-hold itself to the same rules with `assertBundleTables(tables, version)`, and
-`bundleTablesCompatibility(tables, version)` derives the
-`"crombolo": { "migrations": "compatible" | "breaking" }` its `package.json`
-declares, the way core's declaration is derived. Boot refuses a bundle with
-tables whose package declares none, or declares something its plan does not
-make true, because that field is what an operator's tooling reads to decide
-whether a release can roll out node by node.
+(`x.0.0`), and before it in any release, and it may only remove what an earlier
+bundle release added; a step is an expand or a contract, never both; no step may
+claim a release later than the package's own version. `compileTables` collects
+every problem and `validateServerBundles` reports them at boot. A bundle's own
+test suite can hold itself to the same rules with
+`assertBundleTables(tables, version)`, and `bundleTablesCompatibility(tables,
+version)` derives the `"crombolo": { "migrations": "compatible" | "breaking" }`
+its `package.json` declares, the way core's declaration is derived. Boot refuses
+a bundle with tables whose package declares none, or declares something its
+plan does not make true.
 
 ## Order and gates
 
-- `crombolo upgrade` applies core's pending steps first, then each bundle's, in
-  the order `bundles` lists them, so a bundle step always runs against a core it
-  declared itself compatible with. `bootstrapDatabase` and `installDatabase` do
-  the same.
-- `upgrade --plan` and `upgrade check` list bundle steps under their bundle;
+- `crombolo upgrade` applies core's pending steps first, then the site's own,
+  then each bundle's in the order `bundles` lists them, so a bundle step always
+  runs against a core it declared itself compatible with. `bootstrapDatabase`
+  and `installDatabase` do the same.
+- `upgrade --plan` and `upgrade check` list each owner's steps under it;
   `/status` reports `bundles[id].state` and `.pending`; the Changes dashboard
-  shows each bundle's changes, done and waiting.
-- In production, boot refuses while any bundle step is pending, with
-  `UpgradePendingError` naming the bundle. Development applies them.
+  shows each owner's changes, done and waiting.
+- In production, boot refuses while any step is pending, with
+  `UpgradePendingError` naming the owner. Development applies them.
 - A database ahead of a bundle's code refuses with `UpgradeStateError`, naming
   the bundle and both states.
-- The pre-upgrade backup covers bundle tables, because they are in the same
-  database.
-- Only a node that mounts bundles — one serving the backoffice — applies or
-  checks them. A `web` node reads nothing of a bundle's.
+- The pre-upgrade backup covers bundle tables: SQLite copies each owner's file
+  beside crombolo's; on Postgres `CROMBOLO_PG_DUMP` dumps the database, schemas
+  included. Roles belong to the server, not the database, so a dump does not
+  carry them: a restore onto another server re-creates them at its first boot.
+- Only a node that owns the database — one serving the backoffice — migrates a
+  bundle's tables or creates its role. A `web` node reads nothing of a bundle's.
 
-## The `tables` capability
+## `context.bundle.database`
 
-Offered only to a bundle that declares tables, and resolved against that
-bundle's final schema alone:
+A Kysely instance on the bundle's own connection, typed from its steps, handed
+to every handler of a bundle that declares tables:
 
 ```ts
-const open = await context.bundle.tables.task.select({
-  where: { status: 'open', due: { lt: now } },
-  orderBy: { due: 'asc' },
-  limit: 50,
-})
-await context.bundle.tables.transaction(async (t) => {
-  await t.task.update({ where: { id }, set: { status: 'done' } })
+const open = await bundle.database
+  .selectFrom('task')
+  .selectAll()
+  .where('status', '=', 'open')
+  .where('due', '<', new Date())
+  .orderBy('due')
+  .limit(50)
+  .execute()
+
+await bundle.database.transaction().execute(async (trx) => {
+  await trx.updateTable('task').set({ status: 'done' }).where('id', '=', id).execute()
 })
 ```
 
-`select`, `count`, `insert`, `update`, `delete`, `truncate` and `transaction`.
-Filters are equality, `in`, `lt`/`lte`/`gt`/`gte` and `isNull`/`notNull`,
-combined with `and`/`or`, at most eight deep. `update` and `delete` require a
-`where`; an unfiltered write is `truncate`. A uuid is lowercased, a varchar's
-length is enforced on both dialects, and a value that does not fit its column
-is refused before any SQL is built.
+Joins, grouping and aggregates across the bundle's own tables are Kysely's, and
+so is `sql` for anything else, with values bound and never spliced. Values read
+and write the same on both engines: a boolean is `true`/`false`, a timestamp a
+`Date`, `json` a parsed value, a `decimal` a string to its scale, and a `uuid`
+lowercase and compared without case. Only columns a query names, or `*`, are
+converted; an expression arrives as the engine computes it. In an insert of
+several rows, SQLite stores null for a column a row leaves out rather than its
+default, so give every row the same columns, or insert them one at a time.
 
-## Guards
+## Confinement
 
-The requirement is that the capability can never reach outside the bundle's
-own tables, and never a core one:
+The requirement is that the handle never reaches outside the bundle's tables:
 
-- **No identifier comes from the caller.** Every table and column name is looked
-  up in the resolved schema, held in `Map`s rather than objects, and quoted from
-  there; an unknown name is refused before SQL is built. Values are always bound.
-- **No `Db` is reachable.** The capability, every table handle and the
-  transaction handle are frozen, null-prototype objects whose members are
-  closures; the connection is never a property of any of them.
-- **One guard function** (`data/src/bundle-tables/guard.ts`) sees every
-  statement the builder and the capability emit. It checks them token by token,
-  which their regularity allows: one statement, no comments, every identifier
-  quoted and lowercase, and every table or index it names under the bundle's
-  prefix.
+- **On Postgres**, the role owns its schema and nothing else, has no privilege
+  on crombolo's tables or another owner's, and may not create a schema. Every
+  statement runs in a transaction that begins `SET LOCAL ROLE`, so the role
+  drops back at commit and is safe behind a connection pooler.
+- **On SQLite**, the handle is a connection to the bundle's own file, with
+  crombolo's database and the other owners' files never attached.
+- **No `Db` is reachable.** The handle is Kysely over a driver that holds the
+  owner's connection; crombolo's own is not a property of anything handed out.
 
-The tests treat these as security properties: a hostile-input suite (another
-bundle's and core's table names, quoted and escaped identifiers, `;`,
-comments, Unicode look-alikes, `__proto__` and `constructor` keys, nesting past
-the limit) and a seeded property-based test of arbitrary filters, each asserting
-on what the guard saw of every statement that ran. A bundle runs unsandboxed in
-the server process, so nothing here stops deliberately hostile code; these
-guards stop the capability from being the route out.
+`tests/custom-tables.test.ts` proves it on both engines by trying: a handle
+naming a crombolo table, qualified or not, and another owner's table, fails.
+What it guards against is mistakes and injected input. A bundle runs unsandboxed
+in the server process (story 173), so deliberately hostile code could issue
+`RESET ROLE` or `ATTACH DATABASE` (Bun's SQLite driver cannot forbid attaching);
+installing a bundle is a decision to trust it.
+
+## Moving from 062's prefixed tables
+
+Until 189 a bundle's tables were `bundle_<id>__<table>` in crombolo's schema,
+reached through a `tables` capability with its own filter language. They are not
+migrated: nothing in the repository used them beyond tests, and their state key
+is not the new one, so a bundle's chain starts again in its own place. The old
+tables are left where they were; drop them once their data is moved. The
+release notes carry the upgrade note.
 
 ## Removal
 
 Taking a bundle out of `bundles` leaves its tables, state and ledger rows in
-place, and re-adding it resumes from its recorded state. Its tables sit behind
-its prefix, so they cannot collide with anything meanwhile.
+place, and re-adding it resumes from its recorded state.
 
 ```
 crombolo bundle purge <id> [--yes] [--backup-taken]
 ```
 
-drops every table in the database under the bundle's prefix — found in the
-catalogue, because a purged bundle is one the site no longer wires — and
-clears its state, after the same backup `upgrade` takes. It is ledgered as kind
-`purge` against the bundle, which also starts the bundle's checksum history
-again. It refuses while `crombolo.config.ts` still wires the bundle, and lists
+drops the bundle's schema and its role on Postgres, or deletes its file on
+SQLite, and clears its state, after the same backup `upgrade` takes. It is
+ledgered as kind `purge` against the bundle, which also starts the bundle's
+checksum history again. A role the CMS's database user may not drop is left and
+named. It refuses while `crombolo.config.ts` still wires the bundle, and lists
 what it will drop and asks for the id to be typed back, unless `--yes`.
 
 ## Testing
 
-`tests/bundle-tables-rules.test.ts` holds the declaration's rules with no
-database: names and their limits, the builder's limits, expand and contract per
-bundle read against the package's version, states and checksums.
-`tests/bundle-tables.test.ts` runs under both dialects against the fixture
-bundle in `tests/support/fixture-bundle.ts` — an expand-only 1.x and a 2.0.0
-with a contract — for the chain, the ledger, backfills, edited and newer steps,
-the capability, the guards and purge. Its core-upgrade guarantee installs the
-fixture's tables and rows at core's first state and walks the whole core plan
-forward, and the tables come through untouched.
-`tests/bundle-tables-site.test.ts` boots a real site wiring the fixture: a route
-using `context.bundle.tables`, the dashboard's report, `upgrade --plan`, `check`,
-`/status` and `upgrade`, and `bundle purge`.
+`tests/custom-tables-rules.test.ts` holds the declaration's rules with no
+database: names, roles and files, the builder's limits and what 189 added to it,
+SQL steps, expand and contract per owner read against the owner's version,
+states and checksums. `tests/custom-tables.test.ts` runs under both dialects
+against the fixture bundle in `tests/support/fixture-bundle.ts` — an
+expand-only 1.x and a 2.0.0 with a contract — and a site's own tables: the
+chain, the ledger, backfills, edited and newer steps, the handle's values,
+joins, aggregates and transactions, confinement, purge, and on Postgres the
+roles, with two databases on one server and a database user that may not create
+roles. `tests/custom-tables-site.test.ts` boots a real site with its own tables
+and named queries and wiring the fixture: a route using `site().queries`,
+another using `context.bundle.database`, the dashboard's report,
+`upgrade --plan`, `check`, `/status` and `upgrade`, and `bundle purge`.
 
 ## Out of scope
 
@@ -1852,8 +1975,9 @@ using `context.bundle.tables`, the dashboard's report, `upgrade --plan`, `check`
   exist here. A bundle's *own* tables, under its own ledger and never touching
   core's, are Part 4.
 - Bundle tables travelling with content transfer or a created package; joins
-  with core tables or between a bundle's own tables; aggregates beyond `count`;
-  events from core such as "this node was deleted"; a database role per bundle.
+  with core tables; events from core such as "this node was deleted". A whole
+  site's export carries them with `--with-site-data`
+  ([`data-model.md`](data-model.md#custom-tables)).
 - Isolating a bundle's server code. There is no sandbox and none is implied: a
   bundle you import is code you run, exactly like any other dependency in the
   file. What the design buys is that importing it is a decision somebody makes

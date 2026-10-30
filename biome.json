@@ -51,6 +51,34 @@
           "next": "recommended"
         }
       }
+    },
+    {
+      "includes": [
+        "packages/server/src/core.ts",
+        "packages/server/src/worker.ts",
+        "packages/server/src/node-operations.ts",
+        "packages/server/src/job-wake.ts",
+        "packages/server/src/worker-watch.ts"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@crombolo/api-management": "The worker's core is kept clear of the back office and the APIs (story 223): import its domain or registry subpath instead.",
+                  "@crombolo/api-delivery": "The worker's core is kept clear of the back office and the APIs (story 223): import its domain or registry subpath instead.",
+                  "@crombolo/backoffice-host": "The worker's core is kept clear of the back office and the APIs (story 223): import its domain or registry subpath instead.",
+                  "./server.ts": "The worker's core is kept clear of the back office and the APIs (story 223): import its domain or registry subpath instead.",
+                  "./ports.ts": "The worker's core is kept clear of the back office and the APIs (story 223): import its domain or registry subpath instead.",
+                  "./routes.ts": "The worker's core is kept clear of the back office and the APIs (story 223): import its domain or registry subpath instead."
+                }
+              }
+            }
+          }
+        }
+      }
     }
   ]
 }

@@ -735,7 +735,7 @@ Stories `104`–`106`. A bundle with **every** section and every node is a whole
 site, and moving one is two commands:
 
 ```bash
-bunx crombolo export --site --out site.tgz     # [--with-media] [--drafts] [--with-members] [--with-users] [--anonymise]
+bunx crombolo export --site --out site.tgz     # [--with-media] [--drafts] [--with-members] [--with-users] [--with-site-data] [--anonymise]
 bunx crombolo start --from site.tgz            # in an empty folder: scaffold, bun install, import, serve
 bunx crombolo import site.tgz --replace        # or replace a site that already exists
 ```
@@ -758,7 +758,8 @@ dictionary, every document, media item, element and blueprint with their values
 (published by default, `--drafts` for the latest), and the media files. It never
 carries domains, the secret key, sessions, tokens, external logins, form entries
 or anything in the recycle bin. Content travels in the open; members and users
-only with `--with-members` / `--with-users`, sealed under a passphrase.
+only with `--with-members` / `--with-users`, and the site's own tables only with
+`--with-site-data`, sealed under a passphrase.
 
 **It streams.** `exportSite` (`packages/server/src/site-file.ts`) writes the
 tarball as it goes (`TarballWriter`, `tar.ts`): each media file streams from the
@@ -776,6 +777,50 @@ groups and approval kept, name, username and email replaced, password and values
 gone — and every email address in content, people and the dictionary is replaced,
 the same address by the same `person-N@example.invalid` each time. Code and schema
 are left alone.
+
+### Site data
+
+Story `189`. The site's own tables and each wired bundle's
+([`data-model.md`](data-model.md#custom-tables)) travel in a whole-site file
+only with **`--with-site-data`**, and like people they travel sealed, so the
+flag needs a passphrase, under `--anonymise` too.
+
+- **The files** are `data/<owner>/<table>.json`, a JSON array of rows read
+  through the owner's handle (timestamps as ISO text), each sealed. The
+  manifest's `siteData` block lists every table with its row count and path,
+  never its contents; a public package may not carry `data/`. Only owners
+  already set up are read.
+- **`--anonymise` is default-deny.** The site's `database.anonymise` and a
+  bundle's `crombolo.anonymise` in its `package.json` name, table by table,
+  what may travel:
+
+  | Rule | What travels |
+  | --- | --- |
+  | `'keep'` | the table as it is |
+  | `{ column: 'member' }` | a member's key, only when that member travels as a placeholder; otherwise null |
+  | `{ column: 'email' }` | the stand-in the same address gets everywhere else in the file |
+  | `{ column: 'scrub' }` | null, or for a column that cannot be, its type's empty value (`''`, `0`, `false`, `{}`) |
+  | no rule | nothing: the table travels empty, and the export names it |
+
+  A table with column rules keeps its other columns. A rule naming a table or
+  column that does not exist, `member` on a column that cannot be null or hold
+  a key, `email` on one that is not text, or `scrub` on a required uuid or
+  timestamp, refuses the boot (the site's) or the bundle's validation.
+- **The import** writes it back after the content commits, owner by owner, in a
+  transaction on each owner's handle: every table the owner has here is
+  emptied, children first, and the file's rows go in, parents first and one
+  row at a time. Owners, tables and columns this site does not have are skipped
+  and listed; an owner that fails is rolled back and reported without undoing
+  the content. `content revert` does not bring site data back: the
+  pre-import backup has it, and the command says so.
+- **`--exclude-people`** leaves site data behind too, so it needs no passphrase.
+- **A pull** carries site data, anonymised under the rules unless `--full`;
+  an anonymised pull carries no members, so every `member` column arrives
+  empty. A push does not carry it, as it carries no members.
+- **Limits.** Every table is held in memory while it is exported, so tables of
+  millions of rows want a streaming follow-up; rows within a table go in in no
+  particular order, so a table that references itself may refuse them; a SQL
+  step's identity columns are not moved past the imported rows.
 
 ### Replacing a site
 

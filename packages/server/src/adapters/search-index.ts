@@ -1,5 +1,5 @@
 /** The Examine dashboard's port over the search index. docs/search.md. */
-import type { SearchIndexInfo, SearchIndexPort } from '@crombolo/api-management'
+import type { SearchIndexInfo, SearchIndexPort } from '@crombolo/api-management/domain'
 import { type Db, SEARCH_INDEXES, SearchIndex, type SearchIndexDefinition } from '@crombolo/data'
 
 export function createSearchIndexPort(db: Db, onQueued?: () => void): SearchIndexPort {

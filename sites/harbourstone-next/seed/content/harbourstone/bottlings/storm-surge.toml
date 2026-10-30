@@ -1,0 +1,19 @@
+type = "expression"
+key = "a0085977-5476-42f9-a1eb-c5f2a17befc5"
+name = "Storm Surge"
+order = 11
+
+[values]
+title = "Storm Surge"
+kind = "Cask strength"
+productType = "Whisky"
+abv = "57.1%"
+batch = "02"
+summary = "Peated spirit at cask strength. Weather in a bottle."
+bottleImage = "/bottle-neap-tide.jpg"
+bodyText = { html = "<p>Our peated spirit from first-fill bourbon barrels, unreduced and unfiltered. Batch 02 is 57.1%. The smoke is louder at this strength; water brings the fruit back out.</p>" }
+tastingNotes = [
+  "nose-bonfire-iodine-grilled-lemon",
+  "palate-powerful-peat-salted-carame",
+  "finish-long-and-smoky-with-a-warmi",
+]

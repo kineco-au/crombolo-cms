@@ -34,8 +34,8 @@ What the dependencies provide:
 - **186:** routes a member, or the public, can call. A bundle needs them before
   a member can upload anything through it.
 
-Raised by Nature's Calendar (`wt-natures-calendar` stories 044 and 064):
-members attach a photo to an observation from the record wizard.
+Raised by a site whose members attach a photo to a record from a recording
+wizard.
 
 ## Decided (2026-10-28)
 
@@ -308,5 +308,5 @@ members attach a photo to an observation from the record wizard.
 
 - The permissions themselves: story 196, which this extends with the allow-list.
 - Processing back-office uploads.
-- Bulk-setting creators during a migration, such as Nature's Calendar's
-  existing photos: the importer's job, using 196's repository.
+- Bulk-setting creators during a migration, such as a migrated site's existing
+  photos: the importer's job, using 196's repository.

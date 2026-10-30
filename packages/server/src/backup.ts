@@ -3,7 +3,9 @@
  * beside the database; Postgres runs the operator's `CROMBOLO_PG_DUMP` command
  * or refuses unless the caller vouches with `--backup-taken`.
  */
-import { copyFileSync, existsSync } from 'node:fs'
+import { copyFileSync, existsSync, readdirSync } from 'node:fs'
+import { basename, dirname, join } from 'node:path'
+import { ownerFile } from '@crombolo/data'
 import type { CromboloConfig } from './config.ts'
 
 export interface BackupOptions {
@@ -16,6 +18,23 @@ export interface BackupOptions {
 export interface BackupResult {
   kind: 'sqlite-copy' | 'pg-dump' | 'operator' | 'none'
   path?: string
+  /** SQLite: the copies of the site's and bundles' own tables' files beside it (story 189). */
+  owners?: string[]
+}
+
+/** The site's and bundles' own SQLite files beside crombolo's, whatever is wired now. */
+export function ownerFilesBeside(sqliteFile: string): string[] {
+  if (sqliteFile === ':memory:') return []
+  const site = ownerFile(sqliteFile, 'site')
+  const bundle = basename(ownerFile(sqliteFile, 'x')).replace(/x\.sqlite$/, '')
+  const dir = dirname(sqliteFile)
+  if (!existsSync(dir)) return []
+  return readdirSync(dir)
+    .filter(
+      (name) => name === basename(site) || (name.startsWith(bundle) && name.endsWith('.sqlite')),
+    )
+    .map((name) => join(dir, name))
+    .sort()
 }
 
 export class BackupRequiredError extends Error {
@@ -35,7 +54,12 @@ export async function backupBefore(
     if (config.sqliteFile === ':memory:' || !existsSync(config.sqliteFile)) return { kind: 'none' }
     const path = `${config.sqliteFile}.${stamp}.${options.reason}.bak`
     copyFileSync(config.sqliteFile, path)
-    return { kind: 'sqlite-copy', path }
+    const owners = ownerFilesBeside(config.sqliteFile).map((file) => {
+      const copy = `${file}.${stamp}.${options.reason}.bak`
+      copyFileSync(file, copy)
+      return copy
+    })
+    return { kind: 'sqlite-copy', path, ...(owners.length > 0 ? { owners } : {}) }
   }
   if (config.pgDump) {
     const proc = Bun.spawn(['sh', '-c', config.pgDump], {

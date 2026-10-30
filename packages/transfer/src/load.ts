@@ -30,6 +30,12 @@ import {
 import { type BundlePeople, openPeople, type PeopleBlock, parsePeopleBlock } from './people.ts'
 import { openBytes, parseSealParameters, unlock } from './seal.ts'
 import {
+  openSiteData,
+  parseSiteDataBlock,
+  type SiteDataBlock,
+  type SiteDataTable,
+} from './site-data.ts'
+import {
   bundleIntegrity,
   MANIFEST_FILE,
   MEDIA_DIR,
@@ -53,6 +59,8 @@ export interface LoadedBundle {
   files: Map<string, string>
   /** The sealed people, when the bundle carries any: opened by `openBundle`. */
   people?: { block: PeopleBlock; files: Map<string, Uint8Array> }
+  /** The sealed site data, when the bundle carries any: opened by `openBundle` with the people. */
+  siteData?: { block: SiteDataBlock; files: Map<string, Uint8Array> }
   /** Each node's sealed values, by path, when the content is sealed. */
   sealedValues?: Map<string, Uint8Array>
   /**
@@ -367,6 +375,9 @@ function parseManifest(text: string, problems: BundleProblem[]): BundleManifest 
     ...(raw.people !== undefined && parsePeopleBlock(raw.people)
       ? { people: parsePeopleBlock(raw.people) as PeopleBlock }
       : {}),
+    ...(raw.siteData !== undefined && parseSiteDataBlock(raw.siteData)
+      ? { siteData: parseSiteDataBlock(raw.siteData) as SiteDataBlock }
+      : {}),
     ...(parseSealParameters(raw.seal) ? { seal: parseSealParameters(raw.seal) } : {}),
     ...(raw.content === 'sealed' || raw.content === 'omitted' ? { content: raw.content } : {}),
     ...(raw.scope === 'site' ? { scope: 'site' as const } : {}),
@@ -573,7 +584,22 @@ export function loadBundle(dir: string): LoadedBundle {
     read.push({ path, bytes })
   }
 
-  if ((manifest.content === 'sealed' || manifest.people) && !manifest.seal)
+  const siteData = new Map<string, Uint8Array>()
+  for (const path of manifest.siteData?.paths ?? []) {
+    const file = join(dir, path)
+    if (!existsSync(file)) {
+      problems.push({
+        file: path,
+        message: 'the manifest says this file is carried, and it is not',
+      })
+      continue
+    }
+    const bytes = new Uint8Array(readFileSync(file))
+    siteData.set(path, bytes)
+    read.push({ path, bytes })
+  }
+
+  if ((manifest.content === 'sealed' || manifest.people || manifest.siteData) && !manifest.seal)
     problems.push({
       file: MANIFEST_FILE,
       message: 'the bundle says it is sealed but carries no seal to open it with',
@@ -625,13 +651,17 @@ export function loadBundle(dir: string): LoadedBundle {
     seen.add(node.key)
   }
 
-  const isSealed = manifest.content === 'sealed' || manifest.people !== undefined
+  const isSealed =
+    manifest.content === 'sealed' ||
+    manifest.people !== undefined ||
+    manifest.siteData !== undefined
   return {
     set: { manifest, nodes, ...(isSealed ? { sealed: true } : {}) },
     problems,
     blobs,
     files,
     ...(manifest.people ? { people: { block: manifest.people, files: people } } : {}),
+    ...(manifest.siteData ? { siteData: { block: manifest.siteData, files: siteData } } : {}),
     ...(manifest.content === 'sealed' ? { sealedValues: sealed } : {}),
   }
 }
@@ -640,6 +670,8 @@ export function loadBundle(dir: string): LoadedBundle {
 export interface OpenedBundle {
   set: ContentSet
   people: BundlePeople | undefined
+  /** The site's and bundles' own tables; left sealed, as the people are, by `withoutPeople`. */
+  siteData: SiteDataTable[] | undefined
   /** A carried media file's bytes as they were exported. */
   openBlob: (key: string, bytes: Uint8Array) => Uint8Array
 }
@@ -657,11 +689,12 @@ export function openBundle(
   const set = loaded.set
   if (!set) throw new Error('The bundle could not be read, so there is nothing to open.')
   const params = set.manifest.seal
-  if (!set.sealed || !params) return { set, people: undefined, openBlob: (_key, bytes) => bytes }
+  if (!set.sealed || !params)
+    return { set, people: undefined, siteData: undefined, openBlob: (_key, bytes) => bytes }
   // People left behind need no passphrase when nothing else is sealed.
   if (options.withoutPeople && set.manifest.content !== 'sealed') {
     const { sealed: _sealed, ...open } = set
-    return { set: open, people: undefined, openBlob: (_key, bytes) => bytes }
+    return { set: open, people: undefined, siteData: undefined, openBlob: (_key, bytes) => bytes }
   }
   const key = unlock(passphrase ?? '', params)
   const nodes = set.nodes.map((node) => {
@@ -684,11 +717,16 @@ export function openBundle(
     loaded.people && !options.withoutPeople
       ? openPeople(loaded.people.block, loaded.people.files, key)
       : undefined
+  const siteData =
+    loaded.siteData && !options.withoutPeople
+      ? openSiteData(loaded.siteData.block, loaded.siteData.files, key)
+      : undefined
   const sealedBlobs = set.manifest.content === 'sealed'
   const { sealed: _sealed, ...rest } = set
   return {
-    set: { ...rest, nodes, ...(people ? { people } : {}) },
+    set: { ...rest, nodes, ...(people ? { people } : {}), ...(siteData ? { siteData } : {}) },
     people,
+    siteData,
     openBlob: (blob, bytes) => (sealedBlobs ? openBytes(key, mediaPath(blob), bytes) : bytes),
   }
 }

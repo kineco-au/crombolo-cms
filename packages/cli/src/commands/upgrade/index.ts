@@ -82,6 +82,7 @@ export default class Upgrade extends BaseCommand {
       backupTaken: flags['backup-taken'],
     })
     if (result.backup.path) this.progress(`  backup   ${result.backup.path}`)
+    for (const copy of result.backup.owners ?? []) this.progress(`  backup   ${copy}`)
     if (result.action === 'refused')
       this.fail(
         'refused',

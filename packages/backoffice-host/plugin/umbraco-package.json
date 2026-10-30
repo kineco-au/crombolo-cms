@@ -2,7 +2,7 @@
   "$schema": "../../backoffice-dist/dist/umbraco-package-schema.json",
   "name": "Crombolo",
   "id": "Crombolo.Core",
-  "version": "0.37.0",
+  "version": "0.38.0",
   "allowPublicAccess": false,
   "extensions": [
     {
@@ -233,6 +233,23 @@
       "meta": {
         "label": "Changes",
         "pathname": "changes"
+      },
+      "conditions": [
+        {
+          "alias": "Umb.Condition.SectionAlias",
+          "match": "Umb.Section.Settings"
+        }
+      ]
+    },
+    {
+      "type": "dashboard",
+      "alias": "Crombolo.Dashboard.BackgroundJobs",
+      "name": "Crombolo Background Jobs Dashboard",
+      "element": "/crombolo-plugin/jobs-dashboard.js",
+      "weight": 3,
+      "meta": {
+        "label": "Background jobs",
+        "pathname": "background-jobs"
       },
       "conditions": [
         {

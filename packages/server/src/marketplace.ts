@@ -21,11 +21,13 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   type BundlePackage,
+  describePermissions,
   EXTENSION_KEYWORD,
   type ExtensionRegistry,
   type PackageJson,
   validateBundlePackage,
 } from '@crombolo/backoffice-host'
+import { type BundleGrants, declaredPermissions } from './bundle-grants.ts'
 import { logger } from './logging.ts'
 
 const log = logger('packages')
@@ -62,6 +64,14 @@ export interface InstalledListing {
   description: string
   /** The crombolo releases it is written for. */
   peerRange: string
+  /** What its server half may do with the site, each with what it allows (story 222). */
+  permissions: { permission: string; allows: string }[]
+  /** Whether it is turned on: nothing is declared, or an administrator granted all of it. */
+  on: boolean
+  /** What it declares and has not been granted. */
+  missing: string[]
+  /** Who granted it, and when; absent when nobody has. */
+  granted?: { by: string | null; at: string; version: string }
 }
 
 /** What became of the content half of an install. */
@@ -84,6 +94,8 @@ export interface MarketplaceOptions {
   install?: PackageInstaller
   /** The ids of the bundles whose server half this node has mounted. */
   wired?: () => readonly string[]
+  /** Where an install's grant is recorded, and where the listing reads it (story 222). */
+  grants?: Pick<BundleGrants, 'state' | 'grant'>
   /** The version of a package whose content has been applied here. */
   contentApplied?: (packageName: string) => Promise<string | null>
   /**
@@ -118,6 +130,8 @@ export interface InstallOutcome {
    * accept that (story 194): the screen asks, and sends the install again.
    */
   needsServerConsent?: boolean
+  /** With `needsServerConsent`: what it asks to do with the site, to grant as a whole (story 222). */
+  permissions?: { permission: string; allows: string }[]
 }
 
 export type PackageInstaller = (
@@ -160,7 +174,14 @@ export interface Marketplace {
   install(
     name: string,
     version: string | undefined,
-    options?: { applyContent?: boolean; acceptServerCode?: boolean },
+    options?: {
+      applyContent?: boolean
+      acceptServerCode?: boolean
+      /** The permissions the administrator granted: the bundle's whole list (story 222). */
+      grant?: readonly string[]
+      /** Who is installing, recorded on the grant. */
+      by?: string | null
+    },
   ): Promise<InstallOutcome>
   uninstall(name: string): Promise<InstallOutcome>
 }
@@ -236,7 +257,9 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
   const declaresAt = async (
     name: string,
     wanted?: string,
-  ): Promise<BundlePackage['carries'] | 'not-a-bundle' | 'unreachable'> => {
+  ): Promise<
+    (BundlePackage['carries'] & { permissions: string[] }) | 'not-a-bundle' | 'unreachable'
+  > => {
     try {
       const response = await call(`${options.registry}/${encodeURIComponent(name)}`, {
         headers: { accept: 'application/json' },
@@ -263,11 +286,13 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
         extensions?: unknown[]
         content?: boolean
         server?: string
+        permissions?: string[]
       }
       return {
         extensions: Array.isArray(field.extensions) && field.extensions.length > 0,
         content: field.content === true,
         server: field.server !== undefined,
+        permissions: Array.isArray(field.permissions) ? field.permissions : [],
       }
     } catch {
       return 'unreachable'
@@ -276,8 +301,32 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
 
   /** What the registry says this package's latest version carries, when it is a valid bundle. */
   const declares = async (name: string): Promise<BundlePackage['carries'] | undefined> => {
-    const carries = await declaresAt(name)
-    return typeof carries === 'string' ? undefined : carries
+    const declared = await declaresAt(name)
+    if (typeof declared === 'string') return undefined
+    const { permissions: _, ...carries } = declared
+    return carries
+  }
+
+  /** A bundle's permissions and where its grant stands, for the listing. */
+  const grantOf = (bundle: BundlePackage) => {
+    const declared = describePermissions(declaredPermissions(bundle))
+    if (!bundle.carries.server || !options.grants)
+      return { permissions: declared, on: true, missing: [] as string[] }
+    const state = options.grants.state(bundle)
+    return {
+      permissions: state.declared,
+      on: state.on,
+      missing: state.missing,
+      ...(state.grant
+        ? {
+            granted: {
+              by: state.grant.grantedBy,
+              at: state.grant.grantedAt.toISOString(),
+              version: state.grant.version,
+            },
+          }
+        : {}),
+    }
   }
 
   return {
@@ -356,6 +405,7 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
           contentApplied: (await options.contentApplied?.(bundle.packageName)) ?? null,
           description: descriptionOf(bundle.directory),
           peerRange: bundle.peerRange,
+          ...grantOf(bundle),
         })),
       )
     },
@@ -381,7 +431,8 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
           ok: false,
           message: `${name} is not a bundle for this site, so it was not installed.`,
         }
-      if (declared.server && request.acceptServerCode !== true) return serverConsentNeeded(name)
+      if (declared.server && !consented(request, declared.permissions))
+        return serverConsentNeeded(name, declared.permissions)
 
       const specifier = version ? `${name}@${version}` : name
       const result = await install('add', specifier, options.siteDir)
@@ -404,14 +455,17 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
         }
       // The version that landed is what counts: a release published between
       // reading the registry and installing may have brought server code.
-      if (found.carries.server && request.acceptServerCode !== true) {
+      if (found.carries.server && !consented(request, declaredPermissions(found))) {
         await install('remove', name, options.siteDir)
         options.extensions.invalidate()
         return serverConsentNeeded(
           name,
-          `${name}@${found.version} turned out to run code on the server, so it was removed again.`,
+          declaredPermissions(found),
+          `${name}@${found.version} turned out to run code on the server, or to ask for more than was granted, so it was removed again.`,
         )
       }
+      // What was granted is recorded against the version that landed.
+      if (found.carries.server) await options.grants?.grant(found, request.by ?? null)
 
       // The content half lands after the dependency, so a refused check leaves
       // the package installed and says why, rather than undoing an install that
@@ -475,12 +529,30 @@ function descriptionOf(directory: string): string {
 /** Said of every bundle installed here: its screens are someone else's code in our browsers. */
 export const SCREENS_NOTICE = 'Its screens run in the browser of everyone who uses the back office.'
 
-/** A refusal the screen answers by asking for an explicit yes (story 194). */
-function serverConsentNeeded(name: string, before = ''): InstallOutcome {
+/**
+ * Whether an install request said yes to server code and granted exactly what
+ * the bundle asks for (stories 194, 222): all of it, and nothing it did not ask.
+ */
+function consented(
+  request: { acceptServerCode?: boolean; grant?: readonly string[] },
+  permissions: readonly string[],
+): boolean {
+  if (request.acceptServerCode !== true) return false
+  const granted = new Set(request.grant ?? [])
+  return granted.size === new Set(permissions).size && permissions.every((p) => granted.has(p))
+}
+
+/** A refusal the screen answers by asking for an explicit yes, and the grant (stories 194, 222). */
+function serverConsentNeeded(
+  name: string,
+  permissions: readonly string[],
+  before = '',
+): InstallOutcome {
   return {
     ok: false,
     needsServerConsent: true,
-    message: `${before ? `${before} ` : ''}${name} runs code on the server, with access to the site's data, files and settings. Confirm that you trust its publisher to install it.`,
+    permissions: describePermissions(permissions),
+    message: `${before ? `${before} ` : ''}${name} runs code on the server, with access to the site's data, files and settings. Confirm that you trust its publisher, and approve what it asks to do, to install it.`,
   }
 }
 

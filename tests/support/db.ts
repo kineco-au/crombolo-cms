@@ -79,6 +79,7 @@ export async function freshDb(): Promise<Db> {
   if (dialectUnderTest === 'sqlite') return connect({ dialect: 'sqlite', file: ':memory:' })
   await ensurePublicSchema()
   const db = await connect({ dialect: 'postgres' })
+  await dropOwners(db)
   await db.exec('DROP SCHEMA IF EXISTS public CASCADE')
   await db.exec('CREATE SCHEMA public')
   await db.exec('CREATE EXTENSION IF NOT EXISTS citext SCHEMA public')
@@ -122,6 +123,14 @@ export async function undoMediaAccess(db: Db): Promise<void> {
 
 /** Undoes 052, which 050's undo calls first: it comes after it. */
 export async function undoMediaMemberUploads(db: Db): Promise<void> {
+  // 055, jobs (story 187), and 054, bundle grants (story 222), come after it.
+  await db.exec('DROP TABLE IF EXISTS job_schedule')
+  await db.exec('DROP INDEX IF EXISTS ix_job_owner')
+  await db.exec('DROP INDEX IF EXISTS ix_job_due')
+  await db.exec('DROP TABLE IF EXISTS job')
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddJobs'")
+  await db.exec('DROP TABLE IF EXISTS bundle_grant')
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddBundleGrants'")
   await db.exec('DROP TABLE IF EXISTS media_access_member')
   await db.exec("DELETE FROM migration_history WHERE name = 'AddMediaMemberGrants'")
   for (const column of ['member_types', 'member_max_bytes'])
@@ -285,13 +294,10 @@ async function emptyMigratedSchema(db: Db): Promise<boolean> {
   )
     .map((row) => row.table_name)
     .filter((name) => !MIGRATION_OWNED.includes(name))
-  // A bundle's tables are not core's: a fresh install has none, so they are
-  // dropped with their ledger rows rather than emptied, and the bundle's chain
-  // starts again exactly as it would on a new database.
-  for (const name of tables.filter((table) => table.startsWith('bundle_')))
-    await db.exec(`DROP TABLE "${name}"`)
+  // Custom tables are not core's: a fresh install has none, so their ledger
+  // rows go with their schemas (`dropOwners`), and each chain starts again
+  // exactly as it would on a new database.
   await db.exec('DELETE FROM migration_history WHERE bundle IS NOT NULL')
-  tables.splice(0, tables.length, ...tables.filter((table) => !table.startsWith('bundle_')))
   if (tables.length === 0) return false
 
   // Read from the catalogue rather than listed here, so a migration that adds a
@@ -320,6 +326,24 @@ async function emptyMigratedSchema(db: Db): Promise<boolean> {
 }
 
 /**
+ * Drops the site's and bundles' schemas in this database, and the roles made
+ * for them (story 189). A role belongs to the whole server, so only those whose
+ * comment names this database are touched.
+ */
+export async function dropOwners(db: Db): Promise<void> {
+  if (db.dialect.name !== 'postgres') return
+  const schemas = await db.query<{ name: string }>(
+    `SELECT nspname AS name FROM pg_namespace WHERE nspname = 'site' OR nspname LIKE 'bundle\\_%'`,
+  )
+  for (const { name } of schemas) await db.exec(`DROP SCHEMA IF EXISTS "${name}" CASCADE`)
+  const roles = await db.query<{ name: string }>(
+    `SELECT rolname AS name FROM pg_roles
+     WHERE shobj_description(oid, 'pg_authid') = 'crombolo custom tables for ' || current_database()`,
+  )
+  for (const { name } of roles) await db.exec(`DROP ROLE IF EXISTS "${name}"`)
+}
+
+/**
  * A run's Postgres tests share its database (one per run: `isolate.ts`), so the
  * data is cleared before a server boots — otherwise seeding is skipped as
  * already done and state leaks between tests and files. SQLite gets a private
@@ -330,6 +354,7 @@ export async function resetPostgresSchema(): Promise<void> {
   await ensurePublicSchema()
   const db = await connect({ poolSize: 1 })
   try {
+    await dropOwners(db)
     if (await emptyMigratedSchema(db)) return
     // One transaction, because DDL is transactional in Postgres and the drop and
     // the create must not be separable. A test that times out between them — which

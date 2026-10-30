@@ -19,41 +19,114 @@ export interface FocalPoint {
   top: number
 }
 
-/** A crop URL: a named crop, or any size around the focal point. */
-export type CropRequest =
-  | string
-  | { width?: number; height?: number; mode?: string; format?: string }
+/** Where a crop is cut from when there is no focal point (ImageSharp's `ranchor`). */
+export type CropAnchor =
+  | 'center'
+  | 'top'
+  | 'bottom'
+  | 'left'
+  | 'right'
+  | 'topleft'
+  | 'topright'
+  | 'bottomleft'
+  | 'bottomright'
 
-/** `url` with the query that yields `request`, given the crops and focal point in force. */
+/** The options of Umbraco's `GetCropUrl` (story 199), as one object. */
+export interface CropOptions {
+  /** A named crop: its area, at its own size unless a size is given. */
+  crop?: string
+  width?: number
+  height?: number
+  /** Width ÷ height: the missing side from the given one. */
+  ratio?: number
+  /** `crop`, `max`, `stretch`, `pad`, `boxpad` or `min`. */
+  mode?: string
+  /** `jpg`, `png`, `webp`, or `avif` where the server can encode it (WebP where not). */
+  format?: string
+  /** 1–100. */
+  quality?: number
+  /** Where to cut from when there is no focal point. */
+  anchor?: CropAnchor
+  /** With `crop`: ignore its coordinates and cut around the focal point. */
+  preferFocalPoint?: boolean
+  /** With `crop`: its own size, whatever size is given. Default: only when none is. */
+  useCropDimensions?: boolean
+  /**
+   * A value that changes when the image does, so browsers and CDNs fetch it
+   * afresh: the item's update date by default; `false` for none.
+   */
+  cacheBuster?: boolean | string
+  /** More query, appended as it is: `bgcolor=fff`. */
+  furtherOptions?: string
+}
+
+/** A crop URL: a named crop (shorthand for `{ crop }`), or the options. */
+export type CropRequest = string | CropOptions
+
+/** The cache buster an update date gives. */
+export const cacheBusterOf = (updated: Date): string => updated.getTime().toString(36)
+
+/**
+ * `url` with the query that yields `request`, given the crops and focal point
+ * in force; null for a named crop that is not there. `updated` is when the
+ * image last changed, for the cache buster.
+ */
 export function cropUrl(
   url: string,
   crops: readonly Crop[],
   focalPoint: FocalPoint | null,
   request: CropRequest,
+  updated?: Date,
 ): string | null {
+  const options: CropOptions = typeof request === 'string' ? { crop: request } : request
   const params = new URLSearchParams()
-  if (typeof request === 'string') {
-    const crop = crops.find((c) => c.alias === request)
+  const focal = () => {
+    if (focalPoint) params.set('rxy', `${focalPoint.left},${focalPoint.top}`)
+  }
+  let width = options.width
+  let height = options.height
+  if (options.crop !== undefined) {
+    const crop = crops.find((c) => c.alias === options.crop)
     if (!crop) return null
-    if (crop.coordinates)
+    if (crop.coordinates && !options.preferFocalPoint)
       params.set(
         'cc',
         [crop.coordinates.x1, crop.coordinates.y1, crop.coordinates.x2, crop.coordinates.y2].join(
           ',',
         ),
       )
-    else if (focalPoint) params.set('rxy', `${focalPoint.left},${focalPoint.top}`)
-    params.set('width', String(crop.width))
-    params.set('height', String(crop.height))
-  } else {
-    if (focalPoint && request.width && request.height)
-      params.set('rxy', `${focalPoint.left},${focalPoint.top}`)
-    if (request.width) params.set('width', String(request.width))
-    if (request.height) params.set('height', String(request.height))
-    if (request.mode) params.set('rmode', request.mode.toLowerCase())
-    if (request.format) params.set('format', request.format)
+    else focal()
+    const sized = width !== undefined || height !== undefined
+    if (options.useCropDimensions || !sized) {
+      width = crop.width
+      height = crop.height
+    } else if (crop.width > 0 && crop.height > 0 && options.ratio === undefined) {
+      // A named crop at another size keeps its shape.
+      if (height === undefined && width) height = Math.round((width * crop.height) / crop.width)
+      if (width === undefined && height) width = Math.round((height * crop.width) / crop.height)
+    }
+  } else if (width && height) focal()
+  if (options.ratio && options.ratio > 0) {
+    if (width && !height) height = Math.round(width / options.ratio)
+    else if (height && !width) width = Math.round(height * options.ratio)
+    if (options.crop === undefined && width && height && !params.has('rxy')) focal()
   }
-  const query = params.toString()
+  if (width) params.set('width', String(width))
+  if (height) params.set('height', String(height))
+  if (options.mode) params.set('rmode', options.mode.toLowerCase())
+  if (options.anchor && !params.has('rxy')) params.set('ranchor', options.anchor.toLowerCase())
+  if (options.format) params.set('format', options.format.toLowerCase())
+  if (options.quality) params.set('quality', String(Math.round(options.quality)))
+  const buster =
+    typeof options.cacheBuster === 'string'
+      ? options.cacheBuster
+      : options.cacheBuster !== false && updated && updated.getTime() > 0
+        ? cacheBusterOf(updated)
+        : undefined
+  if (buster) params.set('rnd', buster)
+  let query = params.toString()
+  const further = options.furtherOptions?.replace(/^[?&]+/, '')
+  if (further) query = query ? `${query}&${further}` : further
   return query ? `${url}?${query}` : url
 }
 
@@ -98,11 +171,14 @@ export class ImageCropperValue {
   readonly src: string
   readonly crops: Crop[]
   readonly focalPoint: FocalPoint | null
+  /** When it last changed: the page's, or the media item's, update date. */
+  readonly updated: Date | undefined
 
-  constructor(value: { src?: unknown; crops?: unknown; focalPoint?: unknown }) {
+  constructor(value: { src?: unknown; crops?: unknown; focalPoint?: unknown }, updated?: Date) {
     this.src = typeof value.src === 'string' ? value.src : ''
     this.crops = readCrops(value.crops)
     this.focalPoint = readFocalPoint(value.focalPoint)
+    this.updated = updated
   }
 
   get url(): string {
@@ -110,7 +186,7 @@ export class ImageCropperValue {
   }
 
   cropUrl(request: CropRequest): string | null {
-    return this.src ? cropUrl(this.src, this.crops, this.focalPoint, request) : null
+    return this.src ? cropUrl(this.src, this.crops, this.focalPoint, request, this.updated) : null
   }
 
   toString(): string {
@@ -173,6 +249,7 @@ export class PublishedMedia {
     const file = this.properties.find((p) => p.alias === 'umbracoFile')?.value
     return new ImageCropperValue(
       typeof file === 'string' ? { src: file } : ((file as object | null | undefined) ?? {}),
+      this.updateDate,
     )
   }
 
@@ -221,6 +298,8 @@ export class MediaWithCrops {
   }
 
   cropUrl(request: CropRequest): string | null {
-    return this.url ? cropUrl(this.url, this.crops, this.focalPoint, request) : null
+    return this.url
+      ? cropUrl(this.url, this.crops, this.focalPoint, request, this.media.updateDate)
+      : null
   }
 }

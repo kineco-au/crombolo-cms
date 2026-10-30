@@ -8,6 +8,7 @@
  */
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, normalize } from 'node:path'
+import { permissionsProblem } from './bundle-permissions.ts'
 import type { PackageManifestImportmap } from './manifests.ts'
 
 /** The package a bundle declares its peer range on. */
@@ -49,10 +50,24 @@ export interface CromboloField {
    * owns tables: `breaking` exactly when it ships a contract.
    */
   migrations?: 'compatible' | 'breaking'
+  /**
+   * Under an anonymised export, each of its tables that may travel, and how
+   * (story 189): `keep`, or its columns as `member`, `email` or `scrub`. A
+   * table it does not name travels empty.
+   */
+  anonymise?: Record<string, 'keep' | Record<string, 'member' | 'email' | 'scrub'>>
+  /**
+   * What its server half may do with the site (story 222), granted as a whole
+   * by an administrator. Required of a server half from schema 3.
+   */
+  permissions?: string[]
 }
 
-/** The bundle schema a server half must be written for: 2 since its routes became route handlers (story 211). */
-export const BUNDLE_SCHEMA_VERSION = 2
+/**
+ * The bundle schema a server half must be written for: 3 since it declares the
+ * permissions it needs (story 222); 2 made its routes route handlers (211).
+ */
+export const BUNDLE_SCHEMA_VERSION = 3
 
 /** A bundle as read from its package. */
 export interface BundlePackage {
@@ -100,6 +115,31 @@ export function declaresBundle(json: PackageJson | undefined): boolean {
   return Boolean(json?.crombolo) && json?.name !== CORE_PACKAGE
 }
 
+/** What a server half written for an older schema must change, by the schema it is at. */
+export function schemaProblem(schema: number): string {
+  const changes = [
+    schema < 2 ? 'its routes are route handlers since 0.37 (docs/bundles.md, "Routes")' : '',
+    schema < 3
+      ? 'it declares the permissions it needs in "crombolo.permissions" (docs/bundles.md, "Permissions")'
+      : '',
+  ].filter(Boolean)
+  return `its server half is written for bundle schema ${schema}, and this release reads ${BUNDLE_SCHEMA_VERSION}: ${changes.join(', and ')}, with "crombolo.schemaVersion": ${BUNDLE_SCHEMA_VERSION}`
+}
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+
+/** The shape of `crombolo.anonymise`; whether its tables and columns exist is the server's to check. */
+function isAnonymiseRules(value: unknown): boolean {
+  if (!isPlainObject(value)) return false
+  return Object.values(value).every(
+    (rule) =>
+      rule === 'keep' ||
+      (isPlainObject(rule) &&
+        Object.values(rule).every((how) => how === 'member' || how === 'email' || how === 'scrub')),
+  )
+}
+
 /**
  * Every reason a package's manifest is not a bundle, reported together.
  *
@@ -131,6 +171,10 @@ export function validateBundlePackage(json: PackageJson, directory?: string): st
     problems.push('"crombolo.extensions" must be a list of extension manifests')
   if (f.migrations !== undefined && f.migrations !== 'compatible' && f.migrations !== 'breaking')
     problems.push('"crombolo.migrations" is "compatible" or "breaking"')
+  if (f.anonymise !== undefined && !isAnonymiseRules(f.anonymise))
+    problems.push(
+      '"crombolo.anonymise" maps each table to "keep" or to its columns as "member", "email" or "scrub"',
+    )
   if (f.server !== undefined && (typeof f.server !== 'string' || !EXPORT_NAME.test(f.server)))
     problems.push('"crombolo.server" must name the factory the package exports')
   if (
@@ -142,9 +186,15 @@ export function validateBundlePackage(json: PackageJson, directory?: string): st
     f.server !== undefined &&
     ((f.schemaVersion as number | undefined) ?? 1) < BUNDLE_SCHEMA_VERSION
   )
+    problems.push(schemaProblem((f.schemaVersion as number | undefined) ?? 1))
+  if (f.server !== undefined && f.permissions === undefined)
     problems.push(
-      `its server half is written for bundle schema ${(f.schemaVersion as number | undefined) ?? 1}, and this release reads ${BUNDLE_SCHEMA_VERSION}: its routes are route handlers since 0.37 (docs/bundles.md, "Routes"), with "crombolo.schemaVersion": ${BUNDLE_SCHEMA_VERSION}`,
+      'its server half declares no "crombolo.permissions": list what it may do with the site, [] for nothing (docs/bundles.md, "Permissions")',
     )
+  else if (f.permissions !== undefined) {
+    const problem = permissionsProblem(f.permissions)
+    if (problem) problems.push(problem)
+  }
   if (f.content !== undefined) {
     if (typeof f.content === 'string')
       problems.push(

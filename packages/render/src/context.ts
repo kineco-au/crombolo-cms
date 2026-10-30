@@ -218,6 +218,11 @@ export function currentRequest(caller: string): RequestValues {
   return scope.request ?? { headers: new Headers() }
 }
 
+/** The language of the page rendering, or null outside a page. */
+export function currentCulture(): string | null {
+  return store.getStore()?.page?.culture ?? null
+}
+
 /** The site's services for this render, built by the server for whoever is asking. */
 export function currentSite(caller: string): unknown {
   const scope = within(caller)

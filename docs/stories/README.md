@@ -151,7 +151,7 @@ requests, only server-side and build-time front ends can call it.
 | `056` | An app renders a form itself | could | M | done | 051 |
 | `057` | A CDN can cache the site and the API | should | L | done | — |
 | `058` | Translations, menus and site settings reach the app | could | M | ready | 141 |
-| `216` | Rich text as JSON | should | M | ready | — |
+| `216` | Rich text as JSON | should | M | done | — |
 | `217` | Pages only an app renders | could | S | ready | 208 |
 
 ### Epic G — Trusting and extending bundles
@@ -165,11 +165,12 @@ requests, only server-side and build-time front ends can call it.
 | `178` | The back office vouches for its user to a host | should | S | done | 063, 177 |
 | `181` | A host installs a site's bundles | should | S | done | 063 |
 | `186` | Member and public routes for server bundles | should | M | done | 030, 063 |
-| `187` | Background and scheduled work for server bundles | should | M | ready | 063, 171 |
+| `187` | Background and scheduled work for the site and its bundles | should | M | done | 063, 171, 222 |
 | `188` | File storage for server bundles | should | M | ready | 063 |
 | `198` | Server bundles create media as the member | should | M | done | 186, 196 |
-| `189` | A schema of the site's own | should | L | ready | 062, 173, 221 |
+| `189` | A schema of the site's own | should | L | done | 062, 173, 221 |
 | `194` | Installing server code takes an explicit yes | must | S | done | 063, 181 |
+| `222` | Bundles ask for permissions | should | L | done | 063, 194 |
 
 ### Epic H — Importing a site
 
@@ -237,8 +238,9 @@ requests, only server-side and build-time front ends can call it.
 |---|---|---|---|---|---|
 | `120` | Cache instructions arrive without polling | could | S | done | — |
 | `121` | Reads from a Postgres replica | could | M | ready | 174 |
-| `185` | Several API nodes behind one load balancer | should | L | backlog | 176 |
+| `185` | Several API nodes behind one load balancer | should | L | ready | 187 |
 | `197` | Media cached apart from pages | should | L | done | 171, 174, 196 |
+| `223` | A worker role that runs only the jobs | could | L | done | 187 |
 
 ### Epic N — The assistant (closed with 179)
 
@@ -257,7 +259,7 @@ requests, only server-side and build-time front ends can call it.
 | `143` | Comments with moderation | could | M | on hold | — |
 | `144` | Themes configured without code | could | L | on hold | — |
 | `184` | Blocks render their own components | should | M | done | — |
-| `199` | Crop URLs with Umbraco's options | should | S | ready | 197 |
+| `199` | Crop URLs with Umbraco's options | should | S | done | 197 |
 | `206` | Pages with the site's own logic | should | L | done | — |
 | `207` | Members from the site's own code | should | M | ready | 206 |
 | `208` | A Next.js front end | should | L | done | — |
@@ -330,8 +332,9 @@ choices; replacing either is not a deliverable in this epic.
 Start with shared content operations (`170`), durable events (`171`) and stale
 edit protection (`172`). The supported extension boundary (`173`) and published
 snapshot checkpoints (`174`) can start independently. Checkpoints unblock read
-replicas (`121`) and measured cache growth (`175`); durable events underpin
-independent workers (`176`). Version-history cleanup remains `082`.
+replicas (`121`) and measured cache growth (`175`); durable events underpinned
+the jobs of `187`; where they run is the hosting platform's story now, `176`
+having moved to its board on 2026-10-30. Version-history cleanup remains `082`.
 
 The stories describe proposed outcomes and record decisions to resolve before
 implementation; creating them does not settle those architectural choices.
@@ -343,6 +346,5 @@ implementation; creating them does not settle those architectural choices.
 | `172` | An older edit cannot overwrite a newer one | should | M | done | 170, 081 |
 | `173` | A supported API for extensions | should | M | done | 062, 063 |
 | `174` | Renderers know which published changes they serve | should | L | done | 011, 120 |
-| `175` | Published cache growth stays within measured limits | could | L | ready | 086, 174 |
-| `176` | Background jobs run independently | could | L | ready | 171 |
+| `175` | Published cache growth stays within measured limits | could | L | done | 086, 174 |
 | `221` | Kysely as the query layer | should | XL | done | — |

@@ -7,7 +7,12 @@
 import { existsSync } from 'node:fs'
 import { readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { LogEntry, LogLevelName, LogRange, LogViewerPort } from '@crombolo/api-management'
+import type {
+  LogEntry,
+  LogLevelName,
+  LogRange,
+  LogViewerPort,
+} from '@crombolo/api-management/domain'
 import { type Db, LogSearchRepository } from '@crombolo/data'
 import type { CromboloConfig } from './config.ts'
 import { type LogEvent, logFilter } from './log-expressions.ts'

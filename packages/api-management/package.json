@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/api-management",
-  "version": "0.37.0",
+  "version": "0.38.0",
   "description": "Internal to crombolo, with no compatibility promise: use @crombolo/crombolo. Umbraco-compatible Management API handlers for crombolo.",
   "license": "MIT",
   "author": "Crombolo",
@@ -18,7 +18,8 @@
   },
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./domain": "./src/domain.ts"
   },
   "files": [
     "src",

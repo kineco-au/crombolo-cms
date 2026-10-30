@@ -1,7 +1,7 @@
 /** Loads and indexes the vendored Umbraco Management API OpenAPI contract. */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { applyOverrides } from './overrides.ts'
+import { applyOverrides, DELIVERY_CONTRACT_ADDITIONS } from './overrides.ts'
 
 export const SPEC_PATH = join(import.meta.dir, '../OpenApi.json')
 
@@ -75,9 +75,22 @@ const servedAt = new Map<string, string>()
 
 let deliveryCached: OpenApiSpec | undefined
 
+/** Umbraco's Delivery API contract exactly as vendored. */
+export function loadUmbracoDeliverySpec(): OpenApiSpec {
+  return JSON.parse(readFileSync(DELIVERY_SPEC_PATH, 'utf8')) as OpenApiSpec
+}
+
+/** The Delivery API contract crombolo answers to: Umbraco's, with `DELIVERY_CONTRACT_ADDITIONS`. */
 export function loadDeliverySpec(): OpenApiSpec {
-  if (!deliveryCached)
-    deliveryCached = JSON.parse(readFileSync(DELIVERY_SPEC_PATH, 'utf8')) as OpenApiSpec
+  if (!deliveryCached) {
+    const spec = loadUmbracoDeliverySpec()
+    for (const addition of DELIVERY_CONTRACT_ADDITIONS) {
+      if (spec.components.schemas[addition.schema])
+        throw new Error(`The Delivery API contract already has a schema ${addition.schema}`)
+      spec.components.schemas[addition.schema] = structuredClone(addition.definition)
+    }
+    deliveryCached = spec
+  }
   return deliveryCached
 }
 

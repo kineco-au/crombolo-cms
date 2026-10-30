@@ -350,6 +350,17 @@ export async function menusIn(
   return out
 }
 
+/**
+ * Lets waiting requests in every few hundred nodes: a rebuild is long, and on
+ * SQLite nothing else in it ever gives the thread up (story 175).
+ */
+function pacer(every = 250): () => Promise<void> {
+  let count = 0
+  return async () => {
+    if (++count % every === 0) await new Promise<void>((resolve) => setImmediate(resolve))
+  }
+}
+
 export class PublishedCache {
   #source: PublishedContentSource
   #snapshot: CacheSnapshot = EMPTY
@@ -375,14 +386,37 @@ export class PublishedCache {
   }
 
   /**
-   * The current snapshot, building it if it was dropped. Readers that arrive
-   * while it builds share that build rather than each starting one; a build
-   * an invalidation overtook still answers, but the next read builds again.
+   * The current snapshot, building it if it was dropped. The reader that starts
+   * a build waits for it; readers arriving while it builds are answered from
+   * the previous snapshot rather than waiting (story 175). Before the first
+   * build there is none, so they share the build.
    */
   async snapshot(): Promise<CacheSnapshot> {
     if (this.#loaded) return this.#snapshot
     const generation = this.#generation
+    if (this.#building?.generation === generation)
+      return this.#snapshotGeneration >= 0 ? this.#snapshot : this.#building.done
+    return this.#start(generation)
+  }
+
+  /** Whether readers are being answered from a snapshot older than the latest change. */
+  get stale(): boolean {
+    return !this.#loaded && this.#snapshotGeneration >= 0
+  }
+
+  /** The snapshot holding every change made so far, waiting for a build in flight. */
+  async fresh(): Promise<CacheSnapshot> {
+    if (this.#loaded) return this.#snapshot
+    const generation = this.#generation
     if (this.#building?.generation === generation) return this.#building.done
+    return this.#start(generation)
+  }
+
+  /**
+   * Builds for `generation`. A build an invalidation overtook still answers,
+   * but the next read builds again.
+   */
+  #start(generation: number): Promise<CacheSnapshot> {
     const done = this.#build().then((snapshot) => {
       // A slower, older build must not replace a newer one that finished first,
       // nor a snapshot of older data one of newer data.
@@ -715,6 +749,7 @@ export class PublishedCache {
     checkpoint: number | undefined,
   ): Promise<CacheSnapshot> {
     const builtAt = new Date()
+    const pace = pacer()
     const nodes = await source.loadPublished()
     const domains = (await source.loadDomains?.()) ?? []
     const languages = (await source.loadLanguages?.()) ?? []
@@ -787,6 +822,7 @@ export class PublishedCache {
       }
       const segmentOf = new Map<number, string>()
       for (const node of nodes) {
+        await pace()
         if (!inCulture(node)) continue
         const override =
           node.properties.find(
@@ -863,6 +899,7 @@ export class PublishedCache {
         .filter(inCulture)
         .sort((a, b) => a.level - b.level || a.sortOrder - b.sortOrder)
       for (const node of ordered) {
+        await pace()
         const route = routeOf(node)
         if (route === undefined) continue
         const domainRoute = domainRouteOf(node)
@@ -976,6 +1013,7 @@ export class PublishedCache {
       }
 
       for (const content of view.byId.values()) {
+        await pace()
         content.withValueContext(context)
         // Ancestors are wired after every node exists, for the `ancestors` fallback.
         const ancestors: PublishedContent[] = []

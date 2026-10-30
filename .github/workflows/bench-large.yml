@@ -1,0 +1,74 @@
+# Story 175: the published-cache benchmark at Large (100,000 pages in three
+# cultures, 10,000 media), on both dialects. Generating the site alone takes
+# tens of minutes per dialect, so it runs weekly and on demand rather than in
+# every release, which runs Small and Medium. Its output is kept as an artifact;
+# the numbers in docs/testing.md and docs/performance.md come from it.
+name: Benchmark (large)
+
+on:
+    schedule:
+        # Sundays at 03:00 UTC.
+        - cron: "0 3 * * 0"
+    workflow_dispatch:
+
+concurrency:
+    group: bench-large
+
+env:
+    BUN_VERSION: "1.4.2"
+
+jobs:
+    bench:
+        name: large site (${{ matrix.dialect }})
+        runs-on: ubuntu-latest
+        timeout-minutes: 300
+        strategy:
+            fail-fast: false
+            matrix:
+                dialect: [sqlite, postgres]
+        services:
+            db:
+                image: postgres:18-alpine
+                env:
+                    POSTGRES_USER: crombolo
+                    POSTGRES_PASSWORD: crombolo
+                    POSTGRES_DB: crombolo_test
+                ports:
+                    - 5432:5432
+                options: >-
+                    --health-cmd "pg_isready -U crombolo -d crombolo_test"
+                    --health-interval 2s
+                    --health-timeout 3s
+                    --health-retries 30
+        env:
+            CROMBOLO_DB: ${{ matrix.dialect }}
+            CROMBOLO_POSTGRES_URL: postgres://crombolo:crombolo@localhost:5432/crombolo_test
+            CROMBOLO_BENCH_SIZE: large
+        steps:
+            - uses: actions/checkout@v5
+            - name: Tune Postgres for tests
+              if: matrix.dialect == 'postgres'
+              env:
+                  PGPASSWORD: crombolo
+              run: |
+                  for _ in $(seq 1 30); do
+                    pg_isready -h localhost -U crombolo -d crombolo_test && break
+                    sleep 1
+                  done
+                  psql -h localhost -U crombolo -d crombolo_test -v ON_ERROR_STOP=1 \
+                    -c "ALTER SYSTEM SET fsync = off" \
+                    -c "ALTER SYSTEM SET synchronous_commit = off" \
+                    -c "ALTER SYSTEM SET full_page_writes = off" \
+                    -c "SELECT pg_reload_conf()"
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: ${{ env.BUN_VERSION }}
+            - run: bun install --frozen-lockfile
+            - run: bun run generate:types
+            - name: Benchmark the large site
+              run: bun run test:ci --timeout 18000000 tests/load/large-site.bench.ts 2>&1 | tee bench-large.txt
+            - uses: actions/upload-artifact@v4
+              if: always()
+              with:
+                  name: bench-large-${{ matrix.dialect }}
+                  path: bench-large.txt

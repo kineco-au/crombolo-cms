@@ -6,31 +6,17 @@
  * the running nodes instead.
  */
 
-import {
-  createDocumentOperations,
-  createMediaOperations,
-  type DocumentOperations,
-  type EventSink,
-  type MediaOperations,
-} from '@crombolo/content'
-import {
-  appendCacheInstruction,
-  currentSchemaState,
-  type Db,
-  RedirectRepository,
-} from '@crombolo/data'
+import type { DocumentOperations, EventSink, MediaOperations } from '@crombolo/content'
+import { currentSchemaState, type Db } from '@crombolo/data'
 import { PublishedCache } from '@crombolo/render'
 import { createPublishedContentSource } from './adapters/documents.ts'
-import { createApprovals } from './approvals.ts'
+import { backOfficeUrl } from './back-office-url.ts'
 import type { CromboloConfig } from './config.ts'
-import { createContentEventSink, createMediaEventSink } from './content-events.ts'
+import { createContentEventSink } from './content-events.ts'
 import { createContentNotifier } from './content-notifications.ts'
-import { writeDomainsFor } from './domains.ts'
 import { resolveEmailPort } from './email.ts'
-import { createFileIntake, TemporaryFileMissingError } from './file-intake.ts'
 import { MediaFileStore, mediaStoreFor } from './media-files.ts'
-import { approvalsGate, backOfficeUrl } from './ports.ts'
-import { createRedirectTracker } from './redirects.ts'
+import { createNodeOperations } from './node-operations.ts'
 import { createWebhookService } from './webhooks.ts'
 
 export interface SiteOperations {
@@ -57,45 +43,21 @@ export async function siteDocumentOperations(
   // Recorded only: a running server's dispatcher sends what this records (story 171).
   const events = createContentEventSink({ webhooks, notifier })
   const cache = new PublishedCache(createPublishedContentSource(db, { nodeState }))
-  let operations: DocumentOperations | undefined
-  const approvals = createApprovals({
+  // The routes a redirect is tracked from are read from this cache once a change
+  // has committed, so the change drops it first.
+  const { documents: operations } = createNodeOperations({
     db,
+    config,
+    cache,
     nodeState,
+    nodeId: config.nodeId,
+    instructedBy: `cli:${config.nodeId}`,
+    mediaFiles: new MediaFileStore(await mediaStoreFor(config)),
     email,
-    backOfficeUrl: backOfficeUrl(config),
     notifier,
-    publisher: {
-      publish: (key, cultures, actor, approvedHead) =>
-        (operations as DocumentOperations).publish(actor, key, {
-          cultures,
-          expectedHead: approvedHead,
-        }),
-      unpublish: (key, cultures, actor) =>
-        (operations as DocumentOperations).unpublish(actor, key, cultures),
-    },
-  })
-  operations = createDocumentOperations({
-    db,
-    repository: { nodeState, nodeId: config.nodeId },
-    events,
-    approvals: approvalsGate(approvals),
-    redirects: createRedirectTracker({
-      cache,
-      redirects: new RedirectRepository(db),
-      enabled: config.trackRedirects,
-      instruct: () =>
-        appendCacheInstruction(db, {
-          kind: 'content',
-          payload: { redirects: true },
-          by: `cli:${config.nodeId}`,
-        }),
-    }),
-    // The routes a redirect is tracked from are read from this cache once a change
-    // has committed, so the change has to drop it first.
-    onChange: () => cache.invalidate(),
-    afterDomains: (node, assignment) => writeDomainsFor(db, config.siteDir, node, assignment),
-    refusalReason: (error) =>
-      error instanceof TemporaryFileMissingError ? error.message : undefined,
+    contentEvents: events,
+    webhooks,
+    backOfficeUrl: backOfficeUrl(config),
   })
   return { operations, events }
 }
@@ -118,16 +80,12 @@ export async function siteMediaOperations(
     secretKey: config.secretKey,
     bundles: config.bundles,
   })
-  return createMediaOperations({
+  return createNodeOperations({
     db,
-    repository: {
-      nodeState: { version: state.version, revision: state.revision },
-      nodeId: config.nodeId,
-      valueIntake: createFileIntake(files),
-    },
-    events: createMediaEventSink({ webhooks }),
-    files,
-    refusalReason: (error) =>
-      error instanceof TemporaryFileMissingError ? error.message : undefined,
-  })
+    config,
+    nodeState: { version: state.version, revision: state.revision },
+    nodeId: config.nodeId,
+    mediaFiles: files,
+    webhooks,
+  }).media
 }

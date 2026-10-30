@@ -3,7 +3,7 @@
  * Blueprint" on a page): stored as documents of their own object type in their
  * own folder tree, never published.
  */
-import type { BlueprintPort, Principal } from '@crombolo/api-management'
+import type { BlueprintPort, Principal } from '@crombolo/api-management/domain'
 import { ObjectTypes, type TreeItem } from '@crombolo/core'
 import {
   type Db,

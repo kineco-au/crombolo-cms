@@ -26,6 +26,8 @@ export interface ValueContext<Content = unknown, Media = unknown> {
   element?(key: string): PublishedElement | undefined
   /** A content type's alias by key, which is all a block records of its element type. */
   contentTypeAlias?(key: string): string | undefined
+  /** When the item whose values these are last changed: an Image Cropper's cache buster. */
+  updated?: Date
   /** A content URL, for links. */
   urlOf(content: Content): string
   mediaUrlOf?(media: Media): string
@@ -139,6 +141,31 @@ export const textOf = (value: unknown): string =>
 export function htmlOf(value: unknown): RawHtml | Promise<RawHtml> {
   if (!isPending(value)) return new RawHtml(textOf(value))
   return Promise.resolve(value).then((resolved) => new RawHtml(textOf(resolved)))
+}
+
+/**
+ * Rich text with blocks, as the back office stores it (`{ markup, blocks }`):
+ * the markup with its links resolved, the markup as stored, and the blocks it
+ * places. Printed, it is its markup.
+ */
+export class RichTextValue {
+  constructor(
+    readonly markup: string,
+    /** As stored: links still `{localLink:…}`, blocks still placeholders (story 216). */
+    readonly source: string,
+    readonly blocks: readonly BlockItem[],
+  ) {}
+
+  toString(): string {
+    return this.markup
+  }
+}
+
+/** The markup a stored rich-text value holds, whichever shape it was saved in. */
+export function richTextSource(value: unknown): string {
+  if (typeof value === 'string') return value
+  const markup = (value as { markup?: unknown } | null | undefined)?.markup
+  return typeof markup === 'string' ? markup : ''
 }
 
 /** A media picker's value as a list of picks. */
@@ -303,9 +330,11 @@ export function convertValueNow(
 ): unknown {
   if (value === null || value === undefined) return value
   if (editorAlias === 'Umbraco.RichText') {
-    if (typeof value !== 'string') return value
     const { media: _, ...pagesOnly } = context ?? ({} as ValueContext)
-    return resolveLocalLinks(value, context ? (pagesOnly as ValueContext) : undefined)
+    return resolveLocalLinks(
+      richTextSource(value),
+      context ? (pagesOnly as ValueContext) : undefined,
+    )
   }
   if (ASYNC_EDITORS.has(editorAlias)) return null
   return convertValue(editorAlias, value, context, config)
@@ -339,11 +368,26 @@ export function convertValue(
         const picks = found.filter((pick): pick is MediaWithCrops => pick !== undefined)
         return config.multiple === false ? (picks[0] ?? null) : picks
       })
-    case 'Umbraco.RichText':
-      return typeof value === 'string' ? resolveLocalLinks(value, context) : value
+    case 'Umbraco.RichText': {
+      if (typeof value === 'string') return resolveLocalLinks(value, context)
+      const source = richTextSource(value)
+      const blocks = blockItems<BlockItem>(
+        (value as { blocks?: unknown }).blocks,
+        'Umbraco.RichText',
+        context,
+        (_, item) => item,
+      )
+      const markup = resolveLocalLinks(source, context)
+      return typeof markup === 'string'
+        ? new RichTextValue(markup, source, blocks)
+        : markup.then((resolved) => new RichTextValue(resolved, source, blocks))
+    }
     case 'Umbraco.ImageCropper':
       return typeof value === 'object' || typeof value === 'string'
-        ? new ImageCropperValue(typeof value === 'string' ? { src: value } : (value as object))
+        ? new ImageCropperValue(
+            typeof value === 'string' ? { src: value } : (value as object),
+            context?.updated,
+          )
         : value
     // A form definition is a file, so there is nothing in the content cache to
     // resolve against: the lookup reads `schema/forms/`. Without one the raw key

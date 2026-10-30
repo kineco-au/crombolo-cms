@@ -20,9 +20,8 @@ import {
   type PublishedCacheOptions,
   type PublishedContentSource,
 } from '@crombolo/render'
-import { createSchemaFileWriter } from './adapters/schema-files.ts'
+import { createSchemaFileWriter, schemaFiles } from './adapters/schema-files.ts'
 import type { CromboloConfig } from './config.ts'
-import { schemaFiles } from './ports.ts'
 import type { RedirectTracker } from './redirects.ts'
 
 export interface UrlChangeContext {

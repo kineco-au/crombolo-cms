@@ -5,7 +5,7 @@
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { type RaisedWebhookEvent, WEBHOOK_EVENT_ALIASES } from '@crombolo/api-management'
+import { type RaisedWebhookEvent, WEBHOOK_EVENT_ALIASES } from '@crombolo/api-management/domain'
 import {
   ContentTypeRepository,
   type Db,
@@ -142,6 +142,8 @@ export interface WebhookServiceOptions {
   /** Publishes the schema directory to a shared store, when there is one. */
   onFilesChanged?: () => Promise<void>
   now?: () => Date
+  /** Whether a bundle is turned on (story 222); its events are not delivered while it is off. */
+  isBundleOn?(bundleId: string): boolean
 }
 
 /** An event as a webhook delivers it, with the item's type and place as they were when it happened. */
@@ -436,6 +438,13 @@ export function createWebhookService(options: WebhookServiceOptions): WebhookSer
     delivery: WebhookDelivery,
     bundleId: string,
   ): Promise<{ ok: true } | { ok: false; error: string; retry: boolean }> => {
+    // A bundle that is off runs nothing of its own (story 222).
+    if (options.isBundleOn && !options.isBundleOn(bundleId))
+      return {
+        ok: false,
+        error: `The bundle "${bundleId}" is waiting for an administrator to approve what it may do.`,
+        retry: false,
+      }
     const handler = bundles.find((bundle) => bundle.id === bundleId)?.events?.[delivery.eventAlias]
     const entry = {
       deliveryId: delivery.id,

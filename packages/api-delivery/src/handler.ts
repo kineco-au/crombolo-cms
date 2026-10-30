@@ -412,6 +412,7 @@ export function createDeliveryApi(ports: DeliveryApiPorts): DeliveryApi {
       access: (content) =>
         readable(content) ? accessTo(content.path, loadedRules, member) : 'forbidden',
       mediaAccess: (media) => mediaAccessTo(media, mediaRules, member),
+      media: async (keys) => (ports.media ? ports.media.byKeys(keys) : []),
     }
 
     /** Below a node by URL segments, exactly as stored. */

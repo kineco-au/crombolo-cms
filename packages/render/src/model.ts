@@ -133,7 +133,8 @@ export class PublishedContent<Properties = any> {
 
   /** How pickers, links and blocks resolve what they point at; the cache supplies it. */
   withValueContext(context: ValueContext<PublishedContent> | undefined): this {
-    this.#context = context
+    // Its own update date, for what its values say about when they changed.
+    this.#context = context && { ...context, updated: this.updateDate }
     return this
   }
 

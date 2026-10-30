@@ -166,7 +166,9 @@ describe('an outside consumer', () => {
   test('boots a site with its own bundle wired, through supported entry points only', async () => {
     const dir = siteDeclaring('api-consumer', {
       'greetings-bundle': {
-        json: { crombolo: { id: GREETINGS_ID, server: 'greetings', schemaVersion: 2 } },
+        json: {
+          crombolo: { id: GREETINGS_ID, server: 'greetings', schemaVersion: 3, permissions: [] },
+        },
       },
     })
     expect(config.bundles?.map((b) => b.id)).toEqual([GREETINGS_ID])
@@ -187,7 +189,7 @@ describe('an outside consumer', () => {
       name: '@acme/greetings',
       version: '1.0.0',
       peerDependencies: { '@crombolo/crombolo': '>=0.1.0' },
-      crombolo: { id: 'greetings', server: 'greetings', schemaVersion: 2 },
+      crombolo: { id: 'greetings', server: 'greetings', schemaVersion: 3, permissions: [] },
     }
     expect(vet(valid)).toEqual([])
     expect(vet({ ...valid, peerDependencies: { '@crombolo/crombolo': '<0.1.0' } })[0]).toContain(

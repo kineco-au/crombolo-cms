@@ -1,0 +1,8 @@
+type = "tastingNote"
+key = "dc5d4e53-4477-425c-ae7f-0f245164e30a"
+name = "Finish — Long and smoky, with a warmi…"
+order = 35
+
+[values]
+aspect = "Finish"
+note = "Long and smoky, with a warming medicinal edge."

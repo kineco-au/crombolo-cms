@@ -2,7 +2,7 @@
  * What authorization needs from the database: where nodes sit in their trees,
  * and each signed-in user's combined start nodes, group verbs and languages.
  */
-import type { NodeChain, NodeLookup, Principal } from '@crombolo/api-management'
+import type { NodeChain, NodeLookup, Principal } from '@crombolo/api-management/domain'
 import { combineStartNodes, normaliseUuid, ObjectTypes } from '@crombolo/core'
 import { type Db, fromDbBool, UserRepository } from '@crombolo/data'
 

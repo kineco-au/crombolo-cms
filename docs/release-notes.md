@@ -6,6 +6,56 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.38.0 — 2026-10-30
+
+- **A node that runs only the background jobs** (story 223). Set
+  `CROMBOLO_ROLE=worker` on a node that should run only the jobs:
+  - scheduled publishing, webhooks, form e-mails, notifications, search
+    indexing, and the site's and its bundles' own jobs;
+  - it answers `/health` and nothing else, so a long import never competes with
+    editors or visitors;
+  - set `CROMBOLO_JOBS=off` on the `api` node to leave its jobs to the worker.
+    The `api` node still queues work and wakes the worker at once, so webhooks
+    and search follow a save as quickly as before;
+  - if no worker has been running for five minutes, the `api` node says so in
+    `/health` and on Settings → Background jobs, and keeps working.
+
+  A worker needs Postgres and never migrates. A single-process site, and
+  `api` plus `web` without a worker, are unchanged.
+
+  **Upgrade:** nothing to do unless you add a worker; docs/operations.md,
+  "A worker for the jobs", shows the topology.
+
+- **Page renders no longer leak memory** (found by story 175's benchmark).
+  Every page render was kept in memory for good, so a busy site grew until it
+  ran out; a site under steady traffic now stays level. Nothing to do but
+  upgrade.
+
+- **Pages keep serving while the published cache rebuilds** (story 175). A
+  publish rebuilds the cache; a visitor arriving meanwhile used to wait for the
+  whole rebuild, about 0.6 s at 25,000 pages. They are now served the previous
+  version until it finishes, and the request that made the change answers only
+  once its rebuild is done, so the editor sees it at once. The release now
+  measures 1,000- and 25,000-page sites on both engines, and a weekly run
+  measures 100,000; docs/performance.md lists the supported workloads and
+  what they need.
+
+- **Rich text as JSON** (story 216). The Delivery API answers every rich-text
+  value as a tree of elements, Umbraco's `RichTextOutputAsJson` form, so an app
+  renders each tag with its own component and needs no HTML parser. Links to
+  pages carry their route, links to media and images their media URL, and
+  blocks their place in the text. `@crombolo/delivery-client` types the tree
+  (`RichTextValue`) and adds `walkRichText` and `decodeEntities`;
+  `crombolo generate --delivery` types rich-text properties as
+  `RichTextValue | null`. In a Next.js front end, `<RichText>` renders the tree
+  and takes `components` per tag and `blocks` per element type.
+
+  **Upgrade:** the `{ markup, blocks }` form is gone, with no setting to bring
+  it back. A Delivery API client that reads `markup`, including one written for
+  Umbraco's default output, must read the tree instead. In a Next.js front end,
+  replace `ApiRichText` with `RichTextValue`; `<RichText value={…}>` keeps
+  working. Sites that render with crombolo's own templates are unaffected.
+
 - **Live reload and a better error page in development** (story 214).
   - **Open pages reload** when you save a component (on disk or in the back
     office's template editor), change the schema, publish, unpublish or delete
@@ -26,6 +76,69 @@ point at `docs/stories/`.
   changes for a site or its editors: no migration, no setting, and the same
   behaviour on both databases. `crombolo upgrade --plan` shows a bundle's
   table changes in lower-case SQL.
+
+- **Background jobs** (story 187). The site and its bundles queue work that
+  does not fit in a request, such as an import or a nightly export, and run it
+  on a schedule. The site lists job modules in its config (`jobs`) and queues
+  one with `site().jobs.enqueue(…)`; a bundle declares `jobs` and uses
+  `context.bundle.jobs`. Schedules are cron expressions in a timezone, and
+  exactly one server runs each. A failed job is tried again a few times, then
+  waits in **Settings → Background jobs**, where it can be run again. Migration
+  055 adds the queue.
+
+- **Bundles ask for permissions** (story 222). A bundle's package now lists
+  what it may do with the site, such as reading redirects or adding media for a
+  signed-in member, and an administrator approves all of it before the bundle
+  runs: in the install panel, or with **Approve and turn on** on its card in
+  Packages → Installed, and withdrawn there. Until then the bundle is off: its
+  routes say it is waiting, its events wait, and its screens are hidden. A new
+  version that asks for more is off until that is approved. Each environment
+  keeps its own approvals, and `crombolo bundle grant <id>` approves one from a
+  pipeline. Migration 054 adds the table they are kept in.
+  - **Upgrade note: approve your bundles.** After upgrading, every wired bundle
+    with a server half is off until it is approved, Simple Redirects and
+    Microsoft Entra included. Approve each in Packages → Installed, or run
+    `crombolo bundle grant <id>` on each environment.
+  - **Upgrade note for bundle authors: schema 3.** A server half declares
+    `"crombolo": { "schemaVersion": 3, "permissions": [...] }`, with `[]` for one
+    that needs nothing; a package written for schema 2 is refused. Using `media`
+    needs `member.delegate` as well as `media.read` or `media.write`.
+    `docs/bundles.md`, "Permissions", lists them.
+
+- **Crop URLs with Umbraco's options** (story 199). `cropUrl()` takes the
+  options of Umbraco's `GetCropUrl` as one object: a named crop at another
+  size, `quality`, `anchor`, `preferFocalPoint`, `useCropDimensions`, `ratio`,
+  `cacheBuster` and `furtherOptions`, as well as the size, mode and format it
+  took before. `cropUrl('hero')` works as it did. Image URLs now carry a cache
+  buster (`rnd`) from the image's last change, so a replaced image is fetched
+  afresh by browsers and CDNs; `cacheBuster: false` turns it off. The image
+  route reads `ranchor`, and serves `format=avif` as AVIF where the server can
+  encode it and as WebP where it cannot.
+
+- **Tables of the site's own** (story 189). A site declares tables in its
+  config with `defineSiteTables`, migrated with crombolo's, and queries them
+  through named queries: modules listed in `queries`, called from pages and
+  routes as `site().queries.<module>.<name>(…)`. Queries are written with
+  Kysely, so the same code runs on SQLite and Postgres, with joins, grouping
+  and aggregates. The builder gains decimals, foreign keys between a site's or
+  bundle's own tables, unique columns, and descending and partial indexes, and
+  a site's step may be SQL. On Postgres each owner's tables are in a schema of
+  their own under a role made for this database; on SQLite, in a file beside
+  crombolo's. Backups copy them; `crombolo export --with-site-data` carries
+  them sealed in a whole-site file, an import writes them back, and a pull
+  carries them. `database.anonymise` (and `crombolo.anonymise` in a bundle's
+  `package.json`) says what an anonymised copy may keep; any other table
+  arrives empty.
+  - **Upgrade note: bundle tables move.** A bundle's tables are no longer
+    `bundle_<id>__<table>` tables in crombolo's schema behind the `tables`
+    capability. They are made afresh in the bundle's own schema or file, and a
+    bundle's handlers use `context.bundle.database`, a Kysely handle; the
+    `tables` capability, `BundleTablesCapability`, `TableHandle`, `Where` and
+    `site().sql` are gone. Data in old `bundle_` tables is not moved: copy what
+    you need, then drop them.
+  - **Upgrade note: database roles.** On Postgres the CMS's database user needs
+    `CREATEROLE` and `CREATE` on the database for a site or bundle with tables,
+    or the first boot prints the SQL for an operator to run once.
 
 ## v0.37.0 — 2026-10-29
 
@@ -561,8 +674,8 @@ point at `docs/stories/`.
 ## v0.31.0 — 2026-10-27
 
 - **An apostrophe in a site's name no longer splits its package name.**
-  `crombolo init --name "Nature's Calendar"` names the package
-  `natures-calendar`, not `nature-s-calendar`.
+  `crombolo init --name "Harbour's Edge"` names the package
+  `harbours-edge`, not `harbour-s-edge`.
 
 ## v0.30.3 — 2026-10-27
 

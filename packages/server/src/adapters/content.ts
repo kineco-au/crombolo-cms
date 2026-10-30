@@ -13,7 +13,7 @@ import type {
   SkipTake,
   TemplatePort,
   TreePage,
-} from '@crombolo/api-management'
+} from '@crombolo/api-management/domain'
 import {
   type ComponentModel,
   type ContentTypeAggregate,

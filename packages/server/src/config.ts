@@ -22,8 +22,10 @@ import type { GitConfig } from './git-routes.ts'
 import { checkHost, type HostConfig } from './host-token.ts'
 import { checkIdentityProviders, type IdentityProvider } from './identity-providers.ts'
 import type { MediaStore } from './media-store.ts'
+import type { JobSchedule } from './owner-jobs.ts'
 import type { SchemaStore } from './schema-store.ts'
 import { setting } from './settings.ts'
+import type { SiteDatabaseConfig, SiteQueryModules } from './site-queries.ts'
 
 /**
  * Runtime settings for a site. Umbraco's equivalents live in appsettings.json;
@@ -31,7 +33,7 @@ import { setting } from './settings.ts'
  * `loadConfig` fills anything unset from the environment.
  */
 /** What a process serves; see `CromboloConfig.role`. */
-export const SERVER_ROLES = ['all', 'api', 'web'] as const
+export const SERVER_ROLES = ['all', 'api', 'web', 'worker'] as const
 
 export type ServerRole = (typeof SERVER_ROLES)[number]
 
@@ -239,12 +241,20 @@ export interface CromboloConfig {
    *   neither migrates nor seeds, and refuses to boot against a database that
    *   has not been migrated yet — that is `api`'s job.
    *
-   * Both halves still hold a database connection and stay coherent through
+   * - `worker` runs the background jobs and nothing else (story 223): no
+   *   pages, back office or APIs, only `/health`. Like `web` it never migrates.
+   *
+   * Every split node holds a database connection and stays coherent through
    * `cache_instruction`, exactly as a load-balanced set already does. Splitting
    * needs Postgres: `locks.ts`'s SQLite manager is an in-process queue, so it
    * coordinates nothing between processes.
    */
   role: ServerRole
+  /**
+   * Whether an `all` or `api` node runs the background jobs (`CROMBOLO_JOBS`).
+   * False leaves them to a `worker`; the node still queues them.
+   */
+  runJobs: boolean
   /**
    * Where the schema files live, when not in `schemaDir` on this disk. Unset means
    * the directory, which is what a repository checkout wants. Set — with
@@ -421,6 +431,25 @@ export interface CromboloConfig {
    */
   bundles: ServerBundle[]
   /**
+   * The site's own tables (story 189): `defineSiteTables` steps, migrated with
+   * crombolo's, and what an anonymised export may carry of each table.
+   * docs/data-model.md, "Custom tables".
+   */
+  database?: SiteDatabaseConfig
+  /**
+   * The site's named queries (story 189): modules, each export a query run as
+   * `site().queries.<module>.<export>(…)` against the site's own tables.
+   */
+  queries?: SiteQueryModules
+  /**
+   * The site's background jobs (story 187): modules, each export a job queued
+   * as `site().jobs.enqueue('<module>.<export>', payload)` and run on a node
+   * that owns writes. docs/rendering.md, "Background jobs".
+   */
+  jobs?: SiteQueryModules
+  /** When the site's jobs run by themselves: cron expressions in a timezone. */
+  schedules?: JobSchedule[]
+  /**
    * Package names this installation provides to every site it runs, rather
    * than the site choosing them (story 177): a whole-site file leaves them out
    * of what it requires, so the site starts anywhere without them. Set by
@@ -537,6 +566,22 @@ function roleFromEnvironment(value: string | undefined): ServerRole {
   if (value === undefined || value === '') return 'all'
   assertRole(value)
   return value
+}
+
+function jobsFromEnvironment(value: string | undefined): boolean {
+  if (value === undefined || value === '' || value === 'on') return true
+  if (value === 'off') return false
+  throw new Error(`CROMBOLO_JOBS must be on or off, not '${value}'.`)
+}
+
+/** A node told to leave jobs alone, or a worker on a database it cannot share, is refused. */
+function assertJobs(config: Pick<CromboloConfig, 'role' | 'runJobs' | 'dialect'>): void {
+  if (!config.runJobs && (config.role === 'web' || config.role === 'worker'))
+    throw new Error(
+      `CROMBOLO_JOBS=off applies to an api or all node; a ${config.role} node ${config.role === 'web' ? 'never runs jobs' : 'only runs jobs'}.`,
+    )
+  if (config.role === 'worker' && config.dialect !== 'postgres')
+    throw new Error('A worker needs Postgres: SQLite cannot be shared between processes.')
 }
 
 /** Which page answers an address nothing else does, optionally for one hostname or language. */
@@ -678,6 +723,7 @@ export function loadConfig(
     schemaRevision: setting('CROMBOLO_SCHEMA_REVISION') ?? DEFAULTS.schemaRevision,
     nodeId: setting('CROMBOLO_NODE_ID') ?? `${hostname()}:${process.pid}`,
     role: roleFromEnvironment(setting('CROMBOLO_ROLE')),
+    runJobs: jobsFromEnvironment(setting('CROMBOLO_JOBS')),
     git: undefined,
     schemaStore: undefined,
     schemaCacheDir: setting('CROMBOLO_SCHEMA_CACHE_DIR') ?? join(tmpdir(), 'crombolo-schema'),
@@ -884,6 +930,7 @@ export function loadConfig(
   // Checked on the merged value, so a typo in `crombolo.config.ts` is refused on
   // the same terms as one in the environment.
   assertRole(merged.role)
+  assertJobs(merged)
   return merged
 }
 
@@ -929,7 +976,7 @@ export function describeDatabase(
   }
 }
 
-export const VERSION = '0.37.0'
+export const VERSION = '0.38.0'
 
 /** A whole number of seconds from the environment; undefined when unset or not one. */
 /** A positive number from a setting, else the default. */

@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/backoffice-host",
-  "version": "0.37.0",
+  "version": "0.38.0",
   "description": "Internal to crombolo, with no compatibility promise: use @crombolo/crombolo. Serves the Umbraco backoffice SPA: shell HTML, import map and package manifests.",
   "license": "MIT",
   "author": "Crombolo",
@@ -19,7 +19,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./branding": "./src/branding.ts"
+    "./branding": "./src/branding.ts",
+    "./registry": "./src/registry.ts"
   },
   "files": [
     "assets",

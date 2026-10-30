@@ -19,9 +19,10 @@ import {
   type PublishedCache,
   type PublishedMedia,
   type RequestMember,
+  type SiteJobs,
   type SiteMembers,
+  type SiteQueries,
   type SiteServices,
-  type SiteSql,
   unavailableServices,
 } from '@crombolo/render'
 
@@ -30,6 +31,12 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 export interface SiteServicesDeps {
   db: Db
   cache: PublishedCache
+  /** `site().jobs`, recording who queued (story 187). */
+  jobs?: (queuedBy: () => Promise<string>) => SiteJobs
+  /** `site().queries` for a member or a visitor (story 189). */
+  queries?: (
+    member: RequestMember | undefined | (() => Promise<RequestMember | undefined>),
+  ) => SiteQueries
 }
 
 /** Builds `site()`'s services for one request; undefined `member` is a visitor or a previewing editor. */
@@ -96,7 +103,12 @@ export function createSiteServices(deps: SiteServicesDeps) {
 
     const services: SiteServices = {
       media,
-      sql: unavailableServices<SiteSql>('sql'),
+      queries: deps.queries?.(member) ?? ({} as SiteQueries),
+      jobs:
+        deps.jobs?.(async () => {
+          const who = await (typeof member === 'function' ? member() : Promise.resolve(member))
+          return who ? `member ${who.username}` : 'a visitor'
+        }) ?? unavailableServices<SiteJobs>('jobs'),
       members: unavailableServices<SiteMembers>('members'),
     }
     return () => services

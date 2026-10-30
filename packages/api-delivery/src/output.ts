@@ -17,10 +17,13 @@ import {
   PublishedMedia,
   type PublishedProperty,
   RawHtml,
+  RichTextValue,
+  richTextSource,
 } from '@crombolo/render'
 import { type ExpansionNode, keeps, nextNode } from './expansion.ts'
 import { apiFormReference } from './forms.ts'
 import type { Access } from './protection.ts'
+import { richTextTree } from './rich-text.ts'
 
 export interface ApiRoute {
   path: string
@@ -41,6 +44,8 @@ export interface OutputContext {
   mediaAccess?(media: PublishedMedia): Access
   /** An expanded form picker's form, as `v2/forms/{key}` answers it (story 056). */
   form?(form: SchemaForm): Record<string, unknown>
+  /** Media by key, for the links and images rich text names (story 216). */
+  media?(keys: readonly string[]): Promise<PublishedMedia[]>
 }
 
 const iso = (date: Date): string => date.toISOString()
@@ -320,8 +325,16 @@ export async function deliveryValue(
       const form = converted as SchemaForm
       return expand !== undefined && ctx.form ? ctx.form(form) : apiFormReference(form)
     }
-    case 'Umbraco.RichText':
-      return { markup: plain(converted), blocks: [] }
+    // Always the tree (story 216): there is no markup form.
+    case 'Umbraco.RichText': {
+      const items = converted instanceof RichTextValue ? converted.blocks : []
+      const blocks = await inOrder([...items], (i) => blockItem(i, ctx, expand, include))
+      return richTextTree(richTextSource(property.value), blocks, {
+        content: (key) => ctx.content(key),
+        route: (content) => ctx.route(content),
+        media: (keys) => ctx.media?.(keys) ?? Promise.resolve([]),
+      })
+    }
     case 'Umbraco.ContentPicker': {
       const content = converted instanceof PublishedContent ? converted : undefined
       if (!content || !ctx.allowedType(content.contentType.alias)) return null

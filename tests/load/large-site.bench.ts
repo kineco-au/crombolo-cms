@@ -1,14 +1,17 @@
 /**
- * Story 086's benchmark: a generated site of realistic size, then the backoffice
- * tree, a published-cache rebuild and page renders timed against their budgets.
+ * Stories 086 and 175's benchmark: a generated site at one of three sizes, then
+ * the backoffice tree, published-cache rebuilds and their memory and queries,
+ * page renders warm, cold and while a rebuild runs, and sustained and burst
+ * publishing, each against its budget.
  *
  * The site is made through the repository, as a real one is: create, then
  * publish, every page in every culture. Not collected by `bun test`, nor by
  * `test:load`: `bun run test:bench` runs it, and the release pipeline runs it on
  * both dialects. A run fails only past
  * CROMBOLO_BENCH_MARGIN times a budget, so a noisy runner does not block a
- * release. CROMBOLO_BENCH_PAGES, _MEDIA, _WIDE and _SAMPLES scale it; locally,
- * run it small. docs/testing.md, "Large-site budgets".
+ * release. CROMBOLO_BENCH_SIZE picks small, medium (the default) or large;
+ * CROMBOLO_BENCH_PAGES, _MEDIA, _WIDE, _SAMPLES and _SUSTAIN_SECONDS override
+ * it. docs/testing.md, "Large-site budgets".
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -18,22 +21,54 @@ import { ComponentRepository, ContentTypeRepository, DocumentRepository } from '
 import { dialectUnderTest } from '../support/db.ts'
 import { type Harness, ORIGIN, signedInServer, V1 } from '../support/harness.ts'
 
-const PAGES = Number(Bun.env.CROMBOLO_BENCH_PAGES ?? 25_000)
-const MEDIA = Number(Bun.env.CROMBOLO_BENCH_MEDIA ?? 1_000)
-const WIDE = Math.min(Number(Bun.env.CROMBOLO_BENCH_WIDE ?? 2_000), Math.max(PAGES - 2, 1))
+/** Story 175, decision 1: the three sizes, and what each is held to. */
+const SIZES = {
+  small: { pages: 1_000, cultures: 1, media: 200, wide: 200, rebuild: 1_000, memory: 100 },
+  medium: { pages: 25_000, cultures: 3, media: 1_000, wide: 2_000, rebuild: 5_000, memory: 300 },
+  large: {
+    pages: 100_000,
+    cultures: 3,
+    media: 10_000,
+    wide: 5_000,
+    rebuild: 20_000,
+    memory: 1_024,
+  },
+} as const
+const SIZE_NAME = (Bun.env.CROMBOLO_BENCH_SIZE ?? 'medium') as keyof typeof SIZES
+const SIZE = SIZES[SIZE_NAME] ?? SIZES.medium
+const PAGES = Number(Bun.env.CROMBOLO_BENCH_PAGES ?? SIZE.pages)
+const MEDIA = Number(Bun.env.CROMBOLO_BENCH_MEDIA ?? SIZE.media)
+const WIDE = Math.min(Number(Bun.env.CROMBOLO_BENCH_WIDE ?? SIZE.wide), Math.max(PAGES - 2, 1))
 const SAMPLES = Number(Bun.env.CROMBOLO_BENCH_SAMPLES ?? 50)
 const MARGIN = Number(Bun.env.CROMBOLO_BENCH_MARGIN ?? 2)
-const CULTURES = ['en-US', 'da-DK', 'de-DE']
+/** One publish every 10 seconds, for this long: ten minutes at Large, two below it. */
+const SUSTAIN_SECONDS = Number(
+  Bun.env.CROMBOLO_BENCH_SUSTAIN_SECONDS ?? (SIZE_NAME === 'large' ? 600 : 120),
+)
+const BURST = Math.min(1_000, Math.max(1, PAGES - 2))
+const CULTURES = ['en-US', 'da-DK', 'de-DE'].slice(0, SIZE.cultures)
 const DEPTH = 5
 const FAN_OUT = 8
 
-/** Milliseconds, at the 95th percentile. docs/testing.md holds the same table. */
+/**
+ * What each measurement is held to: milliseconds at the 95th percentile, MB, or
+ * a count. docs/testing.md holds the same table.
+ */
 const BUDGETS = {
   'tree root': 100,
   'tree children': 100,
   'tree siblings': 100,
-  'cache rebuild': dialectUnderTest === 'postgres' ? 10_000 : 5_000,
+  'cache rebuild': SIZE.rebuild,
   'page render': 20,
+  'render during rebuild': 20,
+  'cold render after publish': SIZE.rebuild + 50,
+  'cold render after unpublish': SIZE.rebuild + 50,
+  'cold render after move': SIZE.rebuild + 50,
+  'cache memory (MB)': SIZE.memory,
+  'rebuild peak (MB)': SIZE.memory * 2,
+  'rebuild queries per slice': 12,
+  'renders while publishing': 20,
+  'renders in a burst': 20,
 } as const
 
 const PAGE_TOML = `[content-type]
@@ -95,12 +130,18 @@ async function time(times: number, run: (n: number) => Promise<unknown>): Promis
   return p95(samples)
 }
 
-const results: Array<{ name: keyof typeof BUDGETS; ms: number }> = []
-const record = (name: keyof typeof BUDGETS, ms: number) => {
-  results.push({ name, ms })
-  expect(ms, `${name}: ${ms.toFixed(1)} ms against a budget of ${BUDGETS[name]} ms`).toBeLessThan(
+const results: Array<{ name: keyof typeof BUDGETS; ms: number; note?: string }> = []
+const record = (name: keyof typeof BUDGETS, ms: number, note?: string) => {
+  results.push({ name, ms, ...(note ? { note } : {}) })
+  expect(ms, `${name}: ${ms.toFixed(1)} against a budget of ${BUDGETS[name]}`).toBeLessThan(
     BUDGETS[name] * MARGIN,
   )
+}
+
+/** The heap after a full collection, in MB. */
+const heapMb = () => {
+  Bun.gc(true)
+  return process.memoryUsage().heapUsed / 1_048_576
 }
 
 let h: Harness
@@ -185,7 +226,13 @@ beforeAll(async () => {
   writeFileSync(join(root, 'schema', 'content-types', 'page.toml'), PAGE_TOML)
   writeFileSync(join(root, 'components', 'page.tsx'), VIEW)
   h = await signedInServer({
-    config: { schemaDir: join(root, 'schema'), componentsDir: join(root, 'components') },
+    config: {
+      schemaDir: join(root, 'schema'),
+      componentsDir: join(root, 'components'),
+      // A file, as a site has: in memory, SQLite reads the snapshot on the one
+      // connection, so every render would wait for a rebuild.
+      sqliteFile: join(root, 'site.sqlite'),
+    },
   })
   for (const iso of CULTURES.slice(1))
     expect(
@@ -208,10 +255,12 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (results.length > 0) {
-    console.log(`\n  large-site budgets (${dialectUnderTest}, p95, failing past ${MARGIN}x):`)
-    for (const { name, ms } of results)
+    console.log(
+      `\n  large-site budgets (${SIZE_NAME}: ${PAGES} pages × ${CULTURES.length}, ${dialectUnderTest}, p95 ms unless named, failing past ${MARGIN}x):`,
+    )
+    for (const { name, ms, note } of results)
       console.log(
-        `  ${name.padEnd(14)} ${ms.toFixed(1).padStart(9)} ms  budget ${String(BUDGETS[name]).padStart(6)} ms  ${ms <= BUDGETS[name] ? 'ok' : ms < BUDGETS[name] * MARGIN ? 'over budget' : 'FAILED'}`,
+        `  ${name.padEnd(28)} ${ms.toFixed(1).padStart(9)}  budget ${String(BUDGETS[name]).padStart(6)}  ${ms <= BUDGETS[name] ? 'ok' : ms < BUDGETS[name] * MARGIN ? 'over budget' : 'FAILED'}${note ? `  (${note})` : ''}`,
       )
   }
   await h?.db.close().catch(() => {})
@@ -251,6 +300,24 @@ describe(`a large site (${dialectUnderTest})`, () => {
     )
   })
 
+  test("the published cache's memory, steady and at a rebuild's peak", async () => {
+    // Nothing of the generated site is cached yet: the generation's publishes dropped it.
+    const before = heapMb()
+    await h.server.cache.snapshot()
+    const steady = heapMb() - before
+    // The old snapshot stays live while the new one builds, so the peak holds both.
+    let peak = 0
+    const sampler = setInterval(() => {
+      peak = Math.max(peak, process.memoryUsage().heapUsed / 1_048_576)
+    }, 5)
+    h.server.cache.invalidate()
+    await h.server.cache.snapshot()
+    clearInterval(sampler)
+    const rss = process.memoryUsage().rss / 1_048_576
+    record('cache memory (MB)', steady, `process resident ${rss.toFixed(0)} MB`)
+    record('rebuild peak (MB)', Math.max(peak - before, steady))
+  })
+
   test('a full rebuild of the published cache', async () => {
     const snapshot = await h.server.cache.snapshot()
     expect(snapshot).toBeDefined()
@@ -276,4 +343,161 @@ describe(`a large site (${dialectUnderTest})`, () => {
       }),
     )
   })
+
+  test('a page render while the cache rebuilds', async () => {
+    await h.server.cache.snapshot()
+    // Warm, so the first render's compile is not counted as waiting on the rebuild.
+    await (await h.server.fetch(new Request(`${ORIGIN}${made[0]?.route ?? '/'}`))).text()
+    h.server.cache.invalidate()
+    const building = h.server.cache.snapshot()
+    let done = false
+    void building.then(() => {
+      done = true
+    })
+    const samples: number[] = []
+    for (let n = 0; !done || samples.length < 3; n++) {
+      const page = made[(n * 7919) % made.length]
+      const started = performance.now()
+      await (await h.server.fetch(new Request(`${ORIGIN}${page?.route ?? '/'}`))).text()
+      samples.push(performance.now() - started)
+      if (samples.length > 200) break
+    }
+    await building
+    record('render during rebuild', p95(samples), `${samples.length} renders`)
+  })
+
+  test("a rebuild's queries grow with slices of 500, not with pages", async () => {
+    await h.server.cache.snapshot()
+    const db = h.server.db
+    const original = db.readSnapshot.bind(db)
+    let statements = 0
+    const counting = (reader: typeof db): typeof db =>
+      new Proxy(reader, {
+        get(target, property, receiver) {
+          if (property === 'query' || property === 'exec')
+            return (...args: unknown[]) => {
+              statements++
+              return (target[property] as (...a: unknown[]) => unknown)(...args)
+            }
+          if (property === 'transaction')
+            return (fn: (tx: typeof db) => unknown) =>
+              target.transaction((tx) => fn(counting(tx)) as Promise<unknown>)
+          return Reflect.get(target, property, receiver)
+        },
+      })
+    db.readSnapshot = ((fn: (reader: typeof db) => Promise<unknown>) =>
+      original((reader) => fn(counting(reader)))) as typeof db.readSnapshot
+    try {
+      h.server.cache.invalidate()
+      await h.server.cache.snapshot()
+    } finally {
+      db.readSnapshot = original
+    }
+    const slices = Math.ceil((PAGES + MEDIA) / 500)
+    record('rebuild queries per slice', statements / slices, `${statements} statements`)
+  })
+
+  const publishBody = { publishSchedules: CULTURES.map((culture) => ({ culture })) }
+  /** The first render after a change, which waits for whatever the change dropped to be rebuilt. */
+  const coldRender = async (change: (page: Made) => Promise<unknown>) => {
+    const samples: number[] = []
+    for (let n = 0; n < 5; n++) {
+      await h.server.cache.snapshot()
+      const page = made[made.length - 1 - n] as Made
+      await change(page)
+      const other = made[(n * 104_729) % (made.length - 10)] ?? home
+      const started = performance.now()
+      await (await h.server.fetch(new Request(`${ORIGIN}${other.route}`))).text()
+      samples.push(performance.now() - started)
+    }
+    return p95(samples)
+  }
+
+  test('the first render after a publish, an unpublish and a move', async () => {
+    record(
+      'cold render after publish',
+      await coldRender((page) => h.put(`${V1}/document/${page.key}/publish`, publishBody)),
+    )
+    record(
+      'cold render after unpublish',
+      await coldRender(async (page) => {
+        await h.put(`${V1}/document/${page.key}/unpublish`, { cultures: null })
+        await h.put(`${V1}/document/${page.key}/publish`, publishBody)
+      }),
+    )
+    record(
+      'cold render after move',
+      await coldRender((page) =>
+        h.put(`${V1}/document/${page.key}/move`, { target: { id: deep.key } }),
+      ),
+    )
+  })
+
+  /**
+   * Visitors' renders while `publish` runs: each a random page, one after
+   * another, so a render that waits on a rebuild shows in the tail.
+   */
+  const readingWhile = async (publish: () => Promise<void>) => {
+    const samples: number[] = []
+    let publishing = true
+    const reading = (async () => {
+      for (let n = 0; publishing; n++) {
+        const page = made[(n * 7919) % made.length]
+        const started = performance.now()
+        await (await h.server.fetch(new Request(`${ORIGIN}${page?.route ?? '/'}`))).text()
+        samples.push(performance.now() - started)
+        // A visitor's request arrives over the network. Called directly, a warm
+        // render resolves in microtasks alone, and the editor's timers never fire.
+        await new Promise((resolve) => setImmediate(resolve))
+      }
+    })()
+    const started = performance.now()
+    await publish()
+    const seconds = (performance.now() - started) / 1000
+    publishing = false
+    await reading
+    const max = Math.max(...samples)
+    return { p95: p95(samples), max, count: samples.length, seconds }
+  }
+
+  test(
+    'renders while an editor publishes every ten seconds',
+    async () => {
+      const result = await readingWhile(async () => {
+        const publishes = Math.max(1, Math.floor(SUSTAIN_SECONDS / 10))
+        for (let n = 0; n < publishes; n++) {
+          const page = made[(n * 31) % made.length] as Made
+          await h.put(`${V1}/document/${page.key}/publish`, publishBody)
+          await Bun.sleep(10_000)
+        }
+      })
+      record(
+        'renders while publishing',
+        result.p95,
+        `${result.count} renders over ${result.seconds.toFixed(0)} s, slowest ${result.max.toFixed(0)} ms`,
+      )
+    },
+    (SUSTAIN_SECONDS + 600) * 1000,
+  )
+
+  test(`renders during a burst of ${BURST} publishes`, async () => {
+    const result = await readingWhile(async () => {
+      const pending: Promise<unknown>[] = []
+      for (let n = 0; n < BURST; n++) {
+        const page = made[2 + ((n * 13) % (made.length - 2))] as Made
+        pending.push(h.put(`${V1}/document/${page.key}/publish`, publishBody))
+        // About seventeen a second: a thousand in a minute.
+        if (pending.length >= 17) {
+          await Promise.all(pending.splice(0))
+          await Bun.sleep(1_000)
+        }
+      }
+      await Promise.all(pending)
+    })
+    record(
+      'renders in a burst',
+      result.p95,
+      `${result.count} renders over ${result.seconds.toFixed(0)} s, slowest ${result.max.toFixed(0)} ms`,
+    )
+  }, 3_600_000)
 })

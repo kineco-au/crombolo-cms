@@ -87,8 +87,8 @@ async function Deep({ command }) {
       return (await headers()).get('x-test') ?? 'none'
     case 'media':
       return (await site().media.get(arg)).match({ ok: (m) => m.name, 404: () => 'no media' })
-    case 'sql':
-      return (await site().sql.records('x')).unwrap()
+    case 'queries':
+      return Object.keys(site().queries).join(',') || 'no queries'
     default:
       return command
   }
@@ -314,11 +314,11 @@ describe('with status pages configured', () => {
     expect(html).not.toContain('hunter2')
   })
 
-  test('site().sql is a slot that answers notFound until it is filled', async () => {
-    await s.make('Sql', 'sql')
-    const response = await s.visit('/sql')
-    expect(response.status).toBe(404)
-    expect(await response.text()).toContain('is not available on this site')
+  test('site().queries holds nothing on a site that lists no queries', async () => {
+    await s.make('Queries', 'queries')
+    const response = await s.visit('/queries')
+    expect(response.status).toBe(200)
+    expect(await response.text()).toContain('no queries')
   })
 
   test('site().media answers notFound for media that does not exist', async () => {

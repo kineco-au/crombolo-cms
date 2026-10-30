@@ -663,11 +663,146 @@ with `unwrap()` (the value, or the outcome thrown) or `unwrapOr(fallback)`.
 - `site().media.get(key)` and `site().media.children(folderKey)` answer only
   what the visitor may read ("Protected media", below). Anything else is
   `notFound`, never `forbidden`, so code cannot learn a protected file exists.
-- `site().sql` (story 189) and `site().members` (story 207) are slots. Until
-  they are filled each call answers `notFound`, saying so.
+- `site().queries.<module>.<name>(…)` runs one of the site's named queries
+  (below).
+- `site().members` (story 207) is a slot. Until it is filled each call answers
+  `notFound`, saying so.
 - In preview the visitor is the previewing editor, with no member. Templates
   are trusted code; the scoping keeps one member's page from reaching another
   member's data by mistake, not a sandbox.
+
+### Background jobs
+
+Work that does not fit in a request, such as an import, a nightly export or a
+batch of e-mails, runs as a **background job** (story 187). The site lists job
+modules in its config, as it lists `queries`; each export is a job, queued as
+`<module>.<export>`.
+
+```ts
+// jobs/imports.ts
+import type { TablesDatabase } from '@crombolo/crombolo'
+import type { JobInfo, SiteServices } from '@crombolo/crombolo/server'
+import type { tables } from '../crombolo.config.ts'
+
+export async function runBatch(
+  payload: { batchId: number },
+  { db, job }: { db: TablesDatabase<typeof tables>; site: SiteServices; job: JobInfo },
+) {
+  const rows = await db.selectFrom('import_row').selectAll().where('batch_id', '=', payload.batchId).execute()
+  for (const [i, row] of rows.entries()) {
+    if (job.signal.aborted) throw new Error('stopping') // queued again, to carry on later
+    await importRow(db, row)
+    if (i % 1000 === 0) await job.progress(i, rows.length)
+  }
+}
+```
+
+```ts
+// crombolo.config.ts
+import * as imports from '#jobs/imports.ts'
+
+export default defineConfig({
+  database: { tables },
+  jobs: { imports },
+  schedules: [
+    { job: 'imports.sweep', cron: '0 2 * * *', timezone: 'Europe/London' },
+  ],
+})
+```
+
+- **Queued** from a route, a page or another job with
+  `site().jobs.enqueue('imports.runBatch', { batchId })`, which answers the
+  job's id; `site().jobs.status(id)` reads how it is going (state, attempts,
+  progress, last error), for a screen to show. A job queues another with
+  `job.enqueue(name, payload)`.
+- **A payload is at most 64 KB of JSON**, refused when it is queued. Keep the
+  data in the site's own tables, or files, and pass its key.
+- **What a job is given:** the site's tables as `db`, `site()` as a visitor
+  with nobody signed in, and `job`: its `id`, `attempt`, who queued it, a
+  `signal` that aborts when the node is stopping, `progress(done, total, note)`
+  and `enqueue`. Nothing acts as the site: a job reaches no more than a page
+  for a visitor does. Who queued it is recorded, shown to administrators, and
+  grants nothing.
+- **Run** on a node that owns writes (`all` or `api`), one job at a time per
+  node, claimed so two nodes never run the same one. A job that throws is
+  tried again after 30 seconds, then a minute, two, four, up to an hour
+  between, five times in all; then it is failed and kept with its error.
+- **Stopping** aborts the running job's `signal`. A job that finishes, or
+  throws, within ten seconds is done or queued again; one that has not is put
+  back in the queue without counting the attempt. A node that dies leaves its
+  job to be queued again two minutes after its last heartbeat.
+- **Schedules** are cron's five fields, read in an IANA timezone (UTC when none
+  is named), so 02:00 stays 02:00 local across daylight saving. Exactly one
+  node queues each occurrence. After downtime a missed occurrence runs once,
+  however many were missed; `missed: 'skip'` drops it instead. A new schedule
+  waits for its first occurrence.
+- **Refused at boot:** an export that is not a function, one function listed
+  under two names, a schedule naming no job, and an expression or zone that
+  does not parse.
+- **Settings → Background jobs** lists every owner's jobs, the site's and its
+  bundles', newest first, with their progress and errors; a failed one can be
+  run again by hand, which is audited. Done jobs are kept a week.
+
+### Named queries
+
+The site's own tables ([`data-model.md`](data-model.md#custom-tables)) are
+queried through **named queries** (story 189): modules the config lists, each
+export a query. A query is handed the site's tables as a Kysely handle, typed
+from their steps, and who is asking; it returns a `Result`.
+
+```ts
+// queries/observations.ts
+import { ok, Outcome, type QueryCaller } from '@crombolo/crombolo/server'
+import type { TablesDatabase } from '@crombolo/crombolo'
+import type { tables } from '../crombolo.config.ts'
+
+type Db = TablesDatabase<typeof tables>
+
+export async function forSpecies(db: Db, caller: QueryCaller, speciesId: number) {
+  const rows = await db
+    .selectFrom('observation')
+    .select(['id', 'seen_at'])
+    .where('species_id', '=', speciesId)
+    .orderBy('seen_at', 'desc')
+    .limit(50)
+    .execute()
+  return rows.length > 0 ? ok(rows) : Outcome.notFound('No sightings yet.')
+}
+```
+
+```ts
+// crombolo.config.ts
+import * as observations from '#queries/observations.ts'
+
+export default defineConfig({ database: { tables }, queries: { observations } })
+
+declare module '@crombolo/crombolo/server' {
+  interface Register {
+    queries: { observations: typeof observations }
+  }
+}
+```
+
+```tsx
+const sightings = (await site().queries.observations.forSpecies(id)).unwrap()
+```
+
+- **The handle and the caller are supplied.** `db` reaches the site's tables
+  and nothing else. `caller.member()` is the signed-in member, if any, and
+  asking makes the page personal; `caller.locale` is the page's language, or
+  null outside a page.
+- **Typed from the config** through the `Register` declaration: the call takes
+  the query's arguments after `db` and `caller`, and answers its `Result`.
+  Without it, `site().queries` is untyped.
+- **Refused at boot:** an export that is not a function, one function listed
+  under two names, a module name that is not a name, and queries with no
+  `database.tables` to query.
+- **A query that throws,** or returns something other than a `Result`, fails
+  the page as an error, naming it: `site().queries.observations.forSpecies
+  failed: …`. Calls run inside the render, so the render's time limit covers
+  them.
+- **Islands** do not call queries: they reach the server through a route or an
+  action.
 
 ### Status pages
 
@@ -1176,13 +1311,55 @@ returns a `publicUrl`, redirects the browser to a CDN or a presigned URL.
 
 A `/media/…` URL with a query is an imaging request in the vocabulary
 Umbraco's ImageSharp URL generator writes: `width`, `height`, `rmode` (crop,
-max, stretch, pad, boxpad, min), `rxy` (focal point), `cc` (crop coordinates
-as fractions trimmed from each edge), `format`, `quality`. Each variant is
-computed once and cached in the store under `.cache/`, keyed by the source's
-etag — so replacing an original invalidates its crops with nothing tracking
-that, and one node's work serves every node. Bun's `Image` decodes, resizes
-and encodes; cropping and padding go through raw RGBA pixels via a small PNG
-codec in `@crombolo/server` `imaging.ts`.
+max, stretch, pad, boxpad, min), `rxy` (focal point), `ranchor` (where a crop is
+cut from without one: `top`, `bottomright` and the rest), `cc` (crop
+coordinates as fractions trimmed from each edge), `format` (`jpg`, `png`,
+`webp`, `avif`), `quality`. Anything else, such as the cache buster `rnd`, does
+not change the variant. Each variant is computed once and cached in the store
+under `.cache/`, keyed by the source's etag — so replacing an original
+invalidates its crops with nothing tracking that, and one node's work serves
+every node. Bun's `Image` decodes, resizes and encodes; cropping and padding go
+through raw RGBA pixels via a small PNG codec in `@crombolo/server`
+`imaging.ts`.
+
+**AVIF depends on the server.** Bun encodes it with the operating system's
+codec: macOS has one, but a usual Linux image has no AV1 encoder. A node checks
+once at boot, and where it cannot encode AVIF it answers `format=avif` with
+WebP, which every browser that takes AVIF takes too. There is no GIF output:
+Bun has no GIF encoder, and a request for one gets the source's format.
+
+### Crop URLs
+
+`cropUrl()` on an `ImageCropperValue`, a `MediaWithCrops` and
+`PublishedMedia.image` writes that query. It takes a crop name, or the options
+of Umbraco's `GetCropUrl` as one object (story 199):
+
+```tsx
+<img src={hero.cropUrl('wide')} />
+<img src={hero.cropUrl({ crop: 'wide', width: 800, quality: 70, format: 'avif' })} />
+<img src={hero.cropUrl({ width: 1200, ratio: 16 / 9, anchor: 'top' })} />
+```
+
+| Option | Umbraco's | What it does |
+| --- | --- | --- |
+| `crop` | `cropAlias` | a named crop's area; at its own size unless a size is given, when it keeps its shape at that width or height |
+| `width`, `height` | `width`, `height` | the size; with both and no crop, cut around the focal point |
+| `ratio` | Umbraco 7's `ratioMode` | width ÷ height, giving the side not asked for |
+| `mode` | `imageCropMode` | `rmode` |
+| `format` | `furtherOptions` `format=` | `jpg`, `png`, `webp`, `avif` |
+| `quality` | `quality` | 1–100 |
+| `anchor` | `imageCropAnchor` | `ranchor`, used when there is no focal point |
+| `preferFocalPoint` | `preferFocalPoint` | with `crop`: the focal point instead of the crop's coordinates |
+| `useCropDimensions` | `useCropDimensions` | with `crop`: its own size, whatever size is given |
+| `cacheBuster` | `cacheBuster` | `rnd=`, from the update date by default; `false` for none, a string for your own |
+| `furtherOptions` | `furtherOptions` | more query, appended as written |
+
+**A cache buster by default.** The variant is keyed on the file, so the server
+never serves a stale crop, but a browser or CDN holding the old URL would. So
+`cropUrl()` adds `rnd` from when the image last changed: a media item's update
+date, or for an Image Cropper on a page the page's. The URL changes on every
+save, as Umbraco's does, and the route ignores it, so no extra copy is made.
+`cacheBuster: false` leaves it out.
 
 ### Protected media
 
@@ -1418,7 +1595,8 @@ import { Outcome, ok, route } from '@crombolo/crombolo/routes'
 export default defineConfig({
   routes: [
     route('/api/records/:species', {
-      GET: (_request, { params, site }) => site().sql.recordsFor(params.species),
+      GET: (_request, { params, site }) =>
+        site().queries.observations.forSpecies(Number(params.species)),
       POST: async (request, { member }) => {
         const signedIn = await member()
         if (!signedIn) return Outcome.unauthorized('Sign in to add a record.')

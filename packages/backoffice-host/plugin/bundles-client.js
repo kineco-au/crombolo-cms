@@ -27,11 +27,24 @@ export const searchMarketplace = (query) =>
 
 export const listInstalled = () => json('/installed')
 
-export const installBundle = (name, version, applyContent = true, acceptServerCode = false) =>
+export const installBundle = (
+  name,
+  version,
+  applyContent = true,
+  acceptServerCode = false,
+  grant = [],
+) =>
   json('/install', {
     method: 'POST',
-    body: JSON.stringify({ name, version, applyContent, acceptServerCode }),
+    body: JSON.stringify({ name, version, applyContent, acceptServerCode, grant }),
   })
+
+/** Approves everything an installed bundle asks to do, turning it on (story 222). */
+export const grantBundle = (id) => json('/grant', { method: 'POST', body: JSON.stringify({ id }) })
+
+/** Withdraws a bundle's approval, turning it off. */
+export const withdrawBundle = (id) =>
+  json('/withdraw', { method: 'POST', body: JSON.stringify({ id }) })
 
 export const uninstallBundle = (name) =>
   json('/uninstall', { method: 'POST', body: JSON.stringify({ name }) })

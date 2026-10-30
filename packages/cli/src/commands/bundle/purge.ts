@@ -59,6 +59,10 @@ export default class BundlePurge extends BaseCommand {
     const result = await ops.bundlePurge(config, id, { backupTaken: flags['backup-taken'] })
     if (result.backup.path) this.progress(`  backup   ${result.backup.path}`)
     for (const table of result.dropped) this.say(`  dropped  ${table}`)
+    if (result.roleLeft)
+      this.say(
+        `  The database role "${result.roleLeft}" could not be dropped by this user; drop it when nothing uses it.`,
+      )
     this.say(`  The bundle "${id}"'s state is cleared; adding it again starts its tables afresh.`)
     return {
       id,

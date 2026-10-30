@@ -8,7 +8,7 @@
  */
 import { existsSync } from 'node:fs'
 import { join, sep } from 'node:path'
-import { discoverBundles } from '@crombolo/backoffice-host'
+import { discoverBundles } from '@crombolo/backoffice-host/registry'
 import {
   currentSchemaState,
   type Db,

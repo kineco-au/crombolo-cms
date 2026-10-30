@@ -13,6 +13,11 @@ Umbraco's install wizard: those endpoints answer 501 on purpose (`roadmap.md`).
   (`CROMBOLO_ADMIN_LOGIN`, `CROMBOLO_ADMIN_PASSWORD`). The password seeds only a
   database being created. A later start never resets, re-enables or signs out an
   existing administrator.
+- **On Postgres, with tables of the site's or a bundle's own** (story 189), the
+  database user also needs `CREATEROLE` and `CREATE` on the database: the
+  first boot makes a login-less role and a schema for each owner. Without them
+  it stops and prints the few statements to run once as a user that may, and
+  the next boot checks what they made ([`data-model.md`](data-model.md#custom-tables)).
 - **From a cloud console**, set `CROMBOLO_SETUP_CODE` to a value of at least 16
   characters that only you know, and leave the password unset. The first visit
   to the backoffice opens **Set up your new site** (`<backoffice>/setup`), which
@@ -850,6 +855,61 @@ returning results as data, for tooling that drives an environment without a
 terminal. The `@crombolo/crombolo` umbrella exports `createServer`, for a host process
 that needs the server handle rather than only what `Bun.serve` takes.
 
+### A worker for the jobs
+
+A busy site can run its background jobs on a node of their own (story 223), so a
+long import or a nightly export never competes with editors' saves or visitors'
+pages. Every job is claimed in the database, so the work moves without moving
+any data:
+
+| Node | `CROMBOLO_ROLE` | Serves | Needs |
+| --- | --- | --- | --- |
+| Editors | `api`, with `CROMBOLO_JOBS=off` | the back office and the Management API | Postgres; the media store; e-mail, for invitations |
+| Visitors | `web` | the public site and the Delivery API | Postgres; the media store |
+| Jobs | `worker` | `/health` alone | Postgres; the media store; e-mail; the site's components, for e-mails |
+
+- **Starting.** `CROMBOLO_ROLE=worker crombolo start`, or `createWorker(config)`
+  from `@crombolo/server/worker` in a host process. A worker never migrates or
+  seeds, and refuses a database with migrations pending, as a `web` node does:
+  `crombolo upgrade` runs them, once. It needs Postgres.
+- **What it runs.** Scheduled publishing, the event outbox, webhooks, form
+  workflows, notifications, search indexing, the hourly upkeep, and the site's
+  and its bundles' own jobs and schedules (story 187). It builds the published
+  cache only when a job asks for it, and renders e-mails through the site's
+  components. No page, back office or API is mounted; any path but `/health`
+  gets a 404 with no body.
+- **Leaving jobs to it.** `CROMBOLO_JOBS=off` on the `api` (or `all`) node stops
+  that node running them. It still queues them: a save, a route or a named query
+  records the work and wakes the worker over Postgres `NOTIFY`, so webhooks and
+  search follow a save as quickly as before. The worker also looks every few
+  seconds, in case it missed one. `CROMBOLO_JOBS=off` on a `web` or `worker` node
+  stops the boot.
+- **Its health.** `/health` answers 200 while the worker is current with the
+  database. It answers 503 once the database is ahead of it, as an `api` node
+  does. It also reports the job it is running and when it last claimed one.
+  `crombolo health` gives the troubleshooting report for any node.
+- **Stopping and dying.** A worker that is stopped aborts its running job's
+  signal and waits ten seconds. If the job hasn't finished by then, the worker
+  puts it back in the queue without counting the attempt. A job claimed by a
+  worker that stopped answering goes back after two minutes. Either way, the
+  next worker to claim it runs it, once.
+- **No worker running.** Work queues safely and runs when a worker starts.
+  After five minutes with no live worker in `server`, the `api` node:
+  - says so in its `/health` (`jobs.waitingSince`), staying 200;
+  - shows a warning on Settings → Background jobs;
+  - logs one warning.
+  Nothing drains, so editors keep working.
+- **One worker.** The claims make more than one safe, but more than one worker
+  is not what this story tested; run one.
+
+A single process (`all`, the default) runs everything as before. `api` plus
+`web` without a worker still runs the jobs on the `api` node.
+
+`crombolo start` loads the server package as a whole, so a worker started from
+the command line has the back office's code in memory, though nothing of it is
+built or mounted. A host that imports `createWorker` from
+`@crombolo/server/worker` loads only what the worker uses.
+
 ### Health while the database moves
 
 `/health` is what a load balancer drains on, so what makes it fail is chosen
@@ -859,6 +919,7 @@ carefully:
 | --- | --- | --- | --- |
 | `web` | **200**, `readOnly: true` — its reads are still correct as-of its own state | 503 | 200 |
 | `api`, `all` | 503 — editors must land on a node that can save | 503 | 200 |
+| `worker` | 503 — it writes, as an `api` node does; its jobs wait for a node that is current | 503 | 200 |
 
 The `web` row is what keeps an upgrade invisible to readers. A new node cannot
 boot until the upgrade has run, and every old node falls behind the moment it

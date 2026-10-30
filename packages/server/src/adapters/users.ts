@@ -16,7 +16,7 @@ import type {
   UserPort,
   UserResponse,
   UserStatus,
-} from '@crombolo/api-management'
+} from '@crombolo/api-management/domain'
 import {
   generateToken,
   hashPassword,

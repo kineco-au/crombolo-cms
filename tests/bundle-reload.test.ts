@@ -102,7 +102,7 @@ describe('reloading what a host installed', () => {
       wired: () => [],
       changed: () => {},
     })
-    install(root, 'acme-forms', '1.0.0', { server: 'acmeForms', schemaVersion: 2 })
+    install(root, 'acme-forms', '1.0.0', { server: 'acmeForms', schemaVersion: 3, permissions: [] })
     depend(root, { 'acme-forms': '^1.0.0' })
     const [found] = reloader.reload().added
     expect(found?.carries.server).toBe(true)

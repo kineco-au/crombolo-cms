@@ -22,16 +22,16 @@ Today nothing in a site's own code reads or changes a member beyond the
 signed-in one, and that member (`RequestMember`) carries a key, name,
 username, e-mail and group names, with no properties.
 
-Nature's Calendar needs:
-- **Registration completion:** after B2C sign-up, the site collects an address,
-  terms acceptance and a referral source, writes them to the member, and adds
-  them to "NC Member" (`WT-NC`, `Web/Controllers/Api/UsersController.cs`).
+A large membership site being rebuilt on crombolo needs:
+- **Registration completion:** after signing up with an identity provider, the
+  site collects an address, terms acceptance and a referral source, writes them
+  to the member, and adds them to its members' group.
 - **The "registered?" check** a member page makes on the server before
-  rendering (site story 084).
+  rendering.
 - **A members admin** in the site's back-office section, for finding and
-  editing members (`NaturesCalendar/Controllers/Api/MembersAdminController.cs`).
-- **A nightly export** paging through about 400,000 members (`MembersExport`).
-  This runs as background work once 187 exists.
+  editing members.
+- **A nightly export** paging through hundreds of thousands of members. This
+  runs as background work (187).
 
 What exists to build on:
 - Member types already declare per-property `member-can-view`,
@@ -39,7 +39,6 @@ What exists to build on:
 - `MemberRepository` already filters, searches, updates and sets groups.
 - Story 155's member export is command-line only.
 
-See `docs/natures-calendar-gaps.md`, gap 2.
 
 ## The design
 
@@ -67,7 +66,7 @@ export default async function Account({ member }: PageProps<AccountPage>) {
 // completing registration, as the member
 const saved = await site().members
   .update(member.key, { properties: { address, termsAccepted: true, referral } })
-  .andThenAsync(() => site().members.addToGroups(member.key, ['NC Member']))
+  .andThenAsync(() => site().members.addToGroups(member.key, ['Members']))
 saved.match({ ok: () => …, 422: ({ errors }) => …, 403: () => forbidden() })
 ```
 
@@ -90,7 +89,7 @@ unknown alias, a wrong value shape or failing validation. A form shows them.
 
 **Which groups site code may change.** The site lists them in
 `crombolo.config.ts`:
-`members: { groups: { selfService: ['NC Member'], managed: ['NC Moderator'] } }`.
+`members: { groups: { selfService: ['Members'], managed: ['Moderators'] } }`.
 - `selfService` groups are ones a member may join or leave through the site's
   code.
 - `managed` groups are ones back-office code and background work may change.

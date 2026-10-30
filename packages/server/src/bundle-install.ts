@@ -22,7 +22,7 @@ import {
   peerRangeProblem,
   readBundlePackage,
   readPackageJson,
-} from '@crombolo/backoffice-host'
+} from '@crombolo/backoffice-host/registry'
 import { ObjectTypes } from '@crombolo/core'
 import {
   answersByNode,
@@ -84,6 +84,7 @@ import { syncDomainsFile } from './domains.ts'
 import { mediaStoreFor, placeBlobs } from './media-files.ts'
 import { componentAliasesIn, syncSchemaDirectory } from './schema.ts'
 import { publishSchema } from './schema-store.ts'
+import { applySiteData, type SiteDataApplied } from './site-data.ts'
 import {
   carriesAdministrator,
   prunePeople,
@@ -204,6 +205,7 @@ export function readBundle(
   let opened: ReturnType<typeof openBundle> = {
     set: loaded.set,
     people: undefined,
+    siteData: undefined,
     openBlob: (_key, bytes) => bytes,
   }
   const peopleOnly = options.withoutPeople && loaded.set.manifest.content !== 'sealed'
@@ -432,6 +434,8 @@ export interface ContentImportResult {
   published: number
   publishFailures: { key: string; reason: string }[]
   problems: string[]
+  /** What the file's site data did here, when it carried any (story 189). */
+  siteData?: SiteDataApplied
 }
 
 /**
@@ -697,6 +701,9 @@ export async function installBundleContent(
       await publishSchema(config.schemaStore, config.schemaDir)
   }
   const kept = promoteStaged(config, runDir, runId)
+  // On the owners' own connections, so after crombolo's transaction rather than
+  // in it: each owner is replaced in a transaction of its own.
+  const siteData = set.siteData ? await applySiteData(db, config, set.siteData) : undefined
   // Domains belong to where the site runs, never to the file: rebound by the
   // site's own `domains.toml` onto the pages now in its tree.
   if (replace) await syncDomainsFile(db, config.siteDir)
@@ -717,7 +724,11 @@ export async function installBundleContent(
     blobs: placed,
     published: result.published.length,
     publishFailures: result.publishFailures,
-    problems: prepared.problems,
+    problems: [
+      ...prepared.problems,
+      ...(siteData?.failed ?? []).map((failure) => `site data not written for ${failure}`),
+    ],
+    ...(siteData ? { siteData } : {}),
     sections: staged
       ? {
           written: staged.written,

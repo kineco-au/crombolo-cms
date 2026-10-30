@@ -90,6 +90,18 @@ export async function instructionsBetween(
 /** Where Postgres says an instruction was written, so nodes poll now rather than on their timer. */
 export const CACHE_INSTRUCTION_CHANNEL = 'crombolo_cache_instruction'
 
+/** Where a node that leaves its jobs to a worker says it left work (story 223). */
+export const JOBS_CHANNEL = 'crombolo_jobs'
+
+/** What a write left for the jobs: the event outbox, the search queue, or a queued job. */
+export type JobWake = 'events' | 'search' | 'jobs'
+
+/** Tells a listening worker there is work; Postgres only, which a worker needs. */
+export async function notifyJobs(db: Db, work: JobWake): Promise<void> {
+  if (db.dialect.name !== 'postgres') return
+  await db.q.selectNoFrom(sql`pg_notify(${JOBS_CHANNEL}, ${work})`.as('n')).execute()
+}
+
 /**
  * Tells the other nodes what changed. A `content` or `schema` instruction moves
  * the content checkpoint (story 174): called on the change's own transaction,

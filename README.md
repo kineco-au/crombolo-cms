@@ -4,10 +4,20 @@
 
 # Crombolo
 
-A content management system for [Bun](https://bun.sh). Pages are **React-style
-components** in `.tsx` files, rendered on the server. The content model lives in
-your repository as files. The site, the editing UI and the API are one Bun process
-on SQLite or Postgres.
+Crombolo is a content management system that gives editors the content
+management and back-office experience Umbraco editors have come to know, built
+on open-source databases and the modern web platform.
+
+- **For editors**, the back office they already know: the content tree, drafts
+  and publishing, version history and rollback, media with crops, block
+  editors, languages and variants, forms, members, users and permissions. It is
+  the open-source Umbraco back office, served by Crombolo.
+- **On open-source databases.** SQLite for a site on one machine, with nothing
+  to install, and Postgres when it grows. No SQL Server, no licence to buy.
+- **On the modern web platform.** A site is a small [Bun](https://bun.sh)
+  project in TypeScript. Pages are React-style `.tsx` components rendered on the
+  server to plain HTML, the content model is TOML files in the repository, and
+  the site, the back office and the API run as one process. No .NET, no Razor.
 
 ```tsx
 import type { PageProps } from '@crombolo/crombolo'
@@ -30,387 +40,197 @@ export default function Article({ model, nav }: PageProps) {
 }
 ```
 
-That file is a template. An editor creates a page of that type in the backoffice,
-publishes it, and the component renders it at the page's URL.
+That file is a template. An editor creates a page of that type in the back
+office, publishes it, and the component renders it at the page's address.
 
----
-
-## What it is
-
-A full CMS, not a headless content store with a rendering problem left over:
-
-- **For editors**, a complete backoffice: a content tree, drafts and publishing,
-  version history and rollback, media with crops, block editors, languages and
-  variants, members, users and permissions. The editing UI is the open-source
-  Umbraco backoffice, served by Crombolo
-- **For developers**, a site is a small Bun project: `components/**/*.tsx` for its views,
-  `schema/*.toml` for content types, a config file and a three-line `server.ts`.
-  Everything else arrives with `bun add @crombolo/crombolo`
-
-### Templates are React components, without React
-
-A template is a function from props to JSX, exactly as you would write it for
-React: components, props, `children`, fragments, `.map()` over a list, TypeScript
-throughout. Shared markup is an ordinary component in an ordinary import.
-
-What differs is what happens to the JSX. It compiles against Crombolo's own JSX
-runtime and comes out as an HTML string — there is **no React dependency, no
-virtual DOM and no hydration**, so nothing is shipped to the browser unless you
-add a script yourself. The practical consequences:
-
-- components are plain functions called once per request, so there are no hooks,
-  state or effects
-- `className` and `htmlFor` work, and so do plain `class` and `for`
-- `model.text()` escapes, `model.html()` emits a rich-text value as markup, and
-  `setInnerHTML` stands in for `dangerouslySetInnerHTML` — it escapes unless you
-  also pass `dangerously: true`
-
-[`docs/rendering.md`](docs/rendering.md) has the model API, layouts,
-partials and routing.
-
----
-
-## Why use it
-
-- **Templates in the language your team already writes.** No Razor, Liquid or
-  Twig to learn: a view is TSX, type-checked, and composed from components
-- **Fast pages by default.** Server-rendered HTML from a published cache, with no
-  client bundle and no hydration step
-- **Schema as code.** Document and media types are TOML files in `schema/`,
-  diffable and reviewed in a pull request. The backoffice type editor writes the
-  same files, and `crombolo generate` turns them into a TypeScript interface per
-  content type
-- **One runtime, one process.** Bun runs the server, the build and the tests. No
-  Node, no .NET, and with SQLite no database server either — `bunx @crombolo/cli init`
-  to a running site is three commands
-- **A mature editing experience from day one.** Editors get a backoffice that has
-  years of real use behind it, rather than a new admin UI
-- **Upgrades that do not need a maintenance page.** A read-only check classifies
-  every change, the additive part is applied early, and a node behind the current
-  schema serves reads and refuses writes rather than corrupting anything
-- **Content promotion as files.** Move content between environments as a
-  reviewable bundle of JSON, with no connection between environments and no
-  credentials for one stored in another
-
-It is a poor fit if you need Umbraco packages or plugins (they do not run here),
-Razor views, SQL Server, or client-side React with hydration out of the box.
-
-Crombolo is in active development. What is built and planned is tracked as [stories](docs/stories/README.md).
-
-### What is in the box
-
-| | |
-| --- | --- |
-| **Templates** | React-style `.tsx` components rendered on the server, with layouts and partials. Editing one is picked up without a restart |
-| **The editor** | The `@umbraco-cms/backoffice` SPA, vendored unmodified and served by Bun: content, media, members, document and media types, templates, data types, dictionary, log viewer, users and permissions |
-| **The API** | The Management API the backoffice speaks, built contract-first from its OpenAPI document — a handler cannot drift from the contract without failing a test |
-| **Schema as code** | Document and media types as TOML in `schema/`. The backoffice writes the files; `types sync` applies them |
-| **Upgrades** | Check, fix, then cut over, with old nodes serving reads throughout a rolling deploy |
-| **Content transfer** | Export, check and import content between environments as a bundle of files |
-| **Bundles** | Every bundle is an npm package whose `crombolo` field declares what it adds: backoffice screens, content (schema, views, content and media) and server endpoints. Build one from a slice of the site and download it as a `.tgz`, install one from the Marketplace or with `bun add`, and apply its content with `bundle install`. Server endpoints run only once the site imports them into `crombolo.config.ts` |
-| **Storage** | SQLite by default, Postgres as an option. Media on the file system, S3 or Azure; Public / Private / Custom read access and Private / Custom write access, with group and individual-member grants ([protected media](docs/rendering.md#protected-media)) |
-| **Forms** | Form building in core, not an add-on: definitions as TOML in `schema/forms/`, a Forms section with a designer and an entries view, rendering and submission with no JavaScript required, and workflows on a retrying queue |
-| **E-mail** | Opt-in, over a provider's HTTPS API — Resend, Postmark, Amazon SES, or an endpoint of your own. Off by default, and what needs it says so rather than failing |
-| **Umbraco import** | A compatibility report for an existing Umbraco site, then its content types, content and media converted into a new site |
-| **Also** | Redirects that follow a moved page — and a Settings screen to manage them, as a bundle — members and public access, hostname routing, and git integration from the backoffice |
+Crombolo is in active development. What is built and what is planned are
+tracked as [stories](docs/stories/README.md).
 
 ---
 
 ## Getting started
 
-### Prerequisites
-
-|                                               |                                                                                      |
-| --------------------------------------------- | ------------------------------------------------------------------------------------ |
-| **Bun** ≥ 1.3                                 | runs everything: the build, the scripts and the tests (built against 1.4.2)          |
-| **Docker** with Compose v2                    | optional: where Postgres comes from, and how the containerised runs work             |
-| An `Umbraco-CMS` checkout at `release-18.2.0` | optional — only to re-seed vendored static files when bumping the backoffice version |
-
-There is deliberately **no Node, npm-script, or .NET/NuGet dependency** anywhere
-in the build, test or run path.
-
-Bun alone is enough to build the project and run the SQLite half of the suite, so a
-clone without Docker is not stuck — but Postgres and the containerised test runs
-both need it.
-
-### Setup
+A site is a project of its own: everything it uses arrives from npm, so you do
+not need a copy of this repository. You need [Bun](https://bun.sh) 1.3 or later,
+and nothing else: a new site uses SQLite, which needs no database server.
 
 ```bash
-bun install
-bun run vendor:backoffice     # builds packages/backoffice-dist/dist (~90 MB, ~2s)
-bun run generate:types        # contract types -> packages/contracts/generated/
-bun run check                 # format + lint + typecheck + SQL rule
-bun run hooks:install         # pre-push hook: the same gate, before you push
+curl -fsSL https://bun.sh/install | bash
 ```
 
-These run on the host even when you go on to run the stack in Docker: the
-repository is bind-mounted into the container, so the vendored client and the
-generated contract types are the same files either way.
+### An empty site
 
-`vendor:backoffice` assembles a browser-runnable backoffice from the pinned npm
-package into `packages/backoffice-dist/dist`, then verifies that every one of its
-~6,555 modules will actually link in a browser and fails if any will not. It is
-required before the server can serve the editor, and the output is not committed
-— see
-[`docs/backoffice-hosting.md`](docs/backoffice-hosting.md) for why the npm
-package alone is not loadable.
-
-### Run it
-
-```bash
-bun run start:local          # runs `crombolo start` in apps/site
-```
-
-One process on SQLite, on port 8080. It migrates and seeds the database, **resets
-the administrator's password, and prints the credentials**:
-
-```
-┌─────────────────────────────────────────────────────┐
-│ Crombolo is running                                 │
-│                                                     │
-│   backoffice  http://localhost:8080/crombolo        │
-│   site        http://localhost:8080/                │
-│                                                     │
-│   Sign in with                                      │
-│     username  admin@crombolo.local                  │
-│     password  23whoMrmWsZP3DF                       │
-│                                                     │
-│   A fresh password is generated on every start; set │
-│   CROMBOLO_ADMIN_PASSWORD to keep one.              │
-└─────────────────────────────────────────────────────┘
-```
-
-In development it resets the password on every start so what it prints is true,
-and clears any lockout; production never does ([first boot](docs/operations.md#first-boot)). Changing the password ends existing sessions, so other tabs
-are signed out. Set `CROMBOLO_ADMIN_PASSWORD` to keep a stable one:
-
-```bash
-CROMBOLO_ADMIN_PASSWORD=localdev123 bun run start:local
-```
-
-Use `bun run start:local:watch` to reload on change; it passes `--keep-admin`, so a
-reload keeps the password and your sessions. A restart with an unchanged
-`CROMBOLO_ADMIN_PASSWORD` keeps sessions too. Or use `bun run dev` for the
-plain server with no password handling — that one prints a generated password only
-on the run that _creates_ the database, and because seeding is idempotent it can
-never print it again. If you have locked yourself out of an existing
-`crombolo.sqlite`, `bun run start:local` is the way back in.
-
-A port already in use is reported before the database is touched, so nothing is
-migrated or seeded on a run that cannot serve:
-
-```
-error: Port 8080 is already in use, so this server cannot start.
-  The container stack publishes the same port — "bun run docker:down" stops it.
-  Otherwise set PORT (or CROMBOLO_PORT for the stack) to something else.
-```
-
-Give it another port with `PORT=3000 bun run start:local`.
-
-#### In containers instead
-
-```bash
-bun run docker:up            # Postgres and one CMS node, on the same port 8080
-bun run docker:logs          # follow it, including the sign-in banner
-bun run docker:down          # stop; docker:reset also discards the database
-```
-
-The same single node — site, backoffice and Management API in one process — on
-Postgres rather than SQLite, with nothing to install but Docker. `docker:up` waits
-for the health check, so when it returns the site is actually serving.
-
-The admin password is fixed at `crombolo-dev-password` here rather than generated,
-so a watch reload neither changes it nor ends your session; set
-`CROMBOLO_ADMIN_PASSWORD` to override. The repository is bind-mounted and the
-server runs under `bun --watch`, so editing a file on the host — in `packages/**`
-as much as in `apps/site` — reloads the server in the container.
-
-**Only one of the two can run at a time**, since they share port 8080 — which is
-the point: the backoffice is at one address either way. Whichever starts second
-fails and says so.
-
-#### On Postgres, without containers
-
-```bash
-bun run db:up                # just Postgres, on localhost:5433
-```
-
-Then point a host run at it with `CROMBOLO_DB=postgres` and
-`CROMBOLO_POSTGRES_URL`. This is the same database the Postgres half of the test
-suite uses — see [Running the tests](#running-the-tests).
-
-### Start a site of your own
-
-`apps/site` is this repository's reference site. `crombolo init` scaffolds a new
-one, **once**, in an empty directory (it refuses one that is not, `.git` aside;
-`--force` overwrites): **either** a plain site with no content types, which
-serves a holding page until something is published, **or** one from a starter
-template with its schema, views and content. A template is not added later.
+From the folder you want the site in, make its directory and move into it:
 
 ```bash
 mkdir my-site && cd my-site
-bunx @crombolo/cli init --name "My Site"                    # either: a plain site
-bunx @crombolo/cli init --name "My Site" --template basic   # or: one template, instead
-bun install && bun start                                    # --postgres for a Postgres .env
 ```
 
-`init --template list` prints the templates: `basic` (a home page type, a view,
-one page), `starter` (header, footer, two columns, placeholder pages),
-`demo/harbourstone` (a whole brochure site, content and all), and `next` and
-`demo/harbourstone-next`, which add a Next.js front end in `web/`, as `--next`
-does for any template ([`docs/delivery-api.md`](docs/delivery-api.md), "A Next.js front end").
+Then, from the site's own directory:
+
+```bash
+bunx @crombolo/cli init --name "My Site"
+bun install
+bun start
+```
+
+`bun start` prints the back-office address and a username and password to sign
+in with. Open `http://localhost:8080/crombolo` and sign in. The site itself, at
+`http://localhost:8080/`, answers "not found" until you publish a page:
+[adding a page](docs/adding-a-page.md) walks through the content type, the
+template and the content.
+
+### A site from a template
+
+To see the templates:
+
+```bash
+bunx @crombolo/cli init --template list
+```
+
+From the folder you want the site in:
+
+```bash
+mkdir my-site && cd my-site
+```
+
+Then, from the site's own directory:
+
+```bash
+bunx @crombolo/cli init --name "My Site" --template demo/harbourstone
+bun install
+bun start
+```
+
+The first `bun start` adds the template's content, so the site has its pages at
+once. `demo/harbourstone` is a fictitious coastal distillery: a home page, an
+about page, its range of bottlings and a contact form, with photographs. The
+others are `basic` (one page type, one view, one page), `starter` (a header, a
+footer and a two-column layout to restyle), and `next` and
+`demo/harbourstone-next`, which add a Next.js front end in `web/`
+([`docs/delivery-api.md`](docs/delivery-api.md), "A Next.js front end").
+
+### Next steps
+
+- Each `bun start` prints a new password; set `CROMBOLO_ADMIN_PASSWORD` in the
+  site's `.env` to keep one ([first boot](docs/operations.md#first-boot)).
+- Templates are in `components/`, content types in `schema/`, and settings in
+  `crombolo.config.ts` and `.env` ([configuration](docs/configuration.md)).
+  Editing a template is picked up without a restart.
+- [Writing components](docs/writing-components.md) is the cookbook for
+  templates, and [rendering](docs/rendering.md) the reference.
+- To run on Postgres, scaffold with `bunx @crombolo/cli init --postgres`, and
+  point `CROMBOLO_POSTGRES_URL` in the `.env` it writes at your database.
+- To move a site between machines or environments, `bunx crombolo export --site`
+  and `bunx crombolo import`, or `crombolo pull` and `push` against a running
+  site ([content transfer](docs/content-transfer.md)).
+- An existing Umbraco 15+ site comes across with `crombolo import umbraco`,
+  which reports what cannot ([Umbraco import](docs/umbraco-import.md)).
+
+---
+
+## What is in the box
+
+| | |
+| --- | --- |
+| **The back office** | The `@umbraco-cms/backoffice` app, vendored unmodified and served by Bun: content, media, members, document and media types, templates, data types, dictionary, log viewer, users and permissions |
+| **Templates** | React-style `.tsx` components rendered on the server to HTML, with no React dependency, no virtual DOM and no hydration; layouts, partials, and islands for the parts that need the browser |
+| **Schema as code** | Document and media types as TOML in `schema/`, reviewed in a pull request; the back office's type editor writes the same files |
+| **The API** | The Management API the back office speaks, built contract-first from its OpenAPI document, and Umbraco's Delivery API for apps |
+| **Upgrades** | Check, fix, then cut over, with older nodes serving reads throughout a rolling deploy |
+| **Scaling out** | One process, or editor, visitor and background-job nodes on one Postgres database ([running a cluster](docs/operations.md#running-a-cluster)) |
+| **Site size** | Measured on both engines in every release up to 25,000 pages in three cultures on one node, and weekly at 100,000 ([supported workloads](docs/performance.md#supported-workloads-and-resources)) |
+| **Content transfer** | Export, check and import content between environments as files; a whole site in one file |
+| **Bundles** | npm packages that add back-office screens, content and server code; install from the Marketplace or with `bun add` |
+| **Data of your own** | Tables of the site's own, migrated with it and queried with Kysely from pages and routes ([custom tables](docs/data-model.md#custom-tables)) |
+| **Storage** | SQLite or Postgres; media on the file system, S3 or Azure, with protected media for members |
+| **Forms** | Form building in core: a designer, entries, and workflows on a retrying queue |
+| **E-mail** | Opt-in, over Resend, Postmark, Amazon SES or an endpoint of your own |
+| **Also** | Redirects, members and public access, hostnames and languages, search, SEO, approval workflows, an audit log, and git from the back office |
+
+It is a poor fit if you need Umbraco packages or plugins (they do not run here),
+Razor views, SQL Server, or client-side React with hydration out of the box.
+
+---
+
+## Crombolo development
+
+**For changing crombolo itself.** To build a site, you need none of this:
+[Getting started](#getting-started) is all there is to it.
+
+Everything in this section runs from the root of a clone of this repository.
+None of these scripts exists in a site made with `init`, which uses
+`bun start`.
+
+### Set up
+
+You need Bun 1.3 or later, and Docker with Compose v2 for Postgres and the
+containerised test runs. There is no Node, npm-script or .NET dependency
+anywhere in the build, test or run path.
+
+```bash
+git clone https://github.com/kineco-au/crombolo-cms.git
+cd crombolo-cms
+bun install
+bun run vendor:backoffice     # builds the back office into packages/backoffice-dist/dist
+bun run generate:types        # contract types into packages/contracts/generated/
+bun run check                 # format, lint, typecheck and the SQL rule
+bun run hooks:install         # a pre-push hook running the same gate
+```
+
+[`docs/backoffice-hosting.md`](docs/backoffice-hosting.md) says why the back
+office is assembled rather than used from npm as it is.
+
+### Run it from source
+
+```bash
+bun run start:local           # the reference site in apps/site, on SQLite, port 8080
+bun run docker:up             # or Postgres and one node in containers, on the same port
+bun run docker:down           # stop them; docker:reset also discards the database
+bun run db:up                 # or just Postgres, on localhost:5433, for a host run
+```
+
+`start:local` runs the working tree, so a change to crombolo's own code shows at
+once; it prints the credentials, as `bun start` does in a site. Only one of
+`start:local` and `docker:up` can run at a time, since both use port 8080; set
+`PORT` to run on another. With `db:up`, point a host run at Postgres with
+`CROMBOLO_DB=postgres` and `CROMBOLO_POSTGRES_URL`.
 
 ### The sites in this repository
 
-`sites/` holds the sites this repository builds — `starter`, `demo/harbourstone`,
-`demo/harbourstone-next` (its Next.js app in `web/`) and the product site `demo/crombolo` — each a real site, committed and run in
-place as a private workspace on the working tree. None is published by default:
-one whose `site.json` says `"distribute": true` is staged into `@crombolo/cli`'s
-templates only while the CLI is packed. Content bundles are generated by
-`bun run build:template <id>`.
+`sites/` holds the sites this repository builds: `starter`, `demo/harbourstone`,
+`demo/harbourstone-next` and the product site `demo/crombolo`. Each is a real
+site, and the templates `init` offers are made from them.
 
 ```bash
-bun run site                            # the catalogue: sites, then the CLI's templates
-bun run site demo/harbourstone          # a copy in .scaffolds/, on localhost (--docker for the stack)
-bun run site demo/harbourstone --fresh  # clear its database and media, and begin again
-bun run site basic                      # a CLI template, scaffolded into .scaffolds/ first
+bun run site                            # the list: the sites, then the CLI's templates
+bun run site demo/harbourstone          # run a copy in .scaffolds/, on localhost (--docker for the stack)
+bun run site demo/harbourstone --fresh  # start that copy again from the site
 ```
 
-The database is forced to SQLite inside the site, whatever the environment says.
-[`docs/configuration.md`](docs/configuration.md) has the layout of a site,
-how distribution works and the safety rules.
-
-A template brings `schema/`, `components/`, a stylesheet, its images — and its content as
-a **bundle**: a private npm package, the same artifact `crombolo bundle export` writes.
-`init` puts it in `bundles/` and wires the import into the scaffolded `start` script:
-
-```json
-"scripts": { "start": "crombolo start --bundle bundles/demo-harbourstone --publish" }
-```
-
-`start --bundle <pkg>` is not template-only: it applies any bundle before the site
-serves anything, taking the flags `content import` takes. It imports **once per
-bundle** — a run still standing here means this site already has that content, so
-restarts cost a query and a line in the banner — and if the import is refused it
-says why and does not start, rather than serving a site missing the content you
-asked for.
-
-The demo is a fictitious coastal distillery across four pages — home, about, the
-bottlings and contact. It carries a range with tasting-note elements, a second
-element type reused for the home page's figures and the About page's four
-decisions, photographs with crops, a list view, and a contact form on the Contact
-page — a form definition in `schema/forms/`, rendered by `<Form>`, with its
-submissions in the Forms section. Its views are broken up under `components/`: `pages/` for the five a document
-type names, `shared/` for the six they import. Nothing turns on those folder
-names — a component is a template because the schema names it.
-
-Its content is its seed (story 164): the pages, the Library elements and the
-photographs under `seed/`, as files to read and edit (`docs/seeds.md`). `crombolo
-init --template` copies them into the new site, whose `start` script applies them
-with `--seed`. `crombolo bundle build sites/harbourstone --out <dir>` turns the
-whole directory, schema and views included, into a bundle that `crombolo start
---bundle <dir>` installs into a bare site.
-
-A template may also wire a bundle's server half, which the demo does for
-redirects: `template.json` names the package and the factory, and `init` writes
-both the dependency and the `bundles: [redirects()]` line into the site's own
-`crombolo.config.ts` — visible, and removable, from the first commit
-([`docs/bundles.md`](docs/bundles.md)).
-
-### Move a whole site
-
-```bash
-bunx crombolo export --site --out my-site.tgz     # schema, files, content, media; not domains or people
-bunx crombolo start --from my-site.tgz            # in an empty folder: scaffold, install, import, serve
-bunx crombolo import my-site.tgz --replace        # replace an existing site; says what first
-bunx crombolo remote add production https://example.com && bunx crombolo login
-bunx crombolo pull                                # or push: the same, to and from a running site
-```
-
-[`docs/content-transfer.md`](docs/content-transfer.md) has the detail.
-
-### Bring an existing Umbraco site
-
-`crombolo import umbraco report|apply` converts an Umbraco 15+ backup (`.bacpac` or
-its SQLite file) into a crombolo site, and reports what cannot come across —
-[`docs/umbraco-import.md`](docs/umbraco-import.md). It is deprecated: an Umbraco
-extension writing a whole-site file for `crombolo import` will replace it (story `074`).
-
-### Walk the slice in the editor
-
-Open the backoffice at `http://localhost:8080/crombolo` and sign in.
-
-1. **Settings → Templates → Create.** Name it `Home Page`. The editor opens with
-   Umbraco's Razor starter; save it unchanged and it becomes a TSX view, written
-   to `apps/site/components/homePage.tsx`. Reopen it and give it something to render:
-
-    ```tsx
-    export default function HomePage({ model, nav }) {
-        return (
-            <html lang="en">
-                <head>
-                    <title>{model.text("title")}</title>
-                </head>
-                <body>
-                    <h1>{model.text("title")}</h1>
-                    <div>{model.html("bodyText")}</div>
-                    <nav>
-                        {nav.children(model).map((child) => (
-                            <a href={child.url}>{child.name}</a>
-                        ))}
-                    </nav>
-                </body>
-            </html>
-        );
-    }
-    ```
-
-2. **Settings → Content Types → Create.** Alias `homePage`, tick _Allow as root_,
-   add a `title` (Textstring) and a `bodyText` (Richtext editor) property, and set
-   the template from step 1 as allowed and default.
-3. **Content → Create → Home Page.** Name it `Home`, fill the fields, **Save**.
-   Nothing is public yet: `http://localhost:8080/` returns 404.
-4. **Publish.** `http://localhost:8080/` now renders your template: as in Umbraco,
-   the first root page is the site root, and its children sit directly below it.
-5. Edit and save again — the page shows _published with pending changes_, and the
-   site still serves the published version, not your draft.
-6. **Info → History** and roll back to restore the earlier values.
-
-The view is a React-style component, with the differences listed under
-[Templates are React components, without React](#templates-are-react-components-without-react):
-`model.text()` escapes, `model.html('bodyText')` is the short route for a rich-text
-value, and `setInnerHTML` above is for markup from somewhere else — **without its
-`dangerously` flag the content is escaped**. Views are re-read per request in
-development, so editing a `.tsx` file and refreshing is enough.
+The copy runs on SQLite whatever the environment says, against the working tree
+rather than the published packages, so it shows changes not yet released. To get
+one of these sites as a site of your own instead, use its template with `init`
+([A site from a template](#a-site-from-a-template)). [`docs/configuration.md`](docs/configuration.md)
+has the layout of a site, how templates are distributed and the safety rules.
 
 ### Running the tests
 
 ```bash
-bun run check                 # Biome + tsc + the no-hand-written-SQL rule, the gate
-bun run docker:test:sqlite    # the suite in a container
-bun run docker:test:all       # both dialects, the real gate
+bun run check                 # Biome, tsc and the no-hand-written-SQL rule
+bun run docker:test:sqlite    # the suite in a container, sharded
+bun run docker:test:all       # both databases: the real gate
 ```
 
-`bun run hooks:install` points git at `.githooks`, whose `pre-push` runs the host
-gate — contract types, `check`, then the SQLite suite — so a push that would fail
-CI's first two jobs fails locally instead. It skips Postgres and the browser suite
-because both need Docker; `git push --no-verify` skips the hook entirely.
-
-The host twins (`bun run test`, `test:all`) run the same suites outside Docker.
-Postgres tests skip themselves when no server is reachable, so a clone without
-Docker is never blocked — but a skip is not a pass.
-[`docs/testing.md`](docs/testing.md) has the layers, the containers and the
-browser suite.
-
-Releases shard Postgres unit tests into four jobs and load tests/benchmarks into
-three, using `scripts/test-shard.ts` and separate timings per suite. Full fixtures
-stay intact; see [the pipeline matrix](docs/testing.md#in-the-pipeline) (story `201`).
+The pre-push hook runs the host gate (contract types, `check`, then the SQLite
+suite), so a push that would fail CI's first jobs fails locally instead.
+[`docs/testing.md`](docs/testing.md) has the layers, the containers, the
+browser suite and the pipeline.
 
 ### Publishing the product site
 
-The Crombolo product site is `sites/crombolo`, and it runs on the
-hosted platform as an ordinary tenant — so a release republishes its content the
-way a customer's own CI would:
+The product site is `sites/crombolo`, run on the hosted platform as an ordinary
+tenant, so a release republishes its content the way a customer's CI would:
 
 ```bash
 bun run brochureware:publish --dry-run    # what it would send, and where
@@ -418,16 +238,10 @@ bun run brochureware:publish              # upload, publish, wait
 ```
 
 What is sent is the committed bundle under `sites/crombolo/bundles/demo-crombolo`,
-never the site's database, which holds whatever was last done to it locally. The archive is deterministic, so unchanged content
-produces the same bytes and the same hash. It carries the site's schema, views and
-styles too, and its docs section — [`docs/bundles.md`](docs/bundles.md#the-product-sites-bundle).
-
+never the site's local database ([`docs/bundles.md`](docs/bundles.md#the-product-sites-bundle)).
 The `brochureware` job in `.github/workflows/release.yml` runs it after the
-registry publish, and only when the repository variable `BROCHUREWARE_PUBLISH`
-is `enabled` — gated on a variable rather than on a secret being absent, because
-a rotated token would otherwise skip silently. It publishes to **preview**;
-production is promoted by hand once somebody has looked at it. It needs `CROMBOLO_PLATFORM_URL`,
-`_ORGANISATION`, `_SITE` and `_PREVIEW` as variables and a `deploy`-scoped `CROMBOLO_PLATFORM_TOKEN` secret.
+registry publish, to preview, when the repository variable `BROCHUREWARE_PUBLISH`
+is `enabled`; production is promoted by hand.
 
 ---
 
@@ -439,13 +253,14 @@ Design documents, in reading order; planned work is in the stories:
 | --- | --- |
 | [overview](docs/overview.md) | what this is, the decisions behind it, and the non-goals |
 | [architecture](docs/architecture.md) | repo layout, dependency rules, server composition, the toolchain |
-| [data-model](docs/data-model.md) | the relational model, and why a node behind the schema may not write |
+| [data-model](docs/data-model.md) | the relational model, the site's and bundles' own tables, and why a node behind the schema may not write |
 | [api-contract](docs/api-contract.md) | the vendored contract, and how a handler is held to it |
 | [backoffice-hosting](docs/backoffice-hosting.md) | vendoring the SPA, the shells, the auth wire contract, de-branding |
 | [rendering](docs/rendering.md) | TSX templates and the JSX runtime, the published cache and how fresh each node is, views, hostnames, cultures |
 | [features](docs/features.md) | what is implemented, and what is out of scope |
 | [roadmap](docs/roadmap.md) | where this is going, the risks, and what diverges from Umbraco on purpose |
 | [stories](docs/stories/README.md) | every piece of work, built and planned, by epic and state |
+| [performance](docs/performance.md) | the published cache as a site grows: what a change drops, the measured workloads and budgets, and when another topology is right |
 | [testing](docs/testing.md) | the test layers, the containers, the browser suite |
 | [schema-as-code](docs/schema-as-code.md) | the TOML format, sync, retirement, coherence across nodes |
 | [packaging-and-upgrades](docs/packaging-and-upgrades.md) | environments, the upgrade process, releasing to npm; what each release changed, and what to do on upgrading, in [release-notes](docs/release-notes.md) |
@@ -453,9 +268,9 @@ Design documents, in reading order; planned work is in the stories:
 | [content-transfer](docs/content-transfer.md) | the bundle format, and moving content between environments; imports compare three ways against what was last applied |
 | [seeds](docs/seeds.md) | a site's starting content as files under `seed/`: the format, the shorthand per editor, and `crombolo seed` |
 | [configuration](docs/configuration.md) | every environment variable, and every script; the variable tables are generated from `packages/server/src/settings.ts` by `bun run docs:config` |
-| [operations](docs/operations.md) | media storage, redirects, git, security, members; running a cluster: health during upgrades, pausing editing, the commands as functions; the backoffice's health checks and troubleshooting in [diagnostics](docs/diagnostics.md); [webhooks](docs/webhooks.md) |
+| [operations](docs/operations.md) | media storage, redirects, git, security, members; running a cluster: a worker for the jobs, health during upgrades, pausing editing, the commands as functions; the backoffice's health checks and troubleshooting in [diagnostics](docs/diagnostics.md); [webhooks](docs/webhooks.md) |
 | [umbraco-import](docs/umbraco-import.md) | importing an existing Umbraco site: the report, what converts, and what is left |
-| [natures-calendar-gaps](docs/natures-calendar-gaps.md) | what the platform still lacks for the Nature's Calendar rebuild, ranked, with the stories that cover it |
+| [next-integration](docs/next-integration.md) | what `@crombolo/next-integration` offers a Next.js front end: reads, caching, preview, members, middleware, components and images |
 | [api](docs/api.md) | the supported API: the entry points of `@crombolo/crombolo`, the compatibility promise, and how a snapshot and an import boundary hold it |
 | [bundles](docs/bundles.md) | created bundles, extensions as npm dependencies instead of App_Plugins, and bundles with a server half |
 | [forms](docs/forms.md) | form building in core: the TOML definition, entries, workflows, and the e-mail port; approval before publishing, as graphs of stages, in [workflows](docs/workflows.md) |
@@ -484,15 +299,18 @@ crombolo/
 │   │                              #    internal unless docs/api.md names it, and says so in its README
 │   ├── cli/                       # the command line on oclif, one class per command in src/commands/; `crombolo schema`
 │   │                              #    describes it (clispec); templates/ holds `basic`, the sites staged in at pack time
-│   ├── server/                    # the composition root: config, ports, adapters, createServer, the schema store, git;
-│   │                              #    background jobs, oEmbed, the event hubs, member sign-in and public access,
-│   │                              #    the media store seam (file system, S3, Azure), imaging and the bundle installer
+│   ├── server/                    # the composition roots: core.ts, what every node is built on, with createServer for
+│   │                              #    the site and createWorker for a node that runs only the jobs (story 223);
+│   │                              #    config, ports, adapters, the schema store, git, background jobs, oEmbed, the event
+│   │                              #    hubs, member sign-in and public access, the media store seam (file system, S3,
+│   │                              #    Azure), imaging and the bundle installer
 │   ├── core/                      # domain primitives — problem details, notifications, paging
 │   ├── contracts/                 # OpenApi.json (vendored from Umbraco release-18.2.0, never edited; src/overrides.ts) + types
 │   ├── data/                      # dialect seam, drivers, Kysely query layer, migrations, repositories, bundle tables
 │   ├── content/                   # every page and media write and its rules, whoever starts it (docs/architecture.md)
 │   ├── auth/                      # OAuth2 + PKCE, reference tokens, cookie redaction
-│   ├── api-management/            # contract-first router, authorization, ports, handlers
+│   ├── api-management/            # contract-first router, authorization, ports, handlers; `./domain` is all but the
+│   │                              #    router and handlers, for code that runs without the API
 │   ├── api-delivery/              # Umbraco's Delivery API over the published cache (docs/delivery-api.md)
 │   ├── common/                    # the contracts outside code uses: Result, middleware (story 210); built to JS
 │   ├── delivery-client/           # a typed client for the Delivery API, for apps; built to JavaScript
@@ -504,6 +322,7 @@ crombolo/
 │   │                              #    plugin/branding/ = theme, logos and the overrides that de-Umbraco the client,
 │   │                              #    exported as data by src/branding.ts for consumers that draw the brand;
 │   │                              #    plugin/localizations/ is generated by `localizations:build`
+│   │                              #    `./registry` is the bundle discovery and paths alone, for the worker
 │   ├── schema/                    # schema-as-code: TOML model, parser, validator, writer, sync, export, generate, check/fix/upgrade
 │   ├── transfer/                  # content transfer: the bundle format, canonical writer, reader, exporter
 │   ├── import-umbraco/            # opt-in: an Umbraco backup → a compatibility report, schema files,
@@ -549,7 +368,7 @@ MIT-licensed and neither .NET-specific:
 That is the extent of it. Crombolo does not run Umbraco packages or plugins, does
 not render Razor, and does not open an Umbraco database, so it is not a drop-in
 replacement for an Umbraco install. An existing site comes across with
-[`crombolo import umbraco`](#bring-an-existing-umbraco-site), which converts what
+[`crombolo import umbraco`](docs/umbraco-import.md), which converts what
 can be converted and reports what cannot.
 
 For contributors: `Umbraco.Web.UI.Client/mocks/` in the Umbraco repository is an

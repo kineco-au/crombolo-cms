@@ -365,7 +365,7 @@ describe('what init writes', () => {
     expect(packageNameFor('  Ardbeg & Co. ')).toBe('ardbeg-co')
     expect(packageNameFor('***')).toBe('my-site')
     // An apostrophe joins its word rather than splitting it, straight or curly.
-    expect(packageNameFor("Nature's Calendar")).toBe('natures-calendar')
+    expect(packageNameFor("Harbour's Edge")).toBe('harbours-edge')
     expect(packageNameFor('Mac\u2019s')).toBe('macs')
     // A quote in the name must not end the string it is written into.
     expect(

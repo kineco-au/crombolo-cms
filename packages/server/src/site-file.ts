@@ -10,7 +10,7 @@
  * failed export never leaves a file that looks whole.
  */
 import { rename, rm } from 'node:fs/promises'
-import { discoverBundles } from '@crombolo/backoffice-host'
+import { discoverBundles } from '@crombolo/backoffice-host/registry'
 import { type Db, NodeRepository, type NodeRow, ObjectTypes } from '@crombolo/data'
 import {
   BUNDLE_SECTIONS,
@@ -34,6 +34,7 @@ import { createTemplateFileStore } from './adapters/template-files.ts'
 import { type CromboloConfig, VERSION } from './config.ts'
 import { mediaStoreFor } from './media-files.ts'
 import { type StoredFile, streamOf } from './media-store.ts'
+import { readSiteData } from './site-data.ts'
 import { siteSections } from './site-sections.ts'
 import { TarballWriter } from './tar.ts'
 
@@ -50,6 +51,8 @@ export interface SiteExportOptions {
   drafts?: boolean
   withMembers?: boolean
   withUsers?: boolean
+  /** The site's and bundles' own tables (story 189): sealed, as people are. */
+  withSiteData?: boolean
   /** Replace every personal value before anything is written (`sanitise`). */
   anonymise?: boolean
   /**
@@ -73,6 +76,11 @@ export interface SiteExportResult {
   people: { members: number; users: number }
   /** How many distinct email addresses `--anonymise` replaced. */
   anonymised?: number
+  /**
+   * With `withSiteData`: the tables carried and their rows. `emptied` names, as
+   * `owner.table`, each table `--anonymise` had no rule for, which travels empty.
+   */
+  siteData?: { tables: number; rows: number; emptied: string[] }
 }
 
 /** The content kinds a whole site carries, each from its tree's top. */
@@ -133,6 +141,8 @@ export async function exportSite(
   const carryUsers = Boolean(options.withUsers) && !options.anonymise
   if ((carryMembers || carryUsers) && !options.passphrase)
     throw new Error('Members and users travel sealed: give a passphrase.')
+  if (options.withSiteData && !options.passphrase)
+    throw new Error("The site's own data travels sealed: give a passphrase.")
   if (options.sealContent && !options.passphrase)
     throw new Error('Sealed content needs a passphrase.')
 
@@ -167,13 +177,18 @@ export async function exportSite(
     carryMembers || carryUsers
       ? await exportPeople(db, { members: carryMembers, users: carryUsers })
       : undefined
+  const read = options.withSiteData ? await readSiteData(db, config) : undefined
+  let siteData = read?.tables
+  let emptied: string[] = []
   let anonymised: number | undefined
   if (options.anonymise) {
     const dictionaryPath = `${BUNDLE_SECTIONS.dictionary}.udt`
     const dictionary = sections.find((file) => file.path === dictionaryPath)
-    const clean = sanitise({ set, people, dictionary: dictionary?.text })
+    const clean = sanitise({ set, people, dictionary: dictionary?.text, siteData: read })
     set = clean.set
     people = clean.people
+    siteData = clean.siteData
+    emptied = clean.emptied
     anonymised = clean.emails
     if (dictionary && clean.dictionary !== undefined)
       sections = sections.map((file) =>
@@ -217,12 +232,14 @@ export async function exportSite(
     },
   }
   const seal =
-    (people || options.sealContent) && options.passphrase ? newSeal(options.passphrase) : undefined
+    (people || siteData || options.sealContent) && options.passphrase
+      ? newSeal(options.passphrase)
+      : undefined
   const planned = planStreamedBundle(
     site,
     new Map([...stored].map(([key, file]) => [key, file.size])),
     sections,
-    { people, seal, content: options.sealContent ? 'sealed' : 'open' },
+    { people, siteData, seal, content: options.sealContent ? 'sealed' : 'open' },
   )
 
   const name = options.package?.name ?? packageNameFor(`${config.siteName}-site`)
@@ -303,5 +320,14 @@ export async function exportSite(
     media: { carried: stored.size, bytes, missing, omitted: !withMedia },
     people: { members: people?.members.length ?? 0, users: people?.users.length ?? 0 },
     ...(anonymised !== undefined ? { anonymised } : {}),
+    ...(siteData
+      ? {
+          siteData: {
+            tables: siteData.length,
+            rows: siteData.reduce((total, t) => total + t.rows.length, 0),
+            emptied,
+          },
+        }
+      : {}),
   }
 }

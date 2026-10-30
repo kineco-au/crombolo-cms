@@ -17,8 +17,8 @@ can only accept requests through a server bundle's member and public routes
 (186), at `/crombolo/bundle/<id>/…`, which is a packaging mechanism, not a
 site's own address.
 
-Nature's Calendar needs endpoints: its record wizard posts to an API, it
-uploads photos, and the map reads JSON.
+Sites need endpoints: a recording wizard posts to an API, uploads photos, and
+a map reads JSON.
 
 Server actions (`'use server'`), which the first draft of this story also
 covered, are story 219.

@@ -9,7 +9,7 @@
  */
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Principal } from '@crombolo/api-management'
+import type { Principal } from '@crombolo/api-management/domain'
 import type { SchemaWorkflow } from '@crombolo/core'
 import {
   type ApprovalScheduleEntry,

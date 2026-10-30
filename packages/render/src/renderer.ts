@@ -90,6 +90,9 @@ export type RenderResult =
 
 const MAX_LAYOUT_DEPTH = 10
 
+/** Why a finished render's signal is aborted: whatever still listens can let go. */
+const RENDERED = new Error('The page has rendered.')
+
 /**
  * A whole document gets `<!DOCTYPE html>`, which JSX has no way to write and
  * without which a browser renders in quirks mode. A page that writes its own,
@@ -423,8 +426,9 @@ export class Renderer {
             this.#renderTimeoutMs,
           )
         : undefined
+    let fail = () => {}
     const stopped = new Promise<never>((_, reject) => {
-      const fail = () => reject(signal.reason)
+      fail = () => reject(signal.reason)
       if (signal.aborted) fail()
       else signal.addEventListener('abort', fail, { once: true })
     })
@@ -436,6 +440,10 @@ export class Renderer {
       return await Promise.race([work, stopped])
     } finally {
       clearTimeout(timer)
+      // Bun keeps an `AbortSignal.any` signal, its sources and all they reach
+      // alive while anything listens to it, so every render would be kept.
+      signal.removeEventListener('abort', fail)
+      deadline.abort(RENDERED)
     }
   }
 

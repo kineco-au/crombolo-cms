@@ -239,7 +239,7 @@ describe('what a bundle may declare', () => {
       field: { id: 'demo', server: 'demo', schemaVersion: 1 },
     })
     expect(validateServerBundles([simple()], [owner], VERSION).join('\n')).toContain(
-      'written for bundle schema 1; this release reads 2',
+      'written for bundle schema 1, and this release reads 3',
     )
   })
 
@@ -679,7 +679,7 @@ describe('nothing mounts a bundle except the site’s own configuration', () => 
   })
 
   test('the server mounts exactly what the configuration listed', () => {
-    expect(read('packages/server/src/server.ts')).toContain('bundles: config.bundles')
+    expect(read('packages/server/src/core.ts')).toContain('bundles: config.bundles')
   })
 
   test('discovery reads manifests and never imports a dependency’s code', () => {

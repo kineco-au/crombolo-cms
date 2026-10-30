@@ -18,6 +18,7 @@ import { approvalsMigration } from './approvals.ts'
 import { assistantMigration } from './assistant.ts'
 import { auditLogMigration } from './audit-log.ts'
 import { bundleComponentsMigration } from './bundle-components.ts'
+import { bundleGrantsMigration } from './bundle-grants.ts'
 import { bundlePackageMigration } from './bundle-package.ts'
 import { bundlesRenameMigration } from './bundles-rename.ts'
 import { changeReportMigration } from './change-report.ts'
@@ -39,6 +40,7 @@ import { formWorkflowsMigration } from './form-workflows.ts'
 import { formsMigration } from './forms.ts'
 import { groupPermissionsMigration } from './group-permissions.ts'
 import { identityMigration } from './identity.ts'
+import { jobsMigration } from './jobs.ts'
 import { logViewerMigration } from './log-viewer.ts'
 import { mediaAccessMigration } from './media-access.ts'
 import { mediaCacheMigration } from './media-cache.ts'
@@ -121,4 +123,6 @@ export const cromboloPlan = new MigrationPlan([
   mediaCacheMigration,
   mediaMemberUploadsMigration,
   mediaMemberGrantsMigration,
+  bundleGrantsMigration,
+  jobsMigration,
 ])

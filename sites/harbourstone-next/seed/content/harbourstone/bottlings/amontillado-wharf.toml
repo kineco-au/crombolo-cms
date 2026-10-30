@@ -1,0 +1,19 @@
+type = "expression"
+key = "da867218-0649-4fd5-a7cb-7addc1453415"
+name = "Amontillado Wharf"
+order = 9
+
+[values]
+title = "Amontillado Wharf"
+kind = "Sherry matured"
+productType = "Whisky"
+abv = "47%"
+age = 25
+summary = "Twenty-five years, the last ten in amontillado. Our oldest bottling."
+bottleImage = "/bottle-oloroso-pier.jpg"
+bodyText = { html = "<p>Fifteen years in refill bourbon, then ten in amontillado butts on the wharf warehouse. Fewer than 600 bottles, and most of the angels' share went to the gulls.</p>" }
+tastingNotes = [
+  "nose-walnut-polished-wood-orange-o",
+  "palate-old-leather-raisin-hazelnut",
+  "finish-extremely-long-and-dry-nuts",
+]

@@ -48,6 +48,11 @@ export interface ChainOptions {
   initialState?: string
   /** A bundle's id, for a bundle's chain; absent for core's. */
   bundle?: string
+  /**
+   * Runs a step's `up` and `backfill` somewhere other than the transaction it
+   * is ledgered in: custom tables run on their owner's connection (story 189).
+   */
+  runStep?: (tx: Db, step: (db: Db) => Promise<void>) => Promise<void>
 }
 
 function compareRelease(a: string, b: string): number {
@@ -102,12 +107,14 @@ export class MigrationPlan {
   readonly stateKey: string
   readonly initialState: string
   readonly bundle: string | undefined
+  readonly runStep: ChainOptions['runStep']
 
   constructor(migrations: readonly Migration[], options: ChainOptions = {}) {
     this.migrations = migrations
     this.stateKey = options.stateKey ?? MIGRATION_STATE_KEY
     this.initialState = options.initialState ?? INITIAL_STATE
     this.bundle = options.bundle
+    this.runStep = options.runStep
     let expected = this.initialState
     const seen = new Map<string, Migration>()
     for (const migration of migrations) {
@@ -502,8 +509,11 @@ export async function migrate(
       // run resumes at the first step that did not land and never repeats one.
       await db
         .transaction(async (tx) => {
-          await next.up(tx)
-          await next.backfill?.(tx)
+          const step = async (db: Db) => {
+            await next.up(db)
+            await next.backfill?.(db)
+          }
+          await (plan.runStep ? plan.runStep(tx, step) : step(tx))
           await writeState(tx, next.to, plan.stateKey)
           await recordInLedger(tx, {
             name: next.name,

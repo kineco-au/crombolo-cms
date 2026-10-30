@@ -1,0 +1,59 @@
+{
+  "key": "8c17e1ab-26ab-483d-8cff-0469962db510",
+  "kind": "document",
+  "contentType": {
+    "key": "aa13972a-5fd6-56a9-842f-832abb4944b2",
+    "alias": "docsPage"
+  },
+  "parent": "bfbe288f-2c69-4228-872f-9977d0ba23ae",
+  "sortOrder": 7,
+  "template": "pages/docsPage",
+  "variants": [
+    {
+      "culture": null,
+      "segment": null,
+      "name": "Tables of your own",
+      "published": true
+    }
+  ],
+  "values": [
+    {
+      "property": "body",
+      "culture": null,
+      "segment": null,
+      "editor": "Umbraco.RichText",
+      "value": {
+        "markup": "<p>Some data isn&#39;t content: sightings, bookings, scores, a log of what members did. A site can keep it in tables of its own, beside the content, without a second database. You declare the tables in <code>crombolo.config.ts</code>, and crombolo creates and upgrades them with the site, backs them up with it, and keeps them apart from its own.</p>\n<h2 id=\"declare-the-tables\">Declare the tables</h2>\n<p>Tables are declared as a list of <strong>steps</strong>. Each step changes the tables a little, and once it has shipped it is never edited: the next change is a new step.</p>\n<pre><code class=\"language-ts\">// crombolo.config.ts\nimport { defineConfig, defineSiteTables } from &#39;@crombolo/crombolo&#39;\nimport * as sightings from &#39;./queries/sightings.ts&#39;\n\nexport const tables = defineSiteTables([\n  {\n    name: &#39;sightings&#39;,\n    release: &#39;1.0.0&#39;,\n    up: (s) =&gt; [\n      s.createTable(&#39;species&#39;, {\n        id: s.integer().primaryKey(),\n        name: s.text(),\n      }),\n      s.createTable(&#39;sighting&#39;, {\n        id: s.uuid().primaryKey(),\n        species_id: s.integer().references(&#39;species&#39;, { onDelete: &#39;cascade&#39; }),\n        count: s.integer().default(1),\n        seen_at: s.timestamp(),\n        notes: s.text().nullable(),\n      }),\n    ],\n  },\n])\n\nexport default defineConfig({\n  siteName: &#39;My Site&#39;,\n  database: { tables },\n  queries: { sightings },\n})\n</code></pre>\n<p>The next time the site starts in development, the tables are created. In production, <code>crombolo upgrade</code> creates them, as it applies crombolo&#39;s own upgrades, and <code>crombolo upgrade --plan</code> shows what it will do first.</p>\n<table>\n<thead>\n<tr>\n<th>Columns</th>\n<th>Options</th>\n</tr>\n</thead>\n<tbody><tr>\n<td><code>uuid</code>, <code>varchar(n)</code>, <code>text</code>, <code>integer</code>, <code>bigint</code>, <code>boolean</code>, <code>timestamp</code>, <code>json</code>, <code>decimal(precision, scale)</code></td>\n<td><code>nullable()</code>, <code>default(value)</code>, <code>primaryKey()</code>, <code>indexed()</code>, <code>unique()</code>, <code>references(table)</code></td>\n</tr>\n</tbody></table>\n<p>A later step can add a table or column, add an index, or widen a column. Removing something is its own step, in a major release of the site.</p>\n<pre><code class=\"language-ts\">{\n  name: &#39;sighting-place&#39;,\n  release: &#39;1.1.0&#39;,\n  up: (s) =&gt; [\n    s.addColumn(&#39;sighting&#39;, &#39;place&#39;, s.text().nullable()),\n    s.addIndex(&#39;sighting&#39;, [&#39;species_id&#39;, &#39;seen_at&#39;], { descending: [&#39;seen_at&#39;] }),\n  ],\n},\n</code></pre>\n<p>When the builder can&#39;t say what you need, such as a view, a step can be SQL instead, written for SQLite and for Postgres: <code>{ name, release, sql: { sqlite: [...], postgres: [...] } }</code>.</p>\n<h2 id=\"write-a-query\">Write a query</h2>\n<p>A <strong>named query</strong> is a function in a module of your own. It&#39;s given the tables, as a <a href=\"https://kysely.dev\">Kysely</a> query builder typed from your steps, and who is asking. It returns a result: <code>ok(value)</code>, or an outcome such as <code>Outcome.notFound()</code>.</p>\n<pre><code class=\"language-ts\">// queries/sightings.ts\nimport type { TablesDatabase } from &#39;@crombolo/crombolo&#39;\nimport { ok, Outcome, type QueryCaller } from &#39;@crombolo/crombolo/server&#39;\nimport type { tables } from &#39;../crombolo.config.ts&#39;\n\ntype Db = TablesDatabase&lt;typeof tables&gt;\n\nexport async function recent(db: Db, _caller: QueryCaller, speciesId: number) {\n  const rows = await db\n    .selectFrom(&#39;sighting&#39;)\n    .innerJoin(&#39;species&#39;, &#39;species.id&#39;, &#39;sighting.species_id&#39;)\n    .select([&#39;sighting.id&#39;, &#39;species.name&#39;, &#39;sighting.count&#39;, &#39;sighting.seen_at&#39;])\n    .where(&#39;sighting.species_id&#39;, &#39;=&#39;, speciesId)\n    .orderBy(&#39;sighting.seen_at&#39;, &#39;desc&#39;)\n    .limit(20)\n    .execute()\n  return rows.length &gt; 0 ? ok(rows) : Outcome.notFound(&#39;No sightings yet.&#39;)\n}\n\nexport async function add(db: Db, caller: QueryCaller, speciesId: number) {\n  if (!(await caller.member())) return Outcome.unauthorized(&#39;Sign in to add a sighting.&#39;)\n  await db\n    .insertInto(&#39;sighting&#39;)\n    .values({ id: crypto.randomUUID(), species_id: speciesId, seen_at: new Date() })\n    .execute()\n  return ok(true)\n}\n</code></pre>\n<p>The same query runs on SQLite and on Postgres. Booleans read back as <code>true</code> or <code>false</code>, timestamps as dates, and <code>json</code> columns as values, on both.</p>\n<h2 id=\"call-it-from-a-page-or-a-route\">Call it from a page or a route</h2>\n<pre><code class=\"language-tsx\">import { site } from &#39;@crombolo/crombolo/server&#39;\n\nexport default async function Species({ model }) {\n  const sightings = (await site().queries.sightings.recent(model.value(&#39;speciesId&#39;))).unwrap()\n  return &lt;ul&gt;{sightings.map((s) =&gt; &lt;li&gt;{s.name}: {s.count}&lt;/li&gt;)}&lt;/ul&gt;\n}\n</code></pre>\n<p>To have the call typed, add this to <code>crombolo.config.ts</code>:</p>\n<pre><code class=\"language-ts\">declare module &#39;@crombolo/crombolo/server&#39; {\n  interface Register {\n    queries: { sightings: typeof sightings }\n  }\n}\n</code></pre>\n<p><code>caller.member()</code> is the signed-in member, if there is one. Asking for it makes the page personal, so it is never shared between visitors. Code in the browser, such as an island, reaches a query through one of the site&#39;s routes.</p>\n<h2 id=\"where-the-data-lives\">Where the data lives</h2>\n<ul>\n<li><strong>On SQLite</strong>, the tables are in a file beside the site&#39;s database: <code>crombolo.site.sqlite</code> next to <code>crombolo.sqlite</code>.</li>\n<li><strong>On Postgres</strong>, they are in a schema called <code>site</code>, owned by a database role crombolo makes for this site. Queries run as that role, so they can&#39;t reach crombolo&#39;s own tables. The database user needs permission to create roles. If it hasn&#39;t got it, the first start prints the statements to run once.</li>\n</ul>\n<p>The backup taken before an upgrade includes the tables. <code>crombolo export --with-site-data</code> carries them in a whole-site file, sealed under a passphrase, and importing the file writes them back. With <code>--anonymise</code>, only the tables you list under <code>database.anonymise</code> keep their rows, and you choose which columns are rewritten: <code>member</code> keeps a member&#39;s key only if that member travels too, <code>email</code> replaces an address the same way everywhere in the file, and <code>scrub</code> empties the column:</p>\n<pre><code class=\"language-ts\">database: {\n  tables,\n  anonymise: {\n    species: &#39;keep&#39;,\n    sighting: { notes: &#39;scrub&#39; },\n  },\n},\n</code></pre>",
+        "blocks": null
+      }
+    },
+    {
+      "property": "editUrl",
+      "culture": null,
+      "segment": null,
+      "editor": "Umbraco.TextBox",
+      "value": "https://github.com/kineco-au/crombolo-cms/edit/main/sites/crombolo/docs/guides/site-tables.md"
+    },
+    {
+      "property": "standfirst",
+      "culture": null,
+      "segment": null,
+      "editor": "Umbraco.TextArea",
+      "value": "Keep data that isn't content in tables of the site's own, migrated with the site, and query it from pages and routes with named queries."
+    },
+    {
+      "property": "title",
+      "culture": null,
+      "segment": null,
+      "editor": "Umbraco.TextBox",
+      "value": "Tables of your own"
+    },
+    {
+      "property": "umbracoUrlName",
+      "culture": null,
+      "segment": null,
+      "editor": "Umbraco.TextBox",
+      "value": "site-tables"
+    }
+  ]
+}

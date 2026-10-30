@@ -6,8 +6,8 @@
  * backoffice; an override is stored in `key_value` as JSON, field by field, so
  * clearing one falls back to the config again.
  */
-import type { Principal } from '@crombolo/api-management'
-import { hasSection } from '@crombolo/api-management'
+import type { Principal } from '@crombolo/api-management/domain'
+import { hasSection } from '@crombolo/api-management/domain'
 import { SYSTEM_CONTENT_TYPE_KEYS } from '@crombolo/core'
 import { ContentTypeRepository, type Db, readKeyValue, writeKeyValue } from '@crombolo/data'
 import {

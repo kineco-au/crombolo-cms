@@ -71,7 +71,7 @@ export function generateDeliveryTypes(set: SchemaSet, options: DeliveryTypesOpti
       case 'Umbraco.TrueFalse':
         return 'boolean'
       case 'Umbraco.RichText':
-        return 'ApiRichText'
+        return 'RichTextValue'
       case 'Umbraco.ContentPicker':
         return 'ContentReference'
       case 'Umbraco.MultiNodeTreePicker': {
@@ -220,9 +220,9 @@ export function generateDeliveryTypes(set: SchemaSet, options: DeliveryTypesOpti
     'ApiLink',
     'ApiMediaReference',
     'ApiMediaWithCrops',
-    'ApiRichText',
     'ContentItem',
     'MediaItem',
+    'RichTextValue',
   ].filter((shape) => new RegExp(`\\b${shape}\\b`).test(text))
   out[2] = `import type { ${shapes.join(', ')} } from '${DELIVERY_CLIENT_MODULE}'\n`
   return `${out.join('\n').trimEnd()}\n`

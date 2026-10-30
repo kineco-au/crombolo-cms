@@ -61,6 +61,13 @@ export default class Import extends BaseCommand {
       { name: 'filesRemoved', type: 'array', items: { type: 'string' } },
       { name: 'runId', type: 'string', nullable: true },
       { name: 'backup', type: 'string', nullable: true },
+      {
+        name: 'siteData',
+        type: 'object',
+        nullable: true,
+        description:
+          "the site's own data the file carried: tables and rows written, what was skipped",
+      },
     ],
     errors: ['usage', 'confirmation_required', 'refused', 'auth', 'not_found'],
   } as const
@@ -87,8 +94,9 @@ export default class Import extends BaseCommand {
         "--replace-all deletes the people the file lacks, so it cannot leave the file's people out.",
         'Use --replace with --exclude-people.',
       )
+    const manifest = ops.readBundle(dir, config.siteDir).set.manifest
     const carriesPeople =
-      !withoutPeople && ops.readBundle(dir, config.siteDir).set.manifest.people !== undefined
+      !withoutPeople && (manifest.people !== undefined || manifest.siteData !== undefined)
     const passphrase = carriesPeople
       ? await passphraseForPeople()
       : await passphraseToOpen(dir, config, { withoutPeople })
@@ -181,11 +189,23 @@ export default class Import extends BaseCommand {
     if (imported.published > 0) this.say(`  published ${imported.published} page(s)`)
     for (const failure of imported.publishFailures)
       this.warning(`  not published  ${failure.key}: ${failure.reason}`)
+    if (imported.siteData) {
+      this.say(
+        `  site data  ${imported.siteData.tables} table(s), ${imported.siteData.rows} row(s) replaced; a revert leaves them, the backup has what was here`,
+      )
+      for (const skipped of imported.siteData.skipped)
+        this.warning(`  skipped  ${skipped}: this site has no place for it`)
+    }
     this.say(
       replace === 'replace-all'
         ? `\nDone. \`crombolo content revert ${imported.runId}\` puts the files and the pages it changed back; what was deleted is in the backup.`
         : `\nDone. \`crombolo content revert ${imported.runId}\` puts it back.`,
     )
-    return { ...result, runId: imported.runId, backup: imported.backup.path ?? null }
+    return {
+      ...result,
+      runId: imported.runId,
+      backup: imported.backup.path ?? null,
+      siteData: imported.siteData ?? null,
+    }
   }
 }

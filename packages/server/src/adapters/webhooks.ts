@@ -1,5 +1,5 @@
 /** Webhooks, shaped for the Management API: secrets masked, logs as Umbraco's client reads them. */
-import type { WebhookPort, WebhookPortView } from '@crombolo/api-management'
+import type { WebhookPort, WebhookPortView } from '@crombolo/api-management/domain'
 import { nameBasedUuid, type WebhookLogEntry } from '@crombolo/data'
 import { envReference } from '../webhook-files.ts'
 import { MASKED, type WebhookService, type WebhookView } from '../webhooks.ts'

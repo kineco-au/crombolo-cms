@@ -6,7 +6,7 @@
 import { existsSync } from 'node:fs'
 import { mkdir, readdir, readFile, rename, rm, rmdir, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { FileEntry, FileResult, FileSystemPort } from '@crombolo/api-management'
+import type { FileEntry, FileResult, FileSystemPort } from '@crombolo/api-management/domain'
 
 export interface FileAreaOptions {
   /** The extension files are stored with, e.g. `.css`. */

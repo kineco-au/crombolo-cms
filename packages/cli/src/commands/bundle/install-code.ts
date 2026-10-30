@@ -12,7 +12,7 @@ export default class BundleInstallCode extends BaseCommand {
     "Starting it, or restarting a running site so its server bundles are wired, is the host's step. `content import` installs the bundle's content, and leaves its code alone.",
   ].join('\n\n')
   static override examples = [
-    '<%= config.bin %> bundle install-code ./natures-calendar-bundle /srv/sites/natures-calendar',
+    '<%= config.bin %> bundle install-code ./acme-site-bundle /srv/sites/acme',
   ]
   static override args = {
     bundle: Args.string({ required: true, description: 'the bundle package directory' }),

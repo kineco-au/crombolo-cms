@@ -220,27 +220,23 @@ no concurrency at all — trashing kept a page's old path, so restoring an
 ancestor reached into the bin; moving a page out of the bin left it trashed;
 and trashed pages shared sort orders in the bin.
 
-**Large-site budgets** — `tests/load/large-site.bench.ts` (story `086`): a site
-generated through the repository, as a real one is made — 25,000 pages up to
-five levels deep, every page created and published in three cultures, one
-section of 2,000 siblings, and 1,000 media items — then timed:
-
-| Path | Budget (p95) | SQLite | Postgres |
-| --- | --- | --- | --- |
-| tree root, a page of 100 | 100 ms | 10.8 ms | 6.3 ms |
-| tree children, a page of 100 (the wide section and a deep one) | 100 ms | 9.0 ms | 9.7 ms |
-| tree siblings, 50 either side in the wide section | 100 ms | 9.1 ms | 12.1 ms |
-| a full published-cache rebuild | 5 s on SQLite, 10 s on Postgres | 1.28 s | 1.04 s |
-| a page render, once the cache is built | 20 ms | 1.8 ms | 4.4 ms |
-
-Measured 2026-10-15 in the Docker test services on a developer machine, at the
-full size. Generating the site took about five minutes on each dialect.
+**Large-site budgets** — `tests/load/large-site.bench.ts` (stories `086` and
+`175`): a site generated through the repository, as a real one is made, every
+page created and published, with one wide section of siblings and a media
+library — then timed against its budgets. `CROMBOLO_BENCH_SIZE` picks Small
+(1,000 pages), Medium (25,000 pages in three cultures, the default) or Large
+(100,000 pages in three cultures). It measures the tree, cache memory and
+rebuild peak, the rebuild and the queries it costs a slice, warm and cold
+renders, renders during a rebuild, and renders through two minutes of
+publishing and through a burst. The sizes, budgets and the latest numbers on
+both engines are in [performance](performance.md), "Measured workloads".
 
 Every measurement is printed against its budget, and the run fails only past
 twice the budget (`CROMBOLO_BENCH_MARGIN`), so a noisy shared runner does not
 block a release while a real regression does. Neither `bun test` nor
 `test:load` collects `*.bench.ts`; `bun run test:bench` runs it, and the release
-workflow does on both dialects. `CROMBOLO_BENCH_PAGES`, `_MEDIA`, `_WIDE` and
+workflow runs Small and Medium on both dialects; Large runs weekly and on demand
+(`.github/workflows/bench-large.yml`). `CROMBOLO_BENCH_PAGES`, `_MEDIA`, `_WIDE` and
 `_SAMPLES` scale it: locally, run it small to check it works, and leave the full
 size to the release run.
 

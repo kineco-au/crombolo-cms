@@ -281,8 +281,10 @@ describe('the published package', () => {
         'DeliveryError',
         'contentKeysIn',
         'createDeliveryClient',
+        'decodeEntities',
         'isExpanded',
         'memoryConditionalStore',
+        'walkRichText',
       ])
     } finally {
       rmSync(join(dir, 'dist'), { recursive: true, force: true })

@@ -12,33 +12,33 @@ import { basename, join, resolve } from 'node:path'
 import { createMediaOperations, systemActor } from '@crombolo/content'
 import {
   type AuditCategory,
-  bundleStateKey,
-  bundleTablesIn,
   connect,
   cromboloPlan,
   type Db,
   describeRefFailure,
+  migrate,
   type NodeRow,
+  ownerTablesIn,
   type PlannedStep,
   pauseWrites,
   pendingMigrations,
   planUpgrade,
-  purgeBundleTables,
+  purgeOwnerTables,
   readWritesPaused,
+  recordedOwner,
   resolveNodeRef,
   resumeWrites,
+  tablesStateKey,
   type WritesPaused,
   writeReport,
 } from '@crombolo/data'
 import { loadSchemaDirectory, loadValueMigrations, runFix, runUpgrade } from '@crombolo/schema'
 import {
   type BackupResult,
-  type BundleChain,
   BundleConfigurationError,
   backupBefore,
   bootSchema,
   bootstrapDatabase,
-  bundleChainsFor,
   CONTENT_OBJECT_TYPES,
   CommandError,
   type ContentCheckResult,
@@ -47,18 +47,21 @@ import {
   type CromboloConfig,
   checkBundleContent,
   checkSchemaDirectory,
+  closeTables,
   createFileIntake,
   createMediaEventSink,
   createMediaPort,
   exportSite,
   extractTarball,
   formTypesFor,
+  grantableBundle,
+  grantBundle,
   installBundleContent,
   installDatabase,
   MediaFileStore,
   mediaStoreFor,
-  pendingBundleSteps,
-  planBundleUpgrades,
+  pendingTablesSteps,
+  planTablesUpgrades,
   type ReplaceMode,
   type ReplaceSummary,
   RUN_BACKUP_DIR,
@@ -70,7 +73,9 @@ import {
   type SiteExportResult,
   setting,
   syncOptionsFor,
+  type TablesChain,
   type TransferInput,
+  tablesChainsFor,
   useSchemaStore,
   VERSION,
 } from '@crombolo/server'
@@ -381,13 +386,16 @@ export async function contentExport(
   }
 }
 
-/** The wired bundles' chains, checked as boot checks them, or a refusal naming every problem. */
-function chainsFor(config: CromboloConfig): BundleChain[] {
+/** The site's and the wired bundles' chains, checked as boot checks them, or a refusal naming every problem. */
+function chainsFor(config: CromboloConfig): TablesChain[] {
   try {
-    return bundleChainsFor(config)
+    return tablesChainsFor(config)
   } catch (error) {
     if (error instanceof BundleConfigurationError)
-      throw new CommandError('The configured bundles cannot be used.', error.problems)
+      throw new CommandError(
+        "The site's tables or the configured bundles cannot be used.",
+        error.problems,
+      )
     throw error
   }
 }
@@ -437,7 +445,7 @@ export async function upgradePlan(config: CromboloConfig): Promise<UpgradePlanRe
   const { db, node, chains } = await upgradeContext(config, {})
   try {
     const steps = await planUpgrade(db, cromboloPlan)
-    const bundles = await planBundleUpgrades(db, chains)
+    const bundles = await planTablesUpgrades(db, chains)
     const check = await checkSchemaDirectory(db, config, node)
     return {
       steps: steps.map(plannedStep),
@@ -466,7 +474,7 @@ export async function upgradeCheck(
   try {
     const report = await checkSchemaDirectory(db, config, node, { set: input.set ?? {} })
     if (report.siteChecked) await writeReport(db, report.findings, { source: 'upgrade' })
-    const bundles = await pendingBundleSteps(db, chains)
+    const bundles = await pendingTablesSteps(db, chains)
     return {
       bundles: bundles.map((bundle) => ({
         id: bundle.id,
@@ -510,6 +518,7 @@ export async function upgradeFix(
       outstanding: fix.check.outstanding,
     }
   } finally {
+    await closeTables(chains)
     await db.close()
   }
 }
@@ -544,7 +553,7 @@ export async function upgradeRun(
     // Read before anything runs: `installDatabase` applies core's steps and then
     // each bundle's, so this is what the upgrade itself applied.
     const corePending = (await pendingMigrations(db, cromboloPlan)).map((step) => step.name)
-    const bundlesPending = await pendingBundleSteps(db, chains)
+    const bundlesPending = await pendingTablesSteps(db, chains)
     await installDatabase(db, config, chains)
     const bundlesApplied = bundlesPending
       .filter((bundle) => bundle.pending.length > 0)
@@ -578,6 +587,7 @@ export async function upgradeRun(
         : null,
     }
   } finally {
+    await closeTables(chains)
     await db.close()
   }
 }
@@ -785,6 +795,28 @@ function refuseWired(config: CromboloConfig, id: string): void {
     )
 }
 
+/**
+ * Grants a bundle the whole of what its package asks to do with the site, as
+ * an operator of this environment (story 222): what the back office's Grant
+ * does, for a pipeline or a fresh environment.
+ */
+export async function bundleGrant(
+  config: CromboloConfig,
+  id: string,
+  input: { by?: string } = {},
+): Promise<{ id: string; packageName: string; version: string; permissions: string[] }> {
+  const pkg = grantableBundle(config.siteDir, id)
+  if (typeof pkg === 'string') throw new CommandError(pkg)
+  const db = await connect({ dialect: config.dialect, file: config.sqliteFile })
+  try {
+    await migrate(db, cromboloPlan, { by: config.nodeId })
+    const permissions = await grantBundle(db, pkg, input.by ?? null)
+    return { id: pkg.id, packageName: pkg.packageName, version: pkg.version, permissions }
+  } finally {
+    await db.close()
+  }
+}
+
 /** Read-only: what purging a bundle would drop. */
 export async function bundlePurgePlan(
   config: CromboloConfig,
@@ -793,30 +825,37 @@ export async function bundlePurgePlan(
   refuseWired(config, id)
   const db = await connect({ file: config.sqliteFile })
   try {
-    return { id, tables: await bundleTablesIn(db, id) }
+    const place = await recordedOwner(db, config, id)
+    return { id, tables: place ? await ownerTablesIn(db, place) : [] }
   } finally {
     await db.close()
   }
 }
 
 /**
- * Backs up, then drops every table under the bundle's prefix and forgets its
- * state, ledgered as a `purge` against the bundle.
+ * Backs up, then drops the bundle's schema and role, or deletes its file, and
+ * forgets its state, ledgered as a `purge` against the bundle.
  */
 export async function bundlePurge(
   config: CromboloConfig,
   id: string,
   input: { backupTaken?: boolean } = {},
-): Promise<{ backup: BackupResult; dropped: string[] }> {
+): Promise<{ backup: BackupResult; dropped: string[]; roleLeft?: string }> {
   refuseWired(config, id)
   const backup = await backupBefore(config, { reason: 'purge', backupTaken: input.backupTaken })
   const db = await connect({ file: config.sqliteFile })
   try {
-    const dropped = await purgeBundleTables(db, id, {
+    const place = await recordedOwner(db, config, id)
+    if (!place) return { backup, dropped: [] }
+    const purged = await purgeOwnerTables(db, place, {
       by: config.nodeId,
-      stateKey: bundleStateKey(id),
+      stateKey: tablesStateKey(id),
     })
-    return { backup, dropped }
+    return {
+      backup,
+      dropped: purged.tables,
+      ...(purged.roleLeft ? { roleLeft: purged.roleLeft } : {}),
+    }
   } finally {
     await db.close()
   }

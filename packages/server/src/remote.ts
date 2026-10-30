@@ -15,7 +15,7 @@ import { createWriteStream } from 'node:fs'
 import { mkdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, sep } from 'node:path'
-import { hasSection, type Principal } from '@crombolo/api-management'
+import { hasSection, type Principal } from '@crombolo/api-management/domain'
 import { DEVICE_CODE_GRANT, REMOTE_CLIENT_ID } from '@crombolo/auth'
 import { managementApiPath, RemotePermissions, type RemoteVerb } from '@crombolo/core'
 import { AuditLog, auditRecord, type Db, type RemoteJob, RemoteJobRepository } from '@crombolo/data'
@@ -255,6 +255,8 @@ export function createRemote(options: RemoteOptions): Remote {
         anonymise: !full,
         withMembers: full,
         withUsers: full,
+        // Anonymised, it carries what the owners' rules allow.
+        withSiteData: true,
         sealContent: true,
         passphrase,
       })

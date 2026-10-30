@@ -124,7 +124,9 @@ function registry(options: {
         ? manifest(
             name,
             version,
-            options.server?.includes(name) ? { server: 'serve', schemaVersion: 2 } : {},
+            options.server?.includes(name)
+              ? { server: 'serve', schemaVersion: 3, permissions: ['redirects.read'] }
+              : {},
           )
         : // Claims the field, but is no valid bundle: no id, no peer range.
           { name, version, crombolo: { extensions: [{ type: 'dashboard' }] } }
@@ -156,6 +158,7 @@ function marketplace(options: {
   applyContentOnInstall?: boolean
   runtimeInstalls?: boolean
   installsElsewhere?: { message: string; url?: string }
+  grants?: Parameters<typeof createMarketplace>[0]['grants']
 }) {
   const root = options.root ?? site()
   const extensions = createExtensionRegistry(root, { cache: false })
@@ -173,6 +176,7 @@ function marketplace(options: {
       marketplaceUrl: 'https://www.npmjs.com/search?q=keywords%3Acrombolo-bundle',
       extensions,
       siteDir: root,
+      grants: options.grants,
       fetch: registry({
         // The bundles the install cases use, unless a case says otherwise.
         hits: options.hits ?? INSTALLABLE,
@@ -497,7 +501,7 @@ describe('a bundle that runs code on the server (story 194)', () => {
       '@acme/tasks',
       true,
       '1.2.3',
-      server ? { server: 'serve', schemaVersion: 2 } : {},
+      server ? { server: 'serve', schemaVersion: 3, permissions: ['redirects.read'] } : {},
     )
     writeFileSync(
       join(root, 'package.json'),
@@ -525,11 +529,54 @@ describe('a bundle that runs code on the server (story 194)', () => {
       server: ['@acme/tasks'],
       installs: leaves(root, true),
     })
-    const outcome = await market.install('@acme/tasks', undefined, { acceptServerCode: true })
+    const outcome = await market.install('@acme/tasks', undefined, {
+      acceptServerCode: true,
+      grant: ['redirects.read'],
+    })
     expect(outcome.ok).toBe(true)
     expect(calls.map((c) => c.action)).toEqual(['add'])
     expect(outcome.message).toContain("once your site's developers turn it on")
     expect(outcome.message).not.toContain('crombolo.config.ts')
+  })
+
+  test('says what it asks to do, and installs only when exactly that is granted (story 222)', async () => {
+    const root = site()
+    const calls: Call[] = []
+    const recorded: { id: string; by: string | null }[] = []
+    const { market } = marketplace({
+      root,
+      calls,
+      server: ['@acme/tasks'],
+      installs: leaves(root, true),
+      grants: {
+        state: () => {
+          throw new Error('not read here')
+        },
+        grant: async (pkg, by) => {
+          recorded.push({ id: pkg.id, by })
+          return undefined as never
+        },
+      },
+    })
+    const asked = await market.install('@acme/tasks', undefined)
+    expect(asked.needsServerConsent).toBe(true)
+    expect(asked.permissions).toEqual([
+      { permission: 'redirects.read', allows: "See the site's redirects" },
+    ])
+    // The yes without the grant, or a grant that is not the whole list, installs nothing.
+    for (const grant of [[], ['redirects.read', 'redirects.write']])
+      expect(
+        (await market.install('@acme/tasks', undefined, { acceptServerCode: true, grant }))
+          .needsServerConsent,
+      ).toBe(true)
+    expect(calls).toEqual([])
+    const outcome = await market.install('@acme/tasks', undefined, {
+      acceptServerCode: true,
+      grant: ['redirects.read'],
+      by: 'admin@example.com',
+    })
+    expect(outcome.ok).toBe(true)
+    expect(recorded).toEqual([{ id: 'acme-tasks', by: 'admin@example.com' }])
   })
 
   test('a version that gained server code after the listing is removed again', async () => {
@@ -698,7 +745,11 @@ describe('the endpoints', () => {
         Response.json({
           'dist-tags': { latest: '1.2.3' },
           versions: {
-            '1.2.3': manifest('@acme/tasks', '1.2.3', { server: 'serve', schemaVersion: 2 }),
+            '1.2.3': manifest('@acme/tasks', '1.2.3', {
+              server: 'serve',
+              schemaVersion: 3,
+              permissions: [],
+            }),
           },
         }),
     })

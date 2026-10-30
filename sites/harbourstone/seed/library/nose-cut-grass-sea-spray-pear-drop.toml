@@ -1,0 +1,8 @@
+type = "tastingNote"
+key = "6902f568-4948-4583-90db-9a76d52d0fc1"
+name = "Nose — Cut grass, sea spray, pear d…"
+order = 12
+
+[values]
+aspect = "Nose"
+note = "Cut grass, sea spray, pear drops."

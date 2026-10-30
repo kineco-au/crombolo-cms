@@ -14,7 +14,7 @@ import type {
   PublicAccessPort,
   PublicAccessResponse,
   PublicAccessStatus,
-} from '@crombolo/api-management'
+} from '@crombolo/api-management/domain'
 import { ObjectTypes } from '@crombolo/core'
 import {
   type Db,

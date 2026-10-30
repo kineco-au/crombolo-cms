@@ -21,8 +21,8 @@ import {
   seedIdentity,
 } from '@crombolo/data'
 import { ensureApiClient } from './api-client.ts'
-import { type BundleChain, migrateBundles, pendingBundleSteps } from './bundle-tables.ts'
 import { type CromboloConfig, runsOnLocalhost } from './config.ts'
+import { migrateTables, pendingTablesSteps, type TablesChain } from './custom-tables.ts'
 import { logger } from './logging.ts'
 import { linkMediaFolders } from './media-folders.ts'
 
@@ -30,7 +30,7 @@ import { linkMediaFolders } from './media-folders.ts'
 export class UpgradePendingError extends Error {
   constructor(
     readonly steps: string[],
-    /** Each bundle with steps pending, and those steps. */
+    /** The site's own tables and each bundle's with steps pending, and those steps. */
     readonly bundles: { id: string; steps: string[] }[] = [],
   ) {
     const parts: string[] = []
@@ -40,7 +40,7 @@ export class UpgradePendingError extends Error {
       )
     for (const bundle of bundles)
       parts.push(
-        `The bundle "${bundle.id}" has ${bundle.steps.length} step(s) pending on this database: ${bundle.steps.join(', ')}.`,
+        `${bundle.id === 'site' ? "The site's own tables have" : `The bundle "${bundle.id}" has`} ${bundle.steps.length} step(s) pending on this database: ${bundle.steps.join(', ')}.`,
       )
     super(
       `${parts.join(' ')} ` +
@@ -72,31 +72,39 @@ export class DatabaseNotReadyError extends Error {
  * migrated would race the node that owns the schema, and one that quietly
  * served an unmigrated database would answer queries against missing tables.
  */
-export async function attachDatabase(config: CromboloConfig): Promise<Bootstrap> {
+export async function attachDatabase(
+  config: CromboloConfig,
+  chains: readonly TablesChain[] = [],
+): Promise<Bootstrap> {
   const db = await connect({ dialect: config.dialect, file: config.sqliteFile })
-  const pending = await pendingMigrations(db, cromboloPlan)
-  if (pending.length > 0) {
+  try {
+    const pending = (await pendingMigrations(db, cromboloPlan)).map((m) => m.name)
+    // The site's own tables too: its named queries run on this node.
+    for (const chain of await pendingTablesSteps(db, chains))
+      pending.push(...chain.pending.map((m) => `${chain.id}: ${m.name}`))
+    if (pending.length > 0) throw new DatabaseNotReadyError(pending)
+  } catch (error) {
     await db.close()
-    throw new DatabaseNotReadyError(pending.map((m) => m.name))
+    throw error
   }
   return { db, seededAdminPassword: undefined }
 }
 
 /**
- * `chains` are the wired bundles' tables, which only a node that mounts bundles
- * passes: a bundle's steps pending in production refuse the boot just as
- * core's do, and a database ahead of a bundle's code refuses it by name.
+ * `chains` are the custom tables: the site's and the wired bundles'. Their
+ * steps pending in production refuse the boot just as core's do, and a
+ * database ahead of their code refuses it by name.
  */
 export async function bootstrapDatabase(
   config: CromboloConfig,
-  chains: readonly BundleChain[] = [],
+  chains: readonly TablesChain[] = [],
 ): Promise<Bootstrap> {
   const db = await connect({ dialect: config.dialect, file: config.sqliteFile })
   try {
     // pendingMigrations throws when the database is newer than this code.
     const pending = await pendingMigrations(db, cromboloPlan)
     const fresh = (await readState(db)) === INITIAL_STATE
-    const bundles = fresh ? [] : await pendingBundleSteps(db, chains)
+    const bundles = fresh ? [] : await pendingTablesSteps(db, chains)
     const bundlesPending = bundles.filter((bundle) => bundle.pending.length > 0)
     if ((pending.length > 0 || bundlesPending.length > 0) && !fresh && !config.development)
       throw new UpgradePendingError(
@@ -122,11 +130,11 @@ export async function bootstrapDatabase(
 export async function installDatabase(
   db: Db,
   config: CromboloConfig,
-  chains: readonly BundleChain[] = [],
+  chains: readonly TablesChain[] = [],
 ): Promise<string | undefined> {
   await migrate(db, cromboloPlan, { by: config.nodeId })
   // Core first, so a bundle step always runs against a core it declared itself compatible with.
-  await migrateBundles(db, chains, { by: config.nodeId })
+  await migrateTables(db, config, chains, { by: config.nodeId })
 
   // In production a password is never made up: the pipeline supplies one, or
   // the owner sets the site up in the browser (docs/operations.md). With an API

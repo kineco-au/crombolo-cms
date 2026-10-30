@@ -5,7 +5,7 @@ import type {
   Principal,
   SaveDocument,
   SkipTake,
-} from '@crombolo/api-management'
+} from '@crombolo/api-management/domain'
 import {
   type DocumentAggregate,
   normaliseUuid,

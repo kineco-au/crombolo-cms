@@ -22,6 +22,12 @@ export interface Db {
    */
   readSnapshot<T>(fn: (reader: Db) => Promise<T>): Promise<T>
   close(): Promise<void>
+  /**
+   * Postgres only: a handle on the same pool whose every transaction runs as
+   * `role` with `search_path` set to `schema`, a statement on its own being a
+   * transaction of its own (story 189). Closing it leaves the pool open.
+   */
+  confine?(role: string, schema: string): Db
   /** Postgres only: calls `onNotify` for each `NOTIFY` on `channel`; resolves to the way to stop. */
   listen?(channel: string, onNotify: (payload: string) => void): Promise<() => Promise<void>>
 }
@@ -178,6 +184,10 @@ class PostgresDb implements Db {
   #inTransaction: boolean
 
   #readOnly: boolean
+  /** What every transaction begins with; a confined handle's role and search path. */
+  #prelude: readonly string[]
+  /** A confined handle borrows the pool, so closing it closes nothing. */
+  #borrowed: boolean
 
   constructor(
     sql: SqlTag,
@@ -185,23 +195,37 @@ class PostgresDb implements Db {
     inTransaction = false,
     lockTimeoutMs?: number,
     readOnly = false,
+    prelude: readonly string[] = [],
   ) {
     this.#sql = sql
     this.locks = locks ?? createLockManager(this, { timeoutMs: lockTimeoutMs })
     this.#inTransaction = inTransaction
     this.#readOnly = readOnly
+    this.#prelude = prelude
+    this.#borrowed = prelude.length > 0
+  }
+
+  /** A statement outside a transaction that needs one: read-only, or confined. */
+  get #wraps(): boolean {
+    return !this.#inTransaction && (this.#readOnly || this.#prelude.length > 0)
   }
 
   async query<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> {
-    if (this.#readOnly && !this.#inTransaction)
-      return this.transaction((tx) => tx.query<T>(sql, params))
+    if (this.#wraps) return this.transaction((tx) => tx.query<T>(sql, params))
     return (await this.#sql.unsafe(this.dialect.render(sql), params)) as T[]
   }
 
   async exec(sql: string, params: unknown[] = []): Promise<void> {
-    if (this.#readOnly && !this.#inTransaction)
-      return this.transaction((tx) => tx.exec(sql, params))
+    if (this.#wraps) return this.transaction((tx) => tx.exec(sql, params))
     await this.#sql.unsafe(this.dialect.render(sql), params)
+  }
+
+  confine(role: string, schema: string): Db {
+    const q = (id: string) => this.dialect.quote(id)
+    return new PostgresDb(this.#sql, this.locks, false, undefined, this.#readOnly, [
+      `SET LOCAL ROLE ${q(role)}`,
+      `SET LOCAL search_path TO ${q(schema)}`,
+    ])
   }
 
   /**
@@ -213,6 +237,7 @@ class PostgresDb implements Db {
     if (this.#inTransaction) return fn(this)
     return this.#sql.begin(async (sql) => {
       if (this.#readOnly) await sql.unsafe('SET TRANSACTION READ ONLY')
+      for (const statement of this.#prelude) await sql.unsafe(statement)
       const tx = new PostgresDb(sql, this.locks, true)
       const store = { owner: this, tx: tx as unknown }
       try {
@@ -228,12 +253,13 @@ class PostgresDb implements Db {
     if (this.#inTransaction) return fn(this)
     return this.#sql.begin(async (sql) => {
       await sql.unsafe('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY')
+      for (const statement of this.#prelude) await sql.unsafe(statement)
       return fn(new PostgresDb(sql, this.locks, true))
     })
   }
 
   async close(): Promise<void> {
-    await this.#sql.close()
+    if (!this.#borrowed) await this.#sql.close()
   }
 
   async listen(channel: string, onNotify: (payload: string) => void): Promise<() => Promise<void>> {

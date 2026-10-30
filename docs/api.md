@@ -9,11 +9,11 @@ Everything supported comes from `@crombolo/crombolo`, split by who is using it:
 
 | Entry point | For | What is in it |
 | --- | --- | --- |
-| `@crombolo/crombolo` | a site | `defineConfig`, `crombolo()`, `cromboloServer()` and `ServerHandle`; the presets for identity providers, e-mail and media stores; the view API (`Blocks`, `Form`, `Island`, `SeoHead`, `AntiforgeryMeta`, `search`, `usePage` and their types); `VERSION` |
-| `@crombolo/crombolo/bundle` | a server bundle's author | `ServerBundle`; its routes (`route`, `BundleRoute`, `RouteHandler`, `RouteContext`, `RouteMethod`, `RouteOptions`); what a handler is given (`BundleRouteContext`, `Principal`, `BundleMember`, `BundleCaller`, `BundleHost` and the capabilities, `BundleMedia` and its types among them); `BundleSection`; `defineBundleTables` and its types |
+| `@crombolo/crombolo` | a site | `defineConfig`, `crombolo()`, `cromboloServer()` and `ServerHandle`; the site's own tables (`defineSiteTables`, `TablesDatabase`, `ShapeDatabase`, `SiteTables`, `SiteStep`, `SqlStep`, `AnonymiseRules`, story 189); the presets for identity providers, e-mail and media stores; the view API (`Blocks`, `Form`, `Island`, `SeoHead`, `AntiforgeryMeta`, `search`, `usePage` and their types); `VERSION` |
+| `@crombolo/crombolo/bundle` | a server bundle's author | `ServerBundle`; its routes (`route`, `BundleRoute`, `RouteHandler`, `RouteContext`, `RouteMethod`, `RouteOptions`); what a handler is given (`BundleRouteContext`, `Principal`, `BundleMember`, `BundleCaller`, `BundleHost` and the capabilities, `BundleMedia` and its types among them); `BundleSection`; `defineBundleTables`, `TablesDatabase` and their types; jobs (`BundleJob`, `OwnerJobs`, `JobInfo`, `JobSchedule`, `JobStatus`) |
 | `@crombolo/crombolo/navigation` | a site's page code | the functions that end a page early, mirroring `next/navigation`: `redirect`, `permanentRedirect`, `notFound`, `forbidden`, `unauthorized`, the HTTP-named extras (`foundAt`, `movedPermanentlyTo`, `seeOther`, `badRequest`, `gone`, `unprocessableContent`) and `rethrow` (story 206) |
 | `@crombolo/crombolo/headers` | a site's page code | `cookies()` and `headers()`, read-only, mirroring `next/headers` |
-| `@crombolo/crombolo/server` | a site's page and data code | `site()`, the site's services acting as the visitor; `Result`, `Ok`, `Outcome`, `ok`, `isOk`, `isOutcome` and their types |
+| `@crombolo/crombolo/server` | a site's page and data code | `site()`, the site's services acting as the visitor; named queries (`NamedQuery`, `QueryCaller`, `QueriesOf`, `SiteQueries`, and `Register` for the config's types); background jobs (`SiteJobs`, `SiteJobStatus`, `JobInfo`, `JobSchedule`, story 187); `Result`, `Ok`, `Outcome`, `ok`, `isOk`, `isOutcome` and their types |
 | `@crombolo/crombolo/routes` | a site's route handlers | the route contract bound to crombolo's types (`route`, `RouteHandler`, `RouteContext`, `SiteRoute`, `RouteOptions`, `RouteMethod`, `ROUTE_METHODS`), `Outcome`, `ok`, `FieldError`, `CookieOptions` and `fromRouteModule` (story 211) |
 | `@crombolo/crombolo/middleware` | a site's middleware | the middleware contract bound to crombolo's types (`Middleware`, `MiddlewareHandler`, `MiddlewareContext`), `rewrite`, `withCookie`, `NextResponse` and `fromNextMiddleware` (story 210) |
 | `@crombolo/crombolo/islands-react` | the browser | `mount`, which renders a `'use client'` island with React; Crombolo's island build includes it, and a Vite build lists it as an input (story 209) |
@@ -84,7 +84,7 @@ work at the root through 0.34, marked deprecated:
 | Name | Now in |
 | --- | --- |
 | `ServerBundle`, `ServerBundleRoute`, `BundleRequest`, `BundleHost`, `BundleCapability`, `BundleDocuments`, `BundleLog`, `BundleMethod`, `BundleRedirects`, `BundleRedirectRule`, `BundleRedirectInput`, `BundleSection`, `Principal`, `AppAlias` | `@crombolo/crombolo/bundle` |
-| `defineBundleTables`, `assertBundleTables`, `bundleTablesCompatibility`, `BundleTables`, `BundleTablesCapability`, `BundleStep`, `TableHandle`, `Where` | `@crombolo/crombolo/bundle` |
+| `defineBundleTables`, `assertBundleTables`, `bundleTablesCompatibility`, `BundleTables`, `BundleStep` | `@crombolo/crombolo/bundle` |
 | `createServer`, `loadConfig`, `liveNodes`, `LiveNode`, `BundleReload`, `ReloadedBundle` | `@crombolo/crombolo/host` |
 | `validateBundlePackage`, `peerRangeProblem`, `BundlePackage`, `CromboloField`, `PackageJson` | `@crombolo/crombolo/host` |
 | `checkBundleCode`, `installBundleCode`, `BundleCodeCheck`, `BundleCodeInstall`, `BundleCodeOptions` | `@crombolo/crombolo/host` |
@@ -147,3 +147,24 @@ capabilities on `context.bundle`. Site routes no longer answer under
 `/crombolo/bundle/<id>/`. A package with a server half declares
 `"schemaVersion": 2`, and one that does not is refused. `bundles.md`, Part 3,
 "Routes", lists the changes to make.
+
+## A bundle's tables move into a place of their own (unreleased)
+
+**An exception to the promise above.** Story 189 moved a bundle's tables out
+of crombolo's schema, with no minor of deprecation, at the maintainer's
+decision (189, decision 10): nothing outside the repository used them.
+The `tables` capability, `BundleTablesCapability`, `TableHandle`, `Where` and
+`SiteSql` (`site().sql`) are gone. A bundle that declares tables gets
+`context.bundle.database`, a Kysely handle typed from its steps, without asking
+for a capability; a backfill is handed the same handle. The site's own tables
+are queried through `site().queries`. `bundles.md`, Part 4, "Moving from 062's
+prefixed tables", says what happens to tables already made.
+
+## Bundles declare their permissions (unreleased)
+
+**An exception to the promise above.** Story 222 moved the bundle format to
+schema 3 with no minor of deprecation, at the maintainer's decision: a server
+half declares `crombolo.permissions`, and one written for schema 2 is refused.
+`@crombolo/crombolo/bundle` is unchanged; what changed is the package's
+manifest, and that a capability refuses a method its declared permissions do
+not cover. `bundles.md`, "Permissions", lists them.

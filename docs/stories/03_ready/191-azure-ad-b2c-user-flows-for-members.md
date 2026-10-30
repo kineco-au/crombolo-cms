@@ -21,9 +21,9 @@ local member through `external_login`. B2C differs:
 - Custom attributes arrive as `extension_*` claims the site wants on the member.
 - B2C loads page layouts from URLs the site serves.
 
-Raised by Nature's Calendar (`wt-natures-calendar` story 017): over 400,000
-members in B2C, with title, adult, referral source, communication preferences and
-supporter number as custom attributes. Microsoft stopped selling B2C to new
+Raised by a site with hundreds of thousands of members in B2C, with title,
+adult, referral source, communication preferences and supporter number as
+custom attributes. Microsoft stopped selling B2C to new
 customers in May 2025 and supports existing tenants until at least 2030; Entra
 External ID succeeds it, so the preset should leave that move to configuration.
 
@@ -105,7 +105,7 @@ the fake issuer in `tests/support/fake-oidc.ts`.
    to Entra External ID.
 
 **Out of scope:**
-- B2C page layouts (Nature's Calendar story 085: the site serves them).
+- B2C page layouts: the site serves them.
 - Back-office overrides of a provider's policies. The client id and secret
   overrides from 033 still apply.
 

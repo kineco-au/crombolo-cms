@@ -171,7 +171,7 @@ describe('generateDeliveryTypes', () => {
     for (const line of [
       '/** The heading */',
       'title: string | null',
-      'body: ApiRichText | null',
+      'body: RichTextValue | null',
       'count: number | null',
       'visible: boolean | null',
       'published: string | null',
@@ -200,7 +200,7 @@ describe('generateDeliveryTypes', () => {
     expect(text).toContain('Image: ImageMediaProperties')
     expect(text).toContain('export interface ImageMediaProperties {\n}')
     expect(text).toContain(
-      "import type { ApiBlockList, ApiColor, ApiContentReference, ApiElement, ApiLink, ApiMediaReference, ApiMediaWithCrops, ApiRichText, ContentItem, MediaItem } from '@crombolo/delivery-client'",
+      "import type { ApiBlockList, ApiColor, ApiContentReference, ApiElement, ApiLink, ApiMediaReference, ApiMediaWithCrops, ContentItem, MediaItem, RichTextValue } from '@crombolo/delivery-client'",
     )
   })
 

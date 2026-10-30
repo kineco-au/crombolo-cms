@@ -9,8 +9,13 @@
  * request asked for (story 029), the schedule job doing the publishing.
  */
 
-import type { Principal } from '@crombolo/api-management'
-import { type Actor, systemActor } from '@crombolo/content'
+import type { Principal } from '@crombolo/api-management/domain'
+import {
+  type Actor,
+  type ApprovalsGate,
+  type ContentPrincipal,
+  systemActor,
+} from '@crombolo/content'
 import {
   approvalsNeeded,
   DocumentPermissions,
@@ -1162,5 +1167,22 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
         items: await Promise.all(page.items.map((r) => view(principal, r))),
       }
     },
+  }
+}
+
+/**
+ * The approval workflows as the document operations meet them. A user's principal
+ * is the backoffice's own, passed straight through; a local operator has none.
+ */
+export function approvalsGate(approvals: Approvals): ApprovalsGate {
+  const as = (who: ContentPrincipal | undefined) => who as Principal | undefined
+  return {
+    publishRefusal: (who, key, action) => approvals.publishRefusal(as(who), key, action),
+    branchRefusal: (who, key) => approvals.branchRefusal(as(who), key),
+    newPageRefusal: (who, parentKey, typeKey) =>
+      approvals.newPageRefusal(as(who), parentKey, typeKey),
+    beforeSave: (who, key) => approvals.beforeSave(as(who), key),
+    afterSave: (who, key) => approvals.afterSave(as(who), key),
+    afterDirectPublish: (who, key, what) => approvals.afterDirectPublish(as(who), key, what),
   }
 }

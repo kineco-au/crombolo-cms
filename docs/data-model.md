@@ -306,11 +306,136 @@ reads (`174`), read-only connections and the dialect seam are untouched.
   `bun run check:sql` (part of `bun run check`) enforces it.
 - **Things to remember.** `where(col, 'in', [])` compiles to invalid SQL: return
   early on an empty list. Counts come back as numbers on SQLite and strings on
-  Postgres: wrap them in `Number()`. A table that is not crombolo's own (a
-  bundle's) is typed by its declaration, not `CoreTables`.
+  Postgres: wrap them in `Number()`. A table that is not crombolo's own (the
+  site's or a bundle's) is typed by its declaration, not `CoreTables`, and is
+  reached through its owner's handle ([Custom tables](#custom-tables)).
 - **New migrations** use `db.q.schema`, with column types from `dialect.types`
   (`sql.raw(db.dialect.types.textCi)`), in the usual `Migration` record.
   Released migrations stay as written.
+
+## Custom tables
+
+Tables the site or a bundle declares, as against crombolo's own (stories `062`,
+`189`). Each **owner** — the site, or a bundle that declares tables — writes
+steps with the declarative builder, ledgered in `migration_history` under its
+id (`site` for the site), and queries them through a Kysely handle on a
+connection that reaches nothing else. The builder, the rules and the ledger are
+[`bundles.md` Part 4](bundles.md#part-4--tables-a-bundle-owns); this is where
+the tables live.
+
+**The site declares its own in its config:**
+
+```ts
+import { defineConfig, defineSiteTables } from '@crombolo/crombolo'
+import * as observations from '#queries/observations.ts'
+
+export const tables = defineSiteTables([
+  {
+    name: 'observations',
+    release: '1.0.0',
+    up: (s) => [
+      s.createTable('species', { id: s.integer().primaryKey(), name: s.text() }),
+      s.createTable('observation', {
+        id: s.uuid().primaryKey(),
+        species_id: s.integer().references('species'),
+        counted: s.decimal(10, 2).default(0),
+        seen_at: s.timestamp(),
+      }),
+    ],
+  },
+])
+
+export default defineConfig({ database: { tables }, queries: { observations } })
+```
+
+A site's step may also be SQL, for what the builder cannot say — a view, a
+trigger, an extension's index:
+`{ name, release, kind?, sql: [...] | { sqlite: [...], postgres: [...] } }`,
+run as written under the site's role and checksummed by its statements. The
+builder does not follow it, so the tables a SQL step makes are changed by SQL
+steps, and their types are declared by hand: `ShapeDatabase<Shape>` or
+`Kysely<…>` beside `TablesDatabase<typeof tables>`. Bundles may not have one.
+The site's steps are checked against the `version` in its `package.json`, when
+it has one.
+
+### Where they live
+
+| | Postgres | SQLite |
+| --- | --- | --- |
+| The site | schema `site` | `crombolo.site.sqlite` beside crombolo's file |
+| A bundle | schema `bundle_<id>` (hyphens to `_`) | `crombolo.bundle.<id>.sqlite` |
+| Owned by | a login-less role per owner | its own file |
+
+**Role names are unique to the database** (story 189, decision 11): a role
+belongs to the whole server, and a bundle's id is the same on every site that
+installs it, so fixed names would let one database's CMS take a role owning
+another's schema.
+
+| Owner | Role | Example |
+| --- | --- | --- |
+| the site | `{site}_{hash}` | `crombolo_3fa9c2e1` |
+| a bundle | `{site}_{bundle id}_{hash}` | `crombolo_acme_tasks_3fa9c2e1` |
+
+`{site}` is `siteName` lowercased, letters and digits, at most 13 characters;
+`{hash}` is the first eight hex characters of a SHA-256 of the database's name.
+The name is worked out once, when the role is made, and recorded in `key_value`
+(`Crombolo.Tables.<owner>.Role`), so renaming the site or the database moves
+nothing. Each role carries the comment `crombolo custom tables for <database>`;
+a role that already exists with another database's comment refuses the boot or
+install by name rather than being shared.
+
+### Provisioning
+
+At the first boot of a node that owns the database (and when a bundle with
+tables is first migrated) the CMS, as its own database user:
+
+1. creates the role `NOLOGIN` and comments it;
+2. grants it to itself, so it may `SET ROLE` to it;
+3. creates the schema `AUTHORIZATION` the role.
+
+Where the user lacks `CREATEROLE` (or `CREATE` on the database), boot stops with
+`OwnerSetupNeededError`, printing those statements for an operator to run once;
+the next boot checks the role's comment, the grant (`pg_has_role … 'SET'` on 16
+and later) and the schema's owner, and carries on. There is no second
+connection string and no stored password. A `web` node never provisions: it
+reads the recorded name, and refuses to boot while the site's steps are pending.
+
+### Connections
+
+- **Postgres:** `db.confine(role, schema)` is a handle on the same pool whose
+  every transaction begins `SET LOCAL ROLE <role>` and
+  `SET LOCAL search_path TO <schema>`, a statement on its own being a
+  transaction of its own. The role drops back at commit, so it is safe behind a
+  pooler. A migration step runs inside crombolo's own transaction with the role
+  and path taken for it and given back, so the step and its ledger row commit
+  together.
+- **SQLite:** a connection to the owner's file, opened at boot and closed with
+  the server; crombolo's file and the other owners' are never attached. In
+  memory, an owner's database lives as long as crombolo's.
+- **The handle** (`tablesDatabase`, `handle.ts`) is Kysely over that
+  connection, typed from the steps (`TablesDatabase<typeof tables>`). Its own
+  `transaction().execute(…)` holds one transaction until the callback settles.
+  Values are made portable (`values.ts`): written dates become ISO text,
+  booleans the dialect's, objects JSON; read columns are converted by their
+  declared type, so a boolean is a boolean and a timestamp a `Date` on both.
+
+What confinement guards against is mistakes and injected input: values are
+always bound. A literal `RESET ROLE` or `ATTACH DATABASE` would escape, and
+bundles are trusted in-process code (story 173), not sandboxed.
+
+### Backups, exports and copies
+
+- **The pre-upgrade backup** copies each owner's SQLite file beside
+  crombolo's (`backupBefore`, `owners`). On Postgres `CROMBOLO_PG_DUMP` dumps
+  the database, schemas included; roles are the server's, not the database's,
+  so a restore onto another server re-creates them at its first boot.
+- **`crombolo export`** carries custom tables only with `--with-site-data`,
+  sealed under a passphrase. Under `--anonymise` it is default-deny: the
+  config's `database.anonymise` (and a bundle's `crombolo.anonymise` in its
+  `package.json`) declares, table by table, what may travel — `'keep'`, or
+  columns rewritten as `member`, `email` or `scrub` — and an undeclared table
+  travels empty, named in the export's output. An import writes the rows back,
+  and a pull carries them ([`content-transfer.md`](content-transfer.md#site-data)).
 
 ## Migrations
 

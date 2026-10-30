@@ -100,6 +100,7 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'workspaceView:Crombolo.WorkspaceView.Webhook.Storage',
       'dashboard:Crombolo.Dashboard.Addresses',
       'dashboard:Crombolo.Dashboard.Changes',
+      'dashboard:Crombolo.Dashboard.BackgroundJobs',
       'dashboard:Crombolo.Dashboard.AuditLog',
       'dashboard:Crombolo.Dashboard.Welcome',
       'dashboard:Crombolo.Dashboard.Settings',

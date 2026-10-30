@@ -33,7 +33,7 @@ draws: `cromboloServer()` and the `ServerHandle` it returns (with
 
 | Consumer | Imports today |
 |---|---|
-| Sites (`sites/*`, `wt-natures-calendar`) | `@crombolo/crombolo` only. It already has explicit named exports and no `export *`. |
+| Sites (`sites/*`, and sites built outside this repository) | `@crombolo/crombolo` only. It already has explicit named exports and no `export *`. |
 | First-party bundles (`simple-redirects`, `entra`) | Types only, from the internal `@crombolo/server`: `ServerBundle`, `BundleRequest`, `BundleSection`, `BundleRedirectInput`, `ProviderOverrideInput`. |
 | Crombolo Cloud | `@crombolo/crombolo` 33 times (`createServer`, `loadConfig`, `CromboloConfig`, `ServerHandle`, the media stores, `liveNodes`, `VERSION`, `validateBundlePackage`, `peerRangeProblem`, `defineConfig`, `oidc`, `Html`), and `@crombolo/crombolo/branding`. Also `@crombolo/cli` 17 times (`upgradePlan`, `upgradeFix`, `contentImport`, `siteExport`, `findTemplate`), `@crombolo/contracts` and `@crombolo/remote-conformance`. |
 | Every internal package | Published, with `exports: "."` exposing all of it. `@crombolo/server` and `@crombolo/data` each have about 105 export lines. |

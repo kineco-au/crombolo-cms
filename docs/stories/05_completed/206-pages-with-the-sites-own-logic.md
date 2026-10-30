@@ -26,10 +26,8 @@ through `usePage()`, from a render scope held in `AsyncLocalStorage`
   schema (189), members or media scoped to whoever is asking. Async components
   can fetch, but only over HTTP.
 
-Nature's Calendar's member pages need all three. In `WT-NC`,
-`Web/Controllers/RenderMvc/MyRecordsSpeciesController.cs` redirects when the
-query lacks a species, and `RecentObservationsController.cs` loads observations
-before rendering. See `docs/natures-calendar-gaps.md`, gap 1.
+Member pages on sites moving from Umbraco need all three: one redirects when
+its query lacks a value it needs, another loads records before rendering.
 
 ## Decided (2026-10-29)
 

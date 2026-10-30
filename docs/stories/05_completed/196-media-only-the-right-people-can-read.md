@@ -26,8 +26,7 @@ Page rules don't fit files as they are:
 - The Delivery API reads every rule on every request
   (`PublicAccessRepository.allRules`).
 
-Raised by Nature's Calendar (`wt-natures-calendar` stories 014 and 044):
-members attach photos to observations, millions of them, and only the member
+Raised by a site whose members attach photos to records, millions of them, and only the member
 who took one, and back-office users, may see it. The decision was to keep them
 in the media library rather than give bundles storage of their own (188), so
 the library has to protect them. Story 197 makes the library scale to that

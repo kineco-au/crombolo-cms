@@ -7,7 +7,7 @@
  * one differs from the one its alias derives, and names its content types by
  * alias. A legacy `<key>.toml` with keys still reads.
  */
-import { WEBHOOK_EVENT_ALIASES } from '@crombolo/api-management'
+import { WEBHOOK_EVENT_ALIASES } from '@crombolo/api-management/domain'
 import { derivedKey } from '@crombolo/core'
 
 export type WebhookStore = 'files' | 'database'

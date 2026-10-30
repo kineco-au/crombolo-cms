@@ -111,6 +111,14 @@ export interface CoreTables {
     stylesheets: string
     update_date: Timestamp
   }
+  bundle_grant: {
+    bundle_id: string
+    granted_at: Timestamp
+    granted_by: string | null
+    package_name: string
+    permissions: string
+    version: string
+  }
   cache_instruction: {
     checkpoint: BigInteger | null
     created_at: Timestamp
@@ -404,6 +412,27 @@ export interface CoreTables {
     update_date: Timestamp
     workflow_name: string
     workflow_type: string
+  }
+  job: {
+    attempts: number
+    claimed_at: Timestamp | null
+    claimed_by: string | null
+    created_at: Timestamp
+    finished_at: Timestamp | null
+    id: string
+    last_error: string | null
+    max_attempts: number
+    name: string
+    next_attempt_at: Timestamp
+    owner: string
+    payload: string
+    progress: string | null
+    queued_by: string | null
+    state: string
+  }
+  job_schedule: {
+    last_occurrence: Timestamp
+    schedule_key: string
   }
   key_value: {
     key: string

@@ -11,7 +11,7 @@ import type {
   TemplateQueryPort,
   TemplateQueryRequest,
   TemplateQuerySort,
-} from '@crombolo/api-management'
+} from '@crombolo/api-management/domain'
 import type { ContentTypeRepository } from '@crombolo/data'
 import type { PublishedCache, PublishedContent } from '@crombolo/render'
 

@@ -305,7 +305,20 @@ describe('declaring media', () => {
       ...over,
     }) as ServerBundle
   const problems = (b: ServerBundle) =>
-    validateServerBundles([b], [stubBundlePackage('observations')], VERSION)
+    validateServerBundles(
+      [b],
+      [
+        stubBundlePackage('observations', {
+          field: {
+            id: 'observations',
+            server: 'observations',
+            schemaVersion: 3,
+            permissions: ['media.read', 'media.write', 'member.delegate'],
+          },
+        }),
+      ],
+      VERSION,
+    )
 
   test('the capability needs folders by path and a size limit, and names known types', () => {
     expect(
@@ -403,7 +416,14 @@ type Obs = BundleRouteContext<'media'>
 const PASSWORD = 'correct-horse-battery'
 const PACKAGE = {
   '@acme/observations': {
-    json: { crombolo: { id: BUNDLE, server: BUNDLE, name: 'Observations' } },
+    json: {
+      crombolo: {
+        id: BUNDLE,
+        server: BUNDLE,
+        name: 'Observations',
+        permissions: ['media.read', 'media.write', 'member.delegate'],
+      },
+    },
   },
 }
 const answer = (result: { ok: boolean; status?: number }) =>

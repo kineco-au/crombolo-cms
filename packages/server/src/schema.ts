@@ -252,7 +252,8 @@ export interface CachePollerOptions {
    */
   content?: {
     served(): { checkpoint: number | undefined; builtAt: Date } | undefined
-    behind(latest: number): void
+    /** Resolves once the rebuild it starts has finished, so a poll ends caught up. */
+    behind(latest: number): Promise<void> | void
     /**
      * Told that every change from the one it serves up to `checkpoint` left the
      * pages alone — media only (story 197) — so its snapshot holds them too.
@@ -302,6 +303,7 @@ export class CacheInstructionPoller {
   #paused: WritesPaused | undefined
   /** The checkpoint this node last asked its cache to catch up to, and when. */
   #asked: { checkpoint: number; at: number } | undefined
+  #catchingUp: Promise<void> | void = undefined
   #latest: number | undefined
   /** The checkpoint whose changes have all been read for the caches; undefined before the start. */
   #followed: number | undefined
@@ -400,7 +402,10 @@ export class CacheInstructionPoller {
     }
     for (const id of this.#seen) if (id <= this.#cursor - CURSOR_WINDOW) this.#seen.delete(id)
     await this.#follow(latest)
-    const served = this.#catchUp(latest)
+    this.#catchUp(latest)
+    await this.#catchingUp
+    this.#catchingUp = undefined
+    const served = this.#options.content?.served()
     await touchServer(db, {
       nodeId,
       ...nodeState,
@@ -480,7 +485,7 @@ export class CacheInstructionPoller {
     const asked = this.#asked
     if (!asked || asked.checkpoint < latest || Date.now() - asked.at > REASK_AFTER_MS) {
       this.#asked = { checkpoint: latest, at: Date.now() }
-      content.behind(latest)
+      this.#catchingUp = content.behind(latest)
     }
     return served
   }

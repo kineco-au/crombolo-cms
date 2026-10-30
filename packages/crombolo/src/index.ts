@@ -29,6 +29,15 @@ export type {
   SubmittedValues,
 } from '@crombolo/core'
 export { allFormFields, formFieldType, storingFormFields } from '@crombolo/core'
+// Story 189: the site's own tables, declared in its config.
+export {
+  defineSiteTables,
+  type ShapeDatabase,
+  type SiteStep,
+  type SiteTables,
+  type SqlStep,
+  type TablesDatabase,
+} from '@crombolo/data'
 export type {
   BlockGridArea,
   BlockGridItem,
@@ -92,6 +101,7 @@ export {
 } from '@crombolo/render'
 export type { Child } from '@crombolo/render/jsx-runtime'
 export {
+  type AnonymiseRules,
   type AzureMediaStoreOptions,
   type AzureSchemaStoreOptions,
   awsIdentityCenter,
@@ -168,10 +178,7 @@ export { peerRangeProblem, validateBundlePackage } from '@crombolo/backoffice-ho
 export type {
   BundleStep,
   BundleTables,
-  BundleTablesCapability,
   LiveNode,
-  TableHandle,
-  Where,
 } from '@crombolo/data'
 /** @deprecated Import it from `@crombolo/crombolo/bundle`. */
 /** @deprecated Import it from `@crombolo/crombolo/bundle`. */

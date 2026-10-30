@@ -20,9 +20,9 @@ and its own source. A self-hosted site deploys that from its repository; a host
 that runs the server for its customers has no way to receive it, and would
 have to invent a format and a check of its own.
 
-Raised by a site that is part application (Nature's Calendar, a citizen-science
-site whose recording, moderation and imports are server bundles), on a host
-that runs every site's `server.ts` itself.
+Raised by a site that is part application, whose recording, moderation and
+imports are server bundles, on a host that runs every site's `server.ts`
+itself.
 
 **Decided (2026-10-27):**
 - **Which files are the code.** The site's `package.json` declares them, as

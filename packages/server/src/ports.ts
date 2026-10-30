@@ -22,15 +22,7 @@ import {
   type ExtensionRegistry,
   toResponseModels,
 } from '@crombolo/backoffice-host'
-import {
-  type ApprovalsGate,
-  type ContentPrincipal,
-  createDocumentOperations,
-  createMediaOperations,
-  type DocumentOperations,
-  type EventSink,
-  SILENT,
-} from '@crombolo/content'
+import type { EventSink } from '@crombolo/content'
 import {
   CORE_SECTION_ALIASES,
   DEFAULT_UPLOAD_SETTINGS,
@@ -39,13 +31,11 @@ import {
   permissionsForPath,
 } from '@crombolo/core'
 import {
-  appendCacheInstruction,
   ContentEventRepository,
   ContentTypeRepository,
   type Db,
   DynamicRootRepository,
   LanguageRepository,
-  RedirectRepository,
   TagRepository,
   UserRepository,
 } from '@crombolo/data'
@@ -74,31 +64,27 @@ import { createReferencePort } from './adapters/references.ts'
 import { createRelationPort } from './adapters/relations.ts'
 import {
   createSchemaFileWriter,
-  type SchemaFiles,
   type SchemaFileWriter,
+  schemaFiles,
 } from './adapters/schema-files.ts'
 import { createSearchIndexPort } from './adapters/search-index.ts'
 import { createTemplateFileStore } from './adapters/template-files.ts'
 import { createTemplateQueryPort } from './adapters/template-query.ts'
 import { avatarUrls, createUserPorts } from './adapters/users.ts'
 import { createWebhookPort } from './adapters/webhooks.ts'
-import { type Approvals, createApprovals } from './approvals.ts'
+import { backOfficeUrl } from './back-office-url.ts'
 import { COMPONENT_SNIPPETS } from './component-snippets.ts'
 import { type CromboloConfig, type UserLinkSender, VERSION } from './config.ts'
-import { createMediaEventSink } from './content-events.ts'
 import type { ContentNotifier } from './content-notifications.ts'
-import { writeDomainsFor } from './domains.ts'
 import { type EmailPort, resolveEmailPort } from './email.ts'
-import { createFileIntake, TemporaryFileMissingError } from './file-intake.ts'
-import { formTypesFor } from './form-types.ts'
+import { createFileIntake } from './file-intake.ts'
 import { createLogViewerPort } from './log-viewer.ts'
 import { logger } from './logging.ts'
 import { MediaFileStore } from './media-files.ts'
 import { createModelsBuilderPort } from './models-builder.ts'
+import { createNodeOperations, type NodeOperations } from './node-operations.ts'
 import { createOEmbedService } from './oembed.ts'
-import { createRedirectTracker } from './redirects.ts'
-import { componentAliasesIn, type SchemaBoot } from './schema.ts'
-import { publishSchema } from './schema-store.ts'
+import type { SchemaBoot } from './schema.ts'
 import { TwoFactorService, USER_TWO_FACTOR_PROVIDER } from './two-factor.ts'
 import { createWebhookService, type WebhookService } from './webhooks.ts'
 
@@ -364,34 +350,6 @@ export function resolveUserLinkSender(
   return config.development ? logUserLink : undefined
 }
 
-/** Where the backoffice writes schema files, and whether it may. */
-export function schemaFiles(config: CromboloConfig): SchemaFiles {
-  const store = config.schemaStore
-  return {
-    schemaDir: config.schemaDir,
-    writable: config.schemaWritable,
-    componentAliases: () => componentAliasesIn(config.componentsDir),
-    formTypes: formTypesFor(config),
-    // Only when a store is configured: a schema directory in a repository is
-    // already where the files durably live.
-    onChanged: store
-      ? async () => {
-          const report = await publishSchema(store, config.schemaDir)
-          if (report.written.length > 0 || report.removed.length > 0) {
-            logger('schema').info(
-              'Published schema to {store}: {written} written, {removed} removed',
-              {
-                store: store.description,
-                written: report.written.length,
-                removed: report.removed.length,
-              },
-            )
-          }
-        }
-      : undefined,
-  }
-}
-
 export interface DepsOptions {
   /** Published pages a site route answers in place of, for the health check (story 211). */
   hiddenByRoutes?: () => Promise<Array<{ route: string; owner: string; page: string; url: string }>>
@@ -430,24 +388,8 @@ export interface DepsOptions {
   onSearchQueued?: () => void
   /** Queues content notifications for changes made outside the router (story 045). */
   notifier?: ContentNotifier
-}
-
-/** The back office's address, e.g. `https://site.example/crombolo`; undefined when the site's own is not set. */
-export function backOfficeUrl(
-  config: Pick<CromboloConfig, 'applicationUrl' | 'backOfficePath'>,
-): string | undefined {
-  return config.applicationUrl
-    ? `${config.applicationUrl.replace(/\/$/, '')}${config.backOfficePath}`
-    : undefined
-}
-
-/** A page's address in the back office, for a link in an e-mail. */
-export function documentEditUrl(
-  config: Pick<CromboloConfig, 'applicationUrl' | 'backOfficePath'>,
-  key: string,
-): string | undefined {
-  const base = backOfficeUrl(config)
-  return base ? `${base}/section/content/workspace/document/edit/${key}` : undefined
+  /** The node's document and media operations, when it has built them already. */
+  operations?: NodeOperations
 }
 
 function createTemporaryFilePort(files: MediaFileStore): TemporaryFilePort {
@@ -496,7 +438,25 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
   const mediaFiles =
     options.mediaFiles ?? new MediaFileStore(options.config.mediaStore ?? options.config.mediaDir)
   deps.temporaryFiles = createTemporaryFilePort(mediaFiles)
-  const valueIntake = createFileIntake(mediaFiles)
+  const operations =
+    options.operations ??
+    (options.db
+      ? createNodeOperations({
+          db: options.db,
+          config: options.config,
+          cache: options.cache,
+          nodeState: options.schema?.nodeState,
+          nodeId: options.schema?.nodeId,
+          mediaFiles,
+          email,
+          notifier: options.notifier,
+          contentEvents: options.contentEvents,
+          webhooks: options.webhooks,
+          nudgeEvents: options.nudgeEvents,
+          backOfficeUrl: backOfficeUrl(options.config),
+        })
+      : undefined)
+  const valueIntake = operations?.valueIntake ?? createFileIntake(mediaFiles)
   deps.oembed = createOEmbedService(options.fetch)
   // The whole components tree, which is one root with folders rather than
   // Umbraco's split of ~/Views and ~/Views/Partials. The backoffice reaches it
@@ -585,20 +545,7 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
       valueIntake,
     })
     // Every media write, whoever starts it (story 165).
-    deps.mediaOperations = createMediaOperations({
-      db: options.db,
-      repository: {
-        nodeState: options.schema?.nodeState,
-        nodeId: options.schema?.nodeId,
-        valueIntake,
-      },
-      events: createMediaEventSink({ webhooks: options.webhooks, nudge: options.nudgeEvents }),
-      files: mediaFiles,
-      // Only the items it touched: a media change leaves the pages alone (story 197).
-      onChange: (change) => options.cache?.media?.apply(change),
-      refusalReason: (error) =>
-        error instanceof TemporaryFileMissingError ? error.message : undefined,
-    })
+    deps.mediaOperations = operations?.media
     deps.blueprints = createBlueprintPort(options.db, {
       nodeState: options.schema?.nodeState,
       valueIntake,
@@ -683,7 +630,7 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
         rebuild: async () => {
           cache.invalidate()
           cache.media?.clear()
-          await cache.snapshot()
+          await cache.fresh()
         },
         isRebuilding: () => false,
       }
@@ -692,21 +639,7 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
       onChange: () => options.cache?.invalidate(),
       nodeId: options.schema?.nodeId,
     })
-    const db = options.db
-    const tracker = options.cache
-      ? createRedirectTracker({
-          cache: options.cache,
-          redirects: new RedirectRepository(db),
-          enabled: options.config.trackRedirects,
-          instruct: () =>
-            appendCacheInstruction(db, {
-              kind: 'content',
-              payload: { redirects: true },
-              by: options.schema?.nodeId,
-            }),
-        })
-      : undefined
-    if (options.cache)
+    if (operations && options.cache)
       deps.documents = createDocumentPort(
         options.db,
         options.cache,
@@ -715,50 +648,13 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
           nodeId: options.schema?.nodeId,
           valueIntake,
         },
-        tracker,
+        operations.tracker,
         options.config.siteDir,
         Boolean(email),
       )
-    if (deps.documents) {
-      const db = options.db
-      // Every document write, whoever starts it (story 170). Approvals publish
-      // through it too, so what an approval publishes is cached, tracked and
-      // announced as any publish is.
-      let operations: DocumentOperations | undefined
-      const approvals = createApprovals({
-        db,
-        nodeState: options.schema?.nodeState,
-        email,
-        backOfficeUrl: backOfficeUrl(options.config),
-        notifier: options.notifier,
-        publisher: {
-          publish: (key, cultures, actor, approvedHead) =>
-            (operations as DocumentOperations).publish(actor, key, {
-              cultures,
-              expectedHead: approvedHead,
-            }),
-          unpublish: (key, cultures, actor) =>
-            (operations as DocumentOperations).unpublish(actor, key, cultures),
-        },
-      })
-      deps.approvals = approvals
-      operations = createDocumentOperations({
-        db,
-        repository: {
-          nodeState: options.schema?.nodeState,
-          nodeId: options.schema?.nodeId,
-          valueIntake,
-        },
-        events: options.contentEvents ?? SILENT,
-        approvals: approvalsGate(approvals),
-        redirects: tracker,
-        onChange: () => options.cache?.invalidate(),
-        afterDomains: (node, assignment) =>
-          writeDomainsFor(db, options.config.siteDir, node, assignment),
-        refusalReason: (error) =>
-          error instanceof TemporaryFileMissingError ? error.message : undefined,
-      })
-      deps.documentOperations = operations
+    if (deps.documents && operations) {
+      deps.approvals = operations.approvals
+      deps.documentOperations = operations.documents
     }
   }
   return deps
@@ -805,19 +701,5 @@ function userTwoFactorPort(service: TwoFactorService): UserTwoFactorPort {
   }
 }
 
-/**
- * The approval workflows as the document operations meet them. A user's principal
- * is the backoffice's own, passed straight through; a local operator has none.
- */
-export function approvalsGate(approvals: Approvals): ApprovalsGate {
-  const as = (who: ContentPrincipal | undefined) => who as Principal | undefined
-  return {
-    publishRefusal: (who, key, action) => approvals.publishRefusal(as(who), key, action),
-    branchRefusal: (who, key) => approvals.branchRefusal(as(who), key),
-    newPageRefusal: (who, parentKey, typeKey) =>
-      approvals.newPageRefusal(as(who), parentKey, typeKey),
-    beforeSave: (who, key) => approvals.beforeSave(as(who), key),
-    afterSave: (who, key) => approvals.afterSave(as(who), key),
-    afterDirectPublish: (who, key, what) => approvals.afterDirectPublish(as(who), key, what),
-  }
-}
+export { schemaFiles } from './adapters/schema-files.ts'
+export { backOfficeUrl, documentEditUrl } from './back-office-url.ts'

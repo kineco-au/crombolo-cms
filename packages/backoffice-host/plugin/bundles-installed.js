@@ -17,7 +17,7 @@
 import { css, html, nothing, repeat } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { carriesTags } from './bundles-carries.js'
-import { listInstalled, uninstallBundle } from './bundles-client.js'
+import { grantBundle, listInstalled, uninstallBundle, withdrawBundle } from './bundles-client.js'
 
 /** Where each part of a bundle stands on this site, in the words of someone running it. */
 function status(item) {
@@ -30,9 +30,11 @@ function status(item) {
     )
   if (item.carries?.server)
     parts.push(
-      item.wired
-        ? html`<span>Server features on</span>`
-        : html`<span>Server features off until the site's configuration includes it</span>`,
+      !item.on
+        ? html`<span>Off until what it asks to do is approved</span>`
+        : item.wired
+          ? html`<span>Server features on</span>`
+          : html`<span>Server features off until the site's configuration includes it</span>`,
     )
   return parts.length > 0 ? parts : html`<span>Ready</span>`
 }
@@ -90,6 +92,74 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
     } finally {
       this._busy = ''
     }
+  }
+
+  /** Approves everything it asks to do, or withdraws that, turning it on or off (story 222). */
+  async #setGrant(item, grant) {
+    this._busy = item.packageName
+    try {
+      const outcome = grant ? await grantBundle(item.id) : await withdrawBundle(item.id)
+      this._notice = outcome.message ?? ''
+      if (outcome.ok) await this.#load()
+    } catch (error) {
+      this._notice = error instanceof Error ? error.message : String(error)
+    } finally {
+      this._busy = ''
+    }
+  }
+
+  /** What it may do with the site, and the button that approves or withdraws it. */
+  #permissions(item) {
+    if (!item.carries?.server) return nothing
+    const asks = item.permissions ?? []
+    return html`
+      <h4>What it may do</h4>
+      ${
+        asks.length === 0
+          ? html`<p>Nothing beyond its own data: it asks for no access to the site's content, members or settings.</p>`
+          : html`<ul class="asks">
+              ${asks.map(
+                (ask) =>
+                  html`<li class=${(item.missing ?? []).includes(ask.permission) ? 'waiting' : ''}>
+                    ${ask.allows}
+                  </li>`,
+              )}
+            </ul>`
+      }
+      ${
+        item.on
+          ? html`<p class="note">
+                ${
+                  item.granted
+                    ? `Approved${item.granted.by ? ` by ${item.granted.by}` : ''} on ${new Date(item.granted.at).toLocaleDateString()}.`
+                    : 'Needs no approval.'
+                }
+              </p>
+              ${
+                item.granted
+                  ? html`<uui-button
+                      look="secondary"
+                      color="danger"
+                      label="Withdraw approval"
+                      .state=${this._busy === item.packageName ? 'waiting' : undefined}
+                      @click=${() => this.#setGrant(item, false)}></uui-button>`
+                  : nothing
+              }`
+          : html`<p class="note">
+                ${
+                  item.granted
+                    ? 'This version asks for more than was approved, so it is off until you approve all of it.'
+                    : 'It is off until you approve all of what it asks to do.'
+                }
+              </p>
+              <uui-button
+                look="primary"
+                color="warning"
+                label="Approve and turn on"
+                .state=${this._busy === item.packageName ? 'waiting' : undefined}
+                @click=${() => this.#setGrant(item, true)}></uui-button>`
+      }
+    `
   }
 
   #pick(item) {
@@ -173,6 +243,7 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
         <dt>Works with</dt>
         <dd>Crombolo ${item.peerRange}</dd>
       </dl>
+      ${this.#permissions(item)}
       ${
         this._installs
           ? html`<uui-button
@@ -187,6 +258,12 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
   }
 
   static styles = css`
+    .asks {
+      padding-left: 1.25em;
+    }
+    .asks li.waiting {
+      font-weight: 600;
+    }
     :host {
       display: block;
       padding: var(--uui-size-layout-1, 24px);

@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/server",
-  "version": "0.37.0",
+  "version": "0.38.0",
   "description": "Internal to crombolo, with no compatibility promise: use @crombolo/crombolo. The crombolo HTTP server: routing, configuration, media stores and background jobs.",
   "license": "MIT",
   "author": "Crombolo",
@@ -20,7 +20,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./remote-credentials": "./src/remote-credentials.ts",
-    "./atomic-write": "./src/atomic-write.ts"
+    "./atomic-write": "./src/atomic-write.ts",
+    "./worker": "./src/worker.ts"
   },
   "files": [
     "src",

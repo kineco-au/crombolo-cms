@@ -210,6 +210,22 @@ export default async function Home({ model }) {
     )
   })
 
+  test('a finished render lets go of its signal, so nothing listening keeps the page alive', async () => {
+    const h = await site({
+      'homePage.tsx': `export default function Home({ signal }) {
+  globalThis.__renderSignal = signal
+  signal.addEventListener('abort', () => {})
+  return <p>done</p>
+}
+`,
+    })
+    const response = await h.server.fetch(new Request(`${ORIGIN}/`))
+    expect(await response.text()).toContain('<p>done</p>')
+    const signal = (globalThis as { __renderSignal?: AbortSignal }).__renderSignal
+    expect(signal?.aborted).toBe(true)
+    expect(String(signal?.reason?.message)).toBe('The page has rendered.')
+  })
+
   test('a visitor who leaves stops the render, and it is not reported as a template error', async () => {
     const h = await site({ 'homePage.tsx': HANGS }, 0)
     const visitor = new AbortController()

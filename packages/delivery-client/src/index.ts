@@ -146,10 +146,165 @@ export interface ApiBlockGrid<Content = ApiElement, Settings = ApiElement> {
   items: ApiBlockGridItem<Content, Settings>[]
 }
 
-/** Rich text: its markup, with links already this site's URLs. */
-export interface ApiRichText {
-  markup: string
-  blocks: unknown[]
+/** Text in a rich-text tree. */
+export interface RichTextTextElement {
+  $type: 'RichTextTextElement'
+  tag: '#text'
+  text: string
+}
+
+/** A tag in a rich-text tree, its `data-*` attributes without their prefix. */
+export interface RichTextGenericElement<
+  Tag extends string = string,
+  Attributes = RichTextAttributes,
+> {
+  $type: 'RichTextGenericElement'
+  tag: Tag
+  attributes: Attributes
+  elements: RichTextElement[]
+}
+
+export type RichTextAttributes = Record<string, unknown>
+
+/**
+ * A link: to a page, with its `route` and no `href`; to media, with `href` its
+ * URL; or anywhere else, with `href` as written. A local link to nothing has
+ * neither.
+ */
+export interface RichTextLinkAttributes extends RichTextAttributes {
+  href?: string
+  target?: string
+  title?: string
+  destinationId?: string
+  destinationType?: string
+  linkType?: 'Content' | 'Media'
+  route?: ApiRoute
+}
+
+/** An image; from the media library, `src` is its URL with the crop query kept. */
+export interface RichTextImageAttributes extends RichTextAttributes {
+  src?: string
+  alt?: string
+  width?: string
+  height?: string
+}
+
+/** Where a block sits: `content-id` names its entry in the value's `blocks`. */
+export interface RichTextBlockAttributes extends RichTextAttributes {
+  'content-id': string
+}
+
+/** The tags whose attributes are known. */
+export interface RichTextTags {
+  a: RichTextGenericElement<'a', RichTextLinkAttributes>
+  img: RichTextGenericElement<'img', RichTextImageAttributes>
+  'umb-rte-block': RichTextGenericElement<'umb-rte-block', RichTextBlockAttributes>
+  'umb-rte-block-inline': RichTextGenericElement<'umb-rte-block-inline', RichTextBlockAttributes>
+}
+
+export type RichTextBlockElement = RichTextTags['umb-rte-block' | 'umb-rte-block-inline']
+
+/** Any element below the root. */
+export type RichTextElement = RichTextGenericElement | RichTextTextElement
+
+/**
+ * A rich-text value: Umbraco's `RichTextOutputAsJson` tree, the only form the
+ * Delivery API answers rich text in (story 216).
+ */
+export interface RichTextValue<Content = ApiElement, Settings = ApiElement> {
+  tag: '#root'
+  attributes: RichTextAttributes
+  elements: RichTextElement[]
+  blocks: ApiBlockListItem<Content, Settings>[]
+}
+
+/**
+ * What `walkRichText` makes of each node, given what it made of the node's
+ * children. A tag with no visitor of its own goes to `element`; a block to
+ * `block` when there is one, with its entry in `blocks`.
+ */
+export interface RichTextVisitors<Result, Content = ApiElement, Settings = ApiElement> {
+  text(node: RichTextTextElement): Result
+  element(node: RichTextGenericElement, children: Result[]): Result
+  block?(item: ApiBlockListItem<Content, Settings> | undefined, node: RichTextBlockElement): Result
+  tags?: {
+    [Tag in keyof RichTextTags]?: (node: RichTextTags[Tag], children: Result[]) => Result
+  } & { [tag: string]: ((node: never, children: Result[]) => Result) | undefined }
+}
+
+const ENTITIES: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: '\u00a0',
+  shy: '\u00ad',
+  copy: '©',
+  reg: '®',
+  trade: '™',
+  hellip: '…',
+  mdash: '—',
+  ndash: '–',
+  lsquo: '‘',
+  rsquo: '’',
+  ldquo: '“',
+  rdquo: '”',
+  laquo: '«',
+  raquo: '»',
+  bull: '•',
+  middot: '·',
+  deg: '°',
+  times: '×',
+  divide: '÷',
+  euro: '€',
+  pound: '£',
+}
+
+/**
+ * Text or an attribute from a rich-text tree as characters: the tree keeps
+ * entities as the CMS stored them, as Umbraco's does. Unknown names are left.
+ */
+export function decodeEntities(text: string): string {
+  if (!text.includes('&')) return text
+  return text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+\d*);/gi, (whole, name: string) => {
+    if (name[0] !== '#') return ENTITIES[name] ?? ENTITIES[name.toLowerCase()] ?? whole
+    const code =
+      name[1] === 'x' || name[1] === 'X'
+        ? Number.parseInt(name.slice(2), 16)
+        : Number(name.slice(1))
+    return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole
+  })
+}
+
+const BLOCK_TAGS = new Set(['umb-rte-block', 'umb-rte-block-inline'])
+
+/** A rich-text tree folded through `visitors`, children first: what each top-level node made. */
+export function walkRichText<Result, Content = ApiElement, Settings = ApiElement>(
+  tree: RichTextValue<Content, Settings>,
+  visitors: RichTextVisitors<Result, Content, Settings>,
+): Result[] {
+  const blocks = new Map(
+    tree.blocks.flatMap((item) => {
+      const id = (item.content as { id?: unknown } | null)?.id
+      return typeof id === 'string' ? [[id.toLowerCase(), item] as const] : []
+    }),
+  )
+  const visit = (node: RichTextElement): Result => {
+    if (node.tag === '#text') return visitors.text(node as RichTextTextElement)
+    const element = node as RichTextGenericElement
+    if (visitors.block && BLOCK_TAGS.has(element.tag)) {
+      const block = element as RichTextBlockElement
+      const id = String(block.attributes['content-id'] ?? '').toLowerCase()
+      return visitors.block(blocks.get(id), block)
+    }
+    const children = element.elements.map(visit)
+    const own = visitors.tags?.[element.tag] as
+      | ((node: RichTextGenericElement, children: Result[]) => Result)
+      | undefined
+    return own ? own(element, children) : visitors.element(element, children)
+  }
+  return tree.elements.map(visit)
 }
 
 export interface ApiColor {

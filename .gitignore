@@ -31,3 +31,6 @@ packages/cli/oclif.manifest.json
 apps/site/.crombolo/
 
 .crombolo/
+
+# Notes about closed-source projects: never published with the open-source docs
+docs/internal/

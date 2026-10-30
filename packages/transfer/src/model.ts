@@ -10,6 +10,7 @@
 
 import type { BundlePeople, PeopleBlock } from './people.ts'
 import type { SealParameters } from './seal.ts'
+import type { SiteDataBlock, SiteDataTable } from './site-data.ts'
 
 /**
  * Bumped when a change to the shapes below stops an older reader understanding
@@ -254,6 +255,11 @@ export interface BundleManifest {
    * older reader refuses by name rather than half-reading.
    */
   people?: PeopleBlock
+  /**
+   * The site's and bundles' own tables (story 189), sealed as people are:
+   * which tables and how many rows, never what they hold.
+   */
+  siteData?: SiteDataBlock
   /** How values, media files and people are sealed: the salt and cost, never the key. */
   seal?: SealParameters
   /**
@@ -296,6 +302,8 @@ export interface ContentSet {
   sealed?: boolean
   /** The people, once opened. */
   people?: BundlePeople
+  /** The site's and bundles' own tables, once opened. */
+  siteData?: SiteDataTable[]
 }
 
 /** A problem with the bundle itself, as opposed to a finding about applying it. */

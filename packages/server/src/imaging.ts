@@ -216,7 +216,7 @@ export function padPixels(
 // ------------------------------------------------------------ the request
 
 export type ResizeMode = 'crop' | 'max' | 'stretch' | 'pad' | 'boxpad' | 'min'
-export type OutputFormat = 'jpg' | 'png' | 'webp'
+export type OutputFormat = 'jpg' | 'png' | 'webp' | 'avif'
 
 export interface ImagingRequest {
   width?: number
@@ -231,6 +231,20 @@ export interface ImagingRequest {
 }
 
 const MODES: readonly ResizeMode[] = ['crop', 'max', 'stretch', 'pad', 'boxpad', 'min']
+const FORMATS: readonly OutputFormat[] = ['jpg', 'png', 'webp', 'avif']
+
+/** ImageSharp's `ranchor`, as the focal point a crop is cut around. */
+const ANCHORS: Record<string, { left: number; top: number }> = {
+  center: { left: 0.5, top: 0.5 },
+  top: { left: 0.5, top: 0 },
+  bottom: { left: 0.5, top: 1 },
+  left: { left: 0, top: 0.5 },
+  right: { left: 1, top: 0.5 },
+  topleft: { left: 0, top: 0 },
+  topright: { left: 1, top: 0 },
+  bottomleft: { left: 0, top: 1 },
+  bottomright: { left: 1, top: 1 },
+}
 const MAX_SIDE = 5000
 
 /** The imaging request a query asks for, or undefined when it asks for the original. */
@@ -253,11 +267,13 @@ export function parseImagingQuery(params: URLSearchParams): ImagingRequest | und
   const quality = size('quality')
   if (!width && !height && !cc && !format) return undefined
   const mode = (params.get('rmode') ?? '').toLowerCase() as ResizeMode
+  // A focal point wins over an anchor, as it does in ImageSharp.
+  const anchor = ANCHORS[(params.get('ranchor') ?? '').toLowerCase()]
   return {
     width,
     height,
     mode: MODES.includes(mode) ? mode : 'crop',
-    focalPoint: rxy ? { left: rxy[0] as number, top: rxy[1] as number } : undefined,
+    focalPoint: rxy ? { left: rxy[0] as number, top: rxy[1] as number } : anchor,
     crop: cc
       ? {
           left: cc[0] as number,
@@ -266,9 +282,42 @@ export function parseImagingQuery(params: URLSearchParams): ImagingRequest | und
           bottom: cc[3] as number,
         }
       : undefined,
-    format: ['jpg', 'png', 'webp'].includes(format) ? (format as OutputFormat) : undefined,
+    format: FORMATS.includes(format as OutputFormat) ? (format as OutputFormat) : undefined,
     quality: quality ? Math.min(quality, 100) : undefined,
   }
+}
+
+let avif: Promise<boolean> | undefined
+
+/**
+ * Whether this machine can encode AVIF. Bun uses the operating system's codec:
+ * macOS has one, the usual Linux image has no AV1 encoder. Asked once.
+ */
+export function canEncodeAvif(): Promise<boolean> {
+  avif ??= new Bun.Image(encodePng({ width: 1, height: 1, data: new Uint8Array(4) }))
+    .avif()
+    .bytes()
+    .then(
+      () => true,
+      () => false,
+    )
+  return avif
+}
+
+/** The format written for a request: AVIF only where it can be, WebP where not. */
+export async function outputFormat(
+  requested: OutputFormat | undefined,
+  source: string,
+): Promise<OutputFormat> {
+  const format = requested ?? formatOf(source)
+  return format === 'avif' && !(await canEncodeAvif()) ? 'webp' : format
+}
+
+const CONTENT_TYPES: Record<OutputFormat, string> = {
+  jpg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  avif: 'image/avif',
 }
 
 const formatOf = (source: string): OutputFormat => {
@@ -297,7 +346,7 @@ export async function processImage(
   request: ImagingRequest,
   sourceName: string,
 ): Promise<{ bytes: Uint8Array; contentType: string }> {
-  const format = request.format ?? formatOf(sourceName)
+  const format = await outputFormat(request.format, sourceName)
   let pixels: Pixels | undefined
   const decode = async () => {
     pixels ??= decodePng(await new Bun.Image(bytes).png().bytes())
@@ -374,16 +423,16 @@ export async function processImage(
   let image = new Bun.Image(pixels ? encodePng(pixels) : bytes)
   if (resize) image = image.resize(resize.width, resize.height, { fit: resize.fit })
   const quality = request.quality
+  const options = quality ? { quality } : undefined
   const encoded =
     format === 'png'
       ? image.png()
       : format === 'webp'
-        ? image.webp(quality ? { quality } : undefined)
-        : image.jpeg(quality ? { quality } : undefined)
-  return {
-    bytes: await encoded.bytes(),
-    contentType: format === 'png' ? 'image/png' : format === 'webp' ? 'image/webp' : 'image/jpeg',
-  }
+        ? image.webp(options)
+        : format === 'avif'
+          ? image.avif(options)
+          : image.jpeg(options)
+  return { bytes: await encoded.bytes(), contentType: CONTENT_TYPES[format] }
 }
 
 /**
@@ -405,16 +454,17 @@ export class ImageProcessor {
     source: StoredFile,
     request: ImagingRequest,
   ): Promise<{ key: string; bytes: Uint8Array; contentType: string }> {
-    const format = request.format ?? formatOf(source.key)
+    // Keyed on what is written, so a node without AVIF never serves another's AVIF as WebP.
+    const format = await outputFormat(request.format, source.key)
+    const written = { ...request, format }
     const hash = new Bun.CryptoHasher('sha1')
-      .update(`${source.key}|${source.etag}|${JSON.stringify(request)}`)
+      .update(`${source.key}|${source.etag}|${JSON.stringify(written)}`)
       .digest('hex')
     const key = `.cache/${hash.slice(0, 2)}/${hash}.${format}`
-    const contentType =
-      format === 'png' ? 'image/png' : format === 'webp' ? 'image/webp' : 'image/jpeg'
+    const contentType = CONTENT_TYPES[format]
     const cached = await this.#store.get(key)
     if (cached) return { key, bytes: await cached.bytes(), contentType }
-    const result = await processImage(await source.bytes(), request, source.key)
+    const result = await processImage(await source.bytes(), written, source.key)
     await this.#store.put(key, result.bytes, { contentType: result.contentType })
     return { key, bytes: result.bytes, contentType: result.contentType }
   }

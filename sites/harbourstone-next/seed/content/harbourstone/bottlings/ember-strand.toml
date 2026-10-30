@@ -1,0 +1,19 @@
+type = "expression"
+key = "ec5d32a1-56c4-44f4-ae3f-72fe7b01b13a"
+name = "Ember Strand"
+order = 7
+
+[values]
+title = "Ember Strand"
+kind = "Lightly peated"
+productType = "Whisky"
+abv = "48%"
+age = 21
+summary = "Twenty-one years. The peat has gone to embers and the fruit has come forward."
+bottleImage = "/bottle-brine-and-kiln.jpg"
+bodyText = { html = "<p>A handful of casks filled the year we first cut peat behind Dunnet, left alone for twenty-one years. Time has turned the smoke into something closer to a fire that has been going all evening.</p>" }
+tastingNotes = [
+  "nose-glowing-embers-dried-apricot",
+  "palate-rich-and-oily-smoked-toffee",
+  "finish-very-long-smoke-and-dark-fr",
+]

@@ -2,7 +2,7 @@
  * The audit log's ports: where the router writes, what an item's Info tab reads,
  * and the Settings dashboard's endpoint. docs/audit-log.md.
  */
-import type { AuditHistoryPort, AuditSink } from '@crombolo/api-management'
+import type { AuditHistoryPort, AuditSink } from '@crombolo/api-management/domain'
 import {
   AUDIT_CATEGORIES,
   type AuditCategory,

@@ -28,8 +28,8 @@ import {
   TransferRunRepository,
 } from '@crombolo/data'
 import { loadSchemaDirectory } from '@crombolo/schema'
-import { BundleConfigurationError, bundleChainsFor, pendingBundleSteps } from './bundle-tables.ts'
 import { type CromboloConfig, describeDatabase, VERSION } from './config.ts'
+import { BundleConfigurationError, pendingTablesSteps, tablesChainsFor } from './custom-tables.ts'
 import { type EmailAvailability, emailAvailability, resolveEmailPort } from './email.ts'
 import { formTypesFor } from './form-types.ts'
 import { assertViewRuntime } from './view-runtime.ts'
@@ -203,10 +203,10 @@ export async function siteStatus(config: CromboloConfig): Promise<SiteStatus> {
       )
 
     try {
-      const chains = bundleChainsFor(config)
+      const chains = tablesChainsFor(config)
       for (const chain of chains)
         status.bundles[chain.id] = { name: chain.name, state: null, pending: [] }
-      for (const bundle of await pendingBundleSteps(db, chains)) {
+      for (const bundle of await pendingTablesSteps(db, chains)) {
         status.bundles[bundle.id] = {
           name: bundle.name,
           state: bundle.state,
@@ -214,7 +214,7 @@ export async function siteStatus(config: CromboloConfig): Promise<SiteStatus> {
         }
         if (bundle.pending.length > 0 && !config.development)
           status.problems.push(
-            `the bundle "${bundle.id}" has ${bundle.pending.length} step(s) pending: run \`crombolo upgrade\``,
+            `${bundle.id === 'site' ? "the site's own tables have" : `the bundle "${bundle.id}" has`} ${bundle.pending.length} step(s) pending: run \`crombolo upgrade\``,
           )
       }
     } catch (error) {

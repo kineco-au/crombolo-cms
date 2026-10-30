@@ -1,7 +1,7 @@
 /**
- * The fixture bundle story 062 is tested with: `acme-tasks`, in two releases.
- * 1.x only expands — a table, then a column with a backfill and an index — and
- * 2.0.0 contracts, removing a column 1.0.0 added.
+ * The fixture bundle stories 062 and 189 are tested with: `acme-tasks`, in two
+ * releases. 1.x only expands — a table, then a column with a backfill and an
+ * index — and 2.0.0 contracts, removing a column 1.0.0 added.
  */
 
 import { route } from '@crombolo/common'
@@ -35,7 +35,9 @@ const priority = {
     s.addIndex('task', ['status', 'due']),
   ],
   // Urgent work keeps the priority it was always given.
-  backfill: (data) => data.task.update({ where: { status: 'urgent' }, set: { priority: 9 } }),
+  backfill: async (db) => {
+    await db.updateTable('task').set({ priority: 9 }).where('status', '=', 'urgent').execute()
+  },
 } as const satisfies Parameters<typeof defineBundleTables>[1][number]
 
 const dropLegacy = {
@@ -59,28 +61,36 @@ export const tasksPackage = (version: '1.1.0' | '2.0.0') =>
     field: {
       id: TASKS_ID,
       server: 'tasks',
-      schemaVersion: 2,
+      schemaVersion: 3,
+      permissions: [],
       migrations: version === '2.0.0' ? 'breaking' : 'compatible',
     },
   })
 
 /** The bundle as a site wires it, at either release. */
 export function tasksBundle(tables: typeof tasksV1 | typeof tasksV2 = tasksV1): ServerBundle {
-  const bundle: ServerBundle<'tables', typeof tasksV1> = {
+  const bundle: ServerBundle<never, typeof tasksV1> = {
     id: TASKS_ID,
     section: 'settings',
-    capabilities: ['tables'],
+    capabilities: [],
     tables: tasksV1,
     routes: [
-      route<unknown, unknown, BundleRouteContext<'tables', typeof tasksV1>>(
+      route<unknown, unknown, BundleRouteContext<never, typeof tasksV1>>(
         'tasks',
         {
           async POST(request, { bundle }) {
             const body = (await request.json()) as { id: string; node: string }
-            await bundle.tables.task.insert({ id: body.id, node_key: body.node })
-            // @ts-expect-error The capability is typed from the declaration: there is no `node` table.
-            void bundle.tables.node
-            return Response.json({ count: await bundle.tables.task.count() })
+            await bundle.database
+              .insertInto('task')
+              .values({ id: body.id, node_key: body.node })
+              .execute()
+            // @ts-expect-error The handle is typed from the declaration: there is no `node` table.
+            bundle.database.selectFrom('node')
+            const { count } = await bundle.database
+              .selectFrom('task')
+              .select((eb) => eb.fn.countAll<number>().as('count'))
+              .executeTakeFirstOrThrow()
+            return Response.json({ count: Number(count) })
           },
         },
         { audience: 'backoffice' },

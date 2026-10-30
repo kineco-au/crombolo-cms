@@ -4,7 +4,7 @@
  * some group could withhold it, and a property the user cannot read may not be
  * filtered or sorted on.
  */
-import type { Principal } from '@crombolo/api-management'
+import type { Principal } from '@crombolo/api-management/domain'
 import {
   DocumentPermissions,
   type GroupGrant,

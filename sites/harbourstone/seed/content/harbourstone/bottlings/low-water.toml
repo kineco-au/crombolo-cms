@@ -1,0 +1,19 @@
+type = "expression"
+key = "798d3690-8774-4b9f-ad3e-0201e0fefa63"
+name = "Low Water"
+order = 4
+
+[values]
+title = "Low Water"
+kind = "House malt"
+productType = "Whisky"
+abv = "43%"
+age = 8
+summary = "Young, bright and coastal. The dram we pour at the warehouse door."
+bottleImage = "/bottle-the-cove.jpg"
+bodyText = { html = "<p>Eight years in refill hogsheads, bottled at 43% so it stays easy. It is the house style at its lightest: shore air, cereal and a little fruit, and nothing to get in the way of a second glass.</p>" }
+tastingNotes = [
+  "nose-cut-grass-sea-spray-pear-drop",
+  "palate-sweet-barley-white-peach-a",
+  "finish-short-and-fresh-with-a-lick",
+]

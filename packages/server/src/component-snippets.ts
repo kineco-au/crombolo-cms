@@ -4,7 +4,7 @@
  * `<Breadcrumb model={model} nav={nav} />`. `Empty` is also the skeleton a new
  * component starts with.
  */
-import type { Snippet } from '@crombolo/api-management'
+import type { Snippet } from '@crombolo/api-management/domain'
 
 const IMPORTS = "import type { PageProps } from '@crombolo/crombolo'\n\n"
 

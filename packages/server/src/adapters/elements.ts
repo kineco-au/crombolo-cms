@@ -11,7 +11,7 @@
  * by the generic folder repository, which is why they worked before elements
  * themselves did.
  */
-import type { ElementPort, Principal } from '@crombolo/api-management'
+import type { ElementPort, Principal } from '@crombolo/api-management/domain'
 import {
   type ElementTreeItem,
   MENU_ALIAS_PROPERTY,

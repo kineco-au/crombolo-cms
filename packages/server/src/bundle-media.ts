@@ -15,7 +15,7 @@
  * list, and its size, counted as it is read. An image is turned upright and
  * stored without its metadata, and what that metadata said is returned.
  */
-import { hasSection } from '@crombolo/api-management'
+import { hasSection } from '@crombolo/api-management/domain'
 import { type MediaActor, type MediaOperations, memberActor, userActor } from '@crombolo/content'
 import {
   checkMemberUpload,

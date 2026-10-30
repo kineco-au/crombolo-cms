@@ -19,6 +19,7 @@ import {
   type CromboloConfig,
   compileSeed,
   createServer,
+  createWorker,
   describeBootFailure,
   describeDatabase,
   installBundleContent,
@@ -27,7 +28,12 @@ import {
   placeBlobs,
   type ServerHandle,
   setting,
+  type WorkerHandle,
 } from '@crombolo/server'
+
+/** A running node: a server, or a worker that runs only the jobs (story 223). */
+type RunningNode = ServerHandle | WorkerHandle
+
 import { importBundle } from '@crombolo/transfer'
 import { CliError } from '../errors.ts'
 import * as ops from '../operations/commands.ts'
@@ -68,7 +74,7 @@ const SHUTDOWN_MS = 10_000
  */
 function stopOnSignal(
   listening: { stop: (closeActiveConnections?: boolean) => void },
-  current: () => ServerHandle | undefined,
+  current: () => RunningNode | undefined,
 ): void {
   let stopping = false
   const stop = (signal: string) => {
@@ -117,8 +123,10 @@ export async function serveSite(io: Io, options: StartOptions): Promise<Started>
   const { listening, server, bundles } = await bootWithRetries(io, config, options)
   const seededAdminPassword = server.seededAdminPassword
   const backoffice =
-    config.role !== 'web' ? `${listening.url}${config.backOfficePath.slice(1)}` : null
-  const site = config.role !== 'api' ? String(listening.url) : null
+    config.role === 'all' || config.role === 'api'
+      ? `${listening.url}${config.backOfficePath.slice(1)}`
+      : null
+  const site = config.role === 'all' || config.role === 'web' ? String(listening.url) : null
   const started: Started = {
     backoffice,
     site,
@@ -139,7 +147,7 @@ export async function serveSite(io: Io, options: StartOptions): Promise<Started>
   // A `web` node owns nothing and writes nothing at boot: resetting the password
   // here would be a write from the node whose whole point is not to make them,
   // and would end the sessions of editors signed in to the api node.
-  if (config.role === 'web') {
+  if (config.role === 'web' || config.role === 'worker') {
     // Nothing to print: this node has no sign-in.
   } else if (!config.development) {
     // Production never touches an existing administrator at start: a restart an
@@ -190,16 +198,28 @@ export async function serveSite(io: Io, options: StartOptions): Promise<Started>
         lines.push(`  Ended ${admin.sessionsEnded} session(s): the password changed.`)
     }
   }
-  const components = server.health().components
-  lines.push(
-    `  database    ${describeDatabase(config)}`,
-    `  components  ${config.componentsDir}${components.hash ? `   generation ${components.hash.slice(0, 8)}` : ''}`,
-  )
+  const health = server.health()
+  lines.push(`  database    ${describeDatabase(config)}`)
+  if ('components' in health)
+    lines.push(
+      `  components  ${config.componentsDir}${health.components.hash ? `   generation ${health.components.hash.slice(0, 8)}` : ''}`,
+    )
+  else lines.push(`  health      ${listening.url}health`)
+  if (!config.runJobs) lines.push('  jobs        left to a worker (CROMBOLO_JOBS=off)')
   for (const line of bundles) lines.push(line)
   const report = server.schema.report
   if (report) lines.push(`  schema      ${describeSync(report)}`)
   if (server.schema.compatibilityMode)
     lines.push('  ⚠ database is ahead of schema/: reads only, writes refused with 409')
+  // Story 222: a wired bundle stays off until what it asks to do is approved.
+  const waiting = config.role === 'web' ? [] : server.waitingBundles()
+  if (waiting.length > 0) {
+    lines.push('', '  Off until approved')
+    for (const bundle of waiting)
+      lines.push(
+        `    ${bundle.id}  approve in Packages → Installed, or: crombolo bundle grant ${bundle.id}`,
+      )
+  }
   banner(io, lines)
   if (seededAdminPassword) io.say('Database created and seeded.')
   return started
@@ -233,13 +253,25 @@ async function bootWithRetries(io: Io, config: CromboloConfig, options: StartOpt
     fetch: holding,
     websocket: { message() {} },
   })
-  let current: ServerHandle | undefined
+  let current: RunningNode | undefined
   // Registered the moment it listens, so there is no window, retries included,
   // in which it answers requests and cannot be asked to stop.
   stopOnSignal(listening, () => current)
   for (let attempt = 1; ; attempt++) {
-    let server: ServerHandle | undefined
+    let server: RunningNode | undefined
     try {
+      if (config.role === 'worker') {
+        // A worker applies no bundle or seed: that is an owning node's boot.
+        if (options.bundles.length > 0 || options.seed)
+          throw new CliError(
+            'usage',
+            'A worker only runs the jobs; apply bundles and the seed on an api or all node.',
+          )
+        server = await createWorker(config)
+        current = server
+        listening.reload(server.serveOptions as never)
+        return { listening, server, bundles: [] }
+      }
       server = await createServer(config)
       current = server
       // After the schema sync inside `createServer`, which is what gives the
@@ -470,7 +502,10 @@ export async function startFromFile(
     throw new CliError('usage', `${from} is not a whole-site file.`, {
       hint: 'Write one with `crombolo export --site`.',
     })
-  const sealed = manifest.people !== undefined || manifest.content === 'sealed'
+  const sealed =
+    manifest.people !== undefined ||
+    manifest.siteData !== undefined ||
+    manifest.content === 'sealed'
   const passphrase = options.passphrase ?? (sealed ? await passphraseForPeople() : undefined)
   if (sealed && !passphrase)
     throw new CliError('auth', `${from} is sealed.`, {

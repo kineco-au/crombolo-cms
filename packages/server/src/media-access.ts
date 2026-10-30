@@ -8,7 +8,7 @@
  * reads and sets rules through `handle`, under
  * `<backoffice>/crombolo/api/media-access/{key}`, which is not in the contract.
  */
-import { hasSection, type Principal } from '@crombolo/api-management'
+import { hasSection, type Principal } from '@crombolo/api-management/domain'
 import {
   fallbackPermissions,
   hasPathAccess,

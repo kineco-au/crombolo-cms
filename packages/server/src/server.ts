@@ -46,8 +46,7 @@ import {
 } from '@crombolo/auth'
 import {
   collectManifests,
-  createBackOfficePaths,
-  createExtensionRegistry,
+  type createBackOfficePaths,
   isSpaRoute,
   renderBackOfficeShell,
   renderDeviceShell,
@@ -58,7 +57,6 @@ import {
   resolveStaticFile,
   serveStaticFile,
 } from '@crombolo/backoffice-host'
-import type { DocumentOperations, MediaOperations } from '@crombolo/content'
 import { servedContract } from '@crombolo/contracts'
 import {
   CACHE_KEEP_FOR_ALIAS,
@@ -78,11 +76,12 @@ import {
 } from '@crombolo/core'
 import {
   appendCacheInstruction,
-  createTablesCapability,
   type Db,
   ensureKeyValue,
   FormEntryRepository,
   FormWorkflowRepository,
+  JobRepository,
+  type JobState,
   latestContentVersionId,
   MediaAccessRepository,
   MemberRepository,
@@ -93,7 +92,6 @@ import {
   readUrlOptions,
   SiteSearch,
   TransferRunRepository,
-  UserGroupRepository,
   type WritesPaused,
 } from '@crombolo/data'
 import {
@@ -103,9 +101,6 @@ import {
   cacheControl,
   chosenLifetime,
   contentForNode,
-  DEFAULT_MEDIA_CACHE_MEGABYTES,
-  DEVELOPMENT_LIMITS,
-  enableComponentStack,
   FORM_SCRIPT,
   FORM_SCRIPT_PATH,
   FORM_SUBMIT_PATH,
@@ -113,25 +108,20 @@ import {
   ISLAND_LOADER_PATH,
   ISLAND_LOADER_SCRIPT,
   ISLANDS_PATH,
-  islandTransform,
   LIVE_EVENTS_PATH,
   LIVE_RELOAD_SCRIPT,
   LIVE_RELOAD_SCRIPT_PATH,
   type Lifetime,
   lifetimeFor,
-  MEMBER_EXTERNAL_SIGN_IN_PATH,
-  MediaCache,
   type PageOutcome,
   PRIVATE_NO_STORE,
   PublishedCache,
   type PublishedContent,
-  Renderer,
+  type Renderer,
   type RequestMember,
   resolveCacheSettings,
   type SnapshotStatus,
-  setFormFieldTypes,
-  setFormTokenSigner,
-  ViewSnapshots,
+  type ViewSnapshots,
   withLiveReload,
 } from '@crombolo/render'
 import type { SyncReport } from '@crombolo/schema'
@@ -140,28 +130,13 @@ import type { Server } from 'bun'
 import { createNodeLookup, loadAccess } from './access.ts'
 import { createAuditHost, createAuditSink, pluginAuditPlan, recordAudit } from './adapters/audit.ts'
 import { readCreatedBundlePackage, writeCreatedBundlePackage } from './adapters/bundles.ts'
-import {
-  createMediaSource,
-  createPublishedContentSource,
-  loadDraftNode,
-} from './adapters/documents.ts'
+import { createPublishedContentSource, loadDraftNode } from './adapters/documents.ts'
 import type { Approvals } from './approvals.ts'
 import { handleApprovalsApi } from './approvals-api.ts'
+import type { BundleGrants } from './bundle-grants.ts'
 import { CommandError, installBundleContent } from './bundle-install.ts'
-import {
-  type BundleMediaFactory,
-  createBundleMedia,
-  type ResolvedMediaFolder,
-  resolveBundleMediaFolders,
-} from './bundle-media.ts'
 import { BUNDLES_CHANGED_EVENT, type BundleReload, createBundleReloader } from './bundle-reload.ts'
-import { bundleChains, bundleTablesReport } from './bundle-tables.ts'
-import {
-  bundleRouteGroups,
-  createBundleRedirects,
-  createServerBundles,
-  validateServerBundles,
-} from './bundles.ts'
+import { bundleRouteGroups } from './bundles.ts'
 import { busyResponse } from './busy.ts'
 import { checkTypes, listEmailTemplates } from './components.ts'
 import {
@@ -171,32 +146,26 @@ import {
   type ServerRole,
   VERSION,
 } from './config.ts'
-import { createContentDispatcher } from './content-dispatch.ts'
-import { createContentEventSink } from './content-events.ts'
-import { createContentNotificationRunner, createContentNotifier } from './content-notifications.ts'
 import { answerContentQuery, contentQueryScope } from './content-query.ts'
-import { attachDatabase, bootstrapDatabase } from './database.ts'
+import { createCore } from './core.ts'
+import { closeTables, tablesReport } from './custom-tables.ts'
 import { createDeliveryMediaPort } from './delivery-media.ts'
 import { createDeliveryMemberSecurity } from './delivery-members.ts'
-import { createDiagnostics } from './diagnostics.ts'
 import { syncDomainsFile } from './domains.ts'
 import { editorTypeLibs, siteJsxImportSource } from './editor-types.ts'
-import { emailAvailability, resolveEmailPort } from './email.ts'
+import { emailAvailability } from './email.ts'
 import { noticeAboutEmail } from './email-notice.ts'
 import { warnAboutAppPlugins } from './extensions-notice.ts'
 import { coerceForm, deleteForm, saveForm } from './form-files.ts'
 import {
-  createFormRegistry,
   FORM_FLASH_COOKIE,
-  formSigningSecret,
   readFlash,
   signFormToken,
   submitForm,
   wantsJson,
   writeFlash,
 } from './form-submit.ts'
-import { describeFormTypes, formTypesFor, formTypesOf } from './form-types.ts'
-import { createWorkflowRunner } from './form-workflows.ts'
+import { describeFormTypes, formTypesFor } from './form-types.ts'
 import {
   entriesCsv,
   formDetail,
@@ -206,47 +175,35 @@ import {
   redactSensitive,
 } from './forms.ts'
 import { HOST_TOKEN_SECONDS, issueHostToken } from './host-token.ts'
-import { ImageProcessor, parseImagingQuery } from './imaging.ts'
-import { type BackgroundJobs, createBackgroundJobs } from './jobs.ts'
+import { canEncodeAvif, ImageProcessor, parseImagingQuery } from './imaging.ts'
+import type { BackgroundJobs } from './jobs.ts'
 import { createLiveReload, createTypeWatch, watchDirectory } from './live-reload.ts'
 import { configureLogging, logger } from './logging.ts'
 import { createMarketplace } from './marketplace.ts'
 import { createMediaAccess } from './media-access.ts'
-import { MediaFileStore } from './media-files.ts'
-import { mediaStoreFromEnvironment } from './media-store.ts'
 import { createMemberAuth, MEMBER_ROUTE_PREFIX } from './member-auth.ts'
 import { noNodesPage } from './no-nodes.ts'
 import { NotImplementedLog } from './not-implemented.ts'
-import { createDeps, documentEditUrl, PREVIEW_COOKIE, resolveUserLinkSender } from './ports.ts'
+import { createDeps, PREVIEW_COOKIE, resolveUserLinkSender } from './ports.ts'
 import {
   previewSigningSecret,
   previewUser,
   readPreviewToken,
   signPreviewToken,
 } from './preview-tokens.ts'
-import { createRedirectTracker } from './redirects.ts'
 import { createRemote } from './remote.ts'
-import { withRemoteMedia } from './remote-media.ts'
 import { unknownHostProvided } from './site-file.ts'
 import { handleTransferAction, pendingTransfers } from './transfer-dashboard.ts'
-import {
-  changeUrlOptions,
-  redirectAfterUrlChange,
-  type UrlChangeContext,
-  urlSettingEditable,
-} from './url-settings.ts'
+import { changeUrlOptions, urlSettingEditable } from './url-settings.ts'
+import type { JobsStatus } from './worker-watch.ts'
 
 export { PREVIEW_COOKIE }
 
 import type { SiteRoute } from '@crombolo/common'
-import { BACKOFFICE_EXTERNAL_PATH, backofficeAudience } from './backoffice-external.ts'
+import { backofficeAudience } from './backoffice-external.ts'
 import { createExternalSignIn } from './external-sign-in.ts'
+import { IdentityProviderOverrides } from './identity-provider-overrides.ts'
 import {
-  createBundleIdentityProviders,
-  IdentityProviderOverrides,
-} from './identity-provider-overrides.ts'
-import {
-  buildIslands,
   builtIslandFile,
   devServerIslandManifest,
   viteIslandManifest,
@@ -260,18 +217,12 @@ import {
   requestCookies,
   runStage,
 } from './middleware.ts'
+import type { JobRunner } from './owner-jobs.ts'
 import { callerAddress } from './rate-limit.ts'
 import { syncConfiguredRedirects } from './redirects.ts'
 import { createRoutes, type DeclaredRoute, siteRouteProblems } from './routes.ts'
-import {
-  bootSchema,
-  CacheInstructionPoller,
-  componentAliasesIn,
-  importSchema,
-  type SchemaBoot,
-  watchSchema,
-} from './schema.ts'
-import { publishSchema, type SchemaStore, useSchemaStore } from './schema-store.ts'
+import { componentAliasesIn, importSchema, type SchemaBoot, watchSchema } from './schema.ts'
+import { publishSchema, type SchemaStore } from './schema-store.ts'
 import { createSeoHost, originOf, publicOrigin } from './seo.ts'
 import {
   combineHubs,
@@ -281,7 +232,6 @@ import {
 } from './server-events.ts'
 import { AttemptLimiter, createSetupRoutes } from './setup.ts'
 import { siteSearchFor } from './site-search.ts'
-import { createSiteServices } from './site-services.ts'
 import {
   genericStatusPage,
   previewRedirectNotice,
@@ -291,8 +241,7 @@ import {
 } from './status-pages.ts'
 import { TwoFactorService, USER_TWO_FACTOR_PROVIDER } from './two-factor.ts'
 import { summariseUpgrades } from './upgrade-summary.ts'
-import { assertViewRuntime } from './view-runtime.ts'
-import { bundleEventProblems, createWebhookService, webhookStoreView } from './webhooks.ts'
+import { webhookStoreView } from './webhooks.ts'
 
 export interface ServerHandle {
   config: CromboloConfig
@@ -314,6 +263,12 @@ export interface ServerHandle {
   /** The views generations this node has taken; `status()` is what /health reports. */
   snapshots: ViewSnapshots
   seededAdminPassword: string | undefined
+  /** What each bundle may do, and whether it is on (story 222). */
+  bundleGrants: BundleGrants
+  /** The site's and bundles' background jobs (story 187); started on a node that owns writes. */
+  backgroundJobs: JobRunner
+  /** The wired bundles that are off, waiting for an administrator to approve these permissions. */
+  waitingBundles(): { id: string; missing: string[] }[]
   schema: SchemaBoot
   /** Applies cache instructions other nodes appended; the interval calls this too. */
   poll(): Promise<number>
@@ -335,6 +290,8 @@ export interface ServerHandle {
     role: ServerRole
     /** The views generation in use, and whether newer ones are being refused. */
     components: SnapshotStatus
+    /** Where jobs run, and whether a worker is running them; not on a `web` node. */
+    jobs?: JobsStatus
   }
   /** Scheduled publishing and version cleanup; each run can be called directly. */
   jobs: BackgroundJobs
@@ -349,32 +306,82 @@ export interface ServerHandle {
 }
 
 export async function createServer(config: CromboloConfig = loadConfig()): Promise<ServerHandle> {
+  if (config.role === 'worker')
+    throw new Error('A worker serves no site: start it with createWorker (story 223).')
   configureLogging({
     logsDir: config.logsDir,
     level: config.logLevel,
     console: config.logToConsole,
   })
-  const diagnostics = createDiagnostics(config.diagnostics)
   const log = logger('server')
   const schemaLog = logger('schema')
   const renderLog = logger('render')
   const redirectLog = logger('redirects')
-  const bundleLog = (id: string) => {
-    const named = logger('bundle', id)
-    return {
-      info: (message: string, properties?: Record<string, unknown>) =>
-        named.info(message, properties),
-      warn: (message: string, properties?: Record<string, unknown>) =>
-        named.warn(message, properties),
-      error: (message: string, properties?: Record<string, unknown>) =>
-        named.error(message, properties),
-    }
-  }
   const domainLog = logger('domains')
   const apiLog = logger('management-api')
-  // Extensions are the site's own npm dependencies (`docs/bundles.md`).
-  // Uncached in development so an author editing one sees a reload pick it up.
-  const extensions = createExtensionRegistry(config.siteDir, { cache: !config.development })
+  // Story 214: in development, open pages reload when what they show changes,
+  // and a template error says which components were rendering.
+  const live = config.liveReload ? createLiveReload() : undefined
+  let drafts: { cache: PublishedCache; version: number } | undefined
+  const core = await createCore(config, {
+    onCacheInvalidate: () => {
+      drafts = undefined
+      live?.changed('content')
+    },
+    onViewsSwap: () => {
+      live?.changed('views')
+      void typeWatch
+        ?.schedule()
+        .catch((error: unknown) =>
+          renderLog.error('The type check failed to run: {error}', { error: String(error) }),
+        )
+    },
+    buildIslands: true,
+    announce: (event) => announce(event),
+    onDocumentChanged: (key) =>
+      events.broadcast('notify', [
+        { eventSource: 'Umbraco:CMS:Document', eventType: 'Updated', key },
+      ]),
+    streamMemberFile: (src, search) => streamMemberFile(src, search),
+    siteName: async () => (await seo.siteDefaults()).siteName,
+  })
+  const {
+    diagnostics,
+    extensions,
+    paths,
+    owns,
+    bundlePackages,
+    formTypes,
+    chains,
+    db,
+    seededAdminPassword,
+    bundleGrants,
+    jobRunner,
+    schema,
+    forms,
+    formSecret,
+    cacheOptions,
+    mediaCache,
+    cache,
+    afterSync,
+    snapshots,
+    renderer,
+    mediaStore,
+    email,
+    notifier,
+    mediaFiles,
+    webhooks,
+    dispatcher,
+    contentEvents,
+    bundles,
+    poller,
+    siteServicesFor,
+    jobs,
+    wake,
+    urlChange,
+  } = core
+  // What this process answers: only `web` serves no back office.
+  const servesBackOffice = config.role !== 'web'
   // A host that installs packages itself calls `reloadBundles()` (story 181); the
   // Marketplace's own install goes through it too, so either way open back
   // offices hear about it. `events` is created further down, before any reload.
@@ -390,6 +397,10 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     extensions: { ...extensions, invalidate: () => void bundleReloader.reload() },
     siteDir: config.siteDir,
     wired: () => bundles?.mounted.map((bundle) => bundle.id) ?? [],
+    grants: {
+      state: (pkg) => bundleGrants.state(pkg),
+      grant: (pkg, by) => bundleGrants.grant(pkg, by),
+    },
     contentApplied: async (packageName) =>
       (await new TransferRunRepository(db).appliedForPackage(packageName))?.packageVersion ?? null,
     applyContentOnInstall: config.applyBundleContentOnInstall,
@@ -422,46 +433,6 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
       return { applied: true, runId: result.runId, message: 'Its content was applied.' }
     },
   })
-  const paths = createBackOfficePaths({ backOfficePath: config.backOfficePath })
-  // Two questions, not one: what this process answers, and what it is
-  // responsible for converging at boot. `all` and `api` are both owners; only
-  // `all` and `web` serve the public site.
-  const servesBackOffice = config.role !== 'web'
-  const owns = config.role !== 'web'
-  // Bundles are checked before the database is touched, because a bundle that
-  // owns tables is migrated at boot, and a bad declaration must not get that far.
-  // On every role: a bundle's form types are needed wherever forms render and
-  // submit, and its member and public routes wherever the site is served. Its
-  // tables are migrated only by the nodes that own the database.
-  const bundlePackages = extensions.bundles().bundles
-  const formTypes = formTypesOf(config)
-  {
-    const problems = [
-      ...validateServerBundles(config.bundles, bundlePackages, VERSION),
-      ...formTypes.problems,
-      ...bundleEventProblems(config.bundles),
-    ]
-    if (problems.length > 0)
-      throw new Error(`The configured bundles cannot be mounted:\n- ${problems.join('\n- ')}`)
-  }
-  setFormFieldTypes(formTypes.types, formTypes.renderers)
-  const chains = bundleChains(config.bundles, bundlePackages)
-  const { db, seededAdminPassword } = owns
-    ? await bootstrapDatabase(config, chains)
-    : await attachDatabase(config)
-  // A configured schema store is copied down before anything reads `schema/`, and
-  // becomes the schema directory for this boot. Everything after here — loading,
-  // validation, hashing, sync, the writer — works on files exactly as it always has.
-  const copied = await useSchemaStore(config)
-  if (config.schemaStore)
-    schemaLog.info('Schema read from {store}: {count} files in {dir}', {
-      store: config.schemaStore.description,
-      count: copied,
-      dir: config.schemaCacheDir,
-    })
-  // A node that does not own the schema still loads it — the renderer needs the
-  // property definitions — but writes none of it.
-  const schema = await bootSchema(db, owns ? config : { ...config, syncSchemaAtBoot: false })
 
   const auth = new AuthService(new AuthStore(db))
   const cookies = { siteName: config.siteName, securePrefix: config.secureCookies }
@@ -613,28 +584,6 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     }
   }
 
-  // Form definitions are files, so they are re-read rather than cached with the
-  // content: nothing about a publish tells this node that a form changed.
-  const forms = createFormRegistry(config.schemaDir, { formTypes: formTypes.types })
-  // Every form this node renders carries a token signed with the site's key, so
-  // the timing guard cannot be bypassed by posting a made-up render time.
-  const formSecret = await formSigningSecret(db)
-  setFormTokenSigner((formKey, renderedAt) => signFormToken(formSecret, formKey, renderedAt))
-  const publishedSource = createPublishedContentSource(db, {
-    nodeState: schema.nodeState,
-    nodeId: schema.nodeId,
-  })
-  // Media is cached apart from the pages (story 197), item by item within a
-  // budget, and shared by the published and draft caches: media has no drafts.
-  const mediaCache = new MediaCache(
-    createMediaSource(db, { nodeState: schema.nodeState, nodeId: schema.nodeId }),
-    { budgetBytes: (config.mediaCacheMegabytes ?? DEFAULT_MEDIA_CACHE_MEGABYTES) * 1024 * 1024 },
-  )
-  const cacheOptions = { form: (key: string) => forms.byKey(key), media: mediaCache }
-  // Story 214: in development, open pages reload when what they show changes,
-  // and a template error says which components were rendering.
-  const live = config.liveReload ? createLiveReload() : undefined
-  if (config.errors.showDetails) enableComponentStack()
   // Every page as last saved, for previewing in an app (story 053). Built on the
   // first preview after a change and dropped with the published cache, so a site
   // nobody previews never holds it. A save on another node announces nothing,
@@ -644,91 +593,12 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     nodeId: schema.nodeId,
     drafts: true,
   })
-  let drafts: { cache: PublishedCache; version: number } | undefined
   const draftCache = async (): Promise<PublishedCache> => {
     const version = await latestContentVersionId(db)
     if (drafts?.version !== version)
       drafts = { cache: new PublishedCache(draftSource, cacheOptions), version }
     return drafts.cache
   }
-  const cache = new PublishedCache(publishedSource, {
-    ...cacheOptions,
-    onInvalidate: () => {
-      drafts = undefined
-      live?.changed('content')
-    },
-  })
-  // A sync or a Settings change that alters how URLs are built moves every URL:
-  // the old ones redirect, as a rename's do.
-  const urlChange: UrlChangeContext = {
-    db,
-    config,
-    source: publishedSource,
-    cacheOptions,
-    cache,
-    tracker: createRedirectTracker({
-      cache,
-      redirects: new RedirectRepository(db),
-      enabled: config.trackRedirects,
-      instruct: () =>
-        appendCacheInstruction(db, {
-          kind: 'content',
-          payload: { redirects: true },
-          by: schema.nodeId,
-        }),
-    }),
-  }
-  const afterSync = async (report: SyncReport | undefined) => {
-    if (!report?.urls) return
-    await redirectAfterUrlChange(urlChange, report.urls.before)
-    log.info('Page addresses now {mode} the top-level page; old addresses redirect', {
-      mode: report.urls.after.hideTopLevel ? 'leave out' : 'include',
-    })
-  }
-  await afterSync(schema.report)
-  // A snapshot of the views, so a template edited anywhere — the backoffice, a
-  // deploy, a bucket synced underneath — is picked up without restarting this
-  // node. `assertViewRuntime` first, because a cache directory the JSX runtime
-  // cannot be resolved from fails every render rather than the boot.
-  assertViewRuntime(config.componentsCacheDir)
-  const snapshots = new ViewSnapshots({
-    sourceDir: config.componentsDir,
-    cacheDir: config.componentsCacheDir,
-    limits: { ...(config.development ? DEVELOPMENT_LIMITS : {}), ...config.componentsSnapshot },
-    onProblem: (message) => renderLog.error('{message}', { message }),
-    // Only a change: every boot takes a generation, and saying so each time is
-    // noise. The start banner names the one a node came up on.
-    onSwap: (hash, previous) => {
-      if (!previous) return
-      renderLog.info('Views changed: generation {previous} to {hash}', {
-        previous: previous.slice(0, 8),
-        hash: hash.slice(0, 8),
-      })
-      live?.changed('views')
-      void typeWatch
-        ?.schedule()
-        .catch((error: unknown) =>
-          renderLog.error('The type check failed to run: {error}', { error: String(error) }),
-        )
-    },
-    // Story 209: a `'use client'` view is a stub on the server, and its browser
-    // code is built with the generation, unless a site's Vite build supplies it.
-    transform: islandTransform,
-    beforeSwap: async (generation) => {
-      if (config.islands?.manifest || (config.development && config.islands?.devServer)) return
-      try {
-        await buildIslands({ ...generation, development: config.development })
-      } catch (error) {
-        renderLog.error(
-          "The views' islands did not build; their pages show each island's fallback: {problems}",
-          {
-            problems: error instanceof Error ? error.message : String(error),
-          },
-        )
-      }
-    },
-  })
-  await snapshots.prepare()
   // Story 214: a save under components/ swaps the views now rather than at the
   // next render, and each swap checks the types again in the background.
   const viewWatcher =
@@ -757,21 +627,6 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     .catch((error: unknown) =>
       typesLog.error('The type check failed to run: {error}', { error: String(error) }),
     )
-  // Before the poller, which tells it to look again on a `views` instruction
-  // from another node: a closure over a `const` declared later would be a
-  // temporal dead zone waiting for the first instruction to land.
-  const renderer = new Renderer({
-    cache,
-    componentsDir: config.componentsDir,
-    snapshots,
-    renderTimeoutMs: config.renderTimeoutMs,
-    islandsManifest: (generation) =>
-      config.development && config.islands?.devServer
-        ? `${ISLANDS_PATH}/dev/manifest.json`
-        : config.islands?.manifest
-          ? `${ISLANDS_PATH}/vite/manifest.json`
-          : generation && `${ISLANDS_PATH}/${generation}/manifest.json`,
-  })
   // The site's own redirects are code, so the database follows the file: rules it
   // no longer declares are removed, which is what makes deleting one from config
   // actually take effect.
@@ -802,93 +657,6 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
   }
   const deliverySettings = resolveDeliveryApiSettings(config.deliveryApi)
   const formCors = corsPolicy(deliverySettings)
-  /**
-   * The server halves of the site's bundles. Back-office routes answer only
-   * where the backoffice is; site routes (story 211) wherever the site is
-   * served, through the site's route table.
-   *
-   * Capabilities are built here, from what this node already holds, so a bundle
-   * is handed a narrow interface rather than the database. A bad bundle fails the
-   * boot — see `createServerBundles`.
-   */
-  // Story 198: media as the member, built at the first request, when the media
-  // operations and the store it writes through exist.
-  let bundleMedia: BundleMediaFactory | undefined
-  let bundleMediaFolders = new Map<string, ResolvedMediaFolder[]>()
-  const bundles =
-    config.bundles.length > 0
-      ? createServerBundles({
-          bundles: config.bundles,
-          packages: bundlePackages,
-          coreVersion: VERSION,
-          tables: (bundle) => {
-            const chain = chains.find((candidate) => candidate.id === bundle.id)
-            return chain ? createTablesCapability(db, chain.compiled.schema) : undefined
-          },
-          pluginApiPath: `${paths.pluginPath}/api`,
-          host: {
-            redirects: createBundleRedirects({ db, cache }),
-            documents: {
-              url: async (key, culture) => {
-                const content = await cache.byKey(key, culture ?? null)
-                return content && content.url !== '#' ? content.url : undefined
-              },
-            },
-            log: bundleLog('bundle'),
-            identityProviders: createBundleIdentityProviders({
-              overrides: new IdentityProviderOverrides(db, config.secretKey),
-              members: config.memberIdentityProviders,
-              backoffice: config.backofficeIdentityProviders,
-              memberCallbackPath: MEMBER_EXTERNAL_SIGN_IN_PATH,
-              backofficeCallbackPath: BACKOFFICE_EXTERNAL_PATH,
-              groups: async (audience) =>
-                audience === 'user'
-                  ? (await new UserGroupRepository(db).all()).map((g) => ({
-                      value: g.alias,
-                      name: g.name,
-                    }))
-                  : (
-                      await db.q
-                        .selectFrom('node')
-                        .select('text')
-                        .where('node_object_type', '=', ObjectTypes.MemberGroup)
-                        .orderBy('text')
-                        .execute()
-                    ).map((g) => ({ value: String(g.text), name: String(g.text) })),
-            }),
-          },
-          log: (id) => bundleLog(id),
-          callerHost: {
-            media: (caller, bundle) => {
-              bundleMedia ??= createBundleMedia({
-                db,
-                operations: managementDeps.mediaOperations as MediaOperations,
-                files: mediaFiles,
-                cache: mediaCache,
-                folders: (id) => bundleMediaFolders.get(id) ?? [],
-                bundleName: (id) => bundles?.mounted.find((b) => b.id === id)?.name ?? id,
-                stream: (src, search) => streamMemberFile(src, search),
-              })
-              return bundleMedia(caller, bundle)
-            },
-          },
-        })
-      : undefined
-  if (bundles) {
-    // A declared folder that is not there would fail on the first upload; the
-    // boot says so instead, naming the bundle and the path.
-    const names = new Map(bundles.mounted.map((bundle) => [bundle.id, bundle.name]))
-    const resolved = await resolveBundleMediaFolders(
-      db,
-      config.bundles,
-      (id) => names.get(id) ?? id,
-    )
-    if (resolved.problems.length > 0)
-      throw new Error(
-        `The configured bundles cannot be mounted:\n- ${resolved.problems.join('\n- ')}`,
-      )
-    bundleMediaFolders = resolved.folders
-  }
   for (const bundle of bundles?.mounted ?? []) {
     if (servesBackOffice)
       log.info('Bundle {name} answering below {prefix} for the {section} section', {
@@ -935,40 +703,6 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
       { name },
     )
 
-  const poller = new CacheInstructionPoller({
-    db,
-    nodeId: schema.nodeId,
-    nodeState: schema.nodeState,
-    role: config.role,
-    // `schema` and `content` change what renders: schema alters property
-    // definitions. `views` changes the code that renders it, which is a new
-    // snapshot rather than anything in the published cache.
-    onInstruction: (kind, payload) => {
-      if (kind !== 'components') return cache.invalidate()
-      // The hash only says when to stop looking eagerly; the snapshot is always
-      // of the bytes this node reads, so a superseded one is harmless.
-      snapshots.announce(typeof payload.hash === 'string' ? payload.hash : undefined)
-    },
-    // Behind the latest committed checkpoint: rebuilt now rather than on the next
-    // read, so an idle node catches up and says so (story 174).
-    content: {
-      served: () => cache.served(),
-      covered: (checkpoint) => cache.covered(checkpoint),
-      behind: () => {
-        cache.invalidate()
-        void cache
-          .snapshot()
-          .catch((error: unknown) =>
-            renderLog.error('Could not rebuild the published cache: {error}', { error }),
-          )
-      },
-    },
-    media: {
-      apply: (change) => mediaCache.apply(change),
-      clear: () => mediaCache.clear(),
-    },
-  })
-  await poller.start(config.development ? 2_000 : 5_000)
   for (const { kind, path } of await unresolvedStatusPages(cache, config.pages).catch(() => []))
     renderLog.warning(
       "pages.{kind} is '{path}', which no published page answers; that status shows a plain page until one does.",
@@ -1050,7 +784,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     onChange: (key) => mediaCache.drop([key]),
     nodeId: schema.nodeId,
     bundleFolders: () =>
-      [...bundleMediaFolders].flatMap(([id, folders]) =>
+      [...core.bundleMediaFolders()].flatMap(([id, folders]) =>
         folders.map((folder) => ({
           bundle: bundles?.mounted.find((b) => b.id === id)?.name ?? id,
           nodePath: folder.nodePath,
@@ -1197,7 +931,6 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     draft: draftModel,
   })
   const seoPath = `${paths.pluginPath}/api/seo`
-  const siteServicesFor = createSiteServices({ db, cache })
 
   // Story 211: the site's routes and its bundles' site routes, at their own
   // paths, ahead of content finding; one pipeline answers bundles' back-office
@@ -1245,44 +978,20 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
       ...entry,
     })
   })
-  // The site's config may name a store; without one the environment decides,
-  // and that falls back to the media directory on this disk.
-  // A site pulled with `--lazy-media` reads files through from its remote (story 108).
-  const mediaStore = withRemoteMedia(
-    config.mediaStore ?? (await mediaStoreFromEnvironment(config.mediaDir)),
-    config.siteDir,
-  )
-  // Resolved once: constructing it twice would warn twice about a provider that
-  // is half-configured, and the adapters are cheap but not free of side effects.
-  const email = resolveEmailPort(config)
   const emailStatus = emailAvailability(email)
   // Whether an invitation or a reset link can reach anyone at all, which is what
   // gates the options rather than `emailStatus.available`: development delivers
   // to the console, and that is a working flow for the person using it.
   const canSendUserLinks = Boolean(resolveUserLinkSender(config, email))
-  // Story 045: a change queues the e-mails its subscribers asked for. Nothing is
-  // queued on a site that cannot send; development sends to the console.
-  const notifier = createContentNotifier(db, { canSend: Boolean(email) })
-  const mediaFiles = new MediaFileStore(mediaStore)
   const images = new ImageProcessor(mediaStore)
+  // Asked at boot, so the first AVIF request does not wait on it.
+  void canEncodeAvif()
   const publicMedia = mediaStore.publicUrl?.('media/file')
   if (publicMedia)
     log.warning(
       'Media files are also served from {where}. Protected files are always sent by this site and never from there, but anyone with a file’s address there can open it: keep protected files in a store nothing public serves.',
       { where: publicMedia.replace(/media\/file$/, '') },
     )
-  const webhooks = createWebhookService({
-    db,
-    schemaDir: config.schemaDir,
-    filesWritable: config.schemaWritable,
-    secretKey: config.secretKey,
-    bundles: config.bundles,
-    onFilesChanged: config.schemaStore
-      ? async () => {
-          await publishSchema(config.schemaStore as SchemaStore, config.schemaDir)
-        }
-      : undefined,
-  })
   /**
    * What an open backoffice hears of a change: the event hub drops its cached
    * copy, whatever was queued gets indexed now, and an open preview reloads.
@@ -1290,19 +999,9 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
    */
   function announce(event: ServerEvent): void {
     events.broadcast('notify', [event])
-    jobs.kickSearchIndexing()
     if (event.eventSource === 'Umbraco:CMS:Document' && event.eventType !== 'Deleted')
       previewHub.broadcast('refreshed', [event.key])
   }
-  // Recorded content events become deliveries and notifications here (story 171).
-  const dispatcher = createContentDispatcher({ db, webhooks, notifier })
-  // Document writes record and announce themselves through this, from every entry point.
-  const contentEvents = createContentEventSink({
-    webhooks,
-    notifier,
-    live: announce,
-    nudge: () => dispatcher.nudge(),
-  })
 
   const managementDeps = createDeps({
     config,
@@ -1322,18 +1021,29 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
       }
       return hidden
     },
-    extensions,
+    // A server bundle's screens show only while it is on (story 222).
+    extensions: {
+      ...extensions,
+      list: () =>
+        extensions
+          .list()
+          .filter(
+            (extension) =>
+              !extension.bundle.carries.server || bundleGrants.isOn(extension.bundle.id),
+          ),
+    },
     db,
     webhooks,
     contentEvents,
-    nudgeEvents: () => dispatcher.nudge(),
+    nudgeEvents: () => wake('events'),
+    operations: core.operations,
     cache,
     previewInApp: appPreview,
     schema,
     mediaFiles,
     email,
     notifier,
-    onSearchQueued: () => jobs.kickSearchIndexing(),
+    onSearchQueued: () => wake('search'),
     // This node looks again at once; the others are told to. The write has
     // already landed wherever `componentsDir` points, so there is nothing to
     // distribute — only the fact that it happened.
@@ -1418,59 +1128,17 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
       role: config.role,
       content: contentFreshness(),
       components: snapshots.status(),
+      // Where jobs run, and on a node that leaves them to a worker whether one
+      // is running them; reported, never drained on (story 223).
+      ...(config.role === 'web' ? {} : { jobs: core.workerWatch.status() }),
     }
   }
 
   const events = createServerEventHub()
   const previewHub = createServerEventHub({ name: 'PreviewHub' })
-  const jobs = createBackgroundJobs({
-    db,
-    cache,
-    approvals: managementDeps.approvals as Approvals | undefined,
-    operations: managementDeps.documentOperations as DocumentOperations,
-    dispatcher,
-    eventRetentionDays: config.eventRetentionDays,
-    nodeState: schema.nodeState,
-    nodeId: schema.nodeId,
-    versionCleanup: config.versionCleanup,
-    auditRetentionDays: config.auditRetentionDays,
-    mediaFiles,
-    // The workflow queue drains here rather than in the request: a submission is
-    // stored first, and an e-mail that cannot be sent yet must not cost it.
-    webhooks,
-    formWorkflows: createWorkflowRunner({
-      db,
-      forms,
-      email,
-      mediaFiles,
-      nodeState: schema.nodeState,
-      nodeId: schema.nodeId,
-      onContentChanged: () => cache.invalidate(),
-      operations: managementDeps.documentOperations,
-      bundleWorkflows: formTypes.workflows,
-      renderEmail: (alias, props) => renderer.renderEmail(alias, props),
-      site: async () => ({
-        name: (await seo.siteDefaults()).siteName || config.siteName,
-        url: config.applicationUrl,
-      }),
-    }),
-    contentNotifications: email
-      ? createContentNotificationRunner({
-          db,
-          email,
-          siteName: config.siteName,
-          editUrl: (key) => documentEditUrl(config, key),
-        })
-      : undefined,
-    onDocumentChanged: (key) =>
-      events.broadcast('notify', [
-        { eventSource: 'Umbraco:CMS:Document', eventType: 'Updated', key },
-      ]),
-  })
-  // Scheduled publishing and version cleanup are writes on a timer. Running them
-  // on every node would have two processes publishing the same document in the
-  // same second, so only an owner starts them.
-  if (owns) jobs.start()
+  // Jobs are writes on a timer, claimed so each runs once, and started where
+  // this node runs them: an owner unless told to leave them to a worker.
+  await core.startJobs()
   log.info('Crombolo {version} started on node {nodeId} as {role}', {
     version: VERSION,
     nodeId: schema.nodeId,
@@ -1489,10 +1157,13 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
   // Imported only when configured: an unconfigured site has no git route and no
   // credentials anywhere near it.
   const auditPath = `${paths.pluginPath}/api/audit`
+  const jobsPath = `${paths.pluginPath}/api/jobs`
   const hostTokenPath = `${paths.pluginPath}/api/host-token`
   const contentQueryPath = `${paths.pluginPath}/api/content-query`
   const bundleInstallPaths = new Set(
-    ['install', 'uninstall'].map((action) => `${paths.pluginPath}/api/bundles/${action}`),
+    ['install', 'uninstall', 'grant', 'withdraw'].map(
+      (action) => `${paths.pluginPath}/api/bundles/${action}`,
+    ),
   )
   /** Per node: ten a minute for each person, three hundred in all. */
   const hostTokens = new AttemptLimiter({ max: 10, maxAll: 300, windowMs: 60_000 })
@@ -1522,6 +1193,15 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
    * address it is answered with points back at the new paths.
    */
   async function fetch(request: Request): Promise<Response> {
+    const response = await answer(request)
+    // Readers are answered from the previous cache while it rebuilds (story
+    // 175), so a change is in it before the request that made it is answered.
+    if (request.method !== 'GET' && request.method !== 'HEAD' && cache.stale)
+      await cache.fresh().catch(() => {})
+    return response
+  }
+
+  async function answer(request: Request): Promise<Response> {
     const url = new URL(request.url)
     const contract = contractPathFor(paths.backOfficePath, url.pathname)
     if (!contract) return route(request)
@@ -1832,7 +1512,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     // A content query is a POST that reads.
     if (pathname === contentQueryPath) return
     // Installs and removals write their own entry, with the package (story 194).
-    if (bundleInstallPaths.has(pathname)) return
+    if (bundleInstallPaths.has(pathname) || pathname.startsWith(`${jobsPath}/`)) return
     const principal = await authenticate(request)
     if (!principal) return
     const plan = pluginAuditPlan(request.method, pathname.slice(prefix.length))
@@ -2047,15 +1727,21 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
           version?: unknown
           applyContent?: unknown
           acceptServerCode?: unknown
+          grant?: unknown
         }
         const name = typeof body.name === 'string' ? body.name : ''
         const version = typeof body.version === 'string' ? body.version : undefined
         const acceptServerCode = body.acceptServerCode === true
+        const grant = Array.isArray(body.grant)
+          ? body.grant.filter((p): p is string => typeof p === 'string')
+          : []
         const outcome =
           action === 'install'
             ? await marketplace.install(name, version, {
                 applyContent: body.applyContent !== false,
                 acceptServerCode,
+                grant,
+                by: principal.email,
               })
             : await marketplace.uninstall(name)
         log.info('{user} {action} the package {name}: {outcome}', {
@@ -2072,13 +1758,57 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
             action: action === 'install' ? 'Install' : 'Uninstall',
             entityType: 'Bundle',
             entityName: outcome.dependency ? `${name}@${outcome.dependency.version}` : name,
-            detail: action === 'install' && acceptServerCode ? 'accepted server code' : null,
+            detail:
+              action === 'install' && acceptServerCode
+                ? `accepted server code; granted ${grant.length > 0 ? grant.join(', ') : 'nothing'}`
+                : null,
             source: 'request',
             userKey: principal.id,
             userName: principal.name,
             ...clientAddress(request),
           })
         return Response.json(outcome, { status: outcome.ok ? 200 : 400 })
+      }
+
+      // Story 222: an administrator grants a bundle the whole of what it asks
+      // to do, or withdraws it, which turns the bundle off.
+      if ((action === 'grant' || action === 'withdraw') && request.method === 'POST') {
+        const body = (await request.json().catch(() => ({}))) as { id?: unknown }
+        const id = typeof body.id === 'string' ? body.id : ''
+        const pkg = extensions.bundles().bundles.find((candidate) => candidate.id === id)
+        if (!pkg?.carries.server)
+          return Response.json(
+            { ok: false, message: `No installed bundle with a server half is called "${id}".` },
+            { status: 404 },
+          )
+        if (action === 'withdraw') await bundleGrants.withdraw(id)
+        const state =
+          action === 'grant'
+            ? await bundleGrants.grant(pkg, principal.email)
+            : bundleGrants.state(pkg)
+        await recordAudit(db, {
+          category: 'system',
+          action: action === 'grant' ? 'Grant' : 'Withdraw',
+          entityType: 'Bundle',
+          entityName: `${pkg.packageName}@${pkg.version}`,
+          detail:
+            action === 'grant'
+              ? `granted ${state.declared.map((d) => d.permission).join(', ') || 'nothing'}`
+              : 'withdrew its permissions; it is off',
+          source: 'request',
+          userKey: principal.id,
+          userName: principal.name,
+          ...clientAddress(request),
+        })
+        return Response.json({
+          ok: true,
+          on: state.on,
+          missing: state.missing,
+          message:
+            action === 'grant'
+              ? `${pkg.name} is turned on.`
+              : `${pkg.name} is turned off until its permissions are approved again.`,
+        })
       }
 
       return new Response('Not Found', { status: 404 })
@@ -2424,6 +2154,69 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
       if (response) return response
     }
 
+    // Non-contract, Settings: every owner's background jobs, and retrying a
+    // failed one by hand (story 187).
+    if (pathname === jobsPath || pathname.startsWith(`${jobsPath}/`)) {
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      if (!hasSection(principal, 'settings')) return new Response('Forbidden', { status: 403 })
+      const queue = new JobRepository(db)
+      if (pathname === jobsPath && request.method === 'GET') {
+        const url = new URL(request.url)
+        const state = url.searchParams.get('state')
+        const listed = await queue.list({
+          owner: url.searchParams.get('owner') || undefined,
+          state: ['queued', 'running', 'succeeded', 'failed'].includes(state ?? '')
+            ? (state as JobState)
+            : undefined,
+          skip: Math.max(0, Number(url.searchParams.get('skip')) || 0),
+          take: Math.min(200, Math.max(1, Number(url.searchParams.get('take')) || 50)),
+        })
+        return Response.json({
+          total: listed.total,
+          // Set while this node leaves its jobs to a worker and none is running.
+          waitingSince: core.workerWatch.status().waitingSince,
+          items: listed.items.map((job) => ({
+            id: job.id,
+            owner: job.owner,
+            name: job.name,
+            state: job.state,
+            attempts: job.attempts,
+            maxAttempts: job.maxAttempts,
+            nextAttemptAt: job.nextAttemptAt.toISOString(),
+            progress: job.progress,
+            error: job.lastError,
+            queuedBy: job.queuedBy,
+            createdAt: job.createdAt.toISOString(),
+            finishedAt: job.finishedAt?.toISOString() ?? null,
+          })),
+        })
+      }
+      const retry = /^\/([0-9a-f-]{36})\/retry$/i.exec(pathname.slice(jobsPath.length))
+      if (retry && request.method === 'POST') {
+        const id = retry[1] as string
+        const job = await queue.get(id)
+        if (!job || !(await queue.retry(id)))
+          return Response.json(
+            { ok: false, message: 'Only a job that has failed can be run again.' },
+            { status: 409 },
+          )
+        await recordAudit(db, {
+          category: 'system',
+          action: 'Retry',
+          entityType: 'Job',
+          entityName: `${job.owner}/${job.name}`,
+          detail: job.lastError ? `after: ${job.lastError.slice(0, 200)}` : null,
+          source: 'request',
+          userKey: principal.id,
+          userName: principal.name,
+          ...clientAddress(request),
+        })
+        return Response.json({ ok: true, message: `${job.name} is queued to run again.` })
+      }
+      return new Response('Not Found', { status: 404 })
+    }
+
     // Non-contract, Settings: how page addresses are built (story 110).
     // Non-contract: finding pages by their facts (story 183), as the signed-in user.
     if (pathname === contentQueryPath) {
@@ -2546,7 +2339,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
       }
       // A bundle's tables are part of what an upgrade changes, so the dashboard
       // that shows an upgrade's findings shows their steps too.
-      const bundles = await bundleTablesReport(db, chains)
+      const bundles = await tablesReport(db, chains)
       const upgrades = summariseUpgrades(await readLedger(db), VERSION)
       // The answers a finding can be given, offered only to those who may import.
       const mayImport = hasSection(principal, 'packages')
@@ -3379,6 +3172,14 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     renderer,
     snapshots,
     seededAdminPassword,
+    bundleGrants,
+    backgroundJobs: jobRunner,
+    waitingBundles: () =>
+      config.bundles.flatMap((bundle) => {
+        const pkg = bundlePackages.find((candidate) => candidate.id === bundle.id)
+        if (!pkg || bundleGrants.isOn(bundle.id)) return []
+        return [{ id: bundle.id, missing: bundleGrants.state(pkg).missing }]
+      }),
     schema,
     poll: () => poller.poll(),
     notImplemented,
@@ -3423,9 +3224,9 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     },
     async close() {
       diagnostics.stop()
-      // A run already going finishes first: closing the database under a job
-      // left its locks behind for whatever used the database next.
-      await jobs.stop()
+      // A run already going finishes first, or goes back in the queue: closing
+      // the database under a job left its locks behind for whatever used it next.
+      await core.stopJobs()
       // A dispatch a commit started finishes before the connection goes.
       await dispatcher.settled().catch(() => {})
       events.stop()
@@ -3435,6 +3236,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
       typeWatch?.stop()
       live?.close()
       poller.stop()
+      await closeTables(chains)
       await db.close()
     },
   }

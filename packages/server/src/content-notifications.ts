@@ -9,7 +9,7 @@
  * publish arrive as one e-mail, and a background job on the nodes that run
  * jobs sends them; each person's rows are claimed by one node.
  */
-import type { RaisedContentChange } from '@crombolo/api-management'
+import type { RaisedContentChange } from '@crombolo/api-management/domain'
 import { hasPathAccess, isValidEmail, ObjectTypes, permissionsForPath } from '@crombolo/core'
 import {
   type ContentNotification,

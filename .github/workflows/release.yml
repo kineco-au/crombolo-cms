@@ -100,10 +100,16 @@ jobs:
                   bun run test:ci --timeout 600000 $files
             - if: matrix.shards == 1
               run: bun run test:load
-            # Story 086's benchmark: a generated 25,000-page site, timed against
-            # the budgets in docs/testing.md. Release only; locally, run it small.
+            # Stories 086 and 175's benchmark: a generated 25,000-page site, timed
+            # against the budgets in docs/testing.md, and the Small site beside it.
+            # Large runs weekly instead (bench-large.yml).
             - if: matrix.shards == 1
               run: bun run test:bench
+            - name: Benchmark the small site
+              if: matrix.shard == 1
+              env:
+                  CROMBOLO_BENCH_SIZE: small
+              run: bun run test:ci --timeout 600000 tests/load/large-site.bench.ts
 
     publish:
         needs: [ci, load]

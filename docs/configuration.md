@@ -62,7 +62,8 @@ rather than the running server. Secret ones are never printed or logged.
 | `PORT` | number | `8080` | The HTTP port. The application URL defaults to localhost on this port. |
 | `CROMBOLO_SITE_NAME` | string | `Crombolo` | The site's name, shown in the back office and used when a page is shared. |
 | `CROMBOLO_APPLICATION_URL` | string | `http://localhost:<port>` | The site's public address, which invitation and password-reset links point at. |
-| `CROMBOLO_ROLE` | `all`, `api`, `web` | `all` | What this process serves: everything, the back office and its API, or the public site alone. Splitting needs Postgres; a misspelt role stops the server. |
+| `CROMBOLO_ROLE` | `all`, `api`, `web`, `worker` | `all` | What this process serves: everything, the back office and its API, the public site alone, or only the background jobs. Splitting needs Postgres; a misspelt role stops the server. |
+| `CROMBOLO_JOBS` | `on`, `off` | `on` | Whether an all or api node runs the background jobs. Off leaves them to a worker; the node still queues them. |
 | `CROMBOLO_NODE_ID` | string | `host:pid` | This node's name, stamped on schema syncs, content changes and the upgrade history. |
 | `CROMBOLO_MAX_REQUEST_BODY_MB` | number | `32` | The largest request body the server reads, media uploads included. |
 | `CROMBOLO_INSECURE_COOKIES` | `true` / `false` | `false` | Drops the secure cookie requirements, for a plain-http host that is not localhost. |
@@ -334,6 +335,10 @@ is code rather than a value:
 | `backofficeIdentityProviders` | the same, for backoffice users; a separate list, so staff and members can use different providers |
 | `islands` | where `'use client'` islands' browser code comes from: built with each generation of views by default, or `{ manifest, devServer }` for a site's own Vite build ([`rendering.md`](rendering.md#islands)) |
 | `middleware` | the site's middleware by stage, `{ request, route, page }`, each run in the order listed; its time limit is `CROMBOLO_MIDDLEWARE_TIMEOUT_MS` ([`rendering.md`](rendering.md#middleware)) |
+| `database` | the site's own tables, `{ tables: defineSiteTables(steps), anonymise }`: migrated with crombolo's, and what an anonymised export may carry of each ([`data-model.md`](data-model.md#custom-tables)) |
+| `jobs` | the site's background jobs, modules each export of which is queued as `site().jobs.enqueue('<module>.<export>', payload)` and run on a node that owns writes ([`rendering.md`](rendering.md#background-jobs)) |
+| `schedules` | when the site's jobs run by themselves: `{ job, cron, timezone?, missed? }` |
+| `queries` | the site's named queries, modules each export of which runs as `site().queries.<module>.<name>(…)` against the site's tables ([`rendering.md`](rendering.md#named-queries)) |
 | `routes` | the site's route handlers, `route(path, handlers, options)`, answered at their paths ahead of content finding; limits `CROMBOLO_ROUTE_TIMEOUT_MS` and `CROMBOLO_ROUTE_RATE_LIMIT_PER_MINUTE` ([`rendering.md`](rendering.md#route-handlers)) |
 | `liveReload` | open pages reload when the components, the schema or the content change, and show the background type check's findings; `CROMBOLO_LIVE_RELOAD`, on in development except under `bun test` ([`writing-components.md`](writing-components.md#the-development-loop)) |
 | `pages` | the pages in the content tree, by path, that answer `notFound`, `unauthorized` and `error` outcomes from a page's code, per hostname or language if need be ([`rendering.md`](rendering.md#status-pages)) |

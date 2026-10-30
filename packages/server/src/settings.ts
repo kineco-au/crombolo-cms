@@ -76,11 +76,20 @@ const DECLARED = [
   {
     env: 'CROMBOLO_ROLE',
     kind: 'enum',
-    values: ['all', 'api', 'web'],
+    values: ['all', 'api', 'web', 'worker'],
     default: 'all',
     section: 'Server',
     description:
-      'What this process serves: everything, the back office and its API, or the public site alone. Splitting needs Postgres; a misspelt role stops the server.',
+      'What this process serves: everything, the back office and its API, the public site alone, or only the background jobs. Splitting needs Postgres; a misspelt role stops the server.',
+  },
+  {
+    env: 'CROMBOLO_JOBS',
+    kind: 'enum',
+    values: ['on', 'off'],
+    default: 'on',
+    section: 'Server',
+    description:
+      'Whether an all or api node runs the background jobs. Off leaves them to a worker; the node still queues them.',
   },
   {
     env: 'CROMBOLO_NODE_ID',

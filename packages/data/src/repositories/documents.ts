@@ -340,6 +340,9 @@ export interface CurrentNodeRow {
 }
 
 /** Ids in slices small enough for either dialect's parameter limit. */
+/** A turn for whatever else is waiting: a request, while a long read runs. */
+const giveWay = () => new Promise<void>((resolve) => setImmediate(resolve))
+
 const slices = <T>(items: readonly T[], size = 500): T[][] =>
   Array.from({ length: Math.ceil(items.length / size) }, (_, n) =>
     items.slice(n * size, (n + 1) * size),
@@ -531,13 +534,16 @@ export class DocumentRepository {
     const culturesById = new Map<number, PublishedCulture[]>()
     const historyById = new Map<number, ValueRow[]>()
     for (const slice of slices(rows.map((row) => Number(row.id)))) {
+      // SQLite reads without giving the thread up: let waiting requests in.
+      await giveWay()
       for (const [id, cultures] of await this.#publishedCultureEventsFor(slice))
         culturesById.set(id, cultures)
       for (const [id, history] of await this.#valueHistoryFor(slice, asOfSchemaStateId))
         historyById.set(id, history)
     }
     const published: PublishedNodeRow[] = []
-    for (const row of rows) {
+    for (const [index, row] of rows.entries()) {
+      if (index % 250 === 0) await giveWay()
       const typeId = Number(row.content_type_id)
       if (!typesById.has(typeId))
         // A pending property is never rendered, even if a template asks for it.

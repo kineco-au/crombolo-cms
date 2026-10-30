@@ -7,7 +7,7 @@
  * config file owns it, and the next boot would put it back.
  */
 
-import type { RedirectListing, RedirectPort } from '@crombolo/api-management'
+import type { RedirectListing, RedirectPort } from '@crombolo/api-management/domain'
 import type { Page } from '@crombolo/core'
 import {
   appendCacheInstruction,

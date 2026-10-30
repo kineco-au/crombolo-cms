@@ -1,5 +1,5 @@
 /** Relation types and their derived relations, shaped for the wire. */
-import type { RelationPort, RelationTypeView } from '@crombolo/api-management'
+import type { RelationPort, RelationTypeView } from '@crombolo/api-management/domain'
 import { ObjectTypes } from '@crombolo/core'
 import { type Db, RELATION_TYPES, RelationRepository, relationTypeByKey } from '@crombolo/data'
 

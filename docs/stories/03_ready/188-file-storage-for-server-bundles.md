@@ -13,9 +13,8 @@ media.
 ## Context
 
 Crombolo stores media on the file system, S3 or Azure, and serves crops. A
-bundle has no capability to store anything. Raised by Nature's Calendar
-(`wt-natures-calendar` story 014): members attach photos to observations
-(millions exist), and administrators upload import batches and download error
+bundle has no capability to store anything. Raised by a site whose members
+attach photos to records (millions exist), and administrators upload import batches and download error
 reports. These are not editorial media and must not appear in the Media section
 or be served to anyone but their owner.
 

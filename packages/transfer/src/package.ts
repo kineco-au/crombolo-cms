@@ -7,6 +7,7 @@
  * it a name, a version and a core it was written for.
  */
 import { PEOPLE_DIR } from './people.ts'
+import { SITE_DATA_DIR } from './site-data.ts'
 import { type BundleFile, MANIFEST_FILE } from './write.ts'
 
 /** The npm keyword a bundle publishes so the marketplace can find it. */
@@ -98,6 +99,8 @@ export function writeBundlePackage(
   // and sealed content would be no use to anyone who installed it.
   if (!info.private && payload.some((file) => file.path.startsWith(`${PEOPLE_DIR}/`)))
     throw new Error('A bundle that carries members or users can only be a private package.')
+  if (!info.private && payload.some((file) => file.path.startsWith(`${SITE_DATA_DIR}/`)))
+    throw new Error("A bundle that carries the site's own data can only be a private package.")
   if (!info.private && payload.some((file) => file.path.startsWith('values/')))
     throw new Error('A bundle whose content is encrypted can only be a private package.')
   return [

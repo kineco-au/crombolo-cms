@@ -33,6 +33,7 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
     _elsewhere: { state: true },
     _consenting: { state: true },
     _trusted: { state: true },
+    _asks: { state: true },
   }
 
   constructor() {
@@ -51,6 +52,7 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
     this._elsewhere = null
     this._consenting = ''
     this._trusted = false
+    this._asks = []
   }
 
   connectedCallback() {
@@ -88,19 +90,21 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
   }
 
   /** Asks first when the bundle runs code on the server; installs otherwise. */
+  /** A bundle with server code is asked about first: the server answers with what it asks to do. */
   #requestInstall(item) {
-    if (item.carries?.server) this.#askConsent(item)
-    else this.#install(item, false)
+    this.#install(item, false)
   }
 
-  #askConsent(item) {
+  #askConsent(item, asks) {
     this._consenting = item.name
     this._trusted = false
+    this._asks = asks ?? []
   }
 
   #cancelConsent() {
     this._consenting = ''
     this._trusted = false
+    this._asks = []
   }
 
   async #install(item, acceptServerCode) {
@@ -112,12 +116,13 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
         item.version,
         !this._declined.has(item.name),
         acceptServerCode,
+        acceptServerCode ? this._asks.map((ask) => ask.permission) : [],
       )
-      // The version that would install may have gained server code since the
-      // list was read: the server says so, and the card asks.
-      if (outcome.needsServerConsent && !acceptServerCode) {
-        this._notice = outcome.message ?? ''
-        this.#askConsent({ ...item, carries: { ...item.carries, server: true } })
+      // Server code, or a version that asks for more than was approved: the
+      // server says what it asks to do, and the card asks.
+      if (outcome.needsServerConsent) {
+        if (acceptServerCode) this._notice = outcome.message ?? ''
+        this.#askConsent(item, outcome.permissions)
         return
       }
       this._consenting = ''
@@ -163,6 +168,14 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
           <strong>This bundle runs code on the server.</strong> Once your site's developers turn
           it on, its code can read and change the site's data, files and settings.
         </p>
+        ${
+          this._asks.length > 0
+            ? html`<p>It asks to:</p>
+                <ul class="asks">
+                  ${this._asks.map((ask) => html`<li>${ask.allows}</li>`)}
+                </ul>`
+            : html`<p>It asks for no access to the site's content, members or settings.</p>`
+        }
         <p class="meta">
           <span>Published by ${item.publisher ?? 'an unnamed publisher'}</span>
           <a href=${item.links.npm} target="_blank" rel="noopener">npm</a>
@@ -173,7 +186,7 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
           }
         </p>
         <uui-checkbox
-          label="I trust this publisher with the site's server"
+          label="I trust this publisher, and approve what it asks to do"
           .checked=${this._trusted}
           @change=${(event) => {
             this._trusted = event.target.checked
@@ -182,7 +195,7 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
           <uui-button
             look="primary"
             color="warning"
-            label="Install server code"
+            label="Approve and install"
             ?disabled=${!this._trusted}
             .state=${this._busy === item.name ? 'waiting' : undefined}
             @click=${() => this.#install(item, true)}></uui-button>
@@ -331,6 +344,10 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
       padding: var(--uui-size-space-4, 12px);
       border-left: 3px solid var(--uui-color-warning, #f0ac00);
       background: var(--uui-color-surface-alt, #f3f3f5);
+    }
+    .consent .asks {
+      margin: 0 0 var(--uui-size-space-3, 9px);
+      padding-left: 1.25em;
     }
     .consent .actions {
       display: flex;

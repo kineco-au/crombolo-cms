@@ -13,7 +13,8 @@ export default class Export extends BaseCommand {
     'write the whole site to one file, to move it to another machine or host'
   static override description = [
     'Schema, components, styles, scripts, dictionary, every page and media item and their files. Domains and people stay behind unless --with-members or --with-users, which are encrypted.',
-    '--anonymise replaces every personal value as it writes.',
+    "The site's own data, and that of its bundles, stays behind unless --with-site-data, which is encrypted.",
+    '--anonymise replaces every personal value as it writes. Site data travels only as its anonymise rules allow: a table without one travels empty.',
   ].join('\n\n')
   static override examples = ['<%= config.bin %> export --site --out site.tgz']
   static override flags = {
@@ -31,6 +32,9 @@ export default class Export extends BaseCommand {
     drafts: Flags.boolean({ summary: 'drafts too' }),
     'with-members': Flags.boolean({ summary: 'members, encrypted' }),
     'with-users': Flags.boolean({ summary: 'back-office users, encrypted' }),
+    'with-site-data': Flags.boolean({
+      summary: "the site's and its bundles' own data, encrypted",
+    }),
     anonymise: Flags.boolean({ summary: 'replace every personal value as it writes' }),
     name: Flags.string({ summary: "the package's npm name", helpValue: '<npm name>' }),
     'package-version': Flags.string({ summary: "the package's version", helpValue: '<version>' }),
@@ -46,6 +50,12 @@ export default class Export extends BaseCommand {
       { name: 'media', type: 'object' },
       { name: 'people', type: 'object' },
       { name: 'anonymised', type: 'integer', nullable: true },
+      {
+        name: 'siteData',
+        type: 'object',
+        nullable: true,
+        description: 'tables and rows carried; emptied names the tables that travelled empty',
+      },
     ],
     errors: ['usage', 'auth', 'io'],
   } as const
@@ -64,9 +74,10 @@ export default class Export extends BaseCommand {
       drafts: flags.drafts,
       withMembers: flags['with-members'],
       withUsers: flags['with-users'],
+      withSiteData: flags['with-site-data'],
       anonymise: flags.anonymise,
       passphrase:
-        withPeople && !(flags.anonymise && !flags['with-members'])
+        (withPeople && !(flags.anonymise && !flags['with-members'])) || flags['with-site-data']
           ? await passphraseToSeal()
           : undefined,
       package: { name: flags.name, version: flags['package-version'] },
@@ -88,6 +99,13 @@ export default class Export extends BaseCommand {
         `  people   ${result.people.members} member(s), ${result.people.users} user(s), encrypted`,
       )
     else this.say('  people   left out: pass --with-members or --with-users to bring them')
+    if (result.siteData) {
+      this.say(
+        `  site data  ${result.siteData.tables} table(s), ${result.siteData.rows} row(s), encrypted`,
+      )
+      for (const table of result.siteData.emptied)
+        this.say(`  emptied  ${table}: no anonymise rule lets it travel`)
+    }
     if (result.anonymised !== undefined)
       this.say(
         `  anonymised  ${result.anonymised} email address(es) replaced; no back-office users`,
@@ -100,6 +118,7 @@ export default class Export extends BaseCommand {
       media: result.media,
       people: result.people,
       anonymised: result.anonymised ?? null,
+      siteData: result.siteData ?? null,
     }
   }
 }

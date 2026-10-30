@@ -8,8 +8,10 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path'
 import { SYSTEM_MEDIA_TYPE_KEYS } from '@crombolo/core'
 import {
+  canEncodeAvif,
   decodePng,
   encodePng,
+  ImageProcessor,
   type ImagingRequest,
   type Pixels,
   parseImagingQuery,
@@ -101,6 +103,50 @@ describe('imaging requests', () => {
     expect(parse('width=99999')?.width).toBe(5000)
     expect(parse('width=10&rmode=explode')?.mode).toBe('crop')
     expect(parse('cc=2,0,0,0')).toBeUndefined()
+    expect(parse('width=10&format=avif')?.format).toBe('avif')
+    expect(parse('width=10&format=gif')?.format).toBeUndefined()
+  })
+
+  test('an anchor is where a crop is cut from, unless a focal point is given', () => {
+    const parse = (q: string) => parseImagingQuery(new URLSearchParams(q))
+    expect(parse('width=4&height=4&ranchor=right')?.focalPoint).toEqual({ left: 1, top: 0.5 })
+    expect(parse('width=4&height=4&ranchor=TopLeft')?.focalPoint).toEqual({ left: 0, top: 0 })
+    expect(parse('width=4&height=4&ranchor=nowhere')?.focalPoint).toBeUndefined()
+    expect(parse('width=4&height=4&ranchor=right&rxy=0.1,0.5')?.focalPoint).toEqual({
+      left: 0.1,
+      top: 0.5,
+    })
+  })
+
+  test('the anchor crops from its edge', async () => {
+    const parse = (q: string) => parseImagingQuery(new URLSearchParams(q)) as ImagingRequest
+    const right = await run(halves, parse('width=4&height=4&ranchor=right'))
+    const left = await run(halves, parse('width=4&height=4&ranchor=left'))
+    expect(pixel(right, 3, 2)).toEqual(GREEN)
+    expect(pixel(left, 0, 2)).toEqual(RED)
+  })
+
+  test('a cache buster asks for the same variant, so it makes no copy of its own', async () => {
+    const stored = new Map<string, Uint8Array>()
+    const store = {
+      get: async (key: string) => {
+        const bytes = stored.get(key)
+        return bytes ? { key, size: bytes.length, etag: 'e', bytes: async () => bytes } : undefined
+      },
+      put: async (key: string, bytes: Uint8Array) => {
+        stored.set(key, bytes)
+      },
+    }
+    const images = new ImageProcessor(store as never)
+    const source = { key: 'photo.png', size: 0, etag: 'one', bytes: async () => encodePng(halves) }
+    const a = parseImagingQuery(new URLSearchParams('width=4&rnd=abc')) as ImagingRequest
+    const b = parseImagingQuery(new URLSearchParams('width=4&rnd=xyz')) as ImagingRequest
+    const first = await images.variant(source as never, a)
+    const second = await images.variant(source as never, b)
+    expect(second.key).toBe(first.key)
+    expect(stored.size).toBe(1)
+    // A buster alone asks for the original.
+    expect(parseImagingQuery(new URLSearchParams('rnd=abc'))).toBeUndefined()
   })
 
   test('crop coordinates cut the source before resizing', async () => {
@@ -145,6 +191,17 @@ describe('imaging requests', () => {
     expect((await new Bun.Image(webp.bytes).metadata()).format).toBe('webp')
     const asSource = await processImage(encodePng(halves), { mode: 'max', width: 4 }, 'photo.jpg')
     expect(asSource.contentType).toBe('image/jpeg')
+  })
+
+  test('AVIF where this machine can encode it, and WebP where it cannot', async () => {
+    const out = await processImage(
+      encodePng(halves),
+      { mode: 'max', width: 4, format: 'avif' },
+      'x.png',
+    )
+    const expected = (await canEncodeAvif()) ? 'avif' : 'webp'
+    expect(out.contentType).toBe(`image/${expected}`)
+    expect((await new Bun.Image(out.bytes).metadata()).format).toBe(expected)
   })
 })
 

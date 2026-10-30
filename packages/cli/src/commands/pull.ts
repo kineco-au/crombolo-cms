@@ -140,6 +140,13 @@ export default class Pull extends BaseCommand {
       }
       runId = result.runId
       this.say(`  replaced, run ${runId}: \`crombolo content revert ${runId}\` puts it back`)
+      if (result.siteData) {
+        this.say(
+          `  site data  ${result.siteData.tables} table(s), ${result.siteData.rows} row(s) replaced`,
+        )
+        for (const skipped of result.siteData.skipped)
+          this.warning(`  skipped  ${skipped}: this site has no place for it`)
+      }
     }
 
     let fetched: {

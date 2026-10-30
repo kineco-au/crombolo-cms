@@ -15,7 +15,7 @@ import type {
   ModelsBuilderInfo,
   ModelsBuilderPort,
   OutOfDateStatus,
-} from '@crombolo/api-management'
+} from '@crombolo/api-management/domain'
 import type { FormTypes } from '@crombolo/core'
 import { generateTypes, loadSchemaDirectory, validateSchemaSet } from '@crombolo/schema'
 import type { CromboloConfig } from './config.ts'

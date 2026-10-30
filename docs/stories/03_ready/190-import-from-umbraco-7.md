@@ -17,8 +17,8 @@ move, and Crombolo Cloud's "Try your Umbraco site here" (`crombolo-cloud` 100)
 courts them. Umbraco's own route out of 7 is a migration to 8 and then on, with
 each package migrating separately.
 
-Raised by Nature's Calendar (`wt-natures-calendar` story 016), an Umbraco 7.15
-site, where reusable v7 support was chosen over a one-off script (2026-10-27).
+Raised by a site moving from Umbraco 7.15, where reusable v7 support was
+chosen over a one-off script (2026-10-27).
 
 Umbraco 7 differs in kind: published content as XML in `cmsContentXml`, values in
 `cmsPropertyData` by data type, members in `cmsMember` with properties alongside,
@@ -45,5 +45,5 @@ media paths in values, and package editors storing their own JSON or CSV.
       in the same site directory as a v15+ import.
 - [ ] Nested Content, the Grid and the multi-URL picker convert to blocks and
       links; anything not converted is in the report with its raw value.
-- [ ] Proven on a real Umbraco 7 export (Nature's Calendar's, with its owner's
-      consent), as `072` proves v15–18.
+- [ ] Proven on a real Umbraco 7 export, with its owner's consent, as `072`
+      proves v15–18.

@@ -19,9 +19,9 @@ declare a public route" (`packages/server/src/bundles.ts`). That was the right
 default for screens in the back office, and it leaves no way for a site to give
 its members an API.
 
-Raised by Nature's Calendar (`wt-natures-calendar` story 012), whose API is
-mostly member-facing (a member's records, places and photos) and partly public
-(species lists, map data, recent records). Templates already receive the
+Raised by a site whose API is mostly member-facing (a member's records,
+places and photos) and partly public (reference lists, map data, recent
+records). Templates already receive the
 signed-in member (`PageProps.member`, `docs/rendering.md`); a route needs the
 same. Other customers with an application beside their content will meet the
 same wall. Nothing a site writes outside a bundle is an alternative on Crombolo

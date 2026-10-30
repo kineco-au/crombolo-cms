@@ -1088,6 +1088,8 @@ describe(`the migration (${dialectUnderTest})`, () => {
       'AddMediaPagingIndexes',
       'AddMediaMemberUploads',
       'AddMediaMemberGrants',
+      'AddBundleGrants',
+      'AddJobs',
     ])
     const found = await new MediaAccessRepository(db).byUrl(photo.src)
     expect(found?.key).toBe(photo.key)

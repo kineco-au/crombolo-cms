@@ -3,7 +3,7 @@
  * repository takes a kind), never published. An item's file is the path its
  * `umbracoFile` holds, served from the media root.
  */
-import type { MediaPort } from '@crombolo/api-management'
+import type { MediaPort } from '@crombolo/api-management/domain'
 import {
   type ContentTypeAggregate,
   DEFAULT_UPLOAD_SETTINGS,

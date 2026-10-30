@@ -3,7 +3,7 @@
  * `$type`, so a referencing node becomes a document, a media item, or the
  * default shape when it is neither.
  */
-import type { ReferencePort } from '@crombolo/api-management'
+import type { ReferencePort } from '@crombolo/api-management/domain'
 import { ObjectTypes } from '@crombolo/core'
 import { type Db, ReferenceRepository, type ReferencingNode } from '@crombolo/data'
 

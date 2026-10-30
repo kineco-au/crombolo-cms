@@ -40,9 +40,8 @@ Each server keeps one published snapshot in memory
     (`api-delivery/src/handler.ts`).
   - **SEO defaults** read images from it (`server/src/seo.ts`).
 
-Raised by Nature's Calendar (`wt-natures-calendar` stories 014 and 044):
-millions of observation photos, uploaded continually, are kept in the media
-library. Story 196 protects them, and this story makes the library hold them.
+Raised by a site whose millions of member photos, uploaded continually, are
+kept in the media library. Story 196 protects them, and this story makes the library hold them.
 
 ## Decided (2026-10-28)
 

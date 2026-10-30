@@ -22,7 +22,7 @@ import {
   type PackageJson,
   peerRangeProblem,
   resolvePackageDir,
-} from '@crombolo/backoffice-host'
+} from '@crombolo/backoffice-host/registry'
 import { loadBundleCode } from '@crombolo/transfer'
 import { VERSION } from './config.ts'
 

@@ -38,20 +38,22 @@
  *   release refuses the boot.
  *
  * - A bundle that declares `tables` owns them: its own ledgered chain, written
- *   with the declarative builder in `@crombolo/data`, and a `tables`
- *   capability confined to them (`docs/bundles.md`, Part 4).
+ *   with the declarative builder in `@crombolo/data`, in a schema or file of
+ *   its own, and `context.bundle.database`, a Kysely handle on the connection
+ *   that reaches only them (`docs/bundles.md`, Part 4; story 189).
  *
- * Deliberately not offered: raw SQL, a `Db`, and anything that writes the
+ * Deliberately not offered: crombolo's own `Db`, and anything that writes the
  * site's files.
  */
 
-import { hasCultureAccess, hasSection, type Principal } from '@crombolo/api-management'
+import { hasCultureAccess, hasSection, type Principal } from '@crombolo/api-management/domain'
 import {
   BUNDLE_ID,
   BUNDLE_SCHEMA_VERSION,
   type BundlePackage,
   peerRangeProblem,
-} from '@crombolo/backoffice-host'
+  schemaProblem,
+} from '@crombolo/backoffice-host/registry'
 import type { Middleware, RouteMethod, SiteRoute } from '@crombolo/common'
 import {
   type AppAlias,
@@ -62,14 +64,15 @@ import {
 } from '@crombolo/core'
 import {
   type BundleTables,
-  type BundleTablesCapability,
   bundleTablesCompatibility,
-  compileBundleTables,
+  compileTables,
   type Db,
   type RedirectMatchKind,
   RedirectRepository,
   type RedirectRow,
   type RedirectTargetKind,
+  SITE_OWNER,
+  type TablesDatabase,
 } from '@crombolo/data'
 import {
   normaliseRedirectPath,
@@ -78,9 +81,12 @@ import {
   type RequestMember,
   type SiteServices,
 } from '@crombolo/render'
+import { anonymiseProblems } from './anonymise-rules.ts'
+import { declaredPermissions, gated, permissionProblems, waitingResponse } from './bundle-grants.ts'
 import type { BundleMedia, BundleMediaDeclaration } from './bundle-media.ts'
 import type { BundleForms } from './form-types.ts'
 import type { BundleIdentityProviders } from './identity-provider-overrides.ts'
+import { type JobInfo, type JobSchedule, jobProblems, type OwnerJobs } from './owner-jobs.ts'
 import type { DeclaredRoute } from './routes.ts'
 import type { BundleEvents } from './webhooks.ts'
 
@@ -164,8 +170,6 @@ export interface BundleHost {
   log: BundleLog
   /** The identity providers the config declares, and an administrator's overrides of their settings (story 033). */
   identityProviders: BundleIdentityProviders
-  /** The bundle's own tables, and only for a bundle that declares some. */
-  tables: BundleTablesCapability
   /**
    * Media items in the folders the bundle declares, as the member a route was
    * given or the back-office user; refused on a public route (story 198).
@@ -208,19 +212,20 @@ export const BUNDLE_CAPABILITIES: readonly BundleCapability[] = [
   'redirects',
   'documents',
   'log',
-  'tables',
   'identityProviders',
   'media',
 ]
 
-/** What a handler is handed: the declared capabilities, with `tables` typed from the declaration. */
-export type HostFor<C extends BundleCapability, T extends BundleTables> = Pick<
-  BundleHost,
-  Exclude<C, 'tables'>
-> &
-  ('tables' extends C
-    ? { tables: T extends BundleTables<infer S> ? BundleTablesCapability<S> : never }
-    : unknown)
+/**
+ * What a handler is handed: the declared capabilities, and for a bundle that
+ * declares tables, `database`, typed from the declaration (story 189).
+ */
+export type HostFor<C extends BundleCapability, T extends BundleTables> = Pick<BundleHost, C> & {
+  /** Only for a bundle that declares tables: a Kysely handle on them and nothing else. */
+  readonly database: TablesDatabase<T>
+  /** Only for a bundle that declares jobs: queue one, or read how one is going (story 187). */
+  readonly jobs: OwnerJobs
+}
 
 /** A signed-in member as a member route is given them: nothing of the back office. */
 export interface BundleMember {
@@ -240,6 +245,8 @@ export type BundleCaller =
   | { readonly kind: 'backoffice'; readonly principal: Principal }
   | { readonly kind: 'member'; readonly member: BundleMember; readonly via: 'cookie' | 'token' }
   | { readonly kind: 'public' }
+  /** A background job (story 187): nobody, treated as the public. */
+  | { readonly kind: 'job' }
 
 /**
  * What a bundle's route handler is given besides 211's context: its declared
@@ -306,7 +313,23 @@ export interface ServerBundle<
    * to the chain by itself.
    */
   middleware?: Middleware<SiteServices, PublishedContent, RequestMember>
+  /**
+   * Its background jobs, by name (story 187): each `(payload, context)`, given
+   * its capabilities for no caller and its own `database`, as a public route
+   * would be, with `context.job` for its progress and its signal.
+   */
+  jobs?: Record<string, BundleJob<C, T>>
+  /** When its jobs run by themselves: cron expressions in a timezone. */
+  schedules?: readonly JobSchedule[]
 }
+
+/** A bundle's background job (story 187). */
+export type BundleJob<
+  C extends BundleCapability = BundleCapability,
+  T extends BundleTables = BundleTables,
+  // biome-ignore lint/suspicious/noExplicitAny: a payload is the bundle's to type
+  P = any,
+> = (payload: P, context: { bundle: HostFor<C, T>; job: JobInfo }) => unknown
 
 /** A bundle as mounted, with the prefix its routes answer below. */
 export interface MountedBundle {
@@ -369,9 +392,13 @@ export function validateServerBundles(
         problems.push(
           `Bundle "${label}" asked for the capability "${capability}", which no host offers.`,
         )
-    if (bundle.capabilities.includes('tables') && !bundle.tables)
+    if ((bundle.capabilities as readonly string[]).includes('tables'))
       problems.push(
-        `Bundle "${label}" asked for the capability "tables", but declares no tables of its own.`,
+        `Bundle "${label}" asks for "tables", which is gone: declaring tables gives its handlers context.bundle.database (docs/bundles.md, Part 4).`,
+      )
+    if (bundle.tables && bundle.id === SITE_OWNER)
+      problems.push(
+        `Bundle "${label}" declares tables under the id "${SITE_OWNER}", which names the site's own tables.`,
       )
     if (bundle.tables) {
       if (bundle.tables.id !== bundle.id)
@@ -379,8 +406,12 @@ export function validateServerBundles(
           `Bundle "${label}" declares its tables under the id "${bundle.tables.id}"; a bundle's tables are under its own id.`,
         )
       const owner = packages.find((pkg) => pkg.id === bundle.id)
-      for (const problem of compileBundleTables(bundle.tables, owner?.version).problems)
+      const compiled = compileTables(bundle.tables, owner?.version)
+      for (const problem of compiled.problems)
         problems.push(`Bundle "${label}" tables: ${problem}.`)
+      if (owner?.field.anonymise !== undefined && compiled.problems.length === 0)
+        for (const problem of anonymiseProblems(owner.field.anonymise, compiled.schema))
+          problems.push(`Bundle "${label}"'s package.json: crombolo.${problem}.`)
       // Read by an operator's tooling before anything is installed, so it must
       // say what the plan does — derived, not asserted, as core's is.
       if (owner) {
@@ -391,13 +422,21 @@ export function validateServerBundles(
           )
       }
     }
+    if (!bundle.tables && packages.find((pkg) => pkg.id === bundle.id)?.field.anonymise)
+      problems.push(
+        `Bundle "${label}"'s package.json declares "crombolo.anonymise", and the bundle declares no tables for it to describe.`,
+      )
     for (const problem of mediaProblems(bundle))
       problems.push(`Bundle "${label}" media: ${problem}.`)
+    problems.push(...jobProblems(`Bundle "${label}"`, bundle.jobs, bundle.schedules))
+    {
+      const pkg = packages.find((candidate) => candidate.id === bundle.id)
+      if (pkg?.carries.server && Array.isArray(pkg.field.permissions))
+        problems.push(...permissionProblems(label, bundle.capabilities, declaredPermissions(pkg)))
+    }
     const owner = packages.find((pkg) => pkg.id === bundle.id)
     if (owner?.carries.server && (owner.field.schemaVersion ?? 1) < BUNDLE_SCHEMA_VERSION)
-      problems.push(
-        `Bundle "${label}" is written for bundle schema ${owner.field.schemaVersion ?? 1}; this release reads ${BUNDLE_SCHEMA_VERSION}. Its routes are route handlers since 0.37: see "Routes" in docs/bundles.md, then set "crombolo.schemaVersion": ${BUNDLE_SCHEMA_VERSION}.`,
-      )
+      problems.push(`Bundle "${label}": ${schemaProblem(owner.field.schemaVersion ?? 1)}.`)
     const routes = new Set<string>()
     for (const route of bundle.routes ?? []) {
       if (!route || typeof route !== 'object' || !route.handlers || !route.options) {
@@ -634,10 +673,7 @@ export function createBundleRedirects(options: {
  * refuses a public caller. It is told the bundle too, for what it declared.
  */
 export type CallerCapabilities = {
-  [K in Exclude<BundleCapability, 'tables'>]?: (
-    caller: BundleCaller,
-    bundle: ServerBundle,
-  ) => BundleHost[K]
+  [K in BundleCapability]?: (caller: BundleCaller, bundle: ServerBundle) => BundleHost[K]
 }
 
 export interface ServerBundlesOptions {
@@ -648,13 +684,20 @@ export interface ServerBundlesOptions {
   coreVersion: string
   /** `<backoffice>/crombolo/api`, from `createBackOfficePaths`. */
   pluginApiPath: string
-  host: Omit<BundleHost, 'tables' | 'media'> & { media?: BundleMedia }
+  host: Omit<BundleHost, 'media'> & { media?: BundleMedia }
   /** Capabilities built per request from the caller, in place of the ones in `host`. */
   callerHost?: CallerCapabilities
   /** Named per bundle, so a log line says which one wrote it. */
   log(bundleId: string): BundleLog
-  /** A bundle's own tables, resolved against its schema alone; absent where none are offered. */
-  tables?(bundle: ServerBundle): BundleTablesCapability | undefined
+  /** A bundle's own tables, on the connection that reaches only them; absent where none are. */
+  database?(bundle: ServerBundle): TablesDatabase | undefined
+  /**
+   * Whether a bundle is turned on: its grant covers what it declares (story
+   * 222). A bundle that is off answers every route as waiting. Absent, all are on.
+   */
+  isOn?(bundleId: string): boolean
+  /** A bundle's queue, recording who queued from the caller (story 187). */
+  jobs?(bundleId: string, queuedBy: string | null): OwnerJobs
 }
 
 /** Runs a route through 211's pipeline: the server's `routes.invoke`. */
@@ -683,7 +726,21 @@ export interface ServerBundles {
   ): Promise<Response | undefined>
   /** The bundles' site routes, for the server's route table, each given its bundle's capabilities. */
   siteRoutes(): DeclaredRoute[]
+  /** What a bundle's job is given: its capabilities for no caller, as on a public route (story 187). */
+  jobContext(bundleId: string): Pick<BundleHost, BundleCapability> | undefined
 }
+
+const JOB_CALLER: BundleCaller = Object.freeze({ kind: 'job' })
+
+/** Who queued a job, for administrators to read: it grants nothing. */
+const queuedByOf = (caller: BundleCaller): string | null =>
+  caller.kind === 'member'
+    ? `member ${caller.member.username}`
+    : caller.kind === 'backoffice'
+      ? `user ${caller.principal.email}`
+      : caller.kind === 'job'
+        ? 'a job'
+        : 'a visitor'
 
 const freezeMember = (member: RequestMember): BundleMember =>
   Object.freeze({
@@ -728,39 +785,64 @@ export function createServerBundles(options: ServerBundlesOptions): ServerBundle
     }
   })
 
-  // Built once per bundle, each over that bundle's schema alone.
-  const tables = new Map(
-    options.bundles
-      .filter((bundle) => bundle.capabilities.includes('tables'))
-      .map((bundle) => [bundle.id, options.tables?.(bundle)]),
-  )
+  // Made once per bundle, at its first request, each on its own tables alone.
+  const databases = new Map<string, TablesDatabase>()
+  const databaseOf = (bundle: ServerBundle): TablesDatabase | undefined => {
+    if (!bundle.tables) return undefined
+    let opened = databases.get(bundle.id)
+    if (!opened) {
+      opened = options.database?.(bundle)
+      if (!opened) return undefined
+      databases.set(bundle.id, opened)
+    }
+    return opened
+  }
   /** Only the declared capabilities, frozen, so a handler cannot reach further. */
   const contextFor = (
     bundle: ServerBundle,
     caller: BundleCaller,
   ): Pick<BundleHost, BundleCapability> => {
     const host: Record<string, unknown> = {}
+    const declared = declaredPermissions(owners.get(bundle.id))
     for (const capability of bundle.capabilities) {
-      const forCaller = capability === 'tables' ? undefined : options.callerHost?.[capability]
-      host[capability] = forCaller
+      const forCaller = options.callerHost?.[capability]
+      const given = forCaller
         ? forCaller(caller, bundle)
         : capability === 'log'
           ? (logs.get(bundle.id) as BundleLog)
-          : capability === 'tables'
-            ? tables.get(bundle.id)
-            : options.host[capability]
+          : options.host[capability]
+      // Only what its declared permissions allow (story 222).
+      host[capability] = given ? gated(bundle.id, capability, given, declared) : given
     }
+    const database = databaseOf(bundle)
+    if (database) host.database = database
+    if (bundle.jobs && options.jobs) host.jobs = options.jobs(bundle.id, queuedByOf(caller))
     return Object.freeze(host) as Pick<BundleHost, BundleCapability>
+  }
+
+  /** A site route that answers as waiting while its bundle is off. */
+  const whileOn = (bundleId: string, route: SiteRoute): SiteRoute => {
+    const isOn = options.isOn
+    if (!isOn) return route
+    const handlers: SiteRoute['handlers'] = {}
+    for (const [method, handler] of Object.entries(route.handlers))
+      handlers[method as RouteMethod] = (request, context) =>
+        isOn(bundleId) ? handler(request, context) : waitingResponse(bundleId)
+    return { ...route, handlers }
   }
 
   return {
     mounted,
     basePath,
+    jobContext(bundleId) {
+      const bundle = byId.get(bundleId)
+      return bundle ? contextFor(bundle, JOB_CALLER) : undefined
+    },
     siteRoutes() {
       return options.bundles.flatMap((bundle) =>
         (bundle.routes ?? []).filter(onSite).map(
           (route): DeclaredRoute => ({
-            route: route as SiteRoute,
+            route: whileOn(bundle.id, route as SiteRoute),
             owner: `the bundle ${bundle.id}`,
             extra: ({ member, via }) => {
               const caller: BundleCaller = member
@@ -792,6 +874,7 @@ export function createServerBundles(options: ServerBundlesOptions): ServerBundle
       for (const route of (bundle.routes ?? []).filter((candidate) => !onSite(candidate))) {
         const params = matchRoute(route.path, requested)
         if (!params) continue
+        if (options.isOn && !options.isOn(bundle.id)) return waitingResponse(bundle.id)
         const caller: BundleCaller = Object.freeze({ kind: 'backoffice', principal })
         return invoke(
           { route: route as SiteRoute, owner: `the bundle ${bundle.id}` },

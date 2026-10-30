@@ -23,7 +23,7 @@ import type {
   MemberResponse,
   Principal,
   SaveMember,
-} from '@crombolo/api-management'
+} from '@crombolo/api-management/domain'
 import { hashPassword, passwordConfigJson, verifyPassword } from '@crombolo/auth'
 import {
   type ContentTypeAggregate,

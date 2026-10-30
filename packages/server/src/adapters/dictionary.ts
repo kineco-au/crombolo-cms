@@ -1,5 +1,5 @@
 /** The dictionary port over the repository, with `.udt` import and export. */
-import type { DictionaryPort } from '@crombolo/api-management'
+import type { DictionaryPort } from '@crombolo/api-management/domain'
 import { appendCacheInstruction, type Db, DictionaryRepository } from '@crombolo/data'
 import { importDictionaryUdt } from '../dictionary-transfer.ts'
 import type { MediaFileStore } from '../media-files.ts'

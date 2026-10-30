@@ -7,7 +7,7 @@
 
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
-import type { PortFailure } from '@crombolo/api-management'
+import type { PortFailure } from '@crombolo/api-management/domain'
 import type { ContentTypeAggregate, DataTypeModel, FormTypes } from '@crombolo/core'
 import { currentSchemaState, type Db, updateSchemaStateHash } from '@crombolo/data'
 import {
@@ -27,7 +27,11 @@ import {
   writeSchemaFiles,
   writeSchemaVersion,
 } from '@crombolo/schema'
+import type { CromboloConfig } from '../config.ts'
+import { formTypesFor } from '../form-types.ts'
 import { logger } from '../logging.ts'
+import { componentAliasesIn } from '../schema.ts'
+import { publishSchema } from '../schema-store.ts'
 
 export interface SchemaFiles {
   schemaDir: string
@@ -230,5 +234,33 @@ export function createSchemaFileWriter(
       writeSchemaFiles(files.schemaDir, set)
       await settle()
     },
+  }
+}
+
+/** Where the backoffice writes schema files, and whether it may. */
+export function schemaFiles(config: CromboloConfig): SchemaFiles {
+  const store = config.schemaStore
+  return {
+    schemaDir: config.schemaDir,
+    writable: config.schemaWritable,
+    componentAliases: () => componentAliasesIn(config.componentsDir),
+    formTypes: formTypesFor(config),
+    // Only when a store is configured: a schema directory in a repository is
+    // already where the files durably live.
+    onChanged: store
+      ? async () => {
+          const report = await publishSchema(store, config.schemaDir)
+          if (report.written.length > 0 || report.removed.length > 0) {
+            logger('schema').info(
+              'Published schema to {store}: {written} written, {removed} removed',
+              {
+                store: store.description,
+                written: report.written.length,
+                removed: report.removed.length,
+              },
+            )
+          }
+        }
+      : undefined,
   }
 }

@@ -38,3 +38,69 @@ export function applyOverrides<T extends { components: { schemas: Record<string,
   }
   return copy
 }
+
+const RICH_TEXT_ELEMENTS = {
+  oneOf: [
+    { $ref: '#/components/schemas/RichTextGenericElement' },
+    { $ref: '#/components/schemas/RichTextTextElement' },
+  ],
+  discriminator: { propertyName: '$type' },
+}
+
+/**
+ * Schemas crombolo's Delivery API adds to Umbraco's generic contract, where a
+ * property's value is an untyped object. `DeliveryApi.json` stays exactly
+ * Umbraco's; these are added when it is loaded.
+ */
+export const DELIVERY_CONTRACT_ADDITIONS: readonly {
+  schema: string
+  story: string
+  reason: string
+  definition: Record<string, unknown>
+}[] = [
+  {
+    schema: 'RichTextRootElement',
+    story: '216',
+    reason:
+      "Every rich-text value is this tree, Umbraco's RichTextOutputAsJson form, always on; the HTML form is not served.",
+    definition: {
+      type: 'object',
+      required: ['tag', 'attributes', 'elements', 'blocks'],
+      properties: {
+        tag: { const: '#root' },
+        attributes: { type: 'object' },
+        elements: { type: 'array', items: RICH_TEXT_ELEMENTS },
+        blocks: { type: 'array', items: { type: 'object' } },
+      },
+    },
+  },
+  {
+    schema: 'RichTextGenericElement',
+    story: '216',
+    reason: 'An element of a rich-text tree.',
+    definition: {
+      type: 'object',
+      required: ['$type', 'tag', 'attributes', 'elements'],
+      properties: {
+        $type: { const: 'RichTextGenericElement' },
+        tag: { type: 'string' },
+        attributes: { type: 'object' },
+        elements: { type: 'array', items: RICH_TEXT_ELEMENTS },
+      },
+    },
+  },
+  {
+    schema: 'RichTextTextElement',
+    story: '216',
+    reason: 'A text node of a rich-text tree.',
+    definition: {
+      type: 'object',
+      required: ['$type', 'tag', 'text'],
+      properties: {
+        $type: { const: 'RichTextTextElement' },
+        tag: { const: '#text' },
+        text: { type: 'string' },
+      },
+    },
+  },
+]

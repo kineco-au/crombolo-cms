@@ -179,10 +179,9 @@ Umbraco's shapes, camelCase, nulls written, dates ISO in UTC. A page:
 - `cultures` holds each culture's route; an invariant page has `{}`.
 - Pickers are references — `properties` stays `{}` unless expanded. Media
   picker, multinode tree picker and multi URL picker are always arrays. Blocks
-  and elements always carry their properties. Rich text is `{ markup, blocks }`
-  with links resolved to this site's URLs; the `data-*` link attributes and the
-  JSON output (`RichTextOutputAsJson`) are not built. A member picker is
-  `"(unsupported)"`, as in Umbraco. An empty property is `null`.
+  and elements always carry their properties. Rich text is a tree of elements
+  ("Rich text", below). A member picker is `"(unsupported)"`, as in Umbraco.
+  An empty property is `null`.
 - Media answers `path` (names, lowercased, root down, with a trailing slash, as
   Umbraco builds it), `url`, `extension`, `width`, `height`, `bytes`,
   `focalPoint`, `crops`, and its properties other than the `umbraco*` ones.
@@ -191,6 +190,56 @@ Umbraco's shapes, camelCase, nulls written, dates ISO in UTC. A page:
 `properties[picker[properties[$all]]]`, `fields=properties[title]`. `$all`
 expands one level; `fields` never expands. Bad syntax is a 400 problem naming it
 (Umbraco answers 500).
+
+### Rich text
+
+Every rich-text value is a tree, Umbraco's `RichTextOutputAsJson` form, always
+on: there is no HTML form, no setting and no per-request switch (story `216`).
+Rich text inside blocks and expanded items is the same tree, and an empty one is
+`null`.
+
+```json
+{
+  "tag": "#root", "attributes": {},
+  "elements": [
+    { "$type": "RichTextGenericElement", "tag": "p", "attributes": {}, "elements": [
+      { "$type": "RichTextTextElement", "text": "Read ", "tag": "#text" },
+      { "$type": "RichTextGenericElement", "tag": "a", "attributes": {
+          "destinationId": "eed5fc6b-…", "destinationType": "article", "linkType": "Content",
+          "route": { "path": "/news/story", "queryString": null, "startItem": { "id": "…", "path": "home" } }
+        },
+        "elements": [{ "$type": "RichTextTextElement", "text": "the story", "tag": "#text" }] }
+    ] },
+    { "$type": "RichTextGenericElement", "tag": "umb-rte-block", "attributes": { "content-id": "…" }, "elements": [] }
+  ],
+  "blocks": [{ "content": { "id": "…", "contentType": "quote", "properties": {} }, "settings": null }]
+}
+```
+
+As Umbraco's `ApiRichTextElementParser` writes it:
+- **`$type`** is on every element below the root, and not on the root.
+- **Comments are dropped,** and so is text that is empty or only line breaks;
+  whitespace between inline elements stays.
+- **`data-*` attributes** lose their prefix, unless an attribute of that name is
+  already there.
+- **A link to a page** loses `href` and gains `destinationId`,
+  `destinationType`, `linkType: "Content"` and its `route`, whose `queryString`
+  holds any anchor or query the link had. **A link to media** has `href` set to
+  the media's URL, with `destinationId`, `destinationType` and
+  `linkType: "Media"`. A local link to something that is gone loses `href`.
+- **An image from the media library** has `src` set to the media's URL, keeping
+  its query (a crop or width), and loses `data-udi`.
+- **A block** is `umb-rte-block` or `umb-rte-block-inline` with `content-id`,
+  its entry in `blocks`.
+- **Text and attribute values keep their entities** (`&amp;`, `&nbsp;`) as
+  stored; `decodeEntities` in `@crombolo/delivery-client` turns them into
+  characters.
+
+The contract describes the tree as `RichTextRootElement`,
+`RichTextGenericElement` and `RichTextTextElement`, added to Umbraco's
+(`DELIVERY_CONTRACT_ADDITIONS` in `packages/contracts`). `@crombolo/delivery-client`
+types it as `RichTextValue`, with `a`, `img` and the block tags' attributes
+typed, and `walkRichText(tree, visitors)` folds it into whatever an app renders.
 
 ## Items and paths
 
@@ -481,7 +530,8 @@ boot, and the flow is off, as Umbraco turns it off.
 Router app in `web/`. `--next` adds the same app to any template, and
 `demo/harbourstone-next` is Harbourstone built that way. `bun run dev` starts
 the CMS on `:8080` and the app on `:3000`. Story 208;
-`packages/next-integration`, `packages/cli/next-app`.
+`packages/next-integration`, `packages/cli/next-app`. Everything the package
+offers, by entry point, is listed in [`next-integration.md`](next-integration.md).
 
 ```
 my-site/
@@ -560,8 +610,9 @@ state. Next.js already reloads the app's own code.
   who may read it, `private, no-store`.
 
 **Content.**
-- `<RichText>` renders the API's HTML and makes links to the site's pages
-  client-side navigations. Rich text as a tree is story `216`.
+- `<RichText>` renders the tree: each tag as itself or through a component in
+  `components`, a link to a page as a Next link to its route, and each block
+  through the component for its element type in `blocks`.
 - `<BlockList>` and `<BlockGrid>` take a component per element type. An
   unknown block renders nothing, or a notice in Draft Mode.
 - The image loader writes the CMS's imaging query, and `cromboloImage(media,
@@ -602,7 +653,7 @@ builds and runs a scaffolded app on either, as CI does.
 
 ## Not built
 
-`Accept-Segment`, rich text as JSON (story `216`), domain cultures in path resolution, and
+`Accept-Segment`, domain cultures in path resolution, and
 external login providers in the sign-in flow.
 
 Planned as a story: translations, menus and site settings (`058`).

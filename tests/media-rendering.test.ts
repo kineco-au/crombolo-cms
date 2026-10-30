@@ -202,7 +202,10 @@ describe('media on pages', () => {
     // About was created first, so it is the site root; Home is a second root
     const home = await (await h.call('/home')).text()
     const heroUrl = /class="hero" src="([^"]+)"/.exec(home)?.[1]?.replaceAll('&amp;', '&') as string
-    expect(heroUrl).toBe(`${hero.src}?rxy=0.9%2C0.5&width=4&height=4`)
+    // With the media item's update date as the cache buster (story 199).
+    expect(heroUrl).toMatch(
+      new RegExp(`^${hero.src}\\?rxy=0\\.9%2C0\\.5&width=4&height=4&rnd=[0-9a-z]+$`),
+    )
     expect(home).toContain('alt="Hero"')
     expect(home).toContain(`<li>Other=${other.src}</li><li>Hero=${hero.src}</li>`)
     // Rich text: local links resolve, a dead one goes nowhere, images stay
@@ -223,7 +226,7 @@ describe('media on pages', () => {
     const coverUrl = /class="cover" src="([^"]+)"/
       .exec(home)?.[1]
       ?.replaceAll('&amp;', '&') as string
-    expect(coverUrl).toMatch(/\?cc=0%2C0%2C0\.5%2C0&width=4&height=4$/)
+    expect(coverUrl).toMatch(/\?cc=0%2C0%2C0\.5%2C0&width=4&height=4&rnd=[0-9a-z]+$/)
     const cover = decodePng(new Uint8Array(await (await h.call(coverUrl)).arrayBuffer()))
     expect(Array.from(cover.data.subarray(0, 3)).map((c) => Math.round(c / 16))).toEqual([16, 0, 0])
 
