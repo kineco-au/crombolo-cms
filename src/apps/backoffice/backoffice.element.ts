@@ -28,6 +28,8 @@ export class UmbBackofficeElement extends UmbLitElement {
 		return html`
 			<umb-backoffice-header></umb-backoffice-header>
 			<umb-backoffice-main></umb-backoffice-main>
+			<!-- Crombolo's side panels (story 182), beside main and outside its router. -->
+			<crombolo-side-panel-host></crombolo-side-panel-host>
 			<slot></slot>
 		`;
 	}
@@ -35,13 +37,28 @@ export class UmbBackofficeElement extends UmbLitElement {
 	static override readonly styles = [
 		css`
 			:host {
-				display: flex;
-				flex-direction: column;
+				display: grid;
+				grid-template-columns: minmax(0, 1fr) auto;
+				grid-template-rows: auto minmax(0, 1fr);
 				height: 100%;
 				width: 100%;
 				color: var(--uui-color-text);
 				font-size: 14px;
 				box-sizing: border-box;
+			}
+			umb-backoffice-header {
+				grid-column: 1 / -1;
+			}
+			umb-backoffice-main {
+				grid-column: 1;
+				grid-row: 2;
+				height: 100%;
+				min-width: 0;
+			}
+			crombolo-side-panel-host {
+				grid-column: 2;
+				grid-row: 2;
+				min-height: 0;
 			}
 		`,
 	];
