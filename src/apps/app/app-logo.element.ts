@@ -1,3 +1,4 @@
+import { cromboloIsDarkTheme } from '@umbraco-cms/backoffice/utils';
 import { customElement, html, nothing, property, state } from '@umbraco-cms/backoffice/external/lit';
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element';
 import { UMB_SERVER_CONTEXT } from '@umbraco-cms/backoffice/server';
@@ -46,6 +47,13 @@ export class UmbAppLogoElement extends UmbLitElement {
 			this._serverUrl = instance?.getServerUrl();
 		});
 
+		// Match my system follows the computer's own setting as it changes.
+		try {
+			window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => this.requestUpdate());
+		} catch {
+			// Without media queries, Match my system stays light.
+		}
+
 		this.consumeContext(UMB_THEME_CONTEXT, (context) => {
 			this.observe(
 				context?.theme,
@@ -79,6 +87,8 @@ export class UmbAppLogoElement extends UmbLitElement {
 		if (this.logoType === 'logo') {
 			logoFile = `login-${logoFile}`;
 		}
+		// On a dark theme, the variant drawn with cream lettering.
+		if (cromboloIsDarkTheme(this._theme)) logoFile = `${logoFile}-dark`;
 
 		const logoUrl = `${this._serverUrl}/umbraco/management/api/v1/security/back-office/graphics/${logoFile}`;
 

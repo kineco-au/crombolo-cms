@@ -1,3 +1,4 @@
+import { cromboloSiteName } from '@umbraco-cms/backoffice/utils';
 import { UMB_VIEW_CONTEXT } from './view.context-token.js';
 import { UmbShortcutController } from '@umbraco-cms/backoffice/shortcut';
 import { UmbClassState, UmbStringState, mergeObservables } from '@umbraco-cms/backoffice/observable-api';
@@ -310,7 +311,7 @@ export class UmbViewController extends UmbControllerBase {
 		if (!localTitle) {
 			return;
 		}
-		document.title = localTitle + ' | Umbraco';
+		document.title = localTitle + ' | ' + cromboloSiteName();
 	}
 
 	#computeTitle() {

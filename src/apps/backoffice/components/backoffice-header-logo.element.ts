@@ -2,6 +2,9 @@ import { UMB_BACKOFFICE_CONTEXT } from '../backoffice.context.js';
 import { css, html, customElement, state, nothing, query } from '@umbraco-cms/backoffice/external/lit';
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element';
 import { UmbTextStyles } from '@umbraco-cms/backoffice/style';
+import { UMB_SERVER_CONTEXT } from '@umbraco-cms/backoffice/server';
+import { UMB_THEME_CONTEXT } from '@umbraco-cms/backoffice/themes';
+import { cromboloIsDarkTheme, cromboloSiteName } from '@umbraco-cms/backoffice/utils';
 import { UMB_MODAL_MANAGER_CONTEXT } from '@umbraco-cms/backoffice/modal';
 import { UMB_SYSINFO_MODAL } from '@umbraco-cms/backoffice/sysinfo';
 
@@ -20,11 +23,23 @@ export class UmbBackofficeHeaderLogoElement extends UmbLitElement {
 	@state()
 	private _version?: string;
 
+	@state()
+	private _dark = false;
+
+	#serverUrl = '';
+
 	@query('#logo-popover')
 	private _popover?: HTMLElement;
 
 	constructor() {
 		super();
+
+		this.consumeContext(UMB_SERVER_CONTEXT, (instance) => {
+			this.#serverUrl = instance?.getServerUrl() ?? '';
+		});
+		this.consumeContext(UMB_THEME_CONTEXT, (context) => {
+			this.observe(context?.theme, (theme) => (this._dark = cromboloIsDarkTheme(theme)), '_observeTheme');
+		});
 
 		this.consumeContext(UMB_BACKOFFICE_CONTEXT, (context) => {
 			this.observe(
@@ -51,11 +66,17 @@ export class UmbBackofficeHeaderLogoElement extends UmbLitElement {
 			<uui-popover-container id="logo-popover" placement="bottom-start">
 				<umb-popover-layout>
 					<div id="modal">
-						<img id="logo" src="/umbraco/backoffice/assets/umbraco-logo.svg" alt="Crombolo" loading="lazy" />
+						<img
+							id="logo"
+							src=${this._dark
+								? `${this.#serverUrl}/umbraco/management/api/v1/security/back-office/graphics/logo-alternative-dark`
+								: '/umbraco/backoffice/assets/umbraco-logo.svg'}
+							alt=${cromboloSiteName()}
+							loading="lazy" />
 
 						<span>${this._version ?? nothing}</span>
 
-						<a href="https://umbraco.com" target="_blank" rel="noopener">Umbraco.com</a>
+						<a href="https://github.com/kineco-au/crombolo-cms" target="_blank" rel="noopener">Crombolo on GitHub</a>
 
 						<uui-button @click=${this.#openSystemInformation} look="secondary" label="System information"></uui-button>
 					</div>
