@@ -66,6 +66,7 @@ const TYPE_KEYS = [
   'cleanup',
   'since',
   'site-search',
+  'site-settings',
 ] as const
 const CLEANUP_KEYS = [
   'prevent',
@@ -305,10 +306,16 @@ export function parseContentType(
     ...(t['site-search'] !== undefined && typeSiteSearch(r, t, path) === false
       ? { siteSearch: false as const }
       : {}),
+    ...(r.bool(t, 'site-settings', path, false) ? { siteSettings: true as const } : {}),
     properties: r.tables(root.property, 'property').map((p, i) => property(r, p, `property[${i}]`)),
     tabs: r.tables(root.tab, 'tab').map((x, i) => tab(r, x, `tab[${i}]`)),
     groups: r.tables(root.group, 'group').map((g, i) => group(r, g, `group[${i}]`)),
   }
+  if (value.siteSettings && value.isElement)
+    r.problem(
+      `${path}.site-settings`,
+      "an element type is never a page, so it cannot be a site's settings",
+    )
   return { value: r.problems.length === 0 ? value : undefined, problems: r.problems }
 }
 

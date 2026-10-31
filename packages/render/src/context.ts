@@ -10,6 +10,7 @@
  * rendering at once each see their own.
  */
 import { AsyncLocalStorage } from 'node:async_hooks'
+import type { ActionState } from '@crombolo/common'
 import type { Child } from './jsx-runtime.ts'
 import type { PageProps } from './model.ts'
 import type { SiteSearchPort } from './search.ts'
@@ -40,6 +41,14 @@ interface RenderScope {
   metadata?: { value?: Metadata }
   /** Set once anything on the page renders an island, so the loader is linked (story 209). */
   islands?: { used: boolean }
+  /** The site's server actions, and what one answered the visitor just now (story 219). */
+  actions?: PageActions
+}
+
+/** A page's server actions: each one's id, and the result the visitor returned with. */
+export interface PageActions {
+  idOf(action: unknown): string | undefined
+  flash?: { id: string; state: ActionState }
 }
 
 /** What `cookies()` and `headers()` read: the request's, or nothing for a static page. */
@@ -63,6 +72,7 @@ export interface RenderScopeOptions {
   personal?: { value: boolean }
   metadata?: { value?: Metadata }
   islands?: { used: boolean }
+  actions?: PageActions
 }
 
 /**
@@ -128,6 +138,51 @@ export function currentSiteSearch(): { page: PageProps; search: SiteSearchPort |
   if (!scope.page)
     throw new Error('search() was called inside a context Provider rendered outside a page.')
   return { page: scope.page, search: scope.search }
+}
+
+/** The id a server action answers at, or undefined for any other function. */
+export function actionIdOf(action: unknown): string | undefined {
+  return store.getStore()?.actions?.idOf(action)
+}
+
+/**
+ * The id a server action answers at, for `<form action={…}>` and an island's
+ * props (story 219); an action the config does not list fails the render.
+ */
+export function actionIdFor(action: unknown, where: string): string {
+  const id = store.getStore()?.actions?.idOf(action)
+  if (id) return id
+  throw new Error(
+    `${where} is given a function that is not one of the site's server actions. List its module in \`actions\` in crombolo.config.ts (\`actions: { profile }\` after \`import * as profile from '#actions/profile.ts'\`), and import it from there.`,
+  )
+}
+
+/**
+ * Where an action's form returns, and the member's token: the hidden fields
+ * every action form carries.
+ */
+export function actionFormFields(): { returnTo: string; antiforgery: string | undefined } {
+  const scope = store.getStore()
+  const url = scope?.page?.request.url
+  let returnTo = '/'
+  if (url) {
+    const parsed = new URL(url, 'http://localhost')
+    returnTo = `${parsed.pathname}${parsed.search}`
+  }
+  return { returnTo, antiforgery: scope?.page?.member ? scope.antiforgery : undefined }
+}
+
+/**
+ * What a server action answered, when the visitor has just been returned here
+ * from it (story 219): `undefined` on an ordinary visit. Reading it makes the
+ * page private, as reading cookies does.
+ */
+export function actionState<T = unknown>(action: unknown): ActionState<T> | undefined {
+  const scope = within('actionState()')
+  const id = actionIdFor(action, 'actionState()')
+  if (scope.personal) scope.personal.value = true
+  const flash = scope.actions?.flash
+  return flash?.id === id ? (flash.state as ActionState<T>) : undefined
 }
 
 /** The signed-in member's anti-forgery token for this render, or undefined for a visitor. */

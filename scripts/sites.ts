@@ -35,7 +35,7 @@ export const SITES_DIR = join(ROOT, 'sites')
 const MANIFEST = 'site.json'
 
 /** What a template carries as `files/`; everything else in a site is its own. */
-const TEMPLATE_FILES = ['components', 'css', 'schema', 'seed']
+const TEMPLATE_FILES = ['actions', 'components', 'css', 'schema', 'seed']
 
 /**
  * A site with a Next.js front end ships its `web/` too (story 208), less what

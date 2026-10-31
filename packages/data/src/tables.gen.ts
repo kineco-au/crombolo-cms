@@ -249,6 +249,7 @@ export interface CoreTables {
     since_state_id: number | null
     since_version: string | null
     site_search: Default<Bool>
+    site_settings: Default<Bool>
     thumbnail: string | null
     variations: number
   }

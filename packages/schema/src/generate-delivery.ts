@@ -41,6 +41,7 @@ export function generateDeliveryTypes(set: SchemaSet, options: DeliveryTypesOpti
   const serves = options.serves ?? (() => true)
   const pages = set.contentTypes.filter((t) => !t.isElement && serves(t.alias)).sort(byAlias)
   const elements = set.contentTypes.filter((t) => t.isElement).sort(byAlias)
+  const settingsTypes = pages.filter((t) => t.siteSettings)
   const media = mediaTypes(set)
 
   const name = (type: SchemaContentType) => `${pascal(type.alias)}Properties`
@@ -160,6 +161,9 @@ export function generateDeliveryTypes(set: SchemaSet, options: DeliveryTypesOpti
     '  media: {',
     ...media.map((t) => `    ${key(t.alias)}: ${mediaName(t.alias)}`),
     '  }',
+    ...(settingsTypes.length > 0
+      ? [`  settings: ${settingsTypes.map((t) => `'${t.alias}'`).join(' | ')}`]
+      : []),
     '}',
     '',
     '/** Any page, as the item, query and search endpoints answer it. */',

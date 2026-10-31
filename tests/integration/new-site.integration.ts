@@ -571,7 +571,7 @@ describe('creating a site, end to end through the CLI', () => {
     expect(status.out).toContain('up to date')
     expect(status.out).toContain('no migration pending')
     // The demo's own content, counted.
-    expect(status.out).toMatch(/content\s+18 document\(s\), 7 media/)
+    expect(status.out).toMatch(/content\s+19 document\(s\), 7 media/)
 
     const json = await cli('demo', 'status', '--json')
     expect(json.code, json.out).toBe(0)
@@ -583,7 +583,7 @@ describe('creating a site, end to end through the CLI', () => {
     }
     expect(report.database.installed).toBe(true)
     expect(report.schema.files).toBe(report.schema.database.version)
-    expect(report.content.documents).toBe(18)
+    expect(report.content.documents).toBe(19)
     expect(report.content.media).toBe(7)
     expect(report.versions.crombolo).toMatch(/^\d+\.\d+\.\d+$/)
   }, 60_000)

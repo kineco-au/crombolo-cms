@@ -290,7 +290,8 @@ function Breadcrumbs() {
 ```
 
 `usePage()` returns what the template was given (`model`, `nav`, `culture`,
-`dictionary`, `member`, `request`, `urls`, `seo`, `signal`), in layouts too. A
+`dictionary`, `menu`, `settings`, `member`, `request`, `urls`, `seo`, `signal`),
+in layouts too. A
 template's own values are handed down the same way:
 
 ```tsx
@@ -1246,6 +1247,40 @@ A headless site previews in its app instead: with an app preview address set,
 the Preview button opens the app with a preview token, and the Delivery API
 answers it from drafts ([`delivery-api.md`](delivery-api.md), "Preview").
 
+## Site settings
+
+A content type marked `site-settings = true` holds what every page of a site
+shares, edited as a page in Content (story `058`):
+
+```toml
+[content-type]
+alias = "siteSettings"
+name = "Site Settings"
+site-settings = true
+
+[[property]]
+alias = "phone"
+name = "Phone"
+type = "textstring"
+```
+
+Its page goes directly below the site's root, which must allow the type as a
+child. A template reads it as `settings`, the settings page under the current
+page's root, or `null` when the site has none:
+
+```tsx
+export function SiteFooter() {
+  const { settings } = usePage()
+  return <footer>{settings?.text('phone')}</footer>
+}
+```
+
+The page has no address: it is not routed, and is left out of `nav`, menus, the
+sitemap and search. With two under one root the first in the tree's order
+counts; Settings → Health → Site → Site settings names the other, and any
+settings page deeper in the tree. An app reads the same page from the Delivery
+API's `settings` ([`delivery-api.md`](delivery-api.md), "Site settings").
+
 ## Menus
 
 Editors build a site's menus in the Library: a **Menu** is an element made there,
@@ -1677,6 +1712,85 @@ Next.js-style `route.ts`: its exported `GET`, `POST` and so on, called with
 honoured.
 
 The pipeline is `packages/server/src/routes.ts`.
+
+## Server actions
+
+A form, or an island, calls a function on the server directly, as a Next.js
+`'use server'` function does (story 219). A form works without JavaScript.
+
+```ts
+// actions/profile.ts
+import { type ActionContext, Outcome, ok } from '@crombolo/crombolo/routes'
+
+export async function save(formData: FormData, { site, member }: ActionContext) {
+  const name = String(formData.get('name') ?? '')
+  if (!name) return Outcome.unprocessableContent([{ field: 'name', message: 'Say who you are.' }])
+  return ok({ name })
+}
+```
+
+```ts
+// crombolo.config.ts
+import * as profile from '#actions/profile.ts'
+export default defineConfig({ actions: { profile } })
+```
+
+```tsx
+// components/pages/profilePage.tsx
+import { actionState } from '@crombolo/crombolo'
+import * as profile from '#actions/profile.ts'
+
+export default function ProfilePage() {
+  const state = actionState(profile.save)
+  return (
+    <form action={profile.save}>
+      <input name="name" value={state?.values?.name ?? ''} />
+      {state?.ok ? <p>Saved.</p> : null}
+      <button>Save</button>
+    </form>
+  )
+}
+```
+
+- **Listed a module at a time.** `actions: { profile }` makes every export of
+  the module an action, its id the key and the export's name: `profile.save`.
+  An export that is not a function, a key with a dot, or one function listed
+  twice stops the boot, named.
+- **Imported as `#actions/…`.** Views render from a copy of `components/`, where a
+  relative path to `actions/` would break; the site's `package.json` maps
+  `"#actions/*": "./actions/*"`, which resolves to the same module from the copy
+  and from the config. `crombolo init` writes it. A function the config does not
+  list fails the render, naming the fix.
+- **The form.** `<form action={fn}>` renders `method="post"
+  action="/crombolo/actions/{id}"` and two hidden fields: `__return`, the page's
+  own path, and `__antiforgery`, the member's token while one is signed in. Both
+  are taken out before the action sees the form. `<button formAction={fn}>`
+  posts the same form to another action.
+- **The post** runs through route handlers' pipeline: CSRF, the rate limit, the
+  time limit and the signal ([Route handlers](#route-handlers)). Inside it,
+  `cookies()`, `headers()`, `site()` and navigation work as in a page, and
+  `redirect()` sends the visitor on.
+- **The answer.** Success is a 303 back to `__return` (a path on this site, else
+  `/`); an `Outcome` is a 303 back too. The result travels in a signed cookie
+  for a minute: the status, message, field errors, what was typed (files and
+  fields named like a password left out), and a success's value.
+- **`actionState(fn)`** reads it once, on the page returned to: `undefined` on
+  an ordinary visit, `{ ok, value?, status?, message?, errors?, values? }` after
+  a post. Reading it makes the page private.
+- **From an island,** pass the action as a prop. It travels as
+  `{"$action": "profile.save"}`, and the browser makes it a function again that
+  posts the form (or an object of fields) asking for JSON, sends the member's
+  token, and resolves to a `Result`; a redirect navigates. It works with React
+  19's `<form action>` and `useActionState`. Type the prop as
+  `ClientAction<typeof profile.save>`, from `@crombolo/common`, which a client
+  module may import; it may not import `#actions/…` itself. An `<Island>` mount
+  module calls `reviveActions(props)` from `@crombolo/common` to get the same.
+- **Nothing to revalidate.** The server keeps no copy of a page, and a post waits
+  for the published cache to rebuild, so the page an action returns to is
+  current on the node that answered; another behind the load balancer has it
+  once it polls. A CDN's copies are purged by the publish webhook
+  ([`operations.md`](operations.md), "Purging on publish").
+- **Where:** on `all` and `web` nodes, never on an `api` node.
 
 ## Islands
 

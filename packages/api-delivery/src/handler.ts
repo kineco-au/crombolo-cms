@@ -163,7 +163,10 @@ export interface DeliveryApi {
  * browser reaches by navigating (sign-in and sign-out) or that is not the API's. Pure.
  */
 export function corsMethodsFor(rest: string): string | undefined {
-  if (/^v2\/(content|media|search|route|sitemap|forms|menus)(\/.*)?$/.test(rest)) return 'GET, HEAD'
+  if (
+    /^v2\/(content|media|search|route|sitemap|forms|menus|dictionary|settings)(\/.*)?$/.test(rest)
+  )
+    return 'GET, HEAD'
   const security = /^v1\/security\/member\/([^/]+)\/?$/.exec(rest)?.[1]
   if (security === 'token' || security === 'revoke') return 'POST'
   if (security === 'userinfo') return 'GET, POST'
@@ -173,6 +176,8 @@ export function corsMethodsFor(rest: string): string | undefined {
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const ROOT_KEY = '00000000-0000-0000-0000-000000000000'
 const PREVIEW_PATH = /^preview-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i
+/** The purge tag every dictionary answer carries: any change to it changes them all. */
+export const DICTIONARY_TAG = 'crombolo-dictionary'
 const CONTENT_VARY = 'Accept-Language, Accept-Segment, Preview, Start-Item'
 
 /** 401, 403 and 404 carry no body in Umbraco's Delivery API. */
@@ -375,7 +380,9 @@ export function createDeliveryApi(ports: DeliveryApiPorts): DeliveryApi {
         const ancestors = view.ancestors(here)
         const root = ancestors[ancestors.length - 1] ?? here
         let path: string
-        if (ancestors.length === 0)
+        // A site's settings page has no address (story 058): `#`, as its URL is.
+        if (view.isSettings?.(here)) path = '#'
+        else if (ancestors.length === 0)
           path = hide && first && here.id !== first.id ? `/${here.urlSegment}` : '/'
         else {
           const below = [...ancestors.slice(0, -1).reverse(), here].map((c) => c.urlSegment)
@@ -786,6 +793,28 @@ export function createDeliveryApi(ports: DeliveryApiPorts): DeliveryApi {
       )
     }
 
+    // Story 058: the dictionary as a map, and the site's settings page.
+    const siteWide = /^v2\/(dictionary|settings)\/?$/.exec(rest)?.[1]
+    if (siteWide) {
+      if (request.method !== 'GET' && request.method !== 'HEAD') return bare(405)
+      const preview = isPreview(request) ? await previewAccess(request) : undefined
+      if (preview === null) return bare(401)
+      if (!preview && !contentAccess(settings, request)) return bare(401)
+      const response =
+        siteWide === 'dictionary'
+          ? await dictionaryAnswer(request, url, preview)
+          : await settingsAnswer(request, url, preview)
+      if (preview) {
+        response.headers.set('cache-control', 'no-store')
+        return response
+      }
+      return finish(
+        request,
+        response,
+        personal(request, settings.publicAccess, memberAuthorizationEnabled(settings)),
+      )
+    }
+
     const formMatch = /^v2\/forms\/([^/]+)\/?$/.exec(rest)
     if (formMatch) {
       if (request.method !== 'GET' && request.method !== 'HEAD') return bare(405)
@@ -915,6 +944,43 @@ export function createDeliveryApi(ports: DeliveryApiPorts): DeliveryApi {
       { kind: 'notFound', item },
       { status: 404, headers: { vary: CONTENT_VARY } },
     )
+  }
+
+  /**
+   * `v2/dictionary` (story 058): every item in the request's culture, falling
+   * back as `dictionary()` does, `''` where none does; `?keys=` narrows it.
+   */
+  async function dictionaryAnswer(
+    request: Request,
+    url: URL,
+    preview: PreviewAccess | undefined,
+  ): Promise<Response> {
+    const r = await contentRequest(request, preview)
+    if (!r.known) return bare(404)
+    const keys = url.searchParams
+      .get('keys')
+      ?.split(',')
+      .map((key) => key.trim())
+      .filter(Boolean)
+    const items = await r.source.dictionaryEntries(r.culture, keys)
+    return holding(json(items), [], [DICTIONARY_TAG])
+  }
+
+  /**
+   * `v2/settings` (story 058): the settings page under the request's root, its
+   * `Start-Item`, else the root its host serves, else the first root.
+   */
+  async function settingsAnswer(
+    request: Request,
+    url: URL,
+    preview: PreviewAccess | undefined,
+  ): Promise<Response> {
+    const r = await contentRequest(request, preview)
+    if (r.badStartItem) return Response.json('The Start-Item could not be found', { status: 404 })
+    const rootKey =
+      r.startItem?.key ?? (await r.source.rootForHost(url.host)) ?? r.roots[0]?.key ?? null
+    const found = r.known ? await r.source.settings(rootKey, r.culture) : undefined
+    return contentItem(r, found, url)
   }
 
   /** A redirect as data. Never kept, as the site's are not: renaming back must not strand anyone. */

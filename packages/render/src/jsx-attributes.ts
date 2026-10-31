@@ -43,12 +43,24 @@ export interface RuntimeAttributes {
   for?: string
   /** Dropped when rendered. */
   ref?: unknown
+  /**
+   * A form's address, or one of the site's server actions, which the form then
+   * posts to (story 219; docs/rendering.md, "Server actions").
+   */
+  action?: string | ActionLike | null
+  /** A button's or submit input's own address, or a server action, for that button alone. */
+  formAction?: string | ActionLike | null
   /** A page is static HTML, so a handler could never run. */
   [handler: `on${Capitalize<string>}`]: never
 }
 
+/** Any server action: the form's data, and the context the server gives it. */
+type ActionLike = (formData: FormData, context: never) => unknown
+
 /** Props React declares that mean nothing to a string renderer, or that are typed again above. */
 type Replaced =
+  | 'action'
+  | 'formAction'
   | 'children'
   | 'style'
   | 'ref'

@@ -150,7 +150,7 @@ requests, only server-side and build-time front ends can call it.
 | `055` | Search and sharing details reach the app | should | S | done | — |
 | `056` | An app renders a form itself | could | M | done | 051 |
 | `057` | A CDN can cache the site and the API | should | L | done | — |
-| `058` | Translations, menus and site settings reach the app | could | M | ready | 141 |
+| `058` | Translations, menus and site settings reach the app | could | L | done | 141 |
 | `216` | Rich text as JSON | should | M | done | — |
 | `217` | Pages only an app renders | could | S | ready | 208 |
 
@@ -271,7 +271,7 @@ requests, only server-side and build-time front ends can call it.
 | `214` | Live reload and an error overlay | should | L | done | — |
 | `215` | React on the server | could | XL | on hold | 206, 209, 212 |
 | `218` | Build islands ahead of time | could | S | ready | 209 |
-| `219` | Server actions | should | L | ready | — |
+| `219` | Server actions | should | L | done | 211 |
 | `220` | `/crombolo/bundle.js` is served on every node | should | S | ready | 211 |
 | `224` | A route handler's signal is let go once it has answered | should | S | done | 211 |
 | `225` | Bundles in the site's code are approved, and an administrator can disable one | should | M | done | 222 |

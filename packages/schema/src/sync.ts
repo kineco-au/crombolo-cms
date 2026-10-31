@@ -574,6 +574,7 @@ export async function syncSchema(
                 collectionKey: t.collection ? (dataTypeKeyByAlias.get(t.collection) ?? null) : null,
                 sinceVersion: t.since ?? null,
                 siteSearch: t.siteSearch !== false,
+                siteSettings: t.siteSettings === true,
                 cleanup: {
                   preventCleanup: t.cleanup.prevent,
                   keepAllVersionsNewerThanDays: t.cleanup.keepAllNewerThanDays ?? null,

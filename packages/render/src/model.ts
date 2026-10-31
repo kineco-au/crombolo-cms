@@ -311,6 +311,12 @@ export interface PageProps<Properties = any> {
    * Empty when there is no such menu (story 141; docs/rendering.md, "Menus").
    */
   menu: (alias: string) => MenuItem[]
+  /**
+   * The site's settings page: its root's child of a settings type, or `null`
+   * when the site has none (story 058; docs/rendering.md, "Site settings").
+   */
+  // biome-ignore lint/suspicious/noExplicitAny: typed by the site's own settings type.
+  settings: PublishedContent<any> | null
   /** The signed-in member, or undefined for an anonymous visitor. */
   member: RequestMember | undefined
   /**
@@ -365,4 +371,6 @@ export interface Navigation {
    * query builder writes `nav.byKey('…')` for exactly that.
    */
   byKey(key: string): PublishedContent | undefined
+  /** Whether the page is a site's settings, which has no address (story 058). */
+  isSettings?(content: PublishedContent): boolean
 }

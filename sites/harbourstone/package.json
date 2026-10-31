@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "imports": {
+    "#actions/*": "./actions/*"
+  },
   "scripts": {
     "start": "crombolo start --seed --publish",
     "dev": "bun --watch server.ts"

@@ -77,6 +77,8 @@ export interface SchemaContentType {
   since?: string
   /** False leaves every page of the type out of site search. */
   siteSearch?: false
+  /** A site's settings (story 058): its page, a root's direct child, has no address. */
+  siteSettings?: true
   /** Properties outside any tab. */
   properties: SchemaProperty[]
   /** Groups outside any tab — `[[group]]`; Umbraco's built-in media types use one. */

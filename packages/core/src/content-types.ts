@@ -101,6 +101,8 @@ export interface ContentTypeAggregate {
   pending?: { version: string; revision: string } | null
   /** False leaves every page of the type out of site search. Absent means unchanged on a save. */
   siteSearch?: boolean
+  /** A site's settings (story 058). Absent means unchanged on a save. */
+  siteSettings?: boolean
 }
 
 /**

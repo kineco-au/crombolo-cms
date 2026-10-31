@@ -9,6 +9,8 @@
  * promise, and from there hands back a promise of the markup instead, so a tree
  * without one renders exactly as it always has.
  */
+import { ACTIONS_PATH } from '@crombolo/common'
+import { actionFormFields, actionIdFor } from './context.ts'
 import { escapeHtml, RawHtml, serializeAttributes, VOID_ELEMENTS } from './html.ts'
 import type { CustomElementAttributes, KnownElements } from './jsx-attributes.ts'
 
@@ -260,6 +262,43 @@ function select(props: ElementProps): Html {
   return isPromise(html) ? html.then(check) : check(html)
 }
 
+/**
+ * A form whose `action` is a server action posts to it, carrying where to
+ * return and the member's token; a button's or submit input's `formAction` posts
+ * its form to another (story 219). An unlisted function fails the render.
+ */
+function withAction(type: string, props: ElementProps): ElementProps {
+  if (type === 'form' && typeof props.action === 'function') {
+    const id = actionIdFor(props.action, '<form action>')
+    const { returnTo, antiforgery } = actionFormFields()
+    const hidden = [
+      jsx('input', { type: 'hidden', name: '__return', value: returnTo }),
+      ...(antiforgery
+        ? [jsx('input', { type: 'hidden', name: '__antiforgery', value: antiforgery })]
+        : []),
+    ]
+    const { encType, enctype, ...rest } = props
+    return {
+      ...rest,
+      action: `${ACTIONS_PATH}/${id}`,
+      method: 'post',
+      enctype: enctype ?? encType ?? 'multipart/form-data',
+      children: [...hidden, props.children as Child],
+    }
+  }
+  if ((type === 'button' || type === 'input') && typeof props.formAction === 'function') {
+    const id = actionIdFor(props.formAction, `<${type} formAction>`)
+    const { formAction: _, formEncType, formenctype, ...rest } = props
+    return {
+      ...rest,
+      formaction: `${ACTIONS_PATH}/${id}`,
+      formmethod: 'post',
+      formenctype: formenctype ?? formEncType ?? 'multipart/form-data',
+    }
+  }
+  return props
+}
+
 export function jsx(type: string | Component | typeof Fragment, props: ElementProps | null): Html {
   const actual = props ?? {}
 
@@ -276,7 +315,7 @@ export function jsx(type: string | Component | typeof Fragment, props: ElementPr
         `The "${name}" attribute of <${type}> is a promise. Await it before rendering the element.`,
       )
   }
-  const attributes = formControl(type, actual)
+  const attributes = formControl(type, withAction(type, actual))
   if (type === 'optgroup') return optgroup(attributes)
   const open = `<${type}${serializeAttributes(attributes, type)}`
   if (VOID_ELEMENTS.has(type)) return new RawHtml(`${open} />`)

@@ -10,7 +10,7 @@ import { ISLANDS_DIR, ISLANDS_PATH, type IslandManifest } from '@crombolo/render
 
 /** What a client module may not import: code that only runs on the server. */
 const SERVER_ONLY =
-  /^(@crombolo\/(crombolo|render|server|core|data|content|auth|schema|transfer|api-delivery|api-management)(\/.*)?|node:.*|bun(:.*)?)$/
+  /^(@crombolo\/(crombolo|render|server|core|data|content|auth|schema|transfer|api-delivery|api-management)(\/.*)?|#actions\/.*|node:.*|bun(:.*)?)$/
 /** Whether a client module importing this would pull server code into the browser. */
 export const isServerOnly = (specifier: string): boolean =>
   SERVER_ONLY.test(specifier) && specifier !== BROWSER_ENTRY

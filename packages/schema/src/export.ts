@@ -113,6 +113,7 @@ export function toSchemaContentType(
   }
   if (aggregate.description) type.description = aggregate.description
   if (aggregate.siteSearch === false) type.siteSearch = false
+  if (aggregate.siteSettings) type.siteSettings = true
   if (aggregate.defaultComponentKey) {
     const alias = ctx.componentAlias(aggregate.defaultComponentKey)
     if (alias) type.defaultComponent = alias

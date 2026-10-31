@@ -1,6 +1,8 @@
 {
   "@crombolo/crombolo": {
     "names": [
+      "actionState",
+      "type ActionState",
       "allFormFields",
       "type AnonymiseRules",
       "AntiforgeryMeta",
@@ -37,6 +39,8 @@
       "bundleTablesCompatibility",
       "checkBundleCode",
       "type Child",
+      "clientAction",
+      "type ClientAction",
       "type Context",
       "createContext",
       "createServer",
@@ -366,6 +370,7 @@
   },
   "@crombolo/crombolo/routes": {
     "names": [
+      "type ActionContext",
       "type CookieOptions",
       "type FieldError",
       "fromRouteModule",
@@ -377,6 +382,7 @@
       "type RouteHandler",
       "type RouteMethod",
       "type RouteOptions",
+      "type ServerAction",
       "type SiteRoute"
     ],
     "deprecated": []

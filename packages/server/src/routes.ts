@@ -117,10 +117,10 @@ const prefersHtml = (request: Request) => {
   return html >= 0 && (json < 0 || html < json)
 }
 
-/** Builds the site's route pipeline over its routes and its bundles'. */
 /** Why a route's signal is aborted once its answer has been sent. */
 const ANSWERED = new Error('The answer has been sent.')
 
+/** Builds the site's route pipeline over its routes and its bundles'. */
 export function createRoutes<Member extends RouteMember>(
   declared: readonly DeclaredRoute[],
   deps: RouteDeps<Member>,

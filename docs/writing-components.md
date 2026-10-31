@@ -569,15 +569,19 @@ export default function Page() {
   build read its JSX as React's. Crombolo's own JSX types accept it in a
   template, with `load` and `fallback` as well as its own props.
 - **Its props travel as JSON,** so they are data: a function, a class instance,
-  a `Date` or a cycle is a template error naming the prop.
+  a `Date` or a cycle is a template error naming the prop. The one function it
+  may be given is one of the site's server actions, which it calls as a
+  function from the browser ([`rendering.md`](rendering.md), "Server actions"):
+  `<Enquiry send={enquiries.send} />`, typed in the component as
+  `send: ClientAction<typeof send>` from `@crombolo/common`.
 - **`children`** are rendered on the server, shown until the component mounts,
   and passed to it as `children`. **`fallback`** shows instead until it
   mounts, and never reaches it.
 - **`load`**: `visible` (the default, as it scrolls into view), `idle`, or
   `load` for at once.
 - **The boundary:** browser code cannot import
-  `@crombolo/crombolo/server`, `/headers` or `/navigation`, or anything else
-  that runs only on the server. The build refuses it, naming both files, and
+  `@crombolo/crombolo/server`, `/headers` or `/navigation`, `#actions/…`, or
+  anything else that runs only on the server. The build refuses it, naming both files, and
   `crombolo components check` says so too.
 
 **Other frameworks.** `<Island name="species-map" props={{ speciesId }} />`

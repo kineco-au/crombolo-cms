@@ -11,7 +11,7 @@ import { basename, join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { type FormSubmissionState, isOutcome, type Outcome } from '@crombolo/core'
 import { componentStackOf, trackComponent } from './component-stack.ts'
-import { emailScope, markPersonal, renderScope } from './context.ts'
+import { emailScope, markPersonal, type PageActions, renderScope } from './context.ts'
 import type { EmailProps, EmailRenderResult } from './email.ts'
 import { RawHtml } from './html.ts'
 import { ISLANDS_PATH, withIslandTags } from './islands.ts'
@@ -138,6 +138,8 @@ export interface RenderRequest {
   preview?: boolean
   /** The signed-in member's anti-forgery token, written by `<AntiforgeryMeta />` (story 186). */
   antiforgery?: string
+  /** The site's server actions, and what one answered the visitor with (story 219). */
+  actions?: PageActions
   /** The request's headers, cookies among them, for `cookies()` and `headers()` (story 206). */
   headers?: Headers
   /** The site's services as whoever is asking, for `site()`. */
@@ -472,6 +474,8 @@ export class Renderer {
     // and `menu()` stays synchronous for the views.
     const menus = await this.#cache.menus(culture)
     const menu = (alias: string) => menus.get(alias.trim().toLowerCase())?.items ?? []
+    const root = nav.ancestors(content).at(-1) ?? content
+    const settings = (await this.#cache.settings(root.key, culture)) ?? null
     const origin = (request.origin ?? 'http://localhost').replace(/\/$/, '')
     const props: PageProps = {
       model: content,
@@ -479,6 +483,7 @@ export class Renderer {
       culture,
       dictionary,
       menu,
+      settings,
       member,
       submission: request.submission,
       request: { origin, url: request.url ?? `${origin}/` },
@@ -514,6 +519,7 @@ export class Renderer {
           personal: shared ? { value: false } : personal,
           metadata,
           islands,
+          actions: request.actions,
         },
       )
       if (html === undefined || !islands.used) return html

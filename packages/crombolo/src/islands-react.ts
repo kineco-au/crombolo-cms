@@ -4,6 +4,7 @@
  * Crombolo's island build includes it; a site building islands with Vite lists
  * it among its inputs. React is the site's own.
  */
+import { reviveActions } from '@crombolo/common'
 import { type ComponentType, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 
@@ -21,8 +22,10 @@ export function mount(
           style: { display: 'contents' },
           dangerouslySetInnerHTML: { __html: childrenHtml },
         })
+  // A server action in the props is a function again, calling the server (story 219).
+  const live = reviveActions(props)
   element.replaceChildren()
   createRoot(element).render(
-    createElement(component, children === undefined ? props : { ...props, children }),
+    createElement(component, children === undefined ? live : { ...live, children }),
   )
 }

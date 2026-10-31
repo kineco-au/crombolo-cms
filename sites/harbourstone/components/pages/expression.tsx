@@ -1,6 +1,7 @@
 import type { PageProps, PublishedElement } from '@crombolo/crombolo'
 import { specOf, TastingNotes } from '../shared/bottling.tsx'
 import { Layout } from '../shared/layout.tsx'
+import { RemindMe } from '../shared/remind-me.tsx'
 import { Eyebrow } from '../shared/section-intro.tsx'
 
 export default async function Expression({ model, nav }: PageProps) {
@@ -21,6 +22,7 @@ export default async function Expression({ model, nav }: PageProps) {
           {model.hasValue('summary') ? <p class="standfirst">{model.text('summary')}</p> : null}
           <div class="prose">{model.html('bodyText')}</div>
           <TastingNotes notes={notes} />
+          <RemindMe name={model.text('title')} />
           {range ? (
             <p class="back">
               <a href={range.url}>Back to {range.text('title')}</a>

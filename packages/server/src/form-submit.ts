@@ -166,36 +166,59 @@ interface Flash extends FormSubmissionState {
 }
 
 export function writeFlash(secret: string, state: FormSubmissionState): string {
-  const payload: Flash = { ...state, at: Date.now() }
-  let json = JSON.stringify(payload)
-  if (json.length > MAX_FLASH_BYTES)
-    // The messages matter more than redisplaying what was typed, and a cookie
-    // the browser silently drops would lose both.
-    json = JSON.stringify({ ...payload, values: {} })
+  // The messages matter more than redisplaying what was typed, and a cookie
+  // the browser silently drops would lose both.
+  return writeSignedFlash(secret, state, [{ values: {} }])
+}
+
+/**
+ * A signed, timestamped flash cookie's value, trimmed by each of `fallbacks`
+ * in turn while it is over the size a cookie can safely hold. Core forms' and
+ * server actions' (story 219).
+ */
+export function writeSignedFlash(
+  secret: string,
+  payload: object,
+  fallbacks: readonly object[] = [],
+): string {
+  let current = { ...payload, at: Date.now() }
+  let json = JSON.stringify(current)
+  for (const trim of fallbacks) {
+    if (json.length <= MAX_FLASH_BYTES) break
+    current = { ...current, ...trim }
+    json = JSON.stringify(current)
+  }
   const body = Buffer.from(json).toString('base64url')
   return `${body}.${hmac(secret, body)}`
+}
+
+/** A flash cookie's payload when its signature holds and it is fresh. */
+export function readSignedFlash<T>(secret: string, cookie: string | undefined): T | undefined {
+  if (!cookie) return undefined
+  const [body, signature] = cookie.split('.')
+  if (!body || !signature) return undefined
+  if (!sameSignature(hmac(secret, body), signature)) return undefined
+  try {
+    const parsed = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as T & { at: number }
+    if (Date.now() - parsed.at > FLASH_SECONDS * 1000) return undefined
+    return parsed
+  } catch {
+    return undefined
+  }
 }
 
 export function readFlash(
   secret: string,
   cookie: string | undefined,
 ): FormSubmissionState | undefined {
-  if (!cookie) return undefined
-  const [body, signature] = cookie.split('.')
-  if (!body || !signature) return undefined
-  if (!sameSignature(hmac(secret, body), signature)) return undefined
-  try {
-    const parsed = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as Flash
-    if (Date.now() - parsed.at > FLASH_SECONDS * 1000) return undefined
-    return {
-      formKey: parsed.formKey,
-      formAlias: parsed.formAlias,
-      values: parsed.values ?? {},
-      errors: parsed.errors ?? [],
-      message: parsed.message,
-    }
-  } catch {
-    return undefined
+  const parsed = readSignedFlash<Flash>(secret, cookie)
+  if (!parsed) return undefined
+  return {
+    formKey: parsed.formKey,
+    formAlias: parsed.formAlias,
+    values: parsed.values ?? {},
+    errors: parsed.errors ?? [],
+    message: parsed.message,
   }
 }
 

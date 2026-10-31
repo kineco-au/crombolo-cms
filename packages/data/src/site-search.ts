@@ -71,6 +71,7 @@ export async function siteEntriesFor(db: Db, nodeId: number): Promise<SiteSearch
       'n.trashed',
       'c.content_type_id',
       'ct.site_search',
+      'ct.site_settings',
       'ct.is_element',
       'd.published',
       eb
@@ -87,6 +88,7 @@ export async function siteEntriesFor(db: Db, nodeId: number): Promise<SiteSearch
     fromDbBool(node.trashed) ||
     !fromDbBool(node.published) ||
     !fromDbBool(node.site_search) ||
+    fromDbBool(node.site_settings) ||
     fromDbBool(node.is_element) ||
     Number(node.components) === 0
   )

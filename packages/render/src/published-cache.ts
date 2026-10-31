@@ -85,6 +85,8 @@ export interface PublishedContentSource {
   loadElements?(): Promise<PublishedElementNode[]>
   /** Content type aliases by key, so a block knows its element type; none when omitted. */
   loadContentTypeAliases?(): Promise<Map<string, string>>
+  /** The aliases of the content types that are a site's settings (story 058). */
+  loadSiteSettingsTypes?(): Promise<string[]>
   /** How URLs are built; Umbraco's defaults when omitted. */
   loadUrlOptions?(): Promise<PublishedUrlOptions>
   /**
@@ -157,6 +159,19 @@ export interface CultureView {
   childrenOf: Map<number, PublishedContent[]>
   roots: PublishedContent[]
   parentIdOf: Map<number, number>
+  /** Each root's settings page, by the root's id (story 058). */
+  settings: Map<number, PublishedContent>
+  /** Every page of a settings type in this view, by lowercase key. */
+  settingsKeys: Set<string>
+}
+
+/** A page of a settings type that is not, or not alone, its site's settings. */
+export interface SiteSettingsFinding {
+  kind: 'second' | 'deep'
+  key: string
+  name: string
+  /** The settings page that counts, for a second one. */
+  counted?: string
 }
 
 export interface DictionaryOutlineItem {
@@ -189,6 +204,8 @@ export interface CacheSnapshot {
   dictionaryOutline: DictionaryOutlineItem[]
   /** Content type key (lowercase) → alias. */
   contentTypeAliases: Map<string, string>
+  /** Pages of a settings type that are not, or not alone, a site's settings. */
+  settingsFindings: SiteSettingsFinding[]
   /**
    * The content checkpoint whose changes this snapshot holds (story 174): every
    * change numbered at or below it, and none above. Absent from a source that
@@ -241,6 +258,7 @@ const EMPTY: CacheSnapshot = {
   dictionary: new Map(),
   dictionaryOutline: [],
   contentTypeAliases: new Map(),
+  settingsFindings: [],
 }
 
 const normaliseRoute = (route: string) =>
@@ -310,6 +328,10 @@ const menuAliasOf = (element: PublishedElement) => {
   return typeof own === 'string' ? own.trim().toLowerCase() : undefined
 }
 
+/** A page a menu names, unless it is a site's settings, which has no address (story 058). */
+const menuPage = (view: CultureView, key: string): PublishedContent | undefined =>
+  view.settingsKeys.has(key.toLowerCase()) ? undefined : view.byKey.get(key.toLowerCase())
+
 /** The menu published under `alias` in a view, its media looked up in one query. */
 export async function menuIn(
   view: CultureView,
@@ -321,7 +343,7 @@ export async function menuIn(
   if (!element) return undefined
   const items = media ? await media.byKeys(menuMediaKeys(element)) : new Map()
   return buildMenu(element, {
-    content: (key) => view.byKey.get(key.toLowerCase()),
+    content: (key) => menuPage(view, key),
     media: (key) => items.get(key.toLowerCase()),
   })
 }
@@ -342,7 +364,7 @@ export async function menusIn(
     out.set(
       alias,
       buildMenu(element, {
-        content: (key) => view.byKey.get(key.toLowerCase()),
+        content: (key) => menuPage(view, key),
         media: (key) => items.get(key.toLowerCase()),
       }),
     )
@@ -698,6 +720,52 @@ export class PublishedCache {
     return urlsIn(await this.snapshot(), key).map(({ culture, url }) => ({ culture, url }))
   }
 
+  /**
+   * A site's settings page (story 058): the first child of a settings type under
+   * the root with `rootKey`, else under the first root.
+   */
+  async settings(
+    rootKey: string | null,
+    culture?: string | null,
+  ): Promise<PublishedContent | undefined> {
+    const view = this.#view(await this.snapshot(), culture)
+    if (!view) return undefined
+    const root = rootKey ? view.byKey.get(rootKey.toLowerCase()) : view.roots[0]
+    return root ? view.settings.get(root.id) : undefined
+  }
+
+  /** The key of the root a hostname serves, when one does. */
+  async rootForHost(host: string): Promise<string | undefined> {
+    const snapshot = await this.snapshot()
+    const best = this.#domainFor(snapshot, host, '/')
+    if (!best) return undefined
+    const view = this.#view(snapshot, best.domain.isoCode)
+    let id: number | undefined = best.domain.nodeId
+    let top: PublishedContent | undefined
+    while (id !== undefined && view?.byId.has(id)) {
+      top = view.byId.get(id)
+      id = view.parentIdOf.get(id)
+    }
+    return top?.key
+  }
+
+  /** Pages of a settings type that are not, or not alone, their site's settings. */
+  async settingsFindings(): Promise<SiteSettingsFinding[]> {
+    return (await this.snapshot()).settingsFindings
+  }
+
+  /** Every dictionary item in `culture`, each falling back as `dictionary` does. */
+  async dictionaryEntries(
+    culture: string | null,
+    keys?: readonly string[],
+  ): Promise<Record<string, string>> {
+    const snapshot = await this.snapshot()
+    const out: Record<string, string> = {}
+    const wanted = keys ?? snapshot.dictionaryOutline.map((item) => item.name)
+    for (const key of wanted) out[key] = translate(snapshot, key, culture)
+    return out
+  }
+
   /** A dictionary item's translation in `culture`, then its fallback languages; '' when none. */
   async dictionary(key: string, culture: string | null): Promise<string> {
     const snapshot = await this.snapshot()
@@ -711,6 +779,7 @@ export class PublishedCache {
     const byKey = view?.byKey ?? new Map<string, PublishedContent>()
     const parentIdOf = view?.parentIdOf ?? new Map<number, number>()
     return {
+      isSettings: (content) => view?.settingsKeys.has(content.key.toLowerCase()) ?? false,
       parent: (content) => {
         const parentId = parentIdOf.get(content.id)
         return parentId === undefined ? undefined : byId.get(parentId)
@@ -791,12 +860,37 @@ export class PublishedCache {
         alias,
       ]),
     )
+    // Story 058: a settings type's pages have no address; a root's first child of
+    // one is that site's settings.
+    const settingsTypes = new Set(
+      ((await source.loadSiteSettingsTypes?.()) ?? []).map((alias) => alias.toLowerCase()),
+    )
+    const isSettings = (node: PublishedNode) =>
+      settingsTypes.has(node.contentTypeAlias.toLowerCase())
     const defaultCulture =
       languages.find((l) => l.isDefault)?.isoCode ?? languages[0]?.isoCode ?? null
     const cultures: Array<string | null> =
       languages.length > 0 ? languages.map((l) => l.isoCode) : [null]
 
     const nodeById = new Map(nodes.map((node) => [node.id, node]))
+    const settingsFindings: SiteSettingsFinding[] = []
+    const countedFor = new Map<number, PublishedNode>()
+    for (const node of [...nodes].filter(isSettings).sort((a, b) => a.sortOrder - b.sortOrder)) {
+      const parent = nodeById.get(node.parentId)
+      if (!parent || parent.parentId > 0) {
+        settingsFindings.push({ kind: 'deep', key: node.key, name: node.name })
+        continue
+      }
+      const counted = countedFor.get(parent.id)
+      if (counted)
+        settingsFindings.push({
+          kind: 'second',
+          key: node.key,
+          name: node.name,
+          counted: counted.name,
+        })
+      else countedFor.set(parent.id, node)
+    }
     const domainsOf = new Map<number, PublishedDomain[]>()
     for (const domain of domains)
       if (!domain.isWildcard)
@@ -845,7 +939,7 @@ export class PublishedCache {
       const segmentOf = new Map<number, string>()
       for (const node of nodes) {
         await pace()
-        if (!inCulture(node)) continue
+        if (!inCulture(node) || isSettings(node)) continue
         const override =
           node.properties.find(
             (p) =>
@@ -914,29 +1008,21 @@ export class PublishedCache {
         childrenOf: new Map(),
         roots: [],
         parentIdOf: new Map(),
+        settings: new Map(),
+        settingsKeys: new Set(),
       }
       const isDefault = viewKey(culture) === viewKey(defaultCulture)
       // Shallow and first-sorted nodes claim a route before any that collide with it.
       const ordered = [...nodes]
         .filter(inCulture)
         .sort((a, b) => a.level - b.level || a.sortOrder - b.sortOrder)
-      for (const node of ordered) {
-        await pace()
-        const route = routeOf(node)
-        if (route === undefined) continue
-        const domainRoute = domainRouteOf(node)
-        const variant = node.cultures.length > 0
-        const url = domainRoute
-          ? `//${domainRoute.domain.domainName}${domainRoute.route === '/' ? '/' : domainRoute.route}`
-          : isDefault || !variant
-            ? route
-            : '#'
-        const content = new PublishedContent({
+      const contentOf = (node: PublishedNode, url: string, urlSegment: string) =>
+        new PublishedContent({
           key: node.key,
           id: node.id,
           name: nameIn(node),
           contentTypeAlias: node.contentTypeAlias,
-          urlSegment: segmentOf.get(node.id) as string,
+          urlSegment,
           url,
           level: node.level,
           path: node.path,
@@ -946,9 +1032,32 @@ export class PublishedCache {
           componentAlias: node.componentAlias,
           cultures: node.cultures,
           properties: node.properties,
-          variationCulture: variant ? culture : null,
+          variationCulture: node.cultures.length > 0 ? culture : null,
           languageFallback: fallbackChain(languages, culture),
         })
+      for (const node of ordered) {
+        await pace()
+        if (isSettings(node)) {
+          // Found by key and as its root's settings, and nowhere a visitor goes.
+          const content = contentOf(node, '#', urlSegmentFor(nameIn(node), null))
+          view.byId.set(node.id, content)
+          view.byKey.set(node.key.toLowerCase(), content)
+          view.settingsKeys.add(node.key.toLowerCase())
+          if (nodeById.has(node.parentId)) view.parentIdOf.set(node.id, node.parentId)
+          if (countedFor.get(node.parentId)?.id === node.id)
+            view.settings.set(node.parentId, content)
+          continue
+        }
+        const route = routeOf(node)
+        if (route === undefined) continue
+        const domainRoute = domainRouteOf(node)
+        const variant = node.cultures.length > 0
+        const url = domainRoute
+          ? `//${domainRoute.domain.domainName}${domainRoute.route === '/' ? '/' : domainRoute.route}`
+          : isDefault || !variant
+            ? route
+            : '#'
+        const content = contentOf(node, url, segmentOf.get(node.id) as string)
         view.byId.set(node.id, content)
         view.byKey.set(node.key.toLowerCase(), content)
         for (const alias of urlAliasesOf(node, culture)) {
@@ -1071,6 +1180,7 @@ export class PublishedCache {
       dictionary,
       dictionaryOutline,
       contentTypeAliases,
+      settingsFindings,
       ...(checkpoint === undefined ? {} : { checkpoint }),
       builtAt,
     }

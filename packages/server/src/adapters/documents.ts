@@ -582,6 +582,7 @@ export function createPublishedContentSource(
       return out
     },
     loadContentTypeAliases: () => new ContentTypeRepository(db).aliasesByKey(),
+    loadSiteSettingsTypes: () => new ContentTypeRepository(db).siteSettingsAliases(),
     loadUrlOptions: () => readUrlOptions(db),
 
     async loadRedirects() {

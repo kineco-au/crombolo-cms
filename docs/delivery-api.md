@@ -416,6 +416,31 @@ type the API does not serve, is left out with the items below it. A `404` when n
 published menu has that alias. Story `141`; [`rendering.md`](rendering.md),
 "Menus". `@crombolo/delivery-client` has it as `menu(alias)`.
 
+## Dictionary
+
+`GET dictionary` answers every dictionary item in the request's culture as one
+map of key to text, `{ "ReadMore": "Read more", … }`. Each falls back through
+the culture's fallback languages as a template's `dictionary()` does, and is
+`''` where none has it. `?keys=ReadMore,Back` narrows it; a key with no item
+answers `''`. Its purge tag is `crombolo-dictionary`. Story `058`;
+`@crombolo/delivery-client` has it as `dictionary(keys?)`.
+
+## Site settings
+
+A content type marked `site-settings = true` holds a site's settings: a phone
+number, social links, a banner ([`schema-as-code.md`](schema-as-code.md)). Its
+page is a direct child of the site's root and has no address: it is not routed,
+and is left out of navigation, menus, the sitemap and search.
+
+`GET settings` answers that page as a content item, `expand` and `fields`
+included, with `route.path` `#`. The root is the `Start-Item`'s, else the one
+the request's host serves, else the first; a `404` when that root has none.
+`content/item/{id}` answers it by key as well. With two under one root the first
+in the tree's order counts, and Settings → Health → Site → Site settings names
+the other, and any settings page deeper in the tree, which no site reads. Story
+`058`; `@crombolo/delivery-client` has it as `settings()`, typed by the site's
+settings type from `crombolo generate --delivery`.
+
 ## Forms
 
 An app draws a form itself from `GET forms/{key}` (its key or alias), and posts
@@ -655,5 +680,3 @@ builds and runs a scaffolded app on either, as CI does.
 
 `Accept-Segment`, domain cultures in path resolution, and
 external login providers in the sign-in flow.
-
-Planned as a story: translations, menus and site settings (`058`).

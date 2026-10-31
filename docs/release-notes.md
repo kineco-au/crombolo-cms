@@ -6,6 +6,32 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.40.0 — 2026-10-31
+
+- **Server actions** (story 219). A form, or an island, calls a function on
+  the server directly, as Next.js's `'use server'` does. List a module of them
+  in `crombolo.config.ts` (`actions: { profile }`); `<form
+  action={profile.save}>` then posts to it without JavaScript and returns to the
+  page, where `actionState(profile.save)` reads how it went. An island given an
+  action as a prop calls it from the browser and gets a `Result` back, and it
+  works with React 19's `<form action>` and `useActionState`. Posts go through
+  route handlers' checks: CSRF, the rate limit and the time limit. Views import
+  actions as `#actions/…`; new sites get the mapping in `package.json`, and an
+  existing site adds `"imports": { "#actions/*": "./actions/*" }` to use them.
+  The Harbourstone demo's bottlings gain a "Remind me" form.
+
+- **Translations and site settings reach the app** (story 058). The Delivery
+  API answers `GET dictionary`, every dictionary item in the request's culture
+  as key to text, with the same language fallback as `dictionary()`, and
+  `?keys=` to narrow it. A content type marked `site-settings = true` is a
+  site's settings: its page, directly below the site's root, has no address,
+  is read by templates as `settings` and by apps from `GET settings`, and is
+  left out of navigation, menus, the sitemap and search. A status check names a
+  second settings page under one root, or one deeper in the tree.
+  `@crombolo/delivery-client` and the Next.js client have `dictionary()` and
+  `settings()`. The Harbourstone demos' footers now come from a settings page.
+  Migration 057 adds the flag.
+
 ## v0.39.1 — 2026-10-31
 
 - **Publishing many pages at once is faster** (story 175). Each publish waits

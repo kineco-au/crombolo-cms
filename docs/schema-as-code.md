@@ -280,6 +280,7 @@ Reference:
 | `cleanup.prevent`, `cleanup.keep-all-newer-than-days`, `cleanup.keep-latest-per-day-for-days` | Version cleanup policy | global |
 | `since` | The schema version this type goes live in; pending until then — see below | stamped by tooling |
 | `site-search` | `false` leaves every page of the type out of site search | searchable |
+| `site-settings` | `true` makes it a site's settings: its page, a direct child of a root, has no address and is what templates read as `settings` and the Delivery API as `settings` ([`rendering.md`](rendering.md#site-settings)); not on an element type | not settings |
 
 A property: `alias`, `name` required; `description`, `notes`, `type` (a data type
 alias, required), `mandatory`, `mandatory-message`, `regex`, `regex-message`,

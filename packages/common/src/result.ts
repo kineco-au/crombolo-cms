@@ -194,6 +194,17 @@ export class Outcome<S extends OutcomeStatus = OutcomeStatus> implements ResultM
     return fallback
   }
 
+  /**
+   * One by its status, as JSON carried it (story 219: an action's answer in the
+   * browser). A redirect's location is checked as the redirect helpers check it.
+   */
+  static of<S extends OutcomeStatus>(status: S, init: OutcomeInit = {}): Outcome<S> {
+    if (!(status in OUTCOME_NAMES)) throw new Error(`${status} is not an outcome's status.`)
+    return new Outcome(status, {
+      ...init,
+      location: status < 400 ? assertSafeLocation(init.location ?? '') : undefined,
+    })
+  }
   /** 307: the visitor is sent on, keeping the request's method. */
   static redirect(url: string): Outcome<307> {
     return new Outcome(307, { location: assertSafeLocation(url) })

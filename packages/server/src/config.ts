@@ -216,6 +216,12 @@ export interface CromboloConfig {
    * finding. docs/rendering.md, "Route handlers".
    */
   routes?: SiteRoute<SiteServices, RequestMember>[]
+  /**
+   * The site's server actions (story 219), a module at a time:
+   * `actions: { profile }` after `import * as profile from '#actions/profile.ts'`.
+   * Each export is an action, `profile.save`. docs/rendering.md, "Server actions".
+   */
+  actions?: Record<string, Record<string, unknown>>
   /** How long a route handler may take before it answers 504; 0 for no limit. */
   routeTimeoutMs: number
   /** Requests a minute each caller may make to the site's routes, on each server; 0 for no limit. */
@@ -976,7 +982,7 @@ export function describeDatabase(
   }
 }
 
-export const VERSION = '0.39.1'
+export const VERSION = '0.40.0'
 
 /** A whole number of seconds from the environment; undefined when unset or not one. */
 /** A positive number from a setting, else the default. */

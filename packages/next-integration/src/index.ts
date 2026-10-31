@@ -91,6 +91,8 @@ export interface CromboloReads<Schema extends DeliverySchema = DeliverySchema> {
   mediaItem: DeliveryClient<Schema>['mediaItem']
   media: DeliveryClient<Schema>['media']
   menu: DeliveryClient<Schema>['menu']
+  dictionary: DeliveryClient<Schema>['dictionary']
+  settings: DeliveryClient<Schema>['settings']
   search: DeliveryClient<Schema>['search']
   form: DeliveryClient<Schema>['form']
   sitemap: DeliveryClient<Schema>['sitemap']
@@ -234,6 +236,8 @@ export function createCrombolo<Schema extends DeliverySchema = DeliverySchema>(
       mediaItem: call('mediaItem') as DeliveryClient<Schema>['mediaItem'],
       media: call('media') as DeliveryClient<Schema>['media'],
       menu: call('menu') as DeliveryClient<Schema>['menu'],
+      dictionary: call('dictionary') as DeliveryClient<Schema>['dictionary'],
+      settings: call('settings') as DeliveryClient<Schema>['settings'],
       search: call('search') as DeliveryClient<Schema>['search'],
       form: call('form') as DeliveryClient<Schema>['form'],
       sitemap: call('sitemap') as DeliveryClient<Schema>['sitemap'],
@@ -337,6 +341,7 @@ export type {
   RichTextTextElement,
   RichTextValue,
   SearchHit,
+  SettingsItem,
 } from '@crombolo/delivery-client'
 export { decodeEntities, isExpanded, walkRichText } from '@crombolo/delivery-client'
 export type { ContentItem, ContentQuery, DeliverySchema, RequestOptions }

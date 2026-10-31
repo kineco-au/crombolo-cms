@@ -16,7 +16,6 @@ import {
   cromboloPlan,
   type Db,
   describeRefFailure,
-  migrate,
   type NodeRow,
   ownerTablesIn,
   type PlannedStep,

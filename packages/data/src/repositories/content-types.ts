@@ -47,11 +47,12 @@ async function propertySignature(db: Db, contentTypeNodeId: number): Promise<str
     .execute()
   const [type] = await db.q
     .selectFrom('content_type')
-    .select('site_search')
+    .select(['site_search', 'site_settings'])
     .where('node_id', '=', contentTypeNodeId)
     .execute()
   return [
-    `site:${type ? fromDbBool(type.site_search) : true}`,
+    // A site's settings page is never searched (story 058).
+    `site:${type ? fromDbBool(type.site_search) && !fromDbBool(type.site_settings) : true}`,
     ...rows.map(
       (row) =>
         `${row.id}:${row.alias}:${row.variations}:${row.data_type_id}:${fromDbBool(row.searchable)}:${row.site_search}`,
@@ -365,6 +366,12 @@ export class ContentTypeRepository {
         await tx.q
           .updateTable('content_type')
           .set({ site_search: bool(aggregate.siteSearch) })
+          .where('node_id', '=', nodeId)
+          .execute()
+      if (aggregate.siteSettings !== undefined)
+        await tx.q
+          .updateTable('content_type')
+          .set({ site_settings: bool(aggregate.siteSettings) })
           .where('node_id', '=', nodeId)
           .execute()
 
@@ -688,6 +695,19 @@ export class ContentTypeRepository {
     return new Map(rows.map((r) => [normaliseUuid(String(r.unique_id)), String(r.alias)]))
   }
 
+  /** The aliases of the types that are a site's settings (story 058). */
+  async siteSettingsAliases(): Promise<string[]> {
+    const rows = await this.#db.q
+      .selectFrom('content_type as ct')
+      .innerJoin('node as n', 'n.id', 'ct.node_id')
+      .select('ct.alias')
+      .where('ct.retired_at', 'is', null)
+      .where('ct.site_settings', '=', this.#db.dialect.boolValue(true) as boolean)
+      .where('n.node_object_type', '=', this.#objectType)
+      .execute()
+    return rows.map((row) => String(row.alias))
+  }
+
   async move(key: string, parentKey: string | null): Promise<boolean> {
     const node = await this.#nodes.byKey(key)
     if (!node || node.objectType !== this.#objectType) return false
@@ -904,6 +924,7 @@ export class ContentTypeRepository {
         'ct.keep_latest_version_per_day_for_days',
         'ct.since_version',
         'ct.site_search',
+        'ct.site_settings',
         'ss.version as since_v',
         'ss.revision as since_r',
       ])
@@ -1034,6 +1055,7 @@ export class ContentTypeRepository {
       isElement: fromDbBool(type.is_element),
       allowedInLibrary: fromDbBool(type.allow_in_library),
       siteSearch: fromDbBool(type.site_search),
+      siteSettings: fromDbBool(type.site_settings),
       collectionKey: type.list_view ? normaliseUuid(String(type.list_view)) : null,
       cleanup: {
         preventCleanup: fromDbBool(type.prevent_cleanup),

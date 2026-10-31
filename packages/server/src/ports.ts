@@ -353,6 +353,9 @@ export function resolveUserLinkSender(
 export interface DepsOptions {
   /** Published pages a site route answers in place of, for the health check (story 211). */
   hiddenByRoutes?: () => Promise<Array<{ route: string; owner: string; page: string; url: string }>>
+  siteSettingsFindings?: () => Promise<
+    Array<{ kind: 'second' | 'deep'; name: string; counted?: string }>
+  >
   config: CromboloConfig
   paths: BackOfficePaths
   /** The site's installed npm extensions, which contribute their manifests. */
@@ -481,6 +484,7 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
       nodeState: options.schema?.nodeState,
       fetch: options.fetch,
       hiddenByRoutes: options.hiddenByRoutes,
+      siteSettingsFindings: options.siteSettingsFindings,
     })
     const tags = new TagRepository(options.db)
     deps.tags = { list: (filter) => tags.all(filter) }

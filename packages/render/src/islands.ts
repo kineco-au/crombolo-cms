@@ -6,7 +6,7 @@
  * generation, and `/crombolo/islands.js` mounts each island when it is needed.
  * docs/rendering.md, "Islands".
  */
-import { markIslands } from './context.ts'
+import { actionIdOf, markIslands } from './context.ts'
 import { escapeHtml, RawHtml } from './html.ts'
 import { type Child, renderToString } from './jsx-runtime.ts'
 
@@ -56,10 +56,12 @@ export function serializeProps(props: Record<string, unknown>, island: string): 
         throw new IslandPropsError(`${island}: ${path} is ${value}, which JSON cannot carry.`)
       return
     }
+    // A server action travels as its id, and the browser calls it (story 219).
+    if (typeof value === 'function' && actionIdOf(value)) return
     if (typeof value !== 'object') {
       const what = value === undefined ? 'undefined' : `a ${typeof value}`
       throw new IslandPropsError(
-        `${island}: ${path} is ${what}; an island's props travel to the browser as JSON, so only data can be passed.`,
+        `${island}: ${path} is ${what}; an island's props travel to the browser as JSON, so only data, or one of the site's server actions, can be passed.`,
       )
     }
     if (seen.has(value))
@@ -80,7 +82,9 @@ export function serializeProps(props: Record<string, unknown>, island: string): 
     seen.delete(value)
   }
   check(props, 'props')
-  return JSON.stringify(props)
+  return JSON.stringify(props, (_key, value) =>
+    typeof value === 'function' ? { $action: actionIdOf(value) } : value,
+  )
     .replaceAll('<', '\\u003c')
     .replaceAll('>', '\\u003e')
     .replaceAll('&', '\\u0026')

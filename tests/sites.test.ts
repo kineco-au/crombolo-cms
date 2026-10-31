@@ -115,7 +115,13 @@ describe('staging a site as a template', () => {
     const dir = join(into, 'demo', 'harbourstone')
     // The content is the seed among the files; there is no bundle (story 164).
     expect(readdirSync(dir).sort()).toEqual(['CREDITS.md', 'files', 'template.json'])
-    expect(readdirSync(join(dir, 'files')).sort()).toEqual(['components', 'css', 'schema', 'seed'])
+    expect(readdirSync(join(dir, 'files')).sort()).toEqual([
+      'actions',
+      'components',
+      'css',
+      'schema',
+      'seed',
+    ])
   })
 
   test('a site with a Next.js front end ships its web/, less what is installed, built or secret', () => {

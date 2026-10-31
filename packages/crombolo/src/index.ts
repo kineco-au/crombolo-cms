@@ -15,6 +15,7 @@ import {
   type ServerHandle,
 } from '@crombolo/server'
 
+export { type ActionState, type ClientAction, clientAction } from '@crombolo/common'
 // A view reads a form definition and a submission's state; both are domain
 // types, so they come from core rather than from the renderer.
 export type {
@@ -82,6 +83,7 @@ export type {
 } from '@crombolo/render'
 export {
   AntiforgeryMeta,
+  actionState,
   Blocks,
   type Context,
   createContext,

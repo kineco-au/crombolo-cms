@@ -126,6 +126,7 @@ export function writeContentType(t: SchemaContentType, kind: SchemaTypeKind = 'd
   line(out, 'folder', t.folder)
   line(out, 'since', t.since)
   line(out, 'site-search', false, t.siteSearch === false)
+  line(out, 'site-settings', true, t.siteSettings === true)
   if (
     t.cleanup.prevent ||
     t.cleanup.keepAllNewerThanDays !== undefined ||

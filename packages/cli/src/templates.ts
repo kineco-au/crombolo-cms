@@ -64,6 +64,8 @@ export interface SiteTemplate {
   next: boolean
   /** Packages the site depends on, such as React for its islands (story 209). */
   dependencies: Record<string, string>
+  /** Its server action modules, `files/actions/*.ts`, each listed in the config (story 219). */
+  actions: string[]
 }
 
 const MANIFEST = 'template.json'
@@ -81,8 +83,21 @@ function read(dir: string, id: string): SiteTemplate | undefined {
     serverBundles: readServerBundles(raw.bundles),
     next: raw.next === true,
     dependencies: readDependencies(raw.dependencies),
+    actions: actionModules(join(dir, 'files', 'actions')),
   }
 }
+
+/** The action modules a template ships, by file name. */
+function actionModules(dir: string): string[] {
+  if (!existsSync(dir)) return []
+  return readdirSync(dir)
+    .filter((name) => /^[a-z][\w-]*\.ts$/i.test(name))
+    .sort()
+}
+
+/** A module's key in `actions`: its file name, as an identifier. */
+const actionKey = (file: string) =>
+  file.replace(/\.ts$/, '').replace(/-([a-z0-9])/gi, (_, c: string) => c.toUpperCase())
 
 /** `dependencies` in `template.json`: package names to ranges, anything else dropped. */
 function readDependencies(raw: unknown): Record<string, string> {
@@ -238,10 +253,20 @@ const NEXT_CONFIG = `  // The Next.js app in web/ reads the site through the Del
   seo: { publicUrl: APP },
 `
 
-function config(siteName: string, bundles: readonly TemplateServerBundle[], next = false): string {
-  const imports = bundles
-    .map((bundle) => `import { ${bundle.import} } from ${quote(bundle.package)}\n`)
-    .join('')
+function config(
+  siteName: string,
+  bundles: readonly TemplateServerBundle[],
+  next = false,
+  actions: readonly string[] = [],
+): string {
+  const imports = [
+    ...bundles.map((bundle) => `import { ${bundle.import} } from ${quote(bundle.package)}\n`),
+    ...actions.map((file) => `import * as ${actionKey(file)} from '#actions/${file}'\n`),
+  ].join('')
+  const listed =
+    actions.length > 0
+      ? `  // Server actions a page's forms post to (story 219): each export is one.\n  actions: { ${actions.map(actionKey).join(', ')} },\n`
+      : ''
   if (next)
     return `${imports}import { defineConfig } from '@crombolo/crombolo'
 
@@ -253,11 +278,11 @@ export default defineConfig({
 ${bundles.length > 0 ? `  bundles: [${bundles.map((bundle) => `${bundle.import}()`).join(', ')}],\n` : ''}${NEXT_CONFIG}})
 `
   if (bundles.length === 0)
-    return `import { defineConfig } from '@crombolo/crombolo'
+    return `${imports}import { defineConfig } from '@crombolo/crombolo'
 
 export default defineConfig({
   siteName: ${quote(siteName)},
-${SEO_EXAMPLE}})
+${listed}${SEO_EXAMPLE}})
 `
   return `${imports}import { defineConfig } from '@crombolo/crombolo'
 
@@ -266,7 +291,7 @@ export default defineConfig({
   // Installing a bundle gives you its backoffice screen. This line is what lets
   // its endpoints answer a request, so remove it to turn one off.
   bundles: [${bundles.map((bundle) => `${bundle.import}()`).join(', ')}],
-${SEO_EXAMPLE}})
+${listed}${SEO_EXAMPLE}})
 `
 }
 
@@ -291,6 +316,9 @@ function packageJson(options: {
       private: true,
       type: 'module',
       ...(options.next ? { workspaces: ['web'] } : {}),
+      // Views import server actions through this (story 219): they render from a
+      // copy of components/, where a relative path to actions/ would break.
+      ...(options.next ? {} : { imports: { '#actions/*': './actions/*' } }),
       scripts: options.next
         ? { start: options.start, dev: 'bun dev.ts', 'dev:cms': 'bun --watch server.ts' }
         : { start: options.start, dev: 'bun --watch server.ts' },
@@ -334,7 +362,10 @@ export function scaffoldFiles(options: ScaffoldOptions = {}): ScaffoldFile[] {
         dependencies: options.template?.dependencies,
       }),
     },
-    { path: 'crombolo.config.ts', text: config(siteName, serverBundles, next) },
+    {
+      path: 'crombolo.config.ts',
+      text: config(siteName, serverBundles, next, options.template?.actions ?? []),
+    },
     {
       path: 'server.ts',
       // `crombolo start` reads the config itself; `server.ts` is what `dev` and
@@ -350,6 +381,8 @@ export default await crombolo(config)
     // The media types a site owns as files rather than inheriting silently.
     ...Object.entries(siteMediaTypeFiles()).map(([path, text]) => ({ path, text })),
     { path: 'components/.gitkeep', text: '' },
+    // Server actions (story 219), imported by views as `#actions/<file>.ts`.
+    ...(next ? [] : [{ path: 'actions/.gitkeep', text: '' }]),
     {
       path: '.gitignore',
       // `.crombolo/` holds the view snapshots: pure cache, rebuilt from `components/`

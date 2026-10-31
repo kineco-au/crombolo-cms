@@ -322,9 +322,18 @@ export interface ApiImageCropper {
 export interface DeliverySchema {
   content: object
   media: object
+  /** The aliases of the site's settings types (story 058), when it has any. */
+  settings?: string
 }
 
 type Aliases<Map> = Extract<keyof Map, string>
+
+/** The site's settings page: of its settings type when the schema names one, else any page. */
+export type SettingsItem<Schema extends DeliverySchema = DeliverySchema> = Schema extends {
+  settings: infer Alias extends Aliases<Schema['content']>
+}
+  ? ApiContentResponse<Alias, Schema['content'][Alias]>
+  : ContentItem<Schema>
 
 /** Any page the site serves, told apart by `contentType`. */
 export type ContentItem<Schema extends DeliverySchema = DeliverySchema> =
@@ -607,16 +616,31 @@ export interface DeliveryClient<Schema extends DeliverySchema = DeliverySchema> 
   ): Promise<Paged<Fielded<MediaItem<Schema>, Options>>>
   /** Published pages matching every word of the term, best first. */
   search(term: string, options?: SearchOptions): Promise<Paged<SearchHit<Schema>>>
-  /**
-   * What the site would answer at a visitor's address — the page, a redirect, or
-   * not found — for an app's router. `host` picks the root and culture as the
-   * site's domains do.
-   */
   /** A menu by its alias, in the culture asked for; undefined when there is none. */
   menu(
     alias: string,
     options?: Pick<RequestOptions, 'culture' | 'signal'>,
   ): Promise<ApiMenu | undefined>
+  /**
+   * Every dictionary item in the culture asked for, as key to text, each falling
+   * back as a template's `dictionary()` does; `keys` narrows it (story 058).
+   */
+  dictionary(
+    keys?: readonly string[],
+    options?: Pick<RequestOptions, 'culture' | 'signal'>,
+  ): Promise<Record<string, string>>
+  /**
+   * The site's settings page, under `startItem`'s root or the first; undefined
+   * when it has none (story 058).
+   */
+  settings<Options extends Omit<RequestOptions, 'seo'>>(
+    options?: Options,
+  ): Promise<Fielded<SettingsItem<Schema>, Options> | undefined>
+  /**
+   * What the site would answer at a visitor's address — the page, a redirect, or
+   * not found — for an app's router. `host` picks the root and culture as the
+   * site's domains do.
+   */
   route(
     path: string,
     options?: Omit<RequestOptions, 'culture' | 'fields'> & { host?: string },
@@ -772,6 +796,15 @@ export function createDeliveryClient<Schema extends DeliverySchema = DeliverySch
       ) as never,
     menu: (alias, request = {}) =>
       get(`menus/${encodeURIComponent(alias)}`, [], request, 'undefined') as never,
+    dictionary: (keys, request = {}) =>
+      get(
+        'dictionary',
+        keys && keys.length > 0 ? [['keys', keys.join(',')]] : [],
+        request,
+        'body',
+      ) as never,
+    settings: (request) =>
+      get('settings', shaping(request ?? {}), request ?? {}, 'undefined') as never,
     route: (path, request = {}) =>
       get(
         'route',

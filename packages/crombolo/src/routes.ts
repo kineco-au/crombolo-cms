@@ -4,8 +4,10 @@
  * route module (exports `GET`, `POST`, …) as one route.
  */
 import {
+  type ActionContext as CommonActionContext,
   type RouteContext as CommonRouteContext,
   type RouteHandler as CommonRouteHandler,
+  type ServerAction as CommonServerAction,
   type SiteRoute as CommonSiteRoute,
   route as commonRoute,
   ROUTE_METHODS,
@@ -28,6 +30,10 @@ export {
 export type RouteContext = CommonRouteContext<SiteServices, RequestMember>
 export type RouteHandler = CommonRouteHandler<SiteServices, RequestMember>
 export type SiteRoute = CommonSiteRoute<SiteServices, RequestMember>
+/** What a server action is given besides the form (story 219): a route's context, less its params. */
+export type ActionContext = CommonActionContext<SiteServices, RequestMember>
+/** A server action: `export async function save(formData: FormData, { site }: ActionContext)`. */
+export type ServerAction = CommonServerAction<SiteServices, RequestMember>
 
 /** A route on this site: `route('/api/records/:species', { GET: list, POST: add })`. */
 export function route(

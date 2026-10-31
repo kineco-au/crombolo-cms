@@ -307,6 +307,8 @@ describe('media values, read asynchronously', () => {
       childrenOf: new Map(),
       roots: [],
       parentIdOf: new Map(),
+      settings: new Map(),
+      settingsKeys: new Set(),
     } as CultureView
     const menus = await menusIn(view, media)
     expect(menus.get('main')?.items.map((i) => [i.label, i.url, i.kind])).toEqual([

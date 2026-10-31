@@ -41,6 +41,7 @@ const CHECKS = {
   nodes: { id: '6f1d4a8e-0047-4c1a-9e7d-000000000005', name: 'Servers' },
   outgoing: { id: '6f1d4a8e-0047-4c1a-9e7d-000000000006', name: 'Outgoing changes' },
   routes: { id: '6f1d4a8e-0047-4c1a-9e7d-000000000007', name: 'Routes and pages' },
+  settings: { id: '6f1d4a8e-0047-4c1a-9e7d-000000000008', name: 'Site settings' },
 } as const
 
 /** Waiting longer than this means nothing is sending: no server is running its jobs, or one is stuck. */
@@ -86,6 +87,11 @@ const GROUPS: HealthCheckGroup[] = [
         ...CHECKS.routes,
         description:
           "Whether a route in the site's code answers at an address a published page also has, which hides the page.",
+      },
+      {
+        ...CHECKS.settings,
+        description:
+          "Whether each site has at most one settings page, kept directly below the site's top page.",
       },
     ],
   },
@@ -166,6 +172,10 @@ export interface HealthCheckOptions {
   now?: () => Date
   /** Published pages a route answers in place of (story 211). */
   hiddenByRoutes?: () => Promise<Array<{ route: string; owner: string; page: string; url: string }>>
+  /** Settings pages that are not, or not alone, their site's settings (story 058). */
+  siteSettingsFindings?: () => Promise<
+    Array<{ kind: 'second' | 'deep'; name: string; counted?: string }>
+  >
 }
 
 const result = (
@@ -348,6 +358,19 @@ export function createDiagnosticsPort(options: HealthCheckOptions): DiagnosticsP
         result(
           'Warning',
           `The route ${h.route} (${h.owner}) answers ${h.url}, so the page "${h.page}" published there is never shown.`,
+        ),
+      )
+    },
+    [CHECKS.settings.id]: async () => {
+      const findings = (await options.siteSettingsFindings?.()) ?? []
+      if (findings.length === 0)
+        return [result('Success', 'Every settings page is where its site reads it.')]
+      return findings.map((f) =>
+        result(
+          'Warning',
+          f.kind === 'second'
+            ? `"${f.name}" is a second settings page for its site, so it is not used: "${f.counted}" is.`
+            : `"${f.name}" is a settings page below another page, so no site reads it. Move it directly below its site's top page.`,
         ),
       )
     },

@@ -128,6 +128,7 @@ import type { SyncReport } from '@crombolo/schema'
 import { choicesFor } from '@crombolo/transfer'
 import type { Server } from 'bun'
 import { createNodeLookup, loadAccess } from './access.ts'
+import { ACTION_FLASH_COOKIE, actionRegistry, actionRoutes } from './actions.ts'
 import { createAuditHost, createAuditSink, pluginAuditPlan, recordAudit } from './adapters/audit.ts'
 import { readCreatedBundlePackage, writeCreatedBundlePackage } from './adapters/bundles.ts'
 import { createPublishedContentSource, loadDraftNode } from './adapters/documents.ts'
@@ -199,7 +200,7 @@ import type { JobsStatus } from './worker-watch.ts'
 
 export { PREVIEW_COOKIE }
 
-import type { SiteRoute } from '@crombolo/common'
+import { ACTIONS_PATH, type SiteRoute } from '@crombolo/common'
 import { backofficeAudience } from './backoffice-external.ts'
 import { createExternalSignIn } from './external-sign-in.ts'
 import { IdentityProviderOverrides } from './identity-provider-overrides.ts'
@@ -970,6 +971,12 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     cors: formCors,
   })
 
+  // Story 219: the site's server actions, a module at a time.
+  const { registry: actionList, problems: actionProblems } = actionRegistry(config.actions)
+  if (actionProblems.length > 0)
+    throw new Error(`The site's actions cannot be mounted:\n- ${actionProblems.join('\n- ')}`)
+  const siteActions = actionRoutes(actionList, formSecret, config.secureCookies)
+
   const notImplementedLog = logger('not-implemented')
   const notImplemented = new NotImplementedLog((line, entry) => {
     // The console line is the development aid; the file keeps it for the log viewer
@@ -1006,6 +1013,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
   const managementDeps = createDeps({
     config,
     paths,
+    siteSettingsFindings: () => cache.settingsFindings(),
     hiddenByRoutes: async () => {
       const snapshot = await cache.snapshot()
       const hidden: Array<{ route: string; owner: string; page: string; url: string }> = []
@@ -1264,6 +1272,14 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     if (pathname.startsWith(`${MEMBER_ROUTE_PREFIX}/`)) {
       const response = await members.handle(request, pathname)
       if (response) return response
+    }
+
+    // Story 219: a server action, answered where the site is, through the routes' pipeline.
+    if (pathname.startsWith(`${ACTIONS_PATH}/`)) {
+      const action = config.role === 'api' ? undefined : siteActions.match(pathname)
+      return action
+        ? siteRoutes.invoke(action, request, url, {})
+        : new Response('Not Found', { status: 404, headers: { 'cache-control': 'no-store' } })
     }
 
     // Islands (story 209): the loader, and each generation's browser code.
@@ -2863,7 +2879,25 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     })
   }
 
+  /** A page, and an action's flash cleared once it has been read (story 219). */
   async function renderPage(request: Request, pathname: string, host: string): Promise<Response> {
+    const response = await renderPageOnce(request, pathname, host)
+    if (!readCookie(request, ACTION_FLASH_COOKIE)) return response
+    // Rebuilt rather than changed: a redirect's headers cannot be.
+    const headers = new Headers(response.headers)
+    headers.append('set-cookie', expireCookie(ACTION_FLASH_COOKIE, config.secureCookies))
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    })
+  }
+
+  async function renderPageOnce(
+    request: Request,
+    pathname: string,
+    host: string,
+  ): Promise<Response> {
     const preview = await renderPreview(request, pathname, host)
     // An `api` node renders for preview and nothing else. The backoffice opens a
     // site URL to preview a draft, so the renderer has to be here; serving the
@@ -2880,18 +2914,22 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     // cleared, so a reload shows the page rather than the thank-you again.
     const cookie = readCookie(request, FORM_FLASH_COOKIE)
     const submission = cookie ? readFlash(formSecret, cookie) : undefined
+    // What a server action answered the visitor with (story 219), read once as well.
+    const actionCookie = readCookie(request, ACTION_FLASH_COOKIE)
+    const actionFlash = siteActions.readFlash(actionCookie)
     // A page that is not the same for everyone is never kept: a member's, a
     // preview, a form's answer, or anything in a members-only branch — which a
     // visitor sees as the login page, at the same address.
     // Whether the page itself read anything personal, the member included, it
     // says in its result (story 206).
-    let personal = Boolean(preview || submission || cookie)
+    let personal = Boolean(preview || submission || cookie || actionCookie)
     const result =
       preview ??
       (await renderer.render(pathname, host, {
         member,
         antiforgery: session?.antiforgery,
         submission,
+        actions: { idOf: actionList.idOf, flash: actionFlash },
         access: async (content) => {
           if ((await members.decide(content, undefined)).status !== 'allowed') personal = true
           return members.decide(content, member)

@@ -13,8 +13,8 @@ import {
   migrate,
   readLedger,
   readState,
-  STATE_BUNDLES_DISABLED,
   STATE_CONTENT_APPLIED,
+  STATE_SITE_SETTINGS_TYPES,
   seedIdentity,
 } from '@crombolo/data'
 import { summariseUpgrades, VERSION } from '@crombolo/server'
@@ -124,10 +124,11 @@ describe('upgrading from the previous release', () => {
       'AddBundleGrants',
       'AddJobs',
       'DisableBundles',
+      'AddSiteSettingsTypes',
     ])
-    expect(await readState(db)).toBe(STATE_BUNDLES_DISABLED)
+    expect(await readState(db)).toBe(STATE_SITE_SETTINGS_TYPES)
     const summary = summariseUpgrades(await readLedger(db), VERSION)
-    expect(summary.lastUpgrade).toMatchObject({ release: '0.39.0', steps: 7 })
+    expect(summary.lastUpgrade).toMatchObject({ release: '0.40.0', steps: 8 })
   })
 
   test('the Changes dashboard reports the version, the install and the last upgrade', async () => {

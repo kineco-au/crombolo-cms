@@ -1,4 +1,5 @@
 export { createNodeLookup } from './access.ts'
+export * from './actions.ts'
 export * from './adapters/audit.ts'
 export * from './adapters/blueprints.ts'
 export * from './adapters/bundles.ts'
