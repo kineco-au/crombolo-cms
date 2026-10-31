@@ -7,5 +7,6 @@
  * @returns {boolean} `true` if the current build is a production build.
  */
 export function umbIsProductionBuild(): boolean {
-	return typeof import.meta.env !== 'undefined' && import.meta.env.PROD === true;
+	// Crombolo serves the tsc output, where `import.meta.env` is undefined: it is always a production build.
+	return true;
 }
