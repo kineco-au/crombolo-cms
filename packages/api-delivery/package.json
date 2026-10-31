@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/api-delivery",
-  "version": "0.39.0",
+  "version": "0.39.1",
   "description": "Internal to crombolo, with no compatibility promise: use @crombolo/crombolo. Umbraco's Content Delivery API for crombolo: published content and media as JSON, served from the published cache.",
   "license": "MIT",
   "author": "Crombolo",

@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/auth",
-  "version": "0.39.0",
+  "version": "0.39.1",
   "description": "Internal to crombolo, with no compatibility promise: use @crombolo/crombolo. OAuth2 authorization server, password hashing, cookies and member tickets for crombolo.",
   "license": "MIT",
   "author": "Crombolo",

@@ -6,6 +6,14 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.39.1 — 2026-10-31
+
+- **Publishing many pages at once is faster** (story 175). Each publish waits
+  for the published cache to rebuild, and changes made while it rebuilt each
+  started a rebuild of their own, competing with the rest. They now share one
+  rebuild after the one running, so 1,000 publishes through the API on a
+  25,000-page site take about half as long. Nothing to do but upgrade.
+
 ## v0.39.0 — 2026-10-31
 
 - **A route handler's signal ends once it has answered** (story 224). A route

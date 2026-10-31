@@ -197,6 +197,10 @@ growth and cleanup belong to story 082.
   - a poll waits for the catch-up rebuild it started, and leaves a cache this
     node already dropped to its next reader;
   - covered in `tests/content-checkpoint.test.ts`.
+- **Changes during a rebuild share one build after it** (0.39.1):
+  `PublishedCache` queues a single follow-up build for everything that changed
+  while one ran, rather than a build per change. The Medium burst of 1,000
+  publishes went from 694 s to 291 s locally on SQLite.
 - **The rebuild gives the thread up** every 250 pages, and between read slices,
   in `DocumentRepository.loadPublished` and `PublishedCache`.
 - **The render leak** fixed in `packages/render/src/renderer.ts`, covered in

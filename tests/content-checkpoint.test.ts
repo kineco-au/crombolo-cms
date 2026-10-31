@@ -167,6 +167,38 @@ describe('a snapshot is one consistent state', () => {
     expect(cache.served()?.checkpoint).toBe(6)
   })
 
+  test('changes made while it rebuilds share one build after it, rather than each starting one', async () => {
+    let builds = 0
+    let release = () => {}
+    let held: Promise<void> | undefined
+    const source: PublishedContentSource = {
+      loadPublished: async () => [],
+      withSnapshot: async (fn) => {
+        const checkpoint = ++builds
+        if (held) await held
+        return fn(source, checkpoint)
+      },
+    }
+    const cache = new PublishedCache(source)
+    await cache.snapshot()
+    held = new Promise<void>((resolve) => (release = resolve))
+    cache.invalidate()
+    const first = cache.fresh()
+    const writes: Promise<{ checkpoint?: number }>[] = []
+    for (let n = 0; n < 5; n++) {
+      cache.invalidate()
+      writes.push(cache.fresh())
+    }
+    // A reader after the follow-up is queued is answered from what was built.
+    expect((await cache.snapshot()).checkpoint).toBe(1)
+    held = undefined
+    release()
+    expect((await first).checkpoint).toBe(2)
+    expect((await Promise.all(writes)).map((s) => s.checkpoint)).toEqual([3, 3, 3, 3, 3])
+    expect(builds).toBe(3)
+    expect(cache.stale).toBe(false)
+  })
+
   test('while it rebuilds, readers have the previous snapshot; the first build and fresh() wait', async () => {
     let next = 5
     let release = () => {}

@@ -369,6 +369,8 @@ export class PublishedCache {
   /** Moves on every invalidation, so a build that one overtook is not kept as current. */
   #generation = 0
   #building: { generation: number; done: Promise<CacheSnapshot> } | undefined
+  /** The build queued behind the one in flight, shared by everything waiting for it. */
+  #next: Promise<CacheSnapshot> | undefined
   #snapshotGeneration = -1
   /** A checkpoint past the snapshot's own that it is known to hold, every change between being media only. */
   #coveredTo: number | undefined
@@ -387,15 +389,16 @@ export class PublishedCache {
 
   /**
    * The current snapshot, building it if it was dropped. The reader that starts
-   * a build waits for it; readers arriving while it builds are answered from
-   * the previous snapshot rather than waiting (story 175). Before the first
-   * build there is none, so they share the build.
+   * a build, or queues the one after it, waits for it; readers arriving while
+   * one builds are answered from the previous snapshot rather than waiting
+   * (story 175). Before the first build there is none, so they share the build.
    */
   async snapshot(): Promise<CacheSnapshot> {
     if (this.#loaded) return this.#snapshot
     const generation = this.#generation
-    if (this.#building?.generation === generation)
-      return this.#snapshotGeneration >= 0 ? this.#snapshot : this.#building.done
+    const previous = this.#snapshotGeneration >= 0 ? this.#snapshot : undefined
+    if (this.#building?.generation === generation) return previous ?? this.#building.done
+    if (this.#building) return this.#next && previous ? previous : this.#followUp()
     return this.#start(generation)
   }
 
@@ -409,7 +412,26 @@ export class PublishedCache {
     if (this.#loaded) return this.#snapshot
     const generation = this.#generation
     if (this.#building?.generation === generation) return this.#building.done
+    if (this.#building) return this.#followUp()
     return this.#start(generation)
+  }
+
+  /**
+   * One build after the one in flight, for whatever changed meanwhile: a burst
+   * of changes shares it rather than each starting a build of its own that
+   * would compete with the rest.
+   */
+  #followUp(): Promise<CacheSnapshot> {
+    this.#next ??= (this.#building?.done ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(() => {
+        this.#next = undefined
+        if (this.#loaded) return this.#snapshot
+        const generation = this.#generation
+        if (this.#building?.generation === generation) return this.#building.done
+        return this.#start(generation)
+      })
+    return this.#next
   }
 
   /**

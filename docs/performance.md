@@ -40,8 +40,9 @@ there is no previous snapshot, and they share the one build. A request that
 changes content (anything but `GET` and `HEAD`) is answered only once the
 rebuild it caused has finished, so the editor who published sees the change at
 once; for the rebuild's length other visitors may still see the previous
-version, as a node of a cluster does until it next polls. A build that a later
-change overtook is not kept (story `174`).
+version, as a node of a cluster does until it next polls. Changes made while a
+build runs share one build after it, rather than each starting a build of its
+own. A build that a later change overtook is not kept (story `174`).
 
 ## Measured workloads
 
