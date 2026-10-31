@@ -1,3 +1,4 @@
+export type * from './section-layout.extension.js';
 export type * from './section-route.extension.js';
 export type * from './section-sidebar-app.extension.js';
 export type * from './section-view.extension.js';

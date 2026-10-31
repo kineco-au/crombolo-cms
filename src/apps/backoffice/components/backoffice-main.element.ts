@@ -4,7 +4,8 @@ import { createExtensionApi, createExtensionElement } from '@umbraco-cms/backoff
 import { css, customElement, html, state } from '@umbraco-cms/backoffice/external/lit';
 import { UmbDefaultSectionContext, UMB_SECTION_PATH_PATTERN } from '@umbraco-cms/backoffice/section';
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element';
-import type { ManifestSection, UmbSectionElement } from '@umbraco-cms/backoffice/section';
+import { umbExtensionsRegistry } from '@umbraco-cms/backoffice/extension-registry';
+import type { ManifestSection, ManifestSectionLayout, UmbSectionElement } from '@umbraco-cms/backoffice/section';
 import type { PageComponent, UmbRoute } from '@umbraco-cms/backoffice/router';
 
 @customElement('umb-backoffice-main')
@@ -39,6 +40,17 @@ export class UmbBackofficeMainElement extends UmbLitElement {
 		}
 	}
 
+	// Crombolo: a package's sectionLayout draws the section; packages are registered before any section is drawn.
+	#layoutOf(section: ManifestSection): ManifestSection | ManifestSectionLayout {
+		const layout = umbExtensionsRegistry
+			.getAllExtensions()
+			.find(
+				(ext): ext is ManifestSectionLayout =>
+					ext.type === 'sectionLayout' && (ext as ManifestSectionLayout).forSection === section.alias,
+			);
+		return layout ?? section;
+	}
+
 	#createRoutes() {
 		if (!this._sections) return;
 
@@ -46,7 +58,7 @@ export class UmbBackofficeMainElement extends UmbLitElement {
 		const newRoutes: Array<UmbRoute> = this._sections.map((manifest) => {
 			return {
 				path: UMB_SECTION_PATH_PATTERN.generateLocal({ sectionName: manifest.meta.pathname }),
-				component: () => createExtensionElement(manifest, 'umb-section-default'),
+				component: () => createExtensionElement(this.#layoutOf(manifest), 'umb-section-default'),
 				setup: async (component: PageComponent) => {
 					if (component) {
 						const element = component as UmbSectionElement;
