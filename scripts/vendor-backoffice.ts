@@ -1,6 +1,8 @@
 /**
- * Builds a browser-runnable Umbraco backoffice into packages/backoffice-dist/dist/ using Bun
- * alone — no Node, no npm scripts, no .NET.
+ * Builds a browser-runnable Umbraco backoffice into packages/backoffice-dist/dist/
+ * from Crombolo's fork of Umbraco's client (`scripts/fork.ts`, story 235): the
+ * fork's npm package, built by its own scripts with Node, then bundled here with
+ * Bun. No .NET.
  *
  * The npm package ships the `tsc` output, which is not directly loadable: its
  * external/* modules are bare re-export stubs, and it carries no CSS and no
@@ -10,14 +12,20 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } fr
 import { basename, dirname, join, resolve, sep } from 'node:path'
 import { buildLocalizations } from './build-localizations.ts'
 import { checkModuleGraph } from './check-module-graph.ts'
+import { build as buildFork } from './fork.ts'
 
 const ROOT = join(import.meta.dir, '..')
 const OUT = join(ROOT, 'packages/backoffice-dist/dist')
-const PKG = join(ROOT, 'node_modules/@umbraco-cms/backoffice')
-const DIST = join(PKG, 'dist-cms')
+// The fork's package, built from the pinned commit; its own dependencies (lit,
+// tiptap, monaco…) resolve from this repository's node_modules, which installs
+// the npm release the fork is a snapshot of.
+let PKG = ''
+let DIST = ''
 const UUI_THEMES = join(ROOT, 'node_modules/@umbraco-ui/uui/dist/themes')
-const UMBRACO_SRC = Bun.env.UMBRACO_SRC ?? join(ROOT, '../Umbraco-CMS')
-const CLIENT_SRC = join(UMBRACO_SRC, 'src/Umbraco.Web.UI.Client/src')
+// The fork's worktree (`bun run fork:checkout`), or an Umbraco checkout named by $UMBRACO_SRC.
+const CLIENT_SRC = Bun.env.UMBRACO_SRC
+  ? join(Bun.env.UMBRACO_SRC, 'src/Umbraco.Web.UI.Client/src')
+  : join(ROOT, 'vendor/umbraco-client/src')
 /**
  * The few files that exist only in the Umbraco source tree are committed here
  * (~10 KB) so a fresh clone needs nothing but npm. Refresh them on a version
@@ -68,21 +76,6 @@ const APP_ENTRY = 'apps/app/app.element.js'
 const CHUNK_DIR = 'chunks'
 
 /**
- * Modules that are not in the import map but are imported by URL anyway, so they
- * have to stay addressable exactly as a mapped entry does.
- *
- * `plugin/tsx-editors.js` patches `UmbTemplateWorkspaceContext`, which upstream
- * does not export, by resolving the package entry and walking to the module
- * beside it. Bundling makes that path the *unbundled* module unless it is an
- * entry point here — so the patch would load a second copy of that subtree, and
- * the second copy redefines `umb-templating-insert-menu`, which the custom
- * element registry rejects the moment the template editor opens.
- *
- * `tests/vendor.test.ts` derives this list from the plugin and fails if it drifts.
- */
-const IMPORTED_BY_URL = ['packages/templating/templates/workspace/template-workspace.context.js']
-
-/**
  * Build- and test-time files the npm package ships but a browser never loads.
  * Pruning them keeps the served tree to runtime code, and stops their
  * build-tool imports (`vite`, `@open-wc/testing`) looking like missing runtime
@@ -112,8 +105,8 @@ const NON_RUNTIME_GLOBS = [
  * - `umbraco-news`: the Content welcome dashboard relaying umbraco.com's feed;
  *   crombolo's own Welcome dashboard takes its place.
  *
- * Each one's line in the client's package list is removed by a patch in
- * `UPSTREAM_PATCHES`.
+ * The fork deletes them from its source (`scripts/fork.ts`), so the client never
+ * loads them; the names stay here for the tests that check they are gone.
  */
 export const EXCLUDED_PACKAGES = ['telemetry', 'performance-profiling', 'umbraco-news'] as const
 
@@ -281,37 +274,19 @@ function inlineJsonImports(): number {
   return rewritten
 }
 
-/** A fix to one vendored module, for a bug Umbraco ships and has not fixed upstream. */
-export interface UpstreamPatch {
+/**
+ * A fix to a dependency the client bundles, which the fork of Umbraco's own
+ * client cannot carry. Fixes to Umbraco's client are commits in the fork.
+ */
+export interface DependencyPatch {
   file: string
   find: string
   replace: string
-  /** Where the pinned code is under `node_modules`, when `file` is bundled from another package. */
-  source?: string
+  /** Where the pinned code is under `node_modules`. */
+  source: string
 }
 
-export const UPSTREAM_PATCHES: UpstreamPatch[] = [
-  // Umbraco's Vite build substitutes `import.meta.env.PROD`; left false, every
-  // deprecation in Umbraco's own code is logged to the console, where nobody can act on it.
-  {
-    file: 'packages/core/utils/is-production-build.function.js',
-    find: "typeof import.meta.env !== 'undefined' && import.meta.env.PROD === true",
-    replace: 'true',
-  },
-  // A sign-in reports success twice, through the auth context and through the
-  // view's callback; the second lands on a closed modal and throws "_subject is undefined".
-  {
-    file: 'packages/core/auth/modals/umb-app-auth-modal.element.js',
-    find: '    #onSuccess = () => {\n        this.value = { success: true };',
-    replace:
-      '    #succeeded = false;\n    #onSuccess = () => {\n        if (this.#succeeded)\n            return;\n        this.#succeeded = true;\n        this.value = { success: true };',
-  },
-  // The redirect dashboard names Umbraco's .NET setting; here it is an environment variable.
-  {
-    file: 'packages/documents/document-redirect-management/dashboard-redirect-management.element.js',
-    find: '<code>Umbraco:CMS:WebRouting:DisableRedirectUrlTracking</code>',
-    replace: '<code>CROMBOLO_TRACK_REDIRECTS</code>',
-  },
+export const DEPENDENCY_PATCHES: DependencyPatch[] = [
   // A tab leaves focus to the browser's default ring, which is blue and drawn
   // outside the tab, across the header above it. Drawn inside, the way UUI's other
   // controls draw theirs: the theme's colour, and hidden after a mouse click.
@@ -322,40 +297,6 @@ export const UPSTREAM_PATCHES: UpstreamPatch[] = [
     replace:
       '      #button:focus-visible {\n        outline: calc(2px * var(--uui-show-focus-outline, 1)) solid\n          var(--uui-focus-outline-color, var(--uui-color-focus));\n        outline-offset: -2px;\n      }\n\n      :host(:not([disabled])) #button:hover {\n        color: var(--uui-tab-text-hover,',
   },
-  // The active section's marker takes the "current" colour, which is pale and
-  // vanishes against the submenu below; a hook lets the theme give the header its own.
-  {
-    file: 'apps/backoffice/components/backoffice-header-sections.element.js',
-    find: '\t\t\t\t--uui-tab-group-dropdown-background: var(--uui-color-header-surface);',
-    replace:
-      '\t\t\t\t--uui-tab-group-dropdown-background: var(--uui-color-header-surface);\n\t\t\t\t--uui-color-current: var(--crombolo-header-current, var(--uui-palette-spanish-pink));\n\t\t\t\t--uui-color-current-emphasis: var(--crombolo-header-current, var(--uui-palette-spanish-pink-light));',
-  },
-  // Settings opens from the gear among the header's buttons (`Crombolo.HeaderApp.Settings`),
-  // so it is left out of the section tabs; the section and its routes are untouched.
-  {
-    file: 'apps/backoffice/components/backoffice-header-sections.element.js',
-    find: 'this._sections = allowedSections.map((section) => section.manifest).filter((section) => section !== undefined);',
-    replace:
-      "this._sections = allowedSections.map((section) => section.manifest).filter((section) => section !== undefined && section.alias !== 'Umb.Section.Settings');",
-  },
-  // The two places the name alone is read rather than compared, which `rebrandModule` leaves.
-  {
-    file: 'apps/backoffice/components/backoffice-header-logo.element.js',
-    find: 'alt="Umbraco"',
-    replace: 'alt="Crombolo"',
-  },
-  {
-    file: 'packages/core/auth/providers/manifests.js',
-    find: "label: 'Umbraco',",
-    replace: "label: 'Crombolo',",
-  },
-  // The packages in `EXCLUDED_PACKAGES` are not vendored, so the client's
-  // package list no longer loads them.
-  ...EXCLUDED_PACKAGES.map((name) => ({
-    file: APP_ENTRY,
-    find: `    import('../../packages/${name}/umbraco-package.js'),\n`,
-    replace: '',
-  })),
 ]
 
 /**
@@ -437,7 +378,7 @@ function rebrandVendored(): number {
 }
 
 /** Applies a patch, refusing a source that no longer has the code it fixes. */
-export function applyPatch(source: string, patch: UpstreamPatch): string {
+export function applyPatch(source: string, patch: DependencyPatch): string {
   if (!source.includes(patch.find))
     throw new Error(`upstream changed; patch no longer applies: ${patch.file}`)
   return source.replace(patch.find, patch.replace)
@@ -613,7 +554,7 @@ function explicitlyReExportExternals(imports: Record<string, string>): number {
 async function bundleClient(
   imports: Record<string, string>,
 ): Promise<{ entries: number; chunks: number; bytes: number; rewritten: number } | undefined> {
-  const own: string[] = [APP_ENTRY, ...IMPORTED_BY_URL]
+  const own: string[] = [APP_ENTRY]
   const addressable = new Map<string, string>()
   for (const [specifier, target] of Object.entries(imports)) {
     const relativeTarget = target.slice(`${BACKOFFICE_BASE_PATH}/`.length)
@@ -685,19 +626,18 @@ async function bundleClient(
 }
 
 async function main(): Promise<void> {
+  PKG = buildFork()
+  DIST = join(PKG, 'dist-cms')
   if (!existsSync(DIST)) {
-    throw new Error(`@umbraco-cms/backoffice is not installed. Run: bun install`)
+    throw new Error(`The fork's package has no dist-cms at ${PKG}`)
   }
 
   rmSync(OUT, { recursive: true, force: true })
   mkdirSync(OUT, { recursive: true })
 
-  // 1. the app itself, straight from npm
+  // 1. the app itself, from the fork's package
   for (const dir of ['apps', 'packages', 'libs', 'assets']) {
     cpSync(join(DIST, dir), join(OUT, dir), { recursive: true })
-  }
-  for (const name of EXCLUDED_PACKAGES) {
-    rmSync(join(OUT, 'packages', name), { recursive: true, force: true })
   }
   let pruned = 0
   for (const pattern of NON_RUNTIME_GLOBS) {
@@ -768,7 +708,7 @@ async function main(): Promise<void> {
 
   const jsonImportsInlined = inlineJsonImports()
   const rebranded = rebrandVendored()
-  for (const patch of UPSTREAM_PATCHES) {
+  for (const patch of DEPENDENCY_PATCHES) {
     const file = join(OUT, patch.file)
     writeFileSync(file, applyPatch(readFileSync(file, 'utf8'), patch))
   }
@@ -826,7 +766,7 @@ async function main(): Promise<void> {
   if (failed.length > 0) console.warn(`  not bundled (deferred or failed): ${failed.join(', ')}`)
   if (missing.length > 0) {
     console.warn(`  missing from ${STATIC_SEED}: ${missing.join(', ')}`)
-    console.warn('  run: bun run vendor:refresh-static (needs UMBRACO_SRC)')
+    console.warn('  run: bun run vendor:refresh-static (needs the fork: bun run fork:checkout)')
   }
 
   console.log(`  modules linked: ${graph.moduleCount}`)
@@ -859,7 +799,7 @@ async function main(): Promise<void> {
 export async function refreshStatic(): Promise<void> {
   if (!existsSync(CLIENT_SRC)) {
     throw new Error(
-      `No Umbraco client source at ${CLIENT_SRC}. Set UMBRACO_SRC to a checkout at release-18.2.0.`,
+      `No Umbraco client source at ${CLIENT_SRC}. Run "bun run fork:checkout", or set UMBRACO_SRC to an Umbraco checkout.`,
     )
   }
   for (const [from] of SOURCE_FILES) {

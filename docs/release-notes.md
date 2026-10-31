@@ -6,6 +6,31 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.42.0 — 2026-10-31
+
+- **The back office is built from Crombolo's fork of Umbraco's client** (story
+  235). Crombolo's changes to Umbraco's back office are commits on the fork's
+  `umbraco/crombolo` branch, in this repository, instead of patches over
+  Umbraco's built code and runtime rewrites of its internals. The plugin now
+  reaches the back office only through the extension registry and the fork's
+  seams (`umbCromboloHooks`), and a test holds it to that. The back office
+  behaves as before. Building it from source needs Node 24 and npm 11 as well
+  as Bun; a site needs neither.
+- **Sites installed from npm get the back office as built.** The packaged
+  back office (`@crombolo/backoffice-dist`) kept the version of the Umbraco
+  release it vendors, so npm still served its first build, from 14 October,
+  and none of the changes since reached a site installed from npm, such as
+  Settings being left out of the section tabs. It now shares crombolo's version
+  and ships with every release.
+- **Page addresses, Changes, Audit log and Background jobs open again.** Each
+  failed in Settings with "provideContext is not a function". Settings gives
+  every dashboard a context, which they could not take.
+- **Examine Management is now Search indexes**, saying what it manages.
+- **The Workflows section opens on the list of workflows** for administrators;
+  everyone else still opens on *Waiting for me*.
+- **Plain Signal's mammogram article** shows a mammogram with a small cancer
+  marked, in place of a photograph of one being taken.
+
 ## v0.41.1 — 2026-10-31
 
 v0.41.0's release pipeline failed, so it was never published; this is it, with:

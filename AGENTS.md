@@ -37,9 +37,10 @@
   someone's `migration_history` as a release that was never cut
 - These two numbers drifted badly before 0.3.0 — the migrations ran to 0.9.0 while
   the packages sat at 0.2.0 — which is why they are now checked rather than trusted
-- `@crombolo/backoffice-dist` is the one exception to one-version-across-the-set:
-  it tracks the Umbraco release it vendors and moves only with
-  `release:version --backoffice-dist`
+- `@crombolo/backoffice-dist` moves with the rest. It once tracked the Umbraco
+  release it vendors instead, and npm kept the 14 October build while every
+  later patch to the vendored client went unpublished; `dist/VERSION` records
+  the Umbraco release now
 
 ## Git
 

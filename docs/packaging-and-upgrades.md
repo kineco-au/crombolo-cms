@@ -694,11 +694,14 @@ Independent semver was rejected because none of these packages is independently
 useful — `@crombolo/data` means nothing without `core`'s entity shapes — so a
 version matrix would buy flexibility nobody wants.
 
-`@crombolo/backoffice-dist` is the exception. It is 84 MB of built client, it only
-changes when the pinned Umbraco version does, and its **major and minor track the
-`@umbraco-cms/backoffice` release it vendors** while the patch is ours. So
-`18.2.0` says the thing that actually matters about it, and a crombolo patch
-release does not drag 84 MB along.
+`@crombolo/backoffice-dist` shares the version too, although it is 84 MB of
+built client. It used to track the `@umbraco-cms/backoffice` release it vendors
+(`18.2.0`) and move only when bumped by hand. A version npm already holds is
+skipped, so every later patch to the vendored client (Settings moved to the
+header, the rebranding) went unpublished, and sites installed from npm ran the
+first build. In step with the rest, each release ships the client as it is
+built. `dist/VERSION` names the Umbraco release it was built from, and that is
+what the status page reports as the back office's version.
 
 Packages ship **TypeScript source**, not compiled JS: `exports` points straight at
 `src/index.ts`. Bun runs it, types come free, and there is no build step, no dual
@@ -744,8 +747,7 @@ OIDC identity. It needs an `NPM_TOKEN` secret with publish rights to the
 `@crombolo` scope.
 
 A version the registry already holds is skipped rather than failing the run, so a
-tag that only moves some packages is safe to push — which is exactly what happens
-when `backoffice-dist` stays put.
+release that failed part-way can be tagged again under a new version.
 
 Two traps the tooling closes, both of which publish a broken package silently:
 

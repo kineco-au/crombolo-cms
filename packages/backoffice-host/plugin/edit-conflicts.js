@@ -92,37 +92,27 @@ export const CONFLICT_BANNER = {
 }
 
 /**
- * Wraps a workspace's `load` and `reload` so the tracker knows the page's read
- * is the editor's own. Patched on the shared base class, for documents only.
+ * What the fork's `onEntityLoad` seam calls as an editor reads its entity: for a
+ * page, the tracker knows the read is the editor's own until it ends.
  */
-export function watchLoads(base, revisions = tracker) {
-  for (const method of ['load', 'reload']) {
-    const original = base.prototype[method]
-    if (typeof original !== 'function' || original.cromboloRevisions) continue
-    const wrapped = async function (unique) {
-      const key = String(unique ?? this.getUnique?.() ?? '').toLowerCase()
-      if (this.getEntityType?.() !== 'document' || !key) return original.call(this, unique)
-      revisions.beginLoad(key)
-      try {
-        return await original.call(this, unique)
-      } finally {
-        revisions.endLoad(key)
-      }
-    }
-    wrapped.cromboloRevisions = true
-    base.prototype[method] = wrapped
+export function entityLoads(revisions = tracker) {
+  return (entityType, unique) => {
+    const key = String(unique ?? '').toLowerCase()
+    if (entityType !== 'document' || !key) return undefined
+    revisions.beginLoad(key)
+    return () => revisions.endLoad(key)
   }
 }
 
 export const onInit = async (_host, extensionRegistry) => {
-  const [{ umbHttpClient }, { UmbEntityDetailWorkspaceContextBase }] = await Promise.all([
+  const [{ umbHttpClient }, { umbCromboloHooks }] = await Promise.all([
     import('@umbraco-cms/backoffice/http-client'),
-    import('@umbraco-cms/backoffice/workspace'),
+    import('@umbraco-cms/backoffice/extension-registry'),
   ])
   umbHttpClient.interceptors.request.use((request) => tracker.onRequest(request))
   umbHttpClient.interceptors.response.use((response, request) =>
     tracker.onResponse(response, request),
   )
-  watchLoads(UmbEntityDetailWorkspaceContextBase)
+  umbCromboloHooks.onEntityLoad = entityLoads()
   extensionRegistry.register(CONFLICT_BANNER)
 }

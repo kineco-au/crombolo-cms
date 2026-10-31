@@ -3,7 +3,8 @@
  * newest first, filtered by person, kind of change, words and dates.
  * docs/audit-log.md.
  */
-import { css, html, LitElement, nothing } from '@umbraco-cms/backoffice/external/lit'
+import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
+import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 
 const PAGE_SIZE = 50
 
@@ -133,7 +134,7 @@ function fromWhere(entry) {
   return forwarded || entry.ipAddress || '—'
 }
 
-export default class CromboloAuditDashboardElement extends LitElement {
+export default class CromboloAuditDashboardElement extends UmbLitElement {
   static properties = {
     _page: { state: true },
     _users: { state: true },

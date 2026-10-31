@@ -240,9 +240,9 @@ Migration 031 queues every existing page, media item and member, which is the
 backfill. A fresh install has nothing to backfill: its seed content is queued
 as it is written.
 
-## The Examine dashboard
+## The Search indexes dashboard
 
-Settings → Examine Management works against the five Umbraco operations:
+Settings → Search indexes (Umbraco's Examine Management dashboard) works against the five Umbraco operations:
 
 - **`GET indexer`, `GET indexer/{name}`:** an index reports itself
   **Rebuilding**, with the number of items waiting, while anything it covers is

@@ -111,7 +111,7 @@ export function lockedVersions(): Map<string, string> {
   )
 }
 
-/** The version every package shares, `@crombolo/backoffice-dist` excepted. */
+/** The version every package shares. */
 export function sharedVersion(): string {
   const main = workspacePackages().find((pkg) => pkg.name === UMBRELLA)
   if (!main) throw new Error('The crombolo package is missing from packages/')

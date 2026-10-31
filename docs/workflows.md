@@ -152,9 +152,10 @@ Times are kept in UTC and shown in the reader's own time, with the zone named;
 
 ## In the backoffice
 
-- **The Workflows section** — *Waiting for me* (stages the reader may decide),
-  *In flight*, *Decided*, and, for administrators, *Workflows*: the list and the
-  designer. Admin, Editors and Writers have the section; any group can be given it.
+- **The Workflows section** — for administrators, *Workflows*: the list and the
+  designer, which the section opens on; then *Waiting for me* (stages the reader
+  may decide), which everyone else opens on, *In flight* and *Decided*. Admin,
+  Editors and Writers have the section; any group can be given it.
 - **The designer** — two tabs. *Settings*, which opens first: what the workflow
   covers and its rules. *Stages*: stages as boxes on a canvas, dragged into
   place; *Connect stages* draws an arrow, clicking one removes it; beside the

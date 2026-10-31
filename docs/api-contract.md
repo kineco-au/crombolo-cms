@@ -117,7 +117,8 @@ everywhere else.
   act on the page as it stands, and send no revision.
 - The backoffice sends it through a crombolo entry point
   (`packages/backoffice-host/plugin/edit-conflicts.js`). It remembers the
-  revision each editor loaded, never one from another read of the same page,
+  revision each editor loaded, which the fork of Umbraco's client reports
+  through its `onEntityLoad` seam, never one from another read of the same page,
   and shows a banner with a link to the latest version when a save is refused.
 
 **Serialization**: camelCase, string enums, `Umb-` headers, and

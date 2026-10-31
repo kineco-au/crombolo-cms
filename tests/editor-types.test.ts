@@ -434,11 +434,8 @@ export default function Template({ model }: PageProps) {
     const editors = await source('plugin/tsx-editors.js')
     // Umbraco's template and partial view editors both say `language="razor"`,
     // and the attribute is not ours to change.
-    expect(editors).toContain("value === TSX || value === 'razor'")
+    expect(editors).toContain("language === TSX || language === 'razor'")
     expect(editors).toContain("export const TSX = 'tsx'")
-    // And if the property it wraps ever moves, that costs the dialect rather
-    // than this entry point, which also carries the TSX scaffolds.
-    expect(editors).toContain('if (!language?.set) return')
   })
 
   test('reaches the TypeScript service where this monaco actually keeps it', async () => {

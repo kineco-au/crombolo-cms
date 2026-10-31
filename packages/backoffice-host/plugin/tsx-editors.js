@@ -1,26 +1,16 @@
 /**
  * Makes Umbraco's template and partial view editors write and read TSX instead
- * of Razor. Umbraco's client hard-codes a Razor scaffold for a new template,
- * writes a Razor `Layout = "x.cshtml"` block when a master template is chosen,
- * starts a new partial view empty, and opens both in an editor configured for
- * Razor. This entry point changes the methods that do so — the template
- * repository's scaffold, the template workspace's master-template update, the
- * partial view repository's scaffold and the code editor's own language — to
- * write what a crombolo view is: a default-exported component, with
- * `export const layout = '<alias>'` for its master, and for a partial view the
- * server's `Empty` snippet. Snippets inserted into a view are translated to TSX
- * (`tsx-snippets.js`), and the inserts that have no TSX equivalent — a partial
- * view, which needs an import as well as a tag, and Razor's sections — are hidden.
- *
- * The methods are patched on Umbraco's own classes rather than the extensions
- * re-registered: changing the registry once the backoffice is rendering makes
- * every open section re-evaluate its extensions, and a route set up in that
- * window throws inside Umbraco's code.
+ * of Razor. Umbraco's client starts a template with a Razor scaffold, writes a
+ * Razor `Layout = "x.cshtml"` block for a master template, starts a partial view
+ * empty, and opens both in an editor configured for Razor. The fork of the
+ * client (story 235) asks `umbCromboloHooks` at each of those places, and this
+ * answers: a default-exported component, `export const layout = '<alias>'` for
+ * its master, the server's `Empty` snippet for a partial view, and monaco's
+ * TypeScript on a `.tsx` model. Snippets inserted into a view are translated to
+ * TSX (`tsx-snippets.js`), and the inserts with no TSX equivalent, a partial view
+ * (an import as well as a tag) and Razor's sections, are hidden.
  */
-import { UmbCodeEditorElement } from '@umbraco-cms/backoffice/code-editor'
 import { PartialViewService } from '@umbraco-cms/backoffice/external/backend-api'
-import { UmbPartialViewDetailRepository } from '@umbraco-cms/backoffice/partial-view'
-import { UmbTemplateDetailRepository } from '@umbraco-cms/backoffice/template'
 import { toTsxSnippet } from './tsx-snippets.js'
 
 export const SCAFFOLD = `import type { PageProps } from '@crombolo/crombolo'
@@ -86,9 +76,6 @@ const COMPONENTS = 'file:///components'
  * TypeScript knows it, and monaco passes the compiler options through untouched.
  */
 const BUNDLER = 100
-
-/** Code editors showing a view, rather than a stylesheet, a script or JSON. */
-const views = new WeakSet()
 
 let opened = 0
 
@@ -184,154 +171,59 @@ async function configureTsx() {
 }
 
 /**
- * Teaches `umb-code-editor` the dialect: `language="tsx"`, and Umbraco's own
- * hard-coded `razor`, become monaco's `typescript` on a `.tsx` model.
- *
- * `language` is a Lit property, so the accessor to wrap is the one Lit defined
- * on the prototype. If a future version of either defines it elsewhere, the
- * editor keeps Umbraco's Razor rather than this entry point throwing on the way
- * in and taking the TSX scaffolds down with it.
+ * How a view's code editor works, for the fork's `viewEditor` seam: monaco's
+ * `typescript` on a model named as a `.tsx` file, configured before the editor is
+ * made, with inserted snippets translated.
  */
-function teachDialect(editors) {
-  const language = Object.getOwnPropertyDescriptor(editors, 'language')
-  if (!language?.set) return
-  Object.defineProperty(editors, 'language', {
-    ...language,
-    set(value) {
-      const view = value === TSX || value === 'razor'
-      if (view) views.add(this)
-      else views.delete(this)
-      language.set.call(this, view ? 'typescript' : value)
+function viewEditor() {
+  let configured = { monaco: undefined, ok: false }
+  return {
+    language: 'typescript',
+    async prepare() {
+      configured = await configureTsx()
     },
-  })
-
-  const firstUpdated = editors.firstUpdated
-  editors.firstUpdated = async function (changed) {
-    if (!views.has(this)) return await firstUpdated.call(this, changed)
-    const { monaco, ok } = await configureTsx()
-    await firstUpdated.call(this, changed)
-    const editor = this.editor?.monacoEditor
-    const created = editor?.getModel()
-    if (!monaco || !editor || !created) return
-    if (!ok) {
-      // Without the dialect, TypeScript reads a view as a plain `.ts` file and
-      // underlines every tag in it. Plain text says less and lies less.
-      monaco.editor.setModelLanguage(created, 'plaintext')
-      return
-    }
-    // monaco names the model it creates `inmemory://model/1`, and a name with no
-    // `.tsx` on it is a file TypeScript refuses to read JSX in — every tag in
-    // the view would be a syntax error. So the model is replaced by one named
-    // as the file it is.
-    const model = monaco.editor.createModel(
-      created.getValue(),
-      'typescript',
-      monaco.Uri.parse(`${COMPONENTS}/view-${++opened}.tsx`),
-    )
-    editor.setModel(model)
-    created.dispose()
-    editor.onDidDispose(() => model.dispose())
-  }
-
-  const insert = editors.insert
-  editors.insert = function (text) {
-    return insert.call(this, views.has(this) ? toTsxSnippet(text) : text)
+    created(editor) {
+      const { monaco, ok } = configured
+      const created = editor?.getModel?.()
+      if (!monaco || !created) return
+      if (!ok) {
+        // Without the dialect, TypeScript reads a view as a plain `.ts` file and
+        // underlines every tag in it. Plain text says less and lies less.
+        monaco.editor.setModelLanguage(created, 'plaintext')
+        return
+      }
+      // monaco names the model it creates `inmemory://model/1`, and a name with no
+      // `.tsx` on it is a file TypeScript refuses to read JSX in: every tag in the
+      // view would be a syntax error. So the model is replaced by one named as the
+      // file it is.
+      const model = monaco.editor.createModel(
+        created.getValue(),
+        'typescript',
+        monaco.Uri.parse(`${COMPONENTS}/view-${++opened}.tsx`),
+      )
+      editor.setModel(model)
+      created.dispose()
+      editor.onDidDispose(() => model.dispose())
+    },
+    insert: toTsxSnippet,
   }
 }
 
-/**
- * The template editor's inserts that cannot become TSX. A partial view is an
- * import as well as a tag, which an insert at the cursor cannot write, and
- * sections are Razor's way for a layout to take content from a page, where a
- * TSX layout takes props.
- */
-async function hideRazorInserts() {
-  const menu = (await customElements.whenDefined('umb-templating-insert-menu')).prototype
-  Object.defineProperty(menu, 'hidePartialViews', {
-    configurable: true,
-    get: () => true,
-    set: () => {},
-  })
-
-  const editor = (await customElements.whenDefined('umb-template-workspace-editor')).prototype
-  const updated = editor.updated
-  editor.updated = function (changed) {
-    updated?.call(this, changed)
-    const sections = this.shadowRoot?.querySelector('#sections-button')
-    if (sections) sections.style.display = 'none'
-  }
-}
-
-/**
- * The value builder's preview shows the snippet it will insert, so it shows the
- * TSX one. Its output is still Umbraco's, and is translated on insert with the rest.
- */
-async function previewFieldsAsTsx() {
-  const modal = (await customElements.whenDefined('umb-templating-page-field-builder-modal'))
-    .prototype
-  const render = modal.render
-  modal.render = function () {
-    const result = render.call(this)
-    if (Array.isArray(result?.values)) result.values = result.values.map(toTsxSnippet)
-    return result
-  }
-  const updated = modal.updated
-  modal.updated = function (changed) {
-    updated?.call(this, changed)
-    const block = this.shadowRoot?.querySelector('umb-code-block')
-    if (block && block.getAttribute('language') !== 'TypeScript') {
-      block.setAttribute('language', 'TypeScript')
-      block.language = 'TypeScript'
-    }
-  }
+/** The fork's seams, answered for TSX views. */
+export const TSX_HOOKS = {
+  viewEditor: (language) => (language === TSX || language === 'razor' ? viewEditor() : undefined),
+  templateScaffold: () => SCAFFOLD,
+  async partialViewScaffold() {
+    const { data } = await PartialViewService.getPartialViewSnippetById({ path: { id: 'Empty' } })
+    return data?.content
+  },
+  writeLayout: withLayout,
+  translateSnippet: toTsxSnippet,
+  viewLanguageLabel: 'TypeScript',
+  hideRazorInserts: true,
 }
 
 export const onInit = async () => {
-  teachDialect(UmbCodeEditorElement.prototype)
-  // Registered lazily, so these wait for the editor to be opened
-  hideRazorInserts()
-  previewFieldsAsTsx()
-
-  const repository = UmbTemplateDetailRepository.prototype
-  const createScaffold = repository.createScaffold
-  repository.createScaffold = async function (preset) {
-    const result = await createScaffold.call(this, preset)
-    if (result.data) result.data.content = SCAFFOLD
-    return result
-  }
-
-  const partialViews = UmbPartialViewDetailRepository.prototype
-  const createPartialViewScaffold = partialViews.createScaffold
-  partialViews.createScaffold = async function (preset) {
-    const result = await createPartialViewScaffold.call(this, preset)
-    // Started from a snippet it has content already; empty, it gets the skeleton
-    if (result.data && !result.data.content) {
-      const { data } = await PartialViewService.getPartialViewSnippetById({ path: { id: 'Empty' } })
-      if (data?.content) result.data.content = data.content
-    }
-    return result
-  }
-
-  // The workspace context is not exported; it is the module beside the package's
-  // entry, which the import map resolves to the very module Umbraco loads
-  const { UmbTemplateWorkspaceContext } = await import(
-    new URL(
-      './workspace/template-workspace.context.js',
-      import.meta.resolve('@umbraco-cms/backoffice/template'),
-    ).href
-  )
-  const workspace = UmbTemplateWorkspaceContext.prototype
-  const setLayoutTemplate = workspace.setLayoutTemplate
-  workspace.setLayoutTemplate = async function (unique, updateLayoutBlock) {
-    // Umbraco's own update writes Razor; the state it keeps is what we want
-    await setLayoutTemplate.call(this, unique, false)
-    if (!updateLayoutBlock) return unique
-    const items = unique ? (await this.itemRepository.requestItems([unique])).data : []
-    const content = this._data.getCurrent()?.content ?? ''
-    this._data.updateCurrent({
-      content: withLayout(content, items?.[0]?.alias ?? null),
-      layoutTemplate: unique ? { unique } : null,
-    })
-    return unique
-  }
+  const { umbCromboloHooks } = await import('@umbraco-cms/backoffice/extension-registry')
+  Object.assign(umbCromboloHooks, TSX_HOOKS)
 }

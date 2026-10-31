@@ -104,6 +104,8 @@ not cover.
 | `182` | Extensions can dock a panel beside the back office | should | M | done | — |
 | `228` | User groups a site declares in files | should | M | done | 028 |
 | `229` | A workflow nobody can approve says so | should | S | ready | 028 |
+| `234` | A Settings landing page of cards | should | L | backlog | 021, 235 |
+| `235` | A fork of Umbraco's back-office client | should | L | done | — |
 
 ### Epic D — Members and identity
 

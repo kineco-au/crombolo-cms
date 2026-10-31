@@ -21,7 +21,7 @@ import {
   type EmailPort,
   notificationEmail,
 } from '@crombolo/server'
-import { markUnavailable } from '../packages/backoffice-host/plugin/notifications-dialog.js'
+import { UNAVAILABLE } from '../packages/backoffice-host/plugin/notifications-dialog.js'
 import { ROOT } from '../scripts/packages.ts'
 import { BACKOFFICE, type Harness, signedInServer, signInAsGroup, V1 } from './support/harness.ts'
 
@@ -453,51 +453,20 @@ describe('the e-mail', () => {
 })
 
 describe('the notifications dialog without e-mail', () => {
-  test('disables every toggle and Save, and says why, once', () => {
-    const element = (tag: string, attrs: Record<string, string> = {}) => ({
-      tag,
-      attrs,
-      disabled: false,
-    })
-    const toggles = [element('uui-toggle'), element('uui-toggle')]
-    const save = element('uui-button', { color: 'positive' })
-    const prepended: Array<{ textContent: string; className: string }> = []
-    const box = {
-      ownerDocument: {
-        createElement: () => {
-          const banner = { textContent: '', className: '', setAttribute() {} }
-          return banner
-        },
-      },
-      querySelector: (selector: string) =>
-        prepended.find((b) => selector === `.${b.className}`) ?? null,
-      prepend: (banner: { textContent: string; className: string }) => prepended.push(banner),
-    }
-    const root = {
-      querySelectorAll: (selector: string) =>
-        selector === 'uui-toggle' ? toggles : selector.startsWith('uui-button') ? [save] : [],
-      querySelector: (selector: string) => (selector === 'uui-box' ? box : null),
-    }
-    markUnavailable(root)
-    markUnavailable(root)
-    expect(toggles.every((t) => t.disabled)).toBe(true)
-    expect(save.disabled).toBe(true)
-    expect(prepended).toHaveLength(1)
-    expect(prepended[0]?.textContent).toContain("can't send e-mail yet")
-  })
-
-  test('the vendored dialog it patches is still the one it was written against', () => {
-    // A re-vendor that renames or restructures it fails here, not in an editor's browser.
+  test('the dialog asks the seam Crombolo answers, and turns its choices off with a reason', () => {
+    // Story 235: the dialog's own code, in the fork of Umbraco's client, asks
+    // `notificationsUnavailable`; the plugin answers it from /crombolo/api/email.
     const chunks = join(ROOT, 'packages/backoffice-dist/dist/chunks')
     const file = readdirSync(chunks).find((name) =>
       name.startsWith('document-notifications-modal.element-'),
     )
     expect(file, 'the notifications dialog chunk').toBeDefined()
     const source = readFileSync(join(chunks, file as string), 'utf8')
-    expect(source).toContain('customElement as b')
-    expect(source).toContain('b("umb-document-notifications-modal")')
-    expect(source).toContain('<uui-toggle')
-    expect(source).toContain('<uui-box')
-    expect(source).toContain('color="positive"')
+    expect(source).toContain('notificationsUnavailable')
+    expect(source).toContain('?disabled=${!!this._unavailable}')
+  })
+
+  test("says why in the editor's words", () => {
+    expect(UNAVAILABLE).toContain("can't send e-mail yet")
   })
 })

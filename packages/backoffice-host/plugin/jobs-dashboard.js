@@ -3,7 +3,8 @@
  * bundles' jobs, newest first, filtered by state, each with how far it got and
  * why it failed, and a failed one run again by hand.
  */
-import { css, html, LitElement, nothing } from '@umbraco-cms/backoffice/external/lit'
+import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
+import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 
 const PAGE_SIZE = 50
 
@@ -45,7 +46,7 @@ function progressOf(job) {
   return p.note ? `${count}: ${p.note}` : count
 }
 
-export default class CromboloJobsDashboardElement extends LitElement {
+export default class CromboloJobsDashboardElement extends UmbLitElement {
   static properties = {
     _items: { state: true },
     _total: { state: true },

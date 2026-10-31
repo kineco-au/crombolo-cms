@@ -113,13 +113,13 @@ async function contentCounts(db: Db): Promise<SiteStatus['content']> {
   }
 }
 
-/** The vendored client's version, which is a fact about this deployment too. */
+/** The Umbraco release the vendored client was built from, which is a fact about this deployment too. */
 export function backofficeVersion(): string | undefined {
   for (const base of [join(import.meta.dir, '..', '..'), process.cwd()]) {
-    const file = join(base, 'backoffice-dist', 'package.json')
+    const file = join(base, 'backoffice-dist', 'dist', 'VERSION')
     if (!existsSync(file)) continue
     try {
-      return (JSON.parse(readFileSync(file, 'utf8')) as { version?: string }).version
+      return readFileSync(file, 'utf8').trim().split('@').pop() || undefined
     } catch {
       return undefined
     }

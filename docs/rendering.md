@@ -136,12 +136,9 @@ which stays `ok` so a stale template cannot drain the whole set. See the README'
 **The template editor writes TSX.** Umbraco's client hard-codes a Razor
 scaffold for a new template and writes a Razor `Layout = "x.cshtml"` block when
 a master template is chosen. Our backoffice plugin
-(`backoffice-host/plugin/tsx-editors.js`, a `backofficeEntryPoint`)
-patches the two methods that write Razor — the template repository's scaffold
-and the workspace's master-template update — on Umbraco's own classes. It does
-not re-register the extensions: changing the registry while the backoffice is
-rendering makes open sections re-evaluate their extensions, and a route set up
-in that window throws inside Umbraco's code. So a new template starts as a TSX view and a master becomes
+(`backoffice-host/plugin/tsx-editors.js`, a `backofficeEntryPoint`) answers
+the fork of Umbraco's client where it would write Razor: its `templateScaffold`
+and `writeLayout` seams (`umbCromboloHooks`, story 235). So a new template starts as a TSX view and a master becomes
 `export const layout = '<alias>'`. The server still translates Razor it
 receives from anything else. `GET /template/{id}` answers the master as both
 `layoutTemplate`, which the client reads, and the contract's older

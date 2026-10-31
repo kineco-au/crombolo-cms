@@ -2,7 +2,7 @@
   "$schema": "../../../backoffice-dist/dist/umbraco-package-schema.json",
   "name": "Crombolo App Preview",
   "id": "Crombolo.AppPreview",
-  "version": "0.41.1",
+  "version": "0.42.0",
   "allowPublicAccess": false,
   "extensions": [
     {

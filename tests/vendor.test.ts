@@ -7,9 +7,9 @@ import {
   applyPatch,
   BACKOFFICE_BASE_PATH,
   createImportMap,
+  DEPENDENCY_PATCHES,
   rebrandDictionary,
   rebrandModule,
-  UPSTREAM_PATCHES,
 } from '../scripts/vendor-backoffice.ts'
 
 const ROOT = join(import.meta.dir, '..')
@@ -93,8 +93,6 @@ function registeredPropertyEditorUis(): Set<string> {
   return found
 }
 
-const UPSTREAM = join(ROOT, 'node_modules/@umbraco-cms/backoffice/dist-cms')
-
 describe("Umbraco's name", () => {
   test('is replaced where a person reads it in a module', () => {
     expect(rebrandModule("headline: 'Welcome to Umbraco'")).toBe("headline: 'Welcome to Crombolo'")
@@ -140,22 +138,17 @@ describe("Umbraco's name", () => {
   })
 })
 
-describe('upstream patches', () => {
-  test('each still applies to the pinned Umbraco release', () => {
-    for (const patch of UPSTREAM_PATCHES) {
-      const file = patch.source
-        ? join(ROOT, 'node_modules', patch.source)
-        : join(UPSTREAM, patch.file)
-      const source = readFileSync(file, 'utf8')
+describe('patches to a dependency the client bundles', () => {
+  test('each still applies to the pinned dependency', () => {
+    for (const patch of DEPENDENCY_PATCHES) {
+      const source = readFileSync(join(ROOT, 'node_modules', patch.source), 'utf8')
       expect(applyPatch(source, patch)).toContain(patch.replace)
     }
   })
 
   test('refuses a source that no longer has the code it fixes, rather than shipping it unfixed', () => {
-    const patch = UPSTREAM_PATCHES[0] as (typeof UPSTREAM_PATCHES)[number]
-    expect(() =>
-      applyPatch('export function umbIsProductionBuild() { return false }', patch),
-    ).toThrow()
+    const patch = DEPENDENCY_PATCHES[0] as (typeof DEPENDENCY_PATCHES)[number]
+    expect(() => applyPatch('export class UUITabElement {}', patch)).toThrow()
   })
 })
 
@@ -354,9 +347,32 @@ describe.skipIf(!vendored)('vendored backoffice', () => {
     expect(named).toEqual([])
   }, 60_000)
 
-  test('every upstream patch is in what is served', () => {
-    for (const patch of UPSTREAM_PATCHES)
+  test('every dependency patch is in what is served', () => {
+    for (const patch of DEPENDENCY_PATCHES)
       expect(readFileSync(join(VENDOR, patch.file), 'utf8')).toContain(patch.replace)
+  })
+
+  // Story 235: Umbraco's client is built from Crombolo's fork, whose commits
+  // these are; each would be lost by building from npm's package instead.
+  test("the fork's changes are in what is served", () => {
+    const served = (file: string) => readFileSync(join(VENDOR, file), 'utf8')
+    expect(served('apps/backoffice/components/backoffice-header-sections.element.js')).toContain(
+      "section.alias !== 'Umb.Section.Settings'",
+    )
+    expect(served('apps/backoffice/components/backoffice-header-sections.element.js')).toContain(
+      '--crombolo-header-current',
+    )
+    expect(served('apps/backoffice/components/backoffice-header-logo.element.js')).toContain(
+      'Crombolo on GitHub',
+    )
+    expect(
+      served(
+        'packages/documents/document-redirect-management/dashboard-redirect-management.element.js',
+      ),
+    ).toContain('CROMBOLO_TRACK_REDIRECTS')
+    expect(served('packages/core/auth/modals/umb-app-auth-modal.element.js')).toContain(
+      '#succeeded',
+    )
   })
 
   test("Umbraco's own deprecations stay out of the console, as in its production build", () => {
@@ -393,40 +409,14 @@ describe.skipIf(!vendored)('vendored backoffice', () => {
     expect(missing).toEqual([])
   })
 
-  test('every vendored module the plugin imports by URL is bundled, not raw', () => {
-    // `tsx-editors.js` patches a class upstream does not export, by resolving the
-    // package entry and walking to the module beside it. That path has to be an
-    // entry point of the bundle: otherwise the URL serves the unbundled module,
-    // the patch executes a second copy of that subtree, and the duplicate
-    // redefines `umb-templating-insert-menu` — which the custom element registry
-    // rejects as soon as the template editor opens.
-    //
-    // Derived from the plugin rather than restated, so adding another patch
-    // without adding its entry point fails here instead of in the browser.
-    const manifest = JSON.parse(readFileSync(join(VENDOR, 'umbraco-package.json'), 'utf8'))
-    const imports: Record<string, string> = manifest.importmap.imports
-    const pattern =
-      /new URL\(\s*'([^']+)',\s*import\.meta\.resolve\('(@umbraco-cms\/backoffice\/[^']+)'\)/g
-
-    const checked: string[] = []
-    for (const file of new Bun.Glob('**/*.js').scanSync(PLUGIN)) {
-      const source = readFileSync(join(PLUGIN, file), 'utf8')
-      for (const [, relative, specifier] of source.matchAll(pattern)) {
-        const target = imports[specifier as string]
-        expect([specifier, target]).toEqual([specifier, expect.any(String)])
-        const resolved = new URL(relative as string, `https://x${target}`).pathname
-        const onDisk = join(VENDOR, resolved.slice(BACKOFFICE_BASE_PATH.length + 1))
-        expect([resolved, existsSync(onDisk)]).toEqual([resolved, true])
-        // A bundled entry links its chunks; the raw tsc output imports siblings.
-        expect([resolved, readFileSync(onDisk, 'utf8').includes(`/${'chunks'}/`)]).toEqual([
-          resolved,
-          true,
-        ])
-        checked.push(resolved)
-      }
-    }
-    // The pattern is the whole point of the test, so finding none is a failure.
-    expect(checked.length).toBeGreaterThan(0)
+  test('the plugin reaches no vendored module by URL', () => {
+    // Story 235: what Crombolo changes in Umbraco's client is a commit in the
+    // fork, so the plugin has no reason to import a module Umbraco does not export.
+    const pattern = /import\.meta\.resolve\('@umbraco-cms\/backoffice\//
+    const reaching = [...new Bun.Glob('**/*.js').scanSync(PLUGIN)].filter((file) =>
+      pattern.test(readFileSync(join(PLUGIN, file), 'utf8')),
+    )
+    expect(reaching).toEqual([])
   })
 
   test('bundling the client did not inline a second copy of lit', () => {

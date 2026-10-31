@@ -77,18 +77,3 @@ export function store(userKey, state, storage = globalThis.localStorage) {
     // Private windows and blocked storage: the panel simply is not remembered.
   }
 }
-
-/** The children `umb-backoffice` renders, in order; the layout patch needs all three. */
-export const SHELL = ['<umb-backoffice-header', '<umb-backoffice-main', '<slot']
-
-/** Whether a rendered template still has the shell's children in order. */
-export function shellIsAsExpected(strings) {
-  const text = Array.isArray(strings) ? strings.join('') : String(strings ?? '')
-  let at = -1
-  for (const tag of SHELL) {
-    const next = text.indexOf(tag, at + 1)
-    if (next < 0) return false
-    at = next
-  }
-  return true
-}

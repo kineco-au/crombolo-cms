@@ -15,7 +15,7 @@ most 1,600 pixels wide and saved as JPEG; nothing else was changed.
 | File | Source | Licence | Attribution |
 | --- | --- | --- | --- |
 | `seed/media/hurricane-florence-from-the-iss.jpg` | [Hurricane Florence Viewed from the Space Station](https://commons.wikimedia.org/wiki/File:Hurricane_Florence_Viewed_from_the_Space_Station.jpg) | Public domain | NASA |
-| `seed/media/mammogram.jpg` | [Mammogram](https://commons.wikimedia.org/wiki/File:Mammogram.jpg) | Public domain | US National Cancer Institute |
+| `seed/media/mammogram-scan.jpg` | [Mammogram showing small lesion](https://commons.wikimedia.org/wiki/File:Mammogram_showing_small_lesion.jpg), cropped | Public domain | US National Cancer Institute (image 2553) |
 | `seed/media/utah-electrode-array.jpg` | [Utah array pat5215088](https://commons.wikimedia.org/wiki/File:Utah_array_pat5215088.jpg) | Public domain | Richard A. Normann, US Patent 5,215,088 |
 | `seed/media/mrsa-bacteria.jpg` | [Methicillin-Resistant Staphylococcus Aureus (MRSA) Bacteria colorized scanning electron micrograph - 22](https://commons.wikimedia.org/wiki/File:Methicillin-Resistant_Staphylococcus_Aureus_(MRSA)_Bacteria_colorized_scanning_electron_micrograph_-_22.jpg) | [CC BY 2.0](https://creativecommons.org/licenses/by/2.0) | NIAID |
 | `seed/media/euclid-elements-page.jpg` | [Euclid, Elements 10, appendix](https://commons.wikimedia.org/wiki/File:Euclid,_Elements_10,_appendix.jpg) | Public domain | Euclid (a facsimile of a historical edition) |

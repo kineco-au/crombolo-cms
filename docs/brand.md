@@ -71,8 +71,9 @@ and each one has tests.
   hard-code (`rebrandModule`, `rebrandDictionary`). It leaves anything that code
   depends on: aliases (`Umb.X.Umbraco`, `Umbraco.RichText`), paths, package
   names, URLs, and `'Umbraco'` used alone as a value, which is the provider name
-  the authorize endpoint knows. The patches in `UPSTREAM_PATCHES` handle the few
-  places where that value is also shown on screen.
+  the authorize endpoint knows. The fork of Umbraco's client changes the few
+  places where that value is also shown on screen
+  ([backoffice hosting](backoffice-hosting.md#the-fork-of-umbracos-client)).
 - **Our own sign-in dialog.** When a session ends, the client opens
   `Umb.Modal.AppAuth` before any private manifest has loaded. The public
   `plugin/sign-in` package replaces it with `crombolo-sign-in-dialog`.

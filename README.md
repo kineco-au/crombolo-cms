@@ -168,13 +168,17 @@ None of these scripts exists in a site made with `init`, which uses
 ### Set up
 
 You need Bun 1.3 or later, and Docker with Compose v2 for Postgres and the
-containerised test runs. There is no Node, npm-script or .NET dependency
-anywhere in the build, test or run path.
+containerised test runs. Building the back office also needs Node 24 and npm 11:
+it is built from Crombolo's fork of Umbraco's client by that client's own
+scripts ([backoffice hosting](docs/backoffice-hosting.md#the-fork-of-umbracos-client)).
+Nothing in the build, test or run path needs .NET, and a site needs neither
+Node nor npm.
 
 ```bash
 git clone https://github.com/kineco-au/crombolo-cms.git
 cd crombolo-cms
 bun install
+bun run fork:checkout         # the fork of Umbraco's client, at vendor/umbraco-client
 bun run vendor:backoffice     # builds the back office into packages/backoffice-dist/dist
 bun run generate:types        # contract types into packages/contracts/generated/
 bun run check                 # format, lint, typecheck and the SQL rule

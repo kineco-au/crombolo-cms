@@ -42,14 +42,73 @@ Helpfully, `apps/app/app.element.js` imports **relatively**
 import map is needed only for bare `@umbraco-cms/backoffice/*` specifiers used by
 dynamic imports and plugins — not for the app's own module graph.
 
+### The fork of Umbraco's client
+
+The client is built from Crombolo's fork of Umbraco's back-office client (story
+`235`), not taken from npm. The fork lives in this repository as two branches:
+
+- **`umbraco/upstream`:** Umbraco's `src/Umbraco.Web.UI.Client`, one snapshot
+  commit per Umbraco release (`release-18.2.0` now), with its MIT license.
+- **`umbraco/crombolo`:** Crombolo's changes as ordinary commits on top.
+
+`main` builds the commit named in `packages/backoffice-dist/UMBRACO_CLIENT`.
+
+```bash
+bun run fork:checkout   # umbraco/crombolo at vendor/umbraco-client/, which main ignores
+# edit and commit there, as on any branch
+bun run fork:pin        # the worktree's HEAD becomes the commit main builds
+bun run vendor:backoffice
+```
+
+- **The build:** `scripts/fork.ts` exports the pinned commit into
+  `output/umbraco-client/<commit>/`, runs Umbraco's own `npm ci`, `build:for:npm`
+  and `npm pack` there, and unpacks the package. That package is byte for byte
+  what Umbraco publishes to npm, and it is what `vendor:backoffice` works from.
+  Each commit is built once. The build needs Node 24 and npm 11, the client's
+  `engines`, as build tools only. Nothing .NET, and nothing a site installs.
+- **What the fork changes:** each change is a commit, `Crombolo: …`, so
+  `git log umbraco/upstream..umbraco/crombolo` lists them all.
+  - **Umbraco's bugs:** the sign-in modal closing twice, deprecations logged in
+    production.
+  - **Its text:** Settings out of the section tabs, the redirect setting's
+    name, the logo's link, the log viewer's searches, the client credential
+    prefix, the page title.
+  - **What is deleted:** telemetry, profiling and the news feed.
+  - **A column for side panels:** beside main, in the shell.
+  - **`umbCromboloHooks`:** the seams Crombolo's plugin plugs into, exported
+    with `@umbraco-cms/backoffice/extension-registry`.
+- **`umbCromboloHooks`:** Crombolo's own behaviour stays in the plugin, with
+  its tests; the fork only asks for it where Umbraco would act. Each seam is
+  optional, and unset leaves Umbraco's behaviour.
+  - **The views' dialect:** the code editor, the scaffolds, the template's
+    layout, translated snippets, hidden Razor inserts (`tsx-editors.js`).
+  - **An editor's own read of its entity:** `edit-conflicts.js`.
+  - **Notifications:** whether they can be chosen (`notifications-dialog.js`).
+- **The plugin patches nothing at runtime.** `tests/plugin-boundary.test.ts`
+  fails on a prototype rewritten, a property redefined, another element's
+  shadow DOM touched, or a module Umbraco does not export imported. The plugin
+  uses the extension registry, contexts, exported modules and the seams.
+
+**Upgrading Umbraco.**
+1. Commit the new release's `src/Umbraco.Web.UI.Client` (and its license) onto
+   `umbraco/upstream`.
+2. Rebase `umbraco/crombolo` onto it. A conflict is one of Crombolo's changes
+   meeting one of Umbraco's, in the file where they meet.
+3. Run `bun run fork:pin` and `bun run vendor:backoffice`, then the full browser
+   suite.
+4. Bump the `@umbraco-cms/backoffice` version in the root `package.json`. It still
+   installs the dependencies the client bundles (lit, tiptap, monaco…), which
+   have to match the release.
+5. Push both branches with the release that pins them.
+
 ### `bun run vendor:backoffice`
 
-Closes every gap with Bun alone, writing `packages/backoffice-dist/dist/` (committed, with a
+Closes every gap with Bun, writing `packages/backoffice-dist/dist/` (committed, with a
 `VERSION` file recording the upstream version):
 
 | Step | Produces |
 | --- | --- |
-| 1. copy `node_modules/@umbraco-cms/backoffice/dist-cms/{apps,packages,libs,assets}` | the app itself |
+| 1. copy the fork's package's `dist-cms/{apps,packages,libs,assets}` | the app itself |
 | 2. `bun build dist-cms/external/<m>/index.js --target=browser --format=esm` for each of the 10 externals | self-contained `external/*` bundles |
 | 3. copy `node_modules/@umbraco-ui/uui/dist/themes/{light,dark,high-contrast}.css` | 3 of the 4 stylesheets |
 | 4. copy 3 files from `packages/backoffice-dist/upstream-static/` — `css/{umb-css,rte-content,umbraco-blockgridlayout}.css`. Umbraco's three SVG marks are deliberately not seeded; `BRANDED_ASSETS` serves crombolo's at those paths | the rest |
@@ -60,8 +119,9 @@ Closes every gap with Bun alone, writing `packages/backoffice-dist/dist/` (commi
 `packages/backoffice-dist/dist/` is **not** committed — it is 69 MB and reproducible in under
 a second. What *is* committed is `packages/backoffice-dist/upstream-static/`: the 6 files (60 KB)
 that exist only in the Umbraco source tree, so a fresh clone needs nothing but
-`bun install`. `bun run vendor:refresh-static` re-seeds them from `$UMBRACO_SRC`
-and is only needed when bumping the pinned backoffice version.
+`bun install`. `bun run vendor:refresh-static` re-seeds them from the fork's
+worktree, or from `$UMBRACO_SRC` when set, and is only needed when the pinned
+Umbraco release changes.
 
 The generated import map is **self-verifying**: an entry is emitted only if its
 target file was actually produced, and anything dropped is reported. An import map
@@ -157,38 +217,14 @@ plugin translates both: each worker is built separately into
 `exports` map in 0.57 rewrites the deep worker paths, so they are resolved from
 the package directory instead.
 
-**Upstream patches.** `UPSTREAM_PATCHES` in `scripts/vendor-backoffice.ts` fixes
-Umbraco bugs that are still open upstream (still present in 18.3.0-rc). Each patch is a find-and-replace on one module, and
-vendoring fails if the code it targets has moved, so an upgrade cannot quietly
-ship the bug again. `tests/vendor.test.ts` checks each patch still applies to the
-pinned release.
+**Dependency patches.** `DEPENDENCY_PATCHES` in `scripts/vendor-backoffice.ts`
+fixes a dependency the client bundles, which the fork of Umbraco's own client
+cannot carry. Each is a find-and-replace on the pinned package's code, and
+vendoring fails if the code it targets has moved.
 
-- `umbIsProductionBuild()` answers true. Umbraco's Vite build sets
-  `import.meta.env.PROD` and our bundler does not, so without the patch Umbraco's
-  own deprecation warnings reach the console. In production Umbraco hides only
-  warnings from its own code, so warnings from the plugin still show.
-- `umb-app-auth-modal` closes once on sign-in. A sign-in reports success twice:
-  once through the auth context and once through the view's callback. The second
-  call hits a modal that has already closed and logs
-  `[AuthView] Error submitting auth request … _subject is undefined`.
 - A tab's keyboard focus outline is drawn inside the tab, in the theme's focus
   colour, as UUI's other controls draw theirs. Left to the browser, it was blue
   and drawn outside the tab, across the header above it.
-- The header gives its active-section marker its own colour,
-  `--crombolo-header-current` (terracotta brown in `theme.css`). Otherwise it uses Umbraco's
-  pale "current" colour, which disappears against the white submenu below.
-- Settings is left out of the section tabs. It opens from a gear among the
-  header's buttons instead (`Crombolo.HeaderApp.Settings`, a `headerApp` of kind
-  `button`, shown to anyone with access to Settings). Its routes are unchanged.
-- The redirect dashboard names `CROMBOLO_TRACK_REDIRECTS` instead of Umbraco's
-  .NET setting. The header logo's alternative text and the sign-in provider's
-  label say Crombolo. See [Keeping Umbraco's name out](brand.md#keeping-umbracos-name-out),
-  which also covers how every vendored module and dictionary is rebranded.
-- The client's package list no longer loads the telemetry, profiling and news
-  packages, which are not vendored at all. See [Nothing sent out](#nothing-sent-out).
-
-`$UMBRACO_SRC` defaults to `../Umbraco-CMS` and is read only by
-`vendor:refresh-static` — never during an ordinary build, test or run.
 
 **Measured result:** 168 import-map entries, 10 of 10 externals bundled, 27 bare
 dependencies bundled, 103 non-runtime files pruned, 90 MB output.
@@ -202,12 +238,11 @@ to this site's server, and no screen asks to share usage data.
   shipped.** Umbraco's Settings section has a "Telemetry data" dashboard asking
   for consent to send usage data to Umbraco and a Profiling dashboard for .NET's
   MiniProfiler, and its Content section a dashboard relaying umbraco.com's news.
-  `EXCLUDED_PACKAGES` in `scripts/vendor-backoffice.ts` leaves `packages/telemetry`,
-  `packages/performance-profiling` and `packages/umbraco-news` out of the
-  vendored tree, and a patch removes each one's line from the client's package
-  list in `apps/app/app.element.js`. Removing them at vendor time, rather
-  than unregistering them at runtime, means the code is not served at all. None
-  is in an import-map entry, so nothing else moves.
+  The fork deletes `packages/telemetry`, `packages/performance-profiling` and
+  `packages/umbraco-news` from its source, and their lines from the client's
+  package list, so the code is not served at all. `EXCLUDED_PACKAGES` in
+  `scripts/vendor-backoffice.ts` names them for the tests that check they are
+  gone.
 - **Umbraco's client never phoned home anyway.** Its telemetry, news feed,
   version check and help feed are all sent by Umbraco's .NET server. Crombolo's
   server sends none of them. The telemetry, profiling and news endpoints
@@ -392,7 +427,8 @@ Prefer that to the registry's `exclude()` or `unregister()`. `overwrites` is
 resolved by the extension initializer as it reads the manifests, whereas the
 registry calls mutate it after the fact — and changing the registry once the
 backoffice is rendering makes every open section re-evaluate its extensions,
-which is the failure the TSX entry point documents at the top of `tsx-editors.js`.
+which made open sections throw inside Umbraco's code when the TSX editors were
+re-registered at runtime. They are seams in the fork now (`umbCromboloHooks`).
 
 The exception is an extension the client *counts* rather than renders. Because
 `overwrites` is resolved by the initializer, `umbExtensionsRegistry.byType()`
@@ -410,7 +446,8 @@ documents itself.
 Umbraco's template and partial view editors are `umb-code-editor` with
 `language="razor"` written into the element's own template, and monaco has no
 `tsx` language to swap it for. So `tsx-editors.js` configures the dialect rather
-than registering one, in three parts:
+than registering one, through the fork's `viewEditor` seam, which the code
+editor asks as it opens. In three parts:
 
 - **The mode stays monaco's `typescript`.** TypeScript's worker attaches only to
   the `typescript` and `javascript` modes, and that worker is where every
@@ -453,22 +490,17 @@ and the console reports `controllerHost.provideContext is not a function`.
 
 ### Side panels
 
-Umbraco's shell has no slot beside main: `umb-backoffice` renders the header,
-`umb-backoffice-main` and a bare slot in a flex column, and main fixes its own
-height under a 60 px header. The `Crombolo.EntryPoint.SidePanels` entry point
-(`plugin/side-panel/host.js`) docks a panel host into the live shell (story 182):
-- **Where:** it inserts `<crombolo-side-panel-host>` after main in the
-  shell's shadow root.
-- **Layout:** a stylesheet added to the shadow root's `adoptedStyleSheets`
-  turns the shell into a grid: the header across the top, then main and the
-  panel side by side.
-- **Main is never re-rendered or moved.** An entry point runs after the shell
-  has drawn, and a patched `render` would have made Lit replace the live main
-  and header, which broke the trees inside them.
+Umbraco's shell has no slot beside main, so the fork of Umbraco's client (story
+`235`) adds one (story 182):
+- **Where:** `umb-backoffice` renders `<crombolo-side-panel-host>` after
+  `umb-backoffice-main`.
+- **Layout:** a grid, with the header across the top, then main and the panel
+  side by side.
+- **Defining it:** the `Crombolo.EntryPoint.SidePanels` entry point
+  (`plugin/side-panel/host.js`). Until then the host is an empty element.
 - **Outside the router,** so navigation leaves the panel alone.
-- **An upstream change:** if the shell's children are not the header, main
-  and the slot in that order, the panel is not docked and a warning is logged.
-  `tests/side-panel-plugin.test.ts` reads the served chunk and fails first.
+- **Tests:** `tests/side-panel-plugin.test.ts` reads the served shell for the
+  host and the grid.
 
 The rest is ordinary extension machinery:
 - **The panels:** `sidePanel` manifests, read with an

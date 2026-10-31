@@ -6,11 +6,10 @@
 import { describe, expect, test } from 'bun:test'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { applyPatch, EXCLUDED_PACKAGES, UPSTREAM_PATCHES } from '../scripts/vendor-backoffice.ts'
+import { EXCLUDED_PACKAGES } from '../scripts/vendor-backoffice.ts'
 
 const ROOT = join(import.meta.dir, '..')
 const VENDOR = join(ROOT, 'packages/backoffice-dist/dist')
-const UPSTREAM = join(ROOT, 'node_modules/@umbraco-cms/backoffice/dist-cms')
 const PLUGIN = join(ROOT, 'packages/backoffice-host/plugin')
 const vendored = existsSync(join(VENDOR, 'umbraco-package.json'))
 
@@ -40,18 +39,7 @@ const modules = () =>
       file !== 'deps/monaco-workers/typescript.js' && !file.startsWith('assets/lang/'),
   )
 
-describe('the screens for what this server has not got are left out at vendor time', () => {
-  test('each excluded package is loaded by the client, and the patch stops it', () => {
-    const appEntry = readFileSync(join(UPSTREAM, 'apps/app/app.element.js'), 'utf8')
-    for (const name of EXCLUDED_PACKAGES) {
-      const line = `import('../../packages/${name}/umbraco-package.js')`
-      expect(appEntry).toContain(line)
-      const patch = UPSTREAM_PATCHES.find((each) => each.find.includes(line))
-      expect(patch).toBeDefined()
-      expect(applyPatch(appEntry, patch as (typeof UPSTREAM_PATCHES)[number])).not.toContain(line)
-    }
-  })
-
+describe("the screens for what this server has not got are deleted in the fork of Umbraco's client", () => {
   test('telemetry, profiling and the umbraco.com news feed are among them', () => {
     expect([...EXCLUDED_PACKAGES].sort()).toEqual([
       'performance-profiling',

@@ -1,68 +1,16 @@
 /**
  * Side panels (story 182): a column beside the back office's main view that an
- * extension's `sidePanel` docks into. `umb-backoffice` renders its header, main
- * and a slot in a column. This adds the panel host beside main inside the
- * shell's shadow root, and a grid stylesheet that puts main and the panel side
- * by side under the header. Main is never re-rendered or moved, so its router
- * and everything open in it carry on; the panel sits outside the router, so
- * moving around keeps it.
- *
- * When the shell no longer has its header and main as expected, nothing is
- * changed: a back office without panels rather than a broken one.
- * `tests/side-panel-plugin.test.ts` fails first.
+ * extension's `sidePanel` docks into. The shell (`umb-backoffice`, in the fork of
+ * Umbraco's client, story 235) renders `<crombolo-side-panel-host>` beside main
+ * on a grid under the header; this defines it. It sits outside main's router, so
+ * moving around keeps a panel open.
  */
 import { UmbElementMixin } from '@umbraco-cms/backoffice/element-api'
 import { UmbExtensionsElementInitializer } from '@umbraco-cms/backoffice/extension-api'
 import { umbExtensionsRegistry } from '@umbraco-cms/backoffice/extension-registry'
 import { css, html, LitElement, nothing } from '@umbraco-cms/backoffice/external/lit'
-import {
-  modeFor,
-  SIDE_PANEL_CONTEXT,
-  SIDE_PANEL_TYPE,
-  shellIsAsExpected,
-  widthForKey,
-} from './layout.js'
+import { modeFor, SIDE_PANEL_CONTEXT, SIDE_PANEL_TYPE, widthForKey } from './layout.js'
 import './toggle.js'
-
-const SHELL_STYLES = css`
-  :host {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-rows: auto minmax(0, 1fr);
-  }
-  umb-backoffice-header {
-    grid-column: 1 / -1;
-  }
-  umb-backoffice-main {
-    grid-column: 1;
-    grid-row: 2;
-    height: 100%;
-    min-width: 0;
-  }
-  crombolo-side-panel-host {
-    grid-column: 2;
-    grid-row: 2;
-    min-height: 0;
-  }
-`
-
-/** Docks the panel host into a live shell once; true when this call did. */
-export function dockInto(shell) {
-  const root = shell?.shadowRoot
-  if (!root || root.querySelector('crombolo-side-panel-host')) return false
-  const children = [...root.children].map((child) => `<${child.localName}`)
-  // `:scope` matches nothing on a shadow root, so main is found among its children.
-  const main = [...root.children].find((child) => child.localName === 'umb-backoffice-main')
-  if (!main || !shellIsAsExpected(children)) {
-    console.warn('Side panels are off: the back office shell no longer renders as expected.')
-    return false
-  }
-  const sheet = SHELL_STYLES.styleSheet
-  if (sheet && !root.adoptedStyleSheets.includes(sheet))
-    root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet]
-  main.after(document.createElement('crombolo-side-panel-host'))
-  return true
-}
 
 /** The header toggles registered for panels that asked for one, by panel alias. */
 const toggles = new Map()
@@ -325,9 +273,5 @@ export class CromboloSidePanelHostElement extends UmbElementMixin(LitElement) {
 
 customElements.define('crombolo-side-panel-host', CromboloSidePanelHostElement)
 
-// A back-office entry point's host is the live `umb-backoffice`, rendered by
-// the time this module loads; a new shell (after signing in again) runs it again.
-export const onInit = async (host) => {
-  await host?.updateComplete
-  dockInto(host)
-}
+// Loading this module defines the host the shell renders; nothing else to start.
+export const onInit = () => {}

@@ -93,14 +93,10 @@ describe('the published package set', () => {
     ])
   })
 
-  test('shares one version, and the backoffice tracks the Umbraco release', () => {
+  test('shares one version, the built back office included, so every release ships it as built', () => {
     const version = sharedVersion()
-    for (const pkg of packages) {
-      if (pkg.name === BACKOFFICE_DIST) continue
-      expect(pkg.manifest.version).toBe(version)
-    }
-    const dist = packages.find((pkg) => pkg.name === BACKOFFICE_DIST)
-    expect(dist?.manifest.version).toMatch(/^18\./)
+    for (const pkg of packages)
+      expect([pkg.name, pkg.manifest.version]).toEqual([pkg.name, version])
   })
 
   test('agrees with bun.lock, which is what bun pack resolves siblings from', () => {

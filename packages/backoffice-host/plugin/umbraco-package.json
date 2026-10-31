@@ -2,7 +2,7 @@
   "$schema": "../../backoffice-dist/dist/umbraco-package-schema.json",
   "name": "Crombolo",
   "id": "Crombolo.Core",
-  "version": "0.41.1",
+  "version": "0.42.0",
   "allowPublicAccess": false,
   "extensions": [
     {
@@ -512,12 +512,6 @@
     },
     {
       "type": "backofficeEntryPoint",
-      "alias": "Crombolo.EntryPoint.Branding",
-      "name": "Crombolo Branding",
-      "js": "/crombolo-plugin/branding/branding.js"
-    },
-    {
-      "type": "backofficeEntryPoint",
       "alias": "Crombolo.EntryPoint.HelpMenu",
       "name": "Crombolo Help Menu",
       "js": "/crombolo-plugin/branding/help-menu.js"
@@ -590,12 +584,6 @@
     },
     {
       "type": "backofficeEntryPoint",
-      "alias": "Crombolo.EntryPoint.ClientCredentials",
-      "name": "Crombolo Client Credential Prefix",
-      "js": "/crombolo-plugin/branding/client-credentials.js"
-    },
-    {
-      "type": "backofficeEntryPoint",
       "alias": "Crombolo.EntryPoint.ComponentsTree",
       "name": "Crombolo Components Tree",
       "js": "/crombolo-plugin/branding/components-tree.js"
@@ -608,21 +596,9 @@
     },
     {
       "type": "backofficeEntryPoint",
-      "alias": "Crombolo.EntryPoint.QueryBuilder",
-      "name": "Crombolo Query Builder Language",
-      "js": "/crombolo-plugin/branding/query-builder.js"
-    },
-    {
-      "type": "backofficeEntryPoint",
       "alias": "Crombolo.EntryPoint.SignIn",
       "name": "Crombolo Sign-in Button",
       "js": "/crombolo-plugin/branding/sign-in.js"
-    },
-    {
-      "type": "backofficeEntryPoint",
-      "alias": "Crombolo.EntryPoint.LogViewerMenu",
-      "name": "Crombolo Log Viewer Search Menu",
-      "js": "/crombolo-plugin/branding/log-viewer-menu.js"
     },
     {
       "type": "backofficeEntryPoint",
@@ -709,7 +685,7 @@
       "alias": "Crombolo.SectionView.Workflow.Designer",
       "name": "Crombolo Workflow Designer",
       "element": "/crombolo-plugin/workflow-designer.js",
-      "weight": 100,
+      "weight": 500,
       "meta": {
         "label": "Workflows",
         "pathname": "workflows",

@@ -5,7 +5,7 @@
 import { describe, expect, test } from 'bun:test'
 import {
   createRevisionTracker,
-  watchLoads,
+  entityLoads,
 } from '../packages/backoffice-host/plugin/edit-conflicts.js'
 
 const KEY = '0b8f5a3e-1c2d-4e5f-8a9b-0c1d2e3f4a5b'
@@ -66,45 +66,21 @@ describe('the revision an editor works from', () => {
   })
 })
 
-describe('watching loads', () => {
-  class Workspace {
-    constructor(
-      readonly type: string,
-      readonly seen: Array<boolean> = [],
-      readonly revisions = createRevisionTracker(),
-    ) {}
-    getEntityType() {
-      return this.type
-    }
-    getUnique() {
-      return KEY
-    }
-    async load(_unique: string) {
-      this.seen.push(true)
-    }
-    async reload() {
-      this.seen.push(true)
-    }
-  }
-
-  test("marks a document's load and reload as the editor's own, and nothing else's", async () => {
+describe("an editor's own read", () => {
+  // The fork's entity workspace calls this as it reads its entity (`onEntityLoad`).
+  test("marks a document's read as the editor's own, until it ends, and nothing else's", () => {
     const revisions = createRevisionTracker()
-    const during: boolean[] = []
-    const original = Workspace.prototype.load
-    Workspace.prototype.load = async function (this: Workspace) {
-      revisions.onResponse(read('"5.9"'), request(PAGE))
-      during.push(revisions.revisionOf(KEY) !== undefined)
-    }
-    watchLoads(Workspace as never, revisions)
-    await new Workspace('media').load(KEY)
+    const loads = entityLoads(revisions)
+    expect(loads('media', KEY)).toBeUndefined()
+    revisions.onResponse(read('"5.8"'), request(PAGE))
     expect(revisions.revisionOf(KEY)).toBeUndefined()
-    await new Workspace('document').load(KEY)
+
+    const done = loads('document', KEY.toUpperCase()) as () => void
+    revisions.onResponse(read('"5.9"'), request(PAGE))
+    done()
     expect(revisions.revisionOf(KEY)).toBe('"5.9"')
-    expect(during).toEqual([false, true])
-    // Wrapping twice does not wrap again.
-    const wrapped = Workspace.prototype.load
-    watchLoads(Workspace as never, revisions)
-    expect(Workspace.prototype.load).toBe(wrapped)
-    Workspace.prototype.load = original
+    // Once ended, another read of the page leaves it be.
+    revisions.onResponse(read('"6.0"'), request(PAGE))
+    expect(revisions.revisionOf(KEY)).toBe('"5.9"')
   })
 })

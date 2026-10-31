@@ -130,7 +130,7 @@ describe('manifests', () => {
     expect(ours.length).toBeGreaterThan(0)
     const serialised = JSON.stringify(ours)
     expect(serialised).not.toContain(PLUGIN_PATH_PLACEHOLDER)
-    expect(serialised).toContain('/admin/crombolo/branding/branding.js')
+    expect(serialised).toContain('/admin/crombolo/branding/sign-in.js')
   })
 
   test('registers Search & sharing: the Settings screen, the page view and the type note', () => {

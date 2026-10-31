@@ -96,13 +96,14 @@ describe('the template editor', () => {
   test('translates what it inserts into a view, and only a view', async () => {
     const editors = await source('plugin/tsx-editors.js')
     expect(editors).toContain("import { toTsxSnippet } from './tsx-snippets.js'")
-    expect(editors).toContain('views.has(this) ? toTsxSnippet(text) : text')
+    // Only a view's editor answers the fork's `viewEditor` seam, so only it translates.
+    expect(editors).toContain('insert: toTsxSnippet')
+    expect(editors).toContain('translateSnippet: toTsxSnippet')
   })
 
   test('hides the inserts with no TSX equivalent', async () => {
     const editors = await source('plugin/tsx-editors.js')
-    // Umbraco's own switch, the one the partial view editor already sets
-    expect(editors).toMatch(/defineProperty\(menu, 'hidePartialViews'/)
-    expect(editors).toContain("querySelector('#sections-button')")
+    // The fork's insert menu and template editor read this seam.
+    expect(editors).toContain('hideRazorInserts: true')
   })
 })

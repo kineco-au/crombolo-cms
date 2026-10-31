@@ -120,23 +120,17 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'headerApp:Crombolo.HeaderApp.BundlesChanged',
       'headerApp:Crombolo.HeaderApp.Settings',
       'workspaceFooterApp:Crombolo.WorkspaceFooterApp.ElementTypeHint',
-      'backofficeEntryPoint:Crombolo.EntryPoint.Branding',
       'backofficeEntryPoint:Crombolo.EntryPoint.HelpMenu',
       'section:Crombolo.Section.Forms',
       'sectionView:Crombolo.SectionView.Forms.Overview',
       'sectionView:Crombolo.SectionView.Forms.Entries',
       'propertyEditorSchema:Crombolo.FormPicker',
       'propertyEditorUi:Crombolo.PropertyEditorUi.FormPicker',
-      'backofficeEntryPoint:Crombolo.EntryPoint.ClientCredentials',
       // One tree over components/, in place of Templates and Partial Views.
       'backofficeEntryPoint:Crombolo.EntryPoint.ComponentsTree',
       'backofficeEntryPoint:Crombolo.EntryPoint.ContentTypeLabels',
-      // The query builder writes TypeScript, so its code block says so.
-      'backofficeEntryPoint:Crombolo.EntryPoint.QueryBuilder',
       // The sign-in button, in place of Umbraco's "Sign in with Umbraco".
       'backofficeEntryPoint:Crombolo.EntryPoint.SignIn',
-      // The log message menu, aimed at this project rather than Umbraco's.
-      'backofficeEntryPoint:Crombolo.EntryPoint.LogViewerMenu',
       'backofficeEntryPoint:Crombolo.EntryPoint.NotificationsDialog',
       // Keeps the Umbraco mark out of the icon picker.
       'globalContext:Crombolo.GlobalContext.Icons',
@@ -391,13 +385,17 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
 })
 
 describe('the plugin views', () => {
-  test('a section or workspace view is an Umbraco element, which the router provides context on', () => {
+  test('a dashboard, section view or workspace view is an Umbraco element, which the router provides context on', () => {
     const dir = join(import.meta.dir, '..', 'packages', 'backoffice-host', 'plugin')
     const manifest = JSON.parse(readFileSync(join(dir, 'umbraco-package.json'), 'utf8')) as {
       extensions: Array<{ type: string; alias: string; element?: string }>
     }
     const plain = manifest.extensions
-      .filter((e) => (e.type === 'sectionView' || e.type === 'workspaceView') && e.element)
+      .filter(
+        (e) =>
+          (e.type === 'dashboard' || e.type === 'sectionView' || e.type === 'workspaceView') &&
+          e.element,
+      )
       .filter((e) => {
         const read = (file: string) => readFileSync(join(dir, file), 'utf8')
         let source = read((e.element as string).replace('/crombolo-plugin/', ''))
@@ -409,6 +407,28 @@ describe('the plugin views', () => {
       .map((e) => e.alias)
     // A plain LitElement fails as `provideContext is not a function` when the view opens.
     expect(plain).toEqual([])
+  })
+
+  test('the Workflows section opens on the workflow list for administrators, who alone see it', () => {
+    const dir = join(import.meta.dir, '..', 'packages', 'backoffice-host', 'plugin')
+    const manifest = JSON.parse(readFileSync(join(dir, 'umbraco-package.json'), 'utf8')) as {
+      extensions: Array<{
+        type: string
+        alias: string
+        weight?: number
+        conditions?: { alias: string; match?: string }[]
+      }>
+    }
+    const views = manifest.extensions
+      .filter(
+        (e) =>
+          e.type === 'sectionView' &&
+          e.conditions?.some((c) => c.match === 'Crombolo.Section.Workflow'),
+      )
+      .sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0))
+    expect(views[0]?.alias).toBe('Crombolo.SectionView.Workflow.Designer')
+    expect(views[0]?.conditions?.map((c) => c.alias)).toContain('Umb.Condition.CurrentUser.IsAdmin')
+    expect(views[1]?.alias).toBe('Crombolo.SectionView.Workflow.Waiting')
   })
 
   test('no view uses a link to nowhere for an action', () => {

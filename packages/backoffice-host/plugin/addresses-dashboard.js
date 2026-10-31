@@ -3,12 +3,13 @@
  * below it, as Umbraco's `HideTopLevelNodeFromPath` sets it. Saving moves the
  * addresses, and the old ones redirect to the new. docs/rendering.md, "URLs".
  */
-import { css, html, LitElement, nothing } from '@umbraco-cms/backoffice/external/lit'
+import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
+import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 
 const endpoint = () =>
   `${(document.querySelector('base')?.getAttribute('href') ?? '/umbraco/').replace(/\/$/, '')}/crombolo/api/url-options`
 
-export default class CromboloAddressesDashboardElement extends LitElement {
+export default class CromboloAddressesDashboardElement extends UmbLitElement {
   static properties = {
     _settings: { state: true },
     _showTopLevel: { state: true },

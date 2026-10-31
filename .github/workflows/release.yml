@@ -149,7 +149,8 @@ jobs:
                   path: packages/backoffice-dist/dist
                   key: >-
                       backoffice-dist-${{ hashFiles('bun.lock', 'scripts/vendor-backoffice.ts',
-                      'packages/backoffice-dist/upstream-static/**') }}
+                      'packages/backoffice-dist/upstream-static/**',
+                      'packages/backoffice-dist/UMBRACO_CLIENT', 'scripts/fork.ts') }}
             - if: steps.dist.outputs.cache-hit != 'true'
               run: bun run vendor:backoffice
 

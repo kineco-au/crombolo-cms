@@ -14,7 +14,8 @@
  * by those allowed to install packages: each finding offers the answers its
  * kind allows, and the import runs once nothing is outstanding.
  */
-import { css, html, LitElement, nothing } from '@umbraco-cms/backoffice/external/lit'
+import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
+import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { downloadFile } from './download.js'
 import { answersUrl, fetchReport, transferAction } from './report-client.js'
 
@@ -32,7 +33,7 @@ const ANSWERED_LABEL = {
   skip: 'is left out',
 }
 
-export default class CromboloChangesDashboardElement extends LitElement {
+export default class CromboloChangesDashboardElement extends UmbLitElement {
   static properties = {
     _report: { state: true },
     _error: { state: true },

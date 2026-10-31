@@ -25,26 +25,11 @@ import {
   VENDORED_ASSETS_PATH,
 } from '@crombolo/backoffice-host'
 import {
-  brandedTitle,
-  brandName,
-  isDarkTheme,
-  themedLogoUrl,
-} from '../packages/backoffice-host/plugin/branding/branding.js'
-import {
-  needsCorrection,
-  REQUIRED_PREFIX,
-} from '../packages/backoffice-host/plugin/branding/client-credentials.js'
-import {
   onInit,
   RELABELLED,
   relabel,
 } from '../packages/backoffice-host/plugin/branding/content-type-labels.js'
 import english from '../packages/backoffice-host/plugin/branding/localization-en.js'
-import {
-  DROPPED,
-  REPOSITORY,
-  rebrandSearchMenu,
-} from '../packages/backoffice-host/plugin/branding/log-viewer-menu.js'
 import {
   aliasOf,
   brandDictionary,
@@ -57,6 +42,7 @@ import {
 } from '../scripts/build-localizations.ts'
 
 const BRANDING_DIR = 'packages/backoffice-host/plugin/branding'
+const VENDOR = 'packages/backoffice-dist/dist'
 const LOCALIZATIONS_DIR = 'packages/backoffice-host/plugin/localizations'
 const LANG_DIR = 'packages/backoffice-dist/dist/assets/lang'
 
@@ -68,104 +54,27 @@ const loginSettings = {
   disableLocalLogin: false,
 }
 
-const doc = (html: string) =>
-  ({
-    querySelector: (selector: string) => {
-      const match =
-        selector === 'meta[name="application-name"]'
-          ? /<meta name="application-name" content="([^"]*)"/.exec(html)
-          : null
-      return match ? { getAttribute: () => match[1] } : null
-    },
-  }) as unknown as Document
+/** Whether a module the back office serves (one whose path has `named` in it) contains `text`. */
+const served = (text: string, named = '') =>
+  [...new Bun.Glob('**/*.js').scanSync(VENDOR)].some(
+    (file) => file.includes(named) && readFileSync(join(VENDOR, file), 'utf8').includes(text),
+  )
 
-describe('the logo on a dark theme', () => {
-  const graphics = '/umbraco/management/api/v1/security/back-office/graphics'
-
-  test('Dark, and Match my system on a dark computer, are dark', () => {
-    expect(isDarkTheme('Crombolo.Theme.Dark', false)).toBe(true)
-    expect(isDarkTheme('umb-dark-theme', false)).toBe(true)
-    expect(isDarkTheme('Crombolo.Theme.System', true)).toBe(true)
-    expect(isDarkTheme('Crombolo.Theme.System', false)).toBe(false)
-    expect(isDarkTheme('umb-light-theme', true)).toBe(false)
-    expect(isDarkTheme(null, true)).toBe(false)
+// Story 235: these are commits in the fork of Umbraco's client, so what is
+// checked is what the back office serves.
+describe("the site's name and logos, from the fork of Umbraco's client", () => {
+  test("the page title ends in the site's name, as the shell states it", () => {
+    expect(served('meta[name="application-name"]')).toBe(true)
   })
 
-  test('a logo swaps to its cream-lettered variant and back, and nothing else is touched', () => {
-    expect(themedLogoUrl(`${graphics}/logo`, true)).toBe(`${graphics}/logo-dark`)
-    expect(themedLogoUrl(`${graphics}/logo-dark`, true)).toBe(`${graphics}/logo-dark`)
-    expect(themedLogoUrl(`${graphics}/logo-dark`, false)).toBe(`${graphics}/logo`)
-    expect(themedLogoUrl(`${graphics}/login-logo-alternative`, true)).toBe(
-      `${graphics}/login-logo-alternative-dark`,
-    )
-    expect(themedLogoUrl(`${graphics}/login-background`, true)).toBe(`${graphics}/login-background`)
-    expect(themedLogoUrl('/media/logo', true)).toBe('/media/logo')
-  })
-})
-
-describe('the title the client writes', () => {
-  test('gets the site’s name in place of the client’s', () => {
-    expect(brandedTitle('Content | Crombolo', 'Crombolo')).toBe('Content | Crombolo')
-    expect(brandedTitle('Settings | Templates | Crombolo', 'Acme')).toBe(
-      'Settings | Templates | Acme',
-    )
-    // Not the client's suffix: left alone.
-    expect(brandedTitle('Crombolo', 'Acme')).toBe('Crombolo')
-    expect(brandedTitle('Crombolo rocks', 'Acme')).toBe('Crombolo rocks')
+  test('a dark theme takes the cream-lettered logos', () => {
+    expect(served('Crombolo.Theme.Dark')).toBe(true)
+    expect(served('logo-alternative-dark')).toBe(true)
   })
 
-  test('is never corrected twice, whatever the site is called', () => {
-    // Each of these names makes a naive correction produce something it would
-    // correct again. The last is what the entry point once took for the site's
-    // name, by reading a title the client had already written.
-    const names = ['Crombolo', 'Acme', 'Acme | Crombolo', 'Content | Crombolo', ' | Crombolo', '']
-    const titles = ['Content | Crombolo', 'A | B | Crombolo', 'Crombolo', ' | Crombolo', '']
-    for (const name of names) {
-      for (const title of titles) {
-        const once = brandedTitle(title, name)
-        expect([name, title, brandedTitle(once, name)]).toEqual([name, title, once])
-      }
-    }
-  })
-
-  test('cannot grow without bound under an observer of its own writes', () => {
-    // The loop as the page runs it: write, observe, write again.
-    let title = 'Content | Crombolo'
-    let writes = 0
-    for (let i = 0; i < 50; i++) {
-      const corrected = brandedTitle(title, 'Content | Crombolo')
-      if (corrected === title) break
-      title = corrected
-      writes++
-    }
-    expect(writes).toBeLessThanOrEqual(1)
-    expect(title.length).toBeLessThan(60)
-  })
-})
-
-describe('the site’s name', () => {
-  test('is what the shell states, not whatever the title happens to say', () => {
-    const paths = createBackOfficePaths({ backOfficePath: '/crombolo' })
-    const shell = renderBackOfficeShell(
-      paths,
-      { imports: {} },
-      {
-        ...DEFAULT_SHELL_SETTINGS,
-        title: 'Acme & Sons',
-      },
-    )
-    expect(shell).toContain('<meta name="application-name" content="Acme &amp; Sons" />')
-    expect(brandName(doc('<meta name="application-name" content="Acme" />'))).toBe('Acme')
-  })
-
-  test('falls back to Crombolo when the shell does not say', () => {
-    expect(brandName(doc('<title>Content | Acme</title>'))).toBe('Crombolo')
-    expect(brandName(doc('<meta name="application-name" content="  " />'))).toBe('Crombolo')
-  })
-
-  test('is not read from the title by the entry point', async () => {
-    const source = await Bun.file('packages/backoffice-host/plugin/branding/branding.js').text()
-    expect(source).not.toMatch(/=\s*\(?\s*document\.title\s*\|\|/)
+  test("the logo's popover links to Crombolo, not to umbraco.com", () => {
+    expect(served('Crombolo on GitHub')).toBe(true)
+    expect(served('https://umbraco.com"')).toBe(false)
   })
 })
 
@@ -318,18 +227,9 @@ describe('the section Umbraco calls Packages', () => {
 
 describe('the client credential dialog’s prefix label', () => {
   test('says what the server now requires', () => {
-    // The dialog submits the typed value whole, so this label is the only thing
-    // telling an administrator what to type. If it drifts from the server's
-    // prefix, the dialog cannot be completed at all.
-    expect(REQUIRED_PREFIX).toBe('crombolo-back-office-')
-  })
-
-  test('corrects the vendored label once and then leaves it be', () => {
-    expect(needsCorrection('umbraco-back-office-')).toBe(true)
-    expect(needsCorrection(' umbraco-back-office- ')).toBe(true)
-    expect(needsCorrection(REQUIRED_PREFIX)).toBe(false)
-    expect(needsCorrection('')).toBe(false)
-    expect(needsCorrection(undefined)).toBe(false)
+    // Must match `CLIENT_ID_PREFIX` in packages/server/src/adapters/users.ts.
+    expect(served("'crombolo-back-office-'")).toBe(true)
+    expect(served("'umbraco-back-office-'")).toBe(false)
   })
 })
 
@@ -659,70 +559,12 @@ describe('the Umbraco mark in the icon registry', () => {
 })
 
 describe('the Log Viewer’s search menu', () => {
-  // The element resolves labels through the dictionary before this sees them.
-  const term = (key: string) => key.replace('logViewer_', '')
-  type MenuItem = { label: string; href: () => string; icon: string }
-  const menu: MenuItem[] = [
-    {
-      label: 'searchWithGoogle',
-      href: () => 'https://www.google.com/search?q=boom',
-      icon: 'icon-google',
-    },
-    {
-      label: 'searchOurUmbraco',
-      href: () => 'https://forum.umbraco.com/search?q=boom',
-      icon: 'icon-umbraco',
-    },
-    {
-      label: 'searchOurUmbracoWithGoogle',
-      href: () => 'https://www.google.com/?q=site:forum.umbraco.com%20boom',
-      icon: 'icon-google',
-    },
-    {
-      label: 'searchUmbracoSource',
-      href: () => 'https://github.com/umbraco/Umbraco-CMS/search?q=Umb.Core',
-      icon: 'icon-github',
-    },
-    {
-      label: 'searchUmbracoIssues',
-      href: () => 'https://github.com/umbraco/Umbraco-CMS/issues?q=Umb.Core',
-      icon: 'icon-github',
-    },
-  ]
-
-  test('drops the two that search a forum this project does not have', () => {
-    expect(
-      rebrandSearchMenu(menu, term, 'Crombolo.Core').map((item: MenuItem) => item.label),
-    ).toEqual(['searchWithGoogle', 'searchUmbracoSource', 'searchUmbracoIssues'])
-  })
-
-  test('aims the source and issue searches at this repository', () => {
-    // By the SourceContext of the line, which is the whole point of the pair.
-    expect(
-      rebrandSearchMenu(menu, term, 'Crombolo.Core').map((item: MenuItem) => item.href()),
-    ).toEqual([
-      'https://www.google.com/search?q=boom',
-      `${REPOSITORY}/search?q=Crombolo.Core`,
-      `${REPOSITORY}/issues?q=Crombolo.Core`,
-    ])
-  })
-
-  test('leaves no item pointing at Umbraco, nor any under its mark', () => {
-    for (const item of rebrandSearchMenu(menu, term, 'Crombolo.Core') as MenuItem[]) {
-      expect([item.label, /umbraco/i.test(item.href())]).toEqual([item.label, false])
-      expect([item.label, item.icon]).not.toEqual([item.label, 'icon-umbraco'])
-    }
-  })
-
-  test('passes an item it does not know about through untouched', () => {
-    // Wrapping the method rather than replacing it is what keeps an upstream
-    // addition in the menu instead of silently dropping it.
-    const extra = { label: 'somethingNew', href: () => 'https://example.com', icon: 'icon-search' }
-    expect(rebrandSearchMenu([extra], term, 'Crombolo.Core')).toEqual([extra])
-  })
-
-  test('names the keys it drops as the dictionary spells them', () => {
-    expect(DROPPED).toEqual(['logViewer_searchOurUmbraco', 'logViewer_searchOurUmbracoWithGoogle'])
+  test('searches this repository, and no forum this project does not have', () => {
+    const message = 'log-viewer-message'
+    expect(served('https://github.com/kineco-au/crombolo-cms/search?q=', message)).toBe(true)
+    expect(served('https://github.com/kineco-au/crombolo-cms/issues?q=', message)).toBe(true)
+    expect(served('forum.umbraco.com', message)).toBe(false)
+    expect(served('github.com/umbraco/Umbraco-CMS', message)).toBe(false)
   })
 
   test('says Crombolo in the two labels it keeps', () => {

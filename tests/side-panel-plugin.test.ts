@@ -11,7 +11,6 @@ import {
   DEFAULTS,
   limitsOf,
   modeFor,
-  shellIsAsExpected,
   store,
   stored,
   widthForKey,
@@ -99,36 +98,19 @@ describe('what is remembered', () => {
   })
 })
 
-describe('the vendored shell the layout patch rewrites', () => {
+describe('the shell the panels dock beside', () => {
+  // Story 235: the fork of Umbraco's client renders the host; nothing is patched in.
   const chunks = join(ROOT, 'packages/backoffice-dist/dist/chunks')
   const shell = readdirSync(chunks)
     .filter((name) => name.startsWith('backoffice.element-') && name.endsWith('.js'))
     .map((name) => readFileSync(join(chunks, name), 'utf8'))
     .find((source) => source.includes('<umb-backoffice-main>'))
 
-  test('still renders header, main and a slot, in that order', () => {
+  test('renders the panel host beside main, on a grid under the header', () => {
     expect(shell).toBeDefined()
-    // The bundle holds several elements' renders; the shell's is the one with main in it.
-    const template =
-      [...(shell ?? '').matchAll(/render\(\)\{return \w+`([^`]*)`/g)]
-        .map((match) => match[1] ?? '')
-        .find((text) => text.includes('<umb-backoffice-main>')) ?? ''
-    expect(template).toContain('<umb-backoffice-header>')
-    expect(shellIsAsExpected([template])).toBe(true)
-    // Anything else in the template would be dropped by the patch.
-    expect(template.replace(/\s+/g, '')).toBe(
-      '<umb-backoffice-header></umb-backoffice-header><umb-backoffice-main></umb-backoffice-main><slot></slot>',
-    )
-  })
-
-  test('main still fixes its own height under a 60 px header, which the row overrides', () => {
-    expect(shell).toContain('100% - 60px')
-  })
-
-  test('the check refuses a shell that has changed', () => {
-    expect(shellIsAsExpected(['<umb-backoffice-main></umb-backoffice-main><slot></slot>'])).toBe(
-      false,
-    )
-    expect(shellIsAsExpected(undefined)).toBe(false)
+    const text = shell ?? ''
+    const main = text.indexOf('<umb-backoffice-main>')
+    expect(text.indexOf('<crombolo-side-panel-host>')).toBeGreaterThan(main)
+    expect(text).toContain('grid-template-columns: minmax(0, 1fr) auto')
   })
 })

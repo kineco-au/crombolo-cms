@@ -1,20 +1,14 @@
 /**
  * Sets one version across every published package, and the VERSION constant the
- * server reports. `@crombolo/backoffice-dist` is excluded: it tracks the Umbraco
- * release it vendors, and is bumped with --backoffice-dist.
+ * server reports. `@crombolo/backoffice-dist` moves with the rest, so every
+ * release ships the client as it was built; the Umbraco release it vendors is
+ * recorded in its `dist/VERSION`.
  *
  *   bun run scripts/version.ts 0.2.0
- *   bun run scripts/version.ts --backoffice-dist 18.3.0
  */
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
-import {
-  BACKOFFICE_DIST,
-  publishablePackages,
-  ROOT,
-  type WorkspacePackage,
-  workspacePackages,
-} from './packages.ts'
+import { publishablePackages, ROOT, type WorkspacePackage, workspacePackages } from './packages.ts'
 import {
   expectedCompatibility,
   UMBRELLA_MANIFEST,
@@ -80,37 +74,20 @@ const LOCK = join(ROOT, 'bun.lock')
 const lockPattern = (relative: string) =>
   new RegExp(`("${relative}":\\s*\\{\\s*"name":\\s*"[^"]*",\\s*"version":\\s*)"[^"]*"`)
 
-const args = Bun.argv.slice(2)
-let version: string | undefined
-let distVersion: string | undefined
-for (let index = 0; index < args.length; index += 1) {
-  const arg = args[index] as string
-  if (arg === '--backoffice-dist') {
-    index += 1
-    distVersion = args[index]
-  } else if (!arg.startsWith('--')) version ??= arg
-}
-
-if (!version && !distVersion) {
-  console.error('Usage: bun run scripts/version.ts <version> [--backoffice-dist <version>]')
+const version = Bun.argv.slice(2).find((arg) => !arg.startsWith('--'))
+if (!version) {
+  console.error('Usage: bun run scripts/version.ts <version>')
   process.exit(1)
 }
-for (const value of [version, distVersion])
-  if (value !== undefined && !SEMVER.test(value)) {
-    console.error(`"${value}" is not a semantic version`)
-    process.exit(1)
-  }
-
-const changes: Array<[pkg: WorkspacePackage, value: string]> = []
-if (version)
-  for (const pkg of publishablePackages())
-    if (pkg.name !== BACKOFFICE_DIST) changes.push([pkg, version])
-
-if (distVersion) {
-  const dist = workspacePackages().find((pkg) => pkg.name === BACKOFFICE_DIST)
-  if (!dist) throw new Error(`${BACKOFFICE_DIST} is missing from packages/`)
-  changes.push([dist, distVersion])
+if (!SEMVER.test(version)) {
+  console.error(`"${version}" is not a semantic version`)
+  process.exit(1)
 }
+
+const changes: Array<[pkg: WorkspacePackage, value: string]> = publishablePackages().map((pkg) => [
+  pkg,
+  version,
+])
 
 for (const [pkg, value] of changes) {
   const file = join(pkg.dir, 'package.json')
@@ -131,7 +108,7 @@ for (const [pkg, value] of changes) {
 writeFileSync(LOCK, lock)
 console.log(`bun.lock -> ${changes.length} workspace ${changes.length === 1 ? 'entry' : 'entries'}`)
 
-if (version) {
+{
   // Derived from the migration plan, so it can only say what the release does.
   const umbrella = readFileSync(UMBRELLA_MANIFEST, 'utf8')
   const compatibility = expectedCompatibility(version)

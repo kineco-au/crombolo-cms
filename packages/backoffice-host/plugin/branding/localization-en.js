@@ -11,9 +11,10 @@
  * one that wins. See `localization.registry.js`: `$weight: extension.weight ?? 100`.
  *
  * Only what a person reads in a flow this CMS implements. Strings about
- * `appsettings.json`, IIS permissions, Examine or the .NET installer are left
- * alone: they name real things that are not ours to rename, and the features they
- * belong to are not built.
+ * `appsettings.json`, IIS permissions or the .NET installer are left alone: they
+ * name real things that are not ours to rename, and the features they belong to
+ * are not built. Examine is the exception: the search dashboard is built, over
+ * the database's own indexes, so its tab and heading say what it is.
  *
  * `sections` and `packager` are the other kind of rename: not the product's name
  * but a feature's. Umbraco's Packages section builds a `.umb` file; the artifact
@@ -65,6 +66,11 @@ export default {
   },
   dashboardTabs: {
     contentIntro: 'Welcome to Crombolo',
+    // Search here is the database's own (docs/search.md), not Examine.
+    settingsExamine: 'Search indexes',
+  },
+  examineManagement: {
+    manageIndexes: 'Manage search indexes',
   },
   languages: {
     defaultLanguageHelp: 'A Crombolo site can only have one default language set.',

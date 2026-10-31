@@ -34,3 +34,6 @@ apps/site/.crombolo/
 
 # Notes about closed-source projects: never published with the open-source docs
 docs/internal/
+
+# The fork of Umbraco's back-office client, a worktree of umbraco/crombolo (story 235).
+/vendor/umbraco-client/

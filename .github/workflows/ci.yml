@@ -52,13 +52,18 @@ jobs:
               with:
                   bun-version: ${{ env.BUN_VERSION }}
             - run: bun install --frozen-lockfile
+            # The fork of Umbraco's client builds with its own Node scripts (story 235).
+            - uses: actions/setup-node@v5
+              with:
+                  node-version: '24'
             - uses: actions/cache@v6
               id: dist
               with:
                   path: ${{ env.DIST_PATH }}
                   key: >-
                       backoffice-dist-${{ hashFiles('bun.lock', 'scripts/vendor-backoffice.ts',
-                      'packages/backoffice-dist/upstream-static/**') }}
+                      'packages/backoffice-dist/upstream-static/**',
+                      'packages/backoffice-dist/UMBRACO_CLIENT', 'scripts/fork.ts') }}
             - if: steps.dist.outputs.cache-hit != 'true'
               run: bun run vendor:backoffice
             # Checks every module a browser would link, against the restored or rebuilt client.
@@ -179,7 +184,8 @@ jobs:
                   path: ${{ env.DIST_PATH }}
                   key: >-
                       backoffice-dist-${{ hashFiles('bun.lock', 'scripts/vendor-backoffice.ts',
-                      'packages/backoffice-dist/upstream-static/**') }}
+                      'packages/backoffice-dist/upstream-static/**',
+                      'packages/backoffice-dist/UMBRACO_CLIENT', 'scripts/fork.ts') }}
                   fail-on-cache-miss: true
             # Postgres gets the same 20 s a local `bun run test:postgres` gives it,
             # rather than bun's 5 s default. Every boot and query is a round trip,
@@ -223,7 +229,8 @@ jobs:
                   path: ${{ env.DIST_PATH }}
                   key: >-
                       backoffice-dist-${{ hashFiles('bun.lock', 'scripts/vendor-backoffice.ts',
-                      'packages/backoffice-dist/upstream-static/**') }}
+                      'packages/backoffice-dist/upstream-static/**',
+                      'packages/backoffice-dist/UMBRACO_CLIENT', 'scripts/fork.ts') }}
                   fail-on-cache-miss: true
             - run: bun run test:integration
 
@@ -255,7 +262,8 @@ jobs:
                   path: ${{ env.DIST_PATH }}
                   key: >-
                       backoffice-dist-${{ hashFiles('bun.lock', 'scripts/vendor-backoffice.ts',
-                      'packages/backoffice-dist/upstream-static/**') }}
+                      'packages/backoffice-dist/upstream-static/**',
+                      'packages/backoffice-dist/UMBRACO_CLIENT', 'scripts/fork.ts') }}
                   fail-on-cache-miss: true
             - run: bun run smoke:next --next ${{ matrix.next }} --template ${{ matrix.template }}
 
@@ -305,7 +313,8 @@ jobs:
                   path: ${{ env.DIST_PATH }}
                   key: >-
                       backoffice-dist-${{ hashFiles('bun.lock', 'scripts/vendor-backoffice.ts',
-                      'packages/backoffice-dist/upstream-static/**') }}
+                      'packages/backoffice-dist/upstream-static/**',
+                      'packages/backoffice-dist/UMBRACO_CLIENT', 'scripts/fork.ts') }}
                   fail-on-cache-miss: true
             # A hosted runner ships ~25 GB of toolchains this build never touches,
             # and the suite drives a browser that caches aggressively. A run once
