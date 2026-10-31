@@ -1,3 +1,4 @@
+import { umbCromboloHooks } from '@umbraco-cms/backoffice/extension-registry';
 import { UmbSubmittableWorkspaceContextBase } from '../submittable/index.js';
 import { umbWorkspaceWillNavigateAway } from '../utils/check-will-navigate-away.function.js';
 import { UmbEntityWorkspaceDataManager } from '../entity/entity-workspace-data-manager.js';
@@ -194,6 +195,13 @@ export abstract class UmbEntityDetailWorkspaceContextBase<
 		this.#createUnderParent.setValue(parent);
 	}
 
+	/** The editor's own read of its entity, which Crombolo's edit conflicts note (story 172). */
+	#request(unique: string) {
+		const loaded = umbCromboloHooks.onEntityLoad?.(this.getEntityType(), unique);
+		const request = this._detailRepository!.requestByUnique(unique);
+		return loaded ? request.finally(loaded) : request;
+	}
+
 	async load(
 		unique: string,
 	): Promise<UmbRepositoryResponse<DetailModelType> | UmbRepositoryResponseWithAsObservable<DetailModelType>> {
@@ -205,7 +213,7 @@ export abstract class UmbEntityDetailWorkspaceContextBase<
 		this.#entityContext.setUnique(unique);
 		this.loading.addState({ unique: LOADING_STATE_UNIQUE, message: `Loading ${this.getEntityType()} Details` });
 		await this.#init;
-		this._getDataPromise = this._detailRepository!.requestByUnique(unique);
+		this._getDataPromise = this.#request(unique);
 		const response = (await this._getDataPromise) as UmbRepositoryResponseWithAsObservable<DetailModelType>;
 		const { data, error, asObservable } = response;
 
@@ -235,7 +243,7 @@ export abstract class UmbEntityDetailWorkspaceContextBase<
 	public async reload(): Promise<void> {
 		const unique = this.getUnique();
 		if (!unique) throw new Error('Unique is not set');
-		const { data } = await this._detailRepository!.requestByUnique(unique);
+		const { data } = await this.#request(unique);
 
 		if (data) {
 			const processedData = await this._processIncomingData(data);
