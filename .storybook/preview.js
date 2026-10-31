@@ -44,7 +44,6 @@ import { manifests as memberManifests } from '../src/packages/members/umbraco-pa
 import { manifests as modelsBuilderManifests } from '../src/packages/models-builder/umbraco-package';
 import { manifests as multiUrlPickerManifests } from '../src/packages/multi-url-picker/umbraco-package';
 import { manifests as packageManifests } from '../src/packages/packages/umbraco-package';
-import { manifests as performanceProfilingManifests } from '../src/packages/performance-profiling/umbraco-package';
 import { manifests as propertyEditorManifests } from '../src/packages/property-editors/umbraco-package';
 import { manifests as publishCacheManifests } from '../src/packages/publish-cache/umbraco-package';
 import { manifests as relationsManifests } from '../src/packages/relations/umbraco-package';
@@ -54,12 +53,10 @@ import { manifests as settingsManifests } from '../src/packages/settings/umbraco
 import { manifests as staticFileManifests } from '../src/packages/static-file/umbraco-package';
 import { manifests as sysInfoManifests } from '../src/packages/sysinfo/umbraco-package';
 import { manifests as tagManifests } from '../src/packages/tags/umbraco-package';
-import { manifests as telemetryManifests } from '../src/packages/telemetry/umbraco-package';
 import { manifests as templatingManifests } from '../src/packages/templating/umbraco-package';
 import { manifests as tipTapManifests } from '../src/packages/tiptap/umbraco-package';
 import { manifests as translationManifests } from '../src/packages/translation/umbraco-package';
 import { manifests as ufmManifests } from '../src/packages/ufm/umbraco-package';
-//import { manifests as umbracoNewsManifests } from '../src/packages/umbraco-news/umbraco-package';
 import { manifests as userManifests } from '../src/packages/user/umbraco-package';
 import { manifests as webhookManifests } from '../src/packages/webhook/umbraco-package';
 
@@ -137,7 +134,6 @@ class UmbStoryBookElement extends UmbLitElement {
 		...modelsBuilderManifests,
 		...multiUrlPickerManifests,
 		...packageManifests,
-		...performanceProfilingManifests,
 		...propertyEditorManifests,
 		...publishCacheManifests,
 		...relationsManifests,
@@ -147,7 +143,6 @@ class UmbStoryBookElement extends UmbLitElement {
 		...staticFileManifests,
 		...sysInfoManifests,
 		...tagManifests,
-		...telemetryManifests,
 		...templatingManifests,
 		...tipTapManifests,
 		...translationManifests,

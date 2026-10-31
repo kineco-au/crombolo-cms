@@ -1,8 +1,0 @@
-{
-	"name": "@umbraco-backoffice/umbraco-news",
-	"private": true,
-	"type": "module",
-	"scripts": {
-		"build": "vite build"
-	}
-}
