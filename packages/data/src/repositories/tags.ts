@@ -53,6 +53,9 @@ export class TagRepository {
       .where('pv.is_current', '=', this.#db.dialect.boolValue(true))
       .where('d.editor_alias', '=', 'Umbraco.Tags')
       .where('n.trashed', '=', this.#db.dialect.boolValue(false))
+      // The earliest page's spelling names a tag, whatever order the engine reads in.
+      .orderBy('pv.node_id')
+      .orderBy('pv.id')
       .execute()
     const tags = new Map<string, TagRow & { nodes: Set<number> }>()
     for (const row of rows) {

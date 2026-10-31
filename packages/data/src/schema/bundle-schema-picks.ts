@@ -15,7 +15,7 @@ export const bundleSchemaPicksMigration: Migration = {
   to: STATE_BUNDLE_SCHEMA_PICKS,
   name: 'AddBundleSchemaPicks',
   kind: 'expand',
-  release: '0.41.0',
+  release: '0.41.1',
   async up(db: Db) {
     await schemaOps(db).addColumn('bundle', 'schema_picks', db.dialect.types.text)
   },

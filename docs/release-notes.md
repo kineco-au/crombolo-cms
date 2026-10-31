@@ -6,6 +6,15 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.41.1 — 2026-10-31
+
+v0.41.0's release pipeline failed, so it was never published; this is it, with:
+
+- **Tags keep the spelling of the page that used them first.** Two pages
+  spelling a tag differently ("News" and "news") showed whichever the database
+  read first, which on Postgres could change from one listing to the next.
+- Migration 058 records 0.41.1, the release it ships in.
+
 ## v0.41.0 — 2026-10-31
 
 - **The Bundle Editor** (story 233). Creating or editing a bundle in Packages →

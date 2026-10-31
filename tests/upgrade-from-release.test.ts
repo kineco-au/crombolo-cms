@@ -129,7 +129,7 @@ describe('upgrading from the previous release', () => {
     ])
     expect(await readState(db)).toBe(STATE_BUNDLE_SCHEMA_PICKS)
     const summary = summariseUpgrades(await readLedger(db), VERSION)
-    expect(summary.lastUpgrade).toMatchObject({ release: '0.41.0', steps: 9 })
+    expect(summary.lastUpgrade).toMatchObject({ release: '0.41.1', steps: 9 })
   })
 
   test('the Changes dashboard reports the version, the install and the last upgrade', async () => {
