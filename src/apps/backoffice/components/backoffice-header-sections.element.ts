@@ -132,6 +132,8 @@ export class UmbBackofficeHeaderSectionsElement extends UmbLitElement {
 				--uui-tab-text-hover: var(--uui-color-header-contrast-emphasis);
 				--uui-tab-text-active: var(--uui-color-header-contrast-emphasis);
 				--uui-tab-group-dropdown-background: var(--uui-color-header-surface);
+				--uui-color-current: var(--crombolo-header-current, var(--uui-palette-spanish-pink));
+				--uui-color-current-emphasis: var(--crombolo-header-current, var(--uui-palette-spanish-pink-light));
 			}
 		`,
 	];
