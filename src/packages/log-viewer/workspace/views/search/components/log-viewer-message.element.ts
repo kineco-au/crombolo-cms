@@ -66,22 +66,10 @@ export class UmbLogViewerMessageElement extends UmbLitElement {
 				icon: 'icon-search',
 			},
 			{
-				label: this.localize.term('logViewer_searchOurUmbraco'),
-				title: this.localize.term('logViewer_searchThisMessageOnOurUmbracoForumsAndDocs'),
-				href: () => `https://forum.umbraco.com/search?q=${this.renderedMessage}`,
-				icon: 'icon-umbraco',
-			},
-			{
-				label: this.localize.term('logViewer_searchOurUmbracoWithGoogle'),
-				title: this.localize.term('logViewer_searchOurUmbracoForumsUsingGoogle'),
-				href: () => `https://www.google.com/?q=site:forum.umbraco.com%20${this.renderedMessage}`,
-				icon: 'icon-google',
-			},
-			{
 				label: this.localize.term('logViewer_searchUmbracoSource'),
 				title: this.localize.term('logViewer_searchWithinUmbracoSourceCodeOnGithub'),
 				href: () =>
-					`https://github.com/umbraco/Umbraco-CMS/search?q=${
+					`https://github.com/kineco-au/crombolo-cms/search?q=${
 						this.properties.find((property) => property.name === 'SourceContext')?.value
 					}`,
 				icon: 'icon-github',
@@ -90,7 +78,7 @@ export class UmbLogViewerMessageElement extends UmbLitElement {
 				label: this.localize.term('logViewer_searchUmbracoIssues'),
 				title: this.localize.term('logViewer_searchUmbracoIssuesOnGithub'),
 				href: () =>
-					`https://github.com/umbraco/Umbraco-CMS/issues?q=${
+					`https://github.com/kineco-au/crombolo-cms/issues?q=${
 						this.properties.find((property) => property.name === 'SourceContext')?.value
 					}`,
 				icon: 'icon-github',
