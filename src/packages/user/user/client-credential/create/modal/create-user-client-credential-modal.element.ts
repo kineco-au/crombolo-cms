@@ -19,7 +19,7 @@ export class UmbCreateUserClientCredentialModalElement extends UmbModalBaseEleme
 
 	#userClientCredentialRepository = new UmbUserClientCredentialRepository(this);
 
-	#uniquePrefix = 'umbraco-back-office-';
+	#uniquePrefix = 'crombolo-back-office-';
 
 	protected override firstUpdated(): void {
 		// For some reason the pattern attribute is not working with this specific regex. It complains about the regex is invalid.
