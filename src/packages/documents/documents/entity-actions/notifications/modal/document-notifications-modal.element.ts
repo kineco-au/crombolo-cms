@@ -3,7 +3,8 @@ import { UmbDocumentNotificationsRepository } from '../repository/document-notif
 import type { UmbDocumentNotificationsModalData } from './document-notifications-modal.token.js';
 import type { UmbEntityUnique } from '@umbraco-cms/backoffice/entity';
 import type { GetDocumentByIdNotificationsResponse } from '@umbraco-cms/backoffice/external/backend-api';
-import { css, customElement, html, repeat, state } from '@umbraco-cms/backoffice/external/lit';
+import { css, customElement, html, nothing, repeat, state } from '@umbraco-cms/backoffice/external/lit';
+import { umbCromboloHooks } from '@umbraco-cms/backoffice/extension-registry';
 import { UmbModalBaseElement } from '@umbraco-cms/backoffice/modal';
 import { UmbTextStyles } from '@umbraco-cms/backoffice/style';
 
@@ -23,8 +24,16 @@ export class UmbDocumentNotificationsModalElement extends UmbModalBaseElement<
 	@state()
 	private _documentName = '';
 
+	/** Why notifications cannot be chosen on this site, such as having no e-mail (story 045). */
+	@state()
+	private _unavailable?: string;
+
 	override firstUpdated() {
 		this.#unique = this.data?.unique;
+		umbCromboloHooks
+			.notificationsUnavailable?.()
+			.then((reason) => (this._unavailable = reason))
+			.catch(() => {});
 		this.#readNotificationSettings();
 		this.#getDocumentName();
 	}
@@ -77,6 +86,9 @@ export class UmbDocumentNotificationsModalElement extends UmbModalBaseElement<
 		return html`
 			<umb-body-layout headline=${this.localize.term('notifications_notifications')}>
 				<uui-box .headline=${this.localize.term('notifications_editNotifications', this._documentName)}>
+					${this._unavailable
+						? html`<p class="unavailable" role="status">${this._unavailable}</p>`
+						: nothing}
 					${repeat(
 						this._settings,
 						(setting) => setting.actionId,
@@ -87,6 +99,7 @@ export class UmbDocumentNotificationsModalElement extends UmbModalBaseElement<
 								id=${setting.actionId}
 								@change=${() => this.#updateSubscription(setting.actionId)}
 								.label=${localization}
+								?disabled=${!!this._unavailable}
 								?checked=${setting.subscribed}></uui-toggle>`;
 						},
 					)}
@@ -101,6 +114,7 @@ export class UmbDocumentNotificationsModalElement extends UmbModalBaseElement<
 						slot="actions"
 						look="primary"
 						color="positive"
+						?disabled=${!!this._unavailable}
 						label=${this.localize.term('buttons_save')}
 						@click=${this.#updateNotificationSettings}></uui-button>
 				</umb-footer-layout>
@@ -111,6 +125,10 @@ export class UmbDocumentNotificationsModalElement extends UmbModalBaseElement<
 	static override readonly styles = [
 		UmbTextStyles,
 		css`
+			.unavailable {
+				margin: 0 0 var(--uui-size-space-4);
+				color: var(--uui-color-text-alt);
+			}
 			uui-toggle {
 				display: block;
 			}
