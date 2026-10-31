@@ -38,6 +38,7 @@ describe('the sites', () => {
       'demo/crombolo',
       'demo/harbourstone',
       'demo/harbourstone-next',
+      'demo/plain-signal',
       'starter',
     ])
     expect(findSite('demo/harbourstone')?.dir).toBe(join(SITES_DIR, 'harbourstone'))
@@ -87,6 +88,7 @@ describe('the sites', () => {
     expect(sites.filter((site) => site.distribute).map((site) => site.id)).toEqual([
       'demo/harbourstone',
       'demo/harbourstone-next',
+      'demo/plain-signal',
       'starter',
     ])
   })
@@ -99,6 +101,7 @@ describe('staging a site as a template', () => {
     expect(listTemplates(into).map((template) => template.id)).toEqual([
       'demo/harbourstone',
       'demo/harbourstone-next',
+      'demo/plain-signal',
       'starter',
     ])
   })
@@ -165,7 +168,7 @@ describe('staging a site as a template', () => {
     const into = tempDir()
     mkdirSync(join(into, 'basic'))
     const staged = stageTemplates(into, listSites())
-    expect(staged).toHaveLength(4)
+    expect(staged).toHaveLength(5)
     unstage(staged, into)
     expect(readdirSync(into)).toEqual(['basic'])
   })

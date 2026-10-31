@@ -1,0 +1,31 @@
+type = "article"
+name = "Antibiotics designed from scratch"
+order = 2
+
+[values]
+title = "Antibiotics designed from scratch"
+standfirst = "Researchers at MIT used generative AI to invent new antibiotic molecules, and two of them cleared drug-resistant infections in mice."
+byline = "Plain Signal staff"
+publishedOn = 2025-08-14
+heroImage = "/mrsa-bacteria.jpg"
+imageCaption = "MRSA bacteria (yellow) under a scanning electron microscope, with colour added."
+imageCredit = "NIAID, CC BY 2.0."
+whyItMatters = "Infections that no longer respond to existing antibiotics kill more people every year, and very few new kinds of antibiotic have been found in decades."
+topics = ["antibiotics", "drug discovery", "superbugs"]
+bodyText = """
+Bacteria evolve to survive the drugs we use against them. Gonorrhoea is becoming harder to treat, and MRSA, a strain of *Staphylococcus aureus* that shrugs off many common antibiotics, is a familiar danger in hospitals. What is missing is new kinds of antibiotic, not just new versions of old ones.
+
+Earlier work used AI to search through libraries of molecules that already exist. The team led by James Collins at MIT went further: they asked generative AI to design new molecules altogether, then predicted which ones would kill bacteria and be safe for human cells. Across their experiments the models proposed more than 36 million possible compounds, which were screened by computer before any were made.
+
+## Two promising results
+
+The study, published in *Cell* in August 2025, highlights two. One, called NG1, works against drug-resistant gonorrhoea by interfering with a protein the bacterium uses to build its outer membrane, a target no existing antibiotic uses. The other, DN1, cleared MRSA skin infections in mice. Both are structurally unlike antibiotics in use today.
+
+## A long way from the pharmacy
+
+These are early, laboratory results: tests in dishes and in mice. A nonprofit partner, Phare Bio, is now refining both molecules for further testing, and most candidate drugs never reach patients. What is new is the method, which the team now plans to point at other dangerous bacteria, including the one that causes tuberculosis.
+"""
+sources = """
+- MIT News, ["Using generative AI, researchers design compounds that can kill drug-resistant bacteria"](https://news.mit.edu/2025/using-generative-ai-researchers-design-compounds-kill-drug-resistant-bacteria-0814), 14 August 2025.
+- "A generative deep learning approach to de novo antibiotic design." *Cell*, 14 August 2025.
+"""

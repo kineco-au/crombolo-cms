@@ -1,5 +1,7 @@
 /** Implementations of the Management API ports. */
 
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { resolveDeliveryApiSettings } from '@crombolo/api-delivery'
 import type {
   CurrentUserPort,
@@ -40,6 +42,7 @@ import {
   UserRepository,
 } from '@crombolo/data'
 import type { PublishedCache } from '@crombolo/render'
+import { fileNameFor, parseUserGroup, type SchemaUserGroup, writeUserGroup } from '@crombolo/schema'
 import { createNodeLookup } from './access.ts'
 import { createAuditHistory } from './adapters/audit.ts'
 import { createBlueprintPort } from './adapters/blueprints.ts'
@@ -70,7 +73,7 @@ import {
 import { createSearchIndexPort } from './adapters/search-index.ts'
 import { createTemplateFileStore } from './adapters/template-files.ts'
 import { createTemplateQueryPort } from './adapters/template-query.ts'
-import { avatarUrls, createUserPorts } from './adapters/users.ts'
+import { avatarUrls, createUserPorts, type DeclaredGroups } from './adapters/users.ts'
 import { createWebhookPort } from './adapters/webhooks.ts'
 import { backOfficeUrl } from './back-office-url.ts'
 import { COMPONENT_SNIPPETS } from './component-snippets.ts'
@@ -497,6 +500,7 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
       },
       mediaFiles,
       nodes: createNodeLookup(options.db),
+      declaredGroups: () => declaredGroups(options.config),
       endSessions: async (userId) => {
         await store.endAllSessionsForUser(userId)
       },
@@ -617,6 +621,7 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
       components: deps.components,
       stylesheets: deps.stylesheets,
       scripts: deps.scripts,
+      schemaDir: options.config.schemaDir,
     })
     deps.auditHistory = createAuditHistory(options.db, options.config.auditRetentionDays)
     if (options.cache) {
@@ -707,3 +712,32 @@ function userTwoFactorPort(service: TwoFactorService): UserTwoFactorPort {
 
 export { schemaFiles } from './adapters/schema-files.ts'
 export { backOfficeUrl, documentEditUrl } from './back-office-url.ts'
+
+/**
+ * The user groups `schema/user-groups/` declares (story 228), read when a group
+ * is saved, and written back where the schema files are writable.
+ */
+function declaredGroups(
+  config: Pick<CromboloConfig, 'schemaDir' | 'schemaWritable'>,
+): DeclaredGroups {
+  const dir = join(config.schemaDir, 'user-groups')
+  const groups = new Map<string, SchemaUserGroup>()
+  const fileOf = new Map<string, string>()
+  if (existsSync(dir))
+    for (const name of readdirSync(dir).filter((file) => file.endsWith('.toml'))) {
+      const parsed = parseUserGroup(name, readFileSync(join(dir, name), 'utf8'))
+      if (!parsed.value) continue
+      groups.set(parsed.value.alias.toLowerCase(), parsed.value)
+      fileOf.set(parsed.value.alias.toLowerCase(), name)
+    }
+  return {
+    groups,
+    writable: config.schemaWritable,
+    write(group) {
+      mkdirSync(dir, { recursive: true })
+      // Back into the file it came from, whatever that file is called.
+      const name = fileOf.get(group.alias.toLowerCase()) ?? fileNameFor(group.alias)
+      writeFileSync(join(dir, name), writeUserGroup(group))
+    },
+  }
+}

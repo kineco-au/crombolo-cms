@@ -139,6 +139,25 @@ const hydrate = (row: Row): Bundle => ({
   updateDate: DbDate.fromDb(row.update_date) ?? new Date(0),
 })
 
+/** What a bundle picks beyond Umbraco's definition (story 226), by alias. */
+export interface BundleSchemaPicks {
+  forms: string[]
+  workflows: string[]
+  userGroups: string[]
+  /** What a pick brought and its author unticked: `<kind>:<alias>`. */
+  excluded: string[]
+}
+
+export const NO_SCHEMA_PICKS: BundleSchemaPicks = {
+  forms: [],
+  workflows: [],
+  userGroups: [],
+  excluded: [],
+}
+
+const strings = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+
 export class BundleRepository {
   #db: Db
   constructor(db: Db) {
@@ -170,6 +189,38 @@ export class BundleRepository {
       .where('id', '=', id)
       .executeTakeFirst()
     return row ? hydrate(row) : undefined
+  }
+
+  /** The forms, workflows and user groups it picks; none when it picks none. */
+  async schemaPicks(id: string): Promise<BundleSchemaPicks> {
+    const row = await this.#db.q
+      .selectFrom('bundle')
+      .select('schema_picks')
+      .where('id', '=', id)
+      .executeTakeFirst()
+    if (!row?.schema_picks) return { ...NO_SCHEMA_PICKS }
+    try {
+      const parsed = JSON.parse(row.schema_picks) as Record<string, unknown>
+      return {
+        forms: strings(parsed.forms),
+        workflows: strings(parsed.workflows),
+        userGroups: strings(parsed.userGroups),
+        excluded: strings(parsed.excluded),
+      }
+    } catch {
+      return { ...NO_SCHEMA_PICKS }
+    }
+  }
+
+  /** Replaces them; false when there is no such bundle. */
+  async setSchemaPicks(id: string, picks: BundleSchemaPicks): Promise<boolean> {
+    if (!(await this.byId(id))) return false
+    await this.#db.q
+      .updateTable('bundle')
+      .set({ schema_picks: JSON.stringify(picks), update_date: DbDate.toDb(new Date()) })
+      .where('id', '=', id)
+      .execute()
+    return true
   }
 
   async byName(name: string): Promise<Bundle | undefined> {

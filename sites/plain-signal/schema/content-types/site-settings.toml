@@ -1,0 +1,18 @@
+# The site's settings (story 058): a page directly below the home page that
+# visitors never see, read by every page's footer.
+[content-type]
+alias = "siteSettings"
+name = "Site Settings"
+description = "What every page's masthead and footer say"
+icon = "icon-settings"
+site-settings = true
+
+[[property]]
+alias = "tagline"
+name = "Tagline"
+type = "textstring"
+
+[[property]]
+alias = "footerNote"
+name = "Footer note"
+type = "textarea"

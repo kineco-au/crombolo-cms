@@ -1,0 +1,27 @@
+[content-type]
+alias = "homePage"
+name = "Home Page"
+description = "The front page: the latest articles from every section"
+icon = "icon-home"
+allow-at-root = true
+allow-children = ["sectionPage", "contactPage", "siteSettings"]
+components = ["pages/homePage"]
+default-component = "pages/homePage"
+
+[[property]]
+alias = "title"
+name = "Title"
+type = "textstring"
+mandatory = true
+site-search = "high"
+
+[[property]]
+alias = "strapline"
+name = "Strapline"
+description = "The line under the masthead"
+type = "textstring"
+
+[[property]]
+alias = "introduction"
+name = "Introduction"
+type = "textarea"

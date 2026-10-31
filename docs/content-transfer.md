@@ -757,7 +757,9 @@ types and forms included), every component, stylesheet and script, the whole
 dictionary, every document, media item, element and blueprint with their values
 (published by default, `--drafts` for the latest), and the media files. It never
 carries domains, the secret key, sessions, tokens, external logins, form entries
-or anything in the recycle bin. Content travels in the open; members and users
+or anything in the recycle bin. A bundle picked in Packages → Created carries
+only what was picked, forms, approval workflows and user groups among it, with
+what they need ([`bundles.md`](bundles.md), "The Bundle Editor"). Content travels in the open; members and users
 only with `--with-members` / `--with-users`, and the site's own tables only with
 `--with-site-data`, sealed under a passphrase.
 

@@ -28,6 +28,7 @@ import {
   parseSchemaSettings,
 } from './parse.ts'
 import { parseForm } from './parse-forms.ts'
+import { parseUserGroup, type SchemaUserGroup, writeUserGroup } from './user-groups.ts'
 import { parseWorkflow, writeWorkflow } from './workflows.ts'
 import {
   writeContentType,
@@ -134,6 +135,15 @@ export function loadSchemaDirectory(
       files.set(`workflow:${parsed.value.alias}`, file)
     }
   }
+  const userGroups: SchemaUserGroup[] = []
+  for (const file of tomlFiles(join(schemaDir, 'user-groups'))) {
+    const parsed = parseUserGroup(rel(file), readFileSync(file, 'utf8'))
+    problems.push(...parsed.problems)
+    if (parsed.value) {
+      userGroups.push(parsed.value)
+      files.set(`user-group:${parsed.value.alias}`, file)
+    }
+  }
   const languagesFile = join(schemaDir, 'languages.toml')
   if (existsSync(languagesFile)) {
     const parsed = parseLanguages(rel(languagesFile), readFileSync(languagesFile, 'utf8'))
@@ -150,6 +160,7 @@ export function loadSchemaDirectory(
       languages,
       forms,
       ...(workflows.length > 0 ? { workflows } : {}),
+      ...(userGroups.length > 0 ? { userGroups } : {}),
       ...(urls ? { urls } : {}),
     },
     problems,
@@ -171,6 +182,8 @@ export function hashSchemaSet(set: SchemaSet): string {
     ...(set.forms ?? []).map((f) => writeForm(f)).sort(),
     // Absent from a set with none, so every hash taken before workflows stands.
     ...(set.workflows ?? []).map((w) => writeWorkflow(w)).sort(),
+    // Likewise for user groups (story 228).
+    ...(set.userGroups ?? []).map((g) => writeUserGroup(g)).sort(),
   ]
   return createHash('sha256').update(parts.join('\n---\n')).digest('hex')
 }

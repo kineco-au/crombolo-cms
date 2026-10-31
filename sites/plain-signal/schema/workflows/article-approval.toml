@@ -1,0 +1,32 @@
+# Every article goes through the desk before it is published: a sub-editor
+# checks it, then an editor gives the final yes. The groups are declared in
+# schema/user-groups/, so a new site has them (docs/workflows.md).
+[workflow]
+alias = "articleApproval"
+name = "Article approval"
+applies-to = { branches = [], content-types = ["article"] }
+publishers-may-skip = false
+on-edit = "approve-latest"
+self-approval = "refused"
+comments = "on-send-back"
+unpublish = true
+on-change = "restart"
+scheduling = true
+
+[[stage]]
+alias = "subEdit"
+name = "Sub-edit"
+approvers = ["subEditors"]
+required = "one"
+next = ["edit"]
+send-back = "editor"
+position = { x = 0, y = 0 }
+
+[[stage]]
+alias = "edit"
+name = "Editor's sign-off"
+approvers = ["editors"]
+required = "one"
+next = []
+send-back = "subEdit"
+position = { x = 280, y = 0 }

@@ -104,8 +104,11 @@ bun start
 
 The first `bun start` adds the template's content, so the site has its pages at
 once. `demo/harbourstone` is a fictitious coastal distillery: a home page, an
-about page, its range of bottlings and a contact form, with photographs. The
-others are `basic` (one page type, one view, one page), `starter` (a header, a
+about page, its range of bottlings and a contact form, with photographs.
+`demo/plain-signal` is a mock AI magazine for a general reader: sections,
+articles on real advances with credited photographs and their sources, a
+sub-editor then editor approval workflow, and a contact form drawn by an
+island. The others are `basic` (one page type, one view, one page), `starter` (a header, a
 footer and a two-column layout to restyle), and `next` and
 `demo/harbourstone-next`, which add a Next.js front end in `web/`
 ([`docs/delivery-api.md`](docs/delivery-api.md), "A Next.js front end").
@@ -199,7 +202,8 @@ once; it prints the credentials, as `bun start` does in a site. Only one of
 ### The sites in this repository
 
 `sites/` holds the sites this repository builds: `starter`, `demo/harbourstone`,
-`demo/harbourstone-next` and the product site `demo/crombolo`. Each is a real
+`demo/harbourstone-next`, `demo/plain-signal` and the product site
+`demo/crombolo`. Each is a real
 site, and the templates `init` offers are made from them.
 
 ```bash

@@ -70,6 +70,7 @@ describe('the starter templates', () => {
       'demo/crombolo',
       'demo/harbourstone',
       'demo/harbourstone-next',
+      'demo/plain-signal',
       'starter',
     ])
     for (const template of templates) {

@@ -122,6 +122,11 @@ name = "Rank"
 type = "numeric"
 
 [[property]]
+alias = "launched"
+name = "Launched"
+type = "datePicker"
+
+[[property]]
 alias = "links"
 name = "Links"
 type = "multiUrlPicker"
@@ -162,6 +167,7 @@ body = "Read [about us](/home/about), or **not**."
 keywords = ["whisky", "harbour"]
 featured = true
 rank = 3
+launched = 2024-12-05
 hero = "/logos/mark.png"
 links = ["/home/about", { url = "https://example.com", name = "Example" }]
 card = "hero-card"
@@ -254,6 +260,8 @@ describe(`compiling a seed (${dialectUnderTest})`, () => {
     expect(stored(home, 'keywords')).toEqual(['whisky', 'harbour'])
     expect(stored(home, 'featured')).toBe(true)
     expect(stored(home, 'rank')).toBe(3)
+    // A bare TOML date, which Bun reads as a Temporal value.
+    expect(stored(home, 'launched')).toBe('2024-12-05 00:00:00')
     expect(stored(home, 'hero')).toEqual([
       {
         key: pickKey(mark),

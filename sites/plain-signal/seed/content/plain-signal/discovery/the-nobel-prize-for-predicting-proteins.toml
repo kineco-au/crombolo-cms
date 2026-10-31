@@ -1,0 +1,31 @@
+type = "article"
+name = "The Nobel Prize for predicting proteins"
+order = 1
+
+[values]
+title = "The Nobel Prize for predicting proteins"
+standfirst = "The 2024 Nobel Prize in Chemistry went to three scientists who used computers to work out, and to invent, the shapes of the proteins life is built from."
+byline = "Plain Signal staff"
+publishedOn = 2024-10-09
+heroImage = "/triose-phosphate-isomerase-ribbon.jpg"
+imageCaption = "A ribbon diagram of the enzyme triose phosphate isomerase: each ribbon traces the chain of a protein as it folds."
+imageCredit = "Dcrjsr, CC BY 3.0."
+whyItMatters = "Knowing a protein's shape is the first step to understanding diseases and designing medicines that fit it. What once took years of laboratory work can now be predicted in minutes."
+topics = ["proteins", "biology", "Nobel Prize"]
+bodyText = """
+Proteins do almost everything in a living cell: they digest food, carry oxygen, fight infection and copy DNA. Each one is a long chain of building blocks that folds itself into a particular three-dimensional shape, and the shape decides what it does. For fifty years, predicting that shape from the chain alone was one of biology's great unsolved problems. Working it out in the laboratory could take years for a single protein.
+
+In 2020, Demis Hassabis and John Jumper of Google DeepMind presented AlphaFold2, an AI model that predicts protein shapes with an accuracy close to laboratory measurements. It has since been used to predict the structures of virtually all of the 200 million proteins researchers have found, and more than two million people in 190 countries have used it.
+
+## Two halves of one prize
+
+On 9 October 2024, the Royal Swedish Academy of Sciences awarded the Nobel Prize in Chemistry in two halves. Hassabis and Jumper shared one half "for protein structure prediction". The other went to David Baker of the University of Washington "for computational protein design": since 2003 his group has used computers to invent entirely new proteins that nature never made, some of which are now used in medicines, vaccines and sensors.
+
+## Why this one matters for AI
+
+With that year's physics prize, awarded for the foundations of machine learning, it was among the first Nobel Prizes for work that rests on AI. It recognises a case where a machine learning system did not just speed up existing science, but solved a problem scientists had been stuck on for decades.
+"""
+sources = """
+- NBC News, ["American scientists among chemistry Nobel winners for pioneering protein work"](https://www.nbcnews.com/news/world/baker-hassabis-jumper-win-2024-nobel-prize-chemistry-rcna174637), 9 October 2024.
+- Utrecht University, ["Nobel Prize in Chemistry 2024 for AlphaFold2 and protein design"](https://www.uu.nl/en/news/nobel-prize-in-chemistry-2024-for-alphafold2-and-protein-design).
+"""

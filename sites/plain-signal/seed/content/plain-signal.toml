@@ -1,0 +1,8 @@
+type = "homePage"
+name = "Plain Signal"
+order = 0
+
+[values]
+title = "Plain Signal"
+strapline = "AI news with the noise taken out."
+introduction = "Artificial intelligence is changing weather forecasts, cancer screening, medicine and mathematics. Here is what has actually happened, what it means, and what it does not mean yet, in plain words."

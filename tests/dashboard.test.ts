@@ -96,6 +96,15 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'mfaLoginProvider:Crombolo.MfaLoginProvider.Authenticator',
       'sectionView:Crombolo.SectionView.Bundles.Marketplace',
       'sectionView:Crombolo.SectionView.Bundles.Created',
+      // The Bundle Editor, in place of Umbraco's package builder (stories 233, 226).
+      'workspace:Crombolo.Workspace.BundleEditor',
+      'workspaceView:Crombolo.WorkspaceView.BundleEditor.Content',
+      'workspaceView:Crombolo.WorkspaceView.BundleEditor.Types',
+      'workspaceView:Crombolo.WorkspaceView.BundleEditor.Code',
+      'workspaceView:Crombolo.WorkspaceView.BundleEditor.Language',
+      'workspaceView:Crombolo.WorkspaceView.BundleEditor.Forms',
+      'workspaceView:Crombolo.WorkspaceView.BundleEditor.Workflows',
+      'workspaceView:Crombolo.WorkspaceView.BundleEditor.UserGroups',
       'sectionView:Crombolo.SectionView.Bundles.Installed',
       'workspaceView:Crombolo.WorkspaceView.Webhook.Storage',
       'dashboard:Crombolo.Dashboard.Addresses',
@@ -119,7 +128,6 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'propertyEditorSchema:Crombolo.FormPicker',
       'propertyEditorUi:Crombolo.PropertyEditorUi.FormPicker',
       'backofficeEntryPoint:Crombolo.EntryPoint.ClientCredentials',
-      'backofficeEntryPoint:Crombolo.EntryPoint.BundleBuilderLabels',
       // One tree over components/, in place of Templates and Partial Views.
       'backofficeEntryPoint:Crombolo.EntryPoint.ComponentsTree',
       'backofficeEntryPoint:Crombolo.EntryPoint.ContentTypeLabels',
@@ -214,7 +222,10 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
           : extension.type === 'localization'
             ? 'export default'
             : 'export const onInit'
-      expect(await response.text(), `${extension.alias} exports ${expected}`).toContain(expected)
+      const text = await response.text()
+      // A tab re-exported from the module that defines it defines it on import.
+      const reexported = extension.element && /as default \} from '\.\//.test(text)
+      if (!reexported) expect(text, `${extension.alias} exports ${expected}`).toContain(expected)
     }
     expect((await h.call(`${BACKOFFICE}/crombolo/report-client.js`)).status).toBe(200)
     expect((await h.call(`${BACKOFFICE}/crombolo/../package.json`)).status).not.toBe(200)
@@ -388,10 +399,11 @@ describe('the plugin views', () => {
     const plain = manifest.extensions
       .filter((e) => (e.type === 'sectionView' || e.type === 'workspaceView') && e.element)
       .filter((e) => {
-        const source = readFileSync(
-          join(dir, (e.element as string).replace('/crombolo-plugin/', '')),
-          'utf8',
-        )
+        const read = (file: string) => readFileSync(join(dir, file), 'utf8')
+        let source = read((e.element as string).replace('/crombolo-plugin/', ''))
+        // A view re-exported from the module that defines it.
+        const from = /export \{[^}]*\bdefault\b[^}]*\} from '\.\/([^']+)'/.exec(source)?.[1]
+        if (from) source = read(from)
         return !source.includes('UmbLitElement') && !source.includes('UmbElementMixin')
       })
       .map((e) => e.alias)

@@ -121,6 +121,11 @@ const GROUP_PROBLEMS: Partial<Record<UserGroupStatus, [number, string, string]>>
     'The alias of a system user group cannot be changed.',
   ],
   IsSystemUserGroup: [400, 'System user group', 'A system user group cannot be deleted.'],
+  DeclaredInFiles: [
+    409,
+    "Kept in the site's files",
+    "This group comes from the site's files: its name, sections, permissions and languages are changed there, and it is removed by deleting its file. Its start nodes and page permissions can be changed here.",
+  ],
   DocumentStartNodeKeyNotFound: [
     404,
     'Document start node key not found',

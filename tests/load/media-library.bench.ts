@@ -127,7 +127,7 @@ describe(`a library of ${LIBRARY.toLocaleString('en')} media items (${dialectUnd
 
     const heapBefore = heapMb()
     h.server.cache.invalidate()
-    record('snapshot build', await timed(() => h.server.cache.snapshot()))
+    record('snapshot build', await timed(() => h.server.cache.fresh()))
     h.server.cache.media?.clear()
     record('first page render', await timed(() => h.call('/').then((r) => r.text())))
     const html = await (await h.call('/')).text()

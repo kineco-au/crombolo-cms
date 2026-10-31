@@ -1,0 +1,31 @@
+type = "article"
+name = "The implant that gave Casey Harrell his voice back"
+order = 1
+
+[values]
+title = "The implant that gave Casey Harrell his voice back"
+standfirst = "A man who had lost his speech to ALS can talk again, through sensors in his brain and software that turns what he tries to say into words in his own voice."
+byline = "Plain Signal staff"
+publishedOn = 2024-08-15
+heroImage = "/utah-electrode-array.jpg"
+imageCaption = "A Utah electrode array, the kind of tiny sensor grid used in the BrainGate trial, from its 1993 patent drawing."
+imageCredit = "Richard A. Normann, US Patent 5,215,088; public domain."
+whyItMatters = "People who lose the ability to speak to diseases like ALS also lose the easiest way to take part in their own lives. A device that restores conversation could change that."
+topics = ["brain-computer interface", "ALS", "speech"]
+bodyText = """
+ALS, also called motor neurone disease, gradually takes away control of the body's muscles, including the ones used to speak. Casey Harrell was 45, and his speech had become very hard to understand, when he joined a clinical trial called BrainGate2 at UC Davis Health in California.
+
+Surgeons placed four small grids of electrodes in the part of his brain that coordinates speech. The system does not read thoughts. When Harrell tries to speak, his brain still sends out the commands that would move his lips, tongue and voice box; the electrodes pick up that activity, and AI software works out which sounds, and so which words, he is trying to say. They appear on a screen, and are read aloud in a voice made from recordings of how he sounded before ALS.
+
+## How well it works
+
+The team reported in the *New England Journal of Medicine* in August 2024 that the system understood him with about 97% accuracy, and that by the second session it was working with a vocabulary of 125,000 words. Harrell went on to use it for more than 248 hours of real conversations, in person and over video calls.
+
+## What comes next
+
+This is one person in a trial, and the device needs brain surgery and a wired connection. It is still experimental. But it is the most accurate system of its kind reported so far, and the researchers see it as evidence that restoring conversation to people with paralysis is becoming realistic.
+"""
+sources = """
+- UC Davis Health, ["New brain-computer interface allows man with ALS to 'speak' again"](https://health.ucdavis.edu/news/headlines/new-brain-computer-interface-allows-man-with-als-to-speak-again/2024/08), 14 August 2024.
+- "An accurate and rapidly calibrating speech neuroprosthesis." *New England Journal of Medicine*, August 2024.
+"""

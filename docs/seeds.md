@@ -65,7 +65,7 @@ Values are given by property alias, in a shorthand for each editor:
 | Multi-URL picker | paths, URLs, or `{ path \| url, name, target }` | the links |
 | Block list and block grid | `[{ type = "<element alias>", key = "…", values = {…}, settings = { type, key, values } }]` (grid: `columns`, `rows`) | layout, content data and settings data; a block's key is derived unless it gives one |
 | Tags | a list of strings | the list |
-| Date | a TOML date, or an ISO 8601 string | an ISO 8601 string |
+| Date | a TOML date, or an ISO 8601 string | a date picker's `YYYY-MM-DD HH:mm:ss`, as a save stores it; with a time zone, the ISO 8601 string |
 | Toggle | `true` or `false` | the boolean |
 | Number | a number | the number |
 

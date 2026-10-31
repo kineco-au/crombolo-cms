@@ -14,6 +14,7 @@ import { createExtensionElement } from '@umbraco-cms/backoffice/extension-api'
 import { umbExtensionsRegistry } from '@umbraco-cms/backoffice/extension-registry'
 import { html } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
+import { editorsOf } from './bundle-editor-routing.js'
 
 /** The entity type Umbraco's builder workspace declares, and the route segment. */
 export const BUILDER_ENTITY_TYPE = 'package-builder'
@@ -46,7 +47,7 @@ export default class CromboloBundlesCreatedElement extends UmbLitElement {
 /** Umbraco's own route table, with our overview in place of its own. */
 export function routesFor(workspaces) {
   const routes = [{ path: 'overview', component: () => import('./bundles-created-overview.js') }]
-  for (const workspace of workspaces) {
+  for (const workspace of editorsOf(workspaces)) {
     routes.push({
       path: `${workspace.meta.entityType}/edit/:unique`,
       component: () => createExtensionElement(workspace),

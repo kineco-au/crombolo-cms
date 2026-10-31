@@ -1,0 +1,10 @@
+{
+  "id": "demo/plain-signal",
+  "name": "Plain Signal",
+  "description": "an AI magazine for everyone: sections, articles with photographs and their credits, a sub-editor and editor approval workflow, and a contact form drawn by an island",
+  "distribute": true,
+  "dependencies": {
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  }
+}

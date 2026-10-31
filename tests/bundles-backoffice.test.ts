@@ -5,11 +5,6 @@
  */
 import { afterEach, describe, expect, test } from 'bun:test'
 import { formPermissionPrefixMigration, RENAMED_FORM_VERBS } from '@crombolo/data'
-import {
-  BUILDER_LABELS,
-  BUILDER_TOASTS,
-  correctionFor,
-} from '../packages/backoffice-host/plugin/branding/bundle-builder-labels.js'
 import { type Harness, signedInServer } from './support/harness.ts'
 
 const open: Harness[] = []
@@ -76,38 +71,139 @@ describe('the Created view, which replaces a router', () => {
   })
 })
 
-describe("the builder's two hard-coded labels", () => {
-  test('are still the strings the correction looks for', async () => {
-    // The correction is a no-op if upstream reworded either, which is silent by
-    // design — so this is the thing that notices a vendor bump.
-    const builder = await Bun.file(
-      `${VENDOR}/package-builder/workspace/workspace-package-builder.element.js`,
-    ).text()
-    for (const pair of [...BUILDER_LABELS, ...BUILDER_TOASTS]) {
-      const before = pair[0] as string
-      expect([before, builder.includes(before)]).toEqual([before, true])
+describe('the Bundle Editor (story 233)', () => {
+  type Extension = {
+    type: string
+    alias: string
+    element?: string
+    overwrites?: string[]
+    meta?: { entityType?: string; pathname?: string }
+    conditions?: { alias: string; match: string }[]
+  }
+  const extensions = async (): Promise<Extension[]> =>
+    (await Bun.file(`${PLUGIN}/umbraco-package.json`).json()).extensions
+
+  test("replaces Umbraco's builder for the same entity type, so the Created view opens it", async () => {
+    const all = await extensions()
+    const editor = all.find((e) => e.alias === 'Crombolo.Workspace.BundleEditor')
+    expect(editor).toMatchObject({
+      type: 'workspace',
+      overwrites: ['Umb.Workspace.PackageBuilder'],
+      meta: { entityType: 'package-builder' },
+    })
+    expect(all.some((e) => e.alias === 'Crombolo.EntryPoint.BundleBuilderLabels')).toBe(false)
+  })
+
+  test("is what the Created view routes to, even while Umbraco's builder is still registered", async () => {
+    const { editorsOf } = await import(
+      '../packages/backoffice-host/plugin/bundle-editor-routing.js'
+    )
+    const both = [
+      { alias: 'Umb.Workspace.PackageBuilder', meta: { entityType: 'package-builder' } },
+      { alias: 'Crombolo.Workspace.BundleEditor', meta: { entityType: 'package-builder' } },
+    ]
+    expect(editorsOf(both).map((w: { alias: string }) => w.alias)).toEqual([
+      'Crombolo.Workspace.BundleEditor',
+    ])
+    expect(editorsOf([both[0]]).map((w: { alias: string }) => w.alias)).toEqual([
+      'Umb.Workspace.PackageBuilder',
+    ])
+  })
+
+  test('has its tabs as workspace views on it, each with a file', async () => {
+    const views = (await extensions()).filter(
+      (e) =>
+        e.type === 'workspaceView' &&
+        e.conditions?.some((c) => c.match === 'Crombolo.Workspace.BundleEditor'),
+    )
+    expect(views.map((v) => v.meta?.pathname)).toEqual([
+      'content',
+      'types',
+      'code',
+      'language',
+      'forms',
+      'workflows',
+      'user-groups',
+    ])
+    for (const view of views)
+      expect(
+        await Bun.file(
+          `${PLUGIN}/${(view.element as string).replace('/crombolo-plugin/', '')}`,
+        ).exists(),
+      ).toBe(true)
+  })
+
+  test("imports only what Umbraco's modules export", async () => {
+    const pkg = await Bun.file('packages/backoffice-dist/dist/umbraco-package.json').json()
+    const map = pkg.importmap.imports as Record<string, string>
+    const exported = new Map<string, Set<string>>()
+    const namesOf = async (file: string, out: Set<string>, seen = new Set<string>()) => {
+      if (seen.has(file) || !(await Bun.file(file).exists())) return
+      seen.add(file)
+      const source = await Bun.file(file).text()
+      for (const m of source.matchAll(/export\s*\*\s*from\s*['"](\.[^'"]+)['"]/g))
+        await namesOf(
+          new URL(m[1] as string, `file://${process.cwd()}/${file}`).pathname.slice(
+            process.cwd().length + 1,
+          ),
+          out,
+          seen,
+        )
+      for (const m of source.matchAll(/export\s*\{([^}]*)\}/g))
+        for (const n of (m[1] as string).split(','))
+          out.add(
+            n
+              .trim()
+              .split(/\s+as\s+/)
+              .pop() as string,
+          )
+      for (const m of source.matchAll(/export (?:class|const|function|let) ([A-Za-z_$][\w$]*)/g))
+        out.add(m[1] as string)
     }
-    // The toasts say bundle, as the rest of the screen does.
-    expect(BUILDER_TOASTS.map((pair) => pair[1])).toEqual(['Bundle saved', 'Bundle saved'])
+    for (const file of [
+      'bundle-editor.js',
+      'bundle-editor-context.js',
+      'bundle-editor-sections.js',
+    ]) {
+      const source = await Bun.file(`${PLUGIN}/${file}`).text()
+      for (const m of source.matchAll(
+        /import \{([^}]+)\} from '(@umbraco-cms\/backoffice\/[^']+)'/g,
+      )) {
+        const specifier = m[2] as string
+        if (!exported.has(specifier)) {
+          const out = new Set<string>()
+          await namesOf(
+            `packages/backoffice-dist/dist/${(map[specifier] as string).replace(/^\/umbraco\/backoffice\//, '')}`,
+            out,
+          )
+          exported.set(specifier, out)
+        }
+        for (const name of (m[1] as string)
+          .split(',')
+          .map((n) => n.trim())
+          .filter(Boolean))
+          expect([file, specifier, name, exported.get(specifier)?.has(name)]).toEqual([
+            file,
+            specifier,
+            name,
+            true,
+          ])
+      }
+    }
   })
 
-  test('map to bundle wording, and nothing else does', () => {
-    expect(correctionFor('Name of the package')).toBe('Name of the bundle')
-    expect(correctionFor('  Package Content  ')).toBe('Bundle content')
-    expect(correctionFor('Name of the bundle')).toBeUndefined()
-    expect(correctionFor('Package options')).toBeUndefined()
-    expect(correctionFor(undefined)).toBeUndefined()
-  })
-
-  test('are applied to a shadow root the element owns', async () => {
-    // Both strings are written by the builder's own template, so one query root
-    // reaches them; a nested component would need its own.
-    const builder = await Bun.file(
+  test("saves through Umbraco's package repository, as its builder does", async () => {
+    const ours = await Bun.file(`${PLUGIN}/bundle-editor-context.js`).text()
+    const theirs = await Bun.file(
       `${VENDOR}/package-builder/workspace/workspace-package-builder.element.js`,
     ).text()
-    expect(builder).toContain('id="package-name-input"')
-    expect(builder).toContain('headline="Package Content"')
-    expect(builder).toContain("customElement('umb-workspace-package-builder')")
+    for (const call of [
+      'getCreatedPackage(',
+      'saveCreatedPackage(',
+      'updateCreatedPackage(',
+      'getCreatePackageDownload(',
+    ])
+      expect([call, theirs.includes(call), ours.includes(call)]).toEqual([call, true, true])
   })
 })
 

@@ -104,6 +104,16 @@ export const ElementContainerPermissions = {
 /** The discriminator on a granular permission row. */
 export type PermissionContext = 'Document' | 'Element' | 'DocumentTypeProperty'
 
+/** Every permission verb a group can hold, for checking a declared group (story 228). */
+export const KNOWN_PERMISSIONS: ReadonlySet<string> = new Set([
+  ...Object.values(DocumentPermissions),
+  ...Object.values(FormPermissions),
+  ...Object.values(RemotePermissions),
+  ...Object.values(MediaPermissions),
+  ...Object.values(ElementPermissions),
+  ...Object.values(ElementContainerPermissions),
+])
+
 export const ADMIN_GROUP_ALIAS = 'admin'
 
 /** The resolved permission set for a user, assembled from all their groups. */

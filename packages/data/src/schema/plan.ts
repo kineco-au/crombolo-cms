@@ -20,6 +20,7 @@ import { auditLogMigration } from './audit-log.ts'
 import { bundleComponentsMigration } from './bundle-components.ts'
 import { bundleGrantsMigration } from './bundle-grants.ts'
 import { bundlePackageMigration } from './bundle-package.ts'
+import { bundleSchemaPicksMigration } from './bundle-schema-picks.ts'
 import { bundlesDisabledMigration } from './bundles-disabled.ts'
 import { bundlesRenameMigration } from './bundles-rename.ts'
 import { changeReportMigration } from './change-report.ts'
@@ -129,4 +130,5 @@ export const cromboloPlan = new MigrationPlan([
   jobsMigration,
   bundlesDisabledMigration,
   siteSettingsTypesMigration,
+  bundleSchemaPicksMigration,
 ])

@@ -1,0 +1,82 @@
+# Every article is approved before it is published: schema/workflows/
+# article-approval.toml covers this type.
+[content-type]
+alias = "article"
+name = "Article"
+description = "A story: headline, image with its credit, the piece and its sources"
+icon = "icon-newspaper"
+components = ["pages/article"]
+default-component = "pages/article"
+
+[[tab]]
+name = "Story"
+
+[[tab.property]]
+alias = "title"
+name = "Headline"
+type = "textstring"
+mandatory = true
+site-search = "high"
+
+[[tab.property]]
+alias = "standfirst"
+name = "Standfirst"
+description = "The paragraph under the headline: what happened, in plain words"
+type = "textarea"
+mandatory = true
+site-search = "normal"
+
+[[tab.property]]
+alias = "byline"
+name = "Byline"
+type = "textstring"
+
+[[tab.property]]
+alias = "publishedOn"
+name = "Date"
+type = "datePicker"
+
+[[tab.property]]
+alias = "bodyText"
+name = "Story"
+type = "richtext"
+mandatory = true
+
+[[tab.property]]
+alias = "whyItMatters"
+name = "Why it matters"
+description = "One short paragraph for a reader in a hurry"
+type = "textarea"
+
+[[tab]]
+name = "Image"
+
+[[tab.property]]
+alias = "heroImage"
+name = "Image"
+type = "imageMediaPicker"
+
+[[tab.property]]
+alias = "imageCaption"
+name = "Caption"
+type = "textstring"
+
+[[tab.property]]
+alias = "imageCredit"
+name = "Credit"
+description = "Who made the image, and its licence: as CREDITS.md records it"
+type = "textstring"
+
+[[tab]]
+name = "Sources"
+
+[[tab.property]]
+alias = "sources"
+name = "Sources"
+description = "The research and announcements the story rests on"
+type = "richtext"
+
+[[tab.property]]
+alias = "topics"
+name = "Topics"
+type = "tags"

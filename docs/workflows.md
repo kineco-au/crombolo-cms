@@ -11,7 +11,10 @@ An acyclic graph of **stages**, drawn on a canvas in the Workflows section and
 kept as a file in `schema/workflows/`.
 
 - **A stage** is approved by named **user groups**: ordinary user groups, so
-  who approves changes with group membership and needs no deploy. It needs one
+  who approves changes with group membership and needs no deploy. Declare the
+  groups a workflow names in `schema/user-groups/` beside it, so every
+  environment has them ([`schema-as-code.md`](schema-as-code.md#user-groups),
+  story `228`). It needs one
   approval, a majority, all of them, or a number (`required`); a number larger
   than the groups hold is capped at what they hold, so a stage can always finish.
 - **Arrows** run from a stage to the stages that follow it. A stage with several

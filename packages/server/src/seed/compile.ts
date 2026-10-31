@@ -321,11 +321,30 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
       case 'Umbraco.Slider':
         return typeof raw === 'number' ? { ok: true, value: raw } : fail('a number is a number')
       case 'Umbraco.DateTime':
-      case 'Umbraco.DateTimeWithTimeZone':
-        if (raw instanceof Date) return { ok: true, value: raw.toISOString() }
-        return typeof raw === 'string' && !Number.isNaN(new Date(raw).getTime())
-          ? { ok: true, value: raw }
-          : fail('a date is a TOML date or an ISO 8601 string')
+      case 'Umbraco.DateTimeWithTimeZone': {
+        // Bun's TOML gives a Temporal value (a PlainDate, an Instant) for a TOML
+        // date, which writes itself as ISO 8601.
+        const text =
+          raw instanceof Date
+            ? raw.toISOString()
+            : isTemporalDate(raw)
+              ? String(raw)
+              : typeof raw === 'string'
+                ? raw
+                : undefined
+        const at = text === undefined ? Number.NaN : new Date(text).getTime()
+        if (text === undefined || Number.isNaN(at))
+          return fail('a date is a TOML date or an ISO 8601 string')
+        // A date picker stores Umbraco's wall clock, as a save does, so a seed
+        // exported and applied again is unchanged; one with a zone keeps ISO.
+        return {
+          ok: true,
+          value:
+            editor === 'Umbraco.DateTime'
+              ? new Date(at).toISOString().slice(0, 19).replace('T', ' ')
+              : text,
+        }
+      }
       case 'Umbraco.Tags':
         return list(raw).every((tag) => typeof tag === 'string')
           ? { ok: true, value: list(raw) }
@@ -745,4 +764,11 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
     peerRange: `>=${VERSION}`,
   })
   return { findings, set, blobs, files, counts }
+}
+
+/** A TOML date as Bun's parser gives it: a Temporal value whose ISO form is a date. */
+function isTemporalDate(raw: unknown): boolean {
+  if (typeof raw !== 'object' || raw === null || raw instanceof Date) return false
+  const text = String(raw)
+  return /^\d{4}-\d{2}-\d{2}/.test(text) && !Number.isNaN(new Date(text).getTime())
 }

@@ -26,6 +26,17 @@ The server can already do all of it: `createUserPorts().groups`,
 `createMemberGroupPort` and the `user-group` and `member-group` areas of the
 Management API.
 
+## Since: user groups are files (story 228, 2026-10-31)
+
+Story `228` answered the open question for **user groups**: option (a). They
+are `schema/user-groups/*.toml`, synced as types are and written back by the
+Users section in development. A file holds what a group is (name, sections,
+permission verbs, languages); start nodes and per-page permissions stay each
+environment's, set in Users, because they name content. What is left here:
+**member groups** as files, and setting a user group's start nodes and per-page
+permissions without the back office (by command, story `166`, or seed, story
+`163`).
+
 ## Open question
 
 **Where groups and access settings live — deferred, to be decided before this
@@ -51,9 +62,10 @@ editing a group that a file owns.
 
 To be finalised with the open question. Whatever is chosen:
 
-- [ ] A user group's sections, permissions, granular permissions, languages and
-      content and media start nodes can be set without the back office,
-      repeatably and idempotently
+- [x] A user group's sections, permissions and languages can be set without
+      the back office, repeatably and idempotently (story 228)
+- [ ] A user group's granular permissions and content and media start nodes can
+      be set without the back office
 - [ ] Member groups can be created and removed the same way, and exist before
       story 155's import or a public-access rule names them
 - [ ] The five seeded user groups keep working on an existing site

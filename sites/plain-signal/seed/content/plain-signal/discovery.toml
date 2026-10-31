@@ -1,0 +1,7 @@
+type = "sectionPage"
+name = "Discovery"
+order = 2
+
+[values]
+title = "Discovery"
+standfirst = "AI in the lab and at the blackboard: science and mathematics."

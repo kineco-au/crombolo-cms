@@ -55,6 +55,7 @@ describe('creating a site, end to end through the CLI', () => {
   let bare: Serving
   let demo: Serving
   let product: Serving
+  let magazine: Serving
 
   const siteDir = (name: string) => join(dir, name)
 
@@ -196,13 +197,22 @@ describe('creating a site, end to end through the CLI', () => {
       'demo/crombolo',
     )
     expect(productInit.code, productInit.out).toBe(0)
+    const magazineInit = await scaffold(
+      'magazine',
+      '--name',
+      'Plain Signal',
+      '--template',
+      'demo/plain-signal',
+    )
+    expect(magazineInit.code, magazineInit.out).toBe(0)
     const postgresInit = await scaffold('postgres', '--name', 'Postgres Site', '--postgres')
     expect(postgresInit.code, postgresInit.out).toBe(0)
 
     bare = await serve('bare')
     demo = await serve('demo', '--seed', '--publish')
     product = await serve('product', '--seed', '--publish')
-  }, 240_000)
+    magazine = await serve('magazine', '--seed', '--publish')
+  }, 300_000)
 
   afterAll(async () => {
     for (const server of [...running]) await server.stop()
@@ -323,6 +333,17 @@ describe('creating a site, end to end through the CLI', () => {
     // Elements picked on the home page, not only on a bottling.
     expect(html).toContain('First season on this rock')
   })
+
+  test('the magazine template checks, and serves its front page, an article and its contact island', async () => {
+    const checked = await cli('magazine', 'components', 'check')
+    expect(checked.code, checked.out).toBe(0)
+    const home = await page(magazine, '/')
+    expect(home).toContain('AI news with the noise taken out.')
+    expect(home).toContain('The forecast that learned from forty years of weather')
+    const article = await page(magazine, '/health/antibiotics-designed-from-scratch')
+    expect(article).toContain('NIAID, CC BY 2.0.')
+    expect(await page(magazine, '/contact')).toContain('<crombolo-island')
+  }, 60_000)
 
   test('the product site keeps its home page for the business case', async () => {
     const html = await page(product, '/')

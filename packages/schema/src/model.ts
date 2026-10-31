@@ -1,4 +1,5 @@
 import type { SchemaForm, SchemaWorkflow, SiteSearchLevel } from '@crombolo/core'
+import type { SchemaUserGroup } from './user-groups.ts'
 
 /**
  * The schema-as-code model: what a site's `schema/*.toml` files describe.
@@ -165,6 +166,8 @@ export interface SchemaSet {
   urls?: SchemaUrls
   /** `schema/workflows/*.toml` — approval workflows; see `docs/workflows.md`. */
   workflows?: SchemaWorkflow[]
+  /** `schema/user-groups/*.toml` — the user groups the site declares (story 228). */
+  userGroups?: SchemaUserGroup[]
 }
 
 /** How URLs are built, as Umbraco's `Umbraco:CMS:Global` settings set it. */

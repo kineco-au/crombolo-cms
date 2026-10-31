@@ -1,0 +1,8 @@
+[user-group]
+alias = "editors"
+name = "Editors"
+description = "Give the final yes, which publishes an article"
+icon = "icon-medal"
+sections = ["content", "media", "forms"]
+permissions = ["Umb.Document.Read", "Umb.Document.Create", "Umb.Document.Update", "Umb.Document.Delete", "Umb.Document.Publish", "Umb.Document.Unpublish", "Umb.Document.Move", "Umb.Document.Sort", "Crombolo.Media.Read", "Crombolo.Media.Update", "Crombolo.Form.Read", "Crombolo.FormEntry.Read"]
+languages = "all"

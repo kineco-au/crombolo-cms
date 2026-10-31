@@ -4,6 +4,7 @@
  * a non-admin may only hand out groups and start nodes they hold themselves,
  * and nobody deletes or disables their own account.
  */
+
 import type {
   NodeLookup,
   Principal,
@@ -51,6 +52,7 @@ import {
   UserRepository,
   userState,
 } from '@crombolo/data'
+import type { SchemaUserGroup } from '@crombolo/schema'
 import { loadAccess } from '../access.ts'
 import type { CromboloConfig } from '../config.ts'
 import type { MediaFileStore } from '../media-files.ts'
@@ -117,6 +119,8 @@ export interface UserPortOptions {
   >
   mediaFiles: MediaFileStore
   nodes: NodeLookup
+  /** The groups the site's files declare (story 228). */
+  declaredGroups?: () => DeclaredGroups
   /** Signs a user out everywhere, as a password change set by someone else does. */
   endSessions: (userId: number) => Promise<void>
   /** A group save changed what it may do on these pages (story 045: the "rights" notification). */
@@ -665,6 +669,7 @@ export function createUserPorts(
       adminKey,
       nodes,
       onPagePermissionsChanged: options.onPagePermissionsChanged,
+      declared: options.declaredGroups,
     }),
     userData: createUserDataPort(db),
   }
@@ -765,21 +770,63 @@ function fromPermissions(permissions: UserGroupInput['permissions']): GranularPe
   return rows
 }
 
+/** The user groups the site's files declare (story 228), and whether a save may write one back. */
+export interface DeclaredGroups {
+  /** By lower-case alias. */
+  groups: ReadonlyMap<string, SchemaUserGroup>
+  /** Development: a save writes the file. Elsewhere the files' fields are read-only. */
+  writable: boolean
+  write(group: SchemaUserGroup): void
+}
+
+/** What a group's file holds, from what the Users section sent. */
+function fileFieldsOf(input: UserGroupInput): SchemaUserGroup {
+  return {
+    alias: input.alias,
+    name: input.name,
+    ...(input.description ? { description: input.description } : {}),
+    ...(input.icon ? { icon: input.icon } : {}),
+    sections: input.sections.map(sectionAppAlias),
+    permissions: [...input.fallbackPermissions],
+    languages: input.hasAccessToAllLanguages ? 'all' : [...input.languages],
+  }
+}
+
+const sameMembers = (a: readonly string[], b: readonly string[]) =>
+  a.length === b.length && a.every((item) => b.includes(item))
+
+/** Whether two groups' file-owned fields agree. */
+function sameFileFields(a: SchemaUserGroup, b: SchemaUserGroup): boolean {
+  return (
+    a.name === b.name &&
+    (a.description ?? '') === (b.description ?? '') &&
+    (a.icon ?? '') === (b.icon ?? '') &&
+    sameMembers(a.sections, b.sections) &&
+    sameMembers(a.permissions, b.permissions) &&
+    (a.languages === 'all' || b.languages === 'all'
+      ? a.languages === b.languages
+      : sameMembers(a.languages, b.languages))
+  )
+}
+
 function createUserGroupPort(
   db: Db,
   deps: {
     adminKey: () => Promise<string | undefined>
     nodes: NodeLookup
     onPagePermissionsChanged?: UserPortOptions['onPagePermissionsChanged']
+    declared?: () => DeclaredGroups
   },
 ): UserGroupPort {
+  const fileOf = (alias: string) => deps.declared?.().groups.get(alias.toLowerCase())
   const groups = new UserGroupRepository(db)
   const users = new UserRepository(db)
 
   const toResponse = async (group: Awaited<ReturnType<UserGroupRepository['byKey']>> & object) => ({
     id: group.key,
-    isDeletable: !SYSTEM_GROUPS.has(group.alias),
-    aliasCanBeChanged: !SYSTEM_GROUPS.has(group.alias),
+    // A group from the site's files is the files' to rename or remove (story 228).
+    isDeletable: !SYSTEM_GROUPS.has(group.alias) && !fileOf(group.alias),
+    aliasCanBeChanged: !SYSTEM_GROUPS.has(group.alias) && !fileOf(group.alias),
     name: group.name,
     alias: group.alias,
     description: group.description,
@@ -954,9 +1001,18 @@ function createUserGroupPort(
       if (!isMember(principal, group.key)) return 'Forbidden'
       const valid = await validate(principal, input, group)
       if (valid !== 'Success') return valid
+      // Story 228: its file owns what it is; where it starts is this environment's.
+      const file = fileOf(group.alias)
+      const owned = fileFieldsOf(input)
+      const rewrite = file !== undefined && !sameFileFields(owned, file)
+      if (file && (input.alias !== group.alias || (rewrite && !deps.declared?.().writable)))
+        return 'DeclaredInFiles'
       const before = pageVerbs(group)
       const saved = await save(input, group.key)
-      if (saved === 'Success') await announcePermissions(principal, before, group.key)
+      if (saved === 'Success') {
+        if (rewrite) deps.declared?.().write(owned)
+        await announcePermissions(principal, before, group.key)
+      }
       return saved
     },
 
@@ -965,6 +1021,7 @@ function createUserGroupPort(
       if (found.length !== new Set(keys.map(normaliseUuid)).size) return 'NotFound'
       if (!found.every((g) => isMember(principal, g.key))) return 'Forbidden'
       if (found.some((g) => SYSTEM_GROUPS.has(g.alias))) return 'IsSystemUserGroup'
+      if (found.some((g) => fileOf(g.alias))) return 'DeclaredInFiles'
       for (const group of found) await groups.delete(group.key)
       return 'Success'
     },

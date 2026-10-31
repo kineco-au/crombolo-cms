@@ -125,7 +125,10 @@ export async function undoMediaAccess(db: Db): Promise<void> {
 export async function undoMediaMemberUploads(db: Db): Promise<void> {
   // 056 (story 225), 055, jobs (story 187), and 054, bundle grants (story 222),
   // come after it; 056's columns go with 054's table.
-  // 057, site settings types (story 058), a column on a table that stays.
+  // 058, bundle schema picks (story 226), and 057, site settings types (story
+  // 058): columns on tables that stay.
+  await db.exec('ALTER TABLE bundle DROP COLUMN schema_picks')
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddBundleSchemaPicks'")
   await db.exec('ALTER TABLE content_type DROP COLUMN site_settings')
   await db.exec("DELETE FROM migration_history WHERE name = 'AddSiteSettingsTypes'")
   await db.exec("DELETE FROM migration_history WHERE name = 'DisableBundles'")

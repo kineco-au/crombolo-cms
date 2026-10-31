@@ -1,0 +1,33 @@
+type = "article"
+name = "A second pair of eyes on every mammogram"
+order = 0
+
+[values]
+title = "A second pair of eyes on every mammogram"
+standfirst = "In the first large randomised trial of AI in breast screening, scans read with AI's help found more cancers and left radiologists with much less to read."
+byline = "Plain Signal staff"
+publishedOn = 2026-02-02
+heroImage = "/mammogram.jpg"
+imageCaption = "A mammogram being taken."
+imageCredit = "US National Cancer Institute, public domain."
+whyItMatters = "Screening programmes are short of radiologists. If AI can carry part of the reading safely, more cancers can be caught early without asking more of an overstretched workforce."
+topics = ["cancer", "screening", "medical imaging"]
+bodyText = """
+In most European screening programmes, two radiologists look at every mammogram. It catches more cancers than one reader alone, but it doubles the work, and there are not enough radiologists to go round.
+
+The MASAI trial in Sweden asked whether AI could take some of that load. More than 100,000 women attending routine screening were split at random into two groups. One was read the usual way, by two radiologists. In the other, an AI system first scored each mammogram for how likely it was to show cancer. Low-risk scans were read by one radiologist instead of two, the highest-risk scans by two, and the AI marked areas it thought suspicious for the readers to check.
+
+## What happened
+
+Results published in 2025 showed that the AI-supported group found 29% more cancers, 6.4 for every 1,000 women screened against 5.0, without more women being called back for cancers that were not there. Radiologists in that group had 44% fewer scans to read.
+
+The trial then followed women for two years to look for the cancers screening misses, which appear between appointments. Full results published in January 2026 found 12% fewer of these "interval cancers" in the AI group: 1.55 for every 1,000 women, against 1.76. Fewer of those that were missed were large or aggressive.
+
+## The cautions
+
+The trial took place in one country, with one make of mammography machine, one AI system and experienced radiologists. The researchers say those results may not carry over to other settings without being checked there.
+"""
+sources = """
+- MASAI 2025 results, *The Lancet Digital Health*, reported by [Imaging Technology News](https://www.itnonline.com/content/ai-enhanced-mammography-screening-significantly-improves-breast-cancer-detection-reduces), 5 February 2025.
+- Full results, *The Lancet*, January 2026, reported by [ecancer](https://ecancer.org/en/news/27721-ai-supported-mammography-screening-results-in-fewer-aggressive-and-advanced-breast-cancers-finds-full-results-from-first-randomised-controlled-trial).
+"""

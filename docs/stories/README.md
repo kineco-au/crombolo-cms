@@ -85,6 +85,7 @@ not cover.
 | `192` | A site's bundle carries its code | should | M | done | 063, 181 |
 | `193` | One manifest for the whole bundle | should | M | done | 192 |
 | `195` | A bundle's media directory, with its own manifest | should | M | done | 193 |
+| `227` | A site's bundle carries its server actions | should | S | ready | 192, 219 |
 
 ### Epic C — The backoffice, end to end
 
@@ -101,6 +102,8 @@ not cover.
 | `028` | Approval before publishing | should | L | done | — |
 | `029` | Scheduled publishing through approval | could | M | done | 028 |
 | `182` | Extensions can dock a panel beside the back office | should | M | done | — |
+| `228` | User groups a site declares in files | should | M | done | 028 |
+| `229` | A workflow nobody can approve says so | should | S | ready | 028 |
 
 ### Epic D — Members and identity
 
@@ -225,6 +228,8 @@ requests, only server-side and build-time front ends can call it.
 | `107` | The remote protocol | should | L | done | 104, 105, 106 |
 | `108` | crombolo pull and push | should | M | done | 107 |
 | `177` | A host's own bundles stay with the host | should | S | done | 063, 104 |
+| `226` | Picked packages carry forms and approval workflows | should | M | done | 233 |
+| `233` | A Bundle Editor of Crombolo's own | should | L | done | — |
 
 ### Epic L — Routing
 
@@ -275,6 +280,7 @@ requests, only server-side and build-time front ends can call it.
 | `220` | `/crombolo/bundle.js` is served on every node | should | S | ready | 211 |
 | `224` | A route handler's signal is let go once it has answered | should | S | done | 211 |
 | `225` | Bundles in the site's code are approved, and an administrator can disable one | should | M | done | 222 |
+| `232` | Plain Signal, a magazine demo | could | L | done | 058, 209, 228 |
 
 ### Epic P — The command line
 
@@ -350,3 +356,5 @@ implementation; creating them does not settle those architectural choices.
 | `174` | Renderers know which published changes they serve | should | L | done | 011, 120 |
 | `175` | Published cache growth stays within measured limits | could | L | done | 086, 174 |
 | `221` | Kysely as the query layer | should | XL | done | — |
+| `230` | No render waits seconds through a burst of publishes | could | M | done | 175 |
+| `231` | The local Postgres suite fits the database's connections | could | S | ready | — |

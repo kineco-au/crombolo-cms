@@ -36,6 +36,7 @@ import {
   sameUrlOptions,
   syncWorkflows,
   type UrlOptions,
+  UserGroupRepository,
   updateSchemaStateHash,
   type WorkflowSyncReport,
   writeUrlOptions,
@@ -110,6 +111,8 @@ export interface SyncReport {
   urls?: { before: UrlOptions; after: UrlOptions }
   /** Set when a workflow changed, with what that did to requests in flight. */
   workflows?: WorkflowSyncReport
+  /** The declared user groups this sync created or changed (story 228). */
+  userGroups?: { created: string[]; updated: string[] }
 }
 
 export const emptySyncReport = (
@@ -385,6 +388,10 @@ export async function syncSchema(
             })),
           )
           if (workflows.changed.length > 0) report.workflows = workflows
+          // The user groups the files declare (story 228): what each is; where
+          // it starts and who is in it stay this environment's.
+          const groups = await new UserGroupRepository(tx).syncDeclared(set.userGroups ?? [])
+          if (groups.created.length > 0 || groups.updated.length > 0) report.userGroups = groups
         }
 
         // ---- templates referenced by types must have a row

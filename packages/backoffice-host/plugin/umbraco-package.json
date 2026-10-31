@@ -2,7 +2,7 @@
   "$schema": "../../backoffice-dist/dist/umbraco-package-schema.json",
   "name": "Crombolo",
   "id": "Crombolo.Core",
-  "version": "0.40.0",
+  "version": "0.41.0",
   "allowPublicAccess": false,
   "extensions": [
     {
@@ -167,6 +167,142 @@
         {
           "alias": "Umb.Condition.SectionAlias",
           "match": "Umb.Section.Packages"
+        }
+      ]
+    },
+    {
+      "type": "workspace",
+      "alias": "Crombolo.Workspace.BundleEditor",
+      "name": "Crombolo Bundle Editor",
+      "element": "/crombolo-plugin/bundle-editor.js",
+      "overwrites": ["Umb.Workspace.PackageBuilder"],
+      "meta": {
+        "entityType": "package-builder"
+      }
+    },
+    {
+      "type": "workspaceView",
+      "alias": "Crombolo.WorkspaceView.BundleEditor.Content",
+      "name": "Crombolo Bundle Editor Content",
+      "element": "/crombolo-plugin/bundle-editor-content.js",
+      "weight": 400,
+      "meta": {
+        "label": "Content",
+        "pathname": "content",
+        "icon": "icon-document"
+      },
+      "conditions": [
+        {
+          "alias": "Umb.Condition.WorkspaceAlias",
+          "match": "Crombolo.Workspace.BundleEditor"
+        }
+      ]
+    },
+    {
+      "type": "workspaceView",
+      "alias": "Crombolo.WorkspaceView.BundleEditor.Types",
+      "name": "Crombolo Bundle Editor Types",
+      "element": "/crombolo-plugin/bundle-editor-types.js",
+      "weight": 300,
+      "meta": {
+        "label": "Types",
+        "pathname": "types",
+        "icon": "icon-item-arrangement"
+      },
+      "conditions": [
+        {
+          "alias": "Umb.Condition.WorkspaceAlias",
+          "match": "Crombolo.Workspace.BundleEditor"
+        }
+      ]
+    },
+    {
+      "type": "workspaceView",
+      "alias": "Crombolo.WorkspaceView.BundleEditor.Code",
+      "name": "Crombolo Bundle Editor Code",
+      "element": "/crombolo-plugin/bundle-editor-code.js",
+      "weight": 200,
+      "meta": {
+        "label": "Code",
+        "pathname": "code",
+        "icon": "icon-code"
+      },
+      "conditions": [
+        {
+          "alias": "Umb.Condition.WorkspaceAlias",
+          "match": "Crombolo.Workspace.BundleEditor"
+        }
+      ]
+    },
+    {
+      "type": "workspaceView",
+      "alias": "Crombolo.WorkspaceView.BundleEditor.Language",
+      "name": "Crombolo Bundle Editor Language",
+      "element": "/crombolo-plugin/bundle-editor-language.js",
+      "weight": 100,
+      "meta": {
+        "label": "Language",
+        "pathname": "language",
+        "icon": "icon-globe"
+      },
+      "conditions": [
+        {
+          "alias": "Umb.Condition.WorkspaceAlias",
+          "match": "Crombolo.Workspace.BundleEditor"
+        }
+      ]
+    },
+    {
+      "type": "workspaceView",
+      "alias": "Crombolo.WorkspaceView.BundleEditor.Forms",
+      "name": "Crombolo Bundle Editor Forms",
+      "element": "/crombolo-plugin/bundle-editor-forms.js",
+      "weight": 90,
+      "meta": {
+        "label": "Forms",
+        "pathname": "forms",
+        "icon": "icon-autofill"
+      },
+      "conditions": [
+        {
+          "alias": "Umb.Condition.WorkspaceAlias",
+          "match": "Crombolo.Workspace.BundleEditor"
+        }
+      ]
+    },
+    {
+      "type": "workspaceView",
+      "alias": "Crombolo.WorkspaceView.BundleEditor.Workflows",
+      "name": "Crombolo Bundle Editor Workflows",
+      "element": "/crombolo-plugin/bundle-editor-workflows.js",
+      "weight": 80,
+      "meta": {
+        "label": "Workflows",
+        "pathname": "workflows",
+        "icon": "icon-mindmap"
+      },
+      "conditions": [
+        {
+          "alias": "Umb.Condition.WorkspaceAlias",
+          "match": "Crombolo.Workspace.BundleEditor"
+        }
+      ]
+    },
+    {
+      "type": "workspaceView",
+      "alias": "Crombolo.WorkspaceView.BundleEditor.UserGroups",
+      "name": "Crombolo Bundle Editor User groups",
+      "element": "/crombolo-plugin/bundle-editor-user-groups.js",
+      "weight": 70,
+      "meta": {
+        "label": "User groups",
+        "pathname": "user-groups",
+        "icon": "icon-users"
+      },
+      "conditions": [
+        {
+          "alias": "Umb.Condition.WorkspaceAlias",
+          "match": "Crombolo.Workspace.BundleEditor"
         }
       ]
     },
@@ -457,12 +593,6 @@
       "alias": "Crombolo.EntryPoint.ClientCredentials",
       "name": "Crombolo Client Credential Prefix",
       "js": "/crombolo-plugin/branding/client-credentials.js"
-    },
-    {
-      "type": "backofficeEntryPoint",
-      "alias": "Crombolo.EntryPoint.BundleBuilderLabels",
-      "name": "Crombolo Bundle Builder Labels",
-      "js": "/crombolo-plugin/branding/bundle-builder-labels.js"
     },
     {
       "type": "backofficeEntryPoint",

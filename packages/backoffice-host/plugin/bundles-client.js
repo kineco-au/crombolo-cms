@@ -59,3 +59,15 @@ export const readCreatedPackage = (id) => json(`/created/${encodeURIComponent(id
 
 export const saveCreatedPackage = (id, pkg) =>
   json(`/created/${encodeURIComponent(id)}/package`, { method: 'PUT', body: JSON.stringify(pkg) })
+
+/** The site's forms, approval workflows and user groups a created bundle can carry (story 226). */
+export const schemaChoices = () => json('/schema')
+
+/** What a set of picks carries: the picks, and what they bring. */
+export const carriedSchema = (picks) =>
+  json('/schema/carried', { method: 'POST', body: JSON.stringify(picks) })
+
+export const readSchemaPicks = (id) => json(`/created/${encodeURIComponent(id)}/schema`)
+
+export const saveSchemaPicks = (id, picks) =>
+  json(`/created/${encodeURIComponent(id)}/schema`, { method: 'PUT', body: JSON.stringify(picks) })

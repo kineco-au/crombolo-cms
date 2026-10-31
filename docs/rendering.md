@@ -1052,6 +1052,12 @@ millions of files is never loaded, and an upload never rebuilds the pages.
 | the schema, a bundle or site import, a revert, `crombolo cache rebuild` | rebuilt | emptied |
 | anything a server missed (a gap, or more than 5,000 changes behind) | rebuilt if pages changed | emptied |
 
+**Who waits for a rebuild.** A reader (`snapshot()`) is answered from the
+previous snapshot while a rebuild runs; one that starts a rebuild waits at most
+`readerGraceMs` (50 ms) for it (stories 175 and 230). A write waits with
+`fresh()` for the build that holds it, so the editor sees their change; so does
+code that changes content outside a request and reads straight after.
+
 ### The media cache
 
 `MediaCache` (`packages/render/src/media-cache.ts`) answers `byKey`, `byKeys`

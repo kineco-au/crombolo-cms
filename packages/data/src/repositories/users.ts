@@ -97,6 +97,33 @@ export interface UserGroupInput {
   granular: GranularPermission[]
 }
 
+/** A group as a site's files declare it (story 228). */
+export interface DeclaredUserGroup {
+  alias: string
+  name: string
+  description?: string
+  icon?: string
+  sections: readonly string[]
+  permissions: readonly string[]
+  languages: readonly string[] | 'all'
+}
+
+const sameSet = (a: readonly string[], b: readonly string[]) =>
+  a.length === new Set(b).size && a.every((item) => b.includes(item))
+
+/** Whether a group already holds what its file says. */
+function sameDeclared(existing: UserGroupRecord, input: UserGroupInput): boolean {
+  return (
+    existing.name === input.name &&
+    (existing.description ?? null) === input.description &&
+    (existing.icon ?? null) === input.icon &&
+    existing.hasAccessToAllLanguages === input.hasAccessToAllLanguages &&
+    sameSet(existing.sections, input.sections) &&
+    sameSet(existing.permissions, input.permissions) &&
+    sameSet(existing.languages, input.languages)
+  )
+}
+
 export interface UserInput {
   key: string
   name: string
@@ -943,6 +970,47 @@ export class UserGroupRepository {
           .execute()
       return 'saved'
     })
+  }
+
+  /**
+   * Creates or updates the groups a site declares in files (story 228), by
+   * alias: their name, description, icon, sections, verbs and languages. Start
+   * nodes, per-page permissions and members are the environment's, and kept.
+   */
+  async syncDeclared(groups: readonly DeclaredUserGroup[]): Promise<{
+    created: string[]
+    updated: string[]
+  }> {
+    const created: string[] = []
+    const updated: string[] = []
+    const none: GroupStartNode = { root: false, key: null }
+    for (const group of groups) {
+      const existing = await this.byAlias(group.alias)
+      const languages = group.languages === 'all' ? [] : [...group.languages]
+      const input: UserGroupInput = {
+        key: existing?.key ?? crypto.randomUUID(),
+        alias: group.alias,
+        name: group.name,
+        description: group.description ?? null,
+        icon: group.icon ?? null,
+        sections: [...group.sections],
+        languages,
+        hasAccessToAllLanguages: group.languages === 'all',
+        startNodes: existing?.startNodes ?? { document: none, media: none, element: none },
+        permissions: [...group.permissions],
+        granular: existing?.granular ?? [],
+      }
+      if (existing && sameDeclared(existing, input)) continue
+      const saved = await this.save(input)
+      if (saved === 'missing-language')
+        throw new Error(
+          `The user group "${group.alias}" names a language the site does not have: ${languages.join(', ')}.`,
+        )
+      if (saved !== 'saved')
+        throw new Error(`The user group "${group.alias}" keeps a start node that no longer exists.`)
+      ;(existing ? updated : created).push(group.alias)
+    }
+    return { created, updated }
   }
 
   async delete(key: string): Promise<void> {

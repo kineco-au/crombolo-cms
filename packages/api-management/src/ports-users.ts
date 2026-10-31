@@ -206,6 +206,8 @@ export type UserGroupStatus =
   | 'LanguageNotFound'
   | 'AdminGroupCannotBeEmpty'
   | 'UserNotFound'
+  /** Crombolo: the group comes from the site's files, and this change is the files' to make (story 228). */
+  | 'DeclaredInFiles'
 
 export interface UserGroupPort {
   list(skip: number, take: number): Promise<Page<UserGroupResponse>>

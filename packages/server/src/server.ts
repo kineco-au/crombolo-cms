@@ -130,7 +130,15 @@ import type { Server } from 'bun'
 import { createNodeLookup, loadAccess } from './access.ts'
 import { ACTION_FLASH_COOKIE, actionRegistry, actionRoutes } from './actions.ts'
 import { createAuditHost, createAuditSink, pluginAuditPlan, recordAudit } from './adapters/audit.ts'
-import { readCreatedBundlePackage, writeCreatedBundlePackage } from './adapters/bundles.ts'
+import {
+  carriedSchemaPicks,
+  readCreatedBundlePackage,
+  readSchemaPicks,
+  schemaPickChoices,
+  schemaPicksOf,
+  writeCreatedBundlePackage,
+  writeSchemaPicks,
+} from './adapters/bundles.ts'
 import { createPublishedContentSource, loadDraftNode } from './adapters/documents.ts'
 import type { Approvals } from './approvals.ts'
 import { handleApprovalsApi } from './approvals-api.ts'
@@ -1726,6 +1734,28 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
           const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
           const outcome = await writeCreatedBundlePackage(db, id, body)
           return Response.json(outcome, { status: outcome.ok ? 200 : 400 })
+        }
+      }
+
+      // A created bundle's forms, workflows and user groups (story 226): the
+      // site's files to choose from, what a choice brings, and the choice.
+      if (action === 'schema' && request.method === 'GET')
+        return Response.json(schemaPickChoices(config.schemaDir))
+      if (action === 'schema/carried' && request.method === 'POST') {
+        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
+        return Response.json({ carried: carriedSchemaPicks(config.schemaDir, schemaPicksOf(body)) })
+      }
+      const picked = /^created\/([0-9a-f-]{36})\/schema$/i.exec(action)
+      if (picked) {
+        const id = picked[1] as string
+        if (request.method === 'GET') {
+          const found = await readSchemaPicks(db, id)
+          return found ? Response.json(found) : new Response('Not Found', { status: 404 })
+        }
+        if (request.method === 'PUT') {
+          const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
+          const saved = await writeSchemaPicks(db, id, body)
+          return saved ? Response.json(saved) : new Response('Not Found', { status: 404 })
         }
       }
 

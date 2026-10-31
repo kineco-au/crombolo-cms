@@ -135,6 +135,8 @@ describe('the first boot of a self-hosted site', () => {
   test('a database the previous release left is upgraded by `crombolo upgrade`, and then starts', async () => {
     const file = readdirSync(site()).find((name) => name.endsWith('.sqlite')) as string
     const sqlite = new Database(join(site(), file))
+    sqlite.exec('ALTER TABLE bundle DROP COLUMN schema_picks')
+    sqlite.exec("DELETE FROM migration_history WHERE name = 'AddBundleSchemaPicks'")
     sqlite.exec('ALTER TABLE content_type DROP COLUMN site_settings')
     sqlite.exec("DELETE FROM migration_history WHERE name = 'AddSiteSettingsTypes'")
     sqlite.exec("DELETE FROM migration_history WHERE name = 'DisableBundles'")

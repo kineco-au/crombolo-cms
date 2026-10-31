@@ -107,6 +107,7 @@ export interface CoreTables {
     name: string
     package_name: string | null
     package_version: string | null
+    schema_picks: string | null
     scripts: string
     stylesheets: string
     update_date: Timestamp

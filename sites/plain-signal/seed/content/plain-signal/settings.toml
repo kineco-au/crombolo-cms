@@ -1,0 +1,7 @@
+type = "siteSettings"
+name = "Site Settings"
+order = 9
+
+[values]
+tagline = "AI news with the noise taken out."
+footerNote = "Plain Signal is a demonstration site for Crombolo. The stories report real research, with their sources; the publication itself is not real."

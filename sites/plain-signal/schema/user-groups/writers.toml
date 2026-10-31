@@ -1,0 +1,8 @@
+[user-group]
+alias = "writers"
+name = "Writers"
+description = "Draft articles and send them for approval; they never publish"
+icon = "icon-edit"
+sections = ["content", "media"]
+permissions = ["Umb.Document.Read", "Umb.Document.Create", "Umb.Document.Update", "Crombolo.Media.Read", "Crombolo.Media.Update"]
+languages = "all"

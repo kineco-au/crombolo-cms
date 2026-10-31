@@ -1,0 +1,33 @@
+type = "article"
+name = "The forecast that learned from forty years of weather"
+order = 0
+
+[values]
+title = "The forecast that learned from forty years of weather"
+standfirst = "An AI model called GenCast beat the world's leading weather forecast on almost every measure it was tested on, and it runs in minutes rather than hours."
+byline = "Plain Signal staff"
+publishedOn = 2024-12-05
+heroImage = "/hurricane-florence-from-the-iss.jpg"
+imageCaption = "Hurricane Florence, photographed from the International Space Station in September 2018."
+imageCredit = "NASA, public domain."
+whyItMatters = "Better warnings of storms, heatwaves and high winds give people more time to prepare, and cheaper forecasts could reach countries that cannot afford a supercomputer."
+topics = ["weather", "climate", "forecasting"]
+bodyText = """
+Most weather forecasts today come from physics. Supercomputers take the state of the atmosphere now and step it forward in time using the equations of how air, heat and water move. The best of these, run by the European Centre for Medium-Range Weather Forecasts (ECMWF), does it many times over with slightly different starting points, so forecasters can see not just one future but a spread of likely ones.
+
+In December 2024, researchers at Google DeepMind published a different approach in the journal *Nature*. Their model, GenCast, was not given the equations at all. Instead it learned from four decades of past weather, drawn from ECMWF's own historical record, and was then asked to forecast a year it had never seen.
+
+## How well did it do?
+
+The team compared GenCast with ECMWF's ensemble forecast across 1,320 combinations of weather variable, height in the atmosphere and days ahead. GenCast was more skilful on 97.2% of them. It also did better on the things that matter most when weather turns dangerous: extreme heat and cold, strong winds, and the tracks of tropical cyclones.
+
+It is also fast. Producing one 15-day forecast takes about eight minutes on a single specialised chip, where the physics-based ensemble needs hours on a supercomputer.
+
+## What it does not replace
+
+GenCast still depends on the traditional system. Every forecast starts from a picture of today's atmosphere, and that picture comes from the same physics-based models and observations it is being compared with. The researchers describe it as complementing the existing forecasts rather than replacing them, and they have published the model and its code so that weather services can test it themselves.
+"""
+sources = """
+- Price, I. *et al.* "Probabilistic weather forecasting with machine learning." *Nature*, 4 December 2024. [doi:10.1038/s41586-024-08252-9](https://doi.org/10.1038/s41586-024-08252-9)
+- Google DeepMind, ["GenCast predicts weather and the risks of extreme conditions with state-of-the-art accuracy"](https://deepmind.google/discover/blog/gencast-predicts-weather-and-the-risks-of-extreme-conditions-with-sota-accuracy/), 4 December 2024.
+"""

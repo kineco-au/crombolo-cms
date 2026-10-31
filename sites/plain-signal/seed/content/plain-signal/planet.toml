@@ -1,0 +1,7 @@
+type = "sectionPage"
+name = "Planet"
+order = 1
+
+[values]
+title = "Planet"
+standfirst = "Weather, climate and the systems that keep the lights on."

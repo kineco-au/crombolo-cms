@@ -303,6 +303,11 @@ export interface PublishedCacheOptions {
    * menus look items up here. Without one, nothing resolves to media.
    */
   media?: MediaCache
+  /**
+   * How long a reader waits for a rebuild when there is a previous snapshot to
+   * answer from instead (story 230). 50 ms by default.
+   */
+  readerGraceMs?: number
 }
 
 const NO_MEDIA = () => Promise.resolve(undefined)
@@ -410,18 +415,29 @@ export class PublishedCache {
   }
 
   /**
-   * The current snapshot, building it if it was dropped. The reader that starts
-   * a build, or queues the one after it, waits for it; readers arriving while
-   * one builds are answered from the previous snapshot rather than waiting
-   * (story 175). Before the first build there is none, so they share the build.
+   * The current snapshot, building it if it was dropped. Readers arriving while
+   * one builds are answered from the previous snapshot (story 175); the reader
+   * that starts a build, or queues the one after it, waits for it only for the
+   * grace, then is answered from the previous snapshot too (story 230). Before
+   * the first build there is none, so they share the build.
    */
   async snapshot(): Promise<CacheSnapshot> {
     if (this.#loaded) return this.#snapshot
     const generation = this.#generation
     const previous = this.#snapshotGeneration >= 0 ? this.#snapshot : undefined
     if (this.#building?.generation === generation) return previous ?? this.#building.done
-    if (this.#building) return this.#next && previous ? previous : this.#followUp()
-    return this.#start(generation)
+    if (this.#building && this.#next && previous) return previous
+    const build = this.#building ? this.#followUp() : this.#start(generation)
+    return previous ? this.#within(build, previous) : build
+  }
+
+  /** The build if it finishes within the grace, otherwise the previous snapshot. */
+  #within(build: Promise<CacheSnapshot>, previous: CacheSnapshot): Promise<CacheSnapshot> {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const grace = new Promise<CacheSnapshot>((resolve) => {
+      timer = setTimeout(() => resolve(previous), this.#options.readerGraceMs ?? 50)
+    })
+    return Promise.race([build, grace]).finally(() => clearTimeout(timer))
   }
 
   /** Whether readers are being answered from a snapshot older than the latest change. */

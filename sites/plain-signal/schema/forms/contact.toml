@@ -1,0 +1,76 @@
+# The form readers write to the desk with. The Contact page picks it, and the
+# contact form island (components/shared/contact-form.tsx) draws it from the
+# Delivery API and posts it from the browser; without JavaScript the page's own
+# <Form> takes the post instead (docs/forms.md).
+[form]
+key = "3e9a5b71-2c4d-4f8e-9a16-5b0c7d2e4f58"
+alias = "writeToTheDesk"
+name = "Write to the desk"
+store-entries = true
+requires-approval = false
+submit-label = "Send to the desk"
+message-on-submit = "Thank you. A sub-editor reads every message, and we reply within three working days."
+honeypot = true
+minimum-submit-seconds = 3
+
+[[page]]
+
+  [[page.group]]
+  columns = 1
+
+    [[page.group.field]]
+    alias = "readerName"
+    type = "shortAnswer"
+    caption = "Your name"
+    mandatory = true
+    mandatory-message = "We need a name to reply to"
+    autocomplete = "name"
+
+    [[page.group.field]]
+    alias = "readerEmail"
+    type = "email"
+    caption = "Email"
+    mandatory = true
+    mandatory-message = "We need an email address to reply to"
+    autocomplete = "email"
+
+    [[page.group.field]]
+    alias = "reason"
+    type = "dropdown"
+    caption = "What it is about"
+    mandatory = true
+    default-value = "A question about a story"
+    values = [
+      "A question about a story",
+      "A correction",
+      "A story we should cover",
+      "Something else",
+    ]
+
+    [[page.group.field]]
+    alias = "storyLink"
+    type = "shortAnswer"
+    caption = "Which story"
+    help-text = "Its headline or its address"
+    mandatory = true
+    mandatory-message = "Tell us which story needs correcting"
+
+      [page.group.field.condition]
+      action = "show"
+      match = "all"
+      rule = [{ field = "reason", operator = "is", value = "A correction" }]
+
+    [[page.group.field]]
+    alias = "message"
+    type = "longAnswer"
+    caption = "Message"
+    mandatory = true
+    mandatory-message = "Tell us what is on your mind"
+    rows = 6
+
+    [[page.group.field]]
+    alias = "consent"
+    type = "dataConsent"
+    caption = "I am happy for Plain Signal to keep these details to answer my message."
+    mandatory = true
+    mandatory-message = "We cannot keep your message without this"

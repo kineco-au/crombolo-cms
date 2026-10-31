@@ -1,0 +1,31 @@
+type = "article"
+name = "A machine that writes proofs"
+order = 0
+
+[values]
+title = "A machine that writes proofs"
+standfirst = "At the world's hardest school mathematics competition, an AI system scored enough for a gold medal, writing its answers as ordinary mathematical arguments."
+byline = "Plain Signal staff"
+publishedOn = 2025-07-21
+heroImage = "/euclid-elements-page.jpg"
+imageCaption = "A page from Euclid's Elements, the oldest mathematics textbook still in use, which set the pattern for proving things step by step."
+imageCredit = "Public domain."
+whyItMatters = "Writing a proof means reasoning through a problem nobody has shown you how to solve. Systems that can do that could help mathematicians and scientists check and extend their work."
+topics = ["mathematics", "reasoning", "competitions"]
+bodyText = """
+The International Mathematical Olympiad is a competition for the world's best school-age mathematicians. Over two days, in two sessions of four and a half hours, competitors solve six problems, and each answer has to be a complete written proof, not just a number. Gold goes to no more than one competitor in twelve.
+
+At the 2025 Olympiad, held in Australia in July, Google DeepMind entered an advanced version of its Gemini model with a mode it calls Deep Think, which spends longer reasoning before it answers. It solved five of the six problems and scored 35 points out of 42, enough for gold. It worked from the official problems as written, within the same time limits as the students, and wrote its proofs in plain mathematical English. The competition's coordinators marked them in the same way as the students' work.
+
+## Not the only one
+
+OpenAI announced that an experimental model of its own had reached the same score. Its proofs were marked by three former Olympiad medallists it brought in, rather than by the competition's coordinators, which led to a public argument about how the two results compare.
+
+## Why it is different from a calculator
+
+A year earlier, the best AI result, a silver medal, needed the problems translated by hand into a special computer language first, and took far longer than the students are given. Answering in ordinary language, within the time limit, is a different kind of achievement. It is still a competition, with problems set to have tidy solutions, which is not the same as the open, unsolved questions research mathematicians work on.
+"""
+sources = """
+- Google DeepMind, ["Advanced version of Gemini with Deep Think officially achieves gold-medal standard at the International Mathematical Olympiad"](https://deepmind.google/discover/blog/advanced-version-of-gemini-with-deep-think-officially-achieves-gold-medal-standard-at-the-international-mathematical-olympiad/), 21 July 2025.
+- TechRepublic, ["Did OpenAI win gold at the International Mathematical Olympiad?"](https://www.techrepublic.com/article/news-openai-model-math-olympiad/), July 2025.
+"""

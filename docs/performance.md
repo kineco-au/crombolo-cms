@@ -33,10 +33,13 @@ page whose pickers, links or block lists name it, the domains above it that
 pick its root and culture, and the redirect rules tracked from its old routes.
 
 A rebuild reads in slices of 500 and looks each content type up once (story
-`086`). The request that starts a rebuild waits for it; requests that arrive
-while it runs are answered from the previous snapshot, so a visitor never waits
-for a rebuild another request started (story `175`). Before the first build
-there is no previous snapshot, and they share the one build. A request that
+`086`). Requests that arrive while a rebuild runs are answered from the
+previous snapshot (story `175`). The request that starts a rebuild, or queues
+the one after a running build, waits for it only for a grace of 50 ms
+(`readerGraceMs`), and is then answered from the previous snapshot too (story
+`230`): a visitor never waits seconds for a rebuild, and a quick one still
+shows the change at once. Before the first build there is no previous
+snapshot, and readers share the one build however long it takes. A request that
 changes content (anything but `GET` and `HEAD`) is answered only once the
 rebuild it caused has finished, so the editor who published sees the change at
 once; for the rebuild's length other visitors may still see the previous
@@ -56,28 +59,36 @@ own. A build that a later change overtook is not kept (story `174`).
 
 Every size shares the render budgets: 20 ms p95 for a warm render, a render
 during a rebuild, and renders through sustained and burst publishing; a cold
-render after a publish, unpublish or move within the rebuild budget plus 50 ms.
+render after a publish, unpublish or move within the rebuild budget plus 50 ms;
+and 1,000 ms for the slowest single render through sustained and burst
+publishing (story `230`), which a few multi-second waits would pass at p95.
 A run fails only past twice a budget.
 
-Measured 2026-10-30 in the Docker test services on a developer machine (8 GB
+Measured 2026-10-31 in the Docker test services on a developer machine (8 GB
 for Docker), with a library of 2,000 items and 100 uploads. SQLite is a file in
 the checkout's `output/`, which Docker mounts from the host; that is slower to
 read than a disk of the container's own, and it is most of the SQLite rebuild's
-time at Medium. Medium on Postgres is from the run before a rebuild gave the
-thread up, but for its render during a rebuild:
+time at Medium.
 
 | p95 ms unless named | Small SQLite | Small Postgres | Medium SQLite | Medium Postgres |
 | --- | --- | --- | --- | --- |
-| tree root / children / siblings | 2 / 2 / 3 | 5 / 5 / 6 | 3 / 13 / 8 | 8 / 9 / 11 |
-| cache memory (MB) | 2.8 | 2.6 | 151 | 149 |
-| rebuild peak (MB) | 2.8 | 2.6 | 299 | 261 |
-| cache rebuild | 13 | 19 | 2,548 | 715 |
-| page render | 0.9 | 1.4 | 1.4 | 4.4 |
-| render during rebuild | 1.0 | 2.7 | 0.7 | 3.9 |
-| queries per slice of 500 | 5.7 | 5.7 | 2.2 | 2.2 |
-| cold render after publish / unpublish / move | 2 / 2 / 2 | 3 / 17 / 23 | 3 / 597 / 662 | 402 / 1,123 / 1,265 |
-| renders while publishing | 0.7 | 1.0 | 0.7 | 3.7 |
-| renders in a burst | 0.7 | 1.3 | 0.9 | 5.1 |
+| tree root / children / siblings | 2 / 3 / 3 | 6 / 4 / 5 | 3 / 4 / 5 | 4 / 5 / 9 |
+| cache memory (MB) | 2.8 | 2.7 | 151 | 150 |
+| rebuild peak (MB) | 2.8 | 2.7 | 297 | 342 |
+| cache rebuild | 11 | 24 | 2,585 | 638 |
+| page render | 0.8 | 1.6 | 2.8 | 1.4 |
+| render during rebuild | 0.7 | 3.8 | 1.4 | 4.0 |
+| queries per slice of 500 | 6.0 | 6.0 | 2.2 | 2.2 |
+| cold render after publish / unpublish / move | 4 / 4 / 2 | 3 / 19 / 21 | 54 / 3 / 57 | 4 / 61 / 3 |
+| renders while publishing | 0.7 | 1.1 | 0.8 | 1.6 |
+| slowest render while publishing | 9 | 39 | 55 | 95 |
+| renders in a burst | 0.7 | 1.8 | 0.9 | 3.8 |
+| slowest render in a burst | 12 | 47 | 55 | 56 |
+
+At Medium the slowest render, and a cold render that met a rebuild, is the
+50 ms grace and then a render from the previous snapshot (story `230`); before
+the grace, cold renders at Medium took 600 ms to 1.3 s on Postgres, the length
+of the rebuild they waited for.
 
 The whole snapshot is kept: at Medium it takes 150 MB and rebuilds well within
 its budget, and memory stays flat through two minutes of publishing under load.

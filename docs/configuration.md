@@ -259,6 +259,7 @@ rather than the running server. Secret ones are never printed or logged.
 | --- | --- | --- |
 | `sites/starter` | `starter` | yes |
 | `sites/harbourstone` | `demo/harbourstone` | yes |
+| `sites/plain-signal` | `demo/plain-signal` | yes |
 | `sites/crombolo` | `demo/crombolo` | no — the product site |
 
 Each is a real site — `package.json`, `crombolo.config.ts`, `server.ts`, `schema/`,

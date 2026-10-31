@@ -232,6 +232,60 @@ describe('a snapshot is one consistent state', () => {
     expect(cache.stale).toBe(false)
     expect((await cache.snapshot()).checkpoint).toBe(6)
   })
+
+  /** A source whose builds after the first take `ms`, numbered from 1. */
+  const slowAfterFirst = (ms: number) => {
+    let builds = 0
+    const source: PublishedContentSource = {
+      loadPublished: async () => [],
+      withSnapshot: async (fn) => {
+        const checkpoint = ++builds
+        if (checkpoint > 1) await Bun.sleep(ms)
+        return fn(source, checkpoint)
+      },
+    }
+    return source
+  }
+
+  test('a reader waits no longer than the grace: a quick rebuild answers it, a slow one does not', async () => {
+    const quick = new PublishedCache(slowAfterFirst(5), { readerGraceMs: 200 })
+    await quick.snapshot()
+    quick.invalidate()
+    expect((await quick.snapshot()).checkpoint).toBe(2)
+
+    const slow = new PublishedCache(slowAfterFirst(300), { readerGraceMs: 20 })
+    await slow.snapshot()
+    slow.invalidate()
+    const started = performance.now()
+    expect((await slow.snapshot()).checkpoint).toBe(1)
+    expect(performance.now() - started).toBeLessThan(250)
+    // A write still waits for the build that holds it.
+    expect((await slow.fresh()).checkpoint).toBe(2)
+  })
+
+  test('the reader that queues the build behind a running one waits only the grace too', async () => {
+    const cache = new PublishedCache(slowAfterFirst(150), { readerGraceMs: 20 })
+    await cache.snapshot()
+    cache.invalidate()
+    const running = cache.fresh()
+    cache.invalidate()
+    expect((await cache.snapshot()).checkpoint).toBe(1)
+    expect((await running).checkpoint).toBe(2)
+    expect((await cache.fresh()).checkpoint).toBe(3)
+  })
+
+  test('before the first build there is nothing older, so readers wait for it however long', async () => {
+    let builds = 0
+    const source: PublishedContentSource = {
+      loadPublished: async () => [],
+      withSnapshot: async (fn) => {
+        await Bun.sleep(80)
+        return fn(source, ++builds)
+      },
+    }
+    const cache = new PublishedCache(source, { readerGraceMs: 5 })
+    expect((await cache.snapshot()).checkpoint).toBe(1)
+  })
 })
 
 describe('SQLite reads a snapshot on a connection of its own', () => {

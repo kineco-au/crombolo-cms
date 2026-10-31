@@ -21,11 +21,13 @@ import { ObjectTypes, type Page } from '@crombolo/core'
 import {
   type Bundle,
   BundleRepository,
+  type BundleSchemaPicks,
   type ComponentFileStore,
   type Db,
   type NodeRow,
   resolveNodeRef,
 } from '@crombolo/data'
+import { loadSchemaDirectory, type SchemaSet } from '@crombolo/schema'
 import {
   type BundleBlob,
   type BundleDependency,
@@ -43,6 +45,7 @@ import {
 import { VERSION } from '../config.ts'
 import { readBlobs } from '../media-files.ts'
 import type { MediaStore } from '../media-store.ts'
+import { carriedPicks, schemaPickFiles } from '../schema-picks.ts'
 import { siteSections } from '../site-sections.ts'
 import { writeNpmTarball } from '../tar.ts'
 
@@ -67,6 +70,8 @@ export interface PackagePortOptions {
   components?: FileSystemPort
   stylesheets?: FileSystemPort
   scripts?: FileSystemPort
+  /** Where the site's forms, workflows and user groups are read from (story 226). */
+  schemaDir?: string
 }
 
 const definition = (row: Bundle): PackageDefinition => ({
@@ -278,6 +283,13 @@ export function createPackagePort(db: Db, options: PackagePortOptions): PackageP
       if (!row) return undefined
       const from = definition(row)
       const pkg = bundlePackageOf(row)
+      const declared = options.schemaDir
+        ? loadSchemaDirectory(options.schemaDir)
+        : { set: undefined, files: new Map<string, string>() }
+      const carried = declared.set ? carriedPicks(declared.set, await bundles.schemaPicks(id)) : []
+      const broughtTypes = carried
+        .filter((pick) => pick.kind === 'documentType' && !pick.excluded)
+        .map((pick) => pick.alias)
 
       const sections = await siteSections(
         {
@@ -288,7 +300,7 @@ export function createPackagePort(db: Db, options: PackagePortOptions): PackageP
           scripts: options.scripts,
         },
         {
-          contentTypes: from.contentTypes,
+          contentTypes: [...from.contentTypes, ...broughtTypes],
           mediaTypes: from.mediaTypes,
           dataTypes: from.dataTypes,
           languages: from.languages,
@@ -298,6 +310,17 @@ export function createPackagePort(db: Db, options: PackagePortOptions): PackageP
           dictionaryItems: from.dictionaryItems,
         },
       )
+
+      // Document types go through the picked-type path above; the rest are the
+      // site's own files, which the database does not hold.
+      if (options.schemaDir)
+        sections.push(
+          ...schemaPickFiles(
+            declared,
+            options.schemaDir,
+            carried.filter((pick) => pick.kind !== 'documentType'),
+          ),
+        )
 
       const content = await contentEntries(from, buildOptions.withMedia === true)
       // A package with nothing picked is still a bundle: an empty selection
@@ -387,4 +410,59 @@ export async function writeCreatedBundlePackage(
     return { ok: false, message: 'A version is three numbers, like 1.0.0.' }
   await bundles.setPackage(id, { name: name || null, version: version || null })
   return { ok: true, package: (await readCreatedBundlePackage(db, id)) as CreatedBundlePackage }
+}
+
+/** The forms, workflows and user groups a created bundle can pick: the site's files. */
+export interface SchemaPickChoices {
+  forms: { alias: string; name: string }[]
+  workflows: { alias: string; name: string }[]
+  userGroups: { alias: string; name: string }[]
+}
+
+const declaredSet = (schemaDir: string): SchemaSet => loadSchemaDirectory(schemaDir).set
+
+export function schemaPickChoices(schemaDir: string): SchemaPickChoices {
+  const set = declaredSet(schemaDir)
+  const named = (list: readonly { alias: string; name: string }[] | undefined) =>
+    (list ?? []).map(({ alias, name }) => ({ alias, name }))
+  return {
+    forms: named(set.forms),
+    workflows: named(set.workflows),
+    userGroups: named(set.userGroups),
+  }
+}
+
+const aliases = (value: unknown): string[] =>
+  Array.isArray(value)
+    ? [...new Set(value.filter((v): v is string => typeof v === 'string' && v.trim() !== ''))]
+    : []
+
+/** Picks as a request sends them, keeping only lists of names. */
+export function schemaPicksOf(body: Record<string, unknown>): BundleSchemaPicks {
+  return {
+    forms: aliases(body.forms),
+    workflows: aliases(body.workflows),
+    userGroups: aliases(body.userGroups),
+    excluded: aliases(body.excluded),
+  }
+}
+
+/** What a set of picks carries, against the site's files as they stand. */
+export function carriedSchemaPicks(schemaDir: string, picks: BundleSchemaPicks) {
+  return carriedPicks(declaredSet(schemaDir), picks)
+}
+
+/** A created bundle's forms, workflows and user groups, or undefined when it is gone. */
+export async function readSchemaPicks(db: Db, id: string): Promise<BundleSchemaPicks | undefined> {
+  const bundles = new BundleRepository(db)
+  return (await bundles.byId(id)) ? bundles.schemaPicks(id) : undefined
+}
+
+export async function writeSchemaPicks(
+  db: Db,
+  id: string,
+  body: Record<string, unknown>,
+): Promise<BundleSchemaPicks | undefined> {
+  const picks = schemaPicksOf(body)
+  return (await new BundleRepository(db).setSchemaPicks(id, picks)) ? picks : undefined
 }

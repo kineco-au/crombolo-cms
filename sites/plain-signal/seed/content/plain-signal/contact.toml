@@ -1,0 +1,13 @@
+type = "contactPage"
+name = "Contact"
+order = 3
+
+[values]
+title = "Write to the desk"
+standfirst = "A question about a story, a correction, or something we should be covering: every message is read by a sub-editor."
+contactForm = "3e9a5b71-2c4d-4f8e-9a16-5b0c7d2e4f58"
+aside = """
+**Corrections.** If we have something wrong, we would rather know. Corrections are made in the story itself, with a note at the end saying what changed.
+
+**How we work.** Every story is checked by a sub-editor and signed off by an editor before it is published, and names the research it rests on.
+"""

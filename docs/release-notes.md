@@ -6,6 +6,50 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.41.0 — 2026-10-31
+
+- **The Bundle Editor** (story 233). Creating or editing a bundle in Packages →
+  Created opens Crombolo's own editor in place of Umbraco's package builder.
+  It holds what the builder did, in four tabs (Content, Types, Code and
+  Language), opens and saves the same definitions, and says "bundle"
+  throughout. It is what lets a bundle carry more than Umbraco's builder knows.
+- **Bundles carry forms, approval workflows and user groups** (story 226). The
+  Bundle Editor's Forms, Workflows and User groups tabs pick the site's own. A
+  workflow brings the document types it covers and the groups that approve
+  it, and a form brings the document type its "save as content" step creates;
+  each is ticked, saying what added it, and can be left out with a warning.
+  Migration 058 adds where a bundle keeps these picks.
+
+- **Plain Signal, a magazine demo** (story 232). `crombolo init --template
+  demo/plain-signal` makes a mock AI magazine for a general reader: sections,
+  six articles on real advances with openly licensed photographs, their
+  credits and their sources, a site-settings footer, a two-stage approval
+  workflow (sub-editors, then editors) with its groups declared in
+  `schema/user-groups/`, and a contact form drawn by a React island from the
+  Delivery API, with the server's form as its fallback.
+- **Dates in seed files** (story 232). An unquoted TOML date, such as
+  `publishedOn = 2024-12-05`, was refused by every seed; it is now read, and a
+  date picker's value is stored as a save stores it, so a seed exported and
+  applied again is unchanged.
+
+- **User groups as files** (story 228). A site declares the user groups its
+  code relies on, such as the approvers an approval workflow names, in
+  `schema/user-groups/*.toml`: name, icon, sections, permission verbs and
+  languages, synced at every boot. Start nodes, per-page permissions and members
+  stay each environment's, set in Users. In development the Users section writes
+  a change back to the file; elsewhere the file's fields are read-only there.
+  Bundles and site files carry the groups with the rest of `schema/`.
+
+- **No visitor waits out a rebuild** (story 230). A visitor whose request
+  meets a rebuild of the published cache waits at most 50 ms for it, then is
+  answered from the version before; an editor's own change still waits for
+  the rebuild that holds it. At 25,000 pages the slowest render through a
+  burst of publishes is now about 55 ms, down from over a second. The
+  benchmark gains a 1,000 ms budget for the slowest render.
+
+**Upgrading:** migration 058 adds a column to `bundle`, run by `crombolo
+upgrade` or at the next start.
+
 ## v0.40.0 — 2026-10-31
 
 - **Server actions** (story 219). A form, or an island, calls a function on

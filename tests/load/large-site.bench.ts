@@ -69,6 +69,9 @@ const BUDGETS = {
   'rebuild queries per slice': 12,
   'renders while publishing': 20,
   'renders in a burst': 20,
+  // Story 230: no visitor waits seconds for a rebuild, at any size.
+  'slowest render publishing': 1000,
+  'slowest render in a burst': 1000,
 } as const
 
 const PAGE_TOML = `[content-type]
@@ -303,7 +306,7 @@ describe(`a large site (${dialectUnderTest})`, () => {
   test("the published cache's memory, steady and at a rebuild's peak", async () => {
     // Nothing of the generated site is cached yet: the generation's publishes dropped it.
     const before = heapMb()
-    await h.server.cache.snapshot()
+    await h.server.cache.fresh()
     const steady = heapMb() - before
     // The old snapshot stays live while the new one builds, so the peak holds both.
     let peak = 0
@@ -311,7 +314,7 @@ describe(`a large site (${dialectUnderTest})`, () => {
       peak = Math.max(peak, process.memoryUsage().heapUsed / 1_048_576)
     }, 5)
     h.server.cache.invalidate()
-    await h.server.cache.snapshot()
+    await h.server.cache.fresh()
     clearInterval(sampler)
     const rss = process.memoryUsage().rss / 1_048_576
     record('cache memory (MB)', steady, `process resident ${rss.toFixed(0)} MB`)
@@ -319,19 +322,19 @@ describe(`a large site (${dialectUnderTest})`, () => {
   })
 
   test('a full rebuild of the published cache', async () => {
-    const snapshot = await h.server.cache.snapshot()
+    const snapshot = await h.server.cache.fresh()
     expect(snapshot).toBeDefined()
     record(
       'cache rebuild',
       await time(3, async () => {
         h.server.cache.invalidate()
-        await h.server.cache.snapshot()
+        await h.server.cache.fresh()
       }),
     )
   })
 
   test('a page render, once the cache is built', async () => {
-    await h.server.cache.snapshot()
+    await h.server.cache.fresh()
     const first = await h.server.fetch(new Request(`${ORIGIN}${made[made.length - 1]?.route}`))
     expect(first.status).toBe(200)
     record(
@@ -345,11 +348,11 @@ describe(`a large site (${dialectUnderTest})`, () => {
   })
 
   test('a page render while the cache rebuilds', async () => {
-    await h.server.cache.snapshot()
+    await h.server.cache.fresh()
     // Warm, so the first render's compile is not counted as waiting on the rebuild.
     await (await h.server.fetch(new Request(`${ORIGIN}${made[0]?.route ?? '/'}`))).text()
     h.server.cache.invalidate()
-    const building = h.server.cache.snapshot()
+    const building = h.server.cache.fresh()
     let done = false
     void building.then(() => {
       done = true
@@ -367,7 +370,7 @@ describe(`a large site (${dialectUnderTest})`, () => {
   })
 
   test("a rebuild's queries grow with slices of 500, not with pages", async () => {
-    await h.server.cache.snapshot()
+    await h.server.cache.fresh()
     const db = h.server.db
     const original = db.readSnapshot.bind(db)
     let statements = 0
@@ -389,7 +392,7 @@ describe(`a large site (${dialectUnderTest})`, () => {
       original((reader) => fn(counting(reader)))) as typeof db.readSnapshot
     try {
       h.server.cache.invalidate()
-      await h.server.cache.snapshot()
+      await h.server.cache.fresh()
     } finally {
       db.readSnapshot = original
     }
@@ -402,7 +405,7 @@ describe(`a large site (${dialectUnderTest})`, () => {
   const coldRender = async (change: (page: Made) => Promise<unknown>) => {
     const samples: number[] = []
     for (let n = 0; n < 5; n++) {
-      await h.server.cache.snapshot()
+      await h.server.cache.fresh()
       const page = made[made.length - 1 - n] as Made
       await change(page)
       const other = made[(n * 104_729) % (made.length - 10)] ?? home
@@ -474,8 +477,9 @@ describe(`a large site (${dialectUnderTest})`, () => {
       record(
         'renders while publishing',
         result.p95,
-        `${result.count} renders over ${result.seconds.toFixed(0)} s, slowest ${result.max.toFixed(0)} ms`,
+        `${result.count} renders over ${result.seconds.toFixed(0)} s`,
       )
+      record('slowest render publishing', result.max)
     },
     (SUSTAIN_SECONDS + 600) * 1000,
   )
@@ -497,7 +501,8 @@ describe(`a large site (${dialectUnderTest})`, () => {
     record(
       'renders in a burst',
       result.p95,
-      `${result.count} renders over ${result.seconds.toFixed(0)} s, slowest ${result.max.toFixed(0)} ms`,
+      `${result.count} renders over ${result.seconds.toFixed(0)} s`,
     )
+    record('slowest render in a burst', result.max)
   }, 3_600_000)
 })

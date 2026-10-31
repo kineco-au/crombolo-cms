@@ -1,0 +1,21 @@
+[content-type]
+alias = "sectionPage"
+name = "Section"
+description = "A section of the magazine, holding its articles"
+icon = "icon-folder"
+allow-children = ["article"]
+components = ["pages/sectionPage"]
+default-component = "pages/sectionPage"
+
+[[property]]
+alias = "title"
+name = "Title"
+type = "textstring"
+mandatory = true
+site-search = "high"
+
+[[property]]
+alias = "standfirst"
+name = "Standfirst"
+description = "What the section covers, in a sentence"
+type = "textarea"

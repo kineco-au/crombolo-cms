@@ -47,8 +47,8 @@ and where it sits here:
 
 | Metadata | Umbraco today | Here | Notes |
 | --- | --- | --- | --- |
-| User groups: sections, permissions, granular permissions, languages | DB: `umbracoUserGroup` and four join tables | DB — not yet files; where they belong is open in story `162` | roles are deploy-bound |
-| Start nodes per group | DB: columns on `umbracoUserGroup` | DB (story `162`) | optional |
+| User groups: name, sections, permission verbs, languages | DB: `umbracoUserGroup` and four join tables | **Files** `schema/user-groups/*.toml` (story `228`), or DB for a group made in Users | the file owns these; see [User groups](#user-groups) |
+| Start nodes and per-page permissions per group | DB: `umbracoUserGroup` columns, `umbracoUserGroup2GranularPermission` | DB, set in Users on each environment | they name content, which differs between environments (story `162`) |
 | Start nodes per user | DB: `umbracoUserStartNode` | DB | per-person |
 | Users, sessions, tokens, 2FA secrets | DB | DB | data, not metadata |
 | External login provider configuration | Files and code: `appsettings.json`, `AddBackOfficeExternalLogins()` | **Files** `crombolo.config.ts` | |
@@ -94,6 +94,40 @@ but *not* part of the deploy unit, because they differ per environment.
 Data types matter here because a property names its data type by alias, so the
 alias must exist. The core set ships built in and needs no file; a site adds its
 own in the same format.
+
+
+### User groups
+
+A group the site's code relies on, such as the approvers an approval workflow
+names, is declared beside it (story `228`):
+
+```toml
+# schema/user-groups/sub-editors.toml
+[user-group]
+alias = "subEditors"
+name = "Sub-editors"
+icon = "icon-edit"
+sections = ["content", "media"]
+permissions = ["Umb.Document.Read", "Umb.Document.Update", "Umb.Document.Create"]
+languages = "all"           # or a list of ISO codes
+```
+
+- **Synced as types are,** at every boot, by alias: created when missing, its
+  name, description, icon, sections, verbs and languages set from the file.
+  The schema hash covers the files, so production's version-bump rule applies.
+- **Where it starts and who is in it are the environment's.** Start nodes,
+  per-page permissions and members are set in Users and never written to the
+  file, in development or production.
+- **Edited as types are.** In development the Users section writes a change to
+  the file's fields back to the file; elsewhere they are read-only there, and a
+  save that changes one is refused, naming the file. A declared group cannot be
+  renamed or deleted in Users: change or remove its file.
+- **Refused:** an unknown section (an application alias such as `content`, or an
+  extension section's dotted alias), an unknown verb, and `admin`, which is
+  built in. A language the site does not have stops the sync, naming the group.
+- **Removing a file leaves the group,** as one made in Users, so taking a file
+  away never takes its members' access away unannounced.
+- Bundles and site files carry `schema/user-groups/` with the rest of `schema/`.
 
 ## Format: TOML
 

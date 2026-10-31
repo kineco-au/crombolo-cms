@@ -1,0 +1,30 @@
+[content-type]
+alias = "contactPage"
+name = "Contact Page"
+description = "The form readers write to the desk with"
+icon = "icon-message"
+components = ["pages/contactPage"]
+default-component = "pages/contactPage"
+
+[[property]]
+alias = "title"
+name = "Title"
+type = "textstring"
+mandatory = true
+
+[[property]]
+alias = "standfirst"
+name = "Standfirst"
+type = "textarea"
+
+# A form's UUID from schema/forms/; the page hands the definition to the
+# contact form island.
+[[property]]
+alias = "contactForm"
+name = "Form"
+type = "formPicker"
+
+[[property]]
+alias = "aside"
+name = "Beside the form"
+type = "richtext"

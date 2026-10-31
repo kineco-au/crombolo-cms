@@ -107,21 +107,55 @@ rendered a list would have renamed the view and lost the builder;
 `tests/bundles-backoffice.test.ts` asserts each of upstream's routes is still
 declared here.
 
-### The builder's two labels are corrected, not overridden
+### The Bundle Editor
 
-The builder workspace writes `Name of the package` and `Package Content` as
-English in its template rather than as dictionary keys, so there is no key to
-override and no manifest seam — it is one 431-line vendored element wired to
-picker contexts. `plugin/branding/bundle-builder-labels.js` corrects both after
-each render, the same way the client credential dialog's prefix is corrected,
-and does nothing at all if upstream rewords either. That silence is the point:
-the cost of a vendor bump is a stale label, never an error. The test asserts
-both strings are still there to correct, so the bump is still noticed.
+Creating or editing a bundle opens Crombolo's own editor, not Umbraco's package
+builder (story `233`). Its manifest declares `overwrites:
+['Umb.Workspace.PackageBuilder']` for the same `package-builder` entity type,
+so the Created view's routes reach it and nothing reaches Umbraco's.
 
-**What still says package.** Two toasts — `Package saved` and `Package
-updated`. They are passed to the notification context from inside the builder's
-private methods, which have no interception point, so removing them means
-reimplementing the workspace. They are transient and they are the last of it.
+- **Why its own.** Umbraco's builder draws its form as the workspace editor's
+  default content, which the editor stops showing as soon as any tab is added;
+  a bundle that carries more than Umbraco knows needs tabs.
+- **Its tabs** are workspace views on `Crombolo.Workspace.BundleEditor`:
+  **Content** (a page and optionally the pages below it, media and optionally
+  what is inside them, Library elements), **Types** (document, media and data
+  types), **Code** (templates, partial views, stylesheets, scripts),
+  **Language** (languages, dictionary items), and **Forms**, **Workflows** and
+  **User groups** (story `226`). Another is one more registration.
+- **The same definitions.** It is made of the inputs Umbraco's builder is made
+  of, and loads, saves and downloads through Umbraco's own package repository,
+  so a definition made before it opens and saves unchanged. It says "bundle"
+  throughout, its toasts included.
+
+#### Forms, approval workflows and user groups
+
+Umbraco's definition has no fields for these, so the three tabs keep their
+picks in the `bundle` table's `schema_picks` column (migration 058), through
+`<backoffice>/crombolo/api/bundles/created/<id>/schema`. Each tab lists the
+site's own files (`schema/forms/`, `schema/workflows/`, `schema/user-groups/`)
+by name, from `<backoffice>/crombolo/api/bundles/schema`.
+
+A pick brings what it needs (`carriedPicks`, `server/src/schema-picks.ts`):
+
+| Pick | Brings |
+| --- | --- |
+| An approval workflow | the document types it covers, and the groups its stages name |
+| A form | the document type its "save as content" step creates |
+
+What a pick brings is ticked on its tab (a document type under **Added for
+forms and workflows** on Types), saying which pick added it. Unticking one
+leaves it out and warns that the pick needs it, which is right when the site
+that installs the bundle already has it; the choice is kept as `excluded`.
+The editor asks `…/bundles/schema/carried` what the current picks bring, so a
+bundle not yet created shows it too. The page a "save as content" step creates
+under is content, so it stays a reference: the step does nothing until that
+page exists where the bundle lands.
+
+The build carries the form, workflow and group files as the site holds them;
+a brought document type goes through the same path as a picked one. Installing
+copies them into `schema/` and syncs them, as any schema file. A site-directory
+bundle (`crombolo bundle build`) carries every file under `schema/` anyway.
 
 The npm *identifier* keeps the name npm gives it — the Installed table's column
 reads `npm package`, and an install still writes `package.json`. Renaming that
@@ -299,7 +333,8 @@ table the code no longer looks for, with no migration to say so.
 Columns follow the contract's model: `id`, `name`, `content_node_id`,
 `content_load_child_nodes`, `media_ids`, `media_load_child_nodes`,
 `element_ids`, and the alias/path lists — content types, media types, data
-types, components, stylesheets, scripts, languages, dictionary items. The lists are JSON text; they are read and written whole and never
+types, components, stylesheets, scripts, languages, dictionary items, and
+`schema_picks`, the forms, workflows and user groups (story `226`). The lists are JSON text; they are read and written whole and never
 queried into, so a column each would be columns for nothing.
 
 ## The package is built on download, never stored
