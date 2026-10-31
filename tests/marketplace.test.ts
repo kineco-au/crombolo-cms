@@ -194,6 +194,9 @@ function marketplace(options: {
   }
 }
 
+/** Refuses at once, so a test of the air-gapped case never waits on the network. */
+const UNREACHABLE = 'http://127.0.0.1:9'
+
 describe('searching the registry', () => {
   test('searches the keyword, because it is the only thing npm indexes', async () => {
     const seen: string[] = []
@@ -696,10 +699,10 @@ describe('the endpoints', () => {
   })
 
   test('answer the marketplace with the keyword in play', async () => {
-    const h = await signedInServer()
+    // A registry nothing answers at, which is the air-gapped case: an empty list
+    // and a usable response rather than a failure.
+    const h = await signedInServer({ config: { npmRegistry: UNREACHABLE } })
     open.push(h)
-    // The real registry is unreachable from the suite, which is the air-gapped
-    // case: an empty list and a usable response rather than a failure.
     const body = await h.json<{ keyword: string; url: string; items: unknown[] }>(
       `${PACKAGES}/marketplace`,
     )
@@ -714,7 +717,7 @@ describe('the endpoints', () => {
       url: 'https://host.example/bundles',
     }
     const off = await signedInServer({
-      config: { runtimeInstalls: false, installsElsewhere: elsewhere },
+      config: { runtimeInstalls: false, installsElsewhere: elsewhere, npmRegistry: UNREACHABLE },
     })
     open.push(off)
     for (const action of ['marketplace', 'installed'])
@@ -723,7 +726,9 @@ describe('the endpoints', () => {
         action,
       ).toMatchObject({ installs: false, installsElsewhere: elsewhere })
     // Unset, or with installs on, today's wording stays.
-    const on = await signedInServer({ config: { installsElsewhere: elsewhere } })
+    const on = await signedInServer({
+      config: { installsElsewhere: elsewhere, npmRegistry: UNREACHABLE },
+    })
     open.push(on)
     expect(
       (await on.json<{ installsElsewhere: unknown }>(`${PACKAGES}/marketplace`)).installsElsewhere,
