@@ -33,7 +33,10 @@ export class UmbBackofficeHeaderSectionsElement extends UmbLitElement {
 			this._backofficeContext.allowedSections,
 			(allowedSections) => {
 				const oldValue = this._sections;
-				this._sections = allowedSections.map((section) => section.manifest).filter((section) => section !== undefined);
+				this._sections = allowedSections
+					.map((section) => section.manifest)
+					// Settings opens from the header's gear (`Crombolo.HeaderApp.Settings`).
+					.filter((section) => section !== undefined && section.alias !== 'Umb.Section.Settings');
 				this.requestUpdate('_sections', oldValue);
 			},
 			'observeSections',
