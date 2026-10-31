@@ -123,7 +123,7 @@ export class UmbDashboardRedirectManagementElement extends UmbLitElement {
 						isEnabled ? 'redirectUrls_disableUrlTrackerInstruction' : 'redirectUrls_enableUrlTrackerInstruction',
 					)}
 				</p>
-				<p><code>Umbraco:CMS:WebRouting:DisableRedirectUrlTracking</code></p>
+				<p><code>CROMBOLO_TRACK_REDIRECTS</code></p>
 			`,
 		}).catch(() => undefined);
 	}
