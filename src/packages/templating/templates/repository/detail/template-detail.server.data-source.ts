@@ -1,3 +1,4 @@
+import { umbCromboloHooks } from '@umbraco-cms/backoffice/extension-registry';
 import type { UmbTemplateDetailModel } from '../../types.js';
 import { UMB_TEMPLATE_ENTITY_TYPE } from '../../entity.js';
 import { UmbId } from '@umbraco-cms/backoffice/id';
@@ -39,6 +40,7 @@ export class UmbTemplateServerDataSource implements UmbDetailDataSource<UmbTempl
 	 */
 	async createScaffold(preset: Partial<UmbTemplateDetailModel> = {}) {
 		const scaffold =
+			umbCromboloHooks.templateScaffold?.() ??
 			'@using Umbraco.Cms.Web.Common.PublishedModels;\n@inherits Umbraco.Cms.Web.Common.Views.UmbracoViewPage\n@{\n\tLayout = null;\n}';
 
 		const data: UmbTemplateDetailModel = {

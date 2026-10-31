@@ -1,3 +1,4 @@
+import { umbCromboloHooks } from '@umbraco-cms/backoffice/extension-registry';
 import type { UmbTemplateDetailModel } from '../types.js';
 import type { UmbTemplateItemModel, UmbTemplateDetailRepository } from '../repository/index.js';
 import { UMB_TEMPLATE_DETAIL_REPOSITORY_ALIAS, UmbTemplateItemRepository } from '../repository/index.js';
@@ -122,7 +123,13 @@ export class UmbTemplateWorkspaceContext
 		}
 
 		if (updateLayoutBlock) {
-			this.#updateLayoutTemplateLayoutBlock();
+			const writeLayout = umbCromboloHooks.writeLayout;
+			if (writeLayout) {
+				const content = this._data.getCurrent()?.content ?? '';
+				this.setContent(writeLayout(content, this.#layoutTemplate.getValue()?.alias ?? null));
+			} else {
+				this.#updateLayoutTemplateLayoutBlock();
+			}
 			this._data.updateCurrent({ layoutTemplate: unique ? { unique } : null });
 		}
 

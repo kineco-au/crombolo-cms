@@ -1,3 +1,4 @@
+import { umbCromboloHooks } from '@umbraco-cms/backoffice/extension-registry';
 import type { UmbPartialViewDetailModel } from '../types.js';
 import { UMB_PARTIAL_VIEW_ENTITY_TYPE } from '../entity.js';
 import {
@@ -29,6 +30,7 @@ export class UmbPartialViewDetailServerDataSource implements UmbDetailDataSource
 			content: '',
 			...preset,
 		};
+		if (!data.content) data.content = (await umbCromboloHooks.partialViewScaffold?.()) ?? '';
 
 		return { data };
 	}

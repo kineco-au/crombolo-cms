@@ -1,3 +1,4 @@
+import { umbCromboloHooks } from '@umbraco-cms/backoffice/extension-registry';
 import { getUmbracoFieldSnippet } from '../../utils/index.js';
 import type {
 	UmbTemplatingPageFieldBuilderModalData,
@@ -59,6 +60,10 @@ export class UmbTemplatingPageFieldBuilderModalElement extends UmbModalBaseEleme
 		this._field = (e.target as UmbTemplateFieldDropdownListElement).value?.alias;
 	}
 
+	#preview(snippet: string) {
+		return umbCromboloHooks.translateSnippet?.(snippet) ?? snippet;
+	}
+
 	override render() {
 		return html`
 			<umb-body-layout headline=${this.localize.term('template_insert')}>
@@ -94,8 +99,8 @@ export class UmbTemplatingPageFieldBuilderModalElement extends UmbModalBaseEleme
 							?disabled=${this._field ? false : true}></uui-checkbox>
 
 						<uui-label><umb-localize key="templateEditor_outputSample">Output sample</umb-localize></uui-label>
-						<umb-code-block style="max-height:500px;" language="C#" copy
-							>${this._field ? getUmbracoFieldSnippet(this._field, this._default, this._recursive) : ''}</umb-code-block
+						<umb-code-block style="max-height:500px;" language=${umbCromboloHooks.viewLanguageLabel ?? 'C#'} copy
+							>${this._field ? this.#preview(getUmbracoFieldSnippet(this._field, this._default, this._recursive)) : ''}</umb-code-block
 						>
 					</div>
 				</uui-box>

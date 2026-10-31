@@ -1,3 +1,4 @@
+import { umbCromboloHooks } from '@umbraco-cms/backoffice/extension-registry';
 import { getInsertDictionarySnippet, getInsertPartialSnippet } from '../../utils/index.js';
 import {
 	UMB_TEMPLATING_ITEM_PICKER_MODAL,
@@ -22,7 +23,7 @@ export class UmbTemplatingInsertMenuElement extends UmbLitElement {
 	disabled = false;
 
 	@property({ type: Boolean })
-	hidePartialViews = false;
+	hidePartialViews = umbCromboloHooks.hideRazorInserts ?? false;
 
 	#modalContext?: UmbModalManagerContext;
 

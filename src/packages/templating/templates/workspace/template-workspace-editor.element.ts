@@ -1,3 +1,4 @@
+import { umbCromboloHooks } from '@umbraco-cms/backoffice/extension-registry';
 import { getQuerySnippet } from '../../utils/index.js';
 import { UMB_TEMPLATE_QUERY_BUILDER_MODAL } from '../modals/query-builder/index.js';
 import { UMB_TEMPLATING_SECTION_PICKER_MODAL } from '../../modals/templating-section-picker/templating-section-picker-modal.token.js';
@@ -218,14 +219,16 @@ export class UmbTemplateWorkspaceEditorElement extends UmbLitElement {
 							@click=${this.#openQueryBuilder}>
 							<uui-icon name="icon-wand"></uui-icon> ${this.localize.term('template_queryBuilder')}
 						</uui-button>
-						<uui-button
-							look="secondary"
-							id="sections-button"
-							label=${this.localize.term('template_insertSections')}
-							?disabled=${this._isRestricted}
-							@click=${this.#openInsertSectionModal}>
-							<uui-icon name="icon-indent"></uui-icon> ${this.localize.term('template_insertSections')}
-						</uui-button>
+						${umbCromboloHooks.hideRazorInserts
+							? nothing
+							: html`<uui-button
+									look="secondary"
+									id="sections-button"
+									label=${this.localize.term('template_insertSections')}
+									?disabled=${this._isRestricted}
+									@click=${this.#openInsertSectionModal}>
+									<uui-icon name="icon-indent"></uui-icon> ${this.localize.term('template_insertSections')}
+								</uui-button>`}
 					</div>
 
 					${this.#renderCodeEditor()}

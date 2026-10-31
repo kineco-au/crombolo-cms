@@ -1,3 +1,4 @@
+import { umbCromboloHooks } from '@umbraco-cms/backoffice/extension-registry';
 import type { UmbCodeEditorController } from '../code-editor.controller.js';
 import {
 	type CodeEditorConstructorOptions,
@@ -157,14 +158,21 @@ export class UmbCodeEditorElement extends UmbLitElement implements UmbCodeEditor
 		});
 	}
 
+	/** How a view is edited, when Crombolo's plugin says this language is one. */
+	#view = umbCromboloHooks.viewEditor?.(this.language);
+
 	override async firstUpdated() {
 		const { styles } = await import('@umbraco-cms/backoffice/external/monaco-editor');
 		this._styles = styles;
 
 		const { UmbCodeEditorController } = await import('../code-editor.controller.js');
 
+		this.#view = umbCromboloHooks.viewEditor?.(this.language);
+		await this.#view?.prepare?.();
+
 		// Options
 		this.#editor = new UmbCodeEditorController(this, this.#constructorOptions());
+		if (this.#editor.monacoEditor) this.#view?.created?.(this.#editor.monacoEditor);
 
 		if (this.autoHeight) {
 			this.#setupAutoHeight();
@@ -211,7 +219,7 @@ export class UmbCodeEditorElement extends UmbLitElement implements UmbCodeEditor
 
 	#constructorOptions(): CodeEditorConstructorOptions {
 		return {
-			language: this.language,
+			language: (this.#view?.language ?? this.language) as CodeEditorLanguage,
 			theme: this.theme,
 			ariaLabel: this.label ?? this.localize.term('codeEditor_label'),
 			lineNumbers: !this.disableLineNumbers,
@@ -243,7 +251,7 @@ export class UmbCodeEditorElement extends UmbLitElement implements UmbCodeEditor
 	 * @memberof UmbCodeEditorElement
 	 */
 	insert(text: string) {
-		this.#editor?.insert(text);
+		this.#editor?.insert(this.#view?.insert?.(text) ?? text);
 	}
 
 	/**

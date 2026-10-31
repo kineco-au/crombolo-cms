@@ -1,3 +1,4 @@
+import { umbCromboloHooks } from '@umbraco-cms/backoffice/extension-registry';
 import type { UmbExecuteTemplateQueryRequestModel } from '../../repository/query/types.js';
 import { UmbTemplateQueryRepository } from '../../repository/query/index.js';
 import { localizePropertyType, localizeSort } from './utils.js';
@@ -253,7 +254,7 @@ export default class UmbTemplateQueryBuilderModalElement extends UmbModalBaseEle
 								(sample) => html`<span><umb-icon name=${sample.icon}></umb-icon>${sample.name}</span>`,
 							) ?? ''}
 						</div>
-						<umb-code-block style="max-height:500px;" language="C#" copy
+						<umb-code-block style="max-height:500px;" language=${umbCromboloHooks.viewLanguageLabel ?? 'C#'} copy
 							>${this._templateQuery?.queryExpression ?? ''}</umb-code-block
 						>
 					</uui-box>
