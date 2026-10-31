@@ -8,7 +8,7 @@ export const manifests: Array<ManifestAuthProvider> = [
 		forProviderName: 'Umbraco',
 		weight: 1000,
 		meta: {
-			label: 'Umbraco',
+			label: 'Crombolo',
 			defaultView: {
 				icon: 'icon-umbraco',
 				look: 'primary',
