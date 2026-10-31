@@ -1,0 +1,86 @@
+import { umbExtensionsRegistry } from '@umbraco-cms/backoffice/extension-registry';
+import { UmbBasicState, UmbStringState } from '@umbraco-cms/backoffice/observable-api';
+import { UmbContextBase } from '@umbraco-cms/backoffice/class-api';
+import { UmbContextToken } from '@umbraco-cms/backoffice/context-api';
+import { UmbExtensionsManifestInitializer } from '@umbraco-cms/backoffice/extension-api';
+import { UmbSysinfoRepository } from '@umbraco-cms/backoffice/sysinfo';
+import { UMB_CURRENT_USER_CONTEXT } from '@umbraco-cms/backoffice/current-user';
+import { UMB_SERVER_CONTEXT } from '@umbraco-cms/backoffice/server';
+import type { ManifestSection } from '@umbraco-cms/backoffice/section';
+import type { UmbControllerHost } from '@umbraco-cms/backoffice/controller-api';
+import type { UmbExtensionManifestInitializer } from '@umbraco-cms/backoffice/extension-api';
+
+export class UmbBackofficeContext extends UmbContextBase {
+	#activeSectionAlias = new UmbStringState(undefined);
+	public readonly activeSectionAlias = this.#activeSectionAlias.asObservable();
+
+	// TODO: We need a class array state:
+	readonly #allowedSections = new UmbBasicState<Array<UmbExtensionManifestInitializer<ManifestSection>>>([]);
+	public readonly allowedSections = this.#allowedSections.asObservable();
+
+	readonly #version = new UmbStringState(undefined);
+	public readonly version = this.#version.asObservable();
+
+	constructor(host: UmbControllerHost) {
+		super(host, UMB_BACKOFFICE_CONTEXT);
+
+		this.consumeContext(UMB_SERVER_CONTEXT, (serverContext) => {
+			this.observe(serverContext?.serverInformation, (info) => {
+				this.#setVersion(info?.version);
+			});
+		});
+
+		this.consumeContext(UMB_CURRENT_USER_CONTEXT, (userContext) => {
+			this.observe(
+				userContext?.allowedSections,
+				(allowedSections) => {
+					if (!allowedSections) return;
+					// TODO: Please be aware that we re-initialize this initializer based on user permissions. I suggest we should solve this specific case should be improved by the ability to change the filter [NL]
+					new UmbExtensionsManifestInitializer(
+						this,
+						umbExtensionsRegistry,
+						'section',
+						(manifest) => allowedSections.includes(manifest.alias),
+						async (sections) => {
+							this.#allowedSections.setValue(sections);
+						},
+						'umbAllowedSectionsManifestInitializer',
+					);
+				},
+				'umbAllowedSectionsObserver',
+			);
+		});
+	}
+
+	#setVersion(rawVersion?: string) {
+		if (!rawVersion) {
+			this.#version.setValue(undefined);
+			return;
+		}
+		// A quick semver parser (to remove the unwanted bits) [LK]
+		// https://semver.org/#is-there-a-suggested-regular-expression-regex-to-check-a-semver-string
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars
+		const [semVer, major, minor, patch, prerelease, buildmetadata] =
+			rawVersion.match(
+				/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/,
+			) ?? [];
+
+		const version = [major, minor, patch].join('.') + (prerelease ? `-${prerelease}` : '');
+		this.#version.setValue(version);
+	}
+
+	public setActiveSectionAlias(alias: string) {
+		this.#activeSectionAlias.setValue(alias);
+	}
+
+	public async serverUpgradeCheck() {
+		const version = await this.observe(this.version)
+			.asPromise()
+			.catch(() => null);
+		if (!version) return null;
+		const repository = new UmbSysinfoRepository(this);
+		return repository.serverUpgradeCheck(version);
+	}
+}
+
+export const UMB_BACKOFFICE_CONTEXT = new UmbContextToken<UmbBackofficeContext>('UmbBackofficeContext');

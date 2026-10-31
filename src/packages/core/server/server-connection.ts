@@ -1,0 +1,114 @@
+import { UmbControllerBase } from '@umbraco-cms/backoffice/class-api';
+import type { UmbControllerHost } from '@umbraco-cms/backoffice/controller-api';
+import { RuntimeLevelModel, ServerService } from '@umbraco-cms/backoffice/external/backend-api';
+import { UmbBooleanState, UmbNumberState, UmbStringState } from '@umbraco-cms/backoffice/observable-api';
+import { tryExecute } from '@umbraco-cms/backoffice/resources';
+
+export class UmbServerConnection extends UmbControllerBase {
+	#url: string;
+	#status: RuntimeLevelModel = RuntimeLevelModel.UNKNOWN;
+
+	#isConnected = new UmbBooleanState(false);
+	isConnected = this.#isConnected.asObservable();
+
+	#versionCheckPeriod = new UmbNumberState(undefined);
+	versionCheckPeriod = this.#versionCheckPeriod.asObservable();
+
+	#allowLocalLogin = new UmbBooleanState(false);
+	allowLocalLogin = this.#allowLocalLogin.asObservable();
+
+	#allowPasswordReset = new UmbBooleanState(false);
+	allowPasswordReset = this.#allowPasswordReset.asObservable();
+
+	#umbracoCssPath = new UmbStringState(undefined);
+	umbracoCssPath = this.#umbracoCssPath.asObservable();
+
+	#signalRSkipNegotiation = new UmbBooleanState(false);
+	signalRSkipNegotiation = this.#signalRSkipNegotiation.asObservable();
+
+	constructor(host: UmbControllerHost, serverUrl: string) {
+		super(host);
+		this.#url = serverUrl;
+	}
+
+	/**
+	 * Gets whether the server has configured SignalR to skip the negotiate round-trip.
+	 * @returns {boolean} True if SignalR should skip the negotiate round-trip
+	 * @memberof UmbServerConnection
+	 */
+	getSignalRSkipNegotiation() {
+		return this.#signalRSkipNegotiation.getValue();
+	}
+
+	/**
+	 * Connects to the server.
+	 * @returns {Promise<UmbServerConnection>} This server connection instance
+	 * @memberof UmbServerConnection
+	 */
+	async connect() {
+		// Independent reads, but both are required for the backoffice to function.
+		const results = await Promise.allSettled([this.#setStatus(), this.#setServerConfiguration()]);
+		const errors = results
+			.filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+			.map((result) => result.reason);
+		if (errors.length) {
+			throw errors.length === 1 ? errors[0] : new AggregateError(errors, 'Failed to connect to the Umbraco server');
+		}
+		this.#isConnected.setValue(true);
+		return this;
+	}
+
+	/**
+	 * Gets the URL of the server.
+	 * @returns {string} The server URL
+	 * @memberof UmbServerConnection
+	 */
+	getUrl() {
+		return this.#url;
+	}
+
+	/**
+	 * Gets the status of the server.
+	 * @returns {string} The server's runtime level status
+	 * @memberof UmbServerConnection
+	 */
+	getStatus() {
+		if (!this.getIsConnected()) throw new Error('Server is not connected. Remember to await connect()');
+		return this.#status;
+	}
+
+	/**
+	 * Checks if the server is connected.
+	 * @returns {boolean} True if the server is connected
+	 * @memberof UmbServerConnection
+	 */
+	getIsConnected() {
+		return this.#isConnected.getValue();
+	}
+
+	async #setStatus() {
+		const { data, error } = await tryExecute(this._host, ServerService.getServerStatus(), {
+			disableNotifications: true,
+		});
+		if (error) {
+			throw error;
+		}
+
+		this.#status = data?.serverStatus ?? RuntimeLevelModel.UNKNOWN;
+	}
+
+	async #setServerConfiguration() {
+		const { data, error } = await tryExecute(this._host, ServerService.getServerConfiguration(), {
+			disableNotifications: true,
+		});
+		if (error) {
+			throw error;
+		}
+
+		this.#versionCheckPeriod.setValue(data?.versionCheckPeriod);
+		this.#allowLocalLogin.setValue(data?.allowLocalLogin ?? false);
+		this.#allowPasswordReset.setValue(data?.allowPasswordReset ?? false);
+		this.#umbracoCssPath.setValue(data?.umbracoCssPath);
+		this.#signalRSkipNegotiation.setValue(data?.signalR?.skipNegotiation ?? false);
+	}
+}

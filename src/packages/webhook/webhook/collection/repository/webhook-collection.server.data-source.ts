@@ -1,0 +1,66 @@
+import type { UmbWebhookCollectionFilterModel } from '../types.js';
+import { UMB_WEBHOOK_ENTITY_TYPE } from '../../../entity.js';
+import type { UmbWebhookDetailModel } from '../../types.js';
+import type { UmbDataSourceResponse } from '@umbraco-cms/backoffice/repository';
+import { WebhookService } from '@umbraco-cms/backoffice/external/backend-api';
+import type { UmbControllerHost } from '@umbraco-cms/backoffice/controller-api';
+import { tryExecute } from '@umbraco-cms/backoffice/resources';
+import type { UmbCollectionDataSource } from '@umbraco-cms/backoffice/collection';
+
+/**
+ * A data source that fetches the webhook collection data from the server.
+ * @class UmbWebhookCollectionServerDataSource
+ * @implements {UmbCollectionDataSource}
+ */
+export class UmbWebhookCollectionServerDataSource implements UmbCollectionDataSource<
+	UmbWebhookDetailModel,
+	UmbWebhookCollectionFilterModel
+> {
+	#host: UmbControllerHost;
+
+	/**
+	 * Creates an instance of UmbWebhookCollectionServerDataSource.
+	 * @param {UmbControllerHost} host - The controller host for this controller to be appended to
+	 * @memberof UmbWebhookCollectionServerDataSource
+	 */
+	constructor(host: UmbControllerHost) {
+		this.#host = host;
+	}
+
+	/**
+	 * Gets the Webhook collection filtered by the given filter.
+	 * @param {UmbWebhookCollectionFilterModel} filter The filter to apply
+	 * @returns {Promise<UmbDataSourceResponse<{ items: Array<UmbWebhookDetailModel>; total: number }>>} The filtered webhook collection
+	 * @memberof UmbWebhookCollectionServerDataSource
+	 */
+	async getCollection(
+		filter: UmbWebhookCollectionFilterModel,
+	): Promise<UmbDataSourceResponse<{ items: Array<UmbWebhookDetailModel>; total: number }>> {
+		const { data, error } = await tryExecute(
+			this.#host,
+			WebhookService.getWebhook({ query: { skip: filter.skip, take: filter.take } }),
+		);
+
+		if (error || !data) {
+			return { error };
+		}
+
+		const items = data.items.map((item) => {
+			const model: UmbWebhookDetailModel = {
+				entityType: UMB_WEBHOOK_ENTITY_TYPE,
+				unique: item.id,
+				url: item.url,
+				name: item.name ?? '',
+				description: item.description,
+				enabled: item.enabled,
+				headers: item.headers,
+				events: item.events,
+				contentTypes: item.contentTypeKeys,
+			};
+
+			return model;
+		});
+
+		return { data: { items, total: data.total } };
+	}
+}

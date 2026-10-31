@@ -1,0 +1,244 @@
+import { UMB_DOCUMENT_COLLECTION_CONTEXT } from '../document-collection.context-token.js';
+import type { UmbDocumentCollectionFilterModel } from '../types.js';
+import { UmbDocumentItemDataResolver } from '../../item/document-item-data-resolver.js';
+import { UmbDocumentVariantState } from '../../variant-state.js';
+import { getDocumentVariantStateTagConfig } from '../../variant-state/utils.js';
+import type { UmbDocumentCollectionItemModel } from './types.js';
+import {
+	css,
+	customElement,
+	html,
+	ifDefined,
+	nothing,
+	property,
+	repeat,
+	state,
+	when,
+} from '@umbraco-cms/backoffice/external/lit';
+import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element';
+import { UmbDeselectedEvent, UmbSelectedEvent } from '@umbraco-cms/backoffice/event';
+import type {
+	UmbCollectionColumnConfiguration,
+	UmbDefaultCollectionContext,
+	UmbEntityCollectionItemElement,
+} from '@umbraco-cms/backoffice/collection';
+import { UmbEntityContentTypeEntityContext } from '@umbraco-cms/backoffice/content-type';
+import { UMB_DOCUMENT_TYPE_ENTITY_TYPE } from '@umbraco-cms/backoffice/document-type';
+import { fromCamelCase } from '@umbraco-cms/backoffice/utils';
+
+@customElement('umb-document-collection-item-card')
+export class UmbDocumentCollectionItemCardElement extends UmbLitElement implements UmbEntityCollectionItemElement {
+	#item?: UmbDocumentCollectionItemModel | undefined;
+	#entityContentTypeContext = new UmbEntityContentTypeEntityContext(this);
+	#resolver = new UmbDocumentItemDataResolver(this);
+
+	@property({ type: Object })
+	public get item(): UmbDocumentCollectionItemModel | undefined {
+		return this.#item;
+	}
+	public set item(value: UmbDocumentCollectionItemModel | undefined) {
+		this.#item = value;
+		this.#resolver.setData(value);
+
+		const documentTypeUnique = value?.documentType.unique;
+
+		this.#entityContentTypeContext.setEntityType(documentTypeUnique ? UMB_DOCUMENT_TYPE_ENTITY_TYPE : undefined);
+		this.#entityContentTypeContext.setUnique(documentTypeUnique);
+	}
+
+	@property({ type: Boolean })
+	selectable = false;
+
+	@property({ type: Boolean })
+	selected = false;
+
+	@property({ type: Boolean })
+	selectOnly = false;
+
+	@property({ type: Boolean })
+	disabled = false;
+
+	@property({ type: String })
+	href?: string;
+
+	@state()
+	private _name?: string;
+
+	@state()
+	private _state?: UmbDocumentVariantState | null;
+
+	@state()
+	private _createDate?: Date;
+
+	@state()
+	private _updateDate?: Date;
+
+	@state()
+	private _userDefinedProperties?: Array<UmbCollectionColumnConfiguration>;
+
+	#collectionContext?: UmbDefaultCollectionContext<UmbDocumentCollectionItemModel, UmbDocumentCollectionFilterModel>;
+
+	constructor() {
+		super();
+
+		this.consumeContext(UMB_DOCUMENT_COLLECTION_CONTEXT, (collectionContext) => {
+			this.#collectionContext = collectionContext;
+			this.#observeCollectionContext();
+		});
+
+		this.#resolver.observe(this.#resolver.name, (name) => (this._name = name || ''));
+		this.#resolver.observe(this.#resolver.state, (state) => (this._state = state));
+		this.#resolver.observe(this.#resolver.createDate, (createDate) => (this._createDate = createDate));
+		this.#resolver.observe(this.#resolver.updateDate, (updateDate) => (this._updateDate = updateDate));
+	}
+
+	#observeCollectionContext() {
+		if (!this.#collectionContext) return;
+
+		this.observe(
+			this.#collectionContext.userDefinedProperties,
+			(userDefinedProperties) => {
+				this._userDefinedProperties = userDefinedProperties;
+			},
+			'_observeUserDefinedProperties',
+		);
+	}
+
+	#onSelected(event: CustomEvent) {
+		if (!this.item) return;
+		event.stopPropagation();
+		this.dispatchEvent(new UmbSelectedEvent(this.item.unique));
+	}
+
+	#onDeselected(event: CustomEvent) {
+		if (!this.item) return;
+		event.stopPropagation();
+		this.dispatchEvent(new UmbDeselectedEvent(this.item.unique));
+	}
+
+	#getPropertyValueByAlias(alias: string) {
+		if (!this.item) return { value: '' };
+
+		switch (alias) {
+			case 'contentTypeAlias':
+				return { value: this.item.documentType.alias };
+			case 'createDate':
+				return { value: this._createDate?.toLocaleString() };
+			case 'creator':
+			case 'owner':
+				return { value: this.item.creator };
+			case 'name':
+				return { value: this._name };
+			case 'state':
+				return { value: this._state ? fromCamelCase(this._state) : '' };
+			case 'published':
+				return { value: this._state !== UmbDocumentVariantState.DRAFT ? 'True' : 'False' };
+			case 'sortOrder':
+				return { value: this.item.sortOrder };
+			case 'updateDate':
+				return { value: this._updateDate?.toLocaleString() };
+			case 'updater':
+				return { value: this.item.updater };
+			default: {
+				const culture = this.#resolver.getCulture();
+				const prop = this.item.values.find((x) => x.alias === alias && (!x.culture || x.culture === culture));
+				return { value: prop?.value ?? '', editorAlias: prop?.editorAlias };
+			}
+		}
+	}
+
+	override render() {
+		if (!this.item) return nothing;
+		return html`
+			<uui-card-content-node
+				.name=${this._name}
+				href=${ifDefined(this.href)}
+				?selectable=${this.selectable}
+				?select-only=${this.selectOnly}
+				?selected=${this.selected}
+				?disabled=${this.disabled}
+				@selected=${this.#onSelected}
+				@deselected=${this.#onDeselected}>
+				${this.#renderIcon()} ${this.#renderState()}
+				<div id="properties">${this.#renderProperties()}</div>
+				<slot name="actions" slot="actions"></slot>
+			</uui-card-content-node>
+		`;
+	}
+
+	#renderIcon() {
+		if (!this.item) return nothing;
+		return html`<umb-icon slot="icon" name=${this.item.documentType.icon}></umb-icon>`;
+	}
+
+	#renderState() {
+		if (this._state === undefined) return nothing;
+		const { color, label } = getDocumentVariantStateTagConfig(this._state, this.localize);
+		return html`<uui-tag slot="tag" id="state" color=${color} look="secondary">${label}</uui-tag>`;
+	}
+
+	#renderProperties() {
+		if (!this._userDefinedProperties) return;
+		return html`
+			<ul>
+				${repeat(
+					this._userDefinedProperties,
+					(column) => column.alias,
+					(column) => this.#renderProperty(column),
+				)}
+			</ul>
+		`;
+	}
+
+	#renderProperty(column: UmbCollectionColumnConfiguration) {
+		const { value, editorAlias } = this.#getPropertyValueByAlias(column.alias);
+		return html`
+			<li>
+				<span>${this.localize.string(column.header)}:</span>
+				${when(
+					column.nameTemplate,
+					() => html`<umb-ufm-render inline .markdown=${column.nameTemplate} .value=${{ value }}></umb-ufm-render>`,
+					() =>
+						editorAlias
+							? html`<umb-value-summary-extension
+									.valueType=${editorAlias}
+									.value=${value}></umb-value-summary-extension>`
+							: html`${value}`,
+				)}
+			</li>
+		`;
+	}
+
+	static override styles = [
+		css`
+			uui-card-content-node {
+				min-width: auto;
+				width: 100%;
+				min-height: 180px;
+			}
+
+			#properties {
+				font-size: var(--uui-type-small-size);
+				line-height: calc(2 * var(--uui-size-3));
+
+				> ul {
+					list-style: none;
+					padding-inline-start: 0px;
+					margin: 0;
+
+					> li > span {
+						font-weight: 700;
+					}
+				}
+			}
+		`,
+	];
+}
+
+export { UmbDocumentCollectionItemCardElement as element };
+
+declare global {
+	interface HTMLElementTagNameMap {
+		'umb-document-collection-item-card': UmbDocumentCollectionItemCardElement;
+	}
+}

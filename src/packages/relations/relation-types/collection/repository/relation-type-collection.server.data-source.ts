@@ -1,0 +1,82 @@
+import type { UmbRelationTypeCollectionFilterModel, UmbRelationTypeCollectionItemModel } from '../types.js';
+import { UMB_RELATION_TYPE_ENTITY_TYPE } from '../../entity.js';
+import type { UmbCollectionDataSource } from '@umbraco-cms/backoffice/collection';
+import { RelationTypeService } from '@umbraco-cms/backoffice/external/backend-api';
+import type { UmbControllerHost } from '@umbraco-cms/backoffice/controller-api';
+import { tryExecute } from '@umbraco-cms/backoffice/resources';
+import type { UmbDataSourceResponse, UmbPagedModel } from '@umbraco-cms/backoffice/repository';
+
+/**
+ * A data source that fetches the relation type collection data from the server.
+ * @class UmbRelationTypeCollectionServerDataSource
+ * @implements {UmbCollectionDataSource}
+ */
+export class UmbRelationTypeCollectionServerDataSource implements UmbCollectionDataSource<
+	UmbRelationTypeCollectionItemModel,
+	UmbRelationTypeCollectionFilterModel
+> {
+	#host: UmbControllerHost;
+
+	/**
+	 * Creates an instance of UmbRelationTypeCollectionServerDataSource.
+	 * @param {UmbControllerHost} host - The controller host for this controller to be appended to
+	 * @memberof UmbRelationTypeCollectionServerDataSource
+	 */
+	constructor(host: UmbControllerHost) {
+		this.#host = host;
+	}
+
+	/**
+	 * Gets the relation type collection filtered by the given filter.
+	 * @param {UmbRelationTypeCollectionFilterModel} filter - The filter to apply to the collection.
+	 * @returns {Promise<UmbDataSourceResponse<UmbPagedModel<UmbRelationTypeCollectionItemModel>>>} The relation type collection.
+	 * @memberof UmbRelationTypeCollectionServerDataSource
+	 */
+	async getCollection(
+		filter: UmbRelationTypeCollectionFilterModel,
+	): Promise<UmbDataSourceResponse<UmbPagedModel<UmbRelationTypeCollectionItemModel>>> {
+		const { data, error } = await tryExecute(
+			this.#host,
+			RelationTypeService.getRelationType({
+				query: {
+					skip: filter.skip,
+					take: filter.take,
+				},
+			}),
+		);
+
+		if (data) {
+			const items = data.items.map((item): UmbRelationTypeCollectionItemModel => {
+				return {
+					alias: item.alias || '',
+					child: item.childObject
+						? {
+								objectType: {
+									unique: item.childObject.id,
+									name: item.childObject.name || '',
+								},
+							}
+						: null,
+					entityType: UMB_RELATION_TYPE_ENTITY_TYPE,
+					icon: 'icon-trafic',
+					isBidirectional: item.isBidirectional,
+					isDependency: item.isDependency,
+					name: item.name,
+					parent: item.parentObject
+						? {
+								objectType: {
+									unique: item.parentObject.id,
+									name: item.parentObject.name || '',
+								},
+							}
+						: null,
+					unique: item.id,
+				};
+			});
+
+			return { data: { items, total: data.total } };
+		}
+
+		return { error };
+	}
+}

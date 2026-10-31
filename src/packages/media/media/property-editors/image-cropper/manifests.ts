@@ -1,0 +1,20 @@
+import { manifest as schemaManifest } from './Umbraco.ImageCropper.js';
+import { manifests as valueSummaryManifests } from './value-summary/manifests.js';
+
+export const manifests: Array<UmbExtensionManifest> = [
+	{
+		type: 'propertyEditorUi',
+		alias: 'Umb.PropertyEditorUi.ImageCropper',
+		name: 'Image Cropper Property Editor UI',
+		element: () => import('./property-editor-ui-image-cropper.element.js'),
+		meta: {
+			label: 'Image Cropper',
+			icon: 'icon-crop',
+			group: '#propertyEditorUIGroups_media',
+			keywords: ['image', 'crop', 'photo', 'thumbnail', 'avatar', 'profile', 'cover', 'portrait'],
+			propertyEditorSchemaAlias: 'Umbraco.ImageCropper',
+		},
+	},
+	schemaManifest,
+	...valueSummaryManifests,
+];

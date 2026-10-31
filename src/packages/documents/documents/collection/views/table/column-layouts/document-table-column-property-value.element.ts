@@ -1,0 +1,92 @@
+import type { UmbEditableDocumentCollectionItemModel } from '../../../types.js';
+import { UmbDocumentItemDataResolver } from '../../../../item/index.js';
+import { UmbDocumentVariantState } from '../../../../variant-state.js';
+import { customElement, html, nothing, property, state, when } from '@umbraco-cms/backoffice/external/lit';
+import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element';
+import type { UmbTableColumn, UmbTableColumnLayoutElement, UmbTableItem } from '@umbraco-cms/backoffice/components';
+
+@customElement('umb-document-table-column-property-value')
+export class UmbDocumentTableColumnPropertyValueElement extends UmbLitElement implements UmbTableColumnLayoutElement {
+	#resolver = new UmbDocumentItemDataResolver(this);
+
+	@state()
+	private _createDate?: Date;
+
+	@state()
+	private _state?: string;
+
+	@state()
+	private _updateDate?: Date;
+
+	column!: UmbTableColumn;
+	item!: UmbTableItem;
+
+	@property({ attribute: false })
+	public set value(value: UmbEditableDocumentCollectionItemModel) {
+		this.#value = value;
+
+		if (value.item) {
+			this.#resolver.setData(value.item);
+		}
+	}
+	public get value(): UmbEditableDocumentCollectionItemModel {
+		return this.#value;
+	}
+	#value!: UmbEditableDocumentCollectionItemModel;
+
+	constructor() {
+		super();
+
+		this.#resolver.observe(this.#resolver.state, (state) => (this._state = state || ''));
+		this.#resolver.observe(this.#resolver.createDate, (createDate) => (this._createDate = createDate));
+		this.#resolver.observe(this.#resolver.updateDate, (updateDate) => (this._updateDate = updateDate));
+	}
+
+	#getPropertyValueByAlias() {
+		const alias = this.column.alias;
+		const item = this.value.item;
+		switch (alias) {
+			case 'contentTypeAlias':
+				return { value: item.documentType.alias };
+			case 'createDate':
+				return { value: this._createDate?.toLocaleString(this.localize.lang()) };
+			case 'creator':
+			case 'owner':
+				return { value: item.creator };
+			case 'published':
+				return { value: this._state !== UmbDocumentVariantState.DRAFT ? 'True' : 'False' };
+			case 'sortOrder':
+				return { value: item.sortOrder };
+			case 'updateDate':
+				return { value: this._updateDate?.toLocaleString(this.localize.lang()) };
+			case 'updater':
+				return { value: item.updater };
+			default: {
+				const culture = this.#resolver.getCulture();
+				const prop = item.values.find((x) => x.alias === alias && (!x.culture || x.culture === culture));
+				return { value: prop?.value ?? '', editorAlias: prop?.editorAlias };
+			}
+		}
+	}
+
+	override render() {
+		if (!this.value) return nothing;
+		const { value, editorAlias } = this.#getPropertyValueByAlias();
+		return when(
+			this.column.labelTemplate,
+			() => html`<umb-ufm-render inline .markdown=${this.column.labelTemplate} .value=${{ value }}></umb-ufm-render>`,
+			() =>
+				editorAlias
+					? html`<umb-value-summary-extension .valueType=${editorAlias} .value=${value}></umb-value-summary-extension>`
+					: value,
+		);
+	}
+}
+
+export default UmbDocumentTableColumnPropertyValueElement;
+
+declare global {
+	interface HTMLElementTagNameMap {
+		'umb-document-table-column-property-value': UmbDocumentTableColumnPropertyValueElement;
+	}
+}

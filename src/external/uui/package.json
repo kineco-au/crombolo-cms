@@ -1,0 +1,11 @@
+{
+	"name": "@umbraco-backoffice/uui",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build": "vite build"
+	},
+	"dependencies": {
+		"@umbraco-ui/uui": "^2.0.2"
+	}
+}

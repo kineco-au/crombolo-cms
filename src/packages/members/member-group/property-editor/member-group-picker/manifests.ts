@@ -1,0 +1,21 @@
+import { manifest as memberGroupSchemaManifest } from './Umbraco.MemberGroupPicker.js';
+import { manifests as valueSummaryManifests } from './value-summary/manifests.js';
+
+export const manifests: Array<UmbExtensionManifest> = [
+	{
+		type: 'propertyEditorUi',
+		alias: 'Umb.PropertyEditorUi.MemberGroupPicker',
+		name: 'Member Group Picker Property Editor UI',
+		element: () => import('./property-editor-ui-member-group-picker.element.js'),
+		meta: {
+			label: 'Member Group Picker',
+			propertyEditorSchemaAlias: 'Umbraco.MemberGroupPicker',
+			icon: 'icon-users-alt',
+			group: '#propertyEditorUIGroups_people',
+			keywords: ['group', 'role', 'permission', 'audience', 'community', 'members'],
+			supportsReadOnly: true,
+		},
+	},
+	memberGroupSchemaManifest,
+	...valueSummaryManifests,
+];

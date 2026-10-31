@@ -1,0 +1,267 @@
+import type { ManifestPropertyEditorUi } from '../extensions/types.js';
+import type {
+	UmbPropertyEditorUIPickerModalData,
+	UmbPropertyEditorUIPickerModalValue,
+} from './property-editor-ui-picker-modal.token.js';
+import { UmbPropertyEditorUISearchController } from './property-editor-ui-search.controller.js';
+import { css, customElement, html, repeat, state } from '@umbraco-cms/backoffice/external/lit';
+import { debounce, fromCamelCaseIfCamelCase } from '@umbraco-cms/backoffice/utils';
+import { umbExtensionsRegistry } from '@umbraco-cms/backoffice/extension-registry';
+import { umbFocus } from '@umbraco-cms/backoffice/lit-element';
+import { UmbModalBaseElement } from '@umbraco-cms/backoffice/modal';
+import type { UUIInputEvent } from '@umbraco-cms/backoffice/external/uui';
+
+@customElement('umb-property-editor-ui-picker-modal')
+export class UmbPropertyEditorUIPickerModalElement extends UmbModalBaseElement<
+	UmbPropertyEditorUIPickerModalData,
+	UmbPropertyEditorUIPickerModalValue
+> {
+	@state()
+	private _groupedPropertyEditorUIs: Array<{ key: string; items: Array<ManifestPropertyEditorUi> }> = [];
+
+	#propertyEditorUIs: Array<ManifestPropertyEditorUi> = [];
+
+	#searchController = new UmbPropertyEditorUISearchController(this);
+
+	#currentFilterQuery = '';
+
+	override connectedCallback(): void {
+		super.connectedCallback();
+
+		this.#usePropertyEditorUIs();
+	}
+
+	override disconnectedCallback(): void {
+		super.disconnectedCallback();
+		this.#debouncedFilter.cancel();
+	}
+
+	#usePropertyEditorUIs() {
+		this.observe(umbExtensionsRegistry.byType('propertyEditorUi'), (propertyEditorUIs) => {
+			// Only include Property Editor UIs which has Property Editor Schema Alias
+			this.#propertyEditorUIs = propertyEditorUIs
+				.filter((propertyEditorUi) => !!propertyEditorUi.meta.propertyEditorSchemaAlias)
+				.sort((a, b) => a.meta.label.localeCompare(b.meta.label));
+
+			this.#searchController.setPropertyEditorUIs(this.#propertyEditorUIs);
+			this.#performFiltering();
+		});
+	}
+
+	#handleClick(propertyEditorUi: ManifestPropertyEditorUi) {
+		this.value = { selection: [propertyEditorUi.alias] };
+		this._submitModal();
+	}
+
+	#handleFilterInput(event: UUIInputEvent) {
+		this.#currentFilterQuery = (event.target.value as string) || '';
+		this.#debouncedFilter();
+	}
+
+	#debouncedFilter = debounce(() => {
+		void this.#performFiltering().catch((error) => {
+			if ((error as DOMException)?.name !== 'AbortError') {
+				console.error(error);
+			}
+		});
+	}, 250);
+
+	async #performFiltering() {
+		const query = this.#currentFilterQuery.trim();
+		if (!query) {
+			this.#groupPropertyEditorUIs(this.#propertyEditorUIs);
+			return;
+		}
+
+		try {
+			const results = await this.#searchController.search(query);
+			this.#groupPropertyEditorUIs(results);
+		} catch (error) {
+			if ((error as DOMException)?.name !== 'AbortError') throw error;
+		}
+	}
+
+	#resolveGroupName(group: string): string {
+		if (group.startsWith('#')) {
+			return this.localize.string(group);
+		}
+
+		// Backward compatibility: external packages may still register camelCase group names.
+		return fromCamelCaseIfCamelCase(group);
+	}
+
+	#groupPropertyEditorUIs(items: Array<ManifestPropertyEditorUi>) {
+		const grouped = Object.groupBy(items, (propertyEditorUi: ManifestPropertyEditorUi) =>
+			this.#resolveGroupName(propertyEditorUi.meta.group),
+		);
+
+		this._groupedPropertyEditorUIs = Object.entries(grouped)
+			.sort(([a], [b]) => a.localeCompare(b))
+			.map(([key, items]) => ({ key, items: items ?? [] }));
+	}
+
+	override render() {
+		return html`
+			<umb-body-layout headline=${this.localize.term('propertyEditorPicker_openPropertyEditorPicker')}>
+				<uui-box>${this.#renderFilter()} ${this.#renderGrid()}</uui-box>
+				<div slot="actions">
+					<uui-button label=${this.localize.term('general_close')} @click=${this._rejectModal}></uui-button>
+				</div>
+			</umb-body-layout>
+		`;
+	}
+
+	#renderFilter() {
+		return html`
+			<uui-input
+				type="search"
+				id="filter"
+				@input=${this.#handleFilterInput}
+				placeholder=${this.localize.term('placeholders_filter')}
+				label=${this.localize.term('placeholders_filter')}
+				${umbFocus()}>
+				<uui-icon name="search" slot="prepend" id="filter-icon"></uui-icon>
+			</uui-input>
+		`;
+	}
+
+	#renderGrid() {
+		return html`
+			${repeat(
+				this._groupedPropertyEditorUIs,
+				(group) => group.key,
+				(group) => html`
+					<h4>${group.key}</h4>
+					${this.#renderGroupItems(group.items)}
+				`,
+			)}
+		`;
+	}
+
+	#renderGroupItems(groupItems: Array<ManifestPropertyEditorUi>) {
+		return html`
+			<ul id="item-grid">
+				${repeat(
+					groupItems,
+					(propertyEditorUI) => propertyEditorUI.alias,
+					(propertyEditorUI) => {
+						const label = this.localize.string(propertyEditorUI.meta.label || propertyEditorUI.name);
+						return html`
+							<li class="item" ?selected=${this.value.selection.includes(propertyEditorUI.alias)}>
+								<button type="button" @click=${() => this.#handleClick(propertyEditorUI)}>
+									<umb-icon name=${propertyEditorUI.meta.icon} class="icon"></umb-icon>
+									<span class="label" title=${label}>${label}</span>
+								</button>
+							</li>
+						`;
+					},
+				)}
+			</ul>
+		`;
+	}
+
+	static override styles = [
+		css`
+			:host {
+				display: block;
+				height: 100%;
+				container-type: inline-size;
+			}
+
+			#filter {
+				width: 100%;
+				margin-bottom: var(--uui-size-space-4);
+			}
+
+			#filter-icon {
+				height: 100%;
+				padding-left: var(--uui-size-space-2);
+				display: flex;
+				color: var(--uui-color-border);
+			}
+
+			#item-grid {
+				display: grid;
+				grid-template-columns: repeat(3, minmax(0, 1fr));
+				margin: 0;
+				padding: 0;
+				grid-gap: var(--uui-size-space-4);
+			}
+
+			@container (min-width: 560px) {
+				#item-grid {
+					grid-template-columns: repeat(4, minmax(0, 1fr));
+				}
+			}
+
+			@container (min-width: 740px) {
+				#item-grid {
+					grid-template-columns: repeat(5, minmax(0, 1fr));
+				}
+			}
+
+			@container (min-width: 920px) {
+				#item-grid {
+					grid-template-columns: repeat(6, minmax(0, 1fr));
+				}
+			}
+
+			#item-grid .item {
+				display: flex;
+				align-items: flex-start;
+				justify-content: center;
+				list-style: none;
+				height: 100%;
+				border: 1px solid transparent;
+				border-radius: var(--uui-border-radius);
+			}
+
+			#item-grid .item:hover {
+				background: var(--uui-color-surface-emphasis);
+				color: var(--uui-color-interactive-emphasis);
+				cursor: pointer;
+			}
+
+			#item-grid .item[selected] button {
+				background: var(--uui-color-selected);
+				color: var(--uui-color-selected-contrast);
+			}
+
+			#item-grid .item button {
+				background: none;
+				border: none;
+				cursor: pointer;
+				padding: var(--uui-size-space-3);
+				display: flex;
+				align-items: center;
+				flex-direction: column;
+				justify-content: flex-start;
+				font-size: 0.8rem;
+				height: 100%;
+				width: 100%;
+				color: var(--uui-color-interactive);
+				border-radius: var(--uui-border-radius);
+			}
+
+			#item-grid .item .icon {
+				font-size: 2em;
+				margin-bottom: var(--uui-size-space-2);
+			}
+
+			#item-grid .item .label {
+				max-width: 100%;
+				display: -webkit-box;
+				overflow: hidden;
+				padding-bottom: 0.1em;
+			}
+		`,
+	];
+}
+
+export default UmbPropertyEditorUIPickerModalElement;
+
+declare global {
+	interface HTMLElementTagNameMap {
+		'umb-property-editor-ui-picker-modal': UmbPropertyEditorUIPickerModalElement;
+	}
+}

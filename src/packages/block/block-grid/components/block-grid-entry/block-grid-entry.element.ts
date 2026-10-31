@@ -1,0 +1,743 @@
+import type { UmbBlockGridLayoutModel } from '../../types.js';
+import { UMB_BLOCK_GRID } from '../../constants.js';
+import { UmbBlockGridEntryContext } from './block-grid-entry.context.js';
+import { css, customElement, html, nothing, property, state, when } from '@umbraco-cms/backoffice/external/lit';
+import { stringOrStringArrayContains } from '@umbraco-cms/backoffice/utils';
+import { UmbDataPathBlockElementDataQuery } from '@umbraco-cms/backoffice/block';
+import { renderHiddenUfm } from '@umbraco-cms/backoffice/ufm';
+import { umbDestroyOnDisconnect, UmbLitElement } from '@umbraco-cms/backoffice/lit-element';
+import { UmbObserveValidationStateController } from '@umbraco-cms/backoffice/validation';
+import { UUIBlinkAnimationValue, UUIBlinkKeyframes } from '@umbraco-cms/backoffice/external/uui';
+import type { PropertyValueMap } from '@umbraco-cms/backoffice/external/lit';
+import type {
+	ManifestBlockEditorCustomView,
+	UmbBlockEditorCustomViewProperties,
+} from '@umbraco-cms/backoffice/block-custom-view';
+import type { UmbExtensionElementInitializer } from '@umbraco-cms/backoffice/extension-api';
+import type { UmbPropertyEditorUiElement } from '@umbraco-cms/backoffice/property-editor';
+import type { UmbUfmResolvedEvent } from '@umbraco-cms/backoffice/ufm';
+
+import '../../../block/action/block-action-list.element.js';
+
+/**
+ * @element umb-block-grid-entry
+ */
+@customElement('umb-block-grid-entry')
+export class UmbBlockGridEntryElement extends UmbLitElement implements UmbPropertyEditorUiElement {
+	@property({ type: Number, reflect: true })
+	public get index(): number | undefined {
+		return this.#context.getIndex();
+	}
+	public set index(value: number | undefined) {
+		this.#context.setIndex(value);
+	}
+
+	@property({ attribute: false })
+	public get contentKey(): string | undefined {
+		return this._contentKey;
+	}
+	public set contentKey(key: string | undefined) {
+		if (!key || key === this._contentKey) return;
+		this._contentKey = key;
+		this._blockViewProps.contentKey = key;
+		this.setAttribute('data-element-key', key);
+		this.#context.setContentKey(key);
+
+		new UmbObserveValidationStateController(
+			this,
+			`$.contentData[${UmbDataPathBlockElementDataQuery({ key: key })}]`,
+			(hasMessages) => {
+				this._contentInvalid = hasMessages;
+				this._blockViewProps.contentInvalid = hasMessages;
+			},
+			'observeMessagesForContent',
+		);
+	}
+	private _contentKey?: string | undefined;
+
+	#context = new UmbBlockGridEntryContext(this);
+	#renderTimeout: number | undefined;
+	#layoutContainerResizeObserver = new ResizeObserver(() => this.#callUpdateInlineCreateButtons());
+
+	@state()
+	private _contentTypeAlias?: string;
+
+	@state()
+	private _contentTypeName?: string;
+
+	@state()
+	private _columnSpan?: number;
+
+	@state()
+	private _rowSpan?: number;
+
+	@state()
+	private _showContentEdit = false;
+
+	// If _createPath is undefined, its because no blocks are allowed to be created here[NL]
+	@state()
+	private _createBeforePath?: string;
+
+	@state()
+	private _createAfterPath?: string;
+
+	@state()
+	private _label = '';
+
+	@state()
+	private _icon?: string;
+
+	@state()
+	private _exposed?: boolean;
+
+	// Unsupported is triggered if the Block Type is not recognized, it can also be triggered by the Content Element Type not existing any longer. [NL]
+	@state()
+	private _unsupported?: boolean;
+
+	@state()
+	private _showActions?: boolean;
+
+	@state()
+	private _inlineEditingMode?: boolean;
+
+	@state()
+	private _isSortMode?: boolean;
+
+	// TODO: consumed by <umb-entity-frame> label, landing in a follow-up PR; add `@state()` when used in render [LK]
+	private _name?: string;
+
+	@state()
+	private _canScale?: boolean;
+
+	@state()
+	private _showInlineCreateBefore?: boolean;
+
+	@state()
+	private _showInlineCreateAfter?: boolean;
+
+	@state()
+	private _inlineCreateAboveWidth?: string;
+
+	// If the Block Type is disallowed in this location then it become a invalid Block Type. Notice not supported blocks are determined via the unsupported property. [NL]
+	@property({ type: Boolean, attribute: 'location-invalid', reflect: true })
+	// eslint-disable-next-line @typescript-eslint/naming-convention
+	_invalidLocation?: boolean;
+
+	// 'content-invalid' attribute is used for styling purpose.
+	@property({ type: Boolean, attribute: 'content-invalid', reflect: true })
+	// eslint-disable-next-line @typescript-eslint/naming-convention
+	_contentInvalid?: boolean;
+
+	// 'settings-invalid' attribute is used for styling purpose.
+	@property({ type: Boolean, attribute: 'settings-invalid', reflect: true })
+	// eslint-disable-next-line @typescript-eslint/naming-convention
+	_settingsInvalid?: boolean;
+
+	@state()
+	private _blockViewProps: UmbBlockEditorCustomViewProperties<UmbBlockGridLayoutModel> = {
+		contentKey: undefined!,
+		config: { showContentEdit: false, showSettingsEdit: false },
+	}; // Set to undefined cause it will be set before we render.
+
+	#updateBlockViewProps(incoming: Partial<UmbBlockEditorCustomViewProperties<UmbBlockGridLayoutModel>>) {
+		this._blockViewProps = { ...this._blockViewProps, ...incoming };
+		this.requestUpdate('_blockViewProps');
+	}
+
+	@state()
+	private _isReadOnly = false;
+
+	constructor() {
+		super();
+		this.#init();
+	}
+
+	#init() {
+		// Misc:
+		this.observe(
+			this.#context.showContentEdit,
+			(showContentEdit) => {
+				this._showContentEdit = showContentEdit;
+				this.#updateBlockViewProps({ config: { ...this._blockViewProps.config!, showContentEdit } });
+			},
+			null,
+		);
+		this.observe(
+			this.#context.settingsElementTypeKey,
+			(key) => {
+				this.#updateBlockViewProps({ config: { ...this._blockViewProps.config!, showSettingsEdit: !!key } });
+			},
+			null,
+		);
+		this.observe(this.#context.canScale, (canScale) => (this._canScale = canScale), null);
+		this.observe(this.#context.isAllowed, (isAllowed) => (this._invalidLocation = !isAllowed), null);
+		this.observe(
+			this.#context.blockType,
+			(blockType) => {
+				this.#updateBlockViewProps({ blockType });
+			},
+			null,
+		);
+		this.observe(this.#context.index, (index) => this.#updateBlockViewProps({ index }), null);
+		this.observe(
+			this.#context.label,
+			(label) => {
+				this.#updateBlockViewProps({ label });
+				this._label = label;
+			},
+			null,
+		);
+		this.observe(
+			this.#context.contentElementTypeIcon,
+			(icon) => {
+				this.#updateBlockViewProps({ icon });
+				this._icon = icon;
+			},
+			null,
+		);
+		this.observe(
+			this.#context.hasExpose,
+			(exposed) => {
+				this.#updateBlockViewProps({ unpublished: !exposed });
+				this._exposed = exposed;
+			},
+			null,
+		);
+		this.observe(
+			this.#context.unsupported,
+			(unsupported) => {
+				if (unsupported === undefined) return;
+				this.#updateBlockViewProps({ unsupported: unsupported });
+				this._unsupported = unsupported;
+				this.toggleAttribute('unsupported', unsupported);
+			},
+			null,
+		);
+		this.observe(this.#context.actionsVisibility, (showActions) => (this._showActions = showActions), null);
+		this.observe(this.#context.inlineEditingMode, (mode) => (this._inlineEditingMode = mode), null);
+		this.observe(this.#context.isSortMode, (isSortMode) => (this._isSortMode = isSortMode), null);
+		this.observe(this.#context.name, (name) => (this._name = name), null);
+
+		// Data:
+		this.observe(
+			this.#context.layout,
+			(layout) => {
+				this.#updateBlockViewProps({ layout });
+			},
+			null,
+		);
+		this.#observeData();
+
+		this.observe(
+			this.#context.settingsKey,
+			(settingsKey) => {
+				this.removeUmbControllerByAlias('observeMessagesForSettings');
+				if (settingsKey) {
+					// Observe settings validation state:
+					new UmbObserveValidationStateController(
+						this,
+						`$.settingsData[${UmbDataPathBlockElementDataQuery({ key: settingsKey })}]`,
+						(hasMessages) => {
+							this._settingsInvalid = hasMessages;
+							this._blockViewProps.settingsInvalid = hasMessages;
+						},
+						'observeMessagesForSettings',
+					);
+				}
+			},
+			null,
+		);
+
+		// Paths:
+		this.observe(
+			this.#context.createBeforePath,
+			(createPath) => {
+				this._createBeforePath = createPath;
+			},
+			null,
+		);
+		this.observe(
+			this.#context.createAfterPath,
+			(createPath) => {
+				this._createAfterPath = createPath;
+			},
+			null,
+		);
+		this.observe(
+			this.#context.workspaceEditContentPath,
+			(path) => {
+				this.#updateBlockViewProps({ config: { ...this._blockViewProps.config!, editContentPath: path } });
+			},
+			null,
+		);
+		this.observe(
+			this.#context.workspaceEditSettingsPath,
+			(path) => {
+				this.#updateBlockViewProps({ config: { ...this._blockViewProps.config!, editSettingsPath: path } });
+			},
+			null,
+		);
+
+		this.observe(
+			this.#context.readOnlyGuard.permitted,
+			(isReadOnly) => {
+				this._isReadOnly = isReadOnly;
+				this.#updateBlockViewProps({ readonly: isReadOnly });
+			},
+			'umbReadOnlyObserver',
+		);
+	}
+
+	async #observeData() {
+		this.observe(
+			await this.#context.contentValues(),
+			(content) => {
+				this.#updateBlockViewProps({ content });
+			},
+			null,
+		);
+		this.observe(
+			await this.#context.settingsValues(),
+			(settings) => {
+				this.#updateBlockViewProps({ settings });
+			},
+			null,
+		);
+	}
+
+	override connectedCallback(): void {
+		super.connectedCallback();
+		// element styling:
+		this.observe(
+			this.#context.columnSpan,
+			(columnSpan) => {
+				this._columnSpan = columnSpan;
+				this.setAttribute('data-col-span', columnSpan ? columnSpan.toString() : '');
+				this.style.setProperty('--umb-block-grid--item-column-span', columnSpan ? columnSpan.toString() : '');
+			},
+			'columnSpan',
+		);
+		this.observe(
+			this.#context.rowSpan,
+			(rowSpan) => {
+				this._rowSpan = rowSpan;
+				this.setAttribute('data-row-span', rowSpan ? rowSpan.toString() : '');
+				this.style.setProperty('--umb-block-grid--item-row-span', rowSpan ? rowSpan.toString() : '');
+			},
+			'rowSpan',
+		);
+		this.observe(
+			this.#context.contentElementTypeKey,
+			(contentElementTypeKey) => {
+				if (contentElementTypeKey) {
+					this.setAttribute('data-content-element-type-key', contentElementTypeKey);
+				}
+			},
+			'contentElementTypeKey',
+		);
+		this.observe(
+			this.#context.contentElementTypeAlias,
+			(contentElementTypeAlias) => {
+				if (contentElementTypeAlias) {
+					this._contentTypeAlias = contentElementTypeAlias;
+					this.setAttribute('data-content-element-type-alias', contentElementTypeAlias);
+				}
+			},
+			'contentElementTypeAlias',
+		);
+		this.observe(
+			this.#context.contentElementTypeName,
+			(contentElementTypeName) => {
+				this._contentTypeName = contentElementTypeName;
+			},
+			'contentElementTypeName',
+		);
+
+		this.#callUpdateInlineCreateButtons();
+		if (this.parentElement) {
+			this.#layoutContainerResizeObserver.observe(this.parentElement);
+		}
+	}
+
+	override disconnectedCallback(): void {
+		super.disconnectedCallback();
+		this.#layoutContainerResizeObserver.disconnect();
+	}
+
+	override destroy(): void {
+		this.#layoutContainerResizeObserver.disconnect();
+		super.destroy();
+	}
+
+	protected override updated(_changedProperties: PropertyValueMap<any> | Map<PropertyKey, unknown>): void {
+		super.updated(_changedProperties);
+		if (_changedProperties.has('_blockViewProps') || _changedProperties.has('_columnSpan')) {
+			this.#callUpdateInlineCreateButtons();
+		}
+	}
+
+	#expose = () => {
+		this.#context.expose();
+	};
+
+	#onUfmResolved = (event: UmbUfmResolvedEvent) => {
+		this.#context.setName(event.detail.text);
+	};
+
+	#renderHiddenUfm() {
+		const blockValue = {
+			...this._blockViewProps.content,
+			$settings: this._blockViewProps.settings,
+			$index: this.index,
+		};
+		return renderHiddenUfm(this._label, blockValue, this.#onUfmResolved);
+	}
+
+	#callUpdateInlineCreateButtons() {
+		clearTimeout(this.#renderTimeout);
+		this.#renderTimeout = setTimeout(this.#updateInlineCreateButtons, 100) as unknown as number;
+	}
+
+	#updateInlineCreateButtons = () => {
+		// TODO: Could we optimize this, so it wont break?, cause currently we trust blindly that parentElement is '.umb-block-grid__layout-container' [NL]
+		const layoutContainer = this.parentElement;
+		if (!layoutContainer) return;
+		const layoutContainerRect = layoutContainer.getBoundingClientRect();
+
+		if (layoutContainerRect.width === 0) {
+			this._showInlineCreateBefore = false;
+			this._showInlineCreateAfter = false;
+			this._inlineCreateAboveWidth = undefined;
+			this.#renderTimeout = setTimeout(this.#updateInlineCreateButtons, 100) as unknown as number;
+			return;
+		}
+
+		const layoutItemRect = this.getBoundingClientRect();
+		if (layoutItemRect.right > layoutContainerRect.right - 5) {
+			this._showInlineCreateAfter = false;
+		} else {
+			this._showInlineCreateAfter = true;
+		}
+
+		if (layoutItemRect.left > layoutContainerRect.left + 5) {
+			this._showInlineCreateBefore = false;
+			this._inlineCreateAboveWidth = undefined;
+		} else {
+			this._inlineCreateAboveWidth = getComputedStyle(layoutContainer).width;
+			this._showInlineCreateBefore = true;
+		}
+	};
+
+	#extensionSlotFilterMethod = (manifest: ManifestBlockEditorCustomView) => {
+		if (!this._contentTypeAlias) {
+			// accept no extensions if we don't have a content type alias
+			return false;
+		}
+
+		// We do have _contentTypeAlias at this stage, cause we do use the filter method in the extension slot which first gets rendered when we have the _contentTypeAlias. [NL]
+		if (
+			manifest.forContentTypeAlias &&
+			!stringOrStringArrayContains(manifest.forContentTypeAlias, this._contentTypeAlias!)
+		) {
+			return false;
+		}
+
+		if (manifest.forBlockEditor && !stringOrStringArrayContains(manifest.forBlockEditor, UMB_BLOCK_GRID)) {
+			return false;
+		}
+
+		return true;
+	};
+
+	#extensionSlotRenderMethod = (ext: UmbExtensionElementInitializer<ManifestBlockEditorCustomView>) => {
+		if (ext.component) {
+			ext.component.classList.add('umb-block-grid__block--view');
+			ext.component.setAttribute('part', 'component');
+		}
+		return html`${this.#renderHiddenUfm()}
+		${when(
+			this._exposed || this._isReadOnly,
+			() => ext.component,
+			() => html`
+				<div>
+					${ext.component}
+					<umb-block-overlay-expose-button .contentTypeName=${this._contentTypeName} @click=${this.#expose}>
+					</umb-block-overlay-expose-button>
+				</div>
+			`,
+		)}`;
+	};
+
+	override render() {
+		return when(
+			this.contentKey && (this._contentTypeAlias || this._unsupported),
+			() => html`
+				${this.#renderCreateBeforeInlineButton()}
+				<div class="umb-block-grid__block" part="umb-block-grid__block">
+					${when(
+						this._isSortMode,
+						() => this.#renderRefBlock(),
+						() => html`
+							<umb-extension-slot
+								single
+								type="blockEditorCustomView"
+								.filter=${this.#extensionSlotFilterMethod}
+								.renderMethod=${this.#extensionSlotRenderMethod}
+								.fallbackRenderMethod=${this.#renderBuiltinBlockView}
+								.props=${this._blockViewProps}></umb-extension-slot>
+						`,
+					)}
+					${this.#renderActionBar()}
+					${when(
+						!this._showContentEdit && this._contentInvalid,
+						() => html`<uui-badge attention color="invalid" label="Invalid content">!</uui-badge>`,
+					)}
+					${when(
+						this._invalidLocation,
+						() => html`
+							<uui-tag id="invalidLocation" color="danger">
+								<umb-localize
+									key="blockEditor_invalidDropPosition"
+									.args=${[
+										this._contentTypeName ?? this.localize.term('blockEditor_unsupportedBlockName'),
+									]}></umb-localize>
+							</uui-tag>
+						`,
+					)}
+					${when(
+						this._canScale,
+						() => html`
+							<umb-block-scale-handler @mousedown=${(e: MouseEvent) => this.#context.scaleManager.onScaleMouseDown(e)}>
+								${this._columnSpan}x${this._rowSpan}
+							</umb-block-scale-handler>
+						`,
+					)}
+				</div>
+				${this.#renderCreateAfterInlineButton()}
+			`,
+		);
+	}
+
+	#renderBuiltinBlockView = () => {
+		if (this._unsupported) {
+			return this.#renderUnsupportedBlock();
+		}
+
+		if (this._inlineEditingMode) {
+			return this.#renderInlineBlock();
+		}
+
+		return this.#renderRefBlock();
+	};
+
+	#renderUnsupportedBlock() {
+		return html`
+			${this.#renderHiddenUfm()}
+			<umb-block-grid-block-unsupported
+				class="umb-block-grid__block--view"
+				.config=${this._blockViewProps.config}
+				.content=${this._blockViewProps.content}
+				.settings=${this._blockViewProps.settings}
+				${umbDestroyOnDisconnect()}>
+			</umb-block-grid-block-unsupported>
+		`;
+	}
+
+	#renderInlineBlock() {
+		return html`
+			<umb-block-grid-block-inline
+				class="umb-block-grid__block--view"
+				.label=${this._label}
+				.icon=${this._icon}
+				.index=${this._blockViewProps.index}
+				.unpublished=${!this._exposed}
+				.config=${this._blockViewProps.config}
+				.content=${this._blockViewProps.content}
+				.settings=${this._blockViewProps.settings}
+				${umbDestroyOnDisconnect()}>
+			</umb-block-grid-block-inline>
+		`;
+	}
+
+	#renderRefBlock() {
+		return html`
+			<umb-block-grid-block
+				class="umb-block-grid__block--view ${this._isSortMode ? 'sortable' : ''}"
+				.label=${this._label}
+				.icon=${this._icon}
+				.index=${this._blockViewProps.index}
+				.unpublished=${!this._exposed}
+				.config=${this._blockViewProps.config}
+				.content=${this._blockViewProps.content}
+				.settings=${this._blockViewProps.settings}
+				${umbDestroyOnDisconnect()}>
+			</umb-block-grid-block>
+		`;
+	}
+
+	#renderCreateBeforeInlineButton() {
+		if (this._isReadOnly) return nothing;
+		if (!this._createBeforePath) return nothing;
+		if (!this._showInlineCreateBefore) return nothing;
+
+		return html`
+			<uui-button-inline-create
+				href=${this._createBeforePath}
+				label=${this.localize.term('blockEditor_addBlock')}
+				style=${this._inlineCreateAboveWidth ? `width: ${this._inlineCreateAboveWidth}` : ''}>
+			</uui-button-inline-create>
+		`;
+	}
+
+	#renderCreateAfterInlineButton() {
+		if (this._isReadOnly) return nothing;
+		if (!this._createAfterPath) return nothing;
+		if (!this._showInlineCreateAfter) return nothing;
+
+		return html`
+			<uui-button-inline-create
+				vertical
+				label=${this.localize.term('blockEditor_addBlock')}
+				href=${this._createAfterPath}></uui-button-inline-create>
+		`;
+	}
+
+	#renderActionBar() {
+		if (this._isSortMode) return nothing;
+		if (!this._showActions) return nothing;
+		return html`<umb-block-action-list id="actions" block-editor=${UMB_BLOCK_GRID}></umb-block-action-list>`;
+	}
+
+	static override styles = [
+		UUIBlinkKeyframes,
+		css`
+			:host {
+				position: relative;
+				display: block;
+				--umb-block-grid-entry-actions-opacity: 0;
+			}
+
+			:host([settings-invalid]),
+			:host([content-invalid]),
+			:host(:hover),
+			:host(:focus-within) {
+				--umb-block-grid-entry-actions-opacity: 1;
+			}
+
+			:host::after {
+				content: '';
+				position: absolute;
+				z-index: 1;
+				pointer-events: none;
+				inset: 0;
+				border: 1px solid transparent;
+				border-radius: var(--uui-border-radius);
+
+				transition: border-color 240ms ease-in;
+			}
+
+			:host([location-invalid])::after,
+			:host([settings-invalid])::after,
+			:host([content-invalid])::after {
+				border-color: var(--uui-color-invalid);
+			}
+
+			umb-extension-slot::part(component) {
+				position: relative;
+				z-index: 0;
+			}
+
+			#invalidLocation {
+				position: absolute;
+				top: -1em;
+				left: var(--uui-size-space-2);
+				z-index: 2;
+			}
+
+			uui-button-inline-create {
+				top: 0px;
+				position: absolute;
+
+				--umb-block-grid__block--inline-create-button-display--condition: var(--umb-block-grid--dragging-mode) none;
+				display: var(--umb-block-grid__block--inline-create-button-display--condition);
+			}
+
+			uui-button-inline-create:not([vertical]) {
+				left: 0;
+				width: var(--umb-block-grid-editor--inline-create-width, 100%);
+			}
+
+			:host(:not([index='0'])) uui-button-inline-create:not([vertical]) {
+				top: calc(var(--umb-block-grid--row-gap, 0px) * -0.5);
+			}
+
+			#actions {
+				position: absolute;
+				top: var(--uui-size-2);
+				right: var(--uui-size-2);
+				opacity: var(--umb-block-grid-entry-actions-opacity, 0);
+				transition: opacity 120ms;
+				z-index: 1;
+			}
+
+			uui-button-inline-create[vertical] {
+				right: calc(1px - (var(--umb-block-grid--column-gap, 0px) * 0.5));
+			}
+
+			.umb-block-grid__block {
+				height: 100%;
+			}
+
+			:host(:hover):not(:drop)::after {
+				display: block;
+				border-color: var(--uui-color-interactive-emphasis);
+				box-shadow:
+					0 0 0 1px rgba(255, 255, 255, 0.7),
+					inset 0 0 0 1px rgba(255, 255, 255, 0.7);
+			}
+
+			:host([drag-placeholder])::after {
+				display: block;
+				border-width: 2px;
+				border-color: var(--uui-color-interactive-emphasis);
+				animation: ${UUIBlinkAnimationValue};
+			}
+
+			:host([drag-placeholder])::before {
+				content: '';
+				position: absolute;
+				pointer-events: none;
+				inset: 0;
+				border-radius: var(--uui-border-radius);
+				background-color: var(--uui-color-interactive-emphasis);
+				opacity: 0.12;
+			}
+
+			:host([drag-placeholder]) .umb-block-grid__block {
+				transition: opacity 50ms 16ms;
+				opacity: 0;
+			}
+
+			uui-badge {
+				z-index: 2;
+			}
+
+			.umb-block-grid__block {
+				--umb-block-scale-handler-opacity: 0;
+
+				&:hover,
+				&:focus-within {
+					--umb-block-scale-handler-opacity: 1;
+				}
+			}
+		`,
+	];
+}
+
+export default UmbBlockGridEntryElement;
+
+declare global {
+	interface HTMLElementTagNameMap {
+		'umb-block-grid-entry': UmbBlockGridEntryElement;
+	}
+}

@@ -1,0 +1,333 @@
+import { UmbDocumentUrlRepository } from '../repository/index.js';
+import type { UmbDocumentVariantOptionModel } from '../../types.js';
+import { UMB_DOCUMENT_WORKSPACE_CONTEXT } from '../../workspace/constants.js';
+import type { UmbDocumentUrlModel } from '../repository/types.js';
+import { UmbDocumentUrlsDataResolver } from '../document-urls-data-resolver.js';
+import { UmbDocumentVariantState } from '../../variant-state.js';
+import {
+	css,
+	customElement,
+	html,
+	ifDefined,
+	nothing,
+	repeat,
+	state,
+	when,
+} from '@umbraco-cms/backoffice/external/lit';
+import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element';
+import type { UmbEntityActionEvent } from '@umbraco-cms/backoffice/entity-action';
+import { UmbRequestReloadStructureForEntityEvent } from '@umbraco-cms/backoffice/entity-action';
+import { UMB_ACTION_EVENT_CONTEXT } from '@umbraco-cms/backoffice/action';
+import { observeMultiple } from '@umbraco-cms/backoffice/observable-api';
+import { debounce } from '@umbraco-cms/backoffice/utils';
+import { UMB_PROPERTY_DATASET_CONTEXT } from '@umbraco-cms/backoffice/property';
+import type { UmbVariantId } from '@umbraco-cms/backoffice/variant';
+
+interface UmbDocumentInfoViewLink {
+	culture: string | null;
+	url: string | null | undefined;
+	state: UmbDocumentVariantState | null | undefined;
+}
+
+@customElement('umb-document-links-workspace-info-app')
+export class UmbDocumentLinksWorkspaceInfoAppElement extends UmbLitElement {
+	#documentUrlRepository = new UmbDocumentUrlRepository(this);
+
+	@state()
+	private _isNew = false;
+
+	@state()
+	private _unique?: string;
+
+	@state()
+	private _variantOptions?: Array<UmbDocumentVariantOptionModel>;
+
+	@state()
+	private _loading = false;
+
+	@state()
+	private _links: Array<UmbDocumentInfoViewLink> = [];
+
+	#urls: Array<UmbDocumentUrlModel> = [];
+
+	#documentWorkspaceContext?: typeof UMB_DOCUMENT_WORKSPACE_CONTEXT.TYPE;
+	#eventContext?: typeof UMB_ACTION_EVENT_CONTEXT.TYPE;
+	#propertyDataSetVariantId?: UmbVariantId;
+
+	#documentUrlsDataResolver? = new UmbDocumentUrlsDataResolver(this);
+
+	constructor() {
+		super();
+
+		this.consumeContext(UMB_ACTION_EVENT_CONTEXT, (context) => {
+			this.#eventContext = context;
+
+			this.#eventContext?.removeEventListener(
+				UmbRequestReloadStructureForEntityEvent.TYPE,
+				this.#onReloadRequest as unknown as EventListener,
+			);
+
+			this.#eventContext?.addEventListener(
+				UmbRequestReloadStructureForEntityEvent.TYPE,
+				this.#onReloadRequest as unknown as EventListener,
+			);
+		});
+
+		this.consumeContext(UMB_DOCUMENT_WORKSPACE_CONTEXT, (context) => {
+			this.#documentWorkspaceContext = context;
+			if (context) {
+				this.observe(
+					observeMultiple([context.isNew, context.unique]),
+					([isNew, unique]) => {
+						if (!unique) return;
+						this._isNew = isNew === true;
+
+						if (unique !== this._unique) {
+							this._unique = unique;
+							this.#scheduleRequestUrls();
+						}
+					},
+					'observeWorkspaceState',
+				);
+			} else {
+				this.removeUmbControllerByAlias('observeWorkspaceState');
+			}
+
+			this.observe(context?.variantOptions, (variantOptions) => {
+				this._variantOptions = variantOptions;
+				this.#setLinks();
+			});
+		});
+
+		// Re-request when the displayed culture changes, so switching language fetches that culture.
+		this.observe(this.#documentUrlsDataResolver?.requestCulture, () => this.#scheduleRequestUrls(), null);
+
+		this.consumeContext(UMB_PROPERTY_DATASET_CONTEXT, (context) => {
+			this.#propertyDataSetVariantId = context?.getVariantId();
+			this.#setLinks();
+		});
+
+		this.observe(
+			this.#documentUrlsDataResolver?.urls,
+			(urls) => {
+				this.#urls = urls ?? [];
+				this.#setLinks();
+			},
+			null,
+		);
+	}
+
+	#setLinks() {
+		const links: Array<UmbDocumentInfoViewLink> = this.#urls.map((url) => {
+			const culture = url.culture;
+			const state = this._variantOptions?.find((variantOption) => variantOption.culture === culture)?.variant?.state;
+			return {
+				culture,
+				url: url.url,
+				state,
+			};
+		});
+
+		this._links = links;
+	}
+
+	#getTargetUrl(url: string | undefined) {
+		if (!url || url.length === 0) {
+			return url;
+		}
+
+		if (url.includes('.') && !url.includes('//')) {
+			return '//' + url;
+		}
+
+		return url;
+	}
+
+	// Show the loading indicator immediately (synchronously), before the debounced request runs, so no
+	// stale "no URL" message is shown while the URL is (re)resolved - e.g. on load or when switching culture.
+	#scheduleRequestUrls() {
+		if (this._isNew || !this._unique) return;
+
+		this._loading = true;
+		this.#debounceRequestUrls();
+	}
+
+	async #requestUrls() {
+		if (this._isNew || !this._unique) return;
+
+		this._loading = true;
+		this.#documentUrlsDataResolver?.setData([]);
+
+		try {
+			// Only request the culture currently being displayed for variant documents. Invariant documents
+			// return all of their domain urls, so no culture is passed (getRequestCulture resolves undefined).
+			const culture = await this.#documentUrlsDataResolver?.getRequestCulture();
+			const { data } = await this.#documentUrlRepository.requestUrls([this._unique], culture);
+
+			if (data?.length) {
+				this.#documentUrlsDataResolver?.setData(data[0].urls);
+			}
+		} finally {
+			this._loading = false;
+		}
+	}
+
+	#getStateLocalizationKey(state: UmbDocumentVariantState | null | undefined): string {
+		switch (state) {
+			case null:
+			case undefined:
+			case UmbDocumentVariantState.NOT_CREATED:
+				return 'content_notCreated';
+			case UmbDocumentVariantState.DRAFT:
+				return 'content_itemNotPublished';
+			case UmbDocumentVariantState.PUBLISHED:
+				return 'content_routeErrorCannotRoute';
+			default:
+				return 'content_parentNotPublishedAnomaly';
+		}
+	}
+
+	#debounceRequestUrls = debounce(() => this.#requestUrls(), 50);
+
+	#onReloadRequest = (event: UmbEntityActionEvent) => {
+		// TODO: Introduce "Published Event". We only need to update the url when the document is published.
+		if (event.getUnique() !== this.#documentWorkspaceContext?.getUnique()) return;
+		if (event.getEntityType() !== this.#documentWorkspaceContext.getEntityType()) return;
+		this.#scheduleRequestUrls();
+	};
+
+	override render() {
+		return html`
+			<umb-workspace-info-app-layout headline="#general_links">
+				${when(
+					this._loading,
+					() => this.#renderLoading(),
+					() => this.#renderContent(),
+				)}
+			</umb-workspace-info-app-layout>
+		`;
+	}
+
+	#renderLoading() {
+		return html`<div id="loader-container"><uui-loader></uui-loader></div>`;
+	}
+
+	#renderContent() {
+		return html`
+			${when(
+				this._isNew,
+				() => this.#renderNotCreated(),
+				() => (this._links.length === 0 ? this.#renderNoLinks() : this.#renderLinks()),
+			)}
+		`;
+	}
+
+	#renderNotCreated() {
+		return html`${this.#renderEmptyLink(null, null)}`;
+	}
+
+	#renderLinks() {
+		return html`
+			${repeat(
+				this._links,
+				(link) => link.url,
+				(link) => this.#renderLink(link),
+			)}
+		`;
+	}
+
+	#renderLink(link: UmbDocumentInfoViewLink) {
+		if (!link.url) {
+			return this.#renderEmptyLink(link.culture, link.state);
+		}
+
+		return html`
+			<a class="link-item" href=${ifDefined(this.#getTargetUrl(link.url))} target="_blank">
+				<span>
+					${this.#renderLinkCulture(link.culture)}
+					<span>${link.url}</span>
+				</span>
+				<uui-icon name="icon-out"></uui-icon>
+			</a>
+		`;
+	}
+
+	#renderNoLinks() {
+		return html` ${this._variantOptions
+			?.filter((variantOption) => variantOption.culture === this.#propertyDataSetVariantId?.culture)
+			.map((variantOption) => this.#renderEmptyLink(variantOption.culture, variantOption.variant?.state))}`;
+	}
+
+	#renderEmptyLink(culture: string | null, state: UmbDocumentVariantState | null | undefined) {
+		return html`<div class="link-item">
+			<span>
+				${this.#renderLinkCulture(culture)}
+				<em><umb-localize key=${this.#getStateLocalizationKey(state)}></umb-localize></em>
+			</span>
+		</div>`;
+	}
+
+	#renderLinkCulture(culture: string | null) {
+		if (!culture) return nothing;
+		if (this._links.length === 1) return nothing;
+		const allLinksHaveSameCulture = this._links?.every((link) => link.culture === culture);
+		if (allLinksHaveSameCulture) return nothing;
+		return html`<span class="culture">${culture}</span>`;
+	}
+
+	override disconnectedCallback(): void {
+		super.disconnectedCallback();
+
+		this.#eventContext?.removeEventListener(
+			UmbRequestReloadStructureForEntityEvent.TYPE,
+			this.#onReloadRequest as unknown as EventListener,
+		);
+	}
+
+	static override styles = [
+		css`
+			#loader-container {
+				display: flex;
+				justify-content: center;
+				align-items: center;
+				padding: var(--uui-size-space-2);
+			}
+
+			.link-item {
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				gap: var(--uui-size-6);
+				padding: var(--uui-size-space-4) var(--uui-size-space-5);
+
+				&:is(a) {
+					cursor: pointer;
+					text-decoration: none;
+					color: var(--uui-color-interactive);
+				}
+
+				&:is(a):hover {
+					color: var(--uui-color-interactive-emphasis);
+				}
+
+				& > span {
+					display: flex;
+					align-items: center;
+					gap: var(--uui-size-6);
+				}
+
+				.culture {
+					color: var(--uui-color-divider-emphasis);
+				}
+			}
+		`,
+	];
+}
+
+export default UmbDocumentLinksWorkspaceInfoAppElement;
+
+declare global {
+	interface HTMLElementTagNameMap {
+		'umb-document-links-workspace-info-app': UmbDocumentLinksWorkspaceInfoAppElement;
+	}
+}

@@ -1,0 +1,451 @@
+import { Editor } from '../../externals.js';
+import { UmbTiptapRteContext } from '../../contexts/tiptap-rte.context.js';
+import type { AnyExtension } from '../../externals.js';
+import type { UmbTiptapExtensionApi } from '../../extensions/types.js';
+import type { UmbTiptapStatusbarValue, UmbTiptapToolbarValue } from '../types.js';
+import { UmbEntityInputInteractionMemoryManager } from '@umbraco-cms/backoffice/entity';
+import { UmbInteractionMemoryScopeContext } from '@umbraco-cms/backoffice/interaction-memory';
+import type { UmbInteractionMemoryModel } from '@umbraco-cms/backoffice/interaction-memory';
+import {
+	css,
+	customElement,
+	html,
+	property,
+	query,
+	repeat,
+	state,
+	unsafeCSS,
+	when,
+} from '@umbraco-cms/backoffice/external/lit';
+import { loadManifestApi } from '@umbraco-cms/backoffice/extension-api';
+import { umbExtensionsRegistry } from '@umbraco-cms/backoffice/extension-registry';
+import { UmbChangeEvent } from '@umbraco-cms/backoffice/event';
+import { umbDestroyOnDisconnect, UmbLitElement } from '@umbraco-cms/backoffice/lit-element';
+import { UmbFormControlMixin } from '@umbraco-cms/backoffice/validation';
+import type { CSSResultGroup } from '@umbraco-cms/backoffice/external/lit';
+import type { UmbPropertyEditorConfigCollection } from '@umbraco-cms/backoffice/property-editor';
+
+import '../toolbar/tiptap-toolbar.element.js';
+import '../statusbar/tiptap-statusbar.element.js';
+
+const TIPTAP_CORE_EXTENSION_ALIAS = 'Umb.Tiptap.RichTextEssentials';
+
+const RTE_CONTENT_STYLESHEET = '/umbraco/backoffice/css/rte-content.css';
+
+@customElement('umb-input-tiptap')
+export class UmbInputTiptapElement extends UmbFormControlMixin<string, typeof UmbLitElement, string>(UmbLitElement) {
+	readonly #context = new UmbTiptapRteContext(this);
+
+	// Holds what the modals opened from this input remember between opens. They are rendered in the
+	// modal portal, not as descendants of this element, so context is the only channel that reaches
+	// them; upwards it is a property and an `interaction-memories-change` event.
+	readonly #interactionMemoryScope = new UmbInteractionMemoryScopeContext(this);
+	readonly #interactionMemoryBridge = new UmbEntityInputInteractionMemoryManager(
+		this,
+		this.#interactionMemoryScope.memory,
+	);
+
+	/**
+	 * The memories held by the modals opened from this input, e.g. the last-used folder in a media
+	 * picker opened from the RTE toolbar. Bridged from the interaction-memory scope this input provides.
+	 * @type {(Array<UmbInteractionMemoryModel> | undefined)}
+	 * @attr
+	 */
+	@property({ type: Array, attribute: false })
+	public get interactionMemories(): Array<UmbInteractionMemoryModel> | undefined {
+		return this.#interactionMemoryBridge.getMemories();
+	}
+	public set interactionMemories(value: Array<UmbInteractionMemoryModel> | undefined) {
+		this.#interactionMemoryBridge.setMemories(value);
+	}
+
+	#hasToolbar = false;
+
+	#hasStatusbar = false;
+
+	@property({ type: String })
+	override set value(value: string) {
+		if (value === this.#value) return;
+		this.#value = value;
+
+		// Try to set the value to the editor if it is ready.
+		if (this._editor) {
+			this._editor.commands.setContent(value);
+		}
+	}
+	override get value() {
+		return this.#value;
+	}
+	#value = '';
+
+	@property({ attribute: false })
+	configuration?: UmbPropertyEditorConfigCollection;
+
+	@property()
+	label?: string;
+
+	/**
+	 * Sets the input to required, meaning validation will fail if the value is empty.
+	 * @type {boolean}
+	 */
+	@property({ type: Boolean })
+	required?: boolean;
+
+	@property({ type: String })
+	requiredMessage?: string;
+
+	/**
+	 * Sets the input to readonly mode, meaning value cannot be changed but still able to read and select its content.
+	 */
+	@property({ type: Boolean, reflect: true })
+	readonly = false;
+
+	@state()
+	private _stylesheets = new Set([RTE_CONTENT_STYLESHEET]);
+
+	@state()
+	private _editor?: Editor;
+
+	@state()
+	private readonly _extensions: Array<UmbTiptapExtensionApi> = [];
+
+	@state()
+	private _extensionStyles?: CSSResultGroup;
+
+	@state()
+	private _toolbar: UmbTiptapToolbarValue = [[[]]];
+
+	@state()
+	private _statusbar: UmbTiptapStatusbarValue = [[], []];
+
+	@state()
+	private _scrolling = false;
+
+	@query('umb-tiptap-toolbar')
+	private _toolbarElement?: HTMLElement;
+
+	// Detects the toolbar sticking by watching it drop below full visibility,
+	// regardless of which ancestor is the one actually scrolling.
+	#scrollObserver = new IntersectionObserver(
+		([entry]) => {
+			this._scrolling = entry.intersectionRatio < 1;
+		},
+		{ threshold: 1 },
+	);
+
+	constructor() {
+		super();
+
+		this.addValidator(
+			'valueMissing',
+			() => this.requiredMessage ?? 'Value is required',
+			() => !!this.required && this.isEmpty(),
+		);
+	}
+
+	protected override async firstUpdated() {
+		// no need to await observing the stylesheet root path.
+		this.#observeStylesheetRootPath();
+		await this.#loadExtensions();
+		await this.#loadEditor();
+		await this.updateComplete;
+		if (this._toolbarElement) this.#scrollObserver.observe(this._toolbarElement);
+	}
+
+	protected override updated(changedProperties: Map<string, unknown>) {
+		super.updated(changedProperties);
+		if (changedProperties.has('readonly')) {
+			this._editor?.setEditable(!this.readonly);
+		}
+	}
+
+	/**
+	 * Checks if the editor is empty.
+	 * @returns {boolean} returns true if the editor contains no markup
+	 */
+	public isEmpty(): boolean {
+		return this._editor?.isEmpty ?? false;
+	}
+
+	#observeStylesheetRootPath() {
+		this.observe(this.#context.stylesheetRootPath, (stylesheetRootPath) => {
+			if (stylesheetRootPath === undefined) return;
+			this.#applyConfiguredStylesheets();
+		});
+	}
+
+	#applyConfiguredStylesheets() {
+		const stylesheets = this.configuration?.getValueByAlias<Array<string>>('stylesheets');
+		if (!stylesheets?.length) return;
+
+		const linkHrefs = stylesheets.map((stylesheet) => this.#context.resolveStylesheetHref(stylesheet));
+
+		// Reassign a new Set so Lit's `@state()` identity check detects the change and re-renders;
+		// `Set.add()` would mutate in place and the configured stylesheets could be missed if the
+		// editor finishes loading before this (parallel) path resolves.
+		this._stylesheets = new Set([RTE_CONTENT_STYLESHEET, ...linkHrefs]);
+	}
+
+	async #loadExtensions() {
+		const enabledExtensions = this.configuration?.getValueByAlias<string[]>('extensions') ?? [];
+
+		// Ensures that the "Rich Text Essentials" extension is always enabled. [LK]
+		// Prepending the alias rather than statically importing the API class keeps
+		// essentials inside the shared `extension-apis.bundle` chunk and avoids
+		// duplicating it into the input-tiptap chunk.
+		const aliases = enabledExtensions.includes(TIPTAP_CORE_EXTENSION_ALIAS)
+			? enabledExtensions
+			: [TIPTAP_CORE_EXTENSION_ALIAS, ...enabledExtensions];
+
+		await new Promise<void>((resolve) => {
+			this.observe(umbExtensionsRegistry.byTypeAndAliases('tiptapExtension', aliases), async (manifests) => {
+				const loaded = await Promise.all(
+					manifests.map(async (manifest) => {
+						if (!manifest.api) return null;
+						const extension = await loadManifestApi(manifest.api);
+						if (!extension) return null;
+						const ext = new extension(this);
+						ext.manifest = manifest;
+						return ext;
+					}),
+				);
+				for (const ext of loaded) {
+					if (ext) this._extensions.push(ext);
+				}
+				resolve();
+			});
+		});
+	}
+
+	async #loadEditor() {
+		const element = this.shadowRoot?.querySelector('#editor');
+		if (!element) return;
+
+		const tiptapExtensions = new Map<string, AnyExtension>();
+		const collectedStyles: Array<CSSResultGroup> = [];
+
+		this._extensions.forEach((ext) => {
+			const tiptapExt = ext.getTiptapExtensions({ configuration: this.configuration });
+			if (tiptapExt?.length) {
+				tiptapExt.forEach((extension) => {
+					if (!tiptapExtensions.has(extension.name)) {
+						tiptapExtensions.set(extension.name, extension);
+					}
+				});
+			}
+
+			const styles = ext.getStyles();
+			if (styles) {
+				collectedStyles.push(styles);
+			}
+		});
+
+		if (collectedStyles.length) {
+			this._extensionStyles = unsafeCSS(collectedStyles.map((s) => s.toString()).join(''));
+		}
+
+		this._toolbar = this.configuration?.getValueByAlias<UmbTiptapToolbarValue>('toolbar') ?? [[[]]];
+		this._statusbar = this.configuration?.getValueByAlias<UmbTiptapStatusbarValue>('statusbar') ?? [];
+		this.#hasToolbar = this._toolbar.flat(2).length > 0;
+		this.#hasStatusbar = this._statusbar.flat().length > 0;
+
+		this._editor = new Editor({
+			element: element,
+			editable: !this.readonly,
+			editorProps: {
+				attributes: {
+					'aria-label': this.label || this.localize.term('rte_label'),
+					'aria-required': this.required ? 'true' : 'false',
+				},
+			},
+			extensions: Array.from(tiptapExtensions.values()),
+			content: this.#value,
+			injectCSS: false, // Prevents injecting CSS into `window.document`, as it never applies to the shadow DOM. [LK]
+			//enableContentCheck: true,
+			onBeforeCreate: ({ editor }) => {
+				this._extensions.forEach((ext) => ext.setEditor(editor));
+			},
+			onContentError: ({ error }) => {
+				console.error('contentError', [error.message, error.cause]);
+			},
+			onUpdate: ({ editor, transaction }) => {
+				// Tiptap also fires `update` for no-op transactions (e.g. setEditable),
+				// which would otherwise dirty the workspace with a phantom change.
+				if (!transaction.docChanged) return;
+				this.#value = editor.getHTML();
+				this._runValidators();
+				this.dispatchEvent(new UmbChangeEvent());
+			},
+		});
+
+		this.#context.setEditor(this._editor);
+	}
+
+	override render() {
+		const loading = !this._editor && !this._extensions?.length;
+		return html`
+			${when(loading, () => html`<div id="loader"><uui-loader></uui-loader></div>`)}
+			${when(!loading, () => html`${this.#renderStyles()}${this.#renderToolbar()}`)}
+			<div id="editor" data-mark="input:tiptap-rte" ?data-loaded=${!loading}></div>
+			${when(!loading, () => this.#renderStatusbar())}
+		`;
+	}
+
+	#renderStyles() {
+		return html`
+			${repeat(
+				this._stylesheets,
+				(stylesheet) => stylesheet,
+				(stylesheet) => html`<link rel="stylesheet" href=${stylesheet} />`,
+			)}
+			${when(
+				this._extensionStyles,
+				(styles) => html`
+					<style>
+						${styles}
+					</style>
+				`,
+			)}
+		`;
+	}
+
+	#renderToolbar() {
+		if (!this.#hasToolbar || this.readonly) return;
+		return html`
+			<umb-tiptap-toolbar
+				data-mark="tiptap-toolbar"
+				.toolbar=${this._toolbar}
+				.editor=${this._editor}
+				.configuration=${this.configuration}
+				.scrolling=${this._scrolling}>
+			</umb-tiptap-toolbar>
+		`;
+	}
+
+	#renderStatusbar() {
+		if (!this.#hasStatusbar || this.readonly) return;
+		return html`
+			<umb-tiptap-statusbar
+				data-mark="tiptap-statusbar"
+				.statusbar=${this._statusbar}
+				.editor=${this._editor}
+				.configuration=${this.configuration}
+				${umbDestroyOnDisconnect()}>
+			</umb-tiptap-statusbar>
+		`;
+	}
+
+	override destroy(): void {
+		this._editor?.destroy();
+		this._editor = undefined;
+		this.#scrollObserver.disconnect();
+	}
+
+	static override readonly styles = [
+		css`
+			:host {
+				display: block;
+				position: relative;
+				z-index: 0;
+
+				width: var(--umb-rte-width, unset);
+				min-width: var(--umb-rte-min-width, unset);
+				max-width: var(--umb-rte-max-width, 100%);
+			}
+
+			:host(:hover) {
+				--umb-tiptap-edge-border-color: var(--uui-color-border-standalone);
+			}
+
+			:host(:focus),
+			:host(:focus-within) {
+				--umb-tiptap-edge-border-color: var(--uui-color-border-emphasis);
+			}
+
+			:host([readonly]) {
+				#editor {
+					background-color: var(--uui-color-surface-alt);
+				}
+			}
+
+			#loader {
+				display: flex;
+				align-items: center;
+				justify-content: center;
+			}
+
+			:host(:invalid:not([pristine])),
+			/* polyfill support */
+			:host(:not([pristine])[internals-invalid]) {
+				--umb-tiptap-edge-border-color: var(--uui-color-invalid);
+				#editor {
+					border-color: var(--uui-color-invalid);
+				}
+			}
+
+			#editor {
+				display: flex;
+				overflow: auto;
+				border-radius: var(--uui-border-radius);
+				border: 1px solid transparent;
+				padding: 1rem;
+				box-sizing: border-box;
+
+				height: var(--umb-rte-height, 100%);
+				min-height: var(--umb-rte-min-height, 100%);
+				max-height: var(--umb-rte-max-height, 100%);
+
+				width: 100%;
+				max-width: 100%;
+
+				&[data-loaded] {
+					border-color: var(--umb-tiptap-edge-border-color, var(--uui-color-border));
+				}
+
+				> .tiptap {
+					height: 100%;
+					width: 100%;
+					outline: none;
+					white-space: wrap;
+					min-width: 0;
+
+					p:first-of-type {
+						margin-top: 0;
+					}
+
+					.is-editor-empty:first-child::before {
+						color: var(--uui-color-text);
+						opacity: 0.55;
+						content: attr(data-placeholder);
+						float: left;
+						height: 0;
+						pointer-events: none;
+					}
+				}
+
+				&:has(+ umb-tiptap-statusbar) {
+					border-bottom-left-radius: 0;
+					border-bottom-right-radius: 0;
+				}
+			}
+
+			#editor,
+			umb-tiptap-toolbar,
+			umb-tiptap-statusbar {
+				transition: border-color 120ms ease-out;
+			}
+
+			umb-tiptap-toolbar + #editor {
+				border-top: 0;
+				border-top-left-radius: 0;
+				border-top-right-radius: 0;
+			}
+		`,
+	];
+}
+
+declare global {
+	interface HTMLElementTagNameMap {
+		'umb-input-tiptap': UmbInputTiptapElement;
+	}
+}

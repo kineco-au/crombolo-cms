@@ -1,0 +1,57 @@
+import type { UmbApi } from '../models/api.interface.js';
+import type {
+	ApiLoaderExports,
+	ApiLoaderPromise,
+	ApiLoaderProperty,
+	ClassConstructor,
+	ElementAndApiLoaderProperty,
+	ElementLoaderExports,
+} from '../types/utils.js';
+
+/**
+ * Loads the API class constructor from a manifest's `api`/`js` property.
+ * @template {UmbApi} ApiType
+ * @param {ApiLoaderProperty<ApiType> | ElementAndApiLoaderProperty<any, ApiType>} property The manifest property to load the API from.
+ * @returns {Promise<ClassConstructor<ApiType> | undefined>} The resolved API class constructor, if found.
+ */
+export async function loadManifestApi<ApiType extends UmbApi>(
+	property: ApiLoaderProperty<ApiType> | ElementAndApiLoaderProperty<any, ApiType>,
+): Promise<ClassConstructor<ApiType> | undefined> {
+	const propType = typeof property;
+	if (propType === 'function') {
+		if ((property as ClassConstructor).prototype) {
+			// Class Constructor
+			return property as ClassConstructor<ApiType>;
+		} else {
+			// Promise function (dynamic import)
+			const result = await (property as ApiLoaderPromise<ApiType>)();
+			if (typeof result === 'object' && result != null) {
+				const exportValue =
+					('api' in result ? result.api : undefined) ||
+					('default' in result ? (result as Exclude<typeof result, ElementLoaderExports>).default : undefined);
+				if (exportValue && typeof exportValue === 'function') {
+					return exportValue;
+				}
+			}
+		}
+	} else if (propType === 'string') {
+		// Import string
+		const result = await (import(/* @vite-ignore */ property as string) as unknown as ApiLoaderExports<ApiType>);
+		if (result && typeof result === 'object') {
+			const exportValue =
+				('api' in result ? result.api : undefined) || ('default' in result ? result.default : undefined);
+			if (exportValue && typeof exportValue === 'function') {
+				return exportValue;
+			}
+		}
+	} else if (propType === 'object' && property !== null) {
+		// Already resolved module object (statically imported)
+		const result = property as ApiLoaderExports<ApiType>;
+		const exportValue =
+			('api' in result ? result.api : undefined) || ('default' in result ? result.default : undefined);
+		if (exportValue && typeof exportValue === 'function') {
+			return exportValue;
+		}
+	}
+	return undefined;
+}

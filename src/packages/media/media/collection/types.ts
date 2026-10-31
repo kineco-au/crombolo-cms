@@ -1,0 +1,11 @@
+import type { UmbCollectionFilterModel } from '@umbraco-cms/backoffice/collection';
+
+export type * from './item/types.js';
+
+export interface UmbMediaCollectionFilterModel extends UmbCollectionFilterModel {
+	unique?: string;
+	dataTypeId?: string;
+	orderBy?: string;
+	orderDirection?: 'asc' | 'desc';
+	userDefinedProperties: Array<{ alias: string; header: string; isSystem: boolean }>;
+}

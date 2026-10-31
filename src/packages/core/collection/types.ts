@@ -1,0 +1,65 @@
+import type { UmbCollectionItemModel } from './item/types.js';
+import type { Observable } from '@umbraco-cms/backoffice/external/rxjs';
+import type { UmbEntityUnique } from '@umbraco-cms/backoffice/entity';
+import type { UmbInteractionMemoryManager } from '@umbraco-cms/backoffice/interaction-memory';
+import type { UmbPaginationManager } from '@umbraco-cms/backoffice/utils';
+
+export type * from './action/create/types.js';
+export type * from './collection-item-picker-modal/types.js';
+export type * from './conditions/types.js';
+export type * from './filter/types.js';
+export type * from './extensions/types.js';
+export type * from './item/types.js';
+export type * from './menu/types.js';
+export type * from './view/types.js';
+export type * from './workspace-view/types.js';
+
+export interface UmbCollectionConfiguration {
+	unique?: UmbEntityUnique;
+	dataTypeId?: string;
+	layouts?: Array<UmbCollectionLayoutConfiguration>;
+	orderBy?: string;
+	orderDirection?: string;
+	pageSize?: number;
+	noItemsLabel?: string;
+	userDefinedProperties?: Array<UmbCollectionColumnConfiguration>;
+	selectionConfiguration?: UmbCollectionSelectionConfiguration;
+	bulkActionConfiguration?: UmbCollectionBulkActionConfiguration;
+}
+
+export interface UmbCollectionColumnConfiguration {
+	alias: string;
+	header: string;
+	isSystem: 1 | 0;
+	elementName?: string;
+	nameTemplate?: string;
+}
+
+export interface UmbCollectionLayoutConfiguration {
+	icon?: string;
+	name?: string;
+	collectionView: string;
+}
+
+export type UmbCollectionSelectionConfiguration = {
+	multiple?: boolean;
+	selectable?: boolean;
+	selectOnly?: boolean;
+	selection?: Array<UmbCollectionItemModel['unique']>;
+	selectableFilter?(item: UmbCollectionItemModel): boolean;
+};
+
+export type UmbCollectionBulkActionConfiguration = {
+	enabled?: boolean;
+};
+
+export interface UmbCollectionContext {
+	setConfig(config: UmbCollectionConfiguration): void;
+	getConfig(): UmbCollectionConfiguration | undefined;
+	requestCollection(): Promise<void>;
+	requestItemHref?(item: UmbCollectionItemModel): Promise<string | undefined>;
+	pagination: UmbPaginationManager;
+	items: Observable<any[]>;
+	totalItems: Observable<number>;
+	readonly interactionMemory?: UmbInteractionMemoryManager;
+}

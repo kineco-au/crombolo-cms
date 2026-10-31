@@ -1,0 +1,63 @@
+import type { UmbWebhookDeliveryCollectionFilterModel, UmbWebhookDeliveryCollectionItemModel } from '../types.js';
+import { UMB_WEBHOOK_DELIVERY_ENTITY_TYPE } from '../../../entity.js';
+import type { UmbDataSourceResponse } from '@umbraco-cms/backoffice/repository';
+import { WebhookService } from '@umbraco-cms/backoffice/external/backend-api';
+import type { UmbControllerHost } from '@umbraco-cms/backoffice/controller-api';
+import { tryExecute } from '@umbraco-cms/backoffice/resources';
+
+/**
+ * A data source that fetches the webhook delivery collection data from the server.
+ * @class UmbWebhookDeliveryCollectionServerDataSource
+ * @implements {UmbWebhookDeliveryCollectionServerDataSource}
+ */
+export class UmbWebhookDeliveryCollectionServerDataSource implements UmbWebhookDeliveryCollectionServerDataSource {
+	#host: UmbControllerHost;
+
+	/**
+	 * Creates an instance of UmbWebhookDeliveryCollectionServerDataSource.
+	 * @param {UmbControllerHost} host - The controller host for this controller to be appended to
+	 * @memberof UmbWebhookDeliveryCollectionServerDataSource
+	 */
+	constructor(host: UmbControllerHost) {
+		this.#host = host;
+	}
+
+	/**
+	 * Gets the Webhook delivery collection filtered by the given filter.
+	 * @param {UmbWebhookDeliveryCollectionFilterModel} filter The filter to apply
+	 * @returns {Promise<UmbDataSourceResponse<{ items: Array<UmbWebhookDeliveryCollectionItemModel>; total: number }>>} The filtered webhook delivery collection
+	 * @memberof UmbWebhookDeliveryCollectionServerDataSource
+	 */
+	async getCollection(
+		filter: UmbWebhookDeliveryCollectionFilterModel,
+	): Promise<UmbDataSourceResponse<{ items: Array<UmbWebhookDeliveryCollectionItemModel>; total: number }>> {
+		const { data, error } = await tryExecute(
+			this.#host,
+			WebhookService.getWebhookByIdLogs({
+				path: { id: filter.webhook.unique },
+				query: { skip: filter.skip, take: filter.take },
+			}),
+		);
+
+		if (error || !data) {
+			return { error };
+		}
+
+		const items = data.items.map((item) => {
+			const model: UmbWebhookDeliveryCollectionItemModel = {
+				entityType: UMB_WEBHOOK_DELIVERY_ENTITY_TYPE,
+				unique: item.key,
+				name: item.eventAlias,
+				icon: 'icon-box-alt',
+				date: item.date,
+				url: item.url,
+				retryCount: item.retryCount,
+				statusCode: { label: item.statusCode, code: item.httpStatusCode ?? null },
+			};
+
+			return model;
+		});
+
+		return { data: { items, total: data.total } };
+	}
+}

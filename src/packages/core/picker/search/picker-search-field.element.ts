@@ -1,0 +1,107 @@
+import type { UmbPickerContext } from '../picker.context.js';
+import { UMB_PICKER_CONTEXT } from '../picker.context.token.js';
+import type { UUIInputElement, UUIInputEvent } from '@umbraco-cms/backoffice/external/uui';
+import { html, customElement, state, nothing, css, query, property } from '@umbraco-cms/backoffice/external/lit';
+import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element';
+import { UmbTextStyles } from '@umbraco-cms/backoffice/style';
+
+@customElement('umb-picker-search-field')
+export class UmbPickerSearchFieldElement extends UmbLitElement {
+	@property({ type: String, attribute: 'alias', reflect: false })
+	alias?: string;
+
+	@state()
+	private _query: string = '';
+
+	@state()
+	private _searching: boolean = false;
+
+	@state()
+	private _isSearchable: boolean = false;
+
+	@query('uui-input')
+	private _input?: UUIInputElement;
+
+	#pickerContext?: UmbPickerContext;
+
+	constructor() {
+		super();
+
+		this.consumeContext(UMB_PICKER_CONTEXT, (context) => {
+			this.#pickerContext = context;
+			this.observe(
+				this.#pickerContext?.search.searchable,
+				(isSearchable) => (this._isSearchable = isSearchable ?? false),
+			);
+			this.observe(this.#pickerContext?.search.searching, (searching) => (this._searching = searching ?? false));
+			this.observe(this.#pickerContext?.search.query, (query) => (this._query = query?.query || ''));
+		});
+	}
+
+	override focus() {
+		this._input?.focus();
+	}
+
+	#onInput(event: UUIInputEvent) {
+		const value = event.target.value as string;
+		this.#pickerContext?.search.updateQuery({ query: value });
+		this.#pickerContext?.search.search();
+	}
+
+	override render() {
+		if (!this._isSearchable) return nothing;
+
+		return html`
+			<uui-input
+				.name=${'search-of-' + (this.alias ?? '')}
+				.value=${this._query}
+				label=${this.localize.term('general_search')}
+				placeholder=${this.localize.term('placeholders_search')}
+				@input=${this.#onInput}>
+				<div slot="prepend">
+					${this._searching
+						? html`<uui-loader-circle id="searching-indicator"></uui-loader-circle>`
+						: html`<uui-icon name="search" aria-hidden="true"></uui-icon>`}
+				</div>
+
+				${this._query
+					? html`
+							<uui-button
+								label=${this.localize.term('general_clear')}
+								slot="append"
+								type="button"
+								@click=${() => this.#pickerContext?.search.clear()}
+								compact>
+								<uui-icon name="icon-delete"></uui-icon>
+							</uui-button>
+						`
+					: nothing}
+			</uui-input>
+		`;
+	}
+
+	static override readonly styles = [
+		UmbTextStyles,
+		css`
+			uui-input {
+				width: 100%;
+				margin-bottom: var(--uui-size-4);
+			}
+
+			uui-input [slot='prepend'] {
+				display: flex;
+				align-items: center;
+			}
+
+			#searching-indicator {
+				margin-left: 7px;
+			}
+		`,
+	];
+}
+
+declare global {
+	interface HTMLElementTagNameMap {
+		'umb-picker-search-field': UmbPickerSearchFieldElement;
+	}
+}

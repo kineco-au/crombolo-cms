@@ -1,0 +1,61 @@
+import { defineConfig, PluginOption } from 'vite';
+import { viteStaticCopy } from 'vite-plugin-static-copy';
+import viteTSConfigPaths from 'vite-tsconfig-paths';
+
+export const plugins: PluginOption[] = [
+	viteStaticCopy({
+		targets: [
+			{
+				src: 'public-assets/App_Plugins/*.js',
+				dest: 'App_Plugins',
+			},
+			{
+				src: 'public-assets/App_Plugins/custom-bundle-package/*.js',
+				dest: 'App_Plugins/custom-bundle-package',
+			},
+			{
+				src: 'src/css/*.css',
+				dest: 'umbraco/backoffice/css',
+			},
+			{
+				// UUI theme CSS (dark.css, high-contrast.css, etc.).
+				// This config is used by the dev server and PR preview builds only.
+				// The production build (build:for:cms) copies these files via
+				// src/external/uui/vite.config.ts during the workspace build instead.
+				// Theme manifests referencing these files: src/packages/core/themes/manifests.ts.
+				src: 'node_modules/@umbraco-ui/uui/dist/themes/*',
+				dest: 'umbraco/backoffice/css',
+			},
+			{
+				src: 'node_modules/@umbraco-ui/uui/dist/assets/fonts/*',
+				dest: 'umbraco/backoffice/assets/fonts',
+			},
+			{
+				src: 'src/assets/*',
+				dest: 'umbraco/backoffice/assets',
+			},
+			{
+				src: 'mocks/msw-handlers/backoffice/assets/*',
+				dest: 'umbraco/backoffice/assets',
+			},
+			{
+				src: 'node_modules/msw/lib/iife/**/*',
+				dest: 'umbraco/backoffice/msw',
+			},
+		],
+	}),
+	viteTSConfigPaths(),
+];
+
+// https://vitejs.dev/config/
+export default defineConfig({
+	build: {
+		sourcemap: true,
+		rollupOptions: {
+			input: {
+				main: new URL('index.html', import.meta.url).pathname, // Vite should only load the main index.html file
+			},
+		},
+	},
+	plugins,
+});

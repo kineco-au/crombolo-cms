@@ -1,0 +1,157 @@
+import { getCharacterCountState, isCharacterLimitExceeded } from '../utils/character-count.js';
+import {
+	css,
+	customElement,
+	html,
+	ifDefined,
+	nothing,
+	property,
+	state,
+	styleMap,
+} from '@umbraco-cms/backoffice/external/lit';
+import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element';
+import type { StyleInfo } from '@umbraco-cms/backoffice/external/lit';
+import type {
+	UmbPropertyEditorConfigCollection,
+	UmbPropertyEditorUiElement,
+} from '@umbraco-cms/backoffice/property-editor';
+import { UMB_VALIDATION_EMPTY_LOCALIZATION_KEY, UmbFormControlMixin } from '@umbraco-cms/backoffice/validation';
+import { UmbTextStyles } from '@umbraco-cms/backoffice/style';
+import type { UUITextareaElement } from '@umbraco-cms/backoffice/external/uui';
+import { UmbChangeEvent } from '@umbraco-cms/backoffice/event';
+
+@customElement('umb-property-editor-ui-textarea')
+export class UmbPropertyEditorUITextareaElement
+	extends UmbFormControlMixin<string | undefined, typeof UmbLitElement>(UmbLitElement, undefined)
+	implements UmbPropertyEditorUiElement
+{
+	/**
+	 * Sets the input to readonly mode, meaning value cannot be changed but still able to read and select its content.
+	 * @type {boolean}
+	 * @attr
+	 * @default false
+	 */
+	@property({ type: Boolean, reflect: true })
+	readonly = false;
+
+	/**
+	 * Sets the input to mandatory, meaning validation will fail if the value is empty.
+	 * @type {boolean}
+	 */
+	@property({ type: Boolean })
+	mandatory?: boolean;
+	@property({ type: String })
+	mandatoryMessage = UMB_VALIDATION_EMPTY_LOCALIZATION_KEY;
+
+	/**
+	 * The name of this field.
+	 * @type {string}
+	 */
+	@property({ type: String })
+	name?: string;
+
+	@state()
+	private _maxChars?: number;
+
+	@state()
+	private _rows?: number;
+
+	@state()
+	private _placeholder?: string;
+
+	@state()
+	private _css: StyleInfo = {};
+
+	public set config(config: UmbPropertyEditorConfigCollection | undefined) {
+		this._maxChars = Number(config?.getValueByAlias('maxChars')) || undefined;
+		this._rows = Number(config?.getValueByAlias('rows')) || undefined;
+		this._placeholder = this.localize.string(config?.getValueByAlias<string>('placeholder'));
+
+		this._css = {
+			'--uui-textarea-min-height': 'reset',
+			'--uui-textarea-max-height': '33vh',
+		};
+	}
+
+	protected override firstUpdated(): void {
+		this.addFormControlElement(this.shadowRoot!.querySelector('uui-textarea')!);
+	}
+
+	override focus() {
+		return this.shadowRoot?.querySelector<UUITextareaElement>('uui-textarea')?.focus();
+	}
+
+	#getMaxLengthMessage(max: number, current: number) {
+		const exceeded = current - max;
+		return this.localize.term('textbox_characters_exceed', max, exceeded);
+	}
+
+	#onInput(event: InputEvent) {
+		const newValue = (event.target as HTMLTextAreaElement).value;
+		if (newValue === this.value) return;
+		this.value = newValue;
+
+		if (isCharacterLimitExceeded(this._maxChars, newValue.length)) {
+			const textarea = this.shadowRoot?.querySelector<UUITextareaElement>('uui-textarea');
+			if (textarea) {
+				textarea.pristine = false;
+			}
+			this.pristine = false;
+		}
+		this.dispatchEvent(new UmbChangeEvent());
+	}
+
+	#renderCharacterCount() {
+		if (!this._maxChars || this.readonly) return nothing;
+
+		const { remaining, visible } = getCharacterCountState(this._maxChars, this.value?.length ?? 0);
+		if (!visible) return nothing;
+
+		return html`<div class="char-count">${this.localize.htmlString('#textbox_characters_left', remaining)}</div>`;
+	}
+
+	override render() {
+		return html`
+			<uui-textarea
+				.label=${this.localize.term('general_fieldFor', [this.name])}
+				data-mark="input:textarea"
+				style=${styleMap(this._css)}
+				.autoHeight=${this._rows ? false : true}
+				maxlength=${ifDefined(this._maxChars)}
+				rows=${ifDefined(this._rows)}
+				placeholder=${ifDefined(this._placeholder)}
+				.value=${this.value ?? ''}
+				@input=${this.#onInput}
+				?required=${this.mandatory}
+				.requiredMessage=${this.mandatoryMessage}
+				.maxlengthMessage=${this.#getMaxLengthMessage.bind(this)}
+				?readonly=${this.readonly}></uui-textarea>
+			${this.#renderCharacterCount()}
+		`;
+	}
+
+	static override readonly styles = [
+		UmbTextStyles,
+		css`
+			uui-textarea {
+				width: 100%;
+			}
+
+			.char-count {
+				color: var(--uui-color-text-alt);
+			}
+
+			:host(:not(:focus-within)) .char-count {
+				display: none;
+			}
+		`,
+	];
+}
+
+export default UmbPropertyEditorUITextareaElement;
+
+declare global {
+	interface HTMLElementTagNameMap {
+		'umb-property-editor-ui-textarea': UmbPropertyEditorUITextareaElement;
+	}
+}

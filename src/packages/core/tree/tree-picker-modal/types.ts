@@ -1,0 +1,32 @@
+import type { UmbTreeItemModel, UmbTreeStartNode } from '../types.js';
+import type { UmbPathPattern, UmbPathPatternParamsType } from '@umbraco-cms/backoffice/router';
+import type { UmbModalToken, UmbPickerModalData, UmbPickerModalValue } from '@umbraco-cms/backoffice/modal';
+import type { UmbWorkspaceModalData } from '@umbraco-cms/backoffice/workspace';
+import type { UmbEntityExpansionModel } from '@umbraco-cms/backoffice/utils';
+
+export interface UmbTreePickerModalCreateActionData<PathPatternParamsType extends UmbPathPatternParamsType> {
+	label: string;
+	modalData: UmbWorkspaceModalData;
+	modalToken?: UmbModalToken;
+	extendWithPathPattern: UmbPathPattern;
+	extendWithPathParams: PathPatternParamsType;
+}
+
+export interface UmbTreePickerModalData<
+	TreeItemType = UmbTreeItemModel,
+	PathPatternParamsType extends UmbPathPatternParamsType = UmbPathPatternParamsType,
+> extends UmbPickerModalData<TreeItemType> {
+	headline?: string;
+	confirmLabel?: string;
+	hideTreeRoot?: boolean;
+	expandTreeRoot?: boolean;
+	treeExpansion?: UmbEntityExpansionModel;
+	treeAlias?: string;
+	// TODO: create action should be replaces by entity actions in the pickers. Then we also open up for creating folders, choosing where to place items etc. [MR]
+	createAction?: UmbTreePickerModalCreateActionData<PathPatternParamsType>;
+	startNode?: UmbTreeStartNode;
+	foldersOnly?: boolean;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface UmbTreePickerModalValue extends UmbPickerModalValue {}

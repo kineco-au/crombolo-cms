@@ -1,0 +1,145 @@
+import { css, customElement, html, property, state, when } from '@umbraco-cms/backoffice/external/lit';
+import { UmbDeprecation } from '@umbraco-cms/backoffice/utils';
+import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element';
+import type { UmbBlockDataType, UmbBlockLabelUfmValueType } from '@umbraco-cms/backoffice/block';
+import type { UmbBlockEditorCustomViewConfiguration } from '@umbraco-cms/backoffice/block-custom-view';
+
+let hasWarnedLabelDeprecation = false;
+
+/**
+ * @element umb-ref-list-block
+ * @slot name - Content rendered in the block's primary label area (the `name` slot of the inner `uui-ref-node`). The expected projection is a `<umb-ufm-render>` element owned by the parent block-list entry.
+ */
+@customElement('umb-ref-list-block')
+export class UmbRefListBlockElement extends UmbLitElement {
+	//
+	/**
+	 * @deprecated Use the `name` slot to project a `<umb-ufm-render>` instead. Will be removed in Umbraco 19.
+	 */
+	@property({ type: String, reflect: false })
+	public set label(value: string | undefined) {
+		if (value !== undefined && value !== this._label) {
+			if (!hasWarnedLabelDeprecation) {
+				hasWarnedLabelDeprecation = true;
+				new UmbDeprecation({
+					deprecated: 'umb-ref-list-block.label property',
+					solution: 'Project a `<umb-ufm-render>` into the `name` slot instead.',
+					removeInVersion: '19.0.0',
+				}).warn();
+			}
+		}
+		this._label = value;
+	}
+	public get label(): string | undefined {
+		return this._label;
+	}
+	@state()
+	private _label?: string;
+
+	@property({ type: String, reflect: false })
+	icon?: string;
+
+	@property({ type: Number, attribute: false })
+	index?: number;
+
+	@property({ type: Boolean, reflect: true })
+	unpublished?: boolean;
+
+	@property({ attribute: false })
+	content?: UmbBlockDataType;
+
+	@property({ attribute: false })
+	settings?: UmbBlockDataType;
+
+	@property({ attribute: false })
+	config?: UmbBlockEditorCustomViewConfiguration;
+
+	@state()
+	private _hasNameSlotContent = false;
+
+	#onNameSlotChange = (event: Event) => {
+		const slot = event.target as HTMLSlotElement;
+		this._hasNameSlotContent = slot.assignedNodes({ flatten: true }).length > 0;
+	};
+
+	override render() {
+		const blockValue: UmbBlockLabelUfmValueType = { ...this.content, $settings: this.settings, $index: this.index };
+		return html`
+			<uui-ref-node
+				standalone
+				.readonly=${!(this.config?.showContentEdit ?? false)}
+				.href=${this.config?.showContentEdit ? this.config?.editContentPath : undefined}>
+				<umb-icon slot="icon" .name=${this.icon}></umb-icon>
+				<slot name="name" slot="name" @slotchange=${this.#onNameSlotChange}></slot>
+				${when(
+					!this._hasNameSlotContent && this._label !== undefined,
+					() =>
+						html`<umb-ufm-render slot="name" inline .markdown=${this._label} .value=${blockValue}></umb-ufm-render>`,
+				)}
+				${when(
+					this.unpublished,
+					() => html`
+						<uui-tag slot="name" look="secondary" title=${this.localize.term('blockEditor_notExposedDescription')}>
+							<umb-localize key="blockEditor_notExposedLabel"></umb-localize>
+						</uui-tag>
+					`,
+				)}
+			</uui-ref-node>
+		`;
+	}
+
+	static override styles = [
+		css`
+			:host {
+				display: block;
+				margin-bottom: 1px;
+			}
+
+			uui-ref-node {
+				min-height: var(--uui-size-16);
+			}
+
+			uui-tag {
+				margin-left: 0.5em;
+				margin-bottom: -0.3em;
+				margin-top: -0.3em;
+				vertical-align: text-top;
+			}
+
+			umb-ufm-render,
+			::slotted([slot='name']) {
+				user-select: none;
+			}
+
+			:host([unpublished]) umb-icon,
+			:host([unpublished]) umb-ufm-render,
+			:host([unpublished]) ::slotted([slot='name']) {
+				opacity: 0.6;
+			}
+
+			@keyframes umb-icon-jiggle {
+				0%,
+				100% {
+					transform: rotate(6deg);
+				}
+				50% {
+					transform: rotate(-6deg);
+				}
+			}
+
+			:host(.sortable) {
+				umb-icon {
+					animation: umb-icon-jiggle 500ms infinite ease-in-out;
+				}
+			}
+		`,
+	];
+}
+
+export default UmbRefListBlockElement;
+
+declare global {
+	interface HTMLElementTagNameMap {
+		'umb-ref-list-block': UmbRefListBlockElement;
+	}
+}

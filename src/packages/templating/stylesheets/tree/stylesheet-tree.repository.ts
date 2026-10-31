@@ -1,0 +1,31 @@
+import { UMB_STYLESHEET_ROOT_ENTITY_TYPE } from '../entity.js';
+import { UmbStylesheetTreeServerDataSource } from './stylesheet-tree.server.data-source.js';
+import type { UmbStylesheetTreeItemModel, UmbStylesheetTreeRootModel } from './types.js';
+import type { UmbControllerHost } from '@umbraco-cms/backoffice/controller-api';
+import { UmbTreeRepositoryBase } from '@umbraco-cms/backoffice/tree';
+
+export class UmbStylesheetTreeRepository extends UmbTreeRepositoryBase<
+	UmbStylesheetTreeItemModel,
+	UmbStylesheetTreeRootModel
+> {
+	constructor(host: UmbControllerHost) {
+		super(host, UmbStylesheetTreeServerDataSource);
+	}
+
+	async requestTreeRoot() {
+		const { data: treeRootData } = await this._treeSource.getRootItems({ paging: { skip: 0, take: 0 } });
+		const hasChildren = treeRootData ? treeRootData.total > 0 : false;
+
+		const data: UmbStylesheetTreeRootModel = {
+			unique: null,
+			entityType: UMB_STYLESHEET_ROOT_ENTITY_TYPE,
+			name: '#treeHeaders_stylesheets',
+			hasChildren,
+			isFolder: true,
+		};
+
+		return { data };
+	}
+}
+
+export default UmbStylesheetTreeRepository;

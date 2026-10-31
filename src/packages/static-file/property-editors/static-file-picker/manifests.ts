@@ -1,0 +1,13 @@
+import type { ManifestPropertyEditorUi } from '@umbraco-cms/backoffice/property-editor';
+
+export const manifest: ManifestPropertyEditorUi = {
+	type: 'propertyEditorUi',
+	alias: 'Umb.PropertyEditorUi.StaticFilePicker',
+	name: 'Static File Picker Property Editor UI',
+	element: () => import('./property-editor-ui-static-file-picker.element.js'),
+	meta: {
+		label: 'Static File Picker',
+		icon: 'icon-document',
+		group: '#propertyEditorUIGroups_common',
+	},
+};

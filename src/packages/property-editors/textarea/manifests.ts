@@ -1,0 +1,52 @@
+import { manifest as schemaManifest } from './Umbraco.TextArea.js';
+
+export const manifests: Array<UmbExtensionManifest> = [
+	{
+		type: 'propertyEditorUi',
+		alias: 'Umb.PropertyEditorUi.TextArea',
+		name: 'Text Area Property Editor UI',
+		element: () => import('./property-editor-ui-textarea.element.js'),
+		meta: {
+			label: 'Text Area',
+			propertyEditorSchemaAlias: 'Umbraco.TextArea',
+			icon: 'icon-edit',
+			group: '#propertyEditorUIGroups_common',
+			keywords: [
+				'string',
+				'description',
+				'summary',
+				'paragraph',
+				'details',
+				'notes',
+				'bio',
+				'excerpt',
+				'multiline',
+				'comment',
+				'message',
+				'review',
+				'address',
+				'quote',
+			],
+			supportsReadOnly: true,
+			settings: {
+				properties: [
+					{
+						alias: 'rows',
+						label: 'Number of rows',
+						description: 'If empty or zero, the textarea is set to auto-height',
+						propertyEditorUiAlias: 'Umb.PropertyEditorUi.Integer',
+						config: [{ alias: 'min', value: 0 }],
+					},
+					{
+						alias: 'placeholder',
+						label: '#general_placeholder',
+						description: 'Placeholder text shown inside the textarea when empty',
+						propertyEditorUiAlias: 'Umb.PropertyEditorUi.TextBox',
+					},
+				],
+				defaultData: [{ alias: 'rows', value: 10 }],
+			},
+		},
+	},
+	schemaManifest,
+];

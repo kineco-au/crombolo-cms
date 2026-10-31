@@ -1,0 +1,426 @@
+import { extractUmbNotificationColor } from './extractUmbNotificationColor.function.js';
+import { isUmbNotifications, UMB_NOTIFICATION_HEADER } from './isUmbNotifications.function.js';
+import { isProblemDetailsLike } from './apiTypeValidators.function.js';
+import { UmbAuthSignalerContext } from './auth-signaler.context.js';
+import type { UmbProblemDetails } from './types.js';
+import { UmbControllerBase } from '@umbraco-cms/backoffice/class-api';
+import type { UmbNotificationColor } from '@umbraco-cms/backoffice/notification';
+import type { umbHttpClient } from '@umbraco-cms/backoffice/http-client';
+
+const MAX_RETRIES = 3;
+
+/**
+ * HTTP statuses used by proxies/gateways (nginx, ALB, IIS ARR, Cloudflare's 524/598, etc.) to report that
+ * the origin server *received* the request but didn't respond before the proxy gave up waiting. The action
+ * may still complete (or have completed) on the server.
+ * @see https://github.com/umbraco/Umbraco-CMS/issues/16041
+ */
+const GATEWAY_TIMEOUT_STATUSES = new Set([504, 524, 598]);
+
+/**
+ * HTTP statuses used by proxies/gateways to report that they could not establish or complete a connection
+ * to the origin server at all (TCP/TLS/DNS failure) — the request never reached the server, so the action
+ * cannot have been performed.
+ * @see https://github.com/umbraco/Umbraco-CMS/issues/16041
+ */
+const GATEWAY_UNREACHABLE_STATUSES = new Set([521, 522, 523, 525, 526, 530, 599]);
+
+export class UmbApiInterceptorController extends UmbControllerBase {
+	/**
+	 * Store pending requests that received a 401 response and are waiting for re-authentication.
+	 * This is used to retry the requests after re-authentication.
+	 */
+	#pending401Requests: Array<{
+		request: Request;
+		requestConfig: unknown;
+		retry: () => Promise<Response>;
+		resolve: (value: Response) => void;
+		reject: (reason?: unknown) => void;
+		retries: number;
+	}> = [];
+
+	/**
+	 * Store non-GET requests that received a 401 response.
+	 * This is used to notify the user about actions that could not be completed due to session expiration.
+	 * These requests will not be retried, as they are not idempotent.
+	 * Instead, we will notify the user about these requests after re-authentication.
+	 */
+	#nonGet401Requests: Array<{ request: Request; requestConfig: unknown }> = [];
+
+	/** Registered on the host so auth context can consume it to bridge authorization state. */
+	#signaler = new UmbAuthSignalerContext(this._host);
+
+	/**
+	 * Binds the default interceptors to the client.
+	 * This includes the auth response interceptor, the error interceptor and the umb-notifications interceptor.
+	 * @param {umbHttpClient} client The OpenAPI client to add the interceptor to. It can be any client supporting Response and Request interceptors.
+	 */
+	public bindDefaultInterceptors(client: typeof umbHttpClient) {
+		// Add the default observables to the instance
+		this.handleUnauthorizedAuthRetry();
+		// Add the default interceptors to the client
+		// TODO: Investigate whether some of these interceptors (e.g. addUmbGeneratedResourceInterceptor,
+		// addForbiddenResponseInterceptor, addUmbNotificationsInterceptor, addErrorInterceptor) belong
+		// somewhere else, since they are not auth-specific.
+		this.addAuthResponseInterceptor(client);
+		this.addForbiddenResponseInterceptor(client);
+		this.addUmbGeneratedResourceInterceptor(client);
+		this.addUmbNotificationsInterceptor(client);
+		this.addErrorInterceptor(client);
+	}
+
+	/**
+	 * Interceptor which checks responses for 401 errors and signals the auth layer to show the login UI.
+	 * @param {umbHttpClient} client The OpenAPI client to add the interceptor to. It can be any client supporting Response and Request interceptors.
+	 * @internal
+	 */
+	addAuthResponseInterceptor(client: typeof umbHttpClient) {
+		client.interceptors.response.use(async (response, request, requestConfig): Promise<Response> => {
+			if (response.status !== 401) return response;
+
+			// Build a plain ProblemDetails object for the response body
+			const problemDetails: UmbProblemDetails = {
+				status: response.status,
+				title: response.statusText || 'Unauthorized request, waiting for re-authentication.',
+				detail: undefined,
+				errors: undefined,
+				type: 'Unauthorized',
+				stack: undefined,
+			};
+
+			const newResponse = this.#createResponse(problemDetails, response);
+
+			const signaler = this.#signaler;
+
+			// Only retry for GET requests
+			if (request.method !== 'GET') {
+				// Collect info for later notification
+				this.#nonGet401Requests.push({ request, requestConfig });
+
+				// Signal the auth layer to show the login UI
+				signaler.requestTimeout();
+				return newResponse;
+			}
+
+			// Find if this request is already in the queue and increment retries
+			let retries = 1;
+			const existing = this.#pending401Requests.find(
+				(req) => req.request === request && req.requestConfig === requestConfig,
+			);
+			if (existing) {
+				retries = existing.retries + 1;
+				if (retries > MAX_RETRIES) {
+					return newResponse;
+				}
+				existing.retries = retries;
+			}
+
+			// Return a promise that will resolve when re-auth completes
+			return new Promise<Response>((resolve, reject) => {
+				this.#pending401Requests.push({
+					request,
+					requestConfig,
+					retry: async () => {
+						const { data, response: retryResponse } = await client.request(requestConfig as never);
+
+						if (!retryResponse) {
+							throw new Error('The retried request did not produce a response.');
+						}
+
+						return this.#createResponse(data, retryResponse);
+					},
+					resolve,
+					reject,
+					retries,
+				});
+
+				// Signal the auth layer to show the login UI
+				signaler.requestTimeout();
+
+				console.log(
+					'[Interceptor] 401 Unauthorized - queuing request for re-authentication and have tried',
+					retries - 1,
+					'times before',
+					requestConfig,
+				);
+			});
+		});
+	}
+
+	/**
+	 * Interceptor which checks responses for 403 errors and displays them as a notification.
+	 * @param {umbHttpClient} client The OpenAPI client to add the interceptor to. It can be any client supporting Response and Request interceptors.
+	 * @internal
+	 */
+	addForbiddenResponseInterceptor(client: typeof umbHttpClient) {
+		client.interceptors.response.use((response): Response => {
+			if (response.status !== 403) return response;
+
+			// Build a plain ProblemDetails object for the response body
+			const problemDetails: UmbProblemDetails = {
+				status: response.status,
+				title:
+					response.statusText ||
+					'You do not have the necessary permissions to complete the requested action. If you believe this is in error, please reach out to your administrator.',
+				detail: undefined,
+				errors: undefined,
+				type: 'Unauthorized',
+				stack: undefined,
+			};
+
+			return this.#createResponse(problemDetails, response);
+		});
+	}
+
+	/**
+	 * Interceptor which checks responses for the Umb-Generated-Resource header and replaces the value into the response body.
+	 * @param {umbHttpClient} client The OpenAPI client to add the interceptor to. It can be any client supporting Response and Request interceptors.
+	 * @internal
+	 */
+	addUmbGeneratedResourceInterceptor(client: typeof umbHttpClient) {
+		client.interceptors.response.use((response): Response => {
+			if (!response.headers.has('Umb-Generated-Resource')) return response;
+
+			const generatedResource = response.headers.get('Umb-Generated-Resource');
+			if (generatedResource === null) {
+				return response;
+			}
+
+			// Return a new response with the generated resource in the body (plain text)
+			return this.#createResponse(generatedResource, response);
+		});
+	}
+
+	/**
+	 * Interceptor which checks responses for 500 errors and displays them as a notification if any.
+	 * @param {umbHttpClient} client The OpenAPI client to add the interceptor to. It can be any client supporting Response and Request interceptors.
+	 * @internal
+	 */
+	addErrorInterceptor(client: typeof umbHttpClient) {
+		client.interceptors.response.use(async (response): Promise<Response> => {
+			// If the response is ok, we just return the response
+			if (response.ok) return response;
+
+			// We will check if it is not a 401 or 403 error, as that is handled by other interceptors
+			if (response.status === 401 || response.status === 403) return response;
+
+			// Special handling for 404 Not Found
+			if (response.status === 404) {
+				const notFoundProblemDetails: UmbProblemDetails = {
+					status: response.status,
+					title: response.statusText || 'The requested resource was not found.',
+					detail: undefined,
+					errors: undefined,
+					type: 'NotFound',
+					stack: undefined,
+				};
+				return this.#createResponse(notFoundProblemDetails, response);
+			}
+
+			// Special handling for proxy/gateway timeouts. These respond with their own (usually non-JSON) error
+			// page instead of ours, so without this the request would surface as a generic, unhelpful server error.
+			if (GATEWAY_TIMEOUT_STATUSES.has(response.status)) {
+				const timeoutProblemDetails: UmbProblemDetails = {
+					status: response.status,
+					title: 'The request timed out',
+					detail: `A proxy or gateway between your browser and the server sent your request through, but didn't receive a response in time (HTTP ${response.status}). The action you performed may still have completed on the server — please check before trying again.`,
+					errors: undefined,
+					type: 'GatewayTimeout',
+					stack: undefined,
+				};
+				return this.#createResponse(timeoutProblemDetails, response);
+			}
+
+			// Special handling for proxies/gateways that could not reach the server at all (as opposed to
+			// GATEWAY_TIMEOUT_STATUSES, where the server received the request but didn't respond in time).
+			if (GATEWAY_UNREACHABLE_STATUSES.has(response.status)) {
+				const unreachableProblemDetails: UmbProblemDetails = {
+					status: response.status,
+					title: 'The server could not be reached',
+					detail: `A proxy or gateway between your browser and the server could not connect to it (HTTP ${response.status}). Your request was not received, so no action was performed — please try again once the connection issue is resolved.`,
+					errors: undefined,
+					type: 'GatewayUnreachable',
+					stack: undefined,
+				};
+				return this.#createResponse(unreachableProblemDetails, response);
+			}
+
+			// For all other errors, we will build a ProblemDetails object
+			let problemDetails: UmbProblemDetails = {
+				status: response.status,
+				title:
+					response.statusText ||
+					'A fatal server error occurred. If this continues, please reach out to your administrator.',
+				detail: undefined,
+				errors: undefined,
+				type: 'ServerError',
+				stack: undefined,
+			};
+
+			try {
+				// Clones the response to read the body
+				const origResponse = response.clone();
+				const errorBody = await origResponse.json();
+
+				// If there is JSON in the error, we will try to parse it as a ProblemDetails object
+				if (errorBody && isProblemDetailsLike(errorBody)) {
+					// Merge the parsed problem details into our default
+					problemDetails = errorBody;
+				}
+			} catch (e) {
+				// Ignore JSON parse error
+				console.error('[Interceptor] Caught a server error, but failed parsing error body (expected JSON)', e);
+			}
+
+			return this.#createResponse(problemDetails, response);
+		});
+	}
+
+	/**
+	 * Interceptor which checks responses for the umb-notifications header and displays them as a notification if any. Removes the umb-notifications from the headers.
+	 * @param {umbHttpClient} client The OpenAPI client to add the interceptor to. It can be any client supporting Response and Request interceptors.
+	 * @internal
+	 */
+	addUmbNotificationsInterceptor(client: typeof umbHttpClient) {
+		client.interceptors.response.use((response) => {
+			// Check if the response has the umb-notifications header
+			// If not, we just return the response
+			const umbNotifications = response.headers.get(UMB_NOTIFICATION_HEADER);
+			if (!umbNotifications) return response;
+
+			// Parse the notifications from the header
+			// If the header is not a valid JSON, we just return the response
+			try {
+				const notifications = JSON.parse(umbNotifications);
+				if (!isUmbNotifications(notifications)) return response;
+
+				for (const notification of notifications) {
+					// Backend event messages may contain HTML (e.g. links) and are rendered sanitized by the
+					// notification layout via htmlMessage. The plain message must stay markup-free because it is
+					// read by screen readers (see umb-backoffice-notification-container).
+					this.#peekError(
+						notification.category,
+						this.#extractText(notification.message),
+						undefined,
+						extractUmbNotificationColor(notification.type),
+						notification.message,
+					);
+				}
+			} catch {
+				// Ignore JSON parse errors
+			}
+
+			return response;
+		});
+	}
+
+	/**
+	 * Observes the auth signaler's authorization state to retry GET-requests that received a 401
+	 * Unauthorized response. Also notifies the user about non-GET requests that received a 401
+	 * Unauthorized response after re-authentication completes.
+	 * @internal
+	 */
+	handleUnauthorizedAuthRetry() {
+		this.observe(
+			this.#signaler.isAuthorized,
+			(isAuthorized) => {
+				// Only retry when transitioning to authorized (i.e. re-authentication completed)
+				if (!isAuthorized) return;
+				// Skip if there are no pending requests to retry
+				if (this.#pending401Requests.length === 0 && this.#nonGet401Requests.length === 0) return;
+
+				console.log('[Interceptor] 401 Unauthorized - re-authentication completed');
+
+				// On auth, retry all pending requests
+				const requests = this.#pending401Requests.splice(0, this.#pending401Requests.length);
+				requests.forEach((req) => {
+					console.log('[Interceptor] 401 Unauthorized - retrying request after re-authentication', req.requestConfig);
+					req.retry().then(req.resolve).catch(req.reject);
+				});
+
+				// Notify about non-GET 401s after successful re-auth
+				if (this.#nonGet401Requests.length > 0) {
+					const errors: Record<string, string[]> = {};
+					this.#nonGet401Requests.forEach((req) => {
+						errors[`${req.request.method} ${req.request.url}`] = ['Request failed with 401 Unauthorized.'];
+					});
+					this.#peekError(
+						'Some actions were not completed',
+						'Some actions could not be completed because your session expired. Please try again.',
+						errors,
+						'warning',
+					);
+					this.#nonGet401Requests.length = 0; // Clear after notifying
+				}
+			},
+			'_authClearNonGet401Requests',
+		);
+	}
+
+	/**
+	 * Helper to create a new Response with correct Content-Type.
+	 * @param {unknown} body The body of the response, can be a string or an object.
+	 * @param {Response} [originalResponse] The original response to copy status and headers from, if any.
+	 * @param {number} [fallbackStatus] Status to use when no upstream response is available. Defaults to 500.
+	 * @returns {Response} The new Response object with the correct Content-Type and body.
+	 */
+	#createResponse(body: unknown, originalResponse?: Response, fallbackStatus: number = 500): Response {
+		const isString = typeof body === 'string';
+		const contentType = isString ? 'text/plain' : 'application/json';
+		const responseBody = isString ? body : JSON.stringify(body);
+
+		// Construct new headers but preserve "X-" headers from the original response
+		const headersOverride: Record<string, string> = {};
+		originalResponse?.headers.forEach((value, key) => {
+			if (key.toLowerCase().startsWith('x-')) {
+				headersOverride[key] = value;
+			}
+		});
+
+		return new Response(responseBody, {
+			status: originalResponse?.status ?? fallbackStatus,
+			statusText: originalResponse?.statusText ?? '',
+			headers: {
+				...headersOverride,
+				'Content-Type': contentType,
+			},
+		});
+	}
+
+	/**
+	 * Extracts the plain text of an HTML string using an inert document, so nothing is executed or loaded.
+	 * @param {string} html The HTML string.
+	 * @returns {string} The text content of the parsed HTML.
+	 */
+	#extractText(html: string): string {
+		return new DOMParser().parseFromString(html, 'text/html').body.textContent ?? '';
+	}
+
+	/**
+	 * Helper to show a notification error.
+	 * @param {string} headline The headline of the error notification.
+	 * @param {string} message The message of the error notification.
+	 * @param {Record<string, string[]>} [errors] Validation errors keyed by field name.
+	 * @param {UmbNotificationColor} [color] The color of the notification.
+	 * @param {string} [htmlMessage] A message rendered as sanitized HTML, taking precedence over `message`.
+	 */
+	async #peekError(
+		headline: string,
+		message: string,
+		errors?: Record<string, string[]>,
+		color?: UmbNotificationColor,
+		htmlMessage?: string,
+	) {
+		// Store the host for usage in the following async context
+		const host = this._host;
+
+		// This late importing is done to avoid circular reference [NL]
+		(await import('@umbraco-cms/backoffice/notification')).umbPeekError(host, {
+			headline,
+			message,
+			htmlMessage,
+			errors,
+			color,
+		});
+	}
+}

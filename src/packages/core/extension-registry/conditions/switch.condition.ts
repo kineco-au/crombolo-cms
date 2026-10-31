@@ -1,0 +1,56 @@
+import { UmbConditionBase } from './condition-base.controller.js';
+import type { UmbControllerHost } from '@umbraco-cms/backoffice/controller-api';
+import type {
+	ManifestCondition,
+	UmbConditionConfigBase,
+	UmbConditionControllerArguments,
+	UmbExtensionCondition,
+} from '@umbraco-cms/backoffice/extension-api';
+
+export class UmbSwitchCondition extends UmbConditionBase<SwitchConditionConfig> implements UmbExtensionCondition {
+	#timer?: ReturnType<typeof setTimeout>;
+	#frequency: number;
+
+	constructor(host: UmbControllerHost, args: UmbConditionControllerArguments<SwitchConditionConfig>) {
+		super(host, args);
+		const frequency = parseInt(this.config.frequency);
+		if (isNaN(frequency) || frequency <= 0) {
+			throw new Error(`Frequency must be a positive number (frequency: ${this.config.frequency})`);
+		}
+		this.#frequency = frequency;
+		this.#startApprove();
+	}
+
+	#startApprove() {
+		clearTimeout(this.#timer);
+		this.#timer = setTimeout(() => {
+			this.permitted = true;
+			this.#startDisapprove();
+		}, this.#frequency);
+	}
+
+	#startDisapprove() {
+		clearTimeout(this.#timer);
+		this.#timer = setTimeout(() => {
+			this.permitted = false;
+			this.#startApprove();
+		}, this.#frequency);
+	}
+
+	override destroy() {
+		clearTimeout(this.#timer);
+		super.destroy();
+	}
+}
+
+export const manifest: ManifestCondition = {
+	type: 'condition',
+	name: 'Switch Condition',
+	alias: 'Umb.Condition.Switch',
+	api: UmbSwitchCondition,
+};
+
+// eslint-disable-next-line @typescript-eslint/naming-convention
+export type SwitchConditionConfig = UmbConditionConfigBase<'Umb.Condition.Switch'> & {
+	frequency: string;
+};
