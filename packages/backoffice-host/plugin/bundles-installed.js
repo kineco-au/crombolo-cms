@@ -17,7 +17,7 @@
 import { css, html, nothing, repeat } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { carriesTags } from './bundles-carries.js'
-import { grantBundle, listInstalled, uninstallBundle, withdrawBundle } from './bundles-client.js'
+import { disableBundle, enableBundle, listInstalled, uninstallBundle } from './bundles-client.js'
 
 /** Where each part of a bundle stands on this site, in the words of someone running it. */
 function status(item) {
@@ -31,7 +31,7 @@ function status(item) {
   if (item.carries?.server)
     parts.push(
       !item.on
-        ? html`<span>Off until what it asks to do is approved</span>`
+        ? html`<span>Server features turned off by ${item.disabledBy ?? 'an administrator'}</span>`
         : item.wired
           ? html`<span>Server features on</span>`
           : html`<span>Server features off until the site's configuration includes it</span>`,
@@ -94,11 +94,11 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
     }
   }
 
-  /** Approves everything it asks to do, or withdraws that, turning it on or off (story 222). */
-  async #setGrant(item, grant) {
+  /** Turns its server features off, or back on (story 225). */
+  async #setEnabled(item, enabled) {
     this._busy = item.packageName
     try {
-      const outcome = grant ? await grantBundle(item.id) : await withdrawBundle(item.id)
+      const outcome = enabled ? await enableBundle(item.id) : await disableBundle(item.id)
       this._notice = outcome.message ?? ''
       if (outcome.ok) await this.#load()
     } catch (error) {
@@ -108,56 +108,40 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
     }
   }
 
-  /** What it may do with the site, and the button that approves or withdraws it. */
+  /** What it may do with the site, who approved it, and the button that turns it off or on. */
   #permissions(item) {
     if (!item.carries?.server) return nothing
     const asks = item.permissions ?? []
+    const approved = item.granted
+      ? `Approved by ${item.granted.by ?? 'an administrator'} on ${new Date(item.granted.at).toLocaleDateString()}.`
+      : ''
     return html`
       <h4>What it may do</h4>
       ${
         asks.length === 0
           ? html`<p>Nothing beyond its own data: it asks for no access to the site's content, members or settings.</p>`
           : html`<ul class="asks">
-              ${asks.map(
-                (ask) =>
-                  html`<li class=${(item.missing ?? []).includes(ask.permission) ? 'waiting' : ''}>
-                    ${ask.allows}
-                  </li>`,
-              )}
+              ${asks.map((ask) => html`<li>${ask.allows}</li>`)}
             </ul>`
       }
       ${
         item.on
-          ? html`<p class="note">
-                ${
-                  item.granted
-                    ? `Approved${item.granted.by ? ` by ${item.granted.by}` : ''} on ${new Date(item.granted.at).toLocaleDateString()}.`
-                    : 'Needs no approval.'
-                }
-              </p>
-              ${
-                item.granted
-                  ? html`<uui-button
-                      look="secondary"
-                      color="danger"
-                      label="Withdraw approval"
-                      .state=${this._busy === item.packageName ? 'waiting' : undefined}
-                      @click=${() => this.#setGrant(item, false)}></uui-button>`
-                  : nothing
-              }`
+          ? html`${approved ? html`<p class="note">${approved}</p>` : nothing}
+              <uui-button
+                look="secondary"
+                color="danger"
+                label="Disable"
+                .state=${this._busy === item.packageName ? 'waiting' : undefined}
+                @click=${() => this.#setEnabled(item, false)}></uui-button>`
           : html`<p class="note">
-                ${
-                  item.granted
-                    ? 'This version asks for more than was approved, so it is off until you approve all of it.'
-                    : 'It is off until you approve all of what it asks to do.'
-                }
+                Turned off by ${item.disabledBy ?? 'an administrator'}: its pages, jobs and screens
+                stay off, through updates, until it is enabled again.
               </p>
               <uui-button
                 look="primary"
-                color="warning"
-                label="Approve and turn on"
+                label="Enable"
                 .state=${this._busy === item.packageName ? 'waiting' : undefined}
-                @click=${() => this.#setGrant(item, true)}></uui-button>`
+                @click=${() => this.#setEnabled(item, true)}></uui-button>`
       }
     `
   }
@@ -260,9 +244,6 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
   static styles = css`
     .asks {
       padding-left: 1.25em;
-    }
-    .asks li.waiting {
-      font-weight: 600;
     }
     :host {
       display: block;

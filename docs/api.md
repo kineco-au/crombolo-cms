@@ -17,7 +17,7 @@ Everything supported comes from `@crombolo/crombolo`, split by who is using it:
 | `@crombolo/crombolo/routes` | a site's route handlers | the route contract bound to crombolo's types (`route`, `RouteHandler`, `RouteContext`, `SiteRoute`, `RouteOptions`, `RouteMethod`, `ROUTE_METHODS`), `Outcome`, `ok`, `FieldError`, `CookieOptions` and `fromRouteModule` (story 211) |
 | `@crombolo/crombolo/middleware` | a site's middleware | the middleware contract bound to crombolo's types (`Middleware`, `MiddlewareHandler`, `MiddlewareContext`), `rewrite`, `withCookie`, `NextResponse` and `fromNextMiddleware` (story 210) |
 | `@crombolo/crombolo/islands-react` | the browser | `mount`, which renders a `'use client'` island with React; Crombolo's island build includes it, and a Vite build lists it as an input (story 209) |
-| `@crombolo/crombolo/host` | whoever runs sites | `createServer`, `loadConfig`, `cromboloServer` and `ServerHandle`; the media and schema stores; `liveNodes`; the bundle checks (`validateBundlePackage`, `peerRangeProblem`, `checkBundleCode`, `installBundleCode`); and the operations a deploy runs (`upgradePlan`, `upgradeFix`, `contentImport`, `siteExport`, `findTemplate`) |
+| `@crombolo/crombolo/host` | whoever runs sites | `createServer`, `loadConfig`, `cromboloServer` and `ServerHandle`; `createWorker`, `WorkerHandle` and `WorkerHealth`, a node that runs only the jobs (story 223); the media and schema stores; `liveNodes`; the bundle checks (`validateBundlePackage`, `peerRangeProblem`, `checkBundleCode`, `installBundleCode`); and the operations a deploy runs (`upgradePlan`, `upgradeFix`, `contentImport`, `siteExport`, `findTemplate`) |
 
 `@crombolo/crombolo/branding` (the marks and the palette) and the JSX runtimes
 are supported too. The JSX runtimes' names are the JSX compiler's contract, not
@@ -168,3 +168,11 @@ half declares `crombolo.permissions`, and one written for schema 2 is refused.
 `@crombolo/crombolo/bundle` is unchanged; what changed is the package's
 manifest, and that a capability refuses a method its declared permissions do
 not cover. `bundles.md`, "Permissions", lists them.
+
+## The worker from the host entry (unreleased)
+
+`createWorker`, `WorkerHandle` and `WorkerHealth` (story 223) are exported from
+`@crombolo/crombolo/host` as well as `@crombolo/server/worker`, so a host that
+boots its own nodes with `createServer` can boot a worker the same way:
+`createServer` refuses the role, and a host should not reach into
+`@crombolo/server` for it. Nothing is removed.

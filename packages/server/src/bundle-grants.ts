@@ -1,15 +1,14 @@
 /**
  * Bundles ask for permissions (story 222). A bundle's package declares what it
- * may do with the site; an administrator grants the whole list, or the bundle
- * stays off. Each capability serves only the permissions declared for it, and
- * a bundle is on only while its grant covers everything it declares.
+ * may do with the site, and each capability serves only those. Wiring it in the
+ * config approves it, recorded at boot (story 225); an administrator can
+ * disable it.
  * docs/bundles.md, "Permissions".
  */
 import {
   type BundlePackage,
   type BundlePermission,
   describePermissions,
-  discoverBundles,
 } from '@crombolo/backoffice-host/registry'
 import { type BundleGrant, BundleGrantRepository, type Db } from '@crombolo/data'
 
@@ -126,41 +125,45 @@ export function gated<T extends object>(
   return Object.freeze(out) as T
 }
 
-/** Where a bundle stands: on, or waiting for an administrator, and for what. */
+/** Where a bundle stands: what it may do, who approved it, and whether it is disabled. */
 export interface BundleGrantState {
   bundleId: string
   packageName: string
   version: string
   declared: { permission: string; allows: string }[]
-  /** On: nothing is declared, or the grant covers everything that is. */
+  /** On unless an administrator disabled it: the site's code is its approval. */
   on: boolean
   grant: BundleGrant | undefined
-  /** What is declared and not granted. */
-  missing: string[]
+  /** Who disabled it, when it is off. */
+  disabledBy: string | null
 }
 
-/** What `on` answers for a bundle, and how grants are made and withdrawn. */
+/** Whether a bundle may run, what it was approved for, and the switch to stop one. */
 export interface BundleGrants {
-  /** Reads the grants again, as a grant on another node may have changed them. */
+  /** Reads the rows again, as a node elsewhere may have changed them. */
   refresh(): Promise<void>
   isOn(bundleId: string): boolean
   state(pkg: BundlePackage): BundleGrantState
-  grant(pkg: BundlePackage, by: string | null): Promise<BundleGrantState>
-  withdraw(bundleId: string): Promise<boolean>
+  /** Records what a bundle is approved for, and by whom; true when that changed. */
+  grant(pkg: BundlePackage, by: string | null): Promise<boolean>
+  disable(pkg: BundlePackage, by: string | null): Promise<BundleGrantState>
+  enable(pkg: BundlePackage): Promise<BundleGrantState>
 }
 
-/** A bundle is on when its grant covers everything its package declares. */
-export function grantCovers(declared: readonly string[], grant: BundleGrant | undefined): boolean {
-  if (declared.length === 0) return true
-  if (!grant) return false
-  const granted = new Set(grant.permissions)
-  return declared.every((permission) => granted.has(permission))
+/** Whether a recorded approval already holds this version and list. */
+export function approvalHolds(pkg: BundlePackage, grant: BundleGrant | undefined): boolean {
+  if (!grant || grant.version !== pkg.version) return false
+  const declared = declaredPermissions(pkg)
+  return (
+    grant.permissions.length === declared.length &&
+    declared.every((permission) => grant.permissions.includes(permission))
+  )
 }
 
 /**
- * Grants as this node sees them: read at boot, read again at most every
- * `refreshMs` (a grant or a withdrawal on another node), and at once after a
- * grant made here.
+ * Bundles as this node sees them (stories 222 and 225): read at boot, read
+ * again at most every `refreshMs` (a node elsewhere disabling one), and at once
+ * after a change made here.
  */
 export function createBundleGrants(options: {
   db: Db
@@ -181,17 +184,15 @@ export function createBundleGrants(options: {
     if (Date.now() - readAt > refreshMs) void read().catch(() => {})
   }
   const stateOf = (pkg: BundlePackage): BundleGrantState => {
-    const declared = declaredPermissions(pkg)
     const grant = grants.get(pkg.id)
-    const granted = new Set(grant?.permissions ?? [])
     return {
       bundleId: pkg.id,
       packageName: pkg.packageName,
       version: pkg.version,
-      declared: describePermissions(declared),
-      on: grantCovers(declared, grant),
+      declared: describePermissions(declaredPermissions(pkg)),
+      on: !grant?.disabledAt,
       grant,
-      missing: declared.filter((permission) => !granted.has(permission)),
+      disabledBy: grant?.disabledAt ? grant.disabledBy : null,
     }
   }
 
@@ -199,14 +200,14 @@ export function createBundleGrants(options: {
     refresh: read,
     isOn(bundleId) {
       stale()
-      const pkg = options.packages().get(bundleId)
-      return pkg ? grantCovers(declaredPermissions(pkg), grants.get(bundleId)) : false
+      return options.packages().has(bundleId) && !grants.get(bundleId)?.disabledAt
     },
     state(pkg) {
       stale()
       return stateOf(pkg)
     },
     async grant(pkg, by) {
+      if (approvalHolds(pkg, grants.get(pkg.id))) return false
       await repository.grant({
         bundleId: pkg.id,
         packageName: pkg.packageName,
@@ -215,51 +216,35 @@ export function createBundleGrants(options: {
         grantedBy: by,
       })
       await read()
+      return true
+    },
+    async disable(pkg, by) {
+      await repository.disable(
+        { bundleId: pkg.id, packageName: pkg.packageName, version: pkg.version },
+        by,
+      )
+      await read()
       return stateOf(pkg)
     },
-    async withdraw(bundleId) {
-      const had = await repository.withdraw(bundleId)
+    async enable(pkg) {
+      await repository.enable(pkg.id)
       await read()
-      return had
+      return stateOf(pkg)
     },
   }
 }
 
+/** Who a bundle's approval names when it came from being wired in the config. */
+export const APPROVED_BY_CODE = "the site's code"
+
 /** What a route of a bundle that is off answers. */
-export function waitingResponse(bundleId: string): Response {
+export function disabledResponse(bundleId: string): Response {
   return Response.json(
     {
-      title: 'Not turned on yet',
-      detail: `The bundle "${bundleId}" is waiting for an administrator to approve what it may do with the site, in Packages → Installed.`,
+      title: 'Turned off',
+      detail: `The bundle "${bundleId}" has been disabled by an administrator, in Packages → Installed.`,
       status: 503,
     },
-    { status: 503, headers: { 'content-type': 'application/problem+json', 'retry-after': '60' } },
+    { status: 503, headers: { 'content-type': 'application/problem+json' } },
   )
-}
-
-/** The bundle a site depends on, by id, when it has a server half to grant. */
-export function grantableBundle(siteDir: string, id: string): BundlePackage | string {
-  const pkg = discoverBundles(siteDir).bundles.find((candidate) => candidate.id === id)
-  if (!pkg)
-    return `No package this site depends on declares the bundle "${id}". Add it to package.json first.`
-  if (!pkg.carries.server)
-    return `The bundle "${id}" has no server half, so there is nothing to grant.`
-  return pkg
-}
-
-/** Grants a bundle the whole of what it declares, outside a running server. */
-export async function grantBundle(
-  db: Db,
-  pkg: BundlePackage,
-  by: string | null,
-): Promise<string[]> {
-  const permissions = declaredPermissions(pkg)
-  await new BundleGrantRepository(db).grant({
-    bundleId: pkg.id,
-    packageName: pkg.packageName,
-    version: pkg.version,
-    permissions,
-    grantedBy: by,
-  })
-  return permissions
 }

@@ -35,7 +35,7 @@ export const AUDIT_CATEGORIES: readonly AuditCategory[] = [
 ]
 
 /** Where an entry came from: a request (with its address), the command line, or a background job. */
-export type AuditSource = 'request' | 'cli' | 'job'
+export type AuditSource = 'request' | 'cli' | 'job' | 'boot'
 
 export interface AuditEntryInput {
   category: AuditCategory

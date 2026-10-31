@@ -6,6 +6,35 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.39.0 — 2026-10-31
+
+- **A route handler's signal ends once it has answered** (story 224). A route
+  whose code listened to `signal` and never stopped kept every request in
+  memory for good, about 5 KB each. The signal is now aborted once the answer
+  has been sent, its body read to the end, failed or cancelled, so a streamed
+  body still reads from it to its last chunk. Work a handler leaves running
+  after it answers, still listening to the signal, is now stopped then.
+
+- **Bundles in the site's code are approved, and an administrator can disable
+  one** (story 225). Wiring a bundle in `crombolo.config.ts` now approves it:
+  it runs from its first boot, and the boot records what it may do as approved
+  by the site's code, in the audit log too. In Packages → Installed,
+  **Disable** turns a bundle off (its pages answer 503, its jobs wait, its
+  screens are hidden) and **Enable** turns it back on; a disabled bundle stays
+  off through updates until it is enabled. A bundle still declares its
+  permissions and is still held to them. Migration 056 records who disabled a
+  bundle.
+
+  **Upgrade:** a bundle waiting for approval runs once you upgrade. A bundle
+  whose approval you withdrew in 0.38 runs too: disable it in Packages →
+  Installed if it should stay off. `crombolo bundle grant` is gone; remove it
+  from any pipeline.
+
+- **A worker from the host entry** (story 223). `createWorker`, `WorkerHandle`
+  and `WorkerHealth` are exported from `@crombolo/crombolo/host`, so a host
+  that boots its nodes itself can boot a worker without reaching into
+  `@crombolo/server`. Nothing changes for a site.
+
 ## v0.38.1 — 2026-10-30
 
 v0.38.0 was tagged but never published: its release checks failed. This is

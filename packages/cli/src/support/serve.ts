@@ -211,13 +211,13 @@ export async function serveSite(io: Io, options: StartOptions): Promise<Started>
   if (report) lines.push(`  schema      ${describeSync(report)}`)
   if (server.schema.compatibilityMode)
     lines.push('  ⚠ database is ahead of schema/: reads only, writes refused with 409')
-  // Story 222: a wired bundle stays off until what it asks to do is approved.
-  const waiting = config.role === 'web' ? [] : server.waitingBundles()
-  if (waiting.length > 0) {
-    lines.push('', '  Off until approved')
-    for (const bundle of waiting)
+  // Story 225: a wired bundle runs unless an administrator has disabled it.
+  const disabled = config.role === 'web' ? [] : server.disabledBundles()
+  if (disabled.length > 0) {
+    lines.push('', '  Disabled')
+    for (const bundle of disabled)
       lines.push(
-        `    ${bundle.id}  approve in Packages → Installed, or: crombolo bundle grant ${bundle.id}`,
+        `    ${bundle.id}  by ${bundle.by ?? 'an administrator'}; enable in Packages → Installed`,
       )
   }
   banner(io, lines)

@@ -141,7 +141,7 @@ growth and cleanup belong to story 082.
   built the same way. It leaks only when site code listens to it, as
   `fetch(url, { signal })` does. Aborting it when the answer is sent would cut
   off a streamed body still reading it, so the fix waits on a decision about
-  when that signal ends.
+  when that signal ends: story `224`.
 - **Small, SQLite, before the fix:**
   - memory, rebuild, warm render, render during a rebuild, queries per slice
     and the cold render after publish, unpublish and move all passed their

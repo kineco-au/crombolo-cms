@@ -118,6 +118,9 @@ const prefersHtml = (request: Request) => {
 }
 
 /** Builds the site's route pipeline over its routes and its bundles'. */
+/** Why a route's signal is aborted once its answer has been sent. */
+const ANSWERED = new Error('The answer has been sent.')
+
 export function createRoutes<Member extends RouteMember>(
   declared: readonly DeclaredRoute[],
   deps: RouteDeps<Member>,
@@ -382,7 +385,21 @@ export function createRoutes<Member extends RouteMember>(
     if (!headers.has('cache-control') || (method !== 'GET' && method !== 'HEAD'))
       headers.set('cache-control', 'private, no-store')
     const body = method === 'HEAD' ? null : response.body
-    return new Response(body, { status: response.status, statusText: response.statusText, headers })
+    // Story 224: the signal ends once the answer has been sent, its body read
+    // to the end, failed or cancelled, so nothing still listening is kept alive.
+    const answered = () => deadline.abort(ANSWERED)
+    if (!body) answered()
+    const sent = body?.pipeThrough(
+      new TransformStream({ flush: answered, cancel: answered } as Transformer<
+        Uint8Array,
+        Uint8Array
+      >),
+    )
+    return new Response(sent ?? null, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    })
   }
 
   /** The route a site path matches, with its params. */

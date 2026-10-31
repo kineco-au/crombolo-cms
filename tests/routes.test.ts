@@ -265,6 +265,121 @@ describe('errors and the time limit', () => {
   })
 })
 
+describe("a route's signal once it has answered (story 224)", () => {
+  const ANSWERED = 'The answer has been sent.'
+
+  test('ends when the answer is read, and lets go of what a listener held', async () => {
+    let seen: AbortSignal | undefined
+    let held: WeakRef<object> | undefined
+    const { call } = pipeline([
+      route('/listens', {
+        GET: (_r, { signal }) => {
+          seen = signal
+          const big = { payload: new Array(10_000).fill('x') }
+          held = new WeakRef(big)
+          // Never removed, as a cancellable job or a stream reader leaves it.
+          signal.addEventListener('abort', () => void big.payload.length)
+          return ok('done')
+        },
+      }),
+    ])
+    const response = await call('/listens')
+    expect(seen?.aborted).toBe(false)
+    expect(await response.json()).toBe('done')
+    expect(seen?.aborted).toBe(true)
+    expect(String(seen?.reason?.message)).toBe(ANSWERED)
+    seen = undefined
+    for (let i = 0; i < 5 && held?.deref(); i++) {
+      Bun.gc(true)
+      await Bun.sleep(10)
+    }
+    expect(held?.deref()).toBeUndefined()
+  })
+
+  test('a streamed body that reads from the signal is read to its end before the signal ends', async () => {
+    let seen: AbortSignal | undefined
+    const chunks: boolean[] = []
+    const { call } = pipeline([
+      route('/stream', {
+        GET: (_r, { signal }) => {
+          seen = signal
+          let n = 0
+          return new Response(
+            new ReadableStream({
+              async pull(controller) {
+                await Bun.sleep(5)
+                chunks.push(signal.aborted)
+                if (++n > 3) controller.close()
+                else controller.enqueue(new TextEncoder().encode(`${n};`))
+              },
+            }),
+          )
+        },
+      }),
+    ])
+    const response = await call('/stream')
+    expect(await response.text()).toBe('1;2;3;')
+    expect(chunks).toEqual([false, false, false, false])
+    expect(String(seen?.reason?.message)).toBe(ANSWERED)
+  })
+
+  test('a visitor who cancels a streamed body part-way ends it', async () => {
+    let seen: AbortSignal | undefined
+    const { call } = pipeline([
+      route('/endless', {
+        GET: (_r, { signal }) => {
+          seen = signal
+          return new Response(
+            new ReadableStream({
+              pull: (controller) => controller.enqueue(new TextEncoder().encode('x')),
+            }),
+          )
+        },
+      }),
+    ])
+    const reader = (await call('/endless')).body?.getReader()
+    await reader?.read()
+    expect(seen?.aborted).toBe(false)
+    await reader?.cancel()
+    expect(String(seen?.reason?.message)).toBe(ANSWERED)
+  })
+
+  test('a HEAD, a throw and an overrun each end it', async () => {
+    const signals: Record<string, AbortSignal> = {}
+    const { call } = pipeline(
+      [
+        route('/head', {
+          GET: (_r, { signal }) => {
+            signals.head = signal
+            return ok(1)
+          },
+        }),
+        route('/throws', {
+          GET: (_r, { signal }) => {
+            signals.throws = signal
+            throw new Error('kaboom')
+          },
+        }),
+        route('/slow', {
+          GET: (_r, { signal }) => {
+            signals.slow = signal
+            return new Promise(() => {})
+          },
+        }),
+      ],
+      { timeoutMs: 50 },
+    )
+    expect((await call('/head', { method: 'HEAD' })).status).toBe(200)
+    expect(String(signals.head?.reason?.message)).toBe(ANSWERED)
+    const failed = await call('/throws')
+    expect(failed.status).toBe(500)
+    await failed.text()
+    expect(String(signals.throws?.reason?.message)).toBe(ANSWERED)
+    expect((await call('/slow')).status).toBe(504)
+    expect(String(signals.slow?.reason?.message)).toContain('took longer than 50ms')
+  })
+})
+
 describe('caching', () => {
   test('private unless the handler says otherwise, and never for a write', async () => {
     const { call } = pipeline([

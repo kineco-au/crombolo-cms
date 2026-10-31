@@ -66,11 +66,11 @@ export interface InstalledListing {
   peerRange: string
   /** What its server half may do with the site, each with what it allows (story 222). */
   permissions: { permission: string; allows: string }[]
-  /** Whether it is turned on: nothing is declared, or an administrator granted all of it. */
+  /** Whether it is turned on: unless an administrator has disabled it. */
   on: boolean
-  /** What it declares and has not been granted. */
-  missing: string[]
-  /** Who granted it, and when; absent when nobody has. */
+  /** Who disabled it, while it is off. */
+  disabledBy: string | null
+  /** Who approved it, and when: an administrator at install, or the site's code. */
   granted?: { by: string | null; at: string; version: string }
 }
 
@@ -307,17 +307,17 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
     return carries
   }
 
-  /** A bundle's permissions and where its grant stands, for the listing. */
+  /** A bundle's permissions, who approved them, and whether it is disabled, for the listing. */
   const grantOf = (bundle: BundlePackage) => {
     const declared = describePermissions(declaredPermissions(bundle))
     if (!bundle.carries.server || !options.grants)
-      return { permissions: declared, on: true, missing: [] as string[] }
+      return { permissions: declared, on: true, disabledBy: null }
     const state = options.grants.state(bundle)
     return {
       permissions: state.declared,
       on: state.on,
-      missing: state.missing,
-      ...(state.grant
+      disabledBy: state.disabledBy,
+      ...(state.grant?.grantedBy
         ? {
             granted: {
               by: state.grant.grantedBy,

@@ -250,6 +250,7 @@
       "checkBundleCode",
       "contentImport",
       "createServer",
+      "createWorker",
       "type CromboloConfig",
       "type CromboloField",
       "cromboloServer",
@@ -276,7 +277,9 @@
       "upgradePlan",
       "type UpgradePlanResult",
       "validateBundlePackage",
-      "VERSION"
+      "VERSION",
+      "type WorkerHandle",
+      "type WorkerHealth"
     ],
     "deprecated": []
   },

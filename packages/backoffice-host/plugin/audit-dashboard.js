@@ -128,6 +128,7 @@ async function get(path, params) {
 function fromWhere(entry) {
   if (entry.source === 'cli') return 'Command line'
   if (entry.source === 'job') return 'Scheduled'
+  if (entry.source === 'boot') return 'Site start-up'
   const forwarded = entry.forwardedFor?.split(',')[0]?.trim()
   return forwarded || entry.ipAddress || '—'
 }
@@ -290,7 +291,7 @@ export default class CromboloAuditDashboardElement extends LitElement {
     const failed = entry.action === 'SignInFailed' || entry.action === 'LockedOut'
     return html`<uui-table-row>
       <uui-table-cell title=${when.toISOString()}>${when.toLocaleString()}</uui-table-cell>
-      <uui-table-cell>${entry.user?.name ?? (entry.source === 'job' ? 'Scheduled publishing' : 'Unknown')}</uui-table-cell>
+      <uui-table-cell>${entry.user?.name ?? (entry.source === 'job' ? 'Scheduled publishing' : entry.source === 'boot' ? "The site's code" : 'Unknown')}</uui-table-cell>
       <uui-table-cell>
         ${failed ? html`<uui-tag color="danger">${actionLabel(entry.action)}</uui-tag>` : actionLabel(entry.action)}
         ${entry.detail && entry.source !== 'cli' ? html`<small>${entry.detail}</small>` : nothing}

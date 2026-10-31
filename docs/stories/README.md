@@ -273,6 +273,8 @@ requests, only server-side and build-time front ends can call it.
 | `218` | Build islands ahead of time | could | S | ready | 209 |
 | `219` | Server actions | should | L | ready | — |
 | `220` | `/crombolo/bundle.js` is served on every node | should | S | ready | 211 |
+| `224` | A route handler's signal is let go once it has answered | should | S | done | 211 |
+| `225` | Bundles in the site's code are approved, and an administrator can disable one | should | M | done | 222 |
 
 ### Epic P — The command line
 

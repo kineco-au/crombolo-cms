@@ -123,7 +123,9 @@ export async function undoMediaAccess(db: Db): Promise<void> {
 
 /** Undoes 052, which 050's undo calls first: it comes after it. */
 export async function undoMediaMemberUploads(db: Db): Promise<void> {
-  // 055, jobs (story 187), and 054, bundle grants (story 222), come after it.
+  // 056 (story 225), 055, jobs (story 187), and 054, bundle grants (story 222),
+  // come after it; 056's columns go with 054's table.
+  await db.exec("DELETE FROM migration_history WHERE name = 'DisableBundles'")
   await db.exec('DROP TABLE IF EXISTS job_schedule')
   await db.exec('DROP INDEX IF EXISTS ix_job_owner')
   await db.exec('DROP INDEX IF EXISTS ix_job_due')

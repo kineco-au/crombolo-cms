@@ -42,4 +42,7 @@ export {
   s3SchemaStore,
   VERSION,
 } from '@crombolo/server'
+// A node that runs only the background jobs (story 223), for a host that
+// boots its own nodes: `createServer` refuses the worker role.
+export { createWorker, type WorkerHandle, type WorkerHealth } from '@crombolo/server/worker'
 export { cromboloServer } from './index.ts'

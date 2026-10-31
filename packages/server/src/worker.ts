@@ -44,8 +44,8 @@ export interface WorkerHandle {
     fetch(request: Request, server: Server<unknown>): Promise<Response>
     websocket: { message(): void }
   }
-  /** The wired bundles that are off, waiting for an administrator to approve these permissions. */
-  waitingBundles(): { id: string; missing: string[] }[]
+  /** The wired bundles an administrator has disabled, and who did. */
+  disabledBundles(): { id: string; by: string | null }[]
   /** Core's jobs; each run can be called directly. */
   jobs: BackgroundJobs
   /** The site's and bundles' jobs (story 187). */
@@ -116,11 +116,11 @@ export async function createWorker(config: CromboloConfig): Promise<WorkerHandle
       fetch: (request) => fetch(request),
       websocket: { message() {} },
     },
-    waitingBundles: () =>
+    disabledBundles: () =>
       config.bundles.flatMap((bundle) => {
         const pkg = bundlePackages.find((candidate) => candidate.id === bundle.id)
         if (!pkg || bundleGrants.isOn(bundle.id)) return []
-        return [{ id: bundle.id, missing: bundleGrants.state(pkg).missing }]
+        return [{ id: bundle.id, by: bundleGrants.state(pkg).disabledBy }]
       }),
     jobs,
     backgroundJobs: jobRunner,

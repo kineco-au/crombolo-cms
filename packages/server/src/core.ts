@@ -30,10 +30,11 @@ import {
   ViewSnapshots,
 } from '@crombolo/render'
 import type { SyncReport } from '@crombolo/schema'
+import { recordAudit } from './adapters/audit.ts'
 import { createMediaSource, createPublishedContentSource } from './adapters/documents.ts'
 import { backOfficeUrl, documentEditUrl } from './back-office-url.ts'
 import { BACKOFFICE_EXTERNAL_PATH } from './backoffice-external.ts'
-import { createBundleGrants } from './bundle-grants.ts'
+import { APPROVED_BY_CODE, createBundleGrants, declaredPermissions } from './bundle-grants.ts'
 import {
   type BundleMediaFactory,
   createBundleMedia,
@@ -162,7 +163,7 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
     ? await bootstrapDatabase(config, chains)
     : await attachDatabase(config, opened)
   await openTables(db, config, opened, { provision: owns })
-  // Story 222: a bundle runs only while an administrator's grant covers what it declares.
+  // Stories 222 and 225: wiring a bundle approves it; an administrator can disable it.
   const bundleGrants = createBundleGrants({
     db,
     packages: () => new Map(extensions.bundles().bundles.map((pkg) => [pkg.id, pkg])),
@@ -181,11 +182,22 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
   })
   for (const bundle of config.bundles) {
     const pkg = bundlePackages.find((candidate) => candidate.id === bundle.id)
-    if (pkg && !bundleGrants.isOn(bundle.id))
-      log.warning(
-        'The bundle {bundle} is off until an administrator approves what it may do: {permissions}. Grant it in Packages → Installed, or run `crombolo bundle grant {bundle}`.',
-        { bundle: bundle.id, permissions: bundleGrants.state(pkg).missing.join(', ') },
-      )
+    if (!pkg) continue
+    // Recorded where the database is written, and audited when it changes.
+    if (owns && (await bundleGrants.grant(pkg, APPROVED_BY_CODE)))
+      await recordAudit(db, {
+        category: 'system',
+        action: 'Grant',
+        entityType: 'Bundle',
+        entityName: `${pkg.packageName}@${pkg.version}`,
+        detail: `approved by the site's code: ${declaredPermissions(pkg).join(', ') || 'nothing'}`,
+        source: 'boot',
+      })
+    if (!bundleGrants.isOn(bundle.id))
+      log.warning('The bundle {bundle} is disabled by {by}; enable it in Packages → Installed.', {
+        bundle: bundle.id,
+        by: bundleGrants.state(pkg).disabledBy ?? 'an administrator',
+      })
   }
   // A configured schema store is copied down before anything reads `schema/`, and
   // becomes the schema directory for this boot. Everything after here — loading,

@@ -10,7 +10,6 @@ import {
   type CromboloConfig,
   createServer,
   DEFAULTS,
-  grantableBundle,
   loadConfig,
   type ServerHandle,
 } from '@crombolo/server'
@@ -90,11 +89,6 @@ export interface HarnessOptions {
   config?: Partial<CromboloConfig>
   /** Keep the Postgres schema: a second instance on the same database. */
   keepDatabase?: boolean
-  /**
-   * Leave the wired bundles waiting for an administrator (story 222). By default
-   * each is granted what it declares, as an administrator would before using it.
-   */
-  ungranted?: boolean
 }
 
 /** A server nobody has signed in to: for what a visitor, or a site with no administrator, sees. */
@@ -103,16 +97,7 @@ export async function bootServer(options: HarnessOptions = {}): Promise<ServerHa
   const server = await createServer(
     loadConfig({ componentsCacheDir: VIEWS_CACHE, ...options.config }),
   )
-  if (!options.ungranted) await grantWired(server)
   return server
-}
-
-/** Grants every wired bundle what its package declares. */
-export async function grantWired(server: ServerHandle): Promise<void> {
-  for (const bundle of server.config.bundles) {
-    const pkg = grantableBundle(server.config.siteDir, bundle.id)
-    if (typeof pkg !== 'string') await server.bundleGrants.grant(pkg, 'test')
-  }
 }
 
 export async function signedInServer(options: HarnessOptions = {}): Promise<Harness> {

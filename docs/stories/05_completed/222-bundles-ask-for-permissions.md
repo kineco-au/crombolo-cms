@@ -47,6 +47,9 @@ its developers.
 
 ## Decisions (2026-10-30)
 
+Decisions 4 and 5 were reversed by story `225`: wiring a bundle in the config
+approves it, and an administrator can disable one.
+
 1. **One model: every capability that reaches the site's data is a
    permission.** The package's manifest lists them (`redirects.write`,
    `documents.read`, `identityProviders.read`, `media.write`, `member.delegate`,

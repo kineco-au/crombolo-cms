@@ -1,21 +1,19 @@
 /**
  * Bundles ask for permissions (story 222): what a package may declare, how a
- * bundle's capabilities are held to it, and a bundle that is off until an
- * administrator grants all of it. docs/bundles.md, "Permissions".
+ * bundle's capabilities are held to it; a bundle wired in the config approved
+ * by it, and one an administrator disables (story 225). docs/bundles.md,
+ * "Permissions".
  */
 import { afterEach, describe, expect, test } from 'bun:test'
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { validateBundlePackage } from '@crombolo/backoffice-host'
-import { bundleGrant } from '@crombolo/cli'
 import { route } from '@crombolo/common'
-import { BundleGrantRepository, connect, cromboloPlan, migrate } from '@crombolo/data'
+import { cromboloPlan, migrate } from '@crombolo/data'
 import {
   type BundleRedirects,
   createBundleGrants,
   gated,
-  grantCovers,
-  loadConfig,
   PermissionRefusedError,
   permissionProblems,
   type ServerBundle,
@@ -97,8 +95,8 @@ describe('capabilities against permissions', () => {
   })
 })
 
-describe(`grants (${dialectUnderTest})`, () => {
-  test('a bundle is on once its grant covers everything it declares, and off when it asks for more', async () => {
+describe(`approvals and disabling (${dialectUnderTest})`, () => {
+  test('a wired bundle runs with no row; its approval is recorded once per change; disabled holds through an upgrade', async () => {
     const db = await freshDb()
     try {
       await migrate(db, cromboloPlan)
@@ -107,21 +105,47 @@ describe(`grants (${dialectUnderTest})`, () => {
       })
       const grants = createBundleGrants({ db, packages: () => new Map([['notes', pkg]]) })
       await grants.refresh()
-      expect(grants.isOn('notes')).toBe(false)
-      await grants.grant(pkg, 'an administrator')
       expect(grants.isOn('notes')).toBe(true)
-      // A new version asking for more is off until all of it is approved.
+      expect(grants.isOn('elsewhere')).toBe(false)
+      expect(await grants.grant(pkg, "the site's code")).toBe(true)
+      expect(await grants.grant(pkg, "the site's code")).toBe(false)
+      expect(grants.state(pkg).grant).toMatchObject({
+        grantedBy: "the site's code",
+        permissions: ['redirects.read'],
+      })
+
+      const off = await grants.disable(pkg, 'admin@example.com')
+      expect(off).toMatchObject({ on: false, disabledBy: 'admin@example.com' })
+      expect(grants.isOn('notes')).toBe(false)
+      // A new version asking for more is recorded, and stays disabled.
       pkg = {
         ...pkg,
         version: '1.1.0',
         field: { ...pkg.field, permissions: ['redirects.read', 'redirects.write'] },
       }
+      expect(await grants.grant(pkg, "the site's code")).toBe(true)
       expect(grants.isOn('notes')).toBe(false)
-      expect(grants.state(pkg).missing).toEqual(['redirects.write'])
-      await grants.withdraw('notes')
-      expect(grants.state(pkg).grant).toBeUndefined()
-      // Asking for nothing needs no grant.
-      expect(grantCovers([], undefined)).toBe(true)
+      expect(grants.state(pkg).grant?.permissions).toEqual(['redirects.read', 'redirects.write'])
+
+      expect(await grants.enable(pkg)).toMatchObject({ on: true, disabledBy: null })
+      expect(grants.isOn('notes')).toBe(true)
+    } finally {
+      await db.close()
+    }
+  })
+
+  test('a bundle disabled before any approval was recorded is off, and its approval keeps it so', async () => {
+    const db = await freshDb()
+    try {
+      await migrate(db, cromboloPlan)
+      const pkg = stubBundlePackage('notes', {
+        field: { id: 'notes', server: 'notes', schemaVersion: 3, permissions: ['redirects.read'] },
+      })
+      const grants = createBundleGrants({ db, packages: () => new Map([['notes', pkg]]) })
+      await grants.refresh()
+      await grants.disable(pkg, null)
+      expect(await grants.grant(pkg, "the site's code")).toBe(true)
+      expect(grants.state(pkg)).toMatchObject({ on: false, disabledBy: null })
     } finally {
       await db.close()
     }
@@ -165,79 +189,70 @@ function notesSite() {
 }
 
 describe(`a wired bundle (${dialectUnderTest})`, () => {
-  test('is off until granted: its routes say so, its screens are left out, and the server lists it', async () => {
+  test("runs on first boot, approved by the site's code; disabled, its routes and screens are off until enabled", async () => {
     const { dir, bundle } = notesSite()
     const h = await signedInServer({
-      ungranted: true,
       config: { siteDir: dir, componentsDir: join(dir, 'components'), bundles: [bundle] },
     })
     open.push(h)
-    const waiting = await h.call('/notes')
-    expect(waiting.status).toBe(503)
-    expect(((await waiting.json()) as { detail: string }).detail).toContain(
-      'waiting for an administrator',
-    )
-    expect(h.server.waitingBundles()).toEqual([{ id: 'notes', missing: ['redirects.read'] }])
     const aliases = async () =>
       JSON.stringify(await (await h.call(`${V1}/manifest/manifest`)).json()).includes(
         'Acme.Notes.Dashboard',
       )
-    expect(await aliases()).toBe(false)
-
-    const listing = await h.json<{
-      items: { id: string; on: boolean; permissions: { allows: string }[] }[]
-    }>(`${BACKOFFICE}/crombolo/api/bundles/installed`)
-    const notes = listing.items.find((item) => item.id === 'notes')
-    expect(notes?.on).toBe(false)
-    expect(notes?.permissions.map((p) => p.allows)).toEqual(["See the site's redirects"])
-
-    const granted = await h.call(`${BACKOFFICE}/crombolo/api/bundles/grant`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ id: 'notes' }),
-    })
-    expect(((await granted.json()) as { on: boolean }).on).toBe(true)
     expect((await h.call('/notes')).status).toBe(200)
     expect(await aliases()).toBe(true)
-    expect(h.server.waitingBundles()).toEqual([])
-
+    expect(h.server.disabledBundles()).toEqual([])
     // It may read redirects, and saving one is refused, naming the permission.
-    const saved = await h.call('/notes', { method: 'POST' })
-    expect(saved.status).toBe(500)
+    expect((await h.call('/notes', { method: 'POST' })).status).toBe(500)
 
-    const withdrawn = await h.call(`${BACKOFFICE}/crombolo/api/bundles/withdraw`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ id: 'notes' }),
+    type Listing = {
+      items: {
+        id: string
+        on: boolean
+        disabledBy: string | null
+        granted?: { by: string | null }
+        permissions: { allows: string }[]
+      }[]
+    }
+    const notes = async () =>
+      (await h.json<Listing>(`${BACKOFFICE}/crombolo/api/bundles/installed`)).items.find(
+        (item) => item.id === 'notes',
+      )
+    expect(await notes()).toMatchObject({
+      on: true,
+      granted: { by: "the site's code" },
+      permissions: [{ allows: "See the site's redirects" }],
     })
-    expect(((await withdrawn.json()) as { on: boolean }).on).toBe(false)
-    expect((await h.call('/notes')).status).toBe(503)
+
+    const post = (action: string) =>
+      h.call(`${BACKOFFICE}/crombolo/api/bundles/${action}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id: 'notes' }),
+      })
+    expect(((await (await post('disable')).json()) as { on: boolean }).on).toBe(false)
+    const off = await h.call('/notes')
+    expect(off.status).toBe(503)
+    expect(((await off.json()) as { detail: string }).detail).toContain(
+      'disabled by an administrator',
+    )
+    expect(await aliases()).toBe(false)
+    expect(h.server.disabledBundles()).toEqual([{ id: 'notes', by: expect.any(String) }])
+    expect((await notes())?.on).toBe(false)
+
+    expect(((await (await post('enable')).json()) as { on: boolean }).on).toBe(true)
+    expect((await h.call('/notes')).status).toBe(200)
 
     const audit = await h.server.db.q
       .selectFrom('audit_entry')
-      .select(['action', 'detail'])
+      .select(['action', 'source'])
       .where('entity_type', '=', 'Bundle')
       .orderBy('id')
       .execute()
-    expect(audit.map((row) => row.action)).toEqual(['Grant', 'Withdraw'])
-  })
-
-  test('an operator grants it from the command line', async () => {
-    if (dialectUnderTest !== 'sqlite') return
-    const { dir } = notesSite()
-    const config = loadConfig({
-      siteDir: dir,
-      sqliteFile: join(dir, 'crombolo.sqlite'),
-      dialect: 'sqlite',
-    })
-    const granted = await bundleGrant(config, 'notes', { by: 'deploy' })
-    expect(granted.permissions).toEqual(['redirects.read'])
-    const db = await connect({ dialect: 'sqlite', file: config.sqliteFile })
-    try {
-      expect((await new BundleGrantRepository(db).get('notes'))?.grantedBy).toBe('deploy')
-    } finally {
-      await db.close()
-    }
-    await expect(bundleGrant(config, 'nobody')).rejects.toThrow('No package this site depends on')
+    expect(audit).toEqual([
+      { action: 'Grant', source: 'boot' },
+      { action: 'Disable', source: 'request' },
+      { action: 'Enable', source: 'request' },
+    ])
   })
 })

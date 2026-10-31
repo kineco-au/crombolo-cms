@@ -267,8 +267,8 @@ export interface ServerHandle {
   bundleGrants: BundleGrants
   /** The site's and bundles' background jobs (story 187); started on a node that owns writes. */
   backgroundJobs: JobRunner
-  /** The wired bundles that are off, waiting for an administrator to approve these permissions. */
-  waitingBundles(): { id: string; missing: string[] }[]
+  /** The wired bundles an administrator has disabled, and who did. */
+  disabledBundles(): { id: string; by: string | null }[]
   schema: SchemaBoot
   /** Applies cache instructions other nodes appended; the interval calls this too. */
   poll(): Promise<number>
@@ -1161,7 +1161,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
   const hostTokenPath = `${paths.pluginPath}/api/host-token`
   const contentQueryPath = `${paths.pluginPath}/api/content-query`
   const bundleInstallPaths = new Set(
-    ['install', 'uninstall', 'grant', 'withdraw'].map(
+    ['install', 'uninstall', 'disable', 'enable'].map(
       (action) => `${paths.pluginPath}/api/bundles/${action}`,
     ),
   )
@@ -1770,9 +1770,9 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
         return Response.json(outcome, { status: outcome.ok ? 200 : 400 })
       }
 
-      // Story 222: an administrator grants a bundle the whole of what it asks
-      // to do, or withdraws it, which turns the bundle off.
-      if ((action === 'grant' || action === 'withdraw') && request.method === 'POST') {
+      // Story 225: a bundle wired in the config is approved by it; an
+      // administrator can disable one, and enable it again.
+      if ((action === 'disable' || action === 'enable') && request.method === 'POST') {
         const body = (await request.json().catch(() => ({}))) as { id?: unknown }
         const id = typeof body.id === 'string' ? body.id : ''
         const pkg = extensions.bundles().bundles.find((candidate) => candidate.id === id)
@@ -1781,20 +1781,16 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
             { ok: false, message: `No installed bundle with a server half is called "${id}".` },
             { status: 404 },
           )
-        if (action === 'withdraw') await bundleGrants.withdraw(id)
         const state =
-          action === 'grant'
-            ? await bundleGrants.grant(pkg, principal.email)
-            : bundleGrants.state(pkg)
+          action === 'disable'
+            ? await bundleGrants.disable(pkg, principal.email)
+            : await bundleGrants.enable(pkg)
         await recordAudit(db, {
           category: 'system',
-          action: action === 'grant' ? 'Grant' : 'Withdraw',
+          action: action === 'disable' ? 'Disable' : 'Enable',
           entityType: 'Bundle',
           entityName: `${pkg.packageName}@${pkg.version}`,
-          detail:
-            action === 'grant'
-              ? `granted ${state.declared.map((d) => d.permission).join(', ') || 'nothing'}`
-              : 'withdrew its permissions; it is off',
+          detail: action === 'disable' ? 'disabled; it is off' : 'enabled; it runs again',
           source: 'request',
           userKey: principal.id,
           userName: principal.name,
@@ -1803,11 +1799,10 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
         return Response.json({
           ok: true,
           on: state.on,
-          missing: state.missing,
           message:
-            action === 'grant'
-              ? `${pkg.name} is turned on.`
-              : `${pkg.name} is turned off until its permissions are approved again.`,
+            action === 'disable'
+              ? `${pkg.name} is turned off until it is enabled again.`
+              : `${pkg.name} is turned on.`,
         })
       }
 
@@ -3174,11 +3169,11 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     seededAdminPassword,
     bundleGrants,
     backgroundJobs: jobRunner,
-    waitingBundles: () =>
+    disabledBundles: () =>
       config.bundles.flatMap((bundle) => {
         const pkg = bundlePackages.find((candidate) => candidate.id === bundle.id)
         if (!pkg || bundleGrants.isOn(bundle.id)) return []
-        return [{ id: bundle.id, missing: bundleGrants.state(pkg).missing }]
+        return [{ id: bundle.id, by: bundleGrants.state(pkg).disabledBy }]
       }),
     schema,
     poll: () => poller.poll(),

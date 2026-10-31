@@ -82,7 +82,12 @@ import {
   type SiteServices,
 } from '@crombolo/render'
 import { anonymiseProblems } from './anonymise-rules.ts'
-import { declaredPermissions, gated, permissionProblems, waitingResponse } from './bundle-grants.ts'
+import {
+  declaredPermissions,
+  disabledResponse,
+  gated,
+  permissionProblems,
+} from './bundle-grants.ts'
 import type { BundleMedia, BundleMediaDeclaration } from './bundle-media.ts'
 import type { BundleForms } from './form-types.ts'
 import type { BundleIdentityProviders } from './identity-provider-overrides.ts'
@@ -827,7 +832,7 @@ export function createServerBundles(options: ServerBundlesOptions): ServerBundle
     const handlers: SiteRoute['handlers'] = {}
     for (const [method, handler] of Object.entries(route.handlers))
       handlers[method as RouteMethod] = (request, context) =>
-        isOn(bundleId) ? handler(request, context) : waitingResponse(bundleId)
+        isOn(bundleId) ? handler(request, context) : disabledResponse(bundleId)
     return { ...route, handlers }
   }
 
@@ -874,7 +879,7 @@ export function createServerBundles(options: ServerBundlesOptions): ServerBundle
       for (const route of (bundle.routes ?? []).filter((candidate) => !onSite(candidate))) {
         const params = matchRoute(route.path, requested)
         if (!params) continue
-        if (options.isOn && !options.isOn(bundle.id)) return waitingResponse(bundle.id)
+        if (options.isOn && !options.isOn(bundle.id)) return disabledResponse(bundle.id)
         const caller: BundleCaller = Object.freeze({ kind: 'backoffice', principal })
         return invoke(
           { route: route as SiteRoute, owner: `the bundle ${bundle.id}` },

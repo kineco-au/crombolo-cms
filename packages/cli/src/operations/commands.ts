@@ -54,8 +54,6 @@ import {
   exportSite,
   extractTarball,
   formTypesFor,
-  grantableBundle,
-  grantBundle,
   installBundleContent,
   installDatabase,
   MediaFileStore,
@@ -793,28 +791,6 @@ function refuseWired(config: CromboloConfig, id: string): void {
     throw new CommandError(
       `The bundle "${id}" is still wired in crombolo.config.ts. Take it out of \`bundles\` and deploy that first.`,
     )
-}
-
-/**
- * Grants a bundle the whole of what its package asks to do with the site, as
- * an operator of this environment (story 222): what the back office's Grant
- * does, for a pipeline or a fresh environment.
- */
-export async function bundleGrant(
-  config: CromboloConfig,
-  id: string,
-  input: { by?: string } = {},
-): Promise<{ id: string; packageName: string; version: string; permissions: string[] }> {
-  const pkg = grantableBundle(config.siteDir, id)
-  if (typeof pkg === 'string') throw new CommandError(pkg)
-  const db = await connect({ dialect: config.dialect, file: config.sqliteFile })
-  try {
-    await migrate(db, cromboloPlan, { by: config.nodeId })
-    const permissions = await grantBundle(db, pkg, input.by ?? null)
-    return { id: pkg.id, packageName: pkg.packageName, version: pkg.version, permissions }
-  } finally {
-    await db.close()
-  }
 }
 
 /** Read-only: what purging a bundle would drop. */

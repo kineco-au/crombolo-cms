@@ -113,6 +113,8 @@ export interface CoreTables {
   }
   bundle_grant: {
     bundle_id: string
+    disabled_at: Timestamp | null
+    disabled_by: string | null
     granted_at: Timestamp
     granted_by: string | null
     package_name: string

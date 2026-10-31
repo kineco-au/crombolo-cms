@@ -39,12 +39,13 @@ export const installBundle = (
     body: JSON.stringify({ name, version, applyContent, acceptServerCode, grant }),
   })
 
-/** Approves everything an installed bundle asks to do, turning it on (story 222). */
-export const grantBundle = (id) => json('/grant', { method: 'POST', body: JSON.stringify({ id }) })
+/** Turns an installed bundle's server features off until it is enabled again (story 225). */
+export const disableBundle = (id) =>
+  json('/disable', { method: 'POST', body: JSON.stringify({ id }) })
 
-/** Withdraws a bundle's approval, turning it off. */
-export const withdrawBundle = (id) =>
-  json('/withdraw', { method: 'POST', body: JSON.stringify({ id }) })
+/** Turns a disabled bundle's server features back on. */
+export const enableBundle = (id) =>
+  json('/enable', { method: 'POST', body: JSON.stringify({ id }) })
 
 export const uninstallBundle = (name) =>
   json('/uninstall', { method: 'POST', body: JSON.stringify({ name }) })

@@ -1174,7 +1174,8 @@ a section of the bundle's own by its manifest alias (`Acme.Section.Design`).
 ### Permissions
 
 Story 222. A bundle's package says what its server half may do with the site,
-and an administrator approves all of it, or the bundle stays off.
+and its capabilities are held to that. Wiring it in `crombolo.config.ts`
+approves it (story 225); an administrator can disable it.
 
 ```json
 "crombolo": {
@@ -1209,21 +1210,23 @@ Each has a plain sentence the install panel and the Installed view show
 - **Only what is declared.** A capability method whose permission is not
   declared throws `PermissionRefusedError`, naming it: a bundle that asked only
   to read redirects cannot save one.
-- **All or nothing.** An administrator grants a bundle's whole list, in the
-  install panel or with **Approve and turn on** on its card in Installed, and
-  withdraws it there. A bundle is on while its grant covers everything it
-  declares. One that is off is still mounted: its routes answer 503 saying it
-  is waiting for approval, its events are not delivered, its screens are left
-  out of the back office, the boot log names it, and `crombolo start` lists it.
-  A new version that asks for more is off until the new list is approved.
-- **Per environment, by the people who install.** Grants are rows in
-  `bundle_grant` (migration 054), in each environment's own database, made by
-  anyone with the Packages section, and audited (`system` / `Grant` or
-  `Withdraw` / `Bundle`). They are never in the repository and do not travel in
-  an export or a pull, so a developer cannot grant a bundle by committing a file.
-- **From a pipeline:** `crombolo bundle grant <id>` grants a bundle's list as
-  an operator of that environment, audited as a grant in the back office is.
-  A bundle added with `bun add` and wired in code is off until one or the other.
+- **Approved by the site's code.** Wiring a bundle in `crombolo.config.ts` is
+  its approval: it runs from its first boot. Each boot of a node that writes
+  records its version and permission list in `bundle_grant` (migration 054) as
+  approved by the site's code, audited (`system` / `Grant` / `Bundle`, from
+  `boot`) when they change. An install from the back office records the
+  administrator who approved it in the install panel instead. The bundle's card
+  in Installed shows what it may do and who approved it.
+- **Disabled by an administrator.** **Disable** on its card turns a bundle off,
+  and **Enable** turns it on again, for anyone with the Packages section,
+  audited (`Disable` or `Enable`). A disabled bundle is still mounted: its
+  routes answer 503 saying it was disabled, its events are not delivered, its
+  jobs wait, its screens are left out of the back office, the boot log names
+  it, and `crombolo start` lists it. It stays disabled through new versions,
+  one asking for more included, until it is enabled again (migration 056 keeps
+  who disabled it and when).
+- **Per environment.** Approvals and disabling are rows in each environment's
+  own database, and do not travel in an export or a pull.
 
 ### Jobs
 
@@ -1257,11 +1260,11 @@ export const sweeper = (): ServerBundle<'redirects', typeof tables> => ({
 - **A job sees what the bundle's public route sees.** Its `bundle` holds the
   capabilities that do not act for a caller, and its own `database`; its caller
   is `{ kind: 'job' }`, treated as the public, so `media` refuses there as on a
-  public route. Powers a public route lacks come from permissions an
-  administrator grants ([Permissions](#permissions)), checked in a job as in a
-  route. Nothing acts as the site.
-- **A bundle that is off** (not granted) keeps its jobs waiting, and queues
-  none of its schedules, until it is on again.
+  public route. Powers a public route lacks come from the permissions it
+  declares ([Permissions](#permissions)), checked in a job as in a route.
+  Nothing acts as the site.
+- **A disabled bundle** keeps its jobs waiting, and queues none of its
+  schedules, until it is enabled again.
 
 ### Routes
 

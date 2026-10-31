@@ -1635,7 +1635,15 @@ crombolo's types bound. A server bundle declares its routes the same way
   `page` are about pages.
 - **Errors and time.** A throw is a 500 with a reference that the log line
   shares; the message is shown only where error details are.
-  `CROMBOLO_ROUTE_TIMEOUT_MS` (10 seconds) answers 504 and aborts `signal`.
+  `CROMBOLO_ROUTE_TIMEOUT_MS` (10 seconds) answers 504 and aborts `signal`. The
+  limit covers the time to the handler's answer; a body it streams after that
+  runs for as long as the visitor reads it.
+- **When `signal` ends.** It is aborted when the visitor leaves, when the
+  handler overruns, and once the answer has been sent: its body read to the
+  end, failed or cancelled (reason "The answer has been sent."). A streamed body
+  can read from it to its last chunk; work a handler leaves running after it
+  answers, still listening, is stopped then. Ending it lets the server let go
+  of what a listener holds (story `224`).
 - **Caching.** Every answer is `private, no-store` unless a `GET` or `HEAD`
   handler sets its own `Cache-Control`.
 - **Nodes:** routes answer where the site is served (`all` and `web`), never
