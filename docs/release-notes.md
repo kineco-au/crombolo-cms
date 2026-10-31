@@ -6,6 +6,16 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.42.1 — 2026-10-31
+
+v0.42.0's pipelines failed to build the back office, so it was never published;
+this is it, with:
+
+- **A fresh clone builds the back office.** The build asked git whether the
+  pinned commit of the fork of Umbraco's client was present in a way that answers
+  yes for any commit ID, so a clone without the fork's branches, as CI's is,
+  never fetched them. It now checks for the commit itself.
+
 ## v0.42.0 — 2026-10-31
 
 - **The back office is built from Crombolo's fork of Umbraco's client** (story

@@ -33,8 +33,10 @@ function run(cmd: string[], cwd = ROOT, quiet = false): string {
   return out
 }
 
+// `^{commit}`: a bare 40-character ID verifies whether or not the object is here.
 const hasRef = (ref: string) =>
-  Bun.spawnSync(['git', 'rev-parse', '--verify', '--quiet', ref], { cwd: ROOT }).exitCode === 0
+  Bun.spawnSync(['git', 'rev-parse', '--verify', '--quiet', `${ref}^{commit}`], { cwd: ROOT })
+    .exitCode === 0
 
 /** The fork branches here, fetched from origin when this clone lacks them. */
 function ensureBranches(): void {
@@ -88,8 +90,13 @@ export function build(): string {
   rmSync(out, { recursive: true, force: true })
   const src = join(out, 'src')
   mkdirSync(src, { recursive: true })
-  const archive = Bun.spawnSync(['git', 'archive', commit], { cwd: ROOT, stdout: 'pipe' })
-  if (archive.exitCode !== 0) throw new Error(`git archive ${commit} failed`)
+  const archive = Bun.spawnSync(['git', 'archive', commit], {
+    cwd: ROOT,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  if (archive.exitCode !== 0)
+    throw new Error(`git archive ${commit} failed: ${archive.stderr.toString().trim()}`)
   writeFileSync(join(out, 'src.tar'), archive.stdout)
   run(['tar', '-xf', join(out, 'src.tar'), '-C', src])
   rmSync(join(out, 'src.tar'))

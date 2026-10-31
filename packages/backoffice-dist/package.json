@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/backoffice-dist",
-  "version": "0.42.0",
+  "version": "0.42.1",
   "description": "Internal to crombolo, with no compatibility promise: use @crombolo/crombolo. The Umbraco backoffice, built to run in a browser. Versioned with the rest of crombolo; dist/VERSION names the @umbraco-cms/backoffice release vendored here. Regenerate with `bun run vendor:backoffice`.",
   "license": "MIT",
   "author": "Crombolo",
