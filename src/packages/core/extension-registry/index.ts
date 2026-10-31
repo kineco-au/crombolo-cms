@@ -1,6 +1,7 @@
 export * from './conditions/index.js';
 export * from './initializers/index.js';
 export * from './registry.js';
+export * from './crombolo-hooks.js';
 export * from './utils/index.js';
 export * from './components/index.js';
 
