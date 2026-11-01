@@ -118,7 +118,8 @@ export { expect }
  * test that clicks within a second of sign-in can, more so on a loaded machine.
  */
 export async function settle(page: Page): Promise<void> {
-  await expect(page.locator('umb-section-sidebar').first()).toBeVisible({ timeout: 30_000 })
+  // The main area, which every section has; Settings' tools hide the sidebar (story 234).
+  await expect(page.locator('umb-section-main').first()).toBeVisible({ timeout: 30_000 })
   await page.waitForLoadState('networkidle')
 }
 

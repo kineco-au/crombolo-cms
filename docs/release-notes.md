@@ -6,6 +6,13 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.43.1 — 2026-11-01
+
+v0.43.0's release pipeline stopped at the browser suite, so it was never
+published; this is it. Three browser tests still assumed the back office as it
+was before this release: one found a page by a name the Overview now shows too,
+and two waited for a sidebar that Settings' tools now hide.
+
 ## v0.43.0 — 2026-11-01
 
 - **Signing in opens on an Overview** (story 236) in place of the Welcome page.
