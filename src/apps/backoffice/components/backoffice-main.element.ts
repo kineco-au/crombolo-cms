@@ -84,6 +84,12 @@ export class UmbBackofficeMainElement extends UmbLitElement {
 				redirectTo: newRoutes[0].path,
 			});
 
+			// Crombolo: the addresses of a section that moved still open its screens.
+			newRoutes.push({
+				path: 'section/packages',
+				component: async () => (await import('./moved-sections.js')).UmbMovedSectionElement,
+			});
+
 			newRoutes.push({
 				path: `**`,
 				component: async () => (await import('@umbraco-cms/backoffice/router')).UmbRouteNotFoundElement,
