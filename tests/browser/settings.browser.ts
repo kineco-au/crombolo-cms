@@ -248,9 +248,9 @@ test('the log viewer shows the overview and searches the log, with no error', as
  */
 test('the Settings tree offers Components, and neither tree it replaced', async ({ page }) => {
   await signIn(page)
-  await page.goto('/crombolo/section/settings')
+  await page.goto('/crombolo/section/settings/code')
 
-  // The sidebar groups it under Templating, beside Stylesheets and Scripts.
+  // The Code tree has it, beside Stylesheets and Scripts.
   await expect(page.getByText('Components', { exact: true }).first()).toBeVisible()
   // Both vendored menu items are overwritten, so neither name is left to click.
   await expect(page.getByText('Templates', { exact: true })).toHaveCount(0)
@@ -281,7 +281,7 @@ test('a component and a folder can both be created from the Components tree', as
   // And the tree shows the folder it was put in. Scoped to the sidebar: the
   // workspace footer's breadcrumb names the same folder, so an unscoped match
   // finds two.
-  await page.goto('/crombolo/section/settings')
+  await page.goto('/crombolo/section/settings/code')
   const tree = page.getByTestId('section-sidebar:Umb.SectionSidebarMenu.Templating')
   await page.getByText('Components', { exact: true }).first().click()
   await expect(page.getByText(`grp${id}`, { exact: true })).toBeVisible()

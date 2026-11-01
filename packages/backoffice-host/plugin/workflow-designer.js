@@ -12,7 +12,14 @@ import '@umbraco-cms/backoffice/document'
 import { css, html, nothing, unsafeCSS } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { UMB_NOTIFICATION_CONTEXT } from '@umbraco-cms/backoffice/notification'
-import { deleteWorkflow, listWorkflows, previewWorkflow, saveWorkflow } from './workflow-client.js'
+import { approvalsChanged } from './approvals-active.js'
+import {
+  deleteWorkflow,
+  listWorkflows,
+  previewDelete,
+  previewWorkflow,
+  saveWorkflow,
+} from './workflow-client.js'
 import { ancestors, BOX, drawGraph, GRAPH_STYLES, layout, wouldLoop } from './workflow-graph.js'
 
 const ON_EDIT = {
@@ -273,14 +280,21 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
     // The green toast every workspace shows on a save.
     this.#notifications?.peek('positive', { data: { message: 'Workflow saved' } })
     this._originalAlias = this._editing.alias
+    approvalsChanged()
     await this.#load()
   }
 
   /** From the list or the editor: the workflow by its name and the alias its file has. */
   async #delete(name, alias) {
+    const preview = await previewDelete(alias)
+    const waiting = preview.ok ? preview.affected : []
+    const withdrawn =
+      waiting.length > 0
+        ? `\n\nThe requests for these pages, waiting for approval, are withdrawn:\n${waiting.map((a) => `- ${a.page}`).join('\n')}`
+        : ''
     if (
       !window.confirm(
-        `Delete the workflow "${name}"? Pages it covers will publish without approval.`,
+        `Delete the workflow "${name}"? Pages it covers will publish without approval.${withdrawn}`,
       )
     )
       return
@@ -290,6 +304,7 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
       return
     }
     this._editing = undefined
+    approvalsChanged()
     await this.#load()
   }
 

@@ -28,17 +28,28 @@ to the same disc and arcs, so a new mark has to land in all of them at once.
 
 | Token | Value | Role |
 | --- | --- | --- |
-| `--crombolo-orange` | `#da987c` | Accent fill: buttons, the selected item, the header bar |
+| `--crombolo-terracotta` | `#ad4f2c` | The accent: buttons, links, the active tab and section, and the selected tree item's text |
+| `--crombolo-terracotta-hover` | `#9b4526` | The accent's hover fill |
+| `--crombolo-terracotta-tint` | `#fbeee7` | Behind the selected tree item and the Overview's labels |
+| `--crombolo-orange` | `#da987c` | A light tint, behind dark text only: the sign-in backdrop |
 | `--crombolo-orange-light` | `#e2ae98` | Hover fill, never text |
 | `--crombolo-orange-deep` | `#cb6f48` | The logo's terracotta: focus ring and the disc |
-| `--crombolo-orange-text` | `#974b2b` | The only orange that reads as body text |
-| `--crombolo-cocoa` | `#54321f` | Ink: text, icons, text on the accent, the wordmark |
-| `--crombolo-cream` | `#fff7ea` | The page ground behind white panels |
+| `--crombolo-orange-text` | `#974b2b` | The accent's darkest step |
+| `--crombolo-cocoa` | `#54321f` | Ink: text, icons, the wordmark, the header's text |
+| `--crombolo-cream` | `#fff7ea` | The page ground, behind the white sidebar and panels |
 
-The logo's own terracotta can't carry text: white on it is 3.8:1 and cocoa on it
-is 3.0:1. So the accent fill is a lighter tint that cocoa text clears AA on, at
-4.7:1. The product site's stylesheet (`sites/crombolo/css/site.css`) uses the
-same family, with its own `--terracotta-*` tokens.
+The logo's own terracotta can't carry text: white on it is 3.8:1. So the accent
+is the same hue deepened until white on it clears AA, at 5.3:1. As text it is
+5.0:1 on cream and 5.3:1 on white. The header is white with a hairline under it,
+the current section marked in the accent. Crombolo's own cards (the Overview
+and the Settings landing page) take a soft shadow, `--crombolo-card-shadow`;
+Umbraco's stay flat (story 237). The product site's stylesheet
+(`sites/crombolo/css/site.css`) uses the same family, with its own
+`--terracotta-*` tokens.
+
+The fork reads three of these where Umbraco hard-codes its own:
+`--crombolo-header-line`, `--crombolo-header-current-text` and
+`--crombolo-section-sidebar-background`.
 
 ### Dark
 
@@ -50,10 +61,11 @@ vendored `dark.css` for every token, then the brand on top of it.
 | `--crombolo-night` | `#1f1813` | The page ground |
 | `--crombolo-night-surface` | `#2a211b` | Panels |
 | `--crombolo-night-alt` | `#342922` | The alternate surface |
-| `--crombolo-night-header` | `#2b1d15` | The header bar |
+| `--crombolo-night-surface` (header) | `#2a211b` | The header, a panel like the cards, with a hairline |
 | `--crombolo-ink` | `#f6ede4` | Text and icons |
 | `--crombolo-ink-dimmed` | `#c9b5a5` | Secondary text |
-| `--crombolo-orange` | `#da987c` | Accent fill, focus ring and the active section, as in light |
+| `--crombolo-orange` | `#da987c` | Accent fill, with dark text, and the focus ring |
+| `--crombolo-terracotta-light` | `#e8a688` | Links, the active section and tab, and the selected tree item's text |
 | `--crombolo-cocoa-deep` | `#25160e` | Text on the accent |
 
 Cream text clears 13:1 on the panels, and the accent's dark text clears 7.3:1.

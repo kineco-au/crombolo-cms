@@ -11,6 +11,7 @@
 - Push back on any requests which don't make sense or where there's a simpler alternative
 - Move a story doc to `docs/stories/04_in_progress` before starting work on it
 - Move a story doc to `docs/stories/05_completed` once tested and all acceptance criteria are met
+- Each time a story is closed, check every `**Depends on:**` in `docs/stories/02_backlog` and move each story whose dependencies are now all in `05_completed` to `03_ready`, updating its row in `docs/stories/README.md`
 - Planned work is a story, not a section of an info doc: the docs at the root of `docs/` describe what exists and why, and point at a story by number for what is still to come
 
 ## Boundaries

@@ -19,6 +19,8 @@
   --crombolo-night-alt: #342922;
   --crombolo-night-header: #2b1d15;
   --crombolo-cocoa-deep: #25160e;
+  /* Terracotta light enough to read as text on the night surfaces (7.7:1 and up). */
+  --crombolo-terracotta-light: #e8a688;
 
   --uui-color-background: var(--crombolo-night);
   --uui-color-surface: var(--crombolo-night-surface);
@@ -27,7 +29,7 @@
   --uui-color-text: var(--crombolo-ink);
   --uui-color-text-alt: var(--crombolo-ink-dimmed);
   --uui-color-interactive: var(--crombolo-ink);
-  --uui-color-interactive-emphasis: var(--crombolo-orange-light);
+  --uui-color-interactive-emphasis: var(--crombolo-terracotta-light);
 
   /* The accent is light, so what sits on it is dark, as in the light mode. */
   --uui-color-default: var(--crombolo-orange);
@@ -38,16 +40,28 @@
   --uui-color-selected-emphasis: var(--crombolo-orange-light);
   --uui-color-selected-standalone: var(--crombolo-orange);
   --uui-color-selected-contrast: var(--crombolo-cocoa-deep);
-  --uui-color-current: var(--crombolo-orange);
+  /* "Current" marks the active tab; the tree's current item has its own tokens (237). */
+  --uui-color-current: var(--crombolo-terracotta-light);
   --uui-color-current-emphasis: var(--crombolo-orange-light);
   --uui-color-current-contrast: var(--crombolo-cocoa-deep);
+  --uui-menu-item-background-color-active: var(--crombolo-night-alt);
+  --uui-menu-item-background-color-active-hover: #3b2e26;
+  --uui-menu-item-color-active: var(--crombolo-terracotta-light);
   --uui-color-focus: var(--crombolo-orange);
 
-  /* A dark header with cream text; the active section's marker is the accent. */
-  --uui-color-header-surface: var(--crombolo-night-header);
+  /*
+   * The header is a panel like the cards, with a hairline under it; the current
+   * section's name and marker are terracotta, as in light (story 237).
+   */
+  --uui-color-header-surface: var(--crombolo-night-surface);
   --uui-color-header-contrast: rgb(246 237 228 / 80%);
   --uui-color-header-contrast-emphasis: var(--crombolo-ink);
-  --crombolo-header-current: var(--crombolo-orange);
+  --crombolo-header-current: var(--crombolo-terracotta-light);
+  --crombolo-header-current-text: var(--crombolo-terracotta-light);
+  --crombolo-header-line: #3b2e25;
+  --crombolo-section-sidebar-background: var(--crombolo-night-surface);
+  --crombolo-card-shadow: none;
+  --crombolo-terracotta-tint: var(--crombolo-night-alt);
 
   /* The SEO view's search-result preview, in Google's dark-mode link blue. */
   --crombolo-snippet-title: #8ab4f8;

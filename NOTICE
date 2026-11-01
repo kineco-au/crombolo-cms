@@ -27,6 +27,15 @@ The Umbraco backoffice
 @umbraco-cms/backoffice 18.2.0 — MIT — https://github.com/umbraco/Umbraco-CMS
 @umbraco-ui/uui 2.0.2 — MIT — https://github.com/umbraco/Umbraco.UI
 
+The Lato fonts
+-------------
+LatoLatin-*.woff2 — Copyright (c) 2011-2015 by tyPoland Lukasz Dziedzic, with
+  Reserved Font Name "Lato" — SIL Open Font License 1.1 — https://www.latofonts.com
+Shipped unmodified, as @umbraco-ui/uui ships them, in @crombolo/backoffice-dist
+under `dist/assets/fonts/`, with the licence beside them as `OFL.txt`
+(`packages/backoffice-dist/licenses/Lato-OFL.txt` in this repository). The
+fonts carry the same notice in their own metadata.
+
 Static files from the Umbraco client source tree
 ------------------------------------------------
 css/umb-css.css, css/rte-content.css, css/umbraco-blockgridlayout.css

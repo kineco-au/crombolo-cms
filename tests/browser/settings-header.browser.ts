@@ -1,5 +1,6 @@
 /**
- * Settings opens from the header's gear, and is not among the section tabs.
+ * Settings opens from the header's gear, on its landing page of cards (story
+ * 234), and is not among the section tabs.
  */
 import { expect, signIn, test } from './fixtures.ts'
 
@@ -14,4 +15,7 @@ test('the gear in the header opens Settings, which is not a section tab', async 
     .filter({ has: page.locator('[label="Settings"]') })
     .click()
   await expect(page).toHaveURL(/\/section\/settings/)
+  await expect(
+    page.locator('crombolo-settings-landing').getByRole('heading', { name: 'Build' }),
+  ).toBeVisible({ timeout: 30_000 })
 })

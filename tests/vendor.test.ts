@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { DEFAULT_DATA_TYPES } from '@crombolo/data'
 import { checkModuleGraph } from '../scripts/check-module-graph.ts'
@@ -347,6 +347,16 @@ describe.skipIf(!vendored)('vendored backoffice', () => {
     expect(named).toEqual([])
   }, 60_000)
 
+  test('the Lato fonts travel with their licence, as the SIL OFL asks', () => {
+    const fonts = readdirSync(join(VENDOR, 'assets/fonts')).filter((f) => f.endsWith('.woff2'))
+    expect(fonts.length).toBeGreaterThan(0)
+    expect(fonts.every((f) => f.startsWith('LatoLatin-'))).toBe(true)
+    const licence = readFileSync(join(VENDOR, 'assets/fonts/OFL.txt'), 'utf8')
+    expect(licence).toContain('with Reserved Font Name "Lato"')
+    expect(licence).toContain('SIL OPEN FONT LICENSE Version 1.1')
+    expect(readFileSync(join(ROOT, 'NOTICE'), 'utf8')).toContain('The Lato fonts')
+  })
+
   test('every dependency patch is in what is served', () => {
     for (const patch of DEPENDENCY_PATCHES)
       expect(readFileSync(join(VENDOR, patch.file), 'utf8')).toContain(patch.replace)
@@ -373,6 +383,29 @@ describe.skipIf(!vendored)('vendored backoffice', () => {
     expect(served('packages/core/auth/modals/umb-app-auth-modal.element.js')).toContain(
       '#succeeded',
     )
+    // Story 234: a package's sectionLayout draws its section; the welcome is gone.
+    expect(served('apps/backoffice/components/backoffice-main.element.js')).toContain(
+      "'sectionLayout'",
+    )
+    expect(existsSync(join(VENDOR, 'packages/settings/welcome'))).toBe(false)
+    // Story 237: the theme reaches the header's line, its current tab and the
+    // sidebar's ground; redirects are a Settings tool.
+    expect(served('apps/backoffice/components/backoffice-header.element.js')).toContain(
+      '--crombolo-header-line',
+    )
+    expect(served('apps/backoffice/components/backoffice-header-sections.element.js')).toContain(
+      '--crombolo-header-current-text',
+    )
+    expect(served('packages/core/section/section-sidebar/section-sidebar.element.js')).toContain(
+      '--crombolo-section-sidebar-background',
+    )
+    expect(served('packages/documents/document-redirect-management/manifests.js')).toMatch(
+      /SETTINGS_SECTION_ALIAS|Umb\.Section\.Settings/,
+    )
+    // Umbraco's own deprecations stay silent wherever the client is served.
+    expect(served('packages/core/utils/deprecation/deprecation-origin.js')).toContain(
+      '(?:chunks|packages|apps|libs|external)',
+    )
   })
 
   test("Umbraco's own deprecations stay out of the console, as in its production build", () => {
@@ -381,6 +414,14 @@ describe.skipIf(!vendored)('vendored backoffice', () => {
       readFileSync(join(VENDOR, file), 'utf8').includes('import.meta.env.PROD'),
     )
     expect(unflagged).toEqual([])
+  }, 60_000)
+
+  test("Lit is its production build, whose warnings are for Lit's authors", () => {
+    const files = [...new Bun.Glob('**/*.js').scanSync({ cwd: VENDOR })]
+    const development = files.filter((file) =>
+      readFileSync(join(VENDOR, file), 'utf8').includes('lit.dev/msg/change-in-update'),
+    )
+    expect(development).toEqual([])
   }, 60_000)
 
   test('the client is served as shared chunks, not one file per module', () => {

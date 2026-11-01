@@ -111,7 +111,7 @@ describe('the README’s commands', () => {
         if (!scripts.has(script)) unrunnable.push(`${step}: a new site has no "${script}" script`)
         continue
       }
-      const cli = /^bunx @crombolo\/cli (\S+)(.*)$/.exec(step)
+      const cli = /^bunx @crombolo\/cli(?:@latest)? (\S+)(.*)$/.exec(step)
       if (cli) {
         if (!commands.has(cli[1] as string)) unrunnable.push(`${step}: no such command`)
         const template = /--template (\S+)/.exec(cli[2] as string)?.[1]

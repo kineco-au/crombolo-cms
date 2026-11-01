@@ -111,8 +111,9 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'dashboard:Crombolo.Dashboard.Changes',
       'dashboard:Crombolo.Dashboard.BackgroundJobs',
       'dashboard:Crombolo.Dashboard.AuditLog',
-      'dashboard:Crombolo.Dashboard.Welcome',
-      'dashboard:Crombolo.Dashboard.Settings',
+      'dashboard:Crombolo.Dashboard.Overview',
+      // Settings' own layout, in place of the welcome dashboard (story 234).
+      'sectionLayout:Crombolo.SectionLayout.Settings',
       'backofficeEntryPoint:Crombolo.EntryPoint.TsxEditors',
       'headerApp:Crombolo.HeaderApp.ReadOnly',
       'backofficeEntryPoint:Crombolo.EntryPoint.SidePanels',
@@ -135,17 +136,20 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       // Keeps the Umbraco mark out of the icon picker.
       'globalContext:Crombolo.GlobalContext.Icons',
       // Approval workflows: Umbraco Workflow's section, in core here (story 028).
+      // Approvals shows only while the site has a workflow or a request is open (234).
+      'condition:Crombolo.Condition.ApprovalsActive',
       'section:Crombolo.Section.Workflow',
       'sectionView:Crombolo.SectionView.Workflow.Waiting',
       'sectionView:Crombolo.SectionView.Workflow.InFlight',
       'sectionView:Crombolo.SectionView.Workflow.History',
-      'sectionView:Crombolo.SectionView.Workflow.Designer',
+      // Setting workflows up is a Settings card; deciding is the section's.
+      'dashboard:Crombolo.Dashboard.Workflows',
       'workspaceView:Crombolo.WorkspaceView.Document.Workflow',
     ])
-    // The welcome dashboard takes the place of Umbraco's news dashboard through
-    // the registry's own `overwrites`, rather than mutating it while rendering.
-    const welcome = ours?.extensions.find((e) => e.alias === 'Crombolo.Dashboard.Welcome')
-    expect(welcome?.overwrites).toEqual(['Umb.Dashboard.UmbracoNews'])
+    // The Overview takes the place of Umbraco's news dashboard through the
+    // registry's own `overwrites`, rather than mutating it while rendering.
+    const overview = ours?.extensions.find((e) => e.alias === 'Crombolo.Dashboard.Overview')
+    expect(overview?.overwrites).toEqual(['Umb.Dashboard.UmbracoNews'])
     // All three Bundles views replace Umbraco's: its Marketplace is an iframe of
     // a site that refuses to be framed, its Installed view is built around
     // package migrations, which cannot exist here, and its Created view is a
@@ -409,7 +413,7 @@ describe('the plugin views', () => {
     expect(plain).toEqual([])
   })
 
-  test('the Workflows section opens on the workflow list for administrators, who alone see it', () => {
+  test("Approvals opens on what waits for me, and setting workflows up is an administrator's Settings card", () => {
     const dir = join(import.meta.dir, '..', 'packages', 'backoffice-host', 'plugin')
     const manifest = JSON.parse(readFileSync(join(dir, 'umbraco-package.json'), 'utf8')) as {
       extensions: Array<{
@@ -426,9 +430,17 @@ describe('the plugin views', () => {
           e.conditions?.some((c) => c.match === 'Crombolo.Section.Workflow'),
       )
       .sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0))
-    expect(views[0]?.alias).toBe('Crombolo.SectionView.Workflow.Designer')
-    expect(views[0]?.conditions?.map((c) => c.alias)).toContain('Umb.Condition.CurrentUser.IsAdmin')
-    expect(views[1]?.alias).toBe('Crombolo.SectionView.Workflow.Waiting')
+    expect(views.map((v) => v.alias)).toEqual([
+      'Crombolo.SectionView.Workflow.Waiting',
+      'Crombolo.SectionView.Workflow.InFlight',
+      'Crombolo.SectionView.Workflow.History',
+    ])
+    const designer = manifest.extensions.find((e) => e.alias === 'Crombolo.Dashboard.Workflows')
+    expect(designer?.type).toBe('dashboard')
+    expect(designer?.conditions).toEqual([
+      { alias: 'Umb.Condition.SectionAlias', match: 'Umb.Section.Settings' },
+      { alias: 'Umb.Condition.CurrentUser.IsAdmin' },
+    ])
   })
 
   test('no view uses a link to nowhere for an action', () => {

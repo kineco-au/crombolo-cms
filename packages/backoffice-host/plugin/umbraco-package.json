@@ -2,7 +2,7 @@
   "$schema": "../../backoffice-dist/dist/umbraco-package-schema.json",
   "name": "Crombolo",
   "id": "Crombolo.Core",
-  "version": "0.42.1",
+  "version": "0.43.0",
   "allowPublicAccess": false,
   "extensions": [
     {
@@ -413,14 +413,14 @@
     },
     {
       "type": "dashboard",
-      "alias": "Crombolo.Dashboard.Welcome",
-      "name": "Crombolo Welcome Dashboard",
-      "element": "/crombolo-plugin/welcome-dashboard.js",
+      "alias": "Crombolo.Dashboard.Overview",
+      "name": "Crombolo Overview Dashboard",
+      "element": "/crombolo-plugin/overview-dashboard.js",
       "weight": 20,
       "overwrites": ["Umb.Dashboard.UmbracoNews"],
       "meta": {
-        "label": "Welcome",
-        "pathname": "welcome"
+        "label": "Overview",
+        "pathname": "overview"
       },
       "conditions": [
         {
@@ -430,22 +430,11 @@
       ]
     },
     {
-      "type": "dashboard",
-      "alias": "Crombolo.Dashboard.Settings",
-      "name": "Crombolo Settings Dashboard",
-      "element": "/crombolo-plugin/settings-dashboard.js",
-      "weight": 500,
-      "overwrites": ["Umb.Dashboard.SettingsWelcome"],
-      "meta": {
-        "label": "Welcome",
-        "pathname": "welcome"
-      },
-      "conditions": [
-        {
-          "alias": "Umb.Condition.SectionAlias",
-          "match": "Umb.Section.Settings"
-        }
-      ]
+      "type": "sectionLayout",
+      "alias": "Crombolo.SectionLayout.Settings",
+      "name": "Crombolo Settings Layout",
+      "forSection": "Umb.Section.Settings",
+      "element": "/crombolo-plugin/settings-section.js"
     },
     {
       "type": "backofficeEntryPoint",
@@ -614,14 +603,21 @@
       "api": "/crombolo-plugin/branding/icon-registry.js"
     },
     {
+      "type": "condition",
+      "alias": "Crombolo.Condition.ApprovalsActive",
+      "name": "Crombolo Approvals Active Condition",
+      "api": "/crombolo-plugin/approvals-active.js"
+    },
+    {
       "type": "section",
       "alias": "Crombolo.Section.Workflow",
       "name": "Crombolo Workflow Section",
       "weight": 40,
       "meta": {
-        "label": "Workflows",
+        "label": "Approvals",
         "pathname": "workflow"
-      }
+      },
+      "conditions": [{ "alias": "Crombolo.Condition.ApprovalsActive" }]
     },
     {
       "type": "sectionView",
@@ -681,20 +677,18 @@
       ]
     },
     {
-      "type": "sectionView",
-      "alias": "Crombolo.SectionView.Workflow.Designer",
+      "type": "dashboard",
+      "alias": "Crombolo.Dashboard.Workflows",
       "name": "Crombolo Workflow Designer",
       "element": "/crombolo-plugin/workflow-designer.js",
-      "weight": 500,
       "meta": {
         "label": "Workflows",
-        "pathname": "workflows",
-        "icon": "icon-mindmap"
+        "pathname": "workflows"
       },
       "conditions": [
         {
           "alias": "Umb.Condition.SectionAlias",
-          "match": "Crombolo.Section.Workflow"
+          "match": "Umb.Section.Settings"
         },
         {
           "alias": "Umb.Condition.CurrentUser.IsAdmin"
@@ -716,7 +710,8 @@
         {
           "alias": "Umb.Condition.WorkspaceAlias",
           "match": "Umb.Workspace.Document"
-        }
+        },
+        { "alias": "Crombolo.Condition.ApprovalsActive" }
       ]
     }
   ]

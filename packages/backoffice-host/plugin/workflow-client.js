@@ -38,3 +38,6 @@ export const saveWorkflow = (alias, workflow) =>
   })
 export const deleteWorkflow = (alias) =>
   call(`workflows/${encodeURIComponent(alias)}`, { method: 'DELETE' })
+export const previewDelete = (alias) =>
+  call(`workflows/${encodeURIComponent(alias)}/preview`, { method: 'DELETE' })
+export const approvalsActive = () => call('active')

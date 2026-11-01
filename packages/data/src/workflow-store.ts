@@ -74,8 +74,9 @@ export interface WorkflowSyncReport {
  * Stores the workflows and applies each changed one's `on-change` to the
  * requests in flight under it: `keep` leaves them on the version they started
  * with, `restart` starts them again from the first stage of the new one, and
- * `withdraw` ends them. A workflow that is gone cannot be restarted under, so
- * its requests are kept or withdrawn as it said.
+ * `withdraw` ends them. A workflow that is gone covers nothing, so its requests
+ * are withdrawn whatever it said: approving one would only publish a page its
+ * author may publish already.
  */
 export async function syncWorkflows(
   db: Db,
@@ -92,7 +93,7 @@ export async function syncWorkflows(
     const now = current.get(id)
     if (was && now && was.version === now.version) continue
     report.changed.push((now ?? was)?.workflow.alias ?? id)
-    const rule = (now ?? was)?.workflow.onChange ?? 'keep'
+    const rule = now ? (now.workflow.onChange ?? 'keep') : 'withdraw'
     for (const request of await requests.waitingUnder(id)) {
       if (request.workflowVersion === now?.version) continue
       if (rule === 'keep') {

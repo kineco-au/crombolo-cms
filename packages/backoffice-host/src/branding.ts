@@ -15,10 +15,14 @@
 /// <reference path="./text-imports.d.ts" />
 import faviconText from '../plugin/branding/favicon.svg' with { type: 'text' }
 import logoText from '../plugin/branding/logo-header.svg' with { type: 'text' }
+import logoDarkText from '../plugin/branding/logo-header-dark.svg' with { type: 'text' }
 import themeText from '../plugin/branding/theme.css' with { type: 'text' }
 
 /** The mark and wordmark, for a header or a sign-in card. */
 export const logoSvg: string = logoText.trim()
+
+/** The same logo with cream lettering, for a dark ground. */
+export const logoDarkSvg: string = logoDarkText.trim()
 
 /** The mark alone, square, for a tab icon. */
 export const faviconSvg: string = faviconText.trim()

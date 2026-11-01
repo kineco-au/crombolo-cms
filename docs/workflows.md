@@ -68,7 +68,7 @@ workflow covers publishes as it always has.
 | `self-approval` | Whether the person who made the change may approve it: `refused`, `allowed`, or `automatic` — a stage they belong to counts their approval as given |
 | `comments` | When a decision needs a comment: `optional`, `on-send-back`, `always` |
 | `unpublish` | Whether taking a covered page down needs approval too ("Request unpublish") |
-| `on-change` | What a request in flight does when the workflow changes: `keep` the version it started under, `restart` from the first stage of the new one, or be `withdrawn` |
+| `on-change` | What a request in flight does when the workflow changes: `keep` the version it started under, `restart` from the first stage of the new one, or be `withdrawn`. A workflow deleted, from the designer or by a deploy, withdraws its requests whatever this says: it covers nothing any more, so approving one would only publish a page its author may publish already |
 | `scheduling` | Whether a request may say when to publish or take the page down. Off unless set; the file carries it only when it is on, so workflows from before it keep their version |
 
 **Administrators may always edit** a waiting page, whatever `on-edit` says: the
@@ -152,10 +152,16 @@ Times are kept in UTC and shown in the reader's own time, with the zone named;
 
 ## In the backoffice
 
-- **The Workflows section** — for administrators, *Workflows*: the list and the
-  designer, which the section opens on; then *Waiting for me* (stages the reader
-  may decide), which everyone else opens on, *In flight* and *Decided*. Admin,
-  Editors and Writers have the section; any group can be given it.
+- **The Approvals section** — *Waiting for me* (stages the reader may decide),
+  which it opens on, *In flight* and *Decided*. Admin, Editors and Writers have
+  the section; any group can be given it. Its permission is still `workflow`.
+  It shows only while the site has a workflow or a request is open, and so
+  does a page's *Workflow* tab (`Crombolo.Condition.ApprovalsActive`, which
+  asks `approvals/active`); saving the first workflow brings both in without a
+  reload.
+- **Settings → Workflows** — for administrators, a card under Build (story
+  234): the list of workflows and the designer. Deleting one first names the
+  pages whose requests it withdraws.
 - **The designer** — two tabs. *Settings*, which opens first: what the workflow
   covers and its rules. *Stages*: stages as boxes on a canvas, dragged into
   place; *Connect stages* draws an arrow, clicking one removes it; beside the

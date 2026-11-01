@@ -1,5 +1,5 @@
 /**
- * The Workflows section's and the page tab's reads and actions (story 028),
+ * The Approvals section's and the page tab's reads and actions (story 028),
  * under `<backoffice>/crombolo/api/approvals/`, and saving a workflow drawn in
  * the designer back to `schema/workflows/`. docs/workflows.md.
  *
@@ -62,6 +62,17 @@ async function changePreview(approvals: Approvals, principal: Principal, workflo
     (r) => r.state === 'waiting' && (r.workflow.key ?? r.workflow.alias) === id,
   )
   return waiting.map((r) => ({ key: r.key, page: r.nodeName, outcome: workflow.onChange }))
+}
+
+/** What deleting a workflow would do: its waiting requests are withdrawn. */
+async function removalPreview(approvals: Approvals, principal: Principal, alias: string) {
+  const stored = (await approvals.workflows()).find((s) => s.workflow.alias === alias)
+  if (!stored) return []
+  const id = stored.workflow.key ?? stored.workflow.alias
+  const waiting = (await approvals.inFlight(principal)).filter(
+    (r) => r.state === 'waiting' && (r.workflow.key ?? r.workflow.alias) === id,
+  )
+  return waiting.map((r) => ({ key: r.key, page: r.nodeName, outcome: 'withdraw' as const }))
 }
 
 /**
@@ -129,6 +140,13 @@ export async function handleApprovalsApi(
       return json(await approvals.finished(principal, skip, take))
     }
 
+    // Whether Approvals and a page's Workflow tab show: a workflow, or a request still open.
+    if (path === 'active' && request.method === 'GET') {
+      const active =
+        (await approvals.workflows()).length > 0 || (await approvals.inFlight(principal)).length > 0
+      return json({ active })
+    }
+
     if (path === 'workflows' && request.method === 'GET') {
       const loaded = loadSchemaDirectory(ctx.schemaDir)
       return json({
@@ -149,6 +167,8 @@ export async function handleApprovalsApi(
       const alias = decodeURIComponent(match[1] as string)
       const file = join(ctx.schemaDir, 'workflows', fileNameFor(alias))
       if (request.method === 'DELETE') {
+        if (match[2])
+          return json({ ok: true, affected: await removalPreview(approvals, principal, alias) })
         if (!ctx.writable) return readOnly()
         if (!existsSync(file))
           return json({ ok: false, message: 'There is no such workflow.' }, 404)

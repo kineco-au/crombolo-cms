@@ -25,7 +25,7 @@ Make an empty folder and scaffold a site in it:
 
 ```sh
 mkdir my-site && cd my-site
-bunx @crombolo/cli init --name "My Site"
+bunx @crombolo/cli@latest init --name "My Site"
 bun install
 bun start
 ```
@@ -45,13 +45,13 @@ Add `--postgres` to write a `.env` that points at a Postgres database instead of
 
 ### Start from a template
 
-A site with no content types shows a holding page with a link to the back office. To start with something on the page, scaffold a starter template instead:
+A site with nothing published shows a one-page guide to publishing its first page, with a link to the back office. To start with something on the page, scaffold a starter template instead:
 
 ```sh
-bunx @crombolo/cli init --template list                # the templates there are
-bunx @crombolo/cli init --template basic               # a home page type, a view and one page
-bunx @crombolo/cli init --template starter             # a header, a footer and placeholder pages
-bunx @crombolo/cli init --template demo/harbourstone   # a whole brochure site, content and all
+bunx @crombolo/cli@latest init --template list                # the templates there are
+bunx @crombolo/cli@latest init --template basic               # a home page type, a view and one page
+bunx @crombolo/cli@latest init --template starter             # a header, a footer and placeholder pages
+bunx @crombolo/cli@latest init --template demo/harbourstone   # a whole brochure site, content and all
 ```
 
 A template brings its schema, components and styles, and its pages, Library elements and images as seed files under `seed/`. Its `bun start` runs `crombolo start --seed --publish`, which applies the seed before the site serves: the first time, and again whenever a file in `seed/` changes. The content is yours to edit, as files or in the back office. An edit made in the back office is kept when the seed is applied again ([Seed files](/docs/guides/seeds/)).
@@ -64,7 +64,7 @@ Harbourstone is a whole brochure site for a coastal distillery: a home page, an 
 
 ```sh
 mkdir harbourstone && cd harbourstone
-bunx @crombolo/cli init --template demo/harbourstone
+bunx @crombolo/cli@latest init --template demo/harbourstone
 bun install
 bun start
 ```
@@ -73,7 +73,7 @@ bun start
 
 ```sh
 mkdir harbourstone && cd harbourstone
-bunx @crombolo/cli init --name "Harbourstone"
+bunx @crombolo/cli@latest init --name "Harbourstone"
 bun install
 bunx crombolo bundle build --template demo/harbourstone --out ./harbourstone-bundle
 bunx crombolo start --bundle ./harbourstone-bundle --publish

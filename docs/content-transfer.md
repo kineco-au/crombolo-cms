@@ -736,7 +736,7 @@ site, and moving one is two commands:
 
 ```bash
 bunx crombolo export --site --out site.tgz     # [--with-media] [--drafts] [--with-members] [--with-users] [--with-site-data] [--anonymise]
-bunx crombolo start --from site.tgz            # in an empty folder: scaffold, bun install, import, serve
+bunx @crombolo/cli@latest start --from site.tgz  # in an empty folder: scaffold, bun install, import, serve
 bunx crombolo import site.tgz --replace        # or replace a site that already exists
 ```
 

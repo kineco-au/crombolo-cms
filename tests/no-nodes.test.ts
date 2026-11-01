@@ -75,6 +75,28 @@ describe('a site with nothing published', () => {
     expect(html).toContain('name="robots" content="noindex"')
   })
 
+  test('is a one-page guide to the first published page (236)', async () => {
+    const h = await site()
+    const html = await (await h.call('/')).text()
+    for (const step of [
+      'Sign in',
+      'Configure page metadata',
+      'Write its template',
+      'Create and publish',
+    ])
+      expect(html).toContain(`<h2>${step}</h2>`)
+    expect(html).toContain('bunx crombolo types new content-type article --at-root')
+    expect(html).toContain('Where things live')
+    // Only the notice shows at first; the steps open on a click.
+    expect(html).toMatch(/<details class="setup">\s*<summary><span class="when-closed">Show how/)
+    expect(html).toContain('<span class="when-open">Hide the setup steps</span>')
+    expect(html.indexOf('<details class="setup">')).toBeLessThan(html.indexOf('<h2>Sign in</h2>'))
+    expect(html).not.toContain('<details class="setup" open')
+    // The template's JSX is shown as text, not written into the page.
+    expect(html).toContain("&lt;h1&gt;{model.text('title')}&lt;/h1&gt;")
+    expect(html).not.toContain('<h1>{model')
+  })
+
   test('answers it at any path, since no path can be right yet', async () => {
     const h = await site()
     expect((await h.call('/anything/at/all')).status).toBe(404)

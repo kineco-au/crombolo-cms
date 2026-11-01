@@ -6,7 +6,7 @@ parts a front end needs: caching, preview, members, images and live reload. It
 supports Next.js 15.5 and 16, with React 19.
 
 The quickest way to start is a scaffold that is already wired:
-`bunx @crombolo/cli init --next`, or the `next` and `demo/harbourstone-next`
+`bunx @crombolo/cli@latest init --next`, or the `next` and `demo/harbourstone-next`
 templates, put the app in `web/`. How the pieces fit together is in
 [`delivery-api.md`](delivery-api.md), "A Next.js front end". This page lists
 what the package offers, by entry point.

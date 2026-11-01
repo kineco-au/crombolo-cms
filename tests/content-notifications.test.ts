@@ -463,6 +463,7 @@ describe('the notifications dialog without e-mail', () => {
     expect(file, 'the notifications dialog chunk').toBeDefined()
     const source = readFileSync(join(chunks, file as string), 'utf8')
     expect(source).toContain('notificationsUnavailable')
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: the served source's own text
     expect(source).toContain('?disabled=${!!this._unavailable}')
   })
 

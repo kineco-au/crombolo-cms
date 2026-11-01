@@ -122,7 +122,9 @@ test("the create dialog under a page offers that type's allowed children, not th
   expect(created.status()).toBe(201)
 
   await page.goto('/crombolo/section/content')
-  await expect(page.getByRole('link', { name: NAME, exact: true })).toBeVisible({ timeout: 20_000 })
+  // In the tree: the Overview beside it lists the new page too (story 236).
+  const tree = page.getByTestId('section-sidebar:Umb.SidebarMenu.Content')
+  await expect(tree.getByRole('link', { name: NAME, exact: true })).toBeVisible({ timeout: 20_000 })
 
   // The node's own "+" is the create action. Located by title: every node carries
   // one with the same test id and the same role, and only the title names the node.
@@ -130,7 +132,7 @@ test("the create dialog under a page offers that type's allowed children, not th
   // opens nothing — the same reason `openCreateDialog` above retries.
   const dialog = page.locator('umb-document-create-options-modal')
   await expect(async () => {
-    await page
+    await tree
       .getByRole('link', { name: NAME, exact: true })
       .filter({ visible: true })
       .last()

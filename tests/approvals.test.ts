@@ -541,6 +541,39 @@ approvers = ["admin"]
     // Two sites, booted one after the other: more than the default allows on a busy Postgres.
   }, 20_000)
 
+  test('deleting a workflow withdraws what waits under it, whatever on-change says (234)', async () => {
+    const { people, page, send } = await site(
+      ONE_STAGE({ 'publishers-may-skip': 'false', 'on-change': '"keep"' }),
+    )
+    const key = await page('Under a deleted workflow')
+    const sent = await send(key)
+    const active = async () =>
+      (await people.writer.json<{ active: boolean }>(`${API}/active`)).active
+    expect(await active()).toBe(true)
+
+    const preview = await people.admin.json<{ affected: unknown[] }>(
+      `${API}/workflows/policy-sign-off/preview`,
+      { method: 'DELETE' },
+    )
+    expect(preview.affected).toEqual([
+      { key: sent.key, page: 'Under a deleted workflow', outcome: 'withdraw' },
+    ])
+    const listed = await people.admin.json<{ items: unknown[] }>(`${API}/workflows`)
+    expect(listed.items).toHaveLength(1)
+
+    expect((await people.writer.del(`${API}/workflows/policy-sign-off`)).status).toBe(403)
+    expect((await people.admin.del(`${API}/workflows/policy-sign-off`)).status).toBe(200)
+    const tab = await people.writer.json<{ request?: View; past: View[] }>(`${API}/page/${key}`)
+    expect(tab.request).toBeUndefined()
+    expect(tab.past[0]?.state).toBe('withdrawn')
+    expect(tab.past[0]?.history.at(-1)).toMatchObject({
+      kind: 'withdrawn',
+      comment: 'the workflow was removed',
+    })
+    // No workflow and nothing open: Approvals and the page's tab go.
+    expect(await active()).toBe(false)
+  })
+
   test('a branch is covered by the workflow naming it, nearest first; new pages are gated too', async () => {
     const { people, page } = await site(ONE_STAGE({ 'publishers-may-skip': 'false' }))
     // Narrow the workflow from the type to one branch.

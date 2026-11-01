@@ -104,8 +104,10 @@ not cover.
 | `182` | Extensions can dock a panel beside the back office | should | M | done | — |
 | `228` | User groups a site declares in files | should | M | done | 028 |
 | `229` | A workflow nobody can approve says so | should | S | ready | 028 |
-| `234` | A Settings landing page of cards | should | L | backlog | 021, 235 |
+| `234` | A Settings landing page of cards | should | L | done | 021, 235 |
 | `235` | A fork of Umbraco's back-office client | should | L | done | — |
+| `236` | An overview to sign in to, and a guide in the empty site | should | M | done | — |
+| `237` | The back office in the mock-up's colours | should | M | done | 236 |
 
 ### Epic D — Members and identity
 
@@ -274,7 +276,7 @@ requests, only server-side and build-time front ends can call it.
 | `210` | Middleware | should | M | done | — |
 | `211` | Route handlers | should | L | done | — |
 | `212` | Streaming and Suspense | could | L | ready | 206 |
-| `213` | Image, Link and Script components | should | M | backlog | 199 |
+| `213` | Image, Link and Script components | should | M | ready | 199 |
 | `214` | Live reload and an error overlay | should | L | done | — |
 | `215` | React on the server | could | XL | on hold | 206, 209, 212 |
 | `218` | Build islands ahead of time | could | S | ready | 209 |

@@ -73,8 +73,21 @@ bun run vendor:backoffice
   - **Its text:** Settings out of the section tabs, the redirect setting's
     name, the logo's link, the log viewer's searches, the client credential
     prefix, the page title.
-  - **What is deleted:** telemetry, profiling and the news feed.
+  - **What is deleted:** telemetry, profiling, the news feed and the Settings
+    welcome.
   - **A column for side panels:** beside main, in the shell.
+  - **A section's layout from a manifest:** `sectionLayout`, which Settings'
+    landing page uses (see "Settings" below).
+  - **What the theme reaches** (story 237): the header's hairline, its
+    current tab's text, and the sidebar's ground read `--crombolo-*` tokens.
+    Buttons in the header draw in the header's ink.
+  - **Umbraco's own deprecations stay silent** in production wherever the
+    client is served. Umbraco recognised its own code only under
+    `/umbraco/backoffice/`, so under `/crombolo/backoffice/` each of its internal
+    deprecations printed, rebranded into nonsense ("removed in Crombolo 20").
+    Our plugin's are still reported.
+  - **Redirects are a Settings tool:** Umbraco's Redirect URL Management
+    dashboard moved from Content to Settings, where it is the Redirects card.
   - **`umbCromboloHooks`:** the seams Crombolo's plugin plugs into, exported
     with `@umbraco-cms/backoffice/extension-registry`.
 - **`umbCromboloHooks`:** Crombolo's own behaviour stays in the plugin, with
@@ -418,8 +431,8 @@ entries name their modules under the `/crombolo-plugin/*` placeholder, which
 `collectManifests` rewrites to `pluginPath` — `/crombolo/crombolo/*` by default —
 so the manifest on disk need not know where the editor is mounted. To put
 something of ours where one of Umbraco's
-extensions was, the manifest entry names it in `overwrites`: the Welcome
-dashboard declares `overwrites: ['Umb.Dashboard.UmbracoNews']`, the place
+extensions was, the manifest entry names it in `overwrites`: the Overview
+(story 236) declares `overwrites: ['Umb.Dashboard.UmbracoNews']`, the place
 Umbraco's news dashboard held in the Content section before that package stopped
 being vendored.
 
@@ -511,6 +524,29 @@ The rest is ordinary extension machinery:
   one (`side-panel/toggle.js`).
 - **The rules:** the width limits, docked or sheet, and what is remembered,
   all in `side-panel/layout.js`.
+
+### Settings
+
+Settings opens on a page of cards, grouped Build, Site, Health, History and
+Other (story 234). A tool opens alone, headed by a link back; Structure and Code
+each open their own tree, which shows only beside the editors it opens.
+- **The layout:** `plugin/settings-section.js`, drawn for `Umb.Section.Settings`
+  through a `sectionLayout` manifest (`Crombolo.SectionLayout.Settings`). The
+  fork's `umb-backoffice-main` takes a section's element from such a manifest,
+  and `umb-section-default` when there is none. Settings keeps its alias, so
+  every dashboard, menu and condition naming it still matches.
+- **Why a manifest:** a package's manifests are registered before any section
+  is drawn (`app.element.ts`, `#loadedGuard`), so a page opened straight at
+  Settings gets the layout first time. An entry point runs too late for that,
+  and the back office does not rebuild a section's route when its manifest is
+  registered again.
+- **The cards:** `plugin/settings-cards.js`, pure, with
+  `tests/settings-cards.test.ts`. They come from the dashboards and Advanced
+  menu items the user may open, each with Crombolo's group, title and line; a
+  dashboard without them, such as a bundle's, goes under Other by its own label.
+- **Addresses:** `dashboard/<pathname>` and `workspace/…` are as before;
+  `structure` and `code` open the trees; `dashboard/welcome`, Umbraco's welcome,
+  which the fork deletes, opens the landing page.
 
 ## Boot sequence the server must satisfy
 

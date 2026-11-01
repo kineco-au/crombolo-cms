@@ -101,18 +101,17 @@ describe('the colour scheme', () => {
 
   test('repaints the accent the client routes through the violet-blue palette', async () => {
     const css = await Bun.file(`${BRANDING_DIR}/theme.css`).text()
-    expect(css).toContain('--uui-palette-violet-blue: var(--crombolo-orange)')
-    expect(css).toContain('--uui-color-header-surface: var(--crombolo-orange)')
-    expect(css).toContain('--crombolo-orange: #da987c')
+    expect(css).toContain('--uui-palette-violet-blue: var(--crombolo-terracotta)')
+    expect(css).toContain('--crombolo-terracotta: #ad4f2c')
+    // A white header, the accent marking the current section (story 237).
+    expect(css).toContain('--uui-color-header-surface: #fff')
+    expect(css).toContain('--crombolo-header-current: var(--crombolo-terracotta)')
   })
 
-  test('puts dark ink on the accent, because the accent is light', async () => {
-    // Stock light.css puts white on it, which against this orange is ~2.4:1.
+  test('puts white on the accent, because the accent is deep (237)', async () => {
     const css = await Bun.file(`${BRANDING_DIR}/theme.css`).text()
-    for (const token of ['--uui-color-default-contrast', '--uui-color-selected-contrast']) {
-      expect(css).toContain(`${token}: var(--crombolo-cocoa)`)
-    }
-    expect(css).toContain('--crombolo-cocoa: #54321f')
+    for (const token of ['--uui-color-default-contrast', '--uui-color-selected-contrast'])
+      expect(css).toContain(`${token}: #fff`)
   })
 
   test('leaves the semantic colours alone, so success stays green and danger red', async () => {
@@ -228,8 +227,9 @@ describe('the section Umbraco calls Packages', () => {
 describe('the client credential dialog’s prefix label', () => {
   test('says what the server now requires', () => {
     // Must match `CLIENT_ID_PREFIX` in packages/server/src/adapters/users.ts.
-    expect(served("'crombolo-back-office-'")).toBe(true)
-    expect(served("'umbraco-back-office-'")).toBe(false)
+    const modal = 'create-user-client-credential-modal.element.js'
+    expect(served("'crombolo-back-office-'", modal)).toBe(true)
+    expect(served("'umbraco-back-office-'", modal)).toBe(false)
   })
 })
 

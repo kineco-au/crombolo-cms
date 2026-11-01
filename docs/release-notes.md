@@ -6,6 +6,72 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.43.0 — 2026-11-01
+
+- **Signing in opens on an Overview** (story 236) in place of the Welcome page.
+  It shows:
+  - the pages changed most recently, with their type, status, when and who;
+  - how many pages are drafts and how many are published, each listing those
+    pages;
+  - what people did lately;
+  - New content.
+
+  Each person sees only the pages they may see.
+- **The back office's new look** (story 237):
+  - a white header, with the current section in terracotta;
+  - one deep terracotta accent with white text on buttons, links, the active
+    tab and the selected item;
+  - the sidebar a white panel beside the cream page;
+  - soft-shadowed cards on the Overview and in Settings.
+
+  Dark mode follows the same pattern, and every pairing passes the WCAG AA
+  contrast check.
+- **Redirect URL Management is the Redirects card in Settings** (story 237),
+  so the Content section opens on the Overview with no tabs. Only people with
+  Settings can manage redirects now. A page's own redirects are still on its
+  Info tab.
+- **A quieter console.** The back office no longer logs Umbraco's internal
+  deprecation notices, such as "Implicit classic tree view fallback … removed in
+  Crombolo 20", or Lit's development-only warnings ("scheduled an update after
+  an update completed"). It now ships Lit's production build, as Umbraco does.
+- **Lato's licence ships with the fonts.** `@crombolo/backoffice-dist` now carries
+  the SIL Open Font License beside the Lato font files it serves, and `NOTICE`
+  names them.
+- **A new site's empty page is a getting-started guide** (story 236). Until
+  something is published, the site shows "Nothing is published yet" and a
+  link to the back office. A click opens four steps to a first page (sign in,
+  configure page metadata, write its template, publish) and where things live.
+  It is styled as Crombolo in light and dark, and still answers 404.
+
+- **Settings opens on a page of cards** (story 234). The cards are grouped Build,
+  Site, Health, History and Other, each saying what the tool is for, in place of
+  a row of tabs beside a tree. Every page under Settings is headed by the same
+  breadcrumb trail, such as Settings › Health Check or Settings › Structure.
+  Structure (content, media and member types, data types, languages)
+  and Code (components, stylesheets, scripts) each open their own tree, and no
+  other tool shows one. Logs, Extensions, Relations and Webhooks, which were in
+  the tree, are cards. A card shows only to someone who can open it, and a
+  bundle's Settings dashboard shows under Other. Bookmarked addresses still open,
+  and the Welcome tab's address opens the cards. If e-mail isn't set up, a
+  banner above the cards says so.
+- **Workflows are set up from Settings, and the Workflows section is now
+  Approvals** (story 234). The list of workflows and the designer are a
+  Workflows card under Build, for administrators. Approvals holds Waiting for me,
+  which it opens on, In flight and Decided. User groups keep the section as they
+  had it.
+- **Approvals shows only when it has something to show** (story 234). The
+  section and a page's Workflow tab appear while the site has a workflow or a
+  request is open. Saving the first workflow brings them in at once.
+- **Deleting a workflow withdraws the requests waiting under it** (story 234),
+  whatever its `on-change` says, and the designer names those pages before it
+  deletes. A workflow removed by a deploy does the same. Each request's history
+  says the workflow was removed. Before, a `keep` workflow's requests stayed
+  waiting for an approval that guarded nothing, since a page no workflow covers
+  publishes directly.
+- **`@latest` in the docs.** The docs now run `bunx @crombolo/cli@latest`, so
+  `bunx` fetches the newest CLI rather than one it cached, which makes a site on
+  an older crombolo.
+
 ## v0.42.1 — 2026-10-31
 
 v0.42.0's pipelines failed to build the back office, so it was never published;

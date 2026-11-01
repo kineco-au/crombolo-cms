@@ -74,6 +74,9 @@ describe('the dark palette', () => {
     ['--uui-color-focus', '--uui-color-background', 3],
     ['--uui-color-focus', '--uui-color-surface', 3],
     ['--crombolo-header-current', '--uui-color-header-surface', 3],
+    ['--crombolo-header-current-text', '--uui-color-header-surface', 4.5],
+    ['--uui-color-interactive-emphasis', '--uui-color-background', 4.5],
+    ['--uui-menu-item-color-active', '--uui-menu-item-background-color-active', 4.5],
     ['--uui-color-border-standalone', '--uui-color-surface', 3],
   ])('%s on %s clears %p:1', (foreground, background, minimum) => {
     const fg = dark[foreground] as string
@@ -86,6 +89,33 @@ describe('the dark palette', () => {
     expect(readFileSync(join(PLUGIN, 'branding', 'theme-system.css'), 'utf8')).toContain(
       '@import url("./theme-dark.css") (prefers-color-scheme: dark);',
     )
+  })
+})
+
+// Story 237: the light palette's own pairs, which `theme.css` defines over the
+// vendored `light.css`: the deep accent with white on it, the white header, and
+// the current item's tint.
+describe('the light palette', () => {
+  const light = tokens('theme.css')
+
+  test.each([
+    ['--uui-color-selected-contrast', '--uui-palette-violet-blue', 4.5],
+    ['--uui-color-default-contrast', '--uui-palette-violet-blue-light', 4.5],
+    ['--uui-color-current-contrast', '--uui-palette-spanish-pink', 4.5],
+    ['--uui-menu-item-color-active', '--uui-menu-item-background-color-active', 4.5],
+    ['--uui-menu-item-color-active', '--uui-menu-item-background-color-active-hover', 4.5],
+    ['--uui-color-interactive-emphasis', '--uui-color-background', 4.5],
+    ['--uui-color-interactive-emphasis', '--uui-color-surface', 4.5],
+    ['--uui-color-header-contrast-emphasis', '--uui-color-header-surface', 4.5],
+    ['--crombolo-header-current-text', '--uui-color-header-surface', 4.5],
+    ['--crombolo-header-current', '--uui-color-header-surface', 3],
+    ['--uui-color-focus', '--uui-color-surface', 3],
+  ])('%s on %s clears %p:1', (foreground, background, minimum) => {
+    const hex = (value: string) => (value === '#fff' ? '#ffffff' : value)
+    const fg = hex(light[foreground] as string)
+    const bg = hex(light[background] as string)
+    expect([foreground, fg, bg].join(' ')).toMatch(/#[0-9a-f]{6} #[0-9a-f]{6}$/)
+    expect(contrast(fg, bg)).toBeGreaterThanOrEqual(minimum)
   })
 })
 

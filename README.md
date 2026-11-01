@@ -69,23 +69,28 @@ mkdir my-site && cd my-site
 Then, from the site's own directory:
 
 ```bash
-bunx @crombolo/cli init --name "My Site"
+bunx @crombolo/cli@latest init --name "My Site"
 bun install
 bun start
 ```
 
+`@latest` makes `bunx` fetch the newest release rather than reuse one it cached
+earlier. `init` writes its own version into the new site's `package.json`, so a
+stale CLI makes a site on an older crombolo.
+
 `bun start` prints the back-office address and a username and password to sign
 in with. Open `http://localhost:8080/crombolo` and sign in. The site itself, at
-`http://localhost:8080/`, answers "not found" until you publish a page:
-[adding a page](docs/adding-a-page.md) walks through the content type, the
-template and the content.
+`http://localhost:8080/`, shows a one-page guide to publishing your first page
+until you do (still a 404, so nothing indexes it). [Adding a
+page](docs/adding-a-page.md) walks through the content type, the template and
+the content in more depth.
 
 ### A site from a template
 
 To see the templates:
 
 ```bash
-bunx @crombolo/cli init --template list
+bunx @crombolo/cli@latest init --template list
 ```
 
 From the folder you want the site in:
@@ -97,7 +102,7 @@ mkdir my-site && cd my-site
 Then, from the site's own directory:
 
 ```bash
-bunx @crombolo/cli init --name "My Site" --template demo/harbourstone
+bunx @crombolo/cli@latest init --name "My Site" --template demo/harbourstone
 bun install
 bun start
 ```
@@ -122,7 +127,7 @@ footer and a two-column layout to restyle), and `next` and
   Editing a template is picked up without a restart.
 - [Writing components](docs/writing-components.md) is the cookbook for
   templates, and [rendering](docs/rendering.md) the reference.
-- To run on Postgres, scaffold with `bunx @crombolo/cli init --postgres`, and
+- To run on Postgres, scaffold with `bunx @crombolo/cli@latest init --postgres`, and
   point `CROMBOLO_POSTGRES_URL` in the `.env` it writes at your database.
 - To move a site between machines or environments, `bunx crombolo export --site`
   and `bunx crombolo import`, or `crombolo pull` and `push` against a running

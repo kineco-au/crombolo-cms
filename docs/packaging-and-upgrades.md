@@ -492,7 +492,7 @@ These refine Part 2 rather than change it; stories `012`–`015` are the slices.
 - **No client change for the pending badge.** Names and descriptions are
   decorated in the API response (`Title (goes live in 2.1)`). The shipped client
   code is a framework package on the same footing as an installed npm extension —
-  the upgrade and welcome dashboards, the read-only banner, the TSX editor entry
+  the upgrade dashboard and the Overview, the read-only banner, the TSX editor entry
   point and the element-type hint. All of it is *registered* through
   `umbraco-package.json`, never patched into Umbraco's own elements, so an
   upstream bump cannot silently drop it; the one exception is the TSX entry point,

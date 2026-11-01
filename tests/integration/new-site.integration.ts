@@ -279,6 +279,8 @@ describe('creating a site, end to end through the CLI', () => {
     expect(html).toContain('Nothing is published yet')
     expect(html).toContain('Bare Site')
     expect(html).toContain('/crombolo')
+    // A guide to the first page (story 236).
+    expect(html).toContain('Configure page metadata')
   })
 
   test('a path that is not a page on a site that has pages is still a bare 404', async () => {
@@ -381,7 +383,7 @@ describe('creating a site, end to end through the CLI', () => {
       'Write a template',
       'Check before you ship',
     ])
-    expect(html).toContain('bunx @crombolo/cli init --name &quot;My Site&quot;')
+    expect(html).toContain('bunx @crombolo/cli@latest init --name &quot;My Site&quot;')
   })
 
   test('its elements travel too: a bottling renders the tasting notes it picked', async () => {

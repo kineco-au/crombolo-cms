@@ -193,6 +193,7 @@ import { createMediaAccess } from './media-access.ts'
 import { createMemberAuth, MEMBER_ROUTE_PREFIX } from './member-auth.ts'
 import { noNodesPage } from './no-nodes.ts'
 import { NotImplementedLog } from './not-implemented.ts'
+import { overview, readOverviewQuery } from './overview.ts'
 import { createDeps, PREVIEW_COOKIE, resolveUserLinkSender } from './ports.ts'
 import {
   previewSigningSecret,
@@ -2294,6 +2295,16 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
       return outcome.ok
         ? Response.json({ ok: true, ...outcome.options })
         : Response.json({ ok: false, message: outcome.message }, { status: outcome.status })
+    }
+
+    // Non-contract: the Content section's Overview (story 236), as the user may see it.
+    if (pathname === `${paths.pluginPath}/api/overview` && request.method === 'GET') {
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      if (!hasSection(principal, 'content')) return new Response('Forbidden', { status: 403 })
+      return Response.json(await overview(db, principal, readOverviewQuery(url)), {
+        headers: { 'cache-control': 'no-store' },
+      })
     }
 
     // Non-contract: approval workflows (story 028) — the page's Workflow tab, the

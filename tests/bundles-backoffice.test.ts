@@ -164,6 +164,7 @@ describe('the Bundle Editor (story 233)', () => {
       'bundle-editor.js',
       'bundle-editor-context.js',
       'bundle-editor-sections.js',
+      'settings-section.js',
     ]) {
       const source = await Bun.file(`${PLUGIN}/${file}`).text()
       for (const m of source.matchAll(

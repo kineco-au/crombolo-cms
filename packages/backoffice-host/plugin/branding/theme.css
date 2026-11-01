@@ -1,5 +1,6 @@
 /*
- * Crombolo's colour scheme: white surfaces, terracotta accents taken from the logo.
+ * Crombolo's colour scheme: white cards on a cream ground, a light header, and one
+ * deep terracotta accent taken from the logo (story 237).
  *
  * Loaded by both shells immediately after the vendored `light.css`, rather than
  * registered as a `theme` extension, so it reaches the login page too — the
@@ -17,6 +18,14 @@
   --crombolo-orange-deep: #cb6f48;
   /* The darkest of the three, and the only one that clears AA as body text. */
   --crombolo-orange-text: #974b2b;
+  /*
+   * The accent: the logo's terracotta, deepened until white on it clears AA
+   * (5.3:1). It fills buttons and the selected item, and is the links' colour.
+   */
+  --crombolo-terracotta: #ad4f2c;
+  --crombolo-terracotta-hover: #9b4526;
+  /* A pale tint of it, behind the current tree item and the Overview's labels. */
+  --crombolo-terracotta-tint: #fbeee7;
   --crombolo-cocoa: #54321f;
   --crombolo-cream: #fff7ea;
 
@@ -24,8 +33,8 @@
    * `light.css` routes default, selected and interactive-emphasis through the
    * violet-blue palette, so swapping the palette carries all of them at once.
    */
-  --uui-palette-violet-blue: var(--crombolo-orange);
-  --uui-palette-violet-blue-light: var(--crombolo-orange-light);
+  --uui-palette-violet-blue: var(--crombolo-terracotta);
+  --uui-palette-violet-blue-light: var(--crombolo-terracotta-hover);
   --uui-palette-violet-blue-dark: var(--crombolo-orange-text);
   --uui-palette-violet-blue-dimmed: #bd8b75;
 
@@ -39,9 +48,12 @@
   --uui-palette-space-cadet-dark: #25160e;
   --uui-palette-space-cadet-dimmed: #8a6c5c;
 
-  /* The "current item" marker, warmed from pink to the same orange family. */
-  --uui-palette-spanish-pink: #fdebd4;
-  --uui-palette-spanish-pink-light: #fef4e7;
+  /*
+   * "Current": the accent, which is what marks the active tab. The tree's
+   * current item takes its own tokens below, so it can be a tint instead.
+   */
+  --uui-palette-spanish-pink: var(--crombolo-terracotta);
+  --uui-palette-spanish-pink-light: var(--crombolo-terracotta-hover);
   --uui-palette-spanish-pink-dark: #ebc7b8;
   --uui-palette-spanish-pink-dimmed: #f3e3ce;
 
@@ -56,20 +68,31 @@
   --uui-palette-white-dark: #fffaf2;
   --uui-palette-white-dimmed: #f4ede1;
 
-  /*
-   * The accent is light, so what sits on it has to be dark. Stock `light.css`
-   * puts white on the accent, which against this orange is about 2.4:1; cocoa
-   * on the same fill is 4.7:1.
-   */
-  --uui-color-default-contrast: var(--crombolo-cocoa);
-  --uui-color-selected-contrast: var(--crombolo-cocoa);
+  /* White on the deep accent, 5.3:1. */
+  --uui-color-default-contrast: #fff;
+  --uui-color-selected-contrast: #fff;
+  --uui-color-current-contrast: #fff;
+  /* The tree's current item: a pale tint, its text and icon in the accent (4.7:1). */
+  --uui-menu-item-background-color-active: var(--crombolo-terracotta-tint);
+  --uui-menu-item-background-color-active-hover: #faeae1;
+  --uui-menu-item-color-active: var(--crombolo-terracotta);
 
-  /* An orange header bar, with its own text dark for the same reason. */
-  --uui-color-header-surface: var(--crombolo-orange);
+  /*
+   * A white header with a hairline under it. The current section's name and
+   * marker are the accent; the fork reads the line and the name's colour from
+   * these tokens.
+   */
+  --uui-color-header-surface: #fff;
   --uui-color-header-contrast: rgb(84 50 31 / 80%);
   --uui-color-header-contrast-emphasis: var(--crombolo-cocoa);
-  /* The active section's marker, dark so it stands out from the white submenu below. */
-  --crombolo-header-current: var(--crombolo-orange-text);
+  --crombolo-header-current: var(--crombolo-terracotta);
+  --crombolo-header-current-text: var(--crombolo-terracotta);
+  --crombolo-header-line: #efe3d6;
+
+  /* The sidebar is a white panel, like the cards, beside the cream page. */
+  --crombolo-section-sidebar-background: #fff;
+  /* Crombolo's own cards (the Overview, Settings) stand off the page; Umbraco's stay flat. */
+  --crombolo-card-shadow: 0 1px 2px rgb(84 50 31 / 6%), 0 10px 28px -18px rgb(84 50 31 / 30%);
 
   /* Pure white panels on a warm off-white page, so cards still separate. */
   --uui-color-background: var(--crombolo-cream);
@@ -79,9 +102,8 @@
 
   --uui-color-focus: var(--crombolo-orange-deep);
 
-  /* Hover text on an unfilled interactive element: the palette's light orange
-     would be 2:1 here, so it takes the text-weight orange instead. */
-  --uui-color-interactive-emphasis: var(--crombolo-orange-text);
+  /* Hover text and links: the accent itself, 5.0:1 on cream and 5.3:1 on white. */
+  --uui-color-interactive-emphasis: var(--crombolo-terracotta);
 
   --uui-color-border: #e7dcd2;
   --uui-color-border-standalone: #cdbcac;

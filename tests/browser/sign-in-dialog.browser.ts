@@ -85,7 +85,6 @@ test('no section of the backoffice names Umbraco', async ({ page, diagnostics })
     'Members',
     'Translation',
     'Forms',
-    'Workflows',
   ]) {
     // Not `goToSection`: Bundles has no sidebar for it to wait on.
     if (section === 'Settings')

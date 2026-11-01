@@ -230,8 +230,9 @@ Three consequences of how these are wired:
   under a hostname stores the key of the document that hostname roots, so
   changing the hostname leaves every redirect below it working.
 
-In the backoffice this is Umbraco's own **Redirect URL Management** dashboard in
-the Content section, plus the redirects listed on each page's Info tab. The
+In the backoffice this is Umbraco's own **Redirect URL Management** dashboard, the
+**Redirects** card in Settings (it was in the Content section until story 237),
+plus the redirects listed on each page's Info tab. The
 tracker's on/off switch there is read-only, matching Umbraco, which deprecated
 the endpoint in v17 and made it a no-op in favour of configuration.
 

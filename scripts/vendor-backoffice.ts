@@ -22,6 +22,13 @@ const OUT = join(ROOT, 'packages/backoffice-dist/dist')
 let PKG = ''
 let DIST = ''
 const UUI_THEMES = join(ROOT, 'node_modules/@umbraco-ui/uui/dist/themes')
+/**
+ * A production build, as Umbraco publishes: Bun otherwise resolves packages'
+ * `development` export condition, and Lit's development build logs warnings
+ * ("scheduled an update after an update completed") meant for its authors.
+ */
+const PRODUCTION = { 'process.env.NODE_ENV': '"production"' }
+const LATO_LICENCE = join(ROOT, 'packages/backoffice-dist/licenses/Lato-OFL.txt')
 // The fork's worktree (`bun run fork:checkout`), or an Umbraco checkout named by $UMBRACO_SRC.
 const CLIENT_SRC = Bun.env.UMBRACO_SRC
   ? join(Bun.env.UMBRACO_SRC, 'src/Umbraco.Web.UI.Client/src')
@@ -178,6 +185,7 @@ async function bundleMonaco(): Promise<boolean> {
       entrypoints: [entry],
       outdir: join(OUT, MONACO_WORKER_DIR),
       target: 'browser',
+      define: PRODUCTION,
       format: 'esm',
       minify: true,
       naming: `${name}.[ext]`,
@@ -220,6 +228,7 @@ async function bundleMonaco(): Promise<boolean> {
     entrypoints: [join(DIST, 'external/monaco-editor/index.js')],
     outdir: join(OUT, 'external/monaco-editor'),
     target: 'browser',
+    define: PRODUCTION,
     format: 'esm',
     minify: true,
     plugins: [viteSuffixes],
@@ -459,6 +468,7 @@ async function bundleBareDependencies(
       entrypoints: [...entries.keys()].map((name) => join(shimDir, `${name}.js`)),
       outdir: join(OUT, 'deps'),
       target: 'browser',
+      define: PRODUCTION,
       format: 'esm',
       minify: true,
       splitting: true,
@@ -591,6 +601,7 @@ async function bundleClient(
     outdir: staging,
     root: OUT,
     target: 'browser',
+    define: PRODUCTION,
     format: 'esm',
     splitting: true,
     minify: true,
@@ -661,6 +672,7 @@ async function main(): Promise<void> {
         entrypoints: [join(DIST, 'external', entry)],
         outdir: join(OUT, 'external', name),
         target: 'browser',
+        define: PRODUCTION,
         format: 'esm',
         minify: true,
       })
@@ -693,6 +705,9 @@ async function main(): Promise<void> {
   // The themes load the Lato web fonts from `../assets/fonts/`, which the UI
   // library ships beside them; without these every page logs font 404s.
   cpSync(join(UUI_THEMES, '../assets/fonts'), join(OUT, 'assets/fonts'), { recursive: true })
+  // The fonts are Lato, under the SIL OFL, which asks for its notice to travel
+  // with them; the UI library's package carries only its own MIT licence.
+  cpSync(LATO_LICENCE, join(OUT, 'assets/fonts/OFL.txt'))
 
   // 4. the handful of static files that exist only in the Umbraco source tree
   const missing: string[] = []
