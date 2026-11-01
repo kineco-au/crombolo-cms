@@ -22,7 +22,7 @@ export class UmbExtensionCollectionElement extends UmbCollectionDefaultElement {
 		this.observe(
 			umbExtensionsRegistry.extensions,
 			(extensions) => {
-				const types = [...new Set(extensions.map((x) => x.type))];
+				const types = [...new Set(extensions.map((x) => x.type))].filter((type) => type !== 'bundle');
 				const options = types.sort().map((x) => ({ name: fromCamelCase(x), value: x }));
 				this.#options = [{ name: 'All', value: '' }, ...options];
 			},

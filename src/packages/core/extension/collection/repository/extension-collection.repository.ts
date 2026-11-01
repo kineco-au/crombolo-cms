@@ -12,6 +12,8 @@ export class UmbExtensionCollectionRepository
 	async requestCollection(query: UmbExtensionCollectionFilterModel) {
 		let extensions: Array<UmbExtensionCollectionItemModel> = umbExtensionsRegistry
 			.getAllExtensions()
+			// A bundle only loads other manifests, which are listed in their own right.
+			.filter((manifest) => manifest.type !== 'bundle')
 			.map((manifest) => {
 				return {
 					unique: manifest.alias,
