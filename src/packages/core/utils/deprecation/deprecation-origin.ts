@@ -39,10 +39,15 @@ export function umbParseDeprecationOrigin(stack: string | undefined, selfUrl: st
 	const selfBase = selfUrl.replace(/[?#].*$/, '');
 	const frames = urls.filter((url) => url !== selfBase);
 
-	const coreKnown = selfUrl.includes(UMB_CORE_PATH_MARKER) || frames.some((url) => url.includes(UMB_CORE_PATH_MARKER));
+	// Crombolo: core is also wherever this module itself was served from, since a host
+	// may serve the backoffice somewhere other than `/umbraco/backoffice/`.
+	const coreRoot = /^(.*\/backoffice\/(?:[^/]+\/)?)(?:chunks|packages|apps|libs|external)\//.exec(selfBase)?.[1];
+	const isCore = (url: string) => url.includes(UMB_CORE_PATH_MARKER) || (!!coreRoot && url.startsWith(coreRoot));
+
+	const coreKnown = isCore(selfBase) || frames.some(isCore);
 	if (!coreKnown) return { type: 'unknown', label: 'unknown' };
 
-	const caller = frames.find((url) => !url.includes(UMB_CORE_PATH_MARKER));
+	const caller = frames.find((url) => !isCore(url));
 	if (!caller) return { type: 'core', label: 'Umbraco backoffice (core)' };
 
 	const appPlugin = caller.match(/\/App_Plugins\/([^/?#]+)/i);

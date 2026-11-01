@@ -57,6 +57,18 @@ describe('umbParseDeprecationOrigin', () => {
 		expect(origin.label).to.contain('my-rcl-assets/widget.js');
 	});
 
+	it('classifies as "core" under the folder the backoffice was served from, wherever that is (Crombolo)', () => {
+		const servedSelf = 'https://example.com/crombolo/backoffice/0de4f751/chunks/app.element-5vq8dfsv.js';
+		const stack = [
+			'Error',
+			'    at warn (https://example.com/crombolo/backoffice/0de4f751/chunks/app.element-5vq8dfsv.js:1:10)',
+			'    at setTreeAlias (https://example.com/crombolo/backoffice/0de4f751/chunks/app.element-fm9ejw35.js:191:12)',
+		].join('\n');
+		expect(umbParseDeprecationOrigin(stack, servedSelf).type).to.equal('core');
+		const fromPlugin = `${stack}\n    at onInit (https://example.com/crombolo/crombolo/tree.js:4:2)`;
+		expect(umbParseDeprecationOrigin(fromPlugin, servedSelf).type).to.equal('external');
+	});
+
 	it('returns "unknown" for a development build where core is not recognisable', () => {
 		const devSelf = 'http://localhost:5173/src/packages/core/utils/deprecation/deprecation.ts';
 		const stack = [
