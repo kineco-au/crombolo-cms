@@ -22,6 +22,8 @@ export class UmbBackofficeHeaderElement extends UmbLitElement {
 			#appHeader {
 				--uui-focus-outline-color: var(--uui-color-header-contrast-emphasis);
 				background-color: var(--umb-header-background-color, var(--uui-color-header-surface));
+				/* Crombolo: an inset line, so the header stays 60px tall. */
+				box-shadow: inset 0 -1px 0 var(--crombolo-header-line, transparent);
 				display: flex;
 				align-items: center;
 				justify-content: space-between;
