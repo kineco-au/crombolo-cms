@@ -13,8 +13,8 @@ import {
   migrate,
   readLedger,
   readState,
-  STATE_BUNDLE_SCHEMA_PICKS,
   STATE_CONTENT_APPLIED,
+  STATE_REMOTE_TRUST,
   seedIdentity,
 } from '@crombolo/data'
 import { summariseUpgrades, VERSION } from '@crombolo/server'
@@ -126,10 +126,13 @@ describe('upgrading from the previous release', () => {
       'DisableBundles',
       'AddSiteSettingsTypes',
       'AddBundleSchemaPicks',
+      'AddFormLibrary',
+      'MoveBundlesIntoSettings',
+      'AddRemoteTrust',
     ])
-    expect(await readState(db)).toBe(STATE_BUNDLE_SCHEMA_PICKS)
+    expect(await readState(db)).toBe(STATE_REMOTE_TRUST)
     const summary = summariseUpgrades(await readLedger(db), VERSION)
-    expect(summary.lastUpgrade).toMatchObject({ release: '0.41.1', steps: 9 })
+    expect(summary.lastUpgrade).toMatchObject({ release: '0.44.0', steps: 12 })
   })
 
   test('the Changes dashboard reports the version, the install and the last upgrade', async () => {

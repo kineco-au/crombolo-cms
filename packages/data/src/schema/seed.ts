@@ -159,7 +159,6 @@ export const BUILT_IN_GROUPS = [
     hasAccessToAllLanguages: true,
     sections: [
       'content',
-      'packages',
       'media',
       'members',
       'settings',

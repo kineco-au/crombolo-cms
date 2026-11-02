@@ -357,7 +357,7 @@ describe('every image a template redistributes', () => {
     // convention. Every site, not only the distributed ones: flipping
     // `distribute` should not be what reveals an unattributed photograph.
     for (const site of listSites()) {
-      const found = images(join(site.dir, 'seed', 'media'))
+      const found = images(join(site.dir, 'content', 'media'))
       if (found.length === 0) continue
       const credits = join(site.dir, 'CREDITS.md')
       expect([site.id, existsSync(credits)]).toEqual([site.id, true])

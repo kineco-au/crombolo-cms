@@ -94,9 +94,13 @@ export function extensionOf(bundle: BundlePackage): InstalledExtension | undefin
       version: bundle.version,
       allowPublicAccess: field.allowPublicAccess ?? false,
       allowTelemetry: field.allowTelemetry ?? false,
-      extensions: (field.extensions ?? []).map((extension) =>
-        rewriteAssets(extension, packageName),
-      ),
+      // Each extension names its bundle, so Settings can group a bundle's cards and link to it.
+      extensions: (field.extensions ?? []).map((extension) => {
+        const rewritten = rewriteAssets(extension, packageName)
+        return rewritten && typeof rewritten === 'object'
+          ? { ...rewritten, cromboloBundle: { name: bundle.name, packageName } }
+          : rewritten
+      }),
       importmap: rewriteImportmap(field.importmap, packageName),
     },
   }

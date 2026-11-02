@@ -279,13 +279,12 @@ Design documents, in reading order; planned work is in the stories:
 | [packaging-and-upgrades](docs/packaging-and-upgrades.md) | environments, the upgrade process, releasing to npm; what each release changed, and what to do on upgrading, in [release-notes](docs/release-notes.md) |
 | [schema-at-runtime](docs/schema-at-runtime.md) | the shared schema store, and importing at runtime |
 | [content-transfer](docs/content-transfer.md) | the bundle format, and moving content between environments; imports compare three ways against what was last applied |
-| [seeds](docs/seeds.md) | a site's starting content as files under `seed/`: the format, the shorthand per editor, and `crombolo seed` |
 | [configuration](docs/configuration.md) | every environment variable, and every script; the variable tables are generated from `packages/server/src/settings.ts` by `bun run docs:config` |
 | [operations](docs/operations.md) | media storage, redirects, git, security, members; running a cluster: a worker for the jobs, health during upgrades, pausing editing, the commands as functions; the backoffice's health checks and troubleshooting in [diagnostics](docs/diagnostics.md); [webhooks](docs/webhooks.md) |
 | [umbraco-import](docs/umbraco-import.md) | importing an existing Umbraco site: the report, what converts, and what is left |
 | [next-integration](docs/next-integration.md) | what `@crombolo/next-integration` offers a Next.js front end: reads, caching, preview, members, middleware, components and images |
 | [api](docs/api.md) | the supported API: the entry points of `@crombolo/crombolo`, the compatibility promise, and how a snapshot and an import boundary hold it |
-| [bundles](docs/bundles.md) | created bundles, extensions as npm dependencies instead of App_Plugins, and bundles with a server half |
+| [bundles](docs/bundles.md) | created bundles, extensions as npm dependencies instead of App_Plugins, bundles with a server half, and a site's [content files](docs/bundles.md#content-files) under `content/`: the format, the shorthand per editor, and `crombolo bundle apply` |
 | [forms](docs/forms.md) | form building in core: the TOML definition, entries, workflows, and the e-mail port; approval before publishing, as graphs of stages, in [workflows](docs/workflows.md) |
 | [audit-log](docs/audit-log.md) | who did what, when and from where: what writes an entry, the Info tab and the dashboard, retention |
 | [search](docs/search.md) | backoffice and site search: the indexes on both dialects, the queue that keeps them current, who sees a result |

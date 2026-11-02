@@ -65,6 +65,15 @@ describe('a user group file', () => {
     expect(said).toContain('"nowhere" is not a section')
     expect(said).toContain('"Umb.Document.Fly" is not a permission verb')
   })
+
+  test('a file naming the Packages section still loads, without it (story 238)', () => {
+    const parsed = parseUserGroup(
+      'old.toml',
+      `[user-group]\nalias = "old"\nname = "Old"\nsections = ["settings", "packages"]\n`,
+    )
+    expect(parsed.problems).toEqual([])
+    expect(parsed.value?.sections).toEqual(['settings'])
+  })
 })
 
 describe('a declared group', () => {

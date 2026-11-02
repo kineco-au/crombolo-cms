@@ -51,7 +51,7 @@ bundles/campaign-x/
 ├── people/                  members, users and their groups, always sealed
 ├── schema/, components/, …  the sections, when the bundle carries structure
 ├── code/                    a site's own code, when it carries some (bundles.md)
-└── resolutions.json         conflict decisions, once check has been run
+└── resolutions.json         conflict decisions, once `--dry-run --save` has been run
 ```
 
 `--name` and `--package-version` set the package's name and version; the name
@@ -168,7 +168,7 @@ layout it was built from. A file the site already has is not replaced without
 `--replace-files`, and what is replaced is copied aside so a revert can put it
 back — these files are editable in the backoffice, and a site need not be a git
 checkout ([`bundles.md`](bundles.md)). The manifest's `carries` declares every one, the
-integrity hash covers them, and `bundle install` applies them before the content
+integrity hash covers them, and `bundle apply` applies them before the content
 that needs them. A content-only bundle carries no `carries` key.
 
 Every bundle is written as `formatVersion` 5, whatever it carries: `bundle.json`
@@ -247,7 +247,7 @@ destination must satisfy is checked element by element instead.
 
 ## Naming a node
 
-`bundle export --root` and `content import --under` both take **either** a uuid
+`bundle export --root` and `bundle apply --under` both take **either** a uuid
 or a path by name, through one resolver, so the two cannot drift.
 
 ```
@@ -280,7 +280,7 @@ CLI is not a node asserting a deployment, and `exportBundle` sets its state from
 
 ## The dry run
 
-`content check` is read-only, and it runs **before every import** rather than
+`bundle apply --dry-run` is read-only, and the same check runs **before every import** rather than
 only when asked. Nothing is written until the conflicts have been named and
 answered, so a transfer is never a surprise.
 
@@ -326,10 +326,10 @@ properties:
 | `skip` | leave the node alone entirely — a whole node only |
 
 ```bash
-crombolo content check bundles/campaign-x --resolve 9a1f…=take-bundle
-crombolo content check bundles/campaign-x --resolve 9a1f…/title=keep-local
-crombolo content check bundles/campaign-x --resolve 9a1f…/heading@da-DK=keep-local
-crombolo content check bundles/campaign-x --resolve-all take-bundle --save
+crombolo bundle apply bundles/campaign-x --dry-run --resolve 9a1f…=take-bundle
+crombolo bundle apply bundles/campaign-x --dry-run --resolve 9a1f…/title=keep-local
+crombolo bundle apply bundles/campaign-x --dry-run --resolve 9a1f…/heading@da-DK=keep-local
+crombolo bundle apply bundles/campaign-x --dry-run --resolve-all take-bundle --save
 ```
 
 The most specific answer wins: a property in one culture, then the property, then
@@ -366,12 +366,12 @@ stable shape and the CLI and the dashboard offer the same advice. A `person`
 finding that suggests nothing is a dead end, and a test holds the two lists in
 step.
 
-`check` exits non-zero while anything is outstanding, so it drops straight into
-a pipeline.
+`bundle apply --dry-run` exits non-zero while anything is outstanding, so it
+drops straight into a pipeline.
 
 ## The import
 
-`content import` re-runs the check **inside the lock** and refuses while
+`bundle apply` re-runs the check **inside the lock** and refuses while
 anything is outstanding, so a decision made against a stale read cannot slip
 through. Then it writes, in one transaction.
 
@@ -405,7 +405,7 @@ Each run records, per node, what it applied (story 163): the bundle's values by
 property, culture and segment, its names, its parent, and its order (the
 bundle's, and the one the node had here afterwards). They live in
 `content_applied` (migration 049), written in the run's transaction, with the
-state each row replaced so that `content revert` puts it back too.
+state each row replaced so that `bundle revert` puts it back too.
 
 The next check compares each field three ways:
 
@@ -425,7 +425,8 @@ The next check compares each field three ways:
 - **No record:** without one (a node imported before 0.28.0), names are taken
   and place and order are left alone, as before.
 
-Pulls, pushes, `start --bundle` and seeds (`seeds.md`) all compare this way.
+Pulls, pushes, `start --bundle` and a site's content files
+([`bundles.md`](bundles.md#content-files)) all compare this way.
 
 ### Drafts, and what `--publish` means
 
@@ -439,7 +440,7 @@ draft here. Publishing runs last and parents first, because an unpublished
 ancestor makes a published descendant unreachable and the repository refuses it.
 A refusal is reported per node rather than failing the run.
 
-`content check --publish` says which pages would be refused, before anything is
+`bundle apply --dry-run --publish` says which pages would be refused, before anything is
 written. It does this by **rehearsing** the import — running it with `--publish`
 in a transaction that is always rolled back — so the rules, and their wording, are
 publish's own rather than a second copy that could drift: an unpublished
@@ -471,7 +472,7 @@ happens because it cannot be recovered afterwards: nothing distinguishes one
 run's `save` events from an editor's concurrent save in the same second, and
 once a node exists there is no way to tell that the import created it.
 
-`content runs` lists them, newest first. Every import ends by naming the command
+`bundle runs` lists them, newest first. Every import ends by naming the command
 that would put it back.
 
 `EventKind` is left alone — `'save'`, `'publish'`, `'rollback'`, `'migrate'`.
@@ -489,7 +490,7 @@ undone.
 
 ## The revert
 
-`content revert <run-id>` is the existing rollback path driven in bulk.
+`bundle revert <run-id>` is the existing rollback path driven in bulk.
 `DocumentRepository.rollback` already appends the values as of a given event
 under a *new* event — history is never rewritten — so putting a run back is:
 for each node it touched, roll back to the event it was at beforehand, then
@@ -624,22 +625,20 @@ crombolo bundle export --root <path|uuid> [--root …] --out <dir>
 
 crombolo bundle export … [--name <npm name>] [--package-version <version>]
 
-crombolo content check <pkg>          a package directory, or a bundle this site depends on
+crombolo bundle apply [<pkg>]         a package directory, a .tgz, a bundle this site depends on,
+                                      or `.` (the default) for this site's own content files
                         [--under <path|uuid>] [--resolve <key>[/<alias>[@<culture>]]=<choice>]
-                        [--resolve-all <choice>] [--allow-missing-blobs] [--save]
-                        [--publish]   say which pages publishing would refuse
+                        [--resolve-all <choice>] [--allow-missing-blobs]
                         [--exclude-people]  leave out the members and users it carries
-
-crombolo content import <pkg>
-                        [--publish] [--label <text>] [--backup-taken] + the check flags
+                        [--publish] [--label <text>] [--backup-taken]
                         [--no-schema] [--no-files]  decline a section the bundle carries
                         [--replace-files]           allow replacing files this site has
-crombolo content runs   [--limit N]
-crombolo content revert <run-id>
+                        [--dry-run [--save]]        the check alone; --save writes the answers
+                        [--remote <name> [--env <id>] [--structure]]  apply it on a remote
+crombolo bundle runs    [--limit N] [--remote <name> [--env <id>]]
+crombolo bundle revert <run-id>
                         [--resolve <key>=discard|skip] [--resolve-all <choice>]
-                        [--force] [--backup-taken]
-
-crombolo bundle install <pkg>     alias of `content import`
+                        [--force] [--backup-taken] [--remote <name> [--env <id>]]
 
 crombolo dictionary export --out <file.udt> [--key <uuid>]
 crombolo dictionary import <file.udt>
@@ -667,9 +666,9 @@ acts on; today's blockers are not the question for a date in the future.
 `start --bundle` applies a bundle before the site serves anything, which is how a
 container can bring its own content with it, and how a bare site becomes a whole
 site from `crombolo bundle build` (story 164): a bundle that carries schema and
-views is installed as `content import` installs it, and the server boots again
-to load them. A starter template's content is its seed, applied by `start
---seed` (`docs/seeds.md`). It imports **once per bundle** —
+views is installed as `bundle apply` installs it, and the server boots again
+to load them. A starter template's content is its content files, applied by
+`start --bundle .` ([`bundles.md`](bundles.md#content-files)). It imports **once per bundle** —
 an import run still standing here means this site has that content already, so a
 restart is a query and a line in the banner — and a refusal stops the boot rather
 than serving a site missing the content the command line asked for. The import
@@ -769,8 +768,8 @@ store (`StoredFile.stream()`, implemented by the file system, S3 and Azure store
 into the gzip, and the integrity hash is computed as files pass in the path order
 `bundleIntegrity` defines, so it matches what the reader recomputes. Only the small
 files are held. The file is written to `<out>.partial` and renamed once complete.
-`extractTarball` reads one back the same way, and `content check` / `content
-import` accept a `.tgz` too, unpacked under `.crombolo/transfer/incoming/`.
+`extractTarball` reads one back the same way, and `bundle apply` (with or
+without `--dry-run`) accepts a `.tgz` too, unpacked under `.crombolo/transfer/incoming/`.
 
 **`--anonymise`** runs `sanitise` (`packages/transfer/src/sanitise.ts`) over what
 was gathered, before anything is written: back-office users are removed (the
@@ -813,7 +812,7 @@ flag needs a passphrase, under `--anonymise` too.
   emptied, children first, and the file's rows go in, parents first and one
   row at a time. Owners, tables and columns this site does not have are skipped
   and listed; an owner that fails is rolled back and reported without undoing
-  the content. `content revert` does not bring site data back: the
+  the content. `bundle revert` does not bring site data back: the
   pre-import backup has it, and the command says so.
 - **`--exclude-people`** leaves site data behind too, so it needs no passphrase.
 - **A pull** carries site data, anonymised under the rules unless `--full`;
@@ -835,7 +834,7 @@ changes nothing without a mode:
 | `--replace` | recycled, so a revert brings them back | removed, kept for the revert | kept, unless the file carries them |
 | `--replace-all` | deleted | removed, kept for the revert | those the file lacks are deleted |
 
-`--exclude-people` (with `--replace`, or on `content check` and `content import`)
+`--exclude-people` (with `--replace`, or on `bundle apply`)
 leaves the file's members, users and their groups out entirely: this site's own
 are untouched, the check reports what was left out (`peopleExcluded`, by count),
 and a file whose content is open needs no passphrase for the people it leaves.
@@ -850,7 +849,7 @@ to a page the file does not carry goes with that page. A site that others are co
 onto should declare its hostnames in `domains.toml` for that reason
 (`tests/site-replace.test.ts` › "hostnames").
 
-**All or nothing.** Every import — a replace or an ordinary `content import` — now
+**All or nothing.** Every import — a replace or an ordinary `bundle apply` — now
 runs in three phases (`installBundleContent`):
 
 1. **Stage.** Each carried section is written into a copy under
@@ -869,7 +868,7 @@ for an alias it has, is that same type: the sync keeps the row's key and writes 
 into the file, as it already did for properties, so two sites whose types were
 created separately can replace one another.
 
-**Reverting** (`content revert <run>`) puts the content back as for any import —
+**Reverting** (`bundle revert <run>`) puts the content back as for any import —
 recycled nodes come out of the bin — then swaps the folders back, re-syncs the
 schema and restores the dictionary as the run found it (`revertSections`). What
 `--replace-all` deleted is not in a run; it is in the backup taken first.
@@ -896,14 +895,14 @@ bunx crombolo bundle export --root "/Campaigns" --include-content --with-media -
                                       # values and media bytes, sealed: the bundle is self-contained
 
 # where it is going: read-only, and non-zero while anything is outstanding
-bunx crombolo content check bundles/campaign-x
-bunx crombolo content check bundles/campaign-x --under "/Campaigns"
-bunx crombolo content check bundles/campaign-x --resolve-all take-bundle --save
+bunx crombolo bundle apply bundles/campaign-x --dry-run
+bunx crombolo bundle apply bundles/campaign-x --dry-run --under "/Campaigns"
+bunx crombolo bundle apply bundles/campaign-x --dry-run --resolve-all take-bundle --save
 
 # apply it: re-checks, backs up, then writes in one transaction
-bunx crombolo content import bundles/campaign-x
-bunx crombolo content import bundles/campaign-x --publish --label "autumn campaign"
-bunx crombolo content runs
+bunx crombolo bundle apply bundles/campaign-x
+bunx crombolo bundle apply bundles/campaign-x --publish --label "autumn campaign"
+bunx crombolo bundle runs
 
 # going live, separately from landing the content
 bunx crombolo content publish "/Campaigns/Autumn 2026" --descendants
@@ -923,7 +922,7 @@ where they are. Members and users travel only with `--with-members` or
 `--with-users`, sealed; nothing true of exactly one environment travels at all:
 domains, tokens, sessions, external logins.
 
-`check` is the dry run, and it runs before every import too: nothing is written
+`--dry-run` is the check alone, and the check runs before every import too: nothing is written
 until the conflicts have been named and answered. It sorts each one into
 **blocking** (the destination cannot honour the bundle — deploy `schema/`, or
 re-root it), **needs a person** (importable once somebody picks `take-bundle`,
@@ -933,7 +932,7 @@ key and property, so a decision made once promotes with it rather than being wor
 in every environment. Findings land in the **Changes** dashboard under the
 bundle's own scope, so two bundles in flight do not resolve each other's.
 
-`import` re-runs the check inside the content-tree lock, backs up as `upgrade`
+`bundle apply` re-runs the check inside the content-tree lock, backs up as `upgrade`
 does, and then writes in **one transaction** — so a failure anywhere leaves
 nothing behind. Documents and elements arrive as **drafts** for a person to
 publish; media is live as soon as it lands. `--publish` publishes what the
@@ -942,7 +941,7 @@ bundle says was live at the source, parents first. Values are applied as an
 the same bundle twice writes nothing the second time.
 
 Each run is recorded with, per node, the event it was at and the event it was
-serving, so `content revert <run-id>` can put the site back: values restored,
+serving, so `bundle revert <run-id>` can put the site back: values restored,
 the published state restored (a page that was live goes live again with the old
 values; one that was a draft stays a draft), and nodes the run created
 unpublished and moved to the recycle bin rather than deleted. It refuses to
@@ -950,9 +949,9 @@ discard an edit somebody made since, or to undo a run a later one built on,
 until told to. The revert is itself a run, so it can be reverted in turn.
 
 ```bash
-bunx crombolo content runs
-bunx crombolo content revert 5192ca80-…
-bunx crombolo content revert 5192ca80-… --resolve-all discard   # over later edits
+bunx crombolo bundle runs
+bunx crombolo bundle revert 5192ca80-…
+bunx crombolo bundle revert 5192ca80-… --resolve-all discard   # over later edits
 
 # the dictionary stays in the database, so it moves on its own
 bunx crombolo dictionary export --out dictionary.udt

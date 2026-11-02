@@ -41,7 +41,7 @@ import { createMediaPort } from '../adapters/media.ts'
 import { type CromboloConfig, VERSION } from '../config.ts'
 import { blockKey, pickKey, SEED_NAMESPACE, seedKey, uuidV5 } from './keys.ts'
 import { lineOf } from './lines.ts'
-import { readSeed, type SeedFinding, type SeedItem } from './read.ts'
+import { kindDir, readSeed, type SeedFinding, type SeedItem } from './read.ts'
 
 export interface SeedBuild {
   findings: SeedFinding[]
@@ -89,7 +89,7 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
 
   const find = (item: SeedItem, path: readonly string[], code: string, message: string) =>
     findings.push({
-      file: item.file ?? `seed/${item.kind}/${item.path}`,
+      file: item.file ?? `${kindDir(item.kind)}/${item.path}`,
       line: item.text ? lineOf(item.text, path) : 1,
       code,
       message,
@@ -354,7 +354,7 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
         const key = await contentKey(raw, why)
         return key
           ? { ok: true, value: `umb://document/${key.replaceAll('-', '')}` }
-          : fail(`"${raw}" is not a page in the seed or on the site`)
+          : fail(`"${raw}" is not a page in the content files or on the site`)
       }
       case 'Umbraco.MediaPicker3': {
         if (isRecord(raw) || (Array.isArray(raw) && raw.some(isRecord)))
@@ -363,7 +363,7 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
         for (const ref of list(raw)) {
           if (typeof ref !== 'string') return fail('a media picker takes media paths')
           const media = await mediaRef(ref, why)
-          if (!media) return fail(`"${ref}" is not media in the seed or on the site`)
+          if (!media) return fail(`"${ref}" is not media in the content files or on the site`)
           picks.push({
             key: pickKey(media.key),
             mediaKey: media.key,
@@ -379,7 +379,8 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
         for (const ref of list(raw)) {
           if (typeof ref !== 'string') return fail('an element picker takes Library paths')
           const key = await libraryKey(ref, why)
-          if (!key) return fail(`"${ref}" is not a Library element in the seed or on the site`)
+          if (!key)
+            return fail(`"${ref}" is not a Library element in the content files or on the site`)
           keys.push(key)
         }
         return { ok: true, value: keys }
@@ -390,7 +391,7 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
           const link = typeof entry === 'string' ? { path: entry } : entry
           if (!isRecord(link))
             return fail('a link is a path, a URL, or { path | url, name, target }')
-          // A link as the editor stores it, as `seed export` writes one.
+          // A link as the editor stores it, as `bundle export --source` writes one.
           if ('unique' in link || 'type' in link) {
             links.push(link)
             continue
@@ -415,7 +416,8 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
           if (!path) return fail('a link needs a path or a url')
           const media = mediaByPath.get(trimPath(path))
           const key = media ? keyOf.get(media) : await contentKey(path, why)
-          if (!key) return fail(`"${path}" is not a page or media in the seed or on the site`)
+          if (!key)
+            return fail(`"${path}" is not a page or media in the content files or on the site`)
           links.push({
             unique: key,
             type: media ? 'media' : 'document',
@@ -519,7 +521,7 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
           item,
           ['type'],
           'element-as-page',
-          `"${type.alias}" is an element type: put it in seed/library`,
+          `"${type.alias}" is an element type: put it in content/library`,
         )
         continue
       }
@@ -708,8 +710,8 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
 
   if (findings.length > 0) return { findings, blobs, counts }
 
-  // The seed's identity is its content: a changed seed is a new bundle, which
-  // `start --seed` applies and the three-way import takes as a newer one.
+  // Its identity is its content: changed files are a new bundle, which
+  // `start --bundle .` applies and the three-way import takes as a newer one.
   const identity = createHash('sha256')
   for (const item of tree.items) {
     identity.update(`${item.kind}\0${item.path}\0${item.text}\0`)
@@ -722,9 +724,9 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
     manifest: {
       formatVersion: BUNDLE_FORMAT_VERSION,
       id,
-      label: 'Seed',
+      label: 'Content files',
       createdAt: new Date(0).toISOString(),
-      createdBy: 'crombolo seed',
+      createdBy: 'crombolo bundle apply',
       integrity: '',
       snapshot: 'drafts',
       provenance: {
@@ -737,7 +739,7 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
       selector: {
         roots: bundleNodes.filter((n) => n.parent === null).map((n) => n.key),
         descendants: true,
-        asGiven: ['seed/'],
+        asGiven: ['content/'],
       },
       counts: tally,
       dependencies: {
@@ -758,8 +760,8 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
     name: 'crombolo-site-seed',
     version: '0.0.0',
     id: 'site-seed',
-    label: 'Seed',
-    description: `The seed of ${config.siteName}, built by crombolo seed build`,
+    label: 'Content files',
+    description: `The content files of ${config.siteName}, built by crombolo bundle build`,
     private: true,
     peerRange: `>=${VERSION}`,
   })

@@ -45,6 +45,8 @@ export interface WorkflowContext {
   form: SchemaForm
   values: readonly FormValueToStore[]
   entryId: string | null
+  /** In place of a send-e-mail workflow's `to`: a Library form's recipients (story 239). */
+  recipients?: readonly string[]
   /** Which attempt this is, from 1. */
   attempt?: number
   /** When the run was queued; now when absent. */
@@ -232,7 +234,10 @@ async function sendEmail(
   // asks for them: an inbox is not covered by the sensitive-data permission.
   const leftOut = leftOutFields(context.form, workflow)
   const values = withoutLeftOut(context.values, leftOut)
-  const to = asList(substitute(asString(settings.to) ?? '', values))
+  const to =
+    context.recipients && context.recipients.length > 0
+      ? [...context.recipients]
+      : asList(substitute(asString(settings.to) ?? '', values))
   if (to.length === 0) return { ok: false, retry: false, error: 'The workflow has no recipient.' }
   const subject = substitute(asString(settings.subject) ?? context.form.name, values).trim()
 
@@ -589,6 +594,7 @@ export function createWorkflowRunner(
       form,
       values: run.payload,
       entryId: run.entryId,
+      ...(run.recipients ? { recipients: run.recipients } : {}),
       attempt: run.attempts,
       submittedAt: run.createDate,
     }

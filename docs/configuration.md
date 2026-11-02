@@ -214,11 +214,12 @@ rather than the running server. Secret ones are never printed or logged.
 
 | Setting | Takes | Default | Description |
 | --- | --- | --- | --- |
-| `CROMBOLO_REMOTE_ENABLED` | `true` / `false` | `false` | Lets `crombolo pull` and `crombolo push` reach this site. |
+| `CROMBOLO_REMOTE_ACCESS` | string | `off` | What `crombolo` may do to this site from elsewhere: `off`, `read` (pull), `content` (apply bundles of content) or `all` (whole-site pushes, and bundles that change content types, views or code). Who may do it is still up to their permissions. |
 | `CROMBOLO_REMOTE_ENVIRONMENT` | string | `production` | The name this site goes by for pull and push: lower case letters, digits and dashes. |
 | `CROMBOLO_REMOTE_PROTECTED` | `true` / `false` | `true` | A push here needs the protected-push permission. |
 | `CROMBOLO_REMOTE_APPROVALS` | `true` / `false` | `false` | A push to a protected site waits for someone else to approve it. Needs `CROMBOLO_SECRET_KEY`. |
 | `CROMBOLO_REMOTE_MAX_UPLOAD_GB` | number | `50` | The largest push or media file a client may upload, in gigabytes. Every other request keeps the usual body limit. |
+| `CROMBOLO_REMOTE_OIDC_ISSUERS` | string | `` | A self-managed GitLab's address, or several separated by commas, whose CI jobs may sign in beside GitHub Actions and gitlab.com. Each job still needs a trust rule in Settings. |
 
 ### Logging
 
@@ -277,8 +278,9 @@ is staged into `@crombolo/cli`'s `templates/` only while the CLI is packed
 beside them; the media types `init` writes for itself are left out. Only
 `templates/basic` is committed in the CLI.
 
-A site's content is its seed (`seed/`, `docs/seeds.md`), edited as files and
-applied by `crombolo start --seed`. Only the product site keeps a built bundle,
+A site's content is its content files (`content/`,
+[`bundles.md`](bundles.md#content-files)), edited as files and applied by
+`crombolo start --bundle .`. Only the product site keeps a built bundle,
 which `bun run build:template` regenerates (story 164).
 
 ## The demo command and the database it may touch
@@ -498,9 +500,9 @@ when a link can actually be delivered.
 | `bun run start:local:watch`                           | as above, reloading on change                                                                                                                                 |
 | `bun run dev`                                         | `apps/site/server.ts` under `bun --watch`, with no password handling                                                                                          |
 | `bun run site <id>`                                   | **a site, running**: a copy of a site in `sites/`, or a CLI template scaffolded, in `.scaffolds/`. `--docker` in the compose stack, `--fresh` to copy or scaffold again, `--in-place` to run a site in `sites/` itself, `--reuse` to accept a scaffold whose database holds content, `--dry-run` to say what it would do. Runs the working tree, not the published packages |
-| `bunx crombolo <cmd>`                                 | the CLI: `start [--bundle <dir>] [--from <file>]`, `export --site`, `import <file> [--replace\|--replace-all]`, `init [--name\|--postgres\|--template]`, `status`, `admin reset-password`, `types check\|sync\|export\|rewrite\|purge\|new\|add-property`, `generate`, `components check\|list\|new`, `assets list\|new`, `content check\|import\|runs\|revert\|publish\|unpublish\|move\|copy\|sort\|delete`, `seed check\|apply\|export`, `audit list\|stream`, `domains [set\|clear\|apply\|undo]`, `dictionary export\|import`, `upgrade [check [--fix]\|--plan\|ledger]`, `remote add\|list\|remove\|job`, `login\|logout\|whoami`, `pull`, `push`, `media fetch\|import\|export\|move\|delete`, `maintenance pause\|resume\|status`, `bundle export\|build\|purge`, `users list\|unlock\|enable\|disable\|reset-password\|reset-2fa\|invite`, `api-client rotate`, `index list\|rebuild`, `cache rebuild`, `health`, `recycle-bin empty`, `schema` (this CLI described for machines); every command takes `-o json` |
+| `bunx crombolo <cmd>`                                 | the CLI: `start [--bundle <dir>] [--from <file>]`, `export --site`, `import <file> [--replace\|--replace-all]`, `init [--name\|--postgres\|--template]`, `status`, `admin reset-password`, `types check\|sync\|export\|rewrite\|purge\|new\|add-property`, `generate`, `components check\|list\|new`, `assets list\|new`, `content publish\|unpublish\|move\|copy\|sort\|delete`, `audit list\|stream`, `domains [set\|clear\|apply\|undo]`, `dictionary export\|import`, `upgrade [check [--fix]\|--plan\|ledger]`, `remote add\|list\|remove\|job`, `login\|logout\|whoami`, `pull`, `push`, `media fetch\|import\|export\|move\|delete`, `maintenance pause\|resume\|status`, `bundle apply\|runs\|revert\|export\|build\|check-code\|install-code\|purge`, `users list\|unlock\|enable\|disable\|reset-password\|reset-2fa\|invite`, `api-client rotate`, `index list\|rebuild`, `cache rebuild`, `health`, `recycle-bin empty`, `schema` (this CLI described for machines); every command takes `-o json` |
 | `bun add -g @crombolo/cli`                            | the same CLI without a site: `init` somewhere new, or run commands against a site this machine does not serve                                                  |
-| `bun run build:template`                              | regenerate the product site's generated docs seed and its bundle (`scripts/build-template.ts`); the other sites and templates are their seeds          |
+| `bun run build:template`                              | regenerate the product site's generated docs pages and its bundle (`scripts/build-template.ts`); the other sites and templates are their content files |
 | `bun run generate:types`                              | regenerate contract types from `contracts/OpenApi.json`                                                                                                       |
 | `bun run docs:config`                                 | regenerate the environment variable tables in this page from the settings list (`packages/server/src/settings.ts`) |
 | `bun run coverage:api`                                | implemented vs. total API operations → `docs/api-coverage.md`                                                                                                 |

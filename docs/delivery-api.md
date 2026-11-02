@@ -560,7 +560,7 @@ offers, by entry point, is listed in [`next-integration.md`](next-integration.md
 
 ```
 my-site/
-  crombolo.config.ts  server.ts  schema/  components/  seed/   the CMS
+  crombolo.config.ts  server.ts  schema/  components/  content/ the CMS
   schema/webhooks/next-revalidate.toml                          clears the app's cache
   web/                                                          the Next.js app
     lib/crombolo.ts      createCrombolo({ url, apiKey, cache: cache16 })

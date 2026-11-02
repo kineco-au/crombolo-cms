@@ -61,6 +61,8 @@
   --crombolo-header-line: #3b2e25;
   --crombolo-section-sidebar-background: var(--crombolo-night-surface);
   --crombolo-card-shadow: none;
+  --crombolo-card-header-background: #4a2a1a;
+  --crombolo-card-header-text: #ffffff;
   --crombolo-terracotta-tint: var(--crombolo-night-alt);
 
   /* The SEO view's search-result preview, in Google's dark-mode link blue. */

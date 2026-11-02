@@ -1,8 +1,8 @@
 /**
  * The Marketplace view, in place of Umbraco's.
  *
- * Its manifest declares `overwrites: ['Umb.SectionView.Packages.Marketplace']`.
- * What it replaces is an iframe of marketplace.umbraco.com, which cannot work
+ * A tab of the Bundles tool in Settings (story 238), where Umbraco's Packages
+ * section had its Marketplace. What it replaces is an iframe of marketplace.umbraco.com, which cannot work
  * here twice over: npm refuses to be framed (`x-frame-options: SAMEORIGIN`), and
  * an Umbraco package does not install into this CMS anyway.
  *

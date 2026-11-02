@@ -1,8 +1,7 @@
 /**
  * The Installed view, in place of Umbraco's.
  *
- * Its manifest declares `overwrites: ['Umb.SectionView.Packages.Installed']`.
- * Umbraco's view is built around package migrations — it lists installed
+ * A tab of the Bundles tool in Settings (story 238). Umbraco's view is built around package migrations — it lists installed
  * packages so that pending C# migrations can be run. Nothing carries those here
  * (`docs/bundles.md`), so the view would be a list of nothing with a button
  * that cannot apply.
@@ -58,7 +57,8 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
     this._notice = ''
     this._installs = true
     this._filter = ''
-    this._selected = ''
+    // Settings links a bundle's cards here, naming it in `?bundle=`.
+    this._selected = new URLSearchParams(window.location.search).get('bundle') ?? ''
   }
 
   connectedCallback() {

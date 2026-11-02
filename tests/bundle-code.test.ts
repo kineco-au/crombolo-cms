@@ -152,7 +152,9 @@ describe('which files are the code', () => {
     expect(paths).not.toContain('src/.env')
     expect(paths).not.toContain('crombolo.sqlite')
     expect(paths.some((path) => path.includes('node_modules'))).toBe(false)
-    expect(paths.some((path) => path.startsWith('schema/') || path.startsWith('seed/'))).toBe(false)
+    expect(paths.some((path) => path.startsWith('schema/') || path.startsWith('content/'))).toBe(
+      false,
+    )
   })
 
   test('a pattern that matches nothing, or reaches out of the site, is said', () => {

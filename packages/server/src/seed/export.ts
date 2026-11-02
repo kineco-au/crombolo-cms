@@ -1,9 +1,10 @@
 /**
- * Content already in a site, written out as seed files (stories 163, 164), so
- * an existing site can move to seeds. Pages go to `seed/content/`, Library
- * elements to `seed/library/`, and media, files and all, to `seed/media/`.
+ * Content already in a site, written out as content files (stories 163, 164,
+ * 167), so an existing site can keep its content as files. Pages go to
+ * `content/pages/`, Library elements to `content/library/`, and media, files and
+ * all, to `content/media/`.
  *
- * Values are written in the shorthand `seed apply` reads back — rich text as
+ * Values are written in the shorthand `bundle apply` reads back — rich text as
  * `{ html }`, pickers and links as paths to what the export carries, blocks as
  * `{ type, key, values }` — and in their editor's stored shape where there is
  * none. A node keeps its key in its file wherever it is not the one its path
@@ -23,6 +24,7 @@ import {
 } from '@crombolo/data'
 import type { MediaFileStore } from '../media-files.ts'
 import { pickKey, seedKey } from './keys.ts'
+import { CONTENT_FILES_DIR, KIND_DIRS, kindDir, type SeedKind } from './read.ts'
 
 /** A URL segment from a name: `About us` → `about-us`. */
 export const segmentOf = (name: string) =>
@@ -323,18 +325,23 @@ export async function exportSeed(
 
   // --------------------------------------------------------- the files
   const written: string[] = []
-  const seedRoot = resolve(siteDir, 'seed')
+  const seedRoot = resolve(siteDir, CONTENT_FILES_DIR)
+  // `<kind>/<path>` to its file: pages under `content/pages`, and so on.
+  const placed = (relative: string) => {
+    const [kind, ...rest] = relative.split('/')
+    return `${KIND_DIRS[kind as SeedKind] ?? kind}/${rest.join('/')}`
+  }
   const under = (relative: string) => {
-    const file = resolve(seedRoot, relative)
+    const file = resolve(seedRoot, placed(relative))
     if (!file.startsWith(seedRoot + sep))
-      throw new Error(`Refusing to write ${relative} outside the seed directory.`)
+      throw new Error(`Refusing to write ${relative} outside the content files.`)
     return file
   }
   const write = (relative: string, text: string) => {
     const file = under(relative)
     mkdirSync(join(file, '..'), { recursive: true })
     writeFileSync(file, text)
-    written.push(`seed/${relative}`)
+    written.push(`${CONTENT_FILES_DIR}/${placed(relative)}`)
   }
   const valueLines = async (
     values: ReadonlyArray<{
@@ -386,7 +393,7 @@ export async function exportSeed(
         const file = under(`media/${path}`)
         mkdirSync(join(file, '..'), { recursive: true })
         writeFileSync(file, await stored.bytes())
-        written.push(`seed/media/${path}`)
+        written.push(`${kindDir('media')}/${path}`)
       }
       // A sidecar only for what the file cannot say.
       if (normaliseUuid(node.key) !== derived) lines.push(`key = ${JSON.stringify(node.key)}`)

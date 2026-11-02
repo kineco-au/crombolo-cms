@@ -575,6 +575,21 @@ export interface SchemaForm {
   since?: string
   pages: SchemaFormPage[]
   workflows: SchemaFormWorkflow[]
+  /**
+   * Set when the form is shown through a Library form (story 239): which one,
+   * and the editor's words that have no TOML counterpart. Never in a file.
+   */
+  library?: LibraryFormWords
+}
+
+/** A Library form's own words, laid over its form's. */
+export interface LibraryFormWords {
+  key: string
+  heading?: string
+  /** Rich text, as HTML. */
+  introduction?: string
+  /** Replaces the `to` of the form's send-e-mail workflows. */
+  recipients?: string[]
 }
 
 /** Every field in a form, in the order a visitor meets them. */

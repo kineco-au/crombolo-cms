@@ -22,6 +22,15 @@ import type { ManagementApiRouter, RequestContext } from '../router.ts'
 type DocumentTypeResponse = ResponseOf<'GetDocumentTypeById'>
 
 /** Umbraco returns 201 with an empty body, `Location`, and the new id. */
+/** A type made from a form (story 239) changes with the form, never on its own. */
+const madeFromForm = (name: string) =>
+  problemDetails({
+    title: 'This content type is made from a form',
+    status: 400,
+    detail: `Change the ${name} form in Forms, and this type follows it.`,
+    operationStatus: 'NotAllowed',
+  })
+
 export function created(location: string, id: string): Response {
   return new Response(null, {
     status: 201,
@@ -458,6 +467,7 @@ export function registerContentTypeHandlers(
     if (!existing) {
       return problemResponse(notFound(`The ${noun} could not be found`))
     }
+    if (existing.formKey) return problemResponse(madeFromForm(existing.name))
     const body = (await ctx.request.json()) as Record<string, unknown>
     if (kind !== 'member' && isSystemContentType(kind, key) && body.alias !== existing.alias)
       return problemResponse(
@@ -502,6 +512,8 @@ export function registerContentTypeHandlers(
   })
 
   handle(`Delete${T}ById`, async (ctx) => {
+    const made = kind === 'document' ? await port.byKey(ctx.params.id as string) : undefined
+    if (made?.formKey) return problemResponse(madeFromForm(made.name))
     if (kind === 'document' && isSystemContentType('document', ctx.params.id as string))
       return problemResponse(
         problemDetails({

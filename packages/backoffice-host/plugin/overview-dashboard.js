@@ -93,7 +93,7 @@ export default class CromboloOverviewDashboardElement extends UmbLitElement {
     return html`
       <header>
         <h1>Overview</h1>
-        <p>${name ? `Welcome back, ${name}. ` : ''}Here’s what’s happening with your content.</p>
+        <p>${name ? `Welcome back, ${name}. ` : ''}Here’s what’s happening in Crombolo.</p>
       </header>
       ${this._error ? html`<uui-box><p class="error">${this._error}</p></uui-box>` : nothing}
       <div class="grid">
@@ -102,7 +102,7 @@ export default class CromboloOverviewDashboardElement extends UmbLitElement {
           <button class="new" type="button" @click=${() => this.#newPage()}>
             <span>
               <strong>New content</strong>
-              <small>Start a page from any of the site’s page types</small>
+              <small>Create a new page</small>
             </span>
             <uui-icon name="icon-add"></uui-icon>
           </button>
@@ -176,7 +176,7 @@ export default class CromboloOverviewDashboardElement extends UmbLitElement {
   #emptyText() {
     if (this._list === 'drafts') return 'No drafts: every page you can see is published.'
     if (this._list === 'published') return 'Nothing is published yet.'
-    return 'No pages yet. Start one with New content.'
+    return 'No pages created yet'
   }
 
   #renderStats() {
@@ -212,7 +212,7 @@ export default class CromboloOverviewDashboardElement extends UmbLitElement {
         !activity
           ? html`<uui-loader></uui-loader>`
           : activity.length === 0
-            ? html`<p class="empty">Nothing has happened to your pages yet.</p>`
+            ? html`<p class="empty">No recent activity</p>`
             : html`<ul class="feed">
                 ${activity.map(
                   (a) => html`<li>

@@ -173,9 +173,9 @@ describe('a demo site in three commands', () => {
   test('a seed with a problem is refused, naming it, and nothing is written', async () => {
     mkdirSync(join(dir, 'broken', 'schema'), { recursive: true })
     await Bun.write(join(dir, 'broken', 'schema', 'schema.toml'), '[schema]\nversion = "1.0.0"\n')
-    await Bun.write(join(dir, 'broken', 'seed', 'content', 'home.toml'), 'type = "nothing"\n')
+    await Bun.write(join(dir, 'broken', 'content', 'pages', 'home.toml'), 'type = "nothing"\n')
     const built = await cli('broken', 'bundle', 'build', '--out', './out')
     expect(built.code).not.toBe(0)
-    expect(built.out).toContain('seed/content/home.toml:1')
+    expect(built.out).toContain('content/pages/home.toml:1')
   }, 120_000)
 })

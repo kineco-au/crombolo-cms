@@ -85,6 +85,63 @@ In the reference server, the person approves at `<backoffice>/device`. Each
 sign-in becomes a session listed under **Signed-in devices** in their profile,
 where they can sign it out.
 
+### Signing in from CI (`ci-sign-in`, optional)
+
+A CI job has no person to approve a device code. A remote that offers this
+(story 160) takes the job's OIDC identity token, which its CI provider signs,
+and exchanges it for a short-lived token by OAuth 2.0 token exchange
+([RFC 8693]). No secret is set up or stored anywhere. Discovery adds:
+
+```json
+"auth": {
+  "ci": {
+    "tokenExchange": "https://example.com/umbraco/remote/v1/token",
+    "grantType": "urn:ietf:params:oauth:grant-type:token-exchange",
+    "subjectTokenType": "urn:ietf:params:oauth:token-type:jwt",
+    "audience": "https://example.com",
+    "issuers": ["https://token.actions.githubusercontent.com", "https://gitlab.com"]
+  }
+}
+```
+
+1. **The identity token.** The job asks its provider for one with `aud` set to
+   `auth.ci.audience`.
+   - **GitHub Actions:** the job has `permissions: id-token: write`.
+   - **GitLab:** the job declares it in `id_tokens`.
+2. **The exchange.** `POST <auth.ci.tokenExchange>`, form-encoded, with
+   `grant_type`, `subject_token` (the identity token) and `subject_token_type`.
+3. **The remote verifies the token:**
+   - its signature, against the keys at its issuer's OIDC discovery;
+   - `iss`, which must be one of `auth.ci.issuers`;
+   - `aud`, which must be the audience;
+   - `exp`, `nbf` and `iat`, and a lifetime of an hour at most;
+   - `jti`, accepted once.
+4. **The rule.** The token must then match a **trust rule** that an
+   administrator made on the remote: its issuer, its repository (`repository`
+   on GitHub, `project_path` on GitLab), and its branch, tag or environment,
+   exactly and with no wildcards.
+5. **The answer.** Accepted: `access_token`, `issued_token_type`,
+   `token_type: Bearer` and `expires_in`, at most 15 minutes, with no refresh
+   token; the job exchanges again. Refused, for any reason: 400 with `error:
+   invalid_grant` and nothing that says why. Too many refusals: 429. Over
+   plain HTTP: 400.
+
+**What the token may do.** It acts as the rule, not a person: it holds the
+rule's remote permissions and nothing more, and it is accepted on these routes
+only. It never approves a push (403 `ci-cannot-approve`). `GET me` says who a
+token acts as: `{ name, kind: "person" | "ci", permissions }`, and for CI the
+rule and the run it came from.
+
+**Disabling or deleting a rule** ends its tokens at once. **Every exchange is
+audited,** accepted or refused, and so is everything a CI token does, with the
+repository, ref and run it came from.
+
+**Trust rules** are managed by an administrator, never by CI, at `GET|POST
+trust` and `PUT|DELETE trust/{key}` and `POST trust/{key}/disable|enable`.
+The reference server's Settings screen is **CI access**.
+
+[RFC 8693]: https://www.rfc-editor.org/rfc/rfc8693
+
 ## Environments
 
 `GET <api>/environments` lists the environments, each with what this person
@@ -92,10 +149,14 @@ may do:
 
 ```json
 [{ "id": "production", "name": "production", "protected": true,
-   "may": { "pull": true, "pullFull": false, "push": true, "audit": false } }]
+   "access": "all",
+   "may": { "pull": true, "pullFull": false, "push": true, "apply": true,
+            "applyStructure": true, "audit": false } }]
 ```
 
-`audit` is there when the remote offers the capability.
+`audit` is there when the remote offers the capability. `access` is the site's
+`CROMBOLO_REMOTE_ACCESS`, and every `may` is already bounded by it: `apply` needs
+`content`, and `push` and `applyStructure` need `all`.
 
 `push` is already false where the environment is protected and the person
 lacks the permission for that.
@@ -114,7 +175,7 @@ Pulls and pushes are **jobs**. Starting one answers `202` with the job.
 | `download` | a finished pull: `url`, `expiresAt`, `size`, `sha256` |
 | `approvalUrl`, `approvalExpiresAt` | while `approval-required` |
 | `problem` | a failed or refused job: `code`, `title`, `detail`, `items` |
-| `runId` | a finished push: the import's run, which `content revert` undoes |
+| `runId` | a finished push: the import's run, which `bundle revert` undoes |
 
 A job is visible to the person who started it. On a remote with approvals,
 it's also visible to whoever may approve it. Anyone else gets 404.
@@ -185,6 +246,28 @@ the push would do here:
 `removesFiles` is named by section, never by the remote's own paths. It needs
 the same permissions as the push. A client without it can only describe what
 it is sending.
+
+## Applying a bundle (`bundle-apply`, optional)
+
+`PUT <api>/environments/{id}/bundles` applies a bundle to the environment, as
+`crombolo bundle apply` does on its own machine (story 167):
+- **Body:** the bundle as an npm tarball (`application/gzip`).
+- **`Crombolo-Sha256`:** its SHA-256, in hex (400 `hash-mismatch` when it differs).
+- **`Crombolo-Options`:** JSON, every field optional: `dryRun`, `publish`,
+  `label`, `resolutions` and `resolveAll`.
+
+A bundle of content alone needs the `content` level and the push permission. One
+that carries content types, views, styles or code needs the `all` level (403
+`access-level`) and `Crombolo.Remote.ApplyStructure` (403 `forbidden-structure`).
+
+The answer carries `dryRun`, `structural`, `bundle`, `counts` (`create`,
+`update`, `unchanged`, `skip`), `findings` and `outstanding`. A dry run writes
+nothing and adds `clean`. An apply adds `runId` and `published`. An apply with
+findings outstanding is refused with 409 and the same body, with no `runId`.
+
+`GET <api>/environments/{id}/runs?limit=&offset=` lists the applies, newest
+first. `POST <api>/environments/{id}/runs/{run}/revert` with `{ "force": true }`
+undoes one; a run that replaced files needs what a structural apply needs.
 
 ## Approvals (optional)
 
@@ -285,7 +368,8 @@ read ([`search.md`](search.md), "Finding content by its properties").
 | --- | --- | --- |
 | 400 | `passphrase-required`, `hash-required`, `hash-mismatch`, `body-required`, `bad-key`, `too-many`, `bad-query` | the request is wrong |
 | 401 | `sign-in-required` | no token, or a lapsed one |
-| 403 | `forbidden`, `forbidden-protected`, `own-push` | the person may not |
+| 403 | `forbidden`, `forbidden-protected`, `forbidden-structure`, `own-push` | the person may not |
+| 403 | `access-level` | the site does not take that, at its `CROMBOLO_REMOTE_ACCESS` |
 | 404 | `not-found`, `no-such-environment`, `not-enabled` | |
 | 409 | `not-waiting`, `approval-expired` | the job is not in a state for that |
 | 410 | `gone` | the download has expired |
@@ -298,11 +382,25 @@ Off by default:
 
 | Setting | |
 | --- | --- |
-| `remote.enabled` / `CROMBOLO_REMOTE_ENABLED` | answer the protocol |
+| `remote.access` / `CROMBOLO_REMOTE_ACCESS` | what the site takes from elsewhere: `off` (the default), `read`, `content` or `all`, below |
 | `remote.environment` / `CROMBOLO_REMOTE_ENVIRONMENT` | this server's environment, default `production` |
 | `remote.protected` / `CROMBOLO_REMOTE_PROTECTED` | default true |
 | `remote.approvals` / `CROMBOLO_REMOTE_APPROVALS` | protected pushes wait for approval; needs `CROMBOLO_SECRET_KEY` |
 | `remote.maxUploadBytes` / `CROMBOLO_REMOTE_MAX_UPLOAD_GB` | default 50 GB, for pushes and media uploads only |
+
+**Access levels** (story 167). Each level takes everything the one before it
+does:
+
+| `CROMBOLO_REMOTE_ACCESS` | The site takes |
+| --- | --- |
+| `off` | nothing: the protocol answers 404 `not-enabled` |
+| `read` | pulls |
+| `content` | also bundles of content and media, applied and reverted |
+| `all` | also whole-site pushes, and bundles that change content types, views, styles or code |
+
+A request the level does not allow is refused with 403 `access-level`, naming
+the level it needs. `CROMBOLO_REMOTE_ENABLED`, the switch this replaced, now
+stops the site starting, naming `CROMBOLO_REMOTE_ACCESS` instead.
 
 **Permissions.** Each is a user group permission under "Moving whole sites":
 
@@ -310,10 +408,14 @@ Off by default:
 | --- | --- |
 | `Crombolo.Remote.Pull` | pull |
 | `Crombolo.Remote.PullFull` | a full pull |
-| `Crombolo.Remote.Push` | push |
+| `Crombolo.Remote.Push` | push, and apply or revert a bundle of content |
 | `Crombolo.Remote.PushProtected` | push to, and approve pushes to, a protected environment |
+| `Crombolo.Remote.ApplyStructure` | "Change a site's structure and code": a whole-site push, and a bundle that changes content types, views, styles or code |
 
-Administrators have all four.
+A whole-site push and a structural bundle need `ApplyStructure` as well as
+`Push`, and `PushProtected` too on a protected environment. A bundle of content
+alone needs `Push`, and `PushProtected` where the environment is protected.
+Administrators have all five.
 
 **How it runs:**
 - **Where jobs live.** A job runs on the node that took it. Its state is in

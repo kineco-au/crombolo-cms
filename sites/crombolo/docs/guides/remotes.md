@@ -13,29 +13,43 @@ Under the hood it is the same whole-site file described in [Content transfer](/d
 A site answers pulls and pushes only when it is told to. On the site you want to reach, set:
 
 ```sh
-CROMBOLO_REMOTE_ENABLED=true
+CROMBOLO_REMOTE_ACCESS=all              # or read, or content; off by default
 CROMBOLO_REMOTE_ENVIRONMENT=staging     # what this site calls itself; production by default
 CROMBOLO_REMOTE_PROTECTED=false         # true by default: a push needs extra permission
 ```
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| `CROMBOLO_REMOTE_ENABLED` | `false` | answer pulls and pushes |
+| `CROMBOLO_REMOTE_ACCESS` | `off` | what the site takes from elsewhere, below |
 | `CROMBOLO_REMOTE_ENVIRONMENT` | `production` | the environment's name, as the command line sees it |
 | `CROMBOLO_REMOTE_PROTECTED` | `true` | a push here is a push to a protected environment |
 | `CROMBOLO_REMOTE_APPROVALS` | `false` | a push to a protected environment waits for someone else to approve it; needs `CROMBOLO_SECRET_KEY` |
 | `CROMBOLO_REMOTE_MAX_UPLOAD_GB` | `50` | the largest file a push may upload |
 
+`CROMBOLO_REMOTE_ACCESS` decides how much the site takes. Each level takes everything the one before it does:
+
+| Level | The site takes |
+| --- | --- |
+| `off` | nothing |
+| `read` | pulls |
+| `content` | also bundles of content and media, applied and undone |
+| `all` | also whole-site pushes, and bundles that change content types, views, styles or code |
+
+A site that still sets `CROMBOLO_REMOTE_ENABLED` will not start until it is replaced with `CROMBOLO_REMOTE_ACCESS`.
+
 ### Who may do what
 
-Four permissions, under **Moving whole sites** on a user group in the back office:
+Five permissions, under **Moving whole sites** on a user group in the back office:
 
 | Permission | Allows |
 | --- | --- |
 | Pull a copy | download a copy with members and users anonymised |
 | Pull a full copy | download a copy that includes members and users |
-| Push | replace an unprotected environment |
-| Push to a protected site | replace a protected environment, and approve or decline other people's pushes to it |
+| Push | apply a bundle of content to an unprotected environment |
+| Push to a protected site | the same on a protected environment, and approve or decline other people's pushes to it |
+| Change a site's structure and code | push a whole site, or apply a bundle that changes its content types, views, styles or code |
+
+A whole-site push needs **Push** and **Change a site's structure and code**, and **Push to a protected site** too on a protected environment.
 
 A pull or push acts as the person who signed in, with that person's permissions, and every one is recorded in the audit log.
 
@@ -109,6 +123,23 @@ bunx crombolo push production --env live --force --auto-approve
 ```
 
 If the remote has approvals turned on, the push then waits for someone else with the protected-push permission to approve it in the back office. Nobody can approve their own push, and an approval not given within a day expires.
+
+## Applying a bundle
+
+To change part of a remote rather than replace it, apply a bundle there:
+
+```sh
+bunx crombolo bundle apply ./bundles/campaign --remote staging --dry-run
+bunx crombolo bundle apply ./bundles/campaign --remote staging --publish
+bunx crombolo bundle apply --remote staging --publish     # this site's own content files
+```
+
+The remote checks the bundle and applies it as [Content transfer](/docs/guides/content-transfer/) describes. From a site directory it sends the content alone; `--structure` sends its schema, views, styles and code too, which needs the remote at `all` and the structure permission. Every apply is a run there:
+
+```sh
+bunx crombolo bundle runs --remote staging
+bunx crombolo bundle revert 5192ca80-… --remote staging
+```
 
 ## Long transfers
 

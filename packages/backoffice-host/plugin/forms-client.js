@@ -27,6 +27,12 @@ const call = async (path, init) => {
 
 export const listForms = async () => (await call('')).body.items ?? []
 
+/** The content types made from forms (story 239), by key, with each form's name. */
+export const listLibraryTypes = async () => (await call('/library-types')).body.items ?? []
+
+/** Every Library form (story 239), with the form each is made from. */
+export const listLibraryForms = async () => (await call('/library-forms')).body.items ?? []
+
 /** The field and workflow types this site has, built in and from its bundles. */
 export const listFormTypes = async () => (await call('/available-types')).body
 

@@ -22,6 +22,7 @@ import { bundleGrantsMigration } from './bundle-grants.ts'
 import { bundlePackageMigration } from './bundle-package.ts'
 import { bundleSchemaPicksMigration } from './bundle-schema-picks.ts'
 import { bundlesDisabledMigration } from './bundles-disabled.ts'
+import { bundlesInSettingsMigration } from './bundles-in-settings.ts'
 import { bundlesRenameMigration } from './bundles-rename.ts'
 import { changeReportMigration } from './change-report.ts'
 import { clientIdPrefixMigration } from './client-id-prefix.ts'
@@ -36,6 +37,7 @@ import { deliveryMemberTokensMigration } from './delivery-member-tokens.ts'
 import { diagnosticsMigration } from './diagnostics.ts'
 import { dropAssistantMigration } from './drop-assistant.ts'
 import { elementsMigration } from './elements.ts'
+import { formLibraryMigration } from './form-library.ts'
 import { formPermissionPrefixMigration } from './form-permission-prefix.ts'
 import { formPermissionsMigration } from './form-permissions.ts'
 import { formWorkflowsMigration } from './form-workflows.ts'
@@ -56,6 +58,7 @@ import { publicAccessMigration } from './public-access.ts'
 import { recycleBinMigration } from './recycle-bin.ts'
 import { redirectsMigration } from './redirects.ts'
 import { remoteMigration } from './remote.ts'
+import { remoteTrustMigration } from './remote-trust.ts'
 import { richTextUiMigration } from './rich-text-ui.ts'
 import { searchIndexMigration } from './search-index.ts'
 import { serverRoleMigration } from './server-role.ts'
@@ -131,4 +134,7 @@ export const cromboloPlan = new MigrationPlan([
   bundlesDisabledMigration,
   siteSettingsTypesMigration,
   bundleSchemaPicksMigration,
+  formLibraryMigration,
+  bundlesInSettingsMigration,
+  remoteTrustMigration,
 ])

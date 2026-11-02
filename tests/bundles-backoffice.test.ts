@@ -50,17 +50,27 @@ describe('the Created view, which replaces a router', () => {
     expect(ours).toContain("BUILDER_ENTITY_TYPE = 'package-builder'")
   })
 
-  test('links to the builder at the path the section view is mounted on', async () => {
-    // `pathname: 'created'` in the manifest and `section/packages` in the route
-    // are the same two segments; a rename of either would break the link.
+  test('links to the builder at the path the Bundles tool mounts Created on (story 238)', async () => {
+    // The tool's `pathname`, its Created tab and the builder's link name the
+    // same segments; a rename of any one would break the link.
     const overview = await Bun.file(`${PLUGIN}/bundles-created-overview.js`).text()
-    expect(overview).toContain("BUILDER_PATH = 'section/packages/view/created/package-builder'")
-    const plugin = await Bun.file(`${PLUGIN}/umbraco-package.json`).json()
-    const created = plugin.extensions.find(
-      (e: { alias: string }) => e.alias === 'Crombolo.SectionView.Bundles.Created',
+    expect(overview).toContain(
+      "BUILDER_PATH = 'section/settings/dashboard/bundles/created/package-builder'",
     )
-    expect(created.meta.pathname).toBe('created')
-    expect(created.overwrites).toEqual(['Umb.SectionView.Packages.Builder'])
+    const plugin = await Bun.file(`${PLUGIN}/umbraco-package.json`).json()
+    const dashboard = plugin.extensions.find(
+      (e: { alias: string }) => e.alias === 'Crombolo.Dashboard.Bundles',
+    )
+    expect(dashboard.meta.pathname).toBe('bundles')
+    const tool = await Bun.file(`${PLUGIN}/bundles-tool.js`).text()
+    expect(tool).toContain("BUNDLES_PATH = 'section/settings/dashboard/bundles'")
+    expect([...tool.matchAll(/\{ path: '([a-z]+)'/g)].map((m) => m[1])).toEqual([
+      'marketplace',
+      'installed',
+      'created',
+    ])
+    const editor = await Bun.file(`${PLUGIN}/bundle-editor.js`).text()
+    expect(editor).toContain('back-path="section/settings/dashboard/bundles/created"')
   })
 
   test('says bundle where Umbraco said package', async () => {

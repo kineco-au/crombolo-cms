@@ -13,7 +13,7 @@ export const SIDEBAR_APPS = {
   code: 'Umb.SectionSidebarMenu.Templating',
 }
 
-export const GROUPS = ['Build', 'Site', 'Health', 'History', 'Other']
+export const GROUPS = ['Build', 'Site', 'Health', 'History', 'Developers', 'Extensions', 'Other']
 
 /** Our words for each tool, by the alias of its dashboard or menu item. */
 export const CARDS = {
@@ -74,11 +74,6 @@ export const CARDS = {
     title: 'Background jobs',
     description: 'Scheduled and queued work, how far each got, and running a failed one again.',
   },
-  'Umb.MenuItem.Extensions': {
-    group: 'Site',
-    title: 'Extensions',
-    description: 'What the back office has loaded, and from which package.',
-  },
   'Umb.Dashboard.HealthCheck': {
     group: 'Health',
     title: 'Health check',
@@ -104,28 +99,60 @@ export const CARDS = {
     title: 'Audit log',
     description: 'Who did what, when and from where.',
   },
+  // Story 238: a developer's view of what is loaded, apart from installing bundles.
+  'Umb.MenuItem.Extensions': {
+    group: 'Developers',
+    title: 'Extension insights',
+    description: 'What the back office has loaded, and from which bundle.',
+  },
+  'Crombolo.Dashboard.CiAccess': {
+    group: 'Developers',
+    title: 'CI access',
+    description: 'The CI jobs that may pull and push here without a person, and what each may do.',
+  },
+  'Crombolo.Dashboard.Bundles': {
+    group: 'Extensions',
+    title: 'Bundles',
+    description: 'Find, install and build bundles: what they add, and turning them off.',
+  },
 }
 
 /**
  * The landing page's groups, in order, each with its cards in the order above.
- * `dashboards` are `{ alias, label, path }`; `advanced` are `{ alias, label,
- * entityType }`; `structure` and `code` say whether the user may open an item
- * of that tree. Paths are relative to the section.
+ * `dashboards` are `{ alias, label, description?, bundle?, path }`; `advanced`
+ * are `{ alias, label, description?, bundle?, entityType }`. A card this file
+ * has no words for takes its manifest's description, and a bundle's card goes
+ * under the bundle's name, its group linking to the bundle. `structure` and `code` say whether the user may
+ * open an item of that tree. Paths are relative to the section.
  *
  * @param {{
- *   dashboards?: { alias: string, label?: string, path: string }[],
- *   advanced?: { alias: string, label?: string, entityType: string }[],
+ *   dashboards?: { alias: string, label?: string, description?: string, bundle?: { name: string, packageName: string }, path: string }[],
+ *   advanced?: { alias: string, label?: string, description?: string, bundle?: { name: string, packageName: string }, entityType: string }[],
  *   structure?: boolean,
  *   code?: boolean,
  * }} from
+ * @returns {{ group: string, bundle?: { name: string, packageName: string, path: string }, cards: any[] }[]}
  */
 export function settingsCards({ dashboards = [], advanced = [], structure = false, code = false }) {
   const found = []
   if (structure) found.push({ alias: 'structure', path: 'structure' })
   if (code) found.push({ alias: 'code', path: 'code' })
-  for (const d of dashboards) found.push({ alias: d.alias, label: d.label, path: d.path })
+  for (const d of dashboards)
+    found.push({
+      alias: d.alias,
+      label: d.label,
+      description: d.description,
+      bundle: d.bundle,
+      path: d.path,
+    })
   for (const item of advanced)
-    found.push({ alias: item.alias, label: item.label, path: `workspace/${item.entityType}` })
+    found.push({
+      alias: item.alias,
+      label: item.label,
+      description: item.description,
+      bundle: item.bundle,
+      path: `workspace/${item.entityType}`,
+    })
 
   const order = Object.keys(CARDS)
   const cards = found
@@ -133,14 +160,37 @@ export function settingsCards({ dashboards = [], advanced = [], structure = fals
       const words = CARDS[card.alias]
       return words
         ? { alias: card.alias, path: card.path, ...words }
-        : { alias: card.alias, path: card.path, group: 'Other', title: card.label ?? card.alias }
+        : {
+            alias: card.alias,
+            path: card.path,
+            group: card.bundle?.name ?? 'Other',
+            bundle: card.bundle,
+            title: card.label ?? card.alias,
+            description: card.description,
+          }
     })
     .sort((a, b) => rank(order, a.alias) - rank(order, b.alias))
 
-  return GROUPS.map((group) => ({ group, cards: cards.filter((c) => c.group === group) })).filter(
-    (g) => g.cards.length > 0,
-  )
+  const builtIn = GROUPS.map((group) => ({
+    group,
+    cards: cards.filter((c) => !c.bundle && c.group === group),
+  }))
+  // A bundle's cards are a group of their own, after ours, by the bundle's name.
+  const bundles = [
+    ...new Map(cards.flatMap((c) => (c.bundle ? [[c.bundle.packageName, c.bundle]] : []))).values(),
+  ]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((bundle) => ({
+      group: bundle.name,
+      bundle: { ...bundle, path: bundlePath(bundle.packageName) },
+      cards: cards.filter((c) => c.bundle?.packageName === bundle.packageName),
+    }))
+  return [...builtIn, ...bundles].filter((g) => g.cards.length > 0)
 }
+
+/** Where the Bundles section shows an installed bundle, relative to the back office. */
+export const bundlePath = (packageName) =>
+  `section/settings/dashboard/bundles/installed?bundle=${encodeURIComponent(packageName)}`
 
 const rank = (order, alias) => {
   const at = order.indexOf(alias)

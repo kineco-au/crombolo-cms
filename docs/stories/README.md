@@ -108,6 +108,7 @@ not cover.
 | `235` | A fork of Umbraco's back-office client | should | L | done | — |
 | `236` | An overview to sign in to, and a guide in the empty site | should | M | done | — |
 | `237` | The back office in the mock-up's colours | should | M | done | 236 |
+| `238` | Bundles in Settings | should | L | done | 234 |
 
 ### Epic D — Members and identity
 
@@ -217,6 +218,7 @@ requests, only server-side and build-time front ends can call it.
 | `094` | The form designer edits layout | should | M | done | — |
 | `095` | Field and workflow types from a bundle | could | L | done | — |
 | `202` | A page's form picker shows its fields | must | S | done | — |
+| `239` | Forms in the Library | should | L | done | 027, 202 |
 
 ### Epic K — Moving content
 
@@ -292,7 +294,7 @@ What the CLI lacks against [clispec.dev](https://clispec.dev/) is `150`. The
 rest are what the Management API can do that a script or an operator cannot,
 short of signing in as a person. The CLI does not mirror the API: editing
 content, data types, templates and the rest stays in the back office, or in files
-under `schema/` — and, for a site's starting content, in seed files (Epic Q).
+under `schema/` — and, for a site's starting content, in content files (Epic Q).
 
 | # | Story | Priority | Size | State | Depends on |
 |---|---|---|---|---|---|
@@ -312,24 +314,28 @@ under `schema/` — and, for a site's starting content, in seed files (Epic Q).
 A whole working site — schema, content, media, people and access — set up from
 an empty folder with the CLI alone, scriptable in CI, never opening the back
 office. Most of it is already files or commands; these are the gaps. Content is
-declared as seed files compiled to a bundle and applied through the existing
-import (`163`), not mirrored as imperative commands. Where groups and access
-live (`162`) and how a remote site is changed short of a whole push (`160`,
-`167`) are open questions; `160` and `167` are security critical and need
-elaborating before work starts.
+declared as content files compiled to a bundle and applied through the
+existing import (`163`), not mirrored as imperative commands. A CI job signs in
+to a remote with its provider's identity token (`160`), and a remote takes a
+bundle short of a whole push, bounded by `CROMBOLO_REMOTE_ACCESS` (`167`).
+Where groups and access live (`162`) is still open.
 
 | # | Story | Priority | Size | State | Depends on |
 |---|---|---|---|---|---|
-| `160` | Signing in to a remote from CI | should | M | ready | — |
+| `160` | Signing in to a remote from CI | should | M | done | — |
 | `161` | Schema files without the raw keys | should | L | done | — |
 | `162` | User and member groups as files | should | M | ready | — |
 | `163` | Content as code: seed files | should | XL | done | — |
 | `164` | The demo sites from seed files | should | L | done | 163 |
 | `165` | Moving, sorting and deleting content | could | M | done | — |
 | `166` | People and access per environment | should | M | backlog | 162 |
-| `167` | Changing a remote site piece by piece | should | M | backlog | 160 |
+| `167` | Changing a remote site piece by piece | should | M | done | 160 |
 | `168` | The dictionary and single media files | could | S | ready | — |
 | `180` | A working site from an empty directory, from the command line | should | S | done | 163 |
+| `240` | Approvals from the command line | should | M | ready | — |
+| `241` | Bundles managed from the command line | should | L | ready | 160, 167 |
+| `242` | The Library in content files | could | S | ready | — |
+| `243` | Form entries from the command line | could | S | ready | — |
 
 ### Epic R — Architecture and reliability
 

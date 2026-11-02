@@ -59,13 +59,23 @@ export const FORM_HONEYPOT_FIELD = `${FORM_FIELD_PREFIX}_hp`
 /** When the form was rendered, so an instant submission can be spotted. */
 export const FORM_RENDERED_FIELD = `${FORM_FIELD_PREFIX}_at`
 export const FORM_PAGE_FIELD = `${FORM_FIELD_PREFIX}_page`
+/** The Library form it was shown through (story 239), signed into the token. */
+export const FORM_LIBRARY_FIELD = `${FORM_FIELD_PREFIX}_library`
 
 export const FORM_RESERVED_FIELDS: readonly string[] = [
   FORM_TOKEN_FIELD,
   FORM_HONEYPOT_FIELD,
   FORM_RENDERED_FIELD,
   FORM_PAGE_FIELD,
+  FORM_LIBRARY_FIELD,
 ]
+
+/**
+ * What a form's token is signed over: its key, and the Library form it is
+ * shown through, so a submission cannot claim another Library form's words.
+ */
+export const formTokenSubject = (formKey: string, libraryKey?: string): string =>
+  libraryKey ? `${formKey}#${libraryKey}` : formKey
 
 /**
  * What a page knows about a submission that just happened.
@@ -76,6 +86,8 @@ export const FORM_RESERVED_FIELDS: readonly string[] = [
  */
 export interface FormSubmissionState {
   formKey: string
+  /** The Library form it came through, which tells two of one form apart on a page. */
+  libraryKey?: string
   formAlias: string
   values: SubmittedValues
   errors: FormFieldError[]

@@ -1,5 +1,6 @@
 /**
- * Story 163: `crombolo seed check | build | apply | export` and `start --seed`,
+ * Stories 163 and 167: `crombolo bundle build --check`, `bundle apply`,
+ * `bundle export --source` and `start --bundle .`,
  * through the CLI against a SQLite site of its own. What a seed compiles to,
  * and how it applies, is tested on both dialects in seed.test.ts.
  */
@@ -50,7 +51,7 @@ const title = (key: string) =>
   })
 
 const writeSeed = (path: string, text: string) => {
-  const file = join(site, 'seed', path)
+  const file = join(site, 'content', path.replace(/^content\//, 'pages/'))
   mkdirSync(join(file, '..'), { recursive: true })
   writeFileSync(file, text)
 }
@@ -69,18 +70,18 @@ beforeAll(() => {
 })
 afterAll(() => rmSync(site, { recursive: true, force: true }))
 
-describe('seed check', () => {
+describe('bundle build --check', () => {
   test('names each problem by file and line, and exits 20', () => {
     writeSeed('content/home.toml', 'type = "page"\n\n[values]\ntitle = "Home"\nsubtitle = "x"\n')
-    const run = cli(['seed', 'check'])
+    const run = cli(['bundle', 'build', '--check'])
     expect(run.code).toBe(OUTCOMES.problems_found.code)
-    expect(run.out).toContain('seed/content/home.toml:5  "page" has no property "subtitle"')
-    const json = JSON.parse(cli(['seed', 'check', '-o', 'json']).out) as {
+    expect(run.out).toContain('content/pages/home.toml:5  "page" has no property "subtitle"')
+    const json = JSON.parse(cli(['bundle', 'build', '--check', '-o', 'json']).out) as {
       findings: Array<{ file: string; line: number; code: string }>
     }
     expect(json.findings).toEqual([
       expect.objectContaining({
-        file: 'seed/content/home.toml',
+        file: 'content/pages/home.toml',
         line: 5,
         code: 'unknown-property',
       }),
@@ -90,18 +91,17 @@ describe('seed check', () => {
   test('a seed with nothing wrong is all good', () => {
     writeSeed('content/home.toml', 'type = "page"\n\n[values]\ntitle = "Home"\n')
     writeSeed('content/home/about.toml', 'type = "page"\n\n[values]\ntitle = "About"\n')
-    const run = cli(['seed', 'check'])
+    const run = cli(['bundle', 'build', '--check'])
     expect(run.code, run.err).toBe(0)
     expect(run.out).toContain('2 page(s)')
   })
 })
 
-describe('seed build and apply', () => {
-  test('seed build is bundle build now: the site, schema and views with its seed', () => {
+describe('bundle build and apply', () => {
+  test('bundle build: the site, schema and views with its content', () => {
     const out = join(site, 'built')
-    const run = cli(['seed', 'build', '--out', out])
+    const run = cli(['bundle', 'build', '--out', out])
     expect(run.code, run.err).toBe(0)
-    expect(run.err).toContain('deprecated')
     expect(existsSync(join(out, 'package.json'))).toBe(true)
     expect(existsSync(join(out, 'schema', 'content-types', 'page.toml'))).toBe(true)
     expect(JSON.parse(readFileSync(join(out, 'bundle.json'), 'utf8')).counts).toEqual({
@@ -110,19 +110,19 @@ describe('seed build and apply', () => {
   })
 
   test('a dry run writes nothing; apply creates and publishes; again changes nothing', async () => {
-    const dry = cli(['seed', 'apply', '--dry-run'])
+    const dry = cli(['bundle', 'apply', '--dry-run'])
     expect(dry.code, dry.err).toBe(0)
     expect(dry.out).toContain('2 create')
     expect(await title(seedKey('content/home'))).toBeUndefined()
 
-    const applied = cli(['seed', 'apply', '--publish', '-o', 'json'])
+    const applied = cli(['bundle', 'apply', '--publish', '-o', 'json'])
     expect(applied.code, applied.err).toBe(0)
     const result = JSON.parse(applied.out) as { counts: { create: number }; published: number }
     expect(result.counts.create).toBe(2)
     expect(result.published).toBe(2)
     expect(await title(seedKey('content/home/about'))).toBe('About')
 
-    const again = JSON.parse(cli(['seed', 'apply', '-o', 'json']).out) as {
+    const again = JSON.parse(cli(['bundle', 'apply', '-o', 'json']).out) as {
       counts: { create: number; update: number }
     }
     expect(again.counts).toMatchObject({ create: 0, update: 0 })
@@ -130,7 +130,7 @@ describe('seed build and apply', () => {
 
   test('a changed seed file updates its page', async () => {
     writeSeed('content/home/about.toml', 'type = "page"\n\n[values]\ntitle = "About us"\n')
-    const run = cli(['seed', 'apply'])
+    const run = cli(['bundle', 'apply'])
     expect(run.code, run.err).toBe(0)
     expect(run.out).toContain('changed in the bundle since it was last imported')
     expect(await title(seedKey('content/home/about'))).toBe('About us')
@@ -167,24 +167,24 @@ describe('content find (story 183)', () => {
   })
 })
 
-describe('seed export', () => {
+describe('bundle export --source', () => {
   test('writes the pages back as seed files, keeping their keys', () => {
-    rmSync(join(site, 'seed'), { recursive: true, force: true })
-    const run = cli(['seed', 'export', '/Home'])
+    rmSync(join(site, 'content'), { recursive: true, force: true })
+    const run = cli(['bundle', 'export', '--source', '--root', '/Home'])
     expect(run.code, run.err).toBe(0)
-    const about = readFileSync(join(site, 'seed', 'content', 'home', 'about.toml'), 'utf8')
+    const about = readFileSync(join(site, 'content', 'pages', 'home', 'about.toml'), 'utf8')
     expect(about).toContain('type = "page"')
     expect(about).toContain('title = "About us"')
     // Exported from where its file is, so the key it derives is the one it has.
     expect(about).not.toContain('key =')
-    expect(cli(['seed', 'check']).code).toBe(0)
+    expect(cli(['bundle', 'build', '--check']).code).toBe(0)
   })
 })
 
 describe('media in folders on a site never started (story 180)', () => {
   test('a seed that puts an image in a folder checks and applies with no server ever run', () => {
     // The smallest PNG there is: one transparent pixel.
-    const file = join(site, 'seed', 'media', 'images', 'pixel.png')
+    const file = join(site, 'content', 'media', 'images', 'pixel.png')
     mkdirSync(join(file, '..'), { recursive: true })
     writeFileSync(
       file,
@@ -194,20 +194,20 @@ describe('media in folders on a site never started (story 180)', () => {
       ),
     )
     try {
-      const check = cli(['seed', 'check'])
+      const check = cli(['bundle', 'build', '--check'])
       expect(check.code, check.out + check.err).toBe(0)
-      const apply = cli(['seed', 'apply'])
+      const apply = cli(['bundle', 'apply'])
       expect(apply.code, apply.out + apply.err).toBe(0)
     } finally {
-      rmSync(join(site, 'seed', 'media'), { recursive: true, force: true })
+      rmSync(join(site, 'content', 'media'), { recursive: true, force: true })
     }
   })
 })
 
-describe('start --seed', () => {
+describe('start --bundle .', () => {
   test('applies a seed once per change to it', async () => {
     const start = async () => {
-      const proc = Bun.spawn(['bun', BIN, 'start', '--seed'], {
+      const proc = Bun.spawn(['bun', BIN, 'start', '--bundle', '.'], {
         cwd: site,
         env: { ...env(), NODE_ENV: 'production', PORT: '0' },
         stdout: 'pipe',

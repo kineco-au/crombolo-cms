@@ -406,6 +406,15 @@ describe.skipIf(!vendored)('vendored backoffice', () => {
     expect(served('packages/core/utils/deprecation/deprecation-origin.js')).toContain(
       '(?:chunks|packages|apps|libs|external)',
     )
+    // Story 238: no Packages section, and its addresses open Bundles in Settings.
+    expect(served('packages/packages/umbraco-package.js')).not.toContain('package-section')
+    expect(served('apps/backoffice/components/moved-sections.js')).toContain(
+      'section/settings/dashboard/bundles',
+    )
+    // Extension Insights lists extensions, not Umbraco's bundles that load them.
+    expect(
+      served('packages/core/extension/collection/repository/extension-collection.repository.js'),
+    ).toContain("manifest.type !== 'bundle'")
   })
 
   test("Umbraco's own deprecations stay out of the console, as in its production build", () => {

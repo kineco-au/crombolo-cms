@@ -209,7 +209,13 @@ async function site(seed: Record<string, string | Buffer> = SEED) {
   const root = mkdtempSync(join(process.cwd(), 'output', 'seed-'))
   dirs.push(root)
   write(join(root, 'schema'), SCHEMA)
-  write(join(root, 'seed'), seed)
+  // Pages are `content/` in the fixtures, as their keys are derived; their folder is `pages/`.
+  write(
+    join(root, 'content'),
+    Object.fromEntries(
+      Object.entries(seed).map(([path, bytes]) => [path.replace(/^content\//, 'pages/'), bytes]),
+    ),
+  )
   write(root, { 'components/page.tsx': 'export default () => <main />\n' })
   const h = await signedInServer({
     config: {
@@ -332,15 +338,15 @@ describe(`compiling a seed (${dialectUnderTest})`, () => {
     })
     const build = await compile()
     const found = (code: string) => build.findings.find((f) => f.code === code)
-    expect(found('unknown-property')).toMatchObject({ file: 'seed/content/home.toml', line: 5 })
+    expect(found('unknown-property')).toMatchObject({ file: 'content/pages/home.toml', line: 5 })
     expect(found('bad-value')).toMatchObject({ line: 6 })
     expect(found('bad-value')?.message).toContain('rank')
     expect(build.findings.some((f) => f.message.includes('"/nowhere" is not a page'))).toBe(true)
     expect(found('not-allowed-here')?.message).toBe(`"Localised" isn't allowed under "Page"`)
-    expect(found('unknown-type')).toMatchObject({ file: 'seed/content/other.toml', line: 1 })
-    expect(found('duplicate-key')).toMatchObject({ file: 'seed/content/twin.toml', line: 2 })
-    expect(found('language-missing')).toMatchObject({ file: 'seed/content/greek.toml', line: 3 })
-    expect(found('syntax')).toMatchObject({ file: 'seed/content/broken.toml', line: 2 })
+    expect(found('unknown-type')).toMatchObject({ file: 'content/pages/other.toml', line: 1 })
+    expect(found('duplicate-key')).toMatchObject({ file: 'content/pages/twin.toml', line: 2 })
+    expect(found('language-missing')).toMatchObject({ file: 'content/pages/greek.toml', line: 3 })
+    expect(found('syntax')).toMatchObject({ file: 'content/pages/broken.toml', line: 2 })
     expect(build.set).toBeUndefined()
   })
 
@@ -389,8 +395,8 @@ describe(`applying a seed (${dialectUnderTest})`, () => {
       ),
     })
     writeFileSync(
-      join(root, 'seed', 'content', 'home.toml'),
-      readFileSync(join(root, 'seed', 'content', 'home.toml'), 'utf8').replace(
+      join(root, 'content', 'pages', 'home.toml'),
+      readFileSync(join(root, 'content', 'pages', 'home.toml'), 'utf8').replace(
         'Welcome',
         'Welcome back',
       ),
@@ -427,9 +433,9 @@ describe(`applying a seed (${dialectUnderTest})`, () => {
         else files[`${prefix}${name}`] = readFileSync(path)
       }
     }
-    walk(join(elsewhere, 'seed'), '')
+    walk(join(elsewhere, 'content'), '')
     // Read as a person would: shorthand where there is one.
-    const home = String(files['content/home.toml'])
+    const home = String(files['pages/home.toml'])
     expect(home).toContain('hero = "/logos/mark.png"')
     expect(home).toContain('card = "hero-card"')
     expect(home).toContain('{ type = "card"')
@@ -454,7 +460,7 @@ describe(`applying a seed (${dialectUnderTest})`, () => {
     }
   })
 
-  test('a media folder named .. is exported inside seed/media, never above it', async () => {
+  test('a media folder named .. is exported inside content/media, never above it', async () => {
     const source = await site()
     await source.apply(await source.compile())
     const logos = await resolveNodeRef(source.h.server.db, [ObjectTypes.Media], '/logos')
@@ -467,10 +473,10 @@ describe(`applying a seed (${dialectUnderTest})`, () => {
       media: true,
       files: new MediaFileStore(source.h.server.config.mediaDir),
     })
-    expect(exported.written).toContain('seed/media/item/mark.png')
-    for (const file of exported.written) expect(file.startsWith('seed/media/item/')).toBe(true)
-    expect(existsSync(join(elsewhere, 'seed', 'mark.png'))).toBe(false)
-    expect(readFileSync(join(elsewhere, 'seed', 'media', 'item', 'mark.png'))).toEqual(PIXEL)
+    expect(exported.written).toContain('content/media/item/mark.png')
+    for (const file of exported.written) expect(file.startsWith('content/media/item/')).toBe(true)
+    expect(existsSync(join(elsewhere, 'content', 'mark.png'))).toBe(false)
+    expect(readFileSync(join(elsewhere, 'content', 'media', 'item', 'mark.png'))).toEqual(PIXEL)
   })
 
   test('exported from one site, applied to an empty one, names the same pages', async () => {
@@ -481,11 +487,11 @@ describe(`applying a seed (${dialectUnderTest})`, () => {
     const elsewhere = mkdtempSync(join(process.cwd(), 'output', 'seed-export-'))
     dirs.push(elsewhere)
     const exported = await exportSeed(source.h.server.db, elsewhere, { pages: [homeNode.node] })
-    expect(exported.written).toContain('seed/content/home.toml')
+    expect(exported.written).toContain('content/pages/home.toml')
 
     const files: Record<string, string> = {}
     for (const file of exported.written)
-      files[file.slice('seed/'.length)] = readFileSync(join(elsewhere, file), 'utf8')
+      files[file.slice('content/'.length)] = readFileSync(join(elsewhere, file), 'utf8')
     // Pickers that point outside what was exported stay as the keys they were.
     const target = await site({
       ...files,

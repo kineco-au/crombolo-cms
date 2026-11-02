@@ -67,7 +67,7 @@ The pause takes effect on every node at once. Editors who try to save are told t
 
 ### Taken for you
 
-Anything that changes the database in bulk takes a backup first: `upgrade`, `upgrade check --fix`, `content import`, `content revert`, `import`, `pull` into an existing site, `types purge` and `bundle purge`.
+Anything that changes the database in bulk takes a backup first: `upgrade`, `upgrade check --fix`, `bundle apply`, `bundle revert`, `import`, `pull` into an existing site, `types purge` and `bundle purge`.
 
 - **On SQLite** the backup is a copy of the database file beside it, named with the time and the reason.
 - **On Postgres** crombolo runs the command in `CROMBOLO_PG_DUMP`. It is given `CROMBOLO_BACKUP_STAMP` and `CROMBOLO_BACKUP_REASON` to name the file with. Without the setting, these commands refuse unless you pass `--backup-taken` to say you have taken one another way.

@@ -23,6 +23,11 @@ const NOT_SETTINGS: Record<string, string> = {
   CROMBOLO_APP_URL: "a Next.js front end's address, read by its scaffolded crombolo.config.ts",
   CROMBOLO_NEXT_SECRET: "a Next.js front end's: seals members' sessions",
   CROMBOLO_REVALIDATE_SECRET: "a Next.js front end's webhook secret, named by the webhook file",
+  CROMBOLO_REMOTE_ENABLED: 'retired by CROMBOLO_REMOTE_ACCESS (story 167): read only to refuse it',
+  CROMBOLO_ID_TOKEN: "a GitLab job's identity token, read by the CLI in CI (story 160)",
+  ACTIONS_ID_TOKEN_REQUEST_URL:
+    "GitHub Actions': where a job asks for its identity token (story 160)",
+  ACTIONS_ID_TOKEN_REQUEST_TOKEN: "GitHub Actions': the job's right to ask for one (story 160)",
 }
 
 function sourceFiles(dir: string): string[] {
@@ -160,7 +165,7 @@ describe('the settings list', () => {
       CROMBOLO_DELIVERY_API_PUBLIC: (c) => c.deliveryApi.publicAccess ?? true,
       CROMBOLO_DELIVERY_API_MEDIA: (c) => c.deliveryApi.media?.enabled ?? false,
       CROMBOLO_DELIVERY_API_PREVIEW_TOKEN_MINUTES: (c) => c.deliveryApi.preview?.tokenMinutes ?? 60,
-      CROMBOLO_REMOTE_ENABLED: (c) => c.remote.enabled,
+      CROMBOLO_REMOTE_ACCESS: (c) => c.remote.access,
       CROMBOLO_REMOTE_ENVIRONMENT: (c) => c.remote.environment,
       CROMBOLO_REMOTE_PROTECTED: (c) => c.remote.protected,
       CROMBOLO_REMOTE_APPROVALS: (c) => c.remote.approvals,

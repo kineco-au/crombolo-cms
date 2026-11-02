@@ -80,13 +80,12 @@ test('no section of the backoffice names Umbraco', async ({ page, diagnostics })
     'Media',
     'Library',
     'Settings',
-    'Bundles',
     'Users',
     'Members',
     'Translation',
     'Forms',
   ]) {
-    // Not `goToSection`: Bundles has no sidebar for it to wait on.
+    // Not `goToSection`: Settings opens on its landing page, with no sidebar.
     if (section === 'Settings')
       await page
         .locator('umb-backoffice-header-apps')

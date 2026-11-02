@@ -374,6 +374,12 @@ export class ContentTypeRepository {
           .set({ site_settings: bool(aggregate.siteSettings) })
           .where('node_id', '=', nodeId)
           .execute()
+      if (aggregate.formKey !== undefined)
+        await tx.q
+          .updateTable('content_type')
+          .set({ form_key: aggregate.formKey })
+          .where('node_id', '=', nodeId)
+          .execute()
 
       // ---- groups: upsert by key
       const groupIdByKey = new Map<string, number>()
@@ -925,6 +931,7 @@ export class ContentTypeRepository {
         'ct.since_version',
         'ct.site_search',
         'ct.site_settings',
+        'ct.form_key',
         'ss.version as since_v',
         'ss.revision as since_r',
       ])
@@ -1056,6 +1063,7 @@ export class ContentTypeRepository {
       allowedInLibrary: fromDbBool(type.allow_in_library),
       siteSearch: fromDbBool(type.site_search),
       siteSettings: fromDbBool(type.site_settings),
+      formKey: (type.form_key as string | null) ?? null,
       collectionKey: type.list_view ? normaliseUuid(String(type.list_view)) : null,
       cleanup: {
         preventCleanup: fromDbBool(type.prevent_cleanup),

@@ -105,7 +105,7 @@ describe('section requirements', () => {
   test("each area asks for Umbraco's sections", () => {
     expect(need('GetDocumentById')).toEqual([['content']])
     expect(need('GetTreeDocumentRoot')).toEqual([
-      ['content', 'media', 'users', 'settings', 'packages', 'members', 'library'],
+      ['content', 'media', 'users', 'settings', 'members', 'library'],
     ])
     expect(need('GetDocumentTypeById')).toEqual([['content', 'library', 'settings']])
     expect(need('PutDocumentTypeById')).toEqual([['content', 'library', 'settings'], ['settings']])

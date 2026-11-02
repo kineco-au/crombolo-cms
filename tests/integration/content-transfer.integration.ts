@@ -265,14 +265,14 @@ describe('content transfer, end to end through the CLI', () => {
   })
 
   test('checks cleanly against the destination, and says nothing is outstanding', async () => {
-    const result = await cli('target', 'content', 'check', bundle())
+    const result = await cli('target', 'bundle', 'apply', '--dry-run', bundle())
     expect(result.code, result.out).toBe(0)
     expect(result.out).toContain('3 new')
-    expect(result.out).toContain('would import cleanly')
+    expect(result.out).toContain('it would apply cleanly')
   })
 
   test('imports as drafts, and the live site is untouched until published', async () => {
-    const result = await cli('target', 'content', 'import', bundle())
+    const result = await cli('target', 'bundle', 'apply', bundle())
     expect(result.code, result.out).toBe(0)
     expect(result.out).toContain('3 created')
     for (const key of keys) {
@@ -284,7 +284,7 @@ describe('content transfer, end to end through the CLI', () => {
   })
 
   test('is idempotent: a second import changes nothing', async () => {
-    const result = await cli('target', 'content', 'import', bundle())
+    const result = await cli('target', 'bundle', 'apply', bundle())
     expect(result.code, result.out).toBe(0)
     expect(result.out).toContain('0 created, 0 updated, 3 unchanged')
   })
@@ -293,7 +293,7 @@ describe('content transfer, end to end through the CLI', () => {
     expect(
       (await seed('target', 'edit', keys[1] as string, 'Edited at the destination')).code,
     ).toBe(0)
-    const kept = await cli('target', 'content', 'import', bundle())
+    const kept = await cli('target', 'bundle', 'apply', bundle())
     expect(kept.code, kept.out).toBe(0)
     expect(kept.out).toContain('was changed here since it was last imported')
     expect((await read('target', keys[1] as string)).draft).toBe('Edited at the destination')
@@ -315,7 +315,7 @@ describe('content transfer, end to end through the CLI', () => {
       bundle(),
     )
     expect(exported.code, exported.out).toBe(0)
-    const refused = await cli('target', 'content', 'import', bundle())
+    const refused = await cli('target', 'bundle', 'apply', bundle())
     expect(refused.code).toBe(ERROR_KINDS.refused.exitCode)
     // The message a person reads, not the finding code: it has to name the node
     // and the property, and offer the three ways out.
@@ -330,8 +330,9 @@ describe('content transfer, end to end through the CLI', () => {
   test('a saved resolution settles it, and travels with the bundle', async () => {
     const saved = await cli(
       'target',
-      'content',
-      'check',
+      'bundle',
+      'apply',
+      '--dry-run',
       bundle(),
       '--resolve-all',
       'take-bundle',
@@ -341,13 +342,13 @@ describe('content transfer, end to end through the CLI', () => {
     expect(existsSync(join(bundle(), 'resolutions.json'))).toBe(true)
 
     // No flag this time: the answer is in the bundle.
-    const imported = await cli('target', 'content', 'import', bundle())
+    const imported = await cli('target', 'bundle', 'apply', bundle())
     expect(imported.code, imported.out).toBe(0)
     expect((await read('target', keys[1] as string)).draft).toBe('Offer A, revised')
   })
 
   test('--publish puts live what was live at the source', async () => {
-    const result = await cli('target', 'content', 'import', bundle(), '--publish')
+    const result = await cli('target', 'bundle', 'apply', bundle(), '--publish')
     expect(result.code, result.out).toBe(0)
     for (const key of keys) {
       const state = await read('target', key)
@@ -357,7 +358,7 @@ describe('content transfer, end to end through the CLI', () => {
   })
 
   test('lists the runs it has applied', async () => {
-    const result = await cli('target', 'content', 'runs')
+    const result = await cli('target', 'bundle', 'runs')
     expect(result.code, result.out).toBe(0)
     expect(result.out.split('\n').filter((line) => line.includes('import')).length).toBeGreaterThan(
       1,
@@ -365,17 +366,17 @@ describe('content transfer, end to end through the CLI', () => {
   })
 
   test('reverts the last run, putting the live site back', async () => {
-    const runs = await cli('target', 'content', 'runs', '--limit', '1')
+    const runs = await cli('target', 'bundle', 'runs', '--limit', '1')
     const runId = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/.exec(
       runs.out,
     )?.[0] as string
     expect(runId).toBeDefined()
 
-    const reverted = await cli('target', 'content', 'revert', runId, '--resolve-all', 'discard')
+    const reverted = await cli('target', 'bundle', 'revert', runId, '--resolve-all', 'discard')
     expect(reverted.code, reverted.out).toBe(0)
     expect(reverted.out).toContain('would put it back again')
     // Reverting the same run twice is refused rather than repeated.
-    const again = await cli('target', 'content', 'revert', runId)
+    const again = await cli('target', 'bundle', 'revert', runId)
     expect(again.code).toBe(ERROR_KINDS.refused.exitCode)
     expect(again.out).toContain('is reverted, so there is nothing to put back')
     expect(again.out).toContain('Nothing was changed')
@@ -397,10 +398,10 @@ describe('content transfer, end to end through the CLI', () => {
     rmSync(join(broken, 'nodes', `${keys[2]}.json`))
     // Checking must refuse rather than report-and-continue: otherwise a bundle
     // that was copied half-way passes the gate and then gets imported.
-    const result = await cli('target', 'content', 'check', broken)
+    const result = await cli('target', 'bundle', 'apply', '--dry-run', broken)
     expect(result.code, result.out).toBe(ERROR_KINDS.refused.exitCode)
     expect(result.out).toContain('integrity does not match')
-    const imported = await cli('target', 'content', 'import', broken)
+    const imported = await cli('target', 'bundle', 'apply', broken)
     expect(imported.code, imported.out).toBe(ERROR_KINDS.refused.exitCode)
   })
 
@@ -449,13 +450,13 @@ describe('content transfer, end to end through the CLI', () => {
     const before = await seed('target', 'blob', media.blob)
     expect(JSON.parse(before.out.trim().split('\n').at(-1) as string).exists).toBe(false)
 
-    const checked = await cli('target', 'content', 'check', out)
+    const checked = await cli('target', 'bundle', 'apply', '--dry-run', out)
     expect(checked.code, checked.out).toBe(0)
     // Carried, so there is nothing for the destination to be missing.
     expect(checked.out).toContain('media file(s) carried')
     expect(checked.out).not.toContain('missing-blob')
 
-    const imported = await cli('target', 'content', 'import', out)
+    const imported = await cli('target', 'bundle', 'apply', out)
     expect(imported.code, imported.out).toBe(0)
     expect(imported.out).toContain('1 media file(s) placed')
 
@@ -486,13 +487,20 @@ describe('content transfer, end to end through the CLI', () => {
     expect(exported.out).toContain('pass --with-media')
     expect(existsSync(join(out, 'media'))).toBe(false)
 
-    const checked = await cli('target', 'content', 'check', out)
+    const checked = await cli('target', 'bundle', 'apply', '--dry-run', out)
     // A person has to decide: the metadata can land without the file, but
     // nobody should find that out from a broken image.
     expect(checked.out).toContain('is not in this environment')
     expect(checked.code).toBe(OUTCOMES.blocked.code)
 
-    const allowed = await cli('target', 'content', 'check', out, '--allow-missing-blobs')
+    const allowed = await cli(
+      'target',
+      'bundle',
+      'apply',
+      '--dry-run',
+      out,
+      '--allow-missing-blobs',
+    )
     expect(allowed.code, allowed.out).toBe(0)
   }, 60_000)
 
@@ -523,11 +531,11 @@ describe('content transfer, end to end through the CLI', () => {
 
     passphrase = 'not the passphrase it was given'
     try {
-      const wrong = await cli('target', 'content', 'check', sealed)
+      const wrong = await cli('target', 'bundle', 'apply', '--dry-run', sealed)
       expect(wrong.code).toBe(ERROR_KINDS.auth.exitCode)
       expect(wrong.out).toContain('passphrase does not open this bundle')
       passphrase = ''
-      const none = await cli('target', 'content', 'check', sealed)
+      const none = await cli('target', 'bundle', 'apply', '--dry-run', sealed)
       expect(none.code).toBe(ERROR_KINDS.auth.exitCode)
       expect(none.out).toContain('CROMBOLO_BUNDLE_PASSPHRASE')
     } finally {

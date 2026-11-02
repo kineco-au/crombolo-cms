@@ -226,6 +226,8 @@ export async function exportSchemaSet(db: Db, version: string): Promise<SchemaSe
       .innerJoin('node as n', 'n.id', 'ct.node_id')
       .select('n.unique_id')
       .where('ct.retired_at', 'is', null)
+      // Made from a form (story 239): its form's file is its definition.
+      .where('ct.form_key', 'is', null)
       .where('n.node_object_type', '=', repo.objectType)
       .orderBy('ct.alias')
       .execute()

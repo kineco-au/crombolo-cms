@@ -112,7 +112,7 @@ const ALLOWED = new Set([
 /** The code held to the boundary: first-party bundles, the sites, and the outside consumer. */
 const BOUNDED = ['packages/simple-redirects', 'packages/entra', 'sites', 'tests/fixtures/consumers']
 
-const SKIPPED = new Set(['node_modules', '.crombolo', 'output', 'logs', 'media', 'seed'])
+const SKIPPED = new Set(['node_modules', '.crombolo', 'output', 'logs', 'media', 'content'])
 
 /** Source files under the bounded folders, never descending into installs, caches or output. */
 function boundedFiles(): string[] {

@@ -7,7 +7,8 @@
  */
 import { expect, signIn, test } from './fixtures.ts'
 
-const CREATED = '/crombolo/section/packages/view/created'
+// Bundles is a Settings tool (story 238); Created is its third tab.
+const CREATED = '/crombolo/section/settings/dashboard/bundles/created'
 
 test('the Bundle Editor creates a bundle, lists it, and opens it again on every tab', async ({
   page,
@@ -16,7 +17,7 @@ test('the Bundle Editor creates a bundle, lists it, and opens it again on every 
   await page.goto(`${CREATED}/package-builder/create`)
 
   const editor = page.locator('crombolo-bundle-editor')
-  // The Packages section has no tree, so there is no sidebar to wait for.
+  // The Bundles tool has no tree, so there is no sidebar to wait for.
   await expect(editor).toHaveCount(1, { timeout: 30_000 })
   await expect(page.locator('umb-workspace-package-builder')).toHaveCount(0)
   const tabs = editor.locator('uui-tab')
@@ -60,4 +61,25 @@ test('the Bundle Editor creates a bundle, lists it, and opens it again on every 
   }
   await reopened.locator('uui-tab', { hasText: 'Forms' }).click()
   await expect(reopened.getByLabel('Write to the cove')).toBeChecked()
+})
+
+test('an address from the old Bundles section opens the same screen in Settings', async ({
+  page,
+}) => {
+  await signIn(page)
+  await page.goto('/crombolo/section/packages/view/installed?bundle=missing')
+  await expect(page).toHaveURL(
+    /\/section\/settings\/dashboard\/bundles\/installed\?bundle=missing$/,
+    {
+      timeout: 30_000,
+    },
+  )
+  await expect(page.locator('crombolo-bundles-tool uui-tab[active]')).toHaveAttribute(
+    'label',
+    'Installed',
+  )
+  // No header tab for it any more.
+  await expect(
+    page.locator('umb-backoffice-header-sections').getByRole('tab', { name: 'Bundles' }),
+  ).toHaveCount(0)
 })

@@ -10,11 +10,13 @@
  */
 import { css, html, nothing, repeat } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
+import { entriesLibraryOptions } from './form-picker-options.js'
 import {
   deleteEntry,
   downloadEntriesCsv,
   listEntries,
   listForms,
+  listLibraryForms,
   setEntryState,
 } from './forms-client.js'
 
@@ -22,6 +24,8 @@ export default class CromboloFormsEntriesElement extends UmbLitElement {
   static properties = {
     _forms: { state: true },
     _selected: { state: true },
+    _libraryForms: { state: true },
+    _library: { state: true },
     _entries: { state: true },
     _total: { state: true },
     _state: { state: true },
@@ -34,6 +38,8 @@ export default class CromboloFormsEntriesElement extends UmbLitElement {
     super()
     this._forms = undefined
     this._selected = ''
+    this._libraryForms = []
+    this._library = ''
     this._entries = []
     this._total = 0
     this._state = ''
@@ -44,6 +50,13 @@ export default class CromboloFormsEntriesElement extends UmbLitElement {
 
   connectedCallback() {
     super.connectedCallback()
+    // Only for the filter and the names on entries: a failure leaves both out.
+    listLibraryForms().then(
+      (items) => {
+        this._libraryForms = items
+      },
+      () => {},
+    )
     listForms().then(
       (forms) => {
         this._forms = forms
@@ -62,6 +75,7 @@ export default class CromboloFormsEntriesElement extends UmbLitElement {
     try {
       const page = await listEntries(this._selected, {
         state: this._state,
+        library: this._library,
         search: this._search,
         includeSpam: this._includeSpam ? 'true' : '',
         take: 200,
@@ -94,6 +108,23 @@ export default class CromboloFormsEntriesElement extends UmbLitElement {
     }
   }
 
+  #libraryFilter() {
+    const options = entriesLibraryOptions(this._libraryForms, this._selected, this._library)
+    if (options.length === 0) return nothing
+    return html`<uui-select
+      label="Library form"
+      .options=${options}
+      @change=${(event) => {
+        this._library = event.target.value
+        this.#load()
+      }}
+    ></uui-select>`
+  }
+
+  #libraryName(key) {
+    return this._libraryForms.find((item) => item.key === key)?.name ?? 'A deleted Library form'
+  }
+
   render() {
     if (this._forms === undefined) return html`<uui-loader></uui-loader>`
     if (this._forms.length === 0)
@@ -111,9 +142,11 @@ export default class CromboloFormsEntriesElement extends UmbLitElement {
             }))}
             @change=${(event) => {
               this._selected = event.target.value
+              this._library = ''
               this.#load()
             }}
           ></uui-select>
+          ${this.#libraryFilter()}
           <uui-select
             label="State"
             .options=${[
@@ -172,6 +205,11 @@ export default class CromboloFormsEntriesElement extends UmbLitElement {
                       <strong>${new Date(entry.createDate).toLocaleString()}</strong>
                       <span class="state">${entry.state}</span>
                       ${entry.spam ? html`<span class="spam">spam</span>` : nothing}
+                      ${
+                        entry.libraryKey
+                          ? html`<span class="library">${this.#libraryName(entry.libraryKey)}</span>`
+                          : nothing
+                      }
                     </div>
                     <dl>
                       ${entry.values.map(
@@ -223,6 +261,7 @@ export default class CromboloFormsEntriesElement extends UmbLitElement {
       align-items: baseline;
     }
     .state,
+    .library,
     .spam {
       font-size: var(--uui-type-small-size, 0.8rem);
       text-transform: uppercase;

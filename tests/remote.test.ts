@@ -200,8 +200,16 @@ describe(`discovery (${dialectUnderTest})`, () => {
         token: `${ORIGIN}${SECURITY}/token`,
         clientId: REMOTE_CLIENT_ID,
       },
-      capabilities: ['media-fetch', 'push-check', 'audit', 'content-query'],
-      environments: [{ id: 'production', name: 'production', protected: true }],
+      // Signing in from CI (story 160) is offered by every remote of this server.
+      capabilities: [
+        'bundle-apply',
+        'ci-sign-in',
+        'media-fetch',
+        'push-check',
+        'audit',
+        'content-query',
+      ],
+      environments: [{ id: 'production', name: 'production', protected: true, access: 'all' }],
     })
     const anonymous = await h.server.fetch(new Request(`${ORIGIN}${REMOTE_API_PATH}/environments`))
     expect(anonymous.status).toBe(401)
@@ -211,7 +219,15 @@ describe(`discovery (${dialectUnderTest})`, () => {
         id: 'production',
         name: 'production',
         protected: true,
-        may: { pull: true, pullFull: true, push: true, audit: true },
+        access: 'all',
+        may: {
+          pull: true,
+          pullFull: true,
+          push: true,
+          apply: true,
+          applyStructure: true,
+          audit: true,
+        },
       },
     ])
   })

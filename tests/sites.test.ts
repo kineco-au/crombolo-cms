@@ -52,7 +52,7 @@ describe('the sites', () => {
   })
 
   test.each(sites.map((site) => [site.id, site] as const))(
-    '%s is a private package that depends on the workspace, and starts from its seed',
+    '%s is a private package that depends on the workspace, and starts from its content files',
     (_, site) => {
       const manifest = json(join(site.dir, 'package.json')) as {
         private?: boolean
@@ -62,9 +62,9 @@ describe('the sites', () => {
       expect(manifest.private).toBe(true)
       for (const [name, range] of Object.entries(manifest.dependencies))
         if (name.startsWith('@crombolo/')) expect(range).toBe('workspace:*')
-      // Its content is its seed (story 164), applied once for each change to it.
-      expect(manifest.scripts.start).toBe('crombolo start --seed --publish')
-      expect(existsSync(join(site.dir, 'seed', 'content'))).toBe(true)
+      // Its content is its files (stories 164, 167), applied once for each change to them.
+      expect(manifest.scripts.start).toBe('crombolo start --bundle . --publish')
+      expect(existsSync(join(site.dir, 'content', 'pages'))).toBe(true)
     },
   )
 
@@ -116,14 +116,14 @@ describe('staging a site as a template', () => {
       { package: '@crombolo/simple-redirects', import: 'redirects' },
     ])
     const dir = join(into, 'demo', 'harbourstone')
-    // The content is the seed among the files; there is no bundle (story 164).
+    // The content is its files, content/ among them; there is no bundle (stories 164, 167).
     expect(readdirSync(dir).sort()).toEqual(['CREDITS.md', 'files', 'template.json'])
     expect(readdirSync(join(dir, 'files')).sort()).toEqual([
       'actions',
       'components',
+      'content',
       'css',
       'schema',
-      'seed',
     ])
   })
 

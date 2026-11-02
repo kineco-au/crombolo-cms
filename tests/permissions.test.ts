@@ -173,6 +173,9 @@ describe('the media verbs (story 088)', () => {
       'DisableBundles',
       'AddSiteSettingsTypes',
       'AddBundleSchemaPicks',
+      'AddFormLibrary',
+      'MoveBundlesIntoSettings',
+      'AddRemoteTrust',
     ])
     const held = async (key: string) =>
       (

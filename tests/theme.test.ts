@@ -78,6 +78,7 @@ describe('the dark palette', () => {
     ['--uui-color-interactive-emphasis', '--uui-color-background', 4.5],
     ['--uui-menu-item-color-active', '--uui-menu-item-background-color-active', 4.5],
     ['--uui-color-border-standalone', '--uui-color-surface', 3],
+    ['--crombolo-card-header-text', '--crombolo-card-header-background', 4.5],
   ])('%s on %s clears %p:1', (foreground, background, minimum) => {
     const fg = dark[foreground] as string
     const bg = dark[background] as string
@@ -110,6 +111,7 @@ describe('the light palette', () => {
     ['--crombolo-header-current-text', '--uui-color-header-surface', 4.5],
     ['--crombolo-header-current', '--uui-color-header-surface', 3],
     ['--uui-color-focus', '--uui-color-surface', 3],
+    ['--crombolo-card-header-text', '--crombolo-card-header-background', 4.5],
   ])('%s on %s clears %p:1', (foreground, background, minimum) => {
     const hex = (value: string) => (value === '#fff' ? '#ffffff' : value)
     const fg = hex(light[foreground] as string)

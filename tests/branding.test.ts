@@ -204,12 +204,10 @@ describe('the section Umbraco calls Packages', () => {
 
   test('names its three views for what each one holds, not for the section', async () => {
     // Umbraco labels its Marketplace view "Packages", which under a section of
-    // the same name said nothing twice.
-    const plugin = await Bun.file('packages/backoffice-host/plugin/umbraco-package.json').json()
-    const label = (alias: string) =>
-      plugin.extensions.find((e: { alias: string }) => e.alias === alias)?.meta?.label
-    expect(label('Crombolo.SectionView.Bundles.Marketplace')).toBe('Marketplace')
-    expect(label('Crombolo.SectionView.Bundles.Installed')).toBe('Installed')
+    // the same name said nothing twice. They are the Bundles tool's tabs now (story 238).
+    const tool = await Bun.file('packages/backoffice-host/plugin/bundles-tool.js').text()
+    for (const label of ['Marketplace', 'Installed', 'Created'])
+      expect(tool).toContain(`label: '${label}'`)
     expect(dictionary.packager?.created).toBeUndefined()
   })
 

@@ -39,7 +39,7 @@ bun start
 | `server.ts` | three lines that start the server |
 | `schema/` | your content types, as TOML files ([Schema as code](/docs/guides/schema-as-code/)) |
 | `components/` | your templates and the components they share |
-| `seed/` | a template's starting pages and media, as files ([Seed files](/docs/guides/seeds/)) |
+| `content/` | a template's starting pages and media, as files ([Content files](/docs/guides/content-files/)) |
 
 Add `--postgres` to write a `.env` that points at a Postgres database instead of SQLite.
 
@@ -54,7 +54,7 @@ bunx @crombolo/cli@latest init --template starter             # a header, a foot
 bunx @crombolo/cli@latest init --template demo/harbourstone   # a whole brochure site, content and all
 ```
 
-A template brings its schema, components and styles, and its pages, Library elements and images as seed files under `seed/`. Its `bun start` runs `crombolo start --seed --publish`, which applies the seed before the site serves: the first time, and again whenever a file in `seed/` changes. The content is yours to edit, as files or in the back office. An edit made in the back office is kept when the seed is applied again ([Seed files](/docs/guides/seeds/)).
+A template brings its schema, components and styles, and its pages, Library elements and images as content files under `content/`. Its `bun start` runs `crombolo start --bundle . --publish`, which applies those files before the site serves: the first time, and again whenever a file in `content/` changes. The content is yours to edit, as files or in the back office. An edit made in the back office is kept when the files are applied again ([Content files](/docs/guides/content-files/)).
 
 ## Run the demo site
 
@@ -79,7 +79,7 @@ bunx crombolo bundle build --template demo/harbourstone --out ./harbourstone-bun
 bunx crombolo start --bundle ./harbourstone-bundle --publish
 ```
 
-`bundle build` takes a site directory (or a template, by id) and packs its schema, components, styles and seed into one bundle. `start --bundle` stages the files, applies the schema and the content in one go, then starts the site with them. Run the same `start --bundle` again and nothing changes; build a changed bundle and only the changes are applied.
+`bundle build` takes a site directory (or a template, by id) and packs its schema, components, styles and content files into one bundle. `start --bundle` stages the files, applies the schema and the content in one go, then starts the site with them. Run the same `start --bundle` again and nothing changes; build a changed bundle and only the changes are applied.
 
 Try the demo in development. A production site refuses a schema change that comes without a version bump, as it would on any deploy.
 
@@ -159,9 +159,9 @@ There is no React in the browser: no virtual DOM, no hydration, and nothing ship
 Or, without the back office, write the page as a file and apply it:
 
 ```sh
-mkdir -p seed/content
-printf 'type = "article"\nname = "Home"\n\n[values]\ntitle = "Hello, world"\nsummary = "My first page"\n' > seed/content/home.toml
-bunx crombolo seed apply --publish
+mkdir -p content/pages
+printf 'type = "article"\nname = "Home"\n\n[values]\ntitle = "Hello, world"\nsummary = "My first page"\n' > content/pages/home.toml
+bunx crombolo bundle apply --publish
 ```
 
 ## Check before you ship
@@ -169,15 +169,15 @@ bunx crombolo seed apply --publish
 ```sh
 bunx crombolo components check   # compile and type-check every template
 bunx crombolo types check --static   # validate schema/ without a database
-bunx crombolo seed check             # check seed/ against the schema
+bunx crombolo bundle build --check   # check content/ against the schema
 ```
 
-Both exit with a non-zero code when they find a problem, so they drop straight into CI.
+Each exits with a non-zero code when it finds a problem, so they drop straight into CI.
 
 ## Where next
 
 - [Configuration](/docs/guides/configuration/): the settings file and the handful of settings you set first
 - [Schema as code](/docs/guides/schema-as-code/): content types as files, and how they reach production
-- [Seed files](/docs/guides/seeds/): a site's starting content, as files
+- [Content files](/docs/guides/content-files/): a site's starting content, as files
 - [Deploying](/docs/guides/deploying/): running a site in production
 - [The command line](/docs/reference/command-line/): every command and flag

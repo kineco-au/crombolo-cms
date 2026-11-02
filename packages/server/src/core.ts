@@ -230,7 +230,11 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
     createMediaSource(db, { nodeState: schema.nodeState, nodeId: schema.nodeId }),
     { budgetBytes: (config.mediaCacheMegabytes ?? DEFAULT_MEDIA_CACHE_MEGABYTES) * 1024 * 1024 },
   )
-  const cacheOptions = { form: (key: string) => forms.byKey(key), media: mediaCache }
+  const cacheOptions = {
+    form: (key: string) => forms.byKey(key),
+    forms: () => forms.all(),
+    media: mediaCache,
+  }
   if (config.errors.showDetails) enableComponentStack()
   const cache = new PublishedCache(publishedSource, {
     ...cacheOptions,

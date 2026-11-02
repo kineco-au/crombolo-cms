@@ -439,16 +439,32 @@ code, then on again, which issues new recovery codes.
 
 ## A site as a remote
 
-With `CROMBOLO_REMOTE_ENABLED=true` the site answers the remote protocol
-([`remote-protocol.md`](remote-protocol.md), story `107`). A developer's
-`crombolo` can then:
+With `CROMBOLO_REMOTE_ACCESS` set, the site answers the remote protocol
+([`remote-protocol.md`](remote-protocol.md), story `107`). It is `off` by
+default, and each level takes everything the one before it does (story 167):
+
+| `CROMBOLO_REMOTE_ACCESS` | The site takes |
+| --- | --- |
+| `off` | nothing |
+| `read` | pulls |
+| `content` | also bundles of content and media, applied and reverted |
+| `all` | also whole-site pushes, and bundles that change content types, views, styles or code |
+
+`CROMBOLO_REMOTE_ENABLED`, the switch this replaced, now stops the site
+starting and names the new setting. A developer's `crombolo` can then:
 - sign in with a code they approve in the back office;
 - pull a sealed, anonymised copy of the site;
-- push work back. A push to a protected environment needs its own
+- apply a bundle there: `crombolo bundle apply --remote <name>`, with
+  `bundle runs --remote <name>` and `bundle revert <run> --remote <name>`;
+- push the whole site back. A push to a protected environment needs its own
   permission, and with `CROMBOLO_REMOTE_APPROVALS` it waits for someone else
   to approve it.
 
-The four permissions are under "Moving whole sites" in a user group. People
+The permissions are under "Moving whole sites" in a user group. A bundle of
+content needs Push, and Push protected as well on a protected environment. A
+whole-site push, or a bundle that changes content types, views, styles or code,
+also needs "Change a site's structure and code"
+(`Crombolo.Remote.ApplyStructure`). People
 see the terminals signed in as them under **Signed-in devices** in their
 profile, and sign them out there. Each pull and push is a job, so a
 load-balanced set needs no stickiness: the job's state is in the database and
@@ -486,6 +502,63 @@ crombolo push [--force [--auto-approve]] [--media-info-only]
   refused (a permission, a protected environment, an approval declined), 9 the
   remote could not be reached.
 
+### Deploying from CI
+
+A CI job pulls and pushes as a **trust rule** on the site (story 160), proved
+by its provider's signed identity token, so there is no password or key to
+store in the pipeline.
+
+1. **Add the rule.** An administrator adds it once per site, in **Settings →
+   CI access**, or from their own signed-in machine:
+
+   ```bash
+   crombolo remote trust add production --name "Deploys" --provider github \
+     --repository acme/site --branch main --may push --may push-protected \
+     --may apply-structure
+   ```
+
+   `push-protected` lets the job change a protected site, such as production,
+   with nobody approving it. Leave it out to keep that for people.
+   `apply-structure` is what a whole-site push needs on top; a job that only
+   applies bundles of content can do without it.
+2. **GitHub Actions:** give the job `permissions: id-token: write`, then run
+   the CLI as usual:
+
+   ```yaml
+   permissions:
+     id-token: write
+     contents: read
+   steps:
+     - uses: actions/checkout@v4
+     - run: bunx crombolo push production --force --auto-approve
+   ```
+
+3. **GitLab CI:** declare an identity token named `CROMBOLO_ID_TOKEN` for the
+   site's address:
+
+   ```yaml
+   deploy:
+     id_tokens:
+       CROMBOLO_ID_TOKEN:
+         aud: https://example.com
+     script:
+       - bunx crombolo push production --force --auto-approve
+   ```
+
+   A self-managed GitLab is trusted once the site names it:
+   `CROMBOLO_REMOTE_OIDC_ISSUERS=https://gitlab.example.com`.
+
+**How it behaves:**
+- **Choosing the sign-in:** the CLI uses the job's identity when it has one,
+  and a person's `crombolo login` otherwise. It keeps the token in memory
+  only.
+- **What it may do:** a job's token acts as its rule, which can never approve
+  pushes or manage CI access.
+- **Revoking:** disabling the rule stops the job at once.
+- **One token per GitLab job:** a GitLab job's identity token is exchanged
+  once and lasts 15 minutes. A longer GitLab job needs a second job, while
+  GitHub asks for a fresh one each time.
+
 ## Scripting the command line
 
 Every command takes `-o json` (or the older `--json`): its result is one JSON
@@ -494,7 +567,7 @@ to stderr in either mode. Text stays the default when the output is piped, so
 nothing that reads it today changes. `crombolo schema` describes every command
 for a machine as a [clispec](https://clispec.dev) v0.3 document: its arguments,
 whether it changes anything, what it prints, how it fails. `crombolo schema
-content import` narrows it to one. It reads no site, no network and no sign-in.
+bundle apply` narrows it to one. It reads no site, no network and no sign-in.
 
 A command that would ask first refuses at once when there is no terminal, with
 `confirmation_required` and the flag that answers it (`--yes`, or `--auto-approve`
@@ -514,7 +587,7 @@ worked example. CI runs it, one step per test, in this order:
 | A page type and its view | `crombolo types new content-type page --at-root` |
 | Another property | `crombolo types add-property page body --type textarea` |
 | Check | `crombolo types check` |
-| The home page | `seed/content/home.toml`, then `crombolo seed check` and `seed apply` |
+| The home page | `content/pages/home.toml`, then `crombolo bundle build --check` and `bundle apply` |
 | Publish | `crombolo content publish /Home` |
 | An image in a folder | `crombolo media import <dir>`, then `media move` |
 | An administrator | `crombolo admin reset-password -o json` |
@@ -526,7 +599,7 @@ command does) and every schema sync link the built-in Folder media type to the
 built-in media types the site has, as a server's start does
 (`linkMediaFolders`, `packages/server/src/media-folders.ts`, and the end of
 `syncSchema`'s transaction). So images go into
-folders by `media move` or by a seed from the first command. A schema file that
+folders by `media move` or by a site's content files from the first command. A schema file that
 defines Folder is left to say what Folder allows.
 
 ### Running a site from the command line
@@ -587,9 +660,10 @@ below itself) stops the lot, and the failure lists each one and why.
 operator's name, and a move records the redirects an editor's move would. An
 item already where it was asked to go is reported unchanged.
 
-**Seed files** (story 163): `crombolo seed check | build | apply | export` and
-`start --seed` turn a site's `seed/` directory into content through the import,
-three-way on every apply (`seeds.md`).
+**Content files** (stories 163 and 167): `crombolo bundle build --check`,
+`bundle apply`, `bundle export --source` and `start --bundle .` turn a site's
+`content/` directory into content through the import, three-way on every apply
+([`bundles.md`](bundles.md#content-files)).
 
 **The audit log** (story 156): `crombolo audit list` pages it newest first,
 and `crombolo audit stream [--follow]` ships it as NDJSON to a log store. Both
@@ -668,7 +742,7 @@ its findings are its output. `packages/cli/src/errors.ts` is this table.
 | 9 | `unavailable` | the database or the remote could not be reached |
 | 10 | `io` | a file could not be read or written |
 | 20 | outcome `problems_found` | `status`, `types check`, `components check` found problems |
-| 21 | outcome `blocked` | `content check`, `upgrade check`, `import umbraco report`: a person must resolve something first |
+| 21 | outcome `blocked` | `bundle apply --dry-run`, `upgrade check`, `import umbraco report`: a person must resolve something first |
 | 130 | `interrupted` | stopped by a signal |
 
 **Changed in 0.15.0.** Before it, nearly every failure exited 1, a refusal before

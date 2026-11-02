@@ -209,9 +209,9 @@ describe('creating a site, end to end through the CLI', () => {
     expect(postgresInit.code, postgresInit.out).toBe(0)
 
     bare = await serve('bare')
-    demo = await serve('demo', '--seed', '--publish')
-    product = await serve('product', '--seed', '--publish')
-    magazine = await serve('magazine', '--seed', '--publish')
+    demo = await serve('demo', '--bundle', '.', '--publish')
+    product = await serve('product', '--bundle', '.', '--publish')
+    magazine = await serve('magazine', '--bundle', '.', '--publish')
   }, 300_000)
 
   afterAll(async () => {
@@ -293,7 +293,7 @@ describe('creating a site, end to end through the CLI', () => {
   test('the basic template boots and serves its page, and a second boot imports nothing', async () => {
     const manifest = json('basic', 'package.json')
     const start = (manifest.scripts as Record<string, string>).start as string
-    expect(start).toBe('crombolo start --seed --publish')
+    expect(start).toBe('crombolo start --bundle . --publish')
 
     // Exactly what the scaffolded script would run.
     const first = await serve('basic', ...start.split(' ').slice(2))
@@ -310,7 +310,7 @@ describe('creating a site, end to end through the CLI', () => {
     expect(await page(second, '/')).toContain('A new crombolo site')
     await second.stop()
 
-    const runs = await cli('basic', 'content', 'runs')
+    const runs = await cli('basic', 'bundle', 'runs')
     expect(runs.code, runs.out).toBe(0)
     expect(runs.out.trim().split('\n').filter(Boolean)).toHaveLength(1)
     expect(runs.out).toContain('import')
@@ -405,7 +405,7 @@ describe('creating a site, end to end through the CLI', () => {
     // The seed carried the bytes and the boot placed them in this site's
     // store, so what it serves is the file the template shipped (story 164).
     const file = '180cc8ef/distillery-from-the-cliff-path.jpg'
-    const shipped = join(siteDir('demo'), 'seed', 'media', 'distillery-from-the-cliff-path.jpg')
+    const shipped = join(siteDir('demo'), 'content', 'media', 'distillery-from-the-cliff-path.jpg')
     const landed = join(siteDir('demo'), 'media', file)
     expect(readFileSync(landed)).toEqual(readFileSync(shipped))
 

@@ -202,6 +202,17 @@ Fixed in 0.42.0, and `tests/dashboard.test.ts` now holds dashboards to it too.
   "← Settings" link, which sat in the sidebar beside a tree and beside a title
   over a tool, and named no tree. `crumbsFor` and `advancedToolTitle`
   (`settings-cards.js`) are unit-tested.
+- **A card component (2026-11-01):** each landing-page card is
+  `crombolo-settings-card` (`plugin/settings-card.js`), its title on a dark
+  band in white: cocoa in light mode and a deep brown in dark, through
+  `--crombolo-card-header-*`, with both pairs in `tests/theme.test.ts`.
+- **A group per bundle (2026-11-01):** a bundle's cards sit under its name,
+  after the built-in groups, with its manifest's `meta.description`. The
+  header links to the bundle in Bundles → Installed, which opens on the bundle
+  named in `?bundle=`. The server stamps each served extension with
+  `cromboloBundle: { name, packageName }` (`backoffice-host/src/extensions.ts`). "Other" is left for
+  anything from neither. Tested in `tests/settings-cards.test.ts` and
+  `tests/extensions.test.ts`.
 - **The trees stay in the page (2026-11-01):** both trees are always attached
   to the sidebar, and the one not in use is hidden, as Umbraco's own Settings
   keeps its menus. A tree taken out of the page and put back threw "Cannot

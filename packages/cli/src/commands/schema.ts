@@ -7,7 +7,7 @@ export default class Schema extends BaseCommand {
     'Every command, its arguments, what it changes, what it prints and how it fails (https://clispec.dev). Name a command to narrow it. It reads no site, no network and no sign-in.',
     'Until the next release, `schema check`, `schema sync` and the rest still run the `types` commands they were renamed to.',
   ].join('\n\n')
-  static override examples = ['<%= config.bin %> schema', '<%= config.bin %> schema content import']
+  static override examples = ['<%= config.bin %> schema', '<%= config.bin %> schema bundle apply']
   static override strict = false
   static override usage = 'schema [COMMAND...]'
   static override spec = {

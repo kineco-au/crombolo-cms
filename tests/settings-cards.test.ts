@@ -32,6 +32,7 @@ const EVERYTHING = {
     dashboard('Crombolo.Dashboard.Changes', 'changes'),
     dashboard('Crombolo.Dashboard.AuditLog', 'audit-log'),
     dashboard('Crombolo.Dashboard.BackgroundJobs', 'background-jobs'),
+    dashboard('Crombolo.Dashboard.Bundles', 'bundles'),
   ],
   advanced: [
     { alias: 'Umb.MenuItem.Relations', label: 'Relations', entityType: 'relations-root' },
@@ -56,10 +57,12 @@ describe('the Settings landing page', () => {
         'Logs',
         'Search indexes',
         'Background jobs',
-        'Extensions',
       ],
       Health: ['Health check', 'Published status', 'Relations'],
       History: ['Changes', 'Audit log'],
+      // Story 238: after History, a developer's tool, then installing bundles.
+      Developers: ['Extension insights'],
+      Extensions: ['Bundles'],
     })
   })
 
@@ -83,7 +86,7 @@ describe('the Settings landing page', () => {
     expect(titles(groups)).toEqual({ Build: ['Structure'], Site: ['Search & sharing'] })
   })
 
-  test('a dashboard a bundle adds is a card under Other, by its own label', () => {
+  test('a dashboard we have no words for, from no bundle, is a card under Other, by its own label', () => {
     const groups = settingsCards({
       dashboards: [
         { alias: 'Acme.Dashboard.Stock', label: 'Stock levels', path: 'dashboard/stock' },
@@ -104,9 +107,70 @@ describe('the Settings landing page', () => {
     ])
   })
 
+  test("a bundle's card carries the description its manifest gives", () => {
+    const cards = settingsCards({
+      dashboards: [
+        {
+          alias: 'Acme.Dashboard.Stock',
+          label: 'Stock levels',
+          description: 'What is on the shelves.',
+          path: 'dashboard/stock',
+        },
+      ],
+      advanced: [
+        {
+          alias: 'Crombolo.MenuItem.Redirects',
+          label: 'Redirects',
+          description: 'Rules you add by hand.',
+          entityType: 'crombolo-redirects',
+        },
+      ],
+    }).flatMap((g) => g.cards)
+    expect(cards.map((c) => [c.title, c.description])).toEqual([
+      ['Stock levels', 'What is on the shelves.'],
+      ['Redirects', 'Rules you add by hand.'],
+    ])
+  })
+
+  test('a bundle has a group of its own, after ours, by its name and linking to it', () => {
+    const groups = settingsCards({
+      structure: true,
+      dashboards: [
+        {
+          alias: 'Acme.Dashboard.Stock',
+          label: 'Stock',
+          path: 'dashboard/stock',
+          bundle: { name: 'Acme', packageName: '@acme/stock' },
+        },
+        { alias: 'Loose.Dashboard', label: 'Loose', path: 'dashboard/loose' },
+      ],
+      advanced: [
+        {
+          alias: 'Crombolo.MenuItem.Redirects',
+          label: 'Redirects',
+          bundle: { name: 'Redirects', packageName: '@crombolo/simple-redirects' },
+          entityType: 'crombolo-redirects',
+        },
+      ],
+    })
+    // A bundle's group links to the bundle in the Bundles section.
+    expect(groups.map((g) => [g.group, g.bundle?.path, g.cards.map((c) => c.title)])).toEqual([
+      ['Build', undefined, ['Structure']],
+      ['Other', undefined, ['Loose']],
+      ['Acme', 'section/settings/dashboard/bundles/installed?bundle=%40acme%2Fstock', ['Stock']],
+      [
+        'Redirects',
+        'section/settings/dashboard/bundles/installed?bundle=%40crombolo%2Fsimple-redirects',
+        ['Redirects'],
+      ],
+    ])
+  })
+
   test('every card we have words for names a group that is shown', () => {
     for (const words of Object.values(CARDS))
-      expect(['Build', 'Site', 'Health', 'History']).toContain(words.group)
+      expect(['Build', 'Site', 'Health', 'History', 'Developers', 'Extensions']).toContain(
+        words.group,
+      )
   })
 })
 

@@ -64,6 +64,8 @@ export const RemotePermissions = {
   PullFull: 'Crombolo.Remote.PullFull',
   Push: 'Crombolo.Remote.Push',
   PushProtected: 'Crombolo.Remote.PushProtected',
+  /** Changing a remote's schema, views, styles or code: a whole-site push, or such a bundle (story 167). */
+  ApplyStructure: 'Crombolo.Remote.ApplyStructure',
 } as const
 export type RemoteVerb = (typeof RemotePermissions)[keyof typeof RemotePermissions]
 

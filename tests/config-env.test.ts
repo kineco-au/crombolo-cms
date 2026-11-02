@@ -153,7 +153,7 @@ describe('loadConfig reads the environment', () => {
       CROMBOLO_MEMBER_REGISTRATION_GROUPS: ' Buyers , ,Friends',
       CROMBOLO_MEMBER_SESSION_MINUTES: '60',
       CROMBOLO_MAX_FAILED_PASSWORD_ATTEMPTS: '0',
-      CROMBOLO_REMOTE_ENABLED: 'true',
+      CROMBOLO_REMOTE_ACCESS: 'all',
       CROMBOLO_REMOTE_ENVIRONMENT: 'staging',
       CROMBOLO_REMOTE_PROTECTED: 'false',
       CROMBOLO_REMOTE_APPROVALS: 'true',
@@ -296,7 +296,7 @@ describe('loadConfig reads the environment', () => {
     setEnv({
       CROMBOLO_SITE_NAME: 'From env',
       CROMBOLO_SITEMAP: 'false',
-      CROMBOLO_REMOTE_ENABLED: 'true',
+      CROMBOLO_REMOTE_ACCESS: 'all',
       CROMBOLO_DELIVERY_API_MEDIA: 'true',
     })
     const config = loadConfig(

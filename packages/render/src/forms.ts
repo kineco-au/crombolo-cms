@@ -21,6 +21,7 @@ import {
   type BuiltInFormFieldType,
   choiceOptions,
   FORM_HONEYPOT_FIELD,
+  FORM_LIBRARY_FIELD,
   FORM_RENDERED_FIELD,
   FORM_TOKEN_FIELD,
   type FormFieldError,
@@ -28,6 +29,7 @@ import {
   type FormSubmissionState,
   type FormTypes,
   formFieldType,
+  formTokenSubject,
   isBuiltInFieldType,
   isShown,
   type SchemaForm,
@@ -492,9 +494,15 @@ function renderPage(
 export function Form(props: FormProps): RawHtml {
   const form = props.form
   if (!form) return new RawHtml('')
-  const accepted =
-    props.message ??
-    (props.submission?.formKey === (form.key ?? form.alias) ? props.submission.message : undefined)
+  // Only this form's own submission: a page with two forms must not show the
+  // other one's errors, and its key and Library form are what tell them apart.
+  const mine =
+    props.submission &&
+    props.submission.formKey === (form.key ?? form.alias) &&
+    props.submission.libraryKey === form.library?.key
+      ? props.submission
+      : undefined
+  const accepted = props.message ?? mine?.message
   if (accepted !== undefined)
     return element('div', {
       class: 'crombolo-form crombolo-form--submitted',
@@ -502,12 +510,6 @@ export function Form(props: FormProps): RawHtml {
       children: accepted,
     })
 
-  // Only this form's own submission: a page with two forms must not show the
-  // other one's errors, and the key is what tells them apart.
-  const mine =
-    props.submission && props.submission.formKey === (form.key ?? form.alias)
-      ? props.submission
-      : undefined
   const values = props.values ?? mine?.values ?? {}
   const errors = props.errors ?? mine?.errors ?? []
   const idPrefix = `form-${form.alias}`
@@ -523,7 +525,8 @@ export function Form(props: FormProps): RawHtml {
   const key = form.key ?? form.alias
   const stepped = form.stepPages === true && form.pages.length > 1
   const renderedAt = props.renderedAt ?? Date.now()
-  const token = props.token ?? signer?.(key, renderedAt)
+  const library = form.library
+  const token = props.token ?? signer?.(formTokenSubject(key, library?.key), renderedAt)
 
   return element(
     'form',
@@ -538,6 +541,15 @@ export function Form(props: FormProps): RawHtml {
       'data-step-pages': stepped ? 'true' : undefined,
       novalidate: undefined,
       children: [
+        library?.heading
+          ? element('h2', { class: 'crombolo-form__heading', children: library.heading })
+          : null,
+        library?.introduction
+          ? element('div', {
+              class: 'crombolo-form__introduction',
+              children: new RawHtml(library.introduction),
+            })
+          : null,
         errors.length > 0
           ? element('div', {
               class: 'crombolo-form__summary',
@@ -549,6 +561,9 @@ export function Form(props: FormProps): RawHtml {
           : null,
         ...form.pages.map((page, index) => renderPage(page, index, options)),
         token ? element('input', { type: 'hidden', name: FORM_TOKEN_FIELD, value: token }) : null,
+        library
+          ? element('input', { type: 'hidden', name: FORM_LIBRARY_FIELD, value: library.key })
+          : null,
         element('input', {
           type: 'hidden',
           name: FORM_RENDERED_FIELD,

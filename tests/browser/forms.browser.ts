@@ -1,5 +1,5 @@
 /**
- * The Forms section's designer, against the real backoffice.
+ * The Forms section's designer and a page's Form picker, against the real backoffice.
  */
 import { expect, signIn, test } from './fixtures.ts'
 
@@ -7,7 +7,7 @@ const FORMS_API = '/crombolo/crombolo/api/forms'
 const API = '/crombolo/management/api/v1'
 const CONTACT = '7b1f4c20-9a63-4e18-8d25-3c6f5a1e9b04'
 
-test('a page shows its saved form, offers choices, and reveals the Harbourstone fields', async ({
+test('a page picks a Library form, keeps a form it named itself, and reveals the fields', async ({
   page,
   diagnostics,
 }) => {
@@ -16,6 +16,7 @@ test('a page shows its saved form, offers choices, and reveals the Harbourstone 
     await page.request.get(`${API}/document-type/allowed-at-root?take=100`)
   ).json()
   const type = types.items.find((item: { name: string }) => item.name === 'Contact form test')
+  // A page saved before Library forms (story 239) names the form itself.
   const made = await page.request.post(`${API}/document`, {
     data: {
       documentType: { id: type.id },
@@ -27,13 +28,42 @@ test('a page shows its saved form, offers choices, and reveals the Harbourstone 
   })
   expect(made.status()).toBe(201)
   const key = made.headers()['umb-generated-resource']
+
+  // A Library form of the same form, made from the type the form gives the Library.
+  const inLibrary = await (
+    await page.request.get(`${API}/document-type/allowed-in-library?skip=0&take=100`)
+  ).json()
+  const formType = inLibrary.items.find(
+    (item: { name: string }) => item.name === 'Write to the cove',
+  )
+  expect(formType).toBeDefined()
+  const element = await page.request.post(`${API}/element`, {
+    data: {
+      documentType: { id: formType.id },
+      parent: null,
+      values: [{ alias: 'heading', culture: null, segment: null, value: 'Trade enquiries' }],
+      variants: [{ culture: null, segment: null, name: 'Cove – Trade' }],
+    },
+  })
+  expect(element.status()).toBe(201)
+  const trade = element.headers()['umb-generated-resource'] as string
+  expect(
+    (
+      await page.request.put(`${API}/element/${trade}/publish`, { data: { cultures: [] } })
+    ).status(),
+  ).toBe(200)
+
   const url = `/crombolo/section/content/workspace/document/edit/${key}`
   await page.goto(url)
   const picker = page.locator('crombolo-form-picker')
   const select = picker.getByRole('combobox', { name: 'Form', exact: true })
   await expect(select).toHaveValue(CONTACT)
-  await expect(select.locator('option')).toContainText(['No form', 'Write to the cove'])
+  // Grouped choices come first in the select, and No form after them.
+  for (const choice of ['No form', 'Cove – Trade', "Write to the cove (the form's own words)"])
+    await expect(select).toContainText(choice)
   await expect(picker).toContainText('7 fields over 1 page')
+
+  await select.selectOption({ label: 'Cove – Trade' })
   await picker.getByText('View form fields', { exact: true }).click()
   const preview = picker.locator('details')
   await expect(preview.locator('.fields > li')).toHaveCount(7)
@@ -41,6 +71,13 @@ test('a page shows its saved form, offers choices, and reveals the Harbourstone 
     await expect(preview.getByText(caption, { exact: true })).toBeVisible()
   await expect(preview).toContainText('Trade and allocation')
   await expect(preview).toContainText('Required')
+  await page.getByTestId('workspace-action:Umb.WorkspaceAction.Document.Save').click()
+  await expect
+    .poll(async () => {
+      const doc = await (await page.request.get(`${API}/document/${key}`)).json()
+      return doc.values.find((value: { alias: string }) => value.alias === 'enquiryForm')?.value
+    })
+    .toBe(trade)
 
   await select.selectOption({ label: 'No form' })
   await expect(picker.locator('details')).toHaveCount(0)
@@ -54,16 +91,14 @@ test('a page shows its saved form, offers choices, and reveals the Harbourstone 
     })
     .toBeNull()
 
-  await select.selectOption(CONTACT)
+  await select.selectOption({ label: 'Cove – Trade' })
   await page.getByTestId('workspace-action:Umb.WorkspaceAction.Document.Save').click()
   await expect
     .poll(async () => {
       const doc = await (await page.request.get(`${API}/document/${key}`)).json()
       return doc.values.find((value: { alias: string }) => value.alias === 'enquiryForm')?.value
     })
-    .toBe(CONTACT)
-  await page.goto(url)
-  await expect(picker.getByRole('combobox', { name: 'Form', exact: true })).toHaveValue(CONTACT)
+    .toBe(trade)
 
   diagnostics.allowed.push(`503 GET ${FORMS_API}/${CONTACT}`, 'status of 503 (Service Unavailable)')
   await page.route(`${FORMS_API}/${CONTACT}`, (route) => route.fulfill({ status: 503, json: {} }))
@@ -74,10 +109,11 @@ test('a page shows its saved form, offers choices, and reveals the Harbourstone 
   await picker.getByRole('button', { name: 'Try again', exact: true }).click()
   await expect(picker.locator('.fields > li')).toHaveCount(7)
 
-  // A form removed after the page was saved remains visible until deliberately cleared.
+  // A choice removed after the page was saved remains visible until deliberately cleared.
   await page.route(FORMS_API, (route) => route.fulfill({ json: { items: [] } }))
+  await page.route(`${FORMS_API}/library-forms`, (route) => route.fulfill({ json: { items: [] } }))
   await page.goto(url)
-  await expect(select).toHaveValue(CONTACT)
+  await expect(select).toHaveValue(trade)
   await expect(picker).toContainText('The selected form is no longer available.')
   await expect(picker.locator('details')).toHaveCount(0)
   await select.selectOption({ label: 'No form' })

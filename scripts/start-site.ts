@@ -71,7 +71,7 @@ const id = (site ?? template)?.id as string
 const slug = slugOf(id)
 const inPlace = Boolean(site) && flags.has('--in-place')
 const siteDir = site && inPlace ? site.dir : join(SCAFFOLDS, slug)
-const seeded = site ? existsSync(join(site.dir, 'seed')) : Boolean(template?.seed)
+const seeded = site ? existsSync(join(site.dir, 'content')) : Boolean(template?.seed)
 
 /** Writes the template out, exactly as `crombolo init` does. */
 function scaffold(into: string, which: SiteTemplate): void {
@@ -161,12 +161,12 @@ if (!site && held !== undefined && held > 0 && !flags.has('--reuse')) {
 }
 console.log(
   held === undefined
-    ? '  database empty (no file yet), so the seed will apply on first boot'
+    ? "  database empty (no file yet), so the site's content will apply on first boot"
     : `  database ${held === 0 ? 'empty' : `holds ${held} node(s), reused`}`,
 )
 
-/** `--seed` applies the site's seed once per change to it, and says so. */
-const startArgs = seeded ? ['--seed', '--publish'] : []
+/** `--bundle .` applies the site's content files once per change to them, and says so. */
+const startArgs = seeded ? ['--bundle', '.', '--publish'] : []
 const passThrough = args.filter(
   (arg) =>
     arg.startsWith('--') &&

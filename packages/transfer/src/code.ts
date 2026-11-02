@@ -22,7 +22,7 @@ const SITE_FOLDERS = new Set([
   'components',
   'css',
   'scripts',
-  'seed',
+  'content',
   'media',
   'logs',
   '.crombolo',

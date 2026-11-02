@@ -92,8 +92,8 @@ export default class Init extends BaseCommand {
     )
     if (template?.seed)
       this.say(
-        '\n`bun start` applies seed/ on the first boot, and again after you change it:\n' +
-          'the starting content is files to edit. `crombolo seed check` checks them.',
+        '\n`bun start` applies content/ on the first boot, and again after you change it:\n' +
+          'the starting content is files to edit. `crombolo bundle build --check` checks them.',
       )
     return { created, templates: [] }
   }

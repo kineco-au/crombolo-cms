@@ -40,6 +40,8 @@ export interface FormEntry {
   culture: string | null
   /** The page the form was submitted from, when it was on one. */
   pageKey: string | null
+  /** The Library form it came through (story 239); null for a form picked directly. */
+  libraryKey: string | null
   /** A salted hash, never an address: enough to rate-limit, not a liability. */
   ipHash: string | null
   userAgent: string | null
@@ -51,14 +53,17 @@ export interface FormEntry {
 
 export type FormEntryInput = Omit<
   FormEntry,
-  'id' | 'createDate' | 'updateDate' | 'state' | 'spam'
+  'id' | 'createDate' | 'updateDate' | 'state' | 'spam' | 'libraryKey'
 > & {
   state?: FormEntryState
   spam?: boolean
+  libraryKey?: string | null
 }
 
 export interface FormEntryQuery {
   formKey: string
+  /** Only the entries that came through this Library form; `null` for those that came through none. */
+  libraryKey?: string | null
   state?: FormEntryState
   /** Inclusive; the entries view defaults to the last month. */
   from?: Date
@@ -77,6 +82,7 @@ interface EntryRow {
   state: string
   culture: string | null
   page_key: string | null
+  library_key: string | null
   ip_hash: string | null
   user_agent: string | null
   spam: unknown
@@ -99,6 +105,7 @@ const COLUMNS = [
   'state',
   'culture',
   'page_key',
+  'library_key',
   'ip_hash',
   'user_agent',
   'spam',
@@ -116,6 +123,7 @@ const hydrate = (row: EntryRow, values: FormEntryValue[]): FormEntry => ({
   state: state(row.state),
   culture: row.culture,
   pageKey: row.page_key,
+  libraryKey: row.library_key,
   ipHash: row.ip_hash,
   userAgent: row.user_agent,
   spam: fromDbBool(row.spam),
@@ -182,6 +190,11 @@ export class FormEntryRepository {
     const matching = this.#db.q
       .selectFrom('form_entry')
       .where('form_key', '=', query.formKey)
+      .$if(query.libraryKey !== undefined, (q) =>
+        query.libraryKey === null
+          ? q.where('library_key', 'is', null)
+          : q.where('library_key', '=', query.libraryKey as string),
+      )
       .$if(Boolean(query.state), (q) => q.where('state', '=', query.state as FormEntryState))
       .$if(Boolean(query.from), (q) =>
         q.where('create_date', '>=', DbDate.toDb(query.from as Date)),
@@ -242,6 +255,7 @@ export class FormEntryRepository {
         state: input.state ?? 'submitted',
         culture: input.culture,
         page_key: input.pageKey,
+        library_key: input.libraryKey ?? null,
         ip_hash: input.ipHash,
         user_agent: input.userAgent,
         spam: this.#db.dialect.boolValue(input.spam ?? false),

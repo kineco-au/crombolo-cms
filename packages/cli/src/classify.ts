@@ -9,6 +9,10 @@ import { RemoteError, TimedOut } from './remote/client.ts'
 
 const REMOTE_CODES: Record<string, ErrorKind> = {
   'sign-in-required': 'auth',
+  'ci-sign-in-refused': 'auth',
+  'ci-identity-unavailable': 'auth',
+  'ci-sign-in-unsupported': 'auth',
+  'insecure-remote': 'usage',
   unreachable: 'unavailable',
   'not-a-remote': 'not_found',
 }

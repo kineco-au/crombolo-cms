@@ -257,6 +257,8 @@ export async function runCheck(
       .innerJoin('node as n', 'n.id', 'ct.node_id')
       .select(['n.unique_id', 'ct.alias'])
       .where('ct.retired_at', 'is', null)
+      // Made from a form (story 239), kept in step with the forms rather than files.
+      .where('ct.form_key', 'is', null)
       .where('n.node_object_type', '=', repo.objectType)
       .execute()
     for (const row of dbTypes) {

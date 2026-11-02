@@ -23,6 +23,7 @@ changes a thing?
 | Entries (submissions) and their state | a visitor submitting, an editor approving | **Database** |
 | Entry values | the same | **Database** |
 | Uploaded files | the same | the media store's blob space |
+| A Library form — the words a page shows around a form | an editor | **Database**, as an element (story 239) |
 
 The obvious objection is that editors create forms in production, where
 `schemaWritable` defaults off. [`schema-at-runtime.md`](schema-at-runtime.md)
@@ -737,14 +738,62 @@ One subtlety worth recording: a conditionally-hidden field is **never rendered
 a field nobody can see. The markup carries `data-required` instead, and the
 script puts the attribute back when it reveals the field.
 
+## Library forms
+
+**Built** (story 239). The split is the one content types make: a developer
+owns the form, its TOML and the designer, and an editor owns a **Library
+form**, an element that uses one form and carries the words around it. One
+form can back several ("Contact – Sales", "Contact – Support").
+
+- **A type per form.** Each form gives the Library one element type, in a
+  "Forms" folder in Structure, so Library → Create lists the site's forms
+  beside its other element types. The type is derived, not written:
+  `ensureFormLibraryTypes` (`data/src/schema/form-library-types.ts`) keeps it
+  in step at every schema sync, and after the designer saves or deletes a
+  form.
+  - **Key:** `derivedKey('form-type', key ?? alias)`, so it is stable for as
+    long as the form's key or alias is.
+  - **Alias:** `<alias>Form`, for example `contactUsForm`.
+  - **Records its form:** `content_type.form_key` names the form, which is how
+    the sync, the export and the drift check know to leave the type alone.
+  - **Locked:** the management API refuses to save or delete it, and its
+    editor's footer says which form it follows.
+  - **A removed form:** its type retires once no Library form uses it. While
+    one does, the type stays and the Library forms survive, showing nothing on
+    a page.
+- **What an editor sets:** a heading, an introduction (rich text), the submit
+  button's text, the thank-you message or a page to go to after sending, and
+  who is e-mailed about each entry. Each word left empty falls back to the
+  TOML's (`submit-label`, `message-on-submit`, `redirect-to`, a send-e-mail
+  workflow's `to`). Fields, labels, validation and workflows stay in the TOML.
+- **The page's Form picker** offers Library forms, grouped by form, and stores
+  the chosen one's key. `model.value(...)` gives the form with the words laid
+  over (`applyLibraryForm` in `core/src/form-library.ts`), and its `library`
+  carries the heading, introduction and recipients. Templates are unchanged.
+  - **A page saved before Library forms** names a form itself, and still
+    shows it in the TOML's words.
+  - **An unpublished or deleted Library form** shows no form.
+- **Submission.** `<Form>` posts the Library form's key in `_crombolo_library`,
+  and the token is signed over the form's key and the Library form's together
+  (`formTokenSubject`), so one Library form's token cannot carry another's
+  words.
+  - **The entry** records it in `form_entry.library_key` (migration 059), and
+    Entries can filter by it (`?library=<key>`, or `none`).
+  - **Recipients** are copied into the queued run, so a later edit or
+    unpublish does not change an e-mail already on its way. An `on = "approve"`
+    workflow uses the Library form's recipients as they are when the entry is
+    approved.
+- **The Delivery API** gives an app the heading and introduction, and the
+  `_crombolo_library` field to post back. The recipients stay on the server.
+
 ## What is built, and what is not
 
 Built: definitions as files, the closed field-type set, whole-set validation,
 entries with states and sensitive-data redaction, `<Form>` and the submission
 endpoint, server-side validation and conditions, the honeypot and timing
 guards, uploads, choices from a source, the three workflows on a retrying
-queue, field and workflow types from a bundle, and TSX e-mail templates with
-the designer's workflow editor.
+queue, field and workflow types from a bundle, TSX e-mail templates with
+the designer's workflow editor, and Library forms (story 239).
 
 Not built yet:
 

@@ -103,6 +103,8 @@ export interface ContentTypeAggregate {
   siteSearch?: boolean
   /** A site's settings (story 058). Absent means unchanged on a save. */
   siteSettings?: boolean
+  /** The form a Library form type is made from (story 239); null for every other type. Absent means unchanged on a save. */
+  formKey?: string | null
 }
 
 /**

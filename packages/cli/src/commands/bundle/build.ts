@@ -3,18 +3,17 @@ import { buildBundleFromDirectory } from '@crombolo/server'
 import { Args, Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
 import { CliError } from '../../errors.ts'
-import { writeSeedPackage } from '../../support/seed.ts'
+import { findingFields, writeSeedPackage } from '../../support/seed.ts'
 import { listTemplates } from '../../templates.ts'
 
 export default class BundleBuild extends BaseCommand {
-  static override summary = 'a bundle from a site directory: its schema, views, styles and seed'
+  static override summary = 'a bundle from a site directory: its schema, views, styles and content'
   static override description = [
-    "Reads the directory's schema/, components/, css/, scripts/ and seed/, and compiles the seed against that schema in a throwaway database: no site or database of its own is needed. The bundle installs everything into a bare site in one transaction: `crombolo start --bundle <dir>`, or `content import`.",
+    "Reads the directory's schema/, components/, css/, scripts/ and content/, and builds its content against that schema in a throwaway database: no site or database of its own is needed. The bundle installs everything into a bare site in one transaction: `crombolo start --bundle <dir>`, or `bundle apply`.",
+    '--check builds it and writes nothing: every problem in the content files, by file and line, an unknown type or property, a value its editor cannot take, a path that names nothing, a language the site has not got, a type its parent does not allow.',
     'The directory is the current one unless named; --template names a starter site the CLI ships instead.',
-    'A site with server code of its own names it in its package.json, as globs in `crombolo.code`, or with --code here; the bundle then carries that code with package.json, bun.lock and crombolo.config.ts under code/. `bundle check` checks it against a CMS, and `bundle install-code` installs it.',
+    'A site with server code of its own names it in its package.json, as globs in `crombolo.code`, or with --code here; the bundle then carries that code with package.json, bun.lock and crombolo.config.ts under code/. `bundle check-code` checks it against a CMS, and `bundle install-code` installs it.',
   ].join('\n\n')
-  static override aliases = ['seed:build']
-  static override deprecateAliases = true
   static override examples = [
     '<%= config.bin %> bundle build sites/harbourstone --out ./harbourstone-bundle',
     '<%= config.bin %> bundle build --template demo/harbourstone --out ./harbourstone-bundle',
@@ -29,13 +28,13 @@ export default class BundleBuild extends BaseCommand {
       exclusive: ['dir'],
     }),
     out: Flags.string({
-      required: true,
       summary: 'the directory to write it to',
       helpValue: '<dir>',
     }),
+    check: Flags.boolean({ summary: 'build it, report its problems, and write nothing' }),
     name: Flags.string({ summary: "the bundle's package name", helpValue: '<name>' }),
     'with-media': Flags.boolean({
-      summary: "the seed's media files too; left out unless asked",
+      summary: 'the media files too; left out unless asked',
     }),
     code: Flags.string({
       multiple: true,
@@ -52,8 +51,19 @@ export default class BundleBuild extends BaseCommand {
       { name: 'out', type: 'string' },
       { name: 'nodes', type: 'integer' },
       { name: 'code', type: 'integer' },
+      ...findingFields,
+      {
+        name: 'counts',
+        type: 'object',
+        fields: [
+          { name: 'content', type: 'integer' },
+          { name: 'library', type: 'integer' },
+          { name: 'media', type: 'integer' },
+        ],
+      },
     ],
     errors: ['not_found', 'refused', 'usage'],
+    outcomes: ['problems_found'],
   } as const
 
   async run() {
@@ -73,17 +83,40 @@ export default class BundleBuild extends BaseCommand {
       code: flags.code,
       media: flags['with-media'],
     })
+    // --check reports the content files' findings by file and line, and writes nothing.
+    if (flags.check && built.seed) {
+      this.changedNothing = true
+      const findings = built.seed.findings
+      for (const finding of findings)
+        this.say(`  ${finding.file}:${finding.line}  ${finding.message}`)
+      const counts = built.seed.counts
+      if (findings.length > 0) {
+        this.say(`\n${findings.length} problem(s).`)
+        this.outcome = 'problems_found'
+      } else
+        this.say(
+          `  ${counts.content} page(s), ${counts.library} Library element(s), ${counts.media} media item(s): all good.`,
+        )
+      return {
+        id: built.seed.set?.manifest.id ?? '',
+        name: built.name,
+        out: '',
+        nodes: built.seed.set?.nodes.length ?? 0,
+        code: built.code?.length ?? 0,
+        findings,
+        counts,
+      }
+    }
     if (built.problems.length > 0 || !built.files)
       throw new CliError(
         'refused',
         `${relative(process.cwd(), source) || '.'} cannot be built into a bundle.`,
         {
-          hint: built.seed
-            ? '`crombolo seed check` in that directory lists what is wrong.'
-            : undefined,
           details: built.problems,
         },
       )
+    if (!flags.out)
+      throw new CliError('usage', 'Where to? Pass --out <dir>, or --check to write nothing.')
     const out = resolve(flags.out)
     writeSeedPackage({ ...(built.seed as NonNullable<typeof built.seed>), files: built.files }, out)
     const id = built.seed?.set?.manifest.id ?? ''
@@ -93,7 +126,7 @@ export default class BundleBuild extends BaseCommand {
     )
     if (built.code)
       this.say(
-        `  code     ${built.code.length} file(s); \`crombolo bundle check\` checks them, \`crombolo bundle install-code\` installs them`,
+        `  code     ${built.code.length} file(s); \`crombolo bundle check-code\` checks them, \`crombolo bundle install-code\` installs them`,
       )
     this.say(
       `\n  \`crombolo start --bundle ${relative(process.cwd(), out) || '.'} --publish\` installs it into a site.`,

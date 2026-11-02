@@ -1,6 +1,7 @@
 /** What the remote commands share: the remote a command names, and the browser it opens. */
 import { osKeychain } from '@crombolo/server/remote-credentials'
 import { CliError } from '../errors.ts'
+import { ciIdentityToken, ciTokenSource, inCiWithIdentity } from '../remote/ci.ts'
 import { discover, RemoteClient } from '../remote/client.ts'
 import { pickRemote, readRemotes } from '../remote/remotes-file.ts'
 
@@ -37,7 +38,15 @@ export async function connectRemote(name: string | undefined, env: string | unde
     )
   }
   const discovery = await discover(entry.url)
-  const client = new RemoteClient(discovery, keychain())
+  // In a CI job that can prove who it is, that identity; on a person's machine, their sign-in.
+  const client = new RemoteClient(
+    discovery,
+    keychain(),
+    fetch,
+    inCiWithIdentity()
+      ? ciTokenSource(discovery, (audience) => ciIdentityToken(audience))
+      : undefined,
+  )
   const environment =
     env ??
     entry.environment ??

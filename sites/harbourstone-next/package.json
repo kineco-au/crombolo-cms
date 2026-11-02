@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "crombolo start --seed --publish",
+    "start": "crombolo start --bundle . --publish",
     "dev": "bun dev.ts",
     "dev:cms": "bun --watch server.ts"
   },

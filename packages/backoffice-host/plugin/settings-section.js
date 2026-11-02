@@ -30,6 +30,7 @@ import {
   treeFor,
 } from './settings-cards.js'
 import './breadcrumb.js'
+import './settings-card.js'
 
 const base = () =>
   (document.querySelector('base')?.getAttribute('href') ?? '/umbraco/').replace(/\/$/, '')
@@ -134,6 +135,11 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
     return this.localize.string(label)
   }
 
+  #description(manifest) {
+    const text = manifest.meta?.description
+    return text ? this.localize.string(text) : undefined
+  }
+
   #dashboardPath(manifest) {
     return `dashboard/${manifest.meta?.pathname || pathFolderName(manifest.meta?.label ?? manifest.name ?? manifest.alias)}`
   }
@@ -143,6 +149,8 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
       dashboards: this.#dashboards.map((d) => ({
         alias: d.alias,
         label: this.#label(d),
+        description: this.#description(d),
+        bundle: d.cromboloBundle,
         path: this.#dashboardPath(d),
       })),
       advanced: this.#advanced(),
@@ -164,7 +172,13 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
   #advanced() {
     return this.#menuItems
       .filter((m) => menuOf(m, ADVANCED_MENU))
-      .map((m) => ({ alias: m.alias, label: this.#label(m), entityType: m.meta?.entityType }))
+      .map((m) => ({
+        alias: m.alias,
+        label: this.#label(m),
+        description: this.#description(m),
+        bundle: m.cromboloBundle,
+        entityType: m.meta?.entityType,
+      }))
   }
 
   #viewContext(manifest) {
@@ -269,6 +283,14 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
       umb-section-main {
         flex: 1 1 auto;
       }
+      /* Umbraco's own views scroll inside their layout; the landing page and a
+         tree's start page have none, so the area under the trail scrolls them. */
+      umb-router-slot {
+        display: block;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+      }
       .crumbs {
         display: block;
         padding: var(--uui-size-space-4) var(--uui-size-layout-1) 0;
@@ -313,14 +335,25 @@ export class CromboloSettingsLandingElement extends UmbLitElement {
     return html`
       ${this.#email()}
       ${(this.groups ?? []).map(
-        ({ group, cards }) => html`<section>
-          <h2>${group}</h2>
+        ({ group, bundle, cards }) => html`<section>
+          <h2>
+            ${group}
+            ${
+              bundle
+                ? html`<a class="tag" href=${bundle.path} title=${`The ${bundle.name} bundle, which adds these`}
+                    >Bundle: ${bundle.packageName}</a
+                  >`
+                : nothing
+            }
+          </h2>
           <div class="cards">
             ${cards.map(
-              (card) => html`<a class="card" href=${`section/settings/${card.path}`}>
-                <strong>${card.title}</strong>
-                ${card.description ? html`<span>${card.description}</span>` : nothing}
-              </a>`,
+              (card) =>
+                html`<crombolo-settings-card
+                  href=${`section/settings/${card.path}`}
+                  heading=${card.title}
+                  description=${card.description ?? ''}
+                ></crombolo-settings-card>`,
             )}
           </div>
         </section>`,
@@ -345,30 +378,27 @@ export class CromboloSettingsLandingElement extends UmbLitElement {
         letter-spacing: -0.01em;
         margin: 0 0 var(--uui-size-space-4);
       }
+      h2 .tag {
+        margin-left: var(--uui-size-space-2);
+        padding: 0.1em 0.6em;
+        border: 1px solid var(--uui-color-border-standalone);
+        border-radius: 999px;
+        color: var(--uui-color-text-alt);
+        font-size: var(--uui-type-small-size);
+        font-weight: 600;
+        letter-spacing: 0;
+        vertical-align: middle;
+        text-decoration: none;
+      }
+      h2 a.tag:hover,
+      h2 a.tag:focus-visible {
+        border-color: var(--uui-color-interactive-emphasis);
+        color: var(--uui-color-interactive-emphasis);
+      }
       .cards {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
         gap: var(--uui-size-space-5);
-      }
-      .card {
-        display: flex;
-        flex-direction: column;
-        gap: var(--uui-size-space-2);
-        padding: var(--uui-size-space-5);
-        background: var(--uui-color-surface);
-        border: 1px solid var(--uui-color-border);
-        border-radius: 12px;
-        box-shadow: var(--crombolo-card-shadow, none);
-        color: var(--uui-color-text);
-        text-decoration: none;
-      }
-      .card:hover,
-      .card:focus-visible {
-        border-color: var(--uui-color-interactive-emphasis);
-      }
-      .card span {
-        color: var(--uui-color-text-alt);
-        font-size: var(--uui-type-small-size);
       }
       .banner {
         display: flex;

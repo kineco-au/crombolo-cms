@@ -46,8 +46,20 @@ export type UserLinkSender = (message: {
   message: string | null
 }) => Promise<void>
 
+/**
+ * How much a site takes from the remote protocol (story 167), each level the
+ * ones before it and more: `read` pulls, `content` applies bundles of content,
+ * `all` takes whole-site pushes and bundles that change structure and code.
+ */
+export type RemoteAccess = 'off' | 'read' | 'content' | 'all'
+
+export const REMOTE_ACCESS_LEVELS: readonly RemoteAccess[] = ['off', 'read', 'content', 'all']
+
 export interface RemoteSettings {
+  /** Whether the site answers the protocol at all: its access is not `off`. */
   enabled: boolean
+  /** `CROMBOLO_REMOTE_ACCESS`; `all` when only `enabled` is given, as a test does. */
+  access?: RemoteAccess
   /** The environment this server is, as the remote protocol names it. */
   environment: string
   /** A push here replaces something people rely on: it needs its own permission. */
@@ -60,6 +72,24 @@ export interface RemoteSettings {
    * the server's.
    */
   maxUploadBytes: number
+  /**
+   * Issuers of CI identity tokens trusted beside GitHub's and gitlab.com's (story
+   * 160): a self-managed GitLab, as `CROMBOLO_REMOTE_OIDC_ISSUERS`, comma separated.
+   */
+  oidcIssuers?: string[]
+}
+
+/** `CROMBOLO_REMOTE_ACCESS`, refusing the switch it replaced so a site does not quietly stop being a remote. */
+function remoteAccessSetting(): RemoteAccess {
+  // Read directly: it is no longer a setting, only a name to refuse.
+  if (Bun.env.CROMBOLO_REMOTE_ENABLED !== undefined)
+    throw new Error(
+      'CROMBOLO_REMOTE_ENABLED has gone: set CROMBOLO_REMOTE_ACCESS to read, content or all instead (story 167).',
+    )
+  const value = (setting('CROMBOLO_REMOTE_ACCESS') ?? 'off').trim().toLowerCase()
+  if (!REMOTE_ACCESS_LEVELS.includes(value as RemoteAccess))
+    throw new Error(`CROMBOLO_REMOTE_ACCESS is "${value}": it is off, read, content or all.`)
+  return value as RemoteAccess
 }
 
 /** The prefix every API client id carries, as the Management API requires. */
@@ -800,11 +830,16 @@ export function loadConfig(
     memberIdentityProviders: [],
     backofficeIdentityProviders: [],
     remote: {
-      enabled: setting('CROMBOLO_REMOTE_ENABLED') === 'true',
+      enabled: remoteAccessSetting() !== 'off',
+      access: remoteAccessSetting(),
       environment: setting('CROMBOLO_REMOTE_ENVIRONMENT') || 'production',
       protected: setting('CROMBOLO_REMOTE_PROTECTED') !== 'false',
       approvals: setting('CROMBOLO_REMOTE_APPROVALS') === 'true',
       maxUploadBytes: Number(setting('CROMBOLO_REMOTE_MAX_UPLOAD_GB') ?? 50) * 1024 ** 3,
+      oidcIssuers: (setting('CROMBOLO_REMOTE_OIDC_ISSUERS') ?? '')
+        .split(',')
+        .map((issuer) => issuer.trim())
+        .filter(Boolean),
     },
     redirects: [],
     trackRedirects: setting('CROMBOLO_TRACK_REDIRECTS') !== 'false',
@@ -866,6 +901,11 @@ export function loadConfig(
   // Field by field, so a site setting its title suffix keeps the environment's switches.
   merged.seo = { ...fromEnv.seo, ...stripUndefined(overrides.seo ?? {}) }
   merged.remote = { ...fromEnv.remote, ...stripUndefined(overrides.remote ?? {}) }
+  // An override that says only `enabled` means everything, as before story 167.
+  if (overrides.remote?.enabled !== undefined && overrides.remote.access === undefined)
+    merged.remote.access = overrides.remote.enabled ? 'all' : 'off'
+  merged.remote.access ??= merged.remote.enabled ? 'all' : 'off'
+  merged.remote.enabled = merged.remote.access !== 'off'
   merged.errors = {
     showDetails:
       overrides.errors?.showDetails ??
@@ -982,7 +1022,7 @@ export function describeDatabase(
   }
 }
 
-export const VERSION = '0.43.1'
+export const VERSION = '0.44.0'
 
 /** A whole number of seconds from the environment; undefined when unset or not one. */
 /** A positive number from a setting, else the default. */

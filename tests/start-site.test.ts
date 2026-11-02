@@ -43,8 +43,8 @@ function runWith(args: string[], env: Record<string, string>) {
 /** A site in the sandboxed `sites/`, with a database that has been used. */
 function repoSite(): string {
   const dir = join(SITES, 'example')
-  mkdirSync(join(dir, 'seed', 'content'), { recursive: true })
-  writeFileSync(join(dir, 'seed', 'content', 'home.toml'), 'type = "home"\n')
+  mkdirSync(join(dir, 'content', 'pages'), { recursive: true })
+  writeFileSync(join(dir, 'content', 'pages', 'home.toml'), 'type = "home"\n')
   mkdirSync(join(dir, 'media'), { recursive: true })
   mkdirSync(join(dir, 'components'), { recursive: true })
   writeFileSync(
@@ -92,7 +92,7 @@ describe('a site in sites/', () => {
       expect(out).toContain('would copy')
       expect(out).toContain(join(copy, 'crombolo.sqlite'))
       expect(out).not.toContain(join(dir, 'crombolo.sqlite'))
-      expect(out).toContain('--seed --publish')
+      expect(out).toContain('--bundle . --publish')
     }
     expect(existsSync(copy)).toBe(false)
   })
@@ -102,7 +102,7 @@ describe('a site in sites/', () => {
     mkdirSync(join(dir, 'node_modules', 'crombolo'), { recursive: true })
     writeFileSync(join(dir, 'crombolo.sqlite.content-import.bak'), '')
     copySite(dir, copy)
-    for (const kept of ['site.json', 'components/home.tsx', 'seed/content/home.toml'])
+    for (const kept of ['site.json', 'components/home.tsx', 'content/pages/home.toml'])
       expect(existsSync(join(copy, kept))).toBe(true)
     for (const left of [
       'crombolo.sqlite',
@@ -359,8 +359,8 @@ describe('what it runs', () => {
     expect(script).toContain("join(ROOT, 'packages/cli/bin/crombolo.ts')")
   })
 
-  test('applies the site’s seed, once for each change to it', () => {
-    expect(readFileSync(SCRIPT, 'utf8')).toContain("'--seed'")
-    expect(existsSync(join(ROOT, 'sites/harbourstone/seed/content'))).toBe(true)
+  test('applies the site’s content files, once for each change to them', () => {
+    expect(readFileSync(SCRIPT, 'utf8')).toContain("'--bundle', '.'")
+    expect(existsSync(join(ROOT, 'sites/harbourstone/content/pages'))).toBe(true)
   })
 })

@@ -1,7 +1,7 @@
 /**
  * From an empty directory to a working "Hello, world" site without leaving the
  * command line: scaffold it, give it a page type with a title, write its home
- * page as a seed file and apply it, publish it, put an image in a media folder,
+ * page as a content file and apply it, publish it, put an image in a media folder,
  * get into the back office, check it, start it and read the page.
  *
  * Each step is a test of its own, in order, so a step the command line cannot do
@@ -104,16 +104,16 @@ describe('an empty directory to "Hello, world", through the command line alone',
     expect(run.code, said(run)).toBe(0)
   })
 
-  // Content is declared in seed files and applied (story 163), not typed into a command.
-  test('6. the home page, as a seed file, applied', async () => {
-    mkdirSync(join(dir, 'seed', 'content'), { recursive: true })
+  // Content is declared in content files and applied (story 163), not typed into a command.
+  test('6. the home page, as a content file, applied', async () => {
+    mkdirSync(join(dir, 'content', 'pages'), { recursive: true })
     writeFileSync(
-      join(dir, 'seed', 'content', 'home.toml'),
+      join(dir, 'content', 'pages', 'home.toml'),
       'type = "page"\nname = "Home"\n\n[values]\ntitle = "Hello, world"\n',
     )
-    const check = await cli('seed', 'check')
+    const check = await cli('bundle', 'build', '--check')
     expect(check.code, said(check)).toBe(0)
-    const run = await cli('seed', 'apply')
+    const run = await cli('bundle', 'apply')
     expect(run.code, said(run)).toBe(0)
   })
 

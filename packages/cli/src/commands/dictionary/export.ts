@@ -13,7 +13,7 @@ import { siteConfig } from '../../support/site.ts'
  * gets the translations.
  */
 export default class DictionaryExport extends BaseCommand {
-  static override summary = "the dictionary as Umbraco's .udt, to seed another environment"
+  static override summary = "the dictionary as Umbraco's .udt, to fill another environment"
   static override flags = {
     out: Flags.string({ summary: 'the file to write', helpValue: '<file.udt>', required: true }),
     key: Flags.string({ summary: 'only this item and its children', helpValue: '<uuid>' }),

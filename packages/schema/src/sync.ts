@@ -643,13 +643,15 @@ export async function syncSchema(
           const dbTypes = await tx.q
             .selectFrom('content_type as ct')
             .innerJoin('node as n', 'n.id', 'ct.node_id')
-            .select(['n.unique_id', 'ct.alias'])
+            .select(['n.unique_id', 'ct.alias', 'ct.form_key'])
             .where('ct.retired_at', 'is', null)
             .where('n.node_object_type', '=', kind.repo.objectType)
             .execute()
           for (const row of dbTypes) {
             const key = String(row.unique_id).toLowerCase()
             if (inFiles.has(key)) continue
+            // Made from a form (story 239), and kept in step with the forms instead.
+            if (row.form_key !== null) continue
             // Shipped with the framework: present whether or not a file defines it.
             if (SYSTEM_MEDIA_TYPES.some((t) => t.key === key)) continue
             if (key === SYSTEM_MEMBER_TYPE.key) continue

@@ -204,6 +204,22 @@ describe('asset paths', () => {
     expect((first.meta as { label: string }).label).toBe('dist/also-a-label')
   })
 
+  test('each extension names the bundle it came from, for Settings to group by', () => {
+    const root = siteWith({
+      tool: {
+        json: {
+          crombolo: {
+            id: 'tool',
+            name: 'Acme tools',
+            extensions: [{ type: 'dashboard', alias: 'Tool.Dashboard', meta: {} }],
+          },
+        },
+      },
+    })
+    const first = discoverExtensions(root)[0]?.manifest.extensions[0] as Record<string, unknown>
+    expect(first.cromboloBundle).toEqual({ name: 'Acme tools', packageName: 'tool' })
+  })
+
   test('rewrites an importmap target', () => {
     const root = siteWith({
       tool: {

@@ -4,15 +4,15 @@
  *
  *   bun run build:template
  *
- * 1. The docs section's pages, as seed files under
- *    `sites/crombolo/seed/content/home/docs/`, from `sites/crombolo/docs/*.md`,
+ * 1. The docs section's pages, as content files under
+ *    `sites/crombolo/content/pages/home/docs/`, from `sites/crombolo/docs/*.md`,
  *    the CLI manifest and the settings (`writeDocsSeed`).
  * 2. The product site's bundle, from its directory with `crombolo bundle build`'s
- *    own code: its schema, components, styles and seed. The platform installs
+ *    own code: its schema, components, styles and content. The platform installs
  *    the product site from this bundle.
  *
- * Every other site and template is its seed: `crombolo init --template` copies
- * it, and `crombolo start --seed` applies it. tests/docs-site.test.ts fails
+ * Every other site and template is its files: `crombolo init --template` copies
+ * them, and `crombolo start --bundle .` applies their content. tests/docs-site.test.ts fails
  * when either output is out of date.
  */
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
@@ -39,5 +39,5 @@ for (const file of built.files) {
   writeFileSync(target, file.bytes ?? (file.text as string))
 }
 console.log(
-  `  docs seed            ${docs.length} page(s)\n  demo/crombolo        ${built.seed?.set?.nodes.length ?? 0} node(s)`,
+  `  docs pages           ${docs.length} page(s)\n  demo/crombolo        ${built.seed?.set?.nodes.length ?? 0} node(s)`,
 )

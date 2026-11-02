@@ -86,8 +86,9 @@ the rules do not depend on what started the change.
   move, copy and a restore to a chosen place refuse a type the parent (or, at
   the top level, the root) does not allow, for a user and an operator alike;
   the system is exempt, since it carries out what was already decided. Before
-  this, only the backoffice's pickers held to it. Seeds and `content import`
-  write through the repository and are not checked.
+  this, only the backoffice's pickers held to it. `bundle apply`, from a
+  bundle or a site's content files, writes through the repository and is not
+  checked.
 - **A refusal is a value**, not an exception: `notFound`, `forbidden`,
   `needsApproval`, `invalid`, `conflict`, `blocked`, `validation`, `stale` or
   `revisionRequired`, with the status a transport would answer and the reason

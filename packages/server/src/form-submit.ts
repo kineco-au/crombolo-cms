@@ -21,6 +21,7 @@ import {
   BUILT_IN_FORM_TYPES,
   DEFAULT_UPLOAD_SETTINGS,
   FORM_HONEYPOT_FIELD,
+  FORM_LIBRARY_FIELD,
   FORM_PAGE_FIELD,
   FORM_RENDERED_FIELD,
   FORM_RESERVED_FIELDS,
@@ -28,6 +29,7 @@ import {
   type FormFieldError,
   type FormSubmissionState,
   type FormTypes,
+  formTokenSubject,
   isUploadAllowed,
   type SchemaForm,
   type SubmittedValues,
@@ -215,6 +217,7 @@ export function readFlash(
   if (!parsed) return undefined
   return {
     formKey: parsed.formKey,
+    ...(parsed.libraryKey ? { libraryKey: parsed.libraryKey } : {}),
     formAlias: parsed.formAlias,
     values: parsed.values ?? {},
     errors: parsed.errors ?? [],
@@ -238,6 +241,8 @@ export interface FormSubmitDeps {
   urlOf?: (key: string) => Promise<string | undefined>
   /** Fills in the options of choices drawn from a source, as the page rendered them. */
   resolveForm?: (form: SchemaForm) => Promise<SchemaForm>
+  /** A published Library form's form, with its words (story 239). */
+  libraryForm?: (key: string) => Promise<SchemaForm | undefined>
 }
 
 export type FormSubmitOutcome =
@@ -289,9 +294,8 @@ export async function submitForm(
   formKey: string,
   options: { ip?: string; now?: number } = {},
 ): Promise<FormSubmitOutcome> {
-  const definition = deps.forms.byKey(formKey)
-  if (!definition) return { status: 'notFound' }
-  const form = deps.resolveForm ? await deps.resolveForm(definition) : definition
+  const file = deps.forms.byKey(formKey)
+  if (!file) return { status: 'notFound' }
 
   const secret = await formSigningSecret(deps.db)
   const data = await request.formData()
@@ -299,9 +303,23 @@ export async function submitForm(
 
   const renderedAt = Number(data.get(FORM_RENDERED_FIELD) ?? 0)
   const token = String(data.get(FORM_TOKEN_FIELD) ?? '')
+  const libraryKey = String(data.get(FORM_LIBRARY_FIELD) ?? '').trim() || undefined
   // Always required: the renderer puts a token in every form it draws, so a
   // submission without a good one did not come from a page this site rendered.
-  if (!verifyFormToken(secret, formKey, renderedAt, token)) return { status: 'badToken' }
+  // It covers the Library form too, so its words cannot be swapped for another's.
+  const subject = formTokenSubject(formKey, libraryKey)
+  if (!verifyFormToken(secret, subject, renderedAt, token)) return { status: 'badToken' }
+
+  // Shown through a Library form: its words, which must still be published
+  // and still be made from this form.
+  let definition = file
+  if (libraryKey) {
+    const library = await deps.libraryForm?.(libraryKey)
+    if (!library || (library.key ?? library.alias) !== (file.key ?? file.alias))
+      return { status: 'notFound' }
+    definition = library
+  }
+  const form = deps.resolveForm ? await deps.resolveForm(definition) : definition
 
   // A stepped form moving forward: this page's answers checked, and nothing else.
   const checking = data.get(FORM_PAGE_FIELD)
@@ -365,7 +383,13 @@ export async function submitForm(
     return {
       status: 'invalid',
       form,
-      state: { formKey: key, formAlias: form.alias, values: submitted, errors: result.errors },
+      state: {
+        formKey: key,
+        ...(libraryKey ? { libraryKey } : {}),
+        formAlias: form.alias,
+        values: submitted,
+        errors: result.errors,
+      },
     }
 
   let entryId: string | undefined
@@ -375,6 +399,7 @@ export async function submitForm(
       formAlias: form.alias,
       culture: null,
       pageKey: null,
+      libraryKey: libraryKey ?? null,
       ipHash: hashIp(secret, options.ip),
       userAgent: request.headers.get('user-agent')?.slice(0, 500) ?? null,
       spam,
@@ -401,6 +426,7 @@ export async function submitForm(
         runOn: workflow.on,
         entryId: entryId ?? null,
         payload: result.values,
+        ...(form.library?.recipients ? { recipients: form.library.recipients } : {}),
       })),
     )
 
@@ -419,6 +445,7 @@ export async function submitForm(
     redirectTo,
     state: {
       formKey: key,
+      ...(libraryKey ? { libraryKey } : {}),
       formAlias: form.alias,
       values: {},
       errors: [],

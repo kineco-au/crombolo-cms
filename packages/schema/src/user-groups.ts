@@ -25,6 +25,8 @@ export interface SchemaUserGroup {
   languages: string[] | 'all'
 }
 
+/** The section Bundles had, now part of Settings. */
+const RETIRED_SECTION = 'packages'
 const KEYS = ['alias', 'name', 'description', 'icon', 'sections', 'permissions', 'languages']
 
 export function parseUserGroup(file: string, source: string): ParseResult<SchemaUserGroup> {
@@ -45,7 +47,9 @@ export function parseUserGroup(file: string, source: string): ParseResult<Schema
       `${path}.alias`,
       'the administrators group is built in, and a file cannot redefine it',
     )
-  const sections = r.strs(t, 'sections', path)
+  // `packages` named Bundles before it moved into Settings (story 238): read,
+  // and dropped, so a file written before still loads.
+  const sections = r.strs(t, 'sections', path).filter((section) => section !== RETIRED_SECTION)
   for (const section of sections)
     if (!(section in SECTION_ALIASES) && !isExtensionSectionAlias(section))
       r.problem(

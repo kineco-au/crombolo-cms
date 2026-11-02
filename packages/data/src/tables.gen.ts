@@ -239,6 +239,7 @@ export interface CoreTables {
     allow_at_root: Bool
     allow_in_library: Bool
     description: string | null
+    form_key: string | null
     icon: string | null
     is_element: Bool
     keep_all_versions_newer_than_days: number | null
@@ -388,6 +389,7 @@ export interface CoreTables {
     form_key: string
     id: string
     ip_hash: string | null
+    library_key: string | null
     page_key: string | null
     spam: Bool
     state: string
@@ -614,6 +616,15 @@ export interface CoreTables {
     target: string
     target_kind: string
   }
+  remote_ci_token: {
+    claims: string
+    create_date: Timestamp
+    expires_at: Timestamp
+    issuer: string
+    jti: string
+    rule_key: string
+    token_hash: string
+  }
   remote_job: {
     create_date: Timestamp
     decided_at: Timestamp | null
@@ -635,6 +646,20 @@ export interface CoreTables {
     sha256: string | null
     stage: string | null
     state: string
+  }
+  remote_trust_rule: {
+    create_date: Timestamp
+    created_by: string | null
+    disabled_at: Timestamp | null
+    issuer: string
+    key: string
+    last_used_date: Timestamp | null
+    name: string
+    permissions: string
+    ref_kind: string
+    ref_value: string
+    repository: string
+    update_date: Timestamp
   }
   schema_state: {
     hash: string | null

@@ -1,15 +1,15 @@
 /**
  * The Form Picker property editor.
  *
- * A form is a file in `schema/forms/`, so the list comes from the server rather
- * than from a tree of nodes: there is nothing in the database to browse. The
- * stored value is the form's key, which is what a render resolves back to the
- * definition.
+ * It picks a Library form (story 239), the editor's words over a form a
+ * developer defined in `schema/forms/`, and stores its key. A page saved before
+ * Library forms stores a form's own key, which still renders in that form's
+ * own words.
  */
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
-import { formPickerOptions, NO_FORM_VALUE } from './form-picker-options.js'
-import { listForms, readForm } from './forms-client.js'
+import { formPickerOptions, NO_FORM_VALUE, pickedForm } from './form-picker-options.js'
+import { listForms, listLibraryForms, readForm } from './forms-client.js'
 
 export default class CromboloFormPickerElement extends UmbLitElement {
   static properties = {
@@ -29,10 +29,10 @@ export default class CromboloFormPickerElement extends UmbLitElement {
 
   connectedCallback() {
     super.connectedCallback()
-    listForms().then(
-      (items) => {
+    Promise.all([listForms(), listLibraryForms()]).then(
+      ([forms, libraryForms]) => {
         this._failed = false
-        this._items = items
+        this._items = { forms, libraryForms }
       },
       () => {
         this._failed = true
@@ -45,14 +45,16 @@ export default class CromboloFormPickerElement extends UmbLitElement {
   }
 
   async #loadFields() {
-    const key = this.value
+    const value = this.value
     this._detail = undefined
-    if (!this._items?.some((form) => form.key === key)) return
+    const picked = this._items && pickedForm(this._items, value)
+    if (!picked) return
+    const key = picked.form.key
     try {
       const detail = await readForm(key)
-      if (this.value === key) this._detail = { key, definition: detail.definition }
+      if (this.value === value) this._detail = { key: value, definition: detail.definition }
     } catch {
-      if (this.value === key) this._detail = { key, failed: true }
+      if (this.value === value) this._detail = { key: value, failed: true }
     }
   }
 
@@ -72,10 +74,14 @@ export default class CromboloFormPickerElement extends UmbLitElement {
   render() {
     if (this._failed) return html`<uui-box><p>The list of forms could not be loaded.</p></uui-box>`
     if (this._items === undefined) return html`<uui-loader></uui-loader>`
-    if (this._items.length === 0 && !this.value)
+    if (this._items.libraryForms.length === 0 && !this.value)
       return html`
         <p class="empty">
-          This site has no forms yet. Add one in the Forms section.
+          ${
+            this._items.forms.length === 0
+              ? 'This site has no forms yet. A developer adds them in the Forms section.'
+              : 'No Library forms yet. Create one in the Library, then pick it here.'
+          }
         </p>
       `
     return html`
@@ -86,7 +92,7 @@ export default class CromboloFormPickerElement extends UmbLitElement {
       ></uui-select>
       ${this.value ? html`<p class="detail">${this.#describe()}</p>` : nothing}
       ${
-        this._items.some((form) => form.key === this.value)
+        pickedForm(this._items, this.value)
           ? html`<details>
               <summary>View form fields</summary>
               ${this.#fields()}
@@ -97,8 +103,11 @@ export default class CromboloFormPickerElement extends UmbLitElement {
   }
 
   #describe() {
-    const form = this._items?.find((item) => item.key === this.value)
-    if (!form) return 'The selected form is no longer available.'
+    const picked = this._items && pickedForm(this._items, this.value)
+    if (!picked) return 'The selected form is no longer available.'
+    const { form, library } = picked
+    if (library && !library.published)
+      return 'Not published yet: the page shows no form until it is.'
     const fields = `${form.fieldCount} field${form.fieldCount === 1 ? '' : 's'}`
     const pages = `${form.pageCount} page${form.pageCount === 1 ? '' : 's'}`
     return `${fields} over ${pages}${form.storeEntries ? '' : '; entries are not stored'}`

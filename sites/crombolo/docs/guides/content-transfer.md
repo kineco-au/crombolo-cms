@@ -59,10 +59,10 @@ Nothing that belongs to one environment ever travels: domains, sessions, sign-in
 Before anything is written, see what the import would do:
 
 ```sh
-bunx crombolo content check bundles/campaign
+bunx crombolo bundle apply bundles/campaign --dry-run
 ```
 
-`content check` changes nothing. It reports how many items would be created, updated or left alone, and sorts anything worth knowing into three kinds:
+`--dry-run` changes nothing. It reports how many items would be created, updated or left alone, and sorts anything worth knowing into three kinds:
 
 | Kind | Means | What to do |
 | --- | --- | --- |
@@ -75,19 +75,19 @@ bunx crombolo content check bundles/campaign
 Each decision is `take-bundle`, `keep-local` or `skip`, for a whole page or for one property:
 
 ```sh
-bunx crombolo content check bundles/campaign --resolve 9a1f3c2e-…=take-bundle
-bunx crombolo content check bundles/campaign --resolve 9a1f3c2e-…/title=keep-local
-bunx crombolo content check bundles/campaign --resolve-all take-bundle --save
+bunx crombolo bundle apply bundles/campaign --dry-run --resolve 9a1f3c2e-…=take-bundle
+bunx crombolo bundle apply bundles/campaign --dry-run --resolve 9a1f3c2e-…/title=keep-local
+bunx crombolo bundle apply bundles/campaign --dry-run --resolve-all take-bundle --save
 ```
 
 `--save` writes the answers into the bundle, so a decision made once on staging goes with the bundle to production rather than being made again. The findings also appear in the back office, on the **Changes** dashboard.
 
-`content check` exits with code 21 while anything needs a person, so it can gate a pipeline.
+`bundle apply --dry-run` exits with code 21 while anything needs a person, so it can gate a pipeline.
 
 ## Importing
 
 ```sh
-bunx crombolo content import bundles/campaign
+bunx crombolo bundle apply bundles/campaign
 ```
 
 The import checks again, takes a backup, and writes everything in one transaction, so a failure leaves nothing behind. On Postgres it needs `CROMBOLO_PG_DUMP` or `--backup-taken`; see [Operations](/docs/guides/operations/).
@@ -95,7 +95,7 @@ The import checks again, takes a backup, and writes everything in one transactio
 Pages arrive as drafts, for someone to review and publish. Media is live as soon as it lands. To publish what was live where the bundle came from:
 
 ```sh
-bunx crombolo content import bundles/campaign --publish --label "autumn campaign"
+bunx crombolo bundle apply bundles/campaign --publish --label "autumn campaign"
 ```
 
 Values are laid over what is there, so a bundle carrying a page's title cannot empty its summary. Importing the same bundle twice writes nothing the second time.
@@ -112,8 +112,8 @@ bunx crombolo content publish "/Campaigns/Autumn" --at 2026-11-01T09:00
 Every import is recorded as a run, and every run can be undone:
 
 ```sh
-bunx crombolo content runs
-bunx crombolo content revert 5192ca80-…
+bunx crombolo bundle runs
+bunx crombolo bundle revert 5192ca80-…
 ```
 
 A revert puts the site back to what it served: values and published state are restored, and pages the import created are unpublished and moved to the recycle bin, never deleted. If someone has edited a page since, the revert asks first; `--resolve-all discard` goes ahead. A revert is a run too, so it can itself be reverted.

@@ -20,7 +20,7 @@ import { downloadFile } from './download.js'
 const TAKE = 10
 
 /** Where the builder lives, which is Umbraco's route and not ours to rename. */
-export const BUILDER_PATH = 'section/packages/view/created/package-builder'
+export const BUILDER_PATH = 'section/settings/dashboard/bundles/created/package-builder'
 
 export default class CromboloBundlesCreatedOverviewElement extends UmbLitElement {
   static properties = {

@@ -169,7 +169,7 @@ export default function Article({ model }: PageProps) {
   <table>
     <tr><td><code>schema/</code></td><td>content types, data types and languages, as TOML files</td></tr>
     <tr><td><code>components/</code></td><td>templates and the components they share, as <code>.tsx</code></td></tr>
-    <tr><td><code>seed/</code></td><td>starting pages and media, as files</td></tr>
+    <tr><td><code>content/</code></td><td>starting pages and media, as files</td></tr>
     <tr><td><code>crombolo.config.ts</code></td><td>the site's settings: its name, its database, its addresses</td></tr>
   </table>
   </section>

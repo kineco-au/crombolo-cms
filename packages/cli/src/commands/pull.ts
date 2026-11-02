@@ -139,7 +139,7 @@ export default class Pull extends BaseCommand {
         )
       }
       runId = result.runId
-      this.say(`  replaced, run ${runId}: \`crombolo content revert ${runId}\` puts it back`)
+      this.say(`  replaced, run ${runId}: \`crombolo bundle revert ${runId}\` puts it back`)
       if (result.siteData) {
         this.say(
           `  site data  ${result.siteData.tables} table(s), ${result.siteData.rows} row(s) replaced`,

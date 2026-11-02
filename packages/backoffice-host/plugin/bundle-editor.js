@@ -83,7 +83,7 @@ export default class CromboloBundleEditorElement extends UmbLitElement {
 
   render() {
     return html`
-      <umb-workspace-editor back-path="section/packages/view/created">
+      <umb-workspace-editor back-path="section/settings/dashboard/bundles/created">
         ${
           this._definition
             ? html`<div id="header" slot="header">

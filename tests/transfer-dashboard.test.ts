@@ -308,12 +308,14 @@ describe(`answering and importing from the dashboard (${dialectUnderTest})`, () 
     expect((await h.post(`${API}/transfers/not-a-bundle/check`, {})).status).toBe(404)
   })
 
-  test('only those who may install packages see the answers or can act', async () => {
+  // Installing bundles is part of Settings (story 238), so it is Settings that
+  // decides; a group without it sees neither the findings nor the answers.
+  test('only those who may install bundles see the answers or can act', async () => {
     const { h, act, key, report } = await conflicted()
     const groups = await h.post(`${V1}/user-group`, {
-      name: 'Settings only',
-      alias: 'settingsOnly',
-      sections: ['Umb.Section.Settings'],
+      name: 'Content only',
+      alias: 'contentOnly',
+      sections: ['Umb.Section.Content'],
       languages: [],
       hasAccessToAllLanguages: true,
       documentRootAccess: true,
@@ -326,10 +328,10 @@ describe(`answering and importing from the dashboard (${dialectUnderTest})`, () 
       permissions: [],
     })
     expect(groups.status).toBe(201)
-    const settings = await signInAsGroup(h, 'settingsOnly')
+    const settings = await signInAsGroup(h, 'contentOnly')
     const seen = await report(settings)
-    expect(seen.mayImport).toBe(false)
-    expect(seen.findings.some((f) => f.choices)).toBe(false)
+    expect(seen.mayImport).toBeUndefined()
+    expect(seen.findings).toBeUndefined()
     expect(
       (await act('answer', { nodeKey: key, handle: 'title', resolution: 'keep-local' }, settings))
         .status,

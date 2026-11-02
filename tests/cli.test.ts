@@ -91,14 +91,14 @@ describe('arguments', () => {
 
 describe('failures and outcomes', () => {
   test('in JSON mode a failure ends stderr with one envelope line, and stdout is empty', () => {
-    const result = run(['content', 'import', '-o', 'json'])
+    const result = run(['bundle', 'revert', '-o', 'json'])
     expect(result.code).toBe(2)
     expect(result.out).toBe('')
     expect(result.envelope()).toMatchObject({ kind: 'usage' })
   })
 
   test('in text mode a failure says what to do, and a pipe still ends with the envelope', () => {
-    const result = run(['content', 'import'])
+    const result = run(['bundle', 'revert'])
     expect(result.code).toBe(2)
     expect(result.err).toContain('bundle')
     expect(result.err).toContain('--help')
@@ -137,11 +137,14 @@ describe('failures and outcomes', () => {
     expect(result.code).toBe(ERROR_KINDS.not_found.exitCode)
   })
 
-  test('content export still runs under its old name, and points at bundle export', () => {
-    const result = run(['content', 'export'])
-    // oclif wraps the warning, so its words are matched across the break.
-    expect(result.err.replace(/\s*›?\s+/g, ' ')).toContain('Use "bundle export" instead')
-    expect(result.code).toBe(ERROR_KINDS.usage.exitCode)
+  // Story 167 broke the CLI on purpose: the old names are gone, not kept as aliases.
+  test('the commands that became bundle commands are gone under their old names', () => {
+    for (const old of [
+      ['content', 'export'],
+      ['content', 'import'],
+      ['seed', 'apply'],
+    ])
+      expect(run(old).code).toBe(ERROR_KINDS.usage.exitCode)
   })
 
   test('a check that finds problems exits with its outcome, its findings on stdout and no envelope', () => {
@@ -259,10 +262,10 @@ describe('crombolo schema', () => {
   })
 
   test('narrows to a command path, and refuses one that is not there', () => {
-    const narrowed = JSON.parse(run(['schema', 'content', 'import']).out) as {
+    const narrowed = JSON.parse(run(['schema', 'bundle', 'apply']).out) as {
       commands: { name: string }[]
     }
-    expect(narrowed.commands.map((c) => c.name)).toEqual(['content import'])
+    expect(narrowed.commands.map((c) => c.name)).toEqual(['bundle apply'])
     expect(run(['schema', 'nothing', 'here']).code).toBe(ERROR_KINDS.not_found.exitCode)
   })
 
@@ -279,7 +282,7 @@ describe('the oclif manifest', () => {
     const manifest = await buildManifest()
     expect(manifest.version).toBe(sharedVersion())
     const ids = Object.keys(manifest.commands)
-    for (const id of ['start', 'types:check', 'content:import', 'push', 'schema'])
+    for (const id of ['start', 'types:check', 'bundle:apply', 'push', 'schema'])
       expect(ids).toContain(id)
     for (const [id, command] of Object.entries(manifest.commands))
       expect((command as { spec?: { effects?: string } }).spec?.effects, id).toBeDefined()

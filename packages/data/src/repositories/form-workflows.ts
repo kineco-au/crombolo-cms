@@ -23,6 +23,11 @@ export interface FormWorkflowRun {
   entryId: string | null
   /** The submitted values, as the workflow needs them. */
   payload: { fieldAlias: string; values: string[]; labels?: string[] }[]
+  /**
+   * Who to e-mail in place of a send-e-mail workflow's `to`: a Library form's
+   * recipients when it was queued (story 239). Kept in the payload's column.
+   */
+  recipients?: string[]
   state: FormWorkflowState
   attempts: number
   lastError: string | null
@@ -34,7 +39,7 @@ export interface FormWorkflowRun {
 export type FormWorkflowEnqueue = Pick<
   FormWorkflowRun,
   'formKey' | 'formAlias' | 'workflowName' | 'workflowType' | 'runOn' | 'entryId' | 'payload'
->
+> & { recipients?: string[] }
 
 interface Row {
   id: string
@@ -72,13 +77,22 @@ const COLUMNS = [
 
 const STATES: readonly FormWorkflowState[] = ['pending', 'running', 'done', 'failed']
 
-const payloadOf = (value: string): FormWorkflowRun['payload'] => {
+/** The column: the values alone, or with recipients as `{ values, recipients }`. */
+const payloadOf = (value: string): Pick<FormWorkflowRun, 'payload' | 'recipients'> => {
   try {
     const parsed = JSON.parse(value) as unknown
-    return Array.isArray(parsed) ? (parsed as FormWorkflowRun['payload']) : []
+    if (Array.isArray(parsed)) return { payload: parsed as FormWorkflowRun['payload'] }
+    const wrapped = parsed as { values?: unknown; recipients?: unknown } | null
+    const values = Array.isArray(wrapped?.values)
+      ? (wrapped.values as FormWorkflowRun['payload'])
+      : []
+    const recipients = Array.isArray(wrapped?.recipients)
+      ? wrapped.recipients.filter((r): r is string => typeof r === 'string')
+      : undefined
+    return recipients ? { payload: values, recipients } : { payload: values }
   } catch {
     // A row edited by hand should still be visible and still be deletable.
-    return []
+    return { payload: [] }
   }
 }
 
@@ -90,7 +104,7 @@ const hydrate = (row: Row): FormWorkflowRun => ({
   workflowType: row.workflow_type,
   runOn: row.run_on,
   entryId: row.entry_id,
-  payload: payloadOf(row.payload),
+  ...payloadOf(row.payload),
   state: STATES.includes(row.state as FormWorkflowState)
     ? (row.state as FormWorkflowState)
     : 'pending',
@@ -122,7 +136,9 @@ export class FormWorkflowRepository {
           workflow_type: run.workflowType,
           run_on: run.runOn,
           entry_id: run.entryId,
-          payload: JSON.stringify(run.payload),
+          payload: JSON.stringify(
+            run.recipients ? { values: run.payload, recipients: run.recipients } : run.payload,
+          ),
           state: 'pending',
           attempts: 0,
           last_error: null,

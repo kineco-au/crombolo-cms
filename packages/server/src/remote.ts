@@ -18,14 +18,36 @@ import { join, sep } from 'node:path'
 import { hasSection, type Principal } from '@crombolo/api-management/domain'
 import { DEVICE_CODE_GRANT, REMOTE_CLIENT_ID } from '@crombolo/auth'
 import { managementApiPath, RemotePermissions, type RemoteVerb } from '@crombolo/core'
-import { AuditLog, auditRecord, type Db, type RemoteJob, RemoteJobRepository } from '@crombolo/data'
-import type { ContentSet } from '@crombolo/transfer'
+import {
+  AuditLog,
+  auditRecord,
+  type Db,
+  type RemoteJob,
+  RemoteJobRepository,
+  RemoteTrustRepository,
+  TransferRunRepository,
+  type TrustRule,
+} from '@crombolo/data'
+import {
+  type ContentSet,
+  isResolution,
+  type NodeResolutions,
+  type Resolution,
+  revertRun,
+} from '@crombolo/transfer'
 import { readAuditPageQuery, recordAudit } from './adapters/audit.ts'
-import { installBundleContent } from './bundle-install.ts'
-import type { CromboloConfig } from './config.ts'
+import {
+  checkBundleContent,
+  installBundleContent,
+  readBundle,
+  revertSections,
+} from './bundle-install.ts'
+import { carriesSections, swappedSections } from './bundle-sections.ts'
+import { type CromboloConfig, REMOTE_ACCESS_LEVELS, type RemoteAccess } from './config.ts'
 import { answerContentQuery, contentQueryScope } from './content-query.ts'
 import { mediaStoreFor } from './media-files.ts'
 import { type MediaStore, streamOf } from './media-store.ts'
+import { createCiSignIn, readRuleInput, trustedIssuers } from './remote-ci.ts'
 import { openSecret, sealSecret, usableSecretKey } from './secrets.ts'
 import { exportSite } from './site-file.ts'
 import { replaceSummary } from './site-replace.ts'
@@ -61,6 +83,11 @@ export interface Remote {
   handle(request: Request, url: URL): Promise<Response | undefined>
   /** Whether a request is an upload the remote takes beyond the usual body limit. */
   isUpload(request: Request, url: URL): boolean
+  /**
+   * The trust rules (story 160), for the back office's CI access screen, which
+   * calls them under its own path: `rest` is `trust` or `trust/<key>[/<verb>]`.
+   */
+  trust(request: Request, principal: Principal, rest: string): Promise<Response>
 }
 
 interface Problem {
@@ -119,7 +146,24 @@ export function createRemote(options: RemoteOptions): Remote {
     id: settings.environment,
     name: settings.environment,
     protected: settings.protected,
+    access: level,
   })
+
+  /** What the site takes (story 167): each level the ones before it and more. */
+  const level: RemoteAccess = settings.access ?? (settings.enabled ? 'all' : 'off')
+  const atLeast = (wanted: RemoteAccess) =>
+    REMOTE_ACCESS_LEVELS.indexOf(level) >= REMOTE_ACCESS_LEVELS.indexOf(wanted)
+  const notAtLevel = (wanted: RemoteAccess, what: string) =>
+    problem(403, {
+      code: 'access-level',
+      title: `This site does not take ${what}`,
+      detail: `Its CROMBOLO_REMOTE_ACCESS is ${level}; ${what} need ${wanted}.`,
+    })
+
+  /** Who may change this site's content: Push, and PushProtected where it is protected. */
+  const mayChange = (principal: Principal) =>
+    may(principal, RemotePermissions.Push) &&
+    (!settings.protected || may(principal, RemotePermissions.PushProtected))
 
   // Under the back office, as the editor's own API calls are; a command line
   // follows these addresses rather than building its own.
@@ -134,8 +178,12 @@ export function createRemote(options: RemoteOptions): Remote {
       token: `${origin}${managementApi}/security/back-office/token`,
       clientId: REMOTE_CLIENT_ID,
       grantType: DEVICE_CODE_GRANT,
+      // Story 160: a CI job's identity token, exchanged for a token acting as a trust rule.
+      ci: ci.discovery(origin, `${origin}${REMOTE_API_PATH}`),
     },
     capabilities: [
+      ...(atLeast('content') ? ['bundle-apply'] : []),
+      'ci-sign-in',
       'media-fetch',
       'push-check',
       'audit',
@@ -144,6 +192,18 @@ export function createRemote(options: RemoteOptions): Remote {
     ],
     environments: [environment()],
   })
+
+  /** Where a CI principal's run was, for its audit rows: repository, ref and run. */
+  const ciRun = (principal: Principal) => {
+    const c = principal.ci?.claims
+    if (!c) return ''
+    const ref = c.ref
+      ? ` ${c.refType ?? 'ref'} ${c.ref}`
+      : c.environment
+        ? ` environment ${c.environment}`
+        : ''
+    return ` (CI: ${c.repository}${ref}${c.run ? `, run ${c.run}` : ''})`
+  }
 
   const audit = (principal: Principal, request: Request, action: string, detail: string) =>
     recordAudit(db, {
@@ -156,8 +216,123 @@ export function createRemote(options: RemoteOptions): Remote {
       entityName: settings.environment,
       ipAddress: null,
       forwardedFor: request.headers.get('x-forwarded-for'),
-      detail,
+      detail: `${detail}${ciRun(principal)}`,
     })
+
+  const trust = new RemoteTrustRepository(db)
+  const ci = createCiSignIn({
+    db,
+    issuers: trustedIssuers(settings.oidcIssuers),
+    onExchange: (outcome, request) =>
+      recordAudit(db, {
+        category: 'system',
+        action: outcome.ok ? 'RemoteCiSignIn' : 'RemoteCiSignInRefused',
+        source: 'request',
+        userKey: outcome.ok ? outcome.rule.key : null,
+        userName: outcome.ok ? `CI: ${outcome.rule.name}` : null,
+        entityType: 'RemoteEnvironment',
+        entityName: settings.environment,
+        ipAddress: null,
+        forwardedFor: request.headers.get('x-forwarded-for'),
+        detail: outcome.ok
+          ? `${outcome.claims.repository} ${outcome.claims.refType ?? ''} ${outcome.claims.ref ?? outcome.claims.environment ?? ''}${outcome.claims.run ? `, run ${outcome.claims.run}` : ''}`.replace(
+              /\s+/g,
+              ' ',
+            )
+          : `Refused: ${outcome.reason}${outcome.repository ? ` (${outcome.repository})` : ''}`,
+      }),
+  })
+
+  /** A rule as the trust endpoints show it. */
+  const ruleView = (rule: TrustRule) => ({
+    key: rule.key,
+    name: rule.name,
+    issuer: rule.issuer,
+    repository: rule.repository,
+    refKind: rule.refKind,
+    refValue: rule.refValue,
+    permissions: rule.permissions,
+    disabled: rule.disabled,
+    createdBy: rule.createdBy,
+    createDate: rule.createDate.toISOString(),
+    lastUsedDate: rule.lastUsedDate?.toISOString() ?? null,
+  })
+
+  /** The trust rules, for administrators: a person, never CI, and never over a cross-site write. */
+  async function trustRoute(
+    request: Request,
+    principal: Principal,
+    rest: string,
+  ): Promise<Response> {
+    if (!principal.isAdmin || principal.ci)
+      return problem(403, { code: 'forbidden', title: 'Only an administrator manages CI access' })
+    if (request.method !== 'GET' && !fromThisSiteOrBearer(request))
+      return new Response('Forbidden', { status: 403 })
+    const changed = (action: string, rule: TrustRule) =>
+      audit(
+        principal,
+        request,
+        action,
+        `${rule.name}: ${rule.repository} ${rule.refKind} ${rule.refValue}, may ${rule.permissions.join(', ')}`,
+      )
+    if (rest === 'trust') {
+      if (request.method === 'GET')
+        return Response.json({
+          // Rules can be made before the site answers as a remote; the screen says so.
+          remoteEnabled: settings.enabled,
+          issuers: ci.issuers,
+          permissions: Object.values(RemotePermissions),
+          items: (await trust.all()).map(ruleView),
+        })
+      if (request.method === 'POST') {
+        const { input, problems } = readRuleInput(
+          await request.json().catch(() => ({})),
+          ci.issuers,
+        )
+        if (!input)
+          return problem(400, {
+            code: 'invalid-rule',
+            title: 'That rule cannot be saved',
+            items: problems,
+          })
+        const rule = await trust.create(input, principal.name)
+        await changed('RemoteTrustRuleAdded', rule)
+        return Response.json(ruleView(rule), { status: 201 })
+      }
+      return new Response(null, { status: 405 })
+    }
+    const one = /^trust\/([0-9a-f-]{36})(?:\/(disable|enable))?$/.exec(rest)
+    if (!one) return problem(404, { code: 'not-found', title: 'There is no such rule' })
+    const [, key, action] = one as unknown as [string, string, string | undefined]
+    const existing = await trust.byKey(key)
+    if (!existing) return problem(404, { code: 'not-found', title: 'There is no such rule' })
+    if (action && request.method === 'POST') {
+      const rule = (await trust.setDisabled(key, action === 'disable')) as TrustRule
+      await changed(
+        action === 'disable' ? 'RemoteTrustRuleDisabled' : 'RemoteTrustRuleEnabled',
+        rule,
+      )
+      return Response.json(ruleView(rule))
+    }
+    if (!action && request.method === 'PUT') {
+      const { input, problems } = readRuleInput(await request.json().catch(() => ({})), ci.issuers)
+      if (!input)
+        return problem(400, {
+          code: 'invalid-rule',
+          title: 'That rule cannot be saved',
+          items: problems,
+        })
+      const rule = (await trust.update(key, input)) as TrustRule
+      await changed('RemoteTrustRuleChanged', rule)
+      return Response.json(ruleView(rule))
+    }
+    if (!action && request.method === 'DELETE') {
+      await trust.remove(key)
+      await changed('RemoteTrustRuleDeleted', existing)
+      return new Response(null, { status: 204 })
+    }
+    return new Response(null, { status: 405 })
+  }
 
   /** A job as the protocol shows it; a running one gone quiet is reported as failed. */
   const describe = async (job: RemoteJob, origin: string) => {
@@ -433,6 +608,223 @@ export function createRemote(options: RemoteOptions): Remote {
     return { sha256: hasher.digest('hex'), size }
   }
 
+  /** The options a bundle apply was sent with, in `Crombolo-Options` (story 167). */
+  const applyOptions = (request: Request) => {
+    let raw: Record<string, unknown> = {}
+    try {
+      raw = JSON.parse(request.headers.get('crombolo-options') ?? '{}') as Record<string, unknown>
+    } catch {
+      raw = {}
+    }
+    const resolutions =
+      raw.resolutions && typeof raw.resolutions === 'object'
+        ? (raw.resolutions as Record<string, NodeResolutions>)
+        : undefined
+    const resolveAll =
+      typeof raw.resolveAll === 'string' && isResolution(raw.resolveAll)
+        ? (raw.resolveAll as Resolution)
+        : undefined
+    return {
+      dryRun: raw.dryRun === true,
+      publish: raw.publish === true,
+      label: typeof raw.label === 'string' ? raw.label.slice(0, 200) : undefined,
+      resolutions,
+      resolveAll,
+    }
+  }
+
+  /**
+   * A bundle applied here (story 167): checked, and unless a dry run backed up
+   * and applied in one transaction as `bundle apply` does on a site's own
+   * machine. Content needs the `content` level and the right to change this
+   * site; schema, views or code need `all` and Crombolo.Remote.ApplyStructure.
+   */
+  async function applyBundle(request: Request, principal: Principal): Promise<Response> {
+    if (!atLeast('content')) return notAtLevel('content', 'bundles')
+    if (!mayChange(principal))
+      return problem(403, { code: 'forbidden', title: 'You may not change this environment' })
+    const declared = request.headers.get('crombolo-sha256')?.toLowerCase()
+    if (!declared || !/^[0-9a-f]{64}$/.test(declared))
+      return problem(400, { code: 'hash-required', title: 'Crombolo-Sha256 is required' })
+    const asked = applyOptions(request)
+    const id = crypto.randomUUID()
+    const local = join(tmpdir(), `crombolo-remote-bundle-${id}.tgz`)
+    const dir = join(tmpdir(), `crombolo-remote-bundle-${id}`)
+    try {
+      let received: { sha256: string; size: number } | undefined
+      try {
+        received = await receive(request, local)
+      } catch {
+        return problem(413, {
+          code: 'too-large',
+          title: 'The bundle is larger than this remote takes',
+        })
+      }
+      if (!received)
+        return problem(400, { code: 'body-required', title: 'The request carried no bundle' })
+      if (received.sha256 !== declared)
+        return problem(400, {
+          code: 'hash-mismatch',
+          title: 'The bundle is not the one described',
+          detail:
+            'Its SHA-256 does not match Crombolo-Sha256: it was changed or cut short on the way.',
+        })
+      await extractTarball(local, dir)
+      let structural: boolean
+      try {
+        structural = carriesSections(readBundle(dir, config.siteDir).carried)
+      } catch (error) {
+        return problem(400, {
+          code: 'not-a-bundle',
+          title: 'That is not a bundle this site can read',
+          detail: error instanceof Error ? error.message : String(error),
+        })
+      }
+      if (structural && !atLeast('all'))
+        return notAtLevel('all', 'bundles that change content types, views or code')
+      if (structural && !may(principal, RemotePermissions.ApplyStructure))
+        return problem(403, {
+          code: 'forbidden-structure',
+          title: "You may not change this site's structure",
+          detail:
+            'The bundle carries content types, views or code, which needs Crombolo.Remote.ApplyStructure.',
+        })
+      const input = {
+        bundle: dir,
+        publish: asked.publish,
+        resolutions: asked.resolutions,
+        resolveAll: asked.resolveAll,
+        by: principal.name,
+      }
+      const report = (check: {
+        counts: unknown
+        findings: Array<{ kind: string; code: string; key?: string; message: string }>
+        outstanding: unknown[]
+      }) => ({
+        counts: check.counts,
+        findings: check.findings.map((f) => ({
+          kind: f.kind,
+          code: f.code,
+          key: f.key ?? null,
+          message: f.message,
+        })),
+        outstanding: check.outstanding.length,
+      })
+      if (asked.dryRun) {
+        const checked = await checkBundleContent(db, config, input)
+        return Response.json({
+          dryRun: true,
+          structural,
+          bundle: checked.bundle,
+          ...report(checked.check),
+          clean: checked.clean,
+          problems: checked.problems,
+        })
+      }
+      // A backup wherever this server can take one; on Postgres that needs CROMBOLO_PG_DUMP.
+      const canBackUp = config.dialect === 'sqlite' || Boolean(config.pgDump)
+      const result = await installBundleContent(db, config, {
+        ...input,
+        backupTaken: !canBackUp,
+        label: asked.label ?? `bundle from ${principal.name}`,
+      })
+      if (result.runId) {
+        await audit(
+          principal,
+          request,
+          'RemoteBundleApplied',
+          `${result.bundle.id} as run ${result.runId}${structural ? ', with structure' : ''}`,
+        )
+        options.onApplied?.()
+      }
+      return Response.json(
+        {
+          dryRun: false,
+          structural,
+          bundle: result.bundle,
+          runId: result.runId ?? null,
+          ...report(result.check),
+          problems: result.problems,
+          published: result.published,
+          notPublished: result.publishFailures,
+        },
+        { status: result.runId ? 200 : 409 },
+      )
+    } finally {
+      await rm(local, { force: true })
+      await rm(dir, { recursive: true, force: true })
+    }
+  }
+
+  /** The applies on this site, newest first: for `bundle runs --remote`. */
+  async function listRuns(url: URL, principal: Principal): Promise<Response> {
+    if (!atLeast('read')) return notAtLevel('read', 'reads')
+    if (!may(principal, RemotePermissions.Pull) && !mayChange(principal))
+      return problem(403, { code: 'forbidden', title: 'You may not read this environment' })
+    const take = Math.min(Number(url.searchParams.get('limit') ?? 20) || 20, 200)
+    const skip = Number(url.searchParams.get('offset') ?? 0) || 0
+    const runs = new TransferRunRepository(db)
+    const [items, total] = await Promise.all([runs.recent(take, skip), runs.count()])
+    return Response.json({
+      total,
+      items: items.map((run) => ({
+        id: run.id,
+        startedAt: run.startedAt.toISOString(),
+        direction: run.direction,
+        status: run.status,
+        nodeCount: run.nodeCount,
+        bundleId: run.bundleId,
+        bundleLabel: run.bundleLabel ?? null,
+        appliedBy: run.appliedBy ?? null,
+      })),
+    })
+  }
+
+  /** Undoes an apply (story 167), as `bundle revert` does here; files it replaced come back too. */
+  async function revertBundleRun(
+    request: Request,
+    principal: Principal,
+    runId: string,
+  ): Promise<Response> {
+    if (!atLeast('content')) return notAtLevel('content', 'reverts')
+    if (!mayChange(principal))
+      return problem(403, { code: 'forbidden', title: 'You may not change this environment' })
+    if (!fromThisSiteOrBearer(request)) return new Response('Forbidden', { status: 403 })
+    const body = (await request.json().catch(() => ({}))) as { force?: unknown }
+    // A run that replaced files changes structure back, which needs the same as it did.
+    const swapped = swappedSections(config, runId)
+    if (
+      swapped.length > 0 &&
+      (!atLeast('all') || !may(principal, RemotePermissions.ApplyStructure))
+    )
+      return problem(403, {
+        code: 'forbidden-structure',
+        title: "Reverting that run changes this site's structure",
+        detail: 'It needs CROMBOLO_REMOTE_ACCESS=all and Crombolo.Remote.ApplyStructure.',
+      })
+    const result = await revertRun(db, runId, {
+      force: body.force === true,
+      nodeId: config.nodeId,
+      backOfficePath: config.backOfficePath,
+    })
+    if (!result.runId)
+      return problem(409, {
+        code: 'revert-refused',
+        title: 'The revert was refused; nothing was changed',
+        items: result.check.findings.map((f) => f.message),
+      })
+    const files = await revertSections(db, config, runId)
+    await audit(principal, request, 'RemoteBundleReverted', `${runId} as run ${result.runId}`)
+    options.onApplied?.()
+    return Response.json({
+      runId: result.runId,
+      reverted: runId,
+      restored: result.restored,
+      recycled: result.recycled,
+      files,
+    })
+  }
+
   async function startPush(request: Request, url: URL, principal: Principal): Promise<Response> {
     if (!may(principal, RemotePermissions.Push))
       return problem(403, { code: 'forbidden', title: 'You may not push to this environment' })
@@ -513,6 +905,9 @@ export function createRemote(options: RemoteOptions): Remote {
     approve: boolean,
   ): Promise<Response> {
     if (!fromThisSiteOrBearer(request)) return new Response('Forbidden', { status: 403 })
+    // CI never approves, whatever its rule holds: a second person is the point.
+    if (principal.ci)
+      return problem(403, { code: 'ci-cannot-approve', title: 'CI cannot approve pushes' })
     const job = await jobs.get(id)
     if (job?.kind !== 'push')
       return problem(404, { code: 'not-found', title: 'There is no such push' })
@@ -710,10 +1105,16 @@ export function createRemote(options: RemoteOptions): Remote {
   }
 
   return {
+    trust: trustRoute,
+
     isUpload(request, url) {
       if (!settings.enabled || request.method !== 'PUT') return false
       const prefix = `${REMOTE_API_PATH}/environments/${settings.environment}/`
-      return url.pathname === `${prefix}pushes` || url.pathname.startsWith(`${prefix}media/`)
+      return (
+        url.pathname === `${prefix}pushes` ||
+        url.pathname === `${prefix}bundles` ||
+        url.pathname.startsWith(`${prefix}media/`)
+      )
     },
 
     async handle(request, url) {
@@ -727,7 +1128,12 @@ export function createRemote(options: RemoteOptions): Remote {
       if (!pathname.startsWith(`${REMOTE_API_PATH}/`)) return undefined
       if (!settings.enabled)
         return problem(404, { code: 'not-enabled', title: 'This site is not a remote' })
-      const principal = await options.authenticate(request)
+      if (pathname === `${REMOTE_API_PATH}/token`)
+        return request.method === 'POST'
+          ? ci.exchange(request, url, request.headers.get('x-forwarded-for')?.split(',')[0]?.trim())
+          : new Response(null, { status: 405 })
+      // A CI token is good here and nowhere else; a person's is the back office's own.
+      const principal = (await ci.principalOf(request)) ?? (await options.authenticate(request))
       if (!principal)
         return problem(401, {
           code: 'sign-in-required',
@@ -736,16 +1142,33 @@ export function createRemote(options: RemoteOptions): Remote {
         })
       const rest = pathname.slice(REMOTE_API_PATH.length + 1)
 
+      // Who this is, for `crombolo whoami`: a person, or CI acting by a rule.
+      if (rest === 'me' && request.method === 'GET')
+        return Response.json({
+          name: principal.name,
+          kind: principal.ci ? 'ci' : 'person',
+          ...(principal.ci ? { rule: principal.ci.rule, run: principal.ci.claims } : {}),
+          permissions: Object.values(RemotePermissions).filter((verb) => may(principal, verb)),
+        })
+      if (rest === 'trust' || rest.startsWith('trust/')) return trustRoute(request, principal, rest)
+
       if (rest === 'environments' && request.method === 'GET')
         return Response.json([
           {
             ...environment(),
             may: {
-              pull: may(principal, RemotePermissions.Pull),
-              pullFull: may(principal, RemotePermissions.PullFull),
+              pull: atLeast('read') && may(principal, RemotePermissions.Pull),
+              pullFull: atLeast('read') && may(principal, RemotePermissions.PullFull),
+              // A whole-site push changes structure, so it needs that right and the top level.
               push:
-                may(principal, RemotePermissions.Push) &&
-                (!settings.protected || may(principal, RemotePermissions.PushProtected)),
+                atLeast('all') &&
+                mayChange(principal) &&
+                may(principal, RemotePermissions.ApplyStructure),
+              apply: atLeast('content') && mayChange(principal),
+              applyStructure:
+                atLeast('all') &&
+                mayChange(principal) &&
+                may(principal, RemotePermissions.ApplyStructure),
               audit: mayReadAudit(principal),
             },
           },
@@ -790,6 +1213,31 @@ export function createRemote(options: RemoteOptions): Remote {
           await request.json().catch(() => undefined),
         )
       }
+      // Story 167: the site's level first, then the person's permissions.
+      const pulling =
+        what === 'pulls' ||
+        what === 'media/links' ||
+        (what.startsWith('media/') && request.method === 'GET')
+      const pushing =
+        what === 'pushes' ||
+        what === 'pushes/check' ||
+        what === 'media/have' ||
+        (what.startsWith('media/') && request.method === 'PUT')
+      if (pulling && !atLeast('read')) return notAtLevel('read', 'pulls')
+      if (pushing && !atLeast('all')) return notAtLevel('all', 'whole-site pushes')
+      // Push and protection are refused by their own routes first, as before story 167.
+      if (pushing && mayChange(principal) && !may(principal, RemotePermissions.ApplyStructure))
+        return problem(403, {
+          code: 'forbidden-structure',
+          title: 'You may not push a whole site here',
+          detail:
+            "A push replaces the site's content types, views and code, which needs Crombolo.Remote.ApplyStructure.",
+        })
+      if (what === 'bundles' && request.method === 'PUT') return applyBundle(request, principal)
+      if (what === 'runs' && request.method === 'GET') return listRuns(url, principal)
+      const revert = /^runs\/([0-9a-f-]{36})\/revert$/.exec(what)
+      if (revert && request.method === 'POST')
+        return revertBundleRun(request, principal, revert[1] as string)
       if (what === 'pulls' && request.method === 'POST') return startPull(request, url, principal)
       if (what === 'pushes' && request.method === 'PUT') return startPush(request, url, principal)
       if (what === 'pushes/check' && request.method === 'POST') {

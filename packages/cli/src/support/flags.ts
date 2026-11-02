@@ -27,7 +27,7 @@ export const excludePeople = Flags.boolean({
 export const many = (summary: string, helpValue?: string) =>
   Flags.string({ summary, helpValue, multiple: true, multipleNonGreedy: true, default: [] })
 
-/** The flags `content check` and `content import` share: resolutions, placement, files. */
+/** The flags `bundle apply` takes, dry run or not: resolutions, placement, files. */
 export const transferFlags = {
   under: Flags.string({ summary: 'place the bundle under this page', helpValue: '<path|uuid>' }),
   resolve: many(

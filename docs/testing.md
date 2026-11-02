@@ -146,7 +146,7 @@ calls the functions directly.
   directory of its own: a bare site, one from each starter template. Nothing is
   written by the test, because the point is that what `init` writes is what
   boots. It asserts the holding page a site with nothing published serves, the
-  pages a template's seed produces, the order they sit in, and that the image
+  pages a template's content files produce, the order they sit in, and that the image
   bytes the template shipped are the ones the site serves back. `types new` and
   `types add-property` are covered here too, against a site with no types at
   all, through to `generate` typing the property they added — and `views
@@ -154,14 +154,14 @@ calls the functions directly.
   and a template whose file is missing, and `status` both before a site has a
   database and once it is running.
 - `hello-world.integration.ts` — an empty directory to a served "Hello, world"
-  through the CLI alone (stories 163 and 180): `init`, `types new`, a seed file
-  and `seed apply`, `content publish`, `admin reset-password`, `health`,
+  through the CLI alone (stories 163 and 180): `init`, `types new`, a content
+  file and `bundle apply`, `content publish`, `admin reset-password`, `health`,
   `start`, then the page and a back-office sign-in. A step the CLI cannot do yet
   is `test.todo`, named by its story.
 - `demo-from-bundle.integration.ts` — a demo in three commands (story 164):
   `init`, `bundle build` from `sites/harbourstone` and from `--template
   demo/harbourstone`, then `start --bundle`, serving the home page and a
-  photograph; started again it imports nothing; a broken seed is refused with
+  photograph; started again it imports nothing; a broken content file is refused with
   its file and line.
 - `domains.integration.ts` — `domains set`, `list`, `apply`, `undo` and
   `clear` against a site that is serving, including a hostname written by the

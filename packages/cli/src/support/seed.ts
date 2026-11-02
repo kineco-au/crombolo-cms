@@ -1,7 +1,7 @@
 /**
- * What the `seed` commands share (story 163): compiling the site's `seed/`
- * against its database, and reporting what stops it, file by file and line by
- * line.
+ * What applying a site's content files shares (stories 163, 167): building
+ * content/pages, content/library and content/media against its database, and
+ * reporting what stops it, file by file and line by line.
  */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -12,7 +12,7 @@ import { CliError } from '../errors.ts'
 import { many } from './flags.ts'
 import { type Io, siteConfig } from './site.ts'
 
-/** The import's answers, which a seed's findings take too. */
+/** The import's answers, which the content files' findings take too. */
 export const seedResolveFlags = {
   resolve: many(
     'answer a finding: <key>=take-bundle|keep-local|skip, or <key>/<property>[@<culture>]=take-bundle|keep-local',
@@ -40,7 +40,7 @@ export const findingFields = [
   },
 ] as const
 
-/** The seed compiled against this site's database. */
+/** The content files built against this site's database. */
 export async function buildSeed(): Promise<SeedBuild> {
   const config = await siteConfig()
   await useSchemaStore(config)
@@ -57,20 +57,20 @@ export function sayFindings(io: Io, build: SeedBuild): void {
     io.say(`  ${finding.file}:${finding.line}  ${finding.message}`)
 }
 
-/** Refuses a seed that has findings, naming each one. */
+/** Refuses content files that have findings, naming each one. */
 export function refuseFindings(build: SeedBuild): void {
   if (build.findings.length === 0) return
   throw new CliError(
     'refused',
-    `The seed has ${build.findings.length} problem(s), so nothing was built.`,
+    `The content files have ${build.findings.length} problem(s), so nothing was built.`,
     {
-      hint: '`crombolo seed check` lists them.',
+      hint: '`crombolo bundle build --check` lists them.',
       details: build.findings.map((f) => `${f.file}:${f.line}  ${f.message}`),
     },
   )
 }
 
-/** Writes a built seed's package files into `dir`. */
+/** Writes built content files' package into `dir`. */
 export function writeSeedPackage(build: SeedBuild, dir: string): void {
   for (const file of build.files ?? []) {
     const target = join(dir, file.path)
@@ -79,9 +79,9 @@ export function writeSeedPackage(build: SeedBuild, dir: string): void {
   }
 }
 
-/** A built seed in a directory of its own for the length of `work`. */
+/** Built content files in a directory of their own for the length of `work`. */
 export async function withSeedPackage<T>(build: SeedBuild, work: (dir: string) => Promise<T>) {
-  const dir = mkdtempSync(join(tmpdir(), 'crombolo-seed-'))
+  const dir = mkdtempSync(join(tmpdir(), 'crombolo-content-'))
   try {
     writeSeedPackage(build, dir)
     return await work(dir)

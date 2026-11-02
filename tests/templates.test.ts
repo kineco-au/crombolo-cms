@@ -225,7 +225,7 @@ describe('a Next.js front end (story 208)', () => {
       'schema/webhooks/next-revalidate.toml',
     ])
       expect(paths).toContain(path)
-    expect(paths.filter((p) => p.startsWith('seed/'))).toEqual([])
+    expect(paths.filter((p) => p.startsWith('content/'))).toEqual([])
 
     const web = JSON.parse(at(files, 'web/package.json')?.text ?? '{}')
     expect(web.name).toBe('acme-web')
@@ -413,20 +413,20 @@ describe('what init writes', () => {
     expect(paths).toContain('schema/content-types/home-page.toml')
     expect(paths).toContain('css/site.css')
     // The content arrives as the seed, files the new site edits (story 164).
-    expect(paths).toContain('seed/content/harbourstone.toml')
-    expect(paths.some((p) => p.startsWith('seed/library/'))).toBe(true)
+    expect(paths).toContain('content/pages/harbourstone.toml')
+    expect(paths.some((p) => p.startsWith('content/library/'))).toBe(true)
     // The images are seed media, not a bundle and not the site's own media/.
-    expect(paths.some((p) => p.startsWith('seed/media/') && p.endsWith('.jpg'))).toBe(true)
+    expect(paths.some((p) => p.startsWith('content/media/') && p.endsWith('.jpg'))).toBe(true)
     expect(paths.some((p) => p.startsWith('bundles/'))).toBe(false)
     expect(paths.some((p) => p.startsWith('media/'))).toBe(false)
     // Everything from the template is copied, not rewritten.
-    for (const file of files.filter((f) => f.path.startsWith('seed/')))
+    for (const file of files.filter((f) => f.path.startsWith('content/')))
       expect(file.copyFrom).toBeTruthy()
 
     const manifest = JSON.parse(files.find((f) => f.path === 'package.json')?.text ?? '{}') as {
       scripts: Record<string, string>
     }
-    expect(manifest.scripts.start).toBe('crombolo start --seed --publish')
+    expect(manifest.scripts.start).toBe('crombolo start --bundle . --publish')
   })
 
   test('lets a template win over the file it would otherwise scaffold', () => {
@@ -480,7 +480,7 @@ describe('the demo’s photographs', () => {
     // The bytes are passed through rather than re-encoded: re-encoding an
     // already-compressed JPEG would lose a little more of the image each build.
     const template = byId('demo/harbourstone')
-    const media = join(template.dir, 'files', 'seed', 'media')
+    const media = join(template.dir, 'files', 'content', 'media')
     const shipped = readdirSync(media).filter((file) => file.endsWith('.jpg'))
     expect(shipped.length).toBeGreaterThan(0)
     const blobs = (await templateBundle(template)).seed?.blobs ?? new Map()

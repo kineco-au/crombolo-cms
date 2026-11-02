@@ -13,6 +13,7 @@ import {
   contractsLedgeredAfter,
   currentSchemaState,
   type Db,
+  ensureFormLibraryTypes,
   ensureSystemContentTypes,
   ensureSystemMemberTypes,
   type Finding,
@@ -127,6 +128,11 @@ export async function syncSchemaDirectory(
   // sync never applies a snapshot that a later backoffice change has overtaken.
   return db.locks.withLock(Locks.Schema, async () => {
     const loaded = loadSchemaDirectory(config.schemaDir, { formTypes: formTypesFor(config) })
+    // The types made from forms follow the forms whether or not the files changed.
+    // Before the sync, not after: nothing may come between the sync recording a
+    // new schema state and its caller moving the node to it, or the poller can
+    // see the database ahead of the node and take it out of service.
+    await ensureFormLibraryTypes(db, loaded.set.forms ?? [])
     const report = await syncSchema(
       db,
       loaded,
@@ -153,6 +159,7 @@ export async function bootSchema(db: Db, config: CromboloConfig): Promise<Schema
     await touchServer(db, { nodeId, ...nodeState, role: config.role, cromboloVersion: VERSION })
     await ensureSystemMemberTypes(db)
     await ensureSystemContentTypes(db)
+    await ensureFormLibraryTypes(db, [])
     return { nodeState, nodeId, report: undefined, compatibilityMode: false }
   }
   const loaded = loadSchemaDirectory(config.schemaDir, { formTypes: formTypesFor(config) })

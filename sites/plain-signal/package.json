@@ -7,7 +7,7 @@
     "#actions/*": "./actions/*"
   },
   "scripts": {
-    "start": "crombolo start --seed --publish",
+    "start": "crombolo start --bundle . --publish",
     "dev": "bun --watch server.ts"
   },
   "dependencies": {

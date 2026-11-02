@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/simple-redirects",
-  "version": "0.43.1",
+  "version": "0.44.0",
   "description": "Manage redirects in the Crombolo backoffice: a Settings screen over the redirect engine in core.",
   "license": "MIT",
   "author": "Crombolo",
@@ -53,6 +53,7 @@
         "weight": 250,
         "meta": {
           "label": "Redirects",
+          "description": "Rules you add by hand, sending an address on to a page or another site.",
           "icon": "icon-arrow-right",
           "entityType": "crombolo-redirects",
           "menus": [
@@ -72,6 +73,6 @@
     ]
   },
   "peerDependencies": {
-    "@crombolo/crombolo": ">=0.43.1"
+    "@crombolo/crombolo": ">=0.44.0"
   }
 }

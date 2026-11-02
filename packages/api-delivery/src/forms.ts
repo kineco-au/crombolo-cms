@@ -8,6 +8,7 @@ import {
   allFormFields,
   choiceOptions,
   FORM_HONEYPOT_FIELD,
+  FORM_LIBRARY_FIELD,
   FORM_PAGE_FIELD,
   FORM_RENDERED_FIELD,
   FORM_TOKEN_FIELD,
@@ -89,6 +90,9 @@ export function apiForm(form: SchemaForm, context: ApiFormContext): Record<strin
   return defined({
     ...apiFormReference(form),
     stepPages: form.stepPages ?? false,
+    // A Library form's own words (story 239); its recipients stay on the server.
+    heading: form.library?.heading,
+    introduction: form.library?.introduction,
     submitLabel: form.submitLabel,
     nextLabel: form.nextLabel,
     previousLabel: form.previousLabel,
@@ -116,6 +120,7 @@ export function apiForm(form: SchemaForm, context: ApiFormContext): Record<strin
       fields: defined({
         [FORM_TOKEN_FIELD]: context.token,
         [FORM_RENDERED_FIELD]: String(context.renderedAt),
+        [FORM_LIBRARY_FIELD]: form.library?.key,
       }),
       // Sent empty: a bot fills it. Absent when the form has no honeypot.
       honeypot: form.honeypot ? FORM_HONEYPOT_FIELD : undefined,

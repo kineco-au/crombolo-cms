@@ -125,8 +125,18 @@ export async function undoMediaAccess(db: Db): Promise<void> {
 export async function undoMediaMemberUploads(db: Db): Promise<void> {
   // 056 (story 225), 055, jobs (story 187), and 054, bundle grants (story 222),
   // come after it; 056's columns go with 054's table.
-  // 058, bundle schema picks (story 226), and 057, site settings types (story
-  // 058): columns on tables that stay.
+  // 059, forms in the Library (story 239), 058, bundle schema picks (story
+  // 226), and 057, site settings types (story 058): columns on tables that stay.
+  // 061, trust rules and CI tokens (story 160): tables of their own.
+  await db.exec('DROP TABLE IF EXISTS remote_ci_token')
+  await db.exec('DROP TABLE IF EXISTS remote_trust_rule')
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddRemoteTrust'")
+  // 060 (story 238) only deleted rows, so undoing it is forgetting it ran.
+  await db.exec("DELETE FROM migration_history WHERE name = 'MoveBundlesIntoSettings'")
+  await db.exec('DROP INDEX IF EXISTS ix_form_entry_library')
+  await db.exec('ALTER TABLE form_entry DROP COLUMN library_key')
+  await db.exec('ALTER TABLE content_type DROP COLUMN form_key')
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddFormLibrary'")
   await db.exec('ALTER TABLE bundle DROP COLUMN schema_picks')
   await db.exec("DELETE FROM migration_history WHERE name = 'AddBundleSchemaPicks'")
   await db.exec('ALTER TABLE content_type DROP COLUMN site_settings')

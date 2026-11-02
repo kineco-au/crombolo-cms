@@ -1,12 +1,23 @@
 # Bundles
 
-The backoffice's Bundles section — Umbraco's `Umb.Section.Packages`, renamed
-below — covers two things that have nothing to do with each other, and this
-document keeps them apart:
+Bundles, a tool in Settings (story 238) where Umbraco has its Packages section,
+covers two things that have nothing to do with each other, and this document
+keeps them apart:
 
 - **Created packages** — exporting a slice of this site as a file, which is the
   nine `package` operations in the Management API contract. All nine are
   implemented (`api-coverage.md`).
+- **Where it is (story 238).** Bundles is a Settings tool, the Bundles card
+  under Extensions (`plugin/bundles-tool.js`), with Marketplace, Installed and
+  Created as tabs at `section/settings/dashboard/bundles/<tab>`. The bundle
+  builder is under Created, at `created/package-builder/create` and
+  `created/package-builder/edit/:unique`.
+  - **Who may use it:** whoever has Settings, and the server's bundle
+    endpoints ask the same. Umbraco's Packages section is gone: the fork no
+    longer registers it, and migration 060 removes it from every user group.
+  - **A user-group file** that still names `packages` loads, without it.
+  - **Old addresses:** a `section/packages/...` address opens the same screen
+    under Settings, its query kept (the fork's `moved-sections.ts`).
 - **Extensions** — code someone else wrote, added to a site. This used to be the
   `App_Plugins` directory convention inherited from Umbraco; it is now npm
   dependencies, and `App_Plugins` has been removed.
@@ -568,7 +579,7 @@ list of trusted packages or the site's `trustedDependencies` say.
 
 **Then its content, unless declined.** A bundle that carries content has it
 applied straight after `bun add`, through the same installer and overlay check
-as `crombolo bundle install` (`server/src/bundle-install.ts`), with the server's
+as `crombolo bundle apply` (`server/src/bundle-install.ts`), with the server's
 own connection. The site turns this off with `applyBundleContentOnInstall: false`
 (`CROMBOLO_APPLY_BUNDLE_CONTENT=false`), and the Marketplace card has a toggle
 that declines it for one install. A refused check or a backup the site cannot
@@ -613,7 +624,7 @@ what there is to commit.
 - **Uninstall** is `bun remove`, the same path in reverse.
 
 Supply chain: the install runs third-party JS in the backoffice origin with the
-user's session. It is gated on the same permission as the Bundles section, the
+user's session. It is gated on Settings access, as the Bundles tool is, the
 resolved version is recorded, and nothing is fetched outside the registry.
 
 That is the whole of what an install trusts today: the registry's integrity
@@ -720,7 +731,7 @@ bundle is that artifact (story 192).
   code, `package.json`, `bun.lock` and `crombolo.config.ts` are always packed.
   These are never packed, whatever a glob matches: `node_modules`, `.git`,
   `.env` files, SQLite files, the folders the bundle already carries as
-  sections (`schema/`, `components/`, `css/`, `scripts/`, `seed/`), and the
+  sections (`schema/`, `components/`, `css/`, `scripts/`, `content/`), and the
   site's `media/`, `logs/` and `.crombolo/`. A glob that matches nothing, or a
   site with no `bun.lock`, stops the build. A site that names no code builds
   the bundle it always did.
@@ -734,7 +745,7 @@ bundle is that artifact (story 192).
   `bun install --frozen-lockfile --ignore-scripts --omit peer`, so it never
   carries a copy of the CMS. Discovery reads peers as well as dependencies, so
   a server bundle from the `@crombolo` scope is still found.
-- **`crombolo bundle check <bundle>`** (`checkBundleCode`) lists every
+- **`crombolo bundle check-code <bundle>`** (`checkBundleCode`) lists every
   problem, not just the first:
   - the hash;
   - the frozen install;
@@ -756,7 +767,7 @@ bundle is that artifact (story 192).
   It never writes over a directory that already holds files. The directory has
   to sit where the host's `@crombolo/*` packages resolve from. Starting the
   site, or restarting it so its server bundles are wired, is the host's step.
-- **An import leaves it alone.** `content import` and `start --bundle` install
+- **An import leaves it alone.** `bundle apply` and `start --bundle` install
   the content and say the bundle carries code to install. A server half is
   wired only at boot, so applying code always means a restart.
 
@@ -771,8 +782,8 @@ A bundle's content installs through the bundle's own commands — there is no
 second importer:
 
 ```
-crombolo content check  <pkg>     # read-only: what it would do here
-crombolo bundle install <pkg>     # apply it
+crombolo bundle apply <pkg> --dry-run   # read-only: what it would do here
+crombolo bundle apply <pkg>             # apply it
 ```
 
 `<pkg>` is either the name of a bundle the site depends on, resolved exactly as
@@ -795,11 +806,10 @@ anything is backed up or written. A package meant for anyone is open:
 sealed content, and the marketplace's install of one that does anyway is
 refused with the reason.
 
-`bundle` is the artifact's name and `install` reads better for one that brings
-its own structure, but these are aliases: `content check` and `content import`
-are the same operations on the same artifact, and still work. A bundle applies
-whatever it carries by default — that is the point of carrying it — with
-`--no-schema` and `--no-files` to decline a half.
+`bundle apply` is the one command for a bundle's content, whether it came from
+another environment, the registry or this site's own content files (story 167).
+A bundle applies whatever it carries by default — that is the point of carrying
+it — with `--no-schema` and `--no-files` to decline a half.
 
 ### The order is forced, and so is where the check happens
 
@@ -842,11 +852,11 @@ file is not a replacement.
 
 ### Undoing one
 
-The content half is a transfer run, so `content revert <run>` takes it back as
+The content half is a transfer run, so `bundle revert <run>` takes it back as
 any import. The files are not in that ledger — but they are not left to git
 either. The swap keeps what each staged folder replaced under
 `.crombolo/transfer/<runId>/previous/<section>`, with `swap.json` naming the
-sections, and the dictionary as it was in `dictionary-before.udt`. `content
+sections, and the dictionary as it was in `dictionary-before.udt`. `bundle
 revert` swaps the folders back, re-syncs the schema and restores the dictionary
 (`revertSections`).
 
@@ -870,6 +880,191 @@ types were created separately updates them rather than clashing. It converges
 — the type is matched by alias when the file carries no key, so it is updated
 and never duplicated, which `tests/bundle-install.test.ts` holds it to — but a
 repeat install is not a silent no-op the way re-importing unchanged content is.
+
+## Content files
+
+A site's content files are its starting content kept in the repository
+(story 163): its pages, its Library elements and its media, written by a
+person, built into a bundle and applied through the import. A clone and one
+command give a populated site, and content that belongs with the code (legal
+pages, a docs section, fixtures) is reviewed and versioned with it.
+
+The back office stays where content is edited. Content files are how content
+is declared.
+
+### Layout
+
+```
+content/
+├── pages/
+│   ├── home.toml          # a page; its URL segment is the file name
+│   └── home/              # the pages under it
+│       ├── about.toml
+│       └── contact.toml
+├── library/
+│   └── hero-card.toml     # a Library element (at the top level only, for now)
+└── media/
+    └── logos/             # a media folder
+        ├── mark.png       # a media item, typed by its extension
+        └── mark.png.toml  # its sidecar, optional
+```
+
+A site that still has the old `seed/` folder is refused, with the commands
+that move it: `git mv seed content && git mv content/content content/pages`
+(story 167).
+
+### An item
+
+```toml
+type = "page"            # the content type alias; required
+name = "Home"            # or { "en-US" = "Home", "fr-FR" = "Accueil" }; default: from the file name
+key = "…"                # optional: otherwise derived from the path
+order = 1                # optional: siblings sort by order, then name
+template = "page"        # optional: default, the type's own
+published = false        # optional: everything else is published by `bundle apply --publish`
+
+[values]
+title = "Welcome"
+
+[values.fr-FR]           # values for one culture
+title = "Bienvenue"
+```
+
+**Keys.** An item's key is a version 5 uuid of its kind and path
+(`content/home/about`) under Crombolo's own namespace
+(`packages/server/src/seed/keys.ts`). A rebuild therefore names the same
+nodes, and two sites built from the same files share keys, which is what lets
+pulls and pushes match them. Renaming a file makes a new page. `bundle apply`
+says so, and stops, when a page of that name is already there under another
+key, and `key = "…"` keeps the old one.
+
+### Values
+
+Values are given by property alias, in a shorthand for each editor:
+
+| Editor | Shorthand | Stored as |
+| --- | --- | --- |
+| Text box, text area | a string | the string |
+| Rich text | Markdown, or `{ html = "…" }` | `{ markup, blocks: null }`; Markdown's links to content paths become local links, and HTML is taken exactly as written |
+| Content picker | a content path, `/home/about` | `umb://document/<key>` |
+| Media picker | a media path, or a list of them | the picker's items, with each item's type |
+| Element picker | a Library path, or a list | the element keys |
+| Multi-URL picker | paths, URLs, or `{ path \| url, name, target }` | the links |
+| Block list and block grid | `[{ type = "<element alias>", key = "…", values = {…}, settings = { type, key, values } }]` (grid: `columns`, `rows`) | layout, content data and settings data; a block's key is derived unless it gives one |
+| Tags | a list of strings | the list |
+| Date | a TOML date, or an ISO 8601 string | a date picker's `YYYY-MM-DD HH:mm:ss`, as a save stores it; with a time zone, the ISO 8601 string |
+| Toggle | `true` or `false` | the boolean |
+| Number | a number | the number |
+
+- **A path** names an item in the files by its path (`/home/about`), or a page
+  already on the site by its names. A uuid is taken as it is.
+- **Any other editor** takes its value in the editor's stored shape, as does
+  any value given as a table that is not one of the shorthands.
+  `bundle export --source` writes that shape.
+
+### Media
+
+A file under `content/media/` becomes a media item:
+- **Type:** the type its extension implies, as an upload's is.
+- **Folders:** a directory becomes a Folder.
+- **Sidecar:** `photo.jpg.toml` gives `name`, `type`, `key`, `order`,
+  `focalPoint = { left, top }` and `[values]`.
+- **On a site never started:** an image in a folder applies from the first
+  command, since opening the database lets Folder hold the built-in media
+  types (story 180).
+- **The bytes** travel in the bundle. The file is stored as an import stores
+  it, at `/media/<the first 8 hex of its key>/<file>`, with its width, height,
+  size and extension.
+
+### Commands
+
+| Command | Does |
+| --- | --- |
+| `crombolo bundle build --check` | builds the site's bundle and writes nothing; exits 20 with each finding as `file:line  message` |
+| `crombolo bundle build [<dir>] [--template <id>] --out <dir>` | a bundle of a site directory: its schema, views, styles and content files, built with no database of its own (story 164) |
+| `crombolo bundle apply [--publish] [--resolve …] [--dry-run]` | with no argument, or `.`, builds this site's content files and imports them; `--dry-run` is the import's check |
+| `crombolo bundle export --source --root <page>… \| --source --all` | writes content files from a site: the pages named, or with `--all` every page, Library element and media item with its file, in shorthand where `bundle apply` reads it back (story 164) |
+| `crombolo start --bundle .` | applies this site's content files before the site serves, once for each change to them |
+
+- **What `bundle build --check` finds:** an unknown type or property, a value
+  its editor cannot take, a path that names nothing, a language the site has
+  not got, a type its parent does not allow, an element in the content tree or
+  a page in the Library, a duplicate key, and a TOML syntax error.
+- **Where it reads from:** `bundle build --check` makes a throwaway database
+  from the directory's own schema, so it needs no site, in CI or anywhere
+  else. `bundle apply` builds the files against this site's database, so a
+  path there may name a page only this site has, and a renamed page is found;
+  any finding stops it before anything is written.
+- **Lines:** `Bun.TOML` gives no positions, so a finding's line comes from
+  reading the file's tables and keys (`seed/lines.ts`).
+- **A syntax error** is placed by parsing ever longer prefixes of the file.
+
+### Applying, and applying again
+
+`bundle apply` with this site's own files builds them and imports the result
+as it would any bundle, content only: it backs up, checks, applies in one
+transaction and records a run that `bundle revert` undoes.
+
+**Applying again is three-way.** The import records what it applied to each
+node (`content_applied`, `content-transfer.md`, "The import"). On the next
+apply:
+
+| Since the last apply | Result |
+| --- | --- |
+| changed only in the files | taken |
+| changed only in the back office | kept, and reported |
+| changed in both | a conflict for a person, answered with `--resolve` |
+| nothing | nothing written, no new version |
+
+Names, order and place follow the same rule.
+
+**Identity.** The built bundle's id is derived from its content. That is how
+`start --bundle .` applies it once for each change: a standing run for that id
+means the site already has this version.
+
+### A site in three commands
+
+`crombolo bundle build` turns a site directory into one bundle, carrying its
+schema, components, styles and content files. `crombolo start --bundle`
+installs that into a bare site: the files are staged, the schema synced and the
+content imported in one transaction, and the server boots again to load the
+views. The demo sites start that way (story 164):
+
+```bash
+crombolo init --name "Harbourstone"
+crombolo bundle build sites/harbourstone --out ./harbourstone-bundle   # or --template demo/harbourstone
+crombolo start --bundle ./harbourstone-bundle --publish
+```
+
+A bundle's id is its content's, so a changed site re-applies on the next
+`start --bundle`, three ways, and an unchanged one does nothing.
+
+**In production**, a bare site's schema (`1.0.0`) changing to the demo's
+without a version bump is refused, as any such schema change is across nodes.
+Try a demo in development, or bump the version.
+
+### Where the code is
+
+| Code | What it does |
+| --- | --- |
+| `packages/server/src/seed/read.ts` | walks `content/` |
+| `packages/server/src/seed/compile.ts` | checks the items and builds the bundle |
+| `packages/server/src/seed/export.ts` | writes content files from a site |
+| `packages/server/src/bundle-build.ts` | a bundle from a site directory |
+| `packages/cli/src/commands/bundle/` | the commands: `build`, `apply`, `export` |
+
+The compiler is in the server rather than `@crombolo/transfer`. It reads the
+site's database, uses the media port's rule for which type takes a file, and
+writes through the transfer package's pure writer (`writeBundle`).
+
+### Not yet
+
+- **Library folders:** Library elements sit at the top of `content/library`,
+  and folders under it are reported, not read.
+- **Segments:** segment variants of a value are given in the stored shape
+  only.
+- **Out of scope** (story 163): public access, users and members, and content
+  templates.
 
 ## What shipped where
 
@@ -1253,7 +1448,7 @@ Each has a plain sentence the install panel and the Installed view show
   administrator who approved it in the install panel instead. The bundle's card
   in Installed shows what it may do and who approved it.
 - **Disabled by an administrator.** **Disable** on its card turns a bundle off,
-  and **Enable** turns it on again, for anyone with the Packages section,
+  and **Enable** turns it on again, for anyone with Settings,
   audited (`Disable` or `Enable`). A disabled bundle is still mounted: its
   routes answer 503 saying it was disabled, its events are not delivered, its
   jobs wait, its screens are left out of the back office, the boot log names
@@ -1657,6 +1852,15 @@ pattern Umbraco's own log viewer uses, so no vendored element is replaced to put
 a screen in Settings, and the lesson from Part 1 about `overwrites` does not
 apply.
 
+On the Settings landing page (story 234) each bundle's Settings dashboards and
+Advanced menu items are cards in a group of their own, headed by the bundle's
+`name`, after the built-in groups. Beside the name, a link with the package's
+name opens the bundle in the Bundles tool's Installed tab
+(`section/settings/dashboard/bundles/installed?bundle=<package>`), so an administrator can
+see where the cards come from. A card is named by `meta.label` and described
+by `meta.description`. The server stamps each extension it serves with
+`cromboloBundle: { name, packageName }`, which is how the page knows.
+
 It lists **every** rule in force, not only the ones it can change: a screen that
 hid the configured and tracked rules would be lying about what the site does when
 a URL is requested. Each row carries its source, and edit and delete appear only
@@ -2034,7 +2238,7 @@ Its docs section (`/docs/`) is built into it: the guides are Markdown in
 `sites/crombolo/docs/`, and the command line, configuration and exit code
 references are generated from the CLI's manifest and
 `packages/server/src/settings.ts` (`scripts/docs-site.ts`).
-`bun run build:template` rewrites the lot: the docs pages as seed files under
-`sites/crombolo/seed/content/home/docs/`, then the site's bundle, and
+`bun run build:template` rewrites the lot: the docs pages as content files
+under `sites/crombolo/content/pages/home/docs/`, then the site's bundle, and
 `tests/docs-site.test.ts` fails when a guide, a command or a setting has changed
 without a rebuild.

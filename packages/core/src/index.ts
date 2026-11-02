@@ -16,6 +16,7 @@ export {
 export * from './api-paths.ts'
 export * from './content-types.ts'
 export * from './documents.ts'
+export * from './form-library.ts'
 export * from './form-submissions.ts'
 export * from './forms.ts'
 export * from './json-patch.ts'

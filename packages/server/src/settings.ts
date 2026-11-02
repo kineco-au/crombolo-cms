@@ -836,11 +836,12 @@ const DECLARED = [
 
   // Remote
   {
-    env: 'CROMBOLO_REMOTE_ENABLED',
-    kind: 'boolean',
-    default: 'false',
+    env: 'CROMBOLO_REMOTE_ACCESS',
+    kind: 'string',
+    default: 'off',
     section: 'Remote',
-    description: 'Lets `crombolo pull` and `crombolo push` reach this site.',
+    description:
+      'What `crombolo` may do to this site from elsewhere: `off`, `read` (pull), `content` (apply bundles of content) or `all` (whole-site pushes, and bundles that change content types, views or code). Who may do it is still up to their permissions.',
   },
   {
     env: 'CROMBOLO_REMOTE_ENVIRONMENT',
@@ -872,6 +873,14 @@ const DECLARED = [
     section: 'Remote',
     description:
       'The largest push or media file a client may upload, in gigabytes. Every other request keeps the usual body limit.',
+  },
+  {
+    env: 'CROMBOLO_REMOTE_OIDC_ISSUERS',
+    kind: 'string',
+    default: '',
+    section: 'Remote',
+    description:
+      "A self-managed GitLab's address, or several separated by commas, whose CI jobs may sign in beside GitHub Actions and gitlab.com. Each job still needs a trust rule in Settings.",
   },
 
   // Logging

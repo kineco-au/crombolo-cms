@@ -6,12 +6,12 @@
  * family can share a prefix (`demo/harbourstone`):
  *
  *   template.json   name and description, for the catalogue
- *   files/          copied verbatim into the new site, its content as
- *                   `seed/` among them (story 164)
+ *   files/          copied verbatim into the new site, its content files as
+ *                   `content/` among them (stories 164, 167)
  *
- * A template's content is its seed: files the new site reads, edits and keeps,
- * which the scaffolded `start` script applies with `--seed` — on the first
- * boot, and again after each change to them, through the one import path.
+ * A template's content is files the new site reads, edits and keeps, which the
+ * scaffolded `start` script applies with `--bundle .` — on the first boot, and
+ * again after each change to them, through the one import path.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
@@ -56,7 +56,7 @@ export interface SiteTemplate {
   name: string
   description: string
   dir: string
-  /** The template ships content, as `files/seed/`. */
+  /** The template ships content, as `files/content/`. */
   seed: boolean
   /** Server bundles the scaffolded site runs; empty for most templates. */
   serverBundles: TemplateServerBundle[]
@@ -79,7 +79,7 @@ function read(dir: string, id: string): SiteTemplate | undefined {
     name: typeof raw.name === 'string' ? raw.name : id,
     description: typeof raw.description === 'string' ? raw.description : '',
     dir,
-    seed: existsSync(join(dir, 'files', 'seed')),
+    seed: existsSync(join(dir, 'files', 'content')),
     serverBundles: readServerBundles(raw.bundles),
     next: raw.next === true,
     dependencies: readDependencies(raw.dependencies),
@@ -160,8 +160,8 @@ export interface ScaffoldOptions {
   template?: SiteTemplate
   /**
    * A bundle the site already has, for the `start` script to apply: the path,
-   * relative to the site, and any `content import` flags it needs beyond
-   * `--publish`. A template's own seed is used when this is absent.
+   * relative to the site, and any `bundle apply` flags it needs beyond
+   * `--publish`. A template's own content files are used when this is absent.
    */
   bundle?: { path: string; flags?: readonly string[] }
   /** `--next`: a Next.js front end in `web/`, whatever the template says. */
@@ -345,7 +345,7 @@ export function scaffoldFiles(options: ScaffoldOptions = {}): ScaffoldFile[] {
   const start = bundle
     ? `crombolo start --bundle ${bundle} ${bundleFlags}`
     : options.template?.seed
-      ? 'crombolo start --seed --publish'
+      ? 'crombolo start --bundle . --publish'
       : 'crombolo start'
   const serverBundles = options.template?.serverBundles ?? []
   const next = options.next ?? options.template?.next ?? false

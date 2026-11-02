@@ -1,14 +1,30 @@
 /**
- * Reading a site's `seed/` directory (story 163) into items: the content tree
- * from `seed/content/`, Library elements from `seed/library/`, and media files
- * and their folders from `seed/media/`. A content item is a TOML file named for
- * its URL segment, with its children in a folder of the same name; a media file
- * may have a sidecar, `photo.jpg.toml`.
+ * Reading a site's content files (story 163) into items: pages from
+ * `content/pages/`, Library elements from `content/library/`, and media files
+ * and their folders from `content/media/` (story 167; once `seed/`). A page is a
+ * TOML file named for its URL segment, with its children in a folder of the same
+ * name; a media file may have a sidecar, `photo.jpg.toml`.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
 export type SeedKind = 'content' | 'library' | 'media'
+
+/** The folder a site's content files are in. */
+export const CONTENT_FILES_DIR = 'content'
+
+/** Each kind's folder under it. A page's kind is `content`, as the keys derived from it say. */
+export const KIND_DIRS: Readonly<Record<SeedKind, string>> = {
+  content: 'pages',
+  library: 'library',
+  media: 'media',
+}
+
+/** A kind's folder, relative to the site: `content/pages`. */
+export const kindDir = (kind: SeedKind) => `${CONTENT_FILES_DIR}/${KIND_DIRS[kind]}`
+
+/** What to run when a site still has its content files where they were before story 167. */
+export const MOVE_FROM_SEED = 'git mv seed content && git mv content/content content/pages'
 
 export interface SeedItem {
   kind: SeedKind
@@ -22,7 +38,7 @@ export interface SeedItem {
   data: Record<string, unknown>
   /** A media file's bytes. */
   bytes?: Uint8Array
-  /** A media folder: a directory under `seed/media/`. */
+  /** A media folder: a directory under `content/media/`. */
   folder?: boolean
 }
 
@@ -57,10 +73,23 @@ function syntaxLine(text: string): number {
 }
 
 export function readSeed(siteDir: string): SeedTree {
-  const root = join(siteDir, 'seed')
+  const root = join(siteDir, CONTENT_FILES_DIR)
   const items: SeedItem[] = []
   const findings: SeedFinding[] = []
   const shown = (path: string) => relative(siteDir, path)
+  // Content files where they were before story 167 are not read, and say where to go.
+  if (existsSync(join(siteDir, 'seed')) && !existsSync(root))
+    return {
+      items,
+      findings: [
+        {
+          file: 'seed',
+          line: 1,
+          code: 'moved',
+          message: `content files now live in content/pages, content/library and content/media: ${MOVE_FROM_SEED}`,
+        },
+      ],
+    }
 
   const parse = (path: string): { text: string; data: Record<string, unknown> } | undefined => {
     const text = readFileSync(path, 'utf8')
@@ -91,7 +120,7 @@ export function readSeed(siteDir: string): SeedTree {
             file: shown(path),
             line: 1,
             code: 'library-folder',
-            message: 'Library elements sit at the top of seed/library: folders are not read yet',
+            message: 'Library elements sit at the top of content/library: folders are not read yet',
           })
           continue
         }
@@ -165,11 +194,12 @@ export function readSeed(siteDir: string): SeedTree {
     }
   }
 
-  content('content', join(root, 'content'), null)
-  content('library', join(root, 'library'), null)
-  media(join(root, 'media'), null)
+  content('content', join(root, KIND_DIRS.content), null)
+  content('library', join(root, KIND_DIRS.library), null)
+  media(join(root, KIND_DIRS.media), null)
   return { items, findings }
 }
 
-/** Whether a site has a seed at all. */
-export const hasSeed = (siteDir: string) => existsSync(join(siteDir, 'seed'))
+/** Whether a site has content files at all, where they are or where they were. */
+export const hasSeed = (siteDir: string) =>
+  existsSync(join(siteDir, CONTENT_FILES_DIR)) || existsSync(join(siteDir, 'seed'))

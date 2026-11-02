@@ -20,7 +20,20 @@ export interface Discovery {
   versions: string[]
   name: string
   api: string
-  auth: { deviceAuthorization: string; token: string; clientId: string; grantType: string }
+  auth: {
+    deviceAuthorization: string
+    token: string
+    clientId: string
+    grantType: string
+    /** Signing in from CI (story 160), when the remote takes it. */
+    ci?: {
+      tokenExchange: string
+      grantType: string
+      subjectTokenType: string
+      audience: string
+      issuers: string[]
+    }
+  }
   capabilities: string[]
   environments: Array<{ id: string; name: string; protected: boolean }>
 }
@@ -55,7 +68,18 @@ export interface Job {
 
 /** Reads a remote's discovery document; refuses a site that is not a remote, or one speaking only other versions. */
 export async function discover(url: string, http: typeof fetch = fetch): Promise<Discovery> {
-  const origin = new URL(url).origin
+  const parsed = new URL(url)
+  const origin = parsed.origin
+  // A sign-in crosses this connection, so it is encrypted; a site on this machine is the exception.
+  if (
+    parsed.protocol !== 'https:' &&
+    !['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname)
+  )
+    throw new RemoteError({
+      status: 0,
+      code: 'insecure-remote',
+      title: `${origin} is not HTTPS: a remote is reached over HTTPS, so sign-ins are never sent in the clear.`,
+    })
   let response: Response
   try {
     response = await http(`${origin}/.well-known/crombolo-remote`)
@@ -161,27 +185,44 @@ export class RemoteClient {
   readonly discovery: Discovery
   #keychain: Keychain
   #http: typeof fetch
+  #source: ((force: boolean) => Promise<string | undefined>) | undefined
 
-  constructor(discovery: Discovery, keychain: Keychain, http: typeof fetch = fetch) {
+  /** `source`, when given, supplies the token in place of the keychain: CI's, for one. */
+  constructor(
+    discovery: Discovery,
+    keychain: Keychain,
+    http: typeof fetch = fetch,
+    source?: (force: boolean) => Promise<string | undefined>,
+  ) {
     this.discovery = discovery
     this.#keychain = keychain
     this.#http = http
+    this.#source = source
+  }
+
+  /** Whether this client acts as CI by a trust rule rather than as a signed-in person. */
+  get ci(): boolean {
+    return this.#source !== undefined
   }
 
   async signedIn(): Promise<boolean> {
+    if (this.#source) return true
     return (await readSignIn(this.#keychain, this.discovery.api)) !== undefined
   }
 
   /** One authorised request; a 401 refreshes the sign-in once and tries again. */
   async call(url: string, init: RequestInit = {}): Promise<Response> {
     const attempt = async (force: boolean) => {
-      const token = await freshAccessToken(this.#keychain, this.discovery.api, this.#http, force)
+      const token = this.#source
+        ? await this.#source(force)
+        : await freshAccessToken(this.#keychain, this.discovery.api, this.#http, force)
       if (!token)
         throw new RemoteError({
           status: 401,
           code: 'sign-in-required',
           title: `Not signed in to ${new URL(this.discovery.api).origin}`,
-          detail: 'Run `crombolo login` first.',
+          detail:
+            'Run `crombolo login` first, or in CI give the job an identity token that a trust rule on the site accepts.',
         })
       const headers = new Headers(init.headers)
       headers.set('authorization', `Bearer ${token}`)

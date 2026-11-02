@@ -1093,6 +1093,9 @@ describe(`the migration (${dialectUnderTest})`, () => {
       'DisableBundles',
       'AddSiteSettingsTypes',
       'AddBundleSchemaPicks',
+      'AddFormLibrary',
+      'MoveBundlesIntoSettings',
+      'AddRemoteTrust',
     ])
     const found = await new MediaAccessRepository(db).byUrl(photo.src)
     expect(found?.key).toBe(photo.key)

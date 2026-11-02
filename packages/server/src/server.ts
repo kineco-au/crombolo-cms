@@ -66,7 +66,10 @@ import {
   DEFAULT_UPLOAD_SETTINGS,
   DELIVERY_API_PREFIX,
   FormPermissions,
+  formTokenSubject,
   hasAccessToSensitiveData,
+  libraryFormId,
+  libraryFormTypeKey,
   localReturnUrl,
   MANAGEMENT_API_PREFIX,
   managementApiPrefix,
@@ -77,12 +80,14 @@ import {
 import {
   appendCacheInstruction,
   type Db,
+  ensureFormLibraryTypes,
   ensureKeyValue,
   FormEntryRepository,
   FormWorkflowRepository,
   JobRepository,
   type JobState,
   latestContentVersionId,
+  listLibraryForms,
   MediaAccessRepository,
   MemberRepository,
   PublicAccessRepository,
@@ -866,7 +871,11 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
                 apiForm(tools.resolve(form), {
                   types: formTypes.types,
                   action: `${origin}${formAction(form)}`,
-                  token: signFormToken(formSecret, form.key ?? form.alias, now),
+                  token: signFormToken(
+                    formSecret,
+                    formTokenSubject(form.key ?? form.alias, form.library?.key),
+                    now,
+                  ),
                   renderedAt: now,
                   redirectUrl: form.redirectTo ? tools.urlOf(form.redirectTo) : undefined,
                 })
@@ -1691,7 +1700,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     if (pathname.startsWith(`${paths.pluginPath}/api/bundles/`)) {
       const principal = await authenticate(request)
       if (!principal) return new Response('Unauthorized', { status: 401 })
-      if (!hasSection(principal, 'packages')) return new Response('Forbidden', { status: 403 })
+      if (!hasSection(principal, 'settings')) return new Response('Forbidden', { status: 403 })
       const action = pathname.slice(`${paths.pluginPath}/api/bundles/`.length)
 
       if (action === 'marketplace' && request.method === 'GET') {
@@ -1946,6 +1955,17 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
       return Response.json(webhookStoreView(webhook.store, webhooks.stores()))
     }
 
+    // CI access (story 160): the trust rules, for the Settings screen, as the remote serves them.
+    if (
+      pathname === `${paths.pluginPath}/api/remote-trust` ||
+      pathname.startsWith(`${paths.pluginPath}/api/remote-trust/`)
+    ) {
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      const rest = pathname.slice(`${paths.pluginPath}/api/remote-`.length)
+      return remote.trust(request, principal, rest)
+    }
+
     if (pathname.startsWith(`${paths.pluginPath}/api/forms`)) {
       const principal = await authenticate(request)
       if (!principal) return new Response('Unauthorized', { status: 401 })
@@ -1963,6 +1983,25 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
       // Hyphenated, so no form alias (letters and digits) can be mistaken for it.
       if (action === 'available-types' && request.method === 'GET')
         return Response.json(describeFormTypes(formTypes.types))
+      // The Library forms (story 239), for a page's form picker and the entries filter.
+      if (action === 'library-forms' && request.method === 'GET') {
+        const known = new Map(definitions.map((form) => [form.key ?? form.alias, form]))
+        return Response.json({
+          items: (await listLibraryForms(db)).map((item) => ({
+            ...item,
+            formAlias: known.get(item.formKey)?.alias ?? null,
+            formName: known.get(item.formKey)?.name ?? null,
+          })),
+        })
+      }
+      // Which content types are made from a form, for the note in their editor.
+      if (action === 'library-types' && request.method === 'GET')
+        return Response.json({
+          items: definitions.map((form) => ({
+            typeKey: libraryFormTypeKey(libraryFormId(form)),
+            formName: form.name,
+          })),
+        })
       // The designer's "E-mail design" picker.
       if (action === 'email-templates' && request.method === 'GET')
         return Response.json({
@@ -2016,6 +2055,10 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
           if (next === 'approved') {
             const form = byKey.get(updated.formKey)
             const onApprove = form?.workflows.filter((workflow) => workflow.on === 'approve') ?? []
+            // Through a Library form: its recipients as they are now (story 239).
+            const recipients = updated.libraryKey
+              ? (await cache.libraryForm(updated.libraryKey))?.library?.recipients
+              : undefined
             if (onApprove.length > 0)
               await new FormWorkflowRepository(db).enqueue(
                 onApprove.map((workflow) => ({
@@ -2029,6 +2072,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
                     fieldAlias: value.fieldAlias,
                     values: value.values,
                   })),
+                  ...(recipients ? { recipients } : {}),
                 })),
               )
           }
@@ -2086,8 +2130,11 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
         const key = decodeURIComponent(listMatch[1] as string)
         const since = url.searchParams.get('from')
         const until = url.searchParams.get('to')
+        // `library=none` for the entries that came through no Library form.
+        const library = url.searchParams.get('library')
         const page = await entries.list({
           formKey: key,
+          ...(library ? { libraryKey: library === 'none' ? null : library } : {}),
           state: parseEntryState(url.searchParams.get('state')),
           from: since ? new Date(since) : undefined,
           to: until ? new Date(until) : undefined,
@@ -2151,6 +2198,8 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
         // The memo would otherwise hold the old definition for a second, which
         // is exactly long enough for the designer to reload and see it.
         forms.invalidate()
+        await ensureFormLibraryTypes(db, forms.all())
+        cache.invalidate()
         log.info('{user} saved the form {form}', {
           user: principal.email,
           form: coerceForm(body).alias,
@@ -2169,6 +2218,8 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
             { status: removed.status === 'readOnly' ? 409 : 404 },
           )
         forms.invalidate()
+        await ensureFormLibraryTypes(db, forms.all())
+        cache.invalidate()
         log.info('{user} deleted the form {form}; its entries are kept', {
           user: principal.email,
           form: form.alias,
@@ -2349,7 +2400,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     if (pathname.startsWith(`${paths.pluginPath}/api/transfers/`)) {
       const principal = await authenticate(request)
       if (!principal) return new Response('Unauthorized', { status: 401 })
-      if (!hasSection(principal, 'packages')) return new Response('Forbidden', { status: 403 })
+      if (!hasSection(principal, 'settings')) return new Response('Forbidden', { status: 403 })
       const action = pathname.slice(`${paths.pluginPath}/api/transfers/`.length)
       const response = await handleTransferAction(request, action, {
         db,
@@ -2394,7 +2445,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
       const bundles = await tablesReport(db, chains)
       const upgrades = summariseUpgrades(await readLedger(db), VERSION)
       // The answers a finding can be given, offered only to those who may import.
-      const mayImport = hasSection(principal, 'packages')
+      const mayImport = hasSection(principal, 'settings')
       const offered = findings.map((f) =>
         f.source === 'transfer' && f.status === 'open' && mayImport
           ? { ...f, choices: choicesFor(f) }
@@ -2758,6 +2809,8 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
         mediaFiles,
         uploads: DEFAULT_UPLOAD_SETTINGS,
         urlOf: async (contentKey) => (await cache.byKey(contentKey))?.url,
+        // A Library form's type is invariant, so any culture's view has its words.
+        libraryForm: (libraryKey) => cache.libraryForm(libraryKey),
         // The page it was sent from names the culture; the keys a source offers
         // are the same in every culture, so only the stored labels depend on it.
         resolveForm: async (form) => {

@@ -86,6 +86,13 @@ bun run vendor:backoffice
     `/umbraco/backoffice/`, so under `/crombolo/backoffice/` each of its internal
     deprecations printed, rebranded into nonsense ("removed in Crombolo 20").
     Our plugin's are still reported.
+  - **Extension Insights lists extensions only:** Umbraco's own `bundle`
+    manifests, about 38 loaders that each register an area's extensions, are
+    left out of the list and its type picker. They shared the word with
+    Crombolo's bundles, and the extensions they load are listed anyway.
+  - **No Packages section** (story 238): Bundles is a Settings tool from the
+    plugin. A `section/packages/...` address forwards to it, keeping the rest
+    of the path and the query (`moved-sections.ts`, with a test).
   - **Redirects are a Settings tool:** Umbraco's Redirect URL Management
     dashboard moved from Content to Settings, where it is the Redirects card.
   - **`umbCromboloHooks`:** the seams Crombolo's plugin plugs into, exported
@@ -527,8 +534,9 @@ The rest is ordinary extension machinery:
 
 ### Settings
 
-Settings opens on a page of cards, grouped Build, Site, Health, History and
-Other (story 234). A tool opens alone, headed by a link back; Structure and Code
+Settings opens on a page of cards, grouped Build, Site, Health, History,
+Developers (Extension insights), Extensions (Bundles, story 238), Other, and a
+group per bundle (story 234). A tool opens alone, headed by a link back; Structure and Code
 each open their own tree, which shows only beside the editors it opens.
 - **The layout:** `plugin/settings-section.js`, drawn for `Umb.Section.Settings`
   through a `sectionLayout` manifest (`Crombolo.SectionLayout.Settings`). The

@@ -1,9 +1,8 @@
 /**
  * The Created view, in place of Umbraco's.
  *
- * Its manifest declares `overwrites: ['Umb.SectionView.Packages.Builder']`.
- * Umbraco's view is a router, not a screen: it mounts its own overview at
- * `overview` and every `package-builder` workspace at `package-builder/create`
+ * A tab of the Bundles tool in Settings (story 238). Umbraco's view is a
+ * router, not a screen: it mounts its own overview at `overview` and every `package-builder` workspace at `package-builder/create`
  * and `package-builder/edit/:unique`. Those two routes are the only way to
  * reach the builder, so this reproduces them exactly — replacing the view
  * without them would have left the builder unreachable rather than renamed.
@@ -12,7 +11,7 @@
  */
 import { createExtensionElement } from '@umbraco-cms/backoffice/extension-api'
 import { umbExtensionsRegistry } from '@umbraco-cms/backoffice/extension-registry'
-import { html } from '@umbraco-cms/backoffice/external/lit'
+import { css, html } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { editorsOf } from './bundle-editor-routing.js'
 
@@ -42,6 +41,16 @@ export default class CromboloBundlesCreatedElement extends UmbLitElement {
   render() {
     return html`<umb-router-slot .routes=${this._routes}></umb-router-slot>`
   }
+
+  // A tab of the Bundles tool, which gives it the space under the tabs; the
+  // builder's workspace fills that.
+  static styles = css`
+    :host,
+    umb-router-slot {
+      display: block;
+      height: 100%;
+    }
+  `
 }
 
 /** Umbraco's own route table, with our overview in place of its own. */

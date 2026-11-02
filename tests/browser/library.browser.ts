@@ -27,6 +27,8 @@ test('Create offers the site element types, not just Folder, and one saves and p
   // type flagged for the library.
   await expect(dialog).toContainText('Folder')
   await expect(dialog).toContainText('Quote')
+  // And each of the site's forms (story 239), as a Library form's type.
+  await expect(dialog).toContainText('Write to the cove')
 
   // The option's own element, not the button inside it: the wrapper intercepts
   // pointer events, which is why the content suite clicks it the same way.

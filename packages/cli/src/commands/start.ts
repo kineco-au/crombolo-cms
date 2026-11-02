@@ -1,3 +1,4 @@
+import { resolve } from 'node:path'
 import { Flags } from '@oclif/core'
 import { BaseCommand } from '../base.ts'
 import { backupTaken, many, transferFlags } from '../support/flags.ts'
@@ -7,21 +8,22 @@ export default class Start extends BaseCommand {
   static override summary = 'boot the site in the current directory'
   static override description = [
     "In development it resets and prints the administrator's password on every start; --keep-admin leaves it alone.",
-    "--bundle applies a bundle's content first, once per bundle, taking the `content import` flags.",
+    "--bundle applies a bundle's content first, once per bundle, taking `bundle apply`'s flags. `--bundle .` applies this site's own content files, once for each change to them.",
     "--from, in an empty folder: scaffold a site, install it, import a whole-site file (`crombolo export --site`) and serve it; the new administrator's password is printed once.",
     'It serves until stopped. With -o json it prints one object saying where it answers.',
   ].join('\n\n')
   static override examples = [
     '<%= config.bin %> start',
+    '<%= config.bin %> start --bundle . --publish',
     '<%= config.bin %> start --bundle ./bundles/demo --publish',
     '<%= config.bin %> start --from site-2026-10-01.tgz',
   ]
   static override flags = {
     'keep-admin': Flags.boolean({ summary: "don't touch the administrator's password" }),
-    bundle: many("apply a bundle's content first; repeatable", '<pkg>'),
-    seed: Flags.boolean({
-      summary: 'apply seed/ first, once for each change to it, taking the `content import` flags',
-    }),
+    bundle: many(
+      "apply a bundle's content first, or `.` for this site's own content files; repeatable",
+      '<pkg>',
+    ),
     from: Flags.string({
       summary: 'in an empty folder: a site from a whole-site file',
       helpValue: '<file>',
@@ -55,11 +57,14 @@ export default class Start extends BaseCommand {
       // The password printed above is the one to use: this first start leaves it alone.
       keepAdmin = true
     }
+    // `.`, or this site's directory however it is written, is its own content files.
+    const here = resolve(process.cwd())
+    const own = (target: string) => resolve(target) === here
     const started = await serveSite(this, {
       ...flags,
       keepAdmin,
-      bundles: flags.bundle,
-      seed: flags.seed,
+      bundles: flags.bundle.filter((target) => !own(target)),
+      seed: flags.bundle.some(own),
       backupTaken: flags['backup-taken'],
     })
     // A stream: one record when it is up, then it serves until it is stopped.

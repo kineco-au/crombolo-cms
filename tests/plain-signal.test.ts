@@ -20,7 +20,7 @@ let root: string
 
 beforeAll(async () => {
   root = mkdtempSync(join(process.cwd(), 'output', 'plain-signal-'))
-  for (const part of ['schema', 'components', 'css', 'seed', 'package.json'])
+  for (const part of ['schema', 'components', 'css', 'content', 'package.json'])
     cpSync(join(SITE, part), join(root, part), { recursive: true })
   h = await signedInServer({
     config: {

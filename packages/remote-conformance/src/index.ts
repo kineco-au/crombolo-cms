@@ -137,11 +137,57 @@ export async function runConformance(options: ConformanceOptions): Promise<Confo
       assert(typeof body[field] === 'number', `${field} is missing`)
   })
 
+  // Optional: signing in from CI (story 160). A remote that offers it says how, and
+  // refuses a token it cannot verify with the same answer whatever was wrong.
+  const ci = (state.discovery?.auth as Json | undefined)?.ci as Json | undefined
+  const capabilities = (state.discovery?.capabilities as unknown[] | undefined) ?? []
+  if (capabilities.includes('ci-sign-in')) {
+    await check('ci-sign-in: discovery names the exchange, its audience and issuers', async () => {
+      for (const field of ['tokenExchange', 'grantType', 'subjectTokenType', 'audience'])
+        assert(typeof ci?.[field] === 'string', `auth.ci.${field} is missing`)
+      assert(Array.isArray(ci?.issuers), 'auth.ci.issuers is missing')
+      assert(
+        ci?.grantType === 'urn:ietf:params:oauth:grant-type:token-exchange',
+        'auth.ci.grantType is not token exchange',
+      )
+    })
+    await check('ci-sign-in: a token it cannot verify is refused, and not echoed', async () => {
+      const forged = 'eyJhbGciOiJub25lIn0.eyJpc3MiOiJodHRwczovL2V4YW1wbGUuaW52YWxpZCJ9.'
+      const response = await http(String(ci?.tokenExchange), {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: String(ci?.grantType),
+          subject_token: forged,
+          subject_token_type: String(ci?.subjectTokenType),
+        }).toString(),
+      })
+      assert(response.status === 400, `answered ${response.status}`)
+      const text = await response.text()
+      assert(text.includes('invalid_grant'), 'the refusal is not invalid_grant')
+      assert(!text.includes(forged), 'the refusal repeats the token')
+    })
+  }
+
   await check('the API refuses a request without a token, as a problem', async () => {
     const response = await http(`${state.api}/environments`)
     assert(response.status === 401, `answered ${response.status}`)
     assert(isProblem(response), 'not application/problem+json')
   })
+
+  // Optional: applying a bundle (story 167). A remote that takes bundles checks
+  // what it is sent before anything else, and says so as a problem.
+  if (capabilities.includes('bundle-apply')) {
+    await check('bundle-apply: a bundle that is not the one described is refused', async () => {
+      const response = await api(`environments/${state.environment}/bundles`, {
+        method: 'PUT',
+        headers: { 'crombolo-sha256': '0'.repeat(64), 'content-type': 'application/gzip' },
+        body: new Uint8Array([31, 139, 8, 0]),
+      })
+      assert(response.status === 400 || response.status === 403, `answered ${response.status}`)
+      assert(isProblem(response), 'not application/problem+json')
+    })
+  }
 
   await check('environments lists what the token may do', async () => {
     const response = await api('environments')

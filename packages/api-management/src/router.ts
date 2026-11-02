@@ -59,6 +59,12 @@ export interface Principal {
   startNodes: { document: StartNodes; media: StartNodes; element: StartNodes }
   /** Each group's verbs, for per-node permission checks. */
   groups: GroupGrant[]
+  /**
+   * Set when this is CI acting by a trust rule (story 160), not a person: the
+   * rule's key, and where the run was. Such a principal is only ever given to
+   * the remote protocol's routes.
+   */
+  ci?: { rule: string; claims: Record<string, string> }
 }
 
 export interface RequestContext {

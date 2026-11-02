@@ -87,6 +87,7 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'entityUserPermission:Crombolo.UserPermission.Remote.PullFull',
       'entityUserPermission:Crombolo.UserPermission.Remote.Push',
       'entityUserPermission:Crombolo.UserPermission.Remote.PushProtected',
+      'entityUserPermission:Crombolo.UserPermission.Remote.ApplyStructure',
       'entityUserPermission:Crombolo.UserPermission.Media.Read',
       'entityUserPermission:Crombolo.UserPermission.Media.Update',
       'backofficeEntryPoint:Crombolo.EntryPoint.MediaPermissions',
@@ -94,8 +95,8 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'backofficeEntryPoint:Crombolo.EntryPoint.EditConflicts',
       'userProfileApp:Crombolo.UserProfileApp.SignedInDevices',
       'mfaLoginProvider:Crombolo.MfaLoginProvider.Authenticator',
-      'sectionView:Crombolo.SectionView.Bundles.Marketplace',
-      'sectionView:Crombolo.SectionView.Bundles.Created',
+      'dashboard:Crombolo.Dashboard.CiAccess',
+      'dashboard:Crombolo.Dashboard.Bundles',
       // The Bundle Editor, in place of Umbraco's package builder (stories 233, 226).
       'workspace:Crombolo.Workspace.BundleEditor',
       'workspaceView:Crombolo.WorkspaceView.BundleEditor.Content',
@@ -105,7 +106,6 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'workspaceView:Crombolo.WorkspaceView.BundleEditor.Forms',
       'workspaceView:Crombolo.WorkspaceView.BundleEditor.Workflows',
       'workspaceView:Crombolo.WorkspaceView.BundleEditor.UserGroups',
-      'sectionView:Crombolo.SectionView.Bundles.Installed',
       'workspaceView:Crombolo.WorkspaceView.Webhook.Storage',
       'dashboard:Crombolo.Dashboard.Addresses',
       'dashboard:Crombolo.Dashboard.Changes',
@@ -121,6 +121,7 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'headerApp:Crombolo.HeaderApp.BundlesChanged',
       'headerApp:Crombolo.HeaderApp.Settings',
       'workspaceFooterApp:Crombolo.WorkspaceFooterApp.ElementTypeHint',
+      'workspaceFooterApp:Crombolo.WorkspaceFooterApp.FormTypeNote',
       'backofficeEntryPoint:Crombolo.EntryPoint.HelpMenu',
       'section:Crombolo.Section.Forms',
       'sectionView:Crombolo.SectionView.Forms.Overview',
@@ -150,20 +151,13 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
     // registry's own `overwrites`, rather than mutating it while rendering.
     const overview = ours?.extensions.find((e) => e.alias === 'Crombolo.Dashboard.Overview')
     expect(overview?.overwrites).toEqual(['Umb.Dashboard.UmbracoNews'])
-    // All three Bundles views replace Umbraco's: its Marketplace is an iframe of
-    // a site that refuses to be framed, its Installed view is built around
-    // package migrations, which cannot exist here, and its Created view is a
-    // router whose overview says package (`docs/bundles.md`).
-    const marketplace = ours?.extensions.find(
-      (e) => e.alias === 'Crombolo.SectionView.Bundles.Marketplace',
-    )
-    expect(marketplace?.overwrites).toEqual(['Umb.SectionView.Packages.Marketplace'])
-    const installed = ours?.extensions.find(
-      (e) => e.alias === 'Crombolo.SectionView.Bundles.Installed',
-    )
-    expect(installed?.overwrites).toEqual(['Umb.SectionView.Packages.Installed'])
-    const created = ours?.extensions.find((e) => e.alias === 'Crombolo.SectionView.Bundles.Created')
-    expect(created?.overwrites).toEqual(['Umb.SectionView.Packages.Builder'])
+    // Bundles is a Settings tool (story 238), not Umbraco's Packages section:
+    // its views are the tool's tabs, so none is a section view any more.
+    const bundles = ours?.extensions.find((e) => e.alias === 'Crombolo.Dashboard.Bundles')
+    expect(bundles?.type).toBe('dashboard')
+    expect(
+      ours?.extensions.filter((e) => e.type === 'sectionView' && /Bundles/.test(e.alias)),
+    ).toEqual([])
     // Five kinds of extension have no module of their own: a `theme`, which is a
     // stylesheet (story 049); a `section`, which is
     // a route and a label, a `propertyEditorSchema`, which declares a
@@ -180,6 +174,7 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'Crombolo.UserPermission.Remote.PullFull',
       'Crombolo.UserPermission.Remote.Push',
       'Crombolo.UserPermission.Remote.PushProtected',
+      'Crombolo.UserPermission.Remote.ApplyStructure',
       'Crombolo.UserPermission.Media.Read',
       'Crombolo.UserPermission.Media.Update',
       'Crombolo.HeaderApp.Settings',
@@ -190,6 +185,7 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
     expect(moduleless.map((e) => e.type)).toEqual([
       'theme',
       'theme',
+      'entityUserPermission',
       'entityUserPermission',
       'entityUserPermission',
       'entityUserPermission',

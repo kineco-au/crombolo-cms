@@ -13,8 +13,13 @@
  */
 
 import {
+  applyLibraryForm,
   type ChoiceOption,
   type ChoiceSource,
+  keyFromReference,
+  LIBRARY_FORM_PROPERTY,
+  libraryFormId,
+  libraryFormTypeKey,
   MENU_ALIAS_PROPERTY,
   type SchemaForm,
   withResolvedChoices,
@@ -296,6 +301,8 @@ export interface PublishedCacheOptions {
    * see that.
    */
   form?: (key: string) => SchemaForm | undefined
+  /** Every form, for finding the one a Library form is made from (story 239). */
+  forms?: () => readonly SchemaForm[]
   /** Told on every invalidation, for whatever else is built from the same content. */
   onInvalidate?: () => void
   /**
@@ -1215,12 +1222,25 @@ export class PublishedCache {
   ): ((key: string) => SchemaForm | undefined) | undefined {
     const lookup = this.#options.form
     if (!lookup) return undefined
+    const forms = this.#options.forms
     return (key) => {
-      const form = lookup(key)
+      // A published Library form (story 239), else a form file picked directly.
+      // An unpublished or deleted Library form is neither, so nothing shows.
+      const element = view?.elements.get(key.toLowerCase())
+      const form = element ? libraryForm(element, forms?.() ?? []) : lookup(key)
       return form
         ? withResolvedChoices(form, (source) => resolveChoices(snapshot, view, culture, source))
         : undefined
     }
+  }
+
+  /**
+   * A published Library form's form, with its words laid over (story 239), as
+   * a page in `culture` shows it; undefined when it is unpublished or its form is gone.
+   */
+  async libraryForm(key: string, culture?: string | null): Promise<SchemaForm | undefined> {
+    const element = this.#view(await this.snapshot(), culture)?.elements.get(key.toLowerCase())
+    return element ? libraryForm(element, this.#options.forms?.() ?? []) : undefined
   }
 
   /** What a choice source offers now, in `culture`: for the designer, and for a submission. */
@@ -1411,5 +1431,28 @@ export function contentForNode(
     properties: node.properties,
     variationCulture: scoped,
     languageFallback: fallbackChain(languages, scoped),
+  })
+}
+
+/** A Library form's form with its words laid over, or undefined when its form is gone. */
+function libraryForm(
+  element: PublishedElement,
+  forms: readonly SchemaForm[],
+): SchemaForm | undefined {
+  const typeKey = element.contentType.key.toLowerCase()
+  const form = forms.find((f) => libraryFormTypeKey(libraryFormId(f)) === typeKey)
+  if (!form) return undefined
+  const raw = (alias: string) => element.properties.find((p) => p.alias === alias)?.value
+  const text = (alias: string) => {
+    const value = element.text(alias)
+    return value === '' ? undefined : value
+  }
+  return applyLibraryForm(form, element.key, {
+    heading: text(LIBRARY_FORM_PROPERTY.heading),
+    introduction: text(LIBRARY_FORM_PROPERTY.introduction),
+    submitLabel: text(LIBRARY_FORM_PROPERTY.submitLabel),
+    messageOnSubmit: text(LIBRARY_FORM_PROPERTY.messageOnSubmit),
+    redirectTo: keyFromReference(raw(LIBRARY_FORM_PROPERTY.redirectTo)),
+    recipients: text(LIBRARY_FORM_PROPERTY.recipients),
   })
 }

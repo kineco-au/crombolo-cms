@@ -2,7 +2,7 @@
   "$schema": "../../backoffice-dist/dist/umbraco-package-schema.json",
   "name": "Crombolo",
   "id": "Crombolo.Core",
-  "version": "0.43.1",
+  "version": "0.44.0",
   "allowPublicAccess": false,
   "extensions": [
     {
@@ -73,6 +73,17 @@
     },
     {
       "type": "entityUserPermission",
+      "alias": "Crombolo.UserPermission.Remote.ApplyStructure",
+      "name": "Crombolo Remote ApplyStructure Permission",
+      "forEntityTypes": ["crombolo-remote"],
+      "meta": {
+        "verbs": ["Crombolo.Remote.ApplyStructure"],
+        "label": "Change a site's structure and code",
+        "description": "Push a whole site, or apply a bundle that changes its content types, views, styles or code"
+      }
+    },
+    {
+      "type": "entityUserPermission",
       "alias": "Crombolo.UserPermission.Media.Read",
       "name": "Crombolo Media Read Permission",
       "forEntityTypes": ["media"],
@@ -133,40 +144,37 @@
       }
     },
     {
-      "type": "sectionView",
-      "alias": "Crombolo.SectionView.Bundles.Marketplace",
-      "name": "Crombolo Packages Marketplace",
-      "element": "/crombolo-plugin/bundles-marketplace.js",
-      "weight": 300,
-      "overwrites": ["Umb.SectionView.Packages.Marketplace"],
+      "type": "dashboard",
+      "alias": "Crombolo.Dashboard.CiAccess",
+      "name": "Crombolo CI Access",
+      "element": "/crombolo-plugin/ci-access.js",
       "meta": {
-        "label": "Marketplace",
-        "pathname": "packages",
-        "icon": "icon-cloud"
+        "label": "CI access",
+        "pathname": "ci-access"
       },
       "conditions": [
         {
           "alias": "Umb.Condition.SectionAlias",
-          "match": "Umb.Section.Packages"
+          "match": "Umb.Section.Settings"
+        },
+        {
+          "alias": "Umb.Condition.CurrentUser.IsAdmin"
         }
       ]
     },
     {
-      "type": "sectionView",
-      "alias": "Crombolo.SectionView.Bundles.Created",
-      "name": "Crombolo Created Bundles",
-      "element": "/crombolo-plugin/bundles-created.js",
-      "weight": 100,
-      "overwrites": ["Umb.SectionView.Packages.Builder"],
+      "type": "dashboard",
+      "alias": "Crombolo.Dashboard.Bundles",
+      "name": "Crombolo Bundles",
+      "element": "/crombolo-plugin/bundles-tool.js",
       "meta": {
-        "label": "Created",
-        "pathname": "created",
-        "icon": "icon-files"
+        "label": "Bundles",
+        "pathname": "bundles"
       },
       "conditions": [
         {
           "alias": "Umb.Condition.SectionAlias",
-          "match": "Umb.Section.Packages"
+          "match": "Umb.Section.Settings"
         }
       ]
     },
@@ -303,25 +311,6 @@
         {
           "alias": "Umb.Condition.WorkspaceAlias",
           "match": "Crombolo.Workspace.BundleEditor"
-        }
-      ]
-    },
-    {
-      "type": "sectionView",
-      "alias": "Crombolo.SectionView.Bundles.Installed",
-      "name": "Crombolo Installed Packages",
-      "element": "/crombolo-plugin/bundles-installed.js",
-      "weight": 200,
-      "overwrites": ["Umb.SectionView.Packages.Installed"],
-      "meta": {
-        "label": "Installed",
-        "pathname": "installed",
-        "icon": "icon-box"
-      },
-      "conditions": [
-        {
-          "alias": "Umb.Condition.SectionAlias",
-          "match": "Umb.Section.Packages"
         }
       ]
     },
@@ -492,6 +481,19 @@
       "name": "Crombolo Element Type Library Hint",
       "element": "/crombolo-plugin/element-type-hint.js",
       "weight": 900,
+      "conditions": [
+        {
+          "alias": "Umb.Condition.WorkspaceAlias",
+          "match": "Umb.Workspace.DocumentType"
+        }
+      ]
+    },
+    {
+      "type": "workspaceFooterApp",
+      "alias": "Crombolo.WorkspaceFooterApp.FormTypeNote",
+      "name": "Crombolo Form Type Note",
+      "element": "/crombolo-plugin/form-type-note.js",
+      "weight": 910,
       "conditions": [
         {
           "alias": "Umb.Condition.WorkspaceAlias",

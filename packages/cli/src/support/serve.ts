@@ -96,7 +96,7 @@ function stopOnSignal(
 export interface StartOptions extends TransferFlagValues {
   keepAdmin: boolean
   bundles: string[]
-  /** Apply `seed/` first, once per change to it (story 163). */
+  /** Apply this site's content files first, once per change to them (stories 163, 167). */
   seed?: boolean
   label?: string
   backupTaken: boolean
@@ -265,7 +265,7 @@ async function bootWithRetries(io: Io, config: CromboloConfig, options: StartOpt
         if (options.bundles.length > 0 || options.seed)
           throw new CliError(
             'usage',
-            'A worker only runs the jobs; apply bundles and the seed on an api or all node.',
+            "A worker only runs the jobs; apply bundles and the site's content on an api or all node.",
           )
         server = await createWorker(config)
         current = server
@@ -313,7 +313,7 @@ async function bootWithRetries(io: Io, config: CromboloConfig, options: StartOpt
 
 /**
  * `start --bundle <dir>`, repeatable: apply a bundle before the site serves
- * anything, taking the flags `content import` takes.
+ * anything, taking the flags `bundle apply` takes.
  *
  * Imported once per bundle — a run still standing here means this site already
  * has that content — so a restart costs a query and a line in the banner. It
@@ -339,11 +339,15 @@ async function importStartupBundles(
   if (options.seed) {
     const build = await compileSeed(db, config)
     if (build.findings.length > 0)
-      throw new CliError('refused', 'seed/ has problems, so the site has not started.', {
-        hint: '`crombolo seed check` lists them.',
-        details: build.findings.map((f) => `${f.file}:${f.line}  ${f.message}`),
-      })
-    seedDir = mkdtempSync(join(tmpdir(), 'crombolo-seed-'))
+      throw new CliError(
+        'refused',
+        "This site's content files have problems, so it has not started.",
+        {
+          hint: '`crombolo bundle build --check` lists them.',
+          details: build.findings.map((f) => `${f.file}:${f.line}  ${f.message}`),
+        },
+      )
+    seedDir = mkdtempSync(join(tmpdir(), 'crombolo-content-'))
     writeSeedPackage(build, seedDir)
   }
   const targets = seedDir ? [seedDir, ...options.bundles] : options.bundles
@@ -367,7 +371,7 @@ async function importStartupBundles(
       }
 
       // A bundle that carries the site's schema and views (`crombolo bundle
-      // build`, story 164) installs as `content import` installs it: files
+      // build`, story 164) installs as `bundle apply` installs it: files
       // staged, schema synced and content imported in one transaction. The
       // server then boots again to load what it brought.
       if (Object.keys(resolved.carried.carries).length > 0) {
@@ -454,7 +458,7 @@ async function importStartupBundles(
       for (const failure of result.publishFailures)
         io.warning(`  not published  ${failure.key}: ${failure.reason}`)
       await recordInLedger(db, {
-        name: `content import ${set.manifest.id}`,
+        name: `bundle apply ${set.manifest.id}`,
         kind: 'transfer',
         durationMs: Math.round(performance.now() - started),
         appliedBy: config.nodeId,

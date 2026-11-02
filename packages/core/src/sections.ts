@@ -20,7 +20,7 @@ export const SECTION_ALIASES = {
   members: 'Umb.Section.Members',
   translation: 'Umb.Section.Translation',
   library: 'Umb.Section.Library',
-  packages: 'Umb.Section.Packages',
+  // No `packages`: Bundles is a Settings tool, for whoever has Settings (story 238).
   // Umbraco seeds this alias and then has no section for it: Forms is a
   // commercial add-on there. Form building is in core here, so the section is
   // real and the alias resolves (`docs/forms.md`).

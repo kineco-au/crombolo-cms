@@ -92,6 +92,9 @@
   /* The sidebar is a white panel, like the cards, beside the cream page. */
   --crombolo-section-sidebar-background: #fff;
   /* Crombolo's own cards (the Overview, Settings) stand off the page; Umbraco's stay flat. */
+  /* A Settings card's title sits on a dark band. */
+  --crombolo-card-header-background: var(--crombolo-cocoa);
+  --crombolo-card-header-text: #fff;
   --crombolo-card-shadow: 0 1px 2px rgb(84 50 31 / 6%), 0 10px 28px -18px rgb(84 50 31 / 30%);
 
   /* Pure white panels on a warm off-white page, so cards still separate. */

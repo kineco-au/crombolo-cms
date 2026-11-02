@@ -24,7 +24,7 @@ test('Settings opens on cards, and each tool or tree opens from one', async ({ p
 
   const landing = page.locator('crombolo-settings-landing')
   await expect(landing.getByRole('heading', { name: 'Build' })).toBeVisible({ timeout: 30_000 })
-  for (const group of ['Site', 'Health', 'History'])
+  for (const group of ['Site', 'Health', 'History', 'Developers', 'Extensions'])
     await expect(landing.getByRole('heading', { name: group })).toBeVisible()
   // With no e-mail provider, a banner says so above the cards, not a card of its own.
   await expect(landing.getByRole('status')).toContainText('E-mail is not set up.')
@@ -62,6 +62,17 @@ test('Settings opens on cards, and each tool or tree opens from one', async ({ p
   await expect(page.getByTestId(STRUCTURE_TREE)).toBeVisible()
   await page.getByText('Content Types', { exact: true }).first().click()
   await expect(page.getByTestId(CODE_TREE)).toBeHidden()
+
+  // Bundles is a tool here (story 238), opening on its first tab.
+  await page.goto(SETTINGS)
+  await landing.getByRole('link', { name: /Bundles/ }).click()
+  await expect(page).toHaveURL(/\/section\/settings\/dashboard\/bundles\/marketplace$/)
+  await expect(page.locator('crombolo-bundles-tool uui-tab')).toHaveText([
+    'Marketplace',
+    'Installed',
+    'Created',
+  ])
+  await expect(trail).toContainText('Bundles')
 
   // A tool that was in the Advanced tree opens without one.
   await page.goto(`${SETTINGS}/workspace/logviewer/view/overview`)

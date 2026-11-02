@@ -9,7 +9,7 @@ export default class BundleInstallCode extends BaseCommand {
   static override summary = "install a bundle's code into a directory, ready to start"
   static override description = [
     "Copies the code into an empty directory and installs it from its own bun.lock, running no install scripts. The @crombolo packages are left out: the CMS that runs the site provides them, so the directory has to be somewhere they resolve from, beneath that CMS's node_modules.",
-    "Starting it, or restarting a running site so its server bundles are wired, is the host's step. `content import` installs the bundle's content, and leaves its code alone.",
+    "Starting it, or restarting a running site so its server bundles are wired, is the host's step. `bundle apply` installs the bundle's content, and leaves its code alone.",
   ].join('\n\n')
   static override examples = [
     '<%= config.bin %> bundle install-code ./acme-site-bundle /srv/sites/acme',

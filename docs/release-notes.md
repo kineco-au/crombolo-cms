@@ -6,6 +6,79 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.44.0 — 2026-11-02
+
+- **Forms in the Library** (239). Each of a site's forms is a type in
+  Library → Create, and an editor's Library form gives it a heading, an
+  introduction, the submit button's text, a thank-you or a page to go to, and
+  who is e-mailed. One form can back several Library forms. A page's Form
+  picker picks a Library form; a page that names a form itself still works, in
+  the form's own words. Entries record the Library form they came through, and
+  Entries can filter by it.
+  - **Migration 059** (`AddFormLibrary`) adds `content_type.form_key` and
+    `form_entry.library_key`. It only adds columns.
+- **Deploying from CI** (160): a GitHub Actions or GitLab job can pull and
+  push with no person and no stored secret. An administrator trusts the job
+  under **Settings → CI access**, or with `crombolo remote trust`, naming its
+  repository and branch, tag or environment and what it may do. The job's
+  provider-signed identity token is exchanged for a 15-minute token that acts
+  as that rule. CI never approves a push. Every sign-in, refusal and action is
+  audited.
+  - **Remotes are HTTPS only:** the CLI no longer reaches a remote over plain
+    HTTP, except one on the same machine.
+  - **Migration 061** (`AddRemoteTrust`) adds the trust rules and CI tokens.
+- **A site is built and changed from the CLI with bundles** (167). The seed
+  commands are gone; bundles do what they did, locally or on a remote:
+
+  | Was | Now |
+  | --- | --- |
+  | `seed check` | `bundle build --check` |
+  | `seed apply`, `content import` | `bundle apply [--dry-run] [--publish]` |
+  | `content check` | `bundle apply --dry-run` |
+  | `seed export` | `bundle export --source` |
+  | `content runs`, `content revert` | `bundle runs`, `bundle revert` |
+  | `bundle check` (code) | `bundle check-code` |
+  | `start --seed` | `start --bundle .` |
+
+  `bundle apply --remote <name>` sends a site's content to a remote, or with
+  `--structure` its content types, views, styles and code too, and `bundle runs`
+  and `bundle revert` take `--remote` as well.
+  - **Content files move:** a site's `seed/` folder is now `content/`, with
+    `pages/` (was `seed/content/`), `library/` and `media/`. A site with a
+    `seed/` folder is refused with the command that moves it:
+    `git mv seed content && git mv content/content content/pages`.
+  - **`CROMBOLO_REMOTE_ENABLED` is replaced by `CROMBOLO_REMOTE_ACCESS`:**
+    `off` (the default), `read` (pulls), `content` (bundles of content) or
+    `all` (whole-site pushes and bundles that change structure). A site that
+    still sets `CROMBOLO_REMOTE_ENABLED` refuses to start, naming the new
+    variable. **Upgrade note:** a site that took pushes needs
+    `CROMBOLO_REMOTE_ACCESS=all`.
+  - **A new permission, "Change a site's structure and code"**
+    (`Crombolo.Remote.ApplyStructure`), for groups and CI trust rules, is
+    needed for a whole-site push and a bundle that changes structure.
+    Administrators have it. **Upgrade note:** give it to any other group, or
+    CI rule, that pushes.
+- **Bundles is in Settings** (238): the Bundles card, under a new Extensions
+  group, opens Marketplace, Installed and Created as tabs. The header has no
+  Bundles tab, and an old Bundles address opens the same screen in Settings.
+  Extension insights moves to a new Developers group.
+  - **Who can use it changes:** anyone whose group has Settings can open
+    Bundles. Bundles had its own section permission, which is gone.
+  - **Upgrade note:** a group your site gave Bundles but not Settings loses
+    Bundles. Give it Settings if it should keep it.
+  - **Migration 060** (`MoveBundlesIntoSettings`) removes that permission from
+    every group.
+- The Overview's greeting and empty lists are shorter (236).
+
+- Settings cards head their title on a dark band in white, in light and dark
+  mode (234).
+- Each bundle's Settings cards are a group of their own, under the bundle's
+  name with a link to the bundle, and show the description its manifest gives,
+  as the redirects bundle's now does (234).
+- Extensions (Settings) no longer lists Umbraco's internal loaders, such as
+  "Umb.Bundle.HealthCheck", which read as bundles but are not ones you install.
+- The Settings landing page scrolls when its cards run past the window (234).
+
 ## v0.43.1 — 2026-11-01
 
 v0.43.0's release pipeline stopped at the browser suite, so it was never

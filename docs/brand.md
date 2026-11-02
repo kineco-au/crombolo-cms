@@ -43,7 +43,9 @@ is the same hue deepened until white on it clears AA, at 5.3:1. As text it is
 5.0:1 on cream and 5.3:1 on white. The header is white with a hairline under it,
 the current section marked in the accent. Crombolo's own cards (the Overview
 and the Settings landing page) take a soft shadow, `--crombolo-card-shadow`;
-Umbraco's stay flat (story 237). The product site's stylesheet
+Umbraco's stay flat (story 237). A Settings card (`crombolo-settings-card`)
+heads its title on a cocoa band in white, `--crombolo-card-header-background`
+and `--crombolo-card-header-text`. The product site's stylesheet
 (`sites/crombolo/css/site.css`) uses the same family, with its own
 `--terracotta-*` tokens.
 
@@ -67,6 +69,7 @@ vendored `dark.css` for every token, then the brand on top of it.
 | `--crombolo-orange` | `#da987c` | Accent fill, with dark text, and the focus ring |
 | `--crombolo-terracotta-light` | `#e8a688` | Links, the active section and tab, and the selected tree item's text |
 | `--crombolo-cocoa-deep` | `#25160e` | Text on the accent |
+| `--crombolo-card-header-background` | `#4a2a1a` | A Settings card's title band, white on it |
 
 Cream text clears 13:1 on the panels, and the accent's dark text clears 7.3:1.
 `tests/theme.test.ts` checks every pair against WCAG AA. "Match my system"

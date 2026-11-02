@@ -79,17 +79,8 @@ const USERS: Sections = ['users']
 const MEMBERS: Sections = ['members']
 const TRANSLATION: Sections = ['translation']
 const LIBRARY: Sections = ['library']
-const PACKAGES: Sections = ['packages']
 /** SectionAccessFor{Content,Media,Element}Tree: pickers open these trees from anywhere. */
-const ANY_TREE: Sections = [
-  'content',
-  'media',
-  'users',
-  'settings',
-  'packages',
-  'members',
-  'library',
-]
+const ANY_TREE: Sections = ['content', 'media', 'users', 'settings', 'members', 'library']
 
 const TREES: Record<string, Sections> = {
   document: ANY_TREE,
@@ -213,8 +204,9 @@ export function sectionRequirements(operation: OperationInfo): Array<Sections | 
     case 'element':
     case 'element-version':
       return [LIBRARY]
+    // Bundles is a Settings tool (story 238).
     case 'package':
-      return [PACKAGES]
+      return [SETTINGS]
     case 'upgrade':
       return ['admin']
     case 'server':
