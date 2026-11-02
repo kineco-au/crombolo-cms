@@ -221,7 +221,10 @@ describe('shutting down', () => {
     const registered = cli.indexOf('stopOnSignal(listening, () => current)')
     expect(serving).toBeGreaterThan(0)
     expect(registered).toBeGreaterThan(serving)
-    expect(registered).toBeLessThan(cli.indexOf('server = await createServer(config)'))
+    // After the holding page: a restart's child boots before it listens at all (story 241).
+    expect(registered).toBeLessThan(
+      cli.indexOf('server = await createServer(config, serverOptions())', serving),
+    )
     // The site itself replaces the holding page on the same listener.
     expect(cli).toContain('listening.reload(server.serveOptions')
   })

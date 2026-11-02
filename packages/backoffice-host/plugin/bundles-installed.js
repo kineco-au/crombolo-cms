@@ -17,6 +17,7 @@ import { css, html, nothing, repeat } from '@umbraco-cms/backoffice/external/lit
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { carriesTags } from './bundles-carries.js'
 import { disableBundle, enableBundle, listInstalled, uninstallBundle } from './bundles-client.js'
+import { signatureBlock, signatureStyles, signatureWords } from './bundles-signature.js'
 
 /** Where each part of a bundle stands on this site, in the words of someone running it. */
 function status(item) {
@@ -45,8 +46,10 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
     _busy: { state: true },
     _notice: { state: true },
     _installs: { state: true },
+    _restartPending: { state: true },
     _filter: { state: true },
     _selected: { state: true },
+    _policy: { state: true },
   }
 
   constructor() {
@@ -56,6 +59,7 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
     this._busy = ''
     this._notice = ''
     this._installs = true
+    this._restartPending = false
     this._filter = ''
     // Settings links a bundle's cards here, naming it in `?bundle=`.
     this._selected = new URLSearchParams(window.location.search).get('bundle') ?? ''
@@ -72,6 +76,8 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
       const result = await listInstalled()
       this._items = result.items ?? []
       this._installs = result.installs !== false
+      this._restartPending = Boolean(result.restartPending)
+      this._policy = result.policy
       if (!this._items.some((item) => item.packageName === this._selected))
         this._selected = this._items[0]?.packageName ?? ''
     } catch (error) {
@@ -174,6 +180,11 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
     const shown = this.#shown
     return html`
       ${this._notice ? html`<div id="notice">${this._notice}</div>` : nothing}
+      ${
+        this._restartPending
+          ? html`<div id="restart">Installed changes take effect when the site restarts.</div>`
+          : nothing
+      }
       <div id="columns">
         <uui-box headline="Installed bundles" style="--uui-box-default-padding:0;">
           <div id="filter">
@@ -196,7 +207,7 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
                     (item) => item.packageName,
                     (item) => html`<uui-ref-node
                       name=${item.name}
-                      detail=${`${item.packageName} ${item.version}`}
+                      detail=${`${item.packageName} ${item.version} · ${this.#words(item).label}`}
                       selectable
                       select-only
                       ?selected=${item.packageName === this._selected}
@@ -210,6 +221,13 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
         ${selected ? this.#details(selected) : nothing}
       </div>
     `
+  }
+
+  /** Signed or not (story 060); an unsigned one under a site that wants signatures says so. */
+  #words(item) {
+    const unsignedRefused =
+      item.provenance?.state === 'unsigned' && this._policy?.signatures === 'required'
+    return signatureWords(item.provenance, unsignedRefused ? 'unsigned' : null, this._policy)
   }
 
   #details(item) {
@@ -226,6 +244,8 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
         <dd class="status">${status(item)}</dd>
         <dt>Works with</dt>
         <dd>Crombolo ${item.peerRange}</dd>
+        <dt>Signature</dt>
+        <dd>${signatureBlock(this.#words(item))}</dd>
       </dl>
       ${this.#permissions(item)}
       ${
@@ -241,7 +261,9 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
     </uui-box>`
   }
 
-  static styles = css`
+  static styles = [
+    signatureStyles,
+    css`
     .asks {
       padding-left: 1.25em;
     }
@@ -258,6 +280,12 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
       margin-bottom: var(--uui-size-space-4, 12px);
       padding: var(--uui-size-space-4, 12px);
       border-left: 3px solid var(--uui-color-positive, #2bc37c);
+      background: var(--uui-color-surface-alt, #f3f3f5);
+    }
+    #restart {
+      margin-bottom: var(--uui-size-space-4, 12px);
+      padding: var(--uui-size-space-4, 12px);
+      border-left: 3px solid var(--uui-color-warning, #f0ac00);
       background: var(--uui-color-surface-alt, #f3f3f5);
     }
     #columns {
@@ -307,7 +335,8 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
       opacity: 0.8;
       font-size: 0.9em;
     }
-  `
+  `,
+  ]
 }
 
 customElements.define('crombolo-bundles-installed', CromboloBundlesInstalledElement)

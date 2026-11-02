@@ -13,14 +13,20 @@
  * `templates/` for the length of its pack, so they ship and nothing else does.
  * `@crombolo/delivery-client` is built to `dist/` and packed under a manifest
  * pointing there (`delivery-client.ts`); both are put back afterwards.
+ *
+ * A package that is a bundle (its `crombolo` field has an `id`) is signed in
+ * GitHub Actions once packed, so the tarball on npm carries `provenance.json`
+ * (story 060). A signature that cannot be made stops that package's publish.
  */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { describeProvenance, signPath } from '@crombolo/server'
 import { BUILT_PACKAGES, buildPackage, builtPackageManifest } from './built-package.ts'
 import { CLI_MANIFEST, writeCliManifest } from './cli-manifest.ts'
 import { buildDeliveryClient, builtManifest, DELIVERY_CLIENT } from './delivery-client.ts'
 import {
   GENERATED,
+  isBundlePackage,
   type Manifest,
   publishablePackages,
   publishOrder,
@@ -168,6 +174,17 @@ for (const pkg of packages) {
           `${name} depends on ${dependency}@${range}, but this release publishes ${expected}. ` +
             'Run "bun run release:version <version>" to bring bun.lock into line.',
         )
+    }
+
+    if (isBundlePackage(pkg.manifest)) {
+      if (!provenance || dryRun)
+        console.log(`unsigned ${name}@${version} (signed in GitHub Actions)`)
+      else {
+        const signed = await signPath(tarball)
+        console.log(
+          `signed   ${name}@${version}: ${describeProvenance({ state: 'signed', source: signed.source })}`,
+        )
+      }
     }
 
     if (dryRun) {

@@ -166,8 +166,8 @@ requests, only server-side and build-time front ends can call it.
 
 | # | Story | Priority | Size | State | Depends on |
 |---|---|---|---|---|---|
-| `060` | Provenance: where a bundle's code came from | should | M | ready | 010 |
-| `061` | Reviewed publishers | could | M | backlog | 060 |
+| `060` | Provenance: where a bundle's code came from | should | L | done | 010 |
+| `061` | Reviewed publishers | could | M | ready | 060 |
 | `062` | Tables a bundle owns | should | L | done | 063 |
 | `063` | A bundle is an npm package | should | L | done | — |
 | `178` | The back office vouches for its user to a host | should | S | done | 063, 177 |
@@ -333,7 +333,7 @@ Where groups and access live (`162`) is still open.
 | `168` | The dictionary and single media files | could | S | ready | — |
 | `180` | A working site from an empty directory, from the command line | should | S | done | 163 |
 | `240` | Approvals from the command line | should | M | ready | — |
-| `241` | Bundles managed from the command line | should | L | ready | 160, 167 |
+| `241` | Bundles managed from the command line | should | L | done | 160, 167 |
 | `242` | The Library in content files | could | S | ready | — |
 | `243` | Form entries from the command line | could | S | ready | — |
 

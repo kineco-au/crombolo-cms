@@ -89,6 +89,8 @@ export function transferInput(bundle: string, flags: TransferFlagValues): ops.Tr
     withoutFiles: flags['no-files'],
     replaceFiles: flags['replace-files'],
     excludePeople: flags['exclude-people'],
+    // The code a bundle carries is installed too (story 241); live after `crombolo restart`.
+    installCode: true,
   }
 }
 

@@ -6,6 +6,55 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.45.0 — 2026-11-02
+
+- **Signed bundles** (060). A bundle can say where it was built:
+  `crombolo bundle sign` (or `bundle build --sign`) signs it in GitHub Actions
+  from the commit or tag it was built at, with Sigstore and no keys, and writes
+  `provenance.json` into it with links to the commit, the tag and the public log.
+  Signing is optional.
+  - **Checked wherever a bundle arrives**, before anything is written. A
+    signature that does not check out is always refused. The install panel,
+    Settings → Bundles → Installed and `bundle list` show *Signed: built from
+    github.com/org/repo at v1.2.0* or *Not signed*. `crombolo bundle verify`
+    checks one without installing it.
+  - **Two new settings:** `CROMBOLO_BUNDLE_SIGNATURES=required` refuses unsigned
+    bundles, and `CROMBOLO_BUNDLE_SOURCES` says which repositories signed
+    bundles may come from.
+  - **Crombolo's own bundles are signed** from each release tag: the Redirects
+    and Microsoft Entra bundles on npm, and each demo site, now also attached
+    to the GitHub release as a signed bundle (`demo-harbourstone-<version>.tgz`
+    and the others). `CROMBOLO_BUNDLE_SOURCES=kineco-au/crombolo-cms@v*` takes
+    only ours.
+  - **From a private repository**, `bundle sign` stops unless given
+    `--public-log`: the public log records the repository's name, workflow, tag
+    or branch and commit, though never the bundle or its code.
+- **Bundles, installed and deployed from the command line** (241).
+  - `crombolo bundle list`, `install`, `uninstall`, `disable` and `enable`
+    do what Settings → Bundles does, here or with `--remote`. `--grant` names
+    every permission a bundle asks for; a version asking for more is refused.
+  - `bundle install --wire` adds the bundle's server code to
+    `crombolo.config.ts`, for you to commit; `bundle install <site-bundle>
+    --code-into <dir>` replaces `bundle install-code`, which is gone.
+  - **Applying a bundle installs the code it carries**, which it used to leave
+    for a host. A site bundle now always carries `package.json`, `bun.lock` and
+    `crombolo.config.ts` once the site has a lockfile, so a new dependency and
+    its import travel with `bundle apply --structure`. `bundle revert` puts the
+    code back.
+  - `bundle deploy --remote <name>` builds what is committed, checks it on the
+    remote, applies it and restarts the remote.
+  - **`crombolo start` supervises the server**, and `crombolo restart [--remote]`
+    restarts it: the old server serves until the new one is healthy, and keeps
+    serving if it is not. Nothing else restarts a site; installed code waits,
+    and Settings → Bundles and the health checks say so.
+  - **A new permission, "Install code on this site"**
+    (`Crombolo.Remote.InstallCode`), is needed to install bundles or a bundle's
+    code on a remote. **Administrators do not have it** unless a group gives it
+    to them: give it to a group of its own. A CI trust rule can name it.
+  - **Upgrade note:** nobody holds the new permission after upgrading, so a CI
+    job or person that applies bundles with code needs a group, or a trust
+    rule, that names it.
+
 ## v0.44.0 — 2026-11-02
 
 - **Forms in the Library** (239). Each of a site's forms is a type in

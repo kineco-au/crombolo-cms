@@ -17,7 +17,12 @@ import { tmpdir } from 'node:os'
 import { join, sep } from 'node:path'
 import { hasSection, type Principal } from '@crombolo/api-management/domain'
 import { DEVICE_CODE_GRANT, REMOTE_CLIENT_ID } from '@crombolo/auth'
-import { managementApiPath, RemotePermissions, type RemoteVerb } from '@crombolo/core'
+import {
+  EXPLICIT_PERMISSIONS,
+  managementApiPath,
+  RemotePermissions,
+  type RemoteVerb,
+} from '@crombolo/core'
 import {
   AuditLog,
   auditRecord,
@@ -36,17 +41,20 @@ import {
   revertRun,
 } from '@crombolo/transfer'
 import { readAuditPageQuery, recordAudit } from './adapters/audit.ts'
+import type { BundleAdmin } from './bundle-admin.ts'
+import { codeChanges, installedCode, planCode } from './bundle-code-install.ts'
 import {
   checkBundleContent,
   installBundleContent,
   readBundle,
   revertSections,
 } from './bundle-install.ts'
-import { carriesSections, swappedSections } from './bundle-sections.ts'
+import { carriesSections, type SectionFile, swappedSections } from './bundle-sections.ts'
 import { type CromboloConfig, REMOTE_ACCESS_LEVELS, type RemoteAccess } from './config.ts'
 import { answerContentQuery, contentQueryScope } from './content-query.ts'
 import { mediaStoreFor } from './media-files.ts'
 import { type MediaStore, streamOf } from './media-store.ts'
+import { describeProvenance, provenanceProblem, verifyProvenance } from './provenance.ts'
 import { createCiSignIn, readRuleInput, trustedIssuers } from './remote-ci.ts'
 import { openSecret, sealSecret, usableSecretKey } from './secrets.ts'
 import { exportSite } from './site-file.ts'
@@ -76,6 +84,16 @@ export interface RemoteOptions {
    * import's cache instruction carries this node's id, and a node skips its own.
    */
   onApplied?(): void
+  /** A new server from the supervising `crombolo start`, once it is healthy (story 241). */
+  restart?: () => Promise<RestartOutcome>
+  /** Installed bundles (story 241); absent where this node does not manage them. */
+  bundles?: BundleAdmin
+}
+
+/** What a supervised restart came to: the new server serving, or why the old one still is. */
+export interface RestartOutcome {
+  ok: boolean
+  reason?: string
 }
 
 export interface Remote {
@@ -103,8 +121,9 @@ const problem = (status: number, body: Problem) =>
     headers: { 'content-type': 'application/problem+json' },
   })
 
-const may = (principal: Principal, verb: RemoteVerb) =>
-  principal.isAdmin || principal.permissions.includes(verb)
+/** An administrator holds every remote permission but those a group has to name (story 241). */
+export const may = (principal: Principal, verb: RemoteVerb) =>
+  (principal.isAdmin && !EXPLICIT_PERMISSIONS.has(verb)) || principal.permissions.includes(verb)
 
 /** Who may read the audit log: whoever has its dashboard, in Settings. */
 const mayReadAudit = (principal: Principal) => hasSection(principal, 'settings')
@@ -189,6 +208,8 @@ export function createRemote(options: RemoteOptions): Remote {
       'audit',
       'content-query',
       ...(settings.approvals ? ['approvals'] : []),
+      ...(options.bundles && atLeast('read') ? ['bundle-manage'] : []),
+      ...(options.restart && atLeast('all') ? ['restart'] : []),
     ],
     environments: [environment()],
   })
@@ -627,6 +648,7 @@ export function createRemote(options: RemoteOptions): Remote {
     return {
       dryRun: raw.dryRun === true,
       publish: raw.publish === true,
+      replaceFiles: raw.replaceFiles === true,
       label: typeof raw.label === 'string' ? raw.label.slice(0, 200) : undefined,
       resolutions,
       resolveAll,
@@ -671,8 +693,11 @@ export function createRemote(options: RemoteOptions): Remote {
         })
       await extractTarball(local, dir)
       let structural: boolean
+      let code: SectionFile[]
       try {
-        structural = carriesSections(readBundle(dir, config.siteDir).carried)
+        const carried = readBundle(dir, config.siteDir).carried
+        structural = carriesSections(carried)
+        code = codeChanges(planCode(config, carried))
       } catch (error) {
         return problem(400, {
           code: 'not-a-bundle',
@@ -680,6 +705,15 @@ export function createRemote(options: RemoteOptions): Remote {
           detail: error instanceof Error ? error.message : String(error),
         })
       }
+      // Where it was built, before the rest is weighed (story 060).
+      const provenance = await verifyProvenance(dir)
+      const signatureRefused = provenanceProblem(provenance, config.bundlePolicy)
+      if (signatureRefused)
+        return problem(403, {
+          code: 'signature-refused',
+          title: 'This site does not take that bundle',
+          detail: `It is refused: ${signatureRefused}.`,
+        })
       if (structural && !atLeast('all'))
         return notAtLevel('all', 'bundles that change content types, views or code')
       if (structural && !may(principal, RemotePermissions.ApplyStructure))
@@ -689,9 +723,28 @@ export function createRemote(options: RemoteOptions): Remote {
           detail:
             'The bundle carries content types, views or code, which needs Crombolo.Remote.ApplyStructure.',
         })
+      // Code that would change this site's files (story 241): installed here, and
+      // only by someone a group has given InstallCode, administrators included.
+      if (code.length > 0 && !config.runtimeInstalls)
+        return problem(409, {
+          code: 'installs-elsewhere',
+          title: 'This site does not install code while it runs',
+          detail:
+            config.installsElsewhere?.message ??
+            "Add the bundle's code to the site and deploy it the way this site is deployed.",
+        })
+      if (code.length > 0 && !may(principal, RemotePermissions.InstallCode))
+        return problem(403, {
+          code: 'forbidden-code',
+          title: 'You may not install code on this site',
+          detail: `The bundle would change ${code.length} code file(s) here, which needs Crombolo.Remote.InstallCode, given by a group.`,
+          items: code.map((file) => file.path),
+        })
       const input = {
         bundle: dir,
         publish: asked.publish,
+        replaceFiles: asked.replaceFiles,
+        installCode: code.length > 0,
         resolutions: asked.resolutions,
         resolveAll: asked.resolveAll,
         by: principal.name,
@@ -715,6 +768,8 @@ export function createRemote(options: RemoteOptions): Remote {
         return Response.json({
           dryRun: true,
           structural,
+          provenance,
+          code: code.map((file) => ({ path: file.path, action: file.action })),
           bundle: checked.bundle,
           ...report(checked.check),
           clean: checked.clean,
@@ -733,7 +788,7 @@ export function createRemote(options: RemoteOptions): Remote {
           principal,
           request,
           'RemoteBundleApplied',
-          `${result.bundle.id} as run ${result.runId}${structural ? ', with structure' : ''}`,
+          `${result.bundle.id} as run ${result.runId}${structural ? ', with structure' : ''}; ${describeProvenance(provenance)}`,
         )
         options.onApplied?.()
       }
@@ -741,6 +796,10 @@ export function createRemote(options: RemoteOptions): Remote {
         {
           dryRun: false,
           structural,
+          provenance,
+          code: result.code
+            ? { written: result.code.written.length, installed: result.code.installed, live: false }
+            : null,
           bundle: result.bundle,
           runId: result.runId ?? null,
           ...report(result.check),
@@ -780,6 +839,115 @@ export function createRemote(options: RemoteOptions): Remote {
     })
   }
 
+  /**
+   * Installed bundles (story 241), as Settings → Bundles manages them: listed
+   * at `read`; installed, removed, disabled and enabled at `all`. Installing or
+   * removing changes the code the server loads, so it also needs
+   * ApplyStructure and InstallCode, which an administrator holds only when a
+   * group gives it to them, and a site that installs at runtime.
+   */
+  async function manageBundles(
+    request: Request,
+    principal: Principal,
+    what: string,
+  ): Promise<Response> {
+    const bundles = options.bundles
+    if (!bundles)
+      return problem(404, { code: 'not-found', title: 'This remote does not manage bundles' })
+    const actor = {
+      id: principal.ci ? null : principal.id,
+      name: `${principal.name}${ciRun(principal)}`,
+      email: principal.ci ? null : principal.email,
+      source: 'request' as const,
+      ipAddress: null,
+      forwardedFor: request.headers.get('x-forwarded-for'),
+    }
+    if (what === 'installed' && request.method === 'GET') {
+      if (!atLeast('read')) return notAtLevel('read', 'reads')
+      if (!may(principal, RemotePermissions.Pull) && !mayChange(principal))
+        return problem(403, { code: 'forbidden', title: 'You may not read this environment' })
+      return Response.json(await bundles.installed())
+    }
+    if (!fromThisSiteOrBearer(request)) return new Response('Forbidden', { status: 403 })
+    if (!atLeast('all')) return notAtLevel('all', 'installing and switching bundles')
+    const switched = /^installed\/(.+)\/(disable|enable)$/.exec(what)
+    if (switched && request.method === 'POST') {
+      if (principal.ci ? !may(principal, RemotePermissions.ApplyStructure) : !principal.isAdmin)
+        return problem(403, {
+          code: 'forbidden',
+          title: 'Only an administrator turns bundles off and on',
+        })
+      const { status, ...outcome } = await bundles.setEnabled(
+        actor,
+        decodeURIComponent(switched[1] as string),
+        switched[2] === 'enable',
+      )
+      return status === 200
+        ? Response.json(outcome)
+        : problem(status, { code: 'not-found', title: outcome.message })
+    }
+    const installing = what === 'installed' && request.method === 'POST'
+    const removing = /^installed\/[^/]/.test(what) && request.method === 'DELETE'
+    if (!installing && !removing) return new Response(null, { status: 405 })
+    if (!mayChange(principal) || !may(principal, RemotePermissions.ApplyStructure))
+      return problem(403, {
+        code: 'forbidden-structure',
+        title: "You may not change this site's structure",
+        detail: 'Installing or removing a bundle needs Crombolo.Remote.ApplyStructure.',
+      })
+    if (!may(principal, RemotePermissions.InstallCode))
+      return problem(403, {
+        code: 'forbidden-code',
+        title: 'You may not install code on this site',
+        detail:
+          'It needs "Install code on this site" (Crombolo.Remote.InstallCode), which only a group that names it gives, administrators included.',
+      })
+    if (!config.runtimeInstalls)
+      return problem(409, {
+        code: 'installs-elsewhere',
+        title: 'This site does not install bundles while it runs',
+        detail:
+          config.installsElsewhere?.message ??
+          "Add the bundle to the site's package.json and deploy it, so every server has it.",
+      })
+    if (removing) {
+      const name = decodeURIComponent(what.slice('installed/'.length))
+      const outcome = await bundles.uninstall(actor, name)
+      return outcome.ok
+        ? Response.json(outcome)
+        : problem(409, { code: 'uninstall-refused', title: outcome.message })
+    }
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
+    const name = typeof body.name === 'string' ? body.name : ''
+    const grant = Array.isArray(body.grant)
+      ? body.grant.filter((p): p is string => typeof p === 'string')
+      : []
+    const outcome = await bundles.install(actor, {
+      name,
+      version: typeof body.version === 'string' ? body.version : undefined,
+      applyContent: body.applyContent === true,
+      // Naming the grant is the consent: a script that names what it grants has said yes.
+      acceptServerCode: true,
+      grant,
+    })
+    if (outcome.ok) return Response.json(outcome)
+    if (outcome.needsServerConsent) {
+      const asked = (outcome.permissions ?? []).map((p) => p.permission)
+      const missing = asked.filter((p) => !grant.includes(p))
+      const extra = grant.filter((p) => !asked.includes(p))
+      return problem(409, {
+        code: 'grant-mismatch',
+        title: `${name} asks for other permissions than were granted`,
+        detail: outcome.message,
+        items: [
+          ...missing.map((p) => `not granted: ${p}`),
+          ...extra.map((p) => `not asked for: ${p}`),
+        ],
+      })
+    }
+    return problem(409, { code: 'install-refused', title: outcome.message })
+  }
+
   /** Undoes an apply (story 167), as `bundle revert` does here; files it replaced come back too. */
   async function revertBundleRun(
     request: Request,
@@ -791,6 +959,19 @@ export function createRemote(options: RemoteOptions): Remote {
       return problem(403, { code: 'forbidden', title: 'You may not change this environment' })
     if (!fromThisSiteOrBearer(request)) return new Response('Forbidden', { status: 403 })
     const body = (await request.json().catch(() => ({}))) as { force?: unknown }
+    // A run that installed code changes code back, which needs what it did.
+    if (
+      installedCode(config, runId) &&
+      (!atLeast('all') ||
+        !may(principal, RemotePermissions.ApplyStructure) ||
+        !may(principal, RemotePermissions.InstallCode))
+    )
+      return problem(403, {
+        code: 'forbidden-code',
+        title: "Reverting that run changes this site's code",
+        detail:
+          'It needs CROMBOLO_REMOTE_ACCESS=all, Crombolo.Remote.ApplyStructure and Crombolo.Remote.InstallCode.',
+      })
     // A run that replaced files changes structure back, which needs the same as it did.
     const swapped = swappedSections(config, runId)
     if (
@@ -823,6 +1004,39 @@ export function createRemote(options: RemoteOptions): Remote {
       recycled: result.recycled,
       files,
     })
+  }
+
+  /**
+   * A new server, through the supervising `crombolo start` (story 241): any
+   * administrator, or CI whose rule may install code, at the `all` level.
+   */
+  async function restartSite(request: Request, principal: Principal): Promise<Response> {
+    if (!atLeast('all')) return notAtLevel('all', 'restarts')
+    const allowed = principal.ci ? may(principal, RemotePermissions.InstallCode) : principal.isAdmin
+    if (!allowed)
+      return problem(403, { code: 'forbidden', title: 'Only an administrator restarts this site' })
+    if (!fromThisSiteOrBearer(request)) return new Response('Forbidden', { status: 403 })
+    if (!options.restart)
+      return problem(409, {
+        code: 'not-supervised',
+        title: 'Nothing here can restart this site',
+        detail:
+          'It was not started with `crombolo start`, which restarts it; restart it the way its host does.',
+      })
+    const outcome = await options.restart()
+    await audit(
+      principal,
+      request,
+      outcome.ok ? 'RemoteRestart' : 'RemoteRestartFailed',
+      outcome.ok ? 'a new server is serving' : (outcome.reason ?? 'the new server did not start'),
+    )
+    if (!outcome.ok)
+      return problem(502, {
+        code: 'restart-failed',
+        title: 'The new server did not start; the old one is still serving',
+        detail: outcome.reason,
+      })
+    return Response.json({ restarted: true })
   }
 
   async function startPush(request: Request, url: URL, principal: Principal): Promise<Response> {
@@ -1213,6 +1427,9 @@ export function createRemote(options: RemoteOptions): Remote {
           await request.json().catch(() => undefined),
         )
       }
+      if (what === 'restart' && request.method === 'POST') return restartSite(request, principal)
+      if (what === 'installed' || what.startsWith('installed/'))
+        return manageBundles(request, principal, what)
       // Story 167: the site's level first, then the person's permissions.
       const pulling =
         what === 'pulls' ||

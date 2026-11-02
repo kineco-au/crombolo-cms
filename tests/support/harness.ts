@@ -12,6 +12,7 @@ import {
   DEFAULTS,
   loadConfig,
   type ServerHandle,
+  type ServerOptions,
 } from '@crombolo/server'
 import { resetPostgresSchema } from './db.ts'
 
@@ -89,6 +90,8 @@ export interface HarnessOptions {
   config?: Partial<CromboloConfig>
   /** Keep the Postgres schema: a second instance on the same database. */
   keepDatabase?: boolean
+  /** What `createServer` is told beyond its config, such as how to restart (story 241). */
+  server?: ServerOptions
 }
 
 /** A server nobody has signed in to: for what a visitor, or a site with no administrator, sees. */
@@ -96,6 +99,7 @@ export async function bootServer(options: HarnessOptions = {}): Promise<ServerHa
   if (!options.keepDatabase) await resetPostgresSchema()
   const server = await createServer(
     loadConfig({ componentsCacheDir: VIEWS_CACHE, ...options.config }),
+    options.server,
   )
   return server
 }

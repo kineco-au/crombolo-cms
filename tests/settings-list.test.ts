@@ -28,6 +28,12 @@ const NOT_SETTINGS: Record<string, string> = {
   ACTIONS_ID_TOKEN_REQUEST_URL:
     "GitHub Actions': where a job asks for its identity token (story 160)",
   ACTIONS_ID_TOKEN_REQUEST_TOKEN: "GitHub Actions': the job's right to ask for one (story 160)",
+  GITHUB_ACTIONS: 'set by GitHub Actions: where `crombolo bundle sign` can sign (story 060)',
+  GITHUB_EVENT_PATH:
+    "set by GitHub Actions: the event `bundle sign` reads the repository's visibility from (story 060)",
+  XDG_CACHE_HOME: "where Sigstore's trusted root is cached between checks (story 060)",
+  CROMBOLO_SUPERVISED_CHILD: '`crombolo start` marks the server it supervises (story 241)',
+  CROMBOLO_SUPERVISED_RESTART: '`crombolo start` marks the server a restart starts (story 241)',
 }
 
 function sourceFiles(dir: string): string[] {

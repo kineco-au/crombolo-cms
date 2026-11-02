@@ -208,6 +208,8 @@ describe(`discovery (${dialectUnderTest})`, () => {
         'push-check',
         'audit',
         'content-query',
+        // Story 241: installed bundles, managed as Settings → Bundles does.
+        'bundle-manage',
       ],
       environments: [{ id: 'production', name: 'production', protected: true, access: 'all' }],
     })

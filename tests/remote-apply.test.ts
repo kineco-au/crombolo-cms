@@ -8,6 +8,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -22,6 +23,7 @@ import {
   loadConfig,
   REMOTE_API_PATH,
   type RemoteSettings,
+  restartPending,
   type TarEntry,
   writeNpmTarball,
 } from '@crombolo/server'
@@ -61,7 +63,7 @@ type = "textstring"
 `
 
 /** A site directory: its schema, one view, and content files for one page. */
-function siteDirectory(title = 'Hello') {
+function siteDirectory(title = 'Hello', code?: Record<string, string>) {
   const root = temp('remote-apply-site')
   for (const dir of ['schema/content-types', 'components', 'content/pages'])
     mkdirSync(join(root, dir), { recursive: true })
@@ -72,6 +74,22 @@ function siteDirectory(title = 'Hello') {
     join(root, 'content', 'pages', 'home.toml'),
     `type = "page"\nname = "Home"\n\n[values]\ntitle = "${title}"\n`,
   )
+  // What a site with a lockfile always sends with its structure (story 241).
+  writeFileSync(
+    join(root, 'package.json'),
+    '{ "name": "remote-apply-site", "private": true, "crombolo": { "code": ["src/**"] } }\n',
+  )
+  mkdirSync(join(root, 'src'), { recursive: true })
+  writeFileSync(join(root, 'src', 'site.ts'), 'export const site = true\n')
+  writeFileSync(
+    join(root, 'bun.lock'),
+    '{\n  "lockfileVersion": 1,\n  "workspaces": { "": { "name": "remote-apply-site" } }\n}\n',
+  )
+  writeFileSync(join(root, 'crombolo.config.ts'), 'export default {}\n')
+  for (const [path, text] of Object.entries(code ?? {})) {
+    mkdirSync(join(root, path, '..'), { recursive: true })
+    writeFileSync(join(root, path), text)
+  }
   return root
 }
 
@@ -98,10 +116,11 @@ async function packed(root: string, structure = false) {
   return writeNpmTarball(entriesOf(out))
 }
 
-async function remote(remoteSettings: Partial<RemoteSettings>) {
+async function remote(remoteSettings: Partial<RemoteSettings>, runtimeInstalls = true) {
   const root = siteDirectory()
   const h = await signedInServer({
     config: {
+      runtimeInstalls,
       siteDir: root,
       schemaDir: join(root, 'schema'),
       componentsDir: join(root, 'components'),
@@ -134,7 +153,33 @@ async function remote(remoteSettings: Partial<RemoteSettings>) {
       },
       body: new Blob([bytes as Uint8Array<ArrayBuffer>]),
     })
-  return { h, api, apply }
+  return { h, api, apply, root }
+}
+
+/** A group holding what a structural apply needs, and InstallCode when asked. */
+async function deployers(h: Harness, installCode: boolean) {
+  const created = await h.post(`${V1}/user-group`, {
+    name: installCode ? 'Code installers' : 'Deployers',
+    alias: installCode ? 'code-installers' : 'deployers',
+    sections: ['Umb.Section.Content'],
+    languages: [],
+    hasAccessToAllLanguages: true,
+    documentRootAccess: true,
+    documentStartNode: null,
+    mediaRootAccess: true,
+    mediaStartNode: null,
+    elementRootAccess: false,
+    elementStartNode: null,
+    fallbackPermissions: [
+      'Crombolo.Remote.Pull',
+      'Crombolo.Remote.Push',
+      'Crombolo.Remote.ApplyStructure',
+      ...(installCode ? ['Crombolo.Remote.InstallCode'] : []),
+    ],
+    permissions: [],
+  })
+  expect(created.status).toBe(201)
+  return signInAsGroup(h, installCode ? 'code-installers' : 'deployers')
 }
 
 describe(`applying a bundle to a remote (${dialectUnderTest})`, () => {
@@ -261,6 +306,78 @@ describe(`applying a bundle to a remote (${dialectUnderTest})`, () => {
     })
     expect(response.status).toBe(400)
     expect(((await response.json()) as { code: string }).code).toBe('hash-mismatch')
+  })
+})
+
+describe(`installing the code a bundle carries (story 241, ${dialectUnderTest})`, () => {
+  const CODE = { 'src/hello.ts': 'export const hello = "from the bundle"\n' }
+
+  test('needs InstallCode from a group: an administrator is refused until given it', async () => {
+    const { h, apply, root } = await remote({ access: 'all' })
+    const bytes = await packed(siteDirectory('Hello', CODE), true)
+
+    const admin = await apply(h, bytes, { dryRun: true })
+    expect(admin.status).toBe(403)
+    const refusal = (await admin.json()) as { code: string; items: string[] }
+    expect(refusal.code).toBe('forbidden-code')
+    expect(refusal.items).toEqual(['code/src/hello.ts'])
+
+    expect((await apply(await deployers(h, false), bytes, { dryRun: true })).status).toBe(403)
+
+    const installer = await deployers(h, true)
+    const dry = await apply(installer, bytes, { dryRun: true })
+    expect(dry.status).toBe(200)
+    expect(((await dry.json()) as { code: unknown[] }).code).toEqual([
+      { path: 'code/src/hello.ts', action: 'create' },
+    ])
+    expect(existsSync(join(root, 'src', 'hello.ts'))).toBe(false)
+
+    const applied = await apply(installer, bytes, {})
+    expect(applied.status).toBe(200)
+    const run = (await applied.json()) as {
+      runId: string
+      code: { written: number; live: boolean }
+    }
+    expect(run.code).toMatchObject({ written: 1, live: false })
+    expect(readFileSync(join(root, 'src', 'hello.ts'), 'utf8')).toContain('from the bundle')
+    expect(restartPending(root)?.reasons.join(' ')).toContain('1 code file(s) installed')
+  })
+
+  test('code the site already runs needs nothing more than its structure', async () => {
+    const { h, apply } = await remote({ access: 'all' })
+    // package.json, bun.lock and the config as the remote has them: nothing to install.
+    const same = await apply(h, await packed(siteDirectory(), true), { dryRun: true })
+    expect(same.status).toBe(200)
+    expect(((await same.json()) as { code: unknown[] }).code).toEqual([])
+  })
+
+  test('a site that installs nothing while it runs refuses it, saying how to deploy', async () => {
+    const { h, apply } = await remote({ access: 'all' }, false)
+    const installer = await deployers(h, true)
+    const refused = await apply(installer, await packed(siteDirectory('Hello', CODE), true), {
+      dryRun: true,
+    })
+    expect(refused.status).toBe(409)
+    expect(((await refused.json()) as { code: string }).code).toBe('installs-elsewhere')
+  })
+
+  test('reverting a run that installed code puts it back, and needs InstallCode too', async () => {
+    const { h, api, apply, root } = await remote({ access: 'all' })
+    const installer = await deployers(h, true)
+    const run = (await (
+      await apply(installer, await packed(siteDirectory('Hello', CODE), true), {})
+    ).json()) as { runId: string }
+    const revert = (client: Harness) =>
+      api(client, `environments/production/runs/${run.runId}/revert`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ force: true }),
+      })
+    const byAdmin = await revert(h)
+    expect(byAdmin.status).toBe(403)
+    expect(((await byAdmin.json()) as { code: string }).code).toBe('forbidden-code')
+    expect((await revert(installer)).status).toBe(200)
+    expect(existsSync(join(root, 'src', 'hello.ts'))).toBe(false)
   })
 })
 

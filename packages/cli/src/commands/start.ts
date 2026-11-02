@@ -3,6 +3,8 @@ import { Flags } from '@oclif/core'
 import { BaseCommand } from '../base.ts'
 import { backupTaken, many, transferFlags } from '../support/flags.ts'
 import { serveSite, startFromFile } from '../support/serve.ts'
+import { cwd } from '../support/site.ts'
+import { isSupervisedChild, supervise } from '../support/supervise.ts'
 
 export default class Start extends BaseCommand {
   static override summary = 'boot the site in the current directory'
@@ -10,7 +12,7 @@ export default class Start extends BaseCommand {
     "In development it resets and prints the administrator's password on every start; --keep-admin leaves it alone.",
     "--bundle applies a bundle's content first, once per bundle, taking `bundle apply`'s flags. `--bundle .` applies this site's own content files, once for each change to them.",
     "--from, in an empty folder: scaffold a site, install it, import a whole-site file (`crombolo export --site`) and serve it; the new administrator's password is printed once.",
-    'It serves until stopped. With -o json it prints one object saying where it answers.',
+    'It serves until stopped, and supervises the server: `crombolo restart`, or SIGHUP, starts a new one that takes over once it is up. With -o json it prints one object saying where it answers.',
   ].join('\n\n')
   static override examples = [
     '<%= config.bin %> start',
@@ -47,6 +49,18 @@ export default class Start extends BaseCommand {
   async run() {
     const { flags } = await this.parse(Start)
     let keepAdmin = flags['keep-admin']
+    // Story 241: this process supervises, and the server runs as its child, so a
+    // restart is a new child taking over rather than an outage.
+    const supervising = !isSupervisedChild()
+    if (flags.from && supervising) {
+      await startFromFile(this, flags.from, {
+        name: flags.name,
+        postgres: flags.postgres,
+        install: !flags['no-install'],
+        allowMissingMedia: flags['allow-missing-media'],
+      })
+    }
+    if (supervising) return supervise(process.argv.slice(1), cwd(), Boolean(flags.from))
     if (flags.from) {
       await startFromFile(this, flags.from, {
         name: flags.name,

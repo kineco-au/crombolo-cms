@@ -2,7 +2,7 @@
   "$schema": "../../backoffice-dist/dist/umbraco-package-schema.json",
   "name": "Crombolo",
   "id": "Crombolo.Core",
-  "version": "0.44.0",
+  "version": "0.45.0",
   "allowPublicAccess": false,
   "extensions": [
     {
@@ -80,6 +80,17 @@
         "verbs": ["Crombolo.Remote.ApplyStructure"],
         "label": "Change a site's structure and code",
         "description": "Push a whole site, or apply a bundle that changes its content types, views, styles or code"
+      }
+    },
+    {
+      "type": "entityUserPermission",
+      "alias": "Crombolo.UserPermission.Remote.InstallCode",
+      "name": "Crombolo Remote InstallCode Permission",
+      "forEntityTypes": ["crombolo-remote"],
+      "meta": {
+        "verbs": ["Crombolo.Remote.InstallCode"],
+        "label": "Install code on this site",
+        "description": "Install bundles and the code a bundle carries, which runs on the server after a restart. Administrators only have this when a group gives it to them: give it to a group of its own rather than Administrators"
       }
     },
     {

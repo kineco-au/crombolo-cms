@@ -98,7 +98,7 @@ export function describeBundle(io: Io, bundle: ops.BundleSummary): void {
 
 /** An import installs a bundle's content and never its code, so it says there is code to install. */
 export const CARRIES_CODE =
-  '  code     carried, and not installed by an import: `crombolo bundle install-code` installs it'
+  '  code     carried, and not installed by an import: `crombolo bundle install <bundle> --code-into <dir>` installs it'
 
 /** What the carried sections would do, or did. */
 export function printSections(io: Io, plan: ops.SectionPlan | undefined): void {

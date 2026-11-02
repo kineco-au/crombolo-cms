@@ -316,6 +316,22 @@ const DECLARED = [
       'The Packages section installs and removes packages on the running site. Off, they are added to `package.json` and deployed.',
   },
   {
+    env: 'CROMBOLO_BUNDLE_SIGNATURES',
+    kind: 'enum',
+    values: ['optional', 'required'],
+    default: 'optional',
+    section: 'Back office and bundles',
+    description:
+      'Whether this site takes only bundles signed in GitHub Actions with `crombolo bundle sign`. A signature that does not check out is refused either way.',
+  },
+  {
+    env: 'CROMBOLO_BUNDLE_SOURCES',
+    kind: 'list',
+    section: 'Back office and bundles',
+    description:
+      'Where a signed bundle has to come from, separated by commas: `org/*`, `org/repo`, or `org/repo@v*` for its tags. Empty takes signed bundles from anywhere.',
+  },
+  {
     env: 'CROMBOLO_INSTALLS_ELSEWHERE_MESSAGE',
     kind: 'string',
     section: 'Back office and bundles',

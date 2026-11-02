@@ -88,6 +88,7 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'entityUserPermission:Crombolo.UserPermission.Remote.Push',
       'entityUserPermission:Crombolo.UserPermission.Remote.PushProtected',
       'entityUserPermission:Crombolo.UserPermission.Remote.ApplyStructure',
+      'entityUserPermission:Crombolo.UserPermission.Remote.InstallCode',
       'entityUserPermission:Crombolo.UserPermission.Media.Read',
       'entityUserPermission:Crombolo.UserPermission.Media.Update',
       'backofficeEntryPoint:Crombolo.EntryPoint.MediaPermissions',
@@ -175,6 +176,7 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'Crombolo.UserPermission.Remote.Push',
       'Crombolo.UserPermission.Remote.PushProtected',
       'Crombolo.UserPermission.Remote.ApplyStructure',
+      'Crombolo.UserPermission.Remote.InstallCode',
       'Crombolo.UserPermission.Media.Read',
       'Crombolo.UserPermission.Media.Update',
       'Crombolo.HeaderApp.Settings',
@@ -185,6 +187,7 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
     expect(moduleless.map((e) => e.type)).toEqual([
       'theme',
       'theme',
+      'entityUserPermission',
       'entityUserPermission',
       'entityUserPermission',
       'entityUserPermission',

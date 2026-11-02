@@ -49,6 +49,7 @@ stated otherwise. Errors are `application/problem+json` with a stable `code`
   - `approvals` means a push may wait for approval.
   - `audit` means the audit log can be read (see below).
   - `content-query` means pages can be found by their facts (see below).
+  - `restart` means the site can be restarted (see below).
   - A client ignores capabilities it doesn't know.
 
 A site that isn't a remote answers 404.
@@ -254,11 +255,20 @@ it is sending.
 - **Body:** the bundle as an npm tarball (`application/gzip`).
 - **`Crombolo-Sha256`:** its SHA-256, in hex (400 `hash-mismatch` when it differs).
 - **`Crombolo-Options`:** JSON, every field optional: `dryRun`, `publish`,
-  `label`, `resolutions` and `resolveAll`.
+  `label`, `resolutions`, `resolveAll` and `replaceFiles` (allow replacing
+  files the remote has; `bundle deploy` sends it).
 
 A bundle of content alone needs the `content` level and the push permission. One
 that carries content types, views, styles or code needs the `all` level (403
 `access-level`) and `Crombolo.Remote.ApplyStructure` (403 `forbidden-structure`).
+
+A bundle whose code would change the remote's files (story 241) is installed
+there, and also needs `Crombolo.Remote.InstallCode`, which administrators hold
+only when a group gives it to them (403 `forbidden-code`, listing the files in
+`items`), and runtime installs on (409 `installs-elsewhere`, with the host's
+message). The answer's `code` lists the files a dry run would change; after an
+apply it is `{ written, installed, live: false }`: the code runs after a
+restart (`restart`).
 
 The answer carries `dryRun`, `structural`, `bundle`, `counts` (`create`,
 `update`, `unchanged`, `skip`), `findings` and `outstanding`. A dry run writes
@@ -267,7 +277,8 @@ findings outstanding is refused with 409 and the same body, with no `runId`.
 
 `GET <api>/environments/{id}/runs?limit=&offset=` lists the applies, newest
 first. `POST <api>/environments/{id}/runs/{run}/revert` with `{ "force": true }`
-undoes one; a run that replaced files needs what a structural apply needs.
+undoes one; a run that replaced files needs what a structural apply needs, and
+one that installed code needs `InstallCode` as well.
 
 ## Approvals (optional)
 
@@ -362,18 +373,75 @@ read ([`search.md`](search.md), "Finding content by its properties").
   named. A person without the Content section answers 403 `forbidden`.
 - **The reference server** does not record the read.
 
+## Installed bundles (`bundle-manage`, optional)
+
+The bundles the environment depends on, managed as its Settings → Bundles does
+(story 241).
+
+| | |
+| --- | --- |
+| `GET <api>/environments/{id}/installed` | `{ installs, installsElsewhere, restartPending, items }`: each bundle's `packageName`, `version`, `carries`, `wired`, `on`, `permissions` and `granted`; `restartPending` is `{ since, reasons }` or null |
+| `POST <api>/environments/{id}/installed` `{ name, version?, grant: [...], applyContent? }` | installs it; the answer carries `dependency`, `message` and `restartPending` |
+| `DELETE <api>/environments/{id}/installed/{name}` | removes it |
+| `POST <api>/environments/{id}/installed/{id}/disable` or `/enable` | turns its server features off or on, at once; `{ ok, on, message }` |
+
+- **The level:** listing needs `read`, everything else `all` (403
+  `access-level`).
+- **Installing and removing** need the push permission, ApplyStructure (403
+  `forbidden-structure`) and `Crombolo.Remote.InstallCode` (403
+  `forbidden-code`), which an administrator holds only when a group gives it
+  to them. A site that does not install while it runs answers 409
+  `installs-elsewhere`, with what to do instead in `detail`.
+- **The grant is the consent.** `grant` must name every permission a bundle
+  with server code asks for, and nothing else: otherwise 409 `grant-mismatch`,
+  with `not granted: …` and `not asked for: …` in `items`. Nothing is
+  installed.
+- **Never wired here.** Installing adds the dependency; the site's
+  `crombolo.config.ts` turns its server code on, and that arrives by an apply
+  of the site's structure.
+- **Turning one off or on** needs an administrator, or a CI rule holding
+  ApplyStructure (403 `forbidden`); a name the site has no bundle with a server
+  half for answers 404.
+- **Installed code runs after a restart** ([Restarting](#restarting-restart-optional)).
+- **The audit log** records `Install`, `Uninstall`, `Disable` and `Enable`
+  against the bundle, as the back office does.
+
+## Restarting (`restart`, optional)
+
+`POST <api>/environments/{id}/restart` asks for a new server, and answers once
+it is serving or has failed (story 241). In the reference server, the
+`crombolo start` that supervises the site starts the new server beside the old
+one, so a restart is not an outage ([`operations.md`](operations.md),
+"Restarting"). Code installed since the site started runs once it has
+restarted.
+
+- **Who:** the site's level must be `all` (403 `access-level`). A person must
+  be an administrator, and CI's trust rule must hold
+  `Crombolo.Remote.InstallCode` (403 `forbidden`).
+- **The answer:** 200 `{ "restarted": true }`. A new server that failed to
+  start answers 502 `restart-failed`, with why in `detail`, and the old server
+  is still serving.
+- **A site nothing supervises** answers 409 `not-supervised`, and does not offer
+  the capability.
+- **The audit log** records `RemoteRestart`, or `RemoteRestartFailed` with the
+  reason.
+
 ## Errors
 
 | Status | `code` | |
 | --- | --- | --- |
 | 400 | `passphrase-required`, `hash-required`, `hash-mismatch`, `body-required`, `bad-key`, `too-many`, `bad-query` | the request is wrong |
 | 401 | `sign-in-required` | no token, or a lapsed one |
-| 403 | `forbidden`, `forbidden-protected`, `forbidden-structure`, `own-push` | the person may not |
+| 403 | `forbidden`, `forbidden-protected`, `forbidden-structure`, `forbidden-code`, `own-push` | the person may not |
+| 403 | `signature-refused` | the site does not take the bundle: unsigned where it requires a signature, from a source it does not list, or a signature that does not check out (story 060) |
 | 403 | `access-level` | the site does not take that, at its `CROMBOLO_REMOTE_ACCESS` |
 | 404 | `not-found`, `no-such-environment`, `not-enabled` | |
 | 409 | `not-waiting`, `approval-expired` | the job is not in a state for that |
+| 409 | `not-supervised` | nothing on the site can restart it |
+| 409 | `installs-elsewhere`, `grant-mismatch` | the site installs no code while it runs; the grant is not what the bundle asks for |
 | 410 | `gone` | the download has expired |
 | 413 | `too-large` | over the remote's upload limit |
+| 502 | `restart-failed` | the new server did not start; the old one is serving |
 | 503 | `approvals-unavailable` | the remote cannot hold a push for approval |
 
 ## The reference server
@@ -411,11 +479,13 @@ stops the site starting, naming `CROMBOLO_REMOTE_ACCESS` instead.
 | `Crombolo.Remote.Push` | push, and apply or revert a bundle of content |
 | `Crombolo.Remote.PushProtected` | push to, and approve pushes to, a protected environment |
 | `Crombolo.Remote.ApplyStructure` | "Change a site's structure and code": a whole-site push, and a bundle that changes content types, views, styles or code |
+| `Crombolo.Remote.InstallCode` | "Install code on this site": installing a bundle, and a bundle whose code changes the site's files (story 241) |
 
 A whole-site push and a structural bundle need `ApplyStructure` as well as
 `Push`, and `PushProtected` too on a protected environment. A bundle of content
 alone needs `Push`, and `PushProtected` where the environment is protected.
-Administrators have all five.
+Administrators have the first five. `InstallCode` is held only where a group
+names it, administrators included, and no group has it until someone gives it.
 
 **How it runs:**
 - **Where jobs live.** A job runs on the node that took it. Its state is in

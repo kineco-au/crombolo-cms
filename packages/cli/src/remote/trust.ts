@@ -21,6 +21,7 @@ export const MAY: Record<string, string> = {
   push: 'Crombolo.Remote.Push',
   'push-protected': 'Crombolo.Remote.PushProtected',
   'apply-structure': 'Crombolo.Remote.ApplyStructure',
+  'install-code': 'Crombolo.Remote.InstallCode',
 }
 
 const named = (verb: string) => Object.entries(MAY).find(([, v]) => v === verb)?.[0] ?? verb

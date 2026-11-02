@@ -147,6 +147,7 @@ import {
 import { createPublishedContentSource, loadDraftNode } from './adapters/documents.ts'
 import type { Approvals } from './approvals.ts'
 import { handleApprovalsApi } from './approvals-api.ts'
+import { type BundleActor, createBundleAdmin } from './bundle-admin.ts'
 import type { BundleGrants } from './bundle-grants.ts'
 import { CommandError, installBundleContent } from './bundle-install.ts'
 import { BUNDLES_CHANGED_EVENT, type BundleReload, createBundleReloader } from './bundle-reload.ts'
@@ -206,7 +207,8 @@ import {
   readPreviewToken,
   signPreviewToken,
 } from './preview-tokens.ts'
-import { createRemote } from './remote.ts'
+import { provenanceProblem } from './provenance.ts'
+import { createRemote, type RestartOutcome } from './remote.ts'
 import { unknownHostProvided } from './site-file.ts'
 import { handleTransferAction, pendingTransfers } from './transfer-dashboard.ts'
 import { changeUrlOptions, urlSettingEditable } from './url-settings.ts'
@@ -320,7 +322,18 @@ export interface ServerHandle {
   close(): Promise<void>
 }
 
-export async function createServer(config: CromboloConfig = loadConfig()): Promise<ServerHandle> {
+export interface ServerOptions {
+  /**
+   * Asks the supervising `crombolo start` for a new server and waits for it
+   * (story 241); absent when nothing supervises this one.
+   */
+  restart?: () => Promise<RestartOutcome>
+}
+
+export async function createServer(
+  config: CromboloConfig = loadConfig(),
+  serverOptions: ServerOptions = {},
+): Promise<ServerHandle> {
   if (config.role === 'worker')
     throw new Error('A worker serves no site: start it with createWorker (story 223).')
   configureLogging({
@@ -421,6 +434,7 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
     applyContentOnInstall: config.applyBundleContentOnInstall,
     installs: config.runtimeInstalls,
     installsElsewhere: config.installsElsewhere,
+    policy: config.bundlePolicy,
     applyContent: async (packageName) => {
       // A package from the marketplace is for anyone, so nothing in it can be
       // sealed; one that is is refused rather than half applied.
@@ -758,10 +772,20 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
           },
         )
       : undefined
+  const bundleAdmin = createBundleAdmin({ db, config, marketplace, extensions, bundleGrants })
+  const actorOf = (principal: Principal, request: Request): BundleActor => ({
+    id: principal.id,
+    name: principal.name,
+    email: principal.email,
+    source: 'request',
+    ...clientAddress(request),
+  })
   const remote = createRemote({
     db,
     config,
     authenticate,
+    bundles: bundleAdmin,
+    restart: serverOptions.restart,
     onApplied: () => {
       cache.invalidate()
       mediaCache.clear()
@@ -1769,11 +1793,22 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
         }
       }
 
-      if (action === 'installed' && request.method === 'GET') {
+      if (action === 'installed' && request.method === 'GET')
+        return Response.json(await bundleAdmin.installed())
+
+      // Where a version was built, for the Install panel before anything is
+      // installed (story 060), and whether this site would take it.
+      if (action === 'signature' && request.method === 'GET') {
+        const name = url.searchParams.get('name') ?? ''
+        const version = url.searchParams.get('version') ?? undefined
+        const inspected = await marketplace.inspect(name, version)
+        if (!inspected.ok) return Response.json({ ok: false, message: inspected.message })
         return Response.json({
-          installs: config.runtimeInstalls,
-          installsElsewhere: config.runtimeInstalls ? null : (config.installsElsewhere ?? null),
-          items: await marketplace.installed(),
+          ok: true,
+          version: inspected.version,
+          provenance: inspected.provenance,
+          refused: provenanceProblem(inspected.provenance, config.bundlePolicy) ?? null,
+          policy: config.bundlePolicy,
         })
       }
 
@@ -1786,43 +1821,25 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
           grant?: unknown
         }
         const name = typeof body.name === 'string' ? body.name : ''
-        const version = typeof body.version === 'string' ? body.version : undefined
-        const acceptServerCode = body.acceptServerCode === true
-        const grant = Array.isArray(body.grant)
-          ? body.grant.filter((p): p is string => typeof p === 'string')
-          : []
+        const actor = actorOf(principal, request)
         const outcome =
           action === 'install'
-            ? await marketplace.install(name, version, {
+            ? await bundleAdmin.install(actor, {
+                name,
+                version: typeof body.version === 'string' ? body.version : undefined,
                 applyContent: body.applyContent !== false,
-                acceptServerCode,
-                grant,
-                by: principal.email,
+                acceptServerCode: body.acceptServerCode === true,
+                grant: Array.isArray(body.grant)
+                  ? body.grant.filter((p): p is string => typeof p === 'string')
+                  : [],
               })
-            : await marketplace.uninstall(name)
+            : await bundleAdmin.uninstall(actor, name)
         log.info('{user} {action} the package {name}: {outcome}', {
           user: principal.email,
           action: action === 'install' ? 'installed' : 'removed',
           name,
           outcome: outcome.ok ? 'ok' : outcome.message,
         })
-        // One entry per install, naming the package and whether server code
-        // was accepted (story 194); the generic plugin-write entry skips these.
-        if (outcome.ok)
-          await recordAudit(db, {
-            category: 'system',
-            action: action === 'install' ? 'Install' : 'Uninstall',
-            entityType: 'Bundle',
-            entityName: outcome.dependency ? `${name}@${outcome.dependency.version}` : name,
-            detail:
-              action === 'install' && acceptServerCode
-                ? `accepted server code; granted ${grant.length > 0 ? grant.join(', ') : 'nothing'}`
-                : null,
-            source: 'request',
-            userKey: principal.id,
-            userName: principal.name,
-            ...clientAddress(request),
-          })
         return Response.json(outcome, { status: outcome.ok ? 200 : 400 })
       }
 
@@ -1830,36 +1847,12 @@ export async function createServer(config: CromboloConfig = loadConfig()): Promi
       // administrator can disable one, and enable it again.
       if ((action === 'disable' || action === 'enable') && request.method === 'POST') {
         const body = (await request.json().catch(() => ({}))) as { id?: unknown }
-        const id = typeof body.id === 'string' ? body.id : ''
-        const pkg = extensions.bundles().bundles.find((candidate) => candidate.id === id)
-        if (!pkg?.carries.server)
-          return Response.json(
-            { ok: false, message: `No installed bundle with a server half is called "${id}".` },
-            { status: 404 },
-          )
-        const state =
-          action === 'disable'
-            ? await bundleGrants.disable(pkg, principal.email)
-            : await bundleGrants.enable(pkg)
-        await recordAudit(db, {
-          category: 'system',
-          action: action === 'disable' ? 'Disable' : 'Enable',
-          entityType: 'Bundle',
-          entityName: `${pkg.packageName}@${pkg.version}`,
-          detail: action === 'disable' ? 'disabled; it is off' : 'enabled; it runs again',
-          source: 'request',
-          userKey: principal.id,
-          userName: principal.name,
-          ...clientAddress(request),
-        })
-        return Response.json({
-          ok: true,
-          on: state.on,
-          message:
-            action === 'disable'
-              ? `${pkg.name} is turned off until it is enabled again.`
-              : `${pkg.name} is turned on.`,
-        })
+        const { status, ...outcome } = await bundleAdmin.setEnabled(
+          actorOf(principal, request),
+          typeof body.id === 'string' ? body.id : '',
+          action === 'enable',
+        )
+        return Response.json(outcome, { status })
       }
 
       return new Response('Not Found', { status: 404 })

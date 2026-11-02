@@ -58,6 +58,14 @@ import {
 } from '@crombolo/transfer'
 import { type BackupResult, backupBefore } from './backup.ts'
 import {
+  type CodeInstall,
+  type CodeRevert,
+  codeChanges,
+  installCode,
+  planCode,
+  revertCode,
+} from './bundle-code-install.ts'
+import {
   type CarriedSections,
   carriedSections,
   carriesSections,
@@ -82,6 +90,7 @@ import { type CromboloConfig, VERSION } from './config.ts'
 import { dictionaryToUdt, importDictionaryUdt, writeDictionaryUdt } from './dictionary-transfer.ts'
 import { syncDomainsFile } from './domains.ts'
 import { mediaStoreFor, placeBlobs } from './media-files.ts'
+import { type ProvenanceResult, provenanceProblem, verifyProvenance } from './provenance.ts'
 import { componentAliasesIn, syncSchemaDirectory } from './schema.ts'
 import { publishSchema } from './schema-store.ts'
 import { applySiteData, type SiteDataApplied } from './site-data.ts'
@@ -282,6 +291,25 @@ export interface TransferInput extends SectionOptions {
   passphrase?: string
   /** Leave the file's members, users and their groups out: this site's own are untouched. */
   excludePeople?: boolean
+  /**
+   * Install the code the bundle carries here (story 241); left alone unless
+   * asked, as story 192 had it. Only where runtime installs are on.
+   */
+  installCode?: boolean
+  /**
+   * `local`: the site's own content files, built here, which no one else
+   * signed and the site's policy never refuses (story 060).
+   */
+  provenance?: 'local'
+}
+
+/** Where the bundle was built, checked before anything is read further (story 060). */
+async function bundleProvenance(
+  bundle: ResolvedBundle,
+  input: Pick<TransferInput, 'provenance'>,
+): Promise<ProvenanceResult> {
+  if (input.provenance === 'local') return { state: 'local' }
+  return verifyProvenance(bundle.directory)
 }
 
 /**
@@ -340,6 +368,10 @@ export interface ContentCheckResult {
   check: TransferCheck
   /** What the carried sections would do here; undefined for a content-only bundle. */
   sections: SectionPlan | undefined
+  /** The code files installing it would change here; empty when it carries none, or the same. */
+  code: SectionFile[]
+  /** Where it was built, from its signature (story 060). */
+  provenance: ProvenanceResult
   /** Nothing outstanding: the bundle would import cleanly. */
   clean: boolean
   /** With `publish`: the pages the import would not publish, and the reason publish gives. */
@@ -358,6 +390,9 @@ export async function checkBundleContent(
   const bundle = readBundle(input.bundle, config.siteDir, input.passphrase, {
     withoutPeople: input.excludePeople,
   })
+  const provenance = await bundleProvenance(bundle, input)
+  const refused = provenanceProblem(provenance, config.bundlePolicy)
+  if (refused) throw new CommandError(`This bundle is refused: ${refused}.`)
   const set = bundle.set
   const prepared = await transferOptions(db, config, bundle, input)
   const check = await checkBundle(db, set, prepared.options)
@@ -391,6 +426,8 @@ export async function checkBundleContent(
     sections: carriesSections(bundle.carried)
       ? await planSections(db, config, bundle.carried, input)
       : undefined,
+    code: codeChanges(planCode(config, bundle.carried)),
+    provenance,
     clean: check.outstanding.length === 0,
     publishRefusals: refusals,
     decisions: {
@@ -436,6 +473,10 @@ export interface ContentImportResult {
   problems: string[]
   /** What the file's site data did here, when it carried any (story 189). */
   siteData?: SiteDataApplied
+  /** The code it installed, when asked to and it changed any: live after a restart. */
+  code?: CodeInstall
+  /** Where it was built, from its signature (story 060); absent when refused before it was read. */
+  provenance?: ProvenanceResult
 }
 
 /**
@@ -536,6 +577,10 @@ export async function installBundleContent(
   })
 
   // What has to be true before anything is backed up or written.
+  const provenance = await bundleProvenance(bundle, input)
+  const signatureRefused = provenanceProblem(provenance, config.bundlePolicy)
+  if (signatureRefused)
+    return { ...refuse([`this bundle is refused: ${signatureRefused}`]), provenance }
   if (replace && manifest.scope !== 'site')
     return refuse(['only a whole-site file (crombolo export --site) can replace a site'])
   const missing = requiresProblems(manifest, config.siteDir)
@@ -600,7 +645,20 @@ export async function installBundleContent(
       ],
       backup,
     )
-  const needingPermission = plan ? replacementsNeedingPermission(plan, effective) : []
+  // The code half (story 241): only when asked, only where installs happen here.
+  const code = effective.installCode ? codeChanges(planCode(config, carried)) : []
+  if (code.length > 0 && !config.runtimeInstalls)
+    return refuse(
+      [
+        config.installsElsewhere?.message ??
+          "this site does not install code while it runs: add the bundle's code to the site and deploy it",
+      ],
+      backup,
+    )
+  const needingPermission = [
+    ...(plan ? replacementsNeedingPermission(plan, effective) : []),
+    ...(effective.replaceFiles ? [] : code.filter((file) => file.action === 'overwrite')),
+  ]
   if (needingPermission.length > 0)
     return refuse(
       [
@@ -701,6 +759,15 @@ export async function installBundleContent(
       await publishSchema(config.schemaStore, config.schemaDir)
   }
   const kept = promoteStaged(config, runDir, runId)
+  const codeInstalled =
+    code.length > 0
+      ? await installCode(
+          config,
+          carried,
+          kept,
+          `${bundle.package.packageName}@${bundle.package.version}`,
+        )
+      : undefined
   // On the owners' own connections, so after crombolo's transaction rather than
   // in it: each owner is replaced in a transaction of its own.
   const siteData = set.siteData ? await applySiteData(db, config, set.siteData) : undefined
@@ -727,8 +794,11 @@ export async function installBundleContent(
     problems: [
       ...prepared.problems,
       ...(siteData?.failed ?? []).map((failure) => `site data not written for ${failure}`),
+      ...(codeInstalled?.problems ?? []).map((problem) => `its code: ${problem}`),
     ],
     ...(siteData ? { siteData } : {}),
+    ...(codeInstalled ? { code: codeInstalled } : {}),
+    provenance,
     sections: staged
       ? {
           written: staged.written,
@@ -746,6 +816,8 @@ export interface RevertedSections extends RestoredFiles {
   schema: string | undefined
   /** Whether the dictionary was put back as the run found it. */
   dictionary: boolean
+  /** The code the run installed, put back: live after a restart. */
+  code?: CodeRevert
 }
 
 /**
@@ -780,5 +852,11 @@ export async function revertSections(
       for (const root of await repo.children(null)) await repo.delete(root.key)
       await importDictionaryUdt(tx, kept)
     })
-  return { ...files, schema, dictionary: kept !== undefined }
+  const code = await revertCode(config, runId)
+  return {
+    ...files,
+    schema,
+    dictionary: kept !== undefined,
+    ...(code.restored.length + code.removed.length > 0 ? { code } : {}),
+  }
 }

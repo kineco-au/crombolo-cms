@@ -39,7 +39,7 @@ A site that still sets `CROMBOLO_REMOTE_ENABLED` will not start until it is repl
 
 ### Who may do what
 
-Five permissions, under **Moving whole sites** on a user group in the back office:
+Six permissions, under **Moving whole sites** on a user group in the back office:
 
 | Permission | Allows |
 | --- | --- |
@@ -48,8 +48,11 @@ Five permissions, under **Moving whole sites** on a user group in the back offic
 | Push | apply a bundle of content to an unprotected environment |
 | Push to a protected site | the same on a protected environment, and approve or decline other people's pushes to it |
 | Change a site's structure and code | push a whole site, or apply a bundle that changes its content types, views, styles or code |
+| Install code on this site | install a bundle, or apply one whose code changes the site's files |
 
 A whole-site push needs **Push** and **Change a site's structure and code**, and **Push to a protected site** too on a protected environment.
+
+Administrators have every permission except **Install code on this site**, which only a group that names it gives, to administrators too. Give it to a group of its own, with only the people who deploy code in it.
 
 A pull or push acts as the person who signed in, with that person's permissions, and every one is recorded in the audit log.
 
@@ -140,6 +143,18 @@ The remote checks the bundle and applies it as [Content transfer](/docs/guides/c
 bunx crombolo bundle runs --remote staging
 bunx crombolo bundle revert 5192ca80-… --remote staging
 ```
+
+## Deploying a site
+
+`bundle deploy` sends a site directory as it is committed: its content, structure and code, checked first, then applied, then the remote restarted:
+
+```sh
+bunx crombolo bundle install @acme/crm --grant crm.read --wire   # adds it, and turns its server code on
+git commit -am "Add the CRM bundle"
+bunx crombolo bundle deploy --remote production
+```
+
+It needs the remote at `all`, **Change a site's structure and code** and **Install code on this site**. The code it installs runs once the remote restarts; `--no-restart` leaves that to `crombolo restart --remote production`. If the new server does not start, the old one keeps serving and the deploy prints the `bundle revert` that undoes it.
 
 ## Long transfers
 

@@ -143,8 +143,19 @@ describe('failures and outcomes', () => {
       ['content', 'export'],
       ['content', 'import'],
       ['seed', 'apply'],
+      // Story 241: `bundle install --code-into` does what it did.
+      ['bundle', 'install-code', '.', 'out'],
     ])
       expect(run(old).code).toBe(ERROR_KINDS.usage.exitCode)
+  })
+
+  test('bundle install refuses --wire with --remote, and --code-into with a grant', () => {
+    const wired = run(['bundle', 'install', '@acme/crm', '--wire', '--remote', 'production'])
+    expect(wired.code).toBe(ERROR_KINDS.usage.exitCode)
+    expect(wired.err).toContain('never turns server code on')
+    expect(
+      run(['bundle', 'install', '.', '--code-into', 'out', '--grant', 'documents.read']).code,
+    ).toBe(ERROR_KINDS.usage.exitCode)
   })
 
   test('a check that finds problems exits with its outcome, its findings on stdout and no envelope', () => {

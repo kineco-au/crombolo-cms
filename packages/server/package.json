@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/server",
-  "version": "0.44.0",
+  "version": "0.45.0",
   "description": "Internal to crombolo, with no compatibility promise: use @crombolo/crombolo. The crombolo HTTP server: routing, configuration, media stores and background jobs.",
   "license": "MIT",
   "author": "Crombolo",
@@ -44,6 +44,12 @@
     "@crombolo/schema": "workspace:*",
     "@crombolo/transfer": "workspace:*",
     "@logtape/logtape": "^2.3.8",
-    "jose": "^6.2.12"
+    "@sigstore/bundle": "^3.1.0",
+    "@sigstore/core": "^2.0.0",
+    "@sigstore/protobuf-specs": "^0.4.3",
+    "@sigstore/tuf": "^3.1.1",
+    "@sigstore/verify": "^2.1.1",
+    "jose": "^6.2.12",
+    "sigstore": "^3.1.0"
   }
 }

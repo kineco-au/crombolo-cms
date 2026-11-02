@@ -66,6 +66,14 @@ export function publishablePackages(): WorkspacePackage[] {
   return workspacePackages().filter((pkg) => pkg.manifest.private !== true)
 }
 
+/** A package that is a bundle (its `crombolo` field names an `id`), signed at release (story 060). */
+export const isBundlePackage = (manifest: Manifest): boolean =>
+  typeof (manifest as { crombolo?: { id?: unknown } }).crombolo?.id === 'string'
+
+/** The published packages that are bundles. */
+export const publishedBundles = (): WorkspacePackage[] =>
+  publishablePackages().filter((pkg) => isBundlePackage(pkg.manifest))
+
 /**
  * Dependencies before dependents, so a consumer never resolves against a version
  * of a sibling the registry has not accepted yet. The umbrella goes last, after

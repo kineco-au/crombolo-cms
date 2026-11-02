@@ -1,5 +1,6 @@
 import { writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { describeProvenance } from '@crombolo/server'
 import { RESOLUTIONS_FILE, writeResolutions } from '@crombolo/transfer'
 import { Args, Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
@@ -86,6 +87,7 @@ export default class BundleApply extends BaseCommand {
       return withSeedPackage(build, (dir) =>
         this.#apply(config, dir, {
           ...flags,
+          local: true,
           'no-schema': true,
           'no-files': true,
           'replace-files': false,
@@ -104,10 +106,13 @@ export default class BundleApply extends BaseCommand {
       'backup-taken'?: boolean
       'dry-run'?: boolean
       save?: boolean
+      /** The site's own content files, built here (story 060). */
+      local?: boolean
     },
   ) {
     const input = {
       ...transferInput(bundle, flags),
+      ...(flags.local ? { provenance: 'local' as const } : {}),
       passphrase: await passphraseToOpen(bundle, config, {
         withoutPeople: flags['exclude-people'],
       }),
@@ -117,8 +122,13 @@ export default class BundleApply extends BaseCommand {
       const result = await ops.contentCheck(config, input)
       for (const problem of result.problems) this.warning(`  ${problem}`)
       describeBundle(this, result.bundle)
+      this.say(`  signed   ${describeProvenance(result.provenance)}`)
       if (result.under) this.say(`  under    ${result.under}`)
       printSections(this, result.sections)
+      if (result.code.length > 0)
+        this.say(
+          `  code     ${result.code.length} file(s) would change; live after \`crombolo restart\``,
+        )
       printTransferFindings(this, result.check)
       for (const refusal of result.publishRefusals)
         this.say(`  would not publish  ${refusal.key}: ${refusal.reason}`)
@@ -170,6 +180,7 @@ export default class BundleApply extends BaseCommand {
     for (const problem of result.problems) this.warning(`  ${problem}`)
     if (result.backup.path) this.progress(`  backup   ${result.backup.path}`)
     describeBundle(this, result.bundle)
+    if (result.provenance) this.say(`  signed   ${describeProvenance(result.provenance)}`)
     if (!result.runId) {
       printTransferFindings(this, result.check)
       // Staged, then applied in one transaction: a refusal leaves nothing behind.
@@ -200,6 +211,10 @@ export default class BundleApply extends BaseCommand {
       if (result.replacedFilesKept)
         this.say(`  kept     ${here(result.replacedFilesKept)}  (the files it replaced)`)
     }
+    if (result.code)
+      this.say(
+        `  code     ${result.code.written.length} file(s) installed${result.code.installed ? ', dependencies installed' : ''}; live after \`crombolo restart\``,
+      )
     if (result.published > 0) this.say(`  published ${result.published} node(s)`)
     for (const failure of result.publishFailures)
       this.warning(`  not published  ${failure.key}: ${failure.reason}`)

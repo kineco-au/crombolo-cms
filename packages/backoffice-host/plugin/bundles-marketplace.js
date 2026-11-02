@@ -16,7 +16,8 @@
 import { css, html, nothing, repeat } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { carriesTags } from './bundles-carries.js'
-import { installBundle, searchMarketplace } from './bundles-client.js'
+import { bundleSignature, installBundle, searchMarketplace } from './bundles-client.js'
+import { signatureBlock, signatureStyles, signatureWords } from './bundles-signature.js'
 
 export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
   static properties = {
@@ -34,6 +35,8 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
     _consenting: { state: true },
     _trusted: { state: true },
     _asks: { state: true },
+    _reviewing: { state: true },
+    _signatures: { state: true },
   }
 
   constructor() {
@@ -53,6 +56,8 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
     this._consenting = ''
     this._trusted = false
     this._asks = []
+    this._reviewing = ''
+    this._signatures = new Map()
   }
 
   connectedCallback() {
@@ -89,10 +94,59 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
     this.#load()
   }
 
-  /** Asks first when the bundle runs code on the server; installs otherwise. */
-  /** A bundle with server code is asked about first: the server answers with what it asks to do. */
-  #requestInstall(item) {
-    this.#install(item, false)
+  /**
+   * Where the version was built is checked first and shown (story 060), so the
+   * person sees signed or not, and whether this site would take it, before
+   * anything is installed.
+   */
+  async #requestInstall(item) {
+    this._busy = item.name
+    this._notice = ''
+    try {
+      const checked = await bundleSignature(item.name, item.version)
+      if (!checked.ok) {
+        this._notice = checked.message ?? ''
+        return
+      }
+      this._signatures = new Map(this._signatures).set(item.name, checked)
+      this._reviewing = item.name
+    } catch (error) {
+      this._notice = error instanceof Error ? error.message : String(error)
+    } finally {
+      this._busy = ''
+    }
+  }
+
+  #signature(item) {
+    const checked = this._signatures.get(item.name)
+    if (!checked) return nothing
+    return signatureBlock(signatureWords(checked.provenance, checked.refused, checked.policy))
+  }
+
+  /** The signature, and the install it leads to unless this site would refuse it. */
+  #review(item) {
+    const checked = this._signatures.get(item.name)
+    const refused = Boolean(checked?.refused) || checked?.provenance?.state === 'invalid'
+    return html`
+      ${this.#signature(item)}
+      <div class="actions">
+        ${
+          refused
+            ? nothing
+            : html`<uui-button
+                look="primary"
+                label="Install"
+                .state=${this._busy === item.name ? 'waiting' : undefined}
+                @click=${() => this.#install(item, false)}></uui-button>`
+        }
+        <uui-button
+          look="secondary"
+          label="Cancel"
+          @click=${() => {
+            this._reviewing = ''
+          }}></uui-button>
+      </div>
+    `
   }
 
   #askConsent(item, asks) {
@@ -126,6 +180,7 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
         return
       }
       this._consenting = ''
+      this._reviewing = ''
       // The dependency line is what there is to commit, so it is shown rather
       // than described: the install lives in this node's node_modules until it
       // is in the site's repository.
@@ -164,6 +219,7 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
   #consent(item) {
     return html`
       <div class="consent" role="group" aria-label="Install code that runs on the server">
+        ${this.#signature(item)}
         <p>
           <strong>This bundle runs code on the server.</strong> Once your site's developers turn
           it on, its code can read and change the site's data, files and settings.
@@ -271,7 +327,9 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
                             : html`<p class="meta">Add it to the site with <code>bun add ${item.name}</code>, then deploy.</p>`
                           : this._consenting === item.name
                             ? this.#consent(item)
-                            : html`
+                            : this._reviewing === item.name
+                              ? this.#review(item)
+                              : html`
                           <uui-button
                             look="primary"
                             label="Install"
@@ -288,7 +346,9 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
     `
   }
 
-  static styles = css`
+  static styles = [
+    signatureStyles,
+    css`
     :host {
       display: block;
       padding: var(--uui-size-layout-1, 24px);
@@ -349,12 +409,14 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
       margin: 0 0 var(--uui-size-space-3, 9px);
       padding-left: 1.25em;
     }
-    .consent .actions {
+    .consent .actions,
+    .actions {
       display: flex;
       gap: var(--uui-size-space-3, 9px);
       margin-top: var(--uui-size-space-4, 12px);
     }
-  `
+  `,
+  ]
 }
 
 customElements.define('crombolo-bundles-marketplace', CromboloBundlesMarketplaceElement)

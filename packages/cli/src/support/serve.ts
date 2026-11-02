@@ -17,17 +17,22 @@ import {
   bootRetryDelays,
   bootstrapDatabase,
   type CromboloConfig,
+  clearRestartPending,
   compileSeed,
   createServer,
   createWorker,
   describeBootFailure,
   describeDatabase,
+  describeProvenance,
   installBundleContent,
   listeningBodyLimit,
   mediaStoreFor,
   placeBlobs,
+  provenanceProblem,
+  type RestartOutcome,
   type ServerHandle,
   setting,
+  verifyProvenance,
   type WorkerHandle,
 } from '@crombolo/server'
 
@@ -49,6 +54,12 @@ import { type TransferFlagValues, transferInput } from './flags.ts'
 import { PASSPHRASE_ENV, passphraseForPeople, passphraseToOpen } from './prompt.ts'
 import { writeSeedPackage } from './seed.ts'
 import { cwd, hasSite, type Io, siteConfig } from './site.ts'
+import {
+  type ChildMessage,
+  isRestartChild,
+  isSupervisedChild,
+  type SupervisorMessage,
+} from './supervise.ts'
 
 /** How long a shutdown gets before it is abandoned and the process leaves anyway. */
 const SHUTDOWN_MS = 10_000
@@ -90,8 +101,43 @@ function stopOnSignal(
       process.exit(0)
     })()
   }
-  for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => stop(signal))
+  if (!isSupervisedChild()) {
+    for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => stop(signal))
+    return
+  }
+  // Supervised (story 241), the supervisor stops this server with SIGTERM. A
+  // terminal's Ctrl-C reaches the whole process group, so SIGINT is left to it.
+  process.on('SIGTERM', () => stop('SIGTERM'))
+  process.on('SIGINT', () => {})
+  // A supervisor that was killed outright cannot ask: the server goes with it.
+  const parent = process.ppid
+  setInterval(() => {
+    if (process.ppid !== parent) stop('the supervisor went away')
+  }, 2_000).unref()
 }
+
+/** Asked of the supervising `crombolo start`, answered once the new server serves or failed. */
+const asked = new Map<number, (outcome: RestartOutcome) => void>()
+let asks = 0
+function supervisedRestart(): Promise<RestartOutcome> {
+  if (asks === 0)
+    process.on('message', (message: SupervisorMessage) => {
+      if (message?.type !== 'restarted') return
+      asked.get(message.id)?.({
+        ok: message.ok,
+        ...(message.reason ? { reason: message.reason } : {}),
+      })
+      asked.delete(message.id)
+    })
+  const id = ++asks
+  return new Promise((resolve) => {
+    asked.set(id, resolve)
+    process.send?.({ type: 'restart', id } satisfies ChildMessage)
+  })
+}
+
+/** What the server is told about its supervisor: how to ask it for a new one. */
+const serverOptions = () => (isSupervisedChild() ? { restart: supervisedRestart } : {})
 
 export interface StartOptions extends TransferFlagValues {
   keepAdmin: boolean
@@ -116,11 +162,17 @@ export interface Started {
 export async function serveSite(io: Io, options: StartOptions): Promise<Started> {
   const config = await siteConfig()
   // Before the migration and the seed, so a clash with the container stack is
-  // reported in a second rather than after the database work.
-  await assertPortAvailable(config.port).catch((error: unknown) => {
-    throw new CliError('unavailable', error instanceof Error ? error.message : String(error))
-  })
-  const { listening, server, bundles } = await bootWithRetries(io, config, options)
+  // reported in a second rather than after the database work. A restart's new
+  // server shares the port with the one it replaces.
+  if (!isRestartChild())
+    await assertPortAvailable(config.port).catch((error: unknown) => {
+      throw new CliError('unavailable', error instanceof Error ? error.message : String(error))
+    })
+  const { listening, server, bundles } = isRestartChild()
+    ? await bootForRestart(io, config, options)
+    : await bootWithRetries(io, config, options)
+  // It runs the site's code as it is now, so nothing waits for a restart.
+  clearRestartPending(config.siteDir)
   const seededAdminPassword = server.seededAdminPassword
   const backoffice =
     config.role === 'all' || config.role === 'api'
@@ -222,7 +274,37 @@ export async function serveSite(io: Io, options: StartOptions): Promise<Started>
   }
   banner(io, lines)
   if (seededAdminPassword) io.say('Database created and seeded.')
+  if (isSupervisedChild())
+    process.send?.({ type: 'ready', port: Number(listening.port) } satisfies ChildMessage)
   return started
+}
+
+/**
+ * A restart's new server (story 241): booted before it listens, so it never
+ * answers with the holding page beside the server it replaces, and not retried,
+ * so a boot that fails is reported and the old server keeps serving.
+ */
+async function bootForRestart(io: Io, config: CromboloConfig, options: StartOptions) {
+  let server: RunningNode | undefined
+  try {
+    let bundles: string[] = []
+    if (config.role === 'worker') server = await createWorker(config)
+    else {
+      server = await createServer(config, serverOptions())
+      bundles = (await importStartupBundles(io, server, config, options)).lines
+    }
+    const booted = server
+    const listening = Bun.serve({
+      ...(booted.serveOptions as object),
+      port: config.port,
+      reusePort: true,
+    } as never) as ReturnType<typeof Bun.serve>
+    stopOnSignal(listening, () => booted)
+    return { listening, server: booted, bundles }
+  } catch (error) {
+    await server?.close().catch(() => {})
+    throw error
+  }
 }
 
 /**
@@ -249,6 +331,8 @@ async function bootWithRetries(io: Io, config: CromboloConfig, options: StartOpt
   }
   const listening = Bun.serve({
     port: config.port,
+    // Supervised, a restart's new server binds the same port beside this one.
+    reusePort: isSupervisedChild(),
     maxRequestBodySize: listeningBodyLimit(config),
     fetch: holding,
     websocket: { message() {} },
@@ -272,7 +356,7 @@ async function bootWithRetries(io: Io, config: CromboloConfig, options: StartOpt
         listening.reload(server.serveOptions as never)
         return { listening, server, bundles: [] }
       }
-      server = await createServer(config)
+      server = await createServer(config, serverOptions())
       current = server
       // After the schema sync inside `createServer`, which is what gives the
       // bundle content types to land on, and before anything is served.
@@ -281,7 +365,7 @@ async function bootWithRetries(io: Io, config: CromboloConfig, options: StartOpt
       // from, so it boots again to load them; the content is already in.
       if (imported.reboot) {
         await server.close()
-        server = await createServer(config)
+        server = await createServer(config, serverOptions())
         current = server
       }
       const bundles = imported.lines
@@ -363,6 +447,19 @@ async function importStartupBundles(
           details: [error.message, ...error.problems],
         })
       }
+      // Where it was built, before anything of it is applied (story 060); the
+      // site's own content files, built here, are its own.
+      const local = target === seedDir
+      if (!local) {
+        const provenance = await verifyProvenance(resolved.directory)
+        const refused = provenanceProblem(provenance, config.bundlePolicy)
+        if (refused)
+          throw new CliError(
+            'refused',
+            `${target} is refused: ${refused}. The site has not started.`,
+          )
+        io.progress(`  bundle      ${target}: ${describeProvenance(provenance)}`)
+      }
       const set = resolved.set
       const standing = await new TransferRunRepository(db).appliedFor(set.manifest.id)
       if (standing) {
@@ -377,6 +474,7 @@ async function importStartupBundles(
       if (Object.keys(resolved.carried.carries).length > 0) {
         const result = await installBundleContent(db, config, {
           ...transferInput(target, options),
+          ...(local ? { provenance: 'local' as const } : {}),
           passphrase,
           publish: options.publish,
           label: options.label,

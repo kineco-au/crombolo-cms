@@ -464,7 +464,11 @@ The permissions are under "Moving whole sites" in a user group. A bundle of
 content needs Push, and Push protected as well on a protected environment. A
 whole-site push, or a bundle that changes content types, views, styles or code,
 also needs "Change a site's structure and code"
-(`Crombolo.Remote.ApplyStructure`). People
+(`Crombolo.Remote.ApplyStructure`). Installing a bundle, or a bundle whose code
+changes the site's files, needs "Install code on this site"
+(`Crombolo.Remote.InstallCode`) too, which administrators hold only when a
+group gives it to them (story 241): give it to a group of its own. The health
+check "Installing code" names who holds it. People
 see the terminals signed in as them under **Signed-in devices** in their
 profile, and sign them out there. Each pull and push is a job, so a
 load-balanced set needs no stickiness: the job's state is in the database and
@@ -676,6 +680,42 @@ extension as an upload is, through the same upload path. Run it again after a
 stop: a file already there with the same bytes is skipped, and one whose bytes
 differ is reported and left. `--dry-run` says what it would create. `crombolo
 media export [<folder>] --out <dir>` writes the files back out as folders.
+
+### Restarting
+
+`crombolo start` supervises the server it starts (story 241). The server runs
+as a child process, and a restart is a new child rather than an outage:
+
+1. A new server starts beside the one serving, on the same port (`reusePort`).
+   It boots fully before it listens, so it never answers with the page a
+   starting site shows.
+2. Once it is serving, it takes over, and the old one stops, finishing what it
+   was answering first.
+3. A new server that fails to boot, or is not up within two minutes, is
+   stopped. The old one keeps serving, and the failure says why: the last lines
+   the new server wrote.
+
+What starts a restart:
+- `crombolo restart`, in the site's directory, or `crombolo restart --remote
+  <name>` for a remote ([`remote-protocol.md`](remote-protocol.md),
+  "Restarting").
+- SIGHUP to the `crombolo start` process.
+
+Installing a bundle, or the code a bundle carries, is live after a restart, and
+until then `.crombolo/restart-pending.json` says what is waiting. A server that
+boots clears it.
+
+The supervisor keeps two files in the site's `.crombolo/`:
+- `supervisor.json`: its pid, the serving child's pid, and the port, while it
+  runs.
+- `restart.json`: when the last restart was, whether it worked, and if not why.
+
+It is the same in development, where a restart also keeps the administrator's
+password as it is. SIGINT and SIGTERM stop the supervisor and its server
+together, with the exit codes a start had before: a second signal leaves at
+once. A server that exits by itself takes the supervisor with it, so a
+platform's restart policy still sees a crash. `crombolo pull`, which serves the
+site it pulled, does not supervise, so nothing restarts it.
 
 ### Plugins
 

@@ -17,7 +17,8 @@
  * browser cannot reach npm, and the backoffice keeps making same-origin
  * requests only.
  */
-import { readFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   type BundlePackage,
@@ -29,8 +30,22 @@ import {
 } from '@crombolo/backoffice-host'
 import { type BundleGrants, declaredPermissions } from './bundle-grants.ts'
 import { logger } from './logging.ts'
+import {
+  type ProvenancePolicy,
+  type ProvenanceResult,
+  provenanceProblem,
+  verifyPackage,
+  verifyProvenance,
+} from './provenance.ts'
+import { extractTarball } from './tar.ts'
 
 const log = logger('packages')
+
+/** Where a registry version's tarball is, and what it hashes to. */
+interface Dist {
+  tarball?: string
+  integrity?: string
+}
 
 /** How long a search is reused. Long enough to page a list, short enough to stay fresh. */
 const CACHE_MS = 5 * 60 * 1000
@@ -72,6 +87,8 @@ export interface InstalledListing {
   disabledBy: string | null
   /** Who approved it, and when: an administrator at install, or the site's code. */
   granted?: { by: string | null; at: string; version: string }
+  /** Where it was built, from its signature (story 060); `local` for a workspace or linked one. */
+  provenance: ProvenanceResult
 }
 
 /** What became of the content half of an install. */
@@ -112,6 +129,10 @@ export interface MarketplaceOptions {
   installs?: boolean
   /** A host's own word on where installs happen, said in place of a deploy (story 181). */
   installsElsewhere?: { message: string; url?: string }
+  /** What the site takes of a bundle's signature (story 060); anything signed or not, when absent. */
+  policy?: ProvenancePolicy
+  /** Checks a package directory's signature; `verifyProvenance`, unless a test stands in. */
+  verify?: (dir: string) => Promise<ProvenanceResult>
 }
 
 export interface InstallOutcome {
@@ -132,6 +153,10 @@ export interface InstallOutcome {
   needsServerConsent?: boolean
   /** With `needsServerConsent`: what it asks to do with the site, to grant as a whole (story 222). */
   permissions?: { permission: string; allows: string }[]
+  /** It changed the code the server loads, which runs once the site restarts (story 241). */
+  restartPending?: boolean
+  /** Where the version checked was built, from its signature (story 060). */
+  provenance?: ProvenanceResult
 }
 
 export type PackageInstaller = (
@@ -180,6 +205,32 @@ export interface Marketplace {
       /** The permissions the administrator granted: the bundle's whole list (story 222). */
       grant?: readonly string[]
       /** Who is installing, recorded on the grant. */
+      by?: string | null
+    },
+  ): Promise<InstallOutcome>
+  /** What a version would bring, read from the registry and nothing installed: for a dry run. */
+  inspect(
+    name: string,
+    version?: string,
+  ): Promise<
+    | {
+        ok: true
+        server: boolean
+        content: boolean
+        extensions: boolean
+        permissions: string[]
+        version: string
+        provenance: ProvenanceResult
+      }
+    | { ok: false; message: string }
+  >
+  /** A packed bundle on this machine (a `.tgz`), installed as `install` installs one from the registry. */
+  installFile(
+    file: string,
+    options?: {
+      applyContent?: boolean
+      acceptServerCode?: boolean
+      grant?: readonly string[]
       by?: string | null
     },
   ): Promise<InstallOutcome>
@@ -258,7 +309,9 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
     name: string,
     wanted?: string,
   ): Promise<
-    (BundlePackage['carries'] & { permissions: string[] }) | 'not-a-bundle' | 'unreachable'
+    | (BundlePackage['carries'] & { permissions: string[]; version: string; dist?: Dist })
+    | 'not-a-bundle'
+    | 'unreachable'
   > => {
     try {
       const response = await call(`${options.registry}/${encodeURIComponent(name)}`, {
@@ -281,7 +334,8 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
                 .sort(Bun.semver.order)
                 .at(-1))
       const version = resolved ? versions[resolved] : undefined
-      if (!version || validateBundlePackage(version).length > 0) return 'not-a-bundle'
+      if (!resolved || !version || validateBundlePackage(version).length > 0) return 'not-a-bundle'
+      const dist = (version as { dist?: Dist }).dist
       const field = version.crombolo as {
         extensions?: unknown[]
         content?: boolean
@@ -293,17 +347,89 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
         content: field.content === true,
         server: field.server !== undefined,
         permissions: Array.isArray(field.permissions) ? field.permissions : [],
+        version: resolved,
+        ...(dist ? { dist } : {}),
       }
     } catch {
       return 'unreachable'
     }
   }
 
+  const verify = options.verify ?? ((dir: string) => verifyProvenance(dir))
+
+  /**
+   * Where a registry version was built (story 060): its exact tarball fetched,
+   * held to the registry's integrity, and its signature checked, so the bytes
+   * checked are the bytes `bun add` then installs. A registry that gives no
+   * tarball leaves nothing to check; one that cannot be fetched is not unsigned.
+   */
+  const provenanceAt = async (name: string, dist: Dist | undefined): Promise<ProvenanceResult> => {
+    if (!dist?.tarball) return { state: 'unsigned' }
+    const dir = mkdtempSync(join(tmpdir(), 'crombolo-bundle-check-'))
+    try {
+      const response = await call(dist.tarball)
+      if (!response.ok)
+        return {
+          state: 'invalid',
+          reason: `${name} could not be fetched to check its signature (the registry answered ${response.status})`,
+        }
+      const bytes = new Uint8Array(await response.arrayBuffer())
+      if (dist.integrity?.startsWith('sha512-')) {
+        const got = `sha512-${new Bun.CryptoHasher('sha512').update(bytes).digest('base64')}`
+        if (got !== dist.integrity)
+          return { state: 'invalid', reason: `${name} is not the package the registry describes` }
+      }
+      const file = join(dir, 'bundle.tgz')
+      await Bun.write(file, bytes)
+      const unpacked = join(dir, 'package')
+      await extractTarball(file, unpacked)
+      return await verify(unpacked)
+    } catch (error) {
+      return {
+        state: 'invalid',
+        reason: `${name} could not be checked: ${error instanceof Error ? error.message : String(error)}`,
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+
+  /** Why the site's policy refuses a version, as an outcome, or undefined when it may be installed. */
+  const refusedBySignature = (
+    label: string,
+    provenance: ProvenanceResult,
+  ): InstallOutcome | undefined => {
+    const problem = provenanceProblem(
+      provenance,
+      options.policy ?? { signatures: 'optional', sources: [] },
+    )
+    return problem
+      ? { ok: false, message: `${label} was not installed: ${problem}.`, provenance }
+      : undefined
+  }
+
+  /** Each installed version's signature, checked once: a version's files do not change. */
+  const installedProvenance = new Map<string, Promise<ProvenanceResult>>()
+  const provenanceOfInstalled = async (bundle: BundlePackage): Promise<ProvenanceResult> => {
+    const range = await rangeFor(bundle.packageName)
+    if (range && /^(workspace|link|file|portal):/.test(range)) return { state: 'local' }
+    const key = `${bundle.packageName}@${bundle.version}`
+    let found = installedProvenance.get(key)
+    if (!found) {
+      found = verify(bundle.directory).catch((error: unknown) => ({
+        state: 'invalid' as const,
+        reason: error instanceof Error ? error.message : String(error),
+      }))
+      installedProvenance.set(key, found)
+    }
+    return found
+  }
+
   /** What the registry says this package's latest version carries, when it is a valid bundle. */
   const declares = async (name: string): Promise<BundlePackage['carries'] | undefined> => {
     const declared = await declaresAt(name)
     if (typeof declared === 'string') return undefined
-    const { permissions: _, ...carries } = declared
+    const { permissions: _, version: _version, dist: _dist, ...carries } = declared
     return carries
   }
 
@@ -406,6 +532,7 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
           description: descriptionOf(bundle.directory),
           peerRange: bundle.peerRange,
           ...grantOf(bundle),
+          provenance: await provenanceOfInstalled(bundle),
         })),
       )
     },
@@ -433,69 +560,45 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
         }
       if (declared.server && !consented(request, declared.permissions))
         return serverConsentNeeded(name, declared.permissions)
+      const provenance = await provenanceAt(name, declared.dist)
+      const refused = refusedBySignature(`${name}@${declared.version}`, provenance)
+      if (refused) return refused
+      // Pinned to the version whose tarball was checked, when one was.
+      const outcome = await added(
+        name,
+        version ? `${name}@${version}` : name,
+        version,
+        request,
+        declared.dist?.tarball ? { version: declared.version } : undefined,
+      )
+      return { ...outcome, provenance }
+    },
 
-      const specifier = version ? `${name}@${version}` : name
-      const result = await install('add', specifier, options.siteDir)
-      options.extensions.invalidate()
-      if (!result.ok)
-        return {
-          ok: false,
-          message: result.output || `Installing ${specifier} failed.`,
-        }
+    async inspect(name, version) {
+      if (!isValidPackageName(name))
+        return { ok: false, message: `'${name}' is not a package name npm would accept.` }
+      const declared = await declaresAt(name, version)
+      if (declared === 'unreachable')
+        return { ok: false, message: `The package registry could not say what ${name} contains.` }
+      if (declared === 'not-a-bundle')
+        return { ok: false, message: `${name} is not a bundle for this site.` }
+      const { dist, ...carries } = declared
+      return { ok: true, ...carries, provenance: await provenanceAt(name, dist) }
+    },
 
-      const range = (await rangeFor(name)) ?? version ?? 'latest'
-      const found = options.extensions
-        .bundles()
-        .bundles.find((bundle) => bundle.packageName === name)
-      if (!found)
-        return {
-          ok: true,
-          dependency: { name, range, version: version ?? range },
-          message: `${name} was installed, but it is not a valid bundle, so nothing was added to the backoffice.`,
-        }
-      // The version that landed is what counts: a release published between
-      // reading the registry and installing may have brought server code.
-      if (found.carries.server && !consented(request, declaredPermissions(found))) {
-        await install('remove', name, options.siteDir)
-        options.extensions.invalidate()
-        return serverConsentNeeded(
-          name,
-          declaredPermissions(found),
-          `${name}@${found.version} turned out to run code on the server, or to ask for more than was granted, so it was removed again.`,
-        )
-      }
-      // What was granted is recorded against the version that landed.
-      if (found.carries.server) await options.grants?.grant(found, request.by ?? null)
-
-      // The content half lands after the dependency, so a refused check leaves
-      // the package installed and says why, rather than undoing an install that
-      // succeeded.
-      let content: ContentOutcome | undefined
-      if (found.carries.content) {
-        const declined = request.applyContent === false || options.applyContentOnInstall === false
-        content =
-          declined || !options.applyContent
-            ? {
-                applied: false,
-                message: `Its content was not applied. Run \`crombolo bundle install ${name}\` to apply it.`,
-              }
-            : await options.applyContent(name).catch((error: unknown) => ({
-                applied: false,
-                message: `Its content could not be applied: ${error instanceof Error ? error.message : String(error)}`,
-              }))
-      }
-      return {
-        ok: true,
-        dependency: { name, range, version: found.version },
-        // The install lives in this node's node_modules until the dependency is
-        // committed; saying so is the difference between a surprise and a plan.
-        message: `${name}@${found.version} is installed. Commit the changed package.json and bun.lock to keep it across deployments.${
-          found.carries.server
-            ? " Its server code runs only once your site's developers turn it on and deploy the site."
-            : ''
-        }${found.carries.extensions ? ` ${SCREENS_NOTICE}` : ''}`,
-        ...(content ? { content } : {}),
-      }
+    async installFile(file, request = {}) {
+      if (options.installs === false) return refusedHere(file, 'add', options.installsElsewhere)
+      const declared = await declaresIn(file)
+      if (typeof declared === 'string') return { ok: false, message: declared }
+      if (declared.server && !consented(request, declared.permissions))
+        return serverConsentNeeded(declared.name, declared.permissions)
+      const provenance = await verifyPackage(file).catch((error: unknown) => ({
+        state: 'invalid' as const,
+        reason: error instanceof Error ? error.message : String(error),
+      }))
+      const refused = refusedBySignature(declared.name, provenance)
+      if (refused) return refused
+      return { ...(await added(declared.name, file, undefined, request)), provenance }
     },
 
     async uninstall(name) {
@@ -511,6 +614,115 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
           }
         : { ok: false, message: result.output || `Removing ${name} failed.` }
     },
+  }
+
+  /** `bun add`, then the checks on what landed, the grant, and the content half. */
+  async function added(
+    name: string,
+    specifier: string,
+    version: string | undefined,
+    request: {
+      applyContent?: boolean
+      acceptServerCode?: boolean
+      grant?: readonly string[]
+      by?: string | null
+    },
+    checked?: { version: string },
+  ): Promise<InstallOutcome> {
+    const result = await install('add', specifier, options.siteDir)
+    options.extensions.invalidate()
+    if (!result.ok)
+      return {
+        ok: false,
+        message: result.output || `Installing ${specifier} failed.`,
+      }
+
+    const range = (await rangeFor(name)) ?? version ?? 'latest'
+    const found = options.extensions.bundles().bundles.find((bundle) => bundle.packageName === name)
+    if (!found)
+      return {
+        ok: true,
+        dependency: { name, range, version: version ?? range },
+        message: `${name} was installed, but it is not a valid bundle, so nothing was added to the backoffice.`,
+      }
+    // The version whose signature was checked is the one that has to land
+    // (story 060): one published in between was never checked.
+    if (checked && found.version !== checked.version) {
+      await install('remove', name, options.siteDir)
+      options.extensions.invalidate()
+      return {
+        ok: false,
+        message: `${name}@${found.version} was published while ${checked.version} was being checked, so it was removed again. Try the install again.`,
+      }
+    }
+    // The version that landed is what counts: a release published between
+    // reading the registry and installing may have brought server code.
+    if (found.carries.server && !consented(request, declaredPermissions(found))) {
+      await install('remove', name, options.siteDir)
+      options.extensions.invalidate()
+      return serverConsentNeeded(
+        name,
+        declaredPermissions(found),
+        `${name}@${found.version} turned out to run code on the server, or to ask for more than was granted, so it was removed again.`,
+      )
+    }
+    // What was granted is recorded against the version that landed.
+    if (found.carries.server) await options.grants?.grant(found, request.by ?? null)
+
+    // The content half lands after the dependency, so a refused check leaves
+    // the package installed and says why, rather than undoing an install that
+    // succeeded.
+    let content: ContentOutcome | undefined
+    if (found.carries.content) {
+      const declined = request.applyContent === false || options.applyContentOnInstall === false
+      content =
+        declined || !options.applyContent
+          ? {
+              applied: false,
+              message: `Its content was not applied. Run \`crombolo bundle install ${name}\` to apply it.`,
+            }
+          : await options.applyContent(name).catch((error: unknown) => ({
+              applied: false,
+              message: `Its content could not be applied: ${error instanceof Error ? error.message : String(error)}`,
+            }))
+    }
+    return {
+      ok: true,
+      dependency: { name, range, version: found.version },
+      // The install lives in this node's node_modules until the dependency is
+      // committed; saying so is the difference between a surprise and a plan.
+      message: `${name}@${found.version} is installed. Commit the changed package.json and bun.lock to keep it across deployments.${
+        found.carries.server
+          ? " Its server code runs only once your site's developers turn it on and deploy the site."
+          : ''
+      }${found.carries.extensions ? ` ${SCREENS_NOTICE}` : ''}`,
+      ...(content ? { content } : {}),
+    }
+  }
+}
+
+/** What a packed bundle on this machine declares, read from its package.json, or why it cannot be installed. */
+async function declaresIn(
+  file: string,
+): Promise<{ name: string; server: boolean; permissions: string[] } | string> {
+  const dir = mkdtempSync(join(tmpdir(), 'crombolo-bundle-file-'))
+  try {
+    await extractTarball(file, dir)
+    const root = existsSync(join(dir, 'package', 'package.json')) ? join(dir, 'package') : dir
+    const json = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as PackageJson
+    const problems = validateBundlePackage(json)
+    if (problems.length > 0 || typeof json.name !== 'string')
+      return `${file} is not a bundle for this site, so it was not installed.`
+    const field = json.crombolo as { server?: string; permissions?: string[] }
+    return {
+      name: json.name,
+      server: field.server !== undefined,
+      permissions: Array.isArray(field.permissions) ? field.permissions : [],
+    }
+  } catch {
+    return `${file} could not be read as a packed bundle, so it was not installed.`
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
   }
 }
 

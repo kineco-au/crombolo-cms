@@ -27,6 +27,12 @@ export const searchMarketplace = (query) =>
 
 export const listInstalled = () => json('/installed')
 
+/** Where a version was built, and whether this site would install it (story 060). */
+export const bundleSignature = (name, version) =>
+  json(
+    `/signature?name=${encodeURIComponent(name)}${version ? `&version=${encodeURIComponent(version)}` : ''}`,
+  )
+
 export const installBundle = (
   name,
   version,

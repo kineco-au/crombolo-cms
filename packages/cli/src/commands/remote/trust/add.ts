@@ -13,6 +13,7 @@ export default class RemoteTrustAdd extends BaseCommand {
   ].join('\n\n')
   static override examples = [
     '<%= config.bin %> remote trust add production --name "Deploys" --provider github --repository acme/site --branch main --may push --may push-protected',
+    '<%= config.bin %> remote trust add production --name "Deploys with code" --provider github --repository acme/site --environment production --may push --may push-protected --may apply-structure --may install-code',
   ]
   static override args = {
     remote: Args.string({ description: 'the remote; the only one, when there is one' }),

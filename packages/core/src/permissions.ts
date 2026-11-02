@@ -66,8 +66,17 @@ export const RemotePermissions = {
   PushProtected: 'Crombolo.Remote.PushProtected',
   /** Changing a remote's schema, views, styles or code: a whole-site push, or such a bundle (story 167). */
   ApplyStructure: 'Crombolo.Remote.ApplyStructure',
+  /** Installing the code a bundle carries, or a bundle as a dependency, on a site (story 241). */
+  InstallCode: 'Crombolo.Remote.InstallCode',
 } as const
 export type RemoteVerb = (typeof RemotePermissions)[keyof typeof RemotePermissions]
+
+/**
+ * Permissions an administrator does not hold by being one (story 241): only a
+ * group that names them grants them, so installing code on a site is always a
+ * choice somebody made and the audit log recorded.
+ */
+export const EXPLICIT_PERMISSIONS: ReadonlySet<string> = new Set([RemotePermissions.InstallCode])
 
 /**
  * Media (story 088). Umbraco has no media verbs: a group with the Media section
@@ -257,15 +266,16 @@ export function propertyValuePermissions(
 }
 
 /**
- * An administrator bypasses the permission tables entirely, matching Umbraco:
- * membership of the admin group is the check, not an exhaustive grant list.
+ * An administrator bypasses the permission tables, matching Umbraco: membership
+ * of the admin group is the check, not an exhaustive grant list. The one
+ * exception is `EXPLICIT_PERMISSIONS`, held only where a group names them.
  */
 export function hasPermission(
   permissions: UserPermissions,
   verb: string,
   nodeKey?: string,
 ): boolean {
-  if (permissions.isAdmin) return true
+  if (permissions.isAdmin && !EXPLICIT_PERMISSIONS.has(verb)) return true
   if (permissions.global.has(verb)) return true
   if (!nodeKey) return false
   return permissions.granular.get(nodeKey)?.has(verb) === true

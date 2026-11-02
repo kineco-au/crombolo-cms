@@ -4,7 +4,7 @@ import { Args } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
 import { CliError } from '../../errors.ts'
 
-/** A bundle's code against this CMS (story 192): what `install-code` would install, and why it would not run. */
+/** A bundle's code against this CMS (story 192): what `install --code-into` would install, and why it would not run. */
 export default class BundleCheckCode extends BaseCommand {
   static override summary = "check a bundle's code against this CMS"
   static override description = [
@@ -41,7 +41,7 @@ export default class BundleCheckCode extends BaseCommand {
     this.say(
       `  carries  ${result.serverBundles.length > 0 ? result.serverBundles.join(', ') : 'no server bundles'}`,
     )
-    this.say(`\n  \`crombolo bundle install-code ${shown} <dir>\` installs it.`)
+    this.say(`\n  \`crombolo bundle install ${shown} --code-into <dir>\` installs it.`)
     return { bundle: dir, files: result.files, serverBundles: result.serverBundles, problems: [] }
   }
 }

@@ -19,12 +19,18 @@
  * A release publishes to **preview**, never straight to production. The live
  * marketing site is promoted by hand once somebody has looked at it.
  *
+ * In GitHub Actions a copy of the bundle is signed from the release tag before
+ * it is sent (story 060), so the platform's site checks where it was built
+ * like any other; the committed bundle is left without `provenance.json`.
+ *
  * See `docs/stories/.../115-we-are-our-own-first-customer.md` in
  * crombolo-enterprise for why this is a release step rather than a chore.
  */
-import { readdirSync, readFileSync } from 'node:fs'
+import { cpSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join, relative, sep } from 'node:path'
 import { readBundlePackage } from '@crombolo/backoffice-host'
+import { describeProvenance, signPackage } from '@crombolo/server'
 import { writeZip, type ZipEntry } from '../packages/server/src/zip.ts'
 import { SITES_DIR, slugOf } from './sites.ts'
 
@@ -133,6 +139,15 @@ export function archiveOf(dir = BUNDLE_DIR): Archive {
     sha256: new Bun.CryptoHasher('sha256').update(bytes).digest('hex'),
     files,
   }
+}
+
+/** A copy of the bundle, signed in GitHub Actions; the committed one stays unsigned. */
+export async function signedCopy(dir = BUNDLE_DIR): Promise<string> {
+  const copy = mkdtempSync(join(tmpdir(), 'crombolo-brochureware-'))
+  cpSync(dir, copy, { recursive: true })
+  const signed = await signPackage(copy)
+  console.log(describeProvenance({ state: 'signed', source: signed.source }))
+  return copy
 }
 
 const environmentPath = (target: Target) =>
@@ -337,7 +352,8 @@ if (import.meta.main) {
     process.exit(2)
   }
 
-  const archive = archiveOf()
+  const signing = Bun.env.GITHUB_ACTIONS === 'true' && !flags.dryRun
+  const archive = archiveOf(signing ? await signedCopy() : BUNDLE_DIR)
   const target = parseTarget(Bun.env)
 
   if (flags.dryRun) {

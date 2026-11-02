@@ -595,6 +595,51 @@ and the install response carries the dependency line itself — the range as
 `bun add` wrote it and the version it resolved to — so the view shows exactly
 what there is to commit.
 
+### From the command line (story 241)
+
+The same installs, from a script, on the site's own machine or on a remote. One
+implementation serves Settings → Bundles, the remote protocol and the CLI
+(`server/src/bundle-admin.ts`), so all three refuse and audit alike.
+
+| Command | Does |
+| --- | --- |
+| `crombolo bundle list [--remote <name>]` | the installed bundles: version, whether their server features are on, what was granted and by whom, and whether installed changes wait for a restart |
+| `crombolo bundle install <name[@version] \| file.tgz> [--grant <p>…] [--apply-content] [--wire] [--remote <name>] [--dry-run]` | `bun add`, as Install does; the content too with `--apply-content` |
+| `crombolo bundle uninstall <name> [--remote <name>]` | `bun remove` |
+| `crombolo bundle disable\|enable <id> [--remote <name>]` | a bundle's server features off or on, at once ([story 225](#permissions)) |
+
+- **A grant names exactly what is asked.** A bundle with server code is
+  installed only when `--grant` names every permission it asks for, and nothing
+  else. A newer version that asks for more is refused until the script grants
+  it, so a script never grants something new without someone changing it.
+  `--dry-run` reads the registry and says what would be installed and granted.
+- **Installing does not wire.** `--wire` does, on the site's own machine only:
+  it adds `import { <server> } from '<package>'` and `<server>()` in
+  `bundles` to `crombolo.config.ts` (the manifest's `crombolo.server` names the
+  factory), or writes the file when there is none. It changes nothing the
+  second time, and a config it cannot edit safely (one that does not export
+  `defineConfig({ … })`, or builds `bundles` elsewhere) is left alone with the
+  two lines to add by hand. `--wire` with `--remote` is refused: a remote's
+  server code is only ever turned on by a reviewed change, sent with
+  `bundle apply --structure` or `bundle deploy`.
+- **Installed code waits for a restart.** Installing or removing a bundle with
+  a server half records it in `.crombolo/restart-pending.json`
+  (`server/src/restart-pending.ts`), which `bundle list`, the remote's listing
+  and Settings → Bundles → Installed show ("Installed changes take effect when
+  the site restarts."), until `crombolo restart`. A server that boots clears
+  it.
+- **On a remote** (`bundle-manage`, [`remote-protocol.md`](remote-protocol.md)):
+  listing needs the level `read`; the rest need `all`. Installing and removing
+  also need ApplyStructure and "Install code on this site"
+  (`Crombolo.Remote.InstallCode`), which an administrator holds only when a
+  group gives it to them, and a site that installs while it runs
+  (`CROMBOLO_RUNTIME_INSTALLS`). Turning one off or on needs an administrator,
+  or a CI rule that may apply structure.
+- **On the site's own machine** the CLI works on the site directory and its
+  database, with no server running, and always installs: there the site is a
+  working copy to commit from, whatever it says about installs while it runs.
+  The audit log names the person at the terminal, with source `cli`.
+
 ### What it cannot do, stated plainly
 
 - **It is per-node and ephemeral.** `node_modules` lives in an image layer, so a
@@ -762,19 +807,114 @@ bundle is that artifact (story 192).
   so a host starts the installed code once in a throwaway directory before it
   serves from it. The check lists the server bundles the declared packages
   carry.
-- **`crombolo bundle install-code <bundle> <dir>`** (`installBundleCode`)
-  checks the hash, then installs the code into an empty directory the same way.
+- **`crombolo bundle install <bundle> --code-into <dir>`** (`installBundleCode`,
+  `bundle install-code` before story 241) checks the hash, then installs the
+  code into an empty directory the same way.
   It never writes over a directory that already holds files. The directory has
   to sit where the host's `@crombolo/*` packages resolve from. Starting the
   site, or restarting it so its server bundles are wired, is the host's step.
-- **An import leaves it alone.** `bundle apply` and `start --bundle` install
-  the content and say the bundle carries code to install. A server half is
-  wired only at boot, so applying code always means a restart.
+- **An apply installs it** (story 241; story 192 left it to a host).
+  `bundle apply` writes each file under `code/` to its site path, keeps what
+  it replaces under the run, and runs `bun install --frozen-lockfile
+  --ignore-scripts` when `package.json` or `bun.lock` changed
+  (`server/src/bundle-code-install.ts`). Code the site already has is not a
+  change. An overwrite needs `--replace-files`, as for a view; where runtime
+  installs are off (`CROMBOLO_RUNTIME_INSTALLS`) it is refused, with the
+  host's message. `bundle revert` puts the files back and installs again.
+  The server loads code at boot, so installed code waits for `crombolo
+  restart`, and the health check "Installing code" says so.
+- **What a site bundle always carries.** Once the site has a `bun.lock`, a
+  site bundle carries `package.json`, `bun.lock` and `crombolo.config.ts` even
+  when `crombolo.code` names nothing, so a dependency `bundle install` added and
+  the import `--wire` wrote travel with `bundle apply --structure`.
+- **`start --bundle`** leaves the code alone: the code a host starts is its
+  own step.
 
 Both functions are exported from `@crombolo/crombolo`, beside
 `validateBundlePackage`, for a host to run in its own process.
 
 ---
+
+## Signing a bundle
+
+A bundle can say where it was built (story 060). Signing is optional: an
+unsigned bundle installs and applies as it always has, unless the site asks
+otherwise.
+
+- **What is signed.** The package digest: SHA-256 over every file in the
+  package, in path order, but `provenance.json` (`packageDigest` in
+  `server/src/provenance.ts`). It covers what a bundle's own `integrity` does
+  not: `package.json`, and an extension bundle's `plugin/` and `src/`. The
+  signature cannot sign itself, and nothing else is left out. `crombolo bundle
+  digest <dir|tgz>` prints it.
+- **How.** Sigstore, keyless, in GitHub Actions. The job's identity token gets
+  a short-lived certificate naming the repository, the ref, the commit and the
+  workflow, and the signature is entered in Sigstore's public log. No producer
+  holds a key to lose. The signature is an in-toto statement over the digest
+  (predicate `https://crombolo.dev/bundle-provenance/v1`).
+- **`provenance.json`** sits at the package root: the digest, the Sigstore
+  bundle, the source the certificate names, and links to the commit, the tag,
+  the run and the log entry. It is checked against Sigstore's public trust root,
+  with no call to GitHub.
+
+A producer's job:
+
+```yaml
+permissions:
+    contents: read
+    id-token: write
+steps:
+    - uses: actions/checkout@v5
+    - uses: oven-sh/setup-bun@v2
+    - run: bun install --frozen-lockfile
+    - run: bunx crombolo bundle build --out dist/acme-bundle --sign
+    # or, for a package packed some other way: bunx crombolo bundle sign dist/acme-bundle-1.2.0.tgz
+    - run: npm publish dist/acme-bundle
+```
+
+Sign last: any change to the package afterwards makes the signature fail.
+
+**A private repository.** Sigstore's public log keeps every signature for good,
+and a GitHub Actions certificate names the repository and its owner, the
+workflow file, the tag or branch, the commit and the run. The bundle, its code
+and its package name are not published: the signed statement carries the
+digest alone. Because the names are, `bundle sign` reads the job's repository
+visibility and refuses for a private or internal repository, or one GitHub does
+not say, unless given `--public-log` (also on `build --sign` and `deploy
+--sign`). npm's own provenance refuses private repositories outright for the
+same reason. Checking is the same for either: the certificate travels in the
+bundle, and the commit and tag links open only for people who can see the
+repository.
+
+**What a signature claims, and what it does not.** It ties the bytes to a
+build: *built from github.com/org/repo at v1.2.0 (abc1234)*. It says nothing
+about whether anyone reviewed that source, so the wording is always *built
+from*, never *verified* or *safe*; reviewed publishers are story 061. A tag can
+move, so the commit is what the signature records and the ref is only its name
+at signing time.
+
+**What a site takes.** `crombolo bundle verify <dir|tgz|url|name@version>`
+says what an install would. A signature that does not check out (the digest, the
+signature, the certificate, the log entry, or a claim that disagrees with the
+certificate) is always refused, never treated as unsigned.
+
+| Setting | |
+| --- | --- |
+| `CROMBOLO_BUNDLE_SIGNATURES` | `optional` (the default) or `required`: refuse an unsigned bundle |
+| `CROMBOLO_BUNDLE_SOURCES` | where a signed bundle must come from, comma separated: `org/*`, `org/repo`, or `org/repo@v*` for its tags |
+
+**Ours are signed.** Every release signs, from its tag:
+- `@crombolo/simple-redirects` and `@crombolo/entra`, after packing and before
+  `npm publish` (`scripts/publish-packages.ts`);
+- each distributed demo site, built as a bundle and attached to the GitHub
+  release as `<id>-<version>.tgz`, such as `demo-harbourstone-0.45.0.tgz`
+  (`scripts/release-demo-bundles.ts`);
+- the product site's bundle, signed in a copy before it is sent to the platform.
+
+The release then fetches each one back and checks it
+(`scripts/release-verify-signatures.ts`), so a bundle that shipped unsigned
+fails the release. A site that takes only our bundles sets
+`CROMBOLO_BUNDLE_SOURCES=kineco-au/crombolo-cms@v*`.
 
 ## Installing one
 
@@ -1209,11 +1349,26 @@ So the two halves of a bundle arrive by different routes on purpose:
 | The backoffice screen | discovered from the `crombolo` field once the package is a dependency | `bun add`, no restart |
 | The server endpoints | imported by name into `crombolo.config.ts` | an edit, a review, a deploy |
 
-That asymmetry is the whole security story. The dangerous path — someone clicks
-*Install* in the Bundles section and third-party code is in the request path — is
-not guarded, it does not exist. The safe path is a committed diff that reaches
-every node, which is also what makes `role: web` coherent: the import is in the
-site's code, so every node has it or none does.
+That asymmetry is the whole security story. Clicking *Install* in Settings →
+Bundles never puts third-party code in the request path: the screen has no way
+to. The import is a committed diff that reaches every node, which is also what
+makes `role: web` coherent: the import is in the site's code, so every node has
+it or none does.
+
+Story 241 adds one route from outside the server, and guards it rather than
+leaving it out: a bundle applied to a remote can carry `crombolo.config.ts`, so
+the import arrives the way it would in a deploy. It needs:
+- `CROMBOLO_REMOTE_ACCESS=all`, and runtime installs on;
+- `Crombolo.Remote.ApplyStructure` and **`Crombolo.Remote.InstallCode`**,
+  "Install code on this site". That one is held only where a group names it:
+  administrators do not have it by being administrators (`EXPLICIT_PERMISSIONS`
+  in `core/src/permissions.ts`), new sites give it to no group, and a CI trust
+  rule has it only when the rule names it;
+- `crombolo restart`, since nothing else loads the code.
+
+`bundle install --wire` writes the import on the developer's own machine, and is
+refused with `--remote`: on a remote, server code is turned on only by a change
+that was committed and sent, as `bundle deploy` sends it.
 
 A test holds this down rather than leaving it to the prose:
 `tests/server-bundles.test.ts` asserts the default is `[]` whatever the

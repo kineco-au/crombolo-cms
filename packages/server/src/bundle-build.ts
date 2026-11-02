@@ -32,7 +32,8 @@ export interface BundleBuildOptions {
   label?: string
   /**
    * Globs naming the site's own code, in place of `crombolo.code` in its
-   * `package.json` (story 192). Neither: the bundle carries no code.
+   * `package.json` (story 192). Neither: the bundle carries `package.json`,
+   * `bun.lock` and `crombolo.config.ts` alone, when the site has a lockfile.
    */
   code?: readonly string[]
   /**
@@ -81,7 +82,10 @@ export async function buildBundleFromDirectory(
   const name = options.name ?? identity.name
   if (!existsSync(join(dir, 'schema')))
     return { problems: [`${dir} has no schema/ directory, so it is not a site`], name }
-  const patterns = options.code ?? codePatternsOf(dir)
+  // A site that names no code of its own still sends what installing and
+  // wiring a bundle changes (story 241), once it has the lockfile to install from.
+  const carriesInstall = existsSync(join(dir, 'package.json')) && existsSync(join(dir, 'bun.lock'))
+  const patterns = options.code ?? codePatternsOf(dir) ?? (carriesInstall ? [] : undefined)
   const code = patterns ? selectCodeFiles(dir, patterns) : undefined
   if (code && code.problems.length > 0)
     return { problems: code.problems.map((problem) => `its code: ${problem}`), name }

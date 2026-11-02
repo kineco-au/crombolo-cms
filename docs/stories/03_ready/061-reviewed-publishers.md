@@ -16,6 +16,12 @@ should trust. That is a human statement. The precedent is Umbraco's
 marketplace, which marks packages from a maintained list rather than anything
 cryptographic.
 
+**Since 060 was planned (2026-11-02):** provenance is a Sigstore signature
+inside the bundle (`provenance.json`, from `crombolo bundle sign`), not npm's
+attestation, and the site's policy is `CROMBOLO_BUNDLE_SIGNATURES` and
+`CROMBOLO_BUNDLE_SOURCES` rather than `marketplace.require`. Read "attested" below
+as "signed", and extend those settings rather than adding another.
+
 ## Acceptance criteria
 
 - [ ] **The list.** One JSON document at a crombolo-controlled URL,

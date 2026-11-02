@@ -23,6 +23,12 @@ export const CI_PERMISSIONS = [
     label: 'Change structure and code',
     explain: 'Push a whole site, or apply a bundle that changes its types, views, styles or code.',
   },
+  {
+    verb: 'Crombolo.Remote.InstallCode',
+    label: 'Install code',
+    explain:
+      'Install bundles and the code a bundle carries, which runs on the server after a restart.',
+  },
 ]
 
 /** A provider by the address its tokens come from. */

@@ -275,6 +275,32 @@ describe('installing the code', () => {
     expect(existsSync(join(target, 'node_modules/@crombolo'))).toBe(false)
   }, 60_000)
 
+  // Story 241: `bundle install-code` became `bundle install --code-into`.
+  test('through the CLI, as `bundle install <bundle> --code-into <dir>`', () => {
+    const target = join(scratch(), 'site')
+    const run = Bun.spawnSync(
+      [
+        'bun',
+        join(import.meta.dir, '..', 'packages/cli/bin/crombolo.ts'),
+        'bundle',
+        'install',
+        bundle,
+        '--code-into',
+        target,
+        '-o',
+        'json',
+      ],
+      {
+        cwd: scratch(),
+        env: { ...process.env, CROMBOLO_LOG_TO_CONSOLE: 'false' },
+        stdin: 'ignore',
+      },
+    )
+    expect(run.exitCode, run.stderr.toString()).toBe(0)
+    expect(JSON.parse(run.stdout.toString())).toMatchObject({ dir: target })
+    expect(existsSync(join(target, 'src/records.ts'))).toBe(true)
+  }, 60_000)
+
   test('never over another site’s files', async () => {
     const target = scratch()
     write(target, 'keep.txt', 'mine')

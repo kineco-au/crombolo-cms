@@ -4,7 +4,7 @@
  * Password hashing is injected rather than imported so this package stays free of
  * a dependency on @crombolo/auth.
  */
-import { MediaPermissions, RemotePermissions } from '@crombolo/core'
+import { EXPLICIT_PERMISSIONS, MediaPermissions, RemotePermissions } from '@crombolo/core'
 import type { Db } from '../database.ts'
 import { DbDate } from '../dialect.ts'
 
@@ -69,7 +69,8 @@ export const BUILT_IN_GROUP_PERMISSIONS: Record<string, readonly string[]> = {
     'Umb.Document.PropertyValue.Write',
     ...FORM_FULL,
     ...ELEMENT_EDIT,
-    ...Object.values(RemotePermissions),
+    // Never one a group has to name (story 241): administrators are not given it.
+    ...Object.values(RemotePermissions).filter((verb) => !EXPLICIT_PERMISSIONS.has(verb)),
     ...MEDIA_FULL,
   ],
   editor: [

@@ -23,6 +23,7 @@ import { checkHost, type HostConfig } from './host-token.ts'
 import { checkIdentityProviders, type IdentityProvider } from './identity-providers.ts'
 import type { MediaStore } from './media-store.ts'
 import type { JobSchedule } from './owner-jobs.ts'
+import type { ProvenancePolicy, SignaturePolicy } from './provenance.ts'
 import type { SchemaStore } from './schema-store.ts'
 import { setting } from './settings.ts'
 import type { SiteDatabaseConfig, SiteQueryModules } from './site-queries.ts'
@@ -517,6 +518,11 @@ export interface CromboloConfig {
    */
   installsElsewhere?: { message: string; url?: string }
   /**
+   * What this site takes of a bundle's signature (story 060):
+   * `CROMBOLO_BUNDLE_SIGNATURES` and `CROMBOLO_BUNDLE_SOURCES`.
+   */
+  bundlePolicy: ProvenancePolicy
+  /**
    * Where the Packages section's Marketplace sends someone browsing for
    * extensions. Never framed — npm refuses to be framed — so the native view
    * uses it as the link out while listing the registry itself.
@@ -602,6 +608,12 @@ function roleFromEnvironment(value: string | undefined): ServerRole {
   if (value === undefined || value === '') return 'all'
   assertRole(value)
   return value
+}
+
+function bundleSignatures(value: string | undefined): SignaturePolicy {
+  if (value === undefined || value === '' || value === 'optional') return 'optional'
+  if (value === 'required') return 'required'
+  throw new Error(`CROMBOLO_BUNDLE_SIGNATURES must be optional or required, not '${value}'.`)
 }
 
 function jobsFromEnvironment(value: string | undefined): boolean {
@@ -846,6 +858,13 @@ export function loadConfig(
     applyBundleContentOnInstall: setting('CROMBOLO_APPLY_BUNDLE_CONTENT') !== 'false',
     // Resolved again below, once it is known whether a store was configured.
     runtimeInstalls: setting('CROMBOLO_RUNTIME_INSTALLS') !== 'false',
+    bundlePolicy: {
+      signatures: bundleSignatures(setting('CROMBOLO_BUNDLE_SIGNATURES')),
+      sources: (setting('CROMBOLO_BUNDLE_SOURCES') ?? '')
+        .split(',')
+        .map((source) => source.trim())
+        .filter(Boolean),
+    },
     // Resolved again below, once it is known whether this is development.
     errors: { showDetails: envFlag(setting('CROMBOLO_SHOW_ERROR_DETAILS')) ?? false },
     liveReload: envFlag(setting('CROMBOLO_LIVE_RELOAD')) ?? false,
@@ -1022,7 +1041,7 @@ export function describeDatabase(
   }
 }
 
-export const VERSION = '0.44.0'
+export const VERSION = '0.45.0'
 
 /** A whole number of seconds from the environment; undefined when unset or not one. */
 /** A positive number from a setting, else the default. */

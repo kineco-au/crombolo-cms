@@ -1,5 +1,5 @@
 import { join, relative, resolve } from 'node:path'
-import { buildBundleFromDirectory } from '@crombolo/server'
+import { buildBundleFromDirectory, describeProvenance, signPackage } from '@crombolo/server'
 import { Args, Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
 import { CliError } from '../../errors.ts'
@@ -12,7 +12,7 @@ export default class BundleBuild extends BaseCommand {
     "Reads the directory's schema/, components/, css/, scripts/ and content/, and builds its content against that schema in a throwaway database: no site or database of its own is needed. The bundle installs everything into a bare site in one transaction: `crombolo start --bundle <dir>`, or `bundle apply`.",
     '--check builds it and writes nothing: every problem in the content files, by file and line, an unknown type or property, a value its editor cannot take, a path that names nothing, a language the site has not got, a type its parent does not allow.',
     'The directory is the current one unless named; --template names a starter site the CLI ships instead.',
-    'A site with server code of its own names it in its package.json, as globs in `crombolo.code`, or with --code here; the bundle then carries that code with package.json, bun.lock and crombolo.config.ts under code/. `bundle check-code` checks it against a CMS, and `bundle install-code` installs it.',
+    'A site with server code of its own names it in its package.json, as globs in `crombolo.code`, or with --code here; the bundle then carries that code with package.json, bun.lock and crombolo.config.ts under code/. `bundle check-code` checks it against a CMS, and `bundle install <bundle> --code-into <dir>` installs it.',
   ].join('\n\n')
   static override examples = [
     '<%= config.bin %> bundle build sites/harbourstone --out ./harbourstone-bundle',
@@ -32,6 +32,14 @@ export default class BundleBuild extends BaseCommand {
       helpValue: '<dir>',
     }),
     check: Flags.boolean({ summary: 'build it, report its problems, and write nothing' }),
+    'public-log': Flags.boolean({
+      summary:
+        "sign from a private repository anyway: Sigstore's public log records its name, workflow, ref and commit",
+    }),
+    sign: Flags.boolean({
+      summary: 'sign it once written, in GitHub Actions: `bundle sign` in the same step',
+      exclusive: ['check'],
+    }),
     name: Flags.string({ summary: "the bundle's package name", helpValue: '<name>' }),
     'with-media': Flags.boolean({
       summary: 'the media files too; left out unless asked',
@@ -124,9 +132,20 @@ export default class BundleBuild extends BaseCommand {
     this.say(
       `  wrote    ${relative(process.cwd(), out) || '.'}  (${built.name}: ${nodes} node(s), with its schema and views)`,
     )
+    if (flags.sign) {
+      const signed = await signPackage(out, { publicLog: flags['public-log'] }).catch(
+        (error: unknown) => {
+          throw new CliError(
+            'refused',
+            `It was built and not signed: ${error instanceof Error ? error.message : String(error)}`,
+          )
+        },
+      )
+      this.say(`  ${describeProvenance({ state: 'signed', source: signed.source })}`)
+    }
     if (built.code)
       this.say(
-        `  code     ${built.code.length} file(s); \`crombolo bundle check-code\` checks them, \`crombolo bundle install-code\` installs them`,
+        `  code     ${built.code.length} file(s); \`crombolo bundle check-code\` checks them, \`crombolo bundle install <bundle> --code-into <dir>\` installs them`,
       )
     this.say(
       `\n  \`crombolo start --bundle ${relative(process.cwd(), out) || '.'} --publish\` installs it into a site.`,

@@ -1,0 +1,59 @@
+{
+  "key": "314bb52f-5ddb-451f-87fd-23a37d7860b1",
+  "kind": "document",
+  "contentType": {
+    "key": "aa13972a-5fd6-56a9-842f-832abb4944b2",
+    "alias": "docsPage"
+  },
+  "parent": "bfbe288f-2c69-4228-872f-9977d0ba23ae",
+  "sortOrder": 8,
+  "template": "pages/docsPage",
+  "variants": [
+    {
+      "culture": null,
+      "segment": null,
+      "name": "Signing bundles",
+      "published": true
+    }
+  ],
+  "values": [
+    {
+      "property": "body",
+      "culture": null,
+      "segment": null,
+      "editor": "Umbraco.RichText",
+      "value": {
+        "markup": "<p>A signed bundle says where it was built: the repository, the commit, and the tag or branch, checked against Sigstore&#39;s public log. Signing is optional. A site takes unsigned bundles unless you tell it not to.</p>\n<h2 id=\"signing-in-github-actions\">Signing in GitHub Actions</h2>\n<p>The job needs permission to ask GitHub for its identity. Nothing else is set up: there are no keys to keep.</p>\n<pre><code class=\"language-yaml\">name: Release the bundle\non:\n    push:\n        tags: [&quot;v*&quot;]\njobs:\n    bundle:\n        runs-on: ubuntu-latest\n        permissions:\n            contents: read\n            id-token: write\n        steps:\n            - uses: actions/checkout@v5\n            - uses: oven-sh/setup-bun@v2\n            - run: bun install --frozen-lockfile\n            - run: bunx crombolo bundle build --out dist/acme-bundle --sign\n            - run: npm publish dist/acme-bundle\n              env:\n                  NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}\n</code></pre>\n<p><code>crombolo bundle sign &lt;dir|tgz&gt;</code> signs a bundle built or packed some other way. Sign last: a bundle changed after it was signed is refused.</p>\n<h2 id=\"checking-one\">Checking one</h2>\n<pre><code class=\"language-sh\">bunx crombolo bundle verify ./acme-bundle-1.2.0.tgz\nbunx crombolo bundle verify @acme/crm@1.2.0 --require --source &quot;acme/*&quot;\n</code></pre>\n<p>It prints what a site would show, <em>Signed: built from github.com/acme/crm at v1.2.0 (abc1234)</em> or <em>Not signed</em>, and exits with an error when the site would refuse it.</p>\n<p>A signature says where a bundle was built. It does not say anyone reviewed the code.</p>\n<h3 id=\"from-a-private-repository\">From a private repository</h3>\n<p>Every signature is kept in a public log, and it names the repository, the workflow file, the tag or branch and the commit. Your code and the bundle are not published. Because the names are, <code>bundle sign</code> stops in a private repository unless you add <code>--public-log</code>:</p>\n<pre><code class=\"language-sh\">bunx crombolo bundle sign dist/acme-bundle --public-log\n</code></pre>\n<h2 id=\"what-a-site-takes\">What a site takes</h2>\n<table>\n<thead>\n<tr>\n<th>Setting</th>\n<th></th>\n</tr>\n</thead>\n<tbody><tr>\n<td><code>CROMBOLO_BUNDLE_SIGNATURES</code></td>\n<td><code>optional</code> (the default), or <code>required</code> to refuse unsigned bundles</td>\n</tr>\n<tr>\n<td><code>CROMBOLO_BUNDLE_SOURCES</code></td>\n<td>where signed bundles must come from: <code>acme/*</code>, <code>acme/crm</code>, or <code>acme/crm@v*</code> for its release tags</td>\n</tr>\n</tbody></table>\n<p>A bundle whose signature does not check out is always refused. The Marketplace&#39;s install panel and <strong>Settings → Bundles → Installed</strong> show whether each bundle is signed and where it was built.</p>\n<h2 id=\"crombolos-own-bundles\">Crombolo&#39;s own bundles</h2>\n<p>Every Crombolo release signs its bundles from its tag: the Redirects and Microsoft Entra bundles on npm, and each demo site, attached to the <a href=\"https://github.com/kineco-au/crombolo-cms/releases\">GitHub release</a> as a bundle such as <code>demo-harbourstone-&lt;version&gt;.tgz</code>:</p>\n<pre><code class=\"language-sh\">bunx crombolo bundle verify https://github.com/kineco-au/crombolo-cms/releases/download/v0.45.0/demo-harbourstone-0.45.0.tgz\nbunx crombolo start --bundle ./demo-harbourstone-0.45.0.tgz --publish\n</code></pre>\n<p>To take only Crombolo&#39;s bundles, set <code>CROMBOLO_BUNDLE_SOURCES=kineco-au/crombolo-cms@v*</code>.</p>",
+        "blocks": null
+      }
+    },
+    {
+      "property": "editUrl",
+      "culture": null,
+      "segment": null,
+      "editor": "Umbraco.TextBox",
+      "value": "https://github.com/kineco-au/crombolo-cms/edit/main/sites/crombolo/docs/guides/signing-bundles.md"
+    },
+    {
+      "property": "standfirst",
+      "culture": null,
+      "segment": null,
+      "editor": "Umbraco.TextArea",
+      "value": "Sign a bundle in GitHub Actions from the commit or tag it was built at, and choose which bundles a site takes."
+    },
+    {
+      "property": "title",
+      "culture": null,
+      "segment": null,
+      "editor": "Umbraco.TextBox",
+      "value": "Signing bundles"
+    },
+    {
+      "property": "umbracoUrlName",
+      "culture": null,
+      "segment": null,
+      "editor": "Umbraco.TextBox",
+      "value": "signing-bundles"
+    }
+  ]
+}

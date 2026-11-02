@@ -9,7 +9,13 @@ import { createHash } from 'node:crypto'
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative, resolve } from 'node:path'
-import { buildBundleFromDirectory, type TarEntry, writeNpmTarball } from '@crombolo/server'
+import {
+  buildBundleFromDirectory,
+  describeProvenance,
+  type ProvenanceResult,
+  type TarEntry,
+  writeNpmTarball,
+} from '@crombolo/server'
 import { CliError } from '../errors.ts'
 import { problemOf } from '../remote/client.ts'
 import { findingsOf } from './describe.ts'
@@ -29,6 +35,11 @@ type ApplyFlags = TransferFlagValues & {
 interface RemoteReport {
   dryRun: boolean
   structural: boolean
+  provenance?: ProvenanceResult
+  code?:
+    | Array<{ path: string; action: string }>
+    | { written: number; installed: boolean; live: boolean }
+    | null
   bundle?: { id: string }
   runId?: string | null
   counts: { create: number; update: number; unchanged: number; skip: number }
@@ -57,7 +68,7 @@ const isSiteDirectory = (dir: string) =>
   existsSync(join(dir, 'schema')) || existsSync(join(dir, 'content'))
 
 /** The bundle to send, packed: a .tgz as it is, a package directory, or a site built. */
-async function packed(source: string, structure: boolean): Promise<Uint8Array> {
+export async function packed(source: string, structure: boolean): Promise<Uint8Array> {
   if (/\.(tgz|tar\.gz)$/i.test(source)) return readFileSync(resolve(source))
   const dir = resolve(source)
   if (!existsSync(dir)) throw new CliError('not_found', `${source} does not exist.`)
@@ -79,11 +90,12 @@ async function packed(source: string, structure: boolean): Promise<Uint8Array> {
   }
 }
 
-export async function applyToRemote(io: Io, source: string, flags: ApplyFlags) {
+/** Sends a bundle to a remote and reports what it did; `bytes` sends one already packed. */
+export async function applyToRemote(io: Io, source: string, flags: ApplyFlags, bytes?: Uint8Array) {
   const { entry, client, discovery, environment } = await connectRemote(flags.remote, flags.env)
   const env = needEnvironment(environment, discovery)
   const input = transferInput(source, flags)
-  const bytes = await packed(source, flags.structure === true)
+  bytes ??= await packed(source, flags.structure === true)
   const response = await client.api(`environments/${env}/bundles`, {
     method: 'PUT',
     headers: {
@@ -92,6 +104,7 @@ export async function applyToRemote(io: Io, source: string, flags: ApplyFlags) {
       'crombolo-options': JSON.stringify({
         dryRun: flags['dry-run'] === true,
         publish: flags.publish === true,
+        replaceFiles: flags['replace-files'] === true,
         label: flags.label,
         resolutions: input.resolutions,
         resolveAll: input.resolveAll,
@@ -102,12 +115,15 @@ export async function applyToRemote(io: Io, source: string, flags: ApplyFlags) {
   if (!response.ok && response.status !== 409) throw await problemOf(response)
   const report = (await response.json()) as RemoteReport
   for (const problem of report.problems ?? []) io.warning(`  ${problem}`)
+  if (report.provenance) io.say(`  signed   ${describeProvenance(report.provenance)}`)
   for (const finding of report.findings) io.say(`  [${finding.kind.padEnd(8)}] ${finding.message}`)
   const c = report.counts
   if (report.dryRun) {
     io.say(
       `\n  would    ${c.create} create, ${c.update} update, ${c.unchanged} unchanged, ${c.skip} skip on ${entry.name}`,
     )
+    if (Array.isArray(report.code) && report.code.length > 0)
+      io.say(`  code     ${report.code.length} file(s) would change; live after a restart`)
     if (report.outstanding > 0) {
       io.say(`  ${report.outstanding} finding(s) would stop it. Resolve them, or pass --resolve.`)
     } else io.say('  Nothing outstanding: it would apply cleanly.')
@@ -126,6 +142,10 @@ export async function applyToRemote(io: Io, source: string, flags: ApplyFlags) {
       `  applied  ${c.create} created, ${c.update} updated, ${c.unchanged} unchanged, ${c.skip} skipped`,
     )
     if ((report.published ?? 0) > 0) io.say(`  published ${report.published} node(s)`)
+    if (report.code && !Array.isArray(report.code))
+      io.say(
+        `  code     ${report.code.written} file(s) installed; live after \`crombolo restart --remote ${entry.name}\``,
+      )
     io.say(
       `\nDone. \`crombolo bundle revert ${report.runId} --remote ${entry.name}\` puts it back.`,
     )

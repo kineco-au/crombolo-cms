@@ -7,6 +7,7 @@ import type {
   HealthCheckGroup,
   HealthCheckResult,
 } from '@crombolo/api-management/domain'
+import { RemotePermissions } from '@crombolo/core'
 import {
   changedSince,
   compareStates,
@@ -20,12 +21,16 @@ import {
   pendingMigrations,
   type QueueCounts,
   queueCounts,
+  RemoteTrustRepository,
   sql,
+  UserGroupRepository,
+  UserRepository,
 } from '@crombolo/data'
 import { type CromboloConfig, describeDatabase, VERSION } from '../config.ts'
 import { BundleConfigurationError, pendingTablesSteps, tablesChainsFor } from '../custom-tables.ts'
 import { type EmailPort, emailAvailability } from '../email.ts'
 import type { MediaStore } from '../media-store.ts'
+import { restartPending } from '../restart-pending.ts'
 import { backofficeVersion } from '../status.ts'
 
 export const UPGRADE_PACKAGE = '@crombolo/crombolo'
@@ -42,6 +47,7 @@ const CHECKS = {
   outgoing: { id: '6f1d4a8e-0047-4c1a-9e7d-000000000006', name: 'Outgoing changes' },
   routes: { id: '6f1d4a8e-0047-4c1a-9e7d-000000000007', name: 'Routes and pages' },
   settings: { id: '6f1d4a8e-0047-4c1a-9e7d-000000000008', name: 'Site settings' },
+  code: { id: '6f1d4a8e-0047-4c1a-9e7d-000000000009', name: 'Installing code' },
 } as const
 
 /** Waiting longer than this means nothing is sending: no server is running its jobs, or one is stuck. */
@@ -92,6 +98,11 @@ const GROUPS: HealthCheckGroup[] = [
         ...CHECKS.settings,
         description:
           "Whether each site has at most one settings page, kept directly below the site's top page.",
+      },
+      {
+        ...CHECKS.code,
+        description:
+          'Who may install code on this site, and whether installed code is waiting for a restart.',
       },
     ],
   },
@@ -373,6 +384,43 @@ export function createDiagnosticsPort(options: HealthCheckOptions): DiagnosticsP
             : `"${f.name}" is a settings page below another page, so no site reads it. Move it directly below its site's top page.`,
         ),
       )
+    },
+    [CHECKS.code.id]: async () => {
+      const results: HealthCheckResult[] = []
+      const verb = RemotePermissions.InstallCode
+      const groups = (await new UserGroupRepository(db).all()).filter((group) =>
+        group.permissions.includes(verb),
+      )
+      const users = await new UserRepository(db).all()
+      for (const group of groups) {
+        const members = users.filter((user) => user.groupKeys.includes(group.key)).length
+        results.push(
+          result(
+            'Info',
+            `The group "${group.name}" may install code on this site: ${members} user(s) in it.`,
+          ),
+        )
+      }
+      for (const rule of (await new RemoteTrustRepository(db).all()).filter(
+        (candidate) => !candidate.disabled && candidate.permissions.includes(verb),
+      ))
+        results.push(
+          result(
+            'Info',
+            `The CI rule "${rule.name}" (${rule.repository}) may install code on this site.`,
+          ),
+        )
+      if (results.length === 0)
+        results.push(result('Success', 'Nobody may install code on this site.'))
+      const pending = restartPending(config.siteDir)
+      if (pending)
+        results.push(
+          result(
+            'Warning',
+            `Code installed since ${new Date(pending.since).toLocaleString('en-GB')} runs once the site restarts: ${pending.reasons.join('; ')}.`,
+          ),
+        )
+      return results
     },
     [CHECKS.outgoing.id]: async () =>
       outgoingResults(

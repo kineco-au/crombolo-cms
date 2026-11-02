@@ -115,8 +115,10 @@ jobs:
         needs: [ci, load]
         runs-on: ubuntu-latest
         permissions:
-            contents: read
-            # Signs npm provenance from this workflow's identity.
+            # Creates the GitHub release the signed demo bundles are attached to.
+            contents: write
+            # Signs npm provenance, and each bundle's own signature (story 060),
+            # from this workflow's identity.
             id-token: write
         steps:
             - uses: actions/checkout@v5
@@ -154,9 +156,27 @@ jobs:
             - if: steps.dist.outputs.cache-hit != 'true'
               run: bun run vendor:backoffice
 
+            # The bundle packages are signed after packing, before npm publish.
             - run: bun run release:publish
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+            # The demo sites as signed bundles, attached to the release (story 060).
+            - run: bun run release:demo-bundles
+            - name: Attach the demo bundles to the release
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+                    gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes
+                  fi
+                  gh release upload "$GITHUB_REF_NAME" output/demo-bundles/*.tgz --clobber
+
+            # Fetched back and checked, so a bundle that shipped unsigned fails the release.
+            - name: Check every bundle shipped is signed from this tag
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: bun run release:verify-signatures
 
     # Our own product site runs on the platform as an ordinary tenant, so a
     # release republishes its content the way a customer's CI would (`115` in
@@ -173,6 +193,8 @@ jobs:
         runs-on: ubuntu-latest
         permissions:
             contents: read
+            # Signs a copy of the product site's bundle before it is sent (story 060).
+            id-token: write
         steps:
             - uses: actions/checkout@v5
             - uses: oven-sh/setup-bun@v2
