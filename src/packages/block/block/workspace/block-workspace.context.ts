@@ -580,6 +580,20 @@ export class UmbBlockWorkspaceContext<LayoutDataType extends UmbBlockLayoutBaseM
 		);
 	}
 
+	/**
+	 * Crombolo (story 253): the aliases the other blocks of this block's list have.
+	 * @returns {Array<string>} their aliases
+	 */
+	getOtherBlockAliases(): Array<string> {
+		const contentKey = this.#layout.getValue()?.contentKey;
+		return (this.#blockEntries?.getLayouts() ?? [])
+			.filter((layout) => layout.contentKey !== contentKey)
+			.flatMap((layout) => {
+				const alias = (layout as { alias?: unknown }).alias;
+				return typeof alias === 'string' && alias ? [alias] : [];
+			});
+	}
+
 	getPropertyValue<propertyAliasType extends keyof LayoutDataType>(propertyAlias: propertyAliasType) {
 		// TODO: Should be using Content, then we need a toggle or another method for getting settings.
 		return this.#layout.getValue()?.[propertyAlias as keyof LayoutDataType] as LayoutDataType[propertyAliasType];
