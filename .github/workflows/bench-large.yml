@@ -21,7 +21,9 @@ jobs:
     bench:
         name: large site (${{ matrix.dialect }})
         runs-on: ubuntu-latest
-        timeout-minutes: 300
+        # Measured at Large: SQLite about 160 minutes in all (generating takes
+        # 140), Postgres about 70. A hung run stops here rather than at six hours.
+        timeout-minutes: 180
         strategy:
             fail-fast: false
             matrix:
@@ -68,7 +70,9 @@ jobs:
             - name: Benchmark the large site
               # bash names pipefail, so a failed run is not hidden by tee.
               shell: bash
-              run: bun run test:ci --timeout 18000000 ./tests/load/large-site.bench.ts 2>&1 | tee bench-large.txt
+              # Each test, 30 minutes: the longest publishes for 10. Generating the
+              # site is a hook, with its own limit in the file.
+              run: bun run test:ci --timeout 1800000 ./tests/load/large-site.bench.ts 2>&1 | tee bench-large.txt
             - uses: actions/upload-artifact@v4
               if: always()
               with:

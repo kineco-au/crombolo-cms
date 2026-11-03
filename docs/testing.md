@@ -240,6 +240,13 @@ workflow runs Small and Medium on both dialects; Large runs weekly and on demand
 `_SAMPLES` scale it: locally, run it small to check it works, and leave the full
 size to the release run.
 
+Large takes long enough to need limits of its own. Generating it takes about an
+hour on Postgres and two and a half on SQLite, longer than a back office token's
+20 minutes, so the benchmark signs in again before it measures. The generation
+hook allows 2.5 hours and each test 30 minutes. SQLite's generation is
+synchronous underneath, so no timer fires during it, and the job's 180-minute
+`timeout-minutes` is what bounds a hung run.
+
 What the budgets made fast: a page of the tree was about eleven queries an item,
 because each item loaded the whole editing aggregate, values and schedules
 included; it is now four queries a page. A cache rebuild was three queries a

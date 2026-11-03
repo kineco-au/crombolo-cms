@@ -19,7 +19,7 @@ import { join } from 'node:path'
 import { SYSTEM_MEDIA_TYPE_KEYS } from '@crombolo/core'
 import { ComponentRepository, ContentTypeRepository, DocumentRepository } from '@crombolo/data'
 import { dialectUnderTest } from '../support/db.ts'
-import { type Harness, ORIGIN, signedInServer, V1 } from '../support/harness.ts'
+import { ADMIN, type Harness, ORIGIN, signedInServer, signIn, V1 } from '../support/harness.ts'
 
 /** Story 175, decision 1: the three sizes, and what each is held to. */
 const SIZES = {
@@ -254,7 +254,13 @@ beforeAll(async () => {
   console.log(
     `  generated ${made.length} pages in ${CULTURES.length} cultures and ${MEDIA} media on ${dialectUnderTest} in ${((performance.now() - started) / 1000).toFixed(0)} s`,
   )
-}, 3_600_000)
+  // A back office token lasts 20 minutes, and generating Large takes longer than
+  // that on either dialect: sign in again, or the first measurements see 401.
+  h = await signIn(h.server, ADMIN)
+  // 2.5 hours: Postgres generates Large in about an hour. SQLite's generation is
+  // synchronous underneath, so this timer cannot fire during it there; the job's
+  // timeout-minutes (bench-large.yml) is what bounds that.
+}, 9_000_000)
 
 afterAll(async () => {
   if (results.length > 0) {
