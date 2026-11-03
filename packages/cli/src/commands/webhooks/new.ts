@@ -11,13 +11,14 @@ import {
 import { Args, Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
 import { here } from '../../support/describe.ts'
+import { eventAliases } from '../../support/names.ts'
 import { siteConfig } from '../../support/site.ts'
 import { loadTypes, needSchemaDir } from '../../support/types.ts'
 
 export default class WebhooksNew extends BaseCommand {
   static override summary = 'write a webhook kept with the site, checked as the server reads it'
   static override examples = [
-    '<%= config.bin %> webhooks new searchIndex --url https://search.example/hook --event Umbraco.ContentPublish --content-type article',
+    '<%= config.bin %> webhooks new searchIndex --url https://search.example/hook --event content-published --content-type article',
   ]
   static override args = {
     alias: Args.string({ required: true, description: "the webhook's alias" }),
@@ -26,7 +27,7 @@ export default class WebhooksNew extends BaseCommand {
     url: Flags.string({ required: true, summary: 'where it is sent', helpValue: '<url>' }),
     event: Flags.string({
       required: true,
-      summary: 'an event that sends it, such as Umbraco.ContentPublish',
+      summary: 'an event that sends it, such as content-published',
       helpValue: '<event>',
       multiple: true,
     }),
@@ -81,7 +82,7 @@ export default class WebhooksNew extends BaseCommand {
       description: null,
       url: flags.url,
       enabled: true,
-      events: flags.event,
+      events: eventAliases(flags.event) ?? [],
       contentTypeKeys: contentTypes,
       headers,
     }
@@ -97,7 +98,7 @@ export default class WebhooksNew extends BaseCommand {
       this.fail('refused', 'The webhook was not written.', undefined, problems)
     await mkdir(dir, { recursive: true })
     await writeFile(file, source)
-    this.say(`  created  ${here(file)}`)
+    this.say(`  added    the webhook "${webhook.name ?? args.alias}"`)
     return { created: [here(file)] }
   }
 }

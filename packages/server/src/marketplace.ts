@@ -17,9 +17,9 @@
  * browser cannot reach npm, and the backoffice keeps making same-origin
  * requests only.
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import {
   type BundlePackage,
   describePermissions,
@@ -28,6 +28,12 @@ import {
   type PackageJson,
   validateBundlePackage,
 } from '@crombolo/backoffice-host'
+import {
+  LOCAL_BUNDLES_DIR,
+  localBundleFileName,
+  localBundlePath,
+  localBundlesNamed,
+} from '@crombolo/transfer'
 import { type BundleGrants, declaredPermissions } from './bundle-grants.ts'
 import { logger } from './logging.ts'
 import {
@@ -157,6 +163,8 @@ export interface InstallOutcome {
   restartPending?: boolean
   /** Where the version checked was built, from its signature (story 060). */
   provenance?: ProvenanceResult
+  /** The file an install from a file keeps in the site, to commit: `bundles/acme-crm-1.2.0.tgz` (story 245). */
+  file?: string
 }
 
 export type PackageInstaller = (
@@ -296,6 +304,36 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
   }
   let cached: { at: number; query: string; listings: MarketplaceListing[] } | undefined
 
+  /**
+   * A bundle's file at `bundles/<name>-<version>.tgz`: used in place when it is
+   * there already, copied there otherwise. Another file under that name is
+   * refused, since one version is one file.
+   */
+  const keepInSite = (
+    file: string,
+    declared: { name: string; version: string },
+  ): { path: string; copied: boolean } | string => {
+    const path = `${LOCAL_BUNDLES_DIR}/${localBundleFileName(declared.name, declared.version)}`
+    const target = join(options.siteDir, path)
+    if (resolve(file) === resolve(target)) return { path, copied: false }
+    const bytes = readFileSync(file)
+    if (existsSync(target)) {
+      if (readFileSync(target).equals(bytes)) return { path, copied: false }
+      return `${path} already holds a different ${declared.name}@${declared.version} than ${file}, so it was not installed: one version is one file. Remove ${path} first if ${file} is the one to keep.`
+    }
+    mkdirSync(join(options.siteDir, LOCAL_BUNDLES_DIR), { recursive: true })
+    copyFileSync(file, target)
+    return { path, copied: true }
+  }
+
+  /** The `bundles/` file a dependency used to name, removed once nothing names it. */
+  const removeUnnamed = (previousRange: string | undefined, keep?: string) => {
+    const path = localBundlePath(previousRange)
+    if (!path || path === keep) return
+    if (localBundlesNamed(options.siteDir).includes(path)) return
+    rmSync(join(options.siteDir, path), { force: true })
+  }
+
   const installedVersion = (name: string): string | null =>
     options.extensions.bundles().bundles.find((bundle) => bundle.packageName === name)?.version ??
     null
@@ -370,7 +408,7 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
       const response = await call(dist.tarball)
       if (!response.ok)
         return {
-          state: 'invalid',
+          state: 'unchecked',
           reason: `${name} could not be fetched to check its signature (the registry answered ${response.status})`,
         }
       const bytes = new Uint8Array(await response.arrayBuffer())
@@ -386,7 +424,7 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
       return await verify(unpacked)
     } catch (error) {
       return {
-        state: 'invalid',
+        state: 'unchecked',
         reason: `${name} could not be checked: ${error instanceof Error ? error.message : String(error)}`,
       }
     } finally {
@@ -417,12 +455,15 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
     let found = installedProvenance.get(key)
     if (!found) {
       found = verify(bundle.directory).catch((error: unknown) => ({
-        state: 'invalid' as const,
+        state: 'unchecked' as const,
         reason: error instanceof Error ? error.message : String(error),
       }))
       installedProvenance.set(key, found)
     }
-    return found
+    const result = await found
+    // Not kept: the next look may be able to check it.
+    if (result.state === 'unchecked') installedProvenance.delete(key)
+    return result
   }
 
   /** What the registry says this package's latest version carries, when it is a valid bundle. */
@@ -592,21 +633,47 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
       if (typeof declared === 'string') return { ok: false, message: declared }
       if (declared.server && !consented(request, declared.permissions))
         return serverConsentNeeded(declared.name, declared.permissions)
-      const provenance = await verifyPackage(file).catch((error: unknown) => ({
-        state: 'invalid' as const,
-        reason: error instanceof Error ? error.message : String(error),
-      }))
+      // Kept in the site's bundles/ (story 245), so it is committed and every
+      // node, checkout and CI build installs the same file.
+      const kept = keepInSite(file, declared)
+      if (typeof kept === 'string') return { ok: false, message: kept }
+      const discard = () => {
+        if (kept.copied) rmSync(join(options.siteDir, kept.path), { force: true })
+      }
+      const provenance = await verifyPackage(join(options.siteDir, kept.path)).catch(
+        (error: unknown) => ({
+          state: 'unchecked' as const,
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      )
       const refused = refusedBySignature(declared.name, provenance)
-      if (refused) return refused
-      return { ...(await added(declared.name, file, undefined, request)), provenance }
+      if (refused) {
+        discard()
+        return refused
+      }
+      const previous = await rangeFor(declared.name)
+      const outcome = await added(declared.name, `./${kept.path}`, undefined, request)
+      if (!outcome.ok) {
+        discard()
+        return { ...outcome, provenance }
+      }
+      removeUnnamed(previous, kept.path)
+      return {
+        ...outcome,
+        provenance,
+        file: kept.path,
+        message: `${outcome.message} Commit ${kept.path} with package.json and bun.lock.`,
+      }
     },
 
     async uninstall(name) {
       if (options.installs === false) return refusedHere(name, 'remove', options.installsElsewhere)
       if (!isValidPackageName(name))
         return { ok: false, message: `'${name}' is not a package name npm would accept.` }
+      const previous = await rangeFor(name)
       const result = await install('remove', name, options.siteDir)
       options.extensions.invalidate()
+      if (result.ok) removeUnnamed(previous)
       return result.ok
         ? {
             ok: true,
@@ -704,18 +771,19 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
 /** What a packed bundle on this machine declares, read from its package.json, or why it cannot be installed. */
 async function declaresIn(
   file: string,
-): Promise<{ name: string; server: boolean; permissions: string[] } | string> {
+): Promise<{ name: string; version: string; server: boolean; permissions: string[] } | string> {
   const dir = mkdtempSync(join(tmpdir(), 'crombolo-bundle-file-'))
   try {
     await extractTarball(file, dir)
     const root = existsSync(join(dir, 'package', 'package.json')) ? join(dir, 'package') : dir
     const json = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as PackageJson
     const problems = validateBundlePackage(json)
-    if (problems.length > 0 || typeof json.name !== 'string')
+    if (problems.length > 0 || typeof json.name !== 'string' || typeof json.version !== 'string')
       return `${file} is not a bundle for this site, so it was not installed.`
     const field = json.crombolo as { server?: string; permissions?: string[] }
     return {
       name: json.name,
+      version: json.version,
       server: field.server !== undefined,
       permissions: Array.isArray(field.permissions) ? field.permissions : [],
     }

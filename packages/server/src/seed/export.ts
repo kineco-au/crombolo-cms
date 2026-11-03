@@ -14,17 +14,16 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join, resolve, sep } from 'node:path'
 import { mediaFileOf, normaliseUuid, ObjectTypes } from '@crombolo/core'
 import {
-  ContentTypeRepository,
   currentSchemaState,
-  DataTypeRepository,
   type Db,
   DocumentRepository,
   NodeRepository,
   type NodeRow,
 } from '@crombolo/data'
 import type { MediaFileStore } from '../media-files.ts'
-import { pickKey, seedKey } from './keys.ts'
+import { seedKey } from './keys.ts'
 import { CONTENT_FILES_DIR, KIND_DIRS, kindDir, type SeedKind } from './read.ts'
+import { schemaLookup, shorthandReader } from './values.ts'
 
 /** A URL segment from a name: `About us` → `about-us`. */
 export const segmentOf = (name: string) =>
@@ -67,10 +66,6 @@ export function tomlValue(value: unknown): string | undefined {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
-const PICKER = /^umb:\/\/document\/([0-9a-f]{32})$/i
-const dashed = (hex: string) =>
-  `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
-
 /** What a media item's own properties are, which its file stands for in a seed. */
 const FILE_PROPERTIES = new Set([
   'umbracoFile',
@@ -108,9 +103,6 @@ export async function exportSeed(
     media: new DocumentRepository(db, { nodeState, kind: 'media' }),
   }
   const nodes = new NodeRepository(db)
-  const documentTypes = new ContentTypeRepository(db)
-  const mediaTypes = new ContentTypeRepository(db, { kind: 'media' })
-  const dataTypes = new DataTypeRepository(db)
 
   const typeAliases = new Map<string, string>()
   const aliasOf = async (typeKey: string) => {
@@ -126,26 +118,13 @@ export async function exportSeed(
     }
     return typeAliases.get(key) as string
   }
-  const editorCache = new Map<string, Map<string, string>>()
-  const editorsOf = async (typeKey: string, media = false) => {
-    const key = normaliseUuid(typeKey)
-    const cached = editorCache.get(key)
-    if (cached) return cached
-    const properties = await (media ? mediaTypes : documentTypes).resolveProperties(key)
-    const byType = new Map(
-      (await dataTypes.byKeys(properties.map((p) => p.dataTypeKey))).map((d) => [
-        d.key,
-        d.editorAlias,
-      ]),
+  const lookup = schemaLookup(db)
+  const editorsOf = async (typeKey: string, media = false) =>
+    new Map(
+      [
+        ...(await lookup.editorsOf(media ? 'media' : 'document', { key: normaliseUuid(typeKey) })),
+      ].map(([alias, p]) => [alias, p.editor]),
     )
-    const out = new Map<string, string>()
-    for (const property of properties) {
-      const editor = byType.get(property.dataTypeKey)
-      if (editor) out.set(property.alias, editor)
-    }
-    editorCache.set(key, out)
-    return out
-  }
 
   // --------------------------------------------------- every node's place
   type Kind = 'content' | 'library' | 'media'
@@ -201,127 +180,7 @@ export async function exportSeed(
   }
 
   // -------------------------------------------------- values, as shorthand
-  const shorthand = async (editor: string, value: unknown): Promise<unknown> => {
-    switch (editor) {
-      case 'Umbraco.RichText':
-      case 'Umbraco.TinyMCE':
-        return isRecord(value) && typeof value.markup === 'string' && value.blocks == null
-          ? { html: value.markup }
-          : value
-      case 'Umbraco.ContentPicker': {
-        const picked = typeof value === 'string' ? PICKER.exec(value) : null
-        if (!picked) return value
-        const key = dashed((picked[1] as string).toLowerCase())
-        const path = where(key, 'content')
-        return path ? `/${path}` : key
-      }
-      case 'Umbraco.MediaPicker3': {
-        if (!Array.isArray(value)) return value
-        const paths = value.map((pick) =>
-          isRecord(pick) &&
-          typeof pick.mediaKey === 'string' &&
-          pick.key === pickKey(pick.mediaKey) &&
-          Array.isArray(pick.crops) &&
-          pick.crops.length === 0 &&
-          pick.focalPoint == null
-            ? where(pick.mediaKey, 'media')
-            : undefined,
-        )
-        if (paths.length === 0 || paths.some((p) => p === undefined)) return value
-        const full = paths.map((p) => `/${p}`)
-        return full.length === 1 ? full[0] : full
-      }
-      case 'Umbraco.ElementPicker': {
-        if (!Array.isArray(value)) return value
-        const paths = value.map((key) =>
-          typeof key === 'string' ? where(key, 'library') : undefined,
-        )
-        if (paths.length === 0 || paths.some((p) => p === undefined)) return value
-        return paths.length === 1 ? paths[0] : paths
-      }
-      case 'Umbraco.MultiUrlPicker': {
-        if (!Array.isArray(value)) return value
-        return value.map((link) => {
-          if (!isRecord(link)) return link
-          const target = link.target ?? null
-          if (
-            link.type === 'document' &&
-            typeof link.unique === 'string' &&
-            target === null &&
-            !link.url &&
-            !link.queryString
-          ) {
-            const path = where(link.unique, 'content')
-            if (path && (link.name === '' || link.name == null)) return `/${path}`
-            if (path && typeof link.name === 'string') return { path: `/${path}`, name: link.name }
-          }
-          if (link.type === 'external' && typeof link.url === 'string' && target === null)
-            return { url: link.url, name: link.name ?? link.url }
-          return link
-        })
-      }
-      case 'Umbraco.BlockList':
-      case 'Umbraco.BlockGrid':
-        return blocks(editor, value)
-      default:
-        return value
-    }
-  }
-
-  /** Blocks as `{ type, key, values, settings }`, when their layout is plain enough to say so. */
-  const blocks = async (editor: string, value: unknown): Promise<unknown> => {
-    if (!isRecord(value) || !isRecord(value.layout) || !Array.isArray(value.contentData))
-      return value
-    const layout = value.layout[editor]
-    if (!Array.isArray(layout)) return value
-    const content = new Map(
-      (value.contentData as unknown[]).filter(isRecord).map((d) => [String(d.key), d]),
-    )
-    const settings = new Map(
-      ((value.settingsData as unknown[] | undefined) ?? [])
-        .filter(isRecord)
-        .map((d) => [String(d.key), d]),
-    )
-    const out: unknown[] = []
-    for (const item of layout) {
-      if (!isRecord(item)) return value
-      const data = content.get(String(item.contentKey))
-      if (!data || typeof data.contentTypeKey !== 'string') return value
-      if (editor === 'Umbraco.BlockGrid' && Array.isArray(item.areas) && item.areas.length > 0)
-        return value
-      const entry: Record<string, unknown> = {
-        type: await aliasOf(data.contentTypeKey),
-        key: item.contentKey,
-        values: await elementValues(data),
-      }
-      if (typeof item.settingsKey === 'string') {
-        const setting = settings.get(item.settingsKey)
-        if (!setting || typeof setting.contentTypeKey !== 'string') return value
-        entry.settings = {
-          type: await aliasOf(setting.contentTypeKey),
-          key: item.settingsKey,
-          values: await elementValues(setting),
-        }
-      }
-      if (editor === 'Umbraco.BlockGrid') {
-        entry.columns = item.columnSpan
-        entry.rows = item.rowSpan
-      }
-      out.push(entry)
-    }
-    return out
-  }
-
-  const elementValues = async (data: Record<string, unknown>) => {
-    const editors = await editorsOf(String(data.contentTypeKey))
-    const out: Record<string, unknown> = {}
-    for (const v of (data.values as unknown[] | undefined) ?? []) {
-      if (!isRecord(v) || typeof v.alias !== 'string') continue
-      const editor = editors.get(v.alias)
-      out[v.alias] = editor ? await shorthand(editor, v.value) : v.value
-    }
-    return out
-  }
+  const { shorthand } = shorthandReader(lookup, aliasOf, where)
 
   // --------------------------------------------------------- the files
   const written: string[] = []

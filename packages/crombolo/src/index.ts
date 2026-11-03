@@ -44,6 +44,7 @@ export type {
   BlockGridItem,
   BlockGridValue,
   BlockItem,
+  BlockListValue,
   BlockProps,
   BlocksProps,
   CSSProperties,

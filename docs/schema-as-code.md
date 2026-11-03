@@ -198,7 +198,7 @@ documentation (story 161):
 crombolo types new content-type feature --element
 crombolo types new data-type pageBlocks --editor block-list --block feature
 crombolo types new content-type blog --at-root --allow-child article --list-view --vary-by-culture
-crombolo types add-property blog blocks --type pageBlocks
+crombolo types property add blog blocks --type pageBlocks
 crombolo languages add fr-FR --fallback en-US
 crombolo forms new contact
 crombolo workflows new article-sign-off --content-type article --approver editor
@@ -245,7 +245,7 @@ with the file and the alias. Then the command applies the files. A webhook is
 not part of the schema sync: `webhooks new` checks the file as the server will
 read it, and the running server reads `schema/webhooks/` as it is.
 
-`add-property` appends a property to a tab, because order in the file is order
+`property add` appends a property to a tab, because order in the file is order
 in the editor, and refuses an alias the type already has. Both then apply the
 files, through the same sync a boot runs — which means in production both are
 subject to the same gate as any other schema change: a version bump, or a newer
@@ -797,7 +797,7 @@ database under a distributed lock, version-gated (`docs/schema-as-code.md`):
 ```bash
 bunx crombolo types new content-type article --at-root   # the file and its view
 bunx crombolo types new data-type pageBlocks --editor block-list --block feature
-bunx crombolo types add-property article summary --type textarea --mandatory
+bunx crombolo types property add article summary --type textarea --mandatory
 bunx crombolo types check --static   # parse and validate, no database
 bunx crombolo types check            # …and report what a sync would do
 bunx crombolo types sync             # apply (a deploy step, or leave it to boot)
@@ -808,6 +808,6 @@ bunx crombolo generate --delivery --out ../app/src/cms-types.ts   # the Delivery
 
 `types new` writes the type file, with no keys, and the `components/<alias>.tsx` it points at, then applies it. `--element`
 writes a Library element type instead, which has no URL and so no view.
-`add-property` appends one property and applies that; it re-emits the file
+`property add` appends one property and applies that; it re-emits the file
 canonically, as `types rewrite` does, so a comment in it is not kept and the
 command says so. `--dry-run` prints the file instead of writing it.

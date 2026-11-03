@@ -69,7 +69,8 @@
     "fork:pin": "bun run scripts/fork.ts pin",
     "vendor:backoffice": "bun run scripts/vendor-backoffice.ts",
     "vendor:refresh-static": "bun run scripts/vendor-backoffice.ts --refresh-static",
-    "cli:manifest": "bun run scripts/cli-manifest.ts"
+    "cli:manifest": "bun run scripts/cli-manifest.ts",
+    "cli:spec": "bun run scripts/cli-spec.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",

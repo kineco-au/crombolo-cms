@@ -1,0 +1,59 @@
+{
+  "key": "8fce2408-43fa-407f-8059-bc777b4c6ce8",
+  "kind": "document",
+  "contentType": {
+    "key": "aa13972a-5fd6-56a9-842f-832abb4944b2",
+    "alias": "docsPage"
+  },
+  "parent": "c0b0ccb3-faa3-46a4-8af2-80730c1e3ee3",
+  "sortOrder": 0,
+  "template": "pages/docsPage",
+  "variants": [
+    {
+      "culture": null,
+      "segment": null,
+      "name": "Basic",
+      "published": true
+    }
+  ],
+  "values": [
+    {
+      "property": "body",
+      "culture": null,
+      "segment": null,
+      "editor": "Umbraco.RichText",
+      "value": {
+        "markup": "<p>Basic: a home page type, one view and one published page.</p>\n<h2 id=\"create-it\">Create it</h2>\n<pre><code class=\"language-sh\">mkdir basic &amp;&amp; cd basic\nbunx @crombolo/cli@latest init --template basic\nbun install\n</code></pre>\n<h2 id=\"start-it\">Start it</h2>\n<pre><code class=\"language-sh\">bun start\n</code></pre>\n<p>The site is served on <a href=\"http://localhost:8080/\">http://localhost:8080/</a>.</p>\n<p>The first start applies the template&#39;s content and publishes it. The back office is at <a href=\"http://localhost:8080/crombolo\">http://localhost:8080/crombolo</a>, and the start prints how to sign in (<a href=\"/docs/getting-started/#sign-in\">Getting started</a>).</p>\n<h2 id=\"what-is-in-it\">What is in it</h2>\n<ul>\n<li>one content type, <code>homePage</code>, with a title;</li>\n<li>its view, <code>components/homePage.tsx</code>;</li>\n<li>one published page, the home page, as a content file in <code>content/pages/</code>.</li>\n</ul>\n<h2 id=\"where-to-look-first\">Where to look first</h2>\n<p>Open <code>components/homePage.tsx</code> and change what the page shows, then add types and pages from the command line: <a href=\"/docs/getting-started/from-the-command-line/\">A site from the command line</a> goes from here.</p>",
+        "blocks": null
+      }
+    },
+    {
+      "property": "generatedFrom",
+      "culture": null,
+      "segment": null,
+      "editor": "Umbraco.TextBox",
+      "value": "the template’s manifest and its TEMPLATE.md"
+    },
+    {
+      "property": "standfirst",
+      "culture": null,
+      "segment": null,
+      "editor": "Umbraco.TextArea",
+      "value": "crombolo init --template basic"
+    },
+    {
+      "property": "title",
+      "culture": null,
+      "segment": null,
+      "editor": "Umbraco.TextBox",
+      "value": "Basic"
+    },
+    {
+      "property": "umbracoUrlName",
+      "culture": null,
+      "segment": null,
+      "editor": "Umbraco.TextBox",
+      "value": "basic"
+    }
+  ]
+}

@@ -15,6 +15,12 @@ import {
 import { type Cron, isTimezone, nextOccurrence, parseCron } from './cron.ts'
 import { logger } from './logging.ts'
 
+/**
+ * Core's own queued work (story 246). A bundle's id is letters, digits and
+ * hyphens, so this can never be one.
+ */
+export const CORE_JOB_OWNER = 'crombolo:core'
+
 /** The largest payload a job may carry, as JSON. */
 export const MAX_PAYLOAD_BYTES = 64 * 1024
 /** How many times a job runs before it is failed for good, unless it says otherwise. */

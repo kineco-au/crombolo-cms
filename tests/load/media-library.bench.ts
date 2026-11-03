@@ -16,7 +16,11 @@ import { SYSTEM_MEDIA_TYPE_KEYS } from '@crombolo/core'
 import { ComponentRepository, ContentTypeRepository } from '@crombolo/data'
 import { dialectUnderTest } from '../support/db.ts'
 import { type Harness, signedInServer, V1 } from '../support/harness.ts'
-import { type GeneratedLibrary, generateMediaLibrary } from '../support/media-library.ts'
+import {
+  type GeneratedLibrary,
+  generatedKey,
+  generateMediaLibrary,
+} from '../support/media-library.ts'
 
 const LIBRARY = Number(Bun.env.CROMBOLO_BENCH_LIBRARY ?? 1_000_000)
 const UPLOADS = Number(Bun.env.CROMBOLO_BENCH_UPLOADS ?? 10_000)
@@ -30,6 +34,19 @@ const BUDGETS = {
   'file served': 50,
   'media page, near the end': dialectUnderTest === 'postgres' ? 2_000 : 1_000,
   'heap growth while serving (MB)': 200,
+  // The Media section (story 246).
+  'tree, first page': 200,
+  'tree, last page': dialectUnderTest === 'postgres' ? 2_000 : 1_000,
+  'tree opened at a file near the end': 500,
+  'folder view, first page': 500,
+  'folder view, last page': dialectUnderTest === 'postgres' ? 2_000 : 1_000,
+  'folder view, filtered': 1_500,
+  'folder view, sorted by name': 3_000,
+  search: 1_500,
+  'move a 100,000-item folder': dialectUnderTest === 'postgres' ? 3_000 : 1_000,
+  'trash a 100,000-item folder, answered': 1_000,
+  'trash a 100,000-item folder, done': dialectUnderTest === 'postgres' ? 15_000 : 5_000,
+  'empty the bin of it, done': dialectUnderTest === 'postgres' ? 60_000 : 10_000,
 } as const
 
 const PAGE = `[content-type]
@@ -154,6 +171,114 @@ describe(`a library of ${LIBRARY.toLocaleString('en')} media items (${dialectUnd
     )
     record('heap growth while serving (MB)', heapMb() - heapBefore)
   }, 600_000)
+
+  test('the Media section answers within budget (story 246)', async () => {
+    const folder = library.folder.key
+    const tree = (skip: number) =>
+      h.json<{ total: number; items: unknown[] }>(
+        `${V1}/tree/media/children?parentId=${folder}&skip=${skip}&take=100`,
+      )
+    record(
+      'tree, first page',
+      await timed(async () => expect((await tree(0)).items).toHaveLength(100)),
+    )
+    const lastSkip = Math.floor((LIBRARY - 1) / 100) * 100
+    record(
+      'tree, last page',
+      await timed(async () => expect((await tree(lastSkip)).items.length).toBeGreaterThan(0)),
+    )
+    record(
+      'tree opened at a file near the end',
+      await timed(async () => {
+        const response = await h.call(
+          `${V1}/tree/media/siblings?target=${generatedKey(LIBRARY - 10)}&before=50&after=50`,
+        )
+        expect(response.status).toBe(200)
+      }),
+    )
+    const view = (query: string) =>
+      h.json<{ total: number; items: unknown[] }>(`${V1}/collection/media?id=${folder}&${query}`)
+    record(
+      'folder view, first page',
+      await timed(async () => expect((await view('skip=0&take=50')).items).toHaveLength(50)),
+    )
+    const viewLast = Math.floor((LIBRARY - 1) / 50) * 50
+    record(
+      'folder view, last page',
+      await timed(async () =>
+        expect((await view(`skip=${viewLast}&take=50`)).items.length).toBeGreaterThan(0),
+      ),
+    )
+    record(
+      'folder view, filtered',
+      await timed(async () =>
+        expect((await view(`filter=photo-${LIBRARY - 7}&skip=0&take=50`)).total).toBeGreaterThan(0),
+      ),
+    )
+    record(
+      'folder view, sorted by name',
+      await timed(async () =>
+        expect(
+          (await view('orderBy=name&orderDirection=Descending&skip=0&take=50')).items,
+        ).toHaveLength(50),
+      ),
+    )
+    record(
+      'search',
+      await timed(async () => {
+        const response = await h.call(
+          `${V1}/item/media/search?query=photo-${LIBRARY - 123}&skip=0&take=20`,
+        )
+        expect(response.status).toBe(200)
+      }),
+    )
+  }, 600_000)
+
+  test('a 100,000-item folder moves, and is trashed and emptied in the background (story 246)', async () => {
+    const big = await generateMediaLibrary(h.server.db, 100_000, {
+      nodeState: h.server.schema.nodeState,
+      name: 'Imports',
+      keyOffset: 10_000_000,
+    })
+    const target = await generateMediaLibrary(h.server.db, 1, {
+      nodeState: h.server.schema.nodeState,
+      name: 'Archive',
+      keyOffset: 20_000_000,
+    })
+    record(
+      'move a 100,000-item folder',
+      await timed(async () => {
+        const moved = await h.put(`${V1}/media/${big.folder.key}/move`, {
+          target: { id: target.folder.key },
+        })
+        expect(moved.status).toBe(200)
+        while ((await h.server.backgroundJobs.runDue()) > 0) {}
+      }),
+    )
+    let job: string | null = null
+    record(
+      'trash a 100,000-item folder, answered',
+      await timed(async () => {
+        const trashed = await h.put(`${V1}/media/${big.folder.key}/move-to-recycle-bin`, {})
+        expect(trashed.status).toBe(200)
+        job = trashed.headers.get('crombolo-job')
+      }),
+    )
+    expect(job).toBeTruthy()
+    record(
+      'trash a 100,000-item folder, done',
+      await timed(async () => {
+        while ((await h.server.backgroundJobs.runDue()) > 0) {}
+      }),
+    )
+    record(
+      'empty the bin of it, done',
+      await timed(async () => {
+        expect((await h.del(`${V1}/recycle-bin/media`)).status).toBe(200)
+        while ((await h.server.backgroundJobs.runDue()) > 0) {}
+      }),
+    )
+  }, 1_800_000)
 
   test(`${UPLOADS.toLocaleString('en')} uploads while pages are served rebuild no page snapshot`, async () => {
     await h.call('/')

@@ -126,7 +126,10 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
   /** The signature, and the install it leads to unless this site would refuse it. */
   #review(item) {
     const checked = this._signatures.get(item.name)
-    const refused = Boolean(checked?.refused) || checked?.provenance?.state === 'invalid'
+    const refused =
+      Boolean(checked?.refused) ||
+      checked?.provenance?.state === 'invalid' ||
+      checked?.provenance?.state === 'unchecked'
     return html`
       ${this.#signature(item)}
       <div class="actions">

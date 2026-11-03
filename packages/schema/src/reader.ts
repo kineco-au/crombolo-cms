@@ -93,7 +93,38 @@ export function toml(source: string, r: Reader): Toml | undefined {
   try {
     return Bun.TOML.parse(source) as Toml
   } catch (error) {
-    r.problem('', `invalid TOML: ${(error as Error).message}`)
+    const line = syntaxErrorLine(source)
+    r.problems.push({
+      file: r.file,
+      path: '',
+      message: `invalid TOML: ${(error as Error).message}`,
+      ...(line !== undefined ? { line } : {}),
+    })
     return undefined
   }
+}
+
+const parses = (source: string) => {
+  try {
+    Bun.TOML.parse(source)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The line a TOML syntax error is on: the first from which every longer start
+ * of the file fails to read. Bun's error does not say, and a start that cuts a
+ * multi-line array or string in half fails too, so the first failing start is
+ * not enough.
+ */
+export function syntaxErrorLine(source: string): number | undefined {
+  const lines = source.split('\n')
+  let line: number | undefined
+  for (let n = lines.length; n > 0; n--) {
+    if (parses(lines.slice(0, n).join('\n'))) break
+    line = n
+  }
+  return line
 }

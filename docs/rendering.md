@@ -1101,6 +1101,37 @@ search and sharing (`<SeoHead>`, `seo=true`, the default share image) through
 `byKey`. Menus are read whole before a page renders, their media in one
 `byKeys`, so `menu('main')` stays synchronous.
 
+### The Media section at scale
+
+Story 246 holds the back office to the same rule as 197 holds the site: no
+request reads a folder whole, however many files it holds.
+
+- **The tree lists a folder's children folders first, then files**, each in
+  their sort order, a page (100) at a time, with **Load more** for the next. A
+  folder with a few sub-folders shows them all before its files; one with
+  100,000 sub-folders pages them before any file. Nothing expands by itself: a
+  folder's children load when it is opened, and only the path to the item being
+  edited opens on its own. "A folder" is an item of the built-in Folder media
+  type: `node.tree_group` is 0 for those and 1 for everything else (migration
+  062), and `ix_node_parent_tree` pages that order. Opening the tree at one item
+  reads a window round it, not its folder (`NodeRepository.siblings`).
+- **The folder view** (the grid and list in a folder) is counted, filtered,
+  sorted and paged in SQL through `MediaListingRepository`, loading only the
+  page's items and their creators.
+- **Moving a folder** rewrites its subtree's paths and levels in one statement.
+- **Large changes run in the background.** Trashing, restoring, moving or
+  deleting a branch of more than 5,000 items, and emptying a bin that large,
+  is queued on the jobs queue (story 187) as the person who asked, so the audit
+  log, versions and change events still name them; the request answers at once.
+  The bin is emptied 5,000 items a transaction, deepest first, each chunk's
+  files removed once it commits. An open back office hears the job's id
+  (`Crombolo:MediaJob` / `Queued`) and shows its progress in the header, read
+  from `<backoffice>/crombolo/api/media-jobs/<id>`, then reloads the Media tree
+  and the bin when it ends.
+
+The budgets, at a million items, are in [`testing.md`](testing.md), "Media at
+scale".
+
 ### Freshness: the content checkpoint
 
 **What it is.** `content_checkpoint` counts the committed changes to anything
@@ -1715,6 +1746,19 @@ Next.js-style `route.ts`: its exported `GET`, `POST` and so on, called with
 honoured.
 
 The pipeline is `packages/server/src/routes.ts`.
+
+**Behind a proxy** (story 220). Where a site splits its `api` node from its
+`web` nodes (`CROMBOLO_ROLE`), the proxy divides the `/crombolo/` paths so:
+
+| Paths | Sent to |
+| --- | --- |
+| `/crombolo/bundle.js`, `/crombolo/forms.js`, `/crombolo/islands.js`, `/crombolo/islands/*`, `/crombolo/forms/*` (a form posted), the Delivery API under `/crombolo/delivery/api/` | any node |
+| `/crombolo/actions/*` (server actions), the site's declared routes, its pages, `/css/`, `/scripts/`, `/sitemap.xml`, `/robots.txt` | a node that serves the site: `web` or `all` |
+| The back office, the Management API and the remote protocol, under the back-office path | a node that serves the back office: `api` or `all` |
+
+So sending `/crombolo/*` to the `api` node works once `/crombolo/actions/*`
+goes to a `web` node: an `api` node answers a server action, and a site route,
+with 404.
 
 ## Server actions
 

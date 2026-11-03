@@ -6,6 +6,198 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.46.0 — 2026-11-03
+
+- **Getting started from the command line** (256). The product site's Getting
+  started section now has:
+  - a walkthrough that builds a site with commands alone, from `crombolo init`
+    to pages served and shipped as a bundle;
+  - a page for each template site, saying what is in it and how to create and
+    start it. Each page is generated from the template's manifest, with its
+    `TEMPLATE.md` folded in.
+- **The command line's spec in the repository** (256). `docs/cli/clispec.json`
+  and `docs/cli/commands.md` describe every command, its arguments, flags,
+  outputs, errors and exit codes. Both are generated from the commands by
+  `bun run cli:spec`, and a test fails when they are stale, so a change to a
+  command shows in review.
+- **The guides written command line first** (257).
+  - Content types (formerly Schema as code) is built around the `types`
+    commands, with the files as a short last section.
+  - Forms, and Users and groups, are new guides.
+  - Deploying opens with shipping a site by bundle, deploy or push.
+  - A test checks every `crombolo` command line in the guides against the
+    CLI.
+- **`bundle deploy` raises the version too** (256). Like `bundle build` and
+  `push`, it raises the definitions' version when they changed since it was
+  first applied. A deploy sends only what is committed, so it then asks for
+  that commit.
+- **Compositions shown and checked** (255).
+  - **`types show`:** a composed type lists the properties it takes from its
+    compositions, in their tabs, each marked with where it comes from. In
+    `-o json` each property has `from`, plus `via` when it comes through a
+    composition's own composition.
+  - **Clashes refused:** a property whose alias a composition already has is
+    refused, as are two compositions bringing the same alias. That holds for
+    every command, for a hand edit and when a site starts. The refusal names
+    the command that fixes it.
+  - **`types new`:**
+    - with `--compose`, a type gets no `title` of its own when a composition
+      has one;
+    - `--no-title` leaves the title out of any type;
+    - a new element type starts with no properties and outside the Library.
+      `--title` and `--library` add them, where before it had both unasked.
+  - **Upgrade note:** a site whose definitions already have such a clash no
+    longer applies them. Run `crombolo types check` before upgrading, and
+    remove each property it names with the command it gives.
+- **Permissions, sections and events by plain names** (254).
+  - **Listings:** `crombolo users groups permissions`,
+    `crombolo users groups sections` and `crombolo webhooks events` list what
+    the group and webhook commands take, each with a line on what it allows.
+    Each listing takes `-o json`.
+  - **Permissions** are named `area:action`, for example `content:publish`,
+    `library:read`, `media:update`, `forms:manage` and `form-entries:view`. A
+    bare `publish` is refused with the areas it could mean. Groups keep the
+    stored names (`Umb.Document.Publish`), which the commands still take, and
+    `users groups show` prints the plain ones.
+  - **Events** are named from what they say, such as `content-published`.
+    `Umbraco.ContentPublish` still works.
+  - **An unknown name** is refused with the names allowed.
+  - **Form types:** `forms field add --type` and `forms workflow add --type`
+    take kebab case (`long-answer`, `send-email`), as `--editor` does. Camel
+    case still works, and `--editor` takes it too.
+- **The command line speaks in the site's terms** (252). A problem names its
+  definition and the part of it, with the command that changes it: *The content
+  type "Content page", its property "body": unknown data type "nothing"
+  (`crombolo types property update contentPage body`)*.
+  - **Files that won't read:** a file that does not read at all is named by its
+    file and line. The problems it causes elsewhere, such as an unknown type it
+    would have defined, are left out.
+  - **No file names when adding:** `types new`, `forms new`, `workflows new`,
+    `webhooks new` and `languages add` say what was added, not the file
+    written. `languages list` says "The site is in English (en-US) only".
+  - **`crombolo init`** says what it set up and leads with the next commands.
+    `schema/` is named once, as what to commit, and `--verbose` lists the files.
+  - **`crombolo site show`** is the site in one place: its languages, page
+    addresses, types by kind, forms, workflows, user groups and webhooks. Each
+    line names the command that shows more. `crombolo status` points at it.
+  - **The version, raised when shipped:** `bundle build` of a site, and
+    `push`, raise its definitions' version a minor step when they changed
+    since that version was first applied there. A production site refuses
+    changed definitions under the same version, and only a hand edit could
+    raise it before.
+  - **Error details print in words:** they no longer print as
+    `[object Object]`, as some of `bundle apply`'s did.
+  - **Upgrade note:** in `-o json`, the `problems` of `types check` and
+    `types sync` are now objects (`text`, `message`, `definition`, `part`,
+    `file`, `line`) rather than strings. A script that read them as strings
+    should read `text`.
+- **Pages written from the command line** (253). `crombolo content new <path>
+  --type <type>` makes a page with its values. `content update` changes its
+  values, name and view, and `content show` shows its values and blocks. The
+  values are given in the shorthand content files use: Markdown, paths, and
+  JSON for toggles, numbers and lists.
+  - **Blocks:** `content block add|update|move|remove` edits a page's blocks,
+    each named by its alias or key.
+  - **Saving:** pages are saved as drafts, through the same rules as the back
+    office. `--publish` saves and publishes in one step, so a page that cannot
+    be published is not changed.
+  - **Keys:** a new page has the key its content file would have.
+- **Block aliases** (253). A block can be given an alias, unique within its
+  list:
+  - set in the back office or in a content file (`alias = "hero"`);
+  - read in a view with `model.value('blocks').byAlias('hero')`;
+  - carried by the Delivery API on the block item.
+
+  A save where two blocks share one is refused.
+- **Blocks from content files open cleanly in the back office** (253). Each
+  value in a block is stored with its editor, as the back office stores it, so
+  opening the page no longer logs "Editor alias not found".
+- **Renames that keep their content** (250): `crombolo types rename <alias>
+  <new>` renames a content, element, media, member or data type, and `crombolo
+  types property rename <type> <property> <new>` a property. Each keeps its key,
+  so pages, items and values stay with it. A rename is refused while anything
+  else names the old alias, listing each place; `--everywhere` renames it in the
+  other definitions, the site's content files and its views in one step, and
+  writes the views' model types again. `types show` now lists the content files
+  and views that use a type, and applying a release says what it renames.
+- **Every site definition changed from the command line** (251), each checked
+  against the site before anything is written and applied at once, with
+  `--dry-run`, `--no-apply` and `-o json`:
+  - **Forms:** `crombolo forms list|show|update|remove`, `forms field
+    add|update|move|remove` (with `--show-when` conditions), `forms page …`,
+    `forms group …` and `forms workflow add|update|remove`. A form a page or
+    Library form uses is not removed.
+  - **Approval workflows:** `workflows list|show|update|remove` and `workflows
+    stage add|update|remove`; removing a workflow withdraws its waiting
+    requests, saying how many.
+  - **Webhooks:** `webhooks list|show|update|remove`; a secret header only as
+    `env:NAME`.
+  - **Languages:** `languages update|remove`; a language pages have a version in
+    is not removed.
+  - **User groups:** `users groups list|show|new|update|remove|export`; a group
+    made in the back office is exported to become one of the site's own before
+    the CLI changes it, and one with users is removed only with
+    `--move-users-to`.
+  - **Page addresses:** `crombolo site urls --hide-top-level|--show-top-level`.
+
+- **Data types changed from the command line** (249): `crombolo types update
+  <data type>` stores any setting with `--set` (as given; it takes effect when
+  the editor uses that name), takes the named settings `types new data-type`
+  does, adds and removes a block list's blocks, and sets a picker's allowed types
+  and start node by a page's path. `types remove` removes a data type nothing
+  uses, and `types editors` lists the editors and their settings.
+
+- **Types changed from the command line** (248): `crombolo types update` (a
+  type's settings, allowed children, compositions and views), `types remove`
+  (refused while pages use it; `--retire` keeps them), `types property
+  add|update|move|remove` and `types tab add|rename|move|remove`. Each is
+  checked against the site before anything is written, applied at once, and
+  takes `--dry-run` and `--no-apply`.
+  - **`types add-property` is now `types property add`**, with no alias kept.
+    It no longer leaves a changed definition behind when the site refuses it.
+
+- **`crombolo types list` and `types show`** (247): every content, element,
+  media, member and data type the site has, and one in full, with its tabs and
+  properties, what uses it (child rules, compositions, block lists, pickers),
+  how many items use it, and whether it is applied yet.
+
+- **The Media section at a million items** (246).
+  - **The tree lists a folder's sub-folders before its files**, a page at a time
+    with **Load more**. Editors see the change wherever a folder's manual sort
+    order mixed folders and files: folders now come first. Opening the tree at an
+    item no longer reads its whole folder.
+  - **A folder's grid and list views** page in the database, so a folder of any
+    size opens as quickly as a small one.
+  - **Moving a folder** is one change however much is in it, and **trashing,
+    restoring, moving or deleting more than 5,000 items, or emptying a bin that
+    large, runs in the background**: the header shows its progress, and the tree
+    refreshes when it ends.
+  - **Migration 062** (`AddMediaTreeOrder`) adds `node.tree_group` and an index.
+    It only adds.
+
+- **A bundle installed from a file is kept in the site** (245):
+  `crombolo bundle install ./x.tgz` copies it to `bundles/<name>-<version>.tgz`
+  and installs it from there, so it is committed with the site and installs the
+  same way everywhere; it used to name the file wherever it was downloaded. A
+  site bundle carries the files its `package.json` names, so a deploy installs
+  them on the remote too.
+
+- `/crombolo/bundle.js` is served on an `api` node as well (220), as the other
+  site scripts already were, so a proxy that sends `/crombolo/*` to the api
+  node no longer breaks `crombolo.fetch` on the site's pages. The paths a proxy
+  must send to a node that serves the site are listed in `docs/rendering.md`,
+  "Behind a proxy".
+
+- **A host checks a bundle's signature from `@crombolo/crombolo/host`** (244):
+  `verifyPackage`, `verifyProvenance`, `provenanceProblem`, `describeProvenance`
+  and their types, so a host that installs bundles itself holds them to the
+  site's rule, in the back office's words.
+  - **A new signature state, `unchecked`:** when Sigstore's trusted root cannot
+    be fetched and none is cached, a signed bundle is *Couldn't be checked right
+    now* rather than *Signature not accepted*. It is still refused under every
+    policy; trying again later may succeed. Code that matches on states should
+    handle it.
+
 ## v0.45.0 — 2026-11-02
 
 - **Signed bundles** (060). A bundle can say where it was built:

@@ -10,12 +10,14 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { ObjectTypes } from '@crombolo/core'
+import { ObjectTypes, SYSTEM_MEDIA_TYPE_KEYS } from '@crombolo/core'
 import {
   ComponentRepository,
   ContentTypeRepository,
   type Db,
+  DocumentRepository,
   MediaListingRepository,
+  NodeRepository,
   queryFor,
 } from '@crombolo/data'
 import { PublishedCache } from '@crombolo/render'
@@ -80,13 +82,17 @@ async function fullScans(db: Db, sql: string, params: unknown[]): Promise<string
     const plan = await db.query<{ 'QUERY PLAN': string }>(`EXPLAIN ${sql}`, params)
     return plan
       .map((row) => String(Object.values(row)[0]))
-      .filter((line) => /Seq Scan on (node|content|content_version|property_value)\b/.test(line))
+      .filter((line) =>
+        /Seq Scan on (node|content|content_version|document_version|property_value)\b/.test(line),
+      )
   }
   const plan = await db.query<{ detail: string }>(`EXPLAIN QUERY PLAN ${sql}`, params)
   return plan
     .map((row) => String(row.detail))
     .filter((detail) =>
-      /^SCAN (n|c|head|cv|pv|v|node|content|content_version|property_value)\b/.test(detail),
+      /^SCAN (n|an|c|pc|pd|head|hv|cv|pv|v|node|content|content_version|document_version|property_value)\b/.test(
+        detail,
+      ),
     )
 }
 
@@ -201,5 +207,88 @@ describe(`a library of ${ITEMS.toLocaleString('en')} media items (${dialectUnder
     const pageQuery = listing.find((s) => /\blimit\b/i.test(s.sql))
     expect(pageQuery).toBeDefined()
     expect(await fullScans(h.server.db, pageQuery?.sql ?? '', pageQuery?.params ?? [])).toEqual([])
+  })
+})
+
+describe(`the Media section's tree at ${ITEMS.toLocaleString('en')} items (story 246, ${dialectUnderTest})`, () => {
+  const FOLDERS = 30
+  const folderKeys: string[] = []
+
+  beforeAll(async () => {
+    // Made after the files, so they sort last: only the tree's own order brings them first.
+    const media = new DocumentRepository(h.server.db, {
+      kind: 'media',
+      nodeState: h.server.schema.nodeState,
+    })
+    for (let i = 0; i < FOLDERS; i++) {
+      const folder = await media.create({
+        key: crypto.randomUUID(),
+        contentTypeKey: SYSTEM_MEDIA_TYPE_KEYS.Folder,
+        componentKey: null,
+        parentKey: library.folder.key,
+        variants: [{ culture: null, segment: null, name: `Year ${2000 + i}` }],
+        values: [],
+      })
+      folderKeys.push(folder.key)
+    }
+  }, 120_000)
+
+  /** The page query among `statements`, held to the index: no full scan, and no sort of the folder. */
+  async function heldToTheIndex(statements: Array<{ sql: string; params: unknown[] }>) {
+    const pages = statements.filter((s) => /\blimit\b/i.test(s.sql))
+    expect(pages.length).toBeGreaterThan(0)
+    for (const page of pages) {
+      expect(await fullScans(h.server.db, page.sql, page.params)).toEqual([])
+      if (h.server.db.dialect.name === 'sqlite') {
+        const plan = await h.server.db.query<{ detail: string }>(
+          `EXPLAIN QUERY PLAN ${page.sql}`,
+          page.params,
+        )
+        expect(plan.map((row) => String(row.detail)).join('\n')).not.toContain('TEMP B-TREE')
+      }
+    }
+  }
+
+  test('a folder lists its sub-folders first, then its files, a page at a time', async () => {
+    const first = await h.json<{ total: number; items: Array<{ id: string; isFolder?: boolean }> }>(
+      `${V1}/tree/media/children?parentId=${library.folder.key}&skip=0&take=100`,
+    )
+    expect(first.total).toBe(ITEMS + FOLDERS)
+    expect(first.items.slice(0, FOLDERS).map((item) => item.id)).toEqual(folderKeys)
+    expect(first.items[FOLDERS]?.id).toBe(generatedKey(0))
+    // The tree asks a page at a time, so skip is a multiple of take.
+    const lastSkip = Math.floor((ITEMS + FOLDERS - 1) / 100) * 100
+    const last = await h.json<{ items: Array<{ id: string }> }>(
+      `${V1}/tree/media/children?parentId=${library.folder.key}&skip=${lastSkip}&take=100`,
+    )
+    expect(last.items.at(-1)?.id).toBe(generatedKey(ITEMS - 1))
+    expect(last.items).toHaveLength(ITEMS + FOLDERS - lastSkip)
+
+    // Held to the index on a page the planner reads through it; how deep pages cost
+    // at a million items is the benchmark's (tests/load/media-library.bench.ts).
+    const paged = await statementsOf(h.server.db, (db) =>
+      new NodeRepository(db).children(library.folder.id, ObjectTypes.Media, 100, 100),
+    )
+    await heldToTheIndex(paged)
+  })
+
+  test('opening the tree at a file deep in the folder reads a window, not the folder', async () => {
+    const key = generatedKey(ITEMS - 10)
+    let window: Awaited<ReturnType<NodeRepository['siblings']>>
+    const statements = await statementsOf(h.server.db, async (db) => {
+      window = await new NodeRepository(db).siblings(key, ObjectTypes.Media, 5, 5)
+    })
+    expect(window?.items.map((item) => item.key)).toEqual(
+      Array.from({ length: 11 }, (_, i) => generatedKey(ITEMS - 15 + i)),
+    )
+    expect(window?.totalBefore).toBe(FOLDERS + ITEMS - 15)
+    expect(window?.totalAfter).toBe(4)
+    await heldToTheIndex(statements)
+    // Each statement is the item by its key, a count or a page: none reads the folder's rows whole.
+    for (const statement of statements)
+      expect(
+        /\blimit\b|count\(|where "unique_id" = \?$/i.test(statement.sql.trim()),
+        statement.sql,
+      ).toBe(true)
   })
 })

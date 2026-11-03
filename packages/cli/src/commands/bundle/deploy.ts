@@ -9,6 +9,8 @@ import { CliError } from '../../errors.ts'
 import { confirm } from '../../support/prompt.ts'
 import { applyToRemote, packed } from '../../support/remote-apply.ts'
 import { restartRemote } from '../../support/restart.ts'
+import { siteConfig } from '../../support/site.ts'
+import { raiseVersionIfChanged } from '../../support/types.ts'
 
 /** What git says is not committed under `dir`, or undefined when it is not a git checkout. */
 function uncommitted(dir: string): string[] | undefined {
@@ -85,6 +87,13 @@ export default class BundleDeploy extends BaseCommand {
     const shown = relative(process.cwd(), dir) || '.'
     if (!existsSync(join(dir, 'schema')))
       throw new CliError('not_found', `${shown} has no schema/ directory, so it is not a site.`)
+    // The site itself: a new version when its definitions changed under this one (story 256)
+    let raised: string | undefined
+    if (dir === resolve(process.cwd())) {
+      const config = await siteConfig()
+      if (resolve(config.schemaDir) === join(dir, 'schema'))
+        raised = await raiseVersionIfChanged(this, config)
+    }
     const changes = uncommitted(dir)
     if (changes === undefined)
       throw new CliError('refused', `${shown} is not in a git repository.`, {
@@ -92,7 +101,9 @@ export default class BundleDeploy extends BaseCommand {
       })
     if (changes.length > 0)
       throw new CliError('refused', `${shown} has ${changes.length} change(s) not committed.`, {
-        hint: 'Commit them, or set them aside, so the remote runs what the repository holds.',
+        hint: raised
+          ? `The definitions are now at ${raised}: commit that, then deploy again.`
+          : 'Commit them, or set them aside, so the remote runs what the repository holds.',
         details: changes.slice(0, 20),
       })
 

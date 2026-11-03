@@ -28,6 +28,11 @@ export function signatureWords(provenance, refused, policy) {
   } else if (provenance?.state === 'local') {
     label = 'From this site'
     detail = "Linked from this site's own code, not from a package registry."
+  } else if (provenance?.state === 'unchecked') {
+    tone = 'warning'
+    label = "Couldn't be checked right now"
+    detail =
+      "Its signature couldn't be checked just now, so it will not be installed. Try again in a few minutes."
   } else if (provenance?.state === 'invalid') {
     tone = 'danger'
     label = "Signature doesn't match"
@@ -36,7 +41,7 @@ export function signatureWords(provenance, refused, policy) {
       : "Its signature can't be checked, so it will not be installed."
   }
   let refusal = ''
-  if (refused && provenance?.state !== 'invalid') {
+  if (refused && provenance?.state !== 'invalid' && provenance?.state !== 'unchecked') {
     tone = 'danger'
     refusal =
       provenance?.state === 'signed' && policy?.sources?.length

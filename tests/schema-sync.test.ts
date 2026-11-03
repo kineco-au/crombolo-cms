@@ -193,7 +193,7 @@ describe(`schema sync (${dialectUnderTest})`, () => {
 
     const refused = await sync(db, changed, NODE, prod)
     expect(refused.action).toBe('refused')
-    expect(refused.reason).toContain('without a version bump')
+    expect(refused.reason).toContain('without a new version')
 
     const applied = await sync(db, changed, NODE, dev)
     expect(applied.action).toBe('applied')

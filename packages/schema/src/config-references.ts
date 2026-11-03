@@ -75,7 +75,7 @@ const itemsOf = (value: unknown): string[] =>
  * `map` makes of it, returning a copy. `map` answers undefined to leave a
  * value as it is.
  */
-function mapReferences(
+export function mapReferences(
   editor: string,
   config: Record<string, unknown>,
   map: (value: string, kind: ReferenceKind, path: string) => string | undefined,

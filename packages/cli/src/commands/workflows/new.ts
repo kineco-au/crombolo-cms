@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { fileNameFor, newWorkflow, writeWorkflow } from '@crombolo/schema'
 import { Args, Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
-import { describeSync, here } from '../../support/describe.ts'
+import { describeDefinition, describeSync, here } from '../../support/describe.ts'
 import { siteConfig } from '../../support/site.ts'
 import { applySchema, loadTypes, needSchemaDir, refuseOwnProblems } from '../../support/types.ts'
 
@@ -54,11 +54,14 @@ export default class WorkflowsNew extends BaseCommand {
     refuseOwnProblems(
       { ...loaded.set, workflows: [...(loaded.set.workflows ?? []), workflow] },
       `schema/workflows/${args.alias}`,
+      config.schemaDir,
     )
     const file = join(config.schemaDir, 'workflows', fileNameFor(args.alias))
     await mkdir(join(file, '..'), { recursive: true })
     await writeFile(file, writeWorkflow(workflow))
-    this.say(`  created  ${here(file)}`)
+    this.say(
+      `  added    ${describeDefinition({ kind: 'workflow', alias: args.alias, name: workflow.name })}`,
+    )
     const report = await applySchema(this, config)
     return { created: [here(file)], schema: describeSync(report) }
   }

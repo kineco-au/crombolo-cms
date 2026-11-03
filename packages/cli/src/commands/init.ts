@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { Flags } from '@oclif/core'
 import { BaseCommand } from '../base.ts'
 import { cwd } from '../support/site.ts'
-import { findTemplate, listTemplates, scaffoldFiles } from '../templates.ts'
+import { DEFAULT_SITE_NAME, findTemplate, listTemplates, scaffoldFiles } from '../templates.ts'
 
 /** What may already be in a folder `init` scaffolds into: a fresh repository, and macOS's folder settings. */
 const IGNORED = new Set(['.git', '.DS_Store'])
@@ -33,6 +33,7 @@ export default class Init extends BaseCommand {
     }),
     postgres: Flags.boolean({ summary: 'configure Postgres rather than SQLite' }),
     template: Flags.string({ summary: 'a starter template, or `list`', helpValue: '<id>' }),
+    verbose: Flags.boolean({ summary: 'list every file it writes' }),
   }
   static override spec = {
     effects: 'non_idempotent',
@@ -81,15 +82,33 @@ export default class Init extends BaseCommand {
       if (file.copyFrom === undefined) await writeFile(target, file.text ?? '')
       else await Bun.write(target, Bun.file(file.copyFrom))
       created.push(file.path)
-      this.say(`  created  ${file.path}`)
+      if (flags.verbose) this.say(`  created  ${file.path}`)
     }
 
     const next = flags.next ?? template?.next ?? false
+    const name = flags.name ?? DEFAULT_SITE_NAME
     this.say(
-      next
-        ? '\nNext:\n  bun install\n  bun run dev     # the CMS on :8080, the Next.js app in web/ on :3000'
-        : '\nNext:\n  bun install\n  bun start',
+      `A site called "${name}", on ${flags.postgres ? 'Postgres' : 'SQLite'}` +
+        `${template ? `, from the template "${template.id}"` : ''}` +
+        `${next ? ', with a Next.js front end in web/' : ''}.`,
     )
+    this.say("Its definitions are kept in schema/: commit it with the rest of the site's code.")
+    if (next)
+      this.say(
+        '\nNext:\n  bun install\n  bun run dev     # the CMS on :8080, the Next.js app in web/ on :3000',
+      )
+    else if (template) this.say('\nNext:\n  bun install\n  bun start')
+    else
+      this.say(
+        [
+          '\nNext:',
+          '  bun install',
+          '  crombolo types new content-type page --name Page --at-root   # a type of page, and its view',
+          '  crombolo content new /Home --type page --set title=Home --publish',
+          '  bun start',
+          '\n`crombolo types --help` and `crombolo content --help` list what else there is.',
+        ].join('\n'),
+      )
     if (template?.seed)
       this.say(
         '\n`bun start` applies content/ on the first boot, and again after you change it:\n' +

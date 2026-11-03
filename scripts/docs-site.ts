@@ -14,7 +14,9 @@ import {
   cliReferencePages,
   exitCodesHtml,
 } from '../packages/cli/src/reference.ts'
+import { listTemplates } from '../packages/cli/src/templates.ts'
 import { ROOT } from './packages.ts'
+import { listSites } from './sites.ts'
 
 export const DOCS_DIR = join(ROOT, 'sites/crombolo/docs')
 type Manifest = Parameters<typeof cliReferencePages>[0]
@@ -173,9 +175,126 @@ const commandLinePage = (page: CliReferencePage): DocsPage => ({
   children: [],
 })
 
+/** A template `crombolo init --template` offers, as its Getting started page tells it (story 256). */
+export interface TemplateInfo {
+  id: string
+  name: string
+  description: string
+  /** It has a Next.js front end in `web/`. */
+  next: boolean
+  /** It ships content, applied and published on the first start. */
+  seed: boolean
+  /** The server bundles it brings, by package name. */
+  bundles: string[]
+  /** Its own words, from a `TEMPLATE.md` beside it. */
+  notes?: string
+}
+
+const notesIn = (dir: string): string | undefined => {
+  const file = join(dir, 'TEMPLATE.md')
+  return existsSync(file) ? readFileSync(file, 'utf8').trim() : undefined
+}
+
+/** The CLI's own templates, then each site it distributes: what `init --template list` offers. */
+export function templateInfos(): TemplateInfo[] {
+  const own = listTemplates(join(ROOT, 'packages/cli/templates')).map((t) => ({
+    id: t.id,
+    name: t.name,
+    description: t.description,
+    next: t.next,
+    seed: t.seed,
+    bundles: t.serverBundles.map((b) => b.package),
+    notes: notesIn(t.dir),
+  }))
+  const sites = listSites()
+    .filter((site) => site.distribute)
+    .map((site) => ({
+      id: site.id,
+      name: site.name,
+      description: site.description,
+      next: site.next,
+      seed: existsSync(join(site.dir, 'content')),
+      bundles: site.bundles.flatMap((b) =>
+        b && typeof b === 'object' && typeof (b as { package?: unknown }).package === 'string'
+          ? [(b as { package: string }).package]
+          : [],
+      ),
+      notes: notesIn(site.dir),
+    }))
+  return [...own, ...sites]
+}
+
+const templateSlug = (id: string) => id.replaceAll('/', '-')
+
+function templateMarkdown(t: TemplateInfo): string {
+  const folder = templateSlug(t.id).replace(/^demo-/, '')
+  const block = (...lines: string[]) => ['```sh', ...lines, '```'].join('\n')
+  const parts = [
+    `${t.name}: ${t.description}.`,
+    '## Create it',
+    block(
+      `mkdir ${folder} && cd ${folder}`,
+      `bunx @crombolo/cli@latest init --template ${t.id}`,
+      'bun install',
+    ),
+    '## Start it',
+    t.next ? block('bun run dev') : block('bun start'),
+    t.next
+      ? 'This runs the CMS on <http://localhost:8080/> and the Next.js front end in `web/` on <http://localhost:3000/>.'
+      : 'The site is served on <http://localhost:8080/>.',
+    `${t.seed ? "The first start applies the template's content and publishes it. " : ''}The back office is at <http://localhost:8080/crombolo>, and the start prints how to sign in ([Getting started](/docs/getting-started/#sign-in)).`,
+  ]
+  if (t.bundles.length > 0)
+    parts.push(
+      '## The bundles it brings',
+      t.bundles.map((b) => `- \`${b}\``).join('\n'),
+      'They are installed with the site, and wired in its `crombolo.config.ts`.',
+    )
+  if (t.notes) parts.push(t.notes)
+  return parts.join('\n\n')
+}
+
+/** Templates, and a page for each, under Getting started. */
+export function templatePages(templates = templateInfos()): DocsPage {
+  const index = [
+    'Each template is a site to start from: its types, views, styles and starting content. `init --template` scaffolds one into an empty folder.',
+    '| Template | What it is |',
+    '| --- | --- |',
+    ...templates.map(
+      (t) =>
+        `| [${t.name}](/docs/getting-started/templates/${templateSlug(t.id)}/) | ${t.description} |`,
+    ),
+    'To list them from the command line:',
+    '```sh\nbunx @crombolo/cli@latest init --template list\n```',
+  ].join('\n\n')
+  return {
+    path: 'getting-started/templates',
+    name: 'Templates',
+    slug: 'templates',
+    standfirst: 'A page for each template: what is in it, and how to create and start it.',
+    body: renderMarkdown(index),
+    generatedFrom: 'the templates the command line offers',
+    children: templates.map((t) => ({
+      path: `getting-started/templates/${templateSlug(t.id)}`,
+      name: t.name,
+      slug: templateSlug(t.id),
+      standfirst: `crombolo init --template ${t.id}`,
+      body: renderMarkdown(templateMarkdown(t)),
+      generatedFrom: 'the template’s manifest and its TEMPLATE.md',
+      children: [],
+    })),
+  }
+}
+
 /** The whole docs tree under the section, in reading order. */
 export function docsTree(manifest: Manifest, dir = DOCS_DIR): DocsPage[] {
-  const top = readGuides(dir).map((guide) => guidePage('', guide))
+  // A top page's folder holds its pages: getting-started.md, then getting-started/*.md
+  const top = readGuides(dir).map((guide) => {
+    const page = guidePage('', guide)
+    const children = readGuides(join(dir, page.slug)).map((g) => guidePage(page.slug, g))
+    if (page.slug === 'getting-started') children.push(templatePages())
+    return { ...page, children }
+  })
   const guides = readGuides(join(dir, 'guides')).map((guide) => guidePage('guides', guide))
   const commands = cliReferencePages(manifest)
   return [

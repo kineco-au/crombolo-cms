@@ -24,7 +24,7 @@ function languageName(iso: string): string {
 }
 
 export default class LanguagesAdd extends BaseCommand {
-  static override summary = 'add a language to languages.toml, then apply it'
+  static override summary = 'add a language to the site'
   static override examples = [
     '<%= config.bin %> languages add fr-FR --fallback en-US',
     '<%= config.bin %> languages add en-GB --default',
@@ -58,7 +58,7 @@ export default class LanguagesAdd extends BaseCommand {
     needSchemaDir(config)
     const loaded = loadTypes(config)
     if (loaded.set.languages.some((l) => l.iso.toLowerCase() === args.iso.toLowerCase()))
-      this.fail('conflict', `languages.toml already has ${args.iso}.`)
+      this.fail('conflict', `The site already has the language ${args.iso}.`)
     // A site with no languages.toml is in English until it says otherwise, so the
     // first file keeps that language beside the new one rather than dropping it.
     const existing =
@@ -74,10 +74,10 @@ export default class LanguagesAdd extends BaseCommand {
       ...existing.map((l) => (flags.default ? { ...l, default: false } : l)),
       added,
     ]
-    refuseOwnProblems({ ...loaded.set, languages }, 'schema/languages')
+    refuseOwnProblems({ ...loaded.set, languages }, 'schema/languages', config.schemaDir)
     const file = join(config.schemaDir, 'languages.toml')
     await writeFile(file, writeLanguages(languages))
-    this.say(`  updated  ${here(file)}`)
+    this.say(`  added    ${added.name} (${added.iso}) to the site's languages`)
     const report = await applySchema(this, config)
     return {
       created: [here(file)],

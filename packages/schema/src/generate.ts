@@ -1,17 +1,7 @@
-/**
- * `crombolo generate`: TypeScript for the content types in a schema set, so a
- * view can name a property and have the compiler check it. Umbraco's
- * ModelsBuilder, minus the DLL.
- */
-import { BUILT_IN_MEDIA_TYPES, SYSTEM_CONTENT_TYPES } from '@crombolo/data'
-import {
-  BUILTIN_DATA_TYPES,
-  builtInContentTypeSchema,
-  builtInMediaTypeSchema,
-  storageTypeFor,
-} from './builtin.ts'
+import { BUILTIN_DATA_TYPES, storageTypeFor } from './builtin.ts'
+import { effectiveProperties } from './compositions.ts'
 import { typeKeyFor } from './keys.ts'
-import { allProperties, type SchemaBlock, type SchemaContentType, type SchemaSet } from './model.ts'
+import type { SchemaBlock, SchemaSet } from './model.ts'
 
 export function pascal(alias: string): string {
   const cleaned = alias.replace(/[^A-Za-z0-9]+(.)?/g, (_, next: string | undefined) =>
@@ -123,11 +113,11 @@ function tsTypeFor(set: SchemaSet, dataTypeAlias: string): string {
       return 'string'
     case 'Umbraco.BlockList': {
       const { content, settings } = blockElements(set, config, blocks)
-      return `Array<BlockItem & { content: ${elementUnion(content)}; settings: ${settings.length ? `${elementUnion(settings)} | null` : 'PublishedElement | null'} }>`
+      return `BlockListValue<BlockItem & { content: ${elementUnion(content)}; settings: ${settings.length ? `${elementUnion(settings)} | null` : 'PublishedElement | null'} }>`
     }
     case 'Umbraco.BlockGrid': {
       const { content } = blockElements(set, config, blocks)
-      return `Array<BlockGridItem & { content: ${elementUnion(content)} }>`
+      return `BlockListValue<BlockGridItem & { content: ${elementUnion(content)} }>`
     }
   }
   switch (storageTypeFor(editor)) {
@@ -140,29 +130,6 @@ function tsTypeFor(set: SchemaSet, dataTypeAlias: string): string {
     default:
       return editor === 'Umbraco.TextArea' || editor === 'Umbraco.RichText' ? 'string' : 'unknown'
   }
-}
-
-/** Every property a type carries, including those from its compositions. */
-export function effectiveProperties(
-  set: SchemaSet,
-  type: SchemaContentType,
-  seen = new Set<string>(),
-) {
-  if (seen.has(type.alias)) return []
-  seen.add(type.alias)
-  const out = [...allProperties(type)]
-  for (const alias of type.compositions) {
-    // A built-in type such as `seoFields` has no file until a site extends it.
-    const shipped = SYSTEM_CONTENT_TYPES.find((t) => t.alias === alias)
-    const shippedMedia = BUILT_IN_MEDIA_TYPES.find((t) => t.alias === alias)
-    const composed =
-      set.contentTypes.find((t) => t.alias === alias) ??
-      set.mediaTypes?.find((t) => t.alias === alias) ??
-      (shipped ? builtInContentTypeSchema(shipped) : undefined) ??
-      (shippedMedia ? builtInMediaTypeSchema(shippedMedia) : undefined)
-    if (composed) out.push(...effectiveProperties(set, composed, seen))
-  }
-  return out
 }
 
 export function generateTypes(set: SchemaSet): string {
@@ -192,6 +159,7 @@ export function generateTypes(set: SchemaSet): string {
   const used = [
     'BlockGridItem',
     'BlockItem',
+    'BlockListValue',
     'Link',
     'MediaWithCrops',
     'PublishedContent',

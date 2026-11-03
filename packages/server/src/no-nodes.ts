@@ -138,7 +138,7 @@ export function noNodesPage(options: { siteName: string; backOfficePath: string 
       <h2>Configure page metadata</h2>
       <p>A content type says what a kind of page holds: a title, a summary, a body. Add one in the back office under <strong>Settings → Structure</strong>, or from the command line:</p>
       <pre><code>bunx crombolo types new content-type article --at-root
-bunx crombolo types add-property article summary --type textarea</code></pre>
+bunx crombolo types property add article summary --type textarea</code></pre>
       <p>Either way it is saved as a file, <code>schema/content-types/article.toml</code>, so it travels with your code.</p>
     </li>
     <li>

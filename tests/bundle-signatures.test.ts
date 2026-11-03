@@ -420,3 +420,17 @@ describe('bundle apply on this machine (story 060)', () => {
     expect(other.out).toContain('only signed bundles')
   }, 60_000)
 })
+
+describe('a signature that could not be checked (story 244)', () => {
+  test('says so, as a warning, and that it will not be installed', () => {
+    const words = signatureWords(
+      { state: 'unchecked', reason: "Sigstore's trusted root could not be fetched" },
+      'refused',
+      { signatures: 'optional', sources: [] },
+    )
+    expect(words.label).toBe("Couldn't be checked right now")
+    expect(words.tone).toBe('warning')
+    expect(words.detail).toContain('will not be installed')
+    expect(words.refusal).toBe('')
+  })
+})

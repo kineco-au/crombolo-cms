@@ -1,5 +1,5 @@
 /**
- * `types new` and `types add-property`: the model they build.
+ * `types new` and `types property add`: the model they build.
  *
  * What matters is that the file they produce is one the rest of the system
  * accepts — parsed back to the same type, and valid — because a scaffold that writes something subtly
@@ -50,9 +50,11 @@ describe('scaffolding a type', () => {
   test('writes an element type, which has no URL and so no template', () => {
     const type = newType({ alias: 'quote', element: true, tab: 'Content' }, keys())
     expect(type.isElement).toBe(true)
-    // Umbraco needs both: one makes it an element, the other puts it in the
-    // Library's Create dialog.
-    expect(type.allowInLibrary).toBe(true)
+    // In the Library's Create dialog only when asked: most are blocks (story 255)
+    expect(type.allowInLibrary).toBe(false)
+    expect(newType({ alias: 'card', element: true, library: true }, keys()).allowInLibrary).toBe(
+      true,
+    )
     expect(type.components).toEqual([])
     expect(type.defaultComponent).toBeUndefined()
   })

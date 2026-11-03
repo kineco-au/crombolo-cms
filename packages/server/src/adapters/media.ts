@@ -7,7 +7,6 @@ import type { MediaPort } from '@crombolo/api-management/domain'
 import {
   type ContentTypeAggregate,
   DEFAULT_UPLOAD_SETTINGS,
-  type DocumentAggregate,
   IMAGE_CROPPER_EDITOR_ALIAS,
   mediaFileOf,
   normaliseUuid,
@@ -18,10 +17,20 @@ import {
   DataTypeRepository,
   type Db,
   DocumentRepository,
+  MediaListingRepository,
+  type MediaSortField,
   type NodeRow,
   type NodeSchemaState,
   type ValueIntake,
 } from '@crombolo/data'
+
+/** The folder view's `orderBy`, as the listing sorts; anything else is sort order. */
+const COLLECTION_SORTS: Record<string, MediaSortField> = {
+  name: 'name',
+  createDate: 'createDate',
+  updateDate: 'updateDate',
+  sortOrder: 'sortOrder',
+}
 
 /** The Media section's reads; its writes go through the media operations (story 165). */
 export function createMediaPort(
@@ -109,50 +118,35 @@ export function createMediaPort(
       return { total: page.total, items: await tree(page.items) }
     },
 
+    /**
+     * The folder view (story 246): counted, filtered, sorted and paged in the
+     * database, so a folder of a million files costs a page, not the folder.
+     * Only the page's items are loaded, and their creators in one query.
+     */
     async collection(parentKey, options) {
-      const children = await repo.children(parentKey, 0, Number.MAX_SAFE_INTEGER)
-      const filter = options.filter?.trim().toLowerCase()
-      const loaded: Array<DocumentAggregate & { sortOrder: number; creator: string | null }> = []
-      for (const node of children.items) {
-        const media = await repo.load(node)
-        if (!media) continue
-        const name = media.variants[0]?.name ?? node.text ?? ''
-        if (filter && !name.toLowerCase().includes(filter)) continue
-        const latest = (await repo.versions(node.key))[0]
-        const creator = latest?.userKey
-          ? ((
-              await db.q
-                .selectFrom('user_account')
-                .select('user_name')
-                .where('key', '=', latest.userKey)
-                .execute()
-            )[0]?.user_name ?? null)
-          : null
-        loaded.push({ ...media, sortOrder: node.sortOrder, creator })
-      }
-      const keyOf = (m: (typeof loaded)[number]): string | number => {
-        const variant = m.variants[0]
-        switch (options.orderBy) {
-          case 'name':
-            return (variant?.name ?? '').toLowerCase()
-          case 'createDate':
-            return variant?.createDate.getTime() ?? 0
-          case 'updateDate':
-            return variant?.updateDate.getTime() ?? 0
-          default:
-            return m.sortOrder
-        }
-      }
-      loaded.sort((a, b) => {
-        const x = keyOf(a)
-        const y = keyOf(b)
-        const order = x < y ? -1 : x > y ? 1 : 0
-        return options.orderDirection === 'Descending' ? -order : order
+      const listing = new MediaListingRepository(db)
+      const parent = parentKey ? await listing.byKey(parentKey) : { id: -1, path: '-1' }
+      if (!parent) return { total: 0, items: [] }
+      const filter = options.filter?.trim()
+      const page = await listing.children({
+        parentId: parent.id,
+        parentPath: parent.path,
+        names: filter ? [filter] : [],
+        sort: {
+          field: COLLECTION_SORTS[options.orderBy ?? ''] ?? 'sortOrder',
+          ascending: options.orderDirection !== 'Descending',
+        },
+        skip: options.skip,
+        take: options.take,
       })
-      return {
-        total: loaded.length,
-        items: loaded.slice(options.skip, options.skip + options.take),
-      }
+      const [loaded, creators] = await Promise.all([
+        Promise.all(page.keys.map((key) => repo.byKey(key))),
+        listing.creators(page.keys),
+      ])
+      const items = loaded.flatMap((media) =>
+        media ? [{ ...media, creator: creators.get(media.key) ?? null }] : [],
+      )
+      return { total: page.total, items }
     },
 
     async typesForExtension(raw) {

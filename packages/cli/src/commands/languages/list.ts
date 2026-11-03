@@ -3,7 +3,7 @@ import { siteConfig } from '../../support/site.ts'
 import { loadTypes, needSchemaDir } from '../../support/types.ts'
 
 export default class LanguagesList extends BaseCommand {
-  static override summary = 'the languages languages.toml declares'
+  static override summary = "the site's languages"
   static override spec = {
     effects: 'read_only',
     cardinality: 'bounded',
@@ -36,7 +36,7 @@ export default class LanguagesList extends BaseCommand {
       mandatory: l.mandatory,
       fallback: l.fallback ?? null,
     }))
-    if (languages.length === 0) this.say('No languages.toml; the site is in English (en-US).')
+    if (languages.length === 0) this.say('The site is in English (en-US) only.')
     for (const l of languages)
       this.say(
         `  ${l.iso.padEnd(8)} ${l.name}${l.default ? '  (default)' : ''}${l.mandatory ? '  mandatory' : ''}${l.fallback ? `  falls back to ${l.fallback}` : ''}`,

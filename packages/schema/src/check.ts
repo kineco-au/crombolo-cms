@@ -22,6 +22,7 @@ import {
   SYSTEM_MEMBER_TYPE,
 } from '@crombolo/data'
 import { BUILTIN_DATA_TYPES, storageTypeFor } from './builtin.ts'
+import { propertyKeyFor, shippedPropertyKeys, typeKeyFor } from './keys.ts'
 import type { LoadedSchema } from './load.ts'
 import { allProperties, type SchemaContentType, type SchemaProperty } from './model.ts'
 import {
@@ -32,6 +33,14 @@ import {
   syncSchema,
 } from './sync.ts'
 import { findConverter, outputsOf, type ValueMigration } from './value-migrations.ts'
+
+/** Findings that only say what will happen, with nothing to settle first. */
+const SAID_ONLY = new Set([
+  'framework-migration',
+  'mandatory-unfilled',
+  'type-renamed',
+  'property-renamed',
+])
 
 export type ChangeClass = 'none' | 'additive' | 'data-requiring' | 'breaking'
 
@@ -252,6 +261,8 @@ export async function runCheck(
   for (const { kind, files, noun, items } of kinds) {
     const repo = kind === 'document' ? types : new ContentTypeRepository(db, { kind })
     const inFiles = new Set(files.map((t) => t.alias.toLowerCase()))
+    // A type renamed keeps its key (story 250): it is the same type under another alias.
+    const keysInFiles = new Set(files.flatMap((t) => (t.key ? [t.key.toLowerCase()] : [])))
     const dbTypes = await db.q
       .selectFrom('content_type as ct')
       .innerJoin('node as n', 'n.id', 'ct.node_id')
@@ -263,7 +274,23 @@ export async function runCheck(
       .execute()
     for (const row of dbTypes) {
       const key = String(row.unique_id).toLowerCase()
-      if (inFiles.has(String(row.alias).toLowerCase()) || shipped.has(key)) continue
+      const renamedTo = !inFiles.has(String(row.alias).toLowerCase())
+        ? files.find((t) => t.key?.toLowerCase() === key)
+        : undefined
+      if (renamedTo)
+        findings.push({
+          kind: 'auto',
+          code: 'type-renamed',
+          subjectType: `${kind}-type` as const,
+          subjectKey: key,
+          subjectName: renamedTo.alias,
+          propertyAlias: null,
+          culture: null,
+          message: `${noun} "${row.alias}" is renamed "${renamedTo.alias}", keeping what is made of it`,
+          link: null,
+        })
+      if (inFiles.has(String(row.alias).toLowerCase()) || keysInFiles.has(key) || shipped.has(key))
+        continue
       const count = await repo.contentCount(key)
       if (count === 0) continue
       findings.push({
@@ -279,6 +306,41 @@ export async function runCheck(
       })
     }
   }
+
+  // ---- properties renamed under their key (story 250), so a release says so
+  for (const { kind, files, noun } of kinds)
+    for (const t of files) {
+      const typeKey = (t.key ?? typeKeyFor(kind, t.alias)).toLowerCase()
+      const shippedKeys = shippedPropertyKeys(kind, t.alias)
+      const inFile = new Map(
+        allProperties(t).map((p) => [
+          (p.key ?? propertyKeyFor(typeKey, p.alias, shippedKeys)).toLowerCase(),
+          p.alias,
+        ]),
+      )
+      const rows = await db.q
+        .selectFrom('property_type as pt')
+        .innerJoin('node as n', 'n.id', 'pt.content_type_id')
+        .select(['pt.unique_id', 'pt.alias'])
+        .where('n.unique_id', '=', typeKey)
+        .where('pt.retired_at', 'is', null)
+        .execute()
+      for (const row of rows) {
+        const now = inFile.get(String(row.unique_id).toLowerCase())
+        if (!now || now === row.alias) continue
+        findings.push({
+          kind: 'auto',
+          code: 'property-renamed',
+          subjectType: 'property',
+          subjectKey: String(row.unique_id).toLowerCase(),
+          subjectName: t.alias,
+          propertyAlias: now,
+          culture: null,
+          message: `property "${row.alias}" of ${noun} "${t.alias}" is renamed "${now}", keeping its values`,
+          link: null,
+        })
+      }
+    }
 
   // ---- properties that need data: newly mandatory, or changing editor
   let breaking = false
@@ -536,9 +598,7 @@ export async function runCheck(
         : 'none'
   return {
     findings,
-    outstanding: findings.filter(
-      (f) => f.code !== 'framework-migration' && f.code !== 'mandatory-unfilled',
-    ),
+    outstanding: findings.filter((f) => !SAID_ONLY.has(f.code)),
     classification,
     sync,
     frameworkPending,

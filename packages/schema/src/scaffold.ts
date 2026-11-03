@@ -94,7 +94,7 @@ export function newType(
     icon: options.icon ?? DEFAULT_ICONS[kind],
     allowAtRoot: kind === 'document' ? options.allowAtRoot === true : false,
     isElement: element,
-    allowInLibrary: element || options.library === true,
+    allowInLibrary: options.library === true,
     variesByCulture: options.variesByCulture === true,
     variesBySegment: options.variesBySegment === true,
     compositions: options.compose ?? [],

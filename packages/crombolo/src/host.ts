@@ -1,7 +1,8 @@
 /**
  * The supported API for whoever runs sites (story 173): booting a site from
  * its config, the stores it keeps media and schema in, checking and installing
- * a site's bundles and code, and the upgrade, import and export a deploy runs.
+ * a site's bundles and code, checking a bundle's signature as the CMS does
+ * (story 244), and the upgrade, import and export a deploy runs.
  * `docs/api.md`.
  */
 export type { BundlePackage, CromboloField, PackageJson } from '@crombolo/backoffice-host'
@@ -28,19 +29,30 @@ export {
   type CromboloConfig,
   checkBundleCode,
   createServer,
+  describeProvenance,
   fileSystemMediaStore,
   installBundleCode,
   loadConfig,
   type MediaStore,
   mediaStoreFor,
+  type ProvenanceLinks,
+  type ProvenancePolicy,
+  type ProvenanceResult,
+  type ProvenanceSource,
+  type ProvenanceState,
+  provenanceProblem,
   type ReloadedBundle,
   type S3MediaStoreOptions,
   type S3SchemaStoreOptions,
   type SchemaStore,
   type ServerHandle,
+  type SignaturePolicy,
   s3MediaStore,
   s3SchemaStore,
   VERSION,
+  type VerifyProvenanceOptions,
+  verifyPackage,
+  verifyProvenance,
 } from '@crombolo/server'
 // A node that runs only the background jobs (story 223), for a host that
 // boots its own nodes: `createServer` refuses the worker role.

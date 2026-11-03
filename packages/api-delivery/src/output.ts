@@ -262,6 +262,8 @@ async function blockItem(
   return {
     content: await apiElement(item.content, ctx, expand, include),
     settings: await apiElement(item.settings, ctx, expand, include),
+    // Crombolo's own: a block's alias, only where it has one (story 253).
+    ...(item.alias ? { alias: item.alias } : {}),
   }
 }
 

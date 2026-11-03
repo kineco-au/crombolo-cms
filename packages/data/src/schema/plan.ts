@@ -51,6 +51,7 @@ import { mediaCacheMigration } from './media-cache.ts'
 import { mediaMemberGrantsMigration } from './media-member-grants.ts'
 import { mediaMemberUploadsMigration } from './media-member-uploads.ts'
 import { mediaPermissionsMigration } from './media-permissions.ts'
+import { mediaTreeOrderMigration } from './media-tree-order.ts'
 import { memberPropertyTypeMigration } from './member-property-type.ts'
 import { membersMigration } from './members.ts'
 import { propertySearchableMigration } from './property-searchable.ts'
@@ -137,4 +138,5 @@ export const cromboloPlan = new MigrationPlan([
   formLibraryMigration,
   bundlesInSettingsMigration,
   remoteTrustMigration,
+  mediaTreeOrderMigration,
 ])

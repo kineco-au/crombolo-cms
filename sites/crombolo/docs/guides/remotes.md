@@ -1,7 +1,7 @@
 ---
 title: Remotes, pull and push
 summary: Connect your local site to a running one, sign in from the terminal, pull a copy down to work on, and push your work back.
-order: 5
+order: 7
 ---
 
 A **remote** is a running crombolo site that your local copy can pull from and push to. Pulling gives you a working copy of an environment, content and all; pushing replaces an environment with your local site. It works like `git pull` and `git push`, but for a whole site: schema, templates, content and media.
@@ -153,6 +153,8 @@ bunx crombolo bundle install @acme/crm --grant crm.read --wire   # adds it, and 
 git commit -am "Add the CRM bundle"
 bunx crombolo bundle deploy --remote production
 ```
+
+A bundle you have as a file goes the same way: `bunx crombolo bundle install ./acme-crm-1.2.0.tgz` copies it into `bundles/` and installs it from there. Commit `bundles/` with `package.json` and `bun.lock`, and the deploy carries it.
 
 It needs the remote at `all`, **Change a site's structure and code** and **Install code on this site**. The code it installs runs once the remote restarts; `--no-restart` leaves that to `crombolo restart --remote production`. If the new server does not start, the old one keeps serving and the deploy prints the `bundle revert` that undoes it.
 

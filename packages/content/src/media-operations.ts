@@ -147,6 +147,88 @@ export interface MediaOperationsOptions {
   onChange?(change: MediaChange): void | Promise<void>
   /** Errors a value's intake throws that are the sender's to fix, as the reason to give. */
   refusalReason?(error: unknown): string | undefined
+  /**
+   * Where a branch of more than `largeBranch` items is handed, so the request
+   * answers at once (story 246): the core job queue, recording who asked.
+   */
+  background?: (queuedBy: string) => { enqueue(name: string, payload: unknown): Promise<string> }
+  /** How many items a branch holds before its trash, restore, move, delete or emptying is queued. */
+  largeBranch?: number
+}
+
+/** The background jobs that write a large branch (story 246), run by `mediaJobHandlers`. */
+export const MEDIA_JOBS = {
+  trash: 'media.trash',
+  restore: 'media.restore',
+  move: 'media.move',
+  delete: 'media.delete',
+  emptyBin: 'media.emptyBin',
+} as const
+
+/** A branch past this many items is written by a background job, not the request. */
+export const DEFAULT_LARGE_BRANCH = 5_000
+
+/** How many items emptying the bin deletes in one transaction. */
+export const EMPTY_BIN_CHUNK = 5_000
+
+/** Who queued a job, as the job's actor names them in the audit. */
+interface QueuedBy {
+  name: string
+  userKey: string | null
+}
+
+/** The actor a queued job writes as: the site, for the person whose request was checked. */
+const jobActor = (by: QueuedBy): MediaActor => ({
+  kind: 'system',
+  name: by.name,
+  origin: { source: 'job' },
+  ...(by.userKey ? { user: { id: by.userKey, name: by.name } } : {}),
+})
+
+/** The handlers for `MEDIA_JOBS`, for the core job owner; each runs the write itself. */
+export function mediaJobHandlers(
+  media: MediaOperations,
+): Map<string, (payload: never, context: { job: JobProgressReporter }) => Promise<void>> {
+  const settled = (result: { ok: boolean; reason?: string }) => {
+    if (!result.ok) throw new Error(result.reason ?? 'The media change could not be made.')
+  }
+  return new Map<string, (payload: never, context: { job: JobProgressReporter }) => Promise<void>>([
+    [
+      MEDIA_JOBS.trash,
+      async (p: { keys: string[]; by: QueuedBy }) =>
+        settled(await media.trashMany(jobActor(p.by), p.keys, { inline: true })),
+    ],
+    [
+      MEDIA_JOBS.restore,
+      async (p: { key: string; targetKey: string | null | undefined; by: QueuedBy }) =>
+        settled(await media.restore(jobActor(p.by), p.key, p.targetKey, { inline: true })),
+    ],
+    [
+      MEDIA_JOBS.move,
+      async (p: { keys: string[]; targetKey: string | null; by: QueuedBy }) =>
+        settled(await media.moveMany(jobActor(p.by), p.keys, p.targetKey, { inline: true })),
+    ],
+    [
+      MEDIA_JOBS.delete,
+      async (p: { key: string; fromBin: boolean; by: QueuedBy }) =>
+        settled(await media.delete(jobActor(p.by), p.key, { fromBin: p.fromBin, inline: true })),
+    ],
+    [
+      MEDIA_JOBS.emptyBin,
+      async (p: { by: QueuedBy }, { job }) =>
+        settled(
+          await media.emptyBin(jobActor(p.by), {
+            inline: true,
+            progress: (done, total) => job.progress(done, total),
+          }),
+        ),
+    ],
+  ])
+}
+
+/** What a job reports while it runs. */
+export interface JobProgressReporter {
+  progress(done: number, total?: number, note?: string): Promise<void>
 }
 
 /** What a media change touched: the items, and the old paths of any whose branch moved with them. */
@@ -219,6 +301,36 @@ export function createMediaOperations(options: MediaOperationsOptions) {
     return result
   }
   /** The keys, and the old paths of branches that moved: what a move, trash or delete touched. */
+  const largeBranch = options.largeBranch ?? DEFAULT_LARGE_BRANCH
+
+  /** How many items these branches hold, roots included. */
+  const branchSize = async (rows: readonly NodeRow[]): Promise<number> => {
+    let total = 0
+    for (const row of rows) {
+      const counted = await db.q
+        .selectFrom('node')
+        .select((eb) => eb.fn.countAll().as('n'))
+        .where((eb) => eb.or([eb('id', '=', row.id), eb('path', 'like', `${row.path},%`)]))
+        .execute()
+      total += Number(counted[0]?.n ?? 0)
+    }
+    return total
+  }
+
+  /** Queues a large branch's write, or undefined when it is small enough to make now. */
+  const queueWhenLarge = async (
+    actor: MediaActor,
+    rows: readonly NodeRow[],
+    inline: boolean | undefined,
+    job: string,
+    payload: Record<string, unknown>,
+  ): Promise<string | undefined> => {
+    if (inline || !options.background || rows.length === 0) return undefined
+    if ((await branchSize(rows)) <= largeBranch) return undefined
+    const by: QueuedBy = { name: actorName(actor), userKey: actorUserKey(actor) }
+    return options.background(by.name).enqueue(job, { ...payload, by })
+  }
+
   const branches = (rows: readonly NodeRow[]): MediaChange => ({
     keys: rows.map((row) => row.key),
     moved: rows.map((row) => row.path),
@@ -323,23 +435,74 @@ export function createMediaOperations(options: MediaOperationsOptions) {
   }
 
   /** The files a branch holds, read before its rows go. */
+  /** The files a branch's items are served from, read from `file_url` in one query (story 246). */
   const filesIn = async (root: NodeRow): Promise<string[]> => {
     const rows = await db.q
-      .selectFrom('node')
-      .select('unique_id')
-      .where((eb) => eb.or([eb('id', '=', root.id), eb('path', 'like', `${root.path},%`)]))
-      .where('node_object_type', '=', ObjectTypes.Media)
+      .selectFrom('node as n')
+      .innerJoin('content as c', 'c.node_id', 'n.id')
+      .select('c.file_url')
+      .where((eb) => eb.or([eb('n.id', '=', root.id), eb('n.path', 'like', `${root.path},%`)]))
+      .where('n.node_object_type', '=', ObjectTypes.Media)
+      .where('c.file_url', 'is not', null)
       .execute()
-    const found: string[] = []
-    for (const row of rows) {
-      const media = await repo.byKey(normaliseUuid(String(row.unique_id)))
-      const file = media ? mediaFileOf(media) : null
-      if (file) found.push(file)
-    }
-    return found
+    return rows.map((row) => String(row.file_url)).filter(Boolean)
   }
   const removeFiles = async (paths: readonly string[]) => {
     for (const path of paths) await options.files?.remove(path)
+  }
+
+  /**
+   * Empties the bin a chunk at a time, deepest first, each chunk a transaction of
+   * its own and its files removed once it has committed: a background job's way,
+   * so no transaction holds a hundred thousand rows (story 246).
+   */
+  const emptyInChunks = async (
+    actor: MediaActor,
+    roots: readonly NodeRow[],
+    progress: (done: number, total: number) => Promise<void>,
+  ): Promise<number> => {
+    const total = await branchSize(roots)
+    let done = 0
+    let deleted = 0
+    for (const root of roots) {
+      for (;;) {
+        const chunk = await db.q
+          .selectFrom('node as n')
+          .leftJoin('content as c', 'c.node_id', 'n.id')
+          .select(['n.id', 'c.file_url'])
+          .where((eb) => eb.or([eb('n.id', '=', root.id), eb('n.path', 'like', `${root.path},%`)]))
+          .orderBy('n.level', 'desc')
+          .orderBy('n.id')
+          .limit(EMPTY_BIN_CHUNK)
+          .execute()
+        if (chunk.length === 0) break
+        const ids = chunk.map((row) => Number(row.id))
+        const last = ids.includes(root.id)
+        await commit(
+          actor,
+          async (tx) => {
+            await tx.deleteNodes(ids)
+            return last
+          },
+          (finished): MediaEvent[] =>
+            finished ? [{ type: 'deleted', key: root.key, name: root.text ?? null }] : [],
+          () => branches([root]),
+        )
+        await removeFiles(chunk.flatMap((row) => (row.file_url ? [String(row.file_url)] : [])))
+        done += ids.length
+        await progress(done, total)
+        if (last) {
+          deleted += 1
+          break
+        }
+      }
+    }
+    await commit(
+      actor,
+      async () => true,
+      (): MediaEvent[] => [{ type: 'binEmptied' }],
+    )
+    return deleted
   }
 
   /** Every item checked before any is written: the reasons each one cannot be moved there. */
@@ -453,9 +616,10 @@ export function createMediaOperations(options: MediaOperationsOptions) {
       }
     },
 
-    async trash(actor: MediaActor, key: string): Promise<Result> {
+    async trash(actor: MediaActor, key: string): Promise<Result<{ queued?: string }>> {
       const result = await operations.trashMany(actor, [key])
-      return result.ok ? { ok: true } : result
+      if (!result.ok) return result
+      return result.queued ? { ok: true, queued: result.queued } : { ok: true }
     },
 
     /**
@@ -466,7 +630,7 @@ export function createMediaOperations(options: MediaOperationsOptions) {
     async trashMany(
       actor: MediaActor,
       keys: readonly string[],
-      many: { dryRun?: boolean } = {},
+      many: { dryRun?: boolean; inline?: boolean } = {},
     ): Promise<SelectionResult> {
       const found = await nodesFor(keys)
       if (!Array.isArray(found)) return found
@@ -478,6 +642,10 @@ export function createMediaOperations(options: MediaOperationsOptions) {
       const unchanged = found.filter((node) => node.trashed).map((node) => node.key)
       const changedKeys = found.filter((node) => !node.trashed).map((node) => node.key)
       if (many.dryRun || writes.length === 0) return { ok: true, changed: changedKeys, unchanged }
+      const queued = await queueWhenLarge(actor, writes, many.inline, MEDIA_JOBS.trash, {
+        keys: writes.map((node) => node.key),
+      })
+      if (queued) return { ok: true, changed: changedKeys, unchanged, queued }
       await commit(
         actor,
         async (tx) => {
@@ -495,14 +663,19 @@ export function createMediaOperations(options: MediaOperationsOptions) {
     async delete(
       actor: MediaActor,
       key: string,
-      deleting: { fromBin?: boolean } = {},
-    ): Promise<Result> {
+      deleting: { fromBin?: boolean; inline?: boolean } = {},
+    ): Promise<Result<{ queued?: string }>> {
       const node = await nodes.byKey(key)
       if (!node || node.objectType !== ObjectTypes.Media) return refuse('notFound', 404, NOT_FOUND)
       if (deleting.fromBin && !node.trashed)
         return refuse('invalid', 400, 'The media item is not in the recycle bin')
       if (!(await permits(actor, deleting.fromBin ? 'bin' : key, { branch: true })))
         return forbidden()
+      const queued = await queueWhenLarge(actor, [node], deleting.inline, MEDIA_JOBS.delete, {
+        key,
+        fromBin: deleting.fromBin === true,
+      })
+      if (queued) return { ok: true, queued }
       const paths = await filesIn(node)
       const removed = await commit(
         actor,
@@ -515,9 +688,20 @@ export function createMediaOperations(options: MediaOperationsOptions) {
       return { ok: true }
     },
 
-    async emptyBin(actor: MediaActor): Promise<Result<{ deleted: number }>> {
+    async emptyBin(
+      actor: MediaActor,
+      run: {
+        inline?: boolean
+        /** A background job's: deleted a chunk at a time, saying how far it has got. */
+        progress?: (done: number, total: number) => Promise<void>
+      } = {},
+    ): Promise<Result<{ deleted: number; queued?: string }>> {
       if (!(await permits(actor, 'bin'))) return forbidden()
       const roots = await repo.trashedRoots()
+      const queued = await queueWhenLarge(actor, roots, run.inline, MEDIA_JOBS.emptyBin, {})
+      if (queued) return { ok: true, deleted: 0, queued }
+      if (run.progress)
+        return { ok: true, deleted: await emptyInChunks(actor, roots, run.progress) }
       const paths: string[] = []
       for (const node of roots) paths.push(...(await filesIn(node)))
       const gone = await commit(
@@ -542,7 +726,8 @@ export function createMediaOperations(options: MediaOperationsOptions) {
       actor: MediaActor,
       key: string,
       targetKey: string | null | undefined,
-    ): Promise<Result> {
+      run: { inline?: boolean } = {},
+    ): Promise<Result<{ queued?: string }>> {
       if (!(await permits(actor, 'bin'))) return forbidden()
       if (targetKey !== undefined) {
         const type = await typeOf(key)
@@ -550,6 +735,10 @@ export function createMediaOperations(options: MediaOperationsOptions) {
         if (misplaced) return refuse('invalid', 400, misplaced)
       }
       const before = await nodes.byKey(key)
+      const queued = before
+        ? await queueWhenLarge(actor, [before], run.inline, MEDIA_JOBS.restore, { key, targetKey })
+        : undefined
+      if (queued) return { ok: true, queued }
       const result = await commit(
         actor,
         (tx) => tx.restore(key, targetKey),
@@ -563,9 +752,13 @@ export function createMediaOperations(options: MediaOperationsOptions) {
       return { ok: true }
     },
 
-    async move(actor: MediaActor, key: string, targetKey: string | null): Promise<Result> {
+    async move(
+      actor: MediaActor,
+      key: string,
+      targetKey: string | null,
+    ): Promise<Result<{ queued?: string }>> {
       const result = await operations.moveMany(actor, [key], targetKey)
-      if (result.ok) return { ok: true }
+      if (result.ok) return result.queued ? { ok: true, queued: result.queued } : { ok: true }
       const first = 'blocked' in result ? result.blocked?.[0]?.reasons[0] : undefined
       return first ? { ...result, reason: first } : result
     },
@@ -578,7 +771,7 @@ export function createMediaOperations(options: MediaOperationsOptions) {
       actor: MediaActor,
       keys: readonly string[],
       targetKey: string | null,
-      many: { dryRun?: boolean } = {},
+      many: { dryRun?: boolean; inline?: boolean } = {},
     ): Promise<SelectionResult> {
       const found = await nodesFor(keys)
       if (!Array.isArray(found)) return found
@@ -605,6 +798,11 @@ export function createMediaOperations(options: MediaOperationsOptions) {
       const unchanged = found.filter(stays).map((node) => node.key)
       if (many.dryRun || writes.length === 0)
         return { ok: true, changed: writes.map((node) => node.key), unchanged }
+      const queued = await queueWhenLarge(actor, writes, many.inline, MEDIA_JOBS.move, {
+        keys: writes.map((node) => node.key),
+        targetKey,
+      })
+      if (queued) return { ok: true, changed: writes.map((node) => node.key), unchanged, queued }
       try {
         const done = await commit(
           actor,

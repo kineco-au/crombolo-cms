@@ -22,7 +22,7 @@ export default class TypesRewrite extends BaseCommand {
     const config = await siteConfig()
     needSchemaDir(config)
     const loaded = loadTypes(config)
-    refuseProblems(loaded.problems)
+    refuseProblems(loaded.problems, config.schemaDir)
     const wrote = writeSchemaFiles(config.schemaDir, loaded.set).map(here)
     for (const file of wrote) this.say(`  wrote  ${file}`)
     return { wrote }

@@ -76,7 +76,11 @@ export interface ProvenanceFile {
   links: ProvenanceLinks
 }
 
-export type ProvenanceState = 'signed' | 'unsigned' | 'invalid' | 'local'
+/**
+ * `unchecked`: Sigstore's trusted root could not be had, so the signature was not
+ * checked either way (story 244). Refused like `invalid`, and worth trying again.
+ */
+export type ProvenanceState = 'signed' | 'unsigned' | 'invalid' | 'unchecked' | 'local'
 
 export interface ProvenanceResult {
   state: ProvenanceState
@@ -194,6 +198,8 @@ export function describeProvenance(result: ProvenanceResult): string {
       return 'Local: from this machine, not a registry'
     case 'invalid':
       return `Signature not accepted: ${result.reason ?? 'it does not check out'}`
+    case 'unchecked':
+      return `Couldn't be checked right now: ${result.reason ?? 'try again'}`
   }
 }
 
@@ -260,12 +266,20 @@ export async function signPackage(dir: string, options: SignOptions = {}): Promi
 export interface VerifyProvenanceOptions {
   /** Sigstore's trusted root as JSON; the public one, refreshed through TUF, by default. */
   trustedRoot?: unknown
-  /**
-   * Checks the Sigstore bundle itself, throwing when it does not verify; the
-   * Sigstore verifier by default. Only a test passes one: a signature in this
-   * format is made in GitHub Actions, not offline.
-   */
-  verifySignature?: (signature: SerializedBundle) => void | Promise<void>
+}
+
+/**
+ * Checks the Sigstore bundle itself, throwing when it does not verify. Only a
+ * test passes one, through `verifyProvenanceWith`: a signature in this format is
+ * made in GitHub Actions, never offline.
+ */
+export type SignatureCheck = (signature: SerializedBundle) => void | Promise<void>
+
+/** What a test replaces in `verifyProvenanceWith`; nothing a host is offered. */
+export interface ProvenanceSeams {
+  verifySignature?: SignatureCheck
+  /** Stands in for fetching Sigstore's public trusted root. */
+  publicRoot?: () => Promise<TrustedRoot>
 }
 
 let publicRoot: { at: number; root: Promise<TrustedRoot> } | undefined
@@ -300,11 +314,21 @@ const invalid = (reason: string, digest?: string): ProvenanceResult => ({
  * Checks a package directory's signature: its digest, Sigstore's signature and
  * certificate against the trusted root, that GitHub Actions signed it, and that
  * `provenance.json` claims what the certificate says. Unsigned when there is no
- * `provenance.json`; invalid, with the reason, when anything disagrees.
+ * `provenance.json`; invalid, with the reason, when anything disagrees;
+ * unchecked when the trusted root could not be fetched and none is cached.
  */
-export async function verifyProvenance(
+export function verifyProvenance(
   dir: string,
   options: VerifyProvenanceOptions = {},
+): Promise<ProvenanceResult> {
+  return verifyProvenanceWith(dir, options)
+}
+
+/** `verifyProvenance`, with Sigstore's steps replaced: for tests only. */
+export async function verifyProvenanceWith(
+  dir: string,
+  options: VerifyProvenanceOptions,
+  seams: ProvenanceSeams = {},
 ): Promise<ProvenanceResult> {
   const file = join(dir, PROVENANCE_FILE)
   if (!existsSync(file)) return { state: 'unsigned' }
@@ -320,19 +344,20 @@ export async function verifyProvenance(
   if (provenance.digest !== digest)
     return invalid('the bundle has changed since it was signed', digest)
 
-  let check = options.verifySignature
+  let check = seams.verifySignature
   if (!check) {
     let root: TrustedRoot
     try {
       root =
         options.trustedRoot !== undefined
           ? TrustedRoot.fromJSON(options.trustedRoot)
-          : await publicTrustedRoot()
+          : await (seams.publicRoot ?? publicTrustedRoot)()
     } catch (error) {
-      return invalid(
-        `Sigstore's trusted root could not be fetched, so the signature cannot be checked: ${error instanceof Error ? error.message : String(error)}`,
+      return {
+        state: 'unchecked',
+        reason: `Sigstore's trusted root could not be fetched: ${error instanceof Error ? error.message : String(error)}`,
         digest,
-      )
+      }
     }
     check = (signature) => {
       new Verifier(toTrustMaterial(root)).verify(toSignedEntity(bundleFromJSON(signature)), {
@@ -398,7 +423,8 @@ export function sourceAllowed(source: ProvenanceSource, entry: string): boolean 
 
 /**
  * Why the site will not take this bundle, or undefined when it will. An
- * invalid signature is refused whatever the policy; `local` is the site's own.
+ * invalid or unchecked signature is refused whatever the policy; `local` is the
+ * site's own.
  */
 export function provenanceProblem(
   result: ProvenanceResult,
@@ -406,6 +432,8 @@ export function provenanceProblem(
 ): string | undefined {
   if (result.state === 'invalid')
     return `its signature was not accepted: ${result.reason ?? 'it does not check out'}`
+  if (result.state === 'unchecked')
+    return `its signature could not be checked right now (${result.reason ?? 'try again'}); try again`
   if (result.state === 'local') return undefined
   if (result.state === 'unsigned')
     return policy.signatures === 'required'

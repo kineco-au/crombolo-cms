@@ -18,7 +18,6 @@ import {
   ComponentRepository,
   ContentTypeRepository,
   currentSchemaState,
-  DataTypeRepository,
   type Db,
   LanguageRepository,
   looksLikeKey,
@@ -39,9 +38,10 @@ import {
 } from '@crombolo/transfer'
 import { createMediaPort } from '../adapters/media.ts'
 import { type CromboloConfig, VERSION } from '../config.ts'
-import { blockKey, pickKey, SEED_NAMESPACE, seedKey, uuidV5 } from './keys.ts'
+import { SEED_NAMESPACE, seedKey, uuidV5 } from './keys.ts'
 import { lineOf } from './lines.ts'
 import { kindDir, readSeed, type SeedFinding, type SeedItem } from './read.ts'
+import { schemaLookup, valueWriter } from './values.ts'
 
 export interface SeedBuild {
   findings: SeedFinding[]
@@ -63,11 +63,6 @@ const nameFromSegment = (segment: string) => {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value) && !(value instanceof Date)
 
-const BLOCK_LAYOUT = {
-  'Umbraco.BlockList': 'Umbraco.BlockList',
-  'Umbraco.BlockGrid': 'Umbraco.BlockGrid',
-} as const
-
 export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedBuild> {
   const tree = readSeed(config.siteDir)
   const findings: SeedFinding[] = [...tree.findings]
@@ -77,7 +72,6 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
   const state = await currentSchemaState(db)
   const documentTypes = new ContentTypeRepository(db)
   const mediaTypes = new ContentTypeRepository(db, { kind: 'media' })
-  const dataTypes = new DataTypeRepository(db)
   const components = new ComponentRepository(db)
   const nodes = new NodeRepository(db)
   const port = createMediaPort(db, {
@@ -118,31 +112,11 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
   const mediaByPath = byPath('media')
 
   // ------------------------------------------------------ the site's schema
-  const typeCache = new Map<string, ContentTypeAggregate | undefined>()
-  const typeOf = async (repo: ContentTypeRepository, alias: string) => {
-    const cacheKey = `${repo.objectType}:${alias.toLowerCase()}`
-    if (!typeCache.has(cacheKey)) typeCache.set(cacheKey, await repo.byAlias(alias))
-    return typeCache.get(cacheKey)
-  }
-  const editorCache = new Map<string, Map<string, { editor: string; variesByCulture: boolean }>>()
-  const editorsOf = async (repo: ContentTypeRepository, type: ContentTypeAggregate) => {
-    const cached = editorCache.get(type.key)
-    if (cached) return cached
-    const properties = await repo.resolveProperties(type.key)
-    const editorByType = new Map(
-      (await dataTypes.byKeys(properties.map((p) => p.dataTypeKey))).map((d) => [
-        d.key,
-        d.editorAlias,
-      ]),
-    )
-    const out = new Map<string, { editor: string; variesByCulture: boolean }>()
-    for (const property of properties) {
-      const editor = editorByType.get(property.dataTypeKey)
-      if (editor) out.set(property.alias, { editor, variesByCulture: property.variesByCulture })
-    }
-    editorCache.set(type.key, out)
-    return out
-  }
+  const lookup = schemaLookup(db)
+  const typeOf = (repo: ContentTypeRepository, alias: string) =>
+    lookup.typeOf(repo === mediaTypes ? 'media' : 'document', alias)
+  const editorsOf = (repo: ContentTypeRepository, type: ContentTypeAggregate) =>
+    lookup.editorsOf(repo === mediaTypes ? 'media' : 'document', type)
 
   /** Content on the site the seed does not declare, by path or key, for a reference to point at. */
   const expected = new Map<string, { key: string; objectType: string; name: string; why: string }>()
@@ -187,253 +161,15 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
   }
 
   // ---------------------------------------------------------------- values
-  type Converted = { ok: true; value: unknown } | { ok: false; message: string }
-  const fail = (message: string): Converted => ({ ok: false, message })
-
-  /** Rich text: Markdown by default, `{ html = … }` as written; links to content paths become local links. */
-  const richText = async (raw: unknown, why: string): Promise<Converted> => {
-    let html: string
-    // HTML is taken exactly as written; only Markdown's links are made local.
-    if (isRecord(raw) && typeof raw.html === 'string')
-      return { ok: true, value: { markup: raw.html, blocks: null } }
-    if (typeof raw === 'string') html = Bun.markdown.html(raw)
-    else if (isRecord(raw) && typeof raw.markdown === 'string')
-      html = Bun.markdown.html(raw.markdown)
-    else if (isRecord(raw) && 'markup' in raw) return { ok: true, value: raw }
-    else return fail('rich text is Markdown, or { html = "…" }')
-    const links = [...html.matchAll(/href="(\/[^"#?]*)"/g)]
-    for (const [whole, path] of links) {
-      const key = await contentKey(path as string, why)
-      if (key) html = html.replace(whole, `href="/{localLink:${key}}"`)
-    }
-    return { ok: true, value: { markup: html, blocks: null } }
-  }
-
-  const blocks = async (
-    editor: keyof typeof BLOCK_LAYOUT,
-    raw: unknown,
-    owner: string,
-    where: string,
-  ): Promise<Converted> => {
-    if (!Array.isArray(raw)) {
-      if (isRecord(raw) && 'layout' in raw) return { ok: true, value: raw }
-      return fail('blocks are a list of { type = "<element alias>", values = { … } }')
-    }
-    const layout: Record<string, unknown>[] = []
-    const contentData: unknown[] = []
-    const settingsData: unknown[] = []
-    for (const [index, entry] of raw.entries()) {
-      if (!isRecord(entry) || typeof entry.type !== 'string')
-        return fail(`block ${index + 1} has no type`)
-      const element = await typeOf(documentTypes, entry.type)
-      if (!element?.isElement)
-        return fail(`block ${index + 1}: there is no element type "${entry.type}"`)
-      const contentKey =
-        typeof entry.key === 'string' && looksLikeKey(entry.key)
-          ? normaliseUuid(entry.key)
-          : blockKey(owner, `${where}/${index}`)
-      const values = await elementValues(element, entry.values, owner, `${where}/${index}`)
-      if (!values.ok) return fail(`block ${index + 1}: ${values.message}`)
-      contentData.push({ key: contentKey, contentTypeKey: element.key, values: values.value })
-      const item: Record<string, unknown> = { contentKey }
-      if (isRecord(entry.settings)) {
-        const settingsType =
-          typeof entry.settings.type === 'string'
-            ? await typeOf(documentTypes, entry.settings.type)
-            : undefined
-        if (!settingsType?.isElement)
-          return fail(`block ${index + 1}: settings need a type, an element type`)
-        const settingsKey =
-          typeof entry.settings.key === 'string' && looksLikeKey(entry.settings.key)
-            ? normaliseUuid(entry.settings.key)
-            : blockKey(owner, `${where}/${index}/settings`)
-        const settings = await elementValues(
-          settingsType,
-          entry.settings.values,
-          owner,
-          `${where}/${index}/settings`,
-        )
-        if (!settings.ok) return fail(`block ${index + 1} settings: ${settings.message}`)
-        settingsData.push({
-          key: settingsKey,
-          contentTypeKey: settingsType.key,
-          values: settings.value,
-        })
-        item.settingsKey = settingsKey
-      }
-      if (editor === 'Umbraco.BlockGrid') {
-        item.columnSpan = typeof entry.columns === 'number' ? entry.columns : 12
-        item.rowSpan = typeof entry.rows === 'number' ? entry.rows : 1
-        item.areas = Array.isArray(entry.areas) ? entry.areas : []
-      }
-      layout.push(item)
-    }
-    return {
-      ok: true,
-      value: { layout: { [BLOCK_LAYOUT[editor]]: layout }, contentData, settingsData },
-    }
-  }
-
-  const elementValues = async (
-    element: ContentTypeAggregate,
-    raw: unknown,
-    owner: string,
-    where: string,
-  ): Promise<Converted> => {
-    if (raw === undefined) return { ok: true, value: [] }
-    if (!isRecord(raw)) return fail('values is a table')
-    const editors = await editorsOf(documentTypes, element)
-    const out: Array<{ alias: string; value: unknown }> = []
-    for (const [alias, value] of Object.entries(raw)) {
-      const property = editors.get(alias)
-      if (!property) return fail(`"${element.alias}" has no property "${alias}"`)
-      const converted = await convert(property.editor, value, owner, `${where}/${alias}`)
-      if (!converted.ok) return fail(`${alias}: ${converted.message}`)
-      out.push({ alias, value: converted.value })
-    }
-    return { ok: true, value: out }
-  }
-
-  const list = (raw: unknown) => (Array.isArray(raw) ? raw : [raw])
-
-  const convert = async (
-    editor: string,
-    raw: unknown,
-    owner: string,
-    where: string,
-  ): Promise<Converted> => {
-    const why = `named by a value in ${where}`
-    switch (editor) {
-      case 'Umbraco.TextBox':
-      case 'Umbraco.TextArea':
-        return typeof raw === 'string' || typeof raw === 'number'
-          ? { ok: true, value: String(raw) }
-          : fail('a text value is a string')
-      case 'Umbraco.RichText':
-      case 'Umbraco.TinyMCE':
-        return richText(raw, why)
-      case 'Umbraco.TrueFalse':
-        return typeof raw === 'boolean'
-          ? { ok: true, value: raw }
-          : fail('a toggle is true or false')
-      case 'Umbraco.Integer':
-      case 'Umbraco.Decimal':
-      case 'Umbraco.Slider':
-        return typeof raw === 'number' ? { ok: true, value: raw } : fail('a number is a number')
-      case 'Umbraco.DateTime':
-      case 'Umbraco.DateTimeWithTimeZone': {
-        // Bun's TOML gives a Temporal value (a PlainDate, an Instant) for a TOML
-        // date, which writes itself as ISO 8601.
-        const text =
-          raw instanceof Date
-            ? raw.toISOString()
-            : isTemporalDate(raw)
-              ? String(raw)
-              : typeof raw === 'string'
-                ? raw
-                : undefined
-        const at = text === undefined ? Number.NaN : new Date(text).getTime()
-        if (text === undefined || Number.isNaN(at))
-          return fail('a date is a TOML date or an ISO 8601 string')
-        // A date picker stores Umbraco's wall clock, as a save does, so a seed
-        // exported and applied again is unchanged; one with a zone keeps ISO.
-        return {
-          ok: true,
-          value:
-            editor === 'Umbraco.DateTime'
-              ? new Date(at).toISOString().slice(0, 19).replace('T', ' ')
-              : text,
-        }
-      }
-      case 'Umbraco.Tags':
-        return list(raw).every((tag) => typeof tag === 'string')
-          ? { ok: true, value: list(raw) }
-          : fail('tags are a list of strings')
-      case 'Umbraco.ContentPicker': {
-        if (typeof raw !== 'string') return fail('a content picker takes a content path')
-        const key = await contentKey(raw, why)
-        return key
-          ? { ok: true, value: `umb://document/${key.replaceAll('-', '')}` }
-          : fail(`"${raw}" is not a page in the content files or on the site`)
-      }
-      case 'Umbraco.MediaPicker3': {
-        if (isRecord(raw) || (Array.isArray(raw) && raw.some(isRecord)))
-          return { ok: true, value: raw }
-        const picks: unknown[] = []
-        for (const ref of list(raw)) {
-          if (typeof ref !== 'string') return fail('a media picker takes media paths')
-          const media = await mediaRef(ref, why)
-          if (!media) return fail(`"${ref}" is not media in the content files or on the site`)
-          picks.push({
-            key: pickKey(media.key),
-            mediaKey: media.key,
-            mediaTypeAlias: media.typeAlias,
-            crops: [],
-            focalPoint: null,
-          })
-        }
-        return { ok: true, value: picks }
-      }
-      case 'Umbraco.ElementPicker': {
-        const keys: string[] = []
-        for (const ref of list(raw)) {
-          if (typeof ref !== 'string') return fail('an element picker takes Library paths')
-          const key = await libraryKey(ref, why)
-          if (!key)
-            return fail(`"${ref}" is not a Library element in the content files or on the site`)
-          keys.push(key)
-        }
-        return { ok: true, value: keys }
-      }
-      case 'Umbraco.MultiUrlPicker': {
-        const links: unknown[] = []
-        for (const entry of list(raw)) {
-          const link = typeof entry === 'string' ? { path: entry } : entry
-          if (!isRecord(link))
-            return fail('a link is a path, a URL, or { path | url, name, target }')
-          // A link as the editor stores it, as `bundle export --source` writes one.
-          if ('unique' in link || 'type' in link) {
-            links.push(link)
-            continue
-          }
-          const target = typeof link.target === 'string' ? link.target : null
-          const url = typeof link.url === 'string' ? link.url : undefined
-          const path = typeof link.path === 'string' ? link.path : undefined
-          if (path && /^[a-z]+:\/\//i.test(path)) {
-            links.push({
-              unique: null,
-              type: 'external',
-              name: link.name ?? path,
-              target,
-              url: path,
-            })
-            continue
-          }
-          if (url) {
-            links.push({ unique: null, type: 'external', name: link.name ?? url, target, url })
-            continue
-          }
-          if (!path) return fail('a link needs a path or a url')
-          const media = mediaByPath.get(trimPath(path))
-          const key = media ? keyOf.get(media) : await contentKey(path, why)
-          if (!key)
-            return fail(`"${path}" is not a page or media in the content files or on the site`)
-          links.push({
-            unique: key,
-            type: media ? 'media' : 'document',
-            name: typeof link.name === 'string' ? link.name : '',
-            target,
-          })
-        }
-        return { ok: true, value: links }
-      }
-      case 'Umbraco.BlockList':
-      case 'Umbraco.BlockGrid':
-        return blocks(editor, raw, owner, where)
-      default:
-        return { ok: true, value: raw }
-    }
-  }
+  const { convert } = valueWriter(lookup, {
+    content: contentKey,
+    media: mediaRef,
+    library: libraryKey,
+    linkedMedia: async (path) => {
+      const media = mediaByPath.get(path.toLowerCase())
+      return media ? keyOf.get(media) : undefined
+    },
+  })
 
   // ------------------------------------------------------------- the nodes
   const mediaTypeAlias = new Map<SeedItem, string>()
@@ -766,11 +502,4 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
     peerRange: `>=${VERSION}`,
   })
   return { findings, set, blobs, files, counts }
-}
-
-/** A TOML date as Bun's parser gives it: a Temporal value whose ISO form is a date. */
-function isTemporalDate(raw: unknown): boolean {
-  if (typeof raw !== 'object' || raw === null || raw instanceof Date) return false
-  const text = String(raw)
-  return /^\d{4}-\d{2}-\d{2}/.test(text) && !Number.isNaN(new Date(text).getTime())
 }

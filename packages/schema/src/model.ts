@@ -182,6 +182,8 @@ export interface SchemaProblem {
   /** A dotted path into the file, e.g. `tab[1].property[0].type`. */
   path: string
   message: string
+  /** The line, when the file could not be read as TOML at all. */
+  line?: number
 }
 
 /** Which kind of content type a file defines. */

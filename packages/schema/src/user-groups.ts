@@ -59,7 +59,10 @@ export function parseUserGroup(file: string, source: string): ParseResult<Schema
   const permissions = r.strs(t, 'permissions', path)
   for (const permission of permissions)
     if (!KNOWN_PERMISSIONS.has(permission))
-      r.problem(`${path}.permissions`, `"${permission}" is not a permission verb`)
+      r.problem(
+        `${path}.permissions`,
+        `"${permission}" is not a permission verb; \`crombolo users groups permissions --verbs\` lists them`,
+      )
   let languages: string[] | 'all' = []
   if (t.languages === 'all') languages = 'all'
   else if (t.languages !== undefined) languages = r.strs(t, 'languages', path)

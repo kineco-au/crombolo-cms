@@ -206,6 +206,9 @@ export default function QuoteBlock({ content, settings }: BlockProps<Quote>) {
   property with `<Blocks>` picks it up.
 - **To render a type differently in one place,** pass `components={{ quote:
   PullQuote }}`.
+- **One block by name:** a block can be given an alias on the page, in the back
+  office or a content file. `model.value('sections').byAlias('hero')` finds it,
+  and each item's `alias` says it (null for none).
 - **A block with no component** shows nothing to visitors, and in preview a
   note naming the file to create.
 - **In a grid,** a block's areas arrive as `children`: put `{children}` where

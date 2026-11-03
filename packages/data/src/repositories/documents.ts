@@ -21,6 +21,7 @@ import {
   type Page,
   parseMediaPolicy,
   STORAGE_COLUMN,
+  SYSTEM_MEDIA_TYPE_KEYS,
   SystemNodes,
   toEditorValue,
   type ValueStorageTypeName,
@@ -32,6 +33,7 @@ import { DbDate, fromDbBool } from '../dialect.ts'
 import { type LockId, Locks } from '../locks.ts'
 import { isPending } from '../pending.ts'
 import { type Insertable, sql } from '../query.ts'
+import { TREE_GROUP_FOLDER, TREE_GROUP_ITEM } from '../schema/media-tree-order.ts'
 import {
   assertNodeMayWrite,
   BASELINE_NODE_STATE,
@@ -833,6 +835,12 @@ export class DocumentRepository {
           objectType: this.objectType,
           text: name,
           userId: input.userId,
+          // A media folder comes before the files beside it in the tree (story 246).
+          treeGroup:
+            this.objectType === ObjectTypes.Media &&
+            normaliseUuid(input.contentTypeKey) === SYSTEM_MEDIA_TYPE_KEYS.Folder
+              ? TREE_GROUP_FOLDER
+              : TREE_GROUP_ITEM,
         })
 
         await tx.q
@@ -1454,41 +1462,22 @@ export class DocumentRepository {
     return this.#db.transaction(async (tx) => {
       const node = await new NodeRepository(tx).byKey(key)
       if (!node) return false
-      const ids = await tx.q
-        .selectFrom('node')
-        .select('id')
-        .where((eb) => eb.or([eb('id', '=', node.id), eb('path', 'like', `${node.path},%`)]))
-        .execute()
-      for (const row of ids.map((r) => Number(r.id)).reverse()) {
-        const versions = tx.q.selectFrom('content_version').select('id').where('node_id', '=', row)
-        await tx.q.deleteFrom('property_value').where('node_id', '=', row).execute()
-        await tx.q.deleteFrom('content_schedule').where('node_id', '=', row).execute()
-        await tx.q.deleteFrom('user_notification').where('node_id', '=', row).execute()
-        await tx.q.deleteFrom('domain').where('node_id', '=', row).execute()
-        await tx.q
-          .deleteFrom('media_access_rule')
-          .where('media_access_id', 'in', (eb) =>
-            eb.selectFrom('media_access').select('id').where('node_id', '=', row),
-          )
-          .execute()
-        await tx.q.deleteFrom('media_access').where('node_id', '=', row).execute()
-        await tx.q.deleteFrom('node_file').where('node_id', '=', row).execute()
-        await tx.q
-          .deleteFrom('content_version_culture_variation')
-          .where('version_id', 'in', versions)
-          .execute()
-        await tx.q.deleteFrom('document_culture_variation').where('node_id', '=', row).execute()
-        await tx.q.deleteFrom('document_version').where('id', 'in', versions).execute()
-        await tx.q.deleteFrom('content_version').where('node_id', '=', row).execute()
-        await tx.q.deleteFrom('document').where('node_id', '=', row).execute()
-        await tx.q.deleteFrom('content').where('node_id', '=', row).execute()
-        await tx.q.deleteFrom('node').where('id', '=', row).execute()
-      }
+      await deleteNodeRows(tx, { branch: node })
       // A page deleted from the bin was never served, but an item deleted
       // directly may have been: every node is told (story 174).
       await this.#child(tx).#instructContent(node.key)
       return true
     })
+  }
+
+  /**
+   * Deletes these nodes and their rows, and no others (story 246): a large branch
+   * is deleted a chunk at a time, deepest first, so no transaction holds it all
+   * and a parent always outlasts its children.
+   */
+  async deleteNodes(ids: readonly number[]): Promise<void> {
+    if (ids.length === 0) return
+    await this.#withTree(() => this.#db.transaction((tx) => deleteNodeRows(tx, { ids })))
   }
 
   /**
@@ -2089,6 +2078,9 @@ export class DocumentRepository {
               join.onRef('pd.id', '=', 'pc.id').on('pd.published', '=', t),
             )
             .select(['pc.node_id', 'pc.version_date'])
+            // This node's alone: unfiltered, a planner can build it from every
+            // published version in the site before joining one (story 246).
+            .where('pc.node_id', '=', node.id)
             .as('pub'),
         (join) => join.onRef('pub.node_id', '=', 'n.id'),
       )
@@ -3415,4 +3407,67 @@ export async function latestContentVersionId(db: Db): Promise<number> {
     .select((eb) => eb.fn.max('id').as('n'))
     .execute()
   return Number(rows[0]?.n ?? 0)
+}
+
+/**
+ * Every row a node owns, then the node, for a branch (`branch`: the node and all
+ * below it, by path) or a set of nodes (`ids`), a statement per table over the
+ * whole set rather than one per node (story 246).
+ */
+async function deleteNodeRows(
+  tx: Db,
+  among: { branch: Pick<NodeRow, 'id' | 'path'> } | { ids: readonly number[] },
+): Promise<void> {
+  const nodes = () =>
+    tx.q
+      .selectFrom('node')
+      .select('id')
+      .where((eb) =>
+        'ids' in among
+          ? eb('id', 'in', [...among.ids])
+          : eb.or([eb('id', '=', among.branch.id), eb('path', 'like', `${among.branch.path},%`)]),
+      )
+  const versions = () =>
+    tx.q.selectFrom('content_version').select('id').where('node_id', 'in', nodes())
+  await tx.q.deleteFrom('property_value').where('node_id', 'in', nodes()).execute()
+  await tx.q.deleteFrom('content_schedule').where('node_id', 'in', nodes()).execute()
+  await tx.q.deleteFrom('user_notification').where('node_id', 'in', nodes()).execute()
+  await tx.q.deleteFrom('domain').where('node_id', 'in', nodes()).execute()
+  await tx.q
+    .deleteFrom('media_access_rule')
+    .where('media_access_id', 'in', (eb) =>
+      eb.selectFrom('media_access').select('id').where('node_id', 'in', nodes()),
+    )
+    .execute()
+  await tx.q.deleteFrom('media_access').where('node_id', 'in', nodes()).execute()
+  await tx.q.deleteFrom('node_file').where('node_id', 'in', nodes()).execute()
+  await tx.q
+    .deleteFrom('content_version_culture_variation')
+    .where('version_id', 'in', versions())
+    .execute()
+  await tx.q.deleteFrom('document_culture_variation').where('node_id', 'in', nodes()).execute()
+  await tx.q.deleteFrom('document_version').where('id', 'in', versions()).execute()
+  await tx.q.deleteFrom('content_version').where('node_id', 'in', nodes()).execute()
+  await tx.q.deleteFrom('document').where('node_id', 'in', nodes()).execute()
+  await tx.q.deleteFrom('content').where('node_id', 'in', nodes()).execute()
+  if ('ids' in among)
+    await tx.q
+      .deleteFrom('node')
+      .where('id', 'in', [...among.ids])
+      .execute()
+  else
+    await tx.q
+      .deleteFrom('node')
+      .where('id', 'in', (eb) =>
+        eb
+          .selectFrom('node as branch')
+          .select('branch.id')
+          .where((w) =>
+            w.or([
+              w('branch.id', '=', among.branch.id),
+              w('branch.path', 'like', `${among.branch.path},%`),
+            ]),
+          ),
+      )
+      .execute()
 }

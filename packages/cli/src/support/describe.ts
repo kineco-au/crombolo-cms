@@ -1,7 +1,13 @@
 /** How the CLI says what happened: the lines shared between commands. */
 import { relative } from 'node:path'
 import type { Finding } from '@crombolo/data'
-import type { SyncReport } from '@crombolo/schema'
+import {
+  type LocatedProblem,
+  locateProblems,
+  type ProblemDefinition,
+  type SchemaProblem,
+  type SyncReport,
+} from '@crombolo/schema'
 import { propertyHandle, resolutionsFor, type TransferCheck } from '@crombolo/transfer'
 import type * as ops from '../operations/commands.ts'
 import type { Job } from '../remote/client.ts'
@@ -76,11 +82,100 @@ export function describeSync(report: SyncReport): string {
   }
 }
 
-export const describeProblem = (p: SyncReport['problems'][number]): string =>
-  `${p.file}${p.path ? ` (${p.path})` : ''}: ${p.message}`
+/** A definition as a person names it: the content type "Content page". */
+export function describeDefinition(definition: ProblemDefinition): string {
+  if (definition.kind === 'languages') return "the site's languages"
+  if (definition.kind === 'site settings') return "the site's settings"
+  return `the ${definition.kind} "${definition.name ?? definition.alias}"`
+}
 
-export function printProblems(io: Io, problems: SyncReport['problems']): void {
-  for (const p of problems) io.warning(`  ${describeProblem(p)}`)
+const arg = (text: string) => (/^[A-Za-z0-9_.@/-]+$/.test(text) ? text : `"${text}"`)
+
+const TYPE_KINDS = new Set(['content type', 'element type', 'media type', 'member type'])
+
+/** The command that changes what a problem is about. */
+function fixFor({ definition, part }: LocatedProblem): string | undefined {
+  if (!definition) return undefined
+  const alias = arg(definition.alias)
+  const on = part ? arg(part.name) : ''
+  if (TYPE_KINDS.has(definition.kind))
+    return part?.kind === 'property'
+      ? `crombolo types property update ${alias} ${on}`
+      : `crombolo types update ${alias}`
+  switch (definition.kind) {
+    case 'data type':
+      return `crombolo types update ${alias}`
+    case 'form':
+      if (part && ['field', 'page', 'group', 'workflow'].includes(part.kind))
+        return `crombolo forms ${part.kind} update ${alias} ${on}`
+      return `crombolo forms update ${alias}`
+    case 'workflow':
+      return part?.kind === 'stage'
+        ? `crombolo workflows stage update ${alias} ${on}`
+        : `crombolo workflows update ${alias}`
+    case 'user group':
+      return `crombolo users groups update ${alias}`
+    case 'languages':
+      return part?.kind === 'language'
+        ? `crombolo languages update ${on}`
+        : 'crombolo languages list'
+    case 'site settings':
+      return 'crombolo site urls'
+  }
+}
+
+const SYNTAX = /^invalid TOML: (?:TOML Parse error: )?/
+
+/** One problem in words: its definition and part, or its file and line when the file does not read. */
+export function describeLocated(problem: LocatedProblem): string {
+  if (!problem.definition) {
+    const at = `${problem.file}${problem.line ? `, line ${problem.line}` : ''}`
+    return SYNTAX.test(problem.message)
+      ? `${at} does not read: ${problem.message.replace(SYNTAX, '')}`
+      : `${at}: ${problem.message}`
+  }
+  const what = describeDefinition(problem.definition)
+  const part = problem.part ? `, its ${problem.part.kind} "${problem.part.name}"` : ''
+  // A message that names its own command needs no other
+  const fix = problem.message.includes('`crombolo ') ? undefined : fixFor(problem)
+  // The reader's own words name no key: "is required", "expected a string"
+  const key = problem.key?.replace(/^settings\./, '')
+  const generic = /^(is required|expected |unknown key)/.test(problem.message)
+  const message =
+    key && generic
+      ? problem.message.startsWith('is ')
+        ? `${key} ${problem.message}`
+        : `${key}: ${problem.message}`
+      : problem.message
+  return `${what.charAt(0).toUpperCase()}${what.slice(1)}${part}: ${message}${fix ? ` (\`${fix}\`)` : ''}`
+}
+
+/** A problem for output: in words, with where it is kept for tools. */
+export interface ProblemOut {
+  text: string
+  message: string
+  definition?: ProblemDefinition
+  part?: { kind: string; name: string }
+  key?: string
+  file: string
+  line?: number
+}
+
+/** Problems in the site's own terms, each with its file and line for `-o json`. */
+export function problemsOf(problems: readonly SchemaProblem[], schemaDir: string): ProblemOut[] {
+  return locateProblems(problems, schemaDir).map((p) => ({
+    text: describeLocated(p),
+    message: p.message,
+    ...(p.definition ? { definition: p.definition } : {}),
+    ...(p.part ? { part: p.part } : {}),
+    ...(p.key ? { key: p.key } : {}),
+    file: p.file,
+    ...(p.line !== undefined ? { line: p.line } : {}),
+  }))
+}
+
+export function printProblems(io: Io, problems: readonly ProblemOut[]): void {
+  for (const p of problems) io.warning(`  ${p.text}`)
 }
 
 export function describeBundle(io: Io, bundle: ops.BundleSummary): void {

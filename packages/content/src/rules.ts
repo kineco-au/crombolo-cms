@@ -4,5 +4,6 @@
  * imports nothing that reaches the database.
  */
 export * from './actor.ts'
+export * from './block-aliases.ts'
 export * from './events.ts'
 export * from './policy.ts'

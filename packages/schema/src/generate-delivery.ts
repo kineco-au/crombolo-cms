@@ -8,13 +8,8 @@
  */
 import { BUILT_IN_MEDIA_TYPES } from '@crombolo/data'
 import { storageTypeFor } from './builtin.ts'
-import {
-  blockElements,
-  contentTypeAliasOf,
-  dataTypeOf,
-  effectiveProperties,
-  pascal,
-} from './generate.ts'
+import { effectiveProperties } from './compositions.ts'
+import { blockElements, contentTypeAliasOf, dataTypeOf, pascal } from './generate.ts'
 import type { SchemaContentType, SchemaSet } from './model.ts'
 
 export interface DeliveryTypesOptions {

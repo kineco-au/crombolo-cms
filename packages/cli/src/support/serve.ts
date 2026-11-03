@@ -262,7 +262,9 @@ export async function serveSite(io: Io, options: StartOptions): Promise<Started>
   const report = server.schema.report
   if (report) lines.push(`  schema      ${describeSync(report)}`)
   if (server.schema.compatibilityMode)
-    lines.push('  ⚠ database is ahead of schema/: reads only, writes refused with 409')
+    lines.push(
+      "  ⚠ the database is ahead of the site's definitions: reads only, writes refused with 409",
+    )
   // Story 225: a wired bundle runs unless an administrator has disabled it.
   const disabled = config.role === 'web' ? [] : server.disabledBundles()
   if (disabled.length > 0) {

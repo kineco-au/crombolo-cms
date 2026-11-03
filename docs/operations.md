@@ -589,7 +589,7 @@ worked example. CI runs it, one step per test, in this order:
 | --- | --- |
 | Scaffold | `crombolo init --name "Hello"` |
 | A page type and its view | `crombolo types new content-type page --at-root` |
-| Another property | `crombolo types add-property page body --type textarea` |
+| Another property | `crombolo types property add page body --type textarea` |
 | Check | `crombolo types check` |
 | The home page | `content/pages/home.toml`, then `crombolo bundle build --check` and `bundle apply` |
 | Publish | `crombolo content publish /Home` |

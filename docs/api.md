@@ -17,7 +17,7 @@ Everything supported comes from `@crombolo/crombolo`, split by who is using it:
 | `@crombolo/crombolo/routes` | a site's route handlers | the route contract bound to crombolo's types (`route`, `RouteHandler`, `RouteContext`, `SiteRoute`, `RouteOptions`, `RouteMethod`, `ROUTE_METHODS`), `Outcome`, `ok`, `FieldError`, `CookieOptions` and `fromRouteModule` (story 211) |
 | `@crombolo/crombolo/middleware` | a site's middleware | the middleware contract bound to crombolo's types (`Middleware`, `MiddlewareHandler`, `MiddlewareContext`), `rewrite`, `withCookie`, `NextResponse` and `fromNextMiddleware` (story 210) |
 | `@crombolo/crombolo/islands-react` | the browser | `mount`, which renders a `'use client'` island with React; Crombolo's island build includes it, and a Vite build lists it as an input (story 209) |
-| `@crombolo/crombolo/host` | whoever runs sites | `createServer`, `loadConfig`, `cromboloServer` and `ServerHandle`; `createWorker`, `WorkerHandle` and `WorkerHealth`, a node that runs only the jobs (story 223); the media and schema stores; `liveNodes`; the bundle checks (`validateBundlePackage`, `peerRangeProblem`, `checkBundleCode`, `installBundleCode`); and the operations a deploy runs (`upgradePlan`, `upgradeFix`, `contentImport`, `siteExport`, `findTemplate`) |
+| `@crombolo/crombolo/host` | whoever runs sites | `createServer`, `loadConfig`, `cromboloServer` and `ServerHandle`; `createWorker`, `WorkerHandle` and `WorkerHealth`, a node that runs only the jobs (story 223); the media and schema stores; `liveNodes`; the bundle checks (`validateBundlePackage`, `peerRangeProblem`, `checkBundleCode`, `installBundleCode`); the signature check (`verifyPackage`, `verifyProvenance`, `provenanceProblem`, `describeProvenance`, story 244); and the operations a deploy runs (`upgradePlan`, `upgradeFix`, `contentImport`, `siteExport`, `findTemplate`) |
 
 `@crombolo/crombolo/branding` (the marks and the palette) and the JSX runtimes
 are supported too. The JSX runtimes' names are the JSX compiler's contract, not
@@ -168,6 +168,29 @@ half declares `crombolo.permissions`, and one written for schema 2 is refused.
 `@crombolo/crombolo/bundle` is unchanged; what changed is the package's
 manifest, and that a capability refuses a method its declared permissions do
 not cover. `bundles.md`, "Permissions", lists them.
+
+## The provenance check from the host entry (unreleased)
+
+A host that installs bundles for other people's sites (story 181) checks a
+bundle's signature (story 060) the way the CMS does, from
+`@crombolo/crombolo/host` (story 244). Nothing is removed, and signing is not
+offered here: that is a CI job's, with `crombolo bundle sign`.
+
+| Export | For |
+| --- | --- |
+| `verifyPackage(path, options?)` | a package directory or `.tgz`: its `ProvenanceResult` |
+| `verifyProvenance(dir, options?)` | a package directory |
+| `provenanceProblem(result, policy)` | why the site's `ProvenancePolicy` refuses it, or `undefined` |
+| `describeProvenance(result)` | the line the back office shows: *Signed: built from …*, *Not signed* |
+| `ProvenanceResult`, `ProvenanceState`, `ProvenanceSource`, `ProvenanceLinks`, `ProvenancePolicy`, `SignaturePolicy`, `VerifyProvenanceOptions` | their types |
+
+A result's `state` is `signed`, `unsigned`, `invalid` (the signature does not
+check out), `local`, or **`unchecked`**: Sigstore's public trusted root, fetched
+through TUF at most hourly and cached, could not be had and none was cached.
+`provenanceProblem` refuses `invalid` and `unchecked` under every policy; an
+`unchecked` bundle is worth trying again, an `invalid` one is not. Nothing
+throws. `VerifyProvenanceOptions.trustedRoot` takes a trusted root of the
+host's own, as JSON, in place of the public one.
 
 ## The worker from the host entry (unreleased)
 

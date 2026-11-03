@@ -127,6 +127,10 @@ export async function undoMediaMemberUploads(db: Db): Promise<void> {
   // come after it; 056's columns go with 054's table.
   // 059, forms in the Library (story 239), 058, bundle schema picks (story
   // 226), and 057, site settings types (story 058): columns on tables that stay.
+  // 062, the Media tree folders first (story 246): a column and its index on node.
+  await db.exec('DROP INDEX IF EXISTS ix_node_parent_tree')
+  await db.exec('ALTER TABLE node DROP COLUMN tree_group')
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddMediaTreeOrder'")
   // 061, trust rules and CI tokens (story 160): tables of their own.
   await db.exec('DROP TABLE IF EXISTS remote_ci_token')
   await db.exec('DROP TABLE IF EXISTS remote_trust_rule')

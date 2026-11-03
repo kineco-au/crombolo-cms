@@ -2,7 +2,7 @@
 type = "docsPage"
 key = "d4292a2e-c06e-4099-8ddf-e47b593e79c4"
 name = "Content transfer"
-order = 3
+order = 5
 
 [values]
 title = "Content transfer"

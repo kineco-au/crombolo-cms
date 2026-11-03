@@ -120,6 +120,8 @@ export function registerMediaHandlers(
   const mediaStart = (ctx: RequestContext) => ctx.principal?.startNodes.media ?? ROOT_ACCESS
 
   /** The signed-in user, as the operations know them: their rules apply (story 165). */
+  const DELETING_LATER =
+    'This holds a lot of items, so it is being deleted in the background. It will be gone in a few moments.'
   const actorOf = (ctx: RequestContext) =>
     userActor(ctx.principal as NonNullable<typeof ctx.principal>, ctx.client ?? {})
   const missing = (result: Refusal, title: string) =>
@@ -129,6 +131,15 @@ export function registerMediaHandlers(
   const done = (ctx: RequestContext, message?: string) => {
     if (message) ctx.notifications.push({ message, category: 'Media', type: 'Success' })
     return new Response(null, { status: 200 })
+  }
+  /**
+   * A large branch's write was queued (story 246): the editor is told it is under
+   * way, and `Crombolo-Job` names the job its progress is read from.
+   */
+  const queuedOr = (ctx: RequestContext, result: { queued?: string }, message: string) => {
+    if (!result.queued) return done(ctx)
+    ctx.notifications.push({ message, category: 'Media', type: 'Info' })
+    return new Response(null, { status: 200, headers: { 'crombolo-job': result.queued } })
   }
 
   router.handle('GetItemMediaTypeAllowed', async (ctx) => {
@@ -219,12 +230,20 @@ export function registerMediaHandlers(
 
   router.handle('DeleteMediaById', async (ctx) => {
     const result = await operations.delete(actorOf(ctx), ctx.params.id as string)
-    return result.ok ? done(ctx) : missing(result, 'Could not delete the media item')
+    return result.ok
+      ? queuedOr(ctx, result, DELETING_LATER)
+      : missing(result, 'Could not delete the media item')
   })
 
   router.handle('PutMediaByIdMoveToRecycleBin', async (ctx) => {
     const result = await operations.trash(actorOf(ctx), ctx.params.id as string)
-    return result.ok ? done(ctx) : missing(result, 'Could not move the media item')
+    return result.ok
+      ? queuedOr(
+          ctx,
+          result,
+          'This holds a lot of items, so it is being moved to the recycle bin in the background. It will be there in a few moments.',
+        )
+      : missing(result, 'Could not move the media item')
   })
 
   router.handle('PutMediaByIdMove', async (ctx) => {
@@ -233,7 +252,13 @@ export function registerMediaHandlers(
       ctx.params.id as string,
       refId((await readBody(ctx)).target),
     )
-    return result.ok ? done(ctx) : failed('Could not move the media item', result)
+    return result.ok
+      ? queuedOr(
+          ctx,
+          result,
+          'This holds a lot of items, so it is being moved in the background. It will be in its new place in a few moments.',
+        )
+      : failed('Could not move the media item', result)
   })
 
   router.handle('PutMediaSort', async (ctx) => {
@@ -446,7 +471,13 @@ export function registerMediaHandlers(
       ctx.params.id as string,
       target ?? undefined,
     )
-    return result.ok ? done(ctx) : failed('Could not restore', result)
+    return result.ok
+      ? queuedOr(
+          ctx,
+          result,
+          'This holds a lot of items, so it is being restored in the background. It will be back in a few moments.',
+        )
+      : failed('Could not restore', result)
   })
   router.handle('DeleteRecycleBinMediaById', async (ctx) => {
     const key = ctx.params.id as string
@@ -457,11 +488,19 @@ export function registerMediaHandlers(
         problemDetails({ title: 'The media item is not in the recycle bin', status: 400 }),
       )
     const result = await operations.delete(actorOf(ctx), key, { fromBin: true })
-    return result.ok ? done(ctx) : missing(result, 'Could not delete the media item')
+    return result.ok
+      ? queuedOr(ctx, result, DELETING_LATER)
+      : missing(result, 'Could not delete the media item')
   })
   router.handle('DeleteRecycleBinMedia', async (ctx) => {
     const result = await operations.emptyBin(actorOf(ctx))
-    return result.ok ? done(ctx) : failed('Could not empty the recycle bin', result)
+    return result.ok
+      ? queuedOr(
+          ctx,
+          result,
+          'The recycle bin holds a lot of items, so it is being emptied in the background. This can take a few minutes.',
+        )
+      : failed('Could not empty the recycle bin', result)
   })
 
   // References arrive with relations (story 046); nothing is known to refer yet.

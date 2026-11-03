@@ -1,17 +1,17 @@
 {
   "formatVersion": 5,
-  "id": "2e09033f-0400-5a7e-a996-23eade6ad1b0",
+  "id": "1d3c3f06-b260-5737-ac1a-cd69e79bccc4",
   "label": "Crombolo",
   "createdAt": "1970-01-01T00:00:00.000Z",
   "createdBy": "crombolo bundle build",
-  "integrity": "sha256-6f883618c8401d8d6969cc5033a42b3b3ebec1af00b0a6fe398a1a2f3ad77666",
+  "integrity": "sha256-2cbbf813d8f6f559bed0d18f8e47de1678dbde7b0b8f2a44db04cef42ec85a98",
   "snapshot": "drafts",
   "provenance": {
     "siteName": "Crombolo",
     "schemaVersion": "1.0.0",
     "schemaRevision": "0",
     "schemaHash": "421734415428a18efb15bd0d9b168f4eaf88af1cd5bb7e8c90be897b90fc4a92",
-    "cmsVersion": "0.45.0"
+    "cmsVersion": "0.46.0"
   },
   "selector": {
     "roots": [
@@ -48,7 +48,7 @@
     ]
   },
   "counts": {
-    "document": 28,
+    "document": 38,
     "element": 25
   },
   "dependencies": {
@@ -56,6 +56,7 @@
       "030e1fb7-4785-41ce-891b-fed3794e5280",
       "03ef280b-511e-4778-859b-34e6a48be6f6",
       "05b6bdcb-2635-4a84-96e3-aa51980f368a",
+      "15400121-8e70-4a40-8809-cbd369e5dab8",
       "1b966f5b-2fa6-4912-92aa-6390e00ac12e",
       "1f9d8eb5-4a8d-448d-bedc-a84f33ddab21",
       "1fcae3b1-81dd-4dbf-8a2e-e3af7900a8d6",
@@ -81,31 +82,40 @@
       "704573e6-9386-4273-b6e8-04110bf6a9eb",
       "764372aa-43c9-4bb9-8587-fd5842381079",
       "7a0bca8c-36cf-4602-b204-1b6674d2e1ee",
+      "7cef2429-e1f7-4598-86a4-057d7419bf91",
       "82fdcd06-8db5-48de-83ce-76c29947adfe",
       "89ecdb25-4b22-4557-8494-e075e88ae0d3",
       "8c17e1ab-26ab-483d-8cff-0469962db510",
+      "8cd61712-878b-474e-8577-d1143f75ed37",
       "8edc6093-5294-4e95-8d4b-13cda44da5f4",
+      "8fce2408-43fa-407f-8059-bc777b4c6ce8",
+      "905caea9-3de6-45fb-8d64-60d5e23c6ef5",
       "9249bc6e-4bb3-4161-a538-a7c8008f1c95",
       "9ccf8f41-fdb9-4a17-87d2-69835c42d5bd",
       "9fbf656c-7b94-4f38-9c45-b4a93dea980d",
       "a05f0143-68ce-4242-8266-7db386b6747b",
       "a1a5f5a7-eb6f-4465-848a-1a86b595946e",
       "a90cf801-2632-4000-85e6-14056ccacbb4",
+      "ab6b30ea-c875-4489-87d4-063c5c4d413c",
       "ad985566-f642-413e-83e5-3e9bb4cdf283",
       "b13339a3-69dd-43a2-a766-9ed92c8e7a28",
       "bfbe288f-2c69-4228-872f-9977d0ba23ae",
+      "c0b0ccb3-faa3-46a4-8af2-80730c1e3ee3",
       "c4d3fed5-e5e4-4eaa-836a-60f841ad9d5a",
       "c7d11c0f-afa9-4269-9f26-c52e8cb09b0e",
       "cb496fd4-b965-43b8-8531-f83c08e8fc80",
+      "cbb6339e-ec1b-47f1-8352-6756ac9cca16",
       "d1ff5d1b-338a-4ed7-8b12-6bf9d4659da6",
       "d4292a2e-c06e-4099-8ddf-e47b593e79c4",
       "d701c25a-6cca-4875-880b-2d70c0227158",
+      "da21ae13-22ad-430a-82c4-2460abfa53df",
       "dc12892a-7d67-40cf-8645-09a9387a069b",
       "e41ed7cc-3023-43a1-93ad-83f1b2ea1559",
       "eda4ab14-74bf-446d-bb3e-064be4e5913b",
       "f6c036de-300b-42d5-aa83-56f60fa26ef2",
       "fa2dd680-27ba-4811-8dc2-101cb3813c6d",
-      "fe380729-34ae-48f6-848c-ab6e20d20b09"
+      "fe380729-34ae-48f6-848c-ab6e20d20b09",
+      "fff6125a-b2bb-441c-8a58-36e23552194f"
     ],
     "expected": [],
     "schema": {

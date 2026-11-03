@@ -2,7 +2,9 @@ import { existsSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
+  compositionType,
   DATA_TYPE_PRESETS,
+  effectiveProperties,
   fileNameFor,
   newType,
   type PresetOptions,
@@ -16,7 +18,7 @@ import {
 } from '@crombolo/schema'
 import { Args, Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
-import { describeSync, here } from '../../support/describe.ts'
+import { describeDefinition, describeSync, here } from '../../support/describe.ts'
 import { siteConfig } from '../../support/site.ts'
 import { applySchema, loadTypes, needSchemaDir, refuseOwnProblems } from '../../support/types.ts'
 
@@ -32,6 +34,7 @@ const TYPE_ONLY = [
   'at-root',
   'element',
   'tab',
+  'title',
   'no-view',
   'compose',
   'allow-child',
@@ -70,7 +73,12 @@ export default class TypesNew extends BaseCommand {
     icon: Flags.string({ summary: "the type's icon", helpValue: '<icon>' }),
     'at-root': Flags.boolean({ summary: 'allow it at the root of the tree' }),
     element: Flags.boolean({ summary: 'an element type, for blocks' }),
-    tab: Flags.string({ summary: 'the tab its first property goes in', helpValue: '<tab>' }),
+    tab: Flags.string({ summary: 'the tab its title goes in', helpValue: '<tab>' }),
+    title: Flags.boolean({
+      summary:
+        'start it with a mandatory title: a content type has one unless a composition does, an element type has none',
+      allowNo: true,
+    }),
     'no-view': Flags.boolean({ summary: 'no view: a type nothing renders' }),
     compose: many('a type it is composed of', '<alias>'),
     'allow-child': many('a type allowed beneath it', '<alias>'),
@@ -127,6 +135,15 @@ export default class TypesNew extends BaseCommand {
       this.fail('conflict', `There is already a type with the alias "${args.alias}".`)
 
     const element = flags.element
+    // A composition's title is the page's title: a second one would clash (story 255)
+    const composedTitle = (flags.compose ?? []).some((alias) => {
+      const composed = compositionType(loaded.set, alias)
+      return (
+        composed !== undefined &&
+        effectiveProperties(loaded.set, composed).some((p) => p.alias.toLowerCase() === 'title')
+      )
+    })
+    const title = kind === 'document' && (flags.title ?? (!element && !composedTitle))
     const type = newType({
       alias: args.alias,
       kind,
@@ -138,7 +155,7 @@ export default class TypesNew extends BaseCommand {
       template: !flags['no-view'],
       // A content type with nothing in it cannot be published, so it starts with
       // the one property every page has; the other kinds get what they are given.
-      tab: kind === 'document' ? (flags.tab ?? 'Content') : undefined,
+      tab: title ? (flags.tab ?? 'Content') : undefined,
       compose: flags.compose,
       allowChildren: flags['allow-child'],
       variesByCulture: flags['vary-by-culture'],
@@ -155,6 +172,7 @@ export default class TypesNew extends BaseCommand {
     refuseOwnProblems(
       { ...loaded.set, [kinds[kind]]: [...(loaded.set[kinds[kind]] ?? []), type] },
       `schema/${TYPE_KIND_FILES[kind].dir}/${args.alias}`,
+      config.schemaDir,
     )
 
     const created: string[] = []
@@ -162,7 +180,11 @@ export default class TypesNew extends BaseCommand {
     await mkdir(join(file, '..'), { recursive: true })
     await writeFile(file, writeContentType(type, kind))
     created.push(here(file))
-    this.say(`  created  ${here(file)}`)
+    const kindWord =
+      kind === 'document' ? (element ? 'element type' : 'content type') : (`${kind} type` as const)
+    this.say(
+      `  added    ${describeDefinition({ kind: kindWord, alias: args.alias, name: type.name })}`,
+    )
 
     // A type nothing allows cannot be created anywhere, which is a confusing
     // first five minutes: the editor simply never offers it.
@@ -227,11 +249,14 @@ export default class TypesNew extends BaseCommand {
     refuseOwnProblems(
       { ...set, dataTypes: [...set.dataTypes, built.dataType] },
       `schema/data-types/${alias}`,
+      config.schemaDir,
     )
     const file = join(config.schemaDir, 'data-types', fileNameFor(alias))
     await mkdir(join(file, '..'), { recursive: true })
     await writeFile(file, writeDataType(built.dataType))
-    this.say(`  created  ${here(file)}`)
+    this.say(
+      `  added    ${describeDefinition({ kind: 'data type', alias, name: built.dataType.name })}`,
+    )
     const report = await applySchema(this, config)
     return { created: [here(file)], schema: describeSync(report) }
   }

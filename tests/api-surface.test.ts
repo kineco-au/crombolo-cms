@@ -4,13 +4,13 @@
  * consumer that uses nothing else. `docs/api.md`.
  */
 import { afterAll, describe, expect, test } from 'bun:test'
-import { readdirSync, readFileSync } from 'node:fs'
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { currentSurface, SNAPSHOT, type Surface, UMBRELLA } from '../scripts/api-surface.ts'
 import { ROOT } from '../scripts/packages.ts'
 import { GREETINGS_ID, greetings } from './fixtures/consumers/bundle.ts'
 import config from './fixtures/consumers/crombolo.config.ts'
-import { hostConfig, vet } from './fixtures/consumers/host.ts'
+import { hostConfig, signatureCheck, vet } from './fixtures/consumers/host.ts'
 import { siteDeclaring } from './support/bundles.ts'
 import { BACKOFFICE, type Harness, signedInServer } from './support/harness.ts'
 
@@ -195,5 +195,20 @@ describe('an outside consumer', () => {
     expect(vet({ ...valid, peerDependencies: { '@crombolo/crombolo': '<0.1.0' } })[0]).toContain(
       'is written for',
     )
+  })
+
+  test('a host checks a bundle’s signature with the CMS’s own rule (story 244)', async () => {
+    const dir = siteDeclaring('api-host-signature', {})
+    const unsigned = await signatureCheck(dir, { signatures: 'optional', sources: [] })
+    expect(unsigned).toEqual({ line: 'Not signed', refused: undefined, retry: false })
+    const required = await signatureCheck(dir, { signatures: 'required', sources: [] })
+    expect(required.refused).toContain('takes only signed bundles')
+    writeFileSync(
+      join(dir, 'provenance.json'),
+      '{ "format": 1, "digest": "sha256-0", "signature": {} }',
+    )
+    const tampered = await signatureCheck(dir, { signatures: 'optional', sources: [] })
+    expect(tampered.line).toContain('changed since it was signed')
+    expect(tampered.refused).toBeDefined()
   })
 })

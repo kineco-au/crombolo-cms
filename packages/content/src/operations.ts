@@ -29,6 +29,7 @@ import {
   WriteRejectedError,
 } from '@crombolo/data'
 import type { Actor, ContentPrincipal } from './actor.ts'
+import { duplicateBlockAlias } from './block-aliases.ts'
 import type { DocumentEvent, EventSink } from './events.ts'
 import {
   deniedPropertyWrite,
@@ -40,6 +41,9 @@ import {
 } from './policy.ts'
 
 /** A page as a save sends it. */
+const sharedAlias = (twice: { property: string; alias: string }) =>
+  `Two blocks in "${twice.property}" are called "${twice.alias}": give one another name.`
+
 export interface DocumentInput {
   key: string
   contentTypeKey: string
@@ -86,7 +90,8 @@ export type Blocked = Array<{ key: string; reasons: string[] }>
  * would change) and those already as asked; or, refused, each item's reasons.
  */
 export type SelectionResult =
-  | Done<{ changed: string[]; unchanged: string[] }>
+  /** `queued`: a large branch handed to a background job, which writes it (story 246). */
+  | Done<{ changed: string[]; unchanged: string[]; queued?: string }>
   | (Refusal & { blocked?: Blocked })
 
 /**
@@ -510,6 +515,8 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
         input.values,
       )
       if (denied) return denied
+      const twice = duplicateBlockAlias(input.values)
+      if (twice) return refuse('invalid', 400, sharedAlias(twice))
       const misplaced = await placement(actor, input.contentTypeKey, input.parentKey)
       if (misplaced) return refuse('invalid', 400, misplaced)
       try {
@@ -543,6 +550,8 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
         input.values,
       )
       if (denied) return denied
+      const twice = duplicateBlockAlias(input.values)
+      if (twice) return refuse('invalid', 400, sharedAlias(twice))
       const unbased = revisionRefusal(actor, precondition)
       if (unbased) return unbased
       const gate = gateFor(actor)
@@ -589,6 +598,8 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
         input.values,
       )
       if (denied) return denied
+      const twice = duplicateBlockAlias(input.values)
+      if (twice) return refuse('invalid', 400, sharedAlias(twice))
       const misplaced = await placement(actor, input.contentTypeKey, input.parentKey)
       if (misplaced) return refuse('invalid', 400, misplaced)
       const gate = gateFor(actor)
@@ -638,6 +649,8 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
         input.values,
       )
       if (denied) return denied
+      const twice = duplicateBlockAlias(input.values)
+      if (twice) return refuse('invalid', 400, sharedAlias(twice))
       const unbased = revisionRefusal(actor, precondition)
       if (unbased) return unbased
       const gate = gateFor(actor)

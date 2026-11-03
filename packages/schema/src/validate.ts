@@ -17,6 +17,7 @@ import {
   SYSTEM_CONTENT_TYPE_ALIASES,
   SYSTEM_MEDIA_TYPE_ALIASES,
 } from './builtin.ts'
+import { composedProperties } from './compositions.ts'
 import { type ReferenceKind, resolveConfig } from './config-references.ts'
 import {
   allProperties,
@@ -181,6 +182,8 @@ export function validateSchemaSet(set: SchemaSet, options: ValidateOptions = {})
             `"${c}" has fields that vary by culture, so this type must vary by culture too`,
           )
       }
+      for (const message of compositionClashes(set, t, header))
+        add(file, message.path, message.text)
       for (const c of t.allowChildren)
         if (!known(c)) add(file, `${header}.allow-children`, `unknown type "${c}"`)
       if (t.collection && !dataTypeAliases.has(t.collection))
@@ -299,4 +302,37 @@ function findCompositionCycle(
   }
   const found = walk(start, [])
   return found && found[0] === start ? found : undefined
+}
+
+/**
+ * A property whose alias one of the type's compositions already has, and two
+ * compositions bringing the same alias (story 255): a page would carry two
+ * values under one alias, and a view could not tell which it reads.
+ */
+function compositionClashes(
+  set: SchemaSet,
+  type: SchemaContentType,
+  header: string,
+): Array<{ path: string; text: string }> {
+  const out: Array<{ path: string; text: string }> = []
+  const composed = new Map<string, string>()
+  for (const p of composedProperties(set, type)) {
+    const alias = p.property.alias.toLowerCase()
+    const from = composed.get(alias)
+    if (from === undefined) composed.set(alias, p.from)
+    else if (from !== p.from)
+      out.push({
+        path: `${header}.compositions`,
+        text: `"${from}" and "${p.from}" both have a property "${p.property.alias}"`,
+      })
+  }
+  for (const own of allProperties(type)) {
+    const from = composed.get(own.alias.toLowerCase())
+    if (from)
+      out.push({
+        path: `property "${own.alias}"`,
+        text: `"${from}" has a property "${own.alias}" already; \`crombolo types property remove ${type.alias} ${own.alias}\` takes this one away`,
+      })
+  }
+  return out
 }

@@ -92,6 +92,17 @@ export function classify(error: unknown): CliError {
   })
 }
 
+/** A detail in words: a string as it is, an object by its text or message, anything else as JSON. */
+function detailText(item: unknown): string {
+  if (typeof item === 'string') return item
+  if (item && typeof item === 'object') {
+    const { text, message } = item as { text?: unknown; message?: unknown }
+    if (typeof text === 'string') return text
+    if (typeof message === 'string') return message
+  }
+  return JSON.stringify(item) ?? String(item)
+}
+
 /**
  * Says a failure. In JSON mode stderr's last line is the envelope; in text mode
  * a person reads sentences, and when stderr is not a terminal the envelope
@@ -101,7 +112,7 @@ export function classify(error: unknown): CliError {
 export function reportFailure(failure: CliError, json: boolean): void {
   if (!json) {
     if (Array.isArray(failure.details))
-      for (const item of failure.details) process.stderr.write(`  ${String(item)}\n`)
+      for (const item of failure.details) process.stderr.write(`  ${detailText(item)}\n`)
     else if (typeof failure.details === 'string') process.stderr.write(`${failure.details}\n`)
     process.stderr.write(`${failure.message}\n`)
     if (failure.hint) process.stderr.write(`  ${failure.hint}\n`)

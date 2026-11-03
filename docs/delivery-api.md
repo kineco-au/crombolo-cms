@@ -179,7 +179,8 @@ Umbraco's shapes, camelCase, nulls written, dates ISO in UTC. A page:
 - `cultures` holds each culture's route; an invariant page has `{}`.
 - Pickers are references — `properties` stays `{}` unless expanded. Media
   picker, multinode tree picker and multi URL picker are always arrays. Blocks
-  and elements always carry their properties. Rich text is a tree of elements
+  and elements always carry their properties. A block given an alias on its
+  page has `"alias"` beside `content` and `settings`, Crombolo's own (story 253). Rich text is a tree of elements
   ("Rich text", below). A member picker is `"(unsupported)"`, as in Umbraco.
   An empty property is `null`.
 - Media answers `path` (names, lowercased, root down, with a trailing slash, as

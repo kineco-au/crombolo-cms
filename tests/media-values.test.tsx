@@ -243,6 +243,7 @@ describe('media values, read asynchronously', () => {
     )
     const item: BlockItem = {
       contentKey: 'b1',
+      alias: null,
       content: element,
       settingsKey: null,
       settings: null,

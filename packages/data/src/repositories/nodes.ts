@@ -21,6 +21,8 @@ export interface NodeRow {
   text: string | null
   objectType: string | null
   createDate: Date | undefined
+  /** 0 for a media folder, which a tree lists before the files beside it (story 246); 1 otherwise. */
+  treeGroup: number
 }
 
 export function mapNode(row: Record<string, unknown>): NodeRow {
@@ -35,6 +37,7 @@ export function mapNode(row: Record<string, unknown>): NodeRow {
     text: (row.text as string | null) ?? null,
     objectType: row.node_object_type ? normaliseUuid(String(row.node_object_type)) : null,
     createDate: DbDate.fromDb(row.create_date),
+    treeGroup: row.tree_group === undefined || row.tree_group === null ? 1 : Number(row.tree_group),
   }
 }
 
@@ -49,6 +52,7 @@ const NODE_COLUMNS = [
   'text',
   'node_object_type',
   'create_date',
+  'tree_group',
 ] as const
 
 export interface CreateNodeInit {
@@ -58,6 +62,8 @@ export interface CreateNodeInit {
   text: string
   userId?: number
   sortOrder?: number
+  /** 0 for a media folder (story 246); 1, the default, for everything else. */
+  treeGroup?: number
 }
 
 export class NodeRepository {
@@ -119,6 +125,7 @@ export class NodeRepository {
         text: init.text,
         node_object_type: init.objectType,
         create_date: now,
+        tree_group: init.treeGroup ?? 1,
       })
       .execute()
     const created = await this.byKey(key)
@@ -159,8 +166,11 @@ export class NodeRepository {
         q.where('unique_id', 'not in', excludeKeys.map(normaliseUuid)),
       )
     const totals = await matching.select((eb) => eb.fn.countAll().as('n')).execute()
+    // Folders before the files beside them (story 246), each in sort order:
+    // `ix_node_parent_tree` pages it without sorting the folder.
     const rows = await matching
       .select(NODE_COLUMNS)
+      .orderBy('tree_group')
       .orderBy('sort_order')
       .orderBy('id')
       .limit(take)
@@ -215,21 +225,16 @@ export class NodeRepository {
       .set({ parent_id: newParentId, level: newLevel, path: newPath })
       .where('id', '=', node.id)
       .execute()
-    const descendants = await this.#db.q
-      .selectFrom('node')
-      .select(['id', 'path', 'level'])
+    // The whole subtree in one statement (story 246): each descendant's path keeps
+    // what follows the old prefix, so a folder of a million files is one update.
+    await this.#db.q
+      .updateTable('node')
+      .set({
+        path: sql<string>`${newPath} || substr(${sql.ref('path')}, ${oldPath.length + 1})`,
+        level: sql<number>`${sql.ref('level')} + ${delta}`,
+      })
       .where('path', 'like', `${oldPath},%`)
       .execute()
-    for (const d of descendants) {
-      await this.#db.q
-        .updateTable('node')
-        .set({
-          path: `${newPath}${String(d.path).slice(oldPath.length)}`,
-          level: Number(d.level) + delta,
-        })
-        .where('id', '=', Number(d.id))
-        .execute()
-    }
   }
 
   /** A window of a node's siblings around it: `before` above, `after` below, the node itself included. */
@@ -242,6 +247,7 @@ export class NodeRepository {
     const target = await this.byKey(key)
     if (!target) return undefined
     const types = typeof objectType === 'string' ? [objectType] : [...objectType]
+    if (types.length === 1) return this.#siblingWindow(target, types[0] as string, before, after)
     const all = await this.#db.q
       .selectFrom('node')
       .select(NODE_COLUMNS)
@@ -268,6 +274,74 @@ export class NodeRepository {
     const start = Math.max(0, index - before)
     const end = Math.min(rows.length, index + after + 1)
     return { items: rows.slice(start, end), totalBefore: start, totalAfter: rows.length - end }
+  }
+
+  /**
+   * The window round a node among its siblings, in the tree's order (folders,
+   * then sort order, then id), read a window at a time: a folder of a million
+   * files is never read whole to open the tree at one of them (story 246).
+   */
+  async #siblingWindow(
+    target: NodeRow,
+    objectType: string,
+    before: number,
+    after: number,
+  ): Promise<{ items: NodeRow[]; totalBefore: number; totalAfter: number }> {
+    const { treeGroup: group, sortOrder: sort, id } = target
+    const siblings = this.#db.q
+      .selectFrom('node')
+      .where('parent_id', '=', target.parentId)
+      .where('node_object_type', '=', objectType)
+      .where('trashed', '=', this.#db.dialect.boolValue(target.trashed))
+    const earlier = siblings.where((eb) =>
+      eb.or([
+        eb('tree_group', '<', group),
+        eb.and([
+          eb('tree_group', '=', group),
+          eb.or([
+            eb('sort_order', '<', sort),
+            eb.and([eb('sort_order', '=', sort), eb('id', '<', id)]),
+          ]),
+        ]),
+      ]),
+    )
+    const later = siblings.where((eb) =>
+      eb.or([
+        eb('tree_group', '>', group),
+        eb.and([
+          eb('tree_group', '=', group),
+          eb.or([
+            eb('sort_order', '>', sort),
+            eb.and([eb('sort_order', '=', sort), eb('id', '>', id)]),
+          ]),
+        ]),
+      ]),
+    )
+    const count = async (q: typeof siblings) =>
+      Number((await q.select((eb) => eb.fn.countAll().as('n')).execute())[0]?.n ?? 0)
+    const [above, below, countAbove, countBelow] = await Promise.all([
+      earlier
+        .select(NODE_COLUMNS)
+        .orderBy('tree_group', 'desc')
+        .orderBy('sort_order', 'desc')
+        .orderBy('id', 'desc')
+        .limit(before)
+        .execute(),
+      later
+        .select(NODE_COLUMNS)
+        .orderBy('tree_group')
+        .orderBy('sort_order')
+        .orderBy('id')
+        .limit(after)
+        .execute(),
+      count(earlier),
+      count(later),
+    ])
+    return {
+      items: [...above.reverse().map(mapNode), target, ...below.map(mapNode)],
+      totalBefore: countAbove - above.length,
+      totalAfter: countBelow - below.length,
+    }
   }
 
   /**

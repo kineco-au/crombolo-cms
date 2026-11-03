@@ -230,9 +230,15 @@ describe('creating a site, end to end through the CLI', () => {
       'schema/schema.toml',
       '.gitignore',
     ])
-      expect(out).toContain(`created  ${file}`)
+      expect(existsSync(join(siteDir('bare'), file)), file).toBe(true)
     // The media types a site owns as files, rather than inheriting silently.
-    expect(out).toContain('schema/media-types/umbraco-media-video.toml')
+    expect(existsSync(join(siteDir('bare'), 'schema/media-types/umbraco-media-video.toml'))).toBe(
+      true,
+    )
+    // Said in the site's terms, with the files named only as what to commit (story 252)
+    expect(out).toContain('A site called')
+    expect(out).not.toContain('created  ')
+    expect(out.match(/schema\//g)).toHaveLength(1)
 
     const manifest = json('bare', 'package.json')
     expect(manifest.name).toBe('bare-site')
@@ -457,15 +463,17 @@ describe('creating a site, end to end through the CLI', () => {
     // nothing in the directory to copy from.
     const created = await cli('scaffold', 'types', 'new', 'content-type', 'note', '--at-root')
     expect(created.code, created.out).toBe(0)
-    expect(created.out).toContain('schema/content-types/note.toml')
+    expect(created.out).toContain('added    the content type "Note"')
+    expect(created.out).not.toContain('.toml')
     expect(created.out).toContain('components/note.tsx')
     expect(created.out).toContain('schema   applied')
     expect(existsSync(join(siteDir('scaffold'), 'components', 'note.tsx'))).toBe(true)
 
     const added = await cli(
       'scaffold',
-      'schema',
-      'add-property',
+      'types',
+      'property',
+      'add',
       'note',
       'summary',
       '--type',
@@ -473,7 +481,7 @@ describe('creating a site, end to end through the CLI', () => {
       '--mandatory',
     )
     expect(added.code, added.out).toBe(0)
-    expect(added.out).toContain('in tab "Content"')
+    expect(added.out).toContain('in the tab "Content"')
     expect(added.out).toContain('schema   applied')
 
     // The file it wrote is one the static check accepts, which is the gate a
@@ -489,14 +497,15 @@ describe('creating a site, end to end through the CLI', () => {
     // And it will not quietly write the same property twice.
     const again = await cli(
       'scaffold',
-      'schema',
-      'add-property',
+      'types',
+      'property',
+      'add',
       'note',
       'summary',
       '--type',
       'textarea',
     )
-    expect(again.code).toBe(ERROR_KINDS.conflict.exitCode)
+    expect(again.code).toBe(ERROR_KINDS.refused.exitCode)
     expect(again.out).toContain('already has a property')
   }, 60_000)
 

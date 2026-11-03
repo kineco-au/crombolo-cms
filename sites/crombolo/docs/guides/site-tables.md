@@ -1,7 +1,7 @@
 ---
 title: Tables of your own
 summary: Keep data that isn't content in tables of the site's own, migrated with the site, and query it from pages and routes with named queries.
-order: 8
+order: 10
 ---
 
 Some data isn't content: sightings, bookings, scores, a log of what members did. A site can keep it in tables of its own, beside the content, without a second database. You declare the tables in `crombolo.config.ts`, and crombolo creates and upgrades them with the site, backs them up with it, and keeps them apart from its own.

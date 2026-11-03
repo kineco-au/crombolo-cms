@@ -134,6 +134,33 @@ type = "textstring"
 `,
 )
 
+// A page with a block list of that element type, for the block alias test (story 253)
+writeFileSync(
+  join(root, 'schema', 'data-types', 'aliased-blocks.toml'),
+  `[data-type]
+alias = "aliasedBlocks"
+name = "Aliased blocks"
+editor = "Umbraco.BlockList"
+editor-ui = "Umb.PropertyEditorUi.BlockList"
+
+[[data-type.block]]
+element = "blockOnly"
+`,
+)
+writeFileSync(
+  join(root, 'schema', 'content-types', 'aliased-blocks-page.toml'),
+  `[content-type]
+alias = "aliasedBlocksPage"
+name = "Aliased blocks page"
+allow-at-root = true
+
+[[property]]
+alias = "blocks"
+name = "Blocks"
+type = "aliasedBlocks"
+`,
+)
+
 // A bundle with a side panel and its header toggle, for the side-panel test
 // (story 182). The panel counts clicks, so a test can tell its state survived.
 const sidePanel = join(root, 'node_modules', 'test-side-panel')

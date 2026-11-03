@@ -531,6 +531,7 @@ export interface CoreTables {
     sort_order: number
     text: string | null
     trashed: Bool
+    tree_group: Generated<number>
     unique_id: string
   }
   node_file: {

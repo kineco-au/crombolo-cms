@@ -250,3 +250,30 @@ describe('installed on a site that has none of it', () => {
     expect(readFileSync(view, 'utf8')).toContain('Suggest a change')
   })
 })
+
+describe('Getting started (story 256)', () => {
+  test('a walkthrough, and a page for every template the command line offers', async () => {
+    const { docsTree, templateInfos } = await import('../scripts/docs-site.ts')
+    const { listSites } = await import('../scripts/sites.ts')
+    const tree = docsTree(await buildManifest())
+    const start = tree.find((page) => page.path === 'getting-started')
+    expect(start?.children.map((c) => c.slug)).toEqual(['from-the-command-line', 'templates'])
+    const templates = start?.children.find((c) => c.slug === 'templates')
+    const offered = [
+      'basic',
+      'next',
+      ...listSites()
+        .filter((s) => s.distribute)
+        .map((s) => s.id),
+    ]
+    expect(templateInfos().map((t) => t.id)).toEqual(offered)
+    expect(templates?.children).toHaveLength(offered.length)
+    for (const [i, id] of offered.entries()) {
+      const page = templates?.children[i]
+      expect(page?.body).toContain(`init --template ${id}`)
+      // Every one of them has its own words, from its TEMPLATE.md
+      expect(page?.body).toContain('id="what-is-in-it"')
+    }
+    expect(templates?.children.find((p) => p.slug === 'next')?.body).toContain('bun run dev')
+  })
+})

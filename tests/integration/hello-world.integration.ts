@@ -90,7 +90,7 @@ describe('an empty directory to "Hello, world", through the command line alone',
   })
 
   test('3. a body text beside the title it came with', async () => {
-    const run = await cli('types', 'add-property', 'page', 'body', '--type', 'textarea')
+    const run = await cli('types', 'property', 'add', 'page', 'body', '--type', 'textarea')
     expect(run.code, said(run)).toBe(0)
   })
 

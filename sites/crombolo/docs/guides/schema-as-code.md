@@ -1,190 +1,162 @@
 ---
-title: Schema as code
-summary: Content types, data types and languages as TOML files in schema/, how they reach the database, and the commands that write and check them.
+title: Content types
+summary: Build and change the content model from the command line — types, their properties, compositions, data types, languages — and how a change is checked, applied and shipped.
 order: 2
 ---
 
-In crombolo your content model lives in your repository. Content types, media types, member types, data types and languages are plain TOML files in the site's `schema/` folder, and the database keeps a copy of them that is brought up to date when the site starts.
-
-That means a schema change is a diff you can review in a pull request, every environment runs the content model its deploy carries, and nothing drifts between staging and production because someone clicked a button in one of them.
+The content model is the site's types: what a page, a block, a media item or a member holds. You build it with the `types` commands, each checked against the site before anything changes and applied at once. It is kept as files under `schema/` that you commit, so a change to the model is a diff you can review, and every environment runs the model its deploy carries.
 
 ## What lives where
 
 The rule is one question: what changes it?
 
-| Changes with | Lives in | Examples |
+| Changes with | Kept in | Examples |
 | --- | --- | --- |
-| a deploy | files | content types, data types, languages, templates, `crombolo.config.ts` |
+| a deploy | the site's files | types, data types, languages, forms, groups, workflows, views, `crombolo.config.ts` |
 | editing | the database | pages, media, members, users, the dictionary |
 | an environment | the database | domains and hostnames, which differ between staging and production |
 
-## The layout
-
-```text
-schema/
-├── schema.toml              the schema version
-├── content-types/
-│   ├── home-page.toml
-│   └── article.toml
-├── media-types/
-├── member-types/
-├── data-types/
-├── forms/
-└── languages.toml
-```
-
-One type per file. The file name is up to you; the `alias` inside the file is what counts, and files written by crombolo are named after it.
-
-`schema/schema.toml` holds the version of the schema the site is at:
-
-```toml
-[schema]
-version = "1.0.0"
-```
-
-## A content type
-
-```toml
-[content-type]
-alias = "article"
-name = "Article"
-description = "A news story"
-icon = "icon-document"
-allow-at-root = true
-compositions = ["seoFields"]
-components = ["pages/article"]
-default-component = "pages/article"
-
-[[tab]]
-name = "Content"
-
-[[tab.property]]
-alias = "title"
-name = "Title"
-type = "textstring"
-mandatory = true
-
-[[tab.property]]
-alias = "summary"
-name = "Summary"
-type = "textarea"
-default = "To follow"
-```
-
-A few things worth knowing:
-
-- **No IDs.** A type's identity comes from its alias, and every server works out the same one, so the files need no `key` lines. A file may still carry one where the identity was made some other way, such as a type created in the back office or one from an older site. Leave it as it is: it keeps the type's pages attached.
-- **`components`** names the templates a page of this type may use, by their path under `components/`. `pages/article` is `components/pages/article.tsx`.
-- **`type`** on a property is a data type alias. The common ones are built in (`textstring`, `textarea`, `richtext`, `numeric`, `trueFalse`, `datePicker`, `contentPicker`, `imageMediaPicker`, `tags` and more); a file in `data-types/` adds your own or overrides one.
-- **`default`** fills in a new property on pages that already exist. Without one, adding a mandatory property to a type with content leaves each page for a person to fill in.
-- **Order in the file is the order in the editor.**
-- **`description` and `notes`** are kept when the file is rewritten. Ordinary `#` comments are not, because the back office writes these files too; put anything you want to keep in `notes`.
-
-An element type, the kind block editors hold, is a content type with `is-element = true`. It has no URL, so it has no template.
-
-## A data type
-
-A data type is an editor with its settings. Where it names the types it offers, it names them by alias:
-
-```toml
-[data-type]
-alias = "tastingNotePicker"
-name = "Tasting Note Picker"
-editor = "Umbraco.ElementPicker"
-
-[data-type.config]
-allowedContentTypes = ["tastingNote"]
-```
-
-A block list or block grid lists its blocks as tables:
-
-```toml
-[data-type]
-alias = "pageBlocks"
-name = "Page blocks"
-editor = "Umbraco.BlockList"
-
-[data-type.config]
-validationLimit = { min = 1 }
-
-[[data-type.block]]
-element = "feature"
-label = "{{heading}}"
-group = "Layout"
-
-[[data-type.block]]
-element = "quote"
-group = "Layout"
-```
-
-An alias that names nothing, or a type of the wrong kind, is reported by `types check`, with the file.
-
-## Writing files
-
-You can write files by hand, or have the command line write them:
+## Seeing what a site has
 
 ```sh
-bunx crombolo types new content-type feature --element
+bunx crombolo site show                  # the whole site in one place
+bunx crombolo types list                 # every content, element, media, member and data type
+bunx crombolo types list --kind data --own
+bunx crombolo types show article         # its settings, tabs, properties, and what uses it
+bunx crombolo types show pageBlocks      # a data type: its editor, settings, blocks and the properties using it
+```
+
+`types show` lists what uses a type: the types that allow it as a child or are composed of it, the block lists it is a block in, the pickers that allow it, the site's content files of it and the views that read it. A composed type lists the properties it takes from each composition, marked with where they come from. When the site has a database, each type also says how many items use it and whether it is applied. An alias two kinds share, such as a content type and a data type, is named with `--kind`. Both take `-o json`.
+
+## A new type
+
+```sh
+bunx crombolo types new content-type article --name Article --at-root
+bunx crombolo types new content-type feature --element --name Feature
+bunx crombolo types new content-type landingPage --compose article --allow-child article
+bunx crombolo types new media-type brochure
+```
+
+A content type starts with a mandatory title, and a view at `components/article.tsx` (`--no-view` leaves the view out). A type composed of one that has a title takes that one instead, and `--no-title` starts any type without. An element type, the kind blocks are made of, starts empty and has no view, since it has no page; `--title` and `--library` give it a title and offer it in the Library.
+
+A content type also takes `--allow-child`, `--vary-by-culture`, `--vary-by-segment` and `--list-view`.
+
+## Properties and tabs
+
+```sh
+bunx crombolo types property add article summary --type textarea --tab Content
+bunx crombolo types property update article title --name Headline --mandatory
+bunx crombolo types property move article summary --before body
+bunx crombolo types property remove article subtitle      # its values are kept until `types purge`
+bunx crombolo types tab add article SEO --after Content
+bunx crombolo types tab rename article Extras More
+bunx crombolo types tab remove article More --move-to Content
+```
+
+A property's `--type` is a data type. The common ones are built in: `textstring`, `textarea`, `richtext`, `numeric`, `trueFalse`, `datePicker`, `contentPicker`, `imageMediaPicker`, `tags`, `formPicker` and more. Your own come from `types new data-type`.
+
+## Compositions
+
+A composition shares properties between types: a type composed of `seoFields` has its properties as its own.
+
+```sh
+bunx crombolo types update article --compose seoFields
+bunx crombolo types show article
+```
+
+A property whose alias a composition already has is refused, wherever it comes from: a command, a hand edit or a deploy. A page would otherwise carry two values under one name, and a view could not tell which it reads. The refusal names the command that takes the extra one away.
+
+## Changing a type
+
+```sh
+bunx crombolo types update article --name "News story" --allow-child quote
+bunx crombolo types update article --no-at-root
+bunx crombolo types remove oldBanner                      # refused while pages use it; --retire keeps them
+```
+
+Each change is checked against the site first. A type, data type or view it names has to exist, and a change the content cannot take, such as a data type its stored values do not convert to, is refused with the reason and nothing written. Then it is applied at once. `--dry-run` says what would change and changes nothing; asking for what is already so changes nothing and says so. `--no-` turns a setting off.
+
+## Data types
+
+A data type is an editor with its settings:
+
+```sh
+bunx crombolo types editors                               # the editors, and the settings each takes
+bunx crombolo types new data-type shortText --editor textstring --max-chars 80
 bunx crombolo types new data-type pageBlocks --editor block-list --block feature
-bunx crombolo types new content-type article --at-root --compose seoFields
-bunx crombolo types add-property article blocks --type pageBlocks
-bunx crombolo languages add fr-FR --fallback en-US
-bunx crombolo forms new contact
-bunx crombolo workflows new article-sign-off --content-type article
-bunx crombolo webhooks new searchIndex --url https://search.example/hook --event Umbraco.ContentPublish
+bunx crombolo types update pageBlocks --add-block quote --block-label Quote
+bunx crombolo types update articlePicker --allow article --start-at /Home/News
+bunx crombolo types update gallery --set multiple=true --set 'validationLimit={"max":12}'
+bunx crombolo types remove shortText                      # refused while a property uses it
 ```
 
-`types new` writes the type's file and a starting template at `components/article.tsx` (`--no-view` leaves the template out; `--element` writes an element type). A content type also takes `--allow-child`, `--vary-by-culture`, `--vary-by-segment`, `--library` and `--list-view`. A data type takes `--editor` and that editor's settings: `textstring`, `textarea`, `rich-text`, `number`, `toggle`, `date`, `dropdown`, `content-picker`, `media-picker`, `element-picker`, `block-list` or `block-grid`. `add-property` appends a property to a tab.
+`--editor` is one of `textstring`, `textarea`, `rich-text`, `number`, `toggle`, `date`, `dropdown`, `content-picker`, `media-picker`, `element-picker`, `block-list` or `block-grid`. `--set` stores any setting by name, read as JSON when it parses. The data types every site has built in are not changed: make the site's own with `types new data-type` and use that.
 
-Each command refuses a name that is taken, or one that points at something the site doesn't have, before it writes anything. Then it applies the change straight away, through the same step a start runs.
-
-The back office writes the same files. In development, saving a content type under **Settings** writes its `.toml` file, which you then commit like any other change. In production the files are read-only, and the editor says which file to change in source control.
-
-If you have a site whose types were made in the back office before you started committing them, `types export` writes the database's types out as files. It never deletes a file.
-
-## Applying files to the database
-
-When the site starts, it compares `schema/` with what the database has and applies the difference:
-
-- **In development** any change is applied, and the folder is watched, so an edit to a file takes effect without a restart.
-- **In production** a change is applied only when the schema version in `schema.toml` has gone up, or a newer `CROMBOLO_SCHEMA_REVISION` is deployed. The same version with different files is refused, naming the files that differ.
-
-`CROMBOLO_SCHEMA_REVISION` is how a pipeline orders deploys without anyone bumping the version by hand: set it to the build number, or to `git rev-list --count HEAD`, and each deploy is newer than the last. Keep the version in `schema.toml` for saying something, such as "this goes live in 2.1".
-
-A site of several nodes is safe during a rolling deploy. The apply runs under a lock, a node whose files are older than the database never writes to it, and an older node keeps serving pages until it is replaced.
-
-To run the apply as a pipeline step rather than at start-up, set `CROMBOLO_SYNC_SCHEMA_AT_BOOT=false` and run:
+## Renaming
 
 ```sh
-bunx crombolo types sync
+bunx crombolo types rename newsItem article                     # a type; its pages keep their content
+bunx crombolo types property rename article subtitle standfirst # a property; its values stay with it
+bunx crombolo types rename shortText headline --kind data       # a data type
+bunx crombolo types rename newsItem article --everywhere --dry-run
 ```
+
+A rename changes the alias and nothing else, so what is made of it stays. While anything else names the old alias, the rename is refused and each place is listed: other types, block lists, pickers, workflows, webhooks, content files and views. `--everywhere` renames it in all of them as one step. A view is changed only where it plainly names the alias, such as `model.text('subtitle')`; anywhere else, it is pointed out for you to look at.
+
+## Languages and addresses
+
+```sh
+bunx crombolo languages list
+bunx crombolo languages add de-DE --fallback en-US
+bunx crombolo languages update fr-FR --name Français --mandatory
+bunx crombolo languages update fr-FR --default
+bunx crombolo languages remove de-DE                     # refused while any page has a version in it
+
+bunx crombolo site urls --show-top-level    # /home/about rather than /about
+bunx crombolo site urls --hide-top-level    # the default
+```
+
+A site always has one default language, which is never removed. A language another falls back to is not removed until that changes.
+
+Forms, user groups, approval workflows and webhooks are built the same way: see [Forms](/docs/guides/forms/) and [Users and groups](/docs/guides/users-and-groups/).
+
+## How a change reaches the database
+
+On your machine, each command applies its change at once. When the site starts, it compares its definitions with what the database has and applies the difference:
+
+- **In development** any change is applied, and the files are watched, so a change takes effect without a restart.
+- **In production** a change is applied only when the definitions' version has gone up, or a newer `CROMBOLO_SCHEMA_REVISION` is deployed. The same version with different definitions is refused.
+
+`bundle build` and `push` raise the version for you when the definitions have changed since it was first applied, so a production site takes what they ship ([Deploying](/docs/guides/deploying/)). `CROMBOLO_SCHEMA_REVISION` orders deploys from a pipeline: set it to the build number, and each deploy is newer than the last.
+
+A site of several nodes is safe during a rolling deploy. The apply runs under a lock, a node whose definitions are older than the database never writes to it, and an older node keeps serving pages until it is replaced. To apply as a pipeline step rather than at start-up, set `CROMBOLO_SYNC_SCHEMA_AT_BOOT=false` and run `bunx crombolo types sync`.
 
 ### Removing things
 
-Removing a property from a file retires it. Its values stay in the database, out of sight, and putting the property back brings them back. To delete retired properties and their values for good, once you are sure:
+Removing a property retires it: its values stay in the database, out of sight, and putting the property back brings them back. To delete retired properties and their values for good:
 
 ```sh
 bunx crombolo types purge --older-than 90
 ```
 
-`--older-than` is in days. Removing a whole content type that still has pages is refused, because hiding pages is a content decision; `types sync --force-retire-types` retires it anyway, and its pages stay where they are.
+Removing a type that still has pages is refused, because hiding pages is a content decision; `types remove --retire` retires it, and its pages stay where they are.
 
 ## Checking in CI
 
 ```sh
-bunx crombolo types check --static   # the files alone: parse, validate, every alias found
+bunx crombolo types check --static   # the definitions alone: every alias found, no clashes
 bunx crombolo types check            # and what applying them would do to this database
 ```
 
-`--static` needs no database, so it belongs on every pull request. `types check` exits with code 20 when it finds problems, and 21 when something needs a person to decide first. The full list is in the [exit codes](/docs/reference/exit-codes/).
+`--static` needs no database, so it belongs on every pull request. `types check` names each problem by its type and property, with the command that fixes it, and exits with code 20 when it finds problems and 21 when something needs a person to decide. The full list is in the [exit codes](/docs/reference/exit-codes/).
 
-## Typed templates
+## Typed views
 
 ```sh
 bunx crombolo generate
 ```
 
-`generate` writes `schema/content-types.d.ts`, an interface for each content type with every property it has, compositions included. Name one in `PageProps` and the template is typed:
+`generate` writes an interface for each content type with every property it has, compositions included. Name one in `PageProps` and the view is typed:
 
 ```tsx
 import type { PageProps } from '@crombolo/crombolo'
@@ -195,13 +167,52 @@ export default function ArticlePage({ model }: PageProps<Article>) {
 }
 ```
 
-A misspelt property name is now a compile error, which `crombolo components check` reports in CI. Commit the generated file with the schema change, and run `generate` again whenever a type changes.
+A misspelt property is now a compile error, which `crombolo components check` reports in CI. Run `generate` again whenever a type changes, and commit what it writes.
 
-## After an upgrade
+## The files
 
-When a crombolo release changes the file format, `types rewrite` rewrites every file in `schema/` in the current layout, so the change arrives as one reviewable commit.
+The definitions are kept under `schema/`, one per file, and that folder is what you commit:
+
+```text
+schema/
+├── schema.toml              the definitions' version, and how page addresses are built
+├── content-types/
+├── media-types/
+├── member-types/
+├── data-types/
+├── forms/
+├── workflows/
+├── user-groups/
+├── webhooks/
+└── languages.toml
+```
+
+You never need to open them, but you may. A file edited by hand is read, checked and applied exactly as a command's change is, and the commands then work on it. A content type looks like this:
+
+```toml
+[content-type]
+alias = "article"
+name = "Article"
+allow-at-root = true
+compositions = ["seoFields"]
+components = ["article"]
+default-component = "article"
+
+[[tab]]
+name = "Content"
+
+[[tab.property]]
+alias = "title"
+name = "Title"
+type = "textstring"
+mandatory = true
+```
+
+A problem in a file that does not read at all is named by its file and line. `description` and `notes` are kept when a file is rewritten, but ordinary `#` comments are not, since the commands and the back office write these files too. The back office writes the same files in development; in production they are read-only.
+
+For a site whose types were made in the back office before you began committing them, `types export` writes them out as files. When a release changes the file format, `types rewrite` rewrites every file in the current layout as one reviewable change.
 
 ## Where next
 
-- [The `types` commands](/docs/reference/command-line/types/), with every flag
-- [Deploying](/docs/guides/deploying/): how schema changes and upgrades reach production
+- [The `types` commands](/docs/reference/command-line/types/), with every flag.
+- [Deploying](/docs/guides/deploying/): how a change reaches production.

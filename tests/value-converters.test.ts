@@ -355,9 +355,11 @@ describe('value converters', () => {
     expect(types).toContain('"related"?: Promise<PublishedContent[]>')
     expect(types).toContain('"links"?: Promise<Link[]>')
     expect(types).toContain(
-      '"blocks"?: Array<BlockItem & { content: TypedElement<Feature>; settings: PublishedElement | null }>',
+      '"blocks"?: BlockListValue<BlockItem & { content: TypedElement<Feature>; settings: PublishedElement | null }>',
     )
-    expect(types).toContain('"grid"?: Array<BlockGridItem & { content: TypedElement<Feature> }>')
+    expect(types).toContain(
+      '"grid"?: BlockListValue<BlockGridItem & { content: TypedElement<Feature> }>',
+    )
     // The element type the blocks use is typed too
     expect(types).toContain('export interface Feature {')
     expect(types).toContain('"target"?: PublishedContent | null')

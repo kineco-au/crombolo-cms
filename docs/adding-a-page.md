@@ -21,14 +21,14 @@ component it points at:
 
 ```bash
 bunx crombolo types new content-type eventsPage --name "Events Page" --icon icon-calendar
-bunx crombolo types add-property eventsPage intro --name "Introduction" --type richtext
-bunx crombolo types add-property eventsPage feedUrl --name "Events feed URL" --type textstring --mandatory
+bunx crombolo types property add eventsPage intro --name "Introduction" --type richtext
+bunx crombolo types property add eventsPage feedUrl --name "Events feed URL" --type textstring --mandatory
 ```
 
 A new type starts with a mandatory `title` on a Content tab. `--type` names a data
 type by alias; the built-in ones include `textstring`, `textarea`, `richtext`,
 `numeric`, `trueFalse`, `datePicker`, `contentPicker` and `mediaPicker`, and a site
-can add its own under `schema/data-types/`. `types add-property --dry-run` prints
+can add its own under `schema/data-types/`. `types property add --dry-run` prints
 the file instead of writing it.
 
 The result is `schema/content-types/events-page.toml`:

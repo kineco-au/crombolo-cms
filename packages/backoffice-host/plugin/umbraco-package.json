@@ -2,7 +2,7 @@
   "$schema": "../../backoffice-dist/dist/umbraco-package-schema.json",
   "name": "Crombolo",
   "id": "Crombolo.Core",
-  "version": "0.45.0",
+  "version": "0.46.0",
   "allowPublicAccess": false,
   "extensions": [
     {
@@ -467,6 +467,13 @@
       "name": "Crombolo Extensions Changed Notice",
       "element": "/crombolo-plugin/bundles-changed.js",
       "weight": 999
+    },
+    {
+      "type": "headerApp",
+      "alias": "Crombolo.HeaderApp.MediaJobs",
+      "name": "Crombolo Media Changes In Progress",
+      "element": "/crombolo-plugin/media-jobs.js",
+      "weight": 998
     },
     {
       "type": "headerApp",

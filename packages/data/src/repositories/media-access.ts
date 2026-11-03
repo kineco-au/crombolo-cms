@@ -26,7 +26,6 @@ import {
 } from '@crombolo/core'
 import type { Db } from '../database.ts'
 import { DbDate, fromDbBool } from '../dialect.ts'
-import { sql } from '../query.ts'
 import { NodeRepository, type NodeRow } from './nodes.ts'
 
 export interface MediaAccessGroup {
@@ -436,7 +435,7 @@ export class MediaAccessRepository {
   /**
    * The item whose file is served at a `/media/…` path, its settings and the
    * nearest rule, through the `file_url` index; undefined when none owns it.
-   * Two queries: the item with its rule's id, then that rule.
+   * Indexed lookups: the item, its nearest rule among its ancestors, then that rule.
    */
   async byUrl(urls: string | readonly string[]): Promise<MediaByUrl | undefined> {
     const wanted = [...new Set(typeof urls === 'string' ? [urls] : urls)]
@@ -444,7 +443,7 @@ export class MediaAccessRepository {
     const row = await this.#db.q
       .selectFrom('content as c')
       .innerJoin('node as n', 'n.id', 'c.node_id')
-      .select((eb) => [
+      .select([
         'n.id',
         'n.unique_id',
         'n.path',
@@ -452,17 +451,6 @@ export class MediaAccessRepository {
         'c.read_policy',
         'c.write_policy',
         'c.creator_member_key',
-        eb
-          .selectFrom('media_access as a')
-          .innerJoin('node as an', 'an.id', 'a.node_id')
-          .select('a.id')
-          .where(
-            (inner) =>
-              sql<boolean>`(',' || ${inner.ref('n.path')} || ',') like ('%,' || cast(${inner.ref('a.node_id')} as varchar(20)) || ',%')`,
-          )
-          .orderBy('an.level', 'desc')
-          .limit(1)
-          .as('rule_id'),
       ])
       .where('c.file_url', 'in', wanted)
       .where('n.node_object_type', '=', ObjectTypes.Media)
@@ -470,10 +458,26 @@ export class MediaAccessRepository {
       .limit(1)
       .executeTakeFirst()
     if (!row) return undefined
-    const ruleRows =
-      row.rule_id === null || row.rule_id === undefined
-        ? []
-        : await entries(this.#db).where('a.id', '=', Number(row.rule_id)).execute()
+    // The nearest rule above it, by the ancestor ids its path already holds: a
+    // lookup per ancestor rather than a match against every node (story 246).
+    const ancestors = String(row.path)
+      .split(',')
+      .map(Number)
+      .filter((id) => id > 0)
+    const nearest =
+      ancestors.length === 0
+        ? undefined
+        : await this.#db.q
+            .selectFrom('media_access as a')
+            .innerJoin('node as an', 'an.id', 'a.node_id')
+            .select('a.id')
+            .where('a.node_id', 'in', ancestors)
+            .orderBy('an.level', 'desc')
+            .limit(1)
+            .executeTakeFirst()
+    const ruleRows = nearest
+      ? await entries(this.#db).where('a.id', '=', Number(nearest.id)).execute()
+      : []
     const entry = (await this.#hydrate(ruleRows))[0]
     return {
       id: Number(row.id),

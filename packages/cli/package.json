@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/cli",
-  "version": "0.45.0",
+  "version": "0.46.0",
   "description": "The crombolo command line: scaffolding a site, schema, views, domains, content transfer and upgrades.",
   "license": "MIT",
   "author": "Crombolo",
@@ -69,7 +69,10 @@
         "description": "the components in components/: check, list, new"
       },
       "content": {
-        "description": "move content between environments as bundles, and publish it"
+        "description": "pages: make them, change their values and blocks, move and publish them"
+      },
+      "content:block": {
+        "description": "a page's blocks: add, change, move and remove them"
       },
       "dictionary": {
         "description": "the dictionary as Umbraco .udt files"
@@ -92,11 +95,23 @@
       "types": {
         "description": "schema-as-code: the content types, data types and languages in schema/"
       },
+      "types:property": {
+        "description": "a type's properties: add, change, move and remove them"
+      },
+      "types:tab": {
+        "description": "a type's tabs: add, rename, move and remove them"
+      },
       "upgrade": {
         "description": "framework migrations: check, plan, apply, ledger"
       },
       "users": {
         "description": "the back-office users: unlock, enable, reset a password or a second factor, invite"
+      },
+      "users:groups": {
+        "description": "user groups: the site's own and those made in the back office"
+      },
+      "site": {
+        "description": "the site as a whole: what it is, and how page addresses are built"
       },
       "api-client": {
         "description": "the API client a site seeds from its environment"
@@ -123,10 +138,25 @@
         "description": "the languages a site is written in (languages.toml)"
       },
       "forms": {
-        "description": "the forms in schema/forms"
+        "description": "the site's forms: make, list, show, change and remove them"
+      },
+      "forms:field": {
+        "description": "a form's fields: add, change, move and remove them"
+      },
+      "forms:page": {
+        "description": "a form's pages: add, change, move and remove them"
+      },
+      "forms:group": {
+        "description": "the fieldsets on a form's pages: add, change, move and remove them"
+      },
+      "forms:workflow": {
+        "description": "what happens to a form's entries: add, change and remove its workflows"
       },
       "workflows": {
         "description": "the approval workflows in schema/workflows"
+      },
+      "workflows:stage": {
+        "description": "an approval workflow's stages: add, change and remove them"
       },
       "webhooks": {
         "description": "the webhooks kept with the site, in schema/webhooks"

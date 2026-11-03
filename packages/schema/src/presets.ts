@@ -148,7 +148,10 @@ export function presetDataType(
   options: PresetOptions = {},
   name?: string,
 ): PresetResult {
-  const chosen = DATA_TYPE_PRESETS[preset]
+  const letters = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const chosen =
+    DATA_TYPE_PRESETS[preset] ??
+    Object.entries(DATA_TYPE_PRESETS).find(([key]) => letters(key) === letters(preset))?.[1]
   if (!chosen)
     return {
       ok: false,

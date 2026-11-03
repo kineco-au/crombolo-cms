@@ -25,7 +25,12 @@ export const generatedUrl = (n: number) => `/media/generated/${n}.jpg`
 export async function generateMediaLibrary(
   db: Db,
   count: number,
-  options: { nodeState?: NodeSchemaState; name?: string } = {},
+  options: {
+    nodeState?: NodeSchemaState
+    name?: string
+    /** Added to each item's number in its key, so a second library beside the first has keys of its own. */
+    keyOffset?: number
+  } = {},
 ): Promise<GeneratedLibrary> {
   const media = new DocumentRepository(db, { kind: 'media', nodeState: options.nodeState })
   const folder = await media.create({
@@ -70,6 +75,7 @@ export async function generateMediaLibrary(
   const hex = (column: string) =>
     postgres ? `lpad(to_hex(${column}), 12, '0')` : `printf('%012x', ${column})`
   const concat = (...parts: string[]) => parts.join(' || ')
+  const shift = Math.trunc(options.keyOffset ?? 0)
   for (let from = 0; from < count; from += BATCH) {
     const to = Math.min(count, from + BATCH)
     const series = postgres
@@ -78,7 +84,7 @@ export async function generateMediaLibrary(
     await db.transaction(async (tx) => {
       await tx.exec(
         `INSERT INTO node (unique_id, parent_id, level, path, sort_order, trashed, node_user, text, node_object_type, create_date)
-         SELECT ${postgres ? `CAST(${concat("'7e000000-0000-4000-8000-'", hex('seq.n'))} AS uuid)` : concat("'7e000000-0000-4000-8000-'", hex('seq.n'))},
+         SELECT ${postgres ? `CAST(${concat("'7e000000-0000-4000-8000-'", hex(`(seq.n + ${shift})`))} AS uuid)` : concat("'7e000000-0000-4000-8000-'", hex(`(seq.n + ${shift})`))},
                 ?, 2, '', seq.n, ?, NULL, ${concat("'photo-'", 'CAST(seq.n AS VARCHAR(12))')}, n0.node_object_type, ?
            FROM ${series}, node n0 WHERE n0.id = ?`,
         [folderId, f, now, folderId],
@@ -121,7 +127,10 @@ export async function generateMediaLibrary(
   const picks = [0, Math.floor(count / 3), Math.floor(count / 2), count - 1].filter((n) => n >= 0)
   return {
     folder: { id: folderId, key: folder.key, path: folderPath },
-    samples: [...new Set(picks)].map((n) => ({ key: generatedKey(n), url: generatedUrl(n) })),
+    samples: [...new Set(picks)].map((n) => ({
+      key: generatedKey(n + shift),
+      url: generatedUrl(n),
+    })),
     count,
   }
 }

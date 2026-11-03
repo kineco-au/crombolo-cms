@@ -5,6 +5,7 @@ import { counted, describeJob } from '../support/describe.ts'
 import { confirm } from '../support/prompt.ts'
 import { connectRemote, needEnvironment, openInBrowser } from '../support/remote.ts'
 import { siteConfig } from '../support/site.ts'
+import { raiseVersionIfChanged } from '../support/types.ts'
 
 export default class Push extends BaseCommand {
   static override summary = 'replace a remote environment with this site'
@@ -59,7 +60,9 @@ export default class Push extends BaseCommand {
     const { client, environment: env, discovery } = await connectRemote(args.remote, flags.env)
     const environment = needEnvironment(env, discovery)
     if (flags['dry-run']) this.changedNothing = true
-    const { check, job } = await pushSite(await siteConfig(), client, {
+    const config = await siteConfig()
+    if (!flags['dry-run']) await raiseVersionIfChanged(this, config)
+    const { check, job } = await pushSite(config, client, {
       environment,
       force: flags.force,
       autoApprove: flags['auto-approve'],

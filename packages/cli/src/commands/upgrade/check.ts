@@ -7,7 +7,7 @@ import { siteConfig } from '../../support/site.ts'
 import { parseSet, upgradeCheck } from '../../support/types.ts'
 
 export default class UpgradeCheck extends BaseCommand {
-  static override summary = "what the deployed schema/ would do to this database's data"
+  static override summary = "what the deployed definitions would do to this database's data"
   static override description = [
     'Exits 21 when a finding needs a person first.',
     '--fix backs up, then applies the additive part and every conversion early, so the cut-over is short.',

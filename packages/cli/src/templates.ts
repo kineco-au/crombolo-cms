@@ -184,7 +184,7 @@ export interface ScaffoldFile {
   copyFrom?: string
 }
 
-const DEFAULT_SITE_NAME = 'My Site'
+export const DEFAULT_SITE_NAME = 'My Site'
 
 /** Kept in step with the root `package.json`, which is what the views are checked with. */
 const TYPESCRIPT_VERSION = '^7.0.2'

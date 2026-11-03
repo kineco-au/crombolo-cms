@@ -1,11 +1,15 @@
 /** What a host runs, written against `@crombolo/crombolo/host` only (story 173). */
 import {
   type CromboloConfig,
+  describeProvenance,
   loadConfig,
   type PackageJson,
+  type ProvenancePolicy,
   peerRangeProblem,
+  provenanceProblem,
   VERSION,
   validateBundlePackage,
+  verifyPackage,
 } from '@crombolo/crombolo/host'
 
 /** A site's effective config, as a host's own `server.ts` builds it. */
@@ -36,4 +40,17 @@ export function vet(json: PackageJson): string[] {
     if (peer) problems.push(peer)
   }
   return problems
+}
+
+/** A bundle's signature held to the site's rule before the host installs it (story 244). */
+export async function signatureCheck(
+  path: string,
+  policy: ProvenancePolicy,
+): Promise<{ line: string; refused: string | undefined; retry: boolean }> {
+  const result = await verifyPackage(path)
+  return {
+    line: describeProvenance(result),
+    refused: provenanceProblem(result, policy),
+    retry: result.state === 'unchecked',
+  }
 }

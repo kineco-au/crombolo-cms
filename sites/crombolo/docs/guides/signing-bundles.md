@@ -1,7 +1,7 @@
 ---
 title: Signing bundles
 summary: Sign a bundle in GitHub Actions from the commit or tag it was built at, and choose which bundles a site takes.
-order: 9
+order: 11
 ---
 
 A signed bundle says where it was built: the repository, the commit, and the tag or branch, checked against Sigstore's public log. Signing is optional. A site takes unsigned bundles unless you tell it not to.

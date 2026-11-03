@@ -44,6 +44,8 @@ export interface Link {
 
 export interface BlockItem {
   contentKey: string
+  /** The name it was given on the page, unique within its property (story 253). */
+  alias: string | null
   content: PublishedElement
   settingsKey: string | null
   settings: PublishedElement | null
@@ -66,8 +68,21 @@ export interface BlockGridItem extends BlockItem {
   areas: BlockGridArea[]
 }
 
+/** A block list's items, with the one given an alias picked out by it. */
+export type BlockListValue<T extends BlockItem = BlockItem> = T[] & {
+  byAlias(alias: string): T | undefined
+}
+
 /** A Block Grid's items, carrying the grid's column count for its markup. */
-export type BlockGridValue = BlockGridItem[] & { gridColumns: number }
+export type BlockGridValue = BlockListValue<BlockGridItem> & { gridColumns: number }
+
+/** Items with `byAlias`, which finds an alias in any case. */
+function withAliases<T extends BlockItem>(items: T[]): BlockListValue<T> {
+  return Object.assign(items, {
+    byAlias: (alias: string) =>
+      items.find((item) => item.alias?.toLowerCase() === alias.toLowerCase()),
+  })
+}
 
 const references = (value: unknown): string[] => {
   if (Array.isArray(value)) return value.flatMap((v) => (typeof v === 'string' ? [v] : []))
@@ -194,6 +209,7 @@ interface BlockData {
 
 interface BlockLayout {
   contentKey?: string
+  alias?: unknown
   settingsKey?: string | null
   columnSpan?: number
   rowSpan?: number
@@ -247,6 +263,7 @@ function blockItems<T extends BlockItem>(
       if (!content) return []
       const item: BlockItem = {
         contentKey: content.key,
+        alias: typeof layout.alias === 'string' && layout.alias ? layout.alias : null,
         content,
         settingsKey: layout.settingsKey ?? null,
         settings: elementFrom(settings.get(layout.settingsKey ?? ''), context),
@@ -449,7 +466,9 @@ export function convertValue(
         }),
       ).then((links) => links.filter((link): link is Link => link !== undefined))
     case 'Umbraco.BlockList':
-      return blockItems<BlockItem>(value, 'Umbraco.BlockList', context, (_, item) => item)
+      return withAliases(
+        blockItems<BlockItem>(value, 'Umbraco.BlockList', context, (_, item) => item),
+      )
     case 'Umbraco.BlockGrid': {
       // What the data type says of each block type's areas: their aliases and spans.
       const blockTypes = Array.isArray(config.blocks) ? (config.blocks as GridBlockConfig[]) : []
@@ -484,7 +503,7 @@ export function convertValue(
           }
         },
       )
-      return Object.assign(items, { gridColumns: Number(config.gridColumns) || 12 })
+      return Object.assign(withAliases(items), { gridColumns: Number(config.gridColumns) || 12 })
     }
     default:
       return value

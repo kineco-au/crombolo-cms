@@ -11,7 +11,7 @@ export default class Status extends BaseCommand {
   static override summary =
     'what this environment is, and what is wrong with it, without starting it'
   static override description =
-    'Exits 20 when something would stop the site working; the problems are in the output.'
+    'Exits 20 when something would stop the site working; the problems are in the output. `crombolo site show` says what the site is.'
   static override spec = {
     effects: 'read_only',
     cardinality: 'single',
@@ -98,6 +98,9 @@ export default class Status extends BaseCommand {
       `crombolo ${report.versions.crombolo}${report.versions.backoffice ? `, backoffice ${report.versions.backoffice}` : ''}, bun ${report.versions.bun}`,
     )
     for (const problem of report.problems) this.say(`\n  ⚠ ${problem}`)
+    this.say(
+      '\n`crombolo site show` says what the site is: its languages, types, forms and groups.',
+    )
     return report
   }
 }

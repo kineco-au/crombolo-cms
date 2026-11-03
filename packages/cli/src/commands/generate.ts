@@ -43,10 +43,10 @@ export default class Generate extends BaseCommand {
     const site = await siteConfig()
     const config = flags.schema ? { ...site, schemaDir: resolve(flags.schema) } : site
     const loaded = loadTypes(config)
-    refuseProblems([
-      ...loaded.problems,
-      ...validateSchemaSet(loaded.set, { types: formTypesFor(config) }),
-    ])
+    refuseProblems(
+      [...loaded.problems, ...validateSchemaSet(loaded.set, { types: formTypesFor(config) })],
+      config.schemaDir,
+    )
     const target = flags.out ? resolve(flags.out) : join(config.schemaDir, 'content-types.d.ts')
     const settings = resolveDeliveryApiSettings(config.deliveryApi)
     const text = flags.delivery

@@ -1,12 +1,12 @@
 import { bootstrapDatabase, syncSchemaDirectory } from '@crombolo/server'
 import { Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
-import { describeProblem, describeSync, printProblems } from '../../support/describe.ts'
+import { describeSync, printProblems, problemsOf } from '../../support/describe.ts'
 import { siteConfig } from '../../support/site.ts'
 import { needSchemaDir } from '../../support/types.ts'
 
 export default class TypesSync extends BaseCommand {
-  static override summary = 'apply schema/ to the database'
+  static override summary = "apply the site's definitions to its database"
   static override aliases = ['schema:sync']
   static override deprecateAliases = true
   static override flags = {
@@ -26,7 +26,7 @@ export default class TypesSync extends BaseCommand {
       },
       { name: 'changed', type: 'boolean' },
       { name: 'summary', type: 'string' },
-      { name: 'problems', type: 'array', items: { type: 'string' } },
+      { name: 'problems', type: 'array', items: { type: 'object' } },
     ],
     errors: ['not_found', 'refused'],
   } as const
@@ -43,21 +43,17 @@ export default class TypesSync extends BaseCommand {
         { nodeId: config.nodeId, revision: config.schemaRevision },
         { forceRetireTypes: flags['force-retire-types'] },
       )
-      if (report.problems.length > 0) printProblems(this, report.problems)
+      const problems = problemsOf(report.problems, config.schemaDir)
+      if (problems.length > 0) printProblems(this, problems)
       const summary = describeSync(report)
       if (report.action === 'refused')
-        this.fail(
-          'refused',
-          `The schema was not applied: ${summary}.`,
-          undefined,
-          report.problems.map(describeProblem),
-        )
+        this.fail('refused', `The schema was not applied: ${summary}.`, undefined, problems)
       this.say(summary)
       return {
         action: report.action,
         changed: report.action === 'applied',
         summary,
-        problems: report.problems.map(describeProblem),
+        problems,
       }
     } finally {
       await db.close()

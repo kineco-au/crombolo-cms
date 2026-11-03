@@ -4,6 +4,8 @@ import { Args, Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
 import { CliError } from '../../errors.ts'
 import { findingFields, writeSeedPackage } from '../../support/seed.ts'
+import { cwd, siteConfig } from '../../support/site.ts'
+import { raiseVersionIfChanged } from '../../support/types.ts'
 import { listTemplates } from '../../templates.ts'
 
 export default class BundleBuild extends BaseCommand {
@@ -85,6 +87,12 @@ export default class BundleBuild extends BaseCommand {
           hint: `Name one of: ${templates.map((t) => t.id).join(', ')}.`,
         })
       source = join(found.dir, 'files')
+    }
+    // This site, built to ship: a new version when its definitions changed under this one
+    if (!flags.check && !flags.template && source === resolve(cwd())) {
+      const config = await siteConfig()
+      if (resolve(config.schemaDir) === join(source, 'schema'))
+        await raiseVersionIfChanged(this, config)
     }
     const built = await buildBundleFromDirectory(source, {
       name: flags.name,

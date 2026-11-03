@@ -1,10 +1,42 @@
 ---
 title: Deploying
-summary: Run a site in production on SQLite or Postgres, in a container or on a server, as one process or split in two, and upgrade it without taking it down.
-order: 6
+summary: Ship a site from the command line — as a bundle, a deploy or a push — then run it in production on SQLite or Postgres, in a container or on a server, and upgrade it without taking it down.
+order: 8
 ---
 
-A crombolo site in production is the same Bun project you run locally, started with `crombolo start` and `NODE_ENV=production`.
+A crombolo site in production is the same Bun project you run locally, started with `crombolo start` and `NODE_ENV=production`. You ship to it from the command line, in one of three ways.
+
+## Shipping a site
+
+**As a bundle.** A bundle carries the site's definitions, views, styles and content. Pages made in the database are exported as content files first, so they go with it:
+
+```sh
+bunx crombolo bundle export --source --root /Home
+bunx crombolo bundle build . --out ../site-bundle
+```
+
+On the server, `start` applies the bundle and serves the site:
+
+```sh
+bunx crombolo start --bundle ../site-bundle --publish
+```
+
+Run it again with nothing changed and nothing is applied; build a changed bundle and only the changes are.
+
+**As a deploy.** With a remote set up ([Remotes](/docs/guides/remotes/)), `bundle deploy` sends the site as it is committed: its content, definitions and code, checked first, then applied, then the remote restarted:
+
+```sh
+bunx crombolo bundle deploy --remote production --publish
+```
+
+**As a push.** `push` replaces a remote environment with this one, content and all, after you confirm it by name:
+
+```sh
+bunx crombolo push staging --dry-run
+bunx crombolo push staging
+```
+
+A production site applies changed definitions only under a new version. `bundle build`, `bundle deploy` and `push` raise the version a step when the definitions have changed since it was first applied, so you never edit it by hand. A deploy sends only what is committed, so when it raises the version it asks you to commit that first.
 
 ## What production changes
 
@@ -103,11 +135,11 @@ Run a few `web` processes for visitors and one or two `api` processes for editor
 
 On a site of several nodes, also set `CROMBOLO_RUNTIME_INSTALLS=false`, so bundles are added to `package.json` and deployed rather than installed on whichever node took the request.
 
-## Deploying a schema change
+## Deploying a change to the definitions
 
 A change to `schema/` deploys with your code. Each node applies it when it starts, under a lock, once the schema version or `CROMBOLO_SCHEMA_REVISION` has gone up. During a rolling deploy, nodes still on the old files keep serving pages and never write the old schema over the new one.
 
-To apply the schema as a pipeline step instead, set `CROMBOLO_SYNC_SCHEMA_AT_BOOT=false` and run `crombolo types sync` before the new nodes start. [Schema as code](/docs/guides/schema-as-code/) has the detail.
+To apply the definitions as a pipeline step instead, set `CROMBOLO_SYNC_SCHEMA_AT_BOOT=false` and run `crombolo types sync` before the new nodes start. [Content types](/docs/guides/schema-as-code/) has the detail.
 
 ## Upgrading crombolo
 

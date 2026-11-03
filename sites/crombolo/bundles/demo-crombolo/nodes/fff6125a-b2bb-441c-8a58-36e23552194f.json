@@ -1,0 +1,59 @@
+{
+  "key": "fff6125a-b2bb-441c-8a58-36e23552194f",
+  "kind": "document",
+  "contentType": {
+    "key": "aa13972a-5fd6-56a9-842f-832abb4944b2",
+    "alias": "docsPage"
+  },
+  "parent": "bfbe288f-2c69-4228-872f-9977d0ba23ae",
+  "sortOrder": 2,
+  "template": "pages/docsPage",
+  "variants": [
+    {
+      "culture": null,
+      "segment": null,
+      "name": "Forms",
+      "published": true
+    }
+  ],
+  "values": [
+    {
+      "property": "body",
+      "culture": null,
+      "segment": null,
+      "editor": "Umbraco.RichText",
+      "value": {
+        "markup": "<p>A form is part of the site&#39;s definitions, like a content type: it is built and changed with commands, checked before anything is written, and kept in files you commit. Its entries are content, kept in each environment&#39;s database and read in the back office&#39;s <strong>Forms</strong> section.</p>\n<h2 id=\"a-first-form\">A first form</h2>\n<pre><code class=\"language-sh\">bunx crombolo forms new contact --name &quot;Contact us&quot;\nbunx crombolo forms field add contact message --type long-answer --caption Message --mandatory\nbunx crombolo forms workflow add contact --type send-email --name &quot;Tell the team&quot; \\\n  --to team@example.com --subject &quot;New enquiry&quot;\n</code></pre>\n<p>A new form starts with a name and an e-mail field. <code>forms show contact</code> lists its pages, fieldsets and fields in order, and its workflows. <code>forms list</code> lists every form, with what uses it.</p>\n<h2 id=\"fields\">Fields</h2>\n<pre><code class=\"language-sh\">bunx crombolo forms field add contact topic --type dropdown --option Sales --option Support --after email\nbunx crombolo forms field add contact company --type short-answer --caption Company\nbunx crombolo forms field update contact message --caption &quot;Your message&quot; --placeholder &quot;How can we help?&quot;\nbunx crombolo forms field move contact company --before message\nbunx crombolo forms field remove contact company\n</code></pre>\n<p>A field&#39;s type is one of <code>short-answer</code>, <code>long-answer</code>, <code>email</code>, <code>number</code>, <code>date</code>, <code>checkbox</code>, <code>dropdown</code>, <code>single-choice</code>, <code>multiple-choice</code>, <code>file-upload</code>, <code>data-consent</code>, <code>title-and-description</code>, <code>rich-text</code> or <code>hidden</code>, or one a bundle adds. The names written as one word, such as <code>longAnswer</code>, work too.</p>\n<p>A field takes <code>--mandatory</code>, a <code>--pattern</code> its answer must match, a <code>--default</code>, <code>--option</code> for each choice, and <code>--sensitive</code> for an answer only people allowed to see sensitive answers can read. <code>--set</code> stores any other setting by name, read as JSON when it parses, for a field type a bundle adds as much as a built-in one.</p>\n<h2 id=\"pages-and-fieldsets\">Pages and fieldsets</h2>\n<pre><code class=\"language-sh\">bunx crombolo forms page add contact --caption &quot;About you&quot;\nbunx crombolo forms field move contact company --page 2\nbunx crombolo forms group add contact --page 1 --caption Address --columns 2\nbunx crombolo forms page remove contact 2 --move-fields-to 1\n</code></pre>\n<p>A page or fieldset is named by its caption or its number, counting from 1. A fieldset is looked for on the first page unless <code>--page</code> says otherwise. A page that still holds fields is removed only with <code>--move-fields-to</code>.</p>\n<h2 id=\"conditions\">Conditions</h2>\n<pre><code class=\"language-sh\">bunx crombolo forms field add contact company --type short-answer --show-when topic=Sales\nbunx crombolo forms field update contact company --show-when topic=Sales --show-when-any --show-when topic=Partners\nbunx crombolo forms field update contact company --show-always\n</code></pre>\n<p><code>--show-when field=value</code>, or <code>field!=value</code>, shows a field, page or fieldset only when another field has that answer. Give several for all of them, add <code>--show-when-any</code> for any of them, and <code>--show-always</code> takes the condition away. A field a condition names is not removed until the condition goes.</p>\n<h2 id=\"when-it-is-sent\">When it is sent</h2>\n<p>A workflow runs when the form is sent, or when an entry is approved with <code>--on approve</code>:</p>\n<pre><code class=\"language-sh\">bunx crombolo forms workflow add contact --type send-email --name &quot;Tell the team&quot; \\\n  --to team@example.com --subject &quot;New enquiry&quot;\nbunx crombolo forms workflow add contact --type send-to-url --name &quot;Into the CRM&quot; --url https://crm.example/forms\nbunx crombolo forms workflow update contact &quot;Tell the team&quot; --set cc=sales@example.com --on approve\nbunx crombolo forms workflow remove contact &quot;Into the CRM&quot;\n</code></pre>\n<p>The built-in workflows are <code>send-email</code>, <code>send-to-url</code> and <code>save-as-content</code>; a bundle may add more. A workflow is named by its name. Each change is checked as the form is, so a setting a built-in workflow does not take is refused.</p>\n<p>The message shown after sending, or the page to go to instead, is the form&#39;s own:</p>\n<pre><code class=\"language-sh\">bunx crombolo forms update contact --message &quot;Thanks, we will be in touch&quot; --redirect-to /Home/Thanks\n</code></pre>\n<h2 id=\"on-a-page\">On a page</h2>\n<p>A page picks a form with a property of the <code>formPicker</code> data type:</p>\n<pre><code class=\"language-sh\">bunx crombolo types property add contentPage contactForm --type formPicker --name &quot;Contact form&quot;\nbunx crombolo content update &quot;/Home/Visit us&quot; --set contactForm=contact\n</code></pre>\n<p>The view renders it with <code>&lt;Form&gt;</code>:</p>\n<pre><code class=\"language-tsx\">import { Form, type PageProps } from &#39;@crombolo/crombolo&#39;\n\nexport default function ContentPage({ model, submission }: PageProps) {\n  return (\n    &lt;main&gt;\n      &lt;h1&gt;{model.text(&#39;title&#39;)}&lt;/h1&gt;\n      &lt;Form form={model.value(&#39;contactForm&#39;)} submission={submission} /&gt;\n    &lt;/main&gt;\n  )\n}\n</code></pre>\n<p><code>&lt;Form&gt;</code> draws every page, field and condition, checks the answers on the server, and shows the message once it is sent.</p>\n<h2 id=\"removing-a-form\">Removing a form</h2>\n<pre><code class=\"language-sh\">bunx crombolo forms remove oldSurvey\n</code></pre>\n<p>A form a page or a Library form uses is not removed until nothing does.</p>\n<p>Every change in this guide takes <code>--dry-run</code>, to say what would change and change nothing, and <code>-o json</code>.</p>\n<h2 id=\"where-next\">Where next</h2>\n<ul>\n<li><a href=\"/docs/guides/users-and-groups/\">Users and groups</a>: who reads the entries.</li>\n<li><a href=\"/docs/reference/command-line/types/\">The <code>forms</code> commands</a>, with every flag.</li>\n</ul>",
+        "blocks": null
+      }
+    },
+    {
+      "property": "editUrl",
+      "culture": null,
+      "segment": null,
+      "editor": "Umbraco.TextBox",
+      "value": "https://github.com/kineco-au/crombolo-cms/edit/main/sites/crombolo/docs/guides/forms.md"
+    },
+    {
+      "property": "standfirst",
+      "culture": null,
+      "segment": null,
+      "editor": "Umbraco.TextArea",
+      "value": "Build a form from the command line — its fields, pages, conditions and what happens when it is sent — pick it on a page, and render it."
+    },
+    {
+      "property": "title",
+      "culture": null,
+      "segment": null,
+      "editor": "Umbraco.TextBox",
+      "value": "Forms"
+    },
+    {
+      "property": "umbracoUrlName",
+      "culture": null,
+      "segment": null,
+      "editor": "Umbraco.TextBox",
+      "value": "forms"
+    }
+  ]
+}

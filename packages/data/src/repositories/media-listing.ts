@@ -251,6 +251,40 @@ export class MediaListingRepository {
       : undefined
   }
 
+  /**
+   * Who made each item's latest version, by key, in one query for a page: the
+   * Media section's folder view shows it (story 246). Null where nobody did.
+   */
+  async creators(keys: readonly string[]): Promise<Map<string, string | null>> {
+    const out = new Map<string, string | null>()
+    if (keys.length === 0) return out
+    const rows = await this.#db.q
+      .selectFrom('node as n')
+      .innerJoin('content_version as cv', 'cv.node_id', 'n.id')
+      .leftJoin('user_account as u', 'u.id', 'cv.user_id')
+      .select(['n.unique_id', 'u.user_name'])
+      .where(
+        'n.unique_id',
+        'in',
+        keys.map((key) => normaliseUuid(key)),
+      )
+      .where((eb) =>
+        eb(
+          'cv.id',
+          '=',
+          eb
+            .selectFrom('content_version as latest')
+            .innerJoin('document_version as dv', 'dv.id', 'latest.id')
+            .select((e) => e.fn.max('latest.id').as('id'))
+            .whereRef('latest.node_id', '=', 'n.id'),
+        ),
+      )
+      .execute()
+    for (const row of rows)
+      out.set(normaliseUuid(String(row.unique_id)), row.user_name ? String(row.user_name) : null)
+    return out
+  }
+
   /** Each node's name, by id: for the paths of names an answer carries. */
   async names(ids: readonly number[]): Promise<Map<number, string>> {
     const wanted = [...new Set(ids.filter((id) => id > 0))]

@@ -18,6 +18,7 @@ import {
   sourceAllowed,
   sourceOf,
   verifyProvenance,
+  verifyProvenanceWith,
 } from '@crombolo/server'
 import { ERROR_KINDS } from '../packages/cli/src/errors.ts'
 import { ROOT } from '../scripts/packages.ts'
@@ -75,7 +76,7 @@ function sign(dir: string, change: { payload?: string; source?: object } = {}) {
 }
 
 /** The chain is the recorded one; what follows it is what this story checks. */
-const trusted = { verifySignature: () => {} }
+const trusted = (dir: string) => verifyProvenanceWith(dir, {}, { verifySignature: () => {} })
 
 describe('the package digest', () => {
   test('covers every file but provenance.json, installs and history', () => {
@@ -98,13 +99,13 @@ describe('the package digest', () => {
 
 describe('checking a signature', () => {
   test('a bundle with no provenance.json is unsigned', async () => {
-    expect((await verifyProvenance(bundleDir(), trusted)).state).toBe('unsigned')
+    expect((await trusted(bundleDir())).state).toBe('unsigned')
   })
 
   test('a signed bundle names where it was built, from its certificate', async () => {
     const dir = bundleDir()
     sign(dir)
-    const result = await verifyProvenance(dir, trusted)
+    const result = await trusted(dir)
     expect(result.state).toBe('signed')
     expect(result.source).toMatchObject({
       repository: 'sigstore/sigstore-js',
@@ -123,7 +124,7 @@ describe('checking a signature', () => {
     const dir = bundleDir()
     sign(dir)
     writeFileSync(join(dir, 'plugin', 'index.js'), 'export const crm = "changed"\n')
-    const result = await verifyProvenance(dir, trusted)
+    const result = await trusted(dir)
     expect(result).toMatchObject({ state: 'invalid' })
     expect(result.reason).toContain('changed since it was signed')
   })
@@ -131,21 +132,19 @@ describe('checking a signature', () => {
   test('a signature for another bundle is refused', async () => {
     const dir = bundleDir()
     sign(dir, { payload: statementFor(`sha256-${'0'.repeat(64)}`) })
-    expect((await verifyProvenance(dir, trusted)).reason).toContain('different bundle')
+    expect((await trusted(dir)).reason).toContain('different bundle')
   })
 
   test('a signature that is not a bundle signature is refused', async () => {
     const dir = bundleDir()
     sign(dir, { payload: statementFor(packageDigest(dir), 'https://slsa.dev/provenance/v1') })
-    expect((await verifyProvenance(dir, trusted)).reason).toContain(
-      'not a Crombolo bundle signature',
-    )
+    expect((await trusted(dir)).reason).toContain('not a Crombolo bundle signature')
   })
 
   test('provenance.json that claims another source than its certificate is refused', async () => {
     const dir = bundleDir()
     sign(dir, { source: { repository: 'acme/crm' } })
-    const result = await verifyProvenance(dir, trusted)
+    const result = await trusted(dir)
     expect(result.state).toBe('invalid')
     expect(result.reason).toContain('says repository acme/crm')
   })
@@ -174,6 +173,33 @@ describe('checking a signature', () => {
       trustedRoot: { ...trustedRoot, certificateAuthorities: [] },
     })
     expect(result.reason).toContain('does not check out')
+  })
+})
+
+describe('a trust root that cannot be had (story 244)', () => {
+  test('is unchecked, not invalid or unsigned, and refused under every policy', async () => {
+    const dir = bundleDir()
+    sign(dir)
+    const result = await verifyProvenanceWith(
+      dir,
+      {},
+      { publicRoot: () => Promise.reject(new Error('tuf-repo-cdn.sigstore.dev is unreachable')) },
+    )
+    expect(result.state).toBe('unchecked')
+    expect(result.reason).toContain('unreachable')
+    expect(describeProvenance(result)).toStartWith("Couldn't be checked right now")
+    expect(provenanceProblem(result, { signatures: 'optional', sources: [] })).toContain(
+      'could not be checked right now',
+    )
+  })
+
+  test('an unsigned bundle needs no trust root, so stays unsigned', async () => {
+    const result = await verifyProvenanceWith(
+      bundleDir(),
+      {},
+      { publicRoot: () => Promise.reject(new Error('unreachable')) },
+    )
+    expect(result.state).toBe('unsigned')
   })
 })
 

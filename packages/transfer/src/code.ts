@@ -41,6 +41,36 @@ export function isNeverCode(path: string): boolean {
   )
 }
 
+/** The site folder a bundle installed from a file is kept in (story 245). */
+export const LOCAL_BUNDLES_DIR = 'bundles'
+
+/** `bundles/<name>-<version>.tgz`'s file name: `@acme/crm` 1.2.0 is `acme-crm-1.2.0.tgz`. */
+export const localBundleFileName = (name: string, version: string): string =>
+  `${name.replace(/^@/, '').replace('/', '-')}-${version}.tgz`
+
+/** The `bundles/` file a dependency's range names, as `./bundles/x.tgz` or `file:bundles/x.tgz`. */
+export function localBundlePath(range: string | undefined): string | undefined {
+  const match = /^(?:file:)?(?:\.\/)?bundles\/([^/\\]+\.tgz)$/.exec(range ?? '')
+  return match ? `${LOCAL_BUNDLES_DIR}/${match[1]}` : undefined
+}
+
+/** Every `bundles/` file the site's `package.json` names among its dependencies. */
+export function localBundlesNamed(siteDir: string): string[] {
+  const file = join(siteDir, 'package.json')
+  if (!existsSync(file)) return []
+  const json = JSON.parse(readFileSync(file, 'utf8')) as {
+    dependencies?: Record<string, string>
+    devDependencies?: Record<string, string>
+  }
+  const named = new Set<string>()
+  for (const ranges of [json.dependencies, json.devDependencies])
+    for (const range of Object.values(ranges ?? {})) {
+      const path = localBundlePath(range)
+      if (path) named.add(path)
+    }
+  return [...named].sort()
+}
+
 /** `crombolo.code` in a site's `package.json`, or undefined when it names none. */
 export function codePatternsOf(siteDir: string): string[] | undefined {
   const file = join(siteDir, 'package.json')
@@ -76,6 +106,10 @@ export function selectCodeFiles(
     if (matched === 0) problems.push(`"${pattern}" matches no file the bundle can carry`)
   }
   for (const always of CODE_ALWAYS) if (existsSync(join(siteDir, always))) paths.add(always)
+  // A bundle installed from a file (story 245) goes where its lockfile entry does.
+  for (const bundle of localBundlesNamed(siteDir))
+    if (existsSync(join(siteDir, bundle))) paths.add(bundle)
+    else problems.push(`package.json names ${bundle}, which is not in the site`)
   if (!existsSync(join(siteDir, 'package.json'))) problems.push('the site has no package.json')
   if (!existsSync(join(siteDir, 'bun.lock')))
     problems.push('the site has no bun.lock, so its code could not be installed as it was tested')

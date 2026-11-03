@@ -55,6 +55,8 @@ export interface NodeOperationsOptions {
   webhooks?: WebhookService
   nudgeEvents?: () => void
   backOfficeUrl?: string
+  /** Where a large media branch's write is queued (story 246); made in the request when absent. */
+  background?: (queuedBy: string) => { enqueue(name: string, payload: unknown): Promise<string> }
 }
 
 export function createNodeOperations(options: NodeOperationsOptions): NodeOperations {
@@ -117,6 +119,7 @@ export function createNodeOperations(options: NodeOperationsOptions): NodeOperat
     // Only the items it touched: a media change leaves the pages alone (story 197).
     onChange: (change) => cache?.media?.apply(change),
     refusalReason,
+    background: options.background,
   })
   return { valueIntake: repository.valueIntake, tracker, approvals, documents, media }
 }

@@ -6,6 +6,7 @@
  */
 import type { ServerEvent } from '@crombolo/api-management/domain'
 import { createBackOfficePaths, createExtensionRegistry } from '@crombolo/backoffice-host/registry'
+import { mediaJobHandlers } from '@crombolo/content'
 import { ObjectTypes } from '@crombolo/core'
 import {
   appendCacheInstruction,
@@ -65,6 +66,7 @@ import { MediaFileStore } from './media-files.ts'
 import { mediaStoreFromEnvironment } from './media-store.ts'
 import { createNodeOperations } from './node-operations.ts'
 import {
+  CORE_JOB_OWNER,
   createJobRunner,
   type JobHandler,
   type JobOwner,
@@ -390,6 +392,7 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
     webhooks,
     nudgeEvents: () => wake('events'),
     backOfficeUrl: backOfficeUrl(config),
+    background: (queuedBy) => jobRunner.jobsFor(CORE_JOB_OWNER, queuedBy),
   })
 
   /**
@@ -537,6 +540,14 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
   const siteJobs = siteJobHandlers(config.jobs)
   /** Every owner with jobs: the site's given its tables and `site()` as a visitor; a bundle's, its capabilities for no caller. */
   const jobOwners = (): JobOwner[] => [
+    // Core's own queued work: a large media branch's trash, move or delete (story 246).
+    {
+      id: CORE_JOB_OWNER,
+      handlers: mediaJobHandlers(operations.media) as Map<string, JobHandler>,
+      schedules: [],
+      context: () => ({}),
+      on: () => true,
+    },
     ...(siteJobs.size > 0
       ? [
           {

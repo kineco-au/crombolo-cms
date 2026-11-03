@@ -613,6 +613,20 @@ implementation serves Settings → Bundles, the remote protocol and the CLI
   else. A newer version that asks for more is refused until the script grants
   it, so a script never grants something new without someone changing it.
   `--dry-run` reads the registry and says what would be installed and granted.
+- **A bundle from a file is kept in the site** (story 245). `bundle install
+  ./acme-crm-1.2.0.tgz` copies the file, byte for byte, to
+  `bundles/<name>-<version>.tgz` (`@acme/crm` 1.2.0 is
+  `bundles/acme-crm-1.2.0.tgz`), checks the copy's signature, and installs
+  `./bundles/acme-crm-1.2.0.tgz`, the relative path Bun records with the file's
+  sha512 in `bun.lock`. Commit the file with `package.json` and `bun.lock`, and
+  every checkout, node and CI build installs the same bundle. A file already in
+  `bundles/`, or the same bytes again, is used as it is; another file of the
+  same version is refused, since one version is one file. A new version from a
+  file, or an uninstall, removes the old file unless another dependency still
+  names it. A site bundle carries each `bundles/*.tgz` its `package.json` names,
+  so `bundle apply --structure` and `bundle deploy` install it on the remote from
+  the lockfile; a named file that is missing stops the build. A remote takes
+  registry names only, so a file reaches a remote this way.
 - **Installing does not wire.** `--wire` does, on the site's own machine only:
   it adds `import { <server> } from '<package>'` and `<server>()` in
   `bundles` to `crombolo.config.ts` (the manifest's `crombolo.server` names the
@@ -752,6 +766,14 @@ without a restart.
 - **Checking a package first.** `validateBundlePackage` and `peerRangeProblem`
   are exported from `@crombolo/crombolo`, so a host checks a package by the
   CMS's own rules without reaching into `@crombolo/backoffice-host`.
+- **Checking a signature first** (story 244). A host that installs bundles
+  itself runs none of the CMS's install paths, and `CROMBOLO_BUNDLE_SIGNATURES`
+  on a node guards only what that node installs. `verifyPackage` (a directory
+  or `.tgz`) or `verifyProvenance` (a directory), then `provenanceProblem` with
+  the site's policy and `describeProvenance` for the line to show, from
+  `@crombolo/crombolo/host`, hold it to the rule the site would apply, in the
+  back office's words. An `unchecked` answer means Sigstore's trusted root
+  could not be had: try again later rather than installing.
 - **Where installs happen.** With `runtimeInstalls` off,
   `installsElsewhere: { message, url }` (`CROMBOLO_INSTALLS_ELSEWHERE_MESSAGE`
   and `_URL`) replaces the Marketplace's "add it to `package.json` and deploy":
@@ -896,7 +918,11 @@ at signing time.
 **What a site takes.** `crombolo bundle verify <dir|tgz|url|name@version>`
 says what an install would. A signature that does not check out (the digest, the
 signature, the certificate, the log entry, or a claim that disagrees with the
-certificate) is always refused, never treated as unsigned.
+certificate) is always refused, never treated as unsigned. One whose signature
+could not be checked at all, because Sigstore's trusted root could not be
+fetched and none was cached, is `unchecked` (story 244): refused too, under
+every policy, and shown as *Couldn't be checked right now*, since trying again
+later may succeed.
 
 | Setting | |
 | --- | --- |

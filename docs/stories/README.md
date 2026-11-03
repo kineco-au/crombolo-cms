@@ -174,11 +174,12 @@ requests, only server-side and build-time front ends can call it.
 | `181` | A host installs a site's bundles | should | S | done | 063 |
 | `186` | Member and public routes for server bundles | should | M | done | 030, 063 |
 | `187` | Background and scheduled work for the site and its bundles | should | M | done | 063, 171, 222 |
-| `188` | File storage for server bundles | should | M | ready | 063 |
+| `188` | File storage for server bundles | should | M | ready | 063, 246 |
 | `198` | Server bundles create media as the member | should | M | done | 186, 196 |
 | `189` | A schema of the site's own | should | L | done | 062, 173, 221 |
 | `194` | Installing server code takes an explicit yes | must | S | done | 063, 181 |
 | `222` | Bundles ask for permissions | should | L | done | 063, 194 |
+| `244` | The provenance check from the host entry | should | S | done | 060 |
 
 ### Epic H — Importing a site
 
@@ -251,6 +252,7 @@ requests, only server-side and build-time front ends can call it.
 | `121` | Reads from a Postgres replica | could | M | ready | 174 |
 | `185` | Several API nodes behind one load balancer | should | L | ready | 187 |
 | `197` | Media cached apart from pages | should | L | done | 171, 174, 196 |
+| `246` | The Media section at a million items | should | L | done | 197 |
 | `223` | A worker role that runs only the jobs | could | L | done | 187 |
 
 ### Epic N — The assistant (closed with 179)
@@ -283,7 +285,7 @@ requests, only server-side and build-time front ends can call it.
 | `215` | React on the server | could | XL | on hold | 206, 209, 212 |
 | `218` | Build islands ahead of time | could | S | ready | 209 |
 | `219` | Server actions | should | L | done | 211 |
-| `220` | `/crombolo/bundle.js` is served on every node | should | S | ready | 211 |
+| `220` | `/crombolo/bundle.js` is served on every node | should | S | done | 211 |
 | `224` | A route handler's signal is let go once it has answered | should | S | done | 211 |
 | `225` | Bundles in the site's code are approved, and an administrator can disable one | should | M | done | 222 |
 | `232` | Plain Signal, a magazine demo | could | L | done | 058, 209, 228 |
@@ -318,7 +320,9 @@ declared as content files compiled to a bundle and applied through the
 existing import (`163`), not mirrored as imperative commands. A CI job signs in
 to a remote with its provider's identity token (`160`), and a remote takes a
 bundle short of a whole push, bounded by `CROMBOLO_REMOTE_ACCESS` (`167`).
-Where groups and access live (`162`) is still open.
+Where groups and access live (`162`) is still open. Stories `247`–`252` make
+the CLI the way a site's definitions are set up and changed, with the schema's
+files kept as the committed record nobody has to open.
 
 | # | Story | Priority | Size | State | Depends on |
 |---|---|---|---|---|---|
@@ -336,6 +340,18 @@ Where groups and access live (`162`) is still open.
 | `241` | Bundles managed from the command line | should | L | done | 160, 167 |
 | `242` | The Library in content files | could | S | ready | — |
 | `243` | Form entries from the command line | could | S | ready | — |
+| `245` | A bundle installed from a file is kept in the site | should | S | done | 241 |
+| `247` | The schema read from the command line | should | M | done | — |
+| `248` | Content, media and member types edited from the command line | should | L | done | 247 |
+| `249` | Data types edited from the command line | should | M | done | 247 |
+| `250` | Renames that keep their content | should | M | done | 248, 249 |
+| `251` | Every site definition from the command line | should | L | done | 247 |
+| `252` | The files out of sight | should | L | done | 248, 249, 250, 251, 253 |
+| `253` | Pages written from the command line | should | XL | done | — |
+| `254` | Permissions, sections and events listed | should | M | done | — |
+| `255` | Compositions shown and checked | should | M | done | — |
+| `256` | Getting started from the command line, and the CLI spec | should | M | done | 252, 253 |
+| `257` | The guides written command line first | should | M | done | — |
 
 ### Epic R — Architecture and reliability
 

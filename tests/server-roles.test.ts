@@ -14,6 +14,8 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { ok, route } from '@crombolo/common'
+import { BUNDLE_SCRIPT_PATH, FORM_SCRIPT_PATH } from '@crombolo/render'
 import {
   type CromboloConfig,
   createServer,
@@ -32,7 +34,11 @@ describe(`server roles (${dialectUnderTest})`, () => {
   let api: ServerHandle
 
   const configFor = (overrides: Partial<CromboloConfig> = {}) =>
-    loadConfig({ sqliteFile: shared, ...overrides })
+    loadConfig({
+      sqliteFile: shared,
+      routes: [route('/api/hello', { GET: () => ok({ hello: 'site' }) })],
+      ...overrides,
+    })
 
   const get = (server: ServerHandle, path: string, init?: RequestInit) =>
     server.fetch(new Request(`${ORIGIN}${path}`, init))
@@ -51,6 +57,24 @@ describe(`server roles (${dialectUnderTest})`, () => {
   afterAll(async () => {
     await Promise.all([all?.close(), web?.close(), api?.close()])
     rmSync(dir, { recursive: true, force: true })
+  })
+
+  test('every node serves the site scripts alike; only a site node answers its routes (story 220)', async () => {
+    for (const server of [all, web, api]) {
+      const script = await get(server, BUNDLE_SCRIPT_PATH)
+      const forms = await get(server, FORM_SCRIPT_PATH)
+      expect(script.status, server.config.role).toBe(200)
+      expect(await script.text()).toContain('crombolo')
+      for (const header of ['content-type', 'cache-control'])
+        expect(script.headers.get(header), `${server.config.role} ${header}`).toBe(
+          forms.headers.get(header),
+        )
+    }
+    expect((await get(web, '/api/hello')).status).toBe(200)
+    expect((await get(all, '/api/hello')).status).toBe(200)
+    // The api node serves no site: its routes and server actions are not there.
+    expect((await get(api, '/api/hello')).status).toBe(404)
+    expect((await get(api, '/crombolo/actions/anything')).status).toBe(404)
   })
 
   test('default to one node that does everything', () => {

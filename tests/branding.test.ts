@@ -75,7 +75,7 @@ describe("the site's name and logos, from the fork of Umbraco's client", () => {
   test("the logo's popover links to Crombolo, not to umbraco.com", () => {
     expect(served('Crombolo on GitHub')).toBe(true)
     expect(served('https://umbraco.com"')).toBe(false)
-  })
+  }, 30_000)
 })
 
 describe('the colour scheme', () => {

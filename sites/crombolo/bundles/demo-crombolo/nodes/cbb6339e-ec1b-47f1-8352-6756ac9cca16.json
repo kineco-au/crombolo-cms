@@ -1,0 +1,59 @@
+{
+  "key": "cbb6339e-ec1b-47f1-8352-6756ac9cca16",
+  "kind": "document",
+  "contentType": {
+    "key": "aa13972a-5fd6-56a9-842f-832abb4944b2",
+    "alias": "docsPage"
+  },
+  "parent": "c0b0ccb3-faa3-46a4-8af2-80730c1e3ee3",
+  "sortOrder": 3,
+  "template": "pages/docsPage",
+  "variants": [
+    {
+      "culture": null,
+      "segment": null,
+      "name": "Harbourstone Distillery (Next.js)",
+      "published": true
+    }
+  ],
+  "values": [
+    {
+      "property": "body",
+      "culture": null,
+      "segment": null,
+      "editor": "Umbraco.RichText",
+      "value": {
+        "markup": "<p>Harbourstone Distillery (Next.js): the Harbourstone distillery with a Next.js front end in web/: the same content, drafts in Draft Mode, a cache cleared by webhook, and a comparison of the bottlings chosen in the browser.</p>\n<h2 id=\"create-it\">Create it</h2>\n<pre><code class=\"language-sh\">mkdir harbourstone-next &amp;&amp; cd harbourstone-next\nbunx @crombolo/cli@latest init --template demo/harbourstone-next\nbun install\n</code></pre>\n<h2 id=\"start-it\">Start it</h2>\n<pre><code class=\"language-sh\">bun run dev\n</code></pre>\n<p>This runs the CMS on <a href=\"http://localhost:8080/\">http://localhost:8080/</a> and the Next.js front end in <code>web/</code> on <a href=\"http://localhost:3000/\">http://localhost:3000/</a>.</p>\n<p>The first start applies the template&#39;s content and publishes it. The back office is at <a href=\"http://localhost:8080/crombolo\">http://localhost:8080/crombolo</a>, and the start prints how to sign in (<a href=\"/docs/getting-started/#sign-in\">Getting started</a>).</p>\n<h2 id=\"the-bundles-it-brings\">The bundles it brings</h2>\n<ul>\n<li><code>@crombolo/simple-redirects</code></li>\n</ul>\n<p>They are installed with the site, and wired in its <code>crombolo.config.ts</code>.</p>\n<h2 id=\"what-is-in-it\">What is in it</h2>\n<ul>\n<li>the same Harbourstone content as the distillery template;</li>\n<li>a Next.js front end in <code>web/</code>: drafts shown in Draft Mode, the cache cleared by a webhook when a page is published, and a comparison of bottlings chosen in the browser;</li>\n<li>the simple redirects bundle.</li>\n</ul>\n<h2 id=\"where-to-look-first\">Where to look first</h2>\n<p><code>web/app/</code> renders the pages through the Delivery API. The CMS keeps its own views in <code>components/</code>, so you can compare the two ways of rendering one site.</p>",
+        "blocks": null
+      }
+    },
+    {
+      "property": "generatedFrom",
+      "culture": null,
+      "segment": null,
+      "editor": "Umbraco.TextBox",
+      "value": "the template’s manifest and its TEMPLATE.md"
+    },
+    {
+      "property": "standfirst",
+      "culture": null,
+      "segment": null,
+      "editor": "Umbraco.TextArea",
+      "value": "crombolo init --template demo/harbourstone-next"
+    },
+    {
+      "property": "title",
+      "culture": null,
+      "segment": null,
+      "editor": "Umbraco.TextBox",
+      "value": "Harbourstone Distillery (Next.js)"
+    },
+    {
+      "property": "umbracoUrlName",
+      "culture": null,
+      "segment": null,
+      "editor": "Umbraco.TextBox",
+      "value": "demo-harbourstone-next"
+    }
+  ]
+}

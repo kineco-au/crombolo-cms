@@ -120,6 +120,7 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'backofficeEntryPoint:Crombolo.EntryPoint.SidePanels',
       'globalContext:Crombolo.GlobalContext.SidePanel',
       'headerApp:Crombolo.HeaderApp.BundlesChanged',
+      'headerApp:Crombolo.HeaderApp.MediaJobs',
       'headerApp:Crombolo.HeaderApp.Settings',
       'workspaceFooterApp:Crombolo.WorkspaceFooterApp.ElementTypeHint',
       'workspaceFooterApp:Crombolo.WorkspaceFooterApp.FormTypeNote',

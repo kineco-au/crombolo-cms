@@ -1,7 +1,7 @@
 ---
 title: Content files
 summary: Write a site's starting pages, Library elements and media as files, and apply them from the command line.
-order: 3
+order: 5
 ---
 
 A site's content files are its starting content kept in the repository: pages, Library elements and media, written as small TOML files under `content/`. `crombolo bundle apply` turns them into content. A fresh clone plus one command is a populated site, and content that belongs with the code, such as legal pages or a docs section, is reviewed like the code is.
@@ -36,7 +36,7 @@ Give each value by its property alias, in the form it reads most naturally:
 - **Content pickers:** a path such as `/home/about`.
 - **Media pickers:** a path under `content/media/`.
 - **Element pickers:** a path under `content/library/`.
-- **Blocks:** `[{ type = "card", values = { heading = "One" } }]`.
+- **Blocks:** `[{ type = "card", values = { heading = "One" } }]`. Give a block an `alias = "hero"` to name it by: unique within its list, it is what a view's `byAlias` and `crombolo content block` find it by.
 - **Tags, dates, numbers and toggles:** as TOML writes them.
 
 For another culture, add a `[values.fr-FR]` table and give `name` per culture.
@@ -58,6 +58,21 @@ crombolo start --bundle .                # apply it before serving, once for eac
 With no bundle named, or with `.`, `bundle apply` applies this site's own content files. Name a bundle instead, and it applies that.
 
 A site made before the `content/` folder had its files under `seed/`. Move them with `git mv seed content && git mv content/content content/pages`.
+
+## Pages from the command line
+
+The same shorthand makes and changes pages without a file. These commands write to the site's database as the back office does, so a page made this way is edited in the back office like any other:
+
+```bash
+crombolo content new "/Home/Visit us" --type contentPage --set title="Visit us" --set body="Open from **7am**."
+crombolo content update "/Home/Visit us" --set-file body=visit.md --publish
+crombolo content block add /Home blocks --type highlight --alias sourdough --set heading=Sourdough
+crombolo content block update /Home blocks sourdough --set detail="Three days from starter to loaf."
+crombolo content block move /Home blocks sourdough --first
+crombolo content show /Home                     # its values, and its blocks with their aliases and keys
+```
+
+A page made by `content new` has the key a content file at its path would, so the same command makes the same page in every environment. `crombolo bundle export --source --root /Home` writes pages made this way out as content files, to ship with the site.
 
 ## Applying again
 

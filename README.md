@@ -284,12 +284,14 @@ Design documents, in reading order; planned work is in the stories:
 | [umbraco-import](docs/umbraco-import.md) | importing an existing Umbraco site: the report, what converts, and what is left |
 | [next-integration](docs/next-integration.md) | what `@crombolo/next-integration` offers a Next.js front end: reads, caching, preview, members, middleware, components and images |
 | [api](docs/api.md) | the supported API: the entry points of `@crombolo/crombolo`, the compatibility promise, and how a snapshot and an import boundary hold it |
+| [cli](docs/cli/commands.md) | the command line's spec: every command, its arguments, flags, outputs, errors and exit codes, with [clispec.json](docs/cli/clispec.json) for a machine; generated from the commands by `bun run cli:spec`, and a test fails when it is stale |
 | [bundles](docs/bundles.md) | created bundles, extensions as npm dependencies instead of App_Plugins, bundles with a server half, and a site's [content files](docs/bundles.md#content-files) under `content/`: the format, the shorthand per editor, and `crombolo bundle apply` |
 | [forms](docs/forms.md) | form building in core: the TOML definition, entries, workflows, and the e-mail port; approval before publishing, as graphs of stages, in [workflows](docs/workflows.md) |
 | [audit-log](docs/audit-log.md) | who did what, when and from where: what writes an entry, the Info tab and the dashboard, retention |
 | [search](docs/search.md) | backoffice and site search: the indexes on both dialects, the queue that keeps them current, who sees a result |
 | [seo](docs/seo.md) | search & sharing in core: the `seoFields` type, `<SeoHead>`, sitemap, robots, the not-found page |
 | [adding-a-page](docs/adding-a-page.md) | a walkthrough: the content type, its component (with an async example), the content, shipping it |
+| [building-a-site-from-the-cli](docs/building-a-site-from-the-cli.md) | the record of the walk that shaped stories 250 to 256, and the gaps still open; the guide to follow is the product site's [A site from the command line](sites/crombolo/docs/getting-started/from-the-command-line.md) |
 | [writing-components](docs/writing-components.md) | the component cookbook: props, lists, styles and SVG, forms and ids, async, context, layouts, interactive parts |
 | [brand](docs/brand.md) | the mark, the logo files and the palette taken from them |
 

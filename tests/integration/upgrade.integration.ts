@@ -486,7 +486,7 @@ describe('the upgrade, end to end through the CLI', () => {
   test('a node left on release 1 still boots and serves, read-only', async () => {
     const server = await serve('dev', 1)
     try {
-      expect(server.banner).toContain('database is ahead of schema/: reads only')
+      expect(server.banner).toContain("the database is ahead of the site's definitions: reads only")
       const response = await fetch(new URL('/', server.url))
       expect(response.status).toBe(200)
       const page = await response.text()

@@ -148,7 +148,7 @@ calls the functions directly.
   boots. It asserts the holding page a site with nothing published serves, the
   pages a template's content files produce, the order they sit in, and that the image
   bytes the template shipped are the ones the site serves back. `types new` and
-  `types add-property` are covered here too, against a site with no types at
+  `types property add` are covered here too, against a site with no types at
   all, through to `generate` typing the property they added — and `views
   check|list|new` and `assets list|new`, including a deliberately broken view
   and a template whose file is missing, and `status` both before a site has a
@@ -269,12 +269,39 @@ of three and a page of thirty cost and expects the same number.
 | the page snapshot build | 1 s | 1.2 ms | 5.5 ms |
 | the first page render, three items looked up | 500 ms | 10.4 ms | 12.8 ms |
 | a page render, the items held | 50 ms | 0.9 ms | 1.6 ms |
-| a file served | 50 ms | 1.6 ms | 2.3 ms |
+| a file served | 50 ms | 1.6 ms (3.8 ms, 2026-11-03) | 2.3 ms (7.1 ms) |
 | the Delivery API's last page of the folder (`skip` 999,990) | 1 s on SQLite, 2 s on Postgres | 143 ms | 640 ms |
 | heap growth while serving | 200 MB | 1.5 MB | 1.5 MB |
 | 10,000 uploads while pages are served | no snapshot rebuild | none; 195 s, 20,420 pages served | none; 140 s, 58,946 pages served |
 
 Measured 2026-10-28 in the Docker test services on a developer machine.
+
+**The Media section at scale** — story `246`, in the same benchmark: a folder of
+a million files, a 100,000-item folder moved, trashed and emptied, and
+`tests/media-scale.test.ts`, `media-scale-collection.test.ts` and
+`media-scale-moves.test.ts` holding the query plans and statement counts on
+every run.
+
+| Path, with 1,000,000 media items | Budget | SQLite | Postgres |
+| --- | --- | --- | --- |
+| the tree, a folder's first page | 200 ms | 40 ms | 63 ms |
+| the tree, its last page | 1 s on SQLite, 2 s on Postgres | 78 ms | 692 ms |
+| the tree opened at a file near the end | 500 ms | 219 ms | 52 ms |
+| the folder view, first page | 500 ms | 67 ms | 80 ms |
+| the folder view, last page | 1 s on SQLite, 2 s on Postgres | 262 ms | 567 ms |
+| the folder view, filtered | 1.5 s | 529 ms | 678 ms |
+| the folder view, sorted by name | 3 s | 290 ms | 282 ms |
+| search | 1.5 s | 331 ms | 190 ms |
+| moving a 100,000-item folder | 1 s on SQLite, 3 s on Postgres | 146 ms | 1.6 s |
+| trashing it: the request | 1 s | 7 ms | 52 ms |
+| trashing it: the job | 5 s on SQLite, 15 s on Postgres | 0.7 s | 4.8 s |
+| emptying the bin of it: the job | 10 s on SQLite, 60 s on Postgres | 6.0 s | 33.6 s |
+
+Measured 2026-11-03, after two fixes the measuring found: a file's access rule
+was found by matching its path against every node, and every item's load built
+its published version from every published version in the site. With them, a
+file is served in 4 ms on SQLite (50 ms before) and an item loads in 0.6 ms
+(13.5 ms).
 Generating the library took 8 s on SQLite and 69 s on Postgres. The Delivery
 API's time is the count of the folder's children and an `OFFSET` near its end;
 a page near the start is a few milliseconds. The cache's estimate of a
@@ -538,6 +565,13 @@ fallback, CLEF written and read back rendered as Serilog renders, the files of a
 range read and bad lines skipped, level counts, templates, filtering, levels,
 ordering, paging, the 100 MB cap (a sparse file) and saved searches.
 
+**The command line's docs** — `tests/cli-spec.test.ts`: `docs/cli/clispec.json`
+and `docs/cli/commands.md` are what the commands say now, and a deliberate
+change runs `bun run cli:spec` and commits the result.
+`tests/docs-commands.test.ts`: every `crombolo` command line in the product
+site's docs names a command the CLI has and only flags that command takes,
+with continued lines, quotes and comments read as a shell reads them.
+
 ## The browser suite
 
 `bun run test:browser` drives the real vendored backoffice with the installed
@@ -562,6 +596,7 @@ creates uniquely.
 | `login.browser.ts`            | an invitation link followed on our login page, a password chosen, and a sign-in; then "Forgotten password?", the reset link, a new password and a sign-in                                                                                                                                                                                               |
 | `library.browser.ts`          | the Library section: Create offering the site's element types and not just Folder, then an element named, filled, published, and appearing in the tree; and the workspace hint that an element type is not in the Library until that flag is on, silent for one that is and for an ordinary content type                                               |
 | `variants.browser.ts`         | a page that varies by culture written and published in English, then switched to Danish and published through the publish dialog; each rendered under its path-prefix hostname, Danish falling back to English                                                                                                                                          |
+| `block-alias.browser.ts`      | a page's blocks opened in the block editor: an alias shown, one another block in the list has refused, and a page save keeps both (story 253)                                                                                                                                                                                                           |
 
 ### In the pipeline
 

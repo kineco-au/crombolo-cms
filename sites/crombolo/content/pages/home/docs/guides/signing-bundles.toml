@@ -2,7 +2,7 @@
 type = "docsPage"
 key = "314bb52f-5ddb-451f-87fd-23a37d7860b1"
 name = "Signing bundles"
-order = 8
+order = 10
 
 [values]
 title = "Signing bundles"

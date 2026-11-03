@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { fileNameFor, newForm, writeForm } from '@crombolo/schema'
 import { Args, Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
-import { describeSync, here } from '../../support/describe.ts'
+import { describeDefinition, describeSync, here } from '../../support/describe.ts'
 import { siteConfig } from '../../support/site.ts'
 import { applySchema, loadTypes, needSchemaDir, refuseOwnProblems } from '../../support/types.ts'
 
@@ -37,11 +37,14 @@ export default class FormsNew extends BaseCommand {
     refuseOwnProblems(
       { ...loaded.set, forms: [...(loaded.set.forms ?? []), form] },
       `schema/forms/${args.alias}`,
+      config.schemaDir,
     )
     const file = join(config.schemaDir, 'forms', fileNameFor(args.alias))
     await mkdir(join(file, '..'), { recursive: true })
     await writeFile(file, writeForm(form))
-    this.say(`  created  ${here(file)}`)
+    this.say(
+      `  added    ${describeDefinition({ kind: 'form', alias: args.alias, name: form.name })}`,
+    )
     const report = await applySchema(this, config)
     return { created: [here(file)], schema: describeSync(report) }
   }

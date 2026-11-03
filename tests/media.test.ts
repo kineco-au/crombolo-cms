@@ -242,6 +242,62 @@ describe('media items', () => {
     ).toBe(2)
   })
 
+  test('the folder view pages, sorts and filters in the database (story 246)', async () => {
+    const { h, create } = await site()
+    const folder = await create(FOLDER, 'Lots')
+    // Made a little apart, so their dates sort them; a folder needs no file to list.
+    for (const name of ['Charlie', 'alpha', 'Echo', 'bravo', 'Delta']) {
+      await create(FOLDER, name, folder)
+      await Bun.sleep(15)
+    }
+    type Page = {
+      total: number
+      items: Array<{ variants: Array<{ name: string }>; creator: string | null; sortOrder: number }>
+    }
+    const view = (query: string) => h.json<Page>(`${V1}/collection/media?id=${folder}&${query}`)
+    const named = (page: Page) => page.items.map((i) => i.variants[0]?.name)
+    const made = ['Charlie', 'alpha', 'Echo', 'bravo', 'Delta']
+
+    expect(named(await view('skip=0&take=10'))).toEqual(made)
+    expect(named(await view('orderBy=sortOrder&orderDirection=Descending&skip=0&take=10'))).toEqual(
+      [...made].reverse(),
+    )
+    expect(named(await view('orderBy=name&orderDirection=Ascending&skip=0&take=10'))).toEqual([
+      'alpha',
+      'bravo',
+      'Charlie',
+      'Delta',
+      'Echo',
+    ])
+    expect(named(await view('orderBy=name&orderDirection=Descending&skip=0&take=10'))).toEqual([
+      'Echo',
+      'Delta',
+      'Charlie',
+      'bravo',
+      'alpha',
+    ])
+    expect(named(await view('orderBy=createDate&orderDirection=Ascending&skip=0&take=10'))).toEqual(
+      made,
+    )
+    expect(
+      named(await view('orderBy=createDate&orderDirection=Descending&skip=0&take=10')),
+    ).toEqual([...made].reverse())
+    expect(named(await view('orderBy=updateDate&orderDirection=Ascending&skip=0&take=10'))).toEqual(
+      made,
+    )
+
+    const second = await view('orderBy=name&orderDirection=Ascending&skip=2&take=2')
+    expect(second.total).toBe(5)
+    expect(named(second)).toEqual(['Charlie', 'Delta'])
+    expect((await view('skip=10&take=10')).items).toEqual([])
+
+    const filtered = await view('filter=%20ALP%20&orderBy=name&skip=0&take=10')
+    expect(filtered.total).toBe(1)
+    expect(named(filtered)).toEqual(['alpha'])
+    expect(filtered.items[0]?.creator).toBe('Administrator')
+    expect((await view('filter=nothing-like-it&skip=0&take=10')).total).toBe(0)
+  })
+
   test('sort, move, the recycle bin, and deleting for good removes the file', async () => {
     const { h, mediaDir, create, image, names } = await site()
     const photos = await create(FOLDER, 'Photos')

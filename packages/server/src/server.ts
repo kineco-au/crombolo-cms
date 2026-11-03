@@ -234,7 +234,7 @@ import {
   requestCookies,
   runStage,
 } from './middleware.ts'
-import type { JobRunner } from './owner-jobs.ts'
+import { CORE_JOB_OWNER, type JobRunner } from './owner-jobs.ts'
 import { callerAddress } from './rate-limit.ts'
 import { syncConfiguredRedirects } from './redirects.ts'
 import { createRoutes, type DeclaredRoute, siteRouteProblems } from './routes.ts'
@@ -1208,6 +1208,9 @@ export async function createServer(
   // credentials anywhere near it.
   const auditPath = `${paths.pluginPath}/api/audit`
   const jobsPath = `${paths.pluginPath}/api/jobs`
+  const mediaJobsPath = `${paths.pluginPath}/api/media-jobs`
+  /** What an open back office hears when a media change is queued (story 246); its key is the job's id. */
+  const MEDIA_JOB_QUEUED_EVENT = { eventSource: 'Crombolo:MediaJob', eventType: 'Queued' } as const
   const hostTokenPath = `${paths.pluginPath}/api/host-token`
   const contentQueryPath = `${paths.pluginPath}/api/content-query`
   const bundleInstallPaths = new Set(
@@ -1307,6 +1310,10 @@ export async function createServer(
       const response = await serveBackOffice(request, url)
       if (response) {
         if (response.ok) await auditPluginWrite(request, pathname)
+        // A media change too large for the request is queued (story 246): open back
+        // offices hear its id from the node that took it, wherever the job runs.
+        const job = response.headers.get('crombolo-job')
+        if (job) events.broadcast('notify', [{ ...MEDIA_JOB_QUEUED_EVENT, key: job }])
         return response
       }
     }
@@ -1325,25 +1332,13 @@ export async function createServer(
     }
 
     // Islands (story 209): the loader, and each generation's browser code.
-    if (pathname === ISLAND_LOADER_PATH)
-      return new Response(ISLAND_LOADER_SCRIPT, {
-        headers: {
-          'content-type': 'text/javascript; charset=utf-8',
-          'cache-control': config.development ? 'no-cache' : 'public, max-age=3600',
-        },
-      })
+    if (pathname === ISLAND_LOADER_PATH) return siteScript(ISLAND_LOADER_SCRIPT)
     if (pathname.startsWith(`${ISLANDS_PATH}/`))
       return islandFile(pathname.slice(ISLANDS_PATH.length + 1))
 
     // The progressive-enhancement script. A site adds it to a layout; a form
     // works without it, so nothing emits it automatically.
-    if (pathname === FORM_SCRIPT_PATH)
-      return new Response(FORM_SCRIPT, {
-        headers: {
-          'content-type': 'text/javascript; charset=utf-8',
-          'cache-control': config.development ? 'no-cache' : 'public, max-age=3600',
-        },
-      })
+    if (pathname === FORM_SCRIPT_PATH) return siteScript(FORM_SCRIPT)
 
     // A visitor posting a form. Before the renderer, which would otherwise try
     // to resolve `/crombolo/forms/...` as a page.
@@ -1356,16 +1351,10 @@ export async function createServer(
         : new Response('Method Not Allowed', { status: 405, headers: { allow: 'POST' } })
     }
 
-    // The script that calls the site's routes as a member, wherever the site is served.
-    if (config.role !== 'api') {
-      if (pathname === BUNDLE_SCRIPT_PATH)
-        return new Response(BUNDLE_SCRIPT, {
-          headers: {
-            'content-type': 'text/javascript; charset=utf-8',
-            'cache-control': config.development ? 'no-cache' : 'public, max-age=3600',
-          },
-        })
-    }
+    // The script that calls the site's routes as a member: on every node, as the
+    // other site scripts are, so a proxy that sends `/crombolo/*` to the api node
+    // still serves it (story 220).
+    if (pathname === BUNDLE_SCRIPT_PATH) return siteScript(BUNDLE_SCRIPT)
 
     // Not on an `api` node, which serves no public site to describe.
     if ((pathname === '/sitemap.xml' || pathname === '/robots.txt') && config.role !== 'api')
@@ -1448,6 +1437,16 @@ export async function createServer(
     } catch (error) {
       return middlewareFailure(request, url, error)
     }
+  }
+
+  /** One of the scripts a site's pages load, answered alike on every node. */
+  function siteScript(body: string): Response {
+    return new Response(body, {
+      headers: {
+        'content-type': 'text/javascript; charset=utf-8',
+        'cache-control': config.development ? 'no-cache' : 'public, max-age=3600',
+      },
+    })
   }
 
   /** The site's stylesheets and scripts, or its pages. */
@@ -2238,6 +2237,27 @@ export async function createServer(
       if (!hasSection(principal, 'settings')) return new Response('Forbidden', { status: 403 })
       const response = await auditHost.handle(request, pathname.slice(auditPath.length))
       if (response) return response
+    }
+
+    // Non-contract, Media: how a large branch's queued trash, move or delete is
+    // getting on (story 246), for anyone with the Media section, media jobs only.
+    const mediaJob = /^\/([0-9a-f-]{36})$/i.exec(
+      pathname.startsWith(mediaJobsPath) ? pathname.slice(mediaJobsPath.length) : '',
+    )
+    if (mediaJob && request.method === 'GET') {
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      if (!hasSection(principal, 'media')) return new Response('Forbidden', { status: 403 })
+      const job = await new JobRepository(db).get(mediaJob[1] as string)
+      if (!job || job.owner !== CORE_JOB_OWNER || !job.name.startsWith('media.'))
+        return new Response('Not Found', { status: 404 })
+      return Response.json({
+        id: job.id,
+        state: job.state,
+        progress: job.progress,
+        error: job.lastError,
+        finishedAt: job.finishedAt?.toISOString() ?? null,
+      })
     }
 
     // Non-contract, Settings: every owner's background jobs, and retrying a
