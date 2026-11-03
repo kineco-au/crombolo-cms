@@ -6,6 +6,17 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.46.1 — 2026-11-03
+
+- **`bundle deploy` checks for uncommitted changes first** (256). 0.46.0 raised
+  the definitions' version before that check, so a site with uncommitted
+  changes could be refused for something else, such as a type removed with its
+  pages still there. Uncommitted changes are now refused first, as before 0.46.0.
+  The version is raised only on a clean site, and the deploy then asks for that
+  commit.
+- **The large benchmark** signs in again after generating its site, and has
+  limits on how long its job, its tests and its generation may take.
+
 ## v0.46.0 — 2026-11-03
 
 - **Getting started from the command line** (256). The product site's Getting

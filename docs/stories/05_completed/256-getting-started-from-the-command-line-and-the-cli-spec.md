@@ -162,9 +162,11 @@ Split from 252 at its planning (2026-11-03), then re-scoped (below). Today:
     allows it.
   - A test in `tests/docs-site.test.ts` checks the walkthrough and a page for
     every template offered, each with its own words.
-- **`bundle deploy`** raises the version as `bundle build` and `push` do. It
-  sends only what is committed, so after raising it the deploy is refused,
-  with a hint to commit the new version.
+- **`bundle deploy`** raises the version as `bundle build` and `push` do, but
+  only on a clean site, after it has refused uncommitted changes. The deploy
+  is then refused, with a hint to commit the new version. 0.46.0 raised it
+  before that check, which on Postgres applied an uncommitted change and
+  refused for that instead. 0.46.1 fixed it.
 - **Docs:** the README indexes `docs/cli/`, `docs/testing.md` covers the
   tests, and the release note is written.
 

@@ -87,13 +87,6 @@ export default class BundleDeploy extends BaseCommand {
     const shown = relative(process.cwd(), dir) || '.'
     if (!existsSync(join(dir, 'schema')))
       throw new CliError('not_found', `${shown} has no schema/ directory, so it is not a site.`)
-    // The site itself: a new version when its definitions changed under this one (story 256)
-    let raised: string | undefined
-    if (dir === resolve(process.cwd())) {
-      const config = await siteConfig()
-      if (resolve(config.schemaDir) === join(dir, 'schema'))
-        raised = await raiseVersionIfChanged(this, config)
-    }
     const changes = uncommitted(dir)
     if (changes === undefined)
       throw new CliError('refused', `${shown} is not in a git repository.`, {
@@ -101,11 +94,22 @@ export default class BundleDeploy extends BaseCommand {
       })
     if (changes.length > 0)
       throw new CliError('refused', `${shown} has ${changes.length} change(s) not committed.`, {
-        hint: raised
-          ? `The definitions are now at ${raised}: commit that, then deploy again.`
-          : 'Commit them, or set them aside, so the remote runs what the repository holds.',
+        hint: 'Commit them, or set them aside, so the remote runs what the repository holds.',
         details: changes.slice(0, 20),
       })
+    // The site itself, committed: a new version when its definitions changed under
+    // this one (story 256), which is then a change to commit before deploying
+    if (dir === resolve(process.cwd())) {
+      const config = await siteConfig()
+      const raised =
+        resolve(config.schemaDir) === join(dir, 'schema')
+          ? await raiseVersionIfChanged(this, config)
+          : undefined
+      if (raised)
+        throw new CliError('refused', `The definitions are now at ${raised}, not yet committed.`, {
+          hint: 'Commit that, then deploy again.',
+        })
+    }
 
     const base = {
       remote: flags.remote,
