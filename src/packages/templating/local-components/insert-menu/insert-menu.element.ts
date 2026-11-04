@@ -1,4 +1,4 @@
-import { umbCromboloHooks } from '@umbraco-cms/backoffice/extension-registry';
+import { umbCromboloHooks, type UmbCromboloInsert } from '@umbraco-cms/backoffice/extension-registry';
 import { getInsertDictionarySnippet, getInsertPartialSnippet } from '../../utils/index.js';
 import {
 	UMB_TEMPLATING_ITEM_PICKER_MODAL,
@@ -23,7 +23,7 @@ export class UmbTemplatingInsertMenuElement extends UmbLitElement {
 	disabled = false;
 
 	@property({ type: Boolean })
-	hidePartialViews = umbCromboloHooks.hideRazorInserts ?? false;
+	hidePartialViews = (umbCromboloHooks.hideRazorInserts ?? false) && !umbCromboloHooks.showPartialViewInsert;
 
 	#modalContext?: UmbModalManagerContext;
 
@@ -122,6 +122,13 @@ export class UmbTemplatingInsertMenuElement extends UmbLitElement {
 		this.#dispatchInsertEvent();
 	}
 
+	async #openExtraInsert(insert: UmbCromboloInsert) {
+		const value = await insert.pick(this).catch(() => undefined);
+		if (!value) return;
+		this.value = value;
+		this.#dispatchInsertEvent();
+	}
+
 	#dispatchInsertEvent() {
 		this.dispatchEvent(new CustomEvent('insert', { bubbles: false, cancelable: true, composed: false }));
 	}
@@ -162,6 +169,14 @@ export class UmbTemplatingInsertMenuElement extends UmbLitElement {
 						title=${this.localize.term('template_insertDictionaryItem')}
 						@click=${this.#openDictionaryItemPickerModal}>
 					</uui-menu-item>
+					${(umbCromboloHooks.extraInserts ?? []).map(
+						(insert) =>
+							html`<uui-menu-item
+								class="insert-menu-item"
+								label=${insert.label}
+								title=${insert.label}
+								@click=${() => this.#openExtraInsert(insert)}></uui-menu-item>`,
+					)}
 				</umb-dropdown>
 			</uui-button-group>
 		`;

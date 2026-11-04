@@ -15,6 +15,12 @@ export interface UmbCromboloViewEditor {
 	insert?(text: string): string;
 }
 
+export interface UmbCromboloInsert {
+	label: string;
+	/** What to insert, in the views' dialect, or undefined when the user chose nothing. */
+	pick(host: HTMLElement): Promise<string | undefined>;
+}
+
 export interface UmbCromboloHooks {
 	/** For a code editor in `language`: how a view is edited, or undefined to leave it as it is. */
 	viewEditor?(language: string): UmbCromboloViewEditor | undefined;
@@ -30,6 +36,10 @@ export interface UmbCromboloHooks {
 	viewLanguageLabel?: string;
 	/** Hide the inserts a view in the views' dialect cannot take: partial views and sections. */
 	hideRazorInserts?: boolean;
+	/** Offer the partial view insert even with `hideRazorInserts`, the dialect writing its import. */
+	showPartialViewInsert?: boolean;
+	/** Inserts of the plugin's own, after Umbraco's: each picks what to insert, or nothing. */
+	extraInserts?: Array<UmbCromboloInsert>;
 	/** An entity's editor is loading it; the returned function is called once it has. */
 	onEntityLoad?(entityType: string, unique: string): (() => void) | undefined;
 	/** Why a page's notifications cannot be chosen here, or undefined when they can. */
