@@ -141,6 +141,7 @@ not cover.
 | `048` | The rest of the contract | could | M | done | — |
 | `049` | Light and dark in the back office | should | M | done | — |
 | `183` | Find content by its properties | should | M | done | 043 |
+| `262` | Telemetry that reaches the tools you already watch | should | L | done | 047 |
 
 ### Epic F — Headless
 
@@ -161,6 +162,9 @@ requests, only server-side and build-time front ends can call it.
 | `058` | Translations, menus and site settings reach the app | could | L | done | 141 |
 | `216` | Rich text as JSON | should | M | done | — |
 | `217` | Pages only an app renders | could | S | ready | 208 |
+| `258` | A page says whether it changed without being rendered | should | M | done | 057, 174 |
+| `259` | Lifetimes that suit a shared cache | should | S | done | 057, 258 |
+| `260` | Stylesheets and scripts at addresses that change with their content | should | M | done | 057 |
 
 ### Epic G — Trusting and extending bundles
 
@@ -279,7 +283,7 @@ requests, only server-side and build-time front ends can call it.
 | `209` | Interactive islands | should | M | done | — |
 | `210` | Middleware | should | M | done | — |
 | `211` | Route handlers | should | L | done | — |
-| `212` | Streaming and Suspense | could | L | ready | 206 |
+| `212` | Streaming and Suspense | could | L | ready | 206, 258 |
 | `213` | Image, Link and Script components | should | M | ready | 199 |
 | `214` | Live reload and an error overlay | should | L | done | — |
 | `215` | React on the server | could | XL | on hold | 206, 209, 212 |
@@ -289,6 +293,9 @@ requests, only server-side and build-time front ends can call it.
 | `224` | A route handler's signal is let go once it has answered | should | S | done | 211 |
 | `225` | Bundles in the site's code are approved, and an administrator can disable one | should | M | done | 222 |
 | `232` | Plain Signal, a magazine demo | could | L | done | 058, 209, 228 |
+| `263` | Personalised parts of a shared page | should | L | done | — |
+| `264` | Personalised parts in the back office | could | M | done | 263 |
+| `265` | Deferred parts put together by the CDN | could | S | on hold | 263 |
 
 ### Epic P — The command line
 
@@ -352,6 +359,7 @@ files kept as the committed record nobody has to open.
 | `255` | Compositions shown and checked | should | M | done | — |
 | `256` | Getting started from the command line, and the CLI spec | should | M | done | 252, 253 |
 | `257` | The guides written command line first | should | M | done | — |
+| `261` | Crombolo on Windows | could | L | on hold | — |
 
 ### Epic R — Architecture and reliability
 

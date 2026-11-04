@@ -587,6 +587,7 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
       ).memberAuthorization.clientCredentialsFlow.associatedMembers.map((m) => m.userName),
     })
     deps.publicAccess = createPublicAccessPort(options.db, {
+      nodeId: options.schema?.nodeId,
       onChange: () => options.cache?.invalidate(),
     })
     deps.elements = createElementPort(options.db, {

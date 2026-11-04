@@ -11,6 +11,7 @@
  */
 import { AsyncLocalStorage } from 'node:async_hooks'
 import type { ActionState } from '@crombolo/common'
+import type { DeferredScope } from './deferred.ts'
 import type { Child } from './jsx-runtime.ts'
 import type { PageProps } from './model.ts'
 import type { SiteSearchPort } from './search.ts'
@@ -43,6 +44,8 @@ interface RenderScope {
   islands?: { used: boolean }
   /** The site's server actions, and what one answered the visitor just now (story 219). */
   actions?: PageActions
+  /** How `'use deferred'` parts render here (story 263). */
+  deferred?: DeferredScope
 }
 
 /** A page's server actions: each one's id, and the result the visitor returned with. */
@@ -73,6 +76,7 @@ export interface RenderScopeOptions {
   metadata?: { value?: Metadata }
   islands?: { used: boolean }
   actions?: PageActions
+  deferred?: DeferredScope
 }
 
 /**
@@ -169,7 +173,25 @@ export function actionFormFields(): { returnTo: string; antiforgery: string | un
     const parsed = new URL(url, 'http://localhost')
     returnTo = `${parsed.pathname}${parsed.search}`
   }
-  return { returnTo, antiforgery: scope?.page?.member ? scope.antiforgery : undefined }
+  return { returnTo, antiforgery: memberAntiforgery(scope) }
+}
+
+/** The member's token, which makes the page theirs. */
+function memberAntiforgery(scope: RenderScope | undefined): string | undefined {
+  if (!scope?.page?.member || !scope.antiforgery) return undefined
+  if (scope.personal) scope.personal.value = true
+  return scope.antiforgery
+}
+
+/** How `'use deferred'` parts render in this one, if it is a page. */
+export function currentDeferred(): DeferredScope | undefined {
+  return store.getStore()?.deferred
+}
+
+/** The page rendering and its culture, or undefined outside a page. */
+export function currentPlace(): { key: string; culture: string | null } | undefined {
+  const page = store.getStore()?.page
+  return page ? { key: page.model.key, culture: page.culture } : undefined
 }
 
 /**
@@ -187,8 +209,7 @@ export function actionState<T = unknown>(action: unknown): ActionState<T> | unde
 
 /** The signed-in member's anti-forgery token for this render, or undefined for a visitor. */
 export function currentAntiforgery(): string | undefined {
-  const scope = within('<AntiforgeryMeta />')
-  return scope.page?.member ? scope.antiforgery : undefined
+  return memberAntiforgery(within('<AntiforgeryMeta />'))
 }
 
 /**

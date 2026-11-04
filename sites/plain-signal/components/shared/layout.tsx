@@ -1,4 +1,10 @@
-import { type Child, type Navigation, type PublishedContent, usePage } from '@crombolo/crombolo'
+import {
+  asset,
+  type Child,
+  type Navigation,
+  type PublishedContent,
+  usePage,
+} from '@crombolo/crombolo'
 
 /**
  * The shell every page shares: the masthead, the sections, and the footer from
@@ -32,7 +38,7 @@ export function Layout({
           rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,700&family=Inter:wght@400;500;600&display=swap"
         />
-        <link rel="stylesheet" href="/css/site.css" />
+        <link rel="stylesheet" href={asset('/css/site.css')} />
       </head>
       <body>
         <header class="masthead">

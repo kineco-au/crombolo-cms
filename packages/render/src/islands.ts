@@ -6,8 +6,11 @@
  * generation, and `/crombolo/islands.js` mounts each island when it is needed.
  * docs/rendering.md, "Islands".
  */
+
+import { contentHash, hashedAddress } from './assets.ts'
 import { actionIdOf, markIslands } from './context.ts'
 import { escapeHtml, RawHtml } from './html.ts'
+import { ISLAND_LOADER_SCRIPT } from './islands-loader.ts'
 import { type Child, renderToString } from './jsx-runtime.ts'
 
 /** The loader every page with an island links to; a file, so no inline script is written. */
@@ -24,7 +27,15 @@ const LOADS: readonly IslandLoad[] = ['visible', 'idle', 'load']
  * before it; the words anywhere else, in a string or later on, do not count.
  */
 export function isClientModule(source: string): boolean {
-  let rest = source.replace(/^﻿/, '')
+  return hasDirective(source, 'use client')
+}
+
+/**
+ * Whether a module's first statement is this directive. Comments may come
+ * before it; the words anywhere else do not count.
+ */
+export function hasDirective(source: string, directive: string): boolean {
+  let rest = source.replace(/^\ufeff/, '')
   for (;;) {
     rest = rest.replace(/^\s+/, '')
     if (rest.startsWith('//')) {
@@ -36,7 +47,8 @@ export function isClientModule(source: string): boolean {
       rest = rest.slice(end + 2)
     } else break
   }
-  return /^(['"])use client\1\s*(;|\n|$)/.test(rest)
+  const quoted = /^(['"])(.*?)\1\s*(;|\n|$)/.exec(rest)
+  return quoted?.[2] === directive
 }
 
 /** A prop an island cannot carry to the browser, named by where it is. */
@@ -47,7 +59,11 @@ export class IslandPropsError extends Error {}
  * when anything would not survive the trip, escaped so nothing in it can close
  * the script or read as markup.
  */
-export function serializeProps(props: Record<string, unknown>, island: string): string {
+export function serializeProps(
+  props: Record<string, unknown>,
+  island: string,
+  carried: 'island' | 'part' = 'island',
+): string {
   const seen = new Set<object>()
   const check = (value: unknown, path: string): void => {
     if (value === null || typeof value === 'string' || typeof value === 'boolean') return
@@ -57,11 +73,13 @@ export function serializeProps(props: Record<string, unknown>, island: string): 
       return
     }
     // A server action travels as its id, and the browser calls it (story 219).
-    if (typeof value === 'function' && actionIdOf(value)) return
+    if (typeof value === 'function' && actionIdOf(value) && carried === 'island') return
     if (typeof value !== 'object') {
       const what = value === undefined ? 'undefined' : `a ${typeof value}`
       throw new IslandPropsError(
-        `${island}: ${path} is ${what}; an island's props travel to the browser as JSON, so only data, or one of the site's server actions, can be passed.`,
+        carried === 'island'
+          ? `${island}: ${path} is ${what}; an island's props travel to the browser as JSON, so only data, or one of the site's server actions, can be passed.`
+          : `${island}: ${path} is ${what}; a deferred part's props travel in its address as JSON, so only data can be passed.`,
       )
     }
     if (seen.has(value))
@@ -211,14 +229,24 @@ export function Island({
   })
 }
 
+/** The loader's address while its script is as it is now (story 260). */
+export const ISLAND_LOADER_ADDRESS = hashedAddress(
+  ISLAND_LOADER_PATH,
+  contentHash(ISLAND_LOADER_SCRIPT),
+)
+
 /** The tags a page with islands ends with: where its browser code is, and the loader. */
 export function islandTags(manifestUrl: string): string {
-  return `<meta name="crombolo-islands" content="${escapeHtml(manifestUrl)}"><script type="module" src="${ISLAND_LOADER_PATH}"></script>`
+  return `<meta name="crombolo-islands" content="${escapeHtml(manifestUrl)}"><script type="module" src="${ISLAND_LOADER_ADDRESS}"></script>`
 }
 
 /** A page's HTML with the island tags before `</body>`, or at the end when it has none. */
 export function withIslandTags(html: string, manifestUrl: string): string {
-  const tags = islandTags(manifestUrl)
+  return beforeBodyEnd(html, islandTags(manifestUrl))
+}
+
+/** `tags` before `</body>`, or at the end when there is none. */
+export function beforeBodyEnd(html: string, tags: string): string {
   const at = html.toLowerCase().lastIndexOf('</body>')
   return at < 0 ? `${html}${tags}` : `${html.slice(0, at)}${tags}${html.slice(at)}`
 }

@@ -411,7 +411,7 @@ describe('caching', () => {
 
   test('a page that reads nothing personal is kept as configured', async () => {
     await s.make('Plain', 'plain')
-    expect(control(await s.visit('/plain'))).toBe('public, max-age=60')
+    expect(control(await s.visit('/plain'))).toBe('public, max-age=60, stale-if-error=604800')
   })
 
   test('awaiting searchParams, cookies() or headers() makes it personal', async () => {
@@ -434,7 +434,7 @@ describe('caching', () => {
   test("force-static empties the request's values and keeps the page shareable", async () => {
     await s.make('Static', 'x', 'static')
     const response = await s.visit('/static?species=oak', { cookie: 'flavour=oat' })
-    expect(control(response)).toBe('public, max-age=60')
+    expect(control(response)).toBe('public, max-age=60, stale-if-error=604800')
     expect(await response.text()).toContain('none {} nobody')
   })
 
@@ -442,12 +442,14 @@ describe('caching', () => {
     await s.make('Dynamic', 'x', 'dynamic')
     expect(control(await s.visit('/dynamic'))).toBe('private, no-store')
     await s.make('Hourly', 'x', 'hourly')
-    expect(control(await s.visit('/hourly'))).toBe('public, max-age=120')
+    expect(control(await s.visit('/hourly'))).toBe('public, max-age=120, stale-if-error=604800')
     await s.make('Forever', 'x', 'forever')
-    expect(control(await s.visit('/forever'))).toBe('public, max-age=31536000')
+    expect(control(await s.visit('/forever'))).toBe(
+      'public, max-age=31536000, stale-if-error=604800',
+    )
   })
 
-  test('a member is personal, and force-static renders without one', async () => {
+  test('a member makes a page personal only when a view it renders mentions them (263), and force-static renders without one', async () => {
     const renderer = s.h.server.renderer
     const member = {
       key: crypto.randomUUID(),
@@ -457,10 +459,15 @@ describe('caching', () => {
       roles: [],
     }
     const plain = await renderer.render('/plain', 'localhost', { member })
-    expect(plain.status === 'ok' && plain.personal).toBe(true)
+    expect(plain.status === 'ok' && plain.personal).toBe(false)
+    expect(plain.status === 'ok' && plain.memberFiles).toBeUndefined()
     const shared = await renderer.render('/static', 'localhost', { member })
     expect(shared.status === 'ok' && shared.personal).toBe(false)
     expect(shared.status === 'ok' && shared.html).toContain('nobody')
+    // It mentions the member, which a page that is not force-static would be personal for.
+    expect(
+      shared.status === 'ok' && shared.memberFiles?.some((f) => f.endsWith('/static.tsx')),
+    ).toBe(true)
   })
 })
 

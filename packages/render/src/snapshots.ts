@@ -103,7 +103,7 @@ export interface SnapshotOptions {
    * a `'use client'` module becomes its island stub (story 209). The hash still
    * covers the source, and the source is kept under `.islands/src/`.
    */
-  transform?: (key: string, bytes: Uint8Array) => Uint8Array | undefined
+  transform?: (key: string, bytes: Uint8Array) => SnapshotTransform | undefined
   /**
    * A generation is in place and about to be rendered: its browser code is
    * built here, from the files the transform rewrote. A failure is reported,
@@ -112,6 +112,13 @@ export interface SnapshotOptions {
   beforeSwap?: (generation: { dir: string; hash: string; transformed: string[] }) => Promise<void>
   now?: () => number
 }
+
+/**
+ * What a file is written as: an island's stub, its source kept for the browser
+ * build; or a deferred part's stub, its source written beside it under
+ * `beside`, where the stub imports it (story 263).
+ */
+export type SnapshotTransform = Uint8Array | { bytes: Uint8Array; beside: string }
 
 /** Beside a generation's views: the client sources and their built browser code. */
 export const ISLANDS_DIR = '.islands'
@@ -354,6 +361,11 @@ export class ViewSnapshots {
         const target = join(partial, ...file.key.split('/'))
         mkdirSync(join(target, '..'), { recursive: true })
         const written = this.#transform?.(file.key, bytes)
+        if (written && !(written instanceof Uint8Array)) {
+          writeFileSync(join(partial, ...written.beside.split('/')), bytes)
+          writeFileSync(target, written.bytes)
+          continue
+        }
         if (written) {
           transformed.push(file.key)
           const kept = join(partial, ISLANDS_DIR, 'src', ...file.key.split('/'))

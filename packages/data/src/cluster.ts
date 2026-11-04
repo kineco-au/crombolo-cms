@@ -40,7 +40,15 @@ export interface InstructionEffects {
 }
 
 /** Payload fields that change only what the page snapshot holds. */
-const PAGE_ONLY = new Set(['key', 'redirects', 'domains', 'dictionary', 'elements', 'urls'])
+const PAGE_ONLY = new Set([
+  'key',
+  'redirects',
+  'domains',
+  'dictionary',
+  'elements',
+  'urls',
+  'publicAccess',
+])
 
 const strings = (value: unknown): string[] | undefined =>
   Array.isArray(value) && value.every((v) => typeof v === 'string')

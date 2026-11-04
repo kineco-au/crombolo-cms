@@ -20,9 +20,15 @@ import {
   isRightToLeft,
   lifetimeFor,
   type MenuItem,
+  notModified,
   PRIVATE_NO_STORE,
+  publishedEtag,
+  RememberedAnswers,
+  rememberedHeaders,
   resolveCacheSettings,
   shortest,
+  unchanged,
+  validatorFor,
 } from '@crombolo/render'
 import { corsPolicy, isPreflight, preflightResponse, withCors } from './cors.ts'
 import {
@@ -79,6 +85,11 @@ export interface DeliveryApiPorts {
   preview?(request: Request, keyed: boolean): Promise<PreviewAccess | undefined>
   /** How long answers may be kept (story 057); nothing is kept when absent. */
   caching?: CacheSettings
+  /**
+   * What every answer's ETag is made from when it is not the body (story
+   * 258): the published content and the CMS, or undefined until it is known.
+   */
+  validatorBasis?(): string | undefined
   /**
    * A page's search and sharing details, worked out as `<SeoHead>` works them
    * out, for `seo=true` (story 055).
@@ -312,6 +323,47 @@ export function createDeliveryApi(ports: DeliveryApiPorts): DeliveryApi {
     value: (alias) => media.value(alias),
   })
 
+  // Story 258: an answer's ETag from what was published, and the last one each address was given.
+  const published =
+    caching.validator === 'published' || [...caching.validators.values()].includes('published')
+  const remembered = new RememberedAnswers()
+  const started = new WeakMap<Request, { basis: string; guard: string }>()
+  const addressOf = (request: Request) => {
+    const url = new URL(request.url)
+    const varied = CONTENT_VARY.split(', ').map((name) => request.headers.get(name) ?? '')
+    return [url.pathname, url.search, ...varied].join('\u0000')
+  }
+  /** Who may see what: a check is answered only while it is as it was. */
+  const accessGuard = async () =>
+    Bun.hash(
+      JSON.stringify([
+        (await ports.protection()).map((rule) => JSON.stringify(rule)).sort(),
+        ((await ports.mediaRules?.()) ?? []).map((rule) => JSON.stringify(rule)).sort(),
+      ]),
+    ).toString(36)
+
+  /** Records what an answer is made from, before it is made; a `304` when that has not changed. */
+  async function begin(request: Request): Promise<Response | undefined> {
+    if (!published || (request.method !== 'GET' && request.method !== 'HEAD')) return undefined
+    if (isPreview(request) || personal(request, true, memberAuthorizationEnabled(settings)))
+      return undefined
+    const basis = ports.validatorBasis?.()
+    if (!basis) return undefined
+    const answer = request.headers.has('if-none-match')
+      ? remembered.get(addressOf(request))
+      : undefined
+    const guard = await accessGuard()
+    if (
+      answer &&
+      notModified(request, answer.etag) &&
+      answer.etag === publishedEtag([basis, addressOf(request)]) &&
+      answer.guard === guard
+    )
+      return unchanged(answer.headers)
+    started.set(request, { basis, guard })
+    return undefined
+  }
+
   /**
    * A public answer's lifetime, ETag and tags; a `304` when the caller holds it.
    * Anything that depends on who asks is never kept.
@@ -332,7 +384,31 @@ export function createDeliveryApi(ports: DeliveryApiPorts): DeliveryApi {
             caching.site,
           )
     const tags = caching.tagHeader ? [...held.tags, ...keysIn(JSON.parse(body))] : undefined
-    return cacheable(request, response, body, { lifetime, tags, tagHeader: caching.tagHeader })
+    const start = started.get(request)
+    // An answer holding a form carries a token signed for now, so its body is its validator.
+    const etag =
+      start &&
+      response.headers.get('cache-control') !== 'no-store' &&
+      validatorFor(
+        caching,
+        held.items.map((item) => item.typeAlias),
+      ) === 'published'
+        ? publishedEtag([start.basis, addressOf(request)])
+        : undefined
+    const answer = cacheable(request, response, body, {
+      lifetime,
+      tags,
+      tagHeader: caching.tagHeader,
+      etag,
+      checkFloor: caching.checkFloor,
+    })
+    if (start && etag)
+      remembered.set(addressOf(request), {
+        etag,
+        headers: rememberedHeaders(answer.headers, caching.tagHeader),
+        guard: start.guard,
+      })
+    return answer
   }
 
   /** The member a request's token names, when member sign-in is on. */
@@ -759,6 +835,9 @@ export function createDeliveryApi(ports: DeliveryApiPorts): DeliveryApi {
   async function route(request: Request, url: URL, rest: string) {
     const security = /^v1\/security\/member\/(.+)$/.exec(rest)
     if (security) return ports.security?.(request, security[1] as string)
+
+    const kept = await begin(request)
+    if (kept) return kept
 
     if (/^v2\/search\/?$/.test(rest)) {
       if (request.method !== 'GET' && request.method !== 'HEAD') return bare(405)

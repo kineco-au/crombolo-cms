@@ -293,6 +293,8 @@ export function fallbackChain(
 
 /** What the cache needs besides content, for values that resolve outside it. */
 export interface PublishedCacheOptions {
+  /** Each read of the snapshot: answered from the one built, or after building one (story 262). */
+  onRead?: (hit: boolean) => void
   /**
    * A form definition by key, for a `formPicker` property.
    *
@@ -429,6 +431,7 @@ export class PublishedCache {
    * the first build there is none, so they share the build.
    */
   async snapshot(): Promise<CacheSnapshot> {
+    this.#options.onRead?.(this.#loaded)
     if (this.#loaded) return this.#snapshot
     const generation = this.#generation
     const previous = this.#snapshotGeneration >= 0 ? this.#snapshot : undefined

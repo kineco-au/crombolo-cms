@@ -29,9 +29,11 @@ import {
   GENERATED_HEADER,
   parseGuide,
   renderMarkdown,
+  walkthroughOf,
   writeDocsSeed,
 } from '../scripts/docs-site.ts'
 import { ROOT } from '../scripts/packages.ts'
+import type { WalkthroughStep } from '../sites/crombolo/components/shared/walkthrough.tsx'
 import { type Harness, signedInServer } from './support/harness.ts'
 
 const BUNDLE = join(ROOT, 'sites/crombolo/bundles/demo-crombolo')
@@ -103,6 +105,11 @@ describe('the committed bundle', () => {
       expect(
         body === page.body,
         `${page.path} changed: run \`bun run build:template\` to rewrite the docs`,
+      ).toBe(true)
+      const walkthrough = storedValue(node, 'walkthrough')
+      expect(
+        walkthrough === (page.walkthrough && JSON.stringify(page.walkthrough)),
+        `${page.path}'s steps changed: run \`bun run build:template\` to rewrite the docs`,
       ).toBe(true)
     }
   })
@@ -275,5 +282,141 @@ describe('Getting started (story 256)', () => {
       expect(page?.body).toContain('id="what-is-in-it"')
     }
     expect(templates?.children.find((p) => p.slug === 'next')?.body).toContain('bun run dev')
+  })
+})
+
+describe('a walkthrough', () => {
+  const MARKDOWN = [
+    'Why we are here.',
+    '## Up and running',
+    '### Make it',
+    'One sentence.',
+    '```sh\nbunx crombolo init\n```',
+    "> You'll see `done`.",
+    '> **Note the password.** It is shown once.',
+    '### Change a view',
+    'Write it.',
+    '```tsx components/page.tsx\nexport default () => null\n```',
+    '## Up and running',
+    "### You're done",
+    'Well done.',
+  ].join('\n\n')
+
+  test('is stages of steps, each with its words, code, what to expect and what to note', () => {
+    const walk = walkthroughOf('w.md', MARKDOWN)
+    expect(walk.intro).toBe('<p>Why we are here.</p>')
+    expect(walk.stages.map((s) => s.id)).toEqual(['up-and-running', 'up-and-running-2'])
+    const [make, view] = walk.stages[0]?.steps ?? []
+    expect(make).toEqual({
+      id: 'make-it',
+      title: 'Make it',
+      text: '<p>One sentence.</p>',
+      code: [{ lang: 'sh', text: 'bunx crombolo init' }],
+      see: '<p>You&#39;ll see <code>done</code>.</p>',
+      note: '<p><strong>Note the password.</strong> It is shown once.</p>',
+    })
+    expect(view?.code).toEqual([
+      { lang: 'tsx', file: 'components/page.tsx', text: 'export default () => null' },
+    ])
+    expect(walk.stages[1]?.steps[0]).toMatchObject({ title: "You're done", code: [] })
+  })
+
+  test('has the same ids as the page body, so a link to a stage finds it', () => {
+    const body = renderMarkdown(MARKDOWN)
+    for (const stage of walkthroughOf('w.md', MARKDOWN).stages) {
+      expect(body).toContain(`<h2 id="${stage.id}">`)
+      for (const step of stage.steps) expect(body).toContain(`<h3 id="${step.id}">`)
+    }
+  })
+
+  test('may offer one choice, with steps shown for one option only', () => {
+    const markdown = [
+      '## Start',
+      '### Start Postgres [Postgres]',
+      'Start it.',
+      '### Make it [SQLite]',
+      'Make it.',
+      '### Make it [Postgres]',
+      'Make it on Postgres.',
+      '### Run it',
+      'Run it.',
+    ].join('\n\n')
+    const walk = walkthroughOf('w.md', markdown, 'Database: SQLite, Postgres')
+    expect(walk.choice).toEqual({ name: 'Database', options: ['SQLite', 'Postgres'] })
+    expect(walk.stages[0]?.steps.map((s) => [s.id, s.title, s.only])).toEqual([
+      ['start-postgres-postgres', 'Start Postgres', 'Postgres'],
+      ['make-it-sqlite', 'Make it', 'SQLite'],
+      ['make-it-postgres', 'Make it', 'Postgres'],
+      ['run-it', 'Run it', undefined],
+    ])
+    expect(() => walkthroughOf('w.md', markdown, 'Database: SQLite, MySQL')).toThrow(
+      'is for "Postgres", which is not a choice',
+    )
+    expect(() => walkthroughOf('w.md', markdown)).toThrow('which is not a choice')
+    expect(() => walkthroughOf('w.md', markdown, 'Database')).toThrow('"Name: one, another"')
+  })
+
+  test('refuses a step with nothing to say, and anything between a stage and its steps', () => {
+    expect(() => walkthroughOf('w.md', '## A\n\n### B\n\n```sh\nx\n```')).toThrow(
+      'the step "B" says nothing',
+    )
+    expect(() => walkthroughOf('w.md', '## A\n\nStray.\n\n### B\n\nb')).toThrow(
+      'a stage holds only steps',
+    )
+    expect(() => walkthroughOf('w.md', '## A\n\n## B\n\n### C\n\nc')).toThrow(
+      'the stage "A" has no steps',
+    )
+  })
+
+  test('"A site from the command line" gets a site running first, and only then goes further', async () => {
+    const tree = docsTree(await buildManifest())
+    const page = everyPage(tree).find((p) => p.slug === 'from-the-command-line')
+    const walk = page?.walkthrough
+    expect(walk?.stages.map((s) => s.title)).toEqual([
+      'Before you start',
+      'Up and running',
+      'Your own pages',
+      'Advanced',
+    ])
+    const [before, first, ...later] = walk?.stages ?? []
+    // Before anything is made: the system, Bun at 1.3 or later, and Docker only for Postgres
+    expect(before?.steps.map((s) => [s.title, s.only])).toEqual([
+      ['Check your system', undefined],
+      ['Check Bun', undefined],
+      ['Check Docker', 'Postgres'],
+    ])
+    expect(before?.steps[0]?.text).toMatch(/macOS[\s\S]*Linux[\s\S]*WSL 2/)
+    expect(before?.steps[1]?.text).toContain('Bun 1.3 or later')
+    const commands = (steps: WalkthroughStep[]) =>
+      steps.flatMap((s) => s.code.map((c) => c.text)).join('\n')
+    // Workflows and webhooks wait until the site is up
+    expect(commands(first?.steps ?? [])).not.toMatch(/workflows|webhooks|forms/)
+    expect(commands(later.flatMap((s) => s.steps))).toMatch(/workflows new[\s\S]*webhooks new/)
+    for (const step of walk?.stages.flatMap((s) => s.steps) ?? []) {
+      // One sentence to say what the step does, and what to expect when it has run
+      expect(step.text.match(/[.!?](\s|<)/g)?.length ?? 0, step.title).toBeLessThanOrEqual(
+        step.code.length > 0 ? 1 : 10,
+      )
+      if (step.code.length > 0) expect(step.see, step.title).toBeTruthy()
+    }
+    // SQLite unless the reader picks Postgres, which starts a database and says so to init
+    expect(walk?.choice).toEqual({ name: 'Database', options: ['SQLite', 'Postgres'] })
+    const steps = (option: string) =>
+      (first?.steps ?? []).filter((s) => !s.only || s.only === option)
+    const init = (option: string) =>
+      commands(steps(option).filter((s) => s.title === 'Make the site'))
+    expect(init('SQLite')).toMatch(/init --name "Riverside Bakery"$/)
+    expect(init('SQLite')).not.toContain('--postgres')
+    expect(init('Postgres')).toContain('init --name "Riverside Bakery" --postgres')
+    expect(commands(steps('Postgres'))).toContain('docker run')
+    expect(commands(steps('SQLite'))).not.toContain('docker run')
+    // The password is noted where it is shown, and the first stage ends signed in
+    const start = first?.steps.find((s) => s.code.some((c) => c.text === 'bun start'))
+    expect(start?.note).toContain('Make a note of the username and password')
+    const welcome = first?.steps.at(-1)
+    expect(welcome?.code).toEqual([])
+    expect(welcome?.text).toContain('Welcome to your new Crombolo site')
+    expect(welcome?.text).toContain('href="http://localhost:8080/crombolo"')
+    expect(welcome?.text).toContain('Signing in')
   })
 })

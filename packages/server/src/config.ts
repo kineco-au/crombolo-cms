@@ -15,6 +15,7 @@ import {
   type RequestMember,
   type SiteServices,
   type SnapshotLimits,
+  type Validator,
 } from '@crombolo/render'
 import type { ServerBundle } from './bundles.ts'
 import type { EmailPort } from './email.ts'
@@ -27,6 +28,7 @@ import type { ProvenancePolicy, SignaturePolicy } from './provenance.ts'
 import type { SchemaStore } from './schema-store.ts'
 import { setting } from './settings.ts'
 import type { SiteDatabaseConfig, SiteQueryModules } from './site-queries.ts'
+import type { TelemetryOptions } from './telemetry.ts'
 
 /**
  * Runtime settings for a site. Umbraco's equivalents live in appsettings.json;
@@ -455,10 +457,24 @@ export interface CromboloConfig {
   /**
    * How long pages, Delivery API answers and media may be kept by browsers and a
    * CDN (story 057; `docs/operations.md`, "Behind a CDN"). Nothing is kept unless
-   * set. `CROMBOLO_CACHE_MAX_AGE`, `CROMBOLO_CACHE_STALE_WHILE_REVALIDATE` and
-   * `CROMBOLO_CACHE_TAG_HEADER`; per type alias in code only.
+   * set. `CROMBOLO_CACHE_MAX_AGE`, `CROMBOLO_CACHE_STALE_WHILE_REVALIDATE`,
+   * `CROMBOLO_CACHE_TAG_HEADER`, `CROMBOLO_CACHE_VALIDATOR`, `CROMBOLO_CACHE_MODE`,
+   * `CROMBOLO_CACHE_STALE_IF_ERROR` and `CROMBOLO_CACHE_CHECK_FLOOR`; per type
+   * alias in code only.
    */
   cache: CacheOptions
+  /**
+   * Where traces, metrics and logs are sent over OpenTelemetry (story 262;
+   * `docs/operations.md`, "Telemetry"). `OTEL_EXPORTER_OTLP_ENDPOINT` and
+   * `OTEL_SERVICE_NAME` win; unset, nothing is sent.
+   */
+  telemetry: TelemetryOptions
+  /**
+   * The load balancers or CDN in front of the site, as addresses or IPv4
+   * ranges (`10.0.0.0/8`). A request's `traceparent` is followed only from one
+   * of them. `CROMBOLO_TRUSTED_PROXIES`.
+   */
+  trustedProxies: string[]
   /**
    * Bundles whose server half this site runs, each the result of calling the
    * factory its package exports. Imported and listed here by hand on purpose:
@@ -898,10 +914,19 @@ export function loadConfig(
             : Number(setting('CROMBOLO_DELIVERY_API_PREVIEW_TOKEN_MINUTES')),
       }),
     }),
+    telemetry: {},
+    trustedProxies: (setting('CROMBOLO_TRUSTED_PROXIES') ?? '')
+      .split(',')
+      .map((proxy) => proxy.trim())
+      .filter(Boolean),
     cache: stripUndefined({
       maxAge: numberSetting('CROMBOLO_CACHE_MAX_AGE'),
       staleWhileRevalidate: numberSetting('CROMBOLO_CACHE_STALE_WHILE_REVALIDATE'),
       tagHeader: setting('CROMBOLO_CACHE_TAG_HEADER') || undefined,
+      validator: validatorSetting('CROMBOLO_CACHE_VALIDATOR'),
+      mode: setting('CROMBOLO_CACHE_MODE') === 'check' ? ('check' as const) : undefined,
+      staleIfError: numberSetting('CROMBOLO_CACHE_STALE_IF_ERROR'),
+      checkFloor: numberSetting('CROMBOLO_CACHE_CHECK_FLOOR'),
     }),
     // No environment variable: a bundle is an import, which is code.
     bundles: [],
@@ -1041,13 +1066,18 @@ export function describeDatabase(
   }
 }
 
-export const VERSION = '0.46.1'
+export const VERSION = '0.47.0'
 
 /** A whole number of seconds from the environment; undefined when unset or not one. */
 /** A positive number from a setting, else the default. */
 function positiveNumber(raw: string | undefined, fallback: number): number {
   const value = Number(raw)
   return raw !== undefined && raw !== '' && Number.isFinite(value) && value > 0 ? value : fallback
+}
+
+function validatorSetting(name: Parameters<typeof setting>[0]): Validator | undefined {
+  const raw = setting(name)?.trim()
+  return raw === 'published' || raw === 'body' ? raw : undefined
 }
 
 function numberSetting(name: Parameters<typeof setting>[0]): number | undefined {

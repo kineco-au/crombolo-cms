@@ -30,6 +30,7 @@ import type {
 import type { WorkflowRunner, WorkflowRunReport } from './form-workflows.ts'
 import { logger } from './logging.ts'
 import type { MediaFileStore } from './media-files.ts'
+import { tracedJob } from './telemetry.ts'
 import type { WebhookService } from './webhooks.ts'
 
 export interface JobsOptions {
@@ -133,7 +134,7 @@ export function createBackgroundJobs(options: JobsOptions): BackgroundJobs {
     return run
   }
 
-  async function runScheduledPublishing(now = new Date()): Promise<ScheduledRun> {
+  async function runScheduledPublishingUntraced(now = new Date()): Promise<ScheduledRun> {
     const run: ScheduledRun = { published: [], unpublished: [], failed: [] }
     for (const due of await documents.dueSchedules(now)) {
       if (!(await documents.claimSchedule(due.id))) continue
@@ -159,7 +160,7 @@ export function createBackgroundJobs(options: JobsOptions): BackgroundJobs {
     return run
   }
 
-  async function runEvents(now?: Date): Promise<WorkflowRunReport> {
+  async function runEventsUntraced(now?: Date): Promise<WorkflowRunReport> {
     // A run a commit already started finishes first, so this sees what it left.
     await options.dispatcher?.settled()
     return (
@@ -191,19 +192,21 @@ export function createBackgroundJobs(options: JobsOptions): BackgroundJobs {
     await pruneCacheInstructions(options.db, new Date(now.getTime() - 86_400_000))
   }
 
-  async function runContentNotifications(now = new Date()): Promise<ContentNotificationRunReport> {
+  async function runContentNotificationsUntraced(
+    now = new Date(),
+  ): Promise<ContentNotificationRunReport> {
     // What is waiting in the outbox is queued first, so it goes in this run.
     await runEvents(now)
     const runner = options.contentNotifications
     return runner ? runner.runDue(now) : { claimed: 0, sent: 0, skipped: 0, retrying: 0, failed: 0 }
   }
 
-  async function runAuditRetention(now = new Date()): Promise<number> {
+  async function runAuditRetentionUntraced(now = new Date()): Promise<number> {
     const before = auditRetainedSince(options.auditRetentionDays ?? 0, now)
     return before ? new AuditLog(options.db).prune(before) : 0
   }
 
-  async function runVersionCleanup(now = new Date()) {
+  async function runVersionCleanupUntraced(now = new Date()) {
     return documents.cleanupVersions(now, options.versionCleanup)
   }
 
@@ -211,7 +214,7 @@ export function createBackgroundJobs(options: JobsOptions): BackgroundJobs {
   const notBefore = (asked: Date | undefined) =>
     new Date(Math.max(asked?.getTime() ?? 0, Date.now()))
 
-  async function runWebhooks(now?: Date): Promise<WorkflowRunReport> {
+  async function runWebhooksUntraced(now?: Date): Promise<WorkflowRunReport> {
     await runEvents(now)
     return (
       (await options.webhooks?.runDue(notBefore(now))) ?? {
@@ -223,7 +226,7 @@ export function createBackgroundJobs(options: JobsOptions): BackgroundJobs {
     )
   }
 
-  async function runFormWorkflows(now = new Date()): Promise<WorkflowRunReport> {
+  async function runFormWorkflowsUntraced(now = new Date()): Promise<WorkflowRunReport> {
     return (
       (await options.formWorkflows?.runDue(now)) ?? {
         claimed: 0,
@@ -270,6 +273,20 @@ export function createBackgroundJobs(options: JobsOptions): BackgroundJobs {
     timer.unref()
     timers.push(timer)
   }
+
+  // Story 262: each run a span and a count, on the role that ran it. The search
+  // indexing tick and the queue's upkeep, every few seconds whether or not there
+  // is work, are left out, so a quiet site sends nothing.
+  const runScheduledPublishing = tracedJob('scheduled publishing', runScheduledPublishingUntraced)
+  const runEvents = tracedJob('events', runEventsUntraced)
+  const runContentNotifications = tracedJob(
+    'content notifications',
+    runContentNotificationsUntraced,
+  )
+  const runAuditRetention = tracedJob('audit retention', runAuditRetentionUntraced)
+  const runVersionCleanup = tracedJob('version cleanup', runVersionCleanupUntraced)
+  const runWebhooks = tracedJob('webhooks', runWebhooksUntraced)
+  const runFormWorkflows = tracedJob('form workflows', runFormWorkflowsUntraced)
 
   return {
     runScheduledPublishing,

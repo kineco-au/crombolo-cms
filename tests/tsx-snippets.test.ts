@@ -96,8 +96,9 @@ describe('the template editor', () => {
   test('translates what it inserts into a view, and only a view', async () => {
     const editors = await source('plugin/tsx-editors.js')
     expect(editors).toContain("import { toTsxSnippet } from './tsx-snippets.js'")
+    // A part is written with its import (story 264); anything else is translated.
     // Only a view's editor answers the fork's `viewEditor` seam, so only it translates.
-    expect(editors).toContain('insert: toTsxSnippet')
+    expect(editors).toContain('if (!part || !model) return toTsxSnippet(text)')
     expect(editors).toContain('translateSnippet: toTsxSnippet')
   })
 

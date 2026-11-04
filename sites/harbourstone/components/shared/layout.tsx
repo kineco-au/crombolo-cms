@@ -1,4 +1,4 @@
-import type { Child, Navigation, PublishedContent } from '@crombolo/crombolo'
+import { asset, type Child, type Navigation, type PublishedContent } from '@crombolo/crombolo'
 import { SiteFooter } from './site-footer.tsx'
 import { SiteHeader } from './site-header.tsx'
 
@@ -37,7 +37,7 @@ export function Layout({
           rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Outfit:wght@300;400;500&display=swap"
         />
-        <link rel="stylesheet" href="/css/site.css" />
+        <link rel="stylesheet" href={asset('/css/site.css')} />
       </head>
       <body>
         <SiteHeader model={model} nav={nav} />

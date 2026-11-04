@@ -329,7 +329,9 @@ describe('the request stage', () => {
 
 describe('caching', () => {
   test('reading cookies or setting one keeps the answer private; the path alone does not', async () => {
-    expect((await visit('/plain')).headers.get('cache-control')).toBe('public, max-age=60')
+    expect((await visit('/plain')).headers.get('cache-control')).toBe(
+      'public, max-age=60, stale-if-error=604800',
+    )
     expect((await visit('/plain?reads')).headers.get('cache-control')).toBe('private, no-store')
     const sets = await visit('/plain?sets')
     expect(sets.headers.get('cache-control')).toBe('private, no-store')

@@ -160,4 +160,52 @@ export default function SiteMap({ nav }: Pick<PageProps, 'nav'>) {
 }
 `,
   },
+  {
+    id: 'PersonalisedPart',
+    name: 'Personalised part',
+    // Story 264: a part fetched for each visitor, so the page around it is shared.
+    content: `'use deferred'
+// A personalised part: it shows the signed-in visitor, and is fetched for each
+// visitor after the page loads, so the rest of the page can be the same for
+// everyone and kept by a CDN. Use one for a greeting, a basket or an account
+// link. For something that runs in the browser, such as a counter or a map,
+// start from "Interactive part" instead.
+//
+// Use it with what to show until it arrives, which is what is shared:
+//   <Greeting fallback={<a href="/sign-in">Sign in</a>} />
+// Its props travel in its address, so pass data only: text, numbers, lists.
+import { usePage } from '@crombolo/crombolo'
+
+export default function Greeting() {
+  const { member } = usePage()
+  if (!member) return <a href="/sign-in">Sign in</a>
+  return <a href="/account">Hi {member.name}</a>
+}
+`,
+  },
+  {
+    id: 'InteractivePart',
+    name: 'Interactive part',
+    // Story 264: an island, which React runs in the browser.
+    content: `/** @jsxImportSource react */
+'use client'
+// An interactive part: React runs it in the browser, so it can respond to
+// clicks and typing. The site needs react and react-dom installed. For
+// something that shows the signed-in visitor, start from "Personalised part"
+// instead: an interactive part sees only the props it is given.
+//
+// Use it with what to show until it runs:
+//   <Counter start={0} fallback={<p>0</p>} />
+import { useState } from 'react'
+
+export default function Counter({ start = 0 }: { start?: number }) {
+  const [count, setCount] = useState(start)
+  return (
+    <button type="button" onClick={() => setCount(count + 1)}>
+      {count}
+    </button>
+  )
+}
+`,
+  },
 ]

@@ -102,6 +102,9 @@ bun run vendor:backoffice
   optional, and unset leaves Umbraco's behaviour.
   - **The views' dialect:** the code editor, the scaffolds, the template's
     layout, translated snippets, hidden Razor inserts (`tsx-editors.js`).
+  - **The Insert menu's own entries** (story 264): `showPartialViewInsert`
+    brings back the partial view insert, whose tag and import the plugin
+    writes, and `extraInserts` adds "A personalised part" (`view-parts.js`).
   - **An editor's own read of its entity:** `edit-conflicts.js`.
   - **Notifications:** whether they can be chosen (`notifications-dialog.js`).
 - **The plugin patches nothing at runtime.** `tests/plugin-boundary.test.ts`

@@ -180,12 +180,14 @@ describe('lifetimes', () => {
       staleWhileRevalidate: 30,
       types: { news: { maxAge: 300 } },
     })
-    expect(control(await visit('/story'))).toBe('public, max-age=60, stale-while-revalidate=30')
+    expect(control(await visit('/story'))).toBe(
+      'public, max-age=60, stale-while-revalidate=30, stale-if-error=604800',
+    )
     expect(control(await api(`/content/item/${story}`))).toBe(
-      'public, max-age=60, stale-while-revalidate=30',
+      'public, max-age=60, stale-while-revalidate=30, stale-if-error=604800',
     )
     expect(control(await api(`/content/item/${news}`))).toBe(
-      'public, max-age=300, stale-while-revalidate=30',
+      'public, max-age=300, stale-while-revalidate=30, stale-if-error=604800',
     )
     const hourly = await make('page', 'Hourly', home, [
       { alias: 'cacheKeepFor', value: ['1 hour'] },
@@ -193,16 +195,18 @@ describe('lifetimes', () => {
     const never = await make('page', 'Never', home, [
       { alias: 'cacheKeepFor', value: ["Don't keep copies"] },
     ])
-    expect(control(await visit('/hourly'))).toBe('public, max-age=3600, stale-while-revalidate=30')
+    expect(control(await visit('/hourly'))).toBe(
+      'public, max-age=3600, stale-while-revalidate=30, stale-if-error=604800',
+    )
     expect(control(await api(`/content/item/${hourly}`))).toBe(
-      'public, max-age=3600, stale-while-revalidate=30',
+      'public, max-age=3600, stale-while-revalidate=30, stale-if-error=604800',
     )
     expect(control(await visit('/never'))).toBe('no-store')
     expect(control(await api(`/content/item/${never}`))).toBe('no-store')
     // A list takes the shortest of what it holds; one kept by nobody keeps the list from anybody.
     expect(control(await api(`/content?fetch=children:${home}`))).toBe('no-store')
     expect(control(await api(`/content/items?id=${story}&id=${news}`))).toBe(
-      'public, max-age=60, stale-while-revalidate=30',
+      'public, max-age=60, stale-while-revalidate=30, stale-if-error=604800',
     )
   })
 
@@ -268,7 +272,7 @@ describe('nothing personal is kept', () => {
     const page = await visit('/story')
     expect(page.status).toBe(200)
     expect(control(page)).toBe('private, no-store')
-    expect(control(await visit('/'))).toBe('public, max-age=60')
+    expect(control(await visit('/'))).toBe('public, max-age=60, stale-if-error=604800')
   })
 
   test('a non-public API and a member’s token are private', async () => {
@@ -292,7 +296,7 @@ describe('nothing personal is kept', () => {
     expect(control(await members.api(item, { authorization: 'Bearer anything' }))).toBe(
       'private, no-store',
     )
-    expect(control(await members.api(item))).toBe('public, max-age=60')
+    expect(control(await members.api(item))).toBe('public, max-age=60, stale-if-error=604800')
   })
 })
 
@@ -315,7 +319,7 @@ describe('the policy', () => {
       types: { News: { maxAge: 0 }, bad: { maxAge: -1 } },
       tagHeader: 'Cache Tag',
     })
-    expect(settings.site).toEqual({ maxAge: 60 })
+    expect(settings.site).toEqual({ maxAge: 60, staleIfError: 604800 })
     expect(settings.types.get('news')).toBe('none')
     expect(settings.types.has('bad')).toBe(false)
     expect(settings.tagHeader).toBeUndefined()
@@ -328,10 +332,11 @@ describe('the policy', () => {
       typeAlias,
       value: (alias: string) => (alias === 'cacheKeepFor' ? keepFor : undefined),
     })
-    expect(lifetimeFor(settings, item('page'))).toEqual({ maxAge: 60 })
-    expect(lifetimeFor(settings, item('news'))).toEqual({ maxAge: 300 })
-    expect(lifetimeFor(settings, item('news', ['1 minute']))).toEqual({ maxAge: 60 })
-    expect(lifetimeFor(settings, item('news', 'nonsense'))).toEqual({ maxAge: 300 })
+    const kept = (maxAge: number) => ({ maxAge, staleIfError: 604800 })
+    expect(lifetimeFor(settings, item('page'))).toEqual(kept(60))
+    expect(lifetimeFor(settings, item('news'))).toEqual(kept(300))
+    expect(lifetimeFor(settings, item('news', ['1 minute']))).toEqual(kept(60))
+    expect(lifetimeFor(settings, item('news', 'nonsense'))).toEqual(kept(300))
     expect(chosenLifetime(["Don't keep copies"])).toBe('none')
     expect(chosenLifetime(undefined)).toBeUndefined()
   })
@@ -364,5 +369,71 @@ describe('the Caching compositions', () => {
     expect(media?.properties.map((p) => p.alias)).toEqual(['cacheKeepFor'])
     expect(media?.allowedAsRoot).toBe(false)
     expect(media?.properties[0]?.key).not.toBe(pages?.properties[0]?.key)
+  })
+})
+
+describe('check: kept and checked back with the site (story 259)', () => {
+  test('a public page and an API answer are served at once while checked, and while the site fails', async () => {
+    const { visit, api, story } = await site({ mode: 'check', validator: 'published' })
+    const checked = 'public, max-age=0, stale-while-revalidate=86400, stale-if-error=604800'
+    expect(control(await visit('/story'))).toBe(checked)
+    expect(control(await api(`/content/item/${story}`))).toBe(checked)
+  })
+
+  test('a page whose ETag is over its body is kept a floor first, and maxAge overrides either', async () => {
+    const body = await site({ mode: 'check' })
+    expect(control(await body.visit('/story'))).toBe(
+      'public, max-age=60, stale-while-revalidate=86400, stale-if-error=604800',
+    )
+    const floored = await site({ mode: 'check', checkFloor: 10, staleIfError: 3600 })
+    expect(control(await floored.visit('/story'))).toBe(
+      'public, max-age=10, stale-while-revalidate=86400, stale-if-error=3600',
+    )
+    const set = await site({ mode: 'check', maxAge: 30, staleWhileRevalidate: 5 })
+    expect(control(await set.visit('/story'))).toBe(
+      'public, max-age=30, stale-while-revalidate=5, stale-if-error=604800',
+    )
+  })
+
+  test("a page's own choice wins, and keeping nothing still keeps nothing", async () => {
+    const { visit, make, home } = await site({ mode: 'check', validator: 'published' })
+    await make('page', 'Hourly', home, [{ alias: 'cacheKeepFor', value: ['1 hour'] }])
+    await make('page', 'Never', home, [{ alias: 'cacheKeepFor', value: ["Don't keep copies"] }])
+    expect(control(await visit('/hourly'))).toBe(
+      'public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800',
+    )
+    expect(control(await visit('/never'))).toBe('no-store')
+  })
+
+  test('private answers stay private, and nothing set still says nothing', async () => {
+    const closed = await site(
+      { mode: 'check' },
+      { enabled: true, publicAccess: false, apiKey: 'key' },
+    )
+    expect(control(await closed.api(`/content/item/${closed.story}`, { 'api-key': 'key' }))).toBe(
+      'private, no-store',
+    )
+    const plain = await site()
+    expect(control(await plain.visit('/story'))).toBeNull()
+  })
+
+  test('the policy: a lifetime gains stale-if-error, a type can say how long stale lasts', () => {
+    expect(resolveCacheSettings({ maxAge: 60 }).site).toEqual({ maxAge: 60, staleIfError: 604800 })
+    expect(resolveCacheSettings({ maxAge: 0 }).site).toBe('none')
+    expect(resolveCacheSettings({ mode: 'check', maxAge: 0 }).site).toEqual({
+      maxAge: 0,
+      staleIfError: 604800,
+    })
+    const typed = resolveCacheSettings({ mode: 'check', types: { news: { staleIfError: 60 } } })
+    expect(typed.types.get('news')).toEqual({
+      maxAge: 0,
+      staleWhileRevalidate: 86400,
+      staleIfError: 60,
+      check: true,
+    })
+    expect(cacheControl({ maxAge: 0, check: true, staleWhileRevalidate: 5 }, 60)).toBe(
+      'public, max-age=60, stale-while-revalidate=5',
+    )
+    expect(chosenLifetime(['1 minute'], undefined, 0)).toEqual({ maxAge: 60 })
   })
 })

@@ -14,6 +14,7 @@ import {
 } from '@crombolo/data'
 import { type Cron, isTimezone, nextOccurrence, parseCron } from './cron.ts'
 import { logger } from './logging.ts'
+import { inSpan, recordJob } from './telemetry.ts'
 
 /**
  * Core's own queued work (story 246). A bundle's id is letters, digits and
@@ -273,14 +274,26 @@ export function createJobRunner(options: {
       enqueue: (name: string, payload?: unknown) =>
         enqueue(owner.id, name, payload, `job ${job.id}`),
     })
+    // Story 262: each run a span, on the role that ran it, and counted by outcome.
+    const started = performance.now()
+    const attributes = { 'crombolo.job.name': `${job.owner}/${job.name}` }
+    let outcome = 'succeeded'
     try {
-      await handler(job.payload, { ...owner.context(), job: info })
+      await inSpan(
+        `job ${job.owner}/${job.name}`,
+        { ...attributes, 'crombolo.job.attempt': job.attempts },
+        async () => {
+          await handler(job.payload, { ...owner.context(), job: info })
+        },
+      )
       await jobs.succeed(job.id)
     } catch (error) {
       if (signal.aborted) {
+        outcome = 'released'
         await jobs.release(job.id)
         return
       }
+      outcome = 'failed'
       const message = (error instanceof Error ? error.message : String(error)).slice(0, MAX_ERROR)
       const retryAt =
         job.attempts < job.maxAttempts
@@ -295,6 +308,10 @@ export function createJobRunner(options: {
       })
     } finally {
       clearInterval(heartbeat)
+      recordJob((performance.now() - started) / 1000, {
+        ...attributes,
+        'crombolo.job.outcome': outcome,
+      })
     }
   }
 

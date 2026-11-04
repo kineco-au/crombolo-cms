@@ -843,7 +843,17 @@ A page that reads nothing about the request is cached exactly as before
 (["Behind a CDN"](operations.md)). One that awaits `searchParams`, calls
 `cookies()` or `headers()`, or reads media from `site()` that is closed to
 strangers, is sent `private, no-store`, as reading request-time values makes a
-Next.js route dynamic. A page rendered for a signed-in member always is.
+Next.js route dynamic. A page rendered for a signed-in member is too, but only
+when it depends on them (story 263): when a views snapshot is taken, each view
+file is checked once for any mention of `member`, and a page depends on the
+member only when a file it used, its template, its layouts, its blocks or
+anything they import from the views, mentions it. A page that does not is the
+same for a member as for anyone, and is shared. A page that does carries
+`Vary: X-Crombolo-Member` ("Behind a CDN", in `operations.md`). Reading the
+member's anti-forgery token, as an action's form does, makes the page theirs.
+Code imported from a package is not checked: a package that reads the member
+through `usePage()` must be given it as a prop by a view, which then mentions
+it.
 
 Handing `searchParams` on, as spreading a page's props does, reads nothing;
 only awaiting it does. Reading `member` on a signed-out request does not make
@@ -1903,6 +1913,90 @@ write at runtime, is story `218`.
 Islands need snapshots, which the server always takes. A `Renderer` built
 without them, as some unit tests build one, imports client modules as they
 are.
+
+## Deferred parts
+
+A view module whose first statement is `'use deferred'` (story 263) renders in
+a request of its own, for the visitor, so the page around it can be the same
+for everyone. It is how a page greets a member by name and is still kept by a
+CDN.
+
+```tsx
+// components/shared/greeting.tsx
+'use deferred'
+import { usePage } from '@crombolo/crombolo'
+
+export default function Greeting() {
+  const { member } = usePage()
+  return member ? <a href="/account">Hi {member.name}</a> : <a href="/sign-in">Sign in</a>
+}
+
+// in the layout
+<Greeting fallback={<a href="/sign-in">Sign in</a>} />
+```
+
+In the page, each use is a `<crombolo-deferred>` placeholder holding its
+`fallback`, which is what a CDN keeps, and what a crawler and a visitor
+without JavaScript see. `/crombolo/deferred.js` fetches each part from
+`/crombolo/deferred`, with the visitor's cookies, and puts it in place of the
+fallback; the answer is `private, no-store`. A use without a fallback leaves
+an empty placeholder until the part arrives.
+
+- **Props travel in the part's address as JSON**, signed so a visitor cannot
+  change them: data only, as an island's props. A function, a date or JSX is
+  refused, naming the part.
+- **The part sees the page it sits on** through `usePage()`, and the member,
+  cookies and headers of the visitor. A part on a page the visitor may not
+  see answers nothing, and the fallback stays.
+- **The page is not marked personal by a part**, since the part is not in it:
+  a file that only a deferred part imports is not checked for `member`.
+- **Islands inside a part** do not mount: the part's markup is put in place
+  without running scripts. A part dispatches `crombolo:deferred` on its
+  placeholder once it is in.
+- **A part's address names the views it was rendered under** only through its
+  module's path: a deploy that removes the module leaves the fallback.
+
+## Stylesheets and scripts
+
+The site's own files are served from `css/` at `/css/…` and from `scripts/` at
+`/scripts/…`. Each is also served at an address that names its content
+(story 260): `/css/site.css` is `/css/site.3f9a1c2b.css` while the file is as
+it is now, the hash the first eight characters of a SHA-256 over its bytes.
+
+| Address | Kept |
+| --- | --- |
+| `/css/site.3f9a1c2b.css`, the hash of the bytes sent | a year, `immutable` |
+| `/css/site.css` | asked for again each time (`no-cache`), with an ETag |
+| a hash that is no longer the file's | `404`, `no-store` |
+
+A template links a file by `asset()`, which answers the hashed address from
+memory:
+
+```tsx
+import { asset } from '@crombolo/crombolo'
+
+<link rel="stylesheet" href={asset('/css/site.css')} />
+<script type="module" src={asset('/crombolo/forms.js')}></script>
+```
+
+- **Each server hashes every file as it starts**, and a file watcher hashes
+  one again when it changes. A watcher does not fire on every mounted volume
+  or bucket: there, a changed file keeps its old address until a restart, and
+  that address answers `404`. A hashed address is checked against the bytes
+  it is about to send, so a change the watcher missed is never kept for a
+  year under the wrong name.
+- **A file the site does not have** keeps its plain address, and development
+  says so.
+- **During a deploy**, a page a CDN still holds, or one that reaches a server
+  not yet updated, names an address that answers `404` until the page is
+  fetched again; short page lifetimes keep that window small.
+- **The scripts Crombolo writes**, `/crombolo/forms.js`, `/crombolo/bundle.js`,
+  `/crombolo/islands.js` and `/crombolo/deferred.js`, are kept a year at their
+  hashed address, which `asset()` gives for the first two and the page writes
+  for the loaders. An upgrade changes it. Their plain addresses are
+  `no-cache`.
+- **Nothing inside a stylesheet is rewritten**: a `url(...)` keeps the address
+  it names, which still works. Bundling is a build step a site chooses.
 
 ## Blocks
 

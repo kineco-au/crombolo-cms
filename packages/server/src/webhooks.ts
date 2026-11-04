@@ -18,6 +18,7 @@ import {
 import { retryAfter, type WorkflowRunReport } from './form-workflows.ts'
 import { logger } from './logging.ts'
 import { openSecret, SECRET_KEY_VARIABLE, sealSecret, usableSecretKey } from './secrets.ts'
+import { inSpan, recordWebhook, SpanKind, withTraceHeaders } from './telemetry.ts'
 import {
   envReference,
   parseWebhookFile,
@@ -356,7 +357,27 @@ export function createWebhookService(options: WebhookServiceOptions): WebhookSer
     return out
   }
 
-  const deliverToWebhook = async (
+  /** Story 262: each delivery a span, counted by outcome, with retries counted too. */
+  const deliverToWebhook = (
+    delivery: WebhookDelivery,
+    webhook: WebhookDefinition,
+  ): Promise<{ ok: true } | { ok: false; error: string; retry: boolean }> =>
+    inSpan(
+      'webhook delivery',
+      {
+        'crombolo.webhook.event': delivery.eventAlias,
+        'crombolo.webhook.attempt': delivery.attempts,
+      },
+      async (span) => {
+        const result = await sendToWebhook(delivery, webhook)
+        span.setAttribute('crombolo.webhook.outcome', result.ok ? 'delivered' : 'failed')
+        recordWebhook(result.ok ? 'delivered' : 'failed', !result.ok && result.retry)
+        return result
+      },
+      { kind: SpanKind.CLIENT },
+    )
+
+  const sendToWebhook = async (
     delivery: WebhookDelivery,
     webhook: WebhookDefinition,
   ): Promise<{ ok: true } | { ok: false; error: string; retry: boolean }> => {
@@ -386,7 +407,8 @@ export function createWebhookService(options: WebhookServiceOptions): WebhookSer
     }
     let headers: Record<string, string>
     try {
-      headers = { ...resolveHeaders(webhook.headers), ...fixed }
+      // The receiver can join the trace; logged above without it, as it names no secret.
+      headers = withTraceHeaders({ ...resolveHeaders(webhook.headers), ...fixed })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       await deliveries.log({

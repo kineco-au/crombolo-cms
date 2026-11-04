@@ -34,6 +34,7 @@ const SECTIONS = [
   'Public site',
   'Remote',
   'Logging',
+  'Telemetry',
   'Command line',
   'AWS credentials',
 ] as const
@@ -836,6 +837,39 @@ const DECLARED = [
       'The header your CDN purges by, such as Surrogate-Key or Cache-Tag. Set, every answer lists the pages and media in it.',
   },
   {
+    env: 'CROMBOLO_CACHE_MODE',
+    kind: 'enum',
+    values: ['lifetime', 'check'],
+    default: 'lifetime',
+    section: 'Public site',
+    description:
+      'How a CDN keeps copies: for the lifetime set above, or, with check, kept and checked back with the site before each use, served at once while checking and while the site is down. Check suits a CDN with no purge set up.',
+  },
+  {
+    env: 'CROMBOLO_CACHE_STALE_IF_ERROR',
+    kind: 'number',
+    default: '604800',
+    section: 'Public site',
+    description:
+      'Seconds a kept copy may still be served while the site is answering with errors. Applies whenever copies are kept.',
+  },
+  {
+    env: 'CROMBOLO_CACHE_CHECK_FLOOR',
+    kind: 'number',
+    default: '60',
+    section: 'Public site',
+    description:
+      'With check, seconds a copy is kept before checking when checking means showing the page again, so each CDN location does so at most this often.',
+  },
+  {
+    env: 'CROMBOLO_CACHE_VALIDATOR',
+    kind: 'string',
+    default: 'body',
+    section: 'Public site',
+    description:
+      'How a CDN checking a kept copy is answered: body renders the page and compares it; published answers from what was last published, without rendering. Use published only when no page shows the time or anything else that changes without a publish.',
+  },
+  {
     env: 'CROMBOLO_DELIVERY_API_PREVIEW_URL',
     kind: 'string',
     section: 'Public site',
@@ -936,6 +970,89 @@ const DECLARED = [
     section: 'Logging',
     description:
       'Every this many seconds, prints the memory in use and the requests in flight. `0` is off.',
+  },
+
+  // Telemetry (story 262): OpenTelemetry's own variables, read as its specification names them.
+  {
+    env: 'OTEL_EXPORTER_OTLP_ENDPOINT',
+    kind: 'string',
+    section: 'Telemetry',
+    description:
+      'The OpenTelemetry collector traces, metrics and logs are sent to, such as `https://otlp.example.com`. Unset, nothing is sent.',
+  },
+  {
+    env: 'OTEL_EXPORTER_OTLP_TRACES_ENDPOINT',
+    kind: 'string',
+    section: 'Telemetry',
+    description: 'Where traces alone are sent, in place of the collector above.',
+  },
+  {
+    env: 'OTEL_EXPORTER_OTLP_METRICS_ENDPOINT',
+    kind: 'string',
+    section: 'Telemetry',
+    description: 'Where metrics alone are sent, in place of the collector above.',
+  },
+  {
+    env: 'OTEL_EXPORTER_OTLP_LOGS_ENDPOINT',
+    kind: 'string',
+    section: 'Telemetry',
+    description: 'Where log lines alone are sent, in place of the collector above.',
+  },
+  {
+    env: 'OTEL_METRIC_EXPORT_INTERVAL',
+    kind: 'number',
+    default: '60000',
+    section: 'Telemetry',
+    description: 'Milliseconds between sending the metrics.',
+  },
+  {
+    env: 'OTEL_EXPORTER_OTLP_HEADERS',
+    kind: 'string',
+    section: 'Telemetry',
+    description:
+      'Headers sent with every export, usually the API key, as `name=value` pairs separated by commas. Never shown in the back office.',
+  },
+  {
+    env: 'OTEL_EXPORTER_OTLP_PROTOCOL',
+    kind: 'enum',
+    values: ['http/protobuf', 'http/json'],
+    default: 'http/protobuf',
+    section: 'Telemetry',
+    description: 'How exports are written.',
+  },
+  {
+    env: 'OTEL_SERVICE_NAME',
+    kind: 'string',
+    section: 'Telemetry',
+    description: "The name the site's telemetry is filed under; the site's name when unset.",
+  },
+  {
+    env: 'OTEL_RESOURCE_ATTRIBUTES',
+    kind: 'string',
+    section: 'Telemetry',
+    description:
+      'More attributes for everything sent, such as `deployment.environment.name=production`, separated by commas.',
+  },
+  {
+    env: 'OTEL_TRACES_SAMPLER',
+    kind: 'string',
+    default: 'parentbased_always_on',
+    section: 'Telemetry',
+    description:
+      'Which traces are kept: `parentbased_traceidratio` with `OTEL_TRACES_SAMPLER_ARG=0.1` keeps a tenth, for a busy site.',
+  },
+  {
+    env: 'OTEL_TRACES_SAMPLER_ARG',
+    kind: 'number',
+    section: 'Telemetry',
+    description: "The sampler's ratio, from 0 to 1.",
+  },
+  {
+    env: 'CROMBOLO_TRUSTED_PROXIES',
+    kind: 'list',
+    section: 'Telemetry',
+    description:
+      'The load balancers or CDN in front of the site, as addresses or ranges such as `10.0.0.0/8`, separated by commas. A trace a request arrives with is continued only from one of them.',
   },
 
   // Command line

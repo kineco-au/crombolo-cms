@@ -17,6 +17,7 @@ import type {
 } from '@crombolo/api-management/domain'
 import { ObjectTypes } from '@crombolo/core'
 import {
+  appendCacheInstruction,
   type Db,
   MemberRepository,
   NodeRepository,
@@ -26,9 +27,19 @@ import {
 
 export function createPublicAccessPort(
   db: Db,
-  options: { onChange?: () => void | Promise<void> } = {},
+  options: { nodeId?: string; onChange?: () => void | Promise<void> } = {},
 ): PublicAccessPort {
   const access = new PublicAccessRepository(db)
+  // A page that leaves out what a visitor may not open changes with the rules,
+  // so they move the checkpoint, and with it every page's ETag (story 258).
+  const changed = async () => {
+    await appendCacheInstruction(db, {
+      kind: 'content',
+      payload: { publicAccess: true },
+      by: options.nodeId,
+    })
+    await options.onChange?.()
+  }
   const members = new MemberRepository(db)
   const nodes = new NodeRepository(db)
 
@@ -104,14 +115,14 @@ export function createPublicAccessPort(
         memberUserNames: input.memberUserNames,
       })
       if (!saved) return 'content-not-found'
-      await options.onChange?.()
+      await changed()
       return 'ok'
     },
 
     async remove(documentKey): Promise<PublicAccessStatus> {
       if (!(await isDocument(documentKey))) return 'content-not-found'
       if (!(await access.remove(documentKey))) return 'entry-not-found'
-      await options.onChange?.()
+      await changed()
       return 'ok'
     },
   }

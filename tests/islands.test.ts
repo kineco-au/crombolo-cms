@@ -10,6 +10,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { join } from 'node:path'
 import { ComponentRepository, ContentTypeRepository, DocumentRepository } from '@crombolo/data'
 import {
+  ISLAND_LOADER_ADDRESS,
   type IslandElement,
   type IslandManifest,
   IslandPropsError,
@@ -91,9 +92,12 @@ describe('island props', () => {
 
 test('the island tags go before </body>, or at the end without one', () => {
   expect(withIslandTags('<html><body><p>x</p></body></html>', '/m.json')).toBe(
-    '<html><body><p>x</p><meta name="crombolo-islands" content="/m.json"><script type="module" src="/crombolo/islands.js"></script></body></html>',
+    `<html><body><p>x</p><meta name="crombolo-islands" content="/m.json"><script type="module" src="${ISLAND_LOADER_ADDRESS}"></script></body></html>`,
   )
-  expect(withIslandTags('<p>x</p>', '/m.json')).toEndWith('src="/crombolo/islands.js"></script>')
+  expect(ISLAND_LOADER_ADDRESS).toMatch(/^\/crombolo\/islands\.[0-9a-f]{8}\.js$/)
+  expect(withIslandTags('<p>x</p>', '/m.json')).toEndWith(
+    `src="${ISLAND_LOADER_ADDRESS}"></script>`,
+  )
 })
 
 /** A stand-in island element, as much of one as the loader touches. */
@@ -319,9 +323,9 @@ describe('islands on a page', () => {
     expect(html).toContain(
       '<crombolo-island data-kind="mount" data-module="client/map" data-export="default" data-load="visible" data-children="none"><script type="application/json">{"zoom":3}</script><p>Loading the map</p></crombolo-island>',
     )
-    expect(html.match(/src="\/crombolo\/islands\.js"/g)).toHaveLength(1)
+    expect(html.split(`src="${ISLAND_LOADER_ADDRESS}"`)).toHaveLength(2)
     expect(html).toMatch(
-      /<meta name="crombolo-islands" content="\/crombolo\/islands\/[0-9a-f]{16}\/manifest\.json"><script type="module" src="\/crombolo\/islands\.js"><\/script><\/body>/,
+      /<meta name="crombolo-islands" content="\/crombolo\/islands\/[0-9a-f]{16}\/manifest\.json"><script type="module" src="\/crombolo\/islands\.[0-9a-f]{8}\.js"><\/script><\/body>/,
     )
     // Nothing Crombolo writes runs inline: every script is data, or a file.
     for (const [tag] of html.matchAll(/<script[^>]*>/g))

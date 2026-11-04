@@ -18,6 +18,7 @@ import {
   type LogRecord,
   type Sink,
 } from '@logtape/logtape'
+import { activeTraceIds, telemetryLogSink } from './telemetry.ts'
 
 /** Serilog's level names, which the log viewer filters and counts by. */
 export const SERILOG_LEVELS: Record<LogLevel, string> = {
@@ -56,6 +57,8 @@ export function toClef(record: LogRecord): Record<string, unknown> {
       error instanceof Error ? (error.stack ?? `${error.name}: ${error.message}`) : String(error)
   for (const [name, value] of Object.entries(properties)) event[name] = renderValue(value)
   event.SourceContext = record.category.join('.')
+  // Story 262: the trace it was written under, to find it beside its spans.
+  Object.assign(event, activeTraceIds())
   event.MachineName = hostname()
   event.ProcessId = process.pid
   return event
@@ -95,12 +98,14 @@ export function configureLogging(options: LoggingOptions): void {
     sinks: {
       file: getClefFileSink(options.logsDir),
       console: getConsoleSink(),
+      // Story 262: sends nothing until telemetry has started with a collector to send to.
+      telemetry: telemetryLogSink(),
     },
     loggers: [
       {
         category: ['crombolo'],
         lowestLevel: options.level,
-        sinks: options.console ? ['file', 'console'] : ['file'],
+        sinks: options.console ? ['file', 'console', 'telemetry'] : ['file', 'telemetry'],
       },
       // The development 501 log prints its own line; its events only go to the file
       {

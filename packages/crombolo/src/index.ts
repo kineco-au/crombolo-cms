@@ -85,6 +85,7 @@ export type {
 export {
   AntiforgeryMeta,
   actionState,
+  asset,
   Blocks,
   type Context,
   createContext,

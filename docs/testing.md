@@ -578,6 +578,14 @@ change runs `bun run cli:spec` and commits the result.
 `tests/docs-commands.test.ts`: every `crombolo` command line in the product
 site's docs names a command the CLI has and only flags that command takes,
 with continued lines, quotes and comments read as a shell reads them.
+`tests/docs-site.test.ts` reads a walkthrough page (`walkthrough: true` in its
+front matter) as stages of steps with ids matching the body's headings, and
+checks that "A site from the command line" gets a site running before workflows
+and webhooks, gives each step one sentence and what to expect, and has the
+reader note the password where it is printed. `tests/walkthrough.test.tsx`
+renders the island that shows those steps one at a time.
+`tests/integration/cli-site.integration.ts` runs that page's own commands, and
+writes its views, in order, then checks what each `start` serves.
 
 ## The browser suite
 

@@ -99,6 +99,8 @@ export interface MemberAuth {
    * error page for one who is signed in but not allowed.
    */
   decide(content: PublishedContent, member: RequestMember | undefined): Promise<AccessDecision>
+  /** A member by key, as a page sees them, for previewing as them (story 264). */
+  byKey(key: string): Promise<RequestMember | undefined>
   /** Handles the member endpoints, or undefined when the path is not one. */
   handle(request: Request, pathname: string): Promise<Response | undefined>
   /** The `Set-Cookie` value that ends a member's site session. */
@@ -586,6 +588,10 @@ export function createMemberAuth(
     resolve,
     session,
     decide,
+    async byKey(key) {
+      const member = await members.byKey(key)
+      return member ? asRequestMember(member) : undefined
+    },
     signOutCookie: () => expireCookie(cookie, config.secureCookies),
     externalSignInUrl: (providerId, returnUrl) =>
       config.memberIdentityProviders.some((p) => p.oidc.id === providerId)

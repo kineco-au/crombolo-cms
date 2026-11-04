@@ -8,6 +8,8 @@
     "dev": "bun --watch server.ts"
   },
   "dependencies": {
-    "@crombolo/crombolo": "workspace:*"
+    "@crombolo/crombolo": "workspace:*",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
   }
 }

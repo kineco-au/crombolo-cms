@@ -931,14 +931,128 @@ compositions = ["mediaCacheFields"]
   member, a page in a members-only branch (including the login page a visitor
   sees at its address), a form's answer, a preview, an API answer to a member's
   token or from a non-public API are all `private, no-store`.
-- **ETags** on every page and API answer, over the body; a matching
-  `If-None-Match` is a `304` with no body.
+- **ETags** on every page and API answer, over the body unless the site
+  answers from what was published (below); a matching `If-None-Match` is a
+  `304` with no body.
 - **Purge tags**, with `tagHeader` set: a page lists its own key and its
   ancestors'; an API answer every page, element and media key in it, and a query
   the page it fetched from; a media file its key. Space-separated for
   `Surrogate-Key`, comma-separated otherwise.
 
+### Keeping and checking: `check`
+
+For a CDN with no purge set up, the recommended setting (story 259):
+
+```ts
+// crombolo.config.ts
+export default defineConfig({
+  cache: { mode: 'check', validator: 'published' }, // or CROMBOLO_CACHE_MODE=check
+})
+```
+
+Every public page and API answer is then sent
+`public, max-age=0, stale-while-revalidate=86400, stale-if-error=604800`:
+the CDN serves its copy at once, asks the site in the background whether it
+still holds, and keeps serving it for up to a week while the site is down. A
+publish is seen at the next check, and a visitor never waits for one.
+
+- **The check costs what the ETag costs.** With `validator: 'published'` it
+  is a `304` without rendering (below). With the default, over the body, it
+  is a render, so `check` keeps such a copy a minute first
+  (`max-age=60`, `cache.checkFloor` or `CROMBOLO_CACHE_CHECK_FLOOR`) and each
+  CDN location renders a page at most once a minute. The site says so in
+  its log as it starts.
+- **Overrides:** `staleWhileRevalidate` (a day) and `staleIfError` (a week),
+  at the site or for a type; `maxAge` replaces the `0` or the floor. A
+  page's own "Keep copies for" still wins, and *Don't keep copies* still
+  sends `no-store`. Private answers stay `private, no-store`.
+- **Browsers** get the same header, so a returning visitor's copy is checked
+  too, cheaply, and shown while it is. A site that wants the browser to wait
+  for the check would add `must-revalidate`; that is not a setting today.
+- **When a lifetime is better:** a CDN that purges on publish, through the
+  webhook below, can keep copies for long lifetimes and ask the site almost
+  never. A page that shows the time is better kept for a short lifetime than
+  checked against what was published.
+- **Every lifetime** now carries `stale-if-error`, a week unless
+  `staleIfError` or `CROMBOLO_CACHE_STALE_IF_ERROR` says otherwise. A site
+  that keeps nothing keeps nothing on an error either.
+
+### Checking back instead of purging
+
+A CDN that keeps a copy and checks back with `If-None-Match` is correct with
+no purge at all: the site says whether the copy still holds. By default it
+finds out by rendering the page and comparing, so a check costs as much as the
+page. Story `258` lets a site answer from what was published instead, without
+rendering:
+
+```ts
+// crombolo.config.ts
+export default defineConfig({
+  cache: {
+    mode: 'check',                  // the CDN checks back each time (above)
+    validator: 'published',         // or CROMBOLO_CACHE_VALIDATOR=published
+    types: { eventsThisWeek: { validator: 'body' } },
+  },
+})
+```
+
+The ETag is then made from the newest published change, the site's views,
+its installed packages, the Crombolo version, and the page and address. Any
+publish, unpublish, move, sort, delete, media save, dictionary change, change
+to who may see a page, code deploy or upgrade changes every page's ETag, so
+menus, listings and breadcrumbs are never left behind. The cost is one render
+per page per CDN location after each change, rather than a purge.
+
+- **Only for pages that change with a publish.** A page showing the time, a
+  random pick or something fetched from elsewhere would be confirmed until the
+  next publish. Give its type `validator: 'body'`, which wins over the site's.
+  It is off unless asked for, so nothing changes on upgrade.
+- **Delivery API answers** take the same rule, with the query string and the
+  headers they vary by in the ETag. An answer holding a form is always over
+  its body.
+- **Each server remembers** the ETag it last sent for each address and the
+  headers that went with it. A check for one it holds is a `304` with the same
+  lifetime and purge tags, and a check for one it does not, after a restart or
+  on another server, renders once.
+- **Who may see a page is still checked**, so a page made members-only is
+  never confirmed from the public copy.
+- **A check from a signed-in member always renders.** One carrying the
+  member cookie (`umbMember<site name>`, `__Host-umbMember<site name>` over
+  HTTPS), a preview or a form's answer is rendered as usual.
+
+### Members and a shared cache
+
+A page is the same for a signed-in member as for anyone unless it depends on
+them: unless a file it renders mentions `member` (story 263, "Caching,
+inferred" in [`rendering.md`](rendering.md)). Such a page carries
+`Vary: X-Crombolo-Member`, and every other page carries nothing about members,
+so the CDN can share it with everyone. Parts that greet the member are
+`'use deferred'` parts, fetched by the browser, private, from
+`/crombolo/deferred`.
+
+For that, the CDN sets `X-Crombolo-Member` on each request from whether the
+member cookie is present, before it looks for a kept copy:
+
+```vcl
+# Fastly / Varnish
+set req.http.X-Crombolo-Member = if(req.http.Cookie ~ "umbMember", "1", "0");
+```
+
+```js
+// a Cloudflare Worker
+const member = /umbMember/.test(request.headers.get('cookie') ?? '') ? '1' : '0'
+request = new Request(request, { headers: { ...Object.fromEntries(request.headers), 'X-Crombolo-Member': member } })
+```
+
+A CDN that cannot set a header should instead pass every request carrying the
+member cookie straight through. The answers to members are then always fresh,
+and only signed-out visitors share copies. `/crombolo/deferred` is always
+`private, no-store`.
+
 ### Purging on publish
+
+Not needed when the CDN checks back as above. A purge cuts the time a stale
+copy can be served to nothing, at the cost of a hook.
 
 A webhook for `Umbraco.ContentPublish` and `Umbraco.ContentUnpublish` tells the
 CDN ([`webhooks.md`](webhooks.md)). Its payload is the page's key; with tags,
@@ -958,6 +1072,105 @@ purge it and its ancestors, which is every list that could hold it:
 
 Without tags, purge everything on publish; with short lifetimes and
 `staleWhileRevalidate`, many sites need no purge at all.
+
+## Telemetry
+
+A site can send its traces, metrics and logs to the tool a team already
+watches, over OpenTelemetry (story 262). Nothing is sent, and nothing of
+OpenTelemetry is loaded, until a collector is named:
+
+```sh
+OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.example.com
+OTEL_EXPORTER_OTLP_HEADERS=authorization=Bearer%20…   # usually the API key
+OTEL_SERVICE_NAME=riverside-bakery                   # the site's name by default
+```
+
+or, in code, `telemetry: { endpoint, serviceName }` in `crombolo.config.ts`,
+where the variables win. OpenTelemetry's own variables are honoured as its
+specification names them, the per-signal endpoints, `OTEL_EXPORTER_OTLP_PROTOCOL`
+(`http/protobuf` by default, or `http/json`), `OTEL_RESOURCE_ATTRIBUTES`,
+`OTEL_TRACES_SAMPLER` and its argument, and nothing invented beside them. The
+Settings section's System information says where it is sent, as which
+service, from which role, and never the headers.
+
+- **Traces:** each request (`GET /{page}`, by route template, with its status
+  and the page's content type), its render, each database statement under
+  it (operation, table, and the text with placeholders, never a value), a
+  Delivery API answer, a background job's run, a webhook's delivery and an
+  e-mail sent. A webhook receiver is sent `traceparent`, so it can join the
+  trace. Every trace is kept, unless `OTEL_TRACES_SAMPLER` says otherwise:
+  `parentbased_traceidratio` with `OTEL_TRACES_SAMPLER_ARG=0.1` keeps a tenth.
+- **An incoming trace** is continued only on a request from one of the
+  site's trusted proxies, `CROMBOLO_TRUSTED_PROXIES` or `trustedProxies` in
+  code, addresses or ranges such as `10.0.0.0/8`. Any other request starts a
+  trace of its own, so a visitor cannot choose trace ids or force sampling.
+- **Metrics:** `http.server.request.duration` by route, method and status;
+  `crombolo.render.duration` by template; `crombolo.published_cache.lookups`,
+  hit or miss; `crombolo.job.runs` and `crombolo.job.duration` by job and
+  outcome; `crombolo.webhook.deliveries` and `crombolo.webhook.retries`; and
+  `crombolo.job.queue.depth`.
+- **Logs:** every line the site logs, with the trace and span it was written
+  under, which the log file also records as `TraceId` and `SpanId`. A line
+  is sent as its template, `Webhook {webhook} failed: {error}`, never with its
+  values.
+- **Never sent:** a member, an e-mail address, a form's answer, a query
+  string's values or a page's content. Attributes are shapes and ids, and a
+  test holds every one to an allow-list.
+- **Every role sends**, the worker's included, naming its role as
+  `crombolo.node.role` and its node as `service.instance.id`, so a trace that
+  crosses a page and a job reads as one.
+- **A quiet site sends little:** a statement is a span only under a request
+  or a job, and the search index's tick and the queue's upkeep, every few
+  seconds, are not traced.
+
+### Datadog
+
+Through the Datadog Agent with its OTLP receiver turned on
+(`DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_HTTP_ENDPOINT=0.0.0.0:4318`):
+
+```sh
+OTEL_EXPORTER_OTLP_ENDPOINT=http://datadog-agent:4318
+OTEL_SERVICE_NAME=riverside-bakery
+OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=production
+```
+
+### Grafana Cloud
+
+The stack's OTLP gateway, from its OpenTelemetry tile, with the instance id
+and a token as basic authentication:
+
+```sh
+OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp-gateway-prod-eu-west-2.grafana.net/otlp
+OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic%20<base64 of instance-id:token>
+OTEL_SERVICE_NAME=riverside-bakery
+```
+
+### A local collector
+
+OpenTelemetry's own collector, printing what arrives, to see it working:
+
+```yaml
+# otel-collector.yaml
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+exporters:
+  debug:
+    verbosity: detailed
+service:
+  pipelines:
+    traces: { receivers: [otlp], exporters: [debug] }
+    metrics: { receivers: [otlp], exporters: [debug] }
+    logs: { receivers: [otlp], exporters: [debug] }
+```
+
+```sh
+docker run --rm -p 4318:4318 -v "$PWD/otel-collector.yaml:/etc/otelcol/config.yaml" \
+  otel/opentelemetry-collector:latest
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 bun start
+```
 
 ## Running a cluster
 

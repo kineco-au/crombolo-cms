@@ -8,6 +8,7 @@
       "AntiforgeryMeta",
       "type AppAlias",
       "assertBundleTables",
+      "asset",
       "awsIdentityCenter",
       "azureMediaStore",
       "type AzureMediaStoreOptions",

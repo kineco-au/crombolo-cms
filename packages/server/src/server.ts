@@ -6,8 +6,9 @@
  * API, the SPA shells, then the front-end site.
  */
 
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { timingSafeEqual } from 'node:crypto'
+import { existsSync, readFileSync } from 'node:fs'
+import { basename, join } from 'node:path'
 import {
   apiForm,
   corsPolicy,
@@ -40,6 +41,7 @@ import {
   expireCookie,
   isSafeMethod,
   isSameOrigin,
+  memberCookieName,
   REDACTED,
   readCookie,
   serializeCookie,
@@ -106,10 +108,15 @@ import {
   cacheControl,
   chosenLifetime,
   contentForNode,
+  contentHash,
+  DEFERRED_LOADER,
+  DEFERRED_LOADER_PATH,
+  DEFERRED_PATH,
   FORM_SCRIPT,
   FORM_SCRIPT_PATH,
   FORM_SUBMIT_PATH,
   formAction,
+  hashedAddress,
   ISLAND_LOADER_PATH,
   ISLAND_LOADER_SCRIPT,
   ISLANDS_PATH,
@@ -118,15 +125,25 @@ import {
   LIVE_RELOAD_SCRIPT_PATH,
   type Lifetime,
   lifetimeFor,
+  notModified,
   type PageOutcome,
   PRIVATE_NO_STORE,
   PublishedCache,
   type PublishedContent,
+  publishedEtag,
+  type RememberedAnswer,
+  RememberedAnswers,
   type Renderer,
   type RequestMember,
+  readDeferredAddress,
+  rememberedHeaders,
   resolveCacheSettings,
   type SnapshotStatus,
+  setAssetResolver,
+  splitHashedAddress,
+  unchanged,
   type ViewSnapshots,
+  validatorFor,
   withLiveReload,
 } from '@crombolo/render'
 import type { SyncReport } from '@crombolo/schema'
@@ -209,12 +226,28 @@ import {
 } from './preview-tokens.ts'
 import { provenanceProblem } from './provenance.ts'
 import { createRemote, type RestartOutcome } from './remote.ts'
+import { SiteAssets } from './site-assets.ts'
 import { unknownHostProvided } from './site-file.ts'
+import {
+  activeSpan,
+  inSpan,
+  isTrustedProxy,
+  noteOnSpan,
+  recordRender,
+  recordRequest,
+  requestContext,
+  routeOf,
+  SpanKind,
+  stopTelemetry,
+} from './telemetry.ts'
 import { handleTransferAction, pendingTransfers } from './transfer-dashboard.ts'
 import { changeUrlOptions, urlSettingEditable } from './url-settings.ts'
 import type { JobsStatus } from './worker-watch.ts'
 
 export { PREVIEW_COOKIE }
+
+/** The member a back-office user previews as (story 264). */
+export const PREVIEW_MEMBER_COOKIE = 'crombolo-preview-member'
 
 import { ACTIONS_PATH, type SiteRoute } from '@crombolo/common'
 import { backofficeAudience } from './backoffice-external.ts'
@@ -796,6 +829,105 @@ export async function createServer(
     nodeId: schema.nodeId,
   })
   const caching = resolveCacheSettings(config.cache)
+  // Story 259: `check` with checks answered by rendering costs a render a floor, where `published` costs none.
+  if (
+    caching.mode === 'check' &&
+    (caching.validator === 'body' || [...caching.validators.values()].includes('body'))
+  )
+    renderLog.info(
+      "Copies are checked back with the site, and pages whose ETag is over their body are rendered for each check, at most every {floor} seconds per cache. Where no page shows the time, cache.validator = 'published' answers checks without rendering.",
+      { floor: caching.checkFloor },
+    )
+  // Story 260: the generated scripts and the site's own files, each also at an address naming its content.
+  const generatedBodies: Array<[string, string]> = [
+    [ISLAND_LOADER_PATH, ISLAND_LOADER_SCRIPT],
+    [DEFERRED_LOADER_PATH, DEFERRED_LOADER],
+    [FORM_SCRIPT_PATH, FORM_SCRIPT],
+    [BUNDLE_SCRIPT_PATH, BUNDLE_SCRIPT],
+  ]
+  const generatedPaths = new Map(
+    generatedBodies.map(([path, body]) => [path, hashedAddress(path, contentHash(body))]),
+  )
+  const generatedScripts = new Map(
+    generatedBodies.map(([path, body]) => [generatedPaths.get(path) as string, body]),
+  )
+  const siteAssets = new SiteAssets([
+    { prefix: '/css', dir: config.stylesheetsDir, extension: '.css' },
+    { prefix: '/scripts', dir: config.scriptsDir, extension: '.js' },
+  ])
+  siteAssets.start()
+  const missingAssets = new Set<string>()
+  setAssetResolver((path) => {
+    const found = generatedPaths.get(path) ?? siteAssets.address(path)
+    if (found) return found
+    if (config.development && !missingAssets.has(path)) {
+      missingAssets.add(path)
+      renderLog.warning(
+        'asset({path}) names a file the site does not have, so it keeps its plain address.',
+        { path },
+      )
+    }
+    return path
+  })
+  // Story 263: a part's address is signed, so a visitor cannot change what it renders.
+  const deferredKey = `deferred|${formSecret}`
+  const signDeferred = (data: string) =>
+    new Bun.CryptoHasher('sha256', deferredKey).update(data).digest('base64url')
+  const verifyDeferred = (data: string, signature: string) => {
+    const expected = Buffer.from(signDeferred(data))
+    const given = Buffer.from(signature)
+    return expected.length === given.length && timingSafeEqual(expected, given)
+  }
+  const MEMBER_VARY = 'X-Crombolo-Member'
+  // Story 264: the member a user previews as, signed with their key so it is theirs alone.
+  const signPreviewMember = (member: string, user: string) =>
+    `${member}.${signDeferred(`preview-member|${member}|${user}`)}`
+  const readPreviewMember = (value: string | undefined, user: string) => {
+    const [member, signature] = (value ?? '').split('.')
+    if (!member || !signature) return undefined
+    return verifyDeferred(`preview-member|${member}|${user}`, signature) ? member : undefined
+  }
+  const notedMemberFiles = new Set<string>()
+  /** Development: why a page is rendered for each member, once per page. */
+  const noteMemberFiles = (content: PublishedContent, files: readonly string[]) => {
+    const note = `${content.key}|${files.join(',')}`
+    if (notedMemberFiles.has(note)) return
+    notedMemberFiles.add(note)
+    renderLog.info(
+      '{page} is rendered for each signed-in member, as {files} mentions member. A "use deferred" part would let it be shared.',
+      { page: content.name, files: files.join(', ') },
+    )
+  }
+  // Story 258: what a page's ETag is made from, when it is not its body.
+  const installed = Bun.hash(
+    ['package.json', 'bun.lock']
+      .map((name) => {
+        try {
+          return readFileSync(join(config.siteDir, name), 'utf8')
+        } catch {
+          return ''
+        }
+      })
+      .join('\u0000'),
+  ).toString(36)
+  /** What every answer's ETag shares, taken before it is made; nothing before the first snapshot. */
+  const validatorBasis = (views: boolean): string | undefined => {
+    const checkpoint = cache.served()?.checkpoint
+    const generation = views ? snapshots.status().hash : ''
+    if (checkpoint === undefined || generation === undefined) return undefined
+    return `${checkpoint}|${generation}|${installed}|${VERSION}`
+  }
+  const publishedValidator =
+    caching.validator === 'published' || [...caching.validators.values()].includes('published')
+  const rememberedPages = new RememberedAnswers<
+    RememberedAnswer & { key: string; culture: string | null }
+  >()
+  const personalCookies = [
+    memberCookieName({ siteName: config.siteName, securePrefix: config.secureCookies }),
+    PREVIEW_COOKIE,
+    FORM_FLASH_COOKIE,
+    ACTION_FLASH_COOKIE,
+  ]
   const deliveryPrefix = DELIVERY_API_PREFIX
   const deliveryMembers = createDeliveryMemberSecurity({
     db,
@@ -831,6 +963,54 @@ export async function createServer(
       ),
   })
   const mediaAccessPath = `${paths.pluginPath}/api/media-access`
+  const pageSharingPath = `${paths.pluginPath}/api/page-sharing`
+  const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  const previewMemberPath = `${paths.pluginPath}/api/preview-member`
+
+  /**
+   * Which member this user previews as (story 264): `GET` says, and whether
+   * they may choose; `PUT` with `{ member }` chooses one, or none with null.
+   * Only a user who can open Members may, and each choice is in the audit log.
+   */
+  async function choosePreviewMember(request: Request, principal: Principal) {
+    const allowed = hasSection(principal, 'members')
+    if (request.method === 'GET') {
+      const chosen = allowed ? await previewMember(request, principal) : undefined
+      return Response.json(
+        { allowed, member: chosen ? { key: chosen.key, name: chosen.name } : null },
+        { headers: { 'cache-control': 'no-store' } },
+      )
+    }
+    if (request.method !== 'PUT') return new Response('Method Not Allowed', { status: 405 })
+    if (!allowed) return new Response('Forbidden', { status: 403 })
+    const body = (await request.json().catch(() => ({}))) as { member?: unknown }
+    const key = typeof body.member === 'string' ? body.member : null
+    const chosen = key ? await members.byKey(key) : undefined
+    if (key && !chosen)
+      return Response.json({ message: 'That member could not be found.' }, { status: 404 })
+    await recordAudit(db, {
+      category: 'member',
+      action: chosen ? 'preview as' : 'preview signed out',
+      source: 'request',
+      userKey: principal.id,
+      userName: principal.name,
+      entityType: chosen ? 'member' : null,
+      entityKey: chosen?.key ?? null,
+      entityName: chosen?.name ?? null,
+      ...clientAddress(request),
+    })
+    const cookie = chosen
+      ? serializeCookie({
+          name: PREVIEW_MEMBER_COOKIE,
+          value: signPreviewMember(chosen.key, principal.id),
+          secure: config.secureCookies,
+        })
+      : expireCookie(PREVIEW_MEMBER_COOKIE, config.secureCookies)
+    return Response.json(
+      { allowed, member: chosen ? { key: chosen.key, name: chosen.name } : null },
+      { headers: { 'set-cookie': cookie, 'cache-control': 'no-store' } },
+    )
+  }
   for (const problem of previewProblems(deliverySettings))
     log.warning('Delivery API: {problem}', { problem })
 
@@ -880,6 +1060,7 @@ export async function createServer(
           settings: deliverySettings,
           cache,
           caching,
+          validatorBasis: () => validatorBasis(false),
           prefix: deliveryPrefix,
           // Asked only at request time, by which point the SEO host below exists.
           seo: async (content, request) => ({ ...(await seo.details(content, request)) }),
@@ -1246,12 +1427,39 @@ export async function createServer(
    * address it is answered with points back at the new paths.
    */
   async function fetch(request: Request): Promise<Response> {
-    const response = await answer(request)
-    // Readers are answered from the previous cache while it rebuilds (story
-    // 175), so a change is in it before the request that made it is answered.
-    if (request.method !== 'GET' && request.method !== 'HEAD' && cache.stale)
-      await cache.fresh().catch(() => {})
-    return response
+    // Story 262: every request a span, continuing a trace only from a trusted proxy.
+    const pathname = new URL(request.url).pathname
+    const route = routeOf(pathname, paths.backOfficePath)
+    const method = request.method
+    const started = performance.now()
+    const parent = requestContext(
+      request,
+      isTrustedProxy(peers.get(request), config.trustedProxies),
+    )
+    return inSpan(
+      `${method} ${route}`,
+      {
+        'http.request.method': method,
+        'http.route': route,
+        'url.path': pathname,
+        'crombolo.node.role': config.role,
+      },
+      async (span) => {
+        const response = await answer(request)
+        // Readers are answered from the previous cache while it rebuilds (story
+        // 175), so a change is in it before the request that made it is answered.
+        if (request.method !== 'GET' && request.method !== 'HEAD' && cache.stale)
+          await cache.fresh().catch(() => {})
+        span.setAttribute('http.response.status_code', response.status)
+        recordRequest((performance.now() - started) / 1000, {
+          'http.request.method': method,
+          'http.route': route,
+          'http.response.status_code': response.status,
+        })
+        return response
+      },
+      { kind: SpanKind.SERVER, parent },
+    )
   }
 
   async function answer(request: Request): Promise<Response> {
@@ -1296,7 +1504,7 @@ export async function createServer(
     // Umbraco's Delivery API, below the backoffice path but served wherever the
     // site is, from the published cache: it scales with rendering.
     if (deliveryApi && pathname.startsWith(`${deliveryPrefix}/`)) {
-      const response = await deliveryApi.handle(request)
+      const response = await inSpan('delivery api', {}, () => deliveryApi.handle(request))
       if (response) return response
     }
 
@@ -1331,8 +1539,18 @@ export async function createServer(
         : new Response('Not Found', { status: 404, headers: { 'cache-control': 'no-store' } })
     }
 
+    // Story 260: a generated script at the address that names its content, or nothing.
+    const generated = generatedScripts.get(pathname)
+    if (generated) return keptScript(generated)
+    const hashedPlain = splitHashedAddress(pathname)?.path
+    if (hashedPlain && generatedPaths.has(hashedPlain))
+      return new Response('Not Found', { status: 404, headers: { 'cache-control': 'no-store' } })
+
     // Islands (story 209): the loader, and each generation's browser code.
     if (pathname === ISLAND_LOADER_PATH) return siteScript(ISLAND_LOADER_SCRIPT)
+    // Deferred parts (story 263): the loader, and each part for the visitor.
+    if (pathname === DEFERRED_LOADER_PATH) return siteScript(DEFERRED_LOADER)
+    if (pathname === DEFERRED_PATH && config.role !== 'api') return deferredPart(request, url)
     if (pathname.startsWith(`${ISLANDS_PATH}/`))
       return islandFile(pathname.slice(ISLANDS_PATH.length + 1))
 
@@ -1444,7 +1662,18 @@ export async function createServer(
     return new Response(body, {
       headers: {
         'content-type': 'text/javascript; charset=utf-8',
-        'cache-control': config.development ? 'no-cache' : 'public, max-age=3600',
+        // Asked again each time at its plain address; `asset()` gives the one kept for a year (story 260).
+        'cache-control': 'no-cache',
+      },
+    })
+  }
+
+  /** A generated script at its hashed address: the same bytes for as long as the address lasts. */
+  function keptScript(body: string): Response {
+    return new Response(body, {
+      headers: {
+        'content-type': 'text/javascript; charset=utf-8',
+        'cache-control': 'public, max-age=31536000, immutable',
       },
     })
   }
@@ -1458,8 +1687,10 @@ export async function createServer(
       const routed = await siteRoutes.handle(request, url)
       if (routed) return routed
     }
-    if (pathname.startsWith('/css/')) return serveSiteFile(config.stylesheetsDir, pathname, '.css')
-    if (pathname.startsWith('/scripts/')) return serveSiteFile(config.scriptsDir, pathname, '.js')
+    if (pathname.startsWith('/css/'))
+      return serveSiteFile(request, config.stylesheetsDir, pathname, '.css')
+    if (pathname.startsWith('/scripts/'))
+      return serveSiteFile(request, config.scriptsDir, pathname, '.js')
     return renderSite(request, pathname, url.host, run)
   }
 
@@ -1613,6 +1844,23 @@ export async function createServer(
       if (!principal) return new Response('Unauthorized', { status: 401 })
       const response = await seo.handle(request, pathname.slice(seoPath.length), principal)
       if (response) return response
+    }
+
+    // Non-contract, signed in: whether a page's copies are shared (story 264).
+    if (pathname.startsWith(`${pageSharingPath}/`)) {
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      if (request.method !== 'GET') return new Response('Method Not Allowed', { status: 405 })
+      const key = pathname.slice(pageSharingPath.length + 1)
+      if (!UUID_PATTERN.test(key)) return new Response('Not Found', { status: 404 })
+      return pageSharing(request, key, principal)
+    }
+
+    // Non-contract, Members: which member a preview renders as (story 264).
+    if (pathname === previewMemberPath) {
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      return choosePreviewMember(request, principal)
     }
 
     // Non-contract, Media: who may read and change a media folder or item (story 196).
@@ -2606,17 +2854,56 @@ export async function createServer(
   }
 
   /** A stylesheet or script the Settings section edits, from its folder; nothing else from there. */
-  async function serveSiteFile(root: string, pathname: string, extension: string) {
-    const segments = decodeURIComponent(pathname).split('/').slice(2)
-    const safe =
-      segments.length > 0 &&
-      segments.every((s) => s !== '' && s !== '.' && s !== '..' && !s.includes('\\')) &&
-      segments.at(-1)?.toLowerCase().endsWith(extension)
-    const file = safe ? Bun.file(join(root, ...segments)) : undefined
-    if (!file || !(await file.exists())) return new Response('Not Found', { status: 404 })
-    const headers = { 'cache-control': 'no-cache', 'content-type': file.type }
-    // Bun.serve answers an empty file body 204, and an empty stylesheet is still one
-    return new Response(file.size === 0 ? '' : file, { status: 200, headers })
+  /**
+   * A stylesheet or script of the site's: at its plain address, asked again
+   * each time; at its hashed address (story 260), kept for a year when the hash
+   * is of the bytes sent, and nothing when it is not.
+   */
+  async function serveSiteFile(
+    request: Request,
+    root: string,
+    pathname: string,
+    extension: string,
+  ) {
+    const fileOf = (path: string) => {
+      const segments = decodeURIComponent(path).split('/').slice(2)
+      const safe =
+        segments.length > 0 &&
+        segments.every((s) => s !== '' && s !== '.' && s !== '..' && !s.includes('\\')) &&
+        segments.at(-1)?.toLowerCase().endsWith(extension)
+      return safe ? Bun.file(join(root, ...segments)) : undefined
+    }
+    const notFound = (headers: Record<string, string> = {}) =>
+      new Response('Not Found', { status: 404, headers })
+    const own = fileOf(pathname)
+    if (own && (await own.exists())) {
+      const bytes = await own.bytes()
+      return withNoCache(
+        cacheable(request, siteFileResponse(own.type, bytes), bytes, { lifetime: undefined }),
+      )
+    }
+    const hashed = splitHashedAddress(pathname)
+    const file = hashed ? fileOf(hashed.path) : undefined
+    if (!hashed || !file || !(await file.exists())) return notFound()
+    const bytes = await file.bytes()
+    // Hashed from the bytes about to be sent, so a change the watcher missed is never kept under this address.
+    if (contentHash(bytes) !== hashed.hash) return notFound({ 'cache-control': 'no-store' })
+    const response = siteFileResponse(file.type, bytes)
+    response.headers.set('cache-control', 'public, max-age=31536000, immutable')
+    return response
+  }
+
+  function siteFileResponse(type: string, bytes: Uint8Array): Response {
+    // Bun.serve answers an empty file body 204, and an empty stylesheet is still one.
+    return new Response(bytes.length === 0 ? '' : (bytes as BodyInit), {
+      status: 200,
+      headers: { 'content-type': type },
+    })
+  }
+
+  function withNoCache(response: Response): Response {
+    response.headers.set('cache-control', 'no-cache')
+    return response
   }
 
   /**
@@ -2763,11 +3050,13 @@ export async function createServer(
     if (!key) return undefined
     const draft = await draftModel(key, new URL(request.url).searchParams.get('culture'), principal)
     if (!draft) return undefined
+    // The previewing editor is the visitor: signed out, or a member they chose (story 264).
+    const member = await previewMember(request, principal)
     return renderer.renderModel(draft.content, draft.culture, {
       ...(await pageRequest(request)),
-      search: siteSearchFor(db, cache, undefined),
-      // The previewing editor is the visitor, with no member.
-      site: siteServicesFor(undefined),
+      member,
+      search: siteSearchFor(db, cache, member),
+      site: siteServicesFor(member),
       // Blocks with no component say so here, and only here (story 184).
       preview: true,
     })
@@ -2986,6 +3275,136 @@ export async function createServer(
     })
   }
 
+  function pageEtag(basis: string, content: PublishedContent, host: string, search: string) {
+    return publishedEtag([basis, content.key, content.culture, host, search])
+  }
+
+  /**
+   * A `304` for a page a cache already holds, without rendering it (story
+   * 258): only to a visitor nothing personal is shown to, for the ETag this
+   * server last answered the address with, while it is still the page's and
+   * the page is still public.
+   */
+  async function unchangedPage(
+    request: Request,
+    pathname: string,
+    host: string,
+  ): Promise<Response | undefined> {
+    if (rememberedPages.size === 0 || !request.headers.has('if-none-match')) return undefined
+    if (personalCookies.some((name) => readCookie(request, name))) return undefined
+    const search = new URL(request.url).search
+    const answer = rememberedPages.get(`${host}${pathname}${search}`)
+    if (!answer || !notModified(request, answer.etag)) return undefined
+    const content = await cache.byKey(answer.key, answer.culture)
+    const basis = validatorBasis(true)
+    if (!basis || !content || pageEtag(basis, content, host, search) !== answer.etag)
+      return undefined
+    // Public access is not in the snapshot, and this server may not have caught up with a change to it.
+    if ((await members.decide(content, undefined)).status !== 'allowed') return undefined
+    return unchanged(answer.headers)
+  }
+
+  /**
+   * A `'use deferred'` part for the visitor (story 263): the page it sits on,
+   * as they may see it, rendered down to that part. Never kept, and nothing
+   * for an address this site did not sign or a page they may not see.
+   */
+  async function deferredPart(request: Request, url: URL): Promise<Response> {
+    const unkept = { 'cache-control': PRIVATE_NO_STORE }
+    const part = readDeferredAddress(url.searchParams, verifyDeferred)
+    const content = part ? await cache.byKey(part.key, part.culture) : undefined
+    if (!part || !content) return new Response(null, { status: 404, headers: unkept })
+    const session = await members.session(request)
+    const member = session?.member
+    if ((await members.decide(content, member)).status !== 'allowed')
+      return new Response(null, { status: 404, headers: unkept })
+    const result = await renderer.renderModel(content, part.culture, {
+      member,
+      antiforgery: session?.antiforgery,
+      part,
+      signDeferred,
+      search: siteSearchFor(db, cache, member),
+      site: siteServicesFor(member),
+      ...(await pageRequest(request)),
+    })
+    if (result.status !== 'ok') return new Response(null, { status: 404, headers: unkept })
+    return new Response(result.html, {
+      headers: { 'content-type': 'text/html; charset=utf-8', ...unkept },
+    })
+  }
+
+  /**
+   * The member a preview renders as (story 264): the one this user chose, while
+   * they can still open Members. The cookie names the user too, so it is
+   * nobody else's.
+   */
+  async function previewMember(request: Request, principal: Principal) {
+    const chosen = readPreviewMember(readCookie(request, PREVIEW_MEMBER_COOKIE), principal.id)
+    if (!chosen || !hasSection(principal, 'members')) return undefined
+    return members.byKey(chosen)
+  }
+
+  /**
+   * Whether a published page's copies are shared, and what stops it (story
+   * 264): rendered as a signed-out visitor and sent nowhere, for the Info panel.
+   */
+  async function pageSharing(request: Request, key: string, principal: Principal) {
+    if (!(await canReadDocument(principal, key, nodeLookup)))
+      return new Response('Not Found', { status: 404 })
+    const culture = new URL(request.url).searchParams.get('culture') || null
+    const content = await cache.byKey(key, culture)
+    if (!content) return Response.json({ status: 'unpublished' })
+    if ((await members.decide(content, undefined)).status !== 'allowed')
+      return Response.json({ status: 'membersOnly' })
+    const address = new URL(content.url, publicOrigin(request, config))
+    const page = new Request(address)
+    let personal = false
+    const result = await renderer.renderModel(content, content.culture, {
+      access: async (shown) => {
+        const decision = await members.decide(shown, undefined)
+        if (decision.status !== 'allowed') personal = true
+        return decision
+      },
+      search: siteSearchFor(db, cache, undefined),
+      site: siteServicesFor(undefined),
+      signDeferred,
+      ...(await pageRequest(page)),
+    })
+    if (result.status !== 'ok')
+      return Response.json({
+        status: 'notRendered',
+        message: result.status === 'error' ? result.error.message : undefined,
+      })
+    const views = `${basename(config.componentsDir)}/`
+    const memberFiles = (result.memberFiles ?? []).map((file) =>
+      file.startsWith(views) ? `/${file.slice(views.length)}` : file,
+    )
+    const lifetime = pageLifetime(result)
+    return Response.json({
+      status: personal || result.personal ? 'notShared' : 'shared',
+      keptFor: lifetime === undefined ? null : lifetime === 'none' ? 0 : lifetime.maxAge,
+      checkedWithoutRendering:
+        publishedValidator && validatorFor(caching, [content.contentType.alias]) === 'published',
+      memberFiles,
+    })
+  }
+
+  /** A page's lifetime: its own "Keep copies for", its template's `revalidate`, its type's, the site's. */
+  function pageLifetime(result: { content: PublishedContent; revalidate?: number | false }) {
+    const item = {
+      typeAlias: result.content.contentType.alias,
+      value: (alias: string) => result.content.value(alias),
+    }
+    // A page's own "Keep copies for" still wins over its template's `revalidate`.
+    return (
+      (result.revalidate === undefined
+        ? undefined
+        : chosenLifetime(result.content.value(CACHE_KEEP_FOR_ALIAS))) ??
+      revalidateLifetime(result.revalidate, caching.staleIfError) ??
+      lifetimeFor(caching, item)
+    )
+  }
+
   /** A page, and an action's flash cleared once it has been read (story 219). */
   async function renderPage(request: Request, pathname: string, host: string): Promise<Response> {
     const response = await renderPageOnce(request, pathname, host)
@@ -3005,6 +3424,14 @@ export async function createServer(
     pathname: string,
     host: string,
   ): Promise<Response> {
+    const kept = await unchangedPage(request, pathname, host)
+    if (kept) {
+      noteOnSpan({ 'crombolo.render.skipped': true })
+      return kept
+    }
+    // The render reads the snapshot anyway: built first, so a fresh server's first page has a basis.
+    if (publishedValidator) await cache.snapshot()
+    const basis = publishedValidator ? validatorBasis(true) : undefined
     const preview = await renderPreview(request, pathname, host)
     // An `api` node renders for preview and nothing else. The backoffice opens a
     // site URL to preview a draft, so the renderer has to be here; serving the
@@ -3030,20 +3457,36 @@ export async function createServer(
     // Whether the page itself read anything personal, the member included, it
     // says in its result (story 206).
     let personal = Boolean(preview || submission || cookie || actionCookie)
+    const rendering = performance.now()
+    const requestSpan = activeSpan()
     const result =
       preview ??
-      (await renderer.render(pathname, host, {
-        member,
-        antiforgery: session?.antiforgery,
-        submission,
-        actions: { idOf: actionList.idOf, flash: actionFlash },
-        access: async (content) => {
-          if ((await members.decide(content, undefined)).status !== 'allowed') personal = true
-          return members.decide(content, member)
-        },
-        search: siteSearchFor(db, cache, member),
-        site: siteServicesFor(member),
-        ...(await pageRequest(request)),
+      (await inSpan('render', {}, async (span) => {
+        const rendered = await renderer.render(pathname, host, {
+          member,
+          antiforgery: session?.antiforgery,
+          submission,
+          actions: { idOf: actionList.idOf, flash: actionFlash },
+          access: async (content) => {
+            if ((await members.decide(content, undefined)).status !== 'allowed') personal = true
+            return members.decide(content, member)
+          },
+          search: siteSearchFor(db, cache, member),
+          site: siteServicesFor(member),
+          signDeferred,
+          ...(await pageRequest(request)),
+        })
+        if ('content' in rendered) {
+          const template = rendered.content.componentAlias ?? ''
+          span.setAttributes({
+            'crombolo.template': template,
+            'crombolo.content.type': rendered.content.contentType.alias,
+            'crombolo.render.status': rendered.status,
+          })
+          requestSpan?.setAttribute('crombolo.content.type', rendered.content.contentType.alias)
+          recordRender((performance.now() - rendering) / 1000, { 'crombolo.template': template })
+        }
+        return rendered
       }))
     const cleared: Record<string, string> = cookie
       ? { 'set-cookie': expireCookie(FORM_FLASH_COOKIE, config.secureCookies) }
@@ -3053,26 +3496,37 @@ export async function createServer(
         const response = new Response(result.html, {
           headers: { 'content-type': 'text/html; charset=utf-8', ...cleared },
         })
+        // Story 263: shared with every visitor unless a file it rendered shows the member.
+        if (result.memberFiles) {
+          response.headers.append('vary', MEMBER_VARY)
+          if (config.development && member) noteMemberFiles(result.content, result.memberFiles)
+        }
         if (personal || result.personal) {
           response.headers.set('cache-control', PRIVATE_NO_STORE)
           return response
         }
         const ancestors = (await cache.navigation(result.content.culture)).ancestors(result.content)
-        const item = {
-          typeAlias: result.content.contentType.alias,
-          value: (alias: string) => result.content.value(alias),
-        }
-        return cacheable(request, response, result.html, {
-          // A page's own "Keep copies for" still wins over its template's `revalidate`.
-          lifetime:
-            (result.revalidate === undefined
-              ? undefined
-              : chosenLifetime(result.content.value(CACHE_KEEP_FOR_ALIAS))) ??
-            revalidateLifetime(result.revalidate) ??
-            lifetimeFor(caching, item),
+        const item = { typeAlias: result.content.contentType.alias }
+        const search = new URL(request.url).search
+        const etag =
+          basis && validatorFor(caching, [item.typeAlias]) === 'published'
+            ? pageEtag(basis, result.content, host, search)
+            : undefined
+        const answer = cacheable(request, response, result.html, {
+          lifetime: pageLifetime(result),
           tags: [result.content.key, ...ancestors.map((a) => a.key)],
           tagHeader: caching.tagHeader,
+          etag,
+          checkFloor: caching.checkFloor,
         })
+        if (etag)
+          rememberedPages.set(`${host}${pathname}${search}`, {
+            etag,
+            headers: rememberedHeaders(answer.headers, caching.tagHeader),
+            key: result.content.key,
+            culture: result.content.culture,
+          })
+        return answer
       }
       case 'redirect':
         // Umbraco's `umbracoRedirect` answers 302: the page may stop redirecting.
@@ -3373,11 +3827,13 @@ export async function createServer(
       previewHub.stop()
       watcher?.close()
       viewWatcher?.close()
+      siteAssets.close()
       typeWatch?.stop()
       live?.close()
       poller.stop()
       await closeTables(chains)
       await db.close()
+      await stopTelemetry()
     },
   }
 }
@@ -3402,9 +3858,13 @@ function errorReference(): string {
 }
 
 /** A template's `revalidate` as a lifetime: seconds, or false for as long as it is unchanged. */
-function revalidateLifetime(revalidate: number | false | undefined): Lifetime {
+function revalidateLifetime(
+  revalidate: number | false | undefined,
+  staleIfError?: number,
+): Lifetime {
   if (revalidate === undefined) return undefined
-  if (revalidate === false) return { maxAge: 31_536_000 }
+  const onError = staleIfError ? { staleIfError } : {}
+  if (revalidate === false) return { maxAge: 31_536_000, ...onError }
   if (!Number.isFinite(revalidate) || revalidate < 0) return undefined
-  return revalidate === 0 ? 'none' : { maxAge: Math.floor(revalidate) }
+  return revalidate === 0 ? 'none' : { maxAge: Math.floor(revalidate), ...onError }
 }

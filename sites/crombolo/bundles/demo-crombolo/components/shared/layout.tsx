@@ -1,4 +1,4 @@
-import { type Child, type PageProps, SeoHead } from '@crombolo/crombolo'
+import { asset, type Child, type PageProps, SeoHead } from '@crombolo/crombolo'
 import { FAVICON } from './logo.tsx'
 import { homeOf } from './site.tsx'
 import { SiteFooter } from './site-footer.tsx'
@@ -21,7 +21,7 @@ export function Layout(props: PageProps & { children?: Child }) {
           description={model.text('strapline') || model.text('standfirst')}
         />
         <link rel="icon" type="image/svg+xml" href={FAVICON} />
-        <link rel="stylesheet" href="/css/site.css" />
+        <link rel="stylesheet" href={asset('/css/site.css')} />
       </head>
       <body>
         <SiteHeader model={model} nav={nav} />

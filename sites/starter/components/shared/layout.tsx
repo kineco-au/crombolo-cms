@@ -1,4 +1,4 @@
-import { type Child, type PageProps, SeoHead } from '@crombolo/crombolo'
+import { asset, type Child, type PageProps, SeoHead } from '@crombolo/crombolo'
 import { SiteFooter } from './site-footer.tsx'
 import { SiteHeader } from './site-header.tsx'
 
@@ -12,7 +12,7 @@ export function Layout(props: PageProps & { children?: Child }) {
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <SeoHead {...props} title={model.text('title') || model.name} />
-        <link rel="stylesheet" href="/css/site.css" />
+        <link rel="stylesheet" href={asset('/css/site.css')} />
       </head>
       <body>
         <SiteHeader model={model} nav={nav} links={menu('main')} siteName={siteName} />

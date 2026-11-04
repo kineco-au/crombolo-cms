@@ -21,7 +21,7 @@ curl -fsSL https://bun.sh/install | bash
 
 ## Two ways in
 
-**Build one from the command line.** [A site from the command line](/docs/getting-started/from-the-command-line/) goes from an empty folder to a served site with a form, a group, a workflow and a webhook, one command at a time. Start here to learn how a site is put together.
+**Build one from the command line.** [A site from the command line](/docs/getting-started/from-the-command-line/) walks you, a step at a time, from an empty folder to a running site you're signed in to, then on to your own pages, forms, approvals and shipping. Start here to learn how a site is put together.
 
 **Start from a template.** A template brings types, views, styles and starting content, so there is something on the page at once. [Templates](/docs/getting-started/templates/) has a page for each, saying what is in it and how to start it:
 

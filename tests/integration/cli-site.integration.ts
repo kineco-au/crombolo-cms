@@ -1,7 +1,9 @@
 /**
  * Story 252: a site built with commands alone, from `crombolo init` to pages
  * served, with a form, a group, a workflow and a webhook, then shipped as a
- * bundle to a second site that serves the same pages. No command's text output
+ * bundle to a second site that serves the same pages. The steps are the
+ * walkthrough's own, read from "A site from the command line", so the page
+ * cannot drift from what the commands do. No command's text output
  * names a definition file: only `init`'s one line about what to commit, and the
  * commands whose job is files (`generate`, `bundle export`, `bundle build`).
  *
@@ -9,14 +11,18 @@
  * processes and boots servers. `bun run test:integration` runs it, and CI does.
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { join, relative, resolve } from 'node:path'
+import { DOCS_DIR, parseGuide, walkthroughOf } from '../../scripts/docs-site.ts'
+import { words } from '../support/doc-commands.ts'
 
 const ROOT = resolve(import.meta.dir, '..', '..')
 const CLI = join(ROOT, 'packages/cli/bin/crombolo.ts')
 
 /** The commands whose job is files, which name them. */
 const FILE_COMMANDS = ['generate', 'bundle export', 'bundle build']
+
+const WALKTHROUGH = 'getting-started/from-the-command-line.md'
 
 interface Run {
   args: string[]
@@ -132,191 +138,64 @@ describe('a site built from the command line, and shipped as a bundle', () => {
     if (dir) rmSync(dir, { recursive: true, force: true })
   })
 
-  test('from init to pages served and a bundle applied elsewhere, by command alone', async () => {
-    mkdirSync(siteDir('bakery'))
-    const init = await ok('bakery', 'init', '--name', 'Riverside Bakery')
-    expect(init.out).toContain('A site called "Riverside Bakery", on SQLite.')
-    const s = (...args: string[]) => ok('bakery', ...args)
+  test('the walkthrough, step by step: from init to pages served and a bundle applied elsewhere', async () => {
+    const guide = parseGuide(WALKTHROUGH, readFileSync(join(DOCS_DIR, WALKTHROUGH), 'utf8'))
+    const walk = walkthroughOf(WALKTHROUGH, guide.body, guide.choice)
+    // What each start serves, in order: the home page, then the pages and
+    // block, then the same again from the second site the bundle made.
+    const served: Array<Record<string, string[]>> = [
+      { '/': ['<h1>Home</h1>'] },
+      {
+        '/': ['<h1>Home</h1>', '<h2 class="highlight">Sourdough, baked daily</h2>'],
+        '/visit-us': ['<h1>Visit us</h1>'],
+      },
+    ]
+    served.push(served[1] as Record<string, string[]>)
+    let at = ''
+    let starts = 0
+    const start = async (...args: string[]) => {
+      const server = await serve(at, ...args)
+      for (const [path, wanted] of Object.entries(served[starts++] ?? {})) {
+        const html = await page(server, path)
+        for (const text of wanted) expect(html, `${path}, start ${starts}`).toContain(text)
+      }
+      await server.stop()
+    }
+    // The first option of the page's choice, SQLite, as a reader who picks nothing
+    const shown = (step: { only?: string }) => !step.only || step.only === walk.choice?.options[0]
+    for (const stage of walk.stages)
+      for (const step of stage.steps.filter(shown))
+        for (const code of step.code) {
+          if (code.file) {
+            writeFileSync(join(siteDir(at), code.file), code.text)
+            continue
+          }
+          if (code.lang !== 'sh') continue
+          for (const line of code.text.replaceAll(/\\\n\s*/g, ' ').split('\n'))
+            for (const segment of line.split('&&')) {
+              const [first, ...rest] = words(segment)
+              // Checks of the reader's own machine change nothing here
+              if (first === 'uname' || (first === 'bun' && rest[0] === '--version')) continue
+              if (first === 'mkdir') mkdirSync(join(dir, at, rest[0] as string))
+              else if (first === 'cd') at = relative(dir, join(dir, at, rest[0] as string))
+              else if (first === 'bun' && rest[0] === 'start') await start()
+              else if (first === 'bunx') {
+                const args = rest.slice(1)
+                if (args[0] === 'start') await start(...args.slice(1))
+                else await ok(at, ...args)
+              } else if (!(first === 'bun' && rest[0] === 'install') && first !== undefined)
+                throw new Error(`${step.title}: no way to run "${segment.trim()}"`)
+            }
+        }
+    expect(starts).toBe(served.length)
 
-    // The types: a block, the list that offers it, and a page with both
-    await s('types', 'new', 'data-type', 'shortText', '--editor', 'textstring', '--max-chars', '80')
-    await s(
-      'types',
-      'new',
-      'content-type',
-      'highlight',
-      '--element',
-      '--name',
-      'Highlight',
-      '--no-view',
-    )
-    await s(
-      'types',
-      'property',
-      'add',
-      'highlight',
-      'heading',
-      '--type',
-      'shortText',
-      '--name',
-      'Heading',
-    )
-    await s(
-      'types',
-      'new',
-      'data-type',
-      'pageBlocks',
-      '--editor',
-      'block-list',
-      '--block',
-      'highlight',
-    )
-    await s('types', 'new', 'content-type', 'contentPage', '--name', 'Content page', '--at-root')
-    await s(
-      'types',
-      'property',
-      'add',
-      'contentPage',
-      'blocks',
-      '--type',
-      'pageBlocks',
-      '--name',
-      'Blocks',
-    )
-    await s('types', 'update', 'contentPage', '--allow-child', 'contentPage')
-
-    // Views are code, written as code
-    await s('components', 'new', '--block', 'highlight')
-    writeFileSync(
-      join(siteDir('bakery'), 'components', 'contentPage.tsx'),
-      `export default function ContentPage({ model }) {
-  return <main><h1>{model.text('title')}</h1><p class="lead">{model.value('blocks')?.byAlias('sourdough')?.content.text('heading')}</p></main>
-}
-`,
-    )
-    await s('generate')
-
-    // A form on the page, a group, a workflow and a webhook
-    await s('forms', 'new', 'contact', '--name', 'Contact us')
-    await s(
-      'forms',
-      'field',
-      'add',
-      'contact',
-      'message',
-      '--type',
-      'long-answer',
-      '--caption',
-      'Message',
-      '--mandatory',
-    )
-    await s(
-      'types',
-      'property',
-      'add',
-      'contentPage',
-      'contactForm',
-      '--type',
-      'formPicker',
-      '--name',
-      'Contact form',
-    )
-    await s(
-      'users',
-      'groups',
-      'new',
-      'editors',
-      '--name',
-      'Editors',
-      '--section',
-      'content',
-      '--permission',
-      'content:read',
-      '--permission',
-      'content:publish',
-      '--language',
-      'all',
-    )
-    await s(
-      'workflows',
-      'new',
-      'sign-off',
-      '--content-type',
-      'contentPage',
-      '--approver',
-      'editors',
-    )
-    await s(
-      'webhooks',
-      'new',
-      'published',
-      '--url',
-      'https://example.test/hook',
-      '--event',
-      'content-published',
-    )
-
-    // The pages, by command (story 253)
-    await s('content', 'new', '/Home', '--type', 'contentPage', '--set', 'title=Riverside Bakery')
-    await s(
-      'content',
-      'block',
-      'add',
-      '/Home',
-      'blocks',
-      '--type',
-      'highlight',
-      '--alias',
-      'sourdough',
-      '--set',
-      'heading=Sourdough',
-    )
-    await s(
-      'content',
-      'new',
-      '/Home/Visit us',
-      '--type',
-      'contentPage',
-      '--set',
-      'title=Visit us',
-      '--set',
-      'contactForm=contact',
-    )
-    await s('content', 'publish', '/Home', '--descendants', '--skip-approval')
-
-    const shown = JSON.parse((await s('site', 'show', '-o', 'json')).out)
-    expect(shown.name).toBe('Riverside Bakery')
-    expect(shown.forms).toEqual([{ alias: 'contact', name: 'Contact us' }])
-    expect(shown.workflows.map((w: { alias: string }) => w.alias)).toEqual(['sign-off'])
-    expect(shown.userGroups).toContainEqual({ alias: 'editors', name: 'Editors', source: 'site' })
-    expect(shown.webhooks.map((w: { alias: string }) => w.alias)).toEqual(['published'])
-    await s('types', 'check')
-
-    const served = await serve('bakery')
-    const home = await page(served, '/')
-    expect(home).toContain('<h1>Riverside Bakery</h1>')
-    expect(home).toContain('<p class="lead">Sourdough</p>')
-    expect(await page(served, '/visit-us')).toContain('<h1>Visit us</h1>')
-    await served.stop()
-
-    // Shipped: the pages exported as content files, the site built as a bundle,
-    // and the bundle applied to a second, new site.
-    await s('bundle', 'export', '--source', '--root', '/Home')
-    await s('bundle', 'build', '.', '--out', join(dir, 'bundle'))
-    mkdirSync(siteDir('copy'))
-    await ok('copy', 'init', '--name', 'Riverside Bakery copy')
-    // A new site's starting definitions give way to the bundle's
-    const copy = await serve(
-      'copy',
-      '--bundle',
-      join(dir, 'bundle'),
-      '--publish',
-      '--replace-files',
-    )
-    const copied = await page(copy, '/')
-    expect(copied).toContain('<h1>Riverside Bakery</h1>')
-    expect(copied).toContain('<p class="lead">Sourdough</p>')
-    expect(await page(copy, '/visit-us')).toContain('<h1>Visit us</h1>')
+    const site = JSON.parse((await ok('riverside-bakery', 'site', 'show', '-o', 'json')).out)
+    expect(site.name).toBe('Riverside Bakery')
+    expect(site.forms).toEqual([{ alias: 'contact', name: 'Contact us' }])
+    expect(site.workflows.map((w: { alias: string }) => w.alias)).toEqual(['sign-off'])
+    expect(site.userGroups).toContainEqual({ alias: 'editors', name: 'Editors', source: 'site' })
+    expect(site.webhooks.map((w: { alias: string }) => w.alias)).toEqual(['published'])
+    await ok('riverside-bakery', 'types', 'check')
 
     // No command named a definition file, apart from init's one line and the
     // commands whose job is files.

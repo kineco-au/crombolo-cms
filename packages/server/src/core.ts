@@ -19,6 +19,7 @@ import {
 import {
   DEFAULT_MEDIA_CACHE_MEGABYTES,
   DEVELOPMENT_LIMITS,
+  deferredTransform,
   enableComponentStack,
   ISLANDS_PATH,
   islandTransform,
@@ -79,6 +80,7 @@ import { bootSchema, CacheInstructionPoller } from './schema.ts'
 import { publishSchema, type SchemaStore, useSchemaStore } from './schema-store.ts'
 import { createSiteQueries, queryProblems } from './site-queries.ts'
 import { createSiteServices } from './site-services.ts'
+import { recordCacheLookup, startTelemetry, tracedDb, tracedEmail } from './telemetry.ts'
 import { redirectAfterUrlChange, type UrlChangeContext } from './url-settings.ts'
 import { assertViewRuntime } from './view-runtime.ts'
 import { bundleEventProblems, createWebhookService } from './webhooks.ts'
@@ -161,9 +163,19 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
   // bundle's; a worker runs bundles' jobs, so it opens every owner's.
   const siteChains = chains.filter((chain) => chain.id === SITE_OWNER)
   const opened = config.role === 'web' ? siteChains : chains
-  const { db, seededAdminPassword } = owns
+  const booted = owns
     ? await bootstrapDatabase(config, chains)
     : await attachDatabase(config, opened)
+  const { seededAdminPassword } = booted
+  // Story 262: on every role, before anything reads, so each statement is a span.
+  await startTelemetry({
+    telemetry: config.telemetry,
+    siteName: config.siteName,
+    role: config.role,
+    nodeId: config.nodeId,
+    db: booted.db,
+  })
+  const db = tracedDb(booted.db)
   await openTables(db, config, opened, { provision: owns })
   // Stories 222 and 225: wiring a bundle approves it; an administrator can disable it.
   const bundleGrants = createBundleGrants({
@@ -241,6 +253,7 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
   const cache = new PublishedCache(publishedSource, {
     ...cacheOptions,
     onInvalidate: () => hooks.onCacheInvalidate?.(),
+    onRead: recordCacheLookup,
   })
   // A sync or a Settings change that alters how URLs are built moves every URL:
   // the old ones redirect, as a rename's do.
@@ -292,7 +305,8 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
     },
     // Story 209: a `'use client'` view is a stub on the server, and its browser
     // code is built with the generation, unless a site's Vite build supplies it.
-    transform: islandTransform,
+    // Story 263: a `'use deferred'` view is a placeholder in the page, its source kept beside it.
+    transform: (key, bytes) => islandTransform(key, bytes) ?? deferredTransform(key, bytes),
     beforeSwap: async (generation) => {
       if (!hooks.buildIslands) return
       if (config.islands?.manifest || (config.development && config.islands?.devServer)) return
@@ -334,7 +348,7 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
   )
   // Resolved once: constructing it twice would warn twice about a provider that
   // is half-configured, and the adapters are cheap but not free of side effects.
-  const email = resolveEmailPort(config)
+  const email = tracedEmail(resolveEmailPort(config))
   // Story 045: a change queues the e-mails its subscribers asked for. Nothing is
   // queued on a site that cannot send; development sends to the console.
   const notifier = createContentNotifier(db, { canSend: Boolean(email) })

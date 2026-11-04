@@ -7,7 +7,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { SETTING_SECTIONS, SETTINGS, type Setting, tomlValue } from '@crombolo/server'
-import { Marked, type Tokens } from 'marked'
+import { Marked, type Token, type Tokens } from 'marked'
 import {
   type CliReferencePage,
   cliIndexHtml,
@@ -15,6 +15,11 @@ import {
   exitCodesHtml,
 } from '../packages/cli/src/reference.ts'
 import { listTemplates } from '../packages/cli/src/templates.ts'
+import type {
+  Walkthrough,
+  WalkthroughStage,
+  WalkthroughStep,
+} from '../sites/crombolo/components/shared/walkthrough.tsx'
 import { ROOT } from './packages.ts'
 import { listSites } from './sites.ts'
 
@@ -32,6 +37,8 @@ export interface DocsPage {
   slug: string
   standfirst?: string
   body?: string
+  /** A walkthrough page's steps, shown one at a time. */
+  walkthrough?: Walkthrough
   generatedFrom?: string
   editUrl?: string
   children: DocsPage[]
@@ -52,8 +59,8 @@ const slugify = (text: string): string =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
 
-/** Markdown to the markup the rich-text editor stores; headings get ids for "On this page". */
-export function renderMarkdown(markdown: string): string {
+/** A Markdown renderer whose headings get ids, unique across everything it renders. */
+function markdownRenderer(): Marked {
   const seen = new Map<string, number>()
   const marked = new Marked({ gfm: true })
   marked.use({
@@ -68,7 +75,103 @@ export function renderMarkdown(markdown: string): string {
       },
     },
   })
-  return (marked.parse(markdown, { async: false }) as string).trim()
+  return marked
+}
+
+/** Markdown to the markup the rich-text editor stores; headings get ids for "On this page". */
+export function renderMarkdown(markdown: string): string {
+  return (markdownRenderer().parse(markdown, { async: false }) as string).trim()
+}
+
+/** Inline markup as the words it shows. */
+const textOf = (html: string): string =>
+  html
+    .replaceAll(/<[^>]+>/g, '')
+    .replaceAll('&#39;', "'")
+    .replaceAll('&quot;', '"')
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>')
+    .replaceAll('&amp;', '&')
+
+/**
+ * A walkthrough page's steps (`walkthrough: true`): each `##` is a stage and
+ * each `###` a step, holding a sentence, its code, and quotes for what to
+ * expect. A quote opening in bold is a note to act on. Ids match the body's.
+ * `choice` ("Database: SQLite, Postgres") lets the reader pick one option, and
+ * a step whose heading ends "[Postgres]" is shown only for that one.
+ */
+export function walkthroughOf(file: string, markdown: string, choice?: string): Walkthrough {
+  const [choiceName = '', list = ''] = (choice ?? '').split(/:\s*/)
+  const options = list
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean)
+  if (choice && (!choiceName || options.length < 2))
+    throw new Error(`${file}: a choice is "Name: one, another"`)
+  const marked = markdownRenderer()
+  const html = (tokens: Token[]) => (marked.parser(tokens) as string).trim()
+  const heading = (token: Tokens.Heading) => {
+    const match = /^<h\d id="([^"]*)">([\s\S]*)<\/h\d>$/.exec(html([token])) as RegExpExecArray
+    return { id: match[1] as string, title: textOf(match[2] as string) }
+  }
+  const intro: Token[] = []
+  const stages: WalkthroughStage[] = []
+  let parts: { text: Token[]; see: Token[]; note: Token[] } | undefined
+  const finish = () => {
+    const step = stages.at(-1)?.steps.at(-1)
+    if (!step || !parts) return
+    if (parts.text.length === 0) throw new Error(`${file}: the step "${step.title}" says nothing`)
+    step.text = html(parts.text)
+    if (parts.see.length > 0) step.see = html(parts.see)
+    if (parts.note.length > 0) step.note = html(parts.note)
+  }
+  for (const token of marked.lexer(markdown)) {
+    if (token.type === 'heading' && token.depth <= 3) {
+      finish()
+      parts = undefined
+      if (token.depth === 2) stages.push({ ...heading(token as Tokens.Heading), steps: [] })
+      else {
+        const stage = stages.at(-1)
+        if (!stage) throw new Error(`${file}: a step comes before the first stage`)
+        const { id, title } = heading(token as Tokens.Heading)
+        const only = /\s*\[([^\]]+)\]$/.exec(title)
+        if (only && !options.includes(only[1] as string))
+          throw new Error(`${file}: the step "${title}" is for "${only[1]}", which is not a choice`)
+        stage.steps.push({
+          id,
+          title: only ? title.slice(0, only.index) : title,
+          ...(only ? { only: only[1] as string } : {}),
+          text: '',
+          code: [],
+        })
+        parts = { text: [], see: [], note: [] }
+      }
+    } else if (token.type === 'space') continue
+    else if (!parts) {
+      if (stages.length > 0) throw new Error(`${file}: a stage holds only steps`)
+      intro.push(token)
+    } else if (token.type === 'code') {
+      const [lang = 'text', path] = ((token as Tokens.Code).lang ?? '').split(/\s+/)
+      const step = (stages.at(-1) as WalkthroughStage).steps.at(-1) as WalkthroughStep
+      step.code.push({
+        lang: lang || 'text',
+        ...(path ? { file: path } : {}),
+        text: (token as Tokens.Code).text,
+      })
+    } else if (token.type === 'blockquote') {
+      const inner = (token as Tokens.Blockquote).tokens
+      ;(/^\s*>\s*\*\*/.test(token.raw) ? parts.note : parts.see).push(...inner)
+    } else parts.text.push(token)
+  }
+  finish()
+  for (const stage of stages)
+    if (stage.steps.length === 0)
+      throw new Error(`${file}: the stage "${stage.title}" has no steps`)
+  return {
+    intro: html(intro),
+    ...(choice ? { choice: { name: choiceName, options } } : {}),
+    stages,
+  }
 }
 
 export interface Guide {
@@ -76,6 +179,9 @@ export interface Guide {
   title: string
   summary: string
   order: number
+  walkthrough: boolean
+  /** A walkthrough's one choice, as "Name: one, another". */
+  choice?: string
   body: string
 }
 
@@ -97,7 +203,15 @@ export function parseGuide(file: string, text: string): Guide {
   if (!Number.isFinite(order)) throw new Error(`${file}: "order" is not a number`)
   const body = (match[2] as string).trim()
   if (/^# /m.test(body)) throw new Error(`${file}: the title is the page's heading; start at ##`)
-  return { file, title: need('title'), summary: need('summary'), order, body }
+  return {
+    file,
+    title: need('title'),
+    summary: need('summary'),
+    order,
+    walkthrough: fields.get('walkthrough') === 'true',
+    ...(fields.has('choice') ? { choice: fields.get('choice') } : {}),
+    body,
+  }
 }
 
 function readGuides(dir: string): Guide[] {
@@ -117,6 +231,9 @@ const guidePage = (folder: string, guide: Guide): DocsPage => {
     slug,
     standfirst: guide.summary,
     body: renderMarkdown(guide.body),
+    ...(guide.walkthrough
+      ? { walkthrough: walkthroughOf(relative, guide.body, guide.choice) }
+      : {}),
     editUrl: `${EDIT_BASE}/${relative}`,
     children: [],
   }
@@ -383,6 +500,7 @@ export function writeDocsSeed(manifest: Manifest, dir = DOCS_SEED_DIR): string[]
       ['title', item.name],
       ['standfirst', item.standfirst],
       ['body', item.body === undefined ? undefined : { html: item.body }],
+      ['walkthrough', item.walkthrough && JSON.stringify(item.walkthrough)],
       ['generatedFrom', item.generatedFrom],
       ['editUrl', item.editUrl],
       ['umbracoUrlName', item.slug],

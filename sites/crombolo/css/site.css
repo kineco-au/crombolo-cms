@@ -703,3 +703,211 @@ ol.search-results p {
     margin-left: 0;
   }
 }
+
+/* ---------------------------------------------------------- walkthrough */
+
+.walk__choice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 1.25rem;
+  margin: 2rem 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.walk__choice legend {
+  float: left;
+  margin-right: 0.25rem;
+  padding: 0;
+  font-weight: 600;
+}
+
+.walk__choice label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+}
+
+.walk__choice input {
+  accent-color: var(--terracotta-deep);
+}
+
+.walk__stages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 2rem 0 1.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.walk__choice + .walk__stages {
+  margin-top: 1rem;
+}
+
+.walk__stages button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.9rem 0.4rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--white);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.walk__stages button[aria-current="step"] {
+  border-color: var(--terracotta);
+  background: var(--arc);
+}
+
+.walk__number {
+  display: inline-grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  background: var(--line);
+  font-size: 0.85rem;
+}
+
+.walk__stages button[aria-current="step"] .walk__number {
+  background: var(--terracotta);
+  color: var(--white);
+}
+
+.walk__step {
+  padding: 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--white);
+}
+
+.walk__step--finish {
+  border-color: var(--terracotta);
+  background: var(--cream);
+}
+
+.walk__count {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.docs__main .walk__step h3 {
+  margin: 0.25rem 0 0.75rem;
+  font-size: 1.4rem;
+}
+
+.walk__step h3:focus {
+  outline: none;
+}
+
+.walk__code {
+  margin: 1rem 0;
+  border-radius: 0.5rem;
+  background: var(--ink);
+  overflow: hidden;
+}
+
+.walk__code figcaption {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.4rem 0.75rem 0.4rem 1.25rem;
+  border-bottom: 1px solid rgb(255 255 255 / 0.12);
+  color: var(--arc);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+}
+
+.walk__code button {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid rgb(255 255 255 / 0.3);
+  border-radius: 0.3rem;
+  background: transparent;
+  color: var(--arc);
+  font: inherit;
+  cursor: pointer;
+}
+
+.walk__code pre {
+  margin: 0;
+  padding: 1rem 1.25rem;
+  color: var(--arc);
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  line-height: 1.55;
+  overflow-x: auto;
+}
+
+.walk__see,
+.walk__note {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border-left: 3px solid var(--line);
+  border-radius: 0 0.5rem 0.5rem 0;
+  background: var(--cream);
+}
+
+.walk__note {
+  border-left-color: var(--terracotta);
+  background: var(--arc);
+}
+
+.walk__nav {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.walk__nav button {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--white);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.walk__nav button span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+.walk__nav .walk__next {
+  margin-left: auto;
+  border-color: var(--terracotta);
+  background: var(--terracotta-deep);
+  color: var(--white);
+  text-align: right;
+}
+
+.walk__nav .walk__next span {
+  color: var(--arc);
+}
+
+@media (max-width: 48rem) {
+  .walk__step {
+    padding: 1rem;
+  }
+
+  .walk__nav {
+    flex-direction: column-reverse;
+  }
+
+  .walk__nav .walk__next {
+    margin-left: 0;
+  }
+}

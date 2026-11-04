@@ -32,6 +32,7 @@ import { type EmailPort, emailAvailability } from '../email.ts'
 import type { MediaStore } from '../media-store.ts'
 import { restartPending } from '../restart-pending.ts'
 import { backofficeVersion } from '../status.ts'
+import { type TelemetryStatus, telemetryStatus } from '../telemetry.ts'
 
 export const UPGRADE_PACKAGE = '@crombolo/crombolo'
 
@@ -476,6 +477,7 @@ export function createDiagnosticsPort(options: HealthCheckOptions): DiagnosticsP
           availability.available ? (availability.description ?? undefined) : 'Not configured',
         ],
         ['Log level', config.logLevel],
+        ['Telemetry', describeTelemetry(telemetryStatus())],
         ['Time zone', Intl.DateTimeFormat().resolvedOptions().timeZone],
         ['Server time', now().toISOString()],
       ]
@@ -524,4 +526,10 @@ export function createDiagnosticsPort(options: HealthCheckOptions): DiagnosticsP
       return answer
     },
   }
+}
+
+/** Where traces, metrics and logs go, or that they go nowhere (story 262); never the headers. */
+export function describeTelemetry(status: TelemetryStatus): string {
+  if (!status.enabled) return 'Not sent anywhere'
+  return `Sent to ${status.endpoint} as ${status.serviceName} (${status.role})`
 }

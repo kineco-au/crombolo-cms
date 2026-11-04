@@ -353,7 +353,7 @@ has the detail.
 
 ```tsx
 // components/shared/layout.tsx
-import { type Child, SeoHead, usePage } from '@crombolo/crombolo'
+import { asset, type Child, SeoHead, usePage } from '@crombolo/crombolo'
 import { Breadcrumbs } from './breadcrumbs.tsx'
 import { Theme } from './theme.tsx'
 
@@ -369,7 +369,7 @@ export function Layout({ theme = 'light', children }: LayoutProps) {
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <SeoHead {...usePage()} />
-        <link rel="stylesheet" href="/css/site.css" />
+        <link rel="stylesheet" href={asset('/css/site.css')} />
       </head>
       <body class={`theme-${theme}`}>
         <Breadcrumbs />
@@ -595,6 +595,28 @@ Lit component, or plain TypeScript, joins a page.
 **By hand**, as a last resort: render an element with its props, and add your
 own bundled script with `<script type="module" src="/scripts/…">`. A page that
 does this needs no islands at all.
+
+## Personalised parts
+
+A part that shows the signed-in visitor, such as a greeting or an account
+link, goes in a component whose first line is `'use deferred'`. It is fetched
+for each visitor after the page loads, so the page around it is shared
+(story 263; [`rendering.md`](rendering.md), "Deferred parts"). A view that
+mentions `member` anywhere else makes every page using it each member's own.
+
+The back office helps (story 264):
+
+- **A page's Info tab** says whether its copies are shared, for how long, and
+  which files make it each member's, each a link to its editor.
+- **The view editor** notes each line that mentions the member in a file that
+  does not load separately.
+- **Insert → A personalised part** picks a part, or makes a new one from the
+  starter, and writes its tag with a `fallback` and its import. **Insert →
+  Partial view** writes a view's tag and import too.
+- **New partial view from snippet** offers "Personalised part" and
+  "Interactive part", each a working starter saying which to use when.
+- **Preview** has a visitor switch, for a user who can open Members: signed
+  out, or as a member they choose. Each choice is in the audit log.
 
 ## The development loop
 

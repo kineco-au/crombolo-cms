@@ -1197,14 +1197,17 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
       if (!(await isDocument(input.errorDocumentKey))) return 'error-node-not-found'
       const saved = await commit(
         actor,
-        (_tx, txDb) =>
-          new PublicAccessRepository(txDb).save({
+        async (_tx, txDb) => {
+          const done = await new PublicAccessRepository(txDb).save({
             nodeKey: key,
             loginNodeKey: input.loginDocumentKey,
             errorNodeKey: input.errorDocumentKey,
             memberGroupNames: input.memberGroupNames,
             memberUserNames: input.memberUserNames,
-          }),
+          })
+          if (done) await accessInstruction(txDb)
+          return done
+        },
         (done) => (done ? [{ type: 'publicAccessChanged', key, change }] : []),
       )
       if (!saved) return 'content-not-found'
@@ -1217,7 +1220,11 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
       if (!(await permits(actor, 'publicAccess', key))) return 'forbidden'
       const removed = await commit(
         actor,
-        (_tx, txDb) => new PublicAccessRepository(txDb).remove(key),
+        async (_tx, txDb) => {
+          const done = await new PublicAccessRepository(txDb).remove(key)
+          if (done) await accessInstruction(txDb)
+          return done
+        },
         (done) => (done ? [{ type: 'publicAccessChanged', key, change: 'removed' }] : []),
       )
       if (!removed) return 'entry-not-found'
@@ -1232,6 +1239,18 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
   async function isDocument(key: string): Promise<boolean> {
     const node = await nodes.byKey(key)
     return node?.objectType === repo.objectType
+  }
+
+  /**
+   * A page that leaves out what a visitor may not open changes with who may,
+   * so a change to it moves the checkpoint, and every page's ETag (story 258).
+   */
+  async function accessInstruction(on: Db): Promise<void> {
+    await appendCacheInstruction(on, {
+      kind: 'content',
+      payload: { publicAccess: true },
+      by: options.repository?.nodeId,
+    })
   }
 
   /** The content cache instruction other nodes rebuild on. */

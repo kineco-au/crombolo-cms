@@ -7,14 +7,20 @@
  * declares it too — in the file, not the database.
  */
 import { existsSync, readFileSync } from 'node:fs'
-import { basename, join, resolve, sep } from 'node:path'
+import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { type FormSubmissionState, isOutcome, type Outcome } from '@crombolo/core'
 import { componentStackOf, trackComponent } from './component-stack.ts'
 import { emailScope, markPersonal, type PageActions, renderScope } from './context.ts'
+import {
+  DEFERRED_TAGS,
+  type DeferredRequest,
+  type DeferredScope,
+  isDeferredSource,
+} from './deferred.ts'
 import type { EmailProps, EmailRenderResult } from './email.ts'
 import { RawHtml } from './html.ts'
-import { ISLANDS_PATH, withIslandTags } from './islands.ts'
+import { beforeBodyEnd, ISLANDS_PATH, withIslandTags } from './islands.ts'
 import { type Child, renderToString } from './jsx-runtime.ts'
 import type {
   PageOutcome,
@@ -76,6 +82,11 @@ export interface RenderedCaching {
   personal: boolean
   /** The template's own `revalidate`, overriding its type's and the site's lifetime. */
   revalidate?: number | false
+  /**
+   * The view files it rendered that mention `member` (story 263): the page
+   * depends on who is signed in, and is shared only with signed-out visitors.
+   */
+  memberFiles?: string[]
 }
 
 export type RenderResult =
@@ -146,6 +157,10 @@ export interface RenderRequest {
   site?: () => unknown
   /** On a status page, the outcome it is answering, for `usePage().outcome`. */
   outcome?: PageOutcome
+  /** Signs a `'use deferred'` part's address; without it, parts render in place (story 263). */
+  signDeferred?: (data: string) => string
+  /** Renders only this part of the page, for its own request. */
+  part?: DeferredRequest
 }
 
 /** The query string as Next.js hands it to a page: a name given twice becomes an array. */
@@ -208,6 +223,8 @@ export class Renderer {
   /** Keyed by the generation that holds the view, so one swap retires them all. */
   #modules = new Map<string, ComponentModule>()
   #importedFrom: string | undefined
+  /** Per view file in the current generation: the files it or its imports have that mention `member`. */
+  #memberFiles = new Map<string, string[]>()
   #renderTimeoutMs: number
   #islandsManifest: (generation: string | undefined) => string | undefined
 
@@ -246,9 +263,50 @@ export class Renderer {
     const dir = this.#snapshots?.directory() ?? this.#componentsDir
     if (dir !== this.#importedFrom) {
       this.#modules.clear()
+      this.#memberFiles.clear()
       this.#importedFrom = dir
     }
     return dir
+  }
+
+  /**
+   * The files among `file` and what it imports from the views that mention
+   * `member` (story 263). Read once per file per generation. A deferred part's
+   * own source is left out, as it renders in its own request, and so is any
+   * package, whose code cannot be read here.
+   */
+  #filesMentioningMember(file: string, seen = new Set<string>()): string[] {
+    const known = this.#memberFiles.get(file)
+    if (known) return known
+    if (seen.has(file) || isDeferredSource(file)) return []
+    seen.add(file)
+    let source: string
+    try {
+      source = readFileSync(file, 'utf8')
+    } catch {
+      return []
+    }
+    const found: string[] = []
+    try {
+      if (/\bmember\b/.test(viewTranspiler.transformSync(source))) found.push(file)
+      for (const { path } of viewTranspiler.scanImports(source)) {
+        if (!path.startsWith('.')) continue
+        const target = resolveView(join(dirname(file), path))
+        if (target) found.push(...this.#filesMentioningMember(target, seen))
+      }
+    } catch {
+      // A file that does not parse fails its render, which says so.
+      found.push(file)
+    }
+    const unique = [...new Set(found)]
+    this.#memberFiles.set(file, unique)
+    return unique
+  }
+
+  /** A view file as a person reads it: `components/shared/layout.tsx`. */
+  #shownPath(file: string): string {
+    const dir = this.#importedFrom ?? this.#componentsDir
+    return `${basename(this.#componentsDir)}/${relative(dir, file).split(sep).join('/')}`
   }
 
   /**
@@ -458,7 +516,8 @@ export class Renderer {
     rendering: { alias: string },
     caching: RenderedCaching,
   ): Promise<string | undefined> {
-    const page = await this.#load(alias)
+    const used = new Set<string>()
+    const page = await this.#load(alias, used)
     if (!page) return undefined
     const dynamic = page.dynamic ?? 'auto'
     const shared = dynamic === 'force-static'
@@ -501,36 +560,60 @@ export class Renderer {
 
     const metadata: { value?: Metadata } = {}
     const islands = { used: false }
+    const deferred: DeferredScope | undefined = request.signDeferred
+      ? { inPart: request.part !== undefined, sign: request.signDeferred, used: false }
+      : undefined
     // Inside the page's scope, so any component can ask for it with `usePage()`.
     try {
       const html = await renderScope(
         props,
         async () => {
+          if (request.part) return this.#renderPart(request.part)
           if (page.generateMetadata) metadata.value = await page.generateMetadata(props)
-          return this.#renderLayouts(alias, props, rendering)
+          return this.#renderLayouts(alias, props, rendering, used)
         },
         {
           search: request.search,
           preview: request.preview,
           antiforgery: request.antiforgery,
-          blockComponent: (blockAlias) => this.blockComponent(blockAlias),
+          blockComponent: (blockAlias) => this.blockComponent(blockAlias, used),
           request: { headers: shared ? new Headers() : (request.headers ?? new Headers()) },
           site: request.site,
           personal: shared ? { value: false } : personal,
           metadata,
           islands,
           actions: request.actions,
+          deferred,
         },
       )
-      if (html === undefined || !islands.used) return html
+      if (html === undefined || request.part) return html
+      const withParts = deferred?.used ? beforeBodyEnd(html, DEFERRED_TAGS) : html
+      if (!islands.used) return withParts
       // The generation the views were imported from, so the page loads the code built with them.
       const manifest = this.#islandsManifest(
         this.#importedFrom && this.#snapshots ? basename(this.#importedFrom) : undefined,
       )
-      return manifest ? withIslandTags(html, manifest) : html
+      return manifest ? withIslandTags(withParts, manifest) : withParts
     } finally {
-      caching.personal = !shared && (personal.value || member !== undefined)
+      const files = [...new Set([...used].flatMap((file) => this.#filesMentioningMember(file)))]
+      if (files.length > 0) caching.memberFiles = files.map((file) => this.#shownPath(file))
+      caching.personal = !shared && (personal.value || (member !== undefined && files.length > 0))
     }
+  }
+
+  /** A `'use deferred'` part alone, for its own request: its module's export, rendered in place. */
+  async #renderPart(part: DeferredRequest): Promise<string | undefined> {
+    const segments = part.module.split('/')
+    const safe =
+      /\.[jt]sx?$/.test(part.module) &&
+      segments.every((segment) => /^[A-Za-z0-9_.-]+$/.test(segment) && !/^\.+$/.test(segment))
+    if (!safe) return undefined
+    const file = join(this.#importDir(), ...segments)
+    if (!existsSync(file)) return undefined
+    const module = (await import(pathToFileURL(file).href)) as Record<string, unknown>
+    const render = module[part.exportName]
+    if (typeof render !== 'function') return undefined
+    return renderToString((render as (props: object) => Child)({ ...part.props }))
   }
 
   /** Generic over its props: a page's, or an e-mail's. */
@@ -538,6 +621,7 @@ export class Renderer {
     alias: string,
     props: Props,
     rendering: { alias: string },
+    used?: Set<string>,
   ): Promise<string | undefined> {
     let currentAlias: string | undefined = alias
     let body: RawHtml | undefined
@@ -547,7 +631,7 @@ export class Renderer {
     // wraps the result. A cycle would otherwise hang the request.
     while (currentAlias && depth < MAX_LAYOUT_DEPTH) {
       rendering.alias = currentAlias
-      const module = await this.#load(currentAlias)
+      const module = await this.#load(currentAlias, used)
       if (!module) return depth === 0 || body === undefined ? undefined : withDoctype(body.value)
       const render = module.default as unknown as (props: object) => Child | Promise<Child>
       const layoutProps = body === undefined ? props : { ...props, children: body }
@@ -570,15 +654,16 @@ export class Renderer {
    * nowhere else. The alias is one plain segment, so an element type alias can
    * never reach outside `blocks/`.
    */
-  async blockComponent(alias: string) {
+  async blockComponent(alias: string, used?: Set<string>) {
     if (!/^[A-Za-z0-9_-]+$/.test(alias)) return undefined
-    const module = await this.#load(`blocks/${alias}`)
+    const module = await this.#load(`blocks/${alias}`, used)
     return module?.default as ((props: never) => Child | Promise<Child>) | undefined
   }
 
-  async #load(alias: string): Promise<ComponentModule | undefined> {
+  async #load(alias: string, used?: Set<string>): Promise<ComponentModule | undefined> {
     const file = this.componentPath(alias)
     if (!file) return undefined
+    used?.add(file)
     // The path carries the generation, so one entry per view per generation and
     // a swap never answers from the generation before it.
     const cached = this.#modules.get(file)
@@ -591,6 +676,19 @@ export class Renderer {
     this.#modules.set(file, module)
     return module
   }
+}
+
+const viewTranspiler = new Bun.Transpiler({ loader: 'tsx' })
+
+/** A relative import's file in the views: as written, or with the extension it leaves off. */
+function resolveView(path: string): string | undefined {
+  for (const candidate of [
+    path,
+    ...['.tsx', '.ts', '.jsx', '.js'].map((extension) => `${path}${extension}`),
+    ...['index.tsx', 'index.ts'].map((name) => join(path, name)),
+  ])
+    if (/\.[jt]sx?$/.test(candidate) && existsSync(candidate)) return candidate
+  return undefined
 }
 
 /** What a template threw, for a person to act on (`Renderer.describeError`). */

@@ -1,5 +1,6 @@
 import type { PageProps } from '@crombolo/crombolo'
 import { DocsLayout, headingsOf } from '../shared/docs.tsx'
+import WalkthroughView, { type Walkthrough } from '../shared/walkthrough.tsx'
 
 export default function DocsPage(props: PageProps) {
   const { model, nav } = props
@@ -8,9 +9,18 @@ export default function DocsPage(props: PageProps) {
     .filter((child) => child.contentType.alias === 'docsPage')
   const generatedFrom = model.text('generatedFrom')
   const editUrl = model.text('editUrl')
+  const walkthrough = model.text('walkthrough')
+  const body = <div class="prose">{model.html('body')}</div>
   return (
     <DocsLayout {...props} headings={headingsOf(model.text('body'))}>
-      <div class="prose">{model.html('body')}</div>
+      {/* A walkthrough shows a step at a time once it mounts, and the whole page until then. */}
+      {walkthrough ? (
+        <WalkthroughView walk={JSON.parse(walkthrough) as Walkthrough} load="load">
+          {body}
+        </WalkthroughView>
+      ) : (
+        body
+      )}
       {/* A page that only groups others lists them, so it is never empty. */}
       {children.length > 0 && !model.hasValue('body') ? (
         <ul class="docs-index">

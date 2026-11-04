@@ -1,164 +1,311 @@
 ---
 title: A site from the command line
-summary: Build a small bakery site with commands alone, from an empty folder to pages served, a contact form, an editors' group, an approval workflow, a webhook and a bundle to ship.
+summary: From an empty folder to a running Crombolo site in a few minutes, signed in to the back office, then on to your own pages, forms, approvals and shipping.
 order: 1
+walkthrough: true
+choice: Database: SQLite, Postgres
 ---
 
-This walk builds a small site for a bakery. Every step is a command, and each one is checked against the site before it changes anything. The site's definitions are kept as files under `schema/`, which you commit with the rest of the site, but you never need to open them.
+In a few minutes you will go from an empty folder to a running Crombolo site: a home page served on your own computer, and a back office where you and your editors write and publish content. Every step is a command you can copy and paste. The site keeps its content in SQLite, which needs nothing installed beyond [Bun](https://bun.sh), or in Postgres if you'd rather: pick one at the start.
 
-The same steps run on every build of Crombolo, as a test, so what you see here is what happens.
+The first part ends with the site running and you signed in. After that, carry on to shape your own pages with blocks and views, then to the advanced part: a contact form, an editors' group, an approval workflow, a webhook, and the whole site shipped to another server. Everything you set up is kept in files, so it goes into version control with the rest of your code.
 
-## An empty site
+## Before you start
+
+### Check your system
+
+Crombolo runs on macOS and Linux, and on Windows through WSL 2, so on Windows open a WSL terminal and run every step there.
+
+```sh
+uname -s
+```
+
+> You'll see `Darwin` on a Mac, or `Linux` on Linux and in WSL.
+
+> **On Windows without WSL?** Run `wsl --install` in PowerShell as an administrator, restart, then open the Ubuntu terminal it adds.
+
+### Check Bun
+
+Check that Bun 1.3 or later is installed, as it runs the site and its command line.
+
+```sh
+bun --version
+```
+
+> You'll see a version such as `1.3.4`.
+
+> **Not found, or older than 1.3?** Install it with `curl -fsSL https://bun.sh/install | bash`, or update it with `bun upgrade`, then open a new terminal.
+
+### Check Docker [Postgres]
+
+Check that Docker is running, to start the database in, unless you have a Postgres server of your own.
+
+```sh
+docker info --format '{{.ServerVersion}}'
+```
+
+> You'll see Docker's version. An error saying it can't connect means Docker isn't running: start Docker Desktop, or the Docker service, and try again.
+
+## Up and running
+
+### Start a Postgres database [Postgres]
+
+Start Postgres in Docker, or use your own server with a database made for the site.
+
+```sh
+docker run -d --name riverside-db -p 5432:5432 \
+  -e POSTGRES_USER=crombolo -e POSTGRES_PASSWORD=crombolo \
+  -e POSTGRES_DB=riverside-bakery postgres:18-alpine
+```
+
+> You'll see a long id, as Docker starts the database in the background.
+
+### Make the site [SQLite]
+
+Create a folder and set up a new site in it, with its content kept in a file beside it.
 
 ```sh
 mkdir riverside-bakery && cd riverside-bakery
 bunx @crombolo/cli@latest init --name "Riverside Bakery"
+```
+
+> You'll see `A site called "Riverside Bakery", on SQLite.`, then the commands to run next.
+
+### Make the site [Postgres]
+
+Create a folder and set up a new site in it, with its content kept in Postgres.
+
+```sh
+mkdir riverside-bakery && cd riverside-bakery
+bunx @crombolo/cli@latest init --name "Riverside Bakery" --postgres
+```
+
+> You'll see `A site called "Riverside Bakery", on Postgres.`, then the commands to run next. The database's address is in `.env`; change `CROMBOLO_POSTGRES_URL` there if yours is somewhere else.
+
+### Install it
+
+Install the site's packages.
+
+```sh
 bun install
 ```
 
-`init` says what it set up and what to run next. A SQLite database is made the first time a command needs one, so there is nothing else to install.
+> You'll see Bun install the packages. From here on, `bunx crombolo` runs your site's own command line.
 
-From here on, `bunx crombolo` runs the command line the site installed.
+### Add a type of page
 
-## The types
+Say what a page holds: this one gets a title, and a view that shows it.
 
-A type says what a page or block holds. Start with the pieces: a short text, and a "highlight" block with a heading. A block is an element type, so it comes before the list that offers it. A new element type starts empty, and is not offered in the Library unless you add `--library`.
+```sh
+bunx crombolo types new content-type page --name Page --at-root
+```
+
+> You'll see `added the content type "Page"` and `created components/page.tsx`.
+
+### Write the home page
+
+Make the home page and publish it.
+
+```sh
+bunx crombolo content new /Home --type page --set title=Home --publish
+```
+
+> You'll see `made /Home (Page)`, then `published`.
+
+### Start it
+
+Start the site.
+
+```sh
+bun start
+```
+
+> You'll see `Crombolo is running`, with the addresses of the back office and the site, and a username and password under `Sign in with`.
+
+> **Make a note of the username and password now.** The password is made up fresh each time the site starts, and it isn't shown anywhere else.
+
+### Welcome to Crombolo
+
+Congratulations! Welcome to your new Crombolo site: it's up and running, and ready for content.
+
+- **Your site:** <http://localhost:8080/> shows the home page.
+- **The back office:** <http://localhost:8080/crombolo> is where you write and publish content.
+- **Signing in:** open the back office and enter the username and password you noted. If you lost them, stop the site with Ctrl+C and run `bun start` again for a new password.
+- **Next:** [Templates](/docs/getting-started/templates/) start a site with ready-made pages, and the [Guides](/docs/guides/) explain each part in depth.
+
+## Your own pages
+
+### Stop the site
+
+Press Ctrl+C in the terminal running the site, so the next commands can change it.
+
+> You'll see the site stop, and the prompt return.
+
+### Make a block
+
+Add a highlight block with a heading, as a piece that can go on any page.
 
 ```sh
 bunx crombolo types new data-type shortText --editor textstring --max-chars 80
-
 bunx crombolo types new content-type highlight --element --name Highlight --no-view
 bunx crombolo types property add highlight heading --type shortText --name Heading
-
-bunx crombolo types new data-type pageBlocks --editor block-list --block highlight
 ```
 
-Then the page. A content page starts with a mandatory title. Give it a list of blocks, and let pages sit beneath it:
+> You'll see each command say what it added: a data type, then the element type "Highlight", which gains "heading".
+
+### Put blocks on the page
+
+Give the page a list of blocks, and let pages sit beneath it.
 
 ```sh
-bunx crombolo types new content-type contentPage --name "Content page" --at-root
-bunx crombolo types property add contentPage blocks --type pageBlocks --name Blocks
-bunx crombolo types update contentPage --allow-child contentPage
+bunx crombolo types new data-type pageBlocks --editor block-list --block highlight
+bunx crombolo types property add page blocks --type pageBlocks --name Blocks
+bunx crombolo types update page --allow-child page
 ```
 
-Each command is checked and applied at once, and says what it did:
+> You'll see `The content type "Page" gains "blocks"`, then that it allows page beneath it.
 
-```text
-  The content type "Content page" gains "blocks" (pageBlocks) in the tab "Content".
-  schema   applied 1.0.0: created 0 type(s), 1 property, 0 data type(s), 0 language(s)
-```
+### Make the views
 
-`bunx crombolo types show contentPage` shows a type and what uses it. A type composed of another, with `--compose`, takes its properties and shows each one with where it comes from.
-
-## The views
-
-Views are code, and you write them as code. `types new` wrote `components/contentPage.tsx` for the page type. `components new` writes one for the block:
+Write a view for the block, and the types your views are checked against.
 
 ```sh
 bunx crombolo components new --block highlight
 bunx crombolo generate
 ```
 
-`generate` writes the model types your views are checked against. Change `components/contentPage.tsx` to show the title and the blocks:
+> You'll see `created components/blocks/highlight.tsx`, then `wrote schema/content-types.d.ts`.
 
-```tsx
+### Show the blocks
+
+Change the two views so the page shows its blocks, and the block its heading.
+
+```tsx components/page.tsx
 import { Blocks, type PageProps } from '@crombolo/crombolo'
 
-export default function ContentPage({ model }: PageProps) {
+export default function Page({ model }: PageProps) {
   return (
-    <main>
-      <h1>{model.text('title')}</h1>
-      <Blocks items={model.value('blocks')} />
-    </main>
+    <html lang="en">
+      <body>
+        <h1>{model.text('title')}</h1>
+        <Blocks items={model.value('blocks')} />
+      </body>
+    </html>
   )
 }
 ```
 
-A view can pick one block out by its alias too: `model.value('blocks')?.byAlias('sourdough')`.
+```tsx components/blocks/highlight.tsx
+import type { BlockProps } from '@crombolo/crombolo'
+import type { Highlight } from '../../schema/content-types'
 
-## A form, a group, a workflow and a webhook
+export default function HighlightBlock({ content }: BlockProps<Highlight>) {
+  return <h2 class="highlight">{content.text('heading')}</h2>
+}
+```
 
-A contact form, with a field for the message, picked on the page:
+> You'll see nothing yet: the views are checked when the site starts.
+
+### Add a block and a page
+
+Put a highlight on the home page, and add a page beneath it.
+
+```sh
+bunx crombolo content block add /Home blocks --type highlight --alias sourdough \
+  --set heading="Sourdough, baked daily" --publish
+bunx crombolo content new "/Home/Visit us" --type page --set title="Visit us" --publish
+```
+
+> You'll see `changed /Home blocks: a highlight block "sourdough"`, then `made /Home/Visit us (Page)`, each followed by `published`.
+
+### See it served
+
+Start the site again, with a new password to note.
+
+```sh
+bun start
+```
+
+> You'll see the home page at <http://localhost:8080/> with its highlight, and the new page at <http://localhost:8080/visit-us>. `bunx crombolo site show` lists everything the site holds.
+
+## Advanced
+
+### Add a contact form
+
+Stop the site, then make a form and pick it on the "Visit us" page.
 
 ```sh
 bunx crombolo forms new contact --name "Contact us"
 bunx crombolo forms field add contact message --type long-answer --caption Message --mandatory
-bunx crombolo types property add contentPage contactForm --type formPicker --name "Contact form"
+bunx crombolo types property add page contactForm --type formPicker --name "Contact form"
+bunx crombolo content update "/Home/Visit us" --set contactForm=contact --publish
 ```
 
-A group for the people who edit the site, and a workflow that asks one of them to approve a page before it is published:
+> You'll see `added the form "Contact us"`, the field it gains, then `saved /Home/Visit us` and `published`.
+
+### Add an editors' group
+
+Make a group for the people who write the site's content.
 
 ```sh
 bunx crombolo users groups new editors --name Editors --section content \
   --permission content:read --permission content:publish --language all
-bunx crombolo workflows new sign-off --content-type contentPage --approver editors
 ```
 
-`bunx crombolo users groups permissions` lists the permissions a group can hold, and `bunx crombolo users groups sections` the sections it can open. A permission is named for its area and what it allows, such as `content:publish` or `media:update`.
+> You'll see `The user group "Editors" (editors) is added.` `bunx crombolo users groups permissions` lists the other permissions a group can hold.
 
-A webhook, sent whenever a page is published:
+### Ask for approval
+
+Have an editor approve each page before it's published.
+
+```sh
+bunx crombolo workflows new sign-off --content-type page --approver editors
+```
+
+> You'll see `added the workflow "Sign off"`. From now on, publishing a page waits for an editor to approve it.
+
+### Send a webhook
+
+Tell another service whenever a page is published.
 
 ```sh
 bunx crombolo webhooks new published --url https://example.test/hook --event content-published
 ```
 
-`bunx crombolo webhooks events` lists the events.
+> You'll see `added the webhook "published"`. `bunx crombolo webhooks events` lists the other events.
 
-## The pages
+### Package the site
 
-Pages are written to the site's database, as the back office writes them. Values take the same shorthand content files use: Markdown for rich text, a path for a picked page.
-
-```sh
-bunx crombolo content new /Home --type contentPage --set title="Riverside Bakery"
-bunx crombolo content block add /Home blocks --type highlight --alias sourdough \
-  --set heading=Sourdough
-bunx crombolo content new "/Home/Visit us" --type contentPage \
-  --set title="Visit us" --set contactForm=contact
-bunx crombolo content show /Home
-```
-
-A block is named by its alias, here `sourdough`, or by its key. `content block update`, `move` and `remove` take the same names.
-
-The home page is under the sign-off workflow, so publishing it waits for an editor's approval. To publish it now, and have the audit log record that you did:
-
-```sh
-bunx crombolo content publish /Home --descendants --skip-approval
-```
-
-## Served
-
-```sh
-bunx crombolo site show
-bun start
-```
-
-`site show` is the whole site in one place: its languages, addresses, types, forms, workflows, groups and webhooks. `bun start` serves it on <http://localhost:8080/>, with the home page at `/` and its child at `/visit-us`. The back office is at <http://localhost:8080/crombolo>, and the start prints how to sign in.
-
-## Shipped
-
-A bundle carries the site's definitions, views and content to another site. Pages made by command live in the database, so export them as content files first:
+Export the pages as files, and build the whole site into a bundle.
 
 ```sh
 bunx crombolo bundle export --source --root /Home
 bunx crombolo bundle build . --out ../bakery-bundle
 ```
 
-When the definitions have changed since their version was first applied, `bundle build` raises the version, so a production site takes the change.
+> You'll see the pages written under `content/`, the version raised to `1.1.0`, then `wrote ../bakery-bundle`.
 
-On the other site, `start` applies the bundle, then serves the same pages:
+### Ship it
+
+Make a second site, and start it from the bundle.
 
 ```sh
+mkdir ../bakery-copy && cd ../bakery-copy
+bunx @crombolo/cli@latest init --name "Riverside Bakery"
+bun install
 bunx crombolo start --bundle ../bakery-bundle --publish --replace-files
 ```
 
-`--replace-files` lets the bundle's definitions take the place of a new site's starting ones. To replace a whole environment from here instead, use `bunx crombolo push`; see [Remotes](/docs/guides/remotes/) and [Deploying](/docs/guides/deploying/).
+> You'll see the same pages served from the new site. To replace a whole environment instead, see [Remotes](/docs/guides/remotes/) and [Deploying](/docs/guides/deploying/).
 
-## What you committed
+### What you built
+
+Everything you set up is in three folders, ready to commit.
 
 ```text
 schema/        the site's definitions: types, forms, groups, workflows, webhooks
 components/    its views
-content/       its pages, exported as content files
+content/       its pages, exported as files
 ```
 
-The files are readable, and a change to them shows in a review like any other code. Editing one by hand works too: it is checked, and applied, exactly as a command's change is.
+> You'll see each change in a review like any other code. Editing a file by hand works too: it's checked and applied just as a command's change is.

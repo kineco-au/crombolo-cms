@@ -15,6 +15,7 @@ import { logger } from './logging.ts'
 import type { JobRunner } from './owner-jobs.ts'
 import type { SchemaBoot } from './schema.ts'
 import { createSeoHost } from './seo.ts'
+import { stopTelemetry } from './telemetry.ts'
 
 export interface WorkerHealth {
   /** False once the database is ahead of this node, as on any node that writes. */
@@ -133,6 +134,7 @@ export async function createWorker(config: CromboloConfig): Promise<WorkerHandle
       poller.stop()
       await closeTables(core.chains)
       await db.close()
+      await stopTelemetry()
     },
   }
 }

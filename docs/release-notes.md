@@ -6,6 +6,111 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.47.0 — 2026-11-04
+
+### Behind a CDN
+
+- **A CDN's check is answered without rendering, when a site asks** (258).
+  With `cache.validator = 'published'` (or `CROMBOLO_CACHE_VALIDATOR`), a
+  page's or Delivery API answer's ETag comes from what was last published,
+  the site's code and the Crombolo version, not from its body. Each server
+  remembers what it last sent each address, so a CDN checking back gets a
+  `304` with no render, and any publish changes every ETag. Public access is
+  still checked on every `304`, and a request from a signed-in member always
+  renders. A type can keep `validator = 'body'`, for pages that show the time.
+  Off unless turned on.
+- **Changing who may see a page now tells every server** (258), as a publish
+  does, so a page listing only what a visitor may open is fresh everywhere.
+- **`cache.mode: 'check'`** (259), for a CDN with no purge set up: copies are
+  kept, served at once, checked back with the site behind the visitor, and
+  served for a week while the site is down. With `validator: 'published'`
+  each check is answered without rendering; with the default ETag a copy is
+  kept a minute first, so a page is rendered at most once a minute per CDN
+  location. `CROMBOLO_CACHE_MODE`, `CROMBOLO_CACHE_STALE_IF_ERROR`,
+  `CROMBOLO_CACHE_CHECK_FLOOR`.
+- **Every kept copy may be served while the site is down** (259): each
+  lifetime now carries `stale-if-error`, a week unless set.
+- **Stylesheets and scripts at addresses that change with their content**
+  (260). `asset('/css/site.css')` gives `/css/site.3f9a1c2b.css`, kept for a
+  year, and an address whose hash is no longer the file's answers `404`. The
+  plain address is asked for again each time, now with an ETag. The scripts
+  Crombolo writes (forms, bundle, islands and deferred loaders) are kept a
+  year at their own hashed addresses, and their plain addresses drop from an
+  hour to `no-cache`. The site templates link their stylesheets with
+  `asset()`.
+
+### Members and shared pages
+
+- **Pages are shared with signed-in members unless they show them** (263). A
+  page used to be private whenever a member was signed in. Now it is private
+  only when a view it renders, or anything it imports from the views,
+  mentions `member`. A page that does says `Vary: X-Crombolo-Member`, so a
+  CDN that sets that header from the member cookie shares every other page
+  with members too ("Members and a shared cache" in `operations.md`).
+- **`'use deferred'` parts** (263). A view file starting with
+  `'use deferred'` is fetched by the browser in a request of its own, for the
+  visitor, so the page around it stays shared: `<Greeting fallback={…} />`
+  writes its fallback into the page, and `/crombolo/deferred.js` puts the
+  visitor's part in its place, from a signed, private address.
+- **The back office shows which pages are shared, and helps share them**
+  (264). A page's Info tab says how long its copies are kept and which files
+  make it each member's own, each linked to its editor; the view editor notes
+  a line that mentions the member; Insert offers "A personalised part", and
+  the partial view insert is back, writing its import; "Personalised part"
+  and "Interactive part" are snippets to start a view from; and Preview
+  switches between signed out and a chosen member, for users with Members,
+  each switch in the audit log. The Insert menu's new entries are a commit on
+  the back-office fork (`umbraco/crombolo`).
+
+### Telemetry
+
+- **Traces, metrics and logs over OpenTelemetry** (262). Set
+  `OTEL_EXPORTER_OTLP_ENDPOINT`, or `telemetry` in `crombolo.config.ts`, and
+  every role sends each request, render, database statement, Delivery API
+  answer, job run, webhook delivery and e-mail as spans, the request, render,
+  cache, job and webhook metrics, and its log lines under their trace, to
+  Datadog, Grafana, Honeycomb or any collector. Nothing personal is sent, and
+  log lines go as their templates, never their values. Unset, nothing is
+  loaded or sent. A request's `traceparent` is followed only from
+  `CROMBOLO_TRUSTED_PROXIES` (`trustedProxies` in code); webhooks send theirs
+  on. The log file records each line's `TraceId` and `SpanId`, and System
+  information says where telemetry goes. Idle, it costs about a third of a
+  percent of a core and 13 MB.
+
+### Getting started
+
+- **"A site from the command line" is a walkthrough.** A step at a time, with
+  Back and Next, the commands to copy, and what you will see after each. It
+  starts by checking your system, Bun and, for Postgres, Docker; switches
+  between SQLite and Postgres; and its first part ends with the site running
+  and you signed in, with a prompt to note the password `bun start` prints.
+  Your own pages come next, then forms, groups, workflows, webhooks and
+  shipping. The integration suite runs the page's own commands.
+
+### Migrations
+
+None.
+
+### Upgrade notes
+
+- **A view or package that reads the member some other way.** A page is now
+  shared with members unless a view it renders mentions `member` (263). Code
+  outside the views is not read: a component from a package that calls
+  `usePage().member` itself, without a view passing the member in, would be
+  shown to one member and shared with the next. Pass the member to it as a
+  prop from a view, or make it a `'use deferred'` part.
+- **A CDN that skipped its cache for the member cookie** can keep doing so.
+  To share pages that do not show the member with members too, set
+  `X-Crombolo-Member` from the cookie instead.
+- **Lifetimes gain `stale-if-error=604800`** (259): a CDN or browser may serve
+  a kept copy for a week while the site answers with errors. Set
+  `staleIfError: 0` to keep the old header.
+- **Link stylesheets and scripts with `asset()`** to have them kept for a year:
+  `<link rel="stylesheet" href={asset('/css/site.css')} />`. The plain
+  addresses still work, asked for again on every request.
+- **New dependencies:** OpenTelemetry's API and SDK packages, loaded only when
+  telemetry is turned on.
+
 ## v0.46.1 — 2026-11-03
 
 - **`bundle deploy` checks for uncommitted changes first** (256). 0.46.0 raised

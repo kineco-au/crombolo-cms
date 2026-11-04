@@ -40,6 +40,12 @@ description = "Set when the page is written from the product itself, such as the
 type = "textstring"
 
 [[tab.property]]
+alias = "walkthrough"
+name = "Walkthrough"
+description = "Written by the docs build when the page is a walkthrough: its steps, shown one at a time"
+type = "textarea"
+
+[[tab.property]]
 alias = "editUrl"
 name = "Edit link"
 description = "Where to suggest a change to this page; shown at the foot of the page"

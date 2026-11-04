@@ -10,8 +10,16 @@
  * TSX (`tsx-snippets.js`), and the inserts with no TSX equivalent, a partial view
  * (an import as well as a tag) and Razor's sections, are hidden.
  */
-import { PartialViewService } from '@umbraco-cms/backoffice/external/backend-api'
+import { PartialViewService, TemplateService } from '@umbraco-cms/backoffice/external/backend-api'
 import { toTsxSnippet } from './tsx-snippets.js'
+import {
+  importFor,
+  memberNotes,
+  PERSONALISED_PART_DIALOG,
+  partInsert,
+  personalisedPartInsert,
+  withImport,
+} from './view-parts.js'
 
 export const SCAFFOLD = `import type { PageProps } from '@crombolo/crombolo'
 
@@ -177,6 +185,8 @@ async function configureTsx() {
  */
 function viewEditor() {
   let configured = { monaco: undefined, ok: false }
+  let model
+  let file
   return {
     language: 'typescript',
     async prepare() {
@@ -196,7 +206,7 @@ function viewEditor() {
       // `.tsx` on it is a file TypeScript refuses to read JSX in: every tag in the
       // view would be a syntax error. So the model is replaced by one named as the
       // file it is.
-      const model = monaco.editor.createModel(
+      model = monaco.editor.createModel(
         created.getValue(),
         'typescript',
         monaco.Uri.parse(`${COMPONENTS}/view-${++opened}.tsx`),
@@ -204,8 +214,61 @@ function viewEditor() {
       editor.setModel(model)
       created.dispose()
       editor.onDidDispose(() => model.dispose())
+      openFile().then((path) => {
+        file = path
+      })
+      // Story 264: a file that shows the signed-in member says what that does to sharing.
+      const note = () =>
+        monaco.editor.setModelMarkers(
+          model,
+          'crombolo-member',
+          memberNotes(model.getValue()).map((at) => ({
+            severity: monaco.MarkerSeverity.Info,
+            message: at.message,
+            startLineNumber: at.line,
+            startColumn: at.start,
+            endLineNumber: at.line,
+            endColumn: at.end,
+          })),
+        )
+      note()
+      let pending
+      model.onDidChangeContent(() => {
+        clearTimeout(pending)
+        pending = setTimeout(note, 300)
+      })
     },
-    insert: toTsxSnippet,
+    insert(text) {
+      // A part is a tag at the cursor and an import at the top (story 264).
+      const part = partInsert(text)
+      if (!part || !model) return toTsxSnippet(text)
+      const line = importFor(part.path, file)
+      const next = withImport(model.getValue(), line)
+      if (next !== model.getValue()) {
+        const { monaco } = configured
+        const at = /^(?:import[^\n]*\n)*/.exec(model.getValue())?.[0].split('\n').length ?? 1
+        model.pushEditOperations(
+          [],
+          [{ range: new monaco.Range(at, 1, at, 1), text: `${line}\n` }],
+          () => null,
+        )
+      }
+      return part.tag
+    },
+  }
+}
+
+/** The view open in the editor, as a path under `components/`, from the address. */
+async function openFile() {
+  const partial = /\/workspace\/partial-view\/edit\/([^/?#]+)/.exec(location.pathname)
+  if (partial) return decodeURIComponent(partial[1]).replace('%dot%', '.')
+  const template = /\/workspace\/template\/edit\/([0-9a-f-]{36})/i.exec(location.pathname)
+  if (!template) return undefined
+  try {
+    const { data } = await TemplateService.getTemplateById({ path: { id: template[1] } })
+    return data?.alias ? `/${data.alias}.tsx` : undefined
+  } catch {
+    return undefined
   }
 }
 
@@ -221,9 +284,13 @@ export const TSX_HOOKS = {
   translateSnippet: toTsxSnippet,
   viewLanguageLabel: 'TypeScript',
   hideRazorInserts: true,
+  // A partial view is a tag and an import, which `insert` writes (story 264).
+  showPartialViewInsert: true,
+  extraInserts: [personalisedPartInsert],
 }
 
-export const onInit = async () => {
+export const onInit = async (_host, extensionRegistry) => {
+  extensionRegistry?.register(PERSONALISED_PART_DIALOG)
   const { umbCromboloHooks } = await import('@umbraco-cms/backoffice/extension-registry')
   Object.assign(umbCromboloHooks, TSX_HOOKS)
 }

@@ -209,6 +209,10 @@ rather than the running server. Secret ones are never printed or logged.
 | `CROMBOLO_CACHE_MAX_AGE` | number | — | Seconds browsers and a CDN may reuse a page, an API answer or a media item before asking again; 0 keeps nothing. Unset, nothing is kept. |
 | `CROMBOLO_CACHE_STALE_WHILE_REVALIDATE` | number | — | Seconds an out-of-date copy may still be shown while a fresh one is fetched. |
 | `CROMBOLO_CACHE_TAG_HEADER` | string | — | The header your CDN purges by, such as Surrogate-Key or Cache-Tag. Set, every answer lists the pages and media in it. |
+| `CROMBOLO_CACHE_MODE` | `lifetime`, `check` | `lifetime` | How a CDN keeps copies: for the lifetime set above, or, with check, kept and checked back with the site before each use, served at once while checking and while the site is down. Check suits a CDN with no purge set up. |
+| `CROMBOLO_CACHE_STALE_IF_ERROR` | number | `604800` | Seconds a kept copy may still be served while the site is answering with errors. Applies whenever copies are kept. |
+| `CROMBOLO_CACHE_CHECK_FLOOR` | number | `60` | With check, seconds a copy is kept before checking when checking means showing the page again, so each CDN location does so at most this often. |
+| `CROMBOLO_CACHE_VALIDATOR` | string | `body` | How a CDN checking a kept copy is answered: body renders the page and compares it; published answers from what was last published, without rendering. Use published only when no page shows the time or anything else that changes without a publish. |
 | `CROMBOLO_DELIVERY_API_PREVIEW_URL` | string | — | Where Preview opens a page in your app, such as https://app.example.com/preview?path={path}&token={token}. |
 | `CROMBOLO_DELIVERY_API_PREVIEW_TOKEN_MINUTES` | number | `60` | How long a preview opened in your app keeps working. |
 
@@ -232,6 +236,23 @@ rather than the running server. Secret ones are never printed or logged.
 | `CROMBOLO_LOG_TO_CONSOLE` | `true` / `false` | `true` | Log events are also printed to the console. |
 | `CROMBOLO_TRACE_REQUESTS` | `true` / `false` | `false` | Prints a line on the console as each request arrives and as it is answered. |
 | `CROMBOLO_HEAP_INTERVAL_SECONDS` | number | `0` | Every this many seconds, prints the memory in use and the requests in flight. `0` is off. |
+
+### Telemetry
+
+| Setting | Takes | Default | Description |
+| --- | --- | --- | --- |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | string | — | The OpenTelemetry collector traces, metrics and logs are sent to, such as `https://otlp.example.com`. Unset, nothing is sent. |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | string | — | Where traces alone are sent, in place of the collector above. |
+| `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | string | — | Where metrics alone are sent, in place of the collector above. |
+| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | string | — | Where log lines alone are sent, in place of the collector above. |
+| `OTEL_METRIC_EXPORT_INTERVAL` | number | `60000` | Milliseconds between sending the metrics. |
+| `OTEL_EXPORTER_OTLP_HEADERS` | string | — | Headers sent with every export, usually the API key, as `name=value` pairs separated by commas. Never shown in the back office. |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf`, `http/json` | `http/protobuf` | How exports are written. |
+| `OTEL_SERVICE_NAME` | string | — | The name the site's telemetry is filed under; the site's name when unset. |
+| `OTEL_RESOURCE_ATTRIBUTES` | string | — | More attributes for everything sent, such as `deployment.environment.name=production`, separated by commas. |
+| `OTEL_TRACES_SAMPLER` | string | `parentbased_always_on` | Which traces are kept: `parentbased_traceidratio` with `OTEL_TRACES_SAMPLER_ARG=0.1` keeps a tenth, for a busy site. |
+| `OTEL_TRACES_SAMPLER_ARG` | number | — | The sampler's ratio, from 0 to 1. |
+| `CROMBOLO_TRUSTED_PROXIES` | list | — | The load balancers or CDN in front of the site, as addresses or ranges such as `10.0.0.0/8`, separated by commas. A trace a request arrives with is continued only from one of them. |
 
 ### Command line
 
@@ -473,6 +494,34 @@ link. It outranks `email`, and `sendUserLink: null` means nobody can be invited
 and no password can be reset whatever else is configured.
 `allowPasswordReset: true` shows "Forgotten password?" on the sign-in screen,
 when a link can actually be delivered.
+
+## Telemetry
+
+Traces, metrics and logs go to an OpenTelemetry collector once one is named
+(story 262; what is sent, and what never is: [`operations.md`](operations.md),
+"Telemetry"). Three common ones:
+
+```sh
+# Datadog, through the Agent's OTLP receiver
+OTEL_EXPORTER_OTLP_ENDPOINT=http://datadog-agent:4318
+
+# Grafana Cloud, through the stack's OTLP gateway
+OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp-gateway-prod-eu-west-2.grafana.net/otlp
+OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic%20<base64 of instance-id:token>
+
+# A local collector, to see what is sent
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+```
+
+In code, the same is `telemetry` in `crombolo.config.ts`, which the variables
+override, and the proxies whose `traceparent` is followed are `trustedProxies`:
+
+```ts
+export default defineConfig({
+  telemetry: { endpoint: 'http://localhost:4318', serviceName: 'riverside-bakery' },
+  trustedProxies: ['10.0.0.0/8'],
+})
+```
 
 ## Scripts
 

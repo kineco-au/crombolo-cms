@@ -1,17 +1,17 @@
 {
   "formatVersion": 5,
-  "id": "1d3c3f06-b260-5737-ac1a-cd69e79bccc4",
+  "id": "eb78cdf8-e9df-50a8-9625-29b2f3c8c8f5",
   "label": "Crombolo",
   "createdAt": "1970-01-01T00:00:00.000Z",
   "createdBy": "crombolo bundle build",
-  "integrity": "sha256-2cbbf813d8f6f559bed0d18f8e47de1678dbde7b0b8f2a44db04cef42ec85a98",
+  "integrity": "sha256-5df95ab02dacfec3f85cafd42c10be8688da34f356d80d1f8b1a67b927d0ce36",
   "snapshot": "drafts",
   "provenance": {
     "siteName": "Crombolo",
     "schemaVersion": "1.0.0",
     "schemaRevision": "0",
-    "schemaHash": "421734415428a18efb15bd0d9b168f4eaf88af1cd5bb7e8c90be897b90fc4a92",
-    "cmsVersion": "0.46.0"
+    "schemaHash": "a3c5f471b0e1a2339488ed167840e8c32fadc041ff67d39f1d74a4840c28929a",
+    "cmsVersion": "0.46.1"
   },
   "selector": {
     "roots": [
@@ -188,7 +188,8 @@
       "components/shared/logo.tsx",
       "components/shared/site-footer.tsx",
       "components/shared/site-header.tsx",
-      "components/shared/site.tsx"
+      "components/shared/site.tsx",
+      "components/shared/walkthrough.tsx"
     ],
     "styles": [
       "styles/site.css"
