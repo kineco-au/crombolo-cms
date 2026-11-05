@@ -41,7 +41,7 @@ export class UmbDuplicateDocumentEntityAction extends UmbEntityActionBase<never>
 		const { error } = await duplicateRepository.requestDuplicate({
 			unique: this.args.unique,
 			destination: { unique: destinationUnique },
-			relateToOriginal: value.relateToOriginal,
+			relateToOriginal: false,
 			includeDescendants: value.includeDescendants,
 		});
 

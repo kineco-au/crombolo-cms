@@ -77,10 +77,6 @@ export class UmbDocumentDuplicateToModalElement extends UmbModalBaseElement<
 		this.#pickerContext.selection.deselect(event.unique);
 	}
 
-	#onRelateToOriginalChange(event: UUIBooleanInputEvent) {
-		this.updateValue({ relateToOriginal: event.target.checked });
-	}
-
 	#onIncludeDescendantsChange(event: UUIBooleanInputEvent) {
 		this.updateValue({ includeDescendants: event.target.checked });
 	}
@@ -97,17 +93,6 @@ export class UmbDocumentDuplicateToModalElement extends UmbModalBaseElement<
 				</uui-box>
 
 				<uui-box headline=${this.localize.term('general_options')}>
-					<umb-property-layout
-						label=${this.localize.term('defaultdialogs_relateToOriginalLabel')}
-						orientation="vertical">
-						<div slot="editor">
-							<uui-toggle
-								label=${this.localize.term('defaultdialogs_relateToOriginalLabel')}
-								@change=${this.#onRelateToOriginalChange}
-								.checked=${this.value?.relateToOriginal ?? false}></uui-toggle>
-						</div>
-					</umb-property-layout>
-
 					<umb-property-layout label=${this.localize.term('defaultdialogs_includeDescendants')} orientation="vertical">
 						<div slot="editor">
 							<uui-toggle
