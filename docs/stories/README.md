@@ -136,6 +136,7 @@ not cover.
 | `204` | Public, Private and Custom media access | should | M | done | 203 |
 | `205` | Media Public Access with inherited permissions | should | M | done | 204 |
 | `191` | Azure AD B2C user flows for members | should | M | ready | 031 |
+| `282` | A member resets their password | should | M | ready | — |
 
 ### Epic E — Cross-cutting
 
