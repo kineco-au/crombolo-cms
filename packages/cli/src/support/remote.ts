@@ -2,10 +2,27 @@
 import { osKeychain } from '@crombolo/server/remote-credentials'
 import { CliError } from '../errors.ts'
 import { ciIdentityToken, ciTokenSource, inCiWithIdentity } from '../remote/ci.ts'
-import { discover, RemoteClient } from '../remote/client.ts'
+import { type Discovery, discover, RemoteClient } from '../remote/client.ts'
 import { pickRemote, readRemotes } from '../remote/remotes-file.ts'
 
 export const keychain = () => osKeychain()
+
+/**
+ * One exchanged token per remote for the whole command, however many times it
+ * connects: a remote takes each identity token once, and GitLab gives a job a
+ * single one, so a deploy's check, apply and restart must share what it bought.
+ */
+const ciSources = new Map<string, ReturnType<typeof ciTokenSource>>()
+
+function ciTokensFor(discovery: Discovery) {
+  const origin = new URL(discovery.api).origin
+  let source = ciSources.get(origin)
+  if (!source) {
+    source = ciTokenSource(discovery, (audience) => ciIdentityToken(audience))
+    ciSources.set(origin, source)
+  }
+  return source
+}
 
 export function openInBrowser(url: string, disabled: boolean): void {
   if (disabled) return
@@ -43,9 +60,7 @@ export async function connectRemote(name: string | undefined, env: string | unde
     discovery,
     keychain(),
     fetch,
-    inCiWithIdentity()
-      ? ciTokenSource(discovery, (audience) => ciIdentityToken(audience))
-      : undefined,
+    inCiWithIdentity() ? ciTokensFor(discovery) : undefined,
   )
   const environment =
     env ??

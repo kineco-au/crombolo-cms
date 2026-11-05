@@ -109,6 +109,9 @@ function stopOnSignal(
   // terminal's Ctrl-C reaches the whole process group, so SIGINT is left to it.
   process.on('SIGTERM', () => stop('SIGTERM'))
   process.on('SIGINT', () => {})
+  process.on('message', (message: SupervisorMessage) => {
+    if (message?.type === 'retire') listening.stop(false)
+  })
   // A supervisor that was killed outright cannot ask: the server goes with it.
   const parent = process.ppid
   setInterval(() => {

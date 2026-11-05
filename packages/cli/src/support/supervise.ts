@@ -42,7 +42,10 @@ export interface RestartRecord {
 
 /** What a child says to its supervisor, and the supervisor's answer. */
 export type ChildMessage = { type: 'ready'; port: number } | { type: 'restart'; id: number }
-export type SupervisorMessage = { type: 'restarted'; id: number; ok: boolean; reason?: string }
+export type SupervisorMessage =
+  | { type: 'restarted'; id: number; ok: boolean; reason?: string }
+  /** A newer server serves on this port: take no new connections, and finish those open. */
+  | { type: 'retire' }
 
 export const isSupervisedChild = (): boolean => Bun.env[CHILD_ENV] === '1'
 export const isRestartChild = (): boolean => Bun.env[RESTART_ENV] === '1'
@@ -210,6 +213,11 @@ export async function supervise(argv: readonly string[], siteDir: string, made: 
         outcome = { ok: true }
         if (old) {
           retired.add(old.proc)
+          // Both listen on the port until the old one stops, and the kernel shares new
+          // connections between them, so a request made once the restart is reported
+          // could reach the server it replaced. It stops listening now, and goes once
+          // the answers it has started are sent.
+          old.proc.send({ type: 'retire' } satisfies SupervisorMessage)
           setTimeout(() => old.proc.kill('SIGTERM'), HANDOVER_MS).unref()
           void old.proc.exited.then(() => retired.delete(old.proc))
         }

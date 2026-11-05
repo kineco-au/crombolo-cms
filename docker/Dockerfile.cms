@@ -4,6 +4,9 @@ FROM oven/bun:1-alpine
 # carries the runtime and the entrypoint; editing a file on the host is enough.
 WORKDIR /app
 
+# `crombolo bundle deploy` sends only what git says is committed, so it needs git.
+RUN apk add --no-cache git
+
 COPY cms-entrypoint.sh /usr/local/bin/cms-entrypoint
 RUN chmod +x /usr/local/bin/cms-entrypoint
 

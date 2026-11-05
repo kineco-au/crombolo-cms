@@ -6,6 +6,41 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.48.1 — 2026-11-05
+
+### Fixes
+
+- **A request made just after a restart reaches the new server.** During a
+  supervised restart the old server kept listening on the shared port for a
+  second, so a page asked for right after `bundle deploy` or `crombolo
+  restart` could come from the server it replaced, with what it had cached:
+  a page missing, or no template. It now stops listening as soon as the new
+  one serves.
+- **A pushed or applied template takes effect at once.** A push, a bundle
+  applied to a remote, or a revert wrote the new views, but the running server
+  kept the old ones until it restarted. It now reloads them, and tells the
+  site's other servers.
+- **A deploy from GitLab CI signs in once.** A remote takes each identity
+  token once, and GitLab gives a job one, so `bundle deploy`'s second sign-in
+  (to apply, after checking) was refused. A command now signs in once per
+  remote.
+
+- **`crombolo status` no longer goes to npm.** In a folder with no
+  `node_modules` above it, the check that views can load made Bun try to install
+  the package, which could hang a read-only command. It now answers at once
+  that views cannot load from there.
+
+### Tests
+
+- `tests/integration/remote-deploy.integration.ts`: a template edited on one
+  machine reaches a second running server by `push` and by `bundle deploy`,
+  through the real command line. The test image has `git`, which `bundle
+  deploy` needs.
+
+### Upgrade notes
+
+- No migrations, and nothing to do.
+
 ## v0.48.0 — 2026-11-05
 
 ### The back office

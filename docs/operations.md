@@ -689,8 +689,12 @@ as a child process, and a restart is a new child rather than an outage:
 1. A new server starts beside the one serving, on the same port (`reusePort`).
    It boots fully before it listens, so it never answers with the page a
    starting site shows.
-2. Once it is serving, it takes over, and the old one stops, finishing what it
-   was answering first.
+2. Once it is serving, it takes over. The old one stops listening at once, so
+   every new connection reaches the new server, then stops, finishing what it
+   was answering first. Both share the port while they overlap, and the kernel
+   would otherwise go on handing the old one new connections, so a request made
+   just after a restart was reported could be answered by the server it
+   replaced.
 3. A new server that fails to boot, or is not up within two minutes, is
    stopped. The old one keeps serving, and the failure says why: the last lines
    the new server wrote.

@@ -10,7 +10,8 @@
  * Checked at boot because the alternative is every render failing with a message
  * that names the runtime rather than the configuration that moved it.
  */
-import { mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 
 export const JSX_RUNTIME = '@crombolo/crombolo/jsx-runtime'
 
@@ -28,9 +29,20 @@ export class ViewRuntimeUnreachableError extends Error {
   }
 }
 
+/** Whether `dir` or a folder above it holds a node_modules. */
+function insideNodeModules(dir: string): boolean {
+  for (let at = resolve(dir); ; at = dirname(at)) {
+    if (existsSync(join(at, 'node_modules'))) return true
+    if (dirname(at) === at) return false
+  }
+}
+
 /** Throws unless a `.tsx` placed in `dir` could resolve the JSX runtime. */
 export function assertViewRuntime(dir: string): void {
   mkdirSync(dir, { recursive: true })
+  // With no node_modules at or above it, Bun installs a package it cannot find,
+  // and the resolve blocks on the registry: `crombolo status` is read-only.
+  if (!insideNodeModules(dir)) throw new ViewRuntimeUnreachableError(dir, 'no node_modules there')
   try {
     Bun.resolveSync(JSX_RUNTIME, dir)
   } catch (error) {

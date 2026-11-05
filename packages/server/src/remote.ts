@@ -83,7 +83,8 @@ export interface RemoteOptions {
    * Told once a push has landed, so this node's published cache is rebuilt: the
    * import's cache instruction carries this node's id, and a node skips its own.
    */
-  onApplied?(): void
+  /** After a push, an apply or a revert: awaited, so the answer comes after what it changed renders. */
+  onApplied?(): void | Promise<void>
   /** A new server from the supervising `crombolo start`, once it is healthy (story 241). */
   restart?: () => Promise<RestartOutcome>
   /** Installed bundles (story 241); absent where this node does not manage them. */
@@ -523,7 +524,7 @@ export function createRemote(options: RemoteOptions): Remote {
         })
         return
       }
-      options.onApplied?.()
+      await options.onApplied?.()
       await jobs.update(job.id, {
         state: 'done',
         stage:
@@ -790,7 +791,7 @@ export function createRemote(options: RemoteOptions): Remote {
           'RemoteBundleApplied',
           `${result.bundle.id} as run ${result.runId}${structural ? ', with structure' : ''}; ${describeProvenance(provenance)}`,
         )
-        options.onApplied?.()
+        await options.onApplied?.()
       }
       return Response.json(
         {
@@ -996,7 +997,7 @@ export function createRemote(options: RemoteOptions): Remote {
       })
     const files = await revertSections(db, config, runId)
     await audit(principal, request, 'RemoteBundleReverted', `${runId} as run ${result.runId}`)
-    options.onApplied?.()
+    await options.onApplied?.()
     return Response.json({
       runId: result.runId,
       reverted: runId,

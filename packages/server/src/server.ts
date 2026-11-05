@@ -819,9 +819,19 @@ export async function createServer(
     authenticate,
     bundles: bundleAdmin,
     restart: serverOptions.restart,
-    onApplied: () => {
+    onApplied: async () => {
       cache.invalidate()
       mediaCache.clear()
+      // A push or an apply may have replaced views: a new snapshot here, as an
+      // edit in the back office takes one, and every other node told.
+      const hash = await snapshots.refresh()
+      await appendCacheInstruction(db, {
+        kind: 'components',
+        payload: hash ? { hash } : {},
+        by: schema.nodeId,
+      }).catch((error: unknown) => {
+        renderLog.error('Could not announce the views a push changed: {error}', { error })
+      })
     },
   })
   const members = createMemberAuth(db, config, {
