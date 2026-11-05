@@ -42,13 +42,15 @@ type = "textstring"
 mandatory = true
 `
 
-async function site() {
+async function site(extraTypes: Record<string, string> = {}) {
   const root = mkdtempSync(join(process.cwd(), 'output', 'elements-'))
   dirs.push(root)
   mkdirSync(join(root, 'schema', 'content-types'), { recursive: true })
   mkdirSync(join(root, 'components'), { recursive: true })
   writeFileSync(join(root, 'schema', 'schema.toml'), '[schema]\nversion = "1.0.0"\n')
   writeFileSync(join(root, 'schema', 'content-types', 'quote.toml'), QUOTE_TOML)
+  for (const [alias, toml] of Object.entries(extraTypes))
+    writeFileSync(join(root, 'schema', 'content-types', `${alias}.toml`), toml)
   const h = await signedInServer({
     config: { schemaDir: join(root, 'schema'), componentsDir: join(root, 'components') },
   })
@@ -271,6 +273,152 @@ describe('the element editor', () => {
       ).status,
     ).toBe(200)
     expect(await state(other)).toBe('Published')
+  })
+})
+
+describe('publishing in the Library, as the back office sends it (story 266)', () => {
+  const VARIANT_TOML = `[content-type]
+alias = "banner"
+name = "Banner"
+is-element = true
+allow-in-library = true
+varies-by-culture = true
+
+[[property]]
+alias = "headline"
+name = "Headline"
+type = "textstring"
+varies-by-culture = true
+`
+
+  async function multilingual() {
+    const s = await site({ banner: VARIANT_TOML })
+    const { h } = s
+    expect(
+      (
+        await h.post(`${V1}/language`, {
+          isoCode: 'da-DK',
+          name: 'Danish',
+          isDefault: false,
+          isMandatory: false,
+          fallbackIsoCode: null,
+        })
+      ).status,
+    ).toBe(201)
+    return s
+  }
+
+  test('publishing one culture of two publishes only that culture', async () => {
+    const { h } = await multilingual()
+    const banner = (await new ContentTypeRepository(h.server.db).byAlias('banner'))?.key as string
+    const created = await h.post(`${V1}/element`, {
+      documentType: { id: banner },
+      values: [
+        { alias: 'headline', culture: 'en-US', segment: null, value: 'Hello' },
+        { alias: 'headline', culture: 'da-DK', segment: null, value: 'Hej' },
+      ],
+      variants: [
+        { culture: 'en-US', segment: null, name: 'Banner' },
+        { culture: 'da-DK', segment: null, name: 'Banner DA' },
+      ],
+      parent: null,
+    })
+    expect(created.status).toBe(201)
+    const key = created.headers.get('umb-generated-resource') as string
+    expect(
+      (
+        await h.put(`${V1}/element/${key}/publish`, {
+          publishSchedules: [{ culture: 'en-US', schedule: null }],
+        })
+      ).status,
+    ).toBe(200)
+    const states = Object.fromEntries(
+      (
+        await h.json<{ variants: Array<{ culture: string; state: string }> }>(
+          `${V1}/element/${key}`,
+        )
+      ).variants.map((v) => [v.culture, v.state]),
+    )
+    expect(states).toEqual({ 'en-US': 'Published', 'da-DK': 'Draft' })
+  })
+
+  test('a schedule is kept rather than published, reported, and run by the job', async () => {
+    const { h, create, state } = await site()
+    const key = await create('Quote', 'later')
+    const inAnHour = new Date(Date.now() + 3_600_000)
+    const inADay = new Date(Date.now() + 86_400_000)
+    const scheduled = await h.put(`${V1}/element/${key}/publish`, {
+      publishSchedules: [
+        {
+          culture: null,
+          schedule: { publishTime: inAnHour.toISOString(), unpublishTime: inADay.toISOString() },
+        },
+      ],
+    })
+    expect(scheduled.status).toBe(200)
+    expect(await state(key)).toBe('Draft')
+    const variant = (
+      await h.json<{
+        variants: Array<{
+          scheduledPublishDate: string | null
+          scheduledUnpublishDate: string | null
+        }>
+      }>(`${V1}/element/${key}`)
+    ).variants[0]
+    expect(variant?.scheduledPublishDate).toBe(inAnHour.toISOString())
+    expect(variant?.scheduledUnpublishDate).toBe(inADay.toISOString())
+    // Marked in the Library's tree (story 268).
+    const sign = [{ alias: 'Umb.ScheduledForPublish' }]
+    const root = await h.json<{
+      items: Array<{ id: string; flags: unknown[]; variants: Array<{ flags: unknown[] }> }>
+    }>(`${V1}/tree/element/root?skip=0&take=100`)
+    const row = root.items.find((i) => i.id === key)
+    expect([row?.flags, row?.variants[0]?.flags]).toEqual([sign, sign])
+
+    expect((await h.server.jobs.runScheduledPublishing()).published).toEqual([])
+    const release = await h.server.jobs.runScheduledPublishing(new Date(inAnHour.getTime() + 1000))
+    expect(release.published).toEqual([key])
+    expect(await state(key)).toBe('Published')
+    // Claimed once: a second run does not publish it again.
+    expect(
+      (await h.server.jobs.runScheduledPublishing(new Date(inAnHour.getTime() + 2000))).published,
+    ).toEqual([])
+    const expire = await h.server.jobs.runScheduledPublishing(new Date(inADay.getTime() + 1000))
+    expect(expire.unpublished).toEqual([key])
+    expect(await state(key)).toBe('Draft')
+  })
+
+  test('clearing a schedule, a publish time already past, and a date that does not parse', async () => {
+    const { h, create, state } = await site()
+    const key = await create('Quote', 'soon')
+    const later = new Date(Date.now() + 3_600_000).toISOString()
+    await h.put(`${V1}/element/${key}/publish`, {
+      publishSchedules: [{ culture: null, schedule: { publishTime: later } }],
+    })
+    const cleared = await h.put(`${V1}/element/${key}/publish`, {
+      publishSchedules: [{ culture: null, schedule: null }],
+    })
+    expect(cleared.status).toBe(200)
+    // No schedule means now.
+    expect(await state(key)).toBe('Published')
+    const variant = (
+      await h.json<{ variants: Array<{ scheduledPublishDate: string | null }> }>(
+        `${V1}/element/${key}`,
+      )
+    ).variants[0]
+    expect(variant?.scheduledPublishDate).toBeNull()
+
+    const other = await create('Other', 'past')
+    const past = new Date(Date.now() - 60_000).toISOString()
+    await h.put(`${V1}/element/${other}/publish`, {
+      publishSchedules: [{ culture: null, schedule: { publishTime: past } }],
+    })
+    expect(await state(other)).toBe('Published')
+
+    const bad = await h.put(`${V1}/element/${other}/publish`, {
+      publishSchedules: [{ culture: null, schedule: { publishTime: 'soon' } }],
+    })
+    expect(bad.status).toBe(400)
   })
 })
 

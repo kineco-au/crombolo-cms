@@ -17,7 +17,7 @@ import type { Db } from '../database.ts'
 import { DbDate, fromDbBool } from '../dialect.ts'
 import { type Expression, sql } from '../query.ts'
 import { queueForSearch } from '../search.ts'
-import { searchTerms } from '../search-text.ts'
+import { fullTextHits } from '../search-providers.ts'
 import {
   DocumentRepository,
   type DocumentRepositoryOptions,
@@ -385,7 +385,7 @@ export class MemberRepository {
   async filter(criteria: MemberFilter): Promise<{ total: number; items: MemberCredentials[] }> {
     const db = this.#db
     const text = criteria.filter?.trim()
-    const terms = text ? searchTerms(text) : []
+    const hits = text ? await fullTextHits(db, text, ['member']) : undefined
     const base = joined(db).where((eb) => {
       const all: Expression<SqlBool>[] = []
       if (criteria.memberTypeKey)
@@ -421,14 +421,12 @@ export class MemberRepository {
           eb(eb.fn('lower', ['n.text']), 'like', like),
         ]
         // The index adds what a member's properties say to the name, username and e-mail.
-        if (terms.length > 0)
+        if (hits)
           any.push(
             eb(
               'm.node_id',
               'in',
-              eb
-                .selectFrom(db.dialect.fullTextMatches(db.dialect.fullTextQuery(terms)).as('h'))
-                .select(sql<number>`node_id`.as('node_id')),
+              eb.selectFrom(hits.as('h')).select(sql<number>`node_id`.as('node_id')),
             ),
           )
         all.push(eb.or(any))

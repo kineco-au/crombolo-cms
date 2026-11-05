@@ -97,7 +97,7 @@ import {
   readLedger,
   readReport,
   readUrlOptions,
-  SiteSearch,
+  searchProvidersOf,
   TransferRunRepository,
   type WritesPaused,
 } from '@crombolo/data'
@@ -1109,7 +1109,7 @@ export async function createServer(
           mediaRules: () => new MediaAccessRepository(db).allRules(),
           media: createDeliveryMediaPort(db, mediaCache),
           security: (request, action) => deliveryMembers.handle(request, action),
-          search: (term, options) => new SiteSearch(db).query(term, options),
+          search: (term, options) => searchProvidersOf(db).site.query(term, options),
         })
   for (const problem of deliveryApi?.problems ?? [])
     log.warning('Delivery API: {problem}', { problem })

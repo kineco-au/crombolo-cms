@@ -135,6 +135,8 @@ describe('the first boot of a self-hosted site', () => {
   test('a database the previous release left is upgraded by `crombolo upgrade`, and then starts', async () => {
     const file = readdirSync(site()).find((name) => name.endsWith('.sqlite')) as string
     const sqlite = new Database(join(site(), file))
+    sqlite.exec('DROP TABLE IF EXISTS search_removal')
+    sqlite.exec("DELETE FROM migration_history WHERE name = 'AddSearchRemovals'")
     sqlite.exec('DROP INDEX IF EXISTS ix_node_parent_tree')
     sqlite.exec('ALTER TABLE node DROP COLUMN tree_group')
     sqlite.exec("DELETE FROM migration_history WHERE name = 'AddMediaTreeOrder'")

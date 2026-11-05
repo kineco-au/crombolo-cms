@@ -12,6 +12,16 @@ import {
   toTreeItemResponse,
 } from './content-type.ts'
 
+/** The editors whose settings offer "Ignore user start nodes" (story 270). */
+const START_NODE_EDITORS = new Set([
+  'Umbraco.ContentPicker',
+  'Umbraco.MultiNodeTreePicker',
+  'Umbraco.MediaPicker3',
+  'Umbraco.MultiUrlPicker',
+  'Umbraco.RichText',
+  'Umbraco.ElementPicker',
+])
+
 function toResponse(model: DataTypeModel): ResponseOf<'GetDataTypeById'> {
   return {
     id: model.key,
@@ -20,7 +30,7 @@ function toResponse(model: DataTypeModel): ResponseOf<'GetDataTypeById'> {
     editorUiAlias: model.editorUiAlias,
     values: model.values.map((value) => ({ alias: value.alias, value: value.value })),
     isDeletable: true,
-    canIgnoreStartNodes: false,
+    canIgnoreStartNodes: START_NODE_EDITORS.has(model.editorAlias),
   } as ResponseOf<'GetDataTypeById'>
 }
 

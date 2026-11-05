@@ -202,6 +202,47 @@ describe(`public access (${process.env.CROMBOLO_DB ?? 'sqlite'})`, () => {
     expect(inherited.isProtectedByAncestor).toBe(true)
   })
 
+  test('items report being protected, so the dialog loads the rules (story 267)', async () => {
+    const { h, page, group } = await site()
+    const home = await page('Home')
+    const child = await page('Child', home)
+    const other = await page('Other')
+    const login = await page('Login')
+    await group('Subscribers')
+    await h.post(`${V1}/document/${home}/public-access`, {
+      memberUserNames: [],
+      memberGroupNames: ['Subscribers'],
+      loginDocument: { id: login },
+      errorDocument: { id: login },
+    })
+
+    type Item = { id: string; isProtected: boolean }
+    const flags = (items: Item[]) => Object.fromEntries(items.map((i) => [i.id, i.isProtected]))
+    // The dialog reads the item first, and loads the rules only when it is protected.
+    const items = await h.json<Item[]>(`${V1}/item/document?id=${home}&id=${child}&id=${other}`)
+    expect(flags(items)).toEqual({ [home]: true, [child]: true, [other]: false })
+
+    const root = await h.json<{ items: Item[] }>(`${V1}/tree/document/root?skip=0&take=100`)
+    expect(flags(root.items)[home]).toBe(true)
+    expect(flags(root.items)[other]).toBe(false)
+    const children = await h.json<{ items: Item[] }>(
+      `${V1}/tree/document/children?parentId=${home}&skip=0&take=100`,
+    )
+    expect(flags(children.items)).toEqual({ [child]: true })
+    const collection = await h.json<{ items: Item[] }>(
+      `${V1}/collection/document/${home}?skip=0&take=100`,
+    )
+    expect(flags(collection.items)).toEqual({ [child]: true })
+    const found = await h.json<{ items: Item[] }>(
+      `${V1}/item/document/search?query=Child&skip=0&take=100`,
+    )
+    expect(flags(found.items)[child]).toBe(true)
+
+    expect((await h.del(`${V1}/document/${home}/public-access`)).status).toBe(200)
+    const after = await h.json<Item[]>(`${V1}/item/document?id=${home}&id=${child}`)
+    expect(flags(after)).toEqual({ [home]: false, [child]: false })
+  })
+
   test('refuse a rule with nothing in it, a rule with both kinds, and unknown pages', async () => {
     const { h, page } = await site()
     const home = await page('Home')

@@ -3,24 +3,7 @@
  * both the index and a query go through so they meet. docs/search.md.
  */
 
-/**
- * Lowercase words without diacritics: letters and digits only, everything else
- * a separator. The index stores text in this form, so the full-text engines on
- * both dialects only ever split on spaces, and match the same way.
- */
-export function searchWords(text: string): string[] {
-  return text
-    .normalize('NFKD')
-    .replace(/\p{M}+/gu, '')
-    .toLowerCase()
-    .split(/[^\p{L}\p{N}]+/u)
-    .filter((word) => word.length > 0)
-}
-
-/** The distinct words of a query, at most a dozen: what every result must hold by prefix. */
-export function searchTerms(query: string): string[] {
-  return [...new Set(searchWords(query))].slice(0, 12)
-}
+export { searchTerms, searchWords } from '@crombolo/core'
 
 const IDENTIFIER =
   /^(?:umb:\/\/\S+|\{?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\}?)$/i

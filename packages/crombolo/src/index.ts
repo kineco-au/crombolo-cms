@@ -29,7 +29,31 @@ export type {
   SchemaFormPage,
   SubmittedValues,
 } from '@crombolo/core'
-export { allFormFields, formFieldType, storingFormFields } from '@crombolo/core'
+// Story 273: what a site's own search provider implements, and the checks it is held to.
+export {
+  allFormFields,
+  type BackofficeIndexName,
+  type BackofficeSearchEntry,
+  type BackofficeSearchHit,
+  type BackofficeSearchProvider,
+  formFieldType,
+  openTo,
+  type SearchAccess,
+  type SearchConformanceReport,
+  type SearchItem,
+  type SearchKind,
+  type SearchMatch,
+  type SearchProviderHealth,
+  type SiteSearchEntry,
+  type SiteSearchHit,
+  type SiteSearchProvider,
+  type SiteSearchQuery,
+  type SiteSearchText,
+  searchProviderConformance,
+  searchTerms,
+  searchWords,
+  storingFormFields,
+} from '@crombolo/core'
 // Story 189: the site's own tables, declared in its config.
 export {
   defineSiteTables,
@@ -135,6 +159,8 @@ export {
   type S3MediaStoreOptions,
   type S3SchemaStoreOptions,
   type SchemaStore,
+  type SearchConfig,
+  type SearchProviderFactory,
   type ServerHandle,
   type SesOptions,
   s3MediaStore,

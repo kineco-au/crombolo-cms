@@ -6,6 +6,63 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.48.0 — 2026-11-05
+
+### The back office
+
+- **Publishing a Library element publishes only the languages chosen, and
+  "Schedule…" waits for its date** (266). Before, publishing one language of
+  an element published all of them, and scheduling one published it at once.
+  Element schedules are run with the pages' by scheduled publishing.
+- **"Public access" opens on the rules a page already has** (267). Pages
+  protected directly or through a page above them now say so in the tree,
+  list views and search, so the dialog loads their rules rather than
+  starting empty. How protected pages are served is unchanged.
+- **Pages and elements with a publish to come are marked** (268), with
+  Umbraco's clock sign in the tree, list views and the Library.
+- **A page's list view searches, sorts and names who edited** (269). The
+  search box and the built-in columns' sorting work, in the language shown,
+  and "Created by", "Last edited by" and whether a page has children are
+  filled in.
+- **"Ignore user start nodes" works on pickers** (270). A content, media or
+  URL picker with it on lets an editor kept to part of the site browse and
+  pick from all of it; everywhere else their start nodes still apply.
+- **The copy dialog no longer offers "Relate to original"** (271), which had
+  no effect: copies are not related to the page they came from.
+- **A list view sorts by its property columns** (276): numbers and dates in
+  their own order, text in the language shown, pages without a value last.
+
+### Search
+
+- **Search through providers a site can replace** (273). Back-office search
+  and site search each go through a provider, the database's own by default,
+  and `search: { backoffice, site }` in `crombolo.config.ts` replaces either.
+  A provider is given each item's text, and told of moves and deletions. A
+  failure leaves the work queued, and the status checks gain a Search group.
+  `searchProviderConformance` checks a provider. See `docs/search.md`,
+  "Providers".
+
+### Planned
+
+- Stories for what Umbraco's back office and roadmap have that Crombolo does
+  not yet: shared Library elements inside block editors and the Single Block
+  editor (272), the back office on Umbraco 19 (277), who else is editing a
+  page (274), and an accessibility pass over Crombolo's own screens (275).
+
+### Migrations
+
+- **063 `AddSearchRemovals`:** the `search_removal` table, which records what
+  a delete for good takes away, for providers outside the database. Additive,
+  and applied by `crombolo upgrade`.
+
+### Upgrade notes
+
+- Run `crombolo upgrade` for migration 063. A site keeping the database's
+  own search needs nothing else: it searches exactly as before.
+- A site that replaces a search provider should rebuild that index from the
+  Search indexes dashboard, or with `crombolo index rebuild`, so the provider
+  starts from every item.
+
 ## v0.47.0 — 2026-11-04
 
 ### Behind a CDN

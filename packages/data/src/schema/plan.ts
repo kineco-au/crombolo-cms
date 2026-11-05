@@ -62,6 +62,7 @@ import { remoteMigration } from './remote.ts'
 import { remoteTrustMigration } from './remote-trust.ts'
 import { richTextUiMigration } from './rich-text-ui.ts'
 import { searchIndexMigration } from './search-index.ts'
+import { searchRemovalsMigration } from './search-removals.ts'
 import { serverRoleMigration } from './server-role.ts'
 import { sinceVersionMigration } from './since-version.ts'
 import { siteSearchMigration } from './site-search.ts'
@@ -139,4 +140,5 @@ export const cromboloPlan = new MigrationPlan([
   bundlesInSettingsMigration,
   remoteTrustMigration,
   mediaTreeOrderMigration,
+  searchRemovalsMigration,
 ])

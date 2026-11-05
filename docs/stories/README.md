@@ -109,6 +109,17 @@ not cover.
 | `236` | An overview to sign in to, and a guide in the empty site | should | M | done | — |
 | `237` | The back office in the mock-up's colours | should | M | done | 236 |
 | `238` | Bundles in Settings | should | L | done | 234 |
+| `266` | Library elements publish the cultures chosen, and when scheduled | must | S | done | 027 |
+| `267` | The Public access dialog shows a page's rules | must | S | done | 024 |
+| `268` | Scheduled pages and elements are marked in the tree | should | S | done | 029, 266 |
+| `269` | The pages list view searches, sorts and names who edited | should | M | done | 024 |
+| `270` | Pickers that ignore a user's start nodes | should | M | done | 022, 026 |
+| `271` | The copy dialog does not offer to relate a copy | could | S | done | 046 |
+| `272` | Shared Library elements inside block editors, and the Single Block | should | XL | ready | 027 |
+| `274` | Who else is editing a page | could | L | ready | 172 |
+| `275` | Crombolo's own back-office screens are accessible | should | M | ready | 235 |
+| `276` | The pages list view sorts by its property columns | could | M | done | 269 |
+| `277` | The back office on Umbraco 19 | should | L | backlog | 235, 272 |
 
 ### Epic D — Members and identity
 
@@ -142,6 +153,7 @@ not cover.
 | `049` | Light and dark in the back office | should | M | done | — |
 | `183` | Find content by its properties | should | M | done | 043 |
 | `262` | Telemetry that reaches the tools you already watch | should | L | done | 047 |
+| `273` | Search through providers a site can replace | could | L | done | 043, 140 |
 
 ### Epic F — Headless
 

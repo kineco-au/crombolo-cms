@@ -26,6 +26,7 @@ import { APP_PREVIEW_PROVIDER, type PreviewPort } from '../ports.ts'
 import type { DocumentPort, PortFailure, SaveDocument } from '../ports-content.ts'
 import type { ManagementApiRouter, RequestContext } from '../router.ts'
 import { created, paging } from './content-type.ts'
+import { itemFlags, variantFlags } from './flags.ts'
 import {
   type TreeSource,
   visibleChildren,
@@ -40,7 +41,7 @@ const ref = (value: unknown): string | null =>
 function toVariantResponse(aggregate: DocumentAggregate) {
   return aggregate.variants.map((variant) => ({
     id: aggregate.key,
-    flags: [],
+    flags: variantFlags(variant),
     state: variant.state,
     publishDate: variant.publishDate?.toISOString() ?? null,
     scheduledPublishDate: variant.scheduledPublishDate?.toISOString() ?? null,
@@ -65,7 +66,7 @@ export function toDocumentResponse(aggregate: DocumentAggregate) {
         : null,
     },
     template: aggregate.componentKey ? { id: aggregate.componentKey } : null,
-    flags: [],
+    flags: itemFlags(aggregate.variants),
     values: aggregate.values.map((value) => ({
       editorAlias: value.editorAlias ?? '',
       culture: value.culture,
@@ -81,7 +82,7 @@ function toDocumentItemResponse(item: DocumentTreeItem) {
   return {
     id: item.key,
     isTrashed: item.isTrashed,
-    isProtected: false,
+    isProtected: item.isProtected ?? false,
     hasChildren: item.hasChildren,
     parent: item.parentKey ? { id: item.parentKey } : null,
     documentType: {
@@ -94,9 +95,9 @@ function toDocumentItemResponse(item: DocumentTreeItem) {
       name: v.name,
       culture: v.culture,
       state: v.state,
-      flags: [],
+      flags: variantFlags(v),
     })),
-    flags: [],
+    flags: itemFlags(item.variants),
   }
 }
 
@@ -171,7 +172,7 @@ function readCultures(body: unknown): string[] | null {
 }
 
 /** `publishSchedules` as dates, or 'invalid' when one does not parse. */
-function readSchedules(
+export function readSchedules(
   body: Record<string, unknown>,
 ):
   | Array<{ culture: string | null; publishTime: Date | null; unpublishTime: Date | null }>
@@ -256,7 +257,7 @@ export function toDocumentTreeItemResponse(item: DocumentTreeItem, noAccess = fa
     parent: item.parentKey ? { id: item.parentKey } : null,
     hasChildren: item.hasChildren,
     noAccess,
-    isProtected: false,
+    isProtected: item.isProtected ?? false,
     isTrashed: item.isTrashed,
     createDate: item.createDate.toISOString(),
     ancestors: item.ancestorKeys.map((id) => ({ id })),
@@ -270,9 +271,9 @@ export function toDocumentTreeItemResponse(item: DocumentTreeItem, noAccess = fa
       name: v.name,
       culture: v.culture,
       state: v.state,
-      flags: [],
+      flags: variantFlags(v),
     })),
-    flags: [],
+    flags: itemFlags(item.variants),
   }
 }
 
@@ -967,7 +968,7 @@ export function registerDocumentHandlers(
       documentType: document.documentType,
       values: document.values,
       variants: document.variants,
-      flags: [],
+      flags: document.flags,
     })
   })
 
@@ -1081,20 +1082,27 @@ export function registerDocumentHandlers(
       principal && ctx.nodes
         ? (await ctx.nodes.documents([parent])).get(parent.toLowerCase())?.chain
         : undefined
+    const q = ctx.url.searchParams
     const result = await port.collection(
       parent,
-      page,
+      {
+        ...page,
+        filter: q.get('filter') ?? undefined,
+        orderBy: q.get('orderBy') ?? undefined,
+        orderDirection: q.get('orderDirection') === 'Descending' ? 'Descending' : 'Ascending',
+        orderCulture: q.get('orderCulture') ?? undefined,
+      },
       principal && chain ? deniedChildren(principal, chain) : [],
     )
     return Response.json({
       total: result.total,
       items: result.items.map((aggregate) => ({
         ...toDocumentResponse(aggregate),
-        creator: null,
+        creator: aggregate.creator,
         sortOrder: aggregate.sortOrder,
-        hasChildren: false,
-        updater: null,
-        isProtected: false,
+        hasChildren: aggregate.hasChildren,
+        updater: aggregate.updater,
+        isProtected: aggregate.isProtected,
         ancestors: [],
       })),
     })

@@ -348,7 +348,7 @@ would not show you your own changes.
 
 ## Settings with no environment variable
 
-Nine things a site declares only in `crombolo.config.ts`, because each of them
+The things a site declares only in `crombolo.config.ts`, because each of them
 is code rather than a value:
 
 | Setting | What it is |
@@ -368,6 +368,7 @@ is code rather than a value:
 | `routes` | the site's route handlers, `route(path, handlers, options)`, answered at their paths ahead of content finding; limits `CROMBOLO_ROUTE_TIMEOUT_MS` and `CROMBOLO_ROUTE_RATE_LIMIT_PER_MINUTE` ([`rendering.md`](rendering.md#route-handlers)) |
 | `liveReload` | open pages reload when the components, the schema or the content change, and show the background type check's findings; `CROMBOLO_LIVE_RELOAD`, on in development except under `bun test` ([`writing-components.md`](writing-components.md#the-development-loop)) |
 | `pages` | the pages in the content tree, by path, that answer `notFound`, `unauthorized` and `error` outcomes from a page's code, per hostname or language if need be ([`rendering.md`](rendering.md#status-pages)) |
+| `search` | the search providers, `{ backoffice, site, matchLimit }`: each a factory given the database, the database's own search when unset ([`search.md`](search.md#providers)) |
 
 `deliveryApi` is the same: its switches and key have environment variables
 above, and member sign-in — clients, secrets, redirect URLs, the login page — is

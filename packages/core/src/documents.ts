@@ -84,7 +84,15 @@ export interface DocumentTreeItem {
   isTrashed: boolean
   createDate: Date
   ancestorKeys: string[]
-  variants: Array<{ culture: string | null; name: string; state: VariantState }>
+  /** Public access rules apply: its own, or a page's above it. */
+  isProtected?: boolean
+  variants: Array<{
+    culture: string | null
+    name: string
+    state: VariantState
+    /** A publish is scheduled for this variant and has not run yet. */
+    scheduledForPublish?: boolean
+  }>
 }
 
 /**

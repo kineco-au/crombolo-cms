@@ -70,6 +70,11 @@ export function createManagementApiRouter(options: ManagementApiOptions = {}): M
     clientAddress: options.clientAddress,
     onError: options.onError,
     onContentChange: options.onContentChange,
+    ignoresStartNodes: async (dataTypeId) => {
+      const dataType = await options.deps?.dataTypes?.byKey(dataTypeId).catch(() => undefined)
+      const setting = dataType?.values.find((v) => v.alias === 'ignoreUserStartNodes')?.value
+      return setting === true || setting === 'true' || setting === '1' || setting === 1
+    },
   })
   const { deps } = options
   if (!deps) return router

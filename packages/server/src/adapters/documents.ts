@@ -1,5 +1,6 @@
 /** Adapters binding the document repository to the API port and the renderer. */
 import type {
+  DocumentCollectionItem,
   DocumentPort,
   PortFailure,
   Principal,
@@ -7,7 +8,6 @@ import type {
   SkipTake,
 } from '@crombolo/api-management/domain'
 import {
-  type DocumentAggregate,
   normaliseUuid,
   ObjectTypes,
   type Page,
@@ -19,8 +19,10 @@ import {
   ContentTypeRepository,
   type Db,
   DictionaryRepository,
+  DocumentListingRepository,
   DocumentRepository,
   type DocumentRepositoryOptions,
+  type DocumentSortField,
   DomainRepository,
   InvalidParentError,
   LanguageRepository,
@@ -72,6 +74,17 @@ async function toTreeItems(
     })
   }
   return items
+}
+
+/** The list view's built-in columns, by the alias the client sends; any other is a property. */
+const COLLECTION_SORTS: Record<string, DocumentSortField> = {
+  name: 'name',
+  createDate: 'createDate',
+  updateDate: 'updateDate',
+  sortOrder: 'sortOrder',
+  creator: 'creator',
+  owner: 'creator',
+  updater: 'updater',
 }
 
 export function createDocumentPort(
@@ -477,16 +490,53 @@ export function createDocumentPort(
       return toTreeItems(repo, await repo.nodes.byKeys(keys))
     },
 
-    async collection(
-      parentKey: string | null,
-      paging: SkipTake,
-      excludeKeys: readonly string[] = [],
-    ): Promise<Page<DocumentAggregate>> {
-      const page = await repo.children(parentKey, paging.skip, paging.take, excludeKeys)
-      const items: DocumentAggregate[] = []
-      for (const row of page.items) {
+    /**
+     * The list view (story 269): searched, sorted and paged in the database, so
+     * a large folder costs a page; then only the page's items are loaded.
+     */
+    async collection(parentKey, query, excludeKeys = []) {
+      const parent = parentKey ? await repo.nodes.byKey(parentKey) : undefined
+      if (parentKey && !parent) return { total: 0, items: [] }
+      const listing = new DocumentListingRepository(db)
+      const filter = query.filter?.trim()
+      const page = await listing.children({
+        parentId: parent?.id ?? -1,
+        names: filter ? [filter] : [],
+        // Anything but a built-in column is a property the list view shows (story 276).
+        sort: {
+          ...(COLLECTION_SORTS[query.orderBy ?? '']
+            ? { field: COLLECTION_SORTS[query.orderBy ?? ''] as DocumentSortField }
+            : query.orderBy
+              ? { property: query.orderBy }
+              : { field: 'sortOrder' as const }),
+          ascending: query.orderDirection !== 'Descending',
+        },
+        culture: query.orderCulture ?? null,
+        excludeKeys,
+        skip: query.skip,
+        take: query.take,
+      })
+      const found = new Map((await repo.nodes.byKeys(page.keys)).map((row) => [row.key, row]))
+      const rows = page.keys.flatMap((key) => found.get(key) ?? [])
+      const [guarded, people, counts] = await Promise.all([
+        repo.protectedKeys(rows),
+        listing.people(page.keys),
+        repo.nodes.childCounts(
+          rows.map((row) => row.id),
+          ObjectTypes.Document,
+        ),
+      ])
+      const items: DocumentCollectionItem[] = []
+      for (const row of rows) {
         const aggregate = await repo.load(row)
-        if (aggregate) items.push(aggregate)
+        if (!aggregate) continue
+        items.push({
+          ...aggregate,
+          isProtected: guarded.has(row.key),
+          hasChildren: (counts.get(row.id) ?? 0) > 0,
+          creator: people.get(row.key)?.creator ?? null,
+          updater: people.get(row.key)?.updater ?? null,
+        })
       }
       return { total: page.total, items }
     },

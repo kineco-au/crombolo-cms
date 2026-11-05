@@ -4,49 +4,26 @@
  * that writes backoffice search rows writes these too (`search.ts`), from the
  * same queue. docs/search.md.
  */
-import { ObjectTypes, type SiteSearchLevel } from '@crombolo/core'
+import {
+  ObjectTypes,
+  type SiteSearchEntry,
+  type SiteSearchHit,
+  type SiteSearchLevel,
+  type SiteSearchQuery,
+  type SiteSearchText,
+} from '@crombolo/core'
 import type { Db } from './database.ts'
 import { DbDate, fromDbBool } from './dialect.ts'
 import { sql } from './query.ts'
 import { publishedValueRows } from './repositories/documents.ts'
 import { hiddenElementProperties } from './search.ts'
+import { databaseSiteSearch, setDefaultSiteSearch } from './search-providers.ts'
 import { searchTerms, searchWords, valueText } from './search-text.ts'
 
-/** A page's text as written, by weight: what an excerpt is cut from. */
-export interface SiteSearchText {
-  name: string
-  high: string[]
-  normal: string[]
-  low: string[]
-}
+export type { SiteSearchEntry, SiteSearchHit, SiteSearchText } from '@crombolo/core'
 
-/** One row of `site_search_document`: a page in one culture, '' when invariant. */
-export interface SiteSearchEntry {
-  culture: string
-  text: SiteSearchText
-}
-
-export interface SiteSearchOptions {
-  /** The culture searched, lowercase; an invariant page matches every culture. */
-  culture: string
-  /** Content type aliases; every searchable type when empty or absent. */
-  types?: readonly string[]
-  skip: number
-  take: number
-  /**
-   * Protected nodes, by id, that the person searching may not open and may:
-   * `branchAccess` in `@crombolo/core`. A page is left out when the nearest
-   * protected node on its path is denied.
-   */
-  access?: { denied: readonly number[]; allowed: readonly number[] }
-}
-
-export interface SiteSearchHit {
-  key: string
-  culture: string
-  score: number
-  text: SiteSearchText
-}
+/** A site search over the database (`databaseSiteSearch`). */
+export type SiteSearchOptions = SiteSearchQuery
 
 const LEVELS: readonly SiteSearchLevel[] = ['high', 'normal', 'low']
 
@@ -288,3 +265,10 @@ export class SiteSearch {
     }
   }
 }
+
+setDefaultSiteSearch((db) =>
+  databaseSiteSearch(db, {
+    write: writeSiteEntries,
+    query: (on, query, options) => new SiteSearch(on).query(query, options),
+  }),
+)

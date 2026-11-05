@@ -8,7 +8,8 @@ Examine (Lucene) indexes on disk instead. Stories
 
 Backoffice search finds a page, media item or member by the words in any of its
 text properties, not only its name. Site search is
-[below](#site-search-for-visitors).
+[below](#site-search-for-visitors). Either can be moved to a service of the
+site's choosing ([Providers](#providers), story `273`).
 
 ## What is indexed
 
@@ -311,3 +312,82 @@ and its URL.
 
 Not built: stemming, synonyms, typo tolerance, facets, and searching media files
 or members.
+
+## Providers
+
+Each search goes through a provider (story `273`): `BackofficeSearchProvider` for
+backoffice search and `SiteSearchProvider` for site search, both in
+`@crombolo/core` and re-exported by `@crombolo/crombolo`. The database ones
+described above are the defaults (`databaseBackofficeSearch`,
+`databaseSiteSearch` in `@crombolo/data`). A site replaces either, or both, in
+`crombolo.config.ts`, with a factory given the database:
+
+```ts
+import { defineConfig } from '@crombolo/crombolo'
+import { meiliSiteSearch } from './search/meili.ts'
+
+export default defineConfig({
+  search: {
+    site: () => meiliSiteSearch({ url: process.env.MEILI_URL, key: process.env.MEILI_KEY }),
+  },
+})
+```
+
+**What Crombolo decides, whatever the provider:**
+
+- **What is indexed, and as what text.** The indexer works out each item's
+  documents exactly as above, with `searchable`, the `site-search` levels and
+  the blocks rules, and hands them over: `write(item, entries)`. The item
+  carries its key, kind, content type alias, path of node ids, and trashed flag.
+- **When.** The queue stays the outbox. A provider outside the database is
+  written before the claim's transaction, so a slow service holds no write
+  lock. If it fails, the queue row stays, the failure is logged, and the item
+  is tried again on the next run.
+- **What a delete takes away.** Deleting a page, media item or member for
+  good writes a `search_removal` row (migration 063) in the delete's own
+  transaction. The indexer gives each to the providers outside the database,
+  `remove(item)`, until each succeeds. The database's own rows go by cascade.
+- **Moves.** With a provider outside the database, a move queues the moved
+  branch, so the provider is given the new paths it filters on. With only the
+  database, a move still queues nothing.
+- **Who sees a result.** Site search's `query` is given the person's denied and
+  allowed branches (`access`). A provider leaves out a page when the nearest of
+  them on its path is denied: `openTo(path, access)` says so. Every hit is
+  still read back from the published cache, and the dashboard drops hits for
+  items that no longer exist.
+
+**What a provider decides:** how it stores and ranks what it is given. The
+contract is that every word of a query matches as a word prefix, folded as
+`searchWords` folds, with the name above high, normal and low text.
+
+**The queries that join.** Tree search, member search and "find content by its
+properties" filter in SQL. The database provider gives them its full-text
+match to join (`sqlMatches`), so nothing changes there. Any other provider is
+asked for `matches(query, { kinds, limit })`, ids and scores best first. The
+query then filters with them as a table of values, at most `search.matchLimit`
+(default 1,000). Past the limit a total may be capped; the first time that
+happens a process logs it.
+
+**The rest of the interface:**
+
+- `query`, for the Search indexes dashboard and the searcher;
+- `stats`, for its numbers (`pending` still comes from the queue);
+- `clear`, optional, called before a rebuild;
+- `health`, shown on the status check.
+
+**Status:** the **Search** group of the status checks names each provider and
+says whether it answers. Troubleshooting lists them as "Back-office search" and
+"Site search".
+
+**Conformance.** `searchProviderConformance({ backoffice, site, item })` runs
+the checks every provider is held to and answers a report:
+
+- writing, replacing and removing;
+- prefix matching, kinds and the limit;
+- the dashboard's fields and paging;
+- culture, content types and access;
+- ranking, and totals.
+
+`item` makes the items it writes, real ones where a provider reads its own
+store. `tests/search-providers.test.ts` runs it against both database providers
+and an in-memory one (`tests/support/memory-search.ts`).

@@ -127,6 +127,9 @@ export async function undoMediaMemberUploads(db: Db): Promise<void> {
   // come after it; 056's columns go with 054's table.
   // 059, forms in the Library (story 239), 058, bundle schema picks (story
   // 226), and 057, site settings types (story 058): columns on tables that stay.
+  // 063, search removals (story 273): a table of its own.
+  await db.exec('DROP TABLE IF EXISTS search_removal')
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddSearchRemovals'")
   // 062, the Media tree folders first (story 246): a column and its index on node.
   await db.exec('DROP INDEX IF EXISTS ix_node_parent_tree')
   await db.exec('ALTER TABLE node DROP COLUMN tree_group')

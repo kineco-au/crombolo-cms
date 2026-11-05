@@ -409,6 +409,53 @@ describe('story 024 scheduled publishing', () => {
     expect((await h.call('/')).status).toBe(404)
   })
 
+  test('a page with a publish to come is flagged wherever it is listed (story 268)', async () => {
+    const { h, create } = await site()
+    const home = await create('Home')
+    const about = await create('About', home)
+    const other = await create('Other')
+    const inAnHour = new Date(Date.now() + 60 * 60_000)
+    await h.put(`${V1}/document/${about}/publish`, {
+      publishSchedules: [{ culture: null, schedule: { publishTime: inAnHour.toISOString() } }],
+    })
+    // Only coming down later is not a publish to come.
+    await h.put(`${V1}/document/${other}/publish`, {
+      publishSchedules: [
+        {
+          culture: null,
+          schedule: { unpublishTime: new Date(Date.now() + 86_400_000).toISOString() },
+        },
+      ],
+    })
+
+    type Flagged = {
+      id: string
+      flags: Array<{ alias: string }>
+      variants: Array<{ flags: Array<{ alias: string }> }>
+    }
+    const sign = [{ alias: 'Umb.ScheduledForPublish' }]
+    const flagged = (items: Flagged[]) =>
+      Object.fromEntries(items.map((i) => [i.id, [i.flags, i.variants[0]?.flags]]))
+
+    const children = await h.json<{ items: Flagged[] }>(
+      `${V1}/tree/document/children?parentId=${home}&skip=0&take=100`,
+    )
+    expect(flagged(children.items)).toEqual({ [about]: [sign, sign] })
+    const items = await h.json<Flagged[]>(`${V1}/item/document?id=${about}&id=${other}&id=${home}`)
+    expect(flagged(items)).toEqual({ [about]: [sign, sign], [other]: [[], []], [home]: [[], []] })
+    const collection = await h.json<{ items: Flagged[] }>(
+      `${V1}/collection/document/${home}?skip=0&take=100`,
+    )
+    expect(flagged(collection.items)).toEqual({ [about]: [sign, sign] })
+    const document = await h.json<Flagged>(`${V1}/document/${about}`)
+    expect([document.flags, document.variants[0]?.flags]).toEqual([sign, sign])
+
+    // The flag goes once the schedule has run.
+    await h.server.jobs.runScheduledPublishing(new Date(inAnHour.getTime() + 1000))
+    const after = await h.json<Flagged[]>(`${V1}/item/document?id=${about}`)
+    expect(flagged(after)).toEqual({ [about]: [[], []] })
+  })
+
   test('publishing now clears a pending schedule; a bad date is refused', async () => {
     const { h, create } = await site()
     const home = await create('Home')

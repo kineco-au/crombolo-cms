@@ -21,6 +21,7 @@ import {
 } from '@crombolo/data'
 import type { PublishedCache } from '@crombolo/render'
 import { auditRetainedSince } from './adapters/audit.ts'
+import { createElementPort } from './adapters/elements.ts'
 import type { Approvals } from './approvals.ts'
 import type { ContentDispatcher } from './content-dispatch.ts'
 import type {
@@ -122,6 +123,16 @@ export function createBackgroundJobs(options: JobsOptions): BackgroundJobs {
     nodeState: options.nodeState,
     nodeId: options.nodeId,
   })
+  const elementRows = new DocumentRepository(options.db, {
+    nodeState: options.nodeState,
+    nodeId: options.nodeId,
+    kind: 'element',
+  })
+  const elements = createElementPort(options.db, {
+    nodeState: options.nodeState,
+    nodeId: options.nodeId,
+    onChange: () => options.cache.invalidate(),
+  })
   const timers: Array<ReturnType<typeof setInterval>> = []
   const search = new SearchIndex(options.db)
   let indexing: Promise<number> | undefined
@@ -154,6 +165,17 @@ export function createBackgroundJobs(options: JobsOptions): BackgroundJobs {
         due.action,
         result.ok ? { ok: true } : { ok: false, reason: result.reason },
       )
+    }
+    // Library elements: no approvals and no redirects, so the port publishes them directly.
+    for (const due of await elementRows.dueSchedules(now)) {
+      if (!(await elementRows.claimSchedule(due.id))) continue
+      const cultures = due.culture ? [due.culture] : null
+      const result =
+        due.action === 'Release'
+          ? await elements.publish(due.key, cultures)
+          : await elements.unpublish(due.key, cultures)
+      if (result.ok) (due.action === 'Release' ? run.published : run.unpublished).push(due.key)
+      else run.failed.push({ key: due.key, reason: result.reason })
     }
     await options.approvals?.sweepScheduled(now.getTime())
     // The operations recorded, announced and refreshed what they did themselves.

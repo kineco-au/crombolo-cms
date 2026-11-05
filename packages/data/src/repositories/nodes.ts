@@ -8,7 +8,7 @@ import { normaliseUuid, ObjectTypes, type Page, SystemNodes } from '@crombolo/co
 import type { Db } from '../database.ts'
 import { DbDate, fromDbBool } from '../dialect.ts'
 import { sql } from '../query.ts'
-import { searchTerms } from '../search-text.ts'
+import { fullTextHits, kindOf } from '../search-providers.ts'
 
 export interface NodeRow {
   id: number
@@ -361,8 +361,9 @@ export class NodeRepository {
     },
   ): Promise<Page<NodeRow>> {
     const like = `%${query.toLowerCase().replaceAll('%', '').replaceAll('_', '')}%`
-    const terms = options.fullText ? searchTerms(query) : []
-    const indexed = terms.length > 0
+    const kind = kindOf(objectType)
+    const hits = options.fullText && kind ? await fullTextHits(this.#db, query, [kind]) : undefined
+    const indexed = hits !== undefined
     const dialect = this.#db.dialect
     const hitNode = sql.ref<number | null>('h.node_id')
     const hitScore = sql.ref<number | null>('h.score')
@@ -373,7 +374,7 @@ export class NodeRepository {
         indexed,
         (q) =>
           q.leftJoin(
-            dialect.fullTextMatches(dialect.fullTextQuery(terms)).as('h'),
+            (hits as NonNullable<typeof hits>).as('h'),
             'h.node_id',
             'node.id',
           ) as unknown as typeof q,

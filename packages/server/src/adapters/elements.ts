@@ -267,12 +267,29 @@ export function createElementPort(
       }
     },
 
-    async publish(key, cultures) {
+    async publish(key, cultures, schedules = []) {
+      const now = Date.now()
+      const later = (s: { publishTime: Date | null }) =>
+        s.publishTime !== null && s.publishTime.getTime() > now
+      const immediate = schedules.filter((s) => !later(s))
+      const scheduledOnly = schedules.length > 0 && immediate.length === 0
+      const publishing = immediate.some((s) => s.culture !== null)
+        ? immediate.flatMap((s) => (s.culture === null ? [] : [s.culture]))
+        : cultures
       try {
-        const published = await repo.publish(key, cultures)
+        // The schedule and the publish are one change: neither lands without the other.
+        const published = await repo.atomically(async (tx) => {
+          if (schedules.length > 0)
+            await tx.setSchedule(
+              key,
+              schedules.map((s) => ({ ...s, publishTime: later(s) ? s.publishTime : null })),
+            )
+          if (scheduledOnly) return true
+          return tx.publish(key, publishing)
+        })
         if (!published) return notFound()
         await changed()
-        return { ok: true as const }
+        return { ok: true as const, scheduledOnly }
       } catch (error) {
         return failure(error)
       }

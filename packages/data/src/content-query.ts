@@ -15,6 +15,7 @@ import {
 import type { Db } from './database.ts'
 import { DbDate, fromDbBool } from './dialect.ts'
 import { type Expression, sql } from './query.ts'
+import { fullTextHits } from './search-providers.ts'
 import { escapeLike, searchTerms } from './search-text.ts'
 
 export const QUERY_STATES = ['published', 'draft', 'changed', 'trashed'] as const
@@ -441,8 +442,10 @@ async function runQuery(db: Db, query: ContentQuery, scope: QueryScope): Promise
 
   // ---- full text, through the existing index
   if (query.text) {
-    const hits = db.dialect.fullTextMatches(db.dialect.fullTextQuery(searchTerms(query.text)))
-    q = q.where((eb) => eb('n.id', 'in', eb.selectFrom(hits.as('h')).select('h.node_id')))
+    const hits = await fullTextHits(db, query.text, ['document'])
+    q = hits
+      ? q.where((eb) => eb('n.id', 'in', eb.selectFrom(hits.as('h')).select('h.node_id')))
+      : q.where(sql<boolean>`${sql.lit(false)}`)
   }
 
   // ---- properties

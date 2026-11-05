@@ -3,7 +3,7 @@
  *
  * An element is publishable, versioned content with no URL and no template, so
  * this mirrors the document handlers without the parts a route needs — no URLs,
- * no preview, no schedules, no domains. The contract keys an element's type as
+ * no preview, no domains. The contract keys an element's type as
  * `documentType`, because an element type *is* a content type carrying
  * `isElement`; the Library offers the ones that also carry `allowedInLibrary`,
  * which `document-type/allowed-in-library` answers.
@@ -17,7 +17,8 @@ import { invalidSkipTake, notFound, problemDetails, problemResponse } from '@cro
 import type { ElementPort, PortFailure, ReferencePort } from '../ports-content.ts'
 import type { ManagementApiRouter, RequestContext } from '../router.ts'
 import { created, paging, registerFolderHandlers } from './content-type.ts'
-import { failureResponse, readBody, toSaveDocument } from './document.ts'
+import { failureResponse, readBody, readSchedules, toSaveDocument } from './document.ts'
+import { itemFlags, variantFlags } from './flags.ts'
 
 const API = '/umbraco/management/api/v1'
 
@@ -52,11 +53,11 @@ export function toElementResponse(element: DocumentAggregate) {
       createDate: v.createDate.toISOString(),
       updateDate: v.updateDate.toISOString(),
       publishDate: v.publishDate?.toISOString() ?? null,
-      scheduledPublishDate: null,
-      scheduledUnpublishDate: null,
-      flags: [],
+      scheduledPublishDate: v.scheduledPublishDate?.toISOString() ?? null,
+      scheduledUnpublishDate: v.scheduledUnpublishDate?.toISOString() ?? null,
+      flags: variantFlags(v),
     })),
-    flags: [],
+    flags: itemFlags(element.variants),
   }
 }
 
@@ -66,7 +67,7 @@ const variantItems = (item: ElementTreeItem) =>
     name: v.name,
     culture: v.culture,
     state: v.state,
-    flags: [],
+    flags: variantFlags(v),
   }))
 
 /** One shape serves the tree and the recycle bin; the contract's models match. */
@@ -83,7 +84,7 @@ function toElementTreeItem(item: ElementTreeItem, noAccess = false) {
       ? null
       : typeRef(item.contentTypeKey, item.icon, item.contentTypeCollectionKey),
     variants: variantItems(item),
-    flags: [],
+    flags: itemFlags(item.variants),
   }
 }
 
@@ -97,12 +98,17 @@ function toElementItem(item: ElementTreeItem) {
       ? null
       : typeRef(item.contentTypeKey, item.icon, item.contentTypeCollectionKey),
     variants: variantItems(item),
-    flags: [],
+    flags: itemFlags(item.variants),
   }
 }
 
 const readCultures = (body: Record<string, unknown>): string[] | null => {
-  const raw = body.cultures ?? body.culturesToPublish
+  const raw =
+    body.cultures ??
+    body.culturesToPublish ??
+    (Array.isArray(body.publishSchedules)
+      ? (body.publishSchedules as Array<Record<string, unknown>>).map((s) => s.culture)
+      : undefined)
   if (!Array.isArray(raw)) return null
   const cultures = raw.filter((c): c is string => typeof c === 'string' && c.length > 0)
   return cultures.length > 0 ? cultures : null
@@ -291,10 +297,15 @@ export function registerElementHandlers(
   handle('PutElementByIdPublish', async (ctx) => {
     const key = ctx.params.id as string
     if (!(await port.byKey(key))) return problemResponse(notFound('The element could not be found'))
-    const result = await port.publish(key, readCultures(await readBody(ctx)))
-    return result.ok
-      ? done(ctx, 'Element published')
-      : failed('Could not publish the element', result)
+    const body = await readBody(ctx)
+    const schedules = readSchedules(body)
+    if (schedules === 'invalid')
+      return problemResponse(
+        problemDetails({ title: 'A schedule date is not a valid date', status: 400 }),
+      )
+    const result = await port.publish(key, readCultures(body), schedules)
+    if (!result.ok) return failed('Could not publish the element', result)
+    return done(ctx, result.scheduledOnly ? 'Publishing scheduled' : 'Element published')
   })
 
   handle('PutElementByIdUnpublish', async (ctx) => {

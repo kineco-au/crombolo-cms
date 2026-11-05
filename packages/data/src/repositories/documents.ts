@@ -42,6 +42,7 @@ import {
   visibleStateIdFor,
 } from '../schema-state.ts'
 import { queueForSearch } from '../search.ts'
+import { recordSearchRemovals, searchesOutsideDatabase } from '../search-providers.ts'
 import type { CoreTables } from '../tables.gen.ts'
 import { recordFiles } from './media-access.ts'
 import { NodeRepository, type NodeRow } from './nodes.ts'
@@ -1521,6 +1522,21 @@ export class DocumentRepository {
           .set({ sort_order: await repo.#nextSortOrder(parentId, node.id) })
           .where('id', '=', node.id)
           .execute()
+        // A provider outside the database filters on the paths it was given (story 273).
+        const placed = searchesOutsideDatabase(tx) ? await repo.nodes.byId(node.id) : undefined
+        if (placed) {
+          const moved = await tx.q
+            .selectFrom('node')
+            .select('id')
+            .where((eb) =>
+              eb.or([eb('id', '=', placed.id), eb('path', 'like', `${placed.path},%`)]),
+            )
+            .execute()
+          await queueForSearch(
+            tx,
+            moved.map((row) => Number(row.id)),
+          )
+        }
         await repo.#instructContent(node.key)
         return 'moved'
       }),
@@ -2747,7 +2763,33 @@ export class DocumentRepository {
   }
 
   /**
-   * The content tree's view of documents: four queries a page, whatever its
+   * Whether each page has public access rules of its own or from a page above
+   * it, as Umbraco's `isProtected` means, in one read for them all.
+   */
+  async protectedKeys(rows: readonly NodeRow[]): Promise<Set<string>> {
+    const pathIds = (row: NodeRow) =>
+      row.path
+        .split(',')
+        .map(Number)
+        .filter((id) => id > 0)
+    const guarded = await this.#protectedIds([...new Set(rows.flatMap(pathIds))])
+    return new Set(
+      rows.filter((row) => pathIds(row).some((id) => guarded.has(id))).map((row) => row.key),
+    )
+  }
+
+  async #protectedIds(ids: readonly number[]): Promise<Set<number>> {
+    if (ids.length === 0 || this.objectType !== ObjectTypes.Document) return new Set()
+    const rows = await this.#db.q
+      .selectFrom('public_access')
+      .select('node_id')
+      .where('node_id', 'in', ids)
+      .execute()
+    return new Set(rows.map((row) => Number(row.node_id)))
+  }
+
+  /**
+   * The content tree's view of documents: five queries a page, whatever its
    * size. Only what a tree item shows is read — not the values, nor the
    * schedules the editor needs.
    */
@@ -2803,6 +2845,40 @@ export class DocumentRepository {
     const above = new Map(
       (await this.#nodes.byIds([...new Set(rows.flatMap(pathIds))])).map((n) => [n.id, n]),
     )
+    // Public access on the pages or above them, and their publishes to come, in one read.
+    const marks = await this.#db.q
+      .selectFrom('public_access')
+      .select((eb) => [
+        'node_id',
+        eb.val('protected').as('mark'),
+        sql<string | null>`null`.as('iso_code'),
+      ])
+      .where(
+        'node_id',
+        'in',
+        this.objectType === ObjectTypes.Document
+          ? [...new Set([...ids, ...rows.flatMap(pathIds)])]
+          : [-1],
+      )
+      .unionAll((eb) =>
+        eb
+          .selectFrom('content_schedule as s')
+          .leftJoin('language as l', 'l.id', 's.language_id')
+          .select((e) => ['s.node_id', e.val('release').as('mark'), 'l.iso_code'])
+          .where('s.node_id', 'in', ids)
+          .where('s.action', '=', 'Release'),
+      )
+      .execute()
+    const guarded = new Set(
+      marks.filter((m) => m.mark === 'protected').map((m) => Number(m.node_id)),
+    )
+    const releases = marks.filter((m) => m.mark === 'release')
+    const scheduled = (id: number, culture: string | null) =>
+      releases.some(
+        (r) =>
+          Number(r.node_id) === id &&
+          ((r.iso_code as string | null) ?? null)?.toLowerCase() === culture?.toLowerCase(),
+      )
 
     const items: DocumentTreeItem[] = []
     for (const row of rows) {
@@ -2826,6 +2902,7 @@ export class DocumentRepository {
         isTrashed: row.trashed,
         createDate: row.createDate ?? new Date(),
         ancestorKeys: ancestors.filter((a) => a.objectType === this.objectType).map((a) => a.key),
+        isProtected: guarded.has(row.id) || pathIds(row).some((id) => guarded.has(id)),
         variants:
           own.length === 0
             ? [
@@ -2833,11 +2910,13 @@ export class DocumentRepository {
                   culture: null,
                   name: String(fact.draft_name ?? row.text ?? ''),
                   state: stateFor(fromDbBool(fact.published), fromDbBool(fact.edited), row.trashed),
+                  scheduledForPublish: scheduled(row.id, null),
                 },
               ]
             : own.map((c) => ({
                 culture: String(c.iso_code),
                 name: String(c.name ?? ''),
+                scheduledForPublish: scheduled(row.id, String(c.iso_code)),
                 state: stateFor(
                   fromDbBool(c.published),
                   fromDbBool(c.edited),
@@ -3429,6 +3508,11 @@ async function deleteNodeRows(
       )
   const versions = () =>
     tx.q.selectFrom('content_version').select('id').where('node_id', 'in', nodes())
+  // Search providers outside the database lose nothing by cascade, so they are told (story 273).
+  await recordSearchRemovals(
+    tx,
+    (await nodes().execute()).map((row) => Number(row.id)),
+  )
   await tx.q.deleteFrom('property_value').where('node_id', 'in', nodes()).execute()
   await tx.q.deleteFrom('content_schedule').where('node_id', 'in', nodes()).execute()
   await tx.q.deleteFrom('user_notification').where('node_id', 'in', nodes()).execute()

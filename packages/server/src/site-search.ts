@@ -4,7 +4,7 @@
  * so a page unpublished since it was indexed is never shown. docs/search.md.
  */
 import { branchAccess } from '@crombolo/core'
-import { type Db, PublicAccessRepository, SiteSearch } from '@crombolo/data'
+import { type Db, PublicAccessRepository, searchProvidersOf } from '@crombolo/data'
 import {
   excerpt,
   type PublishedCache,
@@ -26,7 +26,7 @@ export function siteSearchFor(
       member ? { username: member.username, groups: member.roles } : undefined,
     )
     const culture = options.culture ?? (await cache.defaultCulture())
-    const hits = await new SiteSearch(db).query(query, {
+    const hits = await searchProvidersOf(db).site.query(query, {
       culture: culture ?? '',
       types: options.types,
       skip: options.skip,

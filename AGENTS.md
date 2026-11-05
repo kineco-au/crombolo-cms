@@ -43,6 +43,15 @@
   later patch to the vendored client went unpublished; `dist/VERSION` records
   the Umbraco release now
 
+## Release notes
+
+- Every release updates `docs/release-notes.md` before it is tagged: the
+  `## Unreleased` section becomes `## v<version> — <date>` with a fresh empty
+  `## Unreleased` above it
+- Each user-facing change gets a bullet with its story number, every migration
+  is listed, and the upgrade notes say what an operator must do
+- Keep `## Unreleased` current as work lands, so a release only renames it
+
 ## Git
 
 - Pushing a `v*` tag publishes to npm (`.github/workflows/release.yml`), so treat

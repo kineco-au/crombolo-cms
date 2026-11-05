@@ -12,6 +12,7 @@ import {
   notFound,
   notImplemented,
   problemResponse,
+  ROOT_ACCESS,
   type StartNodes,
   unauthorized,
 } from '@crombolo/core'
@@ -89,6 +90,27 @@ export interface RequestContext {
 
 export type Authenticator = (request: Request) => Promise<Principal | undefined>
 
+/**
+ * The operations a picker calls with its `dataTypeId` (story 270). A data type
+ * with `ignoreUserStartNodes` on lets them see the whole tree; nothing else
+ * may widen what a user reaches.
+ */
+const PICKER_OPERATIONS = new Set([
+  'GetTreeDocumentRoot',
+  'GetTreeDocumentChildren',
+  'GetTreeDocumentSiblings',
+  'GetItemDocumentSearch',
+  'GetCollectionDocumentById',
+  'GetTreeMediaRoot',
+  'GetTreeMediaChildren',
+  'GetTreeMediaSiblings',
+  'GetItemMediaSearch',
+  'GetCollectionMedia',
+  'GetTreeElementRoot',
+  'GetTreeElementChildren',
+  'GetTreeElementSiblings',
+])
+
 export interface RouterOptions {
   operations?: readonly OperationInfo[]
   /** Resolves the caller's identity. Omitted means every request is anonymous. */
@@ -107,6 +129,8 @@ export interface RouterOptions {
   clientAddress?: (request: Request) => ClientAddress
   /** Answers an error a handler threw; undefined lets it propagate. */
   onError?: (error: unknown) => Response | undefined
+  /** Whether a data type's picker ignores the user's start nodes. */
+  ignoresStartNodes?: (dataTypeId: string) => Promise<boolean>
   /** A change to a page that people can subscribe to, and who made it (story 045). */
   onContentChange?: (change: RaisedContentChange, principal: Principal | undefined) => void
 }
@@ -140,6 +164,7 @@ export class ManagementApiRouter {
   readonly #onNotImplemented: RouterOptions['onNotImplemented']
   readonly #onServerEvent: RouterOptions['onServerEvent']
   readonly #nodes: NodeLookup | undefined
+  readonly #ignoresStartNodes: RouterOptions['ignoresStartNodes']
   readonly #allowLocalLogin: boolean
   readonly #audit: AuditSink | undefined
   readonly #clientAddress: (request: Request) => ClientAddress
@@ -157,6 +182,7 @@ export class ManagementApiRouter {
     this.#audit = options.audit
     this.#clientAddress = options.clientAddress ?? forwardedOnly
     this.#onError = options.onError
+    this.#ignoresStartNodes = options.ignoresStartNodes
     this.#onContentChange = options.onContentChange
     for (const operation of operations) {
       const segments = operation.path.split('/').filter((s) => s.length > 0)
@@ -226,6 +252,24 @@ export class ManagementApiRouter {
     return undefined
   }
 
+  /**
+   * The caller as a picker's request sees them: with root access, when the
+   * picker's data type ignores start nodes. Their permissions still apply.
+   */
+  async #forPicker(
+    operation: OperationInfo,
+    url: URL,
+    principal: Principal | undefined,
+  ): Promise<Principal | undefined> {
+    const dataTypeId = url.searchParams.get('dataTypeId')
+    if (!principal || !dataTypeId || !PICKER_OPERATIONS.has(operation.operationId)) return principal
+    if (!(await this.#ignoresStartNodes?.(dataTypeId))) return principal
+    return {
+      ...principal,
+      startNodes: { document: ROOT_ACCESS, media: ROOT_ACCESS, element: ROOT_ACCESS },
+    }
+  }
+
   async dispatch(request: Request): Promise<Response> {
     const url = new URL(request.url)
     const matched = this.match(request.method, url.pathname)
@@ -242,7 +286,7 @@ export class ManagementApiRouter {
 
     // Authorisation is driven by the contract: the document requires a
     // back-office user globally, and 10 operations opt out with `security: []`.
-    const principal = await this.#authenticate?.(request)
+    const principal = await this.#forPicker(operation, url, await this.#authenticate?.(request))
     const anonymous =
       operation.anonymous ||
       (this.#allowLocalLogin && LOCAL_LOGIN_OPERATIONS.has(operation.operationId))

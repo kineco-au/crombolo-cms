@@ -219,6 +219,17 @@ describe.skipIf(!vendored)('vendored backoffice', () => {
     expect(version).toBe('@umbraco-cms/backoffice@18.2.0')
   })
 
+  test('the copy dialog does not offer to relate a copy to its original (story 271)', () => {
+    // The chunk carries a content hash, so it is found by its name's stem.
+    const dialogs = [
+      ...new Bun.Glob('chunks/duplicate-document-modal.element-*.js').scanSync({ cwd: VENDOR }),
+    ]
+      .map((file) => readFileSync(join(VENDOR, file), 'utf8'))
+      .filter((source) => source.includes('umb-document-duplicate-to-modal'))
+    expect(dialogs.length).toBeGreaterThan(0)
+    for (const source of dialogs) expect(source).not.toContain('relateToOriginalLabel')
+  })
+
   test('import map resolves to files that actually exist', () => {
     const manifest = JSON.parse(readFileSync(join(VENDOR, 'umbraco-package.json'), 'utf8'))
     const imports: Record<string, string> = manifest.importmap.imports

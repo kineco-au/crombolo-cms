@@ -687,6 +687,13 @@ export interface CoreTables {
     node_id: Generated<number>
     queued_at: Timestamp
   }
+  search_removal: {
+    id: Generated<number>
+    kind: string
+    node_id: number
+    node_key: string
+    removed_at: Timestamp
+  }
   server: {
     crombolo_version: string | null
     last_seen: Timestamp

@@ -22,6 +22,7 @@ import {
   type QueueCounts,
   queueCounts,
   RemoteTrustRepository,
+  searchProvidersOf,
   sql,
   UserGroupRepository,
   UserRepository,
@@ -49,6 +50,7 @@ const CHECKS = {
   routes: { id: '6f1d4a8e-0047-4c1a-9e7d-000000000007', name: 'Routes and pages' },
   settings: { id: '6f1d4a8e-0047-4c1a-9e7d-000000000008', name: 'Site settings' },
   code: { id: '6f1d4a8e-0047-4c1a-9e7d-000000000009', name: 'Installing code' },
+  search: { id: '6f1d4a8e-0047-4c1a-9e7d-00000000000a', name: 'Search providers' },
 } as const
 
 /** Waiting longer than this means nothing is sending: no server is running its jobs, or one is stuck. */
@@ -84,6 +86,15 @@ const GROUPS: HealthCheckGroup[] = [
         ...CHECKS.outgoing,
         description:
           'Whether changes are reaching webhooks and the people who asked to hear of them.',
+      },
+    ],
+  },
+  {
+    name: 'Search',
+    checks: [
+      {
+        ...CHECKS.search,
+        description: 'Which search the back office and the site use, and whether each answers.',
       },
     ],
   },
@@ -386,6 +397,29 @@ export function createDiagnosticsPort(options: HealthCheckOptions): DiagnosticsP
         ),
       )
     },
+    [CHECKS.search.id]: async () => {
+      const { backoffice, site } = searchProvidersOf(db)
+      const checked = async (
+        what: string,
+        provider: { name: string; health?(): Promise<{ ok: boolean; detail?: string }> },
+      ) => {
+        try {
+          const health = (await provider.health?.()) ?? { ok: true }
+          return health.ok
+            ? result('Success', `${what} uses ${provider.name}, which is answering.`)
+            : result(
+                'Error',
+                `${what} uses ${provider.name}, which is not answering${health.detail ? `: ${health.detail}` : '.'}`,
+              )
+        } catch (error) {
+          return result(
+            'Error',
+            `${what} uses ${provider.name}, which is not answering: ${failure(error)}`,
+          )
+        }
+      }
+      return [await checked('Back-office search', backoffice), await checked('Site search', site)]
+    },
     [CHECKS.code.id]: async () => {
       const results: HealthCheckResult[] = []
       const verb = RemotePermissions.InstallCode
@@ -476,6 +510,8 @@ export function createDiagnosticsPort(options: HealthCheckOptions): DiagnosticsP
           'E-mail',
           availability.available ? (availability.description ?? undefined) : 'Not configured',
         ],
+        ['Back-office search', searchProvidersOf(db).backoffice.name],
+        ['Site search', searchProvidersOf(db).site.name],
         ['Log level', config.logLevel],
         ['Telemetry', describeTelemetry(telemetryStatus())],
         ['Time zone', Intl.DateTimeFormat().resolvedOptions().timeZone],

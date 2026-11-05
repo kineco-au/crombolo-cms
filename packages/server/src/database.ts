@@ -9,6 +9,7 @@ import {
   connect,
   cromboloPlan,
   type Db,
+  DEFAULT_MATCH_LIMIT,
   ensureBuiltInDataTypes,
   ensureSystemContentTypes,
   ensureSystemMemberTypes,
@@ -19,6 +20,7 @@ import {
   readState,
   seedContent,
   seedIdentity,
+  useSearchProviders,
 } from '@crombolo/data'
 import { ensureApiClient } from './api-client.ts'
 import { type CromboloConfig, runsOnLocalhost } from './config.ts'
@@ -87,7 +89,33 @@ export async function attachDatabase(
     await db.close()
     throw error
   }
+  useSiteSearchProviders(db, config)
   return { db, seededAdminPassword: undefined }
+}
+
+/**
+ * Registers the site's search providers on `db` (story 273), so every reader
+ * of it, the indexer and the CLI among them, finds them. Without a factory,
+ * the database's own.
+ */
+export function useSiteSearchProviders(db: Db, config: Pick<CromboloConfig, 'search'>): void {
+  const search = config.search ?? {}
+  const log = logger('search')
+  useSearchProviders(db, {
+    backoffice: search.backoffice?.({ db }),
+    site: search.site?.({ db }),
+    matchLimit: search.matchLimit,
+    onError: (error, context) =>
+      log.warning('The search provider {provider} failed; the item stays queued', {
+        provider: context.provider,
+        key: context.key,
+        error,
+      }),
+    onCapped: () =>
+      log.warning('A search took {limit} matches from the provider, so its total may be capped', {
+        limit: search.matchLimit ?? DEFAULT_MATCH_LIMIT,
+      }),
+  })
 }
 
 /**
@@ -118,6 +146,7 @@ export async function bootstrapDatabase(
     await db.close()
     throw error
   }
+  useSiteSearchProviders(db, config)
   return { db, seededAdminPassword: await installDatabase(db, config, chains) }
 }
 

@@ -95,6 +95,10 @@ bun run vendor:backoffice
     of the path and the query (`moved-sections.ts`, with a test).
   - **Redirects are a Settings tool:** Umbraco's Redirect URL Management
     dashboard moved from Content to Settings, where it is the Redirects card.
+  - **The copy dialog does not offer "Relate to original"** (story 271).
+    Relations are derived from the values rather than stored, and a copy
+    records no origin, so the toggle had no effect; the copy is sent with
+    `relateToOriginal: false`.
   - **`umbCromboloHooks`:** the seams Crombolo's plugin plugs into, exported
     with `@umbraco-cms/backoffice/extension-registry`.
 - **`umbCromboloHooks`:** Crombolo's own behaviour stays in the plugin, with

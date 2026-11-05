@@ -3,15 +3,31 @@
  * queued item into rows, and the two indexes the Examine dashboard shows. The
  * same indexer writes a page's site-search rows (`site-search.ts`). docs/search.md.
  */
-import { ObjectTypes } from '@crombolo/core'
+import {
+  type BackofficeIndexName,
+  type BackofficeSearchEntry,
+  type BackofficeSearchHit,
+  type BackofficeSearchProvider,
+  ObjectTypes,
+  type SiteSearchEntry,
+  type SiteSearchProvider,
+} from '@crombolo/core'
 import type { Db } from './database.ts'
-import { DbDate, fromDbBool } from './dialect.ts'
+import { fromDbBool } from './dialect.ts'
 import { type Expression, now, rowLock } from './query.ts'
-import { searchTerms, searchWords, type UnsearchableProperty, valueText } from './search-text.ts'
-import { siteEntriesFor, writeSiteEntries } from './site-search.ts'
+import {
+  forgetSearchRemovals,
+  isInDatabase,
+  pendingSearchRemovals,
+  type SearchProviders,
+  searchItemFor,
+  searchProvidersOf,
+} from './search-providers.ts'
+import { searchWords, type UnsearchableProperty, valueText } from './search-text.ts'
+import { siteEntriesFor } from './site-search.ts'
 
 /** Umbraco's names for the two backoffice indexes, which the dashboard shows. */
-export type SearchIndexName = 'InternalIndex' | 'MembersIndex'
+export type SearchIndexName = BackofficeIndexName
 
 export interface SearchIndexDefinition {
   name: SearchIndexName
@@ -108,12 +124,7 @@ export async function queueEverythingForSearch(db: Db): Promise<void> {
 }
 
 /** One row of `search_document`: an item in one culture, '' when invariant. */
-export interface SearchEntry {
-  culture: string
-  name: string
-  body: string
-  fields: Record<string, string[]>
-}
+export type SearchEntry = BackofficeSearchEntry
 
 export interface SearchIndexStats {
   documentCount: number
@@ -122,11 +133,7 @@ export interface SearchIndexStats {
   pending: number
 }
 
-export interface SearchHit {
-  key: string
-  score: number
-  fields: Array<{ name: string; values: string[] }>
-}
+export type SearchHit = BackofficeSearchHit
 
 export class SearchIndex {
   #db: Db
@@ -148,8 +155,18 @@ export class SearchIndex {
    * indexed. Each item is its own transaction, claimed by locking its queue row:
    * a second indexer passes over it, and a write queueing it again bumps the
    * generation, so the row outlives this run and the item is indexed once more.
+   *
+   * A provider outside the database (story 273) is written first, outside the
+   * transaction, so a slow service holds no write lock; if it fails, the row
+   * stays and the item is tried again on the next run.
    */
   async indexQueued(limit = 200): Promise<number> {
+    const providers = searchProvidersOf(this.#db)
+    const outside = {
+      backoffice: isInDatabase(providers.backoffice) ? undefined : providers.backoffice,
+      site: isInDatabase(providers.site) ? undefined : providers.site,
+    }
+    await this.#forgetRemoved(providers, outside)
     const queued = await this.#db.q
       .selectFrom('search_index_queue')
       .select(['node_id', 'generation'])
@@ -161,6 +178,18 @@ export class SearchIndex {
     for (const row of queued) {
       const nodeId = Number(row.node_id)
       const generation = Number(row.generation)
+      if (outside.backoffice || outside.site) {
+        const item = await searchItemFor(this.#db, nodeId)
+        try {
+          if (item && outside.backoffice)
+            await outside.backoffice.write(item, await entriesFor(this.#db, nodeId))
+          if (item && outside.site && item.kind === 'document')
+            await outside.site.write(item, await siteEntriesFor(this.#db, nodeId))
+        } catch (error) {
+          providers.onError?.(error, { provider: outsideName(outside), key: item?.key })
+          continue
+        }
+      }
       const done = await this.#db.transaction(async (tx) => {
         const claimed = await tx.q
           .selectFrom('search_index_queue')
@@ -170,8 +199,11 @@ export class SearchIndex {
           .$call(rowLock(tx, 'update skip locked'))
           .execute()
         if (claimed.length === 0) return false
-        await writeEntries(tx, nodeId, await entriesFor(tx, nodeId))
-        await writeSiteEntries(tx, nodeId, await siteEntriesFor(tx, nodeId))
+        const item = { id: nodeId }
+        if (isInDatabase<SearchEntry>(providers.backoffice))
+          await providers.backoffice.writeIn(tx, item, await entriesFor(tx, nodeId))
+        if (isInDatabase<SiteSearchEntry>(providers.site))
+          await providers.site.writeIn(tx, item, await siteEntriesFor(tx, nodeId))
         await tx.q
           .deleteFrom('search_index_queue')
           .where('node_id', '=', nodeId)
@@ -184,6 +216,30 @@ export class SearchIndex {
     return indexed
   }
 
+  /** Tells the providers outside the database what was deleted; the database cascaded already. */
+  async #forgetRemoved(
+    providers: SearchProviders,
+    outside: { backoffice?: BackofficeSearchProvider; site?: SiteSearchProvider },
+  ): Promise<void> {
+    for (;;) {
+      const removals = await pendingSearchRemovals(this.#db, 200)
+      if (removals.length === 0) return
+      const done: number[] = []
+      for (const removal of removals) {
+        const item = { id: removal.nodeId, key: removal.key, kind: removal.kind }
+        try {
+          await outside.backoffice?.remove(item)
+          if (removal.kind === 'document') await outside.site?.remove(item)
+          done.push(removal.id)
+        } catch (error) {
+          providers.onError?.(error, { provider: outsideName(outside), key: removal.key })
+        }
+      }
+      await forgetSearchRemovals(this.#db, done)
+      if (done.length < removals.length) return
+    }
+  }
+
   /** Indexes until nothing is queued. For tests and the command line. */
   async indexAll(): Promise<number> {
     let total = 0
@@ -194,33 +250,26 @@ export class SearchIndex {
     }
   }
 
-  /** Queues every item the index covers; the index keeps answering meanwhile. */
+  /**
+   * Queues every item the index covers. The database index keeps answering
+   * meanwhile; a provider that clears first starts again from nothing.
+   */
   async rebuild(index: SearchIndexDefinition): Promise<void> {
+    const providers = searchProvidersOf(this.#db)
+    await providers.backoffice.clear?.(index.name)
+    if (index.name === 'InternalIndex') await providers.site.clear?.()
     await enqueue(this.#db, nodesOfTypes(this.#db, index.objectTypes))
   }
 
   async stats(index: SearchIndexDefinition): Promise<SearchIndexStats> {
-    const types = index.objectTypes
-    const documents = await this.#db.q
-      .selectFrom('search_document as sd')
-      .innerJoin('node as n', 'n.id', 'sd.node_id')
-      .select((eb) => [
-        eb.fn.count('sd.node_id').distinct().as('n'),
-        eb.fn.max('sd.field_count').as('fields'),
-      ])
-      .where('n.node_object_type', 'in', types)
-      .executeTakeFirst()
+    const stored = await searchProvidersOf(this.#db).backoffice.stats(index.name)
     const pending = await this.#db.q
       .selectFrom('search_index_queue as q')
       .innerJoin('node as n', 'n.id', 'q.node_id')
       .select((eb) => eb.fn.countAll().as('n'))
-      .where('n.node_object_type', 'in', types)
+      .where('n.node_object_type', 'in', index.objectTypes)
       .executeTakeFirst()
-    return {
-      documentCount: Number(documents?.n ?? 0),
-      fieldCount: Number(documents?.fields ?? 0),
-      pending: Number(pending?.n ?? 0),
-    }
+    return { ...stored, pending: Number(pending?.n ?? 0) }
   }
 
   /** The Examine dashboard's search: every stored field of each matching item, best first. */
@@ -229,63 +278,28 @@ export class SearchIndex {
     term: string,
     paging: { skip: number; take: number },
   ): Promise<{ total: number; items: SearchHit[] }> {
-    const terms = searchTerms(term)
-    if (terms.length === 0) return { total: 0, items: [] }
-    const types = index.objectTypes
-    const dialect = this.#db.dialect
-    const hits = this.#db.q
-      .selectFrom(dialect.fullTextMatches(dialect.fullTextQuery(terms)).as('h'))
-      .innerJoin('node as n', 'n.id', 'h.node_id')
-      .where('n.node_object_type', 'in', types)
-    const count = await hits.select((eb) => eb.fn.countAll().as('n')).executeTakeFirst()
-    const rows = await hits
-      .select(['n.id', 'n.unique_id as key', 'h.score'])
-      .orderBy('h.score', 'desc')
-      .orderBy('n.id')
-      .limit(paging.take)
-      .offset(paging.skip)
-      .execute()
-    const items: SearchHit[] = []
-    for (const row of rows) {
-      const stored = await this.#db.q
-        .selectFrom('search_document')
-        .select('fields')
-        .where('node_id', '=', Number(row.id))
-        .orderBy('culture')
-        .execute()
-      const merged = new Map<string, string[]>()
-      for (const entry of stored)
-        for (const [name, values] of Object.entries(
-          JSON.parse(entry.fields) as Record<string, string[]>,
-        ))
-          merged.set(name, [...new Set([...(merged.get(name) ?? []), ...values])])
-      items.push({
-        key: String(row.key),
-        score: Number(row.score),
-        fields: [...merged].map(([name, values]) => ({ name, values })),
-      })
+    const found = await searchProvidersOf(this.#db).backoffice.query(index.name, term, paging)
+    // A provider outside the database may hold what was deleted since it last heard.
+    const keys = found.items.map((hit) => hit.key.toLowerCase())
+    if (keys.length === 0) return found
+    const present = new Set(
+      (
+        await this.#db.q
+          .selectFrom('node')
+          .select('unique_id')
+          .where('unique_id', 'in', keys)
+          .execute()
+      ).map((row) => String(row.unique_id).toLowerCase()),
+    )
+    return {
+      total: found.total,
+      items: found.items.filter((hit) => present.has(hit.key.toLowerCase())),
     }
-    return { total: Number(count?.n ?? 0), items }
   }
 }
 
-async function writeEntries(tx: Db, nodeId: number, entries: readonly SearchEntry[]) {
-  await tx.q.deleteFrom('search_document').where('node_id', '=', nodeId).execute()
-  const indexedAt = DbDate.toDb(new Date())
-  for (const entry of entries)
-    await tx.q
-      .insertInto('search_document')
-      .values({
-        node_id: nodeId,
-        culture: entry.culture,
-        name: entry.name,
-        body: entry.body,
-        fields: JSON.stringify(entry.fields),
-        field_count: Object.keys(entry.fields).length,
-        indexed_at: indexedAt,
-      })
-      .execute()
-}
+const outsideName = (outside: { backoffice?: { name: string }; site?: { name: string } }) =>
+  [outside.backoffice?.name, outside.site?.name].filter(Boolean).join(', ')
 
 const folded = (texts: readonly string[]) => texts.flatMap(searchWords).join(' ')
 

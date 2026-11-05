@@ -3,10 +3,13 @@ import { join, resolve } from 'node:path'
 import type { DeliveryApiOptions } from '@crombolo/api-delivery'
 import type { MiddlewareChain, SiteRoute } from '@crombolo/common'
 import {
+  type BackofficeSearchProvider,
   DEFAULT_BACKOFFICE_PATH,
   DEFAULT_PASSWORD_CONFIGURATION,
   isValidPassword,
+  type SiteSearchProvider,
 } from '@crombolo/core'
+import type { Db } from '@crombolo/data'
 import {
   type CacheOptions,
   DEFAULT_RENDER_TIMEOUT_MS,
@@ -136,6 +139,15 @@ export function listeningBodyLimit(config: CromboloConfig): number {
   return config.remote.enabled
     ? Math.max(config.maxRequestBodyBytes, config.remote.maxUploadBytes)
     : config.maxRequestBodyBytes
+}
+
+/** Makes a search provider for a database; called once, when the database is opened. */
+export type SearchProviderFactory<P> = (context: { db: Db }) => P
+
+export interface SearchConfig {
+  backoffice?: SearchProviderFactory<BackofficeSearchProvider>
+  site?: SearchProviderFactory<SiteSearchProvider>
+  matchLimit?: number
 }
 
 export interface CromboloConfig {
@@ -348,6 +360,13 @@ export interface CromboloConfig {
    * A site swaps in blob storage with `s3MediaStore` or `azureMediaStore`.
    */
   mediaStore: MediaStore | undefined
+  /**
+   * The search providers (story 273): backoffice search and site search, each
+   * a factory given the database, the database's own when unset. `matchLimit`
+   * caps the matches a provider outside the database gives a query that
+   * filters with them in SQL. docs/search.md, "Providers".
+   */
+  search: SearchConfig
   /** Where log files are written, and read by the backoffice's log viewer. */
   logsDir: string
   /** The least severe level logged: trace, debug, info, warning, error or fatal. */
@@ -828,6 +847,7 @@ export function loadConfig(
       DEFAULTS.mediaCacheMegabytes,
     ),
     mediaStore: undefined,
+    search: {},
     logsDir: setting('CROMBOLO_LOGS_DIR') ?? DEFAULTS.logsDir,
     logLevel: parseLogLevel(setting('CROMBOLO_LOG_LEVEL')),
     logToConsole: setting('CROMBOLO_LOG_TO_CONSOLE') !== 'false',
@@ -1066,7 +1086,7 @@ export function describeDatabase(
   }
 }
 
-export const VERSION = '0.47.0'
+export const VERSION = '0.48.0'
 
 /** A whole number of seconds from the environment; undefined when unset or not one. */
 /** A positive number from a setting, else the default. */

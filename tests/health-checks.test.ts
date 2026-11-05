@@ -79,9 +79,10 @@ describe(`health checks (${dialectUnderTest})`, () => {
       'Media',
       'E-mail',
       'Servers',
+      'Search',
       'Site',
     ])
-    expect(groups.total).toBe(5)
+    expect(groups.total).toBe(6)
 
     const database = await h.json<{ name: string; checks: Array<{ name: string; id: string }> }>(
       `${V1}/health-check-group/database`,

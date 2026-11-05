@@ -19,6 +19,13 @@ import type {
 } from '@crombolo/core'
 import type { Principal } from './router.ts'
 
+/** When a culture (null: the invariant variant) goes live and comes down. */
+export interface PublishSchedule {
+  culture: string | null
+  publishTime: Date | null
+  unpublishTime: Date | null
+}
+
 /** A failed port call; `status` overrides the handler's default 400 (409 for a write gate). */
 export type PortFailure = {
   ok: false
@@ -95,7 +102,15 @@ export interface ElementPort {
     cultures: string[] | null,
     principal: Principal,
   ): Promise<{ ok: true } | PortFailure>
-  publish(key: string, cultures: string[] | null): Promise<{ ok: true } | PortFailure>
+  /**
+   * Publishes now, or schedules: an entry with a publish time still to come
+   * schedules that culture instead of publishing it, as a document's does.
+   */
+  publish(
+    key: string,
+    cultures: string[] | null,
+    schedules?: readonly PublishSchedule[],
+  ): Promise<{ ok: true; scheduledOnly: boolean } | PortFailure>
   unpublish(key: string, cultures: string[] | null): Promise<{ ok: true } | PortFailure>
   copy(
     key: string,
@@ -397,9 +412,27 @@ export interface DocumentPort extends TreePort {
   /** A page of a document's children, without `excludeKeys` in the page or the total. */
   collection(
     parentKey: string | null,
-    paging: SkipTake,
+    options: DocumentCollectionQuery,
     excludeKeys?: readonly string[],
-  ): Promise<Page<DocumentAggregate>>
+  ): Promise<Page<DocumentCollectionItem>>
+}
+
+/** What a list view asks for: a page, searched by name and sorted by a column. */
+export interface DocumentCollectionQuery extends SkipTake {
+  filter?: string
+  /** A column's alias; one the list cannot sort by keeps the sort order. */
+  orderBy?: string
+  orderDirection?: 'Ascending' | 'Descending'
+  /** The culture whose names are searched and sorted. */
+  orderCulture?: string
+}
+
+/** A row of a list view: the document, and what the list shows beside it. */
+export type DocumentCollectionItem = DocumentAggregate & {
+  isProtected: boolean
+  hasChildren: boolean
+  creator: string | null
+  updater: string | null
 }
 
 export interface SaveDocument {
