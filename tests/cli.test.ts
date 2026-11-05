@@ -5,7 +5,15 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { Writable } from 'node:stream'
@@ -543,6 +551,49 @@ describe('block components (story 184)', () => {
       orphanBlocks: string[]
     }
     expect(checked.orphanBlocks).toEqual(['blocks/ghost'])
+  }, 60_000)
+})
+
+describe('components gaps (story 281)', () => {
+  test('lists the gaps in a site, and check lists them without failing', () => {
+    // The suite's own container moves components/, so this states where it is.
+    const gaps = (...args: string[]) =>
+      run(['components', ...args], undefined, { CROMBOLO_COMPONENTS_DIR: 'components' })
+    const empty = gaps('gaps')
+    expect(empty.code, empty.err).toBe(0)
+    expect(empty.out).toContain('No gaps.')
+
+    mkdirSync(join(dir, 'components'), { recursive: true })
+    writeFileSync(
+      join(dir, 'components', 'home.tsx'),
+      `import { Gap } from '@crombolo/crombolo'
+export default () => (
+  <main>
+    <Gap reason="The shop" was="Basket()" />
+    <Gap reason={why()} />
+  </main>
+)
+const why = () => 'later'
+`,
+    )
+    const text = gaps('gaps')
+    expect(text.code, text.err).toBe(0)
+    expect(text.out).toContain('components/home.tsx:4  The shop (was: Basket())')
+    expect(text.out).toContain('components/home.tsx:5  (set in code)')
+
+    const listed = JSON.parse(gaps('gaps', '-o', 'json').out) as {
+      items: unknown[]
+    }
+    expect(listed.items).toEqual([
+      { file: 'components/home.tsx', line: 4, reason: 'The shop', was: 'Basket()' },
+      { file: 'components/home.tsx', line: 5, reason: null, was: null },
+    ])
+
+    // So that the template imports, as it would on a site.
+    symlinkSync(join(ROOT, 'node_modules'), join(dir, 'node_modules'))
+    const checked = gaps('check', '-o', 'json')
+    expect(checked.code, checked.err).toBe(0)
+    expect((JSON.parse(checked.out) as { gaps: unknown[] }).gaps).toEqual(listed.items)
   }, 60_000)
 })
 

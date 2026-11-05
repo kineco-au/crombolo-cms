@@ -83,6 +83,8 @@ export interface ComponentCheckReport {
   problems: ComponentProblem[]
   /** Whether types were checked, and what the compiler said. */
   types: { checked: boolean; problems: string[]; note?: string }
+  /** The gaps marked in the templates: work left, never a problem. */
+  gaps: ComponentGap[]
 }
 
 /**
@@ -182,7 +184,106 @@ export async function checkComponents(options: {
     declared: declared.filter((alias) => present.has(alias)),
     problems,
     types: await checkTypes(options.siteDir),
+    gaps: findGaps(options.componentsDir, options.siteDir),
   }
+}
+
+/** A `<Gap>` in a file. A reason or `was` worked out in code cannot be read, so is null. */
+export interface GapMark {
+  line: number
+  reason: string | null
+  was: string | null
+}
+
+export interface ComponentGap extends GapMark {
+  /** Relative to the site, as a problem's is. */
+  file: string
+}
+
+const PACKAGE_IMPORT = /import\s*\{([^}]*)\}\s*from\s*['"]@crombolo\/crombolo['"]/g
+const COMMENT = /\/\*[\s\S]*?\*\/|^[ \t]*\/\/.*$/gm
+const ENTITIES: Record<string, string> = { quot: '"', amp: '&', lt: '<', gt: '>', apos: "'" }
+
+const decodeEntities = (text: string) =>
+  text.replace(/&(?:#(\d+)|#x([\da-f]+)|(\w+));/gi, (entity, decimal, hex, name) => {
+    if (decimal) return String.fromCodePoint(Number(decimal))
+    if (hex) return String.fromCodePoint(Number.parseInt(hex, 16))
+    return ENTITIES[name] ?? entity
+  })
+
+/** What a site calls `Gap` here: undefined when it comes from anywhere but crombolo. */
+function gapName(source: string): string | undefined {
+  for (const match of source.matchAll(PACKAGE_IMPORT))
+    for (const part of (match[1] as string).split(',')) {
+      const name = /^\s*Gap(?:\s+as\s+([\w$]+))?\s*$/.exec(part)
+      if (name) return name[1] ?? 'Gap'
+    }
+  return undefined
+}
+
+/** The index just past the brace that closes the one at `from`, strings skipped. */
+function closingBrace(source: string, from: number): number {
+  let depth = 0
+  for (let at = from; at < source.length; at++) {
+    const c = source[at] as string
+    if (c === '"' || c === "'" || c === '`') {
+      for (at++; at < source.length && source[at] !== c; at++) if (source[at] === '\\') at++
+    } else if (c === '{') depth += 1
+    else if (c === '}' && --depth === 0) return at + 1
+  }
+  return source.length
+}
+
+/** The string in an attribute's `{…}`, when it is only a string. */
+function literal(expression: string): string | null {
+  const string = /^\s*(["'`])((?:\\[\s\S]|(?!\1)[^\\])*)\1\s*$/.exec(expression)
+  if (!string || (string[1] === '`' && (string[2] as string).includes('${'))) return null
+  return (string[2] as string).replace(/\\([\s\S])/g, (_, c) => (c === 'n' ? '\n' : c))
+}
+
+/** `reason` and `was` from the tag whose attributes start at `from`. */
+function gapAttributes(source: string, from: number): Pick<GapMark, 'reason' | 'was'> {
+  const found: Record<string, string | null> = {}
+  let at = from
+  while (at < source.length) {
+    const rest = /^\s*(?:([\w-]+)\s*(=\s*)?)?/.exec(source.slice(at)) as RegExpExecArray
+    at += rest[0].length
+    const quote = source[at]
+    if (rest[2] && (quote === '"' || quote === "'")) {
+      const end = source.indexOf(quote, at + 1)
+      if (end < 0) break
+      found[rest[1] as string] = decodeEntities(source.slice(at + 1, end))
+      at = end + 1
+    } else if (quote === '{') {
+      const end = closingBrace(source, at)
+      if (rest[2]) found[rest[1] as string] = literal(source.slice(at + 1, end - 1))
+      at = end
+    } else if (!rest[1]) break
+  }
+  return { reason: found.reason ?? null, was: found.was ?? null }
+}
+
+/** Every `<Gap>` in a file's source, read rather than compiled. Pure. */
+export function gapsIn(source: string): GapMark[] {
+  const name = gapName(source)
+  if (!name) return []
+  // Blanked rather than removed, so what is left keeps its lines.
+  const code = source.replace(COMMENT, (comment) => comment.replace(/[^\n]/g, ' '))
+  const tag = new RegExp(`<${name.replace(/\$/g, '\\$')}(?=[\\s/>])`, 'g')
+  return [...code.matchAll(tag)].map((match) => ({
+    line: code.slice(0, match.index).split('\n').length,
+    ...gapAttributes(code, match.index + match[0].length),
+  }))
+}
+
+/** The gaps marked across `components/`, without compiling anything. */
+export function findGaps(componentsDir: string, siteDir: string): ComponentGap[] {
+  return listComponents(componentsDir).flatMap((component) =>
+    gapsIn(readFileSync(component.path, 'utf8')).map((gap) => ({
+      file: relative(siteDir, component.path),
+      ...gap,
+    })),
+  )
 }
 
 const MEDIA_CALL = /(\bawait\s+)?((?:[A-Za-z_$][\w$]*)(?:\??\.[A-Za-z_$][\w$]*)*)\.media\(/g

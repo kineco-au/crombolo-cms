@@ -34,7 +34,7 @@ alias = "page"
 name = "Page"
 allow-at-root = true
 allow-children = ["page"]
-components = ["page", "greeted"]
+components = ["page", "greeted", "gapped"]
 default-component = "page"
 
 [[property]]
@@ -69,6 +69,12 @@ export default ({ model, member }) => (
 )
 `
 
+/** A part with a gap in it, for story 281. */
+const MISSING = `'use deferred'
+import { Gap } from '@crombolo/crombolo'
+export default () => <Gap reason="The basket has not moved" />
+`
+
 async function site() {
   const root = mkdtempSync(join(process.cwd(), 'output', 'deferred-parts-'))
   dirs.push(root)
@@ -85,6 +91,13 @@ export default (props) => <Layout title={props.model.name} {...props}><h1>{props
 `,
   )
   writeFileSync(join(root, 'components', 'greeted.tsx'), GREETED)
+  writeFileSync(join(root, 'components', 'shared', 'missing.tsx'), MISSING)
+  writeFileSync(
+    join(root, 'components', 'gapped.tsx'),
+    `import Missing from './shared/missing.tsx'
+export default () => <html><body><Missing /></body></html>
+`,
+  )
   const h = await signedInServer({
     config: {
       siteDir: root,
@@ -114,6 +127,7 @@ export default (props) => <Layout title={props.model.name} {...props}><h1>{props
   }
   const home = await make('Home', 'page')
   await make('Greeted', 'greeted', home)
+  const gapped = await make('Gapped', 'gapped', home)
   const member = await h.post(`${V1}/member`, {
     memberType: { id: SYSTEM_MEMBER_TYPE.key },
     email: 'ada@example.test',
@@ -137,7 +151,7 @@ export default (props) => <Layout title={props.model.name} {...props}><h1>{props
     )
     return (response.headers.getSetCookie()[0] ?? '').split(';')[0] ?? ''
   }
-  return { h, visit, signIn }
+  return { h, visit, signIn, gapped }
 }
 
 const partSrc = (html: string) =>
@@ -175,6 +189,17 @@ describe('a page with a deferred part', () => {
 
     const part = await visit(src, { cookie: await signIn() })
     expect(await part.text()).toBe('<a href="/account">Hi Ada, on Home (Home)</a>')
+  })
+
+  test('a gap in a part shows in preview, and to nobody else (story 281)', async () => {
+    const { h, visit, gapped } = await site()
+    const preview = await visit(`/${gapped}`, {
+      cookie: `${h.cookie()}; UMB_PREVIEW=preview`,
+    })
+    expect(await preview.text()).toContain('The basket has not moved')
+    const page = await (await visit('/gapped')).text()
+    expect(page).not.toContain('The basket has not moved')
+    expect(await (await visit(partSrc(page))).text()).toBe('')
   })
 
   test('an address this site did not sign renders nothing', async () => {

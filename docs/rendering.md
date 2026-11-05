@@ -2019,7 +2019,9 @@ template that lists blocks. It is Umbraco's partial-per-element-type convention
   the type.
 - **A missing component** renders nothing to visitors. In preview, which is
   the one render that passes `preview: true` (`RenderRequest`), it renders a
-  placeholder naming the element type and the file to create.
+  placeholder naming the element type and the file to create. `<Gap>` renders
+  the same way, for a part of a template
+  ([`writing-components.md`](writing-components.md#a-gap-in-a-template)).
 - **A Block Grid** renders Umbraco's block-grid markup, so Umbraco's default
   stylesheet and CSS written for it apply unchanged:
   - `umb-block-grid` with `--umb-block-grid--grid-columns`;

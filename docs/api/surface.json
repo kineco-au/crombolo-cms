@@ -84,6 +84,8 @@
       "type FormFieldType",
       "type FormProps",
       "type FormSubmissionState",
+      "Gap",
+      "type GapProps",
       "type IdentityProvider",
       "type IdentityProviderOptions",
       "type InnerHTML",

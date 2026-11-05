@@ -10,7 +10,7 @@
     "styles"
   ],
   "peerDependencies": {
-    "@crombolo/crombolo": ">=0.48.1"
+    "@crombolo/crombolo": ">=0.49.0"
   },
   "crombolo": {
     "id": "demo-crombolo",

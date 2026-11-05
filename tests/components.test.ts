@@ -17,6 +17,8 @@ import {
   componentFileFor,
   componentScaffold,
   emailScaffold,
+  findGaps,
+  gapsIn,
   isSafeAlias,
   listAssets,
   listComponents,
@@ -201,6 +203,91 @@ describe('checking the components', () => {
     expect(report.types.checked).toBe(false)
     expect(report.types.note).toContain('typescript')
     expect(report.types.problems).toEqual([])
+  })
+})
+
+describe('the gaps in a template (story 281)', () => {
+  const IMPORT = "import { Gap } from '@crombolo/crombolo'\n"
+
+  test('reads a tag over several lines, with the line it starts on', () => {
+    expect(
+      gapsIn(`${IMPORT}export default () => (
+  <main>
+    <Gap
+      reason="The shop"
+      was='Basket()'
+    >
+      <p>Call us</p>
+    </Gap>
+    <Gap reason="Second" />
+  </main>
+)`),
+    ).toEqual([
+      { line: 4, reason: 'The shop', was: 'Basket()' },
+      { line: 10, reason: 'Second', was: null },
+    ])
+  })
+
+  test('follows a renamed import', () => {
+    const source = `import { Blocks, Gap as Hole, type Child } from '@crombolo/crombolo'\nconst a = <Hole reason="Here" />\n`
+    expect(gapsIn(source)).toEqual([{ line: 2, reason: 'Here', was: null }])
+  })
+
+  test('reads strings in braces and entities, as JSX would', () => {
+    expect(
+      gapsIn(`${IMPORT}const a = <Gap reason={"a \\"b\\""} was="x &quot;y&quot; &#38; z" />`),
+    ).toEqual([{ line: 2, reason: 'a "b"', was: 'x "y" & z' }])
+    expect(gapsIn(`${IMPORT}const a = <Gap reason={\`plain\`} />`)[0]?.reason).toBe('plain')
+  })
+
+  test('still reports a gap whose reason is worked out in code, past any other attributes', () => {
+    expect(
+      gapsIn(
+        `${IMPORT}const a = <Gap hidden data-x={{ a: '}' }} {...rest} reason={why()} was="Y" />`,
+      ),
+    ).toEqual([{ line: 2, reason: null, was: 'Y' }])
+    expect(gapsIn(`${IMPORT}const a = <Gap reason={\`a \${b}\`} />`)[0]?.reason).toBeNull()
+  })
+
+  test('leaves comments alone, and any other Gap', () => {
+    expect(
+      gapsIn(`${IMPORT}const a = <main>
+  {/* <Gap reason="commented" /> */}
+  // <Gap reason="noted" />
+  <GapFiller />
+</main>`),
+    ).toEqual([])
+    expect(gapsIn(`import { Gap } from './mine.tsx'\nconst a = <Gap reason="Mine" />`)).toEqual([])
+  })
+
+  test('stops at a quote that never closes', () => {
+    expect(gapsIn(`${IMPORT}const a = <Gap reason="never`)).toEqual([
+      { line: 2, reason: null, was: null },
+    ])
+  })
+
+  test('a site with gaps checks clean, and lists them from where they are', async () => {
+    const { root, componentsDir } = site({
+      'components/homePage.tsx': `${IMPORT}export default () => <Gap reason="Gone" />\n`,
+      'components/broken.tsx': `${IMPORT}export default () => <Gap reason="Broken" ><\n`,
+    })
+    const gaps = [
+      { file: join('components', 'broken.tsx'), line: 2, reason: 'Broken', was: null },
+      { file: join('components', 'homePage.tsx'), line: 2, reason: 'Gone', was: null },
+    ]
+    expect(findGaps(componentsDir, root)).toEqual(gaps)
+    const report = await checkComponents({ componentsDir, siteDir: root })
+    expect(report.gaps).toEqual(gaps)
+    // The syntax error is the one problem: the gaps add none.
+    expect(report.problems.map((p) => p.file)).toEqual([expect.stringContaining('broken.tsx')])
+  })
+
+  test('a browser part that imports it is refused, as any server code is', async () => {
+    const { root, componentsDir } = site({
+      'components/shared/counter.tsx': `'use client'\n${IMPORT}export default () => <Gap reason="No" />\n`,
+    })
+    const report = await checkComponents({ componentsDir, siteDir: root })
+    expect(report.problems[0]?.message).toContain('only runs on the server')
   })
 })
 

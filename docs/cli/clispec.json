@@ -1520,10 +1520,45 @@
           "items": {
             "type": "string"
           }
+        },
+        {
+          "name": "gaps",
+          "type": "array",
+          "description": "the gaps marked in templates, which are never a problem",
+          "items": {
+            "type": "object"
+          }
         }
       ],
       "errors": ["usage", "internal"],
       "outcomes": ["problems_found"]
+    },
+    {
+      "name": "components gaps",
+      "description": "the gaps marked in templates, with their reasons",
+      "effects": "read_only",
+      "cardinality": "bounded",
+      "output_fields": [
+        {
+          "name": "file",
+          "type": "string"
+        },
+        {
+          "name": "line",
+          "type": "integer"
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "was",
+          "type": "string",
+          "nullable": true
+        }
+      ],
+      "errors": ["usage", "internal"]
     },
     {
       "name": "components list",

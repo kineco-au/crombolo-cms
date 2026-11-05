@@ -1,6 +1,6 @@
 import { checkComponents } from '@crombolo/server'
 import { BaseCommand } from '../../base.ts'
-import { declaredTypes } from '../../support/components.ts'
+import { declaredTypes, gapLine } from '../../support/components.ts'
 import { here } from '../../support/describe.ts'
 import { siteConfig } from '../../support/site.ts'
 
@@ -25,6 +25,12 @@ export default class ComponentsCheck extends BaseCommand {
         type: 'array',
         items: { type: 'string' },
         description: 'components under blocks/ whose name is no element type',
+      },
+      {
+        name: 'gaps',
+        type: 'array',
+        items: { type: 'object' },
+        description: 'the gaps marked in templates, which are never a problem',
       },
     ],
     outcomes: ['problems_found'],
@@ -63,6 +69,7 @@ export default class ComponentsCheck extends BaseCommand {
       this.say(
         `  [warn]   components/${alias}.tsx renders blocks of "${alias.slice(7)}", which is no element type`,
       )
+    for (const gap of report.gaps) this.say(gapLine(gap))
     if (report.problems.length > 0 || report.types.problems.length > 0)
       this.outcome = 'problems_found'
     return {
@@ -72,6 +79,7 @@ export default class ComponentsCheck extends BaseCommand {
       typeProblems: report.types.problems,
       typesNote: report.types.note ?? null,
       orphanBlocks,
+      gaps: report.gaps,
     }
   }
 }

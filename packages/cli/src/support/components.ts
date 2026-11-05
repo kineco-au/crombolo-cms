@@ -1,6 +1,6 @@
 /** The content types and forms a site declares, which say which components are templates. */
 import { existsSync } from 'node:fs'
-import type { CromboloConfig } from '@crombolo/server'
+import type { ComponentGap, CromboloConfig } from '@crombolo/server'
 import { loadTypes } from './types.ts'
 
 export const declaredTypes = (config: CromboloConfig) =>
@@ -15,3 +15,7 @@ export const formsNamingEmailTemplate = (config: CromboloConfig, alias: string) 
         ),
       )
     : []
+
+/** One gap, as a line of output. */
+export const gapLine = (gap: ComponentGap) =>
+  `  [gap]    ${gap.file}:${gap.line}  ${gap.reason ?? '(set in code)'}${gap.was ? ` (was: ${gap.was})` : ''}`

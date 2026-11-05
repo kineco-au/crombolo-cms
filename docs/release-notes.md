@@ -6,6 +6,31 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.49.0 — 2026-11-05
+
+### Features
+
+- **A marked gap in a template (281).** `<Gap reason="…" was="…">` marks a part
+  a template could not keep: visitors see its children or nothing, and an
+  editor's preview shows a grey box saying what is missing. `crombolo components
+  gaps` lists the gaps in a site, and `components check` lists them too, without
+  failing.
+- **A site can be written from the public package (278).**
+  `@crombolo/crombolo/transfer` gives a tool outside this repository the schema
+  and bundle writers, under the same compatibility promise as the rest of the
+  package.
+
+### Removed
+
+- **`crombolo import umbraco` (279).** The `report` and `apply` commands and
+  `@crombolo/import-umbraco` have left the CMS. The command now says that
+  Crombolo Cloud moves Umbraco sites. `crombolo import <file>` stays.
+
+### Upgrade notes
+
+- A script that runs `crombolo import umbraco` needs replacing, as it now refuses.
+- No migrations.
+
 ## v0.48.1 — 2026-11-05
 
 ### Fixes

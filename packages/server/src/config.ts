@@ -1086,7 +1086,7 @@ export function describeDatabase(
   }
 }
 
-export const VERSION = '0.48.1'
+export const VERSION = '0.49.0'
 
 /** A whole number of seconds from the environment; undefined when unset or not one. */
 /** A positive number from a setting, else the default. */

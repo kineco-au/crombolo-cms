@@ -215,6 +215,51 @@ export default function QuoteBlock({ content, settings }: BlockProps<Quote>) {
   they belong. The grid's markup is Umbraco's, so its block-grid stylesheet
   applies ([`rendering.md`](rendering.md#blocks)).
 
+## A gap in a template
+
+When a template depends on something this site does not have, such as a call to
+a service or a component from a package, mark the place with `<Gap>` instead of
+deleting the part or leaving it broken:
+
+```tsx
+import { Gap, type PageProps } from '@crombolo/crombolo'
+
+export default function Product({ model }: PageProps) {
+  return (
+    <main>
+      <h1>{model.text('title')}</h1>
+      <Gap reason="The shop has not moved yet" was="Commerce.Basket()">
+        <p>Call us to order.</p>
+      </Gap>
+    </main>
+  )
+}
+```
+
+- **Visitors** see its children, or nothing when it has none. The page carries no
+  trace of the `Gap`.
+- **An editor's preview** shows a grey box where it sits, sized by its children,
+  or 96px high with none:
+
+  ```text
+  ┌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┐
+  ╎ Missing: The shop has not moved yet   ╎
+  ╎ Was: Commerce.Basket()                ╎
+  ╎ Visitors don't see this box.          ╎
+  ╎ Call us to order.                     ╎
+  └╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┘
+  ```
+
+- **`reason` is required;** `was` names what used to be there, when there is
+  something to name.
+- **The work left is a command away.** `crombolo components gaps` lists every gap
+  with its file, line, reason and `was`, and `crombolo components check` lists
+  them too. A reason worked out in code shows as `(set in code)`, so write
+  it as a string.
+- **A gap is never an error.** A site with gaps checks, builds and serves.
+- **A `'use client'` file cannot use it,** as `@crombolo/crombolo` runs only on the
+  server. Put the `Gap` in the template, around or in place of the island.
+
 ## Async components
 
 A component can wait for something: another service, a file, a slow query.

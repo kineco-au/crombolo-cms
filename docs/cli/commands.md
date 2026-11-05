@@ -1997,10 +1997,28 @@ crombolo components check
 - `typeProblems` (array of string)
 - `typesNote` (string)
 - `orphanBlocks` (array of string)
+- `gaps` (array of object)
 
 **Fails with:** `usage`, `internal`.
 
 **Outcomes:** `problems_found`.
+
+### `crombolo components gaps`
+
+The gaps marked in templates, with their reasons. Changes nothing.
+
+```
+crombolo components gaps
+```
+
+**Output** (bounded, with `-o json`):
+
+- `file` (string)
+- `line` (integer)
+- `reason` (string)
+- `was` (string)
+
+**Fails with:** `usage`, `internal`.
 
 ### `crombolo components list`
 

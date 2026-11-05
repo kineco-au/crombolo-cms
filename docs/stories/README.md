@@ -307,7 +307,7 @@ requests, only server-side and build-time front ends can call it.
 | `263` | Personalised parts of a shared page | should | L | done | — |
 | `264` | Personalised parts in the back office | could | M | done | 263 |
 | `265` | Deferred parts put together by the CDN | could | S | on hold | 263 |
-| `281` | A marked gap in a template | should | S | ready | — |
+| `281` | A marked gap in a template | should | S | done | — |
 
 ### Epic P — The command line
 
