@@ -14,6 +14,7 @@
  * edited a page after the import, and discarding that without asking would be
  * the worst thing this command could do.
  */
+import { ObjectTypes, SystemNodes } from '@crombolo/core'
 import {
   appendCacheInstruction,
   ContentAppliedRepository,
@@ -21,6 +22,7 @@ import {
   type Db,
   DocumentRepository,
   type Finding,
+  FolderRepository,
   Locks,
   type NodeRow,
   PublishBlockedError,
@@ -76,7 +78,7 @@ export interface RevertPlan {
    * run created, and `unrecycle` brings back what a *reverted* run recycled —
    * which is what makes a revert revertible in its own right.
    */
-  action: 'restore' | 'recycle' | 'unrecycle' | 'skip' | 'gone' | 'remove'
+  action: 'restore' | 'recycle' | 'unrecycle' | 'skip' | 'gone' | 'remove' | 'keep'
   resolution: RevertResolution | undefined
 }
 
@@ -96,6 +98,8 @@ export interface RevertResult {
   /** Members, users and groups the run had created, now removed. */
   removed: string[]
 }
+
+const FOLDER_KIND = 'element-folder'
 
 const link = (backOfficePath: string | undefined, key: string): string | null =>
   backOfficePath ? `${backOfficePath}/section/content/workspace/document/edit/${key}` : null
@@ -207,6 +211,41 @@ export async function checkRevert(
       continue
     }
 
+    // A Library folder has no versions and nothing of its own to lose. It goes
+    // when it is empty and stays when anything else has come to sit in it.
+    if (change.kind === FOLDER_KIND) {
+      if (change.action === 'recycle') {
+        plan.push({ key: change.nodeKey, name, action: 'unrecycle', resolution })
+        continue
+      }
+      if (node.trashed) {
+        plan.push({ key: change.nodeKey, name, action: 'gone', resolution })
+        continue
+      }
+      const others = (
+        await docs.nodes.descendants(node, [ObjectTypes.Element, ObjectTypes.ElementContainer])
+      ).filter((d) => !ownKeys.has(d.key))
+      if (others.length > 0)
+        findings.push({
+          kind: 'auto',
+          code: 'folder-kept',
+          subjectType: 'document',
+          subjectKey: change.nodeKey,
+          subjectName: name,
+          propertyAlias: null,
+          culture: null,
+          message: `the folder "${name}" stays: ${others.length} other item(s) sit in it now`,
+          link: null,
+        })
+      plan.push({
+        key: change.nodeKey,
+        name,
+        action: others.length > 0 ? 'keep' : 'recycle',
+        resolution,
+      })
+      continue
+    }
+
     const created = change.action === 'create'
     const repo = repoFor(db, nodeState, change.kind)
 
@@ -274,7 +313,12 @@ function repoFor(
   inTreeLock = false,
 ): DocumentRepository {
   return new DocumentRepository(db, {
-    kind: kind === 'media' || kind === 'element' || kind === 'blueprint' ? kind : 'document',
+    kind:
+      kind === FOLDER_KIND
+        ? 'element'
+        : kind === 'media' || kind === 'element' || kind === 'blueprint'
+          ? kind
+          : 'document',
     nodeState,
     inTreeLock,
   })
@@ -314,11 +358,17 @@ export async function revertRun(
       })
 
       const skipped = new Set(
-        check.plan.filter((p) => p.action === 'skip' || p.action === 'gone').map((p) => p.key),
+        check.plan
+          .filter((p) => p.action === 'skip' || p.action === 'gone' || p.action === 'keep')
+          .map((p) => p.key),
       )
-      const todo = changes.filter(
+      const affected = changes.filter(
         (c) => c.action !== 'skip' && !skipped.has(c.nodeKey) && !isPersonKind(c.kind),
       )
+      const todo = affected.filter((c) => c.kind !== FOLDER_KIND)
+      const folderChanges = affected.filter((c) => c.kind === FOLDER_KIND)
+      const folders = new FolderRepository(tx, ObjectTypes.ElementContainer, ObjectTypes.Element)
+      const applied = new ContentAppliedRepository(tx)
       // Members before the groups they belong to.
       const removed: string[] = []
       const order = ['member', 'user', 'member-group', 'user-group']
@@ -330,7 +380,7 @@ export async function revertRun(
         )
           removed.push(change.nodeKey)
       const byKey = new Map<string, NodeRow>()
-      for (const change of todo) {
+      for (const change of affected) {
         const node = await repo(change.kind).nodes.byKey(change.nodeKey)
         if (node) byKey.set(change.nodeKey, node)
       }
@@ -349,6 +399,22 @@ export async function revertRun(
       for (const change of todo) {
         const markers = await repo(change.kind).eventMarkers(change.nodeKey)
         if (markers) before.set(change.nodeKey, markers)
+      }
+
+      // Folders the previous revert recycled come back first, so what was in them
+      // has somewhere to return to. It recorded them deepest first, so this is
+      // parents first, and it kept where each one was.
+      const folderPlaces = await applied.byKeys(folderChanges.map((c) => c.nodeKey))
+      const backFolders: string[] = []
+      for (const change of [...folderChanges].reverse()) {
+        if (change.action !== 'recycle') continue
+        const parent = folderPlaces.get(change.nodeKey)?.parent ?? null
+        await folders.restore(
+          change.nodeKey,
+          parent && (await repo(FOLDER_KIND).nodes.byKey(parent)) ? parent : null,
+        )
+        restored.push(change.nodeKey)
+        backFolders.push(change.nodeKey)
       }
 
       // What the previous run recycled comes back out of the bin first, so the
@@ -397,6 +463,17 @@ export async function revertRun(
         recycled.push(change.nodeKey)
       }
 
+      // Folders last and deepest first, once what the run put in them has gone, and
+      // only if nothing else is left in them.
+      const goneFolders: Array<{ key: string; parent: string | null }> = []
+      for (const change of inTreeOrder(folderChanges).reverse()) {
+        if (change.action === 'recycle' || (await folders.holdsAnything(change.nodeKey))) continue
+        const parent = (await folders.byKey(change.nodeKey))?.parentKey ?? null
+        await folders.toRecycleBin(change.nodeKey, SystemNodes.ElementRecycleBin)
+        recycled.push(change.nodeKey)
+        goneFolders.push({ key: change.nodeKey, parent })
+      }
+
       for (const change of todo) {
         const markers = await repo(change.kind).eventMarkers(change.nodeKey)
         const was = before.get(change.nodeKey)
@@ -412,9 +489,34 @@ export async function revertRun(
           eventId: markers?.head ?? null,
         })
       }
+      for (const [nodeKey, action] of [
+        ...goneFolders.map(({ key }) => [key, 'recycle'] as const),
+        ...backFolders.map((key) => [key, 'update'] as const),
+      ])
+        await runs.record({
+          runId: newRunId,
+          nodeKey,
+          kind: FOLDER_KIND,
+          action,
+          beforeEventId: null,
+          beforePublishedEventId: null,
+          eventId: null,
+        })
       // What the next import compares against goes back with the content.
-      await new ContentAppliedRepository(tx).revert(runId)
-      await runs.finish(newRunId, todo.length + removed.length)
+      await applied.revert(runId)
+      // A folder keeps no parent of its own in the bin, so this run notes it.
+      for (const { key, parent } of goneFolders)
+        await applied.record(key, newRunId, {
+          values: {},
+          names: {},
+          parent,
+          bundleSortOrder: 0,
+          sortOrder: 0,
+        })
+      await runs.finish(
+        newRunId,
+        todo.length + goneFolders.length + backFolders.length + removed.length,
+      )
       await runs.setStatus(runId, 'reverted')
 
       await appendCacheInstruction(tx, {

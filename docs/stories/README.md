@@ -253,6 +253,7 @@ requests, only server-side and build-time front ends can call it.
 | `177` | A host's own bundles stay with the host | should | S | done | 063, 104 |
 | `226` | Picked packages carry forms and approval workflows | should | M | done | 233 |
 | `233` | A Bundle Editor of Crombolo's own | should | L | done | — |
+| `283` | Library folders travel with their elements | should | M | done | — |
 
 ### Epic L — Routing
 
@@ -356,7 +357,7 @@ files kept as the committed record nobody has to open.
 | `167` | Changing a remote site piece by piece | should | M | done | 160 |
 | `168` | The dictionary and single media files | could | S | ready | — |
 | `180` | A working site from an empty directory, from the command line | should | S | done | 163 |
-| `240` | Approvals from the command line | should | M | ready | — |
+| `240` | Approvals from the command line | should | M | on hold | a CLI sign-in story, not written yet |
 | `241` | Bundles managed from the command line | should | L | done | 160, 167 |
 | `242` | The Library in content files | could | S | ready | — |
 | `243` | Form entries from the command line | could | S | ready | — |

@@ -25,6 +25,7 @@ import {
   type BundleValue,
   type BundleVariant,
   type ContentSet,
+  ELEMENT_FOLDER_TYPE,
   OLDEST_BUNDLE_FORMAT_VERSION,
 } from './model.ts'
 import { type BundlePeople, openPeople, type PeopleBlock, parsePeopleBlock } from './people.ts'
@@ -72,7 +73,7 @@ export interface LoadedBundle {
   blobs: Map<string, string>
 }
 
-const KINDS: readonly BundleKind[] = ['document', 'media', 'element', 'blueprint']
+const KINDS: readonly BundleKind[] = ['document', 'media', 'element', 'blueprint', 'element-folder']
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -147,8 +148,9 @@ export function parseNode(
   const key = str(raw.key)
   const kind = str(raw.kind) as BundleKind | undefined
   const contentType = isRecord(raw.contentType) ? raw.contentType : undefined
-  const typeKey = str(contentType?.key)
-  const typeAlias = str(contentType?.alias)
+  const isFolder = kind === 'element-folder'
+  const typeKey = isFolder ? ELEMENT_FOLDER_TYPE.key : str(contentType?.key)
+  const typeAlias = isFolder ? ELEMENT_FOLDER_TYPE.alias : str(contentType?.alias)
   if (!key) problems.push({ file, message: 'no key' })
   if (!kind || !KINDS.includes(kind))
     problems.push({ file, message: `kind must be one of ${KINDS.join(', ')}` })
@@ -170,6 +172,8 @@ export function parseNode(
       })
     : []
   if (variants.length === 0) problems.push({ file, message: 'no variants: a node needs a name' })
+  if (isFolder && values.length > 0)
+    problems.push({ file, message: 'a Library folder holds no values' })
 
   const access = parseAccess(raw.access)
   const mediaAccess = kind === 'media' ? parseMediaAccess(raw.mediaAccess) : undefined

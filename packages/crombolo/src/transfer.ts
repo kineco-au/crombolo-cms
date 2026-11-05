@@ -44,6 +44,7 @@ export {
   type BundleVariant,
   bundlePeerRange,
   type ContentSet,
+  ELEMENT_FOLDER_TYPE,
   loadBundle,
   newSeal,
   openBundle,

@@ -88,6 +88,7 @@ const SITE_TREES = [
   ObjectTypes.Document,
   ObjectTypes.Media,
   ObjectTypes.Element,
+  ObjectTypes.ElementContainer,
   ObjectTypes.DocumentBlueprint,
 ]
 

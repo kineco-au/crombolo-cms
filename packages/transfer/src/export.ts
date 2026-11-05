@@ -34,6 +34,7 @@ import {
   type BundleSnapshot,
   type BundleValue,
   type ContentSet,
+  ELEMENT_FOLDER_TYPE,
 } from './model.ts'
 import { referenceCandidates } from './references.ts'
 
@@ -43,6 +44,7 @@ const KINDS: Record<BundleKind, { objectType: string; contentKind: ContentKind }
   media: { objectType: ObjectTypes.Media, contentKind: 'media' },
   element: { objectType: ObjectTypes.Element, contentKind: 'element' },
   blueprint: { objectType: ObjectTypes.DocumentBlueprint, contentKind: 'blueprint' },
+  'element-folder': { objectType: ObjectTypes.ElementContainer, contentKind: 'element' },
 }
 
 /** Editors that hold a file rather than a reference to one. */
@@ -168,6 +170,20 @@ function toBundleNode(
   }
 }
 
+/** A Library folder: a name and a place, with no type, values or versions. */
+function toFolderNode(node: NodeRow, parent: string | null): BundleNode {
+  return {
+    key: node.key,
+    kind: 'element-folder',
+    contentType: { ...ELEMENT_FOLDER_TYPE },
+    parent,
+    sortOrder: node.sortOrder,
+    template: null,
+    variants: [{ culture: null, segment: null, name: node.text ?? '', published: false }],
+    values: [],
+  }
+}
+
 /** Every node of the selection, roots first and parents before children. */
 async function selected(
   db: Db,
@@ -176,7 +192,12 @@ async function selected(
   const byKind = new Map<string, BundleKind>(
     Object.entries(KINDS).map(([kind, v]) => [v.objectType, kind as BundleKind]),
   )
-  const wanted: string[] = [ObjectTypes.Document, ObjectTypes.Media, ObjectTypes.Element]
+  const wanted: string[] = [
+    ObjectTypes.Document,
+    ObjectTypes.Media,
+    ObjectTypes.Element,
+    ObjectTypes.ElementContainer,
+  ]
   if (options.blueprints) wanted.push(ObjectTypes.DocumentBlueprint)
 
   const found = new Map<number, { node: NodeRow; kind: BundleKind }>()
@@ -189,6 +210,13 @@ async function selected(
       const k = byKind.get(descendant.objectType ?? '')
       if (k) found.set(descendant.id, { node: descendant, kind: k })
     }
+  }
+  // The folders above a Library item come with it, so it has somewhere to land.
+  for (const { node, kind } of [...found.values()]) {
+    if (kind !== 'element' && kind !== 'element-folder') continue
+    for (const ancestor of await nodes.ancestors(node.key))
+      if (ancestor.objectType === ObjectTypes.ElementContainer)
+        found.set(ancestor.id, { node: ancestor, kind: 'element-folder' })
   }
   return [...found.values()].sort((a, b) => a.node.level - b.node.level || a.node.id - b.node.id)
 }
@@ -233,6 +261,21 @@ export async function exportBundle(db: Db, options: ExportOptions): Promise<Expo
   const counts: Partial<Record<BundleKind, number>> = {}
 
   for (const { node, kind } of chosen) {
+    // The parent travels as a key only when it is in the bundle; otherwise it is
+    // an expected dependency, which the destination must already have. The
+    // system containers — the tree root and the recycle bins — have real `node`
+    // rows with keys of their own, and a node sitting under one has no parent as
+    // far as a bundle is concerned.
+    const parentKey =
+      node.parentId <= 0
+        ? null
+        : (keyOfNodeId.get(node.parentId) ?? (await nodes.byId(node.parentId))?.key ?? null)
+    if (kind === 'element-folder') {
+      bundleNodes.push(toFolderNode(node, parentKey))
+      counts[kind] = (counts[kind] ?? 0) + 1
+      continue
+    }
+
     const repo = repoFor(kind)
     // Media is never published, so there is no published snapshot to prefer.
     const published =
@@ -249,15 +292,6 @@ export async function exportBundle(db: Db, options: ExportOptions): Promise<Expo
       for (const key of keys) referenced.add(key)
     }
 
-    // The parent travels as a key only when it is in the bundle; otherwise it is
-    // an expected dependency, which the destination must already have. The
-    // system containers — the tree root and the recycle bins — have real `node`
-    // rows with keys of their own, and a node sitting under one has no parent as
-    // far as a bundle is concerned.
-    const parentKey =
-      node.parentId <= 0
-        ? null
-        : (keyOfNodeId.get(node.parentId) ?? (await nodes.byId(node.parentId))?.key ?? null)
     // A template's definition is its file, so the alias travels and the key does
     // not: the same view has a different key in every environment.
     const componentAlias = aggregate.componentKey

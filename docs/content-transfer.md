@@ -171,7 +171,7 @@ checkout ([`bundles.md`](bundles.md)). The manifest's `carries` declares every o
 integrity hash covers them, and `bundle apply` applies them before the content
 that needs them. A content-only bundle carries no `carries` key.
 
-Every bundle is written as `formatVersion` 5, whatever it carries: `bundle.json`
+Every bundle is written as `formatVersion` 6, whatever it carries: `bundle.json`
 at the package root (story 193), and its media listed in `media.json` (story
 195). A reader refuses a newer format with "upgrade crombolo to import it", and
 anything older than 5 with a message saying to rebuild it.

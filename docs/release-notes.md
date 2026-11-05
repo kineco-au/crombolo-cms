@@ -6,6 +6,22 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.50.0 — 2026-11-06
+
+### Fixes
+
+- **Library folders travel with their elements (283).** A bundle now carries the
+  folders above an element, and a folder can be chosen as a root. An element keeps
+  its folder, and a picker that starts at one still works. A revert removes the
+  folders an import made unless something else now sits in them. A whole-site
+  export used to leave out elements in folders; it now carries them.
+
+### Upgrade notes
+
+- Bundles are now format 6. A site on 0.49 or earlier refuses one, saying to
+  upgrade, so upgrade the destination first. Format 5 bundles still load.
+- No migrations.
+
 ## v0.49.0 — 2026-11-05
 
 ### Features

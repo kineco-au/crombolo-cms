@@ -77,6 +77,57 @@ export class FolderRepository {
     return 'deleted'
   }
 
+  /** Whether anything outside the recycle bin is still inside. */
+  async holdsAnything(key: string): Promise<boolean> {
+    const node = await this.#nodes.byKey(key)
+    if (!node) return false
+    const inside = await this.#nodes.childrenOf(node.id, [this.#objectType, this.#itemType], 0, 1)
+    return inside.total > 0
+  }
+
+  /** Moves a folder to `bin`: its branch is trashed, and what it holds stays unpublished. */
+  async toRecycleBin(key: string, bin: number): Promise<boolean> {
+    const node = await this.#nodes.byKey(key)
+    if (!node || node.objectType !== this.#objectType) return false
+    await this.#nodes.move(node.id, bin)
+    const moved = await this.#nodes.byKey(key)
+    const branch = `${moved?.path ?? node.path},%`
+    const db = this.#db
+    await db.q
+      .updateTable('node')
+      .set({ trashed: db.dialect.boolValue(true) as boolean })
+      .where((eb) => eb.or([eb('id', '=', node.id), eb('path', 'like', branch)]))
+      .execute()
+    await db.q
+      .updateTable('document')
+      .set({
+        published: db.dialect.boolValue(false) as boolean,
+        edited: db.dialect.boolValue(true) as boolean,
+      })
+      .where('node_id', 'in', (eb) =>
+        eb
+          .selectFrom('node')
+          .select('id')
+          .where((w) => w.or([w('id', '=', node.id), w('path', 'like', branch)])),
+      )
+      .execute()
+    return true
+  }
+
+  /** Takes a folder out of the recycle bin to `parentKey`, or the top level. */
+  async restore(key: string, parentKey: string | null): Promise<boolean> {
+    const node = await this.#nodes.byKey(key)
+    if (!node || node.objectType !== this.#objectType || !node.trashed) return false
+    await this.#db.q
+      .updateTable('node')
+      .set({ trashed: this.#db.dialect.boolValue(false) as boolean })
+      .where((eb) => eb.or([eb('id', '=', node.id), eb('path', 'like', `${node.path},%`)]))
+      .execute()
+    const parent = parentKey ? await this.#nodes.byKey(parentKey) : undefined
+    await this.#nodes.move(node.id, parent?.id ?? SystemNodes.Root)
+    return true
+  }
+
   /** Makes `A/B/C` exist, creating what is missing; returns the leaf's key, or null for an empty path. */
   async ensurePath(names: readonly string[]): Promise<string | null> {
     let parentId: number = SystemNodes.Root

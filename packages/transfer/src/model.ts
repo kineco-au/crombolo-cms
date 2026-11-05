@@ -20,11 +20,12 @@ import type { SiteDataBlock, SiteDataTable } from './site-data.ts'
  * it, and a site's code as a section (stories 192, 193).
  * 5: media listed in `media.json` at the root, each carried file at
  * `media/<key>` with a `bundle://` URI (story 195).
+ * 6: a Library folder may travel as a node (story 283).
  *
  * An older version is refused rather than read (no older layout is kept up),
  * with a message saying to rebuild it.
  */
-export const BUNDLE_FORMAT_VERSION = 5
+export const BUNDLE_FORMAT_VERSION = 6
 
 /** The oldest version this reader reads: the first with media listed in `media.json`. */
 export const OLDEST_BUNDLE_FORMAT_VERSION = 5
@@ -63,7 +64,10 @@ export type BundleSection = keyof typeof BUNDLE_SECTIONS
  * The kinds that travel. `member` is deliberately absent: members are personal
  * data, and a bundle is a file that gets copied around and committed.
  */
-export type BundleKind = 'document' | 'media' | 'element' | 'blueprint'
+export type BundleKind = 'document' | 'media' | 'element' | 'blueprint' | 'element-folder'
+
+/** What a Library folder names as its type: it has none, only a name and a place. */
+export const ELEMENT_FOLDER_TYPE = { key: '', alias: 'elementFolder' } as const
 
 /** Which snapshot of a node's values the bundle carries. */
 export type BundleSnapshot = 'published' | 'drafts'

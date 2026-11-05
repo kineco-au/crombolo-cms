@@ -420,29 +420,7 @@ export function createElementPort(
     async folderToRecycleBin(key) {
       const node = await nodes.byKey(key)
       if (!node || node.objectType !== ObjectTypes.ElementContainer) return false
-      await nodes.move(node.id, SystemNodes.ElementRecycleBin)
-      // The whole branch is trashed, elements inside it included, and an element
-      // stays unpublished while it is in the bin.
-      const moved = await nodes.byKey(key)
-      const branch = `${moved?.path ?? node.path},%`
-      await db.q
-        .updateTable('node')
-        .set({ trashed: db.dialect.boolValue(true) as boolean })
-        .where((eb) => eb.or([eb('id', '=', node.id), eb('path', 'like', branch)]))
-        .execute()
-      await db.q
-        .updateTable('document')
-        .set({
-          published: db.dialect.boolValue(false) as boolean,
-          edited: db.dialect.boolValue(true) as boolean,
-        })
-        .where('node_id', 'in', (eb) =>
-          eb
-            .selectFrom('node')
-            .select('id')
-            .where((w) => w.or([w('id', '=', node.id), w('path', 'like', branch)])),
-        )
-        .execute()
+      await folders.toRecycleBin(key, SystemNodes.ElementRecycleBin)
       await changed()
       return true
     },

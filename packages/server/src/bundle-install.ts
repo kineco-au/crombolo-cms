@@ -104,7 +104,12 @@ import {
 } from './site-replace.ts'
 
 /** The trees a content selector or placement may name. */
-export const CONTENT_OBJECT_TYPES = [ObjectTypes.Document, ObjectTypes.Media, ObjectTypes.Element]
+export const CONTENT_OBJECT_TYPES = [
+  ObjectTypes.Document,
+  ObjectTypes.Media,
+  ObjectTypes.Element,
+  ObjectTypes.ElementContainer,
+]
 
 /** A refusal the caller should read: nothing was written. */
 export class CommandError extends Error {

@@ -286,6 +286,7 @@
       "componentAliasesIn",
       "type ContentSet",
       "DEFAULT_DATA_TYPES",
+      "ELEMENT_FOLDER_TYPE",
       "fileNameFor",
       "hashSchemaSet",
       "loadBundle",

@@ -255,11 +255,27 @@ exactly as a missing blob already was. It also carries `label`, the package's
 name, so a downloaded artifact still knows what it is; without it two downloads
 are distinguishable only by filename, which is the first thing to be lost.
 
-Every bundle says `formatVersion: 5`, whatever it carries. A content-only bundle
-carries no `carries` key. An older node refuses a newer bundle by name, with
-"upgrade crombolo to import it", rather than failing an integrity check it
-cannot explain. A node refuses a bundle older than 5 with a message saying to
-rebuild it (stories 193 and 195).
+Every bundle says `formatVersion: 6`, whatever it carries, and a format 5 bundle
+still loads. A content-only bundle carries no `carries` key. An older node refuses
+a newer bundle by name, with "upgrade crombolo to import it", rather than failing
+an integrity check it cannot explain. A node refuses a bundle older than 5 with a
+message saying to rebuild it (stories 193, 195 and 283).
+
+### Library folders
+
+A Library folder travels as a node of kind `element-folder`, with its key, name,
+parent and sort order, and no values (story 283). `ELEMENT_FOLDER_TYPE`, from
+`@crombolo/crombolo/transfer`, is what such a node names as its type.
+
+- **Export:** an element brings the folders above it, and a folder chosen as a
+  root brings what is inside it. A whole-site export carries them all.
+- **Import:** folders are made first, keeping their keys, so an element lands in
+  its folder and a picker's `startNodeId` resolves. A folder already here is left
+  as it is: a rename or a move at the source does not follow. A folder of the same
+  name under another key sits beside it.
+- **Revert:** the folders an import made go to the recycle bin, unless something
+  else now sits in them, and then they stay with their parents. An import brings
+  back a folder from the recycle bin.
 
 A created package downloads **without its media files** unless asked
 (story 195). The Created view's Download offers "Include media files",

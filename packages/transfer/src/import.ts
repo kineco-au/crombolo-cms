@@ -34,6 +34,7 @@
  * follow the bundle under the same rule.
  */
 import type { DocumentValue } from '@crombolo/core'
+import { ObjectTypes } from '@crombolo/core'
 import {
   type AppliedState,
   appendCacheInstruction,
@@ -45,6 +46,7 @@ import {
   currentSchemaState,
   type Db,
   DocumentRepository,
+  FolderRepository,
   insideTransaction,
   Locks,
   MediaAccessRepository,
@@ -69,6 +71,7 @@ const CONTENT_KIND: Record<BundleKind, ContentKind> = {
   media: 'media',
   element: 'element',
   blueprint: 'blueprint',
+  'element-folder': 'element',
 }
 
 export interface ImportOptions extends CheckOptions {
@@ -241,9 +244,41 @@ async function applyBundle(tx: Db, set: ContentSet, options: ImportOptions): Pro
     })
 
     const planByKey = new Map(check.plan.map((p) => [p.key, p]))
-    const ordered = inTreeOrder(set.nodes).filter(
+    const ordered = inTreeOrder(set.nodes.filter((node) => node.kind !== 'element-folder')).filter(
       (node) => planByKey.get(node.key)?.action !== 'skip',
     )
+
+    // Library folders first, in the source's order within a parent, so an element
+    // lands in its folder. One that is here stays as it is (story 283).
+    const folders = new FolderRepository(tx, ObjectTypes.ElementContainer, ObjectTypes.Element)
+    const foldersHere = new Set<string>()
+    const madeFolders: string[] = []
+    const folderPlans: NodePlan[] = []
+    const carriedFolders = set.nodes
+      .filter((node) => node.kind === 'element-folder')
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+    for (const node of inTreeOrder(carriedFolders)) {
+      const plan = planByKey.get(node.key)
+      if (!plan || plan.action === 'skip') continue
+      foldersHere.add(node.key)
+      folderPlans.push(plan)
+      if (plan.action !== 'create') continue
+      const parentKey =
+        node.parent && foldersHere.has(node.parent)
+          ? node.parent
+          : (options.under?.key ??
+            (node.parent && (await repoFor('element').nodes.byKey(node.parent))
+              ? node.parent
+              : null))
+      if (await folders.byKey(node.key)) await folders.restore(node.key, parentKey)
+      else
+        await folders.create({
+          key: node.key,
+          name: node.variants[0]?.name ?? '',
+          parentKey,
+        })
+      madeFolders.push(node.key)
+    }
 
     // What each node was before this run, read before anything is written:
     // the two numbers a revert needs to put the site back.
@@ -274,7 +309,10 @@ async function applyBundle(tx: Db, set: ContentSet, options: ImportOptions): Pro
           `No content type "${node.contentType.alias}" for "${node.key}", which the check should have refused.`,
         )
       const parentKey =
-        node.parent && !created.has(node.parent) && !before.has(node.parent)
+        node.parent &&
+        !created.has(node.parent) &&
+        !before.has(node.parent) &&
+        !foldersHere.has(node.parent)
           ? (options.under?.key ?? null)
           : (node.parent ?? options.under?.key ?? null)
       await repo.create({
@@ -324,7 +362,7 @@ async function applyBundle(tx: Db, set: ContentSet, options: ImportOptions): Pro
     }
 
     // Pass two: the values, overlaid onto whatever is here.
-    const applied: NodePlan[] = []
+    const applied: NodePlan[] = [...folderPlans]
     for (const node of ordered) {
       const plan = planByKey.get(node.key)
       const kept = new Set(plan?.keepLocal ?? [])
@@ -521,6 +559,16 @@ async function applyBundle(tx: Db, set: ContentSet, options: ImportOptions): Pro
         eventId: markers?.head ?? null,
       })
     }
+    for (const key of madeFolders)
+      await runs.record({
+        runId,
+        nodeKey: key,
+        kind: 'element-folder',
+        action: 'create',
+        beforeEventId: null,
+        beforePublishedEventId: null,
+        eventId: null,
+      })
     // What this run applied, for the next import to compare against. A node
     // that kept its own order keeps the order recorded before.
     const appliedRecords = new ContentAppliedRepository(tx)
@@ -548,7 +596,7 @@ async function applyBundle(tx: Db, set: ContentSet, options: ImportOptions): Pro
       await appliedRecords.record(node.key, runId, state)
     }
 
-    await runs.finish(runId, ordered.length + people.length)
+    await runs.finish(runId, ordered.length + madeFolders.length + people.length)
 
     // Other nodes drop their published cache; this one already has.
     await appendCacheInstruction(tx, {

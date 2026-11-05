@@ -305,7 +305,10 @@ export async function checkBundle(
   const repoFor = (kind: BundleNode['kind']): DocumentRepository => {
     const found = byKind.get(kind)
     if (found) return found
-    const repo = new DocumentRepository(db, { nodeState, kind })
+    const repo = new DocumentRepository(db, {
+      nodeState,
+      kind: kind === 'element-folder' ? 'element' : kind,
+    })
     byKind.set(kind, repo)
     return repo
   }
@@ -463,6 +466,78 @@ export async function checkBundle(
     return editors
   }
 
+  /**
+   * A Library folder is made if it is missing and otherwise left alone, so it
+   * takes none of the comparing a node with values does (story 283).
+   */
+  const carriedNodes = new Map(set.nodes.map((n) => [n.key, n]))
+  const checkFolder = async (
+    node: BundleNode,
+    name: string,
+    existing: NodeRow | undefined,
+    resolution: Resolution | undefined,
+  ): Promise<NodePlan> => {
+    const planned = (action: NodePlan['action']): NodePlan => ({
+      key: node.key,
+      name,
+      kind: node.kind,
+      action,
+      changing: [],
+      resolution,
+    })
+    const finding = (kind: Finding['kind'], code: string, message: string) =>
+      findings.push({
+        kind,
+        code,
+        subjectType: 'document',
+        subjectKey: node.key,
+        subjectName: name,
+        propertyAlias: null,
+        culture: null,
+        message,
+        link: null,
+      })
+    if (resolution === 'skip') return planned('skip')
+    if (existing && existing.objectType !== ObjectTypes.ElementContainer) {
+      finding('blocking', 'folder-key-taken', `the key of the folder "${name}" is in use here`)
+      return planned('skip')
+    }
+    const parent = node.parent ? carriedNodes.get(node.parent) : undefined
+    if (parent && parent.kind !== 'element-folder') {
+      finding('blocking', 'folder-parent-invalid', `"${name}" sits under something not a folder`)
+      return planned('skip')
+    }
+    if (existing && !existing.trashed) return planned('unchanged')
+    const atTop = !parent
+    if (atTop && options.under && options.under.objectType !== ObjectTypes.ElementContainer) {
+      finding(
+        'blocking',
+        'folder-under-invalid',
+        `the folder "${name}" can only be placed under another Library folder`,
+      )
+      return planned('skip')
+    }
+    if (existing) {
+      finding('auto', 'folder-restored', `"${name}" comes back out of the recycle bin`)
+      return planned('create')
+    }
+    const parentHere = atTop
+      ? (options.under ?? (node.parent ? await nodes.byKey(node.parent) : undefined))
+      : await nodes.byKey(parent.key)
+    const namesakes =
+      atTop && !parentHere && node.parent
+        ? []
+        : await nodes.childrenNamed(parentHere?.id ?? -1, [ObjectTypes.ElementContainer], name)
+    if (namesakes.length > 0)
+      finding(
+        'auto',
+        'folder-beside-namesake',
+        `a folder called "${name}" is already here; this one keeps its own key and sits beside it`,
+      )
+    finding('auto', 'new-node', `the folder "${name}" is new here`)
+    return planned('create')
+  }
+
   const siblingNames = new Map<string, Set<string>>()
   // What earlier imports applied: the third side of every comparison below.
   const appliedBefore = await new ContentAppliedRepository(db).byKeys(set.nodes.map((n) => n.key))
@@ -472,6 +547,10 @@ export async function checkBundle(
     const answers = resolutions[node.key]
     const resolution = answers?.[WHOLE_NODE] ?? options.resolveAll
     const existing = await nodes.byKey(node.key)
+    if (node.kind === 'element-folder') {
+      plan.push(await checkFolder(node, name, existing, resolution))
+      continue
+    }
     const editors = await editorsFor(node.contentType.alias)
     const typeMissing = !(await typeFor(node.contentType))
 
