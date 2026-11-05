@@ -12,9 +12,7 @@ like Umbraco's. Everything else — rendering, schema as code, upgrades, content
 transfer — is this project's own.
 
 It is not a compatible replacement for Umbraco: plugins, packages and Razor do
-not run here and never will. An existing site comes across through a one-way
-importer ([`umbraco-import.md`](umbraco-import.md)), not by being opened in
-place.
+not run here and never will. Crombolo Cloud moves existing sites.
 
 Reference implementation: `/Users/adam/dev/Umbraco-CMS` at
 `release-18.2.0-99-ge81538b0400` (`version.json`: `18.3.0-rc`).
@@ -65,8 +63,7 @@ measures the contract.
 - .NET-specific machinery: ModelsBuilder DLL generation, Examine/Lucene, ImageSharp
 - Umbraco Cloud/Deploy, Forms, Commerce and other commercial add-ons
 - SQL Server support
-- Opening an existing Umbraco database in place (excluded by the snake_case decision).
-  A one-way importer does that instead: [`umbraco-import.md`](umbraco-import.md)
+- Opening an existing Umbraco database in place (excluded by the snake_case decision)
 
 ## Glossary — Umbraco term → crombolo module
 

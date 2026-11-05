@@ -419,9 +419,6 @@ exactly like an `App_Plugins` package.
 | `tests/` | views, backoffice-host, api-handlers |
 | `docs/` | 00, 01, 04, 06, 07, 09, 10, 14, 16 |
 
-`packages/import-umbraco` keeps reading `App_Plugins` — it is reading a *foreign*
-Umbraco site's layout during an import, which is unrelated and stays.
-
 Removal is complete, with no fallback. The boot logs a warning when a non-empty
 `App_Plugins` directory exists, naming the replacement, so nobody's extensions
 vanish without explanation (`server/src/extensions-notice.ts`); the warning goes

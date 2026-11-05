@@ -132,8 +132,7 @@ footer and a two-column layout to restyle), and `next` and
 - To move a site between machines or environments, `bunx crombolo export --site`
   and `bunx crombolo import`, or `crombolo pull` and `push` against a running
   site ([content transfer](docs/content-transfer.md)).
-- An existing Umbraco 15+ site comes across with `crombolo import umbraco`,
-  which reports what cannot ([Umbraco import](docs/umbraco-import.md)).
+- To move an existing Umbraco site, Crombolo Cloud does that.
 
 ---
 
@@ -281,7 +280,6 @@ Design documents, in reading order; planned work is in the stories:
 | [content-transfer](docs/content-transfer.md) | the bundle format, and moving content between environments; imports compare three ways against what was last applied |
 | [configuration](docs/configuration.md) | every environment variable, and every script; the variable tables are generated from `packages/server/src/settings.ts` by `bun run docs:config` |
 | [operations](docs/operations.md) | media storage, redirects, git, security, members; running a cluster: a worker for the jobs, health during upgrades, pausing editing, the commands as functions; the backoffice's health checks and troubleshooting in [diagnostics](docs/diagnostics.md); [webhooks](docs/webhooks.md) |
-| [umbraco-import](docs/umbraco-import.md) | importing an existing Umbraco site: the report, what converts, and what is left |
 | [next-integration](docs/next-integration.md) | what `@crombolo/next-integration` offers a Next.js front end: reads, caching, preview, members, middleware, components and images |
 | [api](docs/api.md) | the supported API: the entry points of `@crombolo/crombolo`, the compatibility promise, and how a snapshot and an import boundary hold it |
 | [cli](docs/cli/commands.md) | the command line's spec: every command, its arguments, flags, outputs, errors and exit codes, with [clispec.json](docs/cli/clispec.json) for a machine; generated from the commands by `bun run cli:spec`, and a test fails when it is stale |
@@ -339,8 +337,6 @@ crombolo/
 │   │                              #    `./registry` is the bundle discovery and paths alone, for the worker
 │   ├── schema/                    # schema-as-code: TOML model, parser, validator, writer, sync, export, generate, check/fix/upgrade
 │   ├── transfer/                  # content transfer: the bundle format, canonical writer, reader, exporter
-│   ├── import-umbraco/            # opt-in: an Umbraco backup → a compatibility report, schema files,
-│   │                              #    a content bundle package and view stubs; reads a .bacpac without .NET
 │   ├── remote-conformance/        # opt-in: checks a server against the remote protocol (docs/remote-protocol.md)
 │   ├── simple-redirects/          # opt-in bundle: manage redirects in Settings; the reference example
 │   │                              #    of a bundle with a server half (docs/bundles.md)
@@ -381,9 +377,7 @@ MIT-licensed and neither .NET-specific:
 
 That is the extent of it. Crombolo does not run Umbraco packages or plugins, does
 not render Razor, and does not open an Umbraco database, so it is not a drop-in
-replacement for an Umbraco install. An existing site comes across with
-[`crombolo import umbraco`](docs/umbraco-import.md), which converts what
-can be converted and reports what cannot.
+replacement for an Umbraco install. Crombolo Cloud moves existing sites.
 
 For contributors: `Umbraco.Web.UI.Client/mocks/` in the Umbraco repository is an
 MSW mock server covering ~45 endpoint groups — the best reference for exact

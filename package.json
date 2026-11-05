@@ -88,7 +88,6 @@
     "@crombolo/data": "workspace:*",
     "@crombolo/delivery-client": "workspace:*",
     "@crombolo/entra": "workspace:*",
-    "@crombolo/import-umbraco": "workspace:*",
     "@crombolo/next-integration": "workspace:*",
     "@crombolo/remote-conformance": "workspace:*",
     "@crombolo/render": "workspace:*",

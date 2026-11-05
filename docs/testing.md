@@ -170,10 +170,6 @@ calls the functions directly.
 - `content-transfer.integration.ts` — export, check, import, runs, revert,
   `publish`/`unpublish`, and `--with-blobs` carrying the media bytes into a
   second environment's store.
-- `import-umbraco.integration.ts` — `import umbraco report` and `apply` against a
-  real Umbraco 17 export, then `crombolo start` in the directory it wrote: the
-  bundle imports on the first boot, and every URL the Umbraco site served is
-  fetched from the imported one.
 - `first-boot.integration.ts` — story `080`'s first boot. It covers a production
   start with no password, set up from the browser with `CROMBOLO_SETUP_CODE`
   (which never appears in the output), then restarted. It covers the holding page

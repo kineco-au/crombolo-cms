@@ -182,3 +182,8 @@ This is the second of three tracks; `104` holds the format they share, and
   - the round trip: export, start elsewhere, export again, compare;
   - `--replace`: a second site becomes the first site's content, files, schema,
     dictionary and media.
+
+## Note (2026-11-05)
+
+`074` was deleted, not built: moving from Umbraco is a Crombolo Cloud feature,
+and the importer left this repository with `279`.

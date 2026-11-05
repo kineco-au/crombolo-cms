@@ -203,10 +203,9 @@ requests, only server-side and build-time front ends can call it.
 |---|---|---|---|---|---|
 | `070` | Import schema, content and views | should | L | done | — |
 | `071` | Import members, users, redirects, protected pages and schedules | should | L | done | 070 |
-| `072` | Proven on real exports from Umbraco 15, 16 and 18 | should | M | ready | 070 |
 | `073` | Import a WordPress site | should | L | on hold | 141, 142 |
-| `074` | An Umbraco extension exports a crombolo bundle | should | L | ready | 104, 105 |
-| `190` | Import from Umbraco 7 | should | L | ready | 070, 071 |
+| `278` | A site can be written from the public package | should | S | done | — |
+| `279` | The Umbraco importer leaves the CMS | should | M | done | 278 |
 
 ### Epic I — Hardening
 
@@ -308,6 +307,7 @@ requests, only server-side and build-time front ends can call it.
 | `263` | Personalised parts of a shared page | should | L | done | — |
 | `264` | Personalised parts in the back office | could | M | done | 263 |
 | `265` | Deferred parts put together by the CDN | could | S | on hold | 263 |
+| `281` | A marked gap in a template | should | S | ready | — |
 
 ### Epic P — The command line
 

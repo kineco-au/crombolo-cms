@@ -786,7 +786,7 @@ its findings are its output. `packages/cli/src/errors.ts` is this table.
 | 9 | `unavailable` | the database or the remote could not be reached |
 | 10 | `io` | a file could not be read or written |
 | 20 | outcome `problems_found` | `status`, `types check`, `components check` found problems |
-| 21 | outcome `blocked` | `bundle apply --dry-run`, `upgrade check`, `import umbraco report`: a person must resolve something first |
+| 21 | outcome `blocked` | `bundle apply --dry-run`, `upgrade check`: a person must resolve something first |
 | 130 | `interrupted` | stopped by a signal |
 
 **Changed in 0.15.0.** Before it, nearly every failure exited 1, a refusal before

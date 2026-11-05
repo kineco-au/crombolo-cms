@@ -60,7 +60,6 @@
         "@crombolo/data": "workspace:*",
         "@crombolo/delivery-client": "workspace:*",
         "@crombolo/entra": "workspace:*",
-        "@crombolo/import-umbraco": "workspace:*",
         "@crombolo/next-integration": "workspace:*",
         "@crombolo/remote-conformance": "workspace:*",
         "@crombolo/render": "workspace:*",
@@ -221,17 +220,6 @@
       "version": "0.48.1",
       "peerDependencies": {
         "@crombolo/crombolo": ">=0.33.1",
-      },
-    },
-    "packages/import-umbraco": {
-      "name": "@crombolo/import-umbraco",
-      "version": "0.48.1",
-      "dependencies": {
-        "@crombolo/core": "workspace:*",
-        "@crombolo/data": "workspace:*",
-        "@crombolo/schema": "workspace:*",
-        "@crombolo/transfer": "workspace:*",
-        "@kineco-au/bacpac-importer": "^0.1.0",
       },
     },
     "packages/next-integration": {
@@ -436,8 +424,6 @@
 
     "@crombolo/entra": ["@crombolo/entra@workspace:packages/entra"],
 
-    "@crombolo/import-umbraco": ["@crombolo/import-umbraco@workspace:packages/import-umbraco"],
-
     "@crombolo/next-integration": ["@crombolo/next-integration@workspace:packages/next-integration"],
 
     "@crombolo/remote-conformance": ["@crombolo/remote-conformance@workspace:packages/remote-conformance"],
@@ -543,8 +529,6 @@
     "@isaacs/fs-minipass": ["@isaacs/fs-minipass@4.0.1", "", { "dependencies": { "minipass": "^7.0.4" } }, "sha512-wgm9Ehl2jpeqP3zw/7mo3kRHFp5MEDhqAdwy1fTGkHAwnkGOVsgpvQhL8B5n1qlb01jV3n/bI0ZfZp5lWA1k4w=="],
 
     "@jsdevtools/ono": ["@jsdevtools/ono@7.1.3", "", {}, "sha512-4JQNk+3mVzK3xh2rqd6RB4J46qUR19azEHBneZyTZM+c456qOrbbM/5xcR8huNCCcbVt7+UmizG6GuUvPvKUYg=="],
-
-    "@kineco-au/bacpac-importer": ["@kineco-au/bacpac-importer@0.1.0", "", { "bin": { "bacpac-importer": "src/cli.ts" } }, "sha512-6VS3Ytz2JKOulyQ+xHq7U91rl0yKMqcD+SWn1GcTrEh9UjrT6uEU2jaPCsfy21GH4q6fPR92sgtYkkfLsANOPw=="],
 
     "@lit-labs/ssr-dom-shim": ["@lit-labs/ssr-dom-shim@1.6.0", "", {}, "sha512-VHb0ALPMTlgKjM6yIxxoQNnpKyUKLD04VzeQdsiXkMqkvYlAHxq9glGLmgbb889/1GsohSOAjvQYoiBppXFqrQ=="],
 

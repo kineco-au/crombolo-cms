@@ -108,8 +108,6 @@
   "tests/host-provided.test.ts": 3,
   "tests/host-token.test.ts": 5,
   "tests/imaging.test.ts": 1,
-  "tests/import-umbraco-people.test.ts": 10,
-  "tests/import-umbraco.test.ts": 10,
   "tests/jobs-stop.test.ts": 1,
   "tests/jsx-attributes.test.tsx": 1,
   "tests/large-site-paths.test.ts": 3,

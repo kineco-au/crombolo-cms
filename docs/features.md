@@ -154,5 +154,4 @@ tail of 1–3 each.
   forms designer, with sensitive answers sent only when a workflow opts in
   (story `091`); what is left is story `092`
 - SQL Server
-- Opening an existing Umbraco database in place — a one-way importer does that
-  instead, see [`umbraco-import.md`](umbraco-import.md)
+- Opening an existing Umbraco database in place

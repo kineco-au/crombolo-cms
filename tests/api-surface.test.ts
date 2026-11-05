@@ -38,6 +38,7 @@ describe('the supported surface', () => {
       [
         '.',
         './bundle',
+        './transfer',
         './host',
         './branding',
         './navigation',
@@ -84,6 +85,7 @@ describe('the supported surface', () => {
 const ALLOWED = new Set([
   '@crombolo/crombolo',
   '@crombolo/crombolo/bundle',
+  '@crombolo/crombolo/transfer',
   '@crombolo/crombolo/host',
   '@crombolo/crombolo/branding',
   '@crombolo/crombolo/navigation',

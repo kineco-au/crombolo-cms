@@ -27,7 +27,6 @@ const packages = publishablePackages()
 const OPT_IN = new Set([
   '@crombolo/delivery-client',
   '@crombolo/entra',
-  '@crombolo/import-umbraco',
   '@crombolo/next-integration',
   '@crombolo/remote-conformance',
   '@crombolo/simple-redirects',
@@ -82,7 +81,6 @@ describe('the published package set', () => {
       '@crombolo/data',
       '@crombolo/delivery-client',
       '@crombolo/entra',
-      '@crombolo/import-umbraco',
       '@crombolo/next-integration',
       '@crombolo/remote-conformance',
       '@crombolo/render',
@@ -143,17 +141,16 @@ describe('the published package set', () => {
   })
 
   test('keeps an opt-in package out of every site that did not ask for it', () => {
-    // The Umbraco importer is run once, by someone migrating a site, and brings a
-    // .bacpac reader with it. The CLI loads it on demand and says how to add it,
-    // so nothing a site installs may depend on it.
     for (const pkg of packages) {
       if (OPT_IN.has(pkg.name)) continue
       for (const name of Object.keys(pkg.manifest.dependencies ?? {}))
         expect(OPT_IN.has(name), `${pkg.name} depends on ${name}`).toBe(false)
     }
-    const cli = readFileSync(join(ROOT, 'packages/cli/src/support/umbraco.ts'), 'utf8')
-    expect(cli).toContain("await import('@crombolo/import-umbraco')")
-    expect(cli).not.toMatch(/^import .* from '@crombolo\/import-umbraco'/m)
+  })
+
+  test('keeps the writers of a site out of the main entry', () => {
+    const main = readFileSync(join(ROOT, 'packages/crombolo/src/index.ts'), 'utf8')
+    expect(main).not.toContain('./transfer.ts')
   })
 
   test('carries no cloud SDK: the assistant, its only user, left with story 179', () => {

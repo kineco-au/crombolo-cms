@@ -23,8 +23,7 @@ function allowed(file: string): boolean {
     file === 'packages/data/src/database.ts' ||
     file === 'packages/data/src/locks.ts' ||
     file === 'packages/data/src/table-types.ts' ||
-    RELEASED_SCHEMA.has(file) ||
-    file.startsWith('packages/import-umbraco/src/')
+    RELEASED_SCHEMA.has(file)
   )
 }
 

@@ -14,7 +14,6 @@ import {
   readUrlOptions,
   sameUrlOptions,
 } from '@crombolo/data'
-import { hideTopLevelFrom, parseAppSettings } from '@crombolo/import-umbraco'
 import { isRightToLeft, PublishedCache, type PublishedNode } from '@crombolo/render'
 import {
   hashSchemaSet,
@@ -68,23 +67,6 @@ describe('the setting in schema.toml', () => {
     expect(parseUrlOptions('{"hideTopLevel":false}')).toEqual({ hideTopLevel: false })
     expect(parseUrlOptions('nonsense')).toEqual({ hideTopLevel: true })
     expect(sameUrlOptions({ hideTopLevel: true }, { hideTopLevel: false })).toBe(false)
-  })
-})
-
-describe('the importer', () => {
-  test('reads appsettings as .NET does: comments, trailing commas, any case', () => {
-    const settings = parseAppSettings(`{
-      // The Umbraco section
-      "Umbraco": { "CMS": { "Global": {
-        /* kept as it was */ "HideTopLevelNodeFromPath": false,
-        "Url": "https://example.com//not-a-comment",
-      } } },
-    }`)
-    expect(hideTopLevelFrom(settings)).toBe(false)
-    expect(
-      hideTopLevelFrom({ umbraco: { cms: { global: { hidetoplevelnodefrompath: 'True' } } } }),
-    ).toBe(true)
-    expect(hideTopLevelFrom({ Umbraco: {} })).toBeUndefined()
   })
 })
 

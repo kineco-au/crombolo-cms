@@ -3554,67 +3554,6 @@ crombolo import <file> [--replace] [--replace-all] [--yes] [--allow-missing-medi
 
 **Fails with:** `usage`, `internal`, `confirmation_required`, `refused`, `auth`, `not_found`.
 
-### `crombolo import umbraco apply`
-
-Write a crombolo site from an Umbraco backup. Each run acts again.
-
-```
-crombolo import umbraco apply <backup> [--site <site>] [--media <media>] [--name <name>] [--drafts] [--staging <staging>] [--with-members] [--with-users] [--include-content] [--allow-content-unencrypted] --out <out> [--postgres] [--force]
-```
-
-| Argument | Type | What it is |
-| --- | --- | --- |
-| `backup` | string | A .bacpac, or Umbraco's SQLite file. Required. |
-| `--site` | string | The Umbraco site's files, for its views, media and plugins. |
-| `--media` | string | Where its media files are, if not under --site. |
-| `--name` | string | The new site's name. |
-| `--drafts` | boolean | Bring drafts too. |
-| `--staging` | string | Where to unpack a .bacpac. |
-| `--with-members` | boolean | Bring members, encrypted. |
-| `--with-users` | boolean | Bring back-office users, encrypted. |
-| `--include-content` | boolean | Bring property values and media files, encrypted under a passphrase. |
-| `--allow-content-unencrypted` | boolean | With --include-content: write them readable. |
-| `--out` | string | The site directory to write. Required. |
-| `--postgres` | boolean | Configure Postgres. |
-| `--force` | boolean | Write into a directory that is not empty. |
-
-**Output** (single, with `-o json`):
-
-- `wrote` (integer)
-- `out` (string)
-- `report` (string)
-- `sealed` (boolean)
-
-**Fails with:** `usage`, `internal`, `not_found`, `refused`, `conflict`, `auth`.
-
-### `crombolo import umbraco report`
-
-Read-only: what importing an Umbraco backup would bring, and what it would not. Changes nothing.
-
-```
-crombolo import umbraco report <backup> [--site <site>] [--media <media>] [--name <name>] [--drafts] [--staging <staging>] [--with-members] [--with-users] [--include-content] [--allow-content-unencrypted] [--out <out>]
-```
-
-| Argument | Type | What it is |
-| --- | --- | --- |
-| `backup` | string | A .bacpac, or Umbraco's SQLite file. Required. |
-| `--site` | string | The Umbraco site's files, for its views, media and plugins. |
-| `--media` | string | Where its media files are, if not under --site. |
-| `--name` | string | The new site's name. |
-| `--drafts` | boolean | Bring drafts too. |
-| `--staging` | string | Where to unpack a .bacpac. |
-| `--with-members` | boolean | Bring members, encrypted. |
-| `--with-users` | boolean | Bring back-office users, encrypted. |
-| `--include-content` | boolean | Bring property values and media files, encrypted under a passphrase. |
-| `--allow-content-unencrypted` | boolean | With --include-content: write them readable. |
-| `--out` | string | Also write report.md and report.json here. |
-
-**Output** (single, with `-o json`): a JSON document.
-
-**Fails with:** `usage`, `internal`, `not_found`, `refused`.
-
-**Outcomes:** `blocked`.
-
 ## Users and access
 
 Back office users, the administrator’s password, API clients and the audit log.
@@ -4371,5 +4310,5 @@ crombolo restart [--remote <remote>] [--env <env>]
 | 9 | `unavailable` | The database or the remote could not be reached. |
 | 10 | `io` | A file could not be read or written. |
 | 20 | `problems_found` | The check found problems: `status`, `types check`, `components check`. |
-| 21 | `blocked` | Something must be resolved by a person first: `bundle apply --dry-run`, `upgrade check`, `import umbraco report`. |
+| 21 | `blocked` | Something must be resolved by a person first: `bundle apply --dry-run`, `upgrade check`. |
 | 130 | `interrupted` | Stopped by a signal. |

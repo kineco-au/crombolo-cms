@@ -77,8 +77,8 @@ export default class Import extends BaseCommand {
     if (args.file === 'umbraco')
       this.fail(
         'usage',
-        'import umbraco needs report or apply.',
-        '`crombolo import umbraco --help` says more.',
+        'The Umbraco importer has left the CMS.',
+        'Crombolo Cloud moves Umbraco sites. Older releases keep `crombolo import umbraco`.',
       )
     const config = await siteConfig()
     const replace: ops.ReplaceMode | undefined = flags['replace-all']

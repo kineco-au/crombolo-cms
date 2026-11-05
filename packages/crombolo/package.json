@@ -33,6 +33,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./bundle": "./src/bundle.ts",
+    "./transfer": "./src/transfer.ts",
     "./host": "./src/host.ts",
     "./branding": "./src/branding.ts",
     "./navigation": "./src/navigation.ts",
