@@ -123,6 +123,8 @@ export async function serveStaticFile(
   if (request.headers.get('if-none-match') === etag) {
     return new Response(null, { status: 304, headers })
   }
+  // Bun.serve answers an empty file body 204, and an empty file is still one.
+  if (file.size === 0) return new Response('', { headers })
   return new Response(body?.changed ? body.text : file, { headers })
 }
 

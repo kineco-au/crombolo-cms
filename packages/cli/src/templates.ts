@@ -381,6 +381,8 @@ export default await crombolo(config)
     // The media types a site owns as files rather than inheriting silently.
     ...Object.entries(siteMediaTypeFiles()).map(([path, text]) => ({ path, text })),
     { path: 'components/.gitkeep', text: '' },
+    // Files served at the root of the site at their own paths (story 284).
+    { path: 'public/.gitkeep', text: '' },
     // Server actions (story 219), imported by views as `#actions/<file>.ts`.
     ...(next ? [] : [{ path: 'actions/.gitkeep', text: '' }]),
     {

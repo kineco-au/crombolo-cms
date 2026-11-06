@@ -171,9 +171,9 @@ checkout ([`bundles.md`](bundles.md)). The manifest's `carries` declares every o
 integrity hash covers them, and `bundle apply` applies them before the content
 that needs them. A content-only bundle carries no `carries` key.
 
-Every bundle is written as `formatVersion` 6, whatever it carries: `bundle.json`
-at the package root (story 193), and its media listed in `media.json` (story
-195). A reader refuses a newer format with "upgrade crombolo to import it", and
+Every bundle is written as `formatVersion` 7, whatever it carries: `bundle.json`
+at the package root (story 193), its media listed in `media.json` (story 195),
+and the site's `public/` files in `public.json` (story 284). A reader refuses a newer format with "upgrade crombolo to import it", and
 anything older than 5 with a message saying to rebuild it.
 
 `label` is the bundle's own name, when it has one — a created package's name
@@ -544,11 +544,11 @@ in production, where `schema/` is read-only — and promised these two commands 
 how a lower environment gets the translations:
 
 ```
-crombolo dictionary export --out <file.udt> [--key <uuid>]
-crombolo dictionary import <file.udt>
+crombolo dictionary export --out <file.udt|file.toml> [--key <name|uuid>]
+crombolo dictionary import <file.udt|file.toml> [--dry-run]
 ```
 
-It is Umbraco's own `.udt`, so a file exported from an Umbraco site imports here
+A `.udt` is Umbraco's own, so a file exported from an Umbraco site imports here
 and the other way round. Items **upsert by key**, so running an import twice is a
 no-op, and an item translated here keeps any language the file does not carry.
 A translation for a language this environment has not got is **skipped rather
@@ -558,6 +558,52 @@ dropping it silently.
 The implementation is shared with the Management API endpoint rather than
 duplicated: `importDictionaryUdt` in `@crombolo/server`, which the adapter now
 calls too.
+
+### The dictionary as a file
+
+`.udt` is for carrying a dictionary between sites, and nobody writes it by hand.
+A `.toml` file is for that (story 168), chosen by its extension. A table is an
+item, and inside it a string is a translation and a table is a child:
+
+```toml
+[Nav]
+en-US = "Navigation"
+fr-FR = "Navigation"
+
+[Nav."Nav.Home"]
+en-US = "Home"
+fr-FR = "Accueil"
+```
+
+- **A name is the item's whole name,** not a path: names are unique across the
+  dictionary, so `Nav.Home` above is one name, quoted for its dot.
+- **Items match by name.** A new item's key comes from its name, so two sites
+  built from one file share keys. Renaming a key in the file makes a new item
+  and leaves the old one, and the output says what it created.
+- **It adds and changes, and never deletes.** A language the file does not name
+  is kept. An item the file places under another parent moves, so a top-level
+  table in the file moves that item to the top; `--dry-run` shows moves.
+- **A file with a problem applies nothing.**
+
+One translation at a time, and finding what is left:
+
+```
+crombolo dictionary set <key> --culture <iso> <value> [--parent <name>] [--dry-run]
+crombolo dictionary list [--missing <iso>]
+```
+
+`set` makes an item that does not exist, under `--parent` or at the top, and
+leaves one that does where it is. It refuses a language the site has not got,
+where an import skips one. `--missing` lists items with no translation in that
+language, or an empty one.
+
+Every command here tells running servers in the transaction that writes, so a
+change shows without a restart. A dry run is the write itself, undone, so it
+reports exactly what would happen.
+
+`content/dictionary.toml` is the same format among a site's content files
+(`docs/bundles.md`, "Content files"). A language the site has not got is a
+finding there.
 
 ## Findings
 
@@ -640,8 +686,10 @@ crombolo bundle revert <run-id>
                         [--resolve <key>=discard|skip] [--resolve-all <choice>]
                         [--force] [--backup-taken] [--remote <name> [--env <id>]]
 
-crombolo dictionary export --out <file.udt> [--key <uuid>]
-crombolo dictionary import <file.udt>
+crombolo dictionary export --out <file.udt|file.toml> [--key <name|uuid>]
+crombolo dictionary import <file.udt|file.toml> [--dry-run]
+crombolo dictionary set <key> --culture <iso> <value> [--parent <name>] [--dry-run]
+crombolo dictionary list [--missing <iso>]
 
 crombolo content publish <path|uuid>
                         [--descendants] [--culture <iso>]... [--at <when>] [--until <when>]

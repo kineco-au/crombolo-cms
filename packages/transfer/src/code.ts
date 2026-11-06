@@ -22,6 +22,7 @@ const SITE_FOLDERS = new Set([
   'components',
   'css',
   'scripts',
+  'public',
   'content',
   'media',
   'logs',

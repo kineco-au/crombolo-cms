@@ -394,6 +394,8 @@ Media types come in two kinds. **Folder, Image and File** are system types:
 shipped with the framework, always present, not deletable, alias fixed. A
 site needs no file for them; a file with the same alias *and key* overrides
 one, and export writes that file only once the type differs from what ships.
+Image has an `altText` field (story 168). A file for Image says what the type
+holds, so one written before that field has no alt text until it is added.
 **Video, Audio, Article and Vector Graphics** are ordinary site files —
 `crombolo init` writes them — which a site may change or delete.
 

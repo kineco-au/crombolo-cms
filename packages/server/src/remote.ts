@@ -58,11 +58,12 @@ import { describeProvenance, provenanceProblem, verifyProvenance } from './prove
 import { createCiSignIn, readRuleInput, trustedIssuers } from './remote-ci.ts'
 import { openSecret, sealSecret, usableSecretKey } from './secrets.ts'
 import { exportSite } from './site-file.ts'
+import { REMOTE_DISCOVERY_PATH } from './site-public.ts'
 import { replaceSummary } from './site-replace.ts'
 import { extractTarball } from './tar.ts'
 
 export const REMOTE_PROTOCOL_VERSION = '1'
-export const REMOTE_DISCOVERY_PATH = '/.well-known/crombolo-remote'
+export { REMOTE_DISCOVERY_PATH }
 export const REMOTE_API_PATH = '/umbraco/remote/v1'
 
 /** How long a finished job's file stays downloadable, and its row with it. */
@@ -1175,6 +1176,7 @@ export function createRemote(options: RemoteOptions): Remote {
       { section: 'components', dir: config.componentsDir },
       { section: 'styles', dir: config.stylesheetsDir },
       { section: 'scripts', dir: config.scriptsDir },
+      { section: 'public', dir: config.publicDir },
     ]
     const summary = await replaceSummary(
       db,

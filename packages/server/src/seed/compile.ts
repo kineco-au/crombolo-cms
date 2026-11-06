@@ -26,6 +26,7 @@ import {
 } from '@crombolo/data'
 import {
   BUNDLE_FORMAT_VERSION,
+  BUNDLE_SECTIONS,
   type BundleBlob,
   type BundleFile,
   type BundleKind,
@@ -38,9 +39,17 @@ import {
 } from '@crombolo/transfer'
 import { createMediaPort } from '../adapters/media.ts'
 import { type CromboloConfig, VERSION } from '../config.ts'
+import { type DictionaryEntry, keyedEntries, writeDictionaryUdt } from '../dictionary-transfer.ts'
 import { SEED_NAMESPACE, seedKey, uuidV5 } from './keys.ts'
 import { lineOf } from './lines.ts'
-import { kindDir, readSeed, type SeedFinding, type SeedItem } from './read.ts'
+import {
+  DICTIONARY_FILE,
+  kindDir,
+  readSeed,
+  readSeedDictionary,
+  type SeedFinding,
+  type SeedItem,
+} from './read.ts'
 import { schemaLookup, valueWriter } from './values.ts'
 
 export interface SeedBuild {
@@ -52,6 +61,8 @@ export interface SeedBuild {
   files?: BundleFile[]
   /** How many items of each kind it holds. */
   counts: Record<'content' | 'library' | 'media', number>
+  /** `content/dictionary.toml`, as the items it holds (story 168). */
+  dictionary?: DictionaryEntry[]
 }
 
 /** A word for a file name: `about-us` → `About us`. */
@@ -68,6 +79,15 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
   const findings: SeedFinding[] = [...tree.findings]
   const counts = { content: 0, library: 0, media: 0 }
   for (const item of tree.items) counts[item.kind] += 1
+
+  const dictionary = readSeedDictionary(config.siteDir)
+  for (const problem of dictionary?.problems ?? [])
+    findings.push({
+      file: DICTIONARY_FILE,
+      line: problem.path.length > 0 ? lineOf(dictionary?.text ?? '', problem.path) : 1,
+      code: 'bad-dictionary',
+      message: problem.message,
+    })
 
   const state = await currentSchemaState(db)
   const documentTypes = new ContentTypeRepository(db)
@@ -88,6 +108,21 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
       code,
       message,
     })
+
+  const checkLanguages = (entries: readonly DictionaryEntry[], path: readonly string[]) => {
+    for (const entry of entries) {
+      for (const { isoCode } of entry.translations)
+        if (!languages.has(isoCode.toLowerCase()))
+          findings.push({
+            file: DICTIONARY_FILE,
+            line: lineOf(dictionary?.text ?? '', [...path, entry.name, isoCode]),
+            code: 'unknown-language',
+            message: `"${entry.name}" has a translation for ${isoCode}, a language this site has not got`,
+          })
+      checkLanguages(entry.children, [...path, entry.name])
+    }
+  }
+  checkLanguages(dictionary?.entries ?? [], [])
 
   // ---------------------------------------------------------------- keys
   const keyOf = new Map<SeedItem, string>()
@@ -453,6 +488,7 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
     identity.update(`${item.kind}\0${item.path}\0${item.text}\0`)
     if (item.bytes) identity.update(item.bytes)
   }
+  if (dictionary) identity.update(`dictionary\0${dictionary.text}\0`)
   const id = uuidV5(`seed:${identity.digest('hex')}`, SEED_NAMESPACE)
   const tally: Partial<Record<BundleKind, number>> = {}
   for (const node of bundleNodes) tally[node.kind] = (tally[node.kind] ?? 0) + 1
@@ -491,7 +527,19 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
     },
     nodes: bundleNodes,
   }
-  const payload = writeBundle(set, blobs)
+  const entries = dictionary?.entries ?? []
+  const payload = writeBundle(
+    set,
+    blobs,
+    entries.length > 0
+      ? [
+          {
+            path: `${BUNDLE_SECTIONS.dictionary}.udt`,
+            text: writeDictionaryUdt(keyedEntries(entries)),
+          },
+        ]
+      : [],
+  )
   const files = writeBundlePackage(payload, {
     name: 'crombolo-site-seed',
     version: '0.0.0',
@@ -501,5 +549,5 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
     private: true,
     peerRange: `>=${VERSION}`,
   })
-  return { findings, set, blobs, files, counts }
+  return { findings, set, blobs, files, counts, ...(dictionary ? { dictionary: entries } : {}) }
 }

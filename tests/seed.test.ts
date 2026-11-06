@@ -15,9 +15,16 @@ import {
 } from 'node:fs'
 import { join } from 'node:path'
 import { ObjectTypes } from '@crombolo/core'
-import { DocumentRepository, NodeRepository, resolveNodeRef } from '@crombolo/data'
 import {
+  DictionaryRepository,
+  DocumentRepository,
+  NodeRepository,
+  resolveNodeRef,
+} from '@crombolo/data'
+import {
+  buildBundleFromDirectory,
   compileSeed,
+  dictionaryKey,
   exportSeed,
   installBundleContent,
   lineOf,
@@ -356,6 +363,62 @@ describe(`compiling a seed (${dialectUnderTest})`, () => {
     expect(lineOf(text, ['values', 'title'])).toBe(4)
     expect(lineOf(text, ['values', 'fr-FR', 'title'])).toBe(7)
     expect(lineOf(text, ['values', 'fr-FR'])).toBe(6)
+  })
+})
+
+describe(`the dictionary in the content files (${dialectUnderTest})`, () => {
+  const withDictionary = async (text: string) => {
+    const s = await site()
+    writeFileSync(join(s.root, 'content', 'dictionary.toml'), text)
+    return s
+  }
+
+  test('lands with the rest, and a change is a new bundle', async () => {
+    const s = await withDictionary('[Nav]\nen-US = "Navigation"\n')
+    const build = await s.compile()
+    expect(build.findings).toEqual([])
+    await s.apply(build)
+    const repo = new DictionaryRepository(s.h.server.db)
+    expect((await repo.byName('Nav'))?.translations[0]?.translation).toBe('Navigation')
+    expect((await repo.byName('Nav'))?.key).toBe(dictionaryKey('Nav'))
+    writeFileSync(join(s.root, 'content', 'dictionary.toml'), '[Nav]\nen-US = "Menu"\n')
+    const changed = await s.compile()
+    expect(changed.set?.manifest.id).not.toBe(build.set?.manifest.id)
+  })
+
+  test('a mistake is a finding, by file and line', async () => {
+    const unknown = await withDictionary('[Nav]\nen-US = "N"\n\n[Nav.Home]\nzz-ZZ = "H"\n')
+    expect((await unknown.compile()).findings).toContainEqual(
+      expect.objectContaining({
+        file: 'content/dictionary.toml',
+        code: 'unknown-language',
+        line: 5,
+      }),
+    )
+    const broken = await withDictionary('[Nav]\nen-US = 1\n')
+    expect((await broken.compile()).findings).toContainEqual(
+      expect.objectContaining({ file: 'content/dictionary.toml', code: 'bad-dictionary' }),
+    )
+  })
+
+  test('a site with no file has no dictionary section', async () => {
+    const { compile } = await site()
+    expect((await compile()).set?.manifest.carries?.dictionary).toBeUndefined()
+  })
+
+  test('bundle build carries it, from its throwaway database', async () => {
+    const root = mkdtempSync(join(process.cwd(), 'output', 'seed-dictionary-'))
+    dirs.push(root)
+    write(join(root, 'schema'), {
+      'schema.toml': SCHEMA['schema.toml'] as string,
+      'languages.toml': SCHEMA['languages.toml'] as string,
+    })
+    write(root, { 'content/dictionary.toml': '[Nav]\nen-US = "Navigation"\n' })
+    const built = await buildBundleFromDirectory(root)
+    expect(built.problems).toEqual([])
+    const udt = built.files?.find((file) => file.path === 'dictionary.udt')
+    expect(udt?.text).toContain('Navigation')
+    expect(udt?.text).toContain(dictionaryKey('Nav'))
   })
 })
 

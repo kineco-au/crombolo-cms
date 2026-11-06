@@ -130,6 +130,7 @@ export async function undoMediaMemberUploads(db: Db): Promise<void> {
   // 063, search removals (story 273): a table of its own.
   await db.exec('DROP TABLE IF EXISTS search_removal')
   await db.exec("DELETE FROM migration_history WHERE name = 'AddSearchRemovals'")
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddImageAltText'")
   // 062, the Media tree folders first (story 246): a column and its index on node.
   await db.exec('DROP INDEX IF EXISTS ix_node_parent_tree')
   await db.exec('ALTER TABLE node DROP COLUMN tree_group')

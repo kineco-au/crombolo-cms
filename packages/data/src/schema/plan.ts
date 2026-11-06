@@ -44,6 +44,7 @@ import { formWorkflowsMigration } from './form-workflows.ts'
 import { formsMigration } from './forms.ts'
 import { groupPermissionsMigration } from './group-permissions.ts'
 import { identityMigration } from './identity.ts'
+import { imageAltTextMigration } from './image-alt-text.ts'
 import { jobsMigration } from './jobs.ts'
 import { logViewerMigration } from './log-viewer.ts'
 import { mediaAccessMigration } from './media-access.ts'
@@ -141,4 +142,5 @@ export const cromboloPlan = new MigrationPlan([
   remoteTrustMigration,
   mediaTreeOrderMigration,
   searchRemovalsMigration,
+  imageAltTextMigration,
 ])

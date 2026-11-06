@@ -9,6 +9,7 @@
  */
 
 import type { BundlePeople, PeopleBlock } from './people.ts'
+import type { PublicFile } from './public.ts'
 import type { SealParameters } from './seal.ts'
 import type { SiteDataBlock, SiteDataTable } from './site-data.ts'
 
@@ -21,11 +22,12 @@ import type { SiteDataBlock, SiteDataTable } from './site-data.ts'
  * 5: media listed in `media.json` at the root, each carried file at
  * `media/<key>` with a `bundle://` URI (story 195).
  * 6: a Library folder may travel as a node (story 283).
+ * 7: the site's `public/` folder, listed in `public.json` (story 284).
  *
  * An older version is refused rather than read (no older layout is kept up),
  * with a message saying to rebuild it.
  */
-export const BUNDLE_FORMAT_VERSION = 6
+export const BUNDLE_FORMAT_VERSION = 7
 
 /** The oldest version this reader reads: the first with media listed in `media.json`. */
 export const OLDEST_BUNDLE_FORMAT_VERSION = 5
@@ -56,6 +58,11 @@ export const BUNDLE_SECTIONS = {
    * `installBundleCode`'s, followed by a restart.
    */
   code: 'code',
+  /**
+   * The site's `public/` folder (story 284), which may be images: read as bytes,
+   * listed with their hashes in `public.json` rather than in `carries`.
+   */
+  public: 'public',
 } as const
 
 export type BundleSection = keyof typeof BUNDLE_SECTIONS
@@ -243,6 +250,10 @@ export interface BundleManifest {
    * the package root and inside the hash (story 195). `blobs` is read from it.
    */
   mediaManifest?: string
+  /** `public.json`, when the bundle carries the site's `public/` folder (story 284). */
+  publicManifest?: string
+  /** The public files, read from `public.json`; `carries.public` holds their paths. */
+  publicFiles?: PublicFile[]
   /**
    * The files this bundle carries beyond its content and media, by section, in
    * path order — the structure and the views that make a bundle installable

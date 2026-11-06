@@ -301,6 +301,13 @@ const DECLARED = [
     description: 'The scripts the Settings section edits, served at `/scripts/`.',
   },
   {
+    env: 'CROMBOLO_PUBLIC_DIR',
+    kind: 'string',
+    default: 'public',
+    section: 'Back office and bundles',
+    description: "The site's own files, served at the root of the site at the same paths.",
+  },
+  {
     env: 'CROMBOLO_APPLY_BUNDLE_CONTENT',
     kind: 'boolean',
     default: 'true',

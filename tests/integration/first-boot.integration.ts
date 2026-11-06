@@ -137,6 +137,7 @@ describe('the first boot of a self-hosted site', () => {
     const sqlite = new Database(join(site(), file))
     sqlite.exec('DROP TABLE IF EXISTS search_removal')
     sqlite.exec("DELETE FROM migration_history WHERE name = 'AddSearchRemovals'")
+    sqlite.exec("DELETE FROM migration_history WHERE name = 'AddImageAltText'")
     sqlite.exec('DROP INDEX IF EXISTS ix_node_parent_tree')
     sqlite.exec('ALTER TABLE node DROP COLUMN tree_group')
     sqlite.exec("DELETE FROM migration_history WHERE name = 'AddMediaTreeOrder'")

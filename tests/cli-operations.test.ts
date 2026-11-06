@@ -236,11 +236,86 @@ describe('media in bulk (153)', () => {
     ).toEqual([join('trips', 'notes.txt')])
   })
 
+  describe('one file (story 168)', () => {
+    const items = (name: string) =>
+      withDb(async (db) => {
+        const rows = await db.query<{ unique_id: string }>(
+          'SELECT unique_id FROM node WHERE node_object_type = ? AND text = ?',
+          [ObjectTypes.Media, name],
+        )
+        const key = rows[0]?.unique_id
+        return key ? new DocumentRepository(db, { kind: 'media' }).byKey(key) : undefined
+      })
+    const fieldOf = async (name: string, alias: string) =>
+      (await items(name))?.values.find((value) => value.alias === alias)?.value
+    const image = () => join(ROOT, 'tests/fixtures/pixel.png')
+    const hero = ['media', 'import', image(), '--name', 'hero.png', '-o', 'json']
+
+    test('goes in with its name, alt text and focal point, and a dry run leaves nothing', async () => {
+      const details = ['--alt', 'A pixel', '--focal', '0.25,0.75']
+      expect(cli([...hero, ...details, '--dry-run']).json()).toMatchObject({ created: 1 })
+      expect(await items('hero.png')).toBeUndefined()
+      const result = cli([...hero, ...details])
+      expect(result.code, result.err).toBe(0)
+      expect(result.json()).toMatchObject({ created: 1, changed: true })
+      expect(await fieldOf('hero.png', 'altText')).toBe('A pixel')
+      expect(await fieldOf('hero.png', 'umbracoFile')).toMatchObject({
+        focalPoint: { left: 0.25, top: 0.75 },
+      })
+    })
+
+    test('again with the same details changes nothing, and with others updates them', async () => {
+      const same = ['--alt', 'A pixel', '--focal', '0.25,0.75']
+      expect(cli([...hero, ...same]).json()).toMatchObject({ skipped: 1, changed: false })
+      expect(cli([...hero, '--alt', 'Another pixel', '--dry-run']).json()).toMatchObject({
+        updated: 1,
+        changed: false,
+      })
+      expect(await fieldOf('hero.png', 'altText')).toBe('A pixel')
+      expect(cli([...hero, '--alt', 'Another pixel']).json()).toMatchObject({
+        updated: 1,
+        changed: true,
+      })
+      expect(await fieldOf('hero.png', 'altText')).toBe('Another pixel')
+      expect(await fieldOf('hero.png', 'umbracoFile')).toMatchObject({
+        focalPoint: { left: 0.25, top: 0.75 },
+      })
+    })
+
+    test('different bytes under its name are reported and left', () => {
+      const other = join(ROOT, 'tests/fixtures/halves.png')
+      const result = cli(['media', 'import', other, '--name', 'hero.png', '-o', 'json'])
+      expect(result.json<{ differs: string[] }>().differs).toEqual(['hero.png'])
+    })
+
+    test('goes under a folder, and takes its own file name by default', async () => {
+      const result = cli(['media', 'import', image(), '--under', '/trips', '-o', 'json'])
+      expect(result.json()).toMatchObject({ created: 1 })
+      const placed = await withDb((db) =>
+        db.query<{ text: string }>(
+          `SELECT n.text FROM node n JOIN node p ON p.id = n.parent_id
+           WHERE p.text = 'trips' AND n.text = 'pixel.png'`,
+        ),
+      )
+      expect(placed.length).toBe(1)
+    })
+
+    test('refuses what cannot be done, and says why', () => {
+      const note = join(photos, 'trips', 'notes.txt')
+      expect(cli(['media', 'import', note, '--focal', '0.5,0.5']).err).toContain('no focal point')
+      expect(cli(['media', 'import', note, '--alt', 'x']).err).toContain('no text field')
+      expect(cli(['media', 'import', photos, '--alt', 'x']).err).toContain('for one file')
+      expect(cli(['media', 'import', image(), '--focal', '2,0']).err).toContain('from 0 to 1')
+      expect(cli(['media', 'import', image(), '--focal', 'middle']).err).toContain('from 0 to 1')
+      expect(cli(['media', 'import', join(site, 'nothing.png')]).err).toContain('nothing at')
+    })
+  })
+
   test('exports them back out as the same files in the same folders', () => {
     const out = join(site, 'exported')
     const result = cli(['media', 'export', '--out', out, '-o', 'json'])
     expect(result.code, result.err).toBe(0)
-    expect(result.json<{ files: number }>().files).toBe(3)
+    expect(result.json<{ files: number }>().files).toBe(5)
     expect(readFileSync(join(out, 'trips', 'spring', 'lake.png'))).toEqual(
       readFileSync(join(ROOT, 'tests/fixtures/halves.png')),
     )

@@ -12,6 +12,7 @@ import {
   type BundleFile,
   bundleIdFor,
   codePatternsOf,
+  type PublicFile,
   readCodeFiles,
   selectCodeFiles,
   writeBundle,
@@ -21,8 +22,10 @@ import { createFileSystemPort } from './adapters/file-system.ts'
 import { createTemplateFileStore } from './adapters/template-files.ts'
 import { loadConfig, VERSION } from './config.ts'
 import { bootstrapDatabase } from './database.ts'
+import { applyDictionaryEntries } from './dictionary-transfer.ts'
 import { syncSchemaDirectory } from './schema.ts'
 import { compileSeed, type SeedBuild } from './seed/compile.ts'
+import { publicSources } from './site-public.ts'
 import { siteSections } from './site-sections.ts'
 
 export interface BundleBuildOptions {
@@ -52,6 +55,8 @@ export interface BundleBuildResult {
   name: string
   /** The site's code the bundle carries, by path; absent when it carries none. */
   code?: string[]
+  /** The files it carries from `public/`. */
+  publicFiles?: PublicFile[]
 }
 
 /** What a directory calls its site: `site.json`, then `package.json`, then its folder. */
@@ -101,6 +106,7 @@ export async function buildBundleFromDirectory(
         componentsDir: join(dir, 'components'),
         stylesheetsDir: join(dir, 'css'),
         scriptsDir: join(dir, 'scripts'),
+        publicDir: join(dir, 'public'),
         mediaDir: join(work, 'media'),
         logsDir: join(work, 'logs'),
         development: true,
@@ -127,6 +133,7 @@ export async function buildBundleFromDirectory(
           seed,
           name,
         }
+      if (seed.dictionary) await applyDictionaryEntries(db, seed.dictionary)
       const sections = await siteSections(
         {
           db,
@@ -149,11 +156,14 @@ export async function buildBundleFromDirectory(
           createdBy: 'crombolo bundle build',
         },
       }
+      const publicFiles = publicSources(config.publicDir)
       const files = writeBundlePackage(
-        writeBundle(set, options.media === false ? new Map() : seed.blobs, [
-          ...sections,
-          ...(code ? readCodeFiles(dir, code.paths) : []),
-        ]),
+        writeBundle(
+          set,
+          options.media === false ? new Map() : seed.blobs,
+          [...sections, ...(code ? readCodeFiles(dir, code.paths) : [])],
+          { public: publicFiles },
+        ),
         {
           name,
           version: '1.0.0',
@@ -164,7 +174,14 @@ export async function buildBundleFromDirectory(
           peerRange: `>=${VERSION}`,
         },
       )
-      return { problems: [], seed, files, name, ...(code ? { code: code.paths } : {}) }
+      return {
+        problems: [],
+        seed,
+        files,
+        name,
+        publicFiles,
+        ...(code ? { code: code.paths } : {}),
+      }
     } finally {
       await db.close()
     }

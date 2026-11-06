@@ -11,8 +11,10 @@ import { MEDIA_CACHE_FIELDS_TYPE_KEY, SYSTEM_MEDIA_TYPE_KEYS } from '@crombolo/c
 import {
   BUILT_IN_MEDIA_TYPES,
   ContentTypeRepository,
+  type Db,
   ensureBuiltInDataTypes,
   ensureSystemMediaTypes,
+  imageAltTextMigration,
 } from '@crombolo/data'
 import {
   exportSchemaSet,
@@ -102,6 +104,7 @@ describe('built-in media types', () => {
       ['854087f6-648b-40ed-bc98-b8a9789e80b9', 'umbracoHeight', 'Height', false],
       ['bd4c5ace-26e3-4a8b-af1a-e8206a35fa07', 'umbracoBytes', 'File size', false],
       ['f7786fe8-724a-4ed0-b244-72546db32a92', 'umbracoExtension', 'File extension', false],
+      ['4d1f8a26-7c39-4e0b-a5d2-6b9c0e3f1a64', 'altText', 'Alternative text', false],
     ])
     expect(image.properties[0]?.dataType.id).toBe('1df9f033-e6d4-451f-b8d2-e0cbc50a836f')
     expect(image.properties[1]?.dataType.id).toBe('5eb57825-e15e-4fc7-8e37-fca65cdafbde')
@@ -263,7 +266,7 @@ describe('built-in media types', () => {
     expect(await ensureSystemMediaTypes(db)).toEqual(['Image'])
     expect(await ensureBuiltInDataTypes(db)).toEqual([])
     expect(await ensureSystemMediaTypes(db)).toEqual([])
-    expect((await repo.byKey(SYSTEM.Image))?.properties).toHaveLength(5)
+    expect((await repo.byKey(SYSTEM.Image))?.properties).toHaveLength(6)
   })
 })
 
@@ -331,5 +334,55 @@ describe('Folder on a site never started (story 180)', () => {
     const report = await syncSchemaDirectory(site.db, site.config, { nodeId: 'n', revision: '1' })
     expect(report.action, JSON.stringify(report.problems)).toBe('applied')
     expect(await site.folderAllows()).toEqual(['Folder'])
+  })
+})
+
+describe('alt text on Image (story 168)', () => {
+  const open: Harness[] = []
+  afterEach(async () => {
+    while (open.length > 0)
+      await open
+        .pop()
+        ?.db.close()
+        .catch(() => {})
+  })
+  const image = (db: Db) =>
+    new ContentTypeRepository(db, { kind: 'media' }).byKey(SYSTEM_MEDIA_TYPE_KEYS.Image)
+
+  test('a new site has it, and a site from before gets it from the migration', async () => {
+    const h = await signedInServer()
+    open.push(h)
+    const db = h.server.db
+    const found = await image(db)
+    const field = found?.properties.find((p) => p.alias === 'altText')
+    expect(field).toMatchObject({ name: 'Alternative text', mandatory: false })
+
+    await db.exec("DELETE FROM property_type WHERE alias = 'altText'")
+    await imageAltTextMigration.up(db)
+    const added = (await image(db))?.properties.find((p) => p.alias === 'altText')
+    expect(added).toMatchObject({
+      key: field?.key,
+      dataTypeKey: field?.dataTypeKey,
+      containerKey: field?.containerKey,
+      sortOrder: field?.sortOrder,
+      mandatory: false,
+    })
+    await imageAltTextMigration.up(db)
+    expect((await image(db))?.properties.filter((p) => p.alias === 'altText').length).toBe(1)
+  })
+
+  test('a site with its own field of that name keeps it', async () => {
+    const h = await signedInServer()
+    open.push(h)
+    const db = h.server.db
+    const repo = new ContentTypeRepository(db, { kind: 'media' })
+    const found = await image(db)
+    const own = found?.properties.map((p) =>
+      p.alias === 'altText' ? { ...p, alias: 'ALTTEXT', name: 'Our own' } : p,
+    )
+    await repo.save({ ...found, properties: own } as NonNullable<typeof found>)
+    await imageAltTextMigration.up(db)
+    const fields = (await image(db))?.properties.filter((p) => p.alias.toLowerCase() === 'alttext')
+    expect(fields?.map((p) => p.name)).toEqual(['Our own'])
   })
 })

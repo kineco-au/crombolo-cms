@@ -6,6 +6,51 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.51.0 — 2026-11-06
+
+### Features
+
+- **A site's public folder (284).** Files in `public/` are served at the root of
+  the site at the same paths, so a logo, a font, a favicon or a verification
+  file needs no media item or route. `asset()` gives them a hashed address kept
+  for a year, a site's middleware runs on them, and `public/.well-known/` is
+  served. Bundles, `push` and `pull` carry the folder. `crombolo components
+  check` names a file that clashes with a reserved path or a route, and the
+  server logs a file that hides a page. `CROMBOLO_PUBLIC_DIR` sets the folder.
+- **The dictionary as a file (168).** `crombolo dictionary import` and `export`
+  take a `.toml` file you can write by hand, chosen by its extension, and
+  `content/dictionary.toml` works among a site's content files. New commands:
+  `dictionary set` for one translation, and `dictionary list --missing <iso>` to
+  find what is untranslated. `dictionary import` gains `--dry-run`.
+- **One media file from the command line (168).** `crombolo media import` takes
+  a file as well as a folder, with `--name`, `--alt` and `--focal x,y`.
+- **Alt text on images (168).** The Image media type has an `altText` field on
+  every site, for editors and for templates to read as a field.
+
+### Fixes
+
+- **`crombolo dictionary import` reaches running servers (168).** It changed the
+  database without telling them, so they showed the old translations until they
+  next refreshed.
+
+### Upgrade notes
+
+- Bundles are now format 7. A site on 0.50 or earlier refuses one, saying to
+  upgrade, so upgrade the destination first. Format 5 and 6 bundles still load.
+- A `public/` file now wins over a page, a route or the generated `robots.txt`
+  at its address. A site that already has a `public/` folder should run
+  `crombolo components check` and read its server log before upgrading.
+- A `crombolo.code` glob no longer matches `public/`, which travels on its own.
+- A whole-site `pull` or `push` replaces `public/`, so a file only on the
+  destination is removed. `push --dry-run` lists it.
+- A site that overrides Image in `schema/media-types/` should add `altText` to
+  that file. Without it `--alt` is refused, and the next schema change drops
+  the field.
+- In `crombolo media import`, the JSON and help now call the argument `path`,
+  not `dir`.
+- Migration `AddImageAltText` adds the field to Image. A site with its own
+  `altText` keeps it.
+
 ## v0.50.0 — 2026-11-06
 
 ### Fixes

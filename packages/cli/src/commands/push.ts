@@ -1,7 +1,7 @@
 import { Args, Flags } from '@oclif/core'
 import { BaseCommand } from '../base.ts'
 import { pushSite } from '../remote/transfer.ts'
-import { counted, describeJob } from '../support/describe.ts'
+import { counted, describeBytes, describeJob } from '../support/describe.ts'
 import { confirm } from '../support/prompt.ts'
 import { connectRemote, needEnvironment, openInBrowser } from '../support/remote.ts'
 import { siteConfig } from '../support/site.ts'
@@ -73,6 +73,8 @@ export default class Push extends BaseCommand {
         this.say(
           `  sending  ${counted(c.sending.counts, 'no content')}, ${c.sending.files} file(s)`,
         )
+        if (c.sending.publicBytes > 0)
+          this.say(`  public   ${describeBytes(c.sending.publicBytes)}`)
         if (c.fromRemote) {
           if (Object.keys(c.recycles).length > 0)
             this.say(`  recycles ${counted(c.recycles)} on ${environment}`)

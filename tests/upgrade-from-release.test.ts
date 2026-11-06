@@ -14,7 +14,7 @@ import {
   readLedger,
   readState,
   STATE_CONTENT_APPLIED,
-  STATE_SEARCH_REMOVALS,
+  STATE_IMAGE_ALT_TEXT,
   seedIdentity,
 } from '@crombolo/data'
 import { summariseUpgrades, VERSION } from '@crombolo/server'
@@ -131,10 +131,11 @@ describe('upgrading from the previous release', () => {
       'AddRemoteTrust',
       'AddMediaTreeOrder',
       'AddSearchRemovals',
+      'AddImageAltText',
     ])
-    expect(await readState(db)).toBe(STATE_SEARCH_REMOVALS)
+    expect(await readState(db)).toBe(STATE_IMAGE_ALT_TEXT)
     const summary = summariseUpgrades(await readLedger(db), VERSION)
-    expect(summary.lastUpgrade).toMatchObject({ release: '0.48.0', steps: 14 })
+    expect(summary.lastUpgrade).toMatchObject({ release: '0.51.0', steps: 15 })
   })
 
   test('the Changes dashboard reports the version, the install and the last upgrade', async () => {

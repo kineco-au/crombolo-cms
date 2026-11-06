@@ -1998,6 +1998,7 @@ crombolo components check
 - `typesNote` (string)
 - `orphanBlocks` (array of string)
 - `gaps` (array of object)
+- `publicClashes` (array of object)
 
 **Fails with:** `usage`, `internal`.
 
@@ -2565,16 +2566,19 @@ crombolo media fetch
 
 ### `crombolo media import`
 
-Import a folder of files into the media library, keeping its folders. Safe to run again: a second run changes nothing more.
+Import a file, or a folder of files keeping its folders, into the media library. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo media import <dir> [--under <under>] [--dry-run]
+crombolo media import <path> [--under <under>] [--name <name>] [--alt <alt>] [--focal <focal>] [--dry-run]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `dir` | string | The folder to import. Required. |
+| `path` | string | The file or folder to import. Required. |
 | `--under` | string | The media folder to import into; the root when not given. |
+| `--name` | string | One file: its name in the library. |
+| `--alt` | string | One file: its alternative text. |
+| `--focal` | string | One image: the point a crop keeps, each from 0 to 1. |
 | `--dry-run` | boolean | Say what it would do, and change nothing. |
 
 **Output** (bounded, with `-o json`):
@@ -2582,11 +2586,12 @@ crombolo media import <dir> [--under <under>] [--dry-run]
 - `created` (integer)
 - `folders` (integer)
 - `skipped` (integer)
+- `updated` (integer)
 - `differs` (array of string)
 - `unsupported` (array of string)
 - `changed` (boolean)
 
-**Fails with:** `usage`, `internal`, `not_found`, `io`.
+**Fails with:** `usage`, `internal`, `not_found`, `io`, `refused`.
 
 ### `crombolo media move`
 
@@ -2617,7 +2622,7 @@ crombolo media move <item> --to <to> [--dry-run]
 
 ### `crombolo dictionary export`
 
-The dictionary as Umbraco's .udt, to fill another environment. Safe to run again: a second run changes nothing more.
+The dictionary as Umbraco's .udt or a readable .toml, to fill another environment. Safe to run again: a second run changes nothing more.
 
 ```
 crombolo dictionary export --out <out> [--key <key>]
@@ -2625,7 +2630,7 @@ crombolo dictionary export --out <out> [--key <key>]
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `--out` | string | The file to write. Required. |
+| `--out` | string | The file to write, .toml or .udt. Required. |
 | `--key` | string | Only this item and its children. |
 
 **Output** (single, with `-o json`):
@@ -2637,20 +2642,70 @@ crombolo dictionary export --out <out> [--key <key>]
 
 ### `crombolo dictionary import`
 
-Apply a .udt file: items upsert by key. Safe to run again: a second run changes nothing more.
+Apply a .udt or .toml file: items upsert, and none is deleted. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo dictionary import <file>
+crombolo dictionary import <file> [--dry-run]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `file` | string | The .udt file. Required. |
+| `file` | string | The .udt or .toml file. Required. |
+| `--dry-run` | boolean | Say what it would do, and change nothing. |
 
 **Output** (single, with `-o json`):
 
 - `imported` (integer)
 - `skipped` (array of string)
+- `created` (array of string)
+- `updated` (array of string)
+- `moved` (array of string)
+- `changed` (boolean)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+
+### `crombolo dictionary list`
+
+The dictionary's items and the languages each is in. Changes nothing.
+
+```
+crombolo dictionary list [--missing <missing>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `--missing` | string | Only the items not translated into this language. |
+
+**Output** (bounded, with `-o json`):
+
+- `items` (array of object)
+  - `name` (string)
+  - `parent` (string)
+  - `languages` (array of string)
+
+**Fails with:** `usage`, `internal`, `refused`.
+
+### `crombolo dictionary set`
+
+One translation of a dictionary item, making the item if it is new. Safe to run again: a second run changes nothing more.
+
+```
+crombolo dictionary set <key> <value> --culture <culture> [--parent <parent>] [--dry-run]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `key` | string | The item's name. Required. |
+| `value` | string | The translation. Required. |
+| `--culture` | string | The language of the translation. Required. |
+| `--parent` | string | The item a new item goes under. |
+| `--dry-run` | boolean | Say what it would do, and change nothing. |
+
+**Output** (single, with `-o json`):
+
+- `key` (string)
+- `action` (string)
+- `changed` (boolean)
 
 **Fails with:** `usage`, `internal`, `not_found`, `refused`.
 

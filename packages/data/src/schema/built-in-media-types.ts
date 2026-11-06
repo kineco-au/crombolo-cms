@@ -50,6 +50,10 @@ export interface BuiltInMediaType {
   properties: BuiltInMediaProperty[]
 }
 
+/** What describes an image to someone who cannot see it (story 168). */
+export const IMAGE_ALT_TEXT_ALIAS = 'altText'
+export const IMAGE_ALT_TEXT_KEY = '4d1f8a26-7c39-4e0b-a5d2-6b9c0e3f1a64'
+
 const extension = (key: string): BuiltInMediaProperty => ({
   key,
   alias: 'umbracoExtension',
@@ -111,6 +115,13 @@ export const BUILT_IN_MEDIA_TYPES: readonly BuiltInMediaType[] = [
       pixels('854087f6-648b-40ed-bc98-b8a9789e80b9', 'umbracoHeight'),
       bytes('bd4c5ace-26e3-4a8b-af1a-e8206a35fa07'),
       extension('f7786fe8-724a-4ed0-b244-72546db32a92'),
+      {
+        key: IMAGE_ALT_TEXT_KEY,
+        alias: IMAGE_ALT_TEXT_ALIAS,
+        name: 'Alternative text',
+        dataType: 'textstring',
+        mandatory: false,
+      },
     ],
   },
   {

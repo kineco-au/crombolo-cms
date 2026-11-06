@@ -105,6 +105,7 @@ rather than the running server. Secret ones are never printed or logged.
 | `CROMBOLO_BACKOFFICE_PATH` | string | `/crombolo` | Where the back office is served. |
 | `CROMBOLO_CSS_DIR` | string | `css` | The stylesheets the Settings section edits, served at `/css/`. |
 | `CROMBOLO_SCRIPTS_DIR` | string | `scripts` | The scripts the Settings section edits, served at `/scripts/`. |
+| `CROMBOLO_PUBLIC_DIR` | string | `public` | The site's own files, served at the root of the site at the same paths. |
 | `CROMBOLO_APPLY_BUNDLE_CONTENT` | `true` / `false` | `true` | Installing a bundle from the Marketplace also applies the schema, components and content it carries. |
 | `CROMBOLO_RUNTIME_INSTALLS` | `true` / `false` | true, false with a schema store | The Packages section installs and removes packages on the running site. Off, they are added to `package.json` and deployed. |
 | `CROMBOLO_BUNDLE_SIGNATURES` | `optional`, `required` | `optional` | Whether this site takes only bundles signed in GitHub Actions with `crombolo bundle sign`. A signature that does not check out is refused either way. |

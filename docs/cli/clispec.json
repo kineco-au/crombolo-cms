@@ -1528,6 +1528,14 @@
           "items": {
             "type": "object"
           }
+        },
+        {
+          "name": "publicClashes",
+          "type": "array",
+          "description": "public files at an address something else answers; a page is the server's to report, as it starts",
+          "items": {
+            "type": "object"
+          }
         }
       ],
       "errors": ["usage", "internal"],
@@ -2700,7 +2708,7 @@
     },
     {
       "name": "dictionary export",
-      "description": "the dictionary as Umbraco's .udt, to fill another environment",
+      "description": "the dictionary as Umbraco's .udt or a readable .toml, to fill another environment",
       "effects": "idempotent",
       "cardinality": "single",
       "output_fields": [
@@ -2718,7 +2726,7 @@
           "name": "--out",
           "type": "string",
           "required": true,
-          "description": "the file to write"
+          "description": "the file to write, .toml or .udt"
         },
         {
           "name": "--key",
@@ -2730,7 +2738,7 @@
     },
     {
       "name": "dictionary import",
-      "description": "apply a .udt file: items upsert by key",
+      "description": "apply a .udt or .toml file: items upsert, and none is deleted",
       "effects": "idempotent",
       "cardinality": "single",
       "output_fields": [
@@ -2744,6 +2752,34 @@
           "items": {
             "type": "string"
           }
+        },
+        {
+          "name": "created",
+          "type": "array",
+          "description": "from a .toml file: the items made",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "updated",
+          "type": "array",
+          "description": "from a .toml file: the items changed",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "moved",
+          "type": "array",
+          "description": "from a .toml file: the items placed under another parent",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "changed",
+          "type": "boolean"
         }
       ],
       "args": [
@@ -2751,7 +2787,105 @@
           "name": "file",
           "type": "string",
           "required": true,
-          "description": "the .udt file"
+          "description": "the .udt or .toml file"
+        },
+        {
+          "name": "--dry-run",
+          "type": "boolean",
+          "description": "say what it would do, and change nothing"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "refused"]
+    },
+    {
+      "name": "dictionary list",
+      "description": "the dictionary's items and the languages each is in",
+      "effects": "read_only",
+      "cardinality": "bounded",
+      "output_fields": [
+        {
+          "name": "items",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "fields": [
+              {
+                "name": "name",
+                "type": "string"
+              },
+              {
+                "name": "parent",
+                "type": "string",
+                "nullable": true
+              },
+              {
+                "name": "languages",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "--missing",
+          "type": "string",
+          "description": "only the items not translated into this language"
+        }
+      ],
+      "errors": ["usage", "internal", "refused"]
+    },
+    {
+      "name": "dictionary set",
+      "description": "one translation of a dictionary item, making the item if it is new",
+      "effects": "idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "key",
+          "type": "string"
+        },
+        {
+          "name": "action",
+          "type": "string",
+          "description": "created, updated or unchanged"
+        },
+        {
+          "name": "changed",
+          "type": "boolean"
+        }
+      ],
+      "args": [
+        {
+          "name": "key",
+          "type": "string",
+          "required": true,
+          "description": "the item's name"
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "required": true,
+          "description": "the translation"
+        },
+        {
+          "name": "--culture",
+          "type": "string",
+          "required": true,
+          "description": "the language of the translation"
+        },
+        {
+          "name": "--parent",
+          "type": "string",
+          "description": "the item a new item goes under"
+        },
+        {
+          "name": "--dry-run",
+          "type": "boolean",
+          "description": "say what it would do, and change nothing"
         }
       ],
       "errors": ["usage", "internal", "not_found", "refused"]
@@ -5402,7 +5536,7 @@
     },
     {
       "name": "media import",
-      "description": "import a folder of files into the media library, keeping its folders",
+      "description": "import a file, or a folder of files keeping its folders, into the media library",
       "effects": "idempotent",
       "cardinality": "bounded",
       "output_fields": [
@@ -5416,6 +5550,10 @@
         },
         {
           "name": "skipped",
+          "type": "integer"
+        },
+        {
+          "name": "updated",
           "type": "integer"
         },
         {
@@ -5439,10 +5577,10 @@
       ],
       "args": [
         {
-          "name": "dir",
+          "name": "path",
           "type": "string",
           "required": true,
-          "description": "the folder to import"
+          "description": "the file or folder to import"
         },
         {
           "name": "--under",
@@ -5450,12 +5588,27 @@
           "description": "the media folder to import into; the root when not given"
         },
         {
+          "name": "--name",
+          "type": "string",
+          "description": "one file: its name in the library"
+        },
+        {
+          "name": "--alt",
+          "type": "string",
+          "description": "one file: its alternative text"
+        },
+        {
+          "name": "--focal",
+          "type": "string",
+          "description": "one image: the point a crop keeps, each from 0 to 1"
+        },
+        {
           "name": "--dry-run",
           "type": "boolean",
           "description": "say what it would do, and change nothing"
         }
       ],
-      "errors": ["usage", "internal", "not_found", "io"]
+      "errors": ["usage", "internal", "not_found", "io", "refused"]
     },
     {
       "name": "media move",

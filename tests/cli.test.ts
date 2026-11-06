@@ -552,6 +552,18 @@ describe('block components (story 184)', () => {
     }
     expect(checked.orphanBlocks).toEqual(['blocks/ghost'])
   }, 60_000)
+
+  test('components check names a public file at a reserved address (story 284)', () => {
+    mkdirSync(join(dir, 'public', 'css'), { recursive: true })
+    writeFileSync(join(dir, 'public', 'css', 'site.css'), '')
+    writeFileSync(join(dir, 'public', 'robots.txt'), '')
+    const result = run(['components', 'check', '-o', 'json'])
+    expect(JSON.parse(result.out).publicClashes).toEqual([
+      { file: 'css/site.css', kind: 'reserved', address: '/css/site.css' },
+      { file: 'robots.txt', kind: 'generated', address: '/robots.txt' },
+    ])
+    expect(run(['components', 'check']).out).toContain('public/css/site.css never answers')
+  }, 60_000)
 })
 
 describe('components gaps (story 281)', () => {

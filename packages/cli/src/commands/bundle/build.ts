@@ -1,8 +1,14 @@
 import { join, relative, resolve } from 'node:path'
-import { buildBundleFromDirectory, describeProvenance, signPackage } from '@crombolo/server'
+import {
+  buildBundleFromDirectory,
+  describeProvenance,
+  PUBLIC_WARNING_BYTES,
+  signPackage,
+} from '@crombolo/server'
 import { Args, Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
 import { CliError } from '../../errors.ts'
+import { describeBytes } from '../../support/describe.ts'
 import { findingFields, writeSeedPackage } from '../../support/seed.ts'
 import { cwd, siteConfig } from '../../support/site.ts'
 import { raiseVersionIfChanged } from '../../support/types.ts'
@@ -11,7 +17,7 @@ import { listTemplates } from '../../templates.ts'
 export default class BundleBuild extends BaseCommand {
   static override summary = 'a bundle from a site directory: its schema, views, styles and content'
   static override description = [
-    "Reads the directory's schema/, components/, css/, scripts/ and content/, and builds its content against that schema in a throwaway database: no site or database of its own is needed. The bundle installs everything into a bare site in one transaction: `crombolo start --bundle <dir>`, or `bundle apply`.",
+    "Reads the directory's schema/, components/, css/, scripts/, public/ and content/, and builds its content against that schema in a throwaway database: no site or database of its own is needed. The bundle installs everything into a bare site in one transaction: `crombolo start --bundle <dir>`, or `bundle apply`.",
     '--check builds it and writes nothing: every problem in the content files, by file and line, an unknown type or property, a value its editor cannot take, a path that names nothing, a language the site has not got, a type its parent does not allow.',
     'The directory is the current one unless named; --template names a starter site the CLI ships instead.',
     'A site with server code of its own names it in its package.json, as globs in `crombolo.code`, or with --code here; the bundle then carries that code with package.json, bun.lock and crombolo.config.ts under code/. `bundle check-code` checks it against a CMS, and `bundle install <bundle> --code-into <dir>` installs it.',
@@ -99,6 +105,17 @@ export default class BundleBuild extends BaseCommand {
       code: flags.code,
       media: flags['with-media'],
     })
+    const publicFiles = built.publicFiles ?? []
+    const publicBytes = publicFiles.reduce((total, file) => total + file.size, 0)
+    if (publicBytes > PUBLIC_WARNING_BYTES) {
+      const largest = [...publicFiles]
+        .sort((a, b) => b.size - a.size)
+        .slice(0, 3)
+        .map((file) => `${file.path} (${describeBytes(file.size)})`)
+      this.warning(
+        `  public/ adds ${describeBytes(publicBytes)} to the bundle; the largest are ${largest.join(', ')}`,
+      )
+    }
     // --check reports the content files' findings by file and line, and writes nothing.
     if (flags.check && built.seed) {
       this.changedNothing = true

@@ -149,6 +149,7 @@ describe('the settings list', () => {
       CROMBOLO_BACKOFFICE_PATH: (c) => c.backOfficePath,
       CROMBOLO_CSS_DIR: (c) => relative(site, c.stylesheetsDir),
       CROMBOLO_SCRIPTS_DIR: (c) => relative(site, c.scriptsDir),
+      CROMBOLO_PUBLIC_DIR: (c) => relative(site, c.publicDir),
       CROMBOLO_APPLY_BUNDLE_CONTENT: (c) => c.applyBundleContentOnInstall,
       CROMBOLO_MARKETPLACE_URL: (c) => c.marketplaceUrl,
       CROMBOLO_PACKAGE_KEYWORD: (c) => c.packageKeyword,

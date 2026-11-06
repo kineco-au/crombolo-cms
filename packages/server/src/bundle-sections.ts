@@ -24,6 +24,7 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -105,21 +106,25 @@ function destinationOf(config: CromboloConfig, section: BundleSection): string |
       return config.stylesheetsDir
     case 'scripts':
       return config.scriptsDir
+    case 'public':
+      return config.publicDir
     case 'dictionary':
       return undefined
   }
 }
 
-const FILE_SECTIONS: readonly BundleSection[] = ['components', 'styles', 'scripts']
+const FILE_SECTIONS: readonly BundleSection[] = ['components', 'styles', 'scripts', 'public']
 
 /** The path inside a section, with the section's own directory stripped. */
 const withinSection = (path: string, section: BundleSection): string =>
   path.slice(`${BUNDLE_SECTIONS[section]}/`.length)
 
-function actionFor(target: string, content: string): FileAction {
+/** Compared as bytes: a public file is an image as often as it is text. */
+function actionFor(target: string, source: string): FileAction {
   if (!existsSync(target)) return 'create'
   try {
-    return readFileSync(target, 'utf8') === content ? 'unchanged' : 'overwrite'
+    if (statSync(target).size !== statSync(source).size) return 'overwrite'
+    return readFileSync(target).equals(readFileSync(source)) ? 'unchanged' : 'overwrite'
   } catch {
     return 'overwrite'
   }
@@ -137,11 +142,15 @@ export function carriedSections(loaded: LoadedBundle): CarriedSections {
   return { carries: loaded.set?.manifest.carries ?? {}, files: loaded.files }
 }
 
-const read = (carried: CarriedSections, path: string): string => {
+/** The file on disk holding a carried path. */
+const sourceOf = (carried: CarriedSections, path: string): string => {
   const file = carried.files.get(path)
   if (!file) throw new Error(`${path} is declared but was not read`)
-  return readFileSync(file, 'utf8')
+  return file
 }
+
+const read = (carried: CarriedSections, path: string): string =>
+  readFileSync(sourceOf(carried, path), 'utf8')
 
 /** Read-only: what applying the carried sections here would do. */
 export async function planSections(
@@ -159,7 +168,7 @@ export async function planSections(
       if (!destination) continue
       for (const path of carried.carries[section] ?? []) {
         const target = join(destination, withinSection(path, section))
-        files.push({ path, target, action: actionFor(target, read(carried, path)) })
+        files.push({ path, target, action: actionFor(target, sourceOf(carried, path)) })
       }
     }
   }
@@ -168,7 +177,7 @@ export async function planSections(
   if (!options.withoutSchema) {
     for (const path of schemaPaths) {
       const target = join(config.schemaDir, withinSection(path, 'schema'))
-      files.push({ path, target, action: actionFor(target, read(carried, path)) })
+      files.push({ path, target, action: actionFor(target, sourceOf(carried, path)) })
     }
   }
 
@@ -254,8 +263,8 @@ export async function applySections(
    * site, so a revert re-derives the destination through the same mapping — and
    * restores to where the file would go now, not where it went then.
    */
-  const put = (target: string, content: string, bundlePath: string) => {
-    const action = actionFor(target, content)
+  const put = (target: string, source: string, bundlePath: string) => {
+    const action = actionFor(target, source)
     if (action === 'overwrite' && options.backupDir) {
       const keep = join(options.backupDir, REPLACED_DIR, bundlePath)
       mkdirSync(dirname(keep), { recursive: true })
@@ -264,13 +273,13 @@ export async function applySections(
     }
     records.push({ path: bundlePath, action })
     mkdirSync(dirname(target), { recursive: true })
-    writeFileSync(target, content)
+    copyFileSync(source, target)
     written.push(target)
   }
 
   const schemaPaths = options.withoutSchema ? [] : (carried.carries.schema ?? [])
   for (const path of schemaPaths)
-    put(join(config.schemaDir, withinSection(path, 'schema')), read(carried, path), path)
+    put(join(config.schemaDir, withinSection(path, 'schema')), sourceOf(carried, path), path)
 
   let schema: { action: string } | undefined
   if (schemaPaths.length > 0) {
@@ -290,7 +299,7 @@ export async function applySections(
       const destination = destinationOf(config, section)
       if (!destination) continue
       for (const path of carried.carries[section] ?? [])
-        put(join(destination, withinSection(path, section)), read(carried, path), path)
+        put(join(destination, withinSection(path, section)), sourceOf(carried, path), path)
     }
   }
 
@@ -515,7 +524,7 @@ export function stageSections(
       const inside = withinSection(path, section)
       const target = join(next, inside)
       mkdirSync(dirname(target), { recursive: true })
-      writeFileSync(target, read(carried, path))
+      copyFileSync(sourceOf(carried, path), target)
       staged.written.push(join(destination, inside))
     }
     staged.next[section] = next
@@ -531,6 +540,7 @@ export function stagedConfig(config: CromboloConfig, staged: StagedSections): Cr
     componentsDir: staged.next.components ?? config.componentsDir,
     stylesheetsDir: staged.next.styles ?? config.stylesheetsDir,
     scriptsDir: staged.next.scripts ?? config.scriptsDir,
+    publicDir: staged.next.public ?? config.publicDir,
   }
 }
 

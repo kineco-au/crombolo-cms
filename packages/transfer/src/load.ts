@@ -7,7 +7,7 @@
  * a crash rather than a finding.
  */
 
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import {
   BUNDLE_FORMAT_VERSION,
@@ -29,6 +29,7 @@ import {
   OLDEST_BUNDLE_FORMAT_VERSION,
 } from './model.ts'
 import { type BundlePeople, openPeople, type PeopleBlock, parsePeopleBlock } from './people.ts'
+import { hashFile, isPublicPath, PUBLIC_MANIFEST, type PublicFile } from './public.ts'
 import { openBytes, parseSealParameters, unlock } from './seal.ts'
 import {
   openSiteData,
@@ -375,6 +376,7 @@ function parseManifest(text: string, problems: BundleProblem[]): BundleManifest 
     // Filled from `media.json` by the loader, which the hash covers (story 195).
     blobs: [],
     ...(raw.mediaManifest === MEDIA_MANIFEST ? { mediaManifest: MEDIA_MANIFEST } : {}),
+    ...(raw.publicManifest === PUBLIC_MANIFEST ? { publicManifest: PUBLIC_MANIFEST } : {}),
     ...(isRecord(raw.carries) ? { carries: parseCarries(raw.carries) } : {}),
     ...(raw.people !== undefined && parsePeopleBlock(raw.people)
       ? { people: parsePeopleBlock(raw.people) as PeopleBlock }
@@ -406,6 +408,8 @@ function parseRequires(raw: Record<string, unknown>): Record<string, string> {
 function parseCarries(raw: Record<string, unknown>): Partial<Record<BundleSection, string[]>> {
   const out: Partial<Record<BundleSection, string[]>> = {}
   for (const section of Object.keys(BUNDLE_SECTIONS) as BundleSection[]) {
+    // Only ever from `public.json`, whose list is what the hash covers.
+    if (section === 'public') continue
     const paths = raw[section]
     if (!Array.isArray(paths)) continue
     const safe = paths.flatMap((path) =>
@@ -479,6 +483,53 @@ function readMediaManifest(
     })
   }
   return { blobs, text }
+}
+
+/**
+ * `public.json`, read and checked: undefined when the bundle has none, and a
+ * problem when `bundle.json` says it has and it is missing or malformed.
+ */
+function readPublicManifest(
+  dir: string,
+  manifest: BundleManifest,
+  problems: BundleProblem[],
+): { files: PublicFile[]; text: string } | undefined {
+  const file = join(dir, PUBLIC_MANIFEST)
+  if (!manifest.publicManifest) {
+    if (existsSync(file))
+      problems.push({ file: PUBLIC_MANIFEST, message: 'bundle.json does not declare this file' })
+    return undefined
+  }
+  if (!existsSync(file)) {
+    problems.push({ file: PUBLIC_MANIFEST, message: 'bundle.json declares it, and it is missing' })
+    return undefined
+  }
+  const text = readFileSync(file, 'utf8')
+  let raw: unknown
+  try {
+    raw = JSON.parse(text)
+  } catch {
+    problems.push({ file: PUBLIC_MANIFEST, message: 'not valid JSON' })
+    return undefined
+  }
+  const entries = isRecord(raw) && Array.isArray(raw.files) ? raw.files : undefined
+  if (!entries) {
+    problems.push({ file: PUBLIC_MANIFEST, message: 'has no list of files' })
+    return undefined
+  }
+  const files = entries.flatMap((entry): PublicFile[] => {
+    if (
+      isRecord(entry) &&
+      typeof entry.path === 'string' &&
+      isPublicPath(entry.path) &&
+      typeof entry.size === 'number' &&
+      typeof entry.sha256 === 'string'
+    )
+      return [{ path: entry.path, size: entry.size, sha256: entry.sha256 }]
+    problems.push({ file: PUBLIC_MANIFEST, message: 'lists a file with no usable path or hash' })
+    return []
+  })
+  return { files, text }
 }
 
 /** A media key that stays inside `media/`. */
@@ -568,6 +619,38 @@ export function loadBundle(dir: string): LoadedBundle {
           ? { path, bytes: new Uint8Array(readFileSync(file)) }
           : { path, text: readFileSync(file, 'utf8') },
       )
+    }
+  }
+
+  // Public files are checked one at a time against `public.json`, which the
+  // bundle's hash covers, so none has to be held in memory.
+  const publicList = readPublicManifest(dir, manifest, problems)
+  if (publicList) {
+    read.push({ path: PUBLIC_MANIFEST, text: publicList.text })
+    manifest.publicFiles = publicList.files
+    manifest.carries = { ...manifest.carries, public: publicList.files.map((f) => f.path).sort() }
+    for (const { path, size, sha256 } of publicList.files) {
+      const file = join(dir, path)
+      if (!existsSync(file)) {
+        problems.push({
+          file: path,
+          message: 'the manifest says this file is carried, and it is not',
+        })
+        continue
+      }
+      if (statSync(file).size !== size || hashFile(file) !== sha256)
+        problems.push({ file: path, message: 'is not the file public.json lists' })
+      files.set(path, file)
+    }
+  }
+  const publicDir = join(dir, BUNDLE_SECTIONS.public)
+  if (existsSync(publicDir)) {
+    const listed = new Set(publicList?.files.map((f) => f.path))
+    for (const entry of readdirSync(publicDir, { recursive: true, withFileTypes: true })) {
+      if (!entry.isFile()) continue
+      const path = relative(dir, join(entry.parentPath, entry.name)).split(sep).join('/')
+      if (!listed.has(path))
+        problems.push({ file: path, message: 'this file is not listed in public.json' })
     }
   }
 

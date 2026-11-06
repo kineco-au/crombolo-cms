@@ -310,6 +310,7 @@ requests, only server-side and build-time front ends can call it.
 | `264` | Personalised parts in the back office | could | M | done | 263 |
 | `265` | Deferred parts put together by the CDN | could | S | on hold | 263 |
 | `281` | A marked gap in a template | should | S | done | — |
+| `284` | A site's public folder | should | M | done | — |
 
 ### Epic P — The command line
 
@@ -355,7 +356,7 @@ files kept as the committed record nobody has to open.
 | `165` | Moving, sorting and deleting content | could | M | done | — |
 | `166` | People and access per environment | should | M | backlog | 162 |
 | `167` | Changing a remote site piece by piece | should | M | done | 160 |
-| `168` | The dictionary and single media files | could | S | ready | — |
+| `168` | The dictionary and single media files | could | S | done | — |
 | `180` | A working site from an empty directory, from the command line | should | S | done | 163 |
 | `240` | Approvals from the command line | should | M | on hold | a CLI sign-in story, not written yet |
 | `241` | Bundles managed from the command line | should | L | done | 160, 167 |

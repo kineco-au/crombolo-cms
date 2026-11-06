@@ -35,6 +35,7 @@ import { type CromboloConfig, VERSION } from './config.ts'
 import { mediaStoreFor } from './media-files.ts'
 import { type StoredFile, streamOf } from './media-store.ts'
 import { readSiteData } from './site-data.ts'
+import { publicSources } from './site-public.ts'
 import { siteSections } from './site-sections.ts'
 import { TarballWriter } from './tar.ts'
 
@@ -232,6 +233,7 @@ export async function exportSite(
       requires: requiredPackages(config),
     },
   }
+  const publicFiles = publicSources(config.publicDir)
   const seal =
     (people || siteData || options.sealContent) && options.passphrase
       ? newSeal(options.passphrase)
@@ -240,7 +242,13 @@ export async function exportSite(
     site,
     new Map([...stored].map(([key, file]) => [key, file.size])),
     sections,
-    { people, siteData, seal, content: options.sealContent ? 'sealed' : 'open' },
+    {
+      people,
+      siteData,
+      seal,
+      content: options.sealContent ? 'sealed' : 'open',
+      public: publicFiles,
+    },
   )
 
   const name = options.package?.name ?? packageNameFor(`${config.siteName}-site`)
@@ -291,11 +299,16 @@ export async function exportSite(
       }
       hasher.update('\n')
     }
+    // Outside the bundle's hash: `public.json`, inside it, holds each file's own.
+    for (const file of publicFiles)
+      await writer.addStream(file.path, file.size, Bun.file(file.source).stream())
     const manifest = { ...planned.manifest, integrity: `sha256-${hasher.digest('hex')}` }
     await writer.add(MANIFEST_FILE, encoder.encode(writeManifest(manifest)))
     await writer.add(
       'package.json',
-      encoder.encode(`${JSON.stringify(bundlePackageJson(info, paths), null, 2)}\n`),
+      encoder.encode(
+        `${JSON.stringify(bundlePackageJson(info, [...paths, ...publicFiles.map((file) => file.path)]), null, 2)}\n`,
+      ),
     )
     await writer.close()
     await rename(partial, options.out)
@@ -312,6 +325,7 @@ export async function exportSite(
     )
     if (section) counted[section] = (counted[section] ?? 0) + 1
   }
+  if (publicFiles.length > 0) counted.public = publicFiles.length
   return {
     out: options.out,
     bundleId: site.manifest.id,

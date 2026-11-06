@@ -228,6 +228,7 @@ import { provenanceProblem } from './provenance.ts'
 import { createRemote, type RestartOutcome } from './remote.ts'
 import { SiteAssets } from './site-assets.ts'
 import { unknownHostProvided } from './site-file.ts'
+import { PublicFiles } from './site-public.ts'
 import {
   activeSpan,
   inSpan,
@@ -866,9 +867,20 @@ export async function createServer(
     { prefix: '/scripts', dir: config.scriptsDir, extension: '.js' },
   ])
   siteAssets.start()
+  const publicFiles = new PublicFiles(config.publicDir, config.backOfficePath)
+  publicFiles.start()
+  // A file wins at its path (story 284), so a page it hides is worth saying once.
+  if (config.role !== 'api' && publicFiles.paths().length > 0)
+    void publicFiles
+      .hiding((path) => cache.byRoute(path))
+      .then((paths) => {
+        for (const path of paths)
+          renderLog.warning('The public file {path} hides the page at that address', { path })
+      })
+      .catch(() => {})
   const missingAssets = new Set<string>()
   setAssetResolver((path) => {
-    const found = generatedPaths.get(path) ?? siteAssets.address(path)
+    const found = generatedPaths.get(path) ?? siteAssets.address(path) ?? publicFiles.address(path)
     if (found) return found
     if (config.development && !missingAssets.has(path)) {
       missingAssets.add(path)
@@ -1585,7 +1597,11 @@ export async function createServer(
     if (pathname === BUNDLE_SCRIPT_PATH) return siteScript(BUNDLE_SCRIPT)
 
     // Not on an `api` node, which serves no public site to describe.
-    if ((pathname === '/sitemap.xml' || pathname === '/robots.txt') && config.role !== 'api')
+    if (
+      (pathname === '/sitemap.xml' || pathname === '/robots.txt') &&
+      config.role !== 'api' &&
+      !publicFiles.has(pathname)
+    )
       return pathname === '/sitemap.xml' ? seo.sitemap(request, url.host) : seo.robots(request)
 
     if (pathname.startsWith('/media/')) return serveMedia(request, pathname, url.searchParams)
@@ -1692,8 +1708,13 @@ export async function createServer(
   async function siteFiles(request: Request, run?: ChainRun): Promise<Response> {
     const url = new URL(request.url)
     const pathname = url.pathname
-    // A route wins at its path (story 211); an `api` node serves no site.
+    // A public file wins at its path (story 284), then a route (story 211); an
+    // `api` node serves no site.
     if (config.role !== 'api') {
+      if (request.method === 'GET' || request.method === 'HEAD') {
+        const file = await publicFiles.serve(request, pathname)
+        if (file) return file
+      }
       const routed = await siteRoutes.handle(request, url)
       if (routed) return routed
     }
@@ -3838,6 +3859,7 @@ export async function createServer(
       watcher?.close()
       viewWatcher?.close()
       siteAssets.close()
+      publicFiles.close()
       typeWatch?.stop()
       live?.close()
       poller.stop()

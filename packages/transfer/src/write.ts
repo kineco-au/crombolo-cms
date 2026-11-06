@@ -24,6 +24,7 @@ import {
   type ContentSet,
 } from './model.ts'
 import { type BundlePeople, sealPeople } from './people.ts'
+import { PUBLIC_MANIFEST, type PublicSource, writePublicManifest } from './public.ts'
 import { type Seal, sealBytes } from './seal.ts'
 import { type SiteDataTable, sealSiteData } from './site-data.ts'
 
@@ -34,6 +35,8 @@ export interface BundleFile {
   text?: string
   /** A media file's bytes; `text` and `bytes` are never both set. */
   bytes?: Uint8Array
+  /** A public file, copied from disk in place of `text` or `bytes`; never in the bundle's hash. */
+  source?: string
 }
 
 const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`
@@ -198,6 +201,7 @@ export function writeManifest(manifest: BundleManifest): string {
     // The files themselves are listed in `media.json`, which the hash covers;
     // this file, which holds the hash, only says that there is one (story 195).
     ...(manifest.blobs.length > 0 ? { mediaManifest: MEDIA_MANIFEST } : {}),
+    ...(manifest.publicManifest ? { publicManifest: manifest.publicManifest } : {}),
     // Absent on a content-only bundle, so version 1 output is unchanged.
     ...(manifest.carries && Object.keys(manifest.carries).length > 0
       ? { carries: sortedCarries(manifest.carries) }
@@ -307,6 +311,8 @@ export interface WriteOptions {
   people?: BundlePeople
   /** The site's and bundles' own tables: always sealed. */
   siteData?: readonly SiteDataTable[]
+  /** The site's `public/` files, which `public.json` lists and the caller's bytes follow. */
+  public?: readonly PublicSource[]
 }
 
 /** Without values, media files or usernames: what `omitted` writes. Pure. */
@@ -357,7 +363,13 @@ export function writeBundle(
     ...planned.manifest,
     integrity: bundleIntegrity([...planned.files, ...carried]),
   }
-  return [{ path: MANIFEST_FILE, text: writeManifest(manifest) }, ...planned.files, ...carried]
+  const publicFiles = (options.public ?? []).map(({ path, source }) => ({ path, source }))
+  return [
+    { path: MANIFEST_FILE, text: writeManifest(manifest) },
+    ...planned.files,
+    ...carried,
+    ...publicFiles,
+  ]
 }
 
 /**
@@ -365,7 +377,8 @@ export function writeBundle(
  * every other file, from each carried file's size alone. The caller writes
  * `blobs` at `mediaPath` — sealed with `sealBytes` under the seal when `sealing`
  * — computes `bundleIntegrity` over those and `files` in path order, and writes
- * the manifest with it.
+ * the manifest with it. `options.public` is the caller's to write too, outside
+ * that hash.
  */
 export function planStreamedBundle(
   set: ContentSet,
@@ -410,16 +423,18 @@ function planBundle(
   const carries: Partial<Record<BundleSection, string[]>> = {}
   for (const file of extra) {
     const section = sectionOf(file.path)
-    if (!section) throw new Error(`${file.path} is not in a bundle section`)
+    if (!section || section === 'public') throw new Error(`${file.path} is not in a bundle section`)
     carries[section] = [...(carries[section] ?? []), file.path]
   }
 
+  const publicFiles = options.public ?? []
   const people = options.people && seal ? sealPeople(options.people, seal) : undefined
   const siteData = options.siteData && seal ? sealSiteData(options.siteData, seal) : undefined
   const manifest: BundleManifest = {
     ...set.manifest,
     formatVersion: BUNDLE_FORMAT_VERSION,
     // Without values nothing names a media file, so none is expected either.
+    publicManifest: publicFiles.length > 0 ? PUBLIC_MANIFEST : undefined,
     blobs: (content === 'omitted' ? [] : set.manifest.blobs).map((blob) => {
       const size = carriedSizes.get(blob.key)
       return size !== undefined ? { ...blob, included: true, size } : { ...blob, included: false }
@@ -444,6 +459,9 @@ function planBundle(
       ...(people?.files ?? []),
       ...(siteData?.files ?? []),
       ...media,
+      ...(publicFiles.length > 0
+        ? [{ path: PUBLIC_MANIFEST, text: writePublicManifest(publicFiles) }]
+        : []),
     ],
     blobs: [...carriedSizes.keys()].sort((a, b) => a.localeCompare(b)),
     sealing,

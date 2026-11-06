@@ -1,6 +1,6 @@
-import { checkComponents } from '@crombolo/server'
+import { checkComponents, publicClashes } from '@crombolo/server'
 import { BaseCommand } from '../../base.ts'
-import { declaredTypes, gapLine } from '../../support/components.ts'
+import { declaredTypes, gapLine, publicClashLine } from '../../support/components.ts'
 import { here } from '../../support/describe.ts'
 import { siteConfig } from '../../support/site.ts'
 
@@ -31,6 +31,13 @@ export default class ComponentsCheck extends BaseCommand {
         type: 'array',
         items: { type: 'object' },
         description: 'the gaps marked in templates, which are never a problem',
+      },
+      {
+        name: 'publicClashes',
+        type: 'array',
+        items: { type: 'object' },
+        description:
+          "public files at an address something else answers; a page is the server's to report, as it starts",
       },
     ],
     outcomes: ['problems_found'],
@@ -70,6 +77,12 @@ export default class ComponentsCheck extends BaseCommand {
         `  [warn]   components/${alias}.tsx renders blocks of "${alias.slice(7)}", which is no element type`,
       )
     for (const gap of report.gaps) this.say(gapLine(gap))
+    const clashes = publicClashes({
+      publicDir: config.publicDir,
+      backOfficePath: config.backOfficePath,
+      routes: config.routes,
+    })
+    for (const clash of clashes) this.say(publicClashLine(clash))
     if (report.problems.length > 0 || report.types.problems.length > 0)
       this.outcome = 'problems_found'
     return {
@@ -80,6 +93,7 @@ export default class ComponentsCheck extends BaseCommand {
       typesNote: report.types.note ?? null,
       orphanBlocks,
       gaps: report.gaps,
+      publicClashes: clashes,
     }
   }
 }

@@ -8,6 +8,8 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
+import { readDictionaryToml } from '../dictionary-toml.ts'
+
 export type SeedKind = 'content' | 'library' | 'media'
 
 /** The folder a site's content files are in. */
@@ -198,6 +200,17 @@ export function readSeed(siteDir: string): SeedTree {
   content('library', join(root, KIND_DIRS.library), null)
   media(join(root, KIND_DIRS.media), null)
   return { items, findings }
+}
+
+/** The dictionary among a site's content files (story 168). */
+export const DICTIONARY_FILE = `${CONTENT_FILES_DIR}/dictionary.toml`
+
+/** `content/dictionary.toml`, read, when the site has one. */
+export function readSeedDictionary(siteDir: string) {
+  const file = join(siteDir, DICTIONARY_FILE)
+  if (!existsSync(file)) return undefined
+  const text = readFileSync(file, 'utf8')
+  return { text, ...readDictionaryToml(text) }
 }
 
 /** Whether a site has content files at all, where they are or where they were. */

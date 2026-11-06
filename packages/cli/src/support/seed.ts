@@ -3,7 +3,7 @@
  * content/pages, content/library and content/media against its database, and
  * reporting what stops it, file by file and line by line.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { bootstrapDatabase, compileSeed, type SeedBuild, useSchemaStore } from '@crombolo/server'
@@ -75,7 +75,8 @@ export function writeSeedPackage(build: SeedBuild, dir: string): void {
   for (const file of build.files ?? []) {
     const target = join(dir, file.path)
     mkdirSync(join(target, '..'), { recursive: true })
-    writeFileSync(target, file.bytes ?? (file.text as string))
+    if (file.source) copyFileSync(file.source, target)
+    else writeFileSync(target, file.bytes ?? (file.text as string))
   }
 }
 

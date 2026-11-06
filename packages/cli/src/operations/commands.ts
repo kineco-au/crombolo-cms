@@ -217,6 +217,7 @@ export async function siteReplaceCheck(
         { section: 'components', dir: config.componentsDir },
         { section: 'styles', dir: config.stylesheetsDir },
         { section: 'scripts', dir: config.scriptsDir },
+        { section: 'public', dir: config.publicDir },
       ],
       input.replace,
     )

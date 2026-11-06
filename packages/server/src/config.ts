@@ -382,6 +382,8 @@ export interface CromboloConfig {
   stylesheetsDir: string
   /** Scripts the Settings section edits, served at `/scripts/`. */
   scriptsDir: string
+  /** The site's public files, served at the root of the site (story 284). */
+  publicDir: string
   /** Umbraco's `UsernameIsEmail`: a user's login is their e-mail address. */
   usernameIsEmail: boolean
   /** The site's public URL, which invitation and reset links point at. */
@@ -617,6 +619,7 @@ export const DEFAULTS = {
   stylesheetsDir: 'css',
   logsDir: 'logs',
   scriptsDir: 'scripts',
+  publicDir: 'public',
   marketplaceUrl: 'https://www.npmjs.com/search?q=keywords%3Acrombolo-bundle',
   packageKeyword: 'crombolo-bundle',
   npmRegistry: 'https://registry.npmjs.org',
@@ -857,6 +860,7 @@ export function loadConfig(
     },
     stylesheetsDir: setting('CROMBOLO_CSS_DIR') ?? DEFAULTS.stylesheetsDir,
     scriptsDir: setting('CROMBOLO_SCRIPTS_DIR') ?? DEFAULTS.scriptsDir,
+    publicDir: setting('CROMBOLO_PUBLIC_DIR') ?? DEFAULTS.publicDir,
     usernameIsEmail: setting('CROMBOLO_USERNAME_IS_EMAIL') !== 'false',
     applicationUrl: setting('CROMBOLO_APPLICATION_URL') ?? '',
     sendUserLink: undefined,
@@ -1032,6 +1036,7 @@ export function loadConfig(
   merged.logsDir = resolve(cwd, merged.logsDir)
   merged.stylesheetsDir = resolve(cwd, merged.stylesheetsDir)
   merged.scriptsDir = resolve(cwd, merged.scriptsDir)
+  merged.publicDir = resolve(cwd, merged.publicDir)
   merged.applicationUrl = (merged.applicationUrl || `http://localhost:${merged.port}`).replace(
     /\/$/,
     '',
@@ -1086,7 +1091,7 @@ export function describeDatabase(
   }
 }
 
-export const VERSION = '0.50.0'
+export const VERSION = '0.51.0'
 
 /** A whole number of seconds from the environment; undefined when unset or not one. */
 /** A positive number from a setting, else the default. */

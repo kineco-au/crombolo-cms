@@ -195,7 +195,7 @@ export interface PushCheck {
   keepsPeople: boolean
   /** Whether the remote answered it, or it is only what this side is sending. */
   fromRemote: boolean
-  sending: { counts: Record<string, number>; files: number; media: number }
+  sending: { counts: Record<string, number>; files: number; media: number; publicBytes: number }
 }
 
 export interface PushResult {
@@ -273,6 +273,7 @@ export async function pushSite(
       counts: { ...manifest.counts } as Record<string, number>,
       files: loaded.files.size,
       media: manifest.blobs.length,
+      publicBytes: (manifest.publicFiles ?? []).reduce((total, file) => total + file.size, 0),
     }
     const check: PushCheck = client.discovery.capabilities.includes('push-check')
       ? {

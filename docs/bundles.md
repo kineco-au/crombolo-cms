@@ -255,11 +255,38 @@ exactly as a missing blob already was. It also carries `label`, the package's
 name, so a downloaded artifact still knows what it is; without it two downloads
 are distinguishable only by filename, which is the first thing to be lost.
 
-Every bundle says `formatVersion: 6`, whatever it carries, and a format 5 bundle
-still loads. A content-only bundle carries no `carries` key. An older node refuses
+Every bundle says `formatVersion: 7`, whatever it carries, and format 5 and 6
+bundles still load. A content-only bundle carries no `carries` key. An older node refuses
 a newer bundle by name, with "upgrade crombolo to import it", rather than failing
 an integrity check it cannot explain. A node refuses a bundle older than 5 with a
-message saying to rebuild it (stories 193, 195 and 283).
+message saying to rebuild it (stories 193, 195, 283 and 284).
+
+### Public files
+
+A site's `public/` folder (story 284, `docs/rendering.md`, "Public files")
+travels as files at `public/<path>`, carried by `bundle build`, a whole-site
+export and so `push` and `pull`. A created package from the back office does
+not carry it.
+
+- **`public.json`** at the package root lists each file with its size and
+  SHA-256, and the manifest's `publicManifest` says it is there. The bundle's
+  hash covers that list and not the files, so a folder of images is never held
+  in memory. `carries.public` is filled from the list as it is read.
+- **Reading is strict.** A file that differs from the list, is missing, or is
+  not listed refuses the bundle, as does a path that climbs out of the folder.
+- **Why format 7.** A site on an older release discards a section it does not
+  know, so without the bump it would drop these files silently. It refuses
+  the bundle by name instead.
+- **What is left out:** dotfiles, except under `.well-known/` and a `.gitkeep`,
+  which travels so that git keeps the folder. It is never served.
+- **Installing it** follows the other file sections, as bytes: a file that
+  differs is not replaced without being asked, a revert puts it back, and a
+  whole-site replace removes what the file does not carry, after `push
+  --dry-run` has said so.
+- **Size:** there is no limit beyond `CROMBOLO_REMOTE_MAX_UPLOAD_GB`. `bundle
+  build` warns above 100 MB and names the largest files, and `push --dry-run`
+  says how much `public/` adds.
+- **A `crombolo.code` glob** never matches `public/`, which has its section.
 
 ### Library folders
 
@@ -811,7 +838,7 @@ bundle is that artifact (story 192).
   code, `package.json`, `bun.lock` and `crombolo.config.ts` are always packed.
   These are never packed, whatever a glob matches: `node_modules`, `.git`,
   `.env` files, SQLite files, the folders the bundle already carries as
-  sections (`schema/`, `components/`, `css/`, `scripts/`, `content/`), and the
+  sections (`schema/`, `components/`, `css/`, `scripts/`, `public/`, `content/`), and the
   site's `media/`, `logs/` and `.crombolo/`. A glob that matches nothing, or a
   site with no `bun.lock`, stops the build. A site that names no code builds
   the bundle it always did.
@@ -1082,10 +1109,11 @@ content/
 │       └── contact.toml
 ├── library/
 │   └── hero-card.toml     # a Library element (at the top level only, for now)
-└── media/
-    └── logos/             # a media folder
-        ├── mark.png       # a media item, typed by its extension
-        └── mark.png.toml  # its sidecar, optional
+├── media/
+│   └── logos/             # a media folder
+│       ├── mark.png       # a media item, typed by its extension
+│       └── mark.png.toml  # its sidecar, optional
+└── dictionary.toml        # the dictionary, optional
 ```
 
 A site that still has the old `seed/` folder is refused, with the commands
@@ -1143,11 +1171,18 @@ Values are given by property alias, in a shorthand for each editor:
 
 ### Media
 
+`content/dictionary.toml` holds the dictionary, in the format of
+`docs/content-transfer.md`, "The dictionary as a file". It travels as the
+bundle's `dictionary.udt` and applies by key, so an item a site already made in
+the back office under the same name is left as it is. A language the site has
+not got, or a value that is neither a translation nor a table, is a finding.
+
 A file under `content/media/` becomes a media item:
 - **Type:** the type its extension implies, as an upload's is.
 - **Folders:** a directory becomes a Folder.
 - **Sidecar:** `photo.jpg.toml` gives `name`, `type`, `key`, `order`,
-  `focalPoint = { left, top }` and `[values]`.
+  `focalPoint = { left, top }` and `[values]`, which is where an image's
+  `altText` goes.
 - **On a site never started:** an image in a folder applies from the first
   command, since opening the database lets Folder hold the built-in media
   types (story 180).

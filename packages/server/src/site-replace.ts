@@ -170,7 +170,7 @@ export async function replaceSummary(
   const filesRemoved: string[] = []
   for (const { section, dir } of folders) {
     if (!existsSync(dir)) continue
-    for (const path of new Bun.Glob('**/*').scanSync({ cwd: dir, onlyFiles: true })) {
+    for (const path of new Bun.Glob('**/*').scanSync({ cwd: dir, onlyFiles: true, dot: true })) {
       const bundlePath = `${section}/${path.split(sep).join('/')}`
       if (!carriedPaths.has(bundlePath)) filesRemoved.push(join(dir, path))
     }

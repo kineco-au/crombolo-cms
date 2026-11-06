@@ -178,6 +178,7 @@ describe('the media verbs (story 088)', () => {
       'AddRemoteTrust',
       'AddMediaTreeOrder',
       'AddSearchRemovals',
+      'AddImageAltText',
     ])
     const held = async (key: string) =>
       (

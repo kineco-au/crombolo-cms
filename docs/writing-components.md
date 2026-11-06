@@ -415,6 +415,7 @@ export function Layout({ theme = 'light', children }: LayoutProps) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <SeoHead {...usePage()} />
         <link rel="stylesheet" href={asset('/css/site.css')} />
+        <link rel="icon" href={asset('/favicon.ico')} />
       </head>
       <body class={`theme-${theme}`}>
         <Breadcrumbs />

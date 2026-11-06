@@ -1622,10 +1622,10 @@ Each stage is an onion, outermost first:
 | `page` | after access, before rendering | `context.page`, `context.member` | change the answer; a rewrite is refused |
 
 - **Site requests only:** pages, the not-found page included, story 211's
-  routes, `/css/` and `/scripts/`.
+  routes, `/css/`, `/scripts/` and files from `public/`.
   - **Never** the back office, the APIs, member, form, island and bundle
-    endpoints, `/media/`, `/sitemap.xml`, `/robots.txt` or `/health`. They
-    are answered before the chain is reached.
+    endpoints, `/media/`, the generated `/sitemap.xml` and `/robots.txt`, or
+    `/health`. They are answered before the chain is reached.
   - **A rewrite into any of them is refused,** as is one to another origin.
 - **Rewrites** are resolved in full at the new path, so redirects and public
   access apply there too.
@@ -1763,7 +1763,7 @@ The pipeline is `packages/server/src/routes.ts`.
 | Paths | Sent to |
 | --- | --- |
 | `/crombolo/bundle.js`, `/crombolo/forms.js`, `/crombolo/islands.js`, `/crombolo/islands/*`, `/crombolo/forms/*` (a form posted), the Delivery API under `/crombolo/delivery/api/` | any node |
-| `/crombolo/actions/*` (server actions), the site's declared routes, its pages, `/css/`, `/scripts/`, `/sitemap.xml`, `/robots.txt` | a node that serves the site: `web` or `all` |
+| `/crombolo/actions/*` (server actions), the site's declared routes, its pages, its public files, `/css/`, `/scripts/`, `/sitemap.xml`, `/robots.txt` | a node that serves the site: `web` or `all` |
 | The back office, the Management API and the remote protocol, under the back-office path | a node that serves the back office: `api` or `all` |
 
 So sending `/crombolo/*` to the `api` node works once `/crombolo/actions/*`
@@ -1997,6 +1997,69 @@ import { asset } from '@crombolo/crombolo'
   `no-cache`.
 - **Nothing inside a stylesheet is rewritten**: a `url(...)` keeps the address
   it names, which still works. Bundling is a build step a site chooses.
+
+## Public files
+
+Files in `public/` are served at the root of the site at the same paths (story
+284): `public/images/logo.png` is `/images/logo.png`. It is where a logo, a
+font, a favicon, a vendor's built files or a verification file go. Next.js has
+`public/` and ASP.NET has `wwwroot/`, so a site moved from either keeps its
+links. The folder is set by `CROMBOLO_PUBLIC_DIR`, and a site without one
+behaves as if the feature were not there.
+
+It belongs to the developer. The back office does not edit it, and it travels
+with the site in a bundle, a push and a pull (`docs/bundles.md`, "Public
+files").
+
+**Who answers at an address**, in order:
+
+1. The CMS's own paths: the back office, `/umbraco/`, `/crombolo/`, `/media/`,
+   `/css/`, `/scripts/`, `/health` and `/.well-known/crombolo-remote`. A file at
+   one of these is left out and never answers.
+2. A file in `public/`.
+3. The generated `/robots.txt` and `/sitemap.xml`, which a file of that name
+   replaces, the site's declared routes, then its pages.
+
+`crombolo components check` names a file that never answers, one that takes a
+route's address and one that replaces a generated file. It reads no database,
+so a file hiding a page is reported by the server instead, in its log as it
+starts.
+
+**What is served**
+
+- **Regular files inside the folder.** A symlink counts when it ends at a file
+  inside the folder.
+- **No dotfiles,** at any depth, except what is under `.well-known/`, for
+  `security.txt`, app links and certificate challenges. `/.env` answers `404`.
+- **`GET` and `HEAD` only.** Another method goes on to a route or a page.
+- **Bytes, never run.** `.js`, `.html` and `.svg` are sent with their content
+  type and `X-Content-Type-Options: nosniff`.
+
+**Caching** works as for stylesheets, with an ETag from the file's size and
+modified time:
+
+| Address | Kept |
+| --- | --- |
+| `/images/logo.3f9a1c2b.png`, from `asset('/images/logo.png')` | a year, `immutable` |
+| `/images/logo.png` | asked for again each time (`no-cache`), with an ETag |
+| a hash that is no longer the file's | `404`, `no-store` |
+
+A file whose own name looks hashed, such as a vendor's `app.3f9a1c2b.js`, is
+served as itself. A file is hashed the first time `asset()` asks for it, not
+as the server starts, so that first page reads the file once.
+
+**A list, not the disk.** The folder is listed as the server starts and again
+when it changes, so a page request asks a map and makes no file system call,
+and only a path in that list can be served.
+
+- **A file added while the server runs** is served without a restart, in
+  development and in production, and so is a folder made after it started.
+- **A watcher does not fire on every mounted volume.** On one that doesn't, a
+  new file stays unseen until a restart, where `/css/` would find it.
+- **Behind a proxy,** public files go to a node that serves the site, `web` or
+  `all`, and `api` answers `404`. A `web` node on its own disk gets them from a
+  deploy, not from a bundle applied on another node.
+- **Range requests are not supported,** so a large video belongs in media.
 
 ## Blocks
 
