@@ -48,6 +48,22 @@ test('the menu is a row under the header, gone from Home and the sidebar', async
   await expect(strip(page).locator('nav')).toHaveCount(0)
 })
 
+test('leaving a page while it opens throws nothing', async ({ page, diagnostics }) => {
+  diagnostics.allowed.push(
+    'Tree context is not set',
+    'provideAt is not a function',
+    'repository is missing',
+  )
+  await signIn(page)
+  for (let i = 0; i < 6; i++) {
+    await goToSection(page, 'Content')
+    await strip(page).getByRole('link', { name: 'Pages' }).click()
+    await page.waitForTimeout(40 * i)
+    await strip(page).getByRole('link', { name: 'Structure' }).click()
+    await expect(page).toHaveURL(/structure/)
+  }
+})
+
 test('Forms is a node in Structure, and Content Types can start a form', async ({
   page,
   diagnostics,

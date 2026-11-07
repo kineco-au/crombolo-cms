@@ -90,15 +90,15 @@ test('a page picks a Library form, keeps a form it named itself, and reveals the
       )
     })
     .toBeNull()
-
   await select.selectOption({ label: 'Cove – Trade' })
-  await page.getByTestId('workspace-action:Umb.WorkspaceAction.Document.Save').click()
-  await expect
-    .poll(async () => {
-      const doc = await (await page.request.get(`${API}/document/${key}`)).json()
-      return doc.values.find((value: { alias: string }) => value.alias === 'enquiryForm')?.value
-    })
-    .toBe(trade)
+  // A save clicked while the one before is under way is ignored, so it is clicked until it lands.
+  await expect(async () => {
+    await page.getByTestId('workspace-action:Umb.WorkspaceAction.Document.Save').click()
+    const doc = await (await page.request.get(`${API}/document/${key}`)).json()
+    expect(
+      doc.values.find((value: { alias: string }) => value.alias === 'enquiryForm')?.value,
+    ).toBe(trade)
+  }).toPass({ timeout: 15_000 })
 
   diagnostics.allowed.push(`503 GET ${FORMS_API}/${CONTACT}`, 'status of 503 (Service Unavailable)')
   await page.route(`${FORMS_API}/${CONTACT}`, (route) => route.fulfill({ status: 503, json: {} }))

@@ -58,12 +58,15 @@ export default class CromboloContentStripElement extends UmbLitElement {
     this.#follow()
     window.addEventListener('changestate', this.#follow)
     window.addEventListener('popstate', this.#follow)
+    // A route the router settles on without a state change of its own, such as Home.
+    window.addEventListener('navigationend', this.#follow)
   }
 
   disconnectedCallback() {
     super.disconnectedCallback()
     window.removeEventListener('changestate', this.#follow)
     window.removeEventListener('popstate', this.#follow)
+    window.removeEventListener('navigationend', this.#follow)
     mark(undefined)
     document.documentElement.style.removeProperty(ROW_HEIGHT)
   }

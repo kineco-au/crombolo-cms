@@ -6,6 +6,17 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.53.1 — 2026-11-08
+
+v0.53.0 was tagged but not published. Its notes apply to this release.
+
+### Fixes
+
+- **Leaving a page while it opens no longer throws.** The editor went on loading after it had been
+  closed, and reported an error that changed nothing. Clicking from one place to another quickly
+  could set this off.
+- **The menu under Content follows Home** however Home is reached.
+
 ## v0.53.0 — 2026-11-07
 
 ### Features
