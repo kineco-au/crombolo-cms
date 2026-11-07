@@ -21,7 +21,13 @@ import { UmbServerFileRenameWorkspaceRedirectController } from '@umbraco-cms/bac
 
 export interface UmbPartialViewWorkspaceContextCreateArgs extends UmbEntityDetailWorkspaceContextCreateArgs<UmbPartialViewDetailModel> {
 	snippet: { unique: string } | null;
+	/** Crombolo: a plain `.ts` file rather than a component. */
+	module?: boolean;
 }
+
+const MODULE_SCAFFOLD = `/** What this module does. */
+export function myModule() {}
+`;
 
 export class UmbPartialViewWorkspaceContext
 	extends UmbEntityNamedDetailWorkspaceContextBase<
@@ -32,6 +38,9 @@ export class UmbPartialViewWorkspaceContext
 	implements UmbSubmittableWorkspaceContext, UmbRoutableWorkspaceContext
 {
 	public readonly content = this._data.createObservablePartOfCurrent((data) => data?.content);
+	public readonly isModule = this._data.createObservablePartOfCurrent(
+		(data) => data?.extension === '.ts' || data?.name?.endsWith('.ts'),
+	);
 
 	constructor(host: UmbControllerHost) {
 		super(host, {
@@ -51,6 +60,19 @@ export class UmbPartialViewWorkspaceContext
 					this.#onCreate({
 						parent: { entityType: parentEntityType, unique: parentUnique },
 						snippet: { unique: snippetId },
+					});
+				},
+			},
+			{
+				path: 'create/parent/:entityType/:parentUnique/module',
+				component: UmbPartialViewWorkspaceEditorElement,
+				setup: async (component: PageComponent, info: IRoutingInfo) => {
+					const parentEntityType = info.match.params.entityType;
+					const parentUnique = info.match.params.parentUnique === 'null' ? null : info.match.params.parentUnique;
+					this.#onCreate({
+						parent: { entityType: parentEntityType, unique: parentUnique },
+						snippet: null,
+						module: true,
 					});
 				},
 			},
@@ -105,7 +127,8 @@ export class UmbPartialViewWorkspaceContext
 			snippetContent = snippet?.content || '';
 		}
 
-		const argsWithPreset = { ...args, preset: { content: snippetContent } };
+		const preset = args.module ? { content: MODULE_SCAFFOLD, extension: '.ts' } : { content: snippetContent };
+		const argsWithPreset = { ...args, preset };
 
 		return super.createScaffold(argsWithPreset);
 	}

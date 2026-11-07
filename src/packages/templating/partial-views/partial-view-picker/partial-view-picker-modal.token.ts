@@ -15,5 +15,10 @@ export const UMB_PARTIAL_VIEW_PICKER_MODAL = new UmbModalToken<
 		type: 'sidebar',
 		size: 'small',
 	},
-	data: { treeAlias: UMB_PARTIAL_VIEW_TREE_ALIAS, hideTreeRoot: true },
+	data: {
+		treeAlias: UMB_PARTIAL_VIEW_TREE_ALIAS,
+		hideTreeRoot: true,
+		// Crombolo: a module draws nothing, so it can't be placed in a view.
+		pickableFilter: (item) => !item.name?.endsWith('.ts'),
+	},
 });

@@ -26,6 +26,10 @@ export class UmbPartialViewWorkspaceEditorElement extends UmbLitElement {
 	@state()
 	private _isRestricted = true;
 
+	/** Crombolo: a module holds no markup, so nothing here inserts into it. */
+	@state()
+	private _isModule?: boolean;
+
 	@query('umb-code-editor')
 	private _codeEditor?: UmbCodeEditorElement;
 
@@ -50,6 +54,10 @@ export class UmbPartialViewWorkspaceEditorElement extends UmbLitElement {
 
 			this.observe(this.#workspaceContext?.isNew, (isNew) => {
 				this._isNew = isNew;
+			});
+
+			this.observe(this.#workspaceContext?.isModule, (isModule) => {
+				this._isModule = isModule;
 			});
 		});
 	}
@@ -81,21 +89,23 @@ export class UmbPartialViewWorkspaceEditorElement extends UmbLitElement {
 					slot="header"
 					?readonly=${this._isNew === false || this._isRestricted}></umb-workspace-header-name-editable>
 				<uui-box>
-					<div slot="header" id="code-editor-menu-container">
-						<umb-templating-insert-menu
-							@insert=${this.#insertSnippet}
-							?disabled=${this._isRestricted}
-							hidePartialViews></umb-templating-insert-menu>
-						<uui-button
-							look="secondary"
-							id="query-builder-button"
-							label=${this.localize.term('template_queryBuilder')}
-							?disabled=${this._isRestricted}
-							@click=${this.#openQueryBuilder}>
-							<uui-icon name="icon-wand"></uui-icon>
-							<umb-localize key="template_queryBuilder">Query builder</umb-localize>
-						</uui-button>
-					</div>
+					${this._isModule
+						? nothing
+						: html`<div slot="header" id="code-editor-menu-container">
+								<umb-templating-insert-menu
+									@insert=${this.#insertSnippet}
+									?disabled=${this._isRestricted}
+									hidePartialViews></umb-templating-insert-menu>
+								<uui-button
+									look="secondary"
+									id="query-builder-button"
+									label=${this.localize.term('template_queryBuilder')}
+									?disabled=${this._isRestricted}
+									@click=${this.#openQueryBuilder}>
+									<uui-icon name="icon-wand"></uui-icon>
+									<umb-localize key="template_queryBuilder">Query builder</umb-localize>
+								</uui-button>
+							</div>`}
 					${this.#renderCodeEditor()}
 				</uui-box>
 			</umb-entity-detail-workspace-editor>

@@ -7,6 +7,8 @@ export interface UmbPartialViewDetailModel {
 	unique: string;
 	name: string;
 	content: string;
+	/** Crombolo: the file a new one is saved as; a component's `.tsx` when unset. */
+	extension?: string;
 }
 
 export interface UmbPartialViewItemModel {

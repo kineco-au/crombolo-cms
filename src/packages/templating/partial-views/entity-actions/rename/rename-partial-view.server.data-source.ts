@@ -35,7 +35,8 @@ export class UmbRenamePartialViewServerDataSource {
 		if (!path) throw new Error('Path is missing');
 
 		const body: RenameStylesheetRequestModel = {
-			name: appendFileExtensionIfNeeded(name, '.cshtml'),
+			// Crombolo: a module stays a module.
+			name: appendFileExtensionIfNeeded(name, path.endsWith('.ts') ? '.ts' : '.cshtml'),
 		};
 
 		const { data, error } = await tryExecute(

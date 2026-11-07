@@ -87,6 +87,14 @@ export class UmbPartialViewCreateOptionsModalElement extends UmbModalBaseElement
 					<uui-icon slot="icon" name="icon-document-html"></uui-icon>
 				</uui-menu-item>
 
+				<!-- Crombolo: a plain .ts file for components to import (story 292). -->
+				<uui-menu-item
+					href="${this.#getCreateHref()}/module"
+					label=${this.localize.term('create_newModule')}
+					@click=${this.#onNavigate}>
+					<uui-icon slot="icon" name="icon-document-js"></uui-icon>
+				</uui-menu-item>
+
 				<uui-menu-item @click=${this.#onCreateFolderClick} label="${this.localize.term('create_newFolder')}...">
 					<uui-icon slot="icon" name="icon-folder"></uui-icon>
 				</uui-menu-item>

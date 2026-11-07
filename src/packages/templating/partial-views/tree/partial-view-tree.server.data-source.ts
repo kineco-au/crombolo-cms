@@ -93,6 +93,7 @@ const mapper = (item: FileSystemTreeItemPresentationModel): UmbPartialViewTreeIt
 		name: item.name,
 		isFolder: item.isFolder,
 		hasChildren: item.hasChildren,
-		icon: item.isFolder ? undefined : 'icon-document-html',
+		// Crombolo: a module's own icon, so it doesn't read as a component.
+		icon: item.isFolder ? undefined : item.name.endsWith('.ts') ? 'icon-document-js' : 'icon-document-html',
 	};
 };
