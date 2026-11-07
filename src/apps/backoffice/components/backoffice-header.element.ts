@@ -10,6 +10,8 @@ export class UmbBackofficeHeaderElement extends UmbLitElement {
 				<umb-backoffice-header-sections></umb-backoffice-header-sections>
 				<umb-backoffice-header-apps></umb-backoffice-header-apps>
 			</div>
+			<!-- Crombolo: the menu under Content (story 289), a row of its own under the header. -->
+			<crombolo-content-strip></crombolo-content-strip>
 		`;
 	}
 

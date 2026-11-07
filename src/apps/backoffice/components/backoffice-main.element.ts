@@ -131,7 +131,7 @@ export class UmbBackofficeMainElement extends UmbLitElement {
 				background-color: var(--uui-color-background);
 				width: 100%;
 				height: calc(
-					100% - 60px
+					100% - 60px - var(--crombolo-content-strip-height, 0px)
 				); /* 60 => top header height, TODO: Make sure this comes from somewhere so it is maintainable and eventually responsive. */
 			}
 
