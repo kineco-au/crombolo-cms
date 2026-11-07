@@ -43,7 +43,7 @@ export class UmbDeepState<T> extends UmbBasicState<T> {
 	 * @description - Set the data of this state, if data is different than current this will trigger observations to update.
 	 */
 	override setValue(data: T): void {
-		if (!this._subject) throw new Error('_subject is undefined');
+		if (!this._subject) return; // Crombolo: as in basic-state.ts.
 		const frozenData = deepFreeze(data);
 		this.#value = frozenData;
 		// Only update data if its not muted and is different than current data. [NL]
@@ -73,7 +73,7 @@ export class UmbDeepState<T> extends UmbBasicState<T> {
 		if (!this.#mute) return;
 		this.#mute = false;
 		// Only update data if it is different than current data. [NL]
-		if (!this._subject) throw new Error('_subject is undefined');
+		if (!this._subject) return; // Crombolo: as in basic-state.ts.
 		if (!jsonStringComparison(this.#value, this._subject.getValue())) {
 			this._subject.next(this.#value);
 		}
