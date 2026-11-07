@@ -241,6 +241,8 @@ export interface FormSubmitDeps {
   urlOf?: (key: string) => Promise<string | undefined>
   /** Fills in the options of choices drawn from a source, as the page rendered them. */
   resolveForm?: (form: SchemaForm) => Promise<SchemaForm>
+  /** The language it was filled in, saved with the entry. */
+  culture?: string | null
   /** A published Library form's form, with its words (story 239). */
   libraryForm?: (key: string) => Promise<SchemaForm | undefined>
 }
@@ -397,7 +399,7 @@ export async function submitForm(
     const entry = await entries.create({
       formKey: key,
       formAlias: form.alias,
-      culture: null,
+      culture: deps.culture ?? null,
       pageKey: null,
       libraryKey: libraryKey ?? null,
       ipHash: hashIp(secret, options.ip),

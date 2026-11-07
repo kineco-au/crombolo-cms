@@ -9,7 +9,14 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { FormPermissions, SECTION_ALIASES, toSectionAliases } from '@crombolo/core'
+import {
+  allFormFields,
+  FormPermissions,
+  type SchemaForm,
+  type SchemaFormField,
+  SECTION_ALIASES,
+  toSectionAliases,
+} from '@crombolo/core'
 import { FormEntryRepository } from '@crombolo/data'
 import { FORM_SCRIPT, FORM_SCRIPT_PATH } from '@crombolo/render'
 import {
@@ -409,6 +416,49 @@ describe('the designer', () => {
     expect(() => readFileSync(join(root, 'schema', 'forms', 'contact-us.toml'), 'utf8')).toThrow()
     // The entries are the business record; the definition going does not take them.
     expect(await entries.byId(created.id)).toBeDefined()
+  })
+})
+
+describe('a field’s help and messages', () => {
+  test('go to the file and come back, with nothing else in it changing', async () => {
+    const { h } = await site()
+    const detail = await h.json<{ definition: SchemaForm }>(`${FORMS}/${FORM_KEY}`)
+    const field = allFormFields(detail.definition)[0] as SchemaFormField
+    field.helpText = '#contact.help'
+    field.mandatoryMessage = '#contact.needed'
+    field.pattern = '^a'
+    field.patternMessage = 'Starts with a'
+    const saved = await h.put(`${FORMS}/${FORM_KEY}`, detail.definition)
+    expect(saved.status).toBeLessThan(300)
+    const again = await h.json<{ definition: SchemaForm }>(`${FORMS}/${FORM_KEY}`)
+    const read = allFormFields(again.definition)[0] as SchemaFormField
+    expect([read.helpText, read.mandatoryMessage, read.pattern, read.patternMessage]).toEqual([
+      '#contact.help',
+      '#contact.needed',
+      '^a',
+      'Starts with a',
+    ])
+    expect(allFormFields(again.definition).slice(1)).toEqual(
+      allFormFields(detail.definition).slice(1),
+    )
+  })
+})
+
+describe('the dictionary, for the designer', () => {
+  test('lists its items to whoever may design a form, and to no one else', async () => {
+    const { h } = await site()
+    const created = await h.post(`${V1}/dictionary`, {
+      name: 'contact.name',
+      parent: null,
+      translations: [{ isoCode: 'en-US', translation: 'Name' }],
+    })
+    expect(created.status).toBe(201)
+    h.server.cache.invalidate()
+    const { words } = await h.json<{ words: Array<{ name: string; text: string }> }>(
+      `${FORMS}/words`,
+    )
+    expect(words).toContainEqual({ name: 'contact.name', text: 'Name' })
+    expect((await h.server.fetch(new Request(`${ORIGIN}${FORMS}/words`))).status).toBe(401)
   })
 })
 

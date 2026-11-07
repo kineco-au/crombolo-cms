@@ -47,6 +47,12 @@ export function removePage(form, index) {
   return next
 }
 
+/** Sets a field's text, or takes it away when empty, so the file doesn't hold an empty value. */
+export function setFieldText(field, key, value) {
+  if (value.trim()) field[key] = value
+  else delete field[key]
+}
+
 export function setPageCaption(form, index, caption) {
   const next = copy(form)
   if (caption.trim()) next.pages[index].caption = caption

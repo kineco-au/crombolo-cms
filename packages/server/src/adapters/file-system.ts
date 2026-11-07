@@ -1,7 +1,7 @@
 /**
  * A file-system area on disk — components, stylesheets or scripts — as the
  * Management API sees it: paths relative to the area's root, which never
- * escape it, and only files of the area's extension.
+ * escape it, and only files of the area's extensions.
  */
 import { existsSync } from 'node:fs'
 import { mkdir, readdir, readFile, rename, rm, rmdir, stat, writeFile } from 'node:fs/promises'
@@ -13,6 +13,8 @@ export interface FileAreaOptions {
   extension: string
   /** Extensions a name may arrive with that are stored as `extension` instead. */
   rewrites?: readonly string[]
+  /** Other extensions a file here may have, kept as they are. */
+  also?: readonly string[]
 }
 
 const INVALID_CHARACTERS = /[<>:"|?*\\/]/
@@ -35,7 +37,7 @@ function segmentsOf(path: string | null): string[] | undefined {
 const toPath = (segments: readonly string[]) => `/${segments.join('/')}`
 
 export function createFileSystemPort(root: string, options: FileAreaOptions): FileSystemPort {
-  const extension = options.extension.toLowerCase()
+  const accepted = [options.extension, ...(options.also ?? [])].map((e) => e.toLowerCase())
   const locate = (path: string | null) => {
     const segments = segmentsOf(path)
     return segments ? { segments, file: join(root, ...segments) } : undefined
@@ -49,14 +51,14 @@ export function createFileSystemPort(root: string, options: FileAreaOptions): Fi
     }
   }
   const visible = (name: string, isFolder: boolean) =>
-    !name.startsWith('.') && (isFolder || name.toLowerCase().endsWith(extension))
+    !name.startsWith('.') && (isFolder || accepted.some((e) => name.toLowerCase().endsWith(e)))
 
   /** The name as stored: with the area's extension, whichever accepted one it came with. */
   const fileName = (name: string): string | 'InvalidName' | 'InvalidFileExtension' => {
     const trimmed = name.trim()
     if (!trimmed || trimmed.startsWith('.') || invalidName(trimmed)) return 'InvalidName'
     const lower = trimmed.toLowerCase()
-    if (lower.endsWith(extension)) return trimmed
+    if (accepted.some((e) => lower.endsWith(e))) return trimmed
     const rewrite = options.rewrites?.find((r) => lower.endsWith(r.toLowerCase()))
     if (rewrite) return `${trimmed.slice(0, -rewrite.length)}${options.extension}`
     return 'InvalidFileExtension'
@@ -193,3 +195,7 @@ export function createFileSystemPort(root: string, options: FileAreaOptions): Fi
     },
   }
 }
+
+/** The components tree: its views, and the plain modules they import. */
+export const createComponentsPort = (root: string): FileSystemPort =>
+  createFileSystemPort(root, { extension: '.tsx', also: ['.ts'], rewrites: ['.cshtml'] })

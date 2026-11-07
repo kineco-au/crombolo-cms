@@ -18,7 +18,7 @@ import {
   writeBundle,
   writeBundlePackage,
 } from '@crombolo/transfer'
-import { createFileSystemPort } from './adapters/file-system.ts'
+import { createComponentsPort, createFileSystemPort } from './adapters/file-system.ts'
 import { createTemplateFileStore } from './adapters/template-files.ts'
 import { loadConfig, VERSION } from './config.ts'
 import { bootstrapDatabase } from './database.ts'
@@ -138,10 +138,7 @@ export async function buildBundleFromDirectory(
         {
           db,
           componentFiles: createTemplateFileStore(config.componentsDir),
-          components: createFileSystemPort(config.componentsDir, {
-            extension: '.tsx',
-            rewrites: ['.cshtml'],
-          }),
+          components: createComponentsPort(config.componentsDir),
           stylesheets: createFileSystemPort(config.stylesheetsDir, { extension: '.css' }),
           scripts: createFileSystemPort(config.scriptsDir, { extension: '.js' }),
           schemaDir: config.schemaDir,

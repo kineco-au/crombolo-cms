@@ -56,7 +56,7 @@ import {
 import { createDictionaryPort } from './adapters/dictionary.ts'
 import { createDocumentPort } from './adapters/documents.ts'
 import { createElementPort } from './adapters/elements.ts'
-import { createFileSystemPort } from './adapters/file-system.ts'
+import { createComponentsPort, createFileSystemPort } from './adapters/file-system.ts'
 import { createDiagnosticsPort } from './adapters/health.ts'
 import { createMediaPort } from './adapters/media.ts'
 import { createMemberGroupPort } from './adapters/member-groups.ts'
@@ -469,10 +469,7 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
   // through the partial-view file API because that one is path-addressed and
   // already understands folders; the template API is id-addressed and cannot
   // express a folder at all.
-  deps.components = createFileSystemPort(options.config.componentsDir, {
-    extension: '.tsx',
-    rewrites: ['.cshtml'],
-  })
+  deps.components = createComponentsPort(options.config.componentsDir)
   deps.componentSnippets = COMPONENT_SNIPPETS
   deps.stylesheets = createFileSystemPort(options.config.stylesheetsDir, { extension: '.css' })
   deps.scripts = createFileSystemPort(options.config.scriptsDir, { extension: '.js' })

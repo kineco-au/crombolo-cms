@@ -154,6 +154,43 @@ describe.each(AREAS)('$route files', (area) => {
   })
 })
 
+describe('a module beside the components', () => {
+  const enc = encodeURIComponent
+  const base = `${V1}/partial-view`
+
+  test('is listed, created, read, renamed and deleted as a .ts file', async () => {
+    const { h, root } = await site()
+    writeFileSync(join(root, 'components', 'view.tsx'), 'export default () => null\n')
+    const made = await h.post(base, {
+      name: 'dates.ts',
+      parent: null,
+      content: 'export const a = 1\n',
+    })
+    expect(made.status).toBe(201)
+    expect(readFileSync(join(root, 'components', 'dates.ts'), 'utf8')).toBe('export const a = 1\n')
+
+    const tree = await h.json<{ items: Array<{ name: string }> }>(
+      `${V1}/tree/partial-view/root?skip=0&take=100`,
+    )
+    expect(tree.items.map((item) => item.name)).toEqual(['dates.ts', 'view.tsx'])
+    const read = await h.json<{ name: string }>(`${base}/${enc('/dates.ts')}`)
+    expect(read.name).toBe('dates.ts')
+
+    const renamed = await h.put(`${base}/${enc('/dates.ts')}/rename`, { name: 'days.ts' })
+    expect(renamed.status).toBe(201)
+    expect(existsSync(join(root, 'components', 'days.ts'))).toBe(true)
+    expect((await h.call(`${base}/${enc('/days.ts')}`, { method: 'DELETE' })).status).toBe(200)
+    expect(existsSync(join(root, 'components', 'days.ts'))).toBe(false)
+  })
+
+  test('leaves a component’s name as it was, and refuses anything else', async () => {
+    const { h, root } = await site()
+    await h.post(base, { name: 'nav.cshtml', parent: null, content: 'export default () => null\n' })
+    expect(existsSync(join(root, 'components', 'nav.tsx'))).toBe(true)
+    expect((await h.post(base, { name: 'notes.md', parent: null, content: '' })).status).toBe(400)
+  })
+})
+
 describe('files on the front end and the snippets', () => {
   test('stylesheets and scripts are served at /css/ and /scripts/, and nothing else from there', async () => {
     const { h, root } = await site()

@@ -34,6 +34,8 @@ export default class CromboloFormsEntriesElement extends UmbLitElement {
     _entries: { state: true },
     _total: { state: true },
     _state: { state: true },
+    _language: { state: true },
+    _languages: { state: true },
     _search: { state: true },
     _includeSpam: { state: true },
     _notice: { state: true },
@@ -48,6 +50,8 @@ export default class CromboloFormsEntriesElement extends UmbLitElement {
     this._entries = []
     this._total = 0
     this._state = ''
+    this._language = ''
+    this._languages = []
     this._search = ''
     this._includeSpam = false
     this._notice = ''
@@ -80,6 +84,7 @@ export default class CromboloFormsEntriesElement extends UmbLitElement {
     try {
       const query = {
         state: this._state,
+        language: this._language,
         library: this._library,
         search: this._search,
         includeSpam: this._includeSpam ? 'true' : '',
@@ -87,6 +92,7 @@ export default class CromboloFormsEntriesElement extends UmbLitElement {
       }
       const forms = this._selected === ALL ? this._forms : [{ key: this._selected }]
       const pages = await Promise.all(forms.map((form) => listEntries(form.key, query)))
+      this._languages = [...new Set(pages.flatMap((page) => page.languages ?? []))]
       this._entries = pages
         .flatMap((page, index) =>
           (page.items ?? []).map((entry) => ({ ...entry, formName: forms[index].name })),
@@ -175,6 +181,20 @@ export default class CromboloFormsEntriesElement extends UmbLitElement {
               this.#load()
             }}
           ></uui-select>
+          ${
+            this._languages.length > 1
+              ? html`<uui-select
+                  label="Language"
+                  .options=${[['', 'Any language'], ...this._languages.map((l) => [l, l])].map(
+                    ([value, name]) => ({ name, value, selected: value === this._language }),
+                  )}
+                  @change=${(event) => {
+                    this._language = event.target.value
+                    this.#load()
+                  }}
+                ></uui-select>`
+              : nothing
+          }
           <uui-input
             placeholder="Search the answers"
             .value=${this._search}
@@ -224,6 +244,11 @@ export default class CromboloFormsEntriesElement extends UmbLitElement {
                       <strong>${new Date(entry.createDate).toLocaleString()}</strong>
                       ${this._selected === ALL ? html`<span class="form">${entry.formName}</span>` : nothing}
                       <span class="state">${entry.state}</span>
+                      ${
+                        this._languages.length > 1 && entry.culture
+                          ? html`<span class="language">${entry.culture}</span>`
+                          : nothing
+                      }
                       ${entry.spam ? html`<span class="spam">spam</span>` : nothing}
                       ${
                         entry.libraryKey

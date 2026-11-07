@@ -65,3 +65,35 @@ es-ES = "Más antiguos"
 ["blog.page"]
 en-US = "Page"
 es-ES = "Página"
+
+["contact.send"]
+en-US = "Send message"
+es-ES = "Enviar mensaje"
+
+["contact.thanks"]
+en-US = "Thanks. Your message is in the back office, under Forms."
+es-ES = "Gracias. Tu mensaje está en el panel, en Formularios."
+
+["contact.name"]
+en-US = "Name"
+es-ES = "Nombre"
+
+["contact.nameNeeded"]
+en-US = "We need a name to reply to"
+es-ES = "Necesitamos un nombre para responder"
+
+["contact.email"]
+en-US = "Email"
+es-ES = "Correo electrónico"
+
+["contact.emailNeeded"]
+en-US = "We need an email address to reply to"
+es-ES = "Necesitamos un correo para responder"
+
+["contact.message"]
+en-US = "Message"
+es-ES = "Mensaje"
+
+["contact.messageNeeded"]
+en-US = "Tell us what you would like to know"
+es-ES = "Cuéntanos qué te gustaría saber"

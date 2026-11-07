@@ -12,6 +12,7 @@
  */
 // For its side effect: registers `umb-input-document`, which the shell loads lazily.
 import '@umbraco-cms/backoffice/document'
+import './form-word-input.js'
 import './forms-entries.js'
 import { css, html, nothing, repeat } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
@@ -22,6 +23,7 @@ import {
   formsTree,
   listEmailTemplates,
   listFormTypes,
+  listWords,
   previewChoices,
   readForm,
   saveForm,
@@ -39,6 +41,7 @@ import {
   removeGroup,
   removePage,
   setColumns,
+  setFieldText,
   setGroupCaption,
   setPageCaption,
   withLayout,
@@ -54,6 +57,12 @@ import {
   switchValue,
   workflowSettings,
 } from './forms-workflows.js'
+
+/** The form's own texts that can name a dictionary item. */
+const WORD_SETTINGS = ['messageOnSubmit', 'submitLabel', 'nextLabel', 'previousLabel']
+
+/** The settings of a field's type that can name one. */
+const WORD_FIELD_SETTINGS = ['placeholder', 'content']
 
 /** The tree beside the list hears of a change this way. */
 const definitionsChanged = () => window.dispatchEvent(new Event('crombolo:definitions-changed'))
@@ -81,6 +90,7 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
     _notice: { state: true },
     _busy: { state: true },
     _choices: { state: true },
+    _words: { state: true },
     _types: { state: true },
     _workflowTypes: { state: true },
     _designs: { state: true },
@@ -150,6 +160,7 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
         // The picker can still offer Standard without them.
         listEmailTemplates().catch(() => []),
       ])
+      this._words = await listWords().catch(() => [])
       this._forms = tree.items ?? []
       this._because = tree.readOnlyBecause
       this._types = new Map(types.fields.map((info) => [info.type, info]))
@@ -198,6 +209,47 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
     }
   }
 
+  /** The words a field keeps out of the table: its help, and what it says when refused. */
+  #fieldDetails(field) {
+    const readonly = Boolean(this._because)
+    const box = (key, label) => html`<label>
+      <span>${label}</span>
+      <crombolo-form-word-input
+        label=${label}
+        .value=${field[key] ?? ''}
+        .words=${this._words}
+        ?readonly=${readonly}
+        @change=${(event) => {
+          setFieldText(field, key, event.target.value)
+          this.#touch()
+        }}
+      ></crombolo-form-word-input>
+    </label>`
+    const textual = this._types.get(field.type)?.settings.some((s) => s.key === 'placeholder')
+    return html`<details class="field-details">
+      <summary>Help and messages</summary>
+      ${box('helpText', 'Help text')}
+      ${box('mandatoryMessage', 'When left empty')}
+      ${
+        textual
+          ? html`<label>
+                <span>Must match (a regular expression)</span>
+                <uui-input
+                  label="Must match"
+                  .value=${field.pattern ?? ''}
+                  ?readonly=${readonly}
+                  @change=${(event) => {
+                    setFieldText(field, 'pattern', event.target.value)
+                    this.#touch()
+                  }}
+                ></uui-input>
+              </label>
+              ${box('patternMessage', 'When it does not match')}`
+          : nothing
+      }
+    </details>`
+  }
+
   /**
    * One input per setting the type declares. A built-in type keeps them on the
    * field; a bundle's type keeps them in the field's own settings.
@@ -229,6 +281,17 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
             .checked=${value === true}
             @change=${(event) => write(setting.key, event.target.checked || undefined)}
           ></uui-toggle>`
+        if (WORD_FIELD_SETTINGS.includes(setting.key))
+          return html`<label>
+            <span>${label}</span>
+            <crombolo-form-word-input
+              label=${label}
+              .value=${value ?? ''}
+              .words=${this._words}
+              ?readonly=${Boolean(this._because)}
+              @change=${(event) => write(setting.key, event.target.value.trim() || undefined)}
+            ></crombolo-form-word-input>
+          </label>`
         return html`<label>
           <span>${label}</span>
           <uui-input
@@ -356,12 +419,14 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
     const pages = this._editing.pages
     return html`<section class="page" aria-label=${page.caption || `Page ${p + 1}`}>
       <div class="bar">
-        <uui-input
+        <crombolo-form-word-input
           label="Page title"
           placeholder=${`Page ${p + 1}`}
           .value=${page.caption ?? ''}
+          .words=${this._words}
+          ?readonly=${Boolean(this._because)}
           @change=${(event) => this.#apply(setPageCaption, p, event.target.value)}
-        ></uui-input>
+        ></crombolo-form-word-input>
         <uui-button compact look="secondary" label="Move page up" ?disabled=${p === 0}
           @click=${() => this.#apply(movePage, p, p - 1)}>↑</uui-button>
         <uui-button compact look="secondary" label="Move page down" ?disabled=${p === pages.length - 1}
@@ -384,12 +449,14 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
       @drop=${(event) => this.#drop(event, { page: p, group: g, index: group.fields.length })}
     >
       <div class="bar">
-        <uui-input
+        <crombolo-form-word-input
           label="Group title"
           placeholder="Untitled group"
           .value=${group.caption ?? ''}
+          .words=${this._words}
+          ?readonly=${Boolean(this._because)}
           @change=${(event) => this.#apply(setGroupCaption, p, g, event.target.value)}
-        ></uui-input>
+        ></crombolo-form-word-input>
         <label class="columns">
           Columns
           <select @change=${(event) => this.#apply(setColumns, p, g, Number(event.target.value))}>
@@ -478,14 +545,17 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
                     @click=${() => this.#apply(nudgeField, { page: p, group: g, index }, 1)}>↓</uui-button>
                 </uui-table-cell>
                 <uui-table-cell>
-                  <uui-input
+                  <crombolo-form-word-input
                     label="Caption"
                     .value=${field.caption ?? ''}
+                    .words=${this._words}
+                    ?readonly=${Boolean(this._because)}
                     @change=${(event) => {
                       field.caption = event.target.value
                       this.#touch()
                     }}
-                  ></uui-input>
+                  ></crombolo-form-word-input>
+                  ${this.#fieldDetails(field)}
                 </uui-table-cell>
                 <uui-table-cell>
                   <uui-input
@@ -843,19 +913,29 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
 
   #editor() {
     const form = this._editing
-    const text = (key, label, hint) => html`
+    const text = (key, label, hint) => {
+      const change = (event) => {
+        form[key] = event.target.value
+        this.#touch()
+      }
+      return html`
       <uui-form-layout-item>
         <uui-label slot="label">${label}</uui-label>
         ${hint ? html`<span slot="description">${hint}</span>` : nothing}
-        <uui-input
-          .value=${form[key] ?? ''}
-          @change=${(event) => {
-            form[key] = event.target.value
-            this.#touch()
-          }}
-        ></uui-input>
+        ${
+          WORD_SETTINGS.includes(key)
+            ? html`<crombolo-form-word-input
+                label=${label}
+                .value=${form[key] ?? ''}
+                .words=${this._words}
+                ?readonly=${Boolean(this._because)}
+                @change=${change}
+              ></crombolo-form-word-input>`
+            : html`<uui-input .value=${form[key] ?? ''} @change=${change}></uui-input>`
+        }
       </uui-form-layout-item>
     `
+    }
     const leave = () => {
       this._editing = undefined
       this._problems = []
@@ -897,6 +977,10 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
   }
 
   static styles = css`
+    .field-details { margin-top: var(--uui-size-space-2); }
+    .field-details summary { cursor: pointer; color: var(--uui-color-text-alt); font-size: var(--uui-type-small-size); }
+    .field-details label { display: block; margin-top: var(--uui-size-space-2); }
+    .field-details span { display: block; font-size: var(--uui-type-small-size); }
     .page {
       border: 1px solid var(--uui-color-border, #ddd);
       border-radius: var(--uui-border-radius, 3px);

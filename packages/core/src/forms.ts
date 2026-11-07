@@ -358,6 +358,68 @@ export function withResolvedChoices(
   }
 }
 
+/** Each word a form shows a visitor, passed through `word`. */
+function mapFormWords(form: SchemaForm, word: (text: string) => string): SchemaForm {
+  const text = (value: string | undefined) => (value === undefined ? undefined : word(value))
+  const given = <T extends object>(record: T) =>
+    Object.fromEntries(Object.entries(record).filter(([, value]) => value !== undefined)) as T
+  return {
+    ...form,
+    ...given({
+      submitLabel: text(form.submitLabel),
+      nextLabel: text(form.nextLabel),
+      previousLabel: text(form.previousLabel),
+      messageOnSubmit: text(form.messageOnSubmit),
+    }),
+    pages: form.pages.map((page) => ({
+      ...page,
+      ...given({ caption: text(page.caption) }),
+      groups: page.groups.map((group) => ({
+        ...group,
+        ...given({ caption: text(group.caption) }),
+        fields: group.fields.map((field) => ({
+          ...field,
+          caption: word(field.caption),
+          ...given({
+            helpText: text(field.helpText),
+            placeholder: text(field.placeholder),
+            content: text(field.content),
+            mandatoryMessage: text(field.mandatoryMessage),
+            patternMessage: text(field.patternMessage),
+          }),
+        })),
+      })),
+    })),
+  }
+}
+
+/**
+ * The form with its words as `word` gives them, from the dictionary (story 293).
+ * The same form when none changes.
+ */
+export function withFormWords(form: SchemaForm, word: (text: string) => string): SchemaForm {
+  let changed = false
+  const next = mapFormWords(form, (text) => {
+    const out = word(text)
+    if (out !== text) changed = true
+    return out
+  })
+  return changed ? next : form
+}
+
+/**
+ * The dictionary items a form names: `#contact.name` names `contact.name`. A `#`
+ * followed by words, as in "#1 choice", is only text unless an item has that name.
+ */
+export function formWordNames(form: SchemaForm): string[] {
+  const names = new Set<string>()
+  mapFormWords(form, (text) => {
+    if (/^#\S+$/.test(text)) names.add(text.slice(1))
+    return text
+  })
+  return [...names]
+}
+
 export interface SchemaFormGroup {
   caption?: string
   /** A simple column count; the renderer lays the fields out across it. */

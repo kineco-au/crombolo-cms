@@ -32,10 +32,9 @@ test('the menu opens each place, with Content marked throughout', async ({ page,
       'page',
     )
     await expect(marked(page)).toHaveAttribute('label', 'Content')
+    // A section with no tabs once drew the word false where they would be.
+    await expect(page.getByText('false', { exact: true })).toHaveCount(0)
   }
-  // A section with no tabs once drew the word false where they would be.
-  await strip(page).getByRole('link', { name: 'Forms' }).click()
-  await expect(page.getByText('false', { exact: true })).toHaveCount(0)
 })
 
 test('the menu is a row under the header, gone from Home and the sidebar', async ({ page }) => {

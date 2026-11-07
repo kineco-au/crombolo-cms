@@ -9,6 +9,7 @@ import { createHash } from 'node:crypto'
 import { extname } from 'node:path'
 import {
   type ContentTypeAggregate,
+  formWordNames,
   IMAGE_CROPPER_EDITOR_ALIAS,
   normaliseUuid,
   ObjectTypes,
@@ -24,6 +25,7 @@ import {
   NodeRepository,
   resolveNodeRef,
 } from '@crombolo/data'
+import { loadSchemaDirectory } from '@crombolo/schema'
 import {
   BUNDLE_FORMAT_VERSION,
   BUNDLE_SECTIONS,
@@ -88,6 +90,28 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
       code: 'bad-dictionary',
       message: problem.message,
     })
+
+  // The file is the dictionary when a site has one; without it, its items may
+  // all be in a database this build can't see.
+  if (dictionary) {
+    const names = new Set<string>()
+    const collect = (entries: readonly DictionaryEntry[]) => {
+      for (const entry of entries) {
+        names.add(entry.name.toLowerCase())
+        collect(entry.children)
+      }
+    }
+    collect(dictionary.entries)
+    for (const form of loadSchemaDirectory(config.schemaDir).set.forms ?? [])
+      for (const name of formWordNames(form))
+        if (!names.has(name.toLowerCase()))
+          findings.push({
+            file: `schema/forms/${form.alias}.toml`,
+            line: 1,
+            code: 'unknown-dictionary-item',
+            message: `the form "${form.alias}" names #${name}, which is not in ${DICTIONARY_FILE}`,
+          })
+  }
 
   const state = await currentSchemaState(db)
   const documentTypes = new ContentTypeRepository(db)

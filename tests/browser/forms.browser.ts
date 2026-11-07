@@ -189,3 +189,30 @@ test('a Send email workflow is given an e-mail design, and saved', async ({
   })
   await page.request.delete(`${FORMS_API}/${key}`)
 })
+
+test('typing # offers dictionary items, and a field keeps its help and messages', async ({
+  page,
+}) => {
+  await signIn(page)
+  const name = `form.word.${crypto.randomUUID().slice(0, 6)}`
+  const made = await page.request.post(`${API}/dictionary`, {
+    data: { name, parent: null, translations: [{ isoCode: 'en-US', translation: 'Your name' }] },
+  })
+  expect(made.status()).toBe(201)
+
+  await page.goto(`/crombolo/section/forms/view/forms?form=${CONTACT}`)
+  const caption = page.locator('crombolo-form-word-input[label="Caption"]').first()
+  const input = caption.locator('input')
+  await input.fill('#form.word')
+  await expect(caption.getByRole('option').first()).toBeVisible()
+  await input.press('Enter')
+  await expect(input).toHaveValue(`#${name}`)
+  await expect(caption.getByText('From the dictionary: Your name')).toBeVisible()
+  await expect(caption.getByRole('option')).toHaveCount(0)
+
+  await page.getByText('Help and messages', { exact: true }).first().click()
+  const help = page.locator('crombolo-form-word-input[label="Help text"]').first().locator('input')
+  await help.fill('Who should we ask for?')
+  await help.blur()
+  await expect(help).toHaveValue('Who should we ask for?')
+})

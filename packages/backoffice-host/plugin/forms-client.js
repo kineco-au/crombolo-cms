@@ -64,6 +64,9 @@ export const saveForm = (definition, folder) =>
 export const previewChoices = (source) =>
   call('/choices', { method: 'POST', body: JSON.stringify({ source }) })
 
+/** Every dictionary item, with its words in the default language. */
+export const listWords = async () => (await call('/words')).body.words ?? []
+
 export const deleteForm = (key) => call(`/${encodeURIComponent(key)}`, { method: 'DELETE' })
 
 export const listEntries = async (key, query = {}) => {

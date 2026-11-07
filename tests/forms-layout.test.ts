@@ -18,6 +18,7 @@ import {
   removeGroup,
   removePage,
   setColumns,
+  setFieldText,
   setGroupCaption,
   setPageCaption,
   withLayout,
@@ -186,5 +187,15 @@ name = "Contact"
     expect(after).not.toBe(before)
     expect([...after.split('\n')].sort()).toEqual([...before.split('\n')].sort())
     expect(parseForm('schema/forms/contact.toml', after).problems).toEqual([])
+  })
+})
+
+describe('a field’s words', () => {
+  test('are kept as typed, and leave the field when emptied', () => {
+    const target: Record<string, unknown> = { alias: 'name' }
+    setFieldText(target, 'helpText', '#contact.help')
+    expect(target.helpText).toBe('#contact.help')
+    setFieldText(target, 'helpText', '   ')
+    expect('helpText' in target).toBe(false)
   })
 })

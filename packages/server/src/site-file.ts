@@ -29,7 +29,7 @@ import {
   sealBytes,
   writeManifest,
 } from '@crombolo/transfer'
-import { createFileSystemPort } from './adapters/file-system.ts'
+import { createComponentsPort, createFileSystemPort } from './adapters/file-system.ts'
 import { createTemplateFileStore } from './adapters/template-files.ts'
 import { type CromboloConfig, VERSION } from './config.ts'
 import { mediaStoreFor } from './media-files.ts'
@@ -163,10 +163,7 @@ export async function exportSite(
     {
       db,
       componentFiles: createTemplateFileStore(config.componentsDir),
-      components: createFileSystemPort(config.componentsDir, {
-        extension: '.tsx',
-        rewrites: ['.cshtml'],
-      }),
+      components: createComponentsPort(config.componentsDir),
       stylesheets: createFileSystemPort(config.stylesheetsDir, { extension: '.css' }),
       scripts: createFileSystemPort(config.scriptsDir, { extension: '.js' }),
       schemaDir: config.schemaDir,

@@ -30,9 +30,7 @@ varies-by-culture = true
 [[tab.property]]
 alias = "enquiryForm"
 name = "Form"
-description = "One form for each language, since a form has one set of labels"
 type = "formPicker"
-varies-by-culture = true
 
 [[tab.property]]
 alias = "aside"

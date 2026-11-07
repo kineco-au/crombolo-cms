@@ -22,6 +22,7 @@ import {
   libraryFormTypeKey,
   MENU_ALIAS_PROPERTY,
   type SchemaForm,
+  withFormWords,
   withResolvedChoices,
 } from '@crombolo/core'
 import type { PublishedMedia } from './media.ts'
@@ -1268,9 +1269,7 @@ export class PublishedCache {
       // An unpublished or deleted Library form is neither, so nothing shows.
       const element = view?.elements.get(key.toLowerCase())
       const form = element ? libraryForm(element, forms?.() ?? []) : lookup(key)
-      return form
-        ? withResolvedChoices(form, (source) => resolveChoices(snapshot, view, culture, source))
-        : undefined
+      return form ? localisedForm(form, snapshot, view, culture) : undefined
     }
   }
 
@@ -1301,10 +1300,7 @@ export class PublishedCache {
     const snapshot = await this.snapshot()
     const view = this.#view(snapshot, culture)
     return {
-      resolve: (form) =>
-        withResolvedChoices(form, (source) =>
-          resolveChoices(snapshot, view, culture ?? null, source),
-        ),
+      resolve: (form) => localisedForm(form, snapshot, view, culture ?? null),
       urlOf: (key) => {
         const url = view?.byKey.get(key.toLowerCase())?.url
         return url && url !== '#' ? url : undefined
@@ -1315,9 +1311,7 @@ export class PublishedCache {
   async resolveForm(form: SchemaForm, culture?: string | null): Promise<SchemaForm> {
     const snapshot = await this.snapshot()
     const view = this.#view(snapshot, culture)
-    return withResolvedChoices(form, (source) =>
-      resolveChoices(snapshot, view, culture ?? null, source),
-    )
+    return localisedForm(form, snapshot, view, culture ?? null)
   }
 }
 
@@ -1419,6 +1413,37 @@ function descendantsOf(view: CultureView, content: PublishedContent): PublishedC
 }
 
 /** A dictionary item's translation in `culture`, then its fallback languages; '' when none. */
+/**
+ * A form's text in `culture`. `#name` is a dictionary item's translation, then
+ * its fallbacks, then the item's name; a `#` naming no item is only text.
+ */
+function formWord(
+  snapshot: Pick<
+    CacheSnapshot,
+    'dictionary' | 'dictionaryOutline' | 'languages' | 'defaultCulture'
+  >,
+  culture: string | null,
+): (text: string) => string {
+  const named = new Map(snapshot.dictionaryOutline.map((item) => [item.name.toLowerCase(), item]))
+  return (text) => {
+    const item = text.startsWith('#') ? named.get(text.slice(1).toLowerCase()) : undefined
+    return item ? translate(snapshot, item.name, culture) || item.name : text
+  }
+}
+
+/** A form as a page in `culture` shows it: its choices filled in, and its words. */
+function localisedForm(
+  form: SchemaForm,
+  snapshot: ChoiceSnapshot,
+  view: CultureView | undefined,
+  culture: string | null,
+): SchemaForm {
+  const resolved = withResolvedChoices(form, (source) =>
+    resolveChoices(snapshot, view, culture, source),
+  )
+  return withFormWords(resolved, formWord(snapshot, culture))
+}
+
 export function translate(
   snapshot: Pick<CacheSnapshot, 'dictionary' | 'languages' | 'defaultCulture'>,
   key: string,

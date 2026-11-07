@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync }
 import { join } from 'node:path'
 import { findTemplate, listTemplates, scaffoldFiles } from '@crombolo/cli'
 import { siteMediaTypeFiles } from '@crombolo/schema'
+import { buildBundleFromDirectory } from '@crombolo/server'
 import { ROOT } from '../scripts/packages.ts'
 import {
   findSite,
@@ -175,6 +176,17 @@ describe('staging a site as a template', () => {
     unstage(staged, into)
     expect(readdirSync(into)).toEqual(['basic'])
   })
+})
+
+describe('a site built into a bundle', () => {
+  test('carries the plain modules its views import', async () => {
+    const site = findSite('demo/crombolo')
+    const built = await buildBundleFromDirectory(site?.dir as string, { media: false })
+    expect(built.problems).toEqual([])
+    const paths = built.files?.map((file) => file.path) ?? []
+    expect(paths).toContain('components/shared/categories.ts')
+    expect(paths).toContain('components/shared/dates.ts')
+  }, 60_000)
 })
 
 describe('what a site writes as it runs', () => {

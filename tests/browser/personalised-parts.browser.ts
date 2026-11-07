@@ -103,3 +103,45 @@ test("a view's relative imports resolve to the site's views, and a wrong one is 
     .poll(unresolved, { timeout: 30_000 })
     .toEqual(["Cannot find module './nowhere.tsx' or its corresponding type declarations."])
 })
+
+test('the create menu offers a component or a module, in plain words', async ({ page }) => {
+  await signIn(page)
+  await page.goto('/crombolo/section/settings/code')
+  const root = page
+    .locator('umb-tree-item, umb-default-tree-item')
+    .filter({ hasText: 'Components' })
+    .first()
+  await root.hover()
+  await root
+    .locator('uui-action-bar, umb-entity-actions-bundle')
+    .first()
+    .locator('uui-button, a')
+    .first()
+    .click()
+  await page.getByText('Create…', { exact: true }).click()
+  await expect(page.getByText('Component...', { exact: true }).first()).toBeVisible()
+  await page.getByText('Module...', { exact: true }).click()
+  await expect(page).toHaveURL(/partial-view\/create\/parent\/.*\/module$/)
+  await expect(page.locator('umb-code-editor')).toContainText('export function myModule')
+})
+
+test('a module is made from its own page, checked as .ts, and has no Insert', async ({ page }) => {
+  await signIn(page)
+  await page.goto(
+    '/crombolo/section/settings/workspace/partial-view/create/parent/partial-view-root/null/module',
+  )
+  const editor = page.locator('umb-code-editor')
+  await expect(editor).toContainText('export function myModule')
+  await expect(page.locator('#insert-button')).toHaveCount(0)
+
+  const name = `module-${crypto.randomUUID().slice(0, 6)}`
+  await page.locator('umb-workspace-header-name-editable uui-input input').fill(name)
+  await page.getByRole('button', { name: 'Save' }).click()
+  await expect(page).toHaveURL(new RegExp(`edit/.*${name}.*ts`), { timeout: 20_000 })
+
+  const language = await page.evaluate(async () => {
+    const { monaco } = await import('@umbraco-cms/backoffice/external/monaco-editor')
+    return monaco.editor.getModels().map((model) => model.uri.path.split('.').at(-1))
+  })
+  expect(language).toContain('ts')
+})

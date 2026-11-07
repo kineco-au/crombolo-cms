@@ -78,6 +78,16 @@ describe('a views snapshot', () => {
     expect(taken.status().generations).toBe(1)
   })
 
+  test('moves when a plain module changes, since a view can import one', async () => {
+    const where = site({ 'homePage.tsx': view('first'), 'shared/dates.ts': 'export const a = 1\n' })
+    const { taken, time } = await snapshots(where)
+    const first = taken.directory() as string
+    expect(existsSync(join(first, 'shared', 'dates.ts'))).toBe(true)
+
+    writeFileSync(join(where.sourceDir, 'shared', 'dates.ts'), 'export const a = 2\n')
+    expect(await look(taken, time)).not.toBe(first)
+  })
+
   test('does not move while the tree does not', async () => {
     const where = site()
     const { taken, time } = await snapshots(where)

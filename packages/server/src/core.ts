@@ -619,6 +619,7 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
       nodeState: schema.nodeState,
       nodeId: schema.nodeId,
       onContentChanged: () => cache.invalidate(),
+      resolveForm: (form) => cache.resolveForm(form),
       operations: operations.documents,
       bundleWorkflows: formTypes.workflows,
       renderEmail: (alias, props) => renderer.renderEmail(alias, props),

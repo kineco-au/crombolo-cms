@@ -2337,6 +2337,15 @@ export async function createServer(
             }
           : undefined,
       }
+      // Every dictionary item in the default language, for the designer to suggest.
+      if (action === 'words' && request.method === 'GET') {
+        if (!may(FormPermissions.Manage)) return new Response('Forbidden', { status: 403 })
+        const entries = await cache.dictionaryEntries(null)
+        return Response.json({
+          words: Object.entries(entries).map(([name, text]) => ({ name, text })),
+        })
+      }
+
       const maySeeEntries = may(FormPermissions.EntriesView)
       const mayManageEntries = may(FormPermissions.EntriesManage)
       // The group alias still counts: `sensitiveData` is how Umbraco carries
@@ -2412,7 +2421,7 @@ export async function createServer(
         const form = byKey.get(key)
         if (!form) return new Response('Not Found', { status: 404 })
         const page = await entries.list({ formKey: key, take: 10_000 })
-        const result = entriesCsv(form, page.items, {
+        const result = entriesCsv(await cache.resolveForm(form), page.items, {
           includeSensitive: maySeeSensitive,
           types: formTypes.types,
         })
@@ -2441,6 +2450,7 @@ export async function createServer(
           formKey: key,
           ...(library ? { libraryKey: library === 'none' ? null : library } : {}),
           state: parseEntryState(url.searchParams.get('state')),
+          culture: url.searchParams.get('language') || undefined,
           from: since ? new Date(since) : undefined,
           to: until ? new Date(until) : undefined,
           search: url.searchParams.get('search') ?? undefined,
@@ -2451,6 +2461,7 @@ export async function createServer(
         const form = byKey.get(key)
         return Response.json({
           total: page.total,
+          languages: await entries.languages(key),
           items: page.items.map((entry) => ({
             ...entry,
             values: redactSensitive(entry, form, maySeeSensitive),
@@ -3181,6 +3192,20 @@ export async function createServer(
       }
     })()
 
+    // An app says which language it drew the form in; a page's address says it otherwise.
+    const culture = await (async () => {
+      const asked = requestedCulture(request.headers.get('accept-language'))
+      if (asked && (await cache.hasCulture(asked))) return asked
+      try {
+        const referer = request.headers.get('referer')
+        if (!referer) return null
+        const url = new URL(referer)
+        return await cache.cultureFor(url.host, url.pathname)
+      } catch {
+        return null
+      }
+    })()
+
     const outcome = await submitForm(
       {
         db,
@@ -3192,22 +3217,8 @@ export async function createServer(
         libraryForm: (libraryKey) => cache.libraryForm(libraryKey),
         // The page it was sent from names the culture; the keys a source offers
         // are the same in every culture, so only the stored labels depend on it.
-        resolveForm: async (form) => {
-          // An app says which language it drew the form in; a page's address says it otherwise.
-          const asked = requestedCulture(request.headers.get('accept-language'))
-          if (asked && (await cache.hasCulture(asked))) return cache.resolveForm(form, asked)
-          const referer = request.headers.get('referer')
-          let culture: string | null = null
-          try {
-            if (referer) {
-              const url = new URL(referer)
-              culture = await cache.cultureFor(url.host, url.pathname)
-            }
-          } catch {
-            culture = null
-          }
-          return cache.resolveForm(form, culture)
-        },
+        resolveForm: (form) => cache.resolveForm(form, culture),
+        culture,
       },
       request,
       key,

@@ -85,7 +85,8 @@ export default {
   create: {
     // The create options on the Components tree. The folder option is Umbraco's
     // own and already reads correctly.
-    newEmptyPartialView: 'Empty component',
+    newEmptyPartialView: 'Component',
+    newModule: 'Module',
     newPartialViewFromSnippet: 'Component from snippet',
   },
   treeHeaders: {

@@ -1,13 +1,13 @@
-# A form has one set of labels, so each language has its own. The Contact page's
-# `enquiryForm` varies by language and picks the one to show.
+# One form in every language: a word starting with # names a dictionary item, and
+# shows in the page's language. See content/dictionary.toml and docs/forms.md.
 [form]
 key = "5e2c7a10-3f4b-4c6d-9a18-6b7d0e1f2a31"
 alias = "contact"
-name = "Contact (English)"
+name = "Contact"
 store-entries = true
 requires-approval = false
-submit-label = "Send message"
-message-on-submit = "Thanks. Your message is in the back office, under Forms."
+submit-label = "#contact.send"
+message-on-submit = "#contact.thanks"
 honeypot = true
 minimum-submit-seconds = 3
 
@@ -19,23 +19,23 @@ minimum-submit-seconds = 3
     [[page.group.field]]
     alias = "visitorName"
     type = "shortAnswer"
-    caption = "Name"
+    caption = "#contact.name"
     mandatory = true
-    mandatory-message = "We need a name to reply to"
+    mandatory-message = "#contact.nameNeeded"
     autocomplete = "name"
 
     [[page.group.field]]
     alias = "visitorEmail"
     type = "email"
-    caption = "Email"
+    caption = "#contact.email"
     mandatory = true
-    mandatory-message = "We need an email address to reply to"
+    mandatory-message = "#contact.emailNeeded"
     autocomplete = "email"
 
     [[page.group.field]]
     alias = "message"
     type = "longAnswer"
-    caption = "Message"
+    caption = "#contact.message"
     mandatory = true
-    mandatory-message = "Tell us what you would like to know"
+    mandatory-message = "#contact.messageNeeded"
     rows = 5

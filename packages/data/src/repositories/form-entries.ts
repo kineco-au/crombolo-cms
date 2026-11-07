@@ -65,6 +65,8 @@ export interface FormEntryQuery {
   /** Only the entries that came through this Library form; `null` for those that came through none. */
   libraryKey?: string | null
   state?: FormEntryState
+  /** Only the entries filled in in this language. */
+  culture?: string
   /** Inclusive; the entries view defaults to the last month. */
   from?: Date
   to?: Date
@@ -185,6 +187,19 @@ export class FormEntryRepository {
     return hydrate(row, (await this.#valuesFor([id])).get(id) ?? [])
   }
 
+  /** The languages a form's entries were filled in. */
+  async languages(formKey: string): Promise<string[]> {
+    const rows = await this.#db.q
+      .selectFrom('form_entry')
+      .select('culture')
+      .distinct()
+      .where('form_key', '=', formKey)
+      .where('culture', 'is not', null)
+      .orderBy('culture')
+      .execute()
+    return rows.flatMap((row) => (row.culture ? [row.culture] : []))
+  }
+
   async list(query: FormEntryQuery): Promise<{ total: number; items: FormEntry[] }> {
     const search = query.search ? `%${query.search.toLowerCase()}%` : undefined
     const matching = this.#db.q
@@ -196,6 +211,7 @@ export class FormEntryRepository {
           : q.where('library_key', '=', query.libraryKey as string),
       )
       .$if(Boolean(query.state), (q) => q.where('state', '=', query.state as FormEntryState))
+      .$if(Boolean(query.culture), (q) => q.where('culture', '=', query.culture as string))
       .$if(Boolean(query.from), (q) =>
         q.where('create_date', '>=', DbDate.toDb(query.from as Date)),
       )

@@ -5,10 +5,23 @@
  * all of it again in Spanish at `/es`.
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
-import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
+import {
+  cpSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { join } from 'node:path'
 import { FORM_RENDERED_FIELD, FORM_TOKEN_FIELD } from '@crombolo/core'
-import { compileSeed, installBundleContent, syncDomainsFile } from '@crombolo/server'
+import {
+  buildBundleFromDirectory,
+  compileSeed,
+  installBundleContent,
+  syncDomainsFile,
+} from '@crombolo/server'
 import { writeSeedPackage } from '../packages/cli/src/support/seed.ts'
 import { type Harness, ORIGIN, signedInServer } from './support/harness.ts'
 
@@ -29,6 +42,7 @@ beforeAll(async () => {
       componentsCacheDir: join(root, '.crombolo'),
       stylesheetsDir: join(root, 'css'),
       mediaDir: join(root, 'media'),
+      deliveryApi: { enabled: true },
     },
   })
   const build = await compileSeed(h.server.db, h.server.config)
@@ -201,9 +215,29 @@ describe('the Crombolo demo, in Spanish at /es', () => {
     expect(html).toContain('Enviar mensaje')
     expect(html).toContain('Correo electrónico')
     expect(html).not.toContain('Send message')
+    expect(html).not.toContain('#contact')
   })
 
-  test('its contact form takes a message, under the Spanish form', async () => {
+  test('a refused message says why in Spanish', async () => {
+    const form = await h.server.fetch(new Request(`${ORIGIN}/es/contacto`))
+    const html = await form.text()
+    const field = (name: string) =>
+      new RegExp(`name="${name}" value="([^"]+)"`).exec(html)?.[1] as string
+    const action = /action="(\/crombolo\/forms\/[^"]+)"/.exec(html)?.[1] as string
+    const body = new FormData()
+    body.set(FORM_TOKEN_FIELD, field(FORM_TOKEN_FIELD))
+    body.set(FORM_RENDERED_FIELD, field(FORM_RENDERED_FIELD))
+    const response = await h.server.fetch(
+      new Request(`${ORIGIN}${action}`, {
+        method: 'POST',
+        body,
+        headers: { referer: `${ORIGIN}/es/contacto`, accept: 'application/json' },
+      }),
+    )
+    expect(await response.text()).toContain('Necesitamos un nombre para responder')
+  })
+
+  test('one contact form takes a message in Spanish, and saves its language', async () => {
     const form = await h.server.fetch(new Request(`${ORIGIN}/es/contacto`))
     const cookie = form.headers.get('set-cookie')?.split(';')[0] ?? ''
     const html = await form.text()
@@ -228,8 +262,54 @@ describe('the Crombolo demo, in Spanish at /es', () => {
     )
     expect(response.status).toBe(303)
     const entries = await h.server.db.q.selectFrom('form_entry').selectAll().execute()
-    expect(entries.map((entry) => entry.form_key)).toEqual(['9c4e1d72-6a2f-4b83-8e05-2d1f7c9b3e64'])
+    expect(entries.map((entry) => [entry.form_key, entry.culture])).toEqual([
+      ['5e2c7a10-3f4b-4c6d-9a18-6b7d0e1f2a31', 'es-ES'],
+    ])
   })
+})
+
+describe('its one contact form', () => {
+  const KEY = '5e2c7a10-3f4b-4c6d-9a18-6b7d0e1f2a31'
+
+  test('reaches an app in the language it asks for', async () => {
+    const response = await h.server.fetch(
+      new Request(`${ORIGIN}/umbraco/delivery/api/v2/forms/${KEY}`, {
+        headers: { 'accept-language': 'es-ES' },
+      }),
+    )
+    const text = await response.text()
+    expect(text).toContain('Correo electrónico')
+    expect(text).not.toContain('#contact')
+  })
+
+  test('exports its columns as words', async () => {
+    const response = await h.call(`/crombolo/crombolo/api/forms/${KEY}/entries.csv`)
+    const header = (await response.text()).split('\r\n')[0]
+    expect(header).toContain('Name')
+    expect(header).not.toContain('#contact')
+  })
+
+  test('says which languages its entries came in', async () => {
+    const list = await h.json<{ languages: string[]; items: Array<{ culture: string }> }>(
+      `/crombolo/crombolo/api/forms/${KEY}/entries?language=es-ES`,
+    )
+    expect(list.languages).toEqual(['es-ES'])
+    expect(list.items.map((entry) => entry.culture)).toEqual(['es-ES'])
+  })
+
+  test('a name the dictionary does not have is reported when the bundle is built', async () => {
+    const copy = mkdtempSync(join(process.cwd(), 'output', 'crombolo-demo-words-'))
+    try {
+      for (const part of ['schema', 'components', 'css', 'content', 'package.json', 'site.json'])
+        cpSync(join(SITE, part), join(copy, part), { recursive: true })
+      const file = join(copy, 'schema', 'forms', 'contact.toml')
+      writeFileSync(file, readFileSync(file, 'utf8').replace('#contact.send', '#contact.sned'))
+      const built = await buildBundleFromDirectory(copy, { media: false })
+      expect(built.problems.join('\n')).toContain('#contact.sned')
+    } finally {
+      rmSync(copy, { recursive: true, force: true })
+    }
+  }, 60_000)
 })
 
 describe('the Crombolo demo, to search engines', () => {

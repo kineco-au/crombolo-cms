@@ -16,7 +16,11 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DEFAULT_BACKOFFICE_PATH } from '@crombolo/core'
 import { EDITOR_CONTENT_TYPES, editorTypeLibs, siteJsxImportSource } from '@crombolo/server'
-import { folderOf } from '../packages/backoffice-host/plugin/view-parts.js'
+import {
+  fileBeingCreated,
+  folderOf,
+  modelExtension,
+} from '../packages/backoffice-host/plugin/view-parts.js'
 import { type Harness, signedInServer } from './support/harness.ts'
 
 const EDITOR_TYPES = `${DEFAULT_BACKOFFICE_PATH}/crombolo/api/editor-types`
@@ -255,12 +259,32 @@ describe('a view’s relative imports', () => {
   })
 })
 
+describe('a module in the editor', () => {
+  test('opens as .ts, so its generics are not read as JSX', () => {
+    expect(modelExtension('/shared/dates.ts')).toBe('.ts')
+    expect(modelExtension('/shared/layout.tsx')).toBe('.tsx')
+    expect(modelExtension(undefined)).toBe('.tsx')
+  })
+
+  test('being created knows its folder and kind from the address', () => {
+    const at = '/crombolo/section/settings/workspace/partial-view/create/parent'
+    expect(fileBeingCreated(`${at}/partial-view-root/null`)).toBe('/new.tsx')
+    expect(fileBeingCreated(`${at}/partial-view-root/null/module`)).toBe('/new.ts')
+    expect(fileBeingCreated(`${at}/partial-view-folder/%2Fshared/module`)).toBe('/shared/new.ts')
+    expect(
+      fileBeingCreated('/crombolo/section/settings/workspace/partial-view/edit/x'),
+    ).toBeUndefined()
+  })
+})
+
 describe('the editor configuration', () => {
   test('is the typescript service on a .tsx file, not a language of its own', async () => {
     const editors = await source('plugin/tsx-editors.js')
 
     // The file name is what decides whether TypeScript will read JSX at all.
-    expect(editors).toMatch(/\$\{COMPONENTS}\$\{folderOf\(file\)}\/view-\$\{\+\+opened}\.tsx/)
+    expect(editors).toMatch(
+      /\$\{COMPONENTS}\$\{folderOf\(file\)}\/view-\$\{\+\+opened}\$\{modelExtension\(file\)}/,
+    )
     expect(editors).toContain("const COMPONENTS = 'file:///components'")
     // A `tsx` language would tokenise and then be ignored by the worker every
     // completion comes from, so the mode stays monaco's own.

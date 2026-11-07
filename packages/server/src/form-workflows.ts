@@ -80,6 +80,8 @@ export interface WorkflowDeps {
   renderEmail?: (alias: string, props: EmailTemplateProps) => Promise<EmailRenderResult>
   /** The site's name and address, for an e-mail template. */
   site?: () => Promise<{ name: string; url: string }>
+  /** A form's words in the default language, so a message shows them and not their keys. */
+  resolveForm?: (form: SchemaForm) => Promise<SchemaForm>
 }
 
 export type WorkflowResult =
@@ -591,7 +593,7 @@ export function createWorkflowRunner(
     }
 
     const context: WorkflowContext = {
-      form,
+      form: (await deps.resolveForm?.(form)) ?? form,
       values: run.payload,
       entryId: run.entryId,
       ...(run.recipients ? { recipients: run.recipients } : {}),

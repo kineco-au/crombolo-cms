@@ -6,6 +6,32 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.52.2 — 2026-11-07
+
+v0.52.1 was tagged but not published: a browser test of ours clicked on while a page was still
+opening. Its notes and v0.52.0's apply to this release.
+
+### Features
+
+- **Modules beside your components (292).** Plain `.ts` files in `components/` now show in the
+  back office, and Module in the create menu starts a new one. They open, save and rename as
+  components do, and are checked as `.ts`.
+
+- **One form in every language (293).** A form's words can name dictionary items, such as
+  `caption = "#contact.name"`, so a translated site needs only one form. Plain words are
+  unchanged. `bundle build --check` reports a name the dictionary doesn't have.
+- **Dictionary suggestions in the form editor (294).** Typing `#` in a form's text box lists
+  dictionary items, and it says what one reads as.
+- **A field's help and messages in the form editor (295).** Help text, the message when a field
+  is left empty, and a pattern with its message can now be set there, not only in the file.
+- **Entries know their language (293).** A submission saves the language it was filled in, and
+  Entries can filter by it.
+
+### Fixes
+
+- **A site built into a bundle keeps its `.ts` files (292).** They were left out, so a view
+  importing one failed once the bundle was applied.
+
 ## v0.52.1 — 2026-11-07
 
 ### Fixes

@@ -13,9 +13,11 @@
 import { PartialViewService, TemplateService } from '@umbraco-cms/backoffice/external/backend-api'
 import { toTsxSnippet } from './tsx-snippets.js'
 import {
+  fileBeingCreated,
   folderOf,
   importFor,
   memberNotes,
+  modelExtension,
   PERSONALISED_PART_DIALOG,
   partInsert,
   personalisedPartInsert,
@@ -211,7 +213,7 @@ function viewEditor() {
       model = monaco.editor.createModel(
         created.getValue(),
         'typescript',
-        monaco.Uri.parse(`${COMPONENTS}${folderOf(file)}/view-${++opened}.tsx`),
+        monaco.Uri.parse(`${COMPONENTS}${folderOf(file)}/view-${++opened}${modelExtension(file)}`),
       )
       editor.setModel(model)
       created.dispose()
@@ -259,6 +261,8 @@ function viewEditor() {
 
 /** The view open in the editor, as a path under `components/`, from the address. */
 async function openFile() {
+  const creating = fileBeingCreated(location.pathname)
+  if (creating) return creating
   const partial = /\/workspace\/partial-view\/edit\/([^/?#]+)/.exec(location.pathname)
   if (partial) return decodeURIComponent(partial[1]).replace('%dot%', '.')
   const template = /\/workspace\/template\/edit\/([0-9a-f-]{36})/i.exec(location.pathname)

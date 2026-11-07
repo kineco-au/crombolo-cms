@@ -64,6 +64,20 @@ A list is an array: `map` over the items. `false`, `null` and `undefined` render
 nothing, so `condition && <Element />` shows the element only when the condition
 holds. There is no `key` to give a list item; it is accepted and ignored.
 
+## A module
+
+Code that several components share and that draws nothing goes in a plain `.ts` file beside them:
+a list of values, a date format, a small calculation. In the back office it is **Module** in
+Settings' create menu, or the `components/` folder on disk, and it is imported as any file is:
+
+```tsx
+import { formatDate } from '../shared/dates.ts'
+```
+
+A module is listed, edited, renamed and carried in a bundle as a component is, and changing one
+rebuilds the views. It is never a template, a block or something to place on a page, and it has
+no Insert menu, which writes markup.
+
 ## Styles and SVG
 
 ```tsx

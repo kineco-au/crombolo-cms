@@ -133,3 +133,21 @@ export const folderOf = (file) => {
   const folder = (file ?? '').replace(/^\/*/, '/').replace(/\/[^/]*$/, '')
   return folder === '/' ? '' : folder
 }
+
+/** The extension a view opens with in the editor: a module's `.ts`, else a component's `.tsx`. */
+export const modelExtension = (file) => (file?.endsWith('.ts') ? '.ts' : '.tsx')
+
+/**
+ * The file a create page will make, as a path under `components/`, from its address.
+ * Its name isn't known yet, but its folder and kind are, and they are what the editor needs.
+ *
+ * @param {string} pathname
+ */
+export function fileBeingCreated(pathname) {
+  const found = /\/workspace\/partial-view\/create\/parent\/[^/]+\/([^/]+)(\/module)?/.exec(
+    pathname,
+  )
+  if (!found) return undefined
+  const folder = found[1] === 'null' ? '' : decodeURIComponent(found[1]).replace(/\/$/, '')
+  return `${folder}/new${found[2] ? '.ts' : '.tsx'}`
+}

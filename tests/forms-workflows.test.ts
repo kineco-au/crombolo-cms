@@ -9,7 +9,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import type { SchemaForm } from '@crombolo/core'
+import { type SchemaForm, withFormWords } from '@crombolo/core'
 import {
   AuditLog,
   ComponentRepository,
@@ -305,6 +305,20 @@ describe('sendEmail', () => {
     expect(sent.to).toEqual([{ email: 'enquiries@example.com' }])
     expect(sent.subject).toBe('Contact from a@example.com about Sales')
     expect(sent.text).toContain('Email address: a@example.com')
+  })
+
+  test('a message shows a form’s words, not the dictionary names behind them', async () => {
+    const { post, forms, h } = await site()
+    const email = recordingEmail()
+    await post({ email: 'a@example.com', topic: 'Sales' })
+    const runner = createWorkflowRunner({
+      db: h.server.db,
+      forms,
+      email,
+      resolveForm: async (form) => withFormWords(form, (text) => `Word for ${text}`),
+    })
+    await runner.runDue()
+    expect((email.sent[0] as EmailMessage).text).toContain('Word for Email address: a@example.com')
   })
 
   test('a site with no e-mail fails the run permanently, naming what to configure', async () => {

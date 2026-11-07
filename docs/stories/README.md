@@ -123,7 +123,11 @@ not cover.
 | `288` | The overview is the home of the back office | should | M | done | — |
 | `289` | A second-level menu under Content | should | L | done | 288 |
 | `291` | A session ending asks you to sign in, on every screen | should | S | done | — |
-| `292` | Plain `.ts` files beside the views | should | M | ready | — |
+| `292` | Plain `.ts` files beside the views | should | M | done | — |
+| `293` | One form in every language | should | M | done | — |
+| `294` | Dictionary suggestions in the form editor | could | S | done | 293 |
+| `295` | Every form word has a box in the form editor | should | S | done | 294 |
+| `296` | Admins choose what a group sees under Content | should | L | backlog | — |
 
 ### Epic D — Members and identity
 

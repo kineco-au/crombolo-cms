@@ -1042,8 +1042,8 @@ for a property that varies goes under `[values.<culture>]`, the default
 language's included.
 
 A Library element reads its values in the page's culture, then its fallbacks,
-as a page does. A form has one set of labels, so a translated site gives each
-language its own form and lets the page's form picker vary by culture.
+as a page does. A form is one form in every language, with labels that name
+dictionary items ([`forms.md`](forms.md)).
 `seoFields` does not vary by culture: a translated site passes `description` to
 `<SeoHead>` from a field that does, as `sites/crombolo-demo` does. Invariant
 pages appear in every culture. `GetDocumentUrls` lists one URL per published
