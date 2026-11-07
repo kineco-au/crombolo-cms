@@ -15,4 +15,18 @@ export const manifests: Array<UmbExtensionManifest | UmbExtensionManifestKind> =
 			additionalOptions: true,
 		},
 	},
+	{
+		// Crombolo: a plain .ts file for components to import (story 292).
+		type: 'entityCreateOptionAction',
+		alias: 'Crombolo.EntityCreateOptionAction.PartialView.Module',
+		name: 'Module Partial View Entity Create Option Action',
+		weight: 500,
+		api: () => import('./module-partial-view-create-option-action.js'),
+		forEntityTypes: [UMB_PARTIAL_VIEW_ROOT_ENTITY_TYPE, UMB_PARTIAL_VIEW_FOLDER_ENTITY_TYPE],
+		meta: {
+			icon: 'icon-document-js',
+			label: '#create_newModule',
+			additionalOptions: true,
+		},
+	},
 ];
