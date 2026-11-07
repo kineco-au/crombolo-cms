@@ -4,6 +4,13 @@ import { css, customElement, html, ifDefined, repeat, state } from '@umbraco-cms
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element';
 import type { ManifestSection } from '@umbraco-cms/backoffice/section';
 
+/** Crombolo: parts of Settings a group can hold, reached from the menu under Content (story 296). */
+const CROMBOLO_NO_TAB = [
+	'Crombolo.Section.Structure',
+	'Crombolo.Section.Components',
+	'Crombolo.Section.WorkflowSetup',
+];
+
 @customElement('umb-backoffice-header-sections')
 export class UmbBackofficeHeaderSectionsElement extends UmbLitElement {
 	@state()
@@ -59,6 +66,7 @@ export class UmbBackofficeHeaderSectionsElement extends UmbLitElement {
 						(section): section is ManifestSection =>
 							section !== undefined &&
 							section.alias !== 'Umb.Section.Settings' &&
+							!CROMBOLO_NO_TAB.includes(section.alias) &&
 							!(
 								section.alias === 'Crombolo.Section.Forms' &&
 								allowedSections.some((other) => other.manifest?.alias === 'Umb.Section.Content')
