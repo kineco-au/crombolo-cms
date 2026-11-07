@@ -64,7 +64,8 @@ export class UmbBasicState<T> {
 	 * console.log("Value is: ", myState.value);
 	 */
 	public getValue(): T {
-		return this._subject.getValue();
+		// Crombolo: a state read after it was destroyed, by a load that outlived its editor, is empty.
+		return this._subject?.getValue() as T;
 	}
 
 	/**
@@ -87,7 +88,9 @@ export class UmbBasicState<T> {
 	 * // myState.value is equal 'Goodnight'.
 	 */
 	setValue(data: T): void {
-		if (!this._subject) throw new Error('_subject is undefined');
+		// Crombolo: Umbraco throws here, and an editor left while it loads then
+		// reports an error that changes nothing. A destroyed state takes no value.
+		if (!this._subject) return;
 		if (data !== this._subject.getValue()) {
 			this._subject.next(data);
 		}
