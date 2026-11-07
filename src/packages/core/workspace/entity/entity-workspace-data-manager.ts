@@ -43,7 +43,8 @@ export class UmbEntityWorkspaceDataManager<ModelType>
 	 * @memberof UmbEntityWorkspaceDataManager
 	 */
 	getPersisted() {
-		return this._persisted.getValue();
+		// Crombolo: a workspace left while it loads is destroyed under the load still running.
+		return this._persisted?.getValue();
 	}
 
 	/**
@@ -83,7 +84,7 @@ export class UmbEntityWorkspaceDataManager<ModelType>
 	 * @memberof UmbEntityWorkspaceDataManager
 	 */
 	getCurrent() {
-		return this._current.getValue();
+		return this._current?.getValue();
 	}
 
 	/**
