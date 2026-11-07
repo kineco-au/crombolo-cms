@@ -26,6 +26,24 @@ export class UmbBackofficeHeaderSectionsElement extends UmbLitElement {
 		});
 	}
 
+	// Crombolo: the menu under Content spans sections, and asks for Content's tab to stay marked.
+	@state()
+	private _markedSection?: string;
+
+	#onMarkSection = (event: Event) => {
+		this._markedSection = (event as CustomEvent<string | undefined>).detail;
+	};
+
+	override connectedCallback() {
+		super.connectedCallback();
+		window.addEventListener('crombolo:mark-section', this.#onMarkSection);
+	}
+
+	override disconnectedCallback() {
+		super.disconnectedCallback();
+		window.removeEventListener('crombolo:mark-section', this.#onMarkSection);
+	}
+
 	private _observeSections() {
 		if (!this._backofficeContext) return;
 
@@ -35,10 +53,16 @@ export class UmbBackofficeHeaderSectionsElement extends UmbLitElement {
 				const oldValue = this._sections;
 				this._sections = allowedSections
 					.map((section) => section.manifest)
-					// Settings opens from the header's gear (`Crombolo.HeaderApp.Settings`).
+					// Settings opens from the header's gear (`Crombolo.HeaderApp.Settings`), and
+					// Forms from the menu under Content, for whoever has Content to find it in.
 					.filter(
 						(section): section is ManifestSection =>
-							section !== undefined && section.alias !== 'Umb.Section.Settings',
+							section !== undefined &&
+							section.alias !== 'Umb.Section.Settings' &&
+							!(
+								section.alias === 'Crombolo.Section.Forms' &&
+								allowedSections.some((other) => other.manifest?.alias === 'Umb.Section.Content')
+							),
 					);
 				this.requestUpdate('_sections', oldValue);
 			},
@@ -120,7 +144,7 @@ export class UmbBackofficeHeaderSectionsElement extends UmbLitElement {
 			data-mark="section-link:${manifest.alias}"
 			href=${this.#getSectionPath(manifest)}
 			label=${ifDefined(label)}
-			?active=${this._currentSectionAlias === manifest.alias}
+			?active=${(this._markedSection ?? this._currentSectionAlias) === manifest.alias}
 			@click=${(event: PointerEvent) => this.#onSectionClick(event, manifest)}></uui-tab>`;
 	}
 
