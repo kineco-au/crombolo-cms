@@ -311,7 +311,7 @@ describe('where actions answer', () => {
       )
       expect(response.status).toBe(404)
     } finally {
-      await server.db.close()
+      await server.close()
     }
   })
 })

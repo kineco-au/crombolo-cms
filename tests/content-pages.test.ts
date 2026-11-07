@@ -308,7 +308,7 @@ describe('the commands, on a site with page types and a block list', () => {
       expect(html).toContain('<h1>Hello</h1>')
       expect(html).toContain('<p>Sourdough</p>')
     } finally {
-      await server.db.close()
+      await server.close()
     }
   }, 30_000)
 
