@@ -32,6 +32,7 @@ import {
   type ContentTypeRepositoryOptions,
   DataTypeRepository,
   type Db,
+  FORM_LIBRARY_FOLDER,
   FolderRepository,
   Locks,
   type NodeRepository,
@@ -197,6 +198,19 @@ export interface ContentTypePortOptions extends ContentTypeRepositoryOptions {
   kind?: ContentTypeKind
   /** Lets "Create template" write the view file. */
   componentFiles?: ComponentFileStore
+}
+
+/** Whether a tree item is the folder holding the types made from forms, and nothing else. */
+async function madeFromForms(db: Db, item: TreeItem): Promise<boolean> {
+  if (!item.isFolder || item.name !== FORM_LIBRARY_FOLDER) return false
+  const rows = await db.q
+    .selectFrom('node as folder')
+    .innerJoin('node as child', 'child.parent_id', 'folder.id')
+    .leftJoin('content_type as type', 'type.node_id', 'child.id')
+    .select('type.form_key')
+    .where('folder.unique_id', '=', item.key)
+    .execute()
+  return rows.length > 0 && rows.every((row) => row.form_key)
 }
 
 export function createContentTypePort(
@@ -508,7 +522,15 @@ export function createContentTypePort(
         'renameFolder',
         'deleteFolder',
       ]),
-      treeRoot: tree.treeRoot,
+      async treeRoot(paging: TreePage): Promise<Page<TreeItem>> {
+        const page = await tree.treeRoot(paging)
+        if (kind !== 'document') return page
+        // Forms sit beside content types in Structure, so the types made from them
+        // aren't shown twice. Library and the pickers read them directly.
+        const shown: TreeItem[] = []
+        for (const item of page.items) if (!(await madeFromForms(db, item))) shown.push(item)
+        return { total: page.total - (page.items.length - shown.length), items: shown }
+      },
       treeChildren: tree.treeChildren,
 
       async root(paging: SkipTake): Promise<Page<TreeItem>> {

@@ -27,6 +27,7 @@ import {
 import type { EventSink } from '@crombolo/content'
 import {
   CORE_SECTION_ALIASES,
+  clientSections,
   DEFAULT_UPLOAD_SETTINGS,
   hasAccessToSensitiveData,
   isUploadAllowed,
@@ -255,7 +256,7 @@ function createCurrentUserPort(
         hasAccessToSensitiveData: hasAccessToSensitiveData(principal.groups),
         fallbackPermissions: principal.permissions,
         permissions,
-        allowedSections: principal.allowedSections,
+        allowedSections: clientSections(principal),
         userGroupIds: principal.groupKeys.map((id) => ({ id })),
       }
     },

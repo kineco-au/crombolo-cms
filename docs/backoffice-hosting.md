@@ -458,6 +458,13 @@ are a box on Home, whose All details opens the client's own dialog.
 
 Every trail in Settings starts at Home, and its landing page has one too.
 
+**Parts of Settings (story 296).** `structure`, `components` and `workflowSetup` are sections a group
+can hold, with no header tab, as `forms` is. `api-management/src/authorization.ts` goes by what is held.
+The client opens those screens only for someone with Settings, so `clientSections` in
+`packages/core/src/sections.ts` adds Settings to what it is told, and `Crombolo.Section.AllSettings`
+marks those with the whole of it. The gear and the cards ask for that. Whoever holds `settings` has
+Structure and Components, and an administrator has Workflow setup too.
+
 **Modules (story 292)** are `.ts` files in the components tree, served by `createComponentsPort`.
 The create menu is built from `entityCreateOptionAction` manifests, not the unused options modal.
 
@@ -472,6 +479,10 @@ wherever one of them is open; `--crombolo-content-strip-height` makes room for i
 stay where they were, because the client hard-codes `section/settings/...` for types and templates,
 so the menu spans sections and raises `crombolo:mark-section` to keep Content's tab marked.
 The fork hides Forms from the header for anyone with Content. Settings has no Build group.
+
+Forms is a node in Structure: `settings-section.js` draws the definition tree under Structure's
+and routes `section/settings/forms`, so the tree stays on screen. The same elements answer at
+`section/forms/view/forms` for someone without Settings, and at the old addresses.
 
 Forms and Workflows are views of the Forms section with `meta.noTab`, which the fork takes
 as no tab bar, opened from `definition-tree.js`.

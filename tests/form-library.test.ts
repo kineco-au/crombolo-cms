@@ -275,6 +275,12 @@ describe('the types made from forms', () => {
     expect((await types.byAlias('feedbackForm'))?.formKey).toBe('feedback')
     const folder = await h.json<{ name: string }>(`${V1}/document-type/folder/${type?.parentKey}`)
     expect(folder.name).toBe(FORM_LIBRARY_FOLDER)
+    // Forms sit beside content types in Structure, so the tree doesn't show them twice.
+    const tree = await h.json<{ total: number; items: Array<{ name: string }> }>(
+      `${V1}/tree/document-type/root?skip=0&take=100`,
+    )
+    expect(tree.items.map((item) => item.name)).not.toContain(FORM_LIBRARY_FOLDER)
+    expect(tree.total).toBe(tree.items.length)
 
     const offered = await h.json<{ items: Array<{ id: string }> }>(
       `${V1}/document-type/allowed-in-library?skip=0&take=100`,

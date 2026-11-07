@@ -15,13 +15,21 @@ const here = () => {
   return location.pathname.startsWith(base) ? location.pathname.slice(base.length) : ''
 }
 
+/** A form's screens, in Structure for those who have it, else in the Forms section. */
+const formsAt = (view) =>
+  here().startsWith('section/settings')
+    ? `section/settings/forms${view === 'entries' ? '/entries' : ''}`
+    : `section/forms/view/${view}`
+
 const KINDS = {
   Forms: {
     label: 'Forms',
-    root: 'section/forms/view/entries',
+    get root() {
+      return formsAt('entries')
+    },
     rootLabel: 'Forms',
-    open: (item) => `section/forms/view/forms?form=${encodeURIComponent(item.key)}`,
-    create: (folder) => `section/forms/view/forms?new=${encodeURIComponent(folder)}`,
+    open: (item) => `${formsAt('forms')}?form=${encodeURIComponent(item.key)}`,
+    create: (folder) => `${formsAt('forms')}?new=${encodeURIComponent(folder)}`,
     load: formsTree,
     folder: sendFormFolder,
     move: moveForm,
@@ -50,6 +58,8 @@ const url = (path) =>
 
 export default class CromboloDefinitionTreeElement extends UmbLitElement {
   static properties = {
+    /** The tree to show; without it, whichever the address belongs to. */
+    kind: { type: String },
     _kind: { state: true },
     _tree: { state: true },
     _because: { state: true },
@@ -58,7 +68,7 @@ export default class CromboloDefinitionTreeElement extends UmbLitElement {
   }
 
   #follow = () => {
-    const kind = activeItem(here()) === 'Workflows' ? 'Workflows' : 'Forms'
+    const kind = this.kind ?? (activeItem(here()) === 'Workflows' ? 'Workflows' : 'Forms')
     if (kind === this._kind) return
     this._kind = kind
     this.#load()

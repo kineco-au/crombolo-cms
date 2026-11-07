@@ -65,12 +65,11 @@ test('a screen that finds the session over asks for sign-in, and shows no error'
   await goToSection(page, 'Content')
   await settle(page)
   await page.context().clearCookies()
-  await page.locator('crombolo-content-strip').getByRole('link', { name: 'Forms' }).click()
+  await page.locator('crombolo-content-strip').getByRole('link', { name: 'Workflows' }).click()
 
   const dialog = page.locator('crombolo-sign-in-dialog')
   await expect(dialog.getByText('Your session has ended')).toBeVisible()
-  await expect(page.getByText('forms responded')).toHaveCount(0)
-  await expect(page.getByText('There are no forms yet')).toHaveCount(0)
+  await expect(page.getByText('responded 401')).toHaveCount(0)
 })
 
 test('a timed-out session gets crombolo’s dialog, which names no other product', async ({

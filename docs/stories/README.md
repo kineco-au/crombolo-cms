@@ -127,7 +127,7 @@ not cover.
 | `293` | One form in every language | should | M | done | — |
 | `294` | Dictionary suggestions in the form editor | could | S | done | 293 |
 | `295` | Every form word has a box in the form editor | should | S | done | 294 |
-| `296` | Admins choose what a group sees under Content | should | L | backlog | — |
+| `296` | Admins choose what a group sees under Content | should | L | done | — |
 
 ### Epic D — Members and identity
 

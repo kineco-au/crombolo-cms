@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import { join } from 'node:path'
 import { createManagementApiRouter, type Principal } from '@crombolo/api-management'
 import { createBackOfficePaths, createExtensionRegistry } from '@crombolo/backoffice-host'
-import { CORE_SECTION_ALIASES, ROOT_ACCESS } from '@crombolo/core'
+import { ALL_SETTINGS, CORE_SECTION_ALIASES, ROOT_ACCESS } from '@crombolo/core'
 import { CORE_SECTIONS, createDeps, loadConfig } from '@crombolo/server'
 
 const paths = createBackOfficePaths()
@@ -86,9 +86,18 @@ describe('user/current', () => {
   })
 
   test('allows only sections the backoffice knows how to render', async () => {
-    // An unknown alias renders nothing; an empty list renders no navigation.
+    // An unknown alias renders nothing; an empty list renders no navigation. What
+    // an administrator holds, then what they hold through it: only the mark isn't a section.
     const body = await (await get(`${V1}/user/current`)).json()
-    expect(body.allowedSections).toEqual([...CORE_SECTIONS])
+    expect(body.allowedSections.filter((alias: string) => alias !== ALL_SETTINGS)).toEqual(
+      expect.arrayContaining([...CORE_SECTIONS]),
+    )
+    expect(
+      body.allowedSections.filter(
+        (alias: string) =>
+          alias !== ALL_SETTINGS && !(CORE_SECTIONS as readonly string[]).includes(alias),
+      ),
+    ).toEqual([])
   })
 })
 

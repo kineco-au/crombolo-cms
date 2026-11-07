@@ -37,6 +37,10 @@ rather than failing a save silently.
 
 ## Folders
 
+Forms are a node in Structure's tree, and Create under Content Types offers Form. Someone with
+Forms but not Settings finds the same tree in the Forms section. Workflows list in a tree of
+their own.
+
 Forms and workflows list in a tree beside the editor (story 289), and can sit in folders. A
 folder is a real subfolder, `schema/forms/contact/enquiry.toml`, so it travels with the code
 and shows in a diff, and it goes in bundles, `push` and `pull` like any other file.
@@ -795,7 +799,7 @@ form**, an element that uses one form and carries the words around it. One
 form can back several ("Contact – Sales", "Contact – Support").
 
 - **A type per form.** Each form gives the Library one element type, in a
-  "Forms" folder in Structure, so Library → Create lists the site's forms
+  "Forms" folder that the Content Types tree leaves out, as forms have their own node, so Library → Create lists the site's forms
   beside its other element types. The type is derived, not written:
   `ensureFormLibraryTypes` (`data/src/schema/form-library-types.ts`) keeps it
   in step at every schema sync, and after the designer saves or deletes a

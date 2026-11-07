@@ -34,9 +34,7 @@ describe('the tree', () => {
 describe('why something cannot be changed', () => {
   test('says so plainly, by reason, and nothing when it can', () => {
     expect(readOnlyWords('Forms', 'site')).toContain("can't be changed here")
-    expect(readOnlyWords('Workflows', 'permission')).toBe(
-      'Only administrators can change workflows.',
-    )
+    expect(readOnlyWords('Workflows', 'permission')).toBe("Your group can't change workflows.")
     expect(readOnlyWords('Forms', null)).toBeUndefined()
   })
 

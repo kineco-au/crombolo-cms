@@ -32,6 +32,8 @@ export default {
       'Welcome to Crombolo! Unfortunately your invite has expired. Please contact your administrator to get a new one.',
   },
   user: {
+    sectionsHelp:
+      'Pages needs Content. Structure, Components and Workflow setup change the whole site, so give them with care.',
     changePasswordDescription:
       "You can change your password for accessing the Crombolo backoffice by filling out the form below and click the 'Change Password' button",
     createUserHelp:

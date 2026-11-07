@@ -9,7 +9,7 @@
  */
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import type { Principal } from '@crombolo/api-management/domain'
+import { hasSection, type Principal } from '@crombolo/api-management/domain'
 import type { SchemaWorkflow } from '@crombolo/core'
 import {
   type ApprovalScheduleEntry,
@@ -51,6 +51,10 @@ export async function syncWorkflowFiles(db: Db, schemaDir: string) {
 }
 
 /** What saving a workflow would do to the requests in flight under it. */
+/** Setting up workflows, which a group can be given (story 296). Deciding on a page is separate. */
+const mayDesignWorkflows = (principal: Principal): boolean =>
+  principal.isAdmin || hasSection(principal, 'workflowSetup')
+
 async function changePreview(approvals: Approvals, principal: Principal, workflow: SchemaWorkflow) {
   const id = workflow.key ?? workflow.alias
   const stored = (await approvals.workflows()).find(
@@ -152,8 +156,8 @@ export async function handleApprovalsApi(
       file ? folderOf(ctx.schemaDir, 'workflows', file) : ''
     const folders = /^workflows\/(tree-folders|tree-move)$/.exec(path)
     if (folders) {
-      if (!principal.isAdmin)
-        return json({ ok: false, message: 'Only administrators change workflows.' }, 403)
+      if (!mayDesignWorkflows(principal))
+        return json({ ok: false, message: 'You do not have access to set up workflows.' }, 403)
       const response = await folderAction('workflows', folders[1] as string, request, {
         schemaDir: ctx.schemaDir,
         writable: ctx.writable,
@@ -171,8 +175,12 @@ export async function handleApprovalsApi(
           folder: folderIn(loaded.files.get(`workflow:${s.workflow.alias}`)),
         })),
         folders: foldersIn(ctx.schemaDir, 'workflows'),
-        readOnlyBecause: ctx.writable ? (principal.isAdmin ? null : 'permission') : 'site',
-        editable: ctx.writable && principal.isAdmin,
+        readOnlyBecause: ctx.writable
+          ? mayDesignWorkflows(principal)
+            ? null
+            : 'permission'
+          : 'site',
+        editable: ctx.writable && mayDesignWorkflows(principal),
         groups: (await new UserGroupRepository(ctx.db).all()).map((g) => ({
           alias: g.alias,
           name: g.name,
@@ -183,8 +191,8 @@ export async function handleApprovalsApi(
 
     match = /^workflows\/([^/]+)(\/preview)?$/.exec(path)
     if (match) {
-      if (!principal.isAdmin)
-        return json({ ok: false, message: 'Only administrators change workflows.' }, 403)
+      if (!mayDesignWorkflows(principal))
+        return json({ ok: false, message: 'You do not have access to set up workflows.' }, 403)
       const alias = decodeURIComponent(match[1] as string)
       const here = loadSchemaDirectory(ctx.schemaDir).files.get(`workflow:${alias}`)
       const file = here ?? join(ctx.schemaDir, 'workflows', fileNameFor(alias))

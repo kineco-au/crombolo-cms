@@ -18,7 +18,7 @@ written up: these are the screens that idea was for.
 
 ## Decisions (2026-11-07)
 
-- **Set per user group, in Users.** Pages is always on, with a choice for each of the others.
+- **Set per user group, in Users,** among its Sections, as Forms already was. Pages is Content.
   Administrators always see everything.
 - **By default a group has only Pages.**
 - **Each choice is a real permission, enforced on the server,** and the row follows it. Hiding an
@@ -30,6 +30,11 @@ written up: these are the screens that idea was for.
   form's entries.
 - **Forms stays its own choice for a group.** Someone given Forms alone sees Structure in the row
   with only the Forms node in it, so Editors keep their submissions without seeing content types.
+
+- **Existing sites keep what they have** (the maintainer's choice). Groups keep `forms`, and the
+  default of Pages alone applies to new groups and new sites. This needs no code.
+- **One on/off for each item** (the maintainer's choice), with a warning in the group editor, as
+  Structure, Components and Workflows change the whole site. View-only can come later.
 
 ## Findings (2026-11-07)
 
@@ -43,21 +48,21 @@ written up: these are the screens that idea was for.
 
 ## Acceptance criteria
 
-- [ ] A group editor offers Structure, Components, Forms and Workflows, in plain words.
-- [ ] Forms is a node in Structure's tree, with its folders, forms and entries, and not in the row.
-- [ ] Old Forms addresses still open, with Structure marked in the row.
-- [ ] Someone with Forms alone sees Structure in the row, holding only that node.
-- [ ] A new group has only Pages.
-- [ ] The row under the header shows exactly what the group was given, and no row for Pages alone.
-- [ ] A screen a group wasn't given answers with no access, by address and through the API.
-- [ ] A screen a group was given works fully, with no other part of Settings opened to it.
-- [ ] Someone in several groups gets everything those groups give.
-- [ ] Administrators always have all of them.
-- [ ] The choice is kept in `schema/user-groups/*.toml` for a group held there, and read-only sites
+- [x] A group editor offers Structure, Components, Forms and Workflows, in plain words.
+- [x] Forms is a node in Structure's tree, with its folders, forms and entries, and not in the row.
+- [x] Old Forms addresses still open, with Structure marked in the row.
+- [x] Someone with Forms alone sees Structure in the row, holding only that node.
+- [x] A new group has only Pages.
+- [x] The row under the header shows exactly what the group was given, and no row for Pages alone.
+- [x] A screen a group wasn't given answers with no access, by address and through the API.
+- [x] A screen a group was given works fully, with no other part of Settings opened to it.
+- [x] Someone in several groups gets everything those groups give.
+- [x] Administrators always have all of them.
+- [x] The choice is kept in `schema/user-groups/*.toml` for a group held there, and read-only sites
       say so, as they do for the rest of a group.
-- [ ] Bundles carry it with the group.
-- [ ] An upgrade keeps what each existing group can open, and the release notes say how to narrow it.
-- [ ] Covering tests, including a browser test as an Editor given Structure alone.
+- [x] Bundles carry it with the group.
+- [x] An upgrade keeps what each existing group can open, and the release notes say how to narrow it.
+- [x] Covering tests, including a browser test as an Editor given Structure alone.
 
 ## Findings for the plan (2026-11-07)
 
@@ -73,6 +78,19 @@ written up: these are the screens that idea was for.
 - **`settings-section.js` draws both trees and the cards,** so it has to show only what a group
   holds, and the header's Settings tab must stay hidden from it.
 
+## What was built (2026-11-07)
+
+- **`structure`, `components` and `workflowSetup` are sections** a group holds, in the database and
+  in `schema/user-groups/*.toml`, with no header tab.
+- **The server's tables accept them** beside `settings`, in `authorization.ts`, and workflows go by
+  `workflowSetup` or being an administrator.
+- **`clientSections`** tells the client a little more than is held, so that Settings' screens open:
+  Settings for a part of it, and `Crombolo.Section.AllSettings` for the whole. The gear and the
+  cards ask for that. It can only widen what the client draws, never what the server allows.
+- **The choices are in the group's Sections picker,** not a separate "Content menu" group, as that
+  picker already offers Forms, and its help text carries the warning.
+- **A note on a group with Pages alone:** it holds Content, so a new group needs that ticked.
+
 ## Plan
 
 1. **Core:** `structure`, `components` and `workflows` join the section aliases, with `sectionKey`,
@@ -87,11 +105,8 @@ written up: these are the screens that idea was for.
    Components, and administrators getting everything.
 5. **Plugin, Settings:** someone without `settings` gets only their tree, never the cards, and an
    address they can't open says so.
-6. **Forms in Structure:** a Forms node in Structure's tree, using the definition tree's folders,
-   and `stripItems` and `activeItem` lose Forms. `activeItem` marks Structure for `section/forms`
-   except Workflows. Workflows and Forms share a section, so Workflows keeps its own row item.
-   Check first how a tree in Settings' menu can open screens in the Forms section: this is a
-   move across sections, which 289 avoided, and it needs its own look before building.
+6. **Forms in Structure:** built on 2026-11-07. A group given Forms alone already sees Structure
+   leading to the Forms section, so this story only needs it to follow the grant.
 7. **The group editor:** a "Content menu" group of choices in plain words, with Pages always on and
    a warning on Structure, Components and Workflows that they change the whole site.
 8. **Tests:** a table of each grant against the API; a group file round trip; the row for each mix;
@@ -100,11 +115,3 @@ written up: these are the screens that idea was for.
 9. **Docs:** `docs/backoffice-hosting.md`, `docs/schema-as-code.md`, `docs/forms.md`, release notes.
 
 No migration: a group's sections are already a list, and no existing group changes.
-
-## Open decisions
-
-- **Forms on an existing site:** proposed: keep what groups have now, and the new default applies to
-  new groups and new sites only. With this plan that needs no code: an existing group keeps
-  `forms`, and a new group simply doesn't have it.
-- **Read or change:** proposed: one on/off, with a warning in the group editor, and view-only later
-  if it's wanted.

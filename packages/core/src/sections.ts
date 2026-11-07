@@ -27,7 +27,40 @@ export const SECTION_ALIASES = {
   forms: 'Crombolo.Section.Forms',
   // Approval workflows: Umbraco Workflow's section, in core here (story 028).
   workflow: 'Crombolo.Section.Workflow',
+  // Parts of Settings a group can be given without the rest (story 296). None has
+  // a header tab: each is a choice in a group, and an item in the menu under Content.
+  structure: 'Crombolo.Section.Structure',
+  components: 'Crombolo.Section.Components',
+  workflowSetup: 'Crombolo.Section.WorkflowSetup',
 } as const
+
+/** Told to the client when someone has the whole of Settings, not only a part of it. */
+export const ALL_SETTINGS = 'Crombolo.Section.AllSettings'
+
+/**
+ * The sections the client is told of, which aren't quite those a user holds. The
+ * client opens Settings' screens only for someone with Settings, so a part of it
+ * says Settings too, and `ALL_SETTINGS` marks those with the whole of it. The server
+ * goes by what the user really holds, whatever the client is told.
+ */
+export function clientSections(user: {
+  allowedSections: readonly string[]
+  isAdmin: boolean
+}): string[] {
+  const held = new Set(user.allowedSections.map(sectionKey))
+  const out = new Set(user.allowedSections)
+  if (held.has('settings')) {
+    out.add(ALL_SETTINGS)
+    out.add(SECTION_ALIASES.structure)
+    out.add(SECTION_ALIASES.components)
+  }
+  if (held.has('structure') || held.has('components')) out.add(SECTION_ALIASES.settings)
+  if (user.isAdmin || held.has(sectionKey(SECTION_ALIASES.workflowSetup))) {
+    out.add(SECTION_ALIASES.workflowSetup)
+    out.add(SECTION_ALIASES.forms)
+  }
+  return [...out]
+}
 
 export type AppAlias = keyof typeof SECTION_ALIASES
 export type SectionAlias = (typeof SECTION_ALIASES)[AppAlias]

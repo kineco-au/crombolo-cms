@@ -6,6 +6,7 @@
  * manifest.
  */
 
+import { UMB_CURRENT_USER_CONTEXT } from '@umbraco-cms/backoffice/current-user'
 import {
   createExtensionApi,
   createExtensionElement,
@@ -30,6 +31,7 @@ import {
   treeFor,
 } from './settings-cards.js'
 import './breadcrumb.js'
+import './definition-tree.js'
 import { readOnlyWords } from './definition-tree-model.js'
 import './settings-card.js'
 
@@ -48,8 +50,15 @@ const emailStatus = async () => {
 
 const menuOf = (manifest, menu) => manifest.meta?.menus?.includes(menu) === true
 
+/** Each tree, and the part of Settings that opens it. */
+const TREE_SECTIONS = [
+  ['structure', 'Crombolo.Section.Structure'],
+  ['code', 'Crombolo.Section.Components'],
+]
+
 export class CromboloSettingsSectionElement extends UmbLitElement {
   static properties = {
+    _mayForms: { state: true },
     _routes: { state: true },
     _sidebarApps: { state: true },
     _tree: { state: true },
@@ -58,6 +67,8 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
   }
 
   #dashboards = []
+  /** The sections the current user holds, which say how much of Settings they have. */
+  #held
   #menuItems = []
   #sectionRoutes = []
   #landing
@@ -66,6 +77,15 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
 
   constructor() {
     super()
+    this.consumeContext(UMB_CURRENT_USER_CONTEXT, (user) => {
+      this.observe(user?.currentUser, (current) => {
+        this._mayForms =
+          current?.isAdmin === true ||
+          (current?.fallbackPermissions ?? []).includes('Crombolo.Form.Read')
+        this.#held = current?.allowedSections ?? []
+        this.#createRoutes()
+      })
+    })
     // An explanation, not a control: a failure leaves it out.
     fetch(`${base()}/crombolo/api/site-files`, { credentials: 'include' })
       .then((response) => (response.ok ? response.json() : { writable: true }))
@@ -202,9 +222,20 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
   }
 
   #createRoutes() {
+    // Someone with a part of Settings has its tree, and not the cards or the tools.
+    const whole = this.#held?.includes('Crombolo.Section.AllSettings') ?? false
+    const mine = TREE_SECTIONS.filter(([, section]) => this.#held?.includes(section)).map(
+      ([tree]) => tree,
+    )
+    const toTree = (name) =>
+      history.replaceState(null, '', new URL(`section/settings/${name}`, document.baseURI).pathname)
     const landing = {
       component: () => document.createElement('crombolo-settings-landing'),
       setup: (element) => {
+        if (this.#held && !whole && mine[0]) {
+          toTree(mine[0])
+          return
+        }
         this.#landing = element
         this.#refreshLanding()
         this.#showing(undefined)
@@ -214,6 +245,10 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
       path: name,
       component: () => document.createElement('crombolo-settings-tree-start'),
       setup: (element) => {
+        if (this.#held && !mine.includes(name) && mine[0]) {
+          toTree(mine[0])
+          return
+        }
         element.tree = name
         this.#showing(name)
       },
@@ -232,7 +267,18 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
         this.#showing(undefined, { title: this.#label(manifest) })
       },
     }))
+    // Forms is a node in Structure, so its tree stays on screen beside the form.
+    const forms = (path, tag, load) => ({
+      path,
+      component: async () => {
+        await load()
+        return document.createElement(tag)
+      },
+      setup: () => this.#showing('structure'),
+    })
     this._routes = [
+      forms('forms/entries', 'crombolo-forms-entries', () => import('./forms-entries.js')),
+      forms('forms', 'crombolo-forms-overview', () => import('./forms-overview.js')),
       tree('structure'),
       tree('code'),
       // Umbraco's welcome, which this page replaces: an address people have.
@@ -249,11 +295,13 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
           )
         },
       },
-      ...dashboards,
+      ...(this.#held && !whole ? [] : dashboards),
       ...this.#sectionRoutes,
       { path: '', pathMatch: 'full', ...landing },
       { path: '**', component: UmbRouteNotFoundElement },
     ]
+    // The router keeps a page it already shows, so the cards need telling.
+    this.#refreshLanding()
   }
 
   #sectionPath() {
@@ -295,6 +343,11 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
         ${(this._sidebarApps ?? []).map(
           (app) => html`<div class="tree" ?hidden=${app.alias !== shown}>${app.component}</div>`,
         )}
+        ${
+          this._tree === 'structure' && this._mayForms
+            ? html`<crombolo-definition-tree kind="Forms"></crombolo-definition-tree>`
+            : nothing
+        }
       </umb-section-sidebar>
       ${main}`
   }

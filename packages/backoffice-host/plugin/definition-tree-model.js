@@ -38,6 +38,6 @@ export function definitionTree(items, folders) {
 export function readOnlyWords(kind, because) {
   if (because === 'site')
     return `${kind} are kept with this site's files, so they can't be changed here. To change one, edit it in the site's code and deploy it.`
-  if (because === 'permission') return `Only administrators can change ${kind.toLowerCase()}.`
+  if (because === 'permission') return `Your group can't change ${kind.toLowerCase()}.`
   return undefined
 }

@@ -1,6 +1,6 @@
 /**
  * Story 289: the menu under Content, which keeps Content's tab marked across
- * Pages, Structure, Components, Forms and Workflows, and the tree beside forms
+ * Pages, Structure, Components and Workflows, and the tree beside forms
  * and workflows, with folders.
  */
 import type { Page } from '@playwright/test'
@@ -21,7 +21,6 @@ test('the menu opens each place, with Content marked throughout', async ({ page,
   for (const [label, address] of [
     ['Structure', /\/section\/settings\/structure$/],
     ['Components', /\/section\/settings\/code$/],
-    ['Forms', /\/section\/forms/],
     ['Workflows', /\/section\/forms\/view\/workflows/],
     ['Pages', /\/section\/content/],
   ] as const) {
@@ -47,6 +46,50 @@ test('the menu is a row under the header, gone from Home and the sidebar', async
   await expect(page.locator('umb-section-sidebar crombolo-content-strip')).toHaveCount(0)
   await page.locator('umb-backoffice-header-logo').click()
   await expect(strip(page).locator('nav')).toHaveCount(0)
+})
+
+test('Forms is a node in Structure, and Content Types can start a form', async ({
+  page,
+  diagnostics,
+}) => {
+  diagnostics.allowed.push(
+    'Tree context is not set',
+    'provideAt is not a function',
+    'repository is missing',
+  )
+  await signIn(page)
+  await goToSection(page, 'Content')
+  await settle(page)
+  await expect(strip(page).getByRole('link', { name: 'Forms' })).toHaveCount(0)
+  await strip(page).getByRole('link', { name: 'Structure' }).click()
+
+  // Its tree sits under Structure's, and stays beside a form when one opens.
+  const tree = page.locator('crombolo-definition-tree')
+  await tree.locator('.root').getByRole('link', { name: 'Forms' }).click()
+  await expect(page).toHaveURL(/\/section\/settings\/forms\/entries/)
+  await expect(tree).toBeVisible()
+  await expect(strip(page).getByRole('link', { name: 'Structure' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
+
+  // The types made from forms aren't listed twice.
+  const types = page
+    .locator('umb-tree-item, umb-default-tree-item')
+    .filter({ hasText: 'Content Types' })
+  await expect(types.first()).toBeVisible()
+  await types.first().hover()
+  await types
+    .first()
+    .locator('uui-action-bar, umb-entity-actions-bundle')
+    .first()
+    .locator('uui-button, a')
+    .first()
+    .click()
+  await page.getByText('Create…', { exact: true }).click()
+  await page.getByText('Form', { exact: true }).click()
+  await expect(page).toHaveURL(/\/section\/settings\/forms\?new=/)
+  await expect(page.locator('crombolo-forms-overview')).toBeVisible()
 })
 
 test('Forms has no tab of its own in the header, and Settings no Build cards', async ({ page }) => {
@@ -75,6 +118,42 @@ test('someone with Pages alone sees no menu', async ({ page }) => {
   await goToSection(page, 'Content')
   await settle(page)
   await expect(strip(page).getByRole('link')).toHaveCount(0)
+})
+
+test('someone given Structure alone gets its tree, with no Settings tools', async ({
+  page,
+  diagnostics,
+}) => {
+  diagnostics.allowed.push(
+    'Tree context is not set',
+    'provideAt is not a function',
+    'repository is missing',
+  )
+  await page.route('**/management/api/v1/user/current', async (route) => {
+    const response = await route.fetch()
+    const user = await response.json()
+    user.allowedSections = [
+      'Umb.Section.Content',
+      'Umb.Section.Settings',
+      'Crombolo.Section.Structure',
+    ]
+    user.isAdmin = false
+    await route.fulfill({ response, json: user })
+  })
+  await signIn(page)
+  await goToSection(page, 'Content')
+  await settle(page)
+  const links = strip(page).getByRole('link')
+  await expect(links).toHaveText(['Pages', 'Structure'])
+  await expect(
+    page.locator('umb-backoffice-header-sections uui-tab', { hasText: 'Structure' }),
+  ).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Settings', exact: true })).toHaveCount(0)
+
+  // The cards aren't for them, so the address leads to what they have.
+  await page.goto('/crombolo/section/settings')
+  await expect(page).toHaveURL(/\/section\/settings\/structure$/)
+  await expect(page.locator('crombolo-settings-landing')).toHaveCount(0)
 })
 
 test('forms sit in folders in the tree, and the root lists every entry', async ({ page }) => {

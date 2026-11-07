@@ -107,19 +107,25 @@ describe('section requirements', () => {
     expect(need('GetTreeDocumentRoot')).toEqual([
       ['content', 'media', 'users', 'settings', 'members', 'library'],
     ])
-    expect(need('GetDocumentTypeById')).toEqual([['content', 'library', 'settings']])
-    expect(need('PutDocumentTypeById')).toEqual([['content', 'library', 'settings'], ['settings']])
+    expect(need('GetDocumentTypeById')).toEqual([['content', 'library', 'settings', 'structure']])
+    expect(need('PutDocumentTypeById')).toEqual([
+      ['content', 'library', 'settings', 'structure'],
+      ['settings', 'structure'],
+    ])
     expect(need('GetDocumentTypeConfiguration')).toEqual([
-      ['content', 'library', 'settings'],
-      ['settings'],
+      ['content', 'library', 'settings', 'structure'],
+      ['settings', 'structure'],
     ])
-    expect(need('GetTreeDocumentTypeRoot')).toEqual([['settings']])
+    expect(need('GetTreeDocumentTypeRoot')).toEqual([['settings', 'structure']])
     expect(need('PostDataType')).toEqual([
-      ['content', 'library', 'media', 'members', 'settings'],
-      ['settings'],
+      ['content', 'library', 'media', 'members', 'settings', 'structure'],
+      ['settings', 'structure'],
     ])
-    expect(need('GetTemplateById')).toEqual([['settings', 'content']])
-    expect(need('PutTemplateById')).toEqual([['settings', 'content'], ['settings']])
+    expect(need('GetTemplateById')).toEqual([['settings', 'content', 'components']])
+    expect(need('PutTemplateById')).toEqual([
+      ['settings', 'content', 'components'],
+      ['settings', 'components'],
+    ])
     expect(need('GetMediaById')).toEqual([['media']])
     expect(need('GetDictionary')).toEqual([['translation']])
     expect(need('GetTreeDictionaryRoot')).toEqual([['translation', 'settings']])
@@ -127,8 +133,8 @@ describe('section requirements', () => {
     expect(need('GetUserGroup')).toEqual([['users']])
     expect(need('GetFilterUser')).toEqual([['users']])
     expect(need('PostDocumentBlueprintFromDocument')).toEqual([['content']])
-    expect(need('PostDocumentBlueprint')).toEqual([['settings']])
-    expect(need('GetDocumentBlueprintById')).toEqual([['content', 'settings']])
+    expect(need('PostDocumentBlueprint')).toEqual([['settings', 'structure']])
+    expect(need('GetDocumentBlueprintById')).toEqual([['content', 'settings', 'structure']])
     expect(need('GetUpgradeSettings')).toEqual(['admin'])
     // Open to every signed-in user
     for (const id of [
@@ -141,7 +147,7 @@ describe('section requirements', () => {
       'PostTemporaryFile',
     ])
       expect([id, need(id)]).toEqual([id, []])
-    expect(need('PostLanguage')).toEqual([['settings']])
+    expect(need('PostLanguage')).toEqual([['settings', 'structure']])
   })
 
   test('each operation authorized unlike Umbraco is a real one, listed with its reason', () => {

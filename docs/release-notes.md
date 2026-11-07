@@ -6,6 +6,30 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.53.0 — 2026-11-07
+
+### Features
+
+- **Choose what a group sees under Content (296).** A user group can be given Structure,
+  Components, Forms or Workflow setup, in its Sections, each without the rest of Settings. The
+  server enforces each one, and the row under the header follows them.
+- **Forms is part of Structure.** It is a node in Structure's tree, with its folders, forms and
+  entries, so the row under the header is now Pages, Structure, Components and Workflows. Create
+  under Content Types offers Form. Someone with Forms but not Settings finds their forms under
+  Structure too, and old addresses still work.
+
+### Upgrade notes
+
+- **No migrations.**
+- **No group loses anything.** Groups keep their sections, and whoever holds Settings has Structure
+  and Components. An administrator has Workflow setup. To narrow a group, take Settings away from it
+  and give it what it needs in Users, or in its `schema/user-groups/*.toml`:
+  `sections = ["content", "structure"]`.
+- **Workflow setup is a new choice.** Setting up workflows was for administrators only, and it
+  still is until a group is given it. Deciding on a page, in Approvals, is unchanged.
+- **Links to Forms keep working,** with Structure marked in the row under the header. The Forms
+  folder in Content Types no longer shows there, though the types in it are still in use.
+
 ## v0.52.2 — 2026-11-07
 
 v0.52.1 was tagged but not published: a browser test of ours clicked on while a page was still
@@ -16,7 +40,6 @@ opening. Its notes and v0.52.0's apply to this release.
 - **Modules beside your components (292).** Plain `.ts` files in `components/` now show in the
   back office, and Module in the create menu starts a new one. They open, save and rename as
   components do, and are checked as `.ts`.
-
 - **One form in every language (293).** A form's words can name dictionary items, such as
   `caption = "#contact.name"`, so a translated site needs only one form. Plain words are
   unchanged. `bundle build --check` reports a name the dictionary doesn't have.

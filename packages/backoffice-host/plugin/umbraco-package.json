@@ -2,7 +2,7 @@
   "$schema": "../../backoffice-dist/dist/umbraco-package-schema.json",
   "name": "Crombolo",
   "id": "Crombolo.Core",
-  "version": "0.52.2",
+  "version": "0.53.0",
   "allowPublicAccess": false,
   "extensions": [
     {
@@ -512,7 +512,7 @@
       "conditions": [
         {
           "alias": "Umb.Condition.SectionUserPermission",
-          "match": "Umb.Section.Settings"
+          "match": "Crombolo.Section.AllSettings"
         }
       ]
     },
@@ -603,6 +603,15 @@
       "alias": "Crombolo.EntryPoint.ContentStrip",
       "name": "Crombolo Menu Under Content",
       "js": "/crombolo-plugin/content-strip.js"
+    },
+    {
+      "type": "entityCreateOptionAction",
+      "alias": "Crombolo.EntityCreateOptionAction.DocumentType.Form",
+      "name": "Crombolo Form Create Option",
+      "weight": 100,
+      "api": "/crombolo-plugin/form-create-option.js",
+      "forEntityTypes": ["document-type-root", "document-type-folder"],
+      "meta": { "icon": "icon-autofill", "label": "Form" }
     },
     {
       "type": "sectionSidebarApp",
@@ -711,6 +720,36 @@
       "alias": "Crombolo.Condition.ApprovalsActive",
       "name": "Crombolo Approvals Active Condition",
       "api": "/crombolo-plugin/approvals-active.js"
+    },
+    {
+      "type": "section",
+      "alias": "Crombolo.Section.Structure",
+      "name": "Crombolo Structure Section",
+      "weight": 30,
+      "meta": {
+        "label": "Structure",
+        "pathname": "structure"
+      }
+    },
+    {
+      "type": "section",
+      "alias": "Crombolo.Section.Components",
+      "name": "Crombolo Components Section",
+      "weight": 29,
+      "meta": {
+        "label": "Components",
+        "pathname": "components"
+      }
+    },
+    {
+      "type": "section",
+      "alias": "Crombolo.Section.WorkflowSetup",
+      "name": "Crombolo Workflow setup Section",
+      "weight": 28,
+      "meta": {
+        "label": "Workflow setup",
+        "pathname": "workflow-setup"
+      }
     },
     {
       "type": "section",

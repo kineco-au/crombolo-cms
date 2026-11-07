@@ -133,6 +133,7 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'entityAction:Crombolo.EntityAction.Document.EditContentType',
       'entityAction:Crombolo.EntityAction.Document.EditTemplate',
       'backofficeEntryPoint:Crombolo.EntryPoint.ContentStrip',
+      'entityCreateOptionAction:Crombolo.EntityCreateOptionAction.DocumentType.Form',
       'sectionSidebarApp:Crombolo.SectionSidebarApp.DefinitionTree',
       'sectionView:Crombolo.SectionView.Forms.Overview',
       'sectionView:Crombolo.SectionView.Forms.Entries',
@@ -149,6 +150,9 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       // Approval workflows: Umbraco Workflow's section, in core here (story 028).
       // Approvals shows only while the site has a workflow or a request is open (234).
       'condition:Crombolo.Condition.ApprovalsActive',
+      'section:Crombolo.Section.Structure',
+      'section:Crombolo.Section.Components',
+      'section:Crombolo.Section.WorkflowSetup',
       'section:Crombolo.Section.Workflow',
       'sectionView:Crombolo.SectionView.Workflow.Waiting',
       'sectionView:Crombolo.SectionView.Workflow.InFlight',
@@ -191,6 +195,9 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'Crombolo.HeaderApp.Settings',
       'Crombolo.Section.Forms',
       'Crombolo.FormPicker',
+      'Crombolo.Section.Structure',
+      'Crombolo.Section.Components',
+      'Crombolo.Section.WorkflowSetup',
       'Crombolo.Section.Workflow',
     ])
     expect(moduleless.map((e) => e.type)).toEqual([
@@ -207,6 +214,9 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'headerApp',
       'section',
       'propertyEditorSchema',
+      'section',
+      'section',
+      'section',
       'section',
     ])
 
