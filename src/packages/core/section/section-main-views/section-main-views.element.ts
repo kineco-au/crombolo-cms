@@ -227,7 +227,7 @@ export class UmbSectionMainViewElement extends UmbLitElement {
 	#renderViews() {
 		// Only show views if there are more than one view or if there are both dashboards and views
 		// Crombolo: a section whose views open from a tree of its own has no tabs for them.
-		if (this._views.some((view) => (view.meta as { noTab?: boolean }).noTab)) return false;
+		if (this._views.some((view) => (view.meta as { noTab?: boolean }).noTab)) return nothing;
 		return (this._views.length > 0 && this._dashboards.length > 0) || this._views.length > 1
 			? html`
 					<uui-tab-group slot="navigation" id="views">
