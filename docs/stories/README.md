@@ -122,6 +122,8 @@ not cover.
 | `277` | The back office on Umbraco 19 | should | L | backlog | 235, 272 |
 | `288` | The overview is the home of the back office | should | M | done | — |
 | `289` | A second-level menu under Content | should | L | done | 288 |
+| `291` | A session ending asks you to sign in, on every screen | should | S | done | — |
+| `292` | Plain `.ts` files beside the views | should | M | ready | — |
 
 ### Epic D — Members and identity
 

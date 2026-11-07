@@ -13,7 +13,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
-import { dirname, join } from 'node:path'
+import { dirname, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { FormTypes } from '@crombolo/core'
 import { intendedTypes } from './models-builder.ts'
@@ -37,6 +37,9 @@ const MODULE_DIR = 'file:///node_modules/@crombolo/crombolo'
  * it does in the site.
  */
 export const EDITOR_CONTENT_TYPES = 'file:///schema/content-types.d.ts'
+
+/** The site's `components/`, which a view is opened inside at its own depth. */
+const EDITOR_COMPONENTS = 'file:///components'
 
 /** Where the render sources' `import type … from 'react'` lands, by TypeScript's `@types` lookup. */
 const REACT_TYPES_DIR = 'file:///node_modules/@types/react'
@@ -99,11 +102,30 @@ export function siteJsxImportSource(siteDir: string): JsxImportSource {
     : '@crombolo/crombolo'
 }
 
+/** The site's views, where a view's relative imports land: `../shared/layout.tsx`. */
+async function viewLibs(componentsDir: string): Promise<EditorTypeLib[]> {
+  if (!existsSync(componentsDir)) return []
+  const files = await readdir(componentsDir, { recursive: true })
+  return Promise.all(
+    files
+      .filter((file) => /\.tsx?$/.test(file))
+      .sort()
+      .map(async (file) => ({
+        path: `${EDITOR_COMPONENTS}/${file.split(sep).join('/')}`,
+        content: await readFile(join(componentsDir, file), 'utf8'),
+      })),
+  )
+}
+
 export async function editorTypeLibs(options: {
   schemaDir: string
+  componentsDir?: string
   formTypes?: FormTypes
 }): Promise<EditorTypeLib[]> {
-  const libs = [...(await moduleLibs())]
+  const libs = [
+    ...(await moduleLibs()),
+    ...(options.componentsDir ? await viewLibs(options.componentsDir) : []),
+  ]
   const intended = intendedTypes(options.schemaDir, options.formTypes)
   // Left out rather than stubbed when the schema does not generate: a view that
   // imports it then says the file is missing, which is true, instead of being

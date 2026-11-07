@@ -1974,6 +1974,7 @@ export async function createServer(
       const body = JSON.stringify({
         libs: await editorTypeLibs({
           schemaDir: config.schemaDir,
+          componentsDir: config.componentsDir,
           formTypes: formTypesFor(config),
         }),
         jsxImportSource: siteJsxImportSource(config.siteDir),

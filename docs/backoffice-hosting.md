@@ -458,6 +458,10 @@ are a box on Home, whose All details opens the client's own dialog.
 
 Every trail in Settings starts at Home, and its landing page has one too.
 
+**A session that has ended (story 291)** is `session-guard.js`, which wraps `window.fetch` for
+the plugin's own requests: a 401 renews the session or opens the sign-in dialog, and the
+request waits and is sent again. The client's calls have their own queue and are left alone.
+
 **The menu under Content (story 289)** is `content-strip.js`: Pages, Structure, Components,
 Forms and Workflows, for whoever may open each, and nothing for someone with one. It is a row of
 its own under the header, which the fork draws and a `backofficeEntryPoint` defines, shown

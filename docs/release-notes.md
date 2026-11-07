@@ -6,6 +6,25 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.52.1 — 2026-11-07
+
+### Fixes
+
+- **The view editor knows your site's views.** An import such as `../shared/layout.tsx` no
+  longer shows as an error in the back office's code editor, and one that really is wrong
+  still does. A view opens in its own folder, with the site's other views beside it.
+- **The demo site's dates are right in any time zone.** v0.52.0's tests failed on a server
+  east of Greenwich, which stopped that release reaching npm.
+- **A session ending asks you to sign in, on every screen (291).** Screens such as Forms used
+  to show an error, or look empty, with no way back. They now open the sign-in dialog, and
+  carry on once you have signed in.
+- **The word "false" no longer shows above Forms and Workflows.**
+
+### Upgrade notes
+
+- Nothing to do. v0.52.0 was tagged but not published, so its notes below apply to this
+  release.
+
 ## v0.52.0 — 2026-11-07
 
 ### Features

@@ -76,3 +76,30 @@ test("a view's Insert menu makes a personalised part, with its tag and import", 
   expect(made.content.startsWith("'use deferred'")).toBe(true)
   expect(made.content).toContain(`function ${component}`)
 })
+
+test("a view's relative imports resolve to the site's views, and a wrong one is underlined", async ({
+  page,
+}) => {
+  await signIn(page)
+  await page.goto(
+    '/crombolo/section/settings/workspace/partial-view/create/parent/partial-view-root/null',
+  )
+  await expect(page.locator('umb-code-editor')).toContainText('export default function Partial')
+
+  const unresolved = () =>
+    page.evaluate(async () => {
+      const { monaco } = await import('@umbraco-cms/backoffice/external/monaco-editor')
+      const model = monaco.editor.getModels().find((m) => m.uri.path.endsWith('.tsx'))
+      model?.setValue(
+        "import Good from './everyEditor.tsx'\nimport Bad from './nowhere.tsx'\nexport default () => [Good, Bad]\n",
+      )
+      await new Promise((settled) => setTimeout(settled, 3000))
+      return monaco.editor
+        .getModelMarkers({ resource: model?.uri })
+        .filter((marker) => String(marker.code) === '2307')
+        .map((marker) => marker.message)
+    })
+  await expect
+    .poll(unresolved, { timeout: 30_000 })
+    .toEqual(["Cannot find module './nowhere.tsx' or its corresponding type declarations."])
+})

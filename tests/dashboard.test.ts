@@ -82,6 +82,7 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
     expect(aliases).toEqual([
       'theme:Crombolo.Theme.Dark',
       'theme:Crombolo.Theme.System',
+      'backofficeEntryPoint:Crombolo.EntryPoint.SessionGuard',
       'backofficeEntryPoint:Crombolo.EntryPoint.ThemeSync',
       'entityUserPermission:Crombolo.UserPermission.Remote.Pull',
       'entityUserPermission:Crombolo.UserPermission.Remote.PullFull',

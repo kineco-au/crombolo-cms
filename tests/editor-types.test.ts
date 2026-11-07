@@ -8,6 +8,7 @@
  * `security.test.ts` guards the login page. What it actually looks like in a
  * browser is `tests/browser/settings.browser.ts`.
  */
+
 import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { readdir } from 'node:fs/promises'
@@ -15,6 +16,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DEFAULT_BACKOFFICE_PATH } from '@crombolo/core'
 import { EDITOR_CONTENT_TYPES, editorTypeLibs, siteJsxImportSource } from '@crombolo/server'
+import { folderOf } from '../packages/backoffice-host/plugin/view-parts.js'
 import { type Harness, signedInServer } from './support/harness.ts'
 
 const EDITOR_TYPES = `${DEFAULT_BACKOFFICE_PATH}/crombolo/api/editor-types`
@@ -223,12 +225,42 @@ describe('the declarations the view editor checks a view against', () => {
   })
 })
 
+describe('a view’s relative imports', () => {
+  const componentsDir = () => {
+    const dir = mkdtempSync(join(process.cwd(), 'output', 'editor-views-'))
+    dirs.push(dir)
+    mkdirSync(join(dir, 'shared'))
+    writeFileSync(join(dir, 'shared', 'layout.tsx'), 'export const Layout = () => null\n')
+    writeFileSync(join(dir, 'notes.md'), 'not a view\n')
+    return dir
+  }
+
+  test('land on the site’s views, at the paths they have on disk', async () => {
+    const libs = await editorTypeLibs({ schemaDir: schemaFiles(), componentsDir: componentsDir() })
+    const ours = libs.filter((lib) => lib.path.startsWith('file:///components/'))
+    expect(ours).toEqual([
+      {
+        path: 'file:///components/shared/layout.tsx',
+        content: 'export const Layout = () => null\n',
+      },
+    ])
+  })
+
+  test('resolve because a view opens in its own folder', () => {
+    expect(folderOf('/pages/homePage.tsx')).toBe('/pages')
+    expect(folderOf('pages/homePage.tsx')).toBe('/pages')
+    expect(folderOf('/pages/deep/homePage.tsx')).toBe('/pages/deep')
+    expect(folderOf('/homePage.tsx')).toBe('')
+    expect(folderOf(undefined)).toBe('')
+  })
+})
+
 describe('the editor configuration', () => {
   test('is the typescript service on a .tsx file, not a language of its own', async () => {
     const editors = await source('plugin/tsx-editors.js')
 
     // The file name is what decides whether TypeScript will read JSX at all.
-    expect(editors).toMatch(/monaco\.Uri\.parse\(`\$\{COMPONENTS}\/view-\$\{\+\+opened}\.tsx`\)/)
+    expect(editors).toMatch(/\$\{COMPONENTS}\$\{folderOf\(file\)}\/view-\$\{\+\+opened}\.tsx/)
     expect(editors).toContain("const COMPONENTS = 'file:///components'")
     // A `tsx` language would tokenise and then be ignored by the worker every
     // completion comes from, so the mode stays monaco's own.

@@ -127,3 +127,9 @@ export const personalisedPartInsert = {
     return chosen?.path ? personalisedPartSnippet(chosen.path) : undefined
   },
 }
+
+/** The folder a view sits in under `components/`: `/pages`, or nothing for the top. */
+export const folderOf = (file) => {
+  const folder = (file ?? '').replace(/^\/*/, '/').replace(/\/[^/]*$/, '')
+  return folder === '/' ? '' : folder
+}

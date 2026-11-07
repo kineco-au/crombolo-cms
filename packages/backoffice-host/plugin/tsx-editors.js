@@ -13,6 +13,7 @@
 import { PartialViewService, TemplateService } from '@umbraco-cms/backoffice/external/backend-api'
 import { toTsxSnippet } from './tsx-snippets.js'
 import {
+  folderOf,
   importFor,
   memberNotes,
   PERSONALISED_PART_DIALOG,
@@ -191,6 +192,7 @@ function viewEditor() {
     language: 'typescript',
     async prepare() {
       configured = await configureTsx()
+      file = await openFile()
     },
     created(editor) {
       const { monaco, ok } = configured
@@ -205,18 +207,15 @@ function viewEditor() {
       // monaco names the model it creates `inmemory://model/1`, and a name with no
       // `.tsx` on it is a file TypeScript refuses to read JSX in: every tag in the
       // view would be a syntax error. So the model is replaced by one named as the
-      // file it is.
+      // file it is, in its own folder, so that its relative imports resolve.
       model = monaco.editor.createModel(
         created.getValue(),
         'typescript',
-        monaco.Uri.parse(`${COMPONENTS}/view-${++opened}.tsx`),
+        monaco.Uri.parse(`${COMPONENTS}${folderOf(file)}/view-${++opened}.tsx`),
       )
       editor.setModel(model)
       created.dispose()
       editor.onDidDispose(() => model.dispose())
-      openFile().then((path) => {
-        file = path
-      })
       // Story 264: a file that shows the signed-in member says what that does to sharing.
       const note = () =>
         monaco.editor.setModelMarkers(

@@ -5,7 +5,7 @@
  * almost everything.
  */
 import type { Page } from '@playwright/test'
-import { expect, signIn, test } from './fixtures.ts'
+import { expect, goToSection, settle, signIn, test } from './fixtures.ts'
 
 /** Every piece of text a person can read or a screen reader announces. */
 async function displayed(page: Page): Promise<string[]> {
@@ -50,6 +50,28 @@ async function timeOut(page: Page): Promise<void> {
     new UmbContextConsumer(host, UMB_AUTH_CONTEXT, (auth) => auth?.timeOut()).hostConnected()
   })
 }
+
+test('a screen that finds the session over asks for sign-in, and shows no error', async ({
+  page,
+  diagnostics,
+}) => {
+  diagnostics.allowed.push(
+    '401',
+    'Tree context is not set',
+    'provideAt is not a function',
+    'repository is missing',
+  )
+  await signIn(page)
+  await goToSection(page, 'Content')
+  await settle(page)
+  await page.context().clearCookies()
+  await page.locator('crombolo-content-strip').getByRole('link', { name: 'Forms' }).click()
+
+  const dialog = page.locator('crombolo-sign-in-dialog')
+  await expect(dialog.getByText('Your session has ended')).toBeVisible()
+  await expect(page.getByText('forms responded')).toHaveCount(0)
+  await expect(page.getByText('There are no forms yet')).toHaveCount(0)
+})
 
 test('a timed-out session gets crombolo’s dialog, which names no other product', async ({
   page,
