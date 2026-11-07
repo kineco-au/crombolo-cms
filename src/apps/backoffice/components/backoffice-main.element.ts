@@ -1,6 +1,7 @@
 import { UMB_BACKOFFICE_CONTEXT } from '../backoffice.context.js';
 import type { UmbBackofficeContext } from '../backoffice.context.js';
 import { createExtensionApi, createExtensionElement } from '@umbraco-cms/backoffice/extension-api';
+import type { ManifestElement } from '@umbraco-cms/backoffice/extension-api';
 import { css, customElement, html, state } from '@umbraco-cms/backoffice/external/lit';
 import { UmbDefaultSectionContext, UMB_SECTION_PATH_PATTERN } from '@umbraco-cms/backoffice/section';
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element';
@@ -51,6 +52,14 @@ export class UmbBackofficeMainElement extends UmbLitElement {
 		return layout ?? section;
 	}
 
+	// Crombolo: a package's homeView opens the back office for whoever has Content, outside any section
+	#homeView(): ManifestElement | undefined {
+		if (!this._sections.some((section) => section.alias === 'Umb.Section.Content')) return undefined;
+		return umbExtensionsRegistry
+			.getAllExtensions()
+			.find((ext): ext is ManifestElement => (ext.type as string) === 'homeView');
+	}
+
 	#createRoutes() {
 		if (!this._sections) return;
 
@@ -75,6 +84,15 @@ export class UmbBackofficeMainElement extends UmbLitElement {
 				},
 			};
 		});
+
+		const home = this.#homeView();
+		if (home) {
+			newRoutes.unshift({
+				path: 'home',
+				component: () => createExtensionElement(home),
+				setup: () => this.#backofficeContext?.setActiveSectionAlias(undefined),
+			});
+		}
 
 		if (newRoutes.length > 0) {
 			newRoutes.push({

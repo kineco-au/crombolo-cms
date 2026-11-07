@@ -69,7 +69,7 @@ export class UmbBackofficeContext extends UmbContextBase {
 		this.#version.setValue(version);
 	}
 
-	public setActiveSectionAlias(alias: string) {
+	public setActiveSectionAlias(alias: string | undefined) {
 		this.#activeSectionAlias.setValue(alias);
 	}
 

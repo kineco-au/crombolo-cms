@@ -1,105 +1,23 @@
-import { UMB_BACKOFFICE_CONTEXT } from '../backoffice.context.js';
-import { css, html, customElement, state, nothing, query } from '@umbraco-cms/backoffice/external/lit';
+import { css, html, customElement } from '@umbraco-cms/backoffice/external/lit';
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element';
 import { UmbTextStyles } from '@umbraco-cms/backoffice/style';
-import { UMB_SERVER_CONTEXT } from '@umbraco-cms/backoffice/server';
-import { UMB_THEME_CONTEXT } from '@umbraco-cms/backoffice/themes';
-import { cromboloIsDarkTheme, cromboloSiteName } from '@umbraco-cms/backoffice/utils';
-import { UMB_MODAL_MANAGER_CONTEXT } from '@umbraco-cms/backoffice/modal';
-import { UMB_SYSINFO_MODAL } from '@umbraco-cms/backoffice/sysinfo';
 
 /**
- * The backoffice header logo element.
+ * The backoffice header logo element. Crombolo: a link home, which is the Home view for
+ * whoever has it and a user's first section for anyone else.
  * @cssprop --umb-header-logo-display - The display property of the header logo.
  * @cssprop --umb-header-logo-margin - The margin of the header logo.
  * @cssprop --umb-header-logo-width - The width of the header logo.
  * @cssprop --umb-header-logo-height - The height of the header logo.
- * @cssprop --umb-logo-display - The display property of the logo.
- * @cssprop --umb-logo-width - The width of the logo.
- * @cssprop --umb-logo-height - The height of the logo.
  */
 @customElement('umb-backoffice-header-logo')
 export class UmbBackofficeHeaderLogoElement extends UmbLitElement {
-	@state()
-	private _version?: string;
-
-	@state()
-	private _dark = false;
-
-	#serverUrl = '';
-
-	@query('#logo-popover')
-	private _popover?: HTMLElement;
-
-	constructor() {
-		super();
-
-		this.consumeContext(UMB_SERVER_CONTEXT, (instance) => {
-			this.#serverUrl = instance?.getServerUrl() ?? '';
-		});
-		this.consumeContext(UMB_THEME_CONTEXT, (context) => {
-			this.observe(context?.theme, (theme) => (this._dark = cromboloIsDarkTheme(theme)), '_observeTheme');
-		});
-
-		this.consumeContext(UMB_BACKOFFICE_CONTEXT, (context) => {
-			this.observe(
-				context?.version,
-				(version) => {
-					if (!version) return;
-					this._version = version;
-				},
-				'_observeVersion',
-			);
-		});
-	}
-
 	override render() {
 		return html`
-			<uui-button
-				id="header-logo-button"
-				look="primary"
-				label=${this.localize.term('buttons_viewSystemDetails')}
-				compact
-				popovertarget="logo-popover">
+			<uui-button id="header-logo-button" look="primary" label="Home" compact href=${document.baseURI}>
 				<umb-app-logo id="header-logo" loading="eager" override-theme="umb-dark-theme"></umb-app-logo>
 			</uui-button>
-			<uui-popover-container id="logo-popover" placement="bottom-start">
-				<umb-popover-layout>
-					<div id="modal">
-						<img
-							id="logo"
-							src=${this._dark
-								? `${this.#serverUrl}/umbraco/management/api/v1/security/back-office/graphics/logo-alternative-dark`
-								: '/umbraco/backoffice/assets/umbraco-logo.svg'}
-							alt=${cromboloSiteName()}
-							loading="lazy" />
-
-						<span>${this._version ?? nothing}</span>
-
-						<a href="https://github.com/kineco-au/crombolo-cms" target="_blank" rel="noopener">Crombolo on GitHub</a>
-
-						<uui-button @click=${this.#openSystemInformation} look="secondary" label="System information"></uui-button>
-					</div>
-				</umb-popover-layout>
-			</uui-popover-container>
 		`;
-	}
-
-	async #openSystemInformation() {
-		// WebKit keeps the popovertarget toggle state "open" after the modal light-dismisses
-		// the popover, leaving the logo button unresponsive until reload — close it explicitly first.
-		if (this._popover?.matches(':popover-open')) {
-			this._popover.hidePopover();
-		}
-		const modalManager = await this.getContext(UMB_MODAL_MANAGER_CONTEXT);
-		if (!modalManager) {
-			throw new Error('Modal manager not found');
-		}
-
-		modalManager
-			.open(this, UMB_SYSINFO_MODAL)
-			.onSubmit()
-			.catch(() => {});
 	}
 
 	static override styles = [
@@ -116,21 +34,6 @@ export class UmbBackofficeHeaderLogoElement extends UmbLitElement {
 			#header-logo > img {
 				width: var(--umb-header-logo-width, auto);
 				height: var(--umb-header-logo-height, 30px);
-			}
-
-			#logo {
-				display: var(--umb-logo-display, block);
-				width: var(--umb-logo-width, auto);
-				height: var(--umb-logo-height, 55px);
-			}
-
-			#modal {
-				padding: var(--uui-size-space-6);
-				display: flex;
-				flex-direction: column;
-				align-items: center;
-				gap: var(--uui-size-space-3);
-				min-width: var(--uui-size-100);
 			}
 		`,
 	];
