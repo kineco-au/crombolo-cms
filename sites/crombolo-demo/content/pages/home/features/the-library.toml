@@ -1,0 +1,17 @@
+type = "feature"
+name = { "en-US" = "The Library", "es-ES" = "La Biblioteca" }
+order = 2
+
+[values]
+category = "editing"
+image = "/type-case.jpg"
+
+[values.en-US]
+title = "The Library"
+summary = "Shared content lives in one place, and pages point at it."
+body = { html = "<p>People, menus and anything else used more than once belong in the Library. Elements can be kept in folders and picked from any page.</p><p>The people page on this site and the names on blog posts read from the same elements.</p>" }
+
+[values.es-ES]
+title = "La Biblioteca"
+summary = "El contenido compartido vive en un solo lugar y las páginas apuntan a él."
+body = { html = "<p>Las personas, los menús y todo lo que se usa más de una vez pertenecen a la Biblioteca. Los elementos se pueden ordenar en carpetas y elegir desde cualquier página.</p><p>La página del equipo y los nombres de los artículos leen los mismos elementos.</p>" }

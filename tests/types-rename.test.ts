@@ -66,7 +66,7 @@ const set = (): SchemaSet => ({
       name: 'Page blocks',
       editor: 'Umbraco.BlockList',
       config: {},
-      blocks: [{ element: 'quote', label: '{{ text }}' }],
+      blocks: [{ element: 'quote', label: '{= text | truncate:30}' }],
     },
   ],
   workflows: [
@@ -113,7 +113,7 @@ describe('the renames', () => {
       key: propertyKeyFor(typeKeyFor('document', 'quote'), 'text'),
     })
     expect(quote?.key).toBeUndefined()
-    expect(result.set.dataTypes[0]?.blocks?.[0]?.label).toBe('{{body}}')
+    expect(result.set.dataTypes[0]?.blocks?.[0]?.label).toBe('{= body | truncate:30}')
     expect(renameProperty(set(), 'document', 'quote', 'text', 'text')).toMatchObject({ ok: true })
     expect(renameProperty(set(), 'document', 'page', 'title', 'blocks')).toMatchObject({
       ok: false,

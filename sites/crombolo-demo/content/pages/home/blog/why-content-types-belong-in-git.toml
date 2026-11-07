@@ -1,0 +1,20 @@
+type = "blogPost"
+name = { "en-US" = "Why content types belong in git", "es-ES" = "Por qué los tipos de contenido deben estar en git" }
+order = 0
+
+[values]
+publishDate = "2026-03-10"
+author = ["ines-marchetti"]
+image = "/drafting-compass.jpg"
+
+[values.en-US]
+title = "Why content types belong in git"
+excerpt = "A change to the shape of your content deserves the same review as a change to your code."
+body = { html = "<p>If a content type exists only in a database, nobody can review a change to it. You find out what happened after it has happened.</p><p>With the definition in a file, a new property is a line in a pull request, and rolling back is a revert.</p>" }
+tags = ["schema", "workflow"]
+
+[values.es-ES]
+title = "Por qué los tipos de contenido deben estar en git"
+excerpt = "Un cambio en la forma de tu contenido merece la misma revisión que un cambio en tu código."
+body = { html = "<p>Si un tipo de contenido solo existe en una base de datos, nadie puede revisar sus cambios. Te enteras de lo ocurrido cuando ya ha ocurrido.</p><p>Con la definición en un archivo, una propiedad nueva es una línea en una revisión y deshacerla es revertir.</p>" }
+tags = ["esquema", "flujo de trabajo"]

@@ -114,6 +114,7 @@ export function createBackOfficePaths(options: BackOfficePathOptions = {}): Back
  */
 export const SPA_ROUTES = [
   'section',
+  'home',
   'preview',
   'upgrade',
   'install',

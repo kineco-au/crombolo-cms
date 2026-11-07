@@ -7,6 +7,7 @@
  * properties".
  */
 import {
+  dateFromText,
   ObjectTypes,
   STORAGE_COLUMN,
   type StartNodes,
@@ -130,8 +131,8 @@ export function parseContentQuery(body: unknown): ParsedQuery {
     const out: { from?: Date; to?: Date } = {}
     for (const end of ['from', 'to'] as const) {
       if (value[end] === undefined) continue
-      const date = typeof value[end] === 'string' ? new Date(value[end] as string) : undefined
-      if (!date || Number.isNaN(date.getTime())) problems.push(`"${field}.${end}" must be a date.`)
+      const date = typeof value[end] === 'string' ? dateFromText(value[end] as string) : undefined
+      if (!date) problems.push(`"${field}.${end}" must be a date.`)
       else out[end] = date
     }
     return out
@@ -633,8 +634,8 @@ function comparable(value: unknown, storage: ValueStorageTypeName, alias: string
     return n
   }
   if (storage === 'Date') {
-    const date = new Date(String(value))
-    if (Number.isNaN(date.getTime())) throw new ContentQueryRefused(`"${alias}" compares dates.`)
+    const date = dateFromText(String(value))
+    if (!date) throw new ContentQueryRefused(`"${alias}" compares dates.`)
     return DbDate.toDb(date)
   }
   if (typeof value === 'object') throw new ContentQueryRefused(`"${alias}" compares text.`)

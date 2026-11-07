@@ -130,7 +130,7 @@ async function apiElement(
   return {
     contentType: element.contentType.alias ?? '',
     id: element.key,
-    name: '',
+    name: element.name ?? '',
     properties: await properties(element, ctx, expand, include ?? { key: '', children: [] }),
   }
 }

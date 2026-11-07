@@ -370,6 +370,27 @@ describe(`applying the domains file (${dialectUnderTest})`, () => {
     expect(rows[0]?.isoCode).toBe('en-US')
   })
 
+  test('a path alone answers on any hostname, with addresses that keep to it', async () => {
+    if (!(await canConnect())) throw new Error(`no ${dialectUnderTest} to test against`)
+    const { h, root, page } = await site()
+    await page('Home')
+    writeFileSync(
+      join(root, DOMAINS_FILE),
+      writeDomainsFile([{ node: '/', host: '/es', culture: 'en-US' }]),
+    )
+    expect((await syncDomainsFile(h.server.db, root)).problems).toEqual([])
+    expect((await new DomainRepository(h.server.db).all())[0]?.domainName).toBe('/es')
+    h.server.cache.invalidate()
+    await h.server.cache.fresh()
+    for (const origin of ['http://one.example', 'http://two.example:8123']) {
+      const response = await h.server.fetch(new Request(`${origin}/es`))
+      expect(response.status).toBe(200)
+    }
+    // Its language's other pages are not moved to a hostname of their own.
+    const content = await h.server.cache.resolve('three.example', '/es')
+    expect(content?.content.url).toBe('/es/')
+  })
+
   test('keeps the file it replaced, so a wrong hostname is one command to undo', async () => {
     if (!(await canConnect())) throw new Error(`no ${dialectUnderTest} to test against`)
     const { h, root, page, bound } = await site()

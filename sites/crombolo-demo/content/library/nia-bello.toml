@@ -1,0 +1,14 @@
+type = "person"
+name = { "en-US" = "Nia Bello", "es-ES" = "Nia Bello" }
+order = 4
+
+[values]
+fullName = "Nia Bello"
+
+[values.en-US]
+role = "Support"
+bio = "Reads every question that comes through the contact form."
+
+[values.es-ES]
+role = "Soporte"
+bio = "Lee cada pregunta que llega por el formulario de contacto."

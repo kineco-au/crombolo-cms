@@ -13,31 +13,10 @@ export const SIDEBAR_APPS = {
   code: 'Umb.SectionSidebarMenu.Templating',
 }
 
-export const GROUPS = ['Build', 'Site', 'Health', 'History', 'Developers', 'Extensions', 'Other']
+export const GROUPS = ['Site', 'Health', 'History', 'Developers', 'Extensions', 'Other']
 
 /** Our words for each tool, by the alias of its dashboard or menu item. */
 export const CARDS = {
-  structure: {
-    group: 'Build',
-    title: 'Structure',
-    description: 'Content, media and member types, data types and languages.',
-  },
-  code: {
-    group: 'Build',
-    title: 'Code',
-    description: 'Components, stylesheets and scripts.',
-  },
-  'Umb.Dashboard.ModelsBuilder': {
-    group: 'Build',
-    title: 'Types for code',
-    description: 'The TypeScript types written from the schema, and whether they are out of date.',
-  },
-  'Crombolo.Dashboard.Workflows': {
-    group: 'Build',
-    title: 'Workflows',
-    description:
-      'The approval steps a page goes through before it is published, and who decides each.',
-  },
   'Crombolo.Dashboard.Seo': {
     group: 'Site',
     title: 'Search & sharing',
@@ -110,6 +89,11 @@ export const CARDS = {
     title: 'CI access',
     description: 'The CI jobs that may pull and push here without a person, and what each may do.',
   },
+  'Umb.Dashboard.ModelsBuilder': {
+    group: 'Developers',
+    title: 'Types for code',
+    description: 'The TypeScript types written from the schema, and whether they are out of date.',
+  },
   'Crombolo.Dashboard.Bundles': {
     group: 'Extensions',
     title: 'Bundles',
@@ -128,15 +112,11 @@ export const CARDS = {
  * @param {{
  *   dashboards?: { alias: string, label?: string, description?: string, bundle?: { name: string, packageName: string }, path: string }[],
  *   advanced?: { alias: string, label?: string, description?: string, bundle?: { name: string, packageName: string }, entityType: string }[],
- *   structure?: boolean,
- *   code?: boolean,
  * }} from
  * @returns {{ group: string, bundle?: { name: string, packageName: string, path: string }, cards: any[] }[]}
  */
-export function settingsCards({ dashboards = [], advanced = [], structure = false, code = false }) {
+export function settingsCards({ dashboards = [], advanced = [] }) {
   const found = []
-  if (structure) found.push({ alias: 'structure', path: 'structure' })
-  if (code) found.push({ alias: 'code', path: 'code' })
   for (const d of dashboards)
     found.push({
       alias: d.alias,
@@ -210,15 +190,18 @@ export function treeFor(entityType) {
 
 /**
  * The trail above a Settings page: Settings, then the tree or tool it is in.
- * Paths are relative to the section; the last crumb is the page itself.
+ * Paths are relative to the section; the last crumb is the page itself, and `home`
+ * marks the crumb for the root of the back office, which is outside the section.
  *
  * @param {{ tree?: 'structure' | 'code', title?: string }} at
  */
 export function crumbsFor({ tree, title } = {}) {
+  const home = { label: 'Home', home: true }
   const settings = { label: 'Settings', path: '' }
-  if (tree) return [settings, { label: CARDS[tree]?.title ?? tree }]
-  if (title) return [settings, { label: title }]
-  return []
+  // A tree is reached from the menu under Content, which says where it is (story 289).
+  if (tree) return []
+  if (title) return [home, settings, { label: title }]
+  return [home, { label: 'Settings' }]
 }
 
 /**

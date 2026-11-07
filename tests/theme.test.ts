@@ -136,16 +136,14 @@ describe('the themes and the switch', () => {
     expect(byAlias(THEME_SYSTEM)).toMatchObject({ type: 'theme', name: 'Match my system' })
   })
 
-  test('the header offers the choice', () => {
-    expect(byAlias('Crombolo.HeaderApp.Theme')).toMatchObject({
-      type: 'headerApp',
-      element: '/crombolo-plugin/theme-switch.js',
+  test('the choice is the profile’s, and is kept for the person, not only the browser', () => {
+    expect(byAlias('Crombolo.EntryPoint.ThemeSync')).toMatchObject({
+      type: 'backofficeEntryPoint',
+      js: '/crombolo-plugin/theme-sync.js',
     })
-    const element = readFileSync(join(PLUGIN, 'theme-switch.js'), 'utf8')
-    for (const alias of ['umb-light-theme', THEME_DARK, THEME_SYSTEM])
-      expect(element).toContain(alias)
-    // Kept for the person, not only the browser.
-    expect(element).toContain('/management/api/v1/user-data')
+    expect(readFileSync(join(PLUGIN, 'theme-sync.js'), 'utf8')).toContain(
+      '/management/api/v1/user-data',
+    )
   })
 })
 

@@ -619,6 +619,8 @@ export function createPublishedContentSource(
           contentTypeKey: keyOfType.get(row.contentTypeAlias) as string,
           contentTypeAlias: row.contentTypeAlias,
           cultures: row.cultures,
+          name: row.name,
+          names: row.names,
           properties: row.values.map((value) => ({
             alias: value.alias,
             editorAlias: value.editorAlias ?? '',

@@ -91,6 +91,8 @@ test('no section of the backoffice names Umbraco', async ({ page, diagnostics })
         .locator('umb-backoffice-header-apps')
         .getByRole('link', { name: 'Settings' })
         .click()
+    // Forms has no tab, for anyone with Content: it opens from the menu there (story 289).
+    else if (section === 'Forms') await page.goto('/crombolo/section/forms')
     else {
       await page
         .locator('umb-backoffice-header-sections')

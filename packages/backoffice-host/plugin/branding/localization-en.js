@@ -54,13 +54,6 @@ export default {
   general: {
     umbracoInfo: 'Crombolo info',
   },
-  buttons: {
-    // The accessible name of the header logo button, on every page of the editor.
-    // Nothing renders it as visible text, which is why the first sweep through
-    // these dictionaries missed it; it surfaced in the accessibility snapshot
-    // attached to an unrelated Playwright failure.
-    viewSystemDetails: 'View Crombolo system information and version number',
-  },
   visuallyHiddenTexts: {
     searchOverlayTitle: 'Search the Crombolo backoffice',
   },

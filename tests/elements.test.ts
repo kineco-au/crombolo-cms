@@ -12,6 +12,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { SYSTEM_CONTENT_TYPE_KEYS } from '@crombolo/core'
 import { ComponentRepository, ContentTypeRepository } from '@crombolo/data'
+import { PublishedCache } from '@crombolo/render'
 import { generateTypes, loadSchemaDirectory, validateSchemaSet } from '@crombolo/schema'
 import { type Harness, signedInServer, V1 } from './support/harness.ts'
 import { notShipped } from './support/shipped.ts'
@@ -583,6 +584,7 @@ type = "heroPicker"
       {heroes.map((hero) => (
         <section class="hero">
           <i>{hero.contentType.alias}</i>
+          <u>{hero.name}</u>
           <b>{hero.text('body')}</b>
         </section>
       ))}
@@ -604,7 +606,11 @@ type = "heroPicker"
     writeFileSync(join(root, 'schema', 'data-types', 'hero-picker.toml'), HERO_TOML)
     writeFileSync(join(root, 'components', 'page.tsx'), VIEW)
     const h = await signedInServer({
-      config: { schemaDir: join(root, 'schema'), componentsDir: join(root, 'components') },
+      config: {
+        schemaDir: join(root, 'schema'),
+        componentsDir: join(root, 'components'),
+        deliveryApi: { enabled: true },
+      },
     })
     open.push(h)
     const types = new ContentTypeRepository(h.server.db)
@@ -652,6 +658,71 @@ type = "heroPicker"
     expect(html.indexOf('<b>Two</b>')).toBeLessThan(html.indexOf('<b>One</b>'))
     // The element knows its own type, as a block's element does.
     expect(html).toContain('<i>quote</i>')
+  })
+
+  test('a picked element gives its name, as it was published (story 287)', async () => {
+    const { h, element, page, render } = await pickerSite()
+    const key = await element('Whisky', 'Body')
+    await page([key])
+    expect(await render()).toContain('<u>Whisky</u>')
+
+    // A draft rename is not what a visitor sees.
+    await h.put(`${V1}/element/${key}`, {
+      values: [{ alias: 'body', culture: null, segment: null, value: 'Body' }],
+      variants: [{ culture: null, segment: null, name: 'Rye' }],
+    })
+    expect(await render()).toContain('<u>Whisky</u>')
+    await h.put(`${V1}/element/${key}/publish`, { cultures: [] })
+    expect(await render()).toContain('<u>Rye</u>')
+  })
+
+  test('the Delivery API gives a picked element its name', async () => {
+    const { h, element, page } = await pickerSite()
+    await page([await element('Whisky', 'Body')])
+    const response = await h.call('/umbraco/delivery/api/v2/content/item/home')
+    expect(response.status).toBe(200)
+    const item = (await response.json()) as { properties: { heroes: Array<{ name: string }> } }
+    expect(item.properties.heroes.map((hero) => hero.name)).toEqual(['Whisky'])
+  })
+
+  test('a varying element has its name in each culture, and an empty one falls back', async () => {
+    const element = (names: Record<string, string>) => ({
+      key: 'A1B2C3D4-0000-4000-8000-000000000001',
+      contentTypeKey: 'c0000000-0000-4000-8000-000000000001',
+      contentTypeAlias: 'category',
+      cultures: ['en-US', 'fr-FR'],
+      name: 'Whisky',
+      names,
+      properties: [],
+    })
+    const cache = new PublishedCache({
+      loadPublished: async () => [],
+      loadLanguages: async () => [
+        { isoCode: 'en-US', isDefault: true, fallbackIsoCode: null },
+        { isoCode: 'fr-FR', isDefault: false, fallbackIsoCode: null },
+      ],
+      loadElements: async () => [element({ 'en-US': 'Whisky', 'fr-FR': '' })],
+    })
+    const named = (culture: string) =>
+      cache
+        .snapshot()
+        .then((snapshot) =>
+          snapshot.views.get(culture)?.elements.get(element({}).key.toLowerCase()),
+        )
+    expect((await named('en-us'))?.name).toBe('Whisky')
+    expect((await named('fr-fr'))?.name).toBe('Whisky')
+    const french = new PublishedCache({
+      loadPublished: async () => [],
+      loadLanguages: async () => [
+        { isoCode: 'en-US', isDefault: true, fallbackIsoCode: null },
+        { isoCode: 'fr-FR', isDefault: false, fallbackIsoCode: null },
+      ],
+      loadElements: async () => [element({ 'en-US': 'Whisky', 'fr-FR': 'Eau de vie' })],
+    })
+    const snapshot = await french.snapshot()
+    expect(snapshot.views.get('fr-fr')?.elements.get(element({}).key.toLowerCase())?.name).toBe(
+      'Eau de vie',
+    )
   })
 
   test('an unpublished element is dropped from the page that picked it, and comes back when published', async () => {

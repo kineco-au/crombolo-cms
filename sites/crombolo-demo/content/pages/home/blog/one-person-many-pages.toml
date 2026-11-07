@@ -1,0 +1,20 @@
+type = "blogPost"
+name = { "en-US" = "One person, many pages", "es-ES" = "Una persona, muchas páginas" }
+order = 2
+
+[values]
+publishDate = "2026-05-14"
+author = ["asha-rao"]
+image = "/type-case.jpg"
+
+[values.en-US]
+title = "One person, many pages"
+excerpt = "What we learned moving shared content into the Library."
+body = { html = "<p>Copying a job title into twelve pages works until someone changes job. An element in the Library is one place to change it.</p><p>Editors found the folders in the Library the most useful part. A long flat list is hard to trust.</p>" }
+tags = ["editing", "library"]
+
+[values.es-ES]
+title = "Una persona, muchas páginas"
+excerpt = "Lo que aprendimos al mover el contenido compartido a la Biblioteca."
+body = { html = "<p>Copiar un cargo en doce páginas funciona hasta que alguien cambia de puesto. Un elemento de la Biblioteca es un solo lugar donde cambiarlo.</p><p>A los editores lo que más les sirvió fueron las carpetas de la Biblioteca. Es difícil fiarse de una lista larga.</p>" }
+tags = ["edición", "biblioteca"]

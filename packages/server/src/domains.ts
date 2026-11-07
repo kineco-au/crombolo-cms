@@ -35,7 +35,7 @@ export const DOMAINS_FILE = 'domains.toml'
 export interface DomainDeclaration {
   /** A content path (`/`, `/fr`) or a node uuid; resolved when the file is applied. */
   node: string
-  /** A hostname, optionally with a port and a path, and optionally `${VAR}`. */
+  /** A hostname, optionally with a port and a path, or a path alone; optionally `${VAR}`. */
   host: string
   /** The culture this hostname serves; absent means the site's default. */
   culture?: string

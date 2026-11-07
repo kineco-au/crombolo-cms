@@ -262,6 +262,9 @@ describe(`finding pages (${dialectUnderTest})`, () => {
       'Shop',
     ])
     expect(await where('gt', '2026-11-01', 'launch')).toEqual(['The cove'])
+    // A time with no zone is the wall clock it is stored as, on any server (story 286).
+    expect(await where('gte', '2026-11-20 00:00:00', 'launch')).toEqual(['The cove'])
+    expect(await where('gt', '2026-11-20 00:00:00', 'launch')).toEqual([])
     expect(await where('eq', 'DOWN HERE', 'summary')).toEqual(['Buried note'])
     expect(await where('eq', true, 'featured')).toEqual(['Harbour lights'])
   })

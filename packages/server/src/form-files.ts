@@ -11,7 +11,7 @@
  */
 
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type { FormTypes, SchemaForm } from '@crombolo/core'
 import {
   fileNameFor,
@@ -22,12 +22,16 @@ import {
   writeForm,
 } from '@crombolo/schema'
 
+import { folderPath } from './definition-folders.ts'
+
 export interface FormFileOptions {
   schemaDir: string
   /** False on a deployed node with no schema store: the write would not last. */
   writable: boolean
   /** Publishes the directory to a shared store, when there is one. */
   onChanged?: () => Promise<void>
+  /** The folder a new form goes in; one that exists stays where it is. */
+  folder?: string
   /** The field and workflow types the site's wired bundles add. */
   formTypes?: FormTypes
   /** The components on disk, so a Send email `template` is held to one that exists. */
@@ -249,9 +253,11 @@ export async function saveForm(
   })
   if (problems.length > 0) return { ok: false, status: 'invalid', problems }
 
-  const dir = join(options.schemaDir, 'forms')
-  mkdirSync(dir, { recursive: true })
-  const file = join(dir, name)
+  // A form stays in its folder (story 289); a new one goes in the folder it was made in.
+  const file =
+    loaded.files.get(`form:${form.alias}`) ??
+    join(options.schemaDir, 'forms', folderPath(options.folder) ?? '', name)
+  mkdirSync(dirname(file), { recursive: true })
   writeFileSync(file, writeForm(form), 'utf8')
   await options.onChanged?.()
   return { ok: true, file }
@@ -262,7 +268,9 @@ export async function deleteForm(
   options: FormFileOptions,
 ): Promise<FormWriteResult> {
   if (!options.writable) return readOnly()
-  const file = join(options.schemaDir, 'forms', formFileName(alias))
+  const loaded = loadSchemaDirectory(options.schemaDir, { formTypes: options.formTypes })
+  const file =
+    loaded.files.get(`form:${alias}`) ?? join(options.schemaDir, 'forms', formFileName(alias))
   if (!existsSync(file))
     return {
       ok: false,

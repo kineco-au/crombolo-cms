@@ -1,14 +1,16 @@
 /**
- * The Content section's Overview (story 236), in place of Umbraco's news: the
- * pages changed lately, how many are drafts or published, what people did, and
- * a way to start a new page. Everything comes from `crombolo/api/overview`,
+ * Home (stories 236, 288), where the back office opens and the logo leads: the pages changed lately, how many are drafts or published, what people
+ * did, a way to start a new page, and the system's details. It is the fork's
+ * `homeView`, outside any section. Everything comes from `crombolo/api/overview`,
  * already narrowed to what the signed-in user may see.
  */
+import { UMB_AUTH_CONTEXT } from '@umbraco-cms/backoffice/auth'
 import { UMB_CURRENT_USER_CONTEXT } from '@umbraco-cms/backoffice/current-user'
 import { UMB_DOCUMENT_CREATE_OPTIONS_MODAL } from '@umbraco-cms/backoffice/document'
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { umbOpenModal } from '@umbraco-cms/backoffice/modal'
+import { UMB_SYSINFO_MODAL, UmbSysinfoRepository } from '@umbraco-cms/backoffice/sysinfo'
 import { activityLine, ago, avatarHue, firstName, initials, STATES } from './overview-format.js'
 
 const base = () =>
@@ -26,7 +28,12 @@ export default class CromboloOverviewDashboardElement extends UmbLitElement {
     _take: { state: true },
     _skip: { state: true },
     _error: { state: true },
+    _server: { state: true },
   }
+
+  /** The session had gone when it last asked, so signing back in is what to wait for. */
+  #signedOut = false
+  #auth
 
   constructor() {
     super()
@@ -37,6 +44,18 @@ export default class CromboloOverviewDashboardElement extends UmbLitElement {
       this.observe(user?.currentUser, (current) => {
         this._name = current?.name
       })
+    })
+    // Signing back in is a pop-up, so this page stays where it was and has to look again.
+    this.consumeContext(UMB_AUTH_CONTEXT, (auth) => {
+      this.#auth = auth
+      this.observe(auth?.isAuthorized, (authorized) => {
+        if (!authorized || !this.#signedOut) return
+        this.#signedOut = false
+        this.#load()
+      })
+    })
+    new UmbSysinfoRepository(this).requestServerInformation().then((server) => {
+      this._server = server
     })
   }
 
@@ -52,10 +71,18 @@ export default class CromboloOverviewDashboardElement extends UmbLitElement {
       take: String(this._take),
     })
     try {
+      // Plain `fetch` renews nothing, so a token left to lapse would be refused.
+      await (await this.getContext(UMB_AUTH_CONTEXT))?.getLatestToken().catch(() => undefined)
       const response = await fetch(`${base()}/crombolo/api/overview?${query}`, {
         credentials: 'include',
         headers: { accept: 'application/json' },
       })
+      if (response.status === 401) {
+        // Not this page's to report: the sign-in dialog says so, and it loads after.
+        this.#signedOut = true
+        if (this.#auth?.getIsAuthorized()) this.#auth.timeOut()
+        return
+      }
       if (!response.ok) throw new Error(`overview responded ${response.status}`)
       this._data = await response.json()
       this._error = undefined
@@ -90,9 +117,9 @@ export default class CromboloOverviewDashboardElement extends UmbLitElement {
 
   render() {
     const name = firstName(this._name)
-    return html`
+    return html`<div class="page">
       <header>
-        <h1>Overview</h1>
+        <h1>Home</h1>
         <p>${name ? `Welcome back, ${name}. ` : ''}Here’s what’s happening in Crombolo.</p>
       </header>
       ${this._error ? html`<uui-box><p class="error">${this._error}</p></uui-box>` : nothing}
@@ -107,9 +134,34 @@ export default class CromboloOverviewDashboardElement extends UmbLitElement {
             <uui-icon name="icon-add"></uui-icon>
           </button>
         </div>
-        <div class="side">${this.#renderStats()} ${this.#renderActivity()}</div>
+        <div class="side">
+          ${this.#renderStats()} ${this.#renderActivity()} ${this.#renderSystem()}
+        </div>
       </div>
-    `
+    </div>`
+  }
+
+  #renderSystem() {
+    return html`<uui-box headline="System information">
+      <dl class="system">
+        <dt>Version</dt>
+        <dd>${this._server?.version ?? '…'}</dd>
+        <dt>Mode</dt>
+        <dd>${this._server?.runtimeMode ?? '…'}</dd>
+      </dl>
+      <div class="system-links">
+        <a href="https://github.com/kineco-au/crombolo-cms" target="_blank" rel="noopener">
+          Crombolo on GitHub
+        </a>
+        <button class="link" type="button" @click=${() => this.#openSystemDetails()}>
+          All details
+        </button>
+      </div>
+    </uui-box>`
+  }
+
+  #openSystemDetails() {
+    umbOpenModal(this, UMB_SYSINFO_MODAL).catch(() => undefined)
   }
 
   #renderPages() {
@@ -231,8 +283,26 @@ export default class CromboloOverviewDashboardElement extends UmbLitElement {
   static styles = css`
     :host {
       display: block;
+      height: 100%;
+      overflow: auto;
+    }
+    .page {
+      box-sizing: border-box;
       padding: var(--uui-size-layout-1);
       max-width: 1400px;
+    }
+    .system {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: var(--uui-size-space-2) var(--uui-size-space-4);
+      margin: 0 0 var(--uui-size-space-4);
+    }
+    .system dt { color: var(--uui-color-text-alt); }
+    .system dd { margin: 0; }
+    .system-links {
+      display: flex;
+      justify-content: space-between;
+      gap: var(--uui-size-space-4);
     }
     header h1 {
       margin: 0 0 var(--uui-size-space-3);

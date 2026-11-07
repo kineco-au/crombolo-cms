@@ -1,0 +1,14 @@
+type = "person"
+name = { "en-US" = "Jonas Lind", "es-ES" = "Jonas Lind" }
+order = 3
+
+[values]
+fullName = "Jonas Lind"
+
+[values.en-US]
+role = "Developer advocate"
+bio = "Writes the guides, and tries every step in them on a clean machine."
+
+[values.es-ES]
+role = "Divulgador técnico"
+bio = "Escribe las guías y prueba cada paso en un ordenador limpio."

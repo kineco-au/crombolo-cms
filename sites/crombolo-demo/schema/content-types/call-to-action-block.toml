@@ -1,0 +1,25 @@
+[content-type]
+alias = "callToActionBlock"
+name = "Call to Action"
+description = "A heading and a button"
+icon = "icon-navigation-right"
+is-element = true
+
+[[tab]]
+name = "Content"
+
+[[tab.property]]
+alias = "heading"
+name = "Heading"
+type = "textstring"
+mandatory = true
+
+[[tab.property]]
+alias = "text"
+name = "Text"
+type = "textarea"
+
+[[tab.property]]
+alias = "link"
+name = "Button"
+type = "linkPicker"

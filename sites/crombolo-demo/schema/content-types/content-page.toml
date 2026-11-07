@@ -1,0 +1,39 @@
+[content-type]
+alias = "contentPage"
+name = "Content Page"
+description = "A page of text with an image"
+icon = "icon-document"
+varies-by-culture = true
+compositions = ["seoFields"]
+components = ["pages/contentPage"]
+default-component = "pages/contentPage"
+
+[[tab]]
+name = "Content"
+
+[[tab.property]]
+alias = "title"
+name = "Title"
+description = "Shown as the page heading"
+type = "textstring"
+mandatory = true
+varies-by-culture = true
+site-search = "high"
+
+[[tab.property]]
+alias = "intro"
+name = "Introduction"
+description = "A sentence or two under the heading"
+type = "textarea"
+varies-by-culture = true
+
+[[tab.property]]
+alias = "image"
+name = "Image"
+type = "imageMediaPicker"
+
+[[tab.property]]
+alias = "body"
+name = "Body"
+type = "richtext"
+varies-by-culture = true

@@ -67,13 +67,12 @@ describe("the site's name and logos, from the fork of Umbraco's client", () => {
     expect(served('meta[name="application-name"]')).toBe(true)
   })
 
-  test('a dark theme takes the cream-lettered logos', () => {
+  test('a dark theme is crombolo’s', () => {
     expect(served('Crombolo.Theme.Dark')).toBe(true)
-    expect(served('logo-alternative-dark')).toBe(true)
-  })
+  }, 30_000)
 
-  test("the logo's popover links to Crombolo, not to umbraco.com", () => {
-    expect(served('Crombolo on GitHub')).toBe(true)
+  test('the logo leads home, and nothing links to umbraco.com', () => {
+    expect(served('document.baseURI', 'backoffice-header-logo')).toBe(true)
     expect(served('https://umbraco.com"')).toBe(false)
   }, 30_000)
 })

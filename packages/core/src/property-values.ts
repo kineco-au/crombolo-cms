@@ -94,11 +94,28 @@ function toUpload(stored: unknown): { src: string } | null {
   return typeof src === 'string' && src ? { src } : null
 }
 
-/** A stored instant as the date pickers show it: `2026-01-02 03:04:05`, in the zone it was entered in. */
+const NO_ZONE = /^\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?)?$/
+
+/**
+ * A date's text as an instant, with no zone meaning UTC: a date picker's wall
+ * clock is kept that way, and `new Date` would read it in the server's zone, so
+ * the same text would mean a different moment on another machine. Undefined
+ * when it is not a date.
+ */
+export function dateFromText(text: string): Date | undefined {
+  const trimmed = text.trim()
+  const date = new Date(
+    NO_ZONE.test(trimmed)
+      ? `${trimmed.replace(' ', 'T')}${trimmed.length === 10 ? 'T00:00:00' : ''}Z`
+      : trimmed,
+  )
+  return Number.isNaN(date.getTime()) ? undefined : date
+}
+
+/** A date as the date pickers show it: `2026-01-02 03:04:05`. Safe to apply twice. */
 function toWallClock(stored: unknown): unknown {
-  const date = new Date(String(stored))
-  if (Number.isNaN(date.getTime())) return stored
-  return date.toISOString().slice(0, 19).replace('T', ' ')
+  const date = dateFromText(String(stored))
+  return date ? date.toISOString().slice(0, 19).replace('T', ' ') : stored
 }
 
 /** The value an editor receives for what is stored. */

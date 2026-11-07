@@ -1,0 +1,8 @@
+# People are Library elements, so one person can sit on the people page and sign
+# a blog post, and a change to them shows in both.
+[data-type]
+alias = "personPicker"
+name = "Person Picker"
+editor = "Umbraco.ElementPicker"
+editor-ui = "Umb.PropertyEditorUi.ElementPicker"
+config = { allowedContentTypes = ["person"] }

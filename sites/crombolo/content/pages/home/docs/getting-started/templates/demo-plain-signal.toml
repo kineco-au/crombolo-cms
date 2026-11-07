@@ -2,7 +2,7 @@
 type = "docsPage"
 key = "905caea9-3de6-45fb-8d64-60d5e23c6ef5"
 name = "Plain Signal"
-order = 4
+order = 5
 
 [values]
 title = "Plain Signal"

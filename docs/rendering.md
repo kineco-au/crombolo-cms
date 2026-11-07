@@ -378,7 +378,7 @@ split; it is what makes the published cache cheap.
 
 ```ts
 interface PublishedElement {
-  key: string; id: number; name: string; contentType: { alias: string }
+  key: string; id: number; name: string | null; contentType: { alias: string }
   sortOrder: number; createDate: Date; updateDate: Date
   creatorId: number; writerId: number
   cultures: Record<string, PublishedCultureInfo>
@@ -933,7 +933,8 @@ as JSON text and parsed on the way back out, by editor alias
 Rich text is always `{ markup, blocks }` for the editor, including a legacy plain
 HTML string, and just its markup for a template, so `model.html('bodyText')`
 renders it. An upload is stored as its path and edited as `{ src }`; true/false
-reads back as a boolean; a date is the wall-clock time the picker sent. An element
+reads back as a boolean; a date is the wall-clock time the picker sent, the same on
+a server in any time zone (story 286). An element
 picker stores a bare `Guid[]` — keys, not the `umb://…` udis a content picker
 stores — which is why `Umbraco.ElementPicker` is in `JSON_VALUE_EDITORS`.
 
@@ -944,9 +945,9 @@ cache supplies (`@crombolo/render` `values.ts` and `media.ts`):
 | ----------------------- | ----------------------------------------------------------------------------------------------------------- |
 | Content Picker          | the published page, or null                                                                                 |
 | Multinode Treepicker    | a promise of the published pages and media items, in order                                                  |
-| Element Picker          | `PublishedElement[]`, always a list, dropping any not published in the page's culture                       |
+| Element Picker          | `PublishedElement[]`, always a list, dropping any not published in the page's culture; each has its `name`, in that culture |
 | Multi URL Picker        | a promise of `Link[]`, with page and media URLs resolved                                                    |
-| Block List / Block Grid | items with `content` and `settings` as `PublishedElement`s (same `value()`, and `contentType.alias` names the element type); grid items add spans, `areaGridColumns` and areas (with their alias and spans), and the list carries `gridColumns`. `<Blocks>` renders them (see "Blocks") |
+| Block List / Block Grid | items with `content` and `settings` as `PublishedElement`s (same `value()`, `name` is `null`, as a block has none, and `contentType.alias` names the element type); grid items add spans, `areaGridColumns` and areas (with their alias and spans), and the list carries `gridColumns`. `<Blocks>` renders them (see "Blocks") |
 | Media Picker            | a promise of `MediaWithCrops`, one or a list as the data type says; `await model.media(alias)` always lists |
 | Image Cropper           | `ImageCropperValue` (`src`, `crops`, `focalPoint`, `cropUrl()`)                                             |
 | Rich text               | the markup, with `/{localLink:…}` links resolved (`#` when gone); a promise when a link names media          |
@@ -1031,7 +1032,20 @@ serves its own culture: `da.example.com` → the Danish view, where a page's
 name, URL segment (its culture's `umbracoUrlName`, else its culture's name)
 and URL are Danish, and a page not published in Danish does not exist. Without
 a hostname, routes are the default language's; a varying page's URL in another
-culture with no hostname for it is `#`, Umbraco's unroutable marker. Invariant
+culture with no hostname for it is `#`, Umbraco's unroutable marker.
+
+A hostname can be a path alone (story 290): `host = "/es"` in `domains.toml`
+serves that culture under `/es` on every hostname and port, so one file works
+on localhost and in production, and the page's URLs stay relative. The default
+language stays at the root with no entry of its own. A value in a content file
+for a property that varies goes under `[values.<culture>]`, the default
+language's included.
+
+A Library element reads its values in the page's culture, then its fallbacks,
+as a page does. A form has one set of labels, so a translated site gives each
+language its own form and lets the page's form picker vary by culture.
+`seoFields` does not vary by culture: a translated site passes `description` to
+`<SeoHead>` from a field that does, as `sites/crombolo-demo` does. Invariant
 pages appear in every culture. `GetDocumentUrls` lists one URL per published
 culture.
 

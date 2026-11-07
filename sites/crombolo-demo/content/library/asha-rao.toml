@@ -1,0 +1,14 @@
+type = "person"
+name = { "en-US" = "Asha Rao", "es-ES" = "Asha Rao" }
+order = 2
+
+[values]
+fullName = "Asha Rao"
+
+[values.en-US]
+role = "Designer"
+bio = "Works on the back office, and on keeping technical words out of it."
+
+[values.es-ES]
+role = "Diseñadora"
+bio = "Trabaja en el panel y en mantenerlo libre de palabras técnicas."

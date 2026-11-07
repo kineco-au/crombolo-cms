@@ -151,6 +151,9 @@ export interface PublishedElementNode {
   contentTypeKey: string
   contentTypeAlias: string
   cultures: string[]
+  /** The invariant name; a culture's own name comes from `names`. */
+  name: string
+  names?: Record<string, string>
   properties: PublishedProperty[]
 }
 
@@ -269,7 +272,31 @@ const EMPTY: CacheSnapshot = {
 const normaliseRoute = (route: string) =>
   (route === '' ? '/' : route.replace(/\/+$/, '') || '/').toLowerCase()
 const viewKey = (culture: string | null) => (culture ?? '').toLowerCase()
+
+/** A page's or element's name in a culture: its own there, or its invariant one. */
+const nameFor = (node: { name: string; names?: Record<string, string> }, culture: string | null) =>
+  (culture &&
+    Object.entries(node.names ?? {}).find(([c]) => viewKey(c) === viewKey(culture))?.[1]) ||
+  node.name
 const routeKeyId = (culture: string | null, id: number) => `${viewKey(culture)}|${id}`
+
+/** Each property once, in the first of `cultures` that has it, else its invariant value. */
+function propertiesIn(
+  properties: readonly PublishedProperty[],
+  cultures: readonly (string | null)[],
+): PublishedProperty[] {
+  const best = new Map<string, { property: PublishedProperty; rank: number }>()
+  for (const property of properties) {
+    const rank =
+      property.culture === null
+        ? cultures.length
+        : cultures.findIndex((culture) => viewKey(culture) === viewKey(property.culture ?? null))
+    if (rank < 0) continue
+    const held = best.get(property.alias)
+    if (!held || rank < held.rank) best.set(property.alias, { property, rank })
+  }
+  return [...best.values()].map((entry) => entry.property)
+}
 
 /** The fallback languages of `culture`, nearest first, stopping at a cycle. */
 export function fallbackChain(
@@ -544,7 +571,8 @@ export class PublishedCache {
       const slash = domain.domainName.indexOf('/')
       const domainHost = slash < 0 ? domain.domainName : domain.domainName.slice(0, slash)
       const prefix = slash < 0 ? '' : domain.domainName.slice(slash)
-      if (domainHost !== hostName && domainHost !== bare) continue
+      // `/es` has no hostname of its own, so it answers on every one.
+      if (domainHost && domainHost !== hostName && domainHost !== bare) continue
       if (prefix && route !== prefix && !route.startsWith(`${prefix}/`)) continue
       if (best && best.prefixLength >= prefix.length) continue
       best = { domain, rest: route.slice(prefix.length) || '/', prefixLength: prefix.length }
@@ -928,7 +956,9 @@ export class PublishedCache {
       return (
         own.find((d) => viewKey(d.isoCode) === viewKey(culture) && d.isoCode !== null) ??
         own.find((d) => d.isoCode === null) ??
-        (viewKey(culture) === viewKey(defaultCulture) ? own[0] : undefined)
+        (viewKey(culture) === viewKey(defaultCulture)
+          ? own.find((d) => !d.domainName.startsWith('/'))
+          : undefined)
       )
     }
 
@@ -1079,7 +1109,7 @@ export class PublishedCache {
         const domainRoute = domainRouteOf(node)
         const variant = node.cultures.length > 0
         const url = domainRoute
-          ? `//${domainRoute.domain.domainName}${domainRoute.route === '/' ? '/' : domainRoute.route}`
+          ? `${domainRoute.domain.domainName.startsWith('/') ? '' : '//'}${domainRoute.domain.domainName}${domainRoute.route === '/' ? '/' : domainRoute.route}`
           : isDefault || !variant
             ? route
             : '#'
@@ -1162,7 +1192,14 @@ export class PublishedCache {
               key: node.key,
               contentTypeKey: node.contentTypeKey,
               contentTypeAlias: node.contentTypeAlias,
-              properties: node.properties,
+              name: nameFor(
+                node,
+                node.cultures.length > 0 ? (culture ?? node.cultures[0] ?? null) : null,
+              ),
+              properties: propertiesIn(node.properties, [
+                culture,
+                ...fallbackChain(languages, culture),
+              ]),
             },
             context,
           ),
@@ -1406,10 +1443,7 @@ export function contentForNode(
 ): PublishedContent {
   const variant = node.cultures.length > 0
   const scoped = variant ? (culture ?? node.cultures[0] ?? null) : null
-  const name =
-    (scoped &&
-      Object.entries(node.names ?? {}).find(([c]) => viewKey(c) === viewKey(scoped))?.[1]) ||
-    node.name
+  const name = nameFor(node, scoped)
   const override =
     node.properties.find(
       (p) => p.alias === URL_NAME_ALIAS && p.culture && viewKey(p.culture) === viewKey(scoped),

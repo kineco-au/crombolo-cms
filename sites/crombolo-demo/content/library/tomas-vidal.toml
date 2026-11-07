@@ -1,0 +1,14 @@
+type = "person"
+name = { "en-US" = "Tomás Vidal", "es-ES" = "Tomás Vidal" }
+order = 1
+
+[values]
+fullName = "Tomás Vidal"
+
+[values.en-US]
+role = "Engineer"
+bio = "Looks after routing and the published cache. Prefers a failing test to a long meeting."
+
+[values.es-ES]
+role = "Ingeniero"
+bio = "Se ocupa de las rutas y la caché publicada. Prefiere una prueba que falla a una reunión larga."

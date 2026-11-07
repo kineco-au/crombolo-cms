@@ -120,6 +120,8 @@ not cover.
 | `275` | Crombolo's own back-office screens are accessible | should | M | ready | 235 |
 | `276` | The pages list view sorts by its property columns | could | M | done | 269 |
 | `277` | The back office on Umbraco 19 | should | L | backlog | 235, 272 |
+| `288` | The overview is the home of the back office | should | M | done | — |
+| `289` | A second-level menu under Content | should | L | done | 288 |
 
 ### Epic D — Members and identity
 
@@ -312,6 +314,9 @@ requests, only server-side and build-time front ends can call it.
 | `281` | A marked gap in a template | should | S | done | — |
 | `284` | A site's public folder | should | M | done | — |
 | `285` | An import tells the other nodes what it changed | should | S | done | — |
+| `286` | A date is the same on any server | should | S | done | — |
+| `287` | A template's element has its name | should | S | done | — |
+| `290` | A starter site that shows what the CMS does | should | L | done | — |
 
 ### Epic P — The command line
 

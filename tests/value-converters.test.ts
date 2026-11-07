@@ -251,6 +251,9 @@ describe('value converters', () => {
     }>
     expect(items[0]?.content).toBeInstanceOf(PublishedElement)
     expect(items[0]?.content.text('headline')).toBe('Hi')
+    // A block has no name of its own, and says so rather than giving an empty one.
+    const name: string | null | undefined = items[0]?.content.name
+    expect(name).toBeNull()
     expect(convertValue('Umbraco.TextBox', 'plain')).toBe('plain')
   })
 

@@ -1,0 +1,17 @@
+type = "feature"
+name = { "en-US" = "Content as code", "es-ES" = "Contenido como código" }
+order = 0
+
+[values]
+category = "structure"
+image = "/drafting-compass.jpg"
+
+[values.en-US]
+title = "Content as code"
+summary = "Content types and languages are files in your repository."
+body = { html = "<p>A content type is a small TOML file. It shows up in a diff, goes through review, and reaches every environment with the deploy.</p><p>Nothing drifts between staging and production, because there is only one copy of the definition.</p>" }
+
+[values.es-ES]
+title = "Contenido como código"
+summary = "Los tipos de contenido y los idiomas son archivos en tu repositorio."
+body = { html = "<p>Un tipo de contenido es un pequeño archivo TOML. Aparece en los cambios, pasa por revisión y llega a todos los entornos con el despliegue.</p><p>Nada se desvía entre pruebas y producción, porque solo existe una copia de la definición.</p>" }

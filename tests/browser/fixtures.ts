@@ -119,7 +119,10 @@ export { expect }
  */
 export async function settle(page: Page): Promise<void> {
   // The main area, which every section has; Settings' tools hide the sidebar (story 234).
-  await expect(page.locator('umb-section-main').first()).toBeVisible({ timeout: 30_000 })
+  // Home is outside any section (story 288), so it stands in for one.
+  await expect(page.locator('umb-section-main, crombolo-overview-dashboard').first()).toBeVisible({
+    timeout: 30_000,
+  })
   await page.waitForLoadState('networkidle')
 }
 

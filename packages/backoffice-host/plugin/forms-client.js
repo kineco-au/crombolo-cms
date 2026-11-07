@@ -27,6 +27,19 @@ const call = async (path, init) => {
 
 export const listForms = async () => (await call('')).body.items ?? []
 
+/** The forms with their folders, and why they cannot be changed here, if they cannot. */
+export const formsTree = async () => (await call('')).body
+
+const treeCall = async (path, method, body) => {
+  const result = await call(path, { method, body: JSON.stringify(body) })
+  return { ok: result.ok, message: result.body.message }
+}
+
+/** A folder made (`POST`), renamed (`PUT`) or deleted (`DELETE`). */
+export const sendFormFolder = (method, body) => treeCall('/tree-folders', method, body)
+
+export const moveForm = (alias, folder) => treeCall('/tree-move', 'POST', { alias, folder })
+
 /** The content types made from forms (story 239), by key, with each form's name. */
 export const listLibraryTypes = async () => (await call('/library-types')).body.items ?? []
 
@@ -41,8 +54,11 @@ export const listEmailTemplates = async () => (await call('/email-templates')).b
 
 export const readForm = async (key) => (await call(`/${encodeURIComponent(key)}`)).body
 
-export const saveForm = (definition) =>
-  call('', { method: 'PUT', body: JSON.stringify(definition) })
+export const saveForm = (definition, folder) =>
+  call(folder ? `?folder=${encodeURIComponent(folder)}` : '', {
+    method: 'PUT',
+    body: JSON.stringify(definition),
+  })
 
 /** The options a choice source offers right now, as a visitor would see them. */
 export const previewChoices = (source) =>

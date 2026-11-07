@@ -1,0 +1,7 @@
+# Spanish lives at /es on whatever hostname the site runs on. A path alone needs
+# no hostname, so this one file works on localhost and in production. English,
+# the default language, stays at the root. See docs/rendering.md, "Cultures".
+[[domain]]
+node = "/"
+host = "/es"
+culture = "es-ES"

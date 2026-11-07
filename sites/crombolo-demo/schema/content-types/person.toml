@@ -1,0 +1,35 @@
+[content-type]
+alias = "person"
+name = "Person"
+description = "Someone on the team, kept in the Library"
+icon = "icon-user"
+is-element = true
+allow-in-library = true
+varies-by-culture = true
+
+[[tab]]
+name = "Content"
+
+[[tab.property]]
+alias = "fullName"
+name = "Full name"
+type = "textstring"
+mandatory = true
+
+[[tab.property]]
+alias = "role"
+name = "Role"
+type = "textstring"
+varies-by-culture = true
+
+[[tab.property]]
+alias = "bio"
+name = "Biography"
+type = "textarea"
+varies-by-culture = true
+
+[[tab.property]]
+alias = "photo"
+name = "Photo"
+description = "Leave empty to show their initials"
+type = "imageMediaPicker"

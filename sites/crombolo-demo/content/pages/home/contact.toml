@@ -1,0 +1,15 @@
+type = "contactPage"
+name = { "en-US" = "Contact", "es-ES" = "Contacto" }
+order = 5
+
+[values.en-US]
+title = "Get in touch"
+intro = "A working form: answers land under Forms in the back office."
+enquiryForm = "5e2c7a10-3f4b-4c6d-9a18-6b7d0e1f2a31"
+aside = { html = "<p>Questions about Crombolo itself are welcome on its source code repository.</p><p>This form is a file in the site, in one file for each language.</p>" }
+
+[values.es-ES]
+title = "Escríbenos"
+intro = "Un formulario real: las respuestas llegan a Formularios en el panel."
+enquiryForm = "9c4e1d72-6a2f-4b83-8e05-2d1f7c9b3e64"
+aside = { html = "<p>Las preguntas sobre Crombolo son bienvenidas en su repositorio de código.</p><p>Este formulario es un archivo del sitio, uno por cada idioma.</p>" }

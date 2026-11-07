@@ -1,0 +1,14 @@
+type = "peoplePage"
+name = { "en-US" = "People", "es-ES" = "Equipo" }
+order = 2
+
+[values]
+people = ["ines-marchetti", "tomas-vidal", "asha-rao", "jonas-lind", "nia-bello"]
+
+[values.en-US]
+title = "The people behind Crombolo"
+intro = "These people are invented for this demo. Each one is a Library element, so a blog post can name the same person."
+
+[values.es-ES]
+title = "Las personas detrás de Crombolo"
+intro = "Estas personas son inventadas para esta demostración. Cada una es un elemento de la Biblioteca, así que un artículo puede nombrar a la misma persona."

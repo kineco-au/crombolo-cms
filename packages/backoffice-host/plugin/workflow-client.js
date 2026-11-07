@@ -31,11 +31,16 @@ export const finished = (skip = 0, take = 25) => call(`history?skip=${skip}&take
 export const listWorkflows = () => call('workflows')
 export const previewWorkflow = (alias, workflow) =>
   post(`workflows/${encodeURIComponent(alias)}/preview`, { workflow })
-export const saveWorkflow = (alias, workflow) =>
+export const saveWorkflow = (alias, workflow, folder) =>
   call(`workflows/${encodeURIComponent(alias)}`, {
     method: 'PUT',
-    body: JSON.stringify({ workflow }),
+    body: JSON.stringify({ workflow, folder }),
   })
+/** A folder made (`POST`), renamed (`PUT`) or deleted (`DELETE`). */
+export const sendWorkflowFolder = (method, body) =>
+  call('workflows/tree-folders', { method, body: JSON.stringify(body) })
+export const moveWorkflow = (alias, folder) =>
+  call('workflows/tree-move', { method: 'POST', body: JSON.stringify({ alias, folder }) })
 export const deleteWorkflow = (alias) =>
   call(`workflows/${encodeURIComponent(alias)}`, { method: 'DELETE' })
 export const previewDelete = (alias) =>

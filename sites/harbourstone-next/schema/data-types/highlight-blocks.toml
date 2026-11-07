@@ -10,4 +10,4 @@ editor-ui = "Umb.PropertyEditorUi.BlockList"
 
 [[data-type.block]]
 element = "highlight"
-label = "{{heading}}"
+label = "{=heading}"

@@ -3,7 +3,14 @@
  * action offers the site's content type and opens the editor for it.
  */
 import type { Page } from '@playwright/test'
-import { expect, expectEveryPropertyEditorRenders, signIn, test } from './fixtures.ts'
+import {
+  expect,
+  expectEveryPropertyEditorRenders,
+  goToSection,
+  settle,
+  signIn,
+  test,
+} from './fixtures.ts'
 
 const API = '/umbraco/management/api/v1'
 
@@ -36,15 +43,27 @@ async function createFromDialog(page: Page, typeName: string) {
       .locator('uui-ref-node-document-type')
       .filter({ hasText: typeName })
       .click({ timeout: 3_000 })
-    await expect(page.locator('#name-input input')).toBeVisible({ timeout: 3_000 })
+    // A page may already be open, with a name box of its own (story 288).
+    await expect(page).toHaveURL(/\/document\/create\//, { timeout: 3_000 })
+    await expect(page.locator('#name-input input')).toHaveValue('', { timeout: 3_000 })
   }).toPass({ timeout: 30_000 })
+}
+
+/** Content, once it has settled on the first page or says it has none (story 288). */
+async function openContent(page: Page) {
+  await goToSection(page, 'Content')
+  await expect(
+    page.locator('umb-document-workspace-editor, crombolo-content-home-dashboard h2').first(),
+  ).toBeVisible()
+  await settle(page)
 }
 
 test('the create action at the content root lists the allowed types and opens the editor', async ({
   page,
 }) => {
-  // Sign-in lands on Content; the types allowed at the root are offered, and one opens the editor
+  // The types allowed at the root are offered, and one opens the editor
   await signIn(page)
+  await openContent(page)
   await createFromDialog(page, 'Home Page')
   // Every property renders its editor, none the missing-UI placeholder
   await expectEveryPropertyEditorRenders(page)
@@ -55,11 +74,13 @@ test('a new page saves and publishes, renders at its URL, and keeps its rich tex
 }) => {
   const NAME = `Home ${Math.random().toString(36).slice(2, 7)}`
   await signIn(page)
+  await openContent(page)
   await createFromDialog(page, 'Home Page')
   await expectEveryPropertyEditorRenders(page)
 
   await page.locator('#name-input input').fill(NAME)
   await page.locator('umb-property-editor-ui-text-box #input').first().fill('Welcome home')
+  await expect(page.locator('#name-input input')).toHaveValue(NAME)
   const richText = page.locator('umb-property-editor-ui-tiptap .ProseMirror')
   await richText.click()
   await page.keyboard.type('Rich body copy')
@@ -122,7 +143,6 @@ test("the create dialog under a page offers that type's allowed children, not th
   expect(created.status()).toBe(201)
 
   await page.goto('/crombolo/section/content')
-  // In the tree: the Overview beside it lists the new page too (story 236).
   const tree = page.getByTestId('section-sidebar:Umb.SidebarMenu.Content')
   await expect(tree.getByRole('link', { name: NAME, exact: true })).toBeVisible({ timeout: 20_000 })
 

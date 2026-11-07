@@ -1,0 +1,37 @@
+[content-type]
+alias = "homePage"
+name = "Home Page"
+description = "The landing page, built from blocks"
+icon = "icon-home"
+allow-at-root = true
+allow-children = ["featureList", "peoplePage", "blogList", "contentPage", "contactPage", "searchPage", "siteSettings"]
+varies-by-culture = true
+compositions = ["seoFields"]
+components = ["pages/homePage"]
+default-component = "pages/homePage"
+
+[[tab]]
+name = "Content"
+
+[[tab.property]]
+alias = "title"
+name = "Title"
+description = "Shown as the page heading"
+type = "textstring"
+mandatory = true
+varies-by-culture = true
+site-search = "high"
+
+[[tab.property]]
+alias = "intro"
+name = "Description"
+description = "A sentence for search engines and sharing"
+type = "textarea"
+varies-by-culture = true
+
+[[tab.property]]
+alias = "blocks"
+name = "Blocks"
+description = "Hero, feature rows, quotes and calls to action, in the order they should appear"
+type = "pageBlocks"
+varies-by-culture = true

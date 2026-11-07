@@ -1,0 +1,11 @@
+type = "featureList"
+name = { "en-US" = "Features", "es-ES" = "Funciones" }
+order = 1
+
+[values.en-US]
+title = "What Crombolo does"
+intro = "Everything on this list is running on this site. Filter by what you care about."
+
+[values.es-ES]
+title = "Qué hace Crombolo"
+intro = "Todo lo que aparece en esta lista funciona en este sitio. Filtra por lo que te interese."

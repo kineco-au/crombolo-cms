@@ -1,0 +1,8 @@
+# The values are stored as they are, whatever the language: components/shared/
+# categories.ts turns each into words from the dictionary.
+[data-type]
+alias = "featureCategory"
+name = "Feature Category"
+editor = "Umbraco.DropDown.Flexible"
+editor-ui = "Umb.PropertyEditorUi.Dropdown"
+config = { multiple = false, items = ["editing", "structure", "delivery"] }

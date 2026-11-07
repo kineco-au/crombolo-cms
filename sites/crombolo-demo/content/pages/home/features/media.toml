@@ -1,0 +1,17 @@
+type = "feature"
+name = { "en-US" = "Media with crops", "es-ES" = "Medios con recortes" }
+order = 3
+
+[values]
+category = "editing"
+image = "/library-shelves.jpg"
+
+[values.en-US]
+title = "Media with crops"
+summary = "One upload, cropped to whatever each page needs."
+body = { html = "<p>Set a focal point once and every crop keeps the important part of the picture. Views ask for the size they want.</p><p>Files can sit on disk or in cloud storage, and alt text travels with the image.</p>" }
+
+[values.es-ES]
+title = "Medios con recortes"
+summary = "Una sola subida, recortada para lo que necesite cada página."
+body = { html = "<p>Marca un punto focal una vez y cada recorte conservará lo importante de la imagen. Las vistas piden el tamaño que quieren.</p><p>Los archivos pueden estar en disco o en la nube, y el texto alternativo viaja con la imagen.</p>" }

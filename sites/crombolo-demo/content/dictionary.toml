@@ -1,0 +1,67 @@
+["nav.primary"]
+en-US = "Primary"
+es-ES = "Principal"
+
+["nav.language"]
+en-US = "Language"
+es-ES = "Idioma"
+
+["search.placeholder"]
+en-US = "Search"
+es-ES = "Buscar"
+
+["search.button"]
+en-US = "Search"
+es-ES = "Buscar"
+
+["search.none"]
+en-US = "Nothing matches"
+es-ES = "Nada coincide con"
+
+["search.found"]
+en-US = "results for"
+es-ES = "resultados para"
+
+["footer.source"]
+en-US = "Source code"
+es-ES = "Código fuente"
+
+["features.all"]
+en-US = "All"
+es-ES = "Todas"
+
+["features.filter"]
+en-US = "Filter by category"
+es-ES = "Filtrar por categoría"
+
+["category.editing"]
+en-US = "Editing"
+es-ES = "Edición"
+
+["category.structure"]
+en-US = "Structure"
+es-ES = "Estructura"
+
+["category.delivery"]
+en-US = "Delivery"
+es-ES = "Entrega"
+
+["blog.all"]
+en-US = "All posts"
+es-ES = "Todos los artículos"
+
+["blog.tags"]
+en-US = "Tags"
+es-ES = "Etiquetas"
+
+["blog.newer"]
+en-US = "Newer"
+es-ES = "Más recientes"
+
+["blog.older"]
+en-US = "Older"
+es-ES = "Más antiguos"
+
+["blog.page"]
+en-US = "Page"
+es-ES = "Página"

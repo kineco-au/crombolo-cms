@@ -13,6 +13,7 @@ import { css, html, nothing, unsafeCSS } from '@umbraco-cms/backoffice/external/
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { UMB_NOTIFICATION_CONTEXT } from '@umbraco-cms/backoffice/notification'
 import { approvalsChanged } from './approvals-active.js'
+import { readOnlyWords } from './definition-tree-model.js'
 import {
   deleteWorkflow,
   listWorkflows,
@@ -101,6 +102,21 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
 
   #drag
   #notifications
+  /** The folder a new workflow goes in, from the tree's link. */
+  #folder
+  #query
+
+  #follow = () => {
+    if (!this._list || location.search === this.#query) return
+    this.#query = location.search
+    const asked = new URLSearchParams(location.search)
+    const named = this._list.items.find((w) => w.alias === asked.get('workflow'))
+    if (named) this.#edit(named)
+    else if (asked.has('new')) {
+      this.#edit(blank())
+      this.#folder = asked.get('new') || undefined
+    } else this._editing = undefined
+  }
 
   constructor() {
     super()
@@ -112,6 +128,14 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
   connectedCallback() {
     super.connectedCallback()
     this.#load()
+    window.addEventListener('changestate', this.#follow)
+    window.addEventListener('popstate', this.#follow)
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback()
+    window.removeEventListener('changestate', this.#follow)
+    window.removeEventListener('popstate', this.#follow)
   }
 
   async #load() {
@@ -121,9 +145,11 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
       return
     }
     this._list = result
+    this.#follow()
   }
 
   #edit(workflow) {
+    this.#folder = undefined
     const copy = structuredClone(workflow)
     // Every stage gets the place the canvas would draw it, so dragging starts from there.
     const positions = layout(copy.stages)
@@ -271,7 +297,11 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
         return
       }
     }
-    const saved = await saveWorkflow(this._originalAlias ?? this._editing.alias, this._editing)
+    const saved = await saveWorkflow(
+      this._originalAlias ?? this._editing.alias,
+      this._editing,
+      this.#folder,
+    )
     if (!saved.ok) {
       this._problems = saved.problems ?? [{ message: saved.message }]
       return
@@ -280,7 +310,9 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
     // The green toast every workspace shows on a save.
     this.#notifications?.peek('positive', { data: { message: 'Workflow saved' } })
     this._originalAlias = this._editing.alias
+    this.#folder = undefined
     approvalsChanged()
+    window.dispatchEvent(new Event('crombolo:definitions-changed'))
     await this.#load()
   }
 
@@ -305,6 +337,8 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
     }
     this._editing = undefined
     approvalsChanged()
+    window.dispatchEvent(new Event('crombolo:definitions-changed'))
+    if (location.search) history.replaceState(null, '', location.pathname)
     await this.#load()
   }
 
@@ -315,6 +349,11 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
       return html`<div class="list"><uui-box headline="Workflows"><uui-loader></uui-loader></uui-box></div>`
     if (!this._editing) return this.#renderList()
     return this.#renderEditor()
+  }
+
+  #readOnly() {
+    const words = readOnlyWords('Workflows', this._list.readOnlyBecause)
+    return words ? html`<p role="status">${words}</p>` : nothing
   }
 
   #renderList() {
@@ -328,10 +367,10 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
       }
       ${this._message ? html`<uui-box><p class="message">${this._message}</p></uui-box>` : nothing}
       <uui-box headline="Workflows">
-      ${editable ? nothing : html`<p>Workflows are kept with the site's files, which cannot be changed on this server. Change them in the repository and deploy.</p>`}
+      ${this.#readOnly()}
       ${
         items.length === 0
-          ? html`<p>No workflow yet: every page publishes as soon as someone who may publish does.</p>`
+          ? html`<p>No workflows yet, so a page publishes as soon as someone who may publish does.</p>`
           : html`<uui-table>
               <uui-table-head>
                 <uui-table-head-cell>Workflow</uui-table-head-cell>
@@ -372,6 +411,7 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
       this._editing = undefined
       this._message = undefined
       this._problems = undefined
+      if (location.search) history.replaceState(null, '', location.pathname)
     }
     const tab = (id, label, icon) => html`<uui-tab
       label=${label}
@@ -554,7 +594,7 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
       this.#touch()
     }
     return html`<div class="settings">
-      ${editable ? nothing : html`<uui-box class="notice"><p>Workflows are kept with the site's files, which cannot be changed on this server.</p></uui-box>`}
+      ${readOnlyWords('Workflows', this._list.readOnlyBecause) ? html`<uui-box class="notice">${this.#readOnly()}</uui-box>` : nothing}
       <uui-box headline="Workflow">
         ${property(
           'Name',

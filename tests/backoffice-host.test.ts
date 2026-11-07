@@ -47,6 +47,7 @@ describe('SPA routes', () => {
       '',
       '/',
       '/section/content',
+      '/home',
       '/install',
       '/upgrade',
       '/oauth_complete',

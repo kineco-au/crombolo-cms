@@ -46,7 +46,6 @@ async function createPage(page: Page, name: string, parent: string | null = null
  * can open an ancestor's menu.
  */
 async function openAction(page: Page, itemName: string, action: string, entity = 'Document') {
-  // In the tree: the Overview beside it lists recent pages by the same name (story 236).
   const tree = page.locator('umb-section-sidebar')
   await expect(async () => {
     await tree

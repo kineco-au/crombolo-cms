@@ -1,0 +1,41 @@
+[content-type]
+alias = "contactPage"
+name = "Contact Page"
+description = "A contact form and some words beside it"
+icon = "icon-message"
+varies-by-culture = true
+compositions = ["seoFields"]
+components = ["pages/contactPage"]
+default-component = "pages/contactPage"
+
+[[tab]]
+name = "Content"
+
+[[tab.property]]
+alias = "title"
+name = "Title"
+description = "Shown as the page heading"
+type = "textstring"
+mandatory = true
+varies-by-culture = true
+site-search = "high"
+
+[[tab.property]]
+alias = "intro"
+name = "Introduction"
+description = "A sentence or two under the heading"
+type = "textarea"
+varies-by-culture = true
+
+[[tab.property]]
+alias = "enquiryForm"
+name = "Form"
+description = "One form for each language, since a form has one set of labels"
+type = "formPicker"
+varies-by-culture = true
+
+[[tab.property]]
+alias = "aside"
+name = "Beside the form"
+type = "richtext"
+varies-by-culture = true

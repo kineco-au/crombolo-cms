@@ -1,0 +1,30 @@
+[content-type]
+alias = "featureRowBlock"
+name = "Feature Row"
+description = "Words on one side, an image on the other"
+icon = "icon-split-alt"
+is-element = true
+
+[[tab]]
+name = "Content"
+
+[[tab.property]]
+alias = "heading"
+name = "Heading"
+type = "textstring"
+mandatory = true
+
+[[tab.property]]
+alias = "text"
+name = "Text"
+type = "richtext"
+
+[[tab.property]]
+alias = "image"
+name = "Image"
+type = "imageMediaPicker"
+
+[[tab.property]]
+alias = "link"
+name = "Link"
+type = "linkPicker"

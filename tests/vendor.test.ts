@@ -384,8 +384,9 @@ describe.skipIf(!vendored)('vendored backoffice', () => {
       '--crombolo-header-current',
     )
     expect(served('apps/backoffice/components/backoffice-header-logo.element.js')).toContain(
-      'Crombolo on GitHub',
+      'document.baseURI',
     )
+    expect(served('apps/backoffice/components/backoffice-main.element.js')).toContain('homeView')
     expect(
       served(
         'packages/documents/document-redirect-management/dashboard-redirect-management.element.js',

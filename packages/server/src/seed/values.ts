@@ -5,7 +5,7 @@
  * `content` commands read `--set`; and stored values back into that shorthand,
  * as `bundle export --source` and `content show` write them.
  */
-import { type ContentTypeAggregate, normaliseUuid } from '@crombolo/core'
+import { type ContentTypeAggregate, dateFromText, normaliseUuid } from '@crombolo/core'
 import { ContentTypeRepository, DataTypeRepository, type Db, looksLikeKey } from '@crombolo/data'
 import { blockKey, pickKey } from './keys.ts'
 
@@ -246,17 +246,14 @@ export function valueWriter(lookup: SchemaLookup, refs: ValueRefs) {
               : typeof raw === 'string'
                 ? raw
                 : undefined
-        const at = text === undefined ? Number.NaN : new Date(text).getTime()
-        if (text === undefined || Number.isNaN(at))
-          return fail('a date is a TOML date or an ISO 8601 string')
+        const at = text === undefined ? undefined : dateFromText(text)
+        if (text === undefined || !at) return fail('a date is a TOML date or an ISO 8601 string')
         // A date picker stores Umbraco's wall clock, as a save does, so a seed
         // exported and applied again is unchanged; one with a zone keeps ISO.
         return {
           ok: true,
           value:
-            editor === 'Umbraco.DateTime'
-              ? new Date(at).toISOString().slice(0, 19).replace('T', ' ')
-              : text,
+            editor === 'Umbraco.DateTime' ? at.toISOString().slice(0, 19).replace('T', ' ') : text,
         }
       }
       case 'Umbraco.Tags':

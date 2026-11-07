@@ -1,0 +1,9 @@
+[[language]]
+iso = "en-US"
+name = "English"
+default = true
+
+[[language]]
+iso = "es-ES"
+name = "Español"
+fallback = "en-US"

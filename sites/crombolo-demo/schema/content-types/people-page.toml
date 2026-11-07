@@ -1,0 +1,34 @@
+[content-type]
+alias = "peoplePage"
+name = "People Page"
+description = "Shows people picked from the Library"
+icon = "icon-users"
+varies-by-culture = true
+compositions = ["seoFields"]
+components = ["pages/peoplePage"]
+default-component = "pages/peoplePage"
+
+[[tab]]
+name = "Content"
+
+[[tab.property]]
+alias = "title"
+name = "Title"
+description = "Shown as the page heading"
+type = "textstring"
+mandatory = true
+varies-by-culture = true
+site-search = "high"
+
+[[tab.property]]
+alias = "intro"
+name = "Introduction"
+description = "A sentence or two under the heading"
+type = "textarea"
+varies-by-culture = true
+
+[[tab.property]]
+alias = "people"
+name = "People"
+description = "Pick from the Library. Change a person there and it changes everywhere."
+type = "personPicker"

@@ -54,6 +54,19 @@ function tomlFiles(dir: string): string[] {
     .map((name) => join(dir, name))
 }
 
+/** Forms and workflows may sit in folders (story 289), at any depth. */
+function tomlFilesDeep(dir: string): string[] {
+  if (!existsSync(dir)) return []
+  return readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => !entry.name.startsWith('.'))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .flatMap((entry) => {
+      const path = join(dir, entry.name)
+      if (entry.isDirectory()) return tomlFilesDeep(path)
+      return entry.name.endsWith('.toml') ? [path] : []
+    })
+}
+
 export interface LoadSchemaOptions {
   /** The field and workflow types forms may use: the built-ins, and the wired bundles'. */
   formTypes?: FormTypes
@@ -118,21 +131,32 @@ export function loadSchemaDirectory(
     }
   }
   const forms: SchemaForm[] = []
-  for (const file of tomlFiles(join(schemaDir, 'forms'))) {
+  /** Two files in different folders can claim one alias, which only their paths can show. */
+  const claim = (key: string, alias: string, file: string) => {
+    const other = files.get(key)
+    if (other)
+      problems.push({
+        file: rel(file),
+        path: '',
+        message: `"${alias}" is also the alias in ${rel(other)}`,
+      })
+    else files.set(key, file)
+  }
+  for (const file of tomlFilesDeep(join(schemaDir, 'forms'))) {
     const parsed = parseForm(rel(file), readFileSync(file, 'utf8'), options.formTypes)
     problems.push(...parsed.problems)
     if (parsed.value) {
       forms.push(parsed.value)
-      files.set(`form:${parsed.value.alias}`, file)
+      claim(`form:${parsed.value.alias}`, parsed.value.alias, file)
     }
   }
   const workflows: SchemaWorkflow[] = []
-  for (const file of tomlFiles(join(schemaDir, 'workflows'))) {
+  for (const file of tomlFilesDeep(join(schemaDir, 'workflows'))) {
     const parsed = parseWorkflow(rel(file), readFileSync(file, 'utf8'))
     problems.push(...parsed.problems)
     if (parsed.value) {
       workflows.push(parsed.value)
-      files.set(`workflow:${parsed.value.alias}`, file)
+      claim(`workflow:${parsed.value.alias}`, parsed.value.alias, file)
     }
   }
   const userGroups: SchemaUserGroup[] = []

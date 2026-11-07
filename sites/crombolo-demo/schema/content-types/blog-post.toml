@@ -1,0 +1,61 @@
+[content-type]
+alias = "blogPost"
+name = "Blog Post"
+description = "A post with an author, a date and tags"
+icon = "icon-edit"
+varies-by-culture = true
+compositions = ["seoFields"]
+components = ["pages/blogPost"]
+default-component = "pages/blogPost"
+
+[[tab]]
+name = "Content"
+
+[[tab.property]]
+alias = "title"
+name = "Title"
+description = "Shown as the page heading"
+type = "textstring"
+mandatory = true
+varies-by-culture = true
+site-search = "high"
+
+[[tab.property]]
+alias = "excerpt"
+name = "Excerpt"
+description = "Shown on the blog list"
+type = "textarea"
+mandatory = true
+varies-by-culture = true
+site-search = "normal"
+
+[[tab.property]]
+alias = "body"
+name = "Body"
+type = "richtext"
+varies-by-culture = true
+
+[[tab]]
+name = "Details"
+
+[[tab.property]]
+alias = "publishDate"
+name = "Date"
+type = "datePicker"
+mandatory = true
+
+[[tab.property]]
+alias = "author"
+name = "Author"
+type = "personPicker"
+
+[[tab.property]]
+alias = "image"
+name = "Image"
+type = "imageMediaPicker"
+
+[[tab.property]]
+alias = "tags"
+name = "Tags"
+type = "tags"
+varies-by-culture = true

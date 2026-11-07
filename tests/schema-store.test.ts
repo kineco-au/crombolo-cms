@@ -264,6 +264,6 @@ describe('a node backed by a store', () => {
     const refused = await h.post(`${V1}/document-type`, DOCUMENT_TYPE)
     // The database write is refused before it happens, naming the file to change.
     expect(refused.status).toBe(409)
-    expect(await refused.text()).toContain('source control')
+    expect(await refused.text()).toContain('kept with this site')
   })
 })

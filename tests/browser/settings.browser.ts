@@ -283,7 +283,7 @@ test('a component and a folder can both be created from the Components tree', as
   // finds two.
   await page.goto('/crombolo/section/settings/code')
   const tree = page.getByTestId('section-sidebar:Umb.SectionSidebarMenu.Templating')
-  await page.getByText('Components', { exact: true }).first().click()
+  await tree.getByText('Components', { exact: true }).first().click()
   await expect(page.getByText(`grp${id}`, { exact: true })).toBeVisible()
 
   // Opening the component leaves its folder open in the tree. The sidebar

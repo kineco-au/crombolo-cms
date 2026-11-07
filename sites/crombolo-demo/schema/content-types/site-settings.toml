@@ -1,0 +1,29 @@
+# A page below the home page that visitors never see, read by every page.
+[content-type]
+alias = "siteSettings"
+name = "Site Settings"
+description = "What every page's header and footer say"
+icon = "icon-settings"
+site-settings = true
+varies-by-culture = true
+
+[[tab]]
+name = "Settings"
+
+[[tab.property]]
+alias = "tagline"
+name = "Tagline"
+description = "Under the name in the footer"
+type = "textstring"
+varies-by-culture = true
+
+[[tab.property]]
+alias = "footerNote"
+name = "Footer note"
+type = "textarea"
+varies-by-culture = true
+
+[[tab.property]]
+alias = "repositoryUrl"
+name = "Source code address"
+type = "textstring"

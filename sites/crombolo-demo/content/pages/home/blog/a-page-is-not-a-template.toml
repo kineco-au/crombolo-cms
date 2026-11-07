@@ -1,0 +1,20 @@
+type = "blogPost"
+name = { "en-US" = "A page is not a template", "es-ES" = "Una página no es una plantilla" }
+order = 1
+
+[values]
+publishDate = "2026-04-02"
+author = ["jonas-lind"]
+image = "/letterpress-alphabet.jpg"
+
+[values.en-US]
+title = "A page is not a template"
+excerpt = "Blocks let editors change a layout without asking for a new view."
+body = { html = "<p>Most requests for a new template are really requests to move something. Blocks answer those without a release.</p><p>Keep a block small: one idea, one view, and no options that only one page uses.</p>" }
+tags = ["editing", "views"]
+
+[values.es-ES]
+title = "Una página no es una plantilla"
+excerpt = "Los bloques permiten cambiar un diseño sin pedir una vista nueva."
+body = { html = "<p>La mayoría de las peticiones de una plantilla nueva son en realidad peticiones para mover algo. Los bloques las resuelven sin publicar una versión.</p><p>Mantén cada bloque pequeño: una idea, una vista y ninguna opción que solo use una página.</p>" }
+tags = ["edición", "vistas"]

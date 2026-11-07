@@ -16,20 +16,20 @@
  * when either output is out of date.
  */
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { buildBundleFromDirectory } from '@crombolo/server'
 import { buildManifest } from '../packages/cli/src/manifest.ts'
 import { writeDocsSeed } from './docs-site.ts'
 import { findSite } from './sites.ts'
 
-const site = findSite('demo/crombolo')
-if (!site) throw new Error('no demo/crombolo in sites/')
+const site = findSite('product/crombolo')
+if (!site) throw new Error('no product/crombolo in sites/')
 
 const docs = writeDocsSeed(await buildManifest())
 
-const built = await buildBundleFromDirectory(site.dir)
+const built = await buildBundleFromDirectory(site.dir, { name: basename(site.bundle) })
 if (built.problems.length > 0 || !built.files)
-  throw new Error(`demo/crombolo cannot be built:\n  ${built.problems.join('\n  ')}`)
+  throw new Error(`product/crombolo cannot be built:\n  ${built.problems.join('\n  ')}`)
 const bundleDir = join(site.dir, site.bundle)
 // The package is the payload, replaced whole, so a node the content no longer has does not linger.
 rmSync(bundleDir, { recursive: true, force: true })
@@ -39,5 +39,5 @@ for (const file of built.files) {
   writeFileSync(target, file.bytes ?? (file.text as string))
 }
 console.log(
-  `  docs pages           ${docs.length} page(s)\n  demo/crombolo        ${built.seed?.set?.nodes.length ?? 0} node(s)`,
+  `  docs pages           ${docs.length} page(s)\n  product/crombolo     ${built.seed?.set?.nodes.length ?? 0} node(s)`,
 )

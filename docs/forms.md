@@ -35,6 +35,22 @@ Without a schema store configured, forms are developer-owned and read-only in
 production — the same trade the rest of `schema/` makes, and the backoffice says so
 rather than failing a save silently.
 
+## Folders
+
+Forms and workflows list in a tree beside the editor (story 289), and can sit in folders. A
+folder is a real subfolder, `schema/forms/contact/enquiry.toml`, so it travels with the code
+and shows in a diff, and it goes in bundles, `push` and `pull` like any other file.
+
+- **A form is found by its key or alias, never its path,** so moving one breaks nothing.
+- **An alias is unique across folders.** Two files with one alias stop the schema loading, and
+  the error names both.
+- **A saved form stays in its folder,** and a new one goes in the folder it was made from.
+- **Only an empty folder can be deleted.**
+- **On a site that cannot change its files,** the tree and the editors say so, and offer no way
+  to add, move, save or delete.
+
+The Forms root of the tree lists every form's entries, and each form has an Entries tab.
+
 ## The file format
 
 **Built** — `schema/forms/*.toml`, parsed by `parse-forms.ts`, written by
@@ -629,7 +645,9 @@ Here there is no contract to match, so the API is designed for this CMS.
 - Operations under `${paths.pluginPath}/api/forms/*`, following the marketplace
   precedent from the packages work — outside the contract-first router, because an
   operation not in `OpenApi.json` has no place in it
-- A **Forms section** (`Crombolo.Section.Forms`) with two views, Forms and Entries.
+- A **Forms section** (`Crombolo.Section.Forms`) with views for forms, entries and workflows,
+  opened from the menu under Content and the tree, with no tab in the header for anyone with
+  Content (story 289).
   The alias resolves now: Umbraco seeds the stored `forms` alias and then has no
   section for it, so `toSectionAliases` used to drop it
 - A page's **Form picker** shows its saved form and offers **View form fields**

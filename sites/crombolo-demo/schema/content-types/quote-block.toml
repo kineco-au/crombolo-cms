@@ -1,0 +1,20 @@
+[content-type]
+alias = "quoteBlock"
+name = "Quote"
+description = "Something someone said"
+icon = "icon-quote"
+is-element = true
+
+[[tab]]
+name = "Content"
+
+[[tab.property]]
+alias = "quote"
+name = "Quote"
+type = "textarea"
+mandatory = true
+
+[[tab.property]]
+alias = "attribution"
+name = "Who said it"
+type = "textstring"

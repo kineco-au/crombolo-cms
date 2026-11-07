@@ -94,9 +94,13 @@ const references = (value: unknown): string[] => {
   return []
 }
 
-/** One block's content or settings: an element with properties, but no URL or place in the tree. */
+/**
+ * One block's content or settings, or an element from the Library: properties,
+ * but no URL or place in the tree. A Library element has a name; a block has none.
+ */
 export class PublishedElement {
   readonly key: string
+  readonly name: string | null
   readonly contentType: { key: string; alias: string | null }
   readonly properties: PublishedProperty[]
   #context: ValueContext | undefined
@@ -106,11 +110,13 @@ export class PublishedElement {
       key: string
       contentTypeKey: string
       contentTypeAlias?: string | null
+      name?: string | null
       properties: PublishedProperty[]
     },
     context?: ValueContext,
   ) {
     this.key = init.key
+    this.name = init.name ?? null
     this.contentType = { key: init.contentTypeKey, alias: init.contentTypeAlias ?? null }
     this.properties = init.properties
     this.#context = context

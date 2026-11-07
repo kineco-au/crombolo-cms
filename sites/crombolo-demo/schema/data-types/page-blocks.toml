@@ -1,0 +1,23 @@
+# The blocks a page is built from. Each renders with its own file in
+# components/blocks/, through <Blocks>, so a new kind of block is one new file.
+[data-type]
+alias = "pageBlocks"
+name = "Page Blocks"
+editor = "Umbraco.BlockList"
+editor-ui = "Umb.PropertyEditorUi.BlockList"
+
+[[data-type.block]]
+element = "heroBlock"
+label = "Hero: {=heading}"
+
+[[data-type.block]]
+element = "featureRowBlock"
+label = "Feature row: {=heading}"
+
+[[data-type.block]]
+element = "quoteBlock"
+label = "Quote: {=attribution}"
+
+[[data-type.block]]
+element = "callToActionBlock"
+label = "Call to action: {=heading}"

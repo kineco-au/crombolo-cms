@@ -60,11 +60,9 @@ test('Approvals comes with the first workflow and goes with the last', async ({ 
   await expect(tabs.filter({ hasText: 'Approvals' })).toHaveCount(0)
 })
 
-test('the Workflows card in Settings opens the list of workflows', async ({ page }) => {
+test('the address Workflows had in Settings opens them beside forms', async ({ page }) => {
   await signIn(page)
-  await page.goto('/crombolo/section/settings')
-  const landing = page.locator('crombolo-settings-landing')
-  await landing.getByRole('link', { name: /Workflows/ }).click({ timeout: 30_000 })
-  await expect(page).toHaveURL(/\/section\/settings\/dashboard\/workflows/)
+  await page.goto('/crombolo/section/settings/dashboard/workflows')
+  await expect(page).toHaveURL(/\/section\/forms\/view\/workflows/, { timeout: 30_000 })
   await expect(page.locator('crombolo-workflow-designer')).toBeVisible()
 })

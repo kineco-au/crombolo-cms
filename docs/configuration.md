@@ -283,9 +283,10 @@ rather than the running server. Secret ones are never printed or logged.
 | Site | Id | Ships with the CLI |
 | --- | --- | --- |
 | `sites/starter` | `starter` | yes |
+| `sites/crombolo-demo` | `demo/crombolo` | yes |
 | `sites/harbourstone` | `demo/harbourstone` | yes |
 | `sites/plain-signal` | `demo/plain-signal` | yes |
-| `sites/crombolo` | `demo/crombolo` | no — the product site |
+| `sites/crombolo` | `product/crombolo` | no — the product site |
 
 Each is a real site — `package.json`, `crombolo.config.ts`, `server.ts`, `schema/`,
 `components/`, `css/` — plus a `site.json` naming it, and its content bundle under

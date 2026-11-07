@@ -366,6 +366,22 @@ describe(`compiling a seed (${dialectUnderTest})`, () => {
   })
 })
 
+describe(`a date in the content files (${dialectUnderTest})`, () => {
+  test('keeps its wall clock on any machine, as a TOML date-time or as text (story 286)', async () => {
+    const page = (value: string) =>
+      `type = "page"\nname = "Dated"\n\n[values]\nlaunched = ${value}\n`
+    const { compile } = await site({
+      'content/toml.toml': page('2026-06-25T09:18:20'),
+      'content/text.toml': page('"2026-06-25 09:18:20"'),
+      'content/instant.toml': page('2026-06-25T09:18:20Z'),
+    })
+    const build = await compile()
+    expect(build.findings).toEqual([])
+    for (const path of ['toml', 'text', 'instant'])
+      expect(stored(nodeAt(build, `content/${path}`), 'launched')).toBe('2026-06-25 09:18:20')
+  })
+})
+
 describe(`the dictionary in the content files (${dialectUnderTest})`, () => {
   const withDictionary = async (text: string) => {
     const s = await site()

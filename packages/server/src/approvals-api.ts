@@ -8,7 +8,7 @@
  * the truth, as for forms, and a read-only schema directory refuses the save.
  */
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type { Principal } from '@crombolo/api-management/domain'
 import type { SchemaWorkflow } from '@crombolo/core'
 import {
@@ -27,6 +27,7 @@ import {
   writeWorkflow,
 } from '@crombolo/schema'
 import { ApprovalRefused, type Approvals } from './approvals.ts'
+import { folderAction, folderOf, folderPath, foldersIn } from './definition-folders.ts'
 
 export interface ApprovalsApiContext {
   db: Db
@@ -147,10 +148,30 @@ export async function handleApprovalsApi(
       return json({ active })
     }
 
+    const folderIn = (file: string | undefined) =>
+      file ? folderOf(ctx.schemaDir, 'workflows', file) : ''
+    const folders = /^workflows\/(tree-folders|tree-move)$/.exec(path)
+    if (folders) {
+      if (!principal.isAdmin)
+        return json({ ok: false, message: 'Only administrators change workflows.' }, 403)
+      const response = await folderAction('workflows', folders[1] as string, request, {
+        schemaDir: ctx.schemaDir,
+        writable: ctx.writable,
+        onChanged: ctx.onChanged,
+        file: (alias) => loadSchemaDirectory(ctx.schemaDir).files.get(`workflow:${alias}`),
+      })
+      if (response) return response
+    }
+
     if (path === 'workflows' && request.method === 'GET') {
       const loaded = loadSchemaDirectory(ctx.schemaDir)
       return json({
-        items: (await readWorkflows(ctx.db)).map((s) => s.workflow),
+        items: (await readWorkflows(ctx.db)).map((s) => ({
+          ...s.workflow,
+          folder: folderIn(loaded.files.get(`workflow:${s.workflow.alias}`)),
+        })),
+        folders: foldersIn(ctx.schemaDir, 'workflows'),
+        readOnlyBecause: ctx.writable ? (principal.isAdmin ? null : 'permission') : 'site',
         editable: ctx.writable && principal.isAdmin,
         groups: (await new UserGroupRepository(ctx.db).all()).map((g) => ({
           alias: g.alias,
@@ -165,7 +186,8 @@ export async function handleApprovalsApi(
       if (!principal.isAdmin)
         return json({ ok: false, message: 'Only administrators change workflows.' }, 403)
       const alias = decodeURIComponent(match[1] as string)
-      const file = join(ctx.schemaDir, 'workflows', fileNameFor(alias))
+      const here = loadSchemaDirectory(ctx.schemaDir).files.get(`workflow:${alias}`)
+      const file = here ?? join(ctx.schemaDir, 'workflows', fileNameFor(alias))
       if (request.method === 'DELETE') {
         if (match[2])
           return json({ ok: true, affected: await removalPreview(approvals, principal, alias) })
@@ -205,10 +227,14 @@ export async function handleApprovalsApi(
       const affected = await changePreview(approvals, principal, workflow)
       if (match[2]) return json({ ok: true, affected })
       if (!ctx.writable) return readOnly()
-      mkdirSync(join(ctx.schemaDir, 'workflows'), { recursive: true })
+      // It stays in its folder (story 289); a new one goes in the folder it was made in.
+      const dir = here
+        ? dirname(here)
+        : join(ctx.schemaDir, 'workflows', folderPath(b.folder) ?? '')
+      mkdirSync(dir, { recursive: true })
       // A renamed workflow leaves its old file behind otherwise.
       if (alias !== workflow.alias && existsSync(file)) rmSync(file)
-      writeFileSync(join(ctx.schemaDir, 'workflows', fileNameFor(workflow.alias)), source, 'utf8')
+      writeFileSync(join(dir, fileNameFor(workflow.alias)), source, 'utf8')
       await ctx.onChanged?.()
       return json({ ok: true, affected, report: await syncWorkflowFiles(ctx.db, ctx.schemaDir) })
     }

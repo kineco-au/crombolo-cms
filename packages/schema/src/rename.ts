@@ -225,8 +225,8 @@ export function renameProperty(
     kind,
     types.map((t) => (t === type ? renamed : t)),
   )
-  // A block's label names an element type's properties: `{{heading}}`.
-  const label = new RegExp(`\\{\\{\\s*${from}\\s*\\}\\}`, 'g')
+  // A block's label names an element type's properties: `{=heading}`, `{umbValue:heading}`.
+  const label = new RegExp(`\\{(=\\s*|umbValue:\\s*)${from}\\b`, 'g')
   next = {
     ...next,
     dataTypes: next.dataTypes.map((d) => {
@@ -236,7 +236,7 @@ export function renameProperty(
         label.lastIndex = 0
         named = true
         references.push({ in: `data type "${d.alias}"`, how: 'block label' })
-        return { ...b, label: b.label.replace(label, `{{${to}}}`) }
+        return { ...b, label: b.label.replace(label, `{$1${to}`) }
       })
       return named ? { ...d, ...(blocks ? { blocks } : {}) } : d
     }),

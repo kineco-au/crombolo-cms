@@ -1,0 +1,41 @@
+# A form has one set of labels, so each language has its own. The Contact page's
+# `enquiryForm` varies by language and picks the one to show.
+[form]
+key = "5e2c7a10-3f4b-4c6d-9a18-6b7d0e1f2a31"
+alias = "contact"
+name = "Contact (English)"
+store-entries = true
+requires-approval = false
+submit-label = "Send message"
+message-on-submit = "Thanks. Your message is in the back office, under Forms."
+honeypot = true
+minimum-submit-seconds = 3
+
+[[page]]
+
+  [[page.group]]
+  columns = 1
+
+    [[page.group.field]]
+    alias = "visitorName"
+    type = "shortAnswer"
+    caption = "Name"
+    mandatory = true
+    mandatory-message = "We need a name to reply to"
+    autocomplete = "name"
+
+    [[page.group.field]]
+    alias = "visitorEmail"
+    type = "email"
+    caption = "Email"
+    mandatory = true
+    mandatory-message = "We need an email address to reply to"
+    autocomplete = "email"
+
+    [[page.group.field]]
+    alias = "message"
+    type = "longAnswer"
+    caption = "Message"
+    mandatory = true
+    mandatory-message = "Tell us what you would like to know"
+    rows = 5

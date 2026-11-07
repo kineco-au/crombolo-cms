@@ -16,6 +16,6 @@ test('the gear in the header opens Settings, which is not a section tab', async 
     .click()
   await expect(page).toHaveURL(/\/section\/settings/)
   await expect(
-    page.locator('crombolo-settings-landing').getByRole('heading', { name: 'Build' }),
+    page.locator('crombolo-settings-landing').getByRole('heading', { name: 'Site' }),
   ).toBeVisible({ timeout: 30_000 })
 })

@@ -1,5 +1,6 @@
 /**
- * The Forms section's Entries view.
+ * Entries: every form's, under the Forms root of the tree, or one form's, as a tab
+ * on that form when `form` is given (story 289).
  *
  * What a person actually does here: read what was submitted, approve or reject
  * it, delete it, and take the lot away as CSV.
@@ -20,8 +21,12 @@ import {
   setEntryState,
 } from './forms-client.js'
 
+/** The filter's value for every form together. */
+const ALL = ''
+
 export default class CromboloFormsEntriesElement extends UmbLitElement {
   static properties = {
+    form: { attribute: false },
     _forms: { state: true },
     _selected: { state: true },
     _libraryForms: { state: true },
@@ -60,8 +65,8 @@ export default class CromboloFormsEntriesElement extends UmbLitElement {
     listForms().then(
       (forms) => {
         this._forms = forms
-        this._selected = forms[0]?.key ?? ''
-        if (this._selected) this.#load()
+        this._selected = this.form ?? ALL
+        if (forms.length > 0) this.#load()
       },
       (error) => {
         this._forms = []
@@ -73,15 +78,21 @@ export default class CromboloFormsEntriesElement extends UmbLitElement {
   async #load() {
     this._notice = ''
     try {
-      const page = await listEntries(this._selected, {
+      const query = {
         state: this._state,
         library: this._library,
         search: this._search,
         includeSpam: this._includeSpam ? 'true' : '',
         take: 200,
-      })
-      this._entries = page.items ?? []
-      this._total = page.total ?? 0
+      }
+      const forms = this._selected === ALL ? this._forms : [{ key: this._selected }]
+      const pages = await Promise.all(forms.map((form) => listEntries(form.key, query)))
+      this._entries = pages
+        .flatMap((page, index) =>
+          (page.items ?? []).map((entry) => ({ ...entry, formName: forms[index].name })),
+        )
+        .sort((a, b) => new Date(b.createDate) - new Date(a.createDate))
+      this._total = pages.reduce((total, page) => total + (page.total ?? 0), 0)
     } catch (error) {
       this._entries = []
       this._notice = error.message
@@ -133,19 +144,23 @@ export default class CromboloFormsEntriesElement extends UmbLitElement {
     return html`
       <uui-box headline="Entries">
         <div class="filters">
-          <uui-select
-            label="Form"
-            .options=${this._forms.map((form) => ({
-              name: form.name,
-              value: form.key,
-              selected: form.key === this._selected,
-            }))}
-            @change=${(event) => {
-              this._selected = event.target.value
-              this._library = ''
-              this.#load()
-            }}
-          ></uui-select>
+          ${
+            this.form
+              ? nothing
+              : html`<uui-select
+                  label="Form"
+                  .options=${[{ name: 'All forms', key: ALL }, ...this._forms].map((form) => ({
+                    name: form.name,
+                    value: form.key,
+                    selected: form.key === this._selected,
+                  }))}
+                  @change=${(event) => {
+                    this._selected = event.target.value
+                    this._library = ''
+                    this.#load()
+                  }}
+                ></uui-select>`
+          }
           ${this.#libraryFilter()}
           <uui-select
             label="State"
@@ -176,18 +191,22 @@ export default class CromboloFormsEntriesElement extends UmbLitElement {
               this.#load()
             }}
           ></uui-toggle>
-          <uui-button
-            class="csv"
-            look="secondary"
-            label="Export CSV"
-            @click=${async () => {
-              try {
-                await downloadEntriesCsv(this._selected)
-              } catch (error) {
-                this._notice = error.message
-              }
-            }}
-          ></uui-button>
+          ${
+            this._selected === ALL
+              ? nothing
+              : html`<uui-button
+                  class="csv"
+                  look="secondary"
+                  label="Export CSV"
+                  @click=${async () => {
+                    try {
+                      await downloadEntriesCsv(this._selected)
+                    } catch (error) {
+                      this._notice = error.message
+                    }
+                  }}
+                ></uui-button>`
+          }
         </div>
 
         ${this._notice ? html`<p class="notice" role="alert">${this._notice}</p>` : nothing}
@@ -203,6 +222,7 @@ export default class CromboloFormsEntriesElement extends UmbLitElement {
                   <div class="entry">
                     <div class="meta">
                       <strong>${new Date(entry.createDate).toLocaleString()}</strong>
+                      ${this._selected === ALL ? html`<span class="form">${entry.formName}</span>` : nothing}
                       <span class="state">${entry.state}</span>
                       ${entry.spam ? html`<span class="spam">spam</span>` : nothing}
                       ${

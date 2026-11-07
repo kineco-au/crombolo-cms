@@ -9,7 +9,8 @@
  * --template <id>` can write it.
  *
  *   site.json     id, name, description; `distribute` and the server `bundles`
- *                 its scaffold wires, as in a template's `template.json`
+ *                 its scaffold wires, as in a template's `template.json`; `bundle`
+ *                 when its content bundle keeps a name other than its id's
  *   bundles/      the content bundle, a private package at `bundles/<slug>` as a
  *                 scaffold puts it
  *   CREDITS.md    where its images came from, shipped beside the template
@@ -35,7 +36,7 @@ export const SITES_DIR = join(ROOT, 'sites')
 const MANIFEST = 'site.json'
 
 /** What a template carries as `files/`; everything else in a site is its own. */
-const TEMPLATE_FILES = ['actions', 'components', 'css', 'schema', 'content']
+const TEMPLATE_FILES = ['actions', 'components', 'css', 'schema', 'content', 'domains.toml']
 
 /**
  * A site with a Next.js front end ships its `web/` too (story 208), less what
@@ -106,7 +107,7 @@ function read(dir: string): RepoSite | undefined {
       raw.dependencies && typeof raw.dependencies === 'object'
         ? (raw.dependencies as Record<string, string>)
         : {},
-    bundle: `bundles/${slugOf(raw.id)}`,
+    bundle: `bundles/${typeof raw.bundle === 'string' ? raw.bundle : slugOf(raw.id)}`,
   }
 }
 

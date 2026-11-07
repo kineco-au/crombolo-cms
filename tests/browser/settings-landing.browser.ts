@@ -19,15 +19,35 @@ test('Settings opens on cards, and each tool or tree opens from one', async ({ p
     if (message.type() === 'warning' && /will be removed in version|lit\.dev\/msg/.test(text))
       errors.push(text)
   })
+  // Which features e-mail reaches depends on the site, so these are stated.
+  await page.route('**/crombolo/api/email', (route) =>
+    route.fulfill({
+      json: {
+        available: false,
+        reason: 'No provider.',
+        affects: ['Invitations', 'Password resets'],
+      },
+    }),
+  )
   await signIn(page)
   await page.goto(SETTINGS)
 
   const landing = page.locator('crombolo-settings-landing')
-  await expect(landing.getByRole('heading', { name: 'Build' })).toBeVisible({ timeout: 30_000 })
+  await expect(landing.getByRole('heading', { name: 'Site' })).toBeVisible({ timeout: 30_000 })
   for (const group of ['Site', 'Health', 'History', 'Developers', 'Extensions'])
     await expect(landing.getByRole('heading', { name: group })).toBeVisible()
+  // The landing page has a trail too, and it starts at Home.
+  const landingTrail = page.locator('crombolo-breadcrumb')
+  await expect(landingTrail.getByRole('link', { name: 'Home' })).toBeVisible()
+  await expect(landingTrail).toContainText('Settings')
   // With no e-mail provider, a banner says so above the cards, not a card of its own.
-  await expect(landing.getByRole('status')).toContainText('E-mail is not set up.')
+  const email = landing.getByRole('status')
+  await expect(email.locator('summary')).toHaveText(/^\s*E-mail is not set up\.\s*$/)
+  // The title alone until asked: the details open, with what is unavailable as a list.
+  const unavailable = email.locator('.affected li')
+  await expect(unavailable.first()).toBeHidden()
+  await email.locator('summary').click()
+  await expect(unavailable.first()).toBeVisible()
   await expect(landing.locator('uui-box')).toHaveCount(0)
   // No tree and no tabs on the landing page.
   await expect(page.getByTestId(STRUCTURE_TREE)).toBeHidden()
@@ -39,26 +59,17 @@ test('Settings opens on cards, and each tool or tree opens from one', async ({ p
   await expect(page.getByRole('heading', { name: 'Health check' }).first()).toBeVisible()
   await expect(page.getByTestId(STRUCTURE_TREE)).toBeHidden()
   await page.getByRole('link', { name: 'Settings' }).first().click()
-  await expect(landing.getByRole('heading', { name: 'Build' })).toBeVisible()
+  await expect(landing.getByRole('heading', { name: 'Site' })).toBeVisible()
 
-  // Structure opens its own tree, and only that one.
-  await landing.getByRole('link', { name: /Structure/ }).click()
-  await expect(page).toHaveURL(/\/section\/settings\/structure$/)
-  // The trail names the tree, as it names a tool.
-  const trail = page.locator('crombolo-breadcrumb')
-  await expect(trail).toContainText('Settings')
-  await expect(trail).toContainText('Structure')
-  await expect(page.getByTestId(STRUCTURE_TREE)).toBeVisible()
+  // Structure and Code each open their own tree, from the menu under Content (story 289).
+  await page.goto(`${SETTINGS}/structure`)
+  await expect(page.getByTestId(STRUCTURE_TREE)).toBeVisible({ timeout: 30_000 })
   await expect(page.getByTestId(CODE_TREE)).toBeHidden()
-
-  // Back to Settings by the trail, and into a tree again: a tree shown a second
-  // time once threw "reading 'forEach'" as its menu reopened.
-  await trail.getByRole('link', { name: 'Settings' }).click()
-  await expect(landing.getByRole('heading', { name: 'Build' })).toBeVisible()
-  await landing.getByRole('link', { name: /Code/ }).click()
+  // A tree shown a second time once threw "reading 'forEach'" as its menu reopened.
+  const menu = page.locator('crombolo-content-strip')
+  await menu.getByRole('link', { name: 'Components' }).click()
   await expect(page.getByTestId(CODE_TREE)).toBeVisible()
-  await trail.getByRole('link', { name: 'Settings' }).click()
-  await landing.getByRole('link', { name: /Structure/ }).click()
+  await menu.getByRole('link', { name: 'Structure' }).click()
   await expect(page.getByTestId(STRUCTURE_TREE)).toBeVisible()
   await page.getByText('Content Types', { exact: true }).first().click()
   await expect(page.getByTestId(CODE_TREE)).toBeHidden()
@@ -72,6 +83,7 @@ test('Settings opens on cards, and each tool or tree opens from one', async ({ p
     'Installed',
     'Created',
   ])
+  const trail = page.locator('crombolo-breadcrumb')
   await expect(trail).toContainText('Bundles')
 
   // A tool that was in the Advanced tree opens without one.
@@ -99,6 +111,6 @@ test('an address from before still opens, beside the right tree', async ({ page 
   // Umbraco's welcome, which the landing page replaced.
   await page.goto(`${SETTINGS}/dashboard/welcome`)
   await expect(
-    page.locator('crombolo-settings-landing').getByRole('heading', { name: 'Build' }),
+    page.locator('crombolo-settings-landing').getByRole('heading', { name: 'Site' }),
   ).toBeVisible()
 })

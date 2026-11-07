@@ -146,7 +146,7 @@ import {
   validatorFor,
   withLiveReload,
 } from '@crombolo/render'
-import type { SyncReport } from '@crombolo/schema'
+import { loadSchemaDirectory, type SyncReport } from '@crombolo/schema'
 import { choicesFor } from '@crombolo/transfer'
 import type { Server } from 'bun'
 import { createNodeLookup, loadAccess } from './access.ts'
@@ -181,6 +181,7 @@ import {
 import { answerContentQuery, contentQueryScope } from './content-query.ts'
 import { createCore } from './core.ts'
 import { closeTables, tablesReport } from './custom-tables.ts'
+import { folderAction, folderOf, foldersIn } from './definition-folders.ts'
 import { createDeliveryMediaPort } from './delivery-media.ts'
 import { createDeliveryMemberSecurity } from './delivery-members.ts'
 import { syncDomainsFile } from './domains.ts'
@@ -2190,6 +2191,12 @@ export async function createServer(
       )
     }
 
+    // Whether what `schema/` holds can be changed here, for the views that say so (story 289).
+    if (pathname === `${paths.pluginPath}/api/site-files` && request.method === 'GET') {
+      if (!(await authenticate(request))) return new Response('Unauthorized', { status: 401 })
+      return Response.json({ writable: config.schemaWritable })
+    }
+
     if (pathname === `${paths.pluginPath}/api/email` && request.method === 'GET') {
       if (!(await authenticate(request))) return new Response('Unauthorized', { status: 401 })
       return Response.json({
@@ -2259,10 +2266,24 @@ export async function createServer(
 
       // A definition is structure, like a content type: anyone who may open the
       // section may read it, and the picker needs it in the Content section too.
-      if (action === '' && request.method === 'GET')
+      if (action === '' && request.method === 'GET') {
+        const files = loadSchemaDirectory(config.schemaDir, { formTypes: formTypes.types }).files
+        const file = (alias: string) => files.get(`form:${alias}`)
         return Response.json({
-          items: definitions.map((form) => formSummary(form, formTypes.types)),
+          items: definitions.map((form) => ({
+            ...formSummary(form, formTypes.types),
+            folder: file(form.alias)
+              ? folderOf(config.schemaDir, 'forms', file(form.alias) as string)
+              : '',
+          })),
+          folders: foldersIn(config.schemaDir, 'forms'),
+          readOnlyBecause: !config.schemaWritable
+            ? 'site'
+            : principal.isAdmin || principal.permissions.includes(FormPermissions.Manage)
+              ? null
+              : 'permission',
         })
+      }
       // Hyphenated, so no form alias (letters and digits) can be mistaken for it.
       if (action === 'available-types' && request.method === 'GET')
         return Response.json(describeFormTypes(formTypes.types))
@@ -2464,10 +2485,22 @@ export async function createServer(
 
       // Designing a form is a developer's job, so it is its own verb rather
       // than something an entry reader can do.
+      if (action === 'tree-folders' || action === 'tree-move') {
+        if (!may(FormPermissions.Manage)) return new Response('Forbidden', { status: 403 })
+        const response = await folderAction('forms', action, request, {
+          ...formFiles,
+          file: (alias) =>
+            loadSchemaDirectory(config.schemaDir, { formTypes: formTypes.types }).files.get(
+              `form:${alias}`,
+            ),
+        })
+        if (response) return response
+      }
       if (request.method === 'POST' || request.method === 'PUT') {
         if (!may(FormPermissions.Manage)) return new Response('Forbidden', { status: 403 })
         const body = await request.json().catch(() => ({}))
-        const written = await saveForm(coerceForm(body), formFiles)
+        const folder = url.searchParams.get('folder') ?? undefined
+        const written = await saveForm(coerceForm(body), { ...formFiles, folder })
         if (!written.ok) {
           log.warning('{user} could not save a form: {detail}', {
             user: principal.email,

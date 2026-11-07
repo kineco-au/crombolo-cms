@@ -6,6 +6,76 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.52.0 — 2026-11-07
+
+### Features
+
+- **Home is where the back office opens (288).** The Overview is now Home: signing in
+  opens it and the logo leads back to it, for anyone with the Content section. It holds the version and
+  system information, which replace the logo's popover. Opening Content now goes
+  straight to your first page, or says there are none yet. Settings has a breadcrumb
+  on its cards, and every trail there starts at Home.
+- **A menu under Content (289).** Pages, Structure, Components, Forms and Workflows now sit
+  together in a row under the header, showing what you may open. Forms has left the header,
+  and Settings no longer has its Build group. Old addresses still work.
+- **Forms and workflows have folders (289).** Both list in a tree beside the editor, and can
+  be organised into folders, which are real folders of files in `schema/`. The Forms root
+  lists every form's entries, and each form has an Entries tab.
+- **From a page to what defines it (289).** A page's tree actions offer Edit content type and
+  Edit template.
+- **Anything turned off says why (289).** Forms and workflows say so up front when a site
+  can't change them, and offer no way to try, in place of an error on saving.
+- **A full demo site about Crombolo (290).** `crombolo init --template demo/crombolo` starts
+  a site with a home page built from blocks, features filtered by category, people from the
+  Library, a blog with tags and paging, search, a contact form and site settings, all in
+  English and Spanish, with its content published.
+- **A language can live at a path on any hostname (290).** `host = "/es"` in `domains.toml`
+  serves Spanish under `/es` wherever the site runs, with no hostname to set.
+- **Forms opens on the list of forms,** with Entries after it.
+- **The theme is chosen in your profile.** The header's theme button is gone. A choice
+  made in the profile now follows you to another browser, as the button's did.
+- **Settings' e-mail notice is shorter.** "E-mail is not set up." expands to the details,
+  with what is unavailable as a list.
+- **A template's element has its name (287).** An element picked from the Library
+  has `name`, in the page's culture, so a list of labels such as a post's
+  categories can show it. A block's element has `name` as `null`. The Delivery API
+  gives a picked element its name too, where it always sent an empty string.
+
+### Fixes
+
+- **Block labels show their values.** A block's label in a data type file uses `{=heading}`.
+  The form the docs gave, `{{heading}}`, was shown as written, and the demos now use the
+  right one. Renaming a property follows it.
+- **Library elements are read in the page's language (290).** They always showed the default
+  language's values, whatever the page's language.
+
+- **Home after signing back in (288).** When a session ended, the page could stay on an
+  error after signing back in. It now waits for the sign-in and loads.
+- **A date is the same on any server (286).** On a server not on UTC, a date
+  picker's value moved by the server's offset when a template read it, so a site
+  in Australia showed a date before 10am as the day before. The value stored was
+  right, and the back office showed it correctly.
+- **A date with a time in a content file keeps it (286).** Built on a machine not
+  on UTC, a content file's date and time was stored moved by that machine's
+  offset. A date alone was not affected.
+- **A date filter with a time compares the right moment (286).**
+
+### Upgrade notes
+
+- **A site with `{{heading}}` in a block's label:** change it to `{=heading}` in its data type
+  file, or the label stays as written.
+- **The product site's id is now `product/crombolo` (290),** and `demo/crombolo` is the new
+  demo. Its committed bundle keeps the name `demo-crombolo`, so what the platform receives
+  has the same identity. A site's `site.json` can name its bundle with `"bundle"`.
+
+- Nothing needs migrating for dates entered in the back office: they read correctly
+  once upgraded.
+- A date and time that came from a content file built outside UTC is stored moved,
+  and cannot be told from a real value. Correct it in the back office, or change
+  and re-apply the file.
+- A template that added an offset to work around this should stop.
+- No migrations.
+
 ## v0.51.1 — 2026-11-07
 
 ### Fixes

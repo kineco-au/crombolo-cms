@@ -1,0 +1,14 @@
+type = "person"
+name = { "en-US" = "Inès Marchetti", "es-ES" = "Inès Marchetti" }
+order = 0
+
+[values]
+fullName = "Inès Marchetti"
+
+[values.en-US]
+role = "Product lead"
+bio = "Decides what gets built, and what does not. Writes the release notes."
+
+[values.es-ES]
+role = "Directora de producto"
+bio = "Decide qué se construye y qué no. Escribe las notas de cada versión."

@@ -1,0 +1,16 @@
+type = "contentPage"
+name = { "en-US" = "About", "es-ES" = "Acerca de" }
+order = 4
+
+[values]
+image = "/workbench.jpg"
+
+[values.en-US]
+title = "About this site"
+intro = "A complete site, made to be taken apart."
+body = { html = "<p>This site shows the everyday features of a CMS working together, with content about Crombolo itself. Every page, element and form comes from files you can read in its folder.</p><p>Start with a page in the back office, then find the view that draws it in the components folder. Change one, and see the other move.</p><p>The people and the quote are invented. The photographs are public domain, and CREDITS.md says where each came from.</p>" }
+
+[values.es-ES]
+title = "Sobre este sitio"
+intro = "Un sitio completo, hecho para desmontarlo."
+body = { html = "<p>Este sitio muestra las funciones habituales de un CMS trabajando juntas, con contenido sobre el propio Crombolo. Cada página, elemento y formulario sale de archivos que puedes leer en su carpeta.</p><p>Empieza por una página en el panel y busca después la vista que la dibuja en la carpeta de componentes. Cambia una y verás moverse la otra.</p><p>Las personas y la cita son inventadas. Las fotografías son de dominio público, y CREDITS.md indica de dónde salió cada una.</p>" }

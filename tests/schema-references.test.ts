@@ -180,7 +180,7 @@ validationLimit = { min = 1 }
 [[data-type.block]]
 element = "feature"
 settings = "quote"
-label = "{{heading}}"
+label = "{=heading}"
 size = "medium"
 group = "Layout"
 column-spans = [6, 12]
@@ -210,7 +210,7 @@ group = "Layout"
     expect(blocks[0]).toMatchObject({
       contentElementTypeKey: key('feature'),
       settingsElementTypeKey: key('quote'),
-      label: '{{heading}}',
+      label: '{=heading}',
       editorSize: 'medium',
       groupKey: groups[0]?.key,
       columnSpanOptions: [{ columnSpan: 6 }, { columnSpan: 12 }],

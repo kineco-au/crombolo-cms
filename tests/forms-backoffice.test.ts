@@ -120,10 +120,15 @@ describe('the Forms section', () => {
   test('the section and its two views are in the manifests', async () => {
     const { h } = await site()
     const manifests = await h.json<
-      Array<{ name: string; extensions: Array<{ type: string; alias: string }> }>
+      Array<{ name: string; extensions: Array<{ type: string; alias: string; weight?: number }> }>
     >(`${V1}/manifest/manifest`)
     const ours = manifests.find((manifest) => manifest.name === 'Crombolo')
     const aliases = ours?.extensions.map((e) => `${e.type}:${e.alias}`) ?? []
+    const weightOf = (alias: string) => ours?.extensions.find((e) => e.alias === alias)?.weight ?? 0
+    // The heaviest view opens first, and the section opens on its list of forms.
+    expect(weightOf('Crombolo.SectionView.Forms.Overview')).toBeGreaterThan(
+      weightOf('Crombolo.SectionView.Forms.Entries'),
+    )
     expect(aliases).toContain('section:Crombolo.Section.Forms')
     expect(aliases).toContain('sectionView:Crombolo.SectionView.Forms.Overview')
     expect(aliases).toContain('sectionView:Crombolo.SectionView.Forms.Entries')

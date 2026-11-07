@@ -1,0 +1,20 @@
+type = "blogPost"
+name = { "en-US" = "Translating without a second site", "es-ES" = "Traducir sin un segundo sitio" }
+order = 3
+
+[values]
+publishDate = "2026-06-23"
+author = ["tomas-vidal"]
+image = "/compass-map.jpg"
+
+[values.en-US]
+title = "Translating without a second site"
+excerpt = "One page, two languages, and an address for each."
+body = { html = "<p>A translated site does not need a second copy of the tree. Mark what varies, translate it, and give the language an address.</p><p>Everything else, such as images, dates and categories, stays in one place.</p>" }
+tags = ["languages", "schema"]
+
+[values.es-ES]
+title = "Traducir sin un segundo sitio"
+excerpt = "Una página, dos idiomas y una dirección para cada uno."
+body = { html = "<p>Un sitio traducido no necesita una segunda copia del árbol. Marca lo que varía, tradúcelo y dale una dirección al idioma.</p><p>Todo lo demás, como imágenes, fechas y categorías, se queda en un solo lugar.</p>" }
+tags = ["idiomas", "esquema"]

@@ -1,0 +1,17 @@
+type = "feature"
+name = { "en-US" = "Bundles", "es-ES" = "Paquetes" }
+order = 7
+
+[values]
+category = "delivery"
+image = "/workbench.jpg"
+
+[values.en-US]
+title = "Bundles"
+summary = "Move content and files between environments, safely."
+body = { html = "<p>A bundle carries pages, media and definitions from one environment to another. It shows what would change before it changes anything, and every apply can be undone.</p><p>This whole site starts from its content files in the same way.</p>" }
+
+[values.es-ES]
+title = "Paquetes"
+summary = "Mueve contenido y archivos entre entornos con seguridad."
+body = { html = "<p>Un paquete lleva páginas, medios y definiciones de un entorno a otro. Muestra qué cambiaría antes de cambiar nada, y cada aplicación se puede deshacer.</p><p>Todo este sitio arranca de sus archivos de contenido de la misma manera.</p>" }

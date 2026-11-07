@@ -1,0 +1,9 @@
+type = "searchPage"
+name = { "en-US" = "Search", "es-ES" = "Buscar" }
+order = 6
+
+[values.en-US]
+title = "Search"
+
+[values.es-ES]
+title = "Buscar"

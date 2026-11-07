@@ -103,7 +103,7 @@ export function createSchemaFileWriter(
       return {
         ok: false,
         status: 409,
-        reason: `${plural} are defined in schema/ and this environment is read-only; change ${shown} in source control.`,
+        reason: `${plural} are kept with this site's files, so they can't be changed here. To change this one, edit ${shown} in the site's code and deploy it.`,
       }
     },
 

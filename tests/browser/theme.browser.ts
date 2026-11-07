@@ -1,5 +1,5 @@
 /**
- * Light and dark (story 049): chosen from the header, and still chosen after a
+ * Light and dark (story 049): chosen in the profile, and still chosen after a
  * reload, before the client has booted. The choice is saved for the person, so
  * the test puts Light back for the tests after it.
  */
@@ -12,11 +12,12 @@ const background = (page: Page) =>
   )
 
 async function choose(page: Page, label: string): Promise<void> {
-  await page.locator('crombolo-theme-switch uui-button').click()
-  await page.locator(`crombolo-theme-switch uui-menu-item[label="${label}"]`).click()
+  await page.locator('umb-current-user-header-app uui-button').click()
+  await page.locator('umb-current-user-theme-user-profile-app select').selectOption({ label })
+  await page.keyboard.press('Escape')
 }
 
-test('dark is chosen from the header, and kept across a reload', async ({ page }) => {
+test('dark is chosen in the profile, and kept across a reload', async ({ page }) => {
   await signIn(page)
   await settle(page)
   try {
@@ -29,6 +30,13 @@ test('dark is chosen from the header, and kept across a reload', async ({ page }
       'data-theme',
       'Crombolo.Theme.Dark',
     )
+    await settle(page)
+    await expect.poll(() => background(page)).toBe('#1f1813')
+    await expect(page.locator('umb-backoffice-header-apps [label^="Light or dark"]')).toHaveCount(0)
+
+    // It is the person's as well as this browser's.
+    await page.evaluate(() => localStorage.clear())
+    await page.reload()
     await settle(page)
     await expect.poll(() => background(page)).toBe('#1f1813')
   } finally {

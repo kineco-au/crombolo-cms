@@ -262,6 +262,7 @@ describe('the forms endpoints', () => {
         storeEntries: true,
         requiresApproval: false,
         workflowCount: 0,
+        folder: '',
       },
     ])
   })

@@ -445,10 +445,32 @@ entries name their modules under the `/crombolo-plugin/*` placeholder, which
 `collectManifests` rewrites to `pluginPath` — `/crombolo/crombolo/*` by default —
 so the manifest on disk need not know where the editor is mounted. To put
 something of ours where one of Umbraco's
-extensions was, the manifest entry names it in `overwrites`: the Overview
-(story 236) declares `overwrites: ['Umb.Dashboard.UmbracoNews']`, the place
-Umbraco's news dashboard held in the Content section before that package stopped
-being vendored.
+extensions was, the manifest entry names it in `overwrites`: the Content section's
+home dashboard (story 288) declares `overwrites: ['Umb.Dashboard.UmbracoNews']`, the
+place Umbraco's news dashboard held there before that package stopped being vendored.
+
+**Home (stories 236, 288) is not in a section.** The fork reads a `homeView`
+extension and routes it at `home`, ahead of the sections, for a user with Content,
+so it is where signing in lands: the client goes to its first route. No section grant is
+involved. The header's logo is a link to the root, which lands in the same place, and
+for someone without Content that is their first section. The version and system details
+are a box on Home, whose All details opens the client's own dialog.
+
+Every trail in Settings starts at Home, and its landing page has one too.
+
+**The menu under Content (story 289)** is `content-strip.js`: Pages, Structure, Components,
+Forms and Workflows, for whoever may open each, and nothing for someone with one. It is a row of
+its own under the header, which the fork draws and a `backofficeEntryPoint` defines, shown
+wherever one of them is open; `--crombolo-content-strip-height` makes room for it. The trees
+stay where they were, because the client hard-codes `section/settings/...` for types and templates,
+so the menu spans sections and raises `crombolo:mark-section` to keep Content's tab marked.
+The fork hides Forms from the header for anyone with Content. Settings has no Build group.
+
+Forms and Workflows are views of the Forms section with `meta.noTab`, which the fork takes
+as no tab bar, opened from `definition-tree.js`.
+
+Content's home dashboard opens the first page the user can see, by asking for the
+tree's root, and replaces the address so the back button leaves the section.
 
 Prefer that to the registry's `exclude()` or `unregister()`. `overwrites` is
 resolved by the extension initializer as it reads the manifests, whereas the

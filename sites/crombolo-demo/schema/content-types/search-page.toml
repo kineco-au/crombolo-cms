@@ -1,0 +1,22 @@
+[content-type]
+alias = "searchPage"
+name = "Search Page"
+description = "Lists the pages matching what a visitor searched for"
+icon = "icon-search"
+site-search = false
+varies-by-culture = true
+compositions = ["seoFields"]
+components = ["pages/searchPage"]
+default-component = "pages/searchPage"
+
+[[tab]]
+name = "Content"
+
+[[tab.property]]
+alias = "title"
+name = "Title"
+description = "Shown as the page heading"
+type = "textstring"
+mandatory = true
+varies-by-culture = true
+site-search = "high"

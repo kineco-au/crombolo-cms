@@ -1,0 +1,20 @@
+type = "blogPost"
+name = { "en-US" = "What a bundle tells you before it does anything", "es-ES" = "Qué te dice un paquete antes de hacer nada" }
+order = 6
+
+[values]
+publishDate = "2026-10-20"
+author = ["jonas-lind"]
+image = "/library-shelves.jpg"
+
+[values.en-US]
+title = "What a bundle tells you before it does anything"
+excerpt = "Moving content is safer when you can read the plan first."
+body = { html = "<p>A dry run lists what would be added, changed and left alone. If someone edited the same thing on the other side, it stops and asks.</p><p>Every apply is a run you can undo, so trying it is cheap.</p>" }
+tags = ["operations", "workflow"]
+
+[values.es-ES]
+title = "Qué te dice un paquete antes de hacer nada"
+excerpt = "Mover contenido es más seguro si antes puedes leer el plan."
+body = { html = "<p>Una prueba en seco enumera lo que se añadiría, cambiaría o dejaría igual. Si alguien editó lo mismo en el otro lado, se detiene y pregunta.</p><p>Cada aplicación se puede deshacer, así que probar sale barato.</p>" }
+tags = ["operaciones", "flujo de trabajo"]

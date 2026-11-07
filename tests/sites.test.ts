@@ -39,6 +39,7 @@ describe('the sites', () => {
       'demo/harbourstone',
       'demo/harbourstone-next',
       'demo/plain-signal',
+      'product/crombolo',
       'starter',
     ])
     expect(findSite('demo/harbourstone')?.dir).toBe(join(SITES_DIR, 'harbourstone'))
@@ -86,6 +87,7 @@ describe('the sites', () => {
 
   test('ship only when they opt in', () => {
     expect(sites.filter((site) => site.distribute).map((site) => site.id)).toEqual([
+      'demo/crombolo',
       'demo/harbourstone',
       'demo/harbourstone-next',
       'demo/plain-signal',
@@ -99,6 +101,7 @@ describe('staging a site as a template', () => {
     const into = tempDir()
     stageTemplates(into)
     expect(listTemplates(into).map((template) => template.id)).toEqual([
+      'demo/crombolo',
       'demo/harbourstone',
       'demo/harbourstone-next',
       'demo/plain-signal',
@@ -168,7 +171,7 @@ describe('staging a site as a template', () => {
     const into = tempDir()
     mkdirSync(join(into, 'basic'))
     const staged = stageTemplates(into, listSites())
-    expect(staged).toHaveLength(5)
+    expect(staged).toHaveLength(6)
     unstage(staged, into)
     expect(readdirSync(into)).toEqual(['basic'])
   })

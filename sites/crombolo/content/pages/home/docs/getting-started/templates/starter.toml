@@ -2,7 +2,7 @@
 type = "docsPage"
 key = "ab6b30ea-c875-4489-87d4-063c5c4d413c"
 name = "Starter"
-order = 5
+order = 6
 
 [values]
 title = "Starter"

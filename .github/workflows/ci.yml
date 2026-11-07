@@ -152,6 +152,9 @@ jobs:
         env:
             CROMBOLO_DB: ${{ matrix.dialect }}
             CROMBOLO_POSTGRES_URL: postgres://crombolo:crombolo@localhost:5432/crombolo_test
+            # A date read in the server's zone is invisible on UTC, which every runner is.
+            # One dialect in another zone keeps that from coming back (story 286).
+            TZ: ${{ matrix.dialect == 'sqlite' && 'Australia/Brisbane' || 'UTC' }}
         steps:
             - uses: actions/checkout@v5
             # Throwaway data: no durability to pay for. All three take a reload, so

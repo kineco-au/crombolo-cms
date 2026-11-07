@@ -14,6 +14,7 @@ import {
   type DocumentValue,
   type DocumentVariant,
   type DocumentVersionSummary,
+  dateFromText,
   variesByCulture as flagVariesByCulture,
   type MediaItemAccess,
   normaliseUuid,
@@ -2420,12 +2421,8 @@ export class DocumentRepository {
         if (value instanceof Date) return DbDate.toDb(value)
         // The date pickers send wall-clock time with no zone ("2026-01-02 03:04:05");
         // it is kept as that wall-clock time, not shifted by the server's zone.
-        const text = String(value).trim()
-        const naive = /^\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?)?$/.test(text)
-        const date = new Date(
-          naive ? `${text.replace(' ', 'T')}${text.length === 10 ? 'T00:00:00' : ''}Z` : text,
-        )
-        return Number.isNaN(date.getTime()) ? null : DbDate.toDb(date)
+        const date = dateFromText(String(value))
+        return date ? DbDate.toDb(date) : null
       }
       default:
         return typeof value === 'string' ? value : JSON.stringify(value)

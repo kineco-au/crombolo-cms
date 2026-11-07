@@ -1,0 +1,13 @@
+{
+  "name": "@crombolo/site-crombolo-demo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "crombolo start --bundle . --publish",
+    "dev": "bun --watch server.ts"
+  },
+  "dependencies": {
+    "@crombolo/crombolo": "workspace:*"
+  }
+}

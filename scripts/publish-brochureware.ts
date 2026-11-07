@@ -32,12 +32,13 @@ import { join, relative, sep } from 'node:path'
 import { readBundlePackage } from '@crombolo/backoffice-host'
 import { describeProvenance, signPackage } from '@crombolo/server'
 import { writeZip, type ZipEntry } from '../packages/server/src/zip.ts'
-import { SITES_DIR, slugOf } from './sites.ts'
+import { SITES_DIR } from './sites.ts'
 
 /** The site whose bundle is the product site. */
-export const TEMPLATE = 'demo/crombolo'
+export const TEMPLATE = 'product/crombolo'
 
-export const BUNDLE_DIR = join(SITES_DIR, 'crombolo', 'bundles', slugOf(TEMPLATE))
+/** It keeps the name the platform already has it under. */
+export const BUNDLE_DIR = join(SITES_DIR, 'crombolo', 'bundles', 'demo-crombolo')
 
 /** Where the bundle is sent. Every one is required: a default would guess. */
 export const VARIABLES = {

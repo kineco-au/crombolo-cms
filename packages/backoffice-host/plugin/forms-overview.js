@@ -12,13 +12,15 @@
  */
 // For its side effect: registers `umb-input-document`, which the shell loads lazily.
 import '@umbraco-cms/backoffice/document'
+import './forms-entries.js'
 import { css, html, nothing, repeat } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { UMB_NOTIFICATION_CONTEXT } from '@umbraco-cms/backoffice/notification'
+import { readOnlyWords } from './definition-tree-model.js'
 import {
   deleteForm,
+  formsTree,
   listEmailTemplates,
-  listForms,
   listFormTypes,
   previewChoices,
   readForm,
@@ -53,6 +55,14 @@ import {
   workflowSettings,
 } from './forms-workflows.js'
 
+/** The tree beside the list hears of a change this way. */
+const definitionsChanged = () => window.dispatchEvent(new Event('crombolo:definitions-changed'))
+
+/** Back to the list, which the tree's links leave by their query. */
+const clearQuery = () => {
+  if (location.search) history.replaceState(null, '', location.pathname)
+}
+
 /** What a preview depends on, so it survives a layout change that copies the field. */
 const sourceKey = (source) => `${source.kind}|${source.parent}`
 
@@ -74,9 +84,23 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
     _types: { state: true },
     _workflowTypes: { state: true },
     _designs: { state: true },
+    _because: { state: true },
+    _tab: { state: true },
   }
 
   #notifications
+  /** The folder a new form goes in, from the tree's link. */
+  #folder
+  #query
+
+  #follow = () => {
+    if (location.search === this.#query) return
+    this.#query = location.search
+    const asked = new URLSearchParams(location.search)
+    if (asked.has('form')) this.#edit(asked.get('form'))
+    else if (asked.has('new')) this.#new(asked.get('new'))
+    else this._editing = undefined
+  }
 
   constructor() {
     super()
@@ -101,17 +125,33 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
   connectedCallback() {
     super.connectedCallback()
     this.#load()
+    this.#follow()
+    window.addEventListener('changestate', this.#follow)
+    window.addEventListener('popstate', this.#follow)
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback()
+    window.removeEventListener('changestate', this.#follow)
+    window.removeEventListener('popstate', this.#follow)
+  }
+
+  #changed() {
+    this.#folder = undefined
+    definitionsChanged()
+    clearQuery()
   }
 
   async #load() {
     try {
-      const [forms, types, designs] = await Promise.all([
-        listForms(),
+      const [tree, types, designs] = await Promise.all([
+        formsTree(),
         listFormTypes(),
         // The picker can still offer Standard without them.
         listEmailTemplates().catch(() => []),
       ])
-      this._forms = forms
+      this._forms = tree.items ?? []
+      this._because = tree.readOnlyBecause
       this._types = new Map(types.fields.map((info) => [info.type, info]))
       this._workflowTypes = new Map(types.workflows.map((info) => [info.type, info]))
       this._designs = designs
@@ -124,6 +164,7 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
   async #edit(key) {
     this._problems = []
     this._notice = ''
+    this._tab = 'design'
     const detail = await readForm(key)
     this._editing = withLayout(detail.definition)
     this._choices = new Map()
@@ -282,9 +323,11 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
     `
   }
 
-  #new() {
+  #new(folder) {
     this._problems = []
     this._notice = ''
+    this._tab = 'design'
+    this.#folder = folder || undefined
     this._editing = {
       key: crypto.randomUUID(),
       alias: '',
@@ -650,18 +693,15 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
     this._problems = []
     this._notice = ''
     try {
-      const result = await saveForm(this._editing)
+      const result = await saveForm(this._editing, this.#folder)
       if (result.ok) {
         // The green toast every workspace shows on a save.
         this.#notifications?.peek('positive', { data: { message: 'Form saved' } })
         this._editing = undefined
+        this.#changed()
         await this.#load()
       } else {
         this._problems = result.body.problems ?? []
-        if (result.body.status === 'readOnly' && this._problems.length === 0)
-          this._problems = [
-            { path: '', message: 'The schema directory is read-only on this node.' },
-          ]
       }
     } catch (error) {
       this._problems = [{ path: '', message: error.message }]
@@ -675,6 +715,7 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
     try {
       const result = await deleteForm(form.key)
       if (!result.ok) this._notice = 'That form could not be deleted.'
+      this.#changed()
       await this.#load()
     } catch (error) {
       this._notice = error.message
@@ -685,15 +726,21 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
     if (this._forms === undefined) return html`<div class="list"><uui-loader></uui-loader></div>`
     if (this._editing) return this.#editor()
     return html`<div class="list">
+      ${this.#readOnly()}
       ${this._notice ? html`<uui-box><p>${this._notice}</p></uui-box>` : nothing}
       ${this.#list()}
     </div>`
   }
 
+  #readOnly() {
+    const words = readOnlyWords('Forms', this._because)
+    return words ? html`<uui-box><p role="status">${words}</p></uui-box>` : nothing
+  }
+
   #list() {
     // The create button above the list, as the workflows list has it.
     return html`
-      <uui-button class="create" color="default" look="outline" label="Create" @click=${() => this.#new()}></uui-button>
+      ${this._because ? nothing : html`<uui-button class="create" color="default" look="outline" label="Create" @click=${() => this.#new()}></uui-button>`}
       <uui-box headline="Forms">
         ${
           this._forms.length === 0
@@ -718,7 +765,7 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
                         <uui-table-cell>${form.storeEntries ? 'stored' : 'not stored'}</uui-table-cell>
                         <uui-table-cell>
                           <uui-button look="secondary" label="Edit" @click=${() => this.#edit(form.key)}></uui-button>
-                          <uui-button look="secondary" color="danger" label="Delete" @click=${() => this.#remove(form)}></uui-button>
+                          ${this._because ? nothing : html`<uui-button look="secondary" color="danger" label="Delete" @click=${() => this.#remove(form)}></uui-button>`}
                         </uui-table-cell>
                       </uui-table-row>
                     `,
@@ -730,29 +777,9 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
     `
   }
 
-  #editor() {
-    const form = this._editing
-    const text = (key, label, hint) => html`
-      <uui-form-layout-item>
-        <uui-label slot="label">${label}</uui-label>
-        ${hint ? html`<span slot="description">${hint}</span>` : nothing}
-        <uui-input
-          .value=${form[key] ?? ''}
-          @change=${(event) => {
-            form[key] = event.target.value
-            this.#touch()
-          }}
-        ></uui-input>
-      </uui-form-layout-item>
-    `
-    const leave = () => {
-      this._editing = undefined
-      this._problems = []
-    }
-    // Umbraco's own layout, as the workflow designer has it: Save bottom right,
-    // and what stopped a save listed just above it.
-    return html`<umb-body-layout headline=${form.alias ? `Form: ${form.name || form.alias}` : 'A new form'}>
-      <uui-box>
+  /** The form's own settings and layout, which is what its Design tab shows. */
+  #design(form, text) {
+    return html`      <uui-box>
         ${text('name', 'Name')}
         ${text('alias', 'Alias', 'Letters and numbers, starting with a letter. The file is named after it.')}
         ${text('messageOnSubmit', 'Message on submit')}
@@ -811,6 +838,53 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
               </ul>
             </div>`
           : nothing
+      }`
+  }
+
+  #editor() {
+    const form = this._editing
+    const text = (key, label, hint) => html`
+      <uui-form-layout-item>
+        <uui-label slot="label">${label}</uui-label>
+        ${hint ? html`<span slot="description">${hint}</span>` : nothing}
+        <uui-input
+          .value=${form[key] ?? ''}
+          @change=${(event) => {
+            form[key] = event.target.value
+            this.#touch()
+          }}
+        ></uui-input>
+      </uui-form-layout-item>
+    `
+    const leave = () => {
+      this._editing = undefined
+      this._problems = []
+      clearQuery()
+    }
+    const tab = (id, label, icon) => html`<uui-tab
+      label=${label}
+      ?active=${this._tab === id}
+      @click=${() => {
+        this._tab = id
+      }}
+    ><umb-icon slot="icon" name=${icon}></umb-icon>${label}</uui-tab>`
+    const saved = this._forms.some((known) => known.key === form.key)
+    // Umbraco's own layout, as the workflow designer has it: Save bottom right,
+    // and what stopped a save listed just above it.
+    return html`<umb-body-layout headline=${form.alias ? `Form: ${form.name || form.alias}` : 'A new form'}>
+      ${
+        saved
+          ? html`<uui-tab-group slot="navigation">
+              ${tab('design', 'Design', 'icon-edit')}
+              ${tab('entries', 'Entries', 'icon-inbox')}
+            </uui-tab-group>`
+          : nothing
+      }
+      ${this.#readOnly()}
+      ${
+        this._tab === 'entries'
+          ? html`<crombolo-forms-entries .form=${form.key}></crombolo-forms-entries>`
+          : this.#design(form, text)
       }
       ${
         this._problems.length > 0
@@ -818,7 +892,7 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
           : nothing
       }
       <uui-button slot="actions" look="secondary" label="Back to the list" @click=${leave}>Back to the list</uui-button>
-      <uui-button slot="actions" look="primary" color="positive" label="Save" ?disabled=${this._busy} @click=${() => this.#save()}>Save</uui-button>
+      ${this._because ? nothing : html`<uui-button slot="actions" look="primary" color="positive" label="Save" ?disabled=${this._busy} @click=${() => this.#save()}>Save</uui-button>`}
     </umb-body-layout>`
   }
 

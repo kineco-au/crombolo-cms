@@ -151,8 +151,8 @@ test('a Send email workflow is given an e-mail design, and saved', async ({
   })
   expect(created.status()).toBe(200)
 
-  // The section opens on Entries; the designer is its Forms view
-  await page.goto('/crombolo/section/forms/view/forms')
+  // The section opens on its list of forms.
+  await page.goto('/crombolo/section/forms')
   await page
     .locator('uui-table-row', { hasText: alias })
     .getByRole('button', { name: 'Edit' })

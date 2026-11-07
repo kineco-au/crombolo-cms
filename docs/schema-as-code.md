@@ -504,7 +504,7 @@ gridColumns = 12
 [[data-type.block]]
 element = "feature"         # the element type, by alias
 settings = "featureSettings"
-label = "{{heading}}"
+label = "{=heading}"        # shown in the block list: {=alias} is a property's value
 size = "medium"             # the editor's overlay size
 group = "Layout"            # groups are named; their keys are derived
 column-spans = [6, 12]

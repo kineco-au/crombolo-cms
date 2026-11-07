@@ -1,0 +1,14 @@
+type = "blogList"
+name = { "en-US" = "Blog", "es-ES" = "Blog" }
+order = 3
+
+[values]
+postsPerPage = 4
+
+[values.en-US]
+title = "Blog"
+intro = "Notes from the people building Crombolo."
+
+[values.es-ES]
+title = "Blog"
+intro = "Notas de quienes construyen Crombolo."

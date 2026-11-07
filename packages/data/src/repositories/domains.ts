@@ -34,7 +34,8 @@ export function normaliseDomainName(name: string): string {
     .toLowerCase()
 }
 
-const VALID_DOMAIN = /^[a-z0-9.-]+(:\d+)?(\/[a-z0-9._~%-]+)*$/i
+/** A hostname with an optional path, or a path alone, which answers on any hostname. */
+const VALID_DOMAIN = /^(?:[a-z0-9.-]+(:\d+)?(\/[a-z0-9._~%-]+)*|(\/[a-z0-9._~%-]+)+)$/i
 
 export class DomainRepository {
   #db: Db

@@ -194,7 +194,7 @@ describe('creating a site, end to end through the CLI', () => {
       '--name',
       'Crombolo',
       '--template',
-      'demo/crombolo',
+      'product/crombolo',
     )
     expect(productInit.code, productInit.out).toBe(0)
     const magazineInit = await scaffold(

@@ -1,0 +1,47 @@
+[content-type]
+alias = "feature"
+name = "Feature"
+description = "One thing the product does"
+icon = "icon-lightbulb"
+varies-by-culture = true
+compositions = ["seoFields"]
+components = ["pages/feature"]
+default-component = "pages/feature"
+
+[[tab]]
+name = "Content"
+
+[[tab.property]]
+alias = "title"
+name = "Title"
+description = "Shown as the page heading"
+type = "textstring"
+mandatory = true
+varies-by-culture = true
+site-search = "high"
+
+[[tab.property]]
+alias = "summary"
+name = "Summary"
+description = "Shown on the list of features"
+type = "textarea"
+mandatory = true
+varies-by-culture = true
+site-search = "normal"
+
+[[tab.property]]
+alias = "category"
+name = "Category"
+type = "featureCategory"
+mandatory = true
+
+[[tab.property]]
+alias = "image"
+name = "Image"
+type = "imageMediaPicker"
+
+[[tab.property]]
+alias = "body"
+name = "Body"
+type = "richtext"
+varies-by-culture = true

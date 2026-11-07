@@ -25,7 +25,6 @@ const EVERYTHING = {
     dashboard('Umb.Dashboard.ExamineManagement', 'examine-management'),
     dashboard('Umb.Dashboard.PublishedStatus', 'published-status'),
     dashboard('Umb.Dashboard.ModelsBuilder', 'models-builder'),
-    dashboard('Crombolo.Dashboard.Workflows', 'workflows'),
     dashboard('Crombolo.Dashboard.Seo', 'search-and-sharing'),
     dashboard('Crombolo.Dashboard.Addresses', 'addresses'),
     dashboard('Umb.Dashboard.RedirectManagement', 'redirect-management'),
@@ -48,7 +47,6 @@ const titles = (groups: ReturnType<typeof settingsCards>) =>
 describe('the Settings landing page', () => {
   test('an administrator sees every tool, grouped and in order', () => {
     expect(titles(settingsCards(EVERYTHING))).toEqual({
-      Build: ['Structure', 'Code', 'Types for code', 'Workflows'],
       Site: [
         'Search & sharing',
         'Page addresses',
@@ -61,7 +59,7 @@ describe('the Settings landing page', () => {
       Health: ['Health check', 'Published status', 'Relations'],
       History: ['Changes', 'Audit log'],
       // Story 238: after History, a developer's tool, then installing bundles.
-      Developers: ['Extension insights'],
+      Developers: ['Extension insights', 'Types for code'],
       Extensions: ['Bundles'],
     })
   })
@@ -69,7 +67,6 @@ describe('the Settings landing page', () => {
   test('each card goes to the address the tool already has', () => {
     const cards = settingsCards(EVERYTHING).flatMap((g) => g.cards)
     const path = (title: string) => cards.find((c) => c.title === title)?.path
-    expect(path('Structure')).toBe('structure')
     expect(path('Health check')).toBe('dashboard/health-check')
     expect(path('Logs')).toBe('workspace/logviewer')
     for (const card of cards)
@@ -78,12 +75,10 @@ describe('the Settings landing page', () => {
 
   test('someone without a tool, or a tree, sees no card for it, and an empty group goes', () => {
     const groups = settingsCards({
-      structure: true,
-      code: false,
       dashboards: [dashboard('Crombolo.Dashboard.Seo', 'search-and-sharing')],
       advanced: [],
     })
-    expect(titles(groups)).toEqual({ Build: ['Structure'], Site: ['Search & sharing'] })
+    expect(titles(groups)).toEqual({ Site: ['Search & sharing'] })
   })
 
   test('a dashboard we have no words for, from no bundle, is a card under Other, by its own label', () => {
@@ -134,7 +129,6 @@ describe('the Settings landing page', () => {
 
   test('a bundle has a group of its own, after ours, by its name and linking to it', () => {
     const groups = settingsCards({
-      structure: true,
       dashboards: [
         {
           alias: 'Acme.Dashboard.Stock',
@@ -155,7 +149,6 @@ describe('the Settings landing page', () => {
     })
     // A bundle's group links to the bundle in the Bundles section.
     expect(groups.map((g) => [g.group, g.bundle?.path, g.cards.map((c) => c.title)])).toEqual([
-      ['Build', undefined, ['Structure']],
       ['Other', undefined, ['Loose']],
       ['Acme', 'section/settings/dashboard/bundles/installed?bundle=%40acme%2Fstock', ['Stock']],
       [
@@ -168,9 +161,7 @@ describe('the Settings landing page', () => {
 
   test('every card we have words for names a group that is shown', () => {
     for (const words of Object.values(CARDS))
-      expect(['Build', 'Site', 'Health', 'History', 'Developers', 'Extensions']).toContain(
-        words.group,
-      )
+      expect(['Site', 'Health', 'History', 'Developers', 'Extensions']).toContain(words.group)
   })
 })
 
@@ -197,15 +188,15 @@ describe('which tree an editor sits beside', () => {
 
 describe('the trail above a Settings page', () => {
   test('every page but the landing page starts at Settings, then names where it is', () => {
-    expect(crumbsFor({})).toEqual([])
+    const home = { label: 'Home', home: true }
+    expect(crumbsFor({})).toEqual([home, { label: 'Settings' }])
     expect(crumbsFor({ title: 'Health check' })).toEqual([
+      home,
       { label: 'Settings', path: '' },
       { label: 'Health check' },
     ])
-    expect(crumbsFor({ tree: 'structure' })).toEqual([
-      { label: 'Settings', path: '' },
-      { label: 'Structure' },
-    ])
+    // A tree is reached from the menu under Content, which says where it is.
+    expect(crumbsFor({ tree: 'structure' })).toEqual([])
   })
 
   test("an Advanced tool's editor is named by its card, from the entity it opened", () => {

@@ -1,0 +1,6 @@
+[data-type]
+alias = "linkPicker"
+name = "Link"
+editor = "Umbraco.MultiUrlPicker"
+editor-ui = "Umb.PropertyEditorUi.MultiUrlPicker"
+config = { minNumber = 0, maxNumber = 1 }

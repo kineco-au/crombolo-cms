@@ -30,6 +30,7 @@ import {
   treeFor,
 } from './settings-cards.js'
 import './breadcrumb.js'
+import { readOnlyWords } from './definition-tree-model.js'
 import './settings-card.js'
 
 const base = () =>
@@ -53,6 +54,7 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
     _sidebarApps: { state: true },
     _tree: { state: true },
     _crumbs: { state: true },
+    _readOnly: { state: true },
   }
 
   #dashboards = []
@@ -64,6 +66,15 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
 
   constructor() {
     super()
+    // An explanation, not a control: a failure leaves it out.
+    fetch(`${base()}/crombolo/api/site-files`, { credentials: 'include' })
+      .then((response) => (response.ok ? response.json() : { writable: true }))
+      .then(
+        (files) => {
+          this._readOnly = !files.writable
+        },
+        () => {},
+      )
     new UmbExtensionsElementInitializer(
       this,
       umbExtensionsRegistry,
@@ -154,8 +165,6 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
         path: this.#dashboardPath(d),
       })),
       advanced: this.#advanced(),
-      structure: this.#menuItems.some((m) => menuOf(m, STRUCTURE_MENU)),
-      code: this.#menuItems.some((m) => menuOf(m, CODE_MENU)),
     })
   }
 
@@ -228,6 +237,18 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
       tree('code'),
       // Umbraco's welcome, which this page replaces: an address people have.
       { path: 'dashboard/welcome', ...landing },
+      // Workflows moved beside forms (story 289): an address people have.
+      {
+        path: 'dashboard/workflows',
+        component: () => document.createElement('div'),
+        setup: () => {
+          history.replaceState(
+            null,
+            '',
+            new URL('section/forms/view/workflows', document.baseURI).pathname,
+          )
+        },
+      },
       ...dashboards,
       ...this.#sectionRoutes,
       { path: '', pathMatch: 'full', ...landing },
@@ -244,7 +265,13 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
     const section = this.#sectionPath()
     const crumbs = (this._crumbs ?? []).map((c) => ({
       label: c.label,
-      href: c.path === undefined ? undefined : c.path ? `${section}/${c.path}` : section,
+      href: c.home
+        ? document.baseURI
+        : c.path === undefined
+          ? undefined
+          : c.path
+            ? `${section}/${c.path}`
+            : section,
     }))
     const main = html`<umb-section-main>
       ${
@@ -258,6 +285,13 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
     // Settings keeps its menus. A tree taken out and put back breaks: the trees
     // share the section's expansion state, and a detached one still answers it.
     return html`<umb-section-sidebar ?hidden=${!shown}>
+        ${
+          this._tree === 'structure' && this._readOnly
+            ? html`<p class="read-only" role="status">
+                ${readOnlyWords('Content types, data types and languages', 'site')}
+              </p>`
+            : nothing
+        }
         ${(this._sidebarApps ?? []).map(
           (app) => html`<div class="tree" ?hidden=${app.alias !== shown}>${app.component}</div>`,
         )}
@@ -291,6 +325,13 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
         min-height: 0;
         overflow-y: auto;
       }
+      .read-only {
+        margin: 0;
+        padding: var(--uui-size-space-3) var(--uui-size-space-4);
+        font-size: var(--uui-type-small-size);
+        line-height: 1.5;
+        color: var(--uui-color-text-alt);
+      }
       .crumbs {
         display: block;
         padding: var(--uui-size-space-4) var(--uui-size-layout-1) 0;
@@ -317,18 +358,24 @@ export class CromboloSettingsLandingElement extends UmbLitElement {
   #email() {
     const status = this._email
     if (!status || status.available) return nothing
-    return html`<div class="banner" role="status">
-      <uui-icon name="icon-alert"></uui-icon>
-      <p>
+    return html`<details class="banner" role="status">
+      <summary>
+        <uui-icon name="icon-alert"></uui-icon>
         <strong>E-mail is not set up.</strong>
-        ${status.reason}
+        <uui-icon class="chevron" name="icon-navigation-right"></uui-icon>
+      </summary>
+      <div class="banner-details">
+        <p>${status.reason}</p>
         ${
           status.affects?.length > 0
-            ? html`Until it is, these are unavailable: ${status.affects.join(', ')}.`
+            ? html`<p>Until it is, these are unavailable:</p>
+                <ul class="affected">
+                  ${status.affects.map((feature) => html`<li>${feature}</li>`)}
+                </ul>`
             : nothing
         }
-      </p>
-    </div>`
+      </div>
+    </details>`
   }
 
   render() {
@@ -401,9 +448,6 @@ export class CromboloSettingsLandingElement extends UmbLitElement {
         gap: var(--uui-size-space-5);
       }
       .banner {
-        display: flex;
-        gap: var(--uui-size-space-4);
-        align-items: flex-start;
         margin-bottom: var(--uui-size-layout-1);
         padding: var(--uui-size-space-4) var(--uui-size-space-5);
         border: 1px solid color-mix(in srgb, var(--uui-color-warning) 45%, transparent);
@@ -412,14 +456,58 @@ export class CromboloSettingsLandingElement extends UmbLitElement {
         background: color-mix(in srgb, var(--uui-color-warning) 12%, var(--uui-color-surface));
         color: var(--uui-color-text);
       }
+      .banner summary {
+        display: flex;
+        gap: var(--uui-size-space-4);
+        align-items: center;
+        cursor: pointer;
+        list-style: none;
+      }
+      .banner summary::-webkit-details-marker {
+        display: none;
+      }
+      .banner summary:focus-visible {
+        outline: 2px solid var(--uui-color-focus);
+        outline-offset: 2px;
+      }
       .banner uui-icon {
         flex: none;
-        margin-top: 0.15em;
         color: var(--uui-color-warning-standalone, var(--uui-color-warning));
       }
+      .banner .chevron {
+        margin-left: auto;
+        transition: transform 120ms;
+      }
+      .banner[open] .chevron {
+        transform: rotate(90deg);
+      }
+      .banner-details {
+        margin-top: var(--uui-size-space-3);
+        padding-left: calc(1em + var(--uui-size-space-4));
+      }
       .banner p {
-        margin: 0;
+        margin: 0 0 var(--uui-size-space-2);
         line-height: 1.5;
+      }
+      .affected {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .affected li {
+        position: relative;
+        padding-left: var(--uui-size-space-5);
+        line-height: 1.6;
+      }
+      .affected li::before {
+        content: '';
+        position: absolute;
+        left: 0.2em;
+        top: 0.6em;
+        width: 0.45em;
+        height: 0.45em;
+        border-radius: 50%;
+        background: var(--uui-color-warning-standalone, var(--uui-color-warning));
       }
     `,
   ]

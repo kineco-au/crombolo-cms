@@ -82,7 +82,7 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
     expect(aliases).toEqual([
       'theme:Crombolo.Theme.Dark',
       'theme:Crombolo.Theme.System',
-      'headerApp:Crombolo.HeaderApp.Theme',
+      'backofficeEntryPoint:Crombolo.EntryPoint.ThemeSync',
       'entityUserPermission:Crombolo.UserPermission.Remote.Pull',
       'entityUserPermission:Crombolo.UserPermission.Remote.PullFull',
       'entityUserPermission:Crombolo.UserPermission.Remote.Push',
@@ -114,7 +114,8 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'dashboard:Crombolo.Dashboard.Changes',
       'dashboard:Crombolo.Dashboard.BackgroundJobs',
       'dashboard:Crombolo.Dashboard.AuditLog',
-      'dashboard:Crombolo.Dashboard.Overview',
+      'homeView:Crombolo.HomeView.Overview',
+      'dashboard:Crombolo.Dashboard.ContentHome',
       // Settings' own layout, in place of the welcome dashboard (story 234).
       'sectionLayout:Crombolo.SectionLayout.Settings',
       'backofficeEntryPoint:Crombolo.EntryPoint.TsxEditors',
@@ -128,6 +129,10 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'workspaceFooterApp:Crombolo.WorkspaceFooterApp.FormTypeNote',
       'backofficeEntryPoint:Crombolo.EntryPoint.HelpMenu',
       'section:Crombolo.Section.Forms',
+      'entityAction:Crombolo.EntityAction.Document.EditContentType',
+      'entityAction:Crombolo.EntityAction.Document.EditTemplate',
+      'backofficeEntryPoint:Crombolo.EntryPoint.ContentStrip',
+      'sectionSidebarApp:Crombolo.SectionSidebarApp.DefinitionTree',
       'sectionView:Crombolo.SectionView.Forms.Overview',
       'sectionView:Crombolo.SectionView.Forms.Entries',
       'propertyEditorSchema:Crombolo.FormPicker',
@@ -148,13 +153,13 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'sectionView:Crombolo.SectionView.Workflow.InFlight',
       'sectionView:Crombolo.SectionView.Workflow.History',
       // Setting workflows up is a Settings card; deciding is the section's.
-      'dashboard:Crombolo.Dashboard.Workflows',
+      'sectionView:Crombolo.SectionView.Workflows',
       'workspaceView:Crombolo.WorkspaceView.Document.Workflow',
     ])
-    // The Overview takes the place of Umbraco's news dashboard through the
+    // Content's home takes the place of Umbraco's news dashboard through the
     // registry's own `overwrites`, rather than mutating it while rendering.
-    const overview = ours?.extensions.find((e) => e.alias === 'Crombolo.Dashboard.Overview')
-    expect(overview?.overwrites).toEqual(['Umb.Dashboard.UmbracoNews'])
+    const home = ours?.extensions.find((e) => e.alias === 'Crombolo.Dashboard.ContentHome')
+    expect(home?.overwrites).toEqual(['Umb.Dashboard.UmbracoNews'])
     // Bundles is a Settings tool (story 238), not Umbraco's Packages section:
     // its views are the tool's tabs, so none is a section view any more.
     const bundles = ours?.extensions.find((e) => e.alias === 'Crombolo.Dashboard.Bundles')
@@ -437,10 +442,10 @@ describe('the plugin views', () => {
       'Crombolo.SectionView.Workflow.InFlight',
       'Crombolo.SectionView.Workflow.History',
     ])
-    const designer = manifest.extensions.find((e) => e.alias === 'Crombolo.Dashboard.Workflows')
-    expect(designer?.type).toBe('dashboard')
+    const designer = manifest.extensions.find((e) => e.alias === 'Crombolo.SectionView.Workflows')
+    expect(designer?.type).toBe('sectionView')
     expect(designer?.conditions).toEqual([
-      { alias: 'Umb.Condition.SectionAlias', match: 'Umb.Section.Settings' },
+      { alias: 'Umb.Condition.SectionAlias', match: 'Crombolo.Section.Forms' },
       { alias: 'Umb.Condition.CurrentUser.IsAdmin' },
     ])
   })

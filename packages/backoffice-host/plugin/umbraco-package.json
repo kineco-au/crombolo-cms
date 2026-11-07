@@ -2,7 +2,7 @@
   "$schema": "../../backoffice-dist/dist/umbraco-package-schema.json",
   "name": "Crombolo",
   "id": "Crombolo.Core",
-  "version": "0.51.1",
+  "version": "0.52.0",
   "allowPublicAccess": false,
   "extensions": [
     {
@@ -21,11 +21,10 @@
       "weight": 250
     },
     {
-      "type": "headerApp",
-      "alias": "Crombolo.HeaderApp.Theme",
-      "name": "Light or dark",
-      "element": "/crombolo-plugin/theme-switch.js",
-      "weight": 850
+      "type": "backofficeEntryPoint",
+      "alias": "Crombolo.EntryPoint.ThemeSync",
+      "name": "Crombolo Theme Sync",
+      "js": "/crombolo-plugin/theme-sync.js"
     },
     {
       "type": "entityUserPermission",
@@ -424,15 +423,21 @@
       ]
     },
     {
+      "type": "homeView",
+      "alias": "Crombolo.HomeView.Overview",
+      "name": "Crombolo Home",
+      "element": "/crombolo-plugin/overview-dashboard.js"
+    },
+    {
       "type": "dashboard",
-      "alias": "Crombolo.Dashboard.Overview",
-      "name": "Crombolo Overview Dashboard",
-      "element": "/crombolo-plugin/overview-dashboard.js",
+      "alias": "Crombolo.Dashboard.ContentHome",
+      "name": "Crombolo Content Home Dashboard",
+      "element": "/crombolo-plugin/content-home-dashboard.js",
       "weight": 20,
       "overwrites": ["Umb.Dashboard.UmbracoNews"],
       "meta": {
-        "label": "Overview",
-        "pathname": "overview"
+        "label": "Home",
+        "pathname": "home"
       },
       "conditions": [
         {
@@ -548,14 +553,74 @@
       }
     },
     {
+      "type": "entityAction",
+      "kind": "default",
+      "alias": "Crombolo.EntityAction.Document.EditContentType",
+      "name": "Edit Content Type",
+      "forEntityTypes": ["document"],
+      "api": "/crombolo-plugin/document-links.js",
+      "weight": 50,
+      "meta": {
+        "icon": "icon-document-dashed-line",
+        "label": "Edit content type",
+        "target": "document-type"
+      },
+      "conditions": [
+        {
+          "alias": "Umb.Condition.SectionUserPermission",
+          "match": "Umb.Section.Settings"
+        }
+      ]
+    },
+    {
+      "type": "entityAction",
+      "kind": "default",
+      "alias": "Crombolo.EntityAction.Document.EditTemplate",
+      "name": "Edit Template",
+      "forEntityTypes": ["document"],
+      "api": "/crombolo-plugin/document-links.js",
+      "weight": 49,
+      "meta": {
+        "icon": "icon-layout",
+        "label": "Edit template",
+        "target": "template"
+      },
+      "conditions": [
+        {
+          "alias": "Umb.Condition.SectionUserPermission",
+          "match": "Umb.Section.Settings"
+        }
+      ]
+    },
+    {
+      "type": "backofficeEntryPoint",
+      "alias": "Crombolo.EntryPoint.ContentStrip",
+      "name": "Crombolo Menu Under Content",
+      "js": "/crombolo-plugin/content-strip.js"
+    },
+    {
+      "type": "sectionSidebarApp",
+      "alias": "Crombolo.SectionSidebarApp.DefinitionTree",
+      "name": "Crombolo Forms And Workflows Tree",
+      "element": "/crombolo-plugin/definition-tree.js",
+      "weight": 100,
+      "conditions": [
+        {
+          "alias": "Umb.Condition.SectionAlias",
+          "match": "Crombolo.Section.Forms"
+        }
+      ]
+    },
+    {
       "type": "sectionView",
       "alias": "Crombolo.SectionView.Forms.Overview",
       "name": "Crombolo Forms Overview",
       "element": "/crombolo-plugin/forms-overview.js",
-      "weight": 100,
+      "weight": 200,
       "meta": {
         "label": "Forms",
         "pathname": "forms",
+        "noTab": true,
         "icon": "icon-notepad"
       },
       "conditions": [
@@ -570,10 +635,11 @@
       "alias": "Crombolo.SectionView.Forms.Entries",
       "name": "Crombolo Forms Entries",
       "element": "/crombolo-plugin/forms-entries.js",
-      "weight": 200,
+      "weight": 100,
       "meta": {
         "label": "Entries",
         "pathname": "entries",
+        "noTab": true,
         "icon": "icon-inbox"
       },
       "conditions": [
@@ -709,18 +775,21 @@
       ]
     },
     {
-      "type": "dashboard",
-      "alias": "Crombolo.Dashboard.Workflows",
+      "type": "sectionView",
+      "alias": "Crombolo.SectionView.Workflows",
       "name": "Crombolo Workflow Designer",
       "element": "/crombolo-plugin/workflow-designer.js",
+      "weight": 50,
       "meta": {
         "label": "Workflows",
-        "pathname": "workflows"
+        "pathname": "workflows",
+        "noTab": true,
+        "icon": "icon-mindmap"
       },
       "conditions": [
         {
           "alias": "Umb.Condition.SectionAlias",
-          "match": "Umb.Section.Settings"
+          "match": "Crombolo.Section.Forms"
         },
         {
           "alias": "Umb.Condition.CurrentUser.IsAdmin"

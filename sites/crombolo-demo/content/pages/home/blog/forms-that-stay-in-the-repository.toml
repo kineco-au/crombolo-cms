@@ -1,0 +1,20 @@
+type = "blogPost"
+name = { "en-US" = "Forms that stay in the repository", "es-ES" = "Formularios que se quedan en el repositorio" }
+order = 5
+
+[values]
+publishDate = "2026-09-11"
+author = ["nia-bello"]
+image = "/archive-binders.jpg"
+
+[values.en-US]
+title = "Forms that stay in the repository"
+excerpt = "A form is structure, so we treat it like a content type."
+body = { html = "<p>Keeping a form in a file means a new field is reviewed, and it reaches production with the code that reads it.</p><p>Answers stay where they belong, in the back office, and sensitive fields are hidden from anyone who should not see them.</p>" }
+tags = ["forms", "schema"]
+
+[values.es-ES]
+title = "Formularios que se quedan en el repositorio"
+excerpt = "Un formulario es estructura, así que lo tratamos como un tipo de contenido."
+body = { html = "<p>Guardar un formulario en un archivo significa que cada campo nuevo se revisa y llega a producción con el código que lo lee.</p><p>Las respuestas se quedan en el panel, y los campos sensibles se ocultan a quien no deba verlos.</p>" }
+tags = ["formularios", "esquema"]

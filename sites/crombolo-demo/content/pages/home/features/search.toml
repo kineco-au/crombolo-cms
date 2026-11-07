@@ -1,0 +1,17 @@
+type = "feature"
+name = { "en-US" = "Search", "es-ES" = "Búsqueda" }
+order = 6
+
+[values]
+category = "delivery"
+image = "/typewriter.jpg"
+
+[values.en-US]
+title = "Search"
+summary = "Visitors search your pages, with nothing else to run."
+body = { html = "<p>Site search works over published pages in each language. Each property says how much it counts.</p><p>Try the box in the header: results here come from the language you are reading in.</p>" }
+
+[values.es-ES]
+title = "Búsqueda"
+summary = "Los visitantes buscan en tus páginas, sin nada más que instalar."
+body = { html = "<p>La búsqueda funciona sobre las páginas publicadas en cada idioma. Cada propiedad indica cuánto cuenta.</p><p>Prueba el cuadro de la cabecera: los resultados llegan en el idioma que estás leyendo.</p>" }

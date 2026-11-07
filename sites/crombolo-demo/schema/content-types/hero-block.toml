@@ -1,0 +1,40 @@
+[content-type]
+alias = "heroBlock"
+name = "Hero"
+description = "The big opening of a page"
+icon = "icon-picture"
+is-element = true
+
+[[tab]]
+name = "Content"
+
+[[tab.property]]
+alias = "eyebrow"
+name = "Eyebrow"
+type = "textstring"
+
+[[tab.property]]
+alias = "heading"
+name = "Heading"
+type = "textstring"
+mandatory = true
+
+[[tab.property]]
+alias = "text"
+name = "Text"
+type = "textarea"
+
+[[tab.property]]
+alias = "image"
+name = "Image"
+type = "imageMediaPicker"
+
+[[tab.property]]
+alias = "primaryLink"
+name = "Main button"
+type = "linkPicker"
+
+[[tab.property]]
+alias = "secondaryLink"
+name = "Second button"
+type = "linkPicker"

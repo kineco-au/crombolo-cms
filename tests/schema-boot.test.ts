@@ -233,7 +233,7 @@ describe(`schema at boot (${dialectUnderTest})`, () => {
     const prod = await boot(s, { development: false, keepDatabase: true, nodeId: 'prod-node' })
     const refused = await prod.post(`${V1}/document-type`, body)
     expect(refused.status).toBe(409)
-    expect(await refused.text()).toContain('source control')
+    expect(await refused.text()).toContain('kept with this site')
   })
 
   test('removing a type file while documents of it exist refuses to boot', async () => {

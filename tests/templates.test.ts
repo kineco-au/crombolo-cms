@@ -71,6 +71,7 @@ describe('the starter templates', () => {
       'demo/harbourstone',
       'demo/harbourstone-next',
       'demo/plain-signal',
+      'product/crombolo',
       'starter',
     ])
     for (const template of templates) {
@@ -522,7 +523,7 @@ describe('the demo’s typography', () => {
 })
 
 describe('the Crombolo product site', () => {
-  const template = byId('demo/crombolo')
+  const template = byId('product/crombolo')
   const components = join(template.dir, 'files', 'components')
   let nodes: BundleNode[] = []
   beforeAll(async () => {

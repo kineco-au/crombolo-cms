@@ -151,10 +151,8 @@ test('a user created in the Users section, restricted to one branch, sees only i
   await expect(siteItem).toBeVisible()
   await expect(tree.locator('umb-tree-item').filter({ hasText: OTHER })).toHaveCount(0)
   await expect(tree.getByRole('link', { name: SITE, exact: true })).toHaveCount(0)
-  await siteItem
-    .getByLabel(/Expand/)
-    .first()
-    .click()
+  // Content opens the first page they may open, not the page above it (story 288).
+  await expect(editor).toHaveURL(new RegExp(`/workspace/document/edit/${branch}`))
   await expect(tree.getByRole('link', { name: BRANCH, exact: true })).toBeVisible()
 
   // Their menu on the start node offers Create, never Delete

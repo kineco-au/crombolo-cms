@@ -1,0 +1,13 @@
+type = "menu"
+name = "Main navigation"
+order = 10
+
+[values]
+alias = "main"
+items = [
+  { type = "menuItem", values = { link = ["/home/features"], label = "", children = [] } },
+  { type = "menuItem", values = { link = ["/home/people"], label = "", children = [] } },
+  { type = "menuItem", values = { link = ["/home/blog"], label = "", children = [] } },
+  { type = "menuItem", values = { link = ["/home/about"], label = "", children = [] } },
+  { type = "menuItem", values = { link = ["/home/contact"], label = "", children = [] } },
+]

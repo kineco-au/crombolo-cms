@@ -1,0 +1,20 @@
+type = "blogPost"
+name = { "en-US" = "Rehearse your upgrades", "es-ES" = "Ensaya tus actualizaciones" }
+order = 4
+
+[values]
+publishDate = "2026-08-05"
+author = ["tomas-vidal"]
+image = "/workbench.jpg"
+
+[values.en-US]
+title = "Rehearse your upgrades"
+excerpt = "An upgrade should be boring. A rehearsal makes it so."
+body = { html = "<p>Run the upgrade on a copy first and read what it plans to do. Most surprises show up there, with nobody watching.</p><p>When the real one comes, you already know how long it takes.</p>" }
+tags = ["operations"]
+
+[values.es-ES]
+title = "Ensaya tus actualizaciones"
+excerpt = "Una actualización debería ser aburrida. Un ensayo lo consigue."
+body = { html = "<p>Ejecuta primero la actualización en una copia y lee lo que piensa hacer. La mayoría de las sorpresas aparecen ahí, sin público.</p><p>Cuando llegue la de verdad, ya sabrás cuánto tarda.</p>" }
+tags = ["operaciones"]
