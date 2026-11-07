@@ -73,8 +73,8 @@ export class UmbDeepState<T> extends UmbBasicState<T> {
 		if (!this.#mute) return;
 		this.#mute = false;
 		// Only update data if it is different than current data. [NL]
-		if (!this._subject) return; // Crombolo: as in basic-state.ts.
-		if (!jsonStringComparison(this.#value, this._subject.getValue())) {
+		// Crombolo: as in basic-state.ts, a destroyed state takes no value, and the mute still ends.
+		if (this._subject && !jsonStringComparison(this.#value, this._subject.getValue())) {
 			this._subject.next(this.#value);
 		}
 		// Resolve any pending mute promises — independent of whether an emission occurred. [NL]
