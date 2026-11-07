@@ -1187,6 +1187,32 @@ returning results as data, for tooling that drives an environment without a
 terminal. The `@crombolo/crombolo` umbrella exports `createServer`, for a host process
 that needs the server handle rather than only what `Bun.serve` takes.
 
+### Nodes sharing a folder
+
+Nodes can share `components/`, `css/`, `scripts/` and `public/` on one folder, such
+as NFS. A change reaches them through the database, not the folder (story 285): a
+file watcher sees nothing another machine writes to a network file system.
+
+- **An import or a revert tells every node,** from whichever process ran it: a
+  `bundle apply` or `import` in a cron job or one-off container, the back office,
+  or a push. Nothing restarts. A file section the import did not change is not
+  mentioned.
+- **What a node does:** it takes a new snapshot of its views, hashes its stylesheets
+  and scripts again, and lists `public/` again. It hears within its poll, 5 seconds
+  or sooner on Postgres.
+- **A slow folder.** NFS clients cache listings and file details, usually for up to
+  a minute, so a node can be told before it can see the file. It lists `public/`
+  again after 5, 15, 30, 60 and 90 seconds to cover that. A mount that caches for
+  longer than that, through `acdirmax` or `actimeo`, needs them lowered, or a new
+  file stays unseen until a restart or the next import.
+- **Writing a file by hand, or syncing one in,** tells nobody. A new `public/` file
+  on a network folder stays unseen until a restart or the next import, and a
+  changed stylesheet keeps its old `asset()` address, which answers `404`.
+- **A node that lost touch** for longer than instructions are kept, a day, sees that
+  it missed some and looks at all of these again.
+- **If a node could not be told,** the import still succeeds and logs a warning
+  saying to restart the nodes or import again.
+
 ### A worker for the jobs
 
 A busy site can run its background jobs on a node of their own (story 223), so a

@@ -22,6 +22,11 @@ const WELL_KNOWN = '.well-known'
 /** What git needs to keep an empty folder: it travels with the folder, and is never served. */
 const FOLDER_KEEPER = '.gitkeep'
 const RESCAN_DELAY_MS = 25
+/**
+ * After a node is told of a change, it lists the folder again at these delays:
+ * a shared folder can show another machine's write up to a minute late.
+ */
+const RELIST_AFTER_MS = [5_000, 15_000, 30_000, 60_000, 90_000]
 
 /** Whether an address is the CMS's own, which no public file can take. */
 export function isReservedPublicPath(path: string, backOfficePath: string): boolean {
@@ -129,15 +134,25 @@ export class PublicFiles {
   #folder: FSWatcher | undefined
   #parent: FSWatcher | undefined
   #rescan: ReturnType<typeof setTimeout> | undefined
+  #relist: ReturnType<typeof setTimeout>[] = []
+  readonly #watch: boolean
+  readonly #relistAfter: readonly number[]
 
-  constructor(root: string, backOfficePath: string) {
+  constructor(
+    root: string,
+    backOfficePath: string,
+    options: { watch?: boolean; relistAfterMs?: readonly number[] } = {},
+  ) {
     this.#root = root
     this.#backOfficePath = backOfficePath
+    this.#watch = options.watch !== false
+    this.#relistAfter = options.relistAfterMs ?? RELIST_AFTER_MS
   }
 
   /** Lists the folder and watches it, and watches for it being made or replaced. */
   start(): void {
     this.#list()
+    if (!this.#watch) return
     this.#watchFolder()
     try {
       const name = basename(this.#root)
@@ -152,8 +167,20 @@ export class PublicFiles {
     }
   }
 
+  /** The folder changed where no watcher can see: listed now, and again as it settles. */
+  changed(): void {
+    for (const timer of this.#relist.splice(0)) clearTimeout(timer)
+    this.#list()
+    this.#relist = this.#relistAfter.map((delay) => {
+      const timer = setTimeout(() => this.#list(), delay)
+      timer.unref?.()
+      return timer
+    })
+  }
+
   close(): void {
     clearTimeout(this.#rescan)
+    for (const timer of this.#relist.splice(0)) clearTimeout(timer)
     this.#folder?.close()
     this.#parent?.close()
   }

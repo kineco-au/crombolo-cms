@@ -362,6 +362,8 @@ export interface ServerOptions {
    * (story 241); absent when nothing supervises this one.
    */
   restart?: () => Promise<RestartOutcome>
+  /** Off, a node hears of file changes only through instructions, as on a network folder. */
+  watchSiteFiles?: boolean
 }
 
 export async function createServer(
@@ -385,7 +387,11 @@ export async function createServer(
   // and a template error says which components were rendering.
   const live = config.liveReload ? createLiveReload() : undefined
   let drafts: { cache: PublishedCache; version: number } | undefined
+  // Set once they exist: a Postgres notification can wake the poller before then,
+  // and they read the disk as they start anyway.
+  let siteFilesChanged: ((change: 'assets' | 'public') => void) | undefined
   const core = await createCore(config, {
+    onSiteFiles: (change) => siteFilesChanged?.(change),
     onCacheInvalidate: () => {
       drafts = undefined
       live?.changed('content')
@@ -862,13 +868,19 @@ export async function createServer(
   const generatedScripts = new Map(
     generatedBodies.map(([path, body]) => [generatedPaths.get(path) as string, body]),
   )
-  const siteAssets = new SiteAssets([
-    { prefix: '/css', dir: config.stylesheetsDir, extension: '.css' },
-    { prefix: '/scripts', dir: config.scriptsDir, extension: '.js' },
-  ])
+  const siteAssets = new SiteAssets(
+    [
+      { prefix: '/css', dir: config.stylesheetsDir, extension: '.css' },
+      { prefix: '/scripts', dir: config.scriptsDir, extension: '.js' },
+    ],
+    { watch: serverOptions.watchSiteFiles },
+  )
   siteAssets.start()
-  const publicFiles = new PublicFiles(config.publicDir, config.backOfficePath)
+  const publicFiles = new PublicFiles(config.publicDir, config.backOfficePath, {
+    watch: serverOptions.watchSiteFiles,
+  })
   publicFiles.start()
+  siteFilesChanged = (change) => (change === 'public' ? publicFiles.changed() : siteAssets.rescan())
   // A file wins at its path (story 284), so a page it hides is worth saying once.
   if (config.role !== 'api' && publicFiles.paths().length > 0)
     void publicFiles

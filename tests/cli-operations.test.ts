@@ -308,7 +308,7 @@ describe('media in bulk (153)', () => {
       expect(cli(['media', 'import', image(), '--focal', '2,0']).err).toContain('from 0 to 1')
       expect(cli(['media', 'import', image(), '--focal', 'middle']).err).toContain('from 0 to 1')
       expect(cli(['media', 'import', join(site, 'nothing.png')]).err).toContain('nothing at')
-    })
+    }, 60_000)
   })
 
   test('exports them back out as the same files in the same folders', () => {

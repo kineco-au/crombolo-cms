@@ -66,9 +66,11 @@ import {
   revertCode,
 } from './bundle-code-install.ts'
 import {
+  announceFiles,
   type CarriedSections,
   carriedSections,
   carriesSections,
+  changedFileSections,
   keepDictionary,
   keptDictionary,
   planSections,
@@ -76,6 +78,7 @@ import {
   type RestoredFiles,
   replacementsNeedingPermission,
   restoreSectionFiles,
+  runFileSections,
   type SectionFile,
   type SectionOptions,
   type SectionPlan,
@@ -673,6 +676,11 @@ export async function installBundleContent(
       backup,
     )
 
+  const changedFiles = changedFileSections(config, carried, plan, {
+    ...effective,
+    replace: Boolean(replace),
+  })
+
   // ---- 1. Stage
   const runDir = stageBackups(config)
   const staged =
@@ -762,6 +770,7 @@ export async function installBundleContent(
     swapSections(config, staged)
     if (staged.next.schema && config.schemaStore)
       await publishSchema(config.schemaStore, config.schemaDir)
+    await announceFiles(db, config, changedFiles)
   }
   const kept = promoteStaged(config, runDir, runId)
   const codeInstalled =
@@ -836,7 +845,9 @@ export async function revertSections(
   runId: string,
 ): Promise<RevertedSections> {
   const swapped = swappedSections(config, runId)
+  const touched = runFileSections(config, runId)
   const files = restoreSectionFiles(config, runId)
+  await announceFiles(db, config, touched)
   let schema: string | undefined
   if (swapped.includes('schema')) {
     // A type the install brought has content only in the bin by now, which is

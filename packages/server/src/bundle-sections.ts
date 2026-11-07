@@ -28,12 +28,13 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import type { Db } from '@crombolo/data'
+import { dirname, join, sep } from 'node:path'
+import { appendCacheInstruction, type Db } from '@crombolo/data'
 import type { BundleSection, LoadedBundle } from '@crombolo/transfer'
 import { BUNDLE_SECTIONS } from '@crombolo/transfer'
 import type { CromboloConfig } from './config.ts'
 import { importDictionaryUdt } from './dictionary-transfer.ts'
+import { logger } from './logging.ts'
 import { checkSchemaDirectory, syncSchemaDirectory } from './schema.ts'
 import { publishSchema } from './schema-store.ts'
 
@@ -444,6 +445,80 @@ export function restoreSectionFiles(config: CromboloConfig, runId: string): Rest
     }
   }
   return { restored, removed }
+}
+
+/**
+ * The file sections an install will change here, asked before it moves anything.
+ * The plan names what lands; a replace also takes out what the file lacks.
+ */
+export function changedFileSections(
+  config: CromboloConfig,
+  carried: CarriedSections,
+  plan: SectionPlan | undefined,
+  options: SectionOptions & { replace?: boolean },
+): BundleSection[] {
+  if (options.withoutFiles) return []
+  const changed = new Set<BundleSection>()
+  for (const file of plan?.files ?? []) {
+    const section = sectionFor(file.path)
+    if (section && FILE_SECTIONS.includes(section) && file.action !== 'unchanged')
+      changed.add(section)
+  }
+  if (options.replace)
+    for (const section of FILE_SECTIONS) {
+      const dir = destinationOf(config, section) as string
+      if (!existsSync(dir)) continue
+      const kept = new Set(carried.carries[section] ?? [])
+      for (const path of new Bun.Glob('**/*').scanSync({ cwd: dir, onlyFiles: true, dot: true }))
+        if (!kept.has(`${BUNDLE_SECTIONS[section]}/${path.split(sep).join('/')}`)) {
+          changed.add(section)
+          break
+        }
+    }
+  return [...changed]
+}
+
+/** The file sections a run touched, for its revert to announce. */
+export function runFileSections(config: CromboloConfig, runId: string): BundleSection[] {
+  const swapped = swappedSections(config, runId)
+  const record = join(config.siteDir, RUN_BACKUP_DIR, runId, RECORD_FILE)
+  const paths =
+    swapped.length === 0 && existsSync(record)
+      ? (JSON.parse(readFileSync(record, 'utf8')) as FileRecord[]).map((entry) => entry.path)
+      : []
+  const sections = [
+    ...swapped,
+    ...paths.flatMap((path) => {
+      const section = sectionFor(path)
+      return section ? [section] : []
+    }),
+  ]
+  return [...new Set(sections)].filter((section) => FILE_SECTIONS.includes(section))
+}
+
+/**
+ * Tells every node the site's files changed (story 285): the only way a view,
+ * a stylesheet or a public file reaches a node when the writer is another
+ * process, on a folder no watcher sees. Signed so that the node that ran it, if
+ * a node did, follows too. The files are in place by now, so a failure is said
+ * rather than thrown.
+ */
+export async function announceFiles(
+  db: Db,
+  config: CromboloConfig,
+  sections: readonly BundleSection[],
+): Promise<void> {
+  const by = `import:${config.nodeId}`
+  try {
+    if (sections.some((section) => section !== 'public'))
+      await appendCacheInstruction(db, { kind: 'components', by })
+    if (sections.includes('public')) await appendCacheInstruction(db, { kind: 'public-files', by })
+  } catch (error) {
+    logger('transfer').warning(
+      'The files are in place, but the running nodes could not be told; restart them, or import again: {error}',
+      { error: error instanceof Error ? error.message : String(error) },
+    )
+  }
 }
 
 /** The section a bundle path belongs to, by its leading directory. */

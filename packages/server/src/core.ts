@@ -88,6 +88,8 @@ import { createWorkerWatch } from './worker-watch.ts'
 
 /** What only the serving half of a node supplies; a worker leaves each out. */
 export interface CoreHooks {
+  /** A site's stylesheets and scripts, or its `public/` folder, changed elsewhere (story 285). */
+  onSiteFiles?: (change: 'assets' | 'public') => void
   /** The published cache was dropped: a server drops its drafts and reloads open pages. */
   onCacheInvalidate?: () => void
   /** A newer views generation replaced the one in use. */
@@ -509,10 +511,17 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
     // definitions. `views` changes the code that renders it, which is a new
     // snapshot rather than anything in the published cache.
     onInstruction: (kind, payload) => {
+      if (kind === 'public-files') return hooks.onSiteFiles?.('public')
       if (kind !== 'components') return cache.invalidate()
       // The hash only says when to stop looking eagerly; the snapshot is always
       // of the bytes this node reads, so a superseded one is harmless.
       snapshots.announce(typeof payload.hash === 'string' ? payload.hash : undefined)
+      hooks.onSiteFiles?.('assets')
+    },
+    onMissed: () => {
+      snapshots.announce()
+      hooks.onSiteFiles?.('assets')
+      hooks.onSiteFiles?.('public')
     },
     // Behind the latest committed checkpoint: rebuilt now rather than on the next
     // read, so an idle node catches up and says so (story 174). A worker builds

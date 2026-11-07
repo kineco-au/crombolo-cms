@@ -6,6 +6,28 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.51.1 — 2026-11-07
+
+### Fixes
+
+- **An import reaches every running node (285).** A `bundle apply` or `import`
+  run in a process of its own, such as a cron job or a one-off container, wrote
+  the files and told no one. Views stayed old, `asset()` kept writing addresses
+  that answered `404`, and on a network folder new `public/` files were missing
+  until a restart. Nodes now pick up all of it, and a `bundle revert` does the
+  same.
+- **An import from the back office takes effect at once (285).** It, and a bundle
+  installed from the Marketplace, left the node's views as they were.
+- **A node that lost touch for over a day catches up (285).** One that missed
+  instructions now looks at its views, stylesheets, scripts and `public/` again.
+
+### Upgrade notes
+
+- During a rolling upgrade, a node not yet on this release empties its page and
+  media caches when it reads a `public/` change. It is slower for a moment, and
+  serves nothing wrong.
+- No migrations.
+
 ## v0.51.0 — 2026-11-06
 
 ### Features

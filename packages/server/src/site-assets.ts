@@ -16,18 +16,21 @@ export interface AssetRoot {
 
 export class SiteAssets {
   readonly #roots: readonly AssetRoot[]
+  readonly #watch: boolean
   readonly #hashes = new Map<string, string>()
   readonly #watchers: FSWatcher[] = []
 
-  constructor(roots: readonly AssetRoot[]) {
+  constructor(roots: readonly AssetRoot[], options: { watch?: boolean } = {}) {
     this.#roots = roots
+    this.#watch = options.watch !== false
   }
 
   /** Hashes every file, and watches each folder for changes. */
   start(): void {
+    this.rescan()
+    if (!this.#watch) return
     for (const root of this.#roots) {
       if (!existsSync(root.dir)) continue
-      for (const file of filesIn(root.dir)) this.#hash(root, file)
       try {
         const watcher = watch(root.dir, { recursive: true }, (_event, name) => {
           if (name) this.#hash(root, join(root.dir, name.toString()))
@@ -36,6 +39,18 @@ export class SiteAssets {
         this.#watchers.push(watcher)
       } catch {
         // A folder that cannot be watched keeps the hashes it started with.
+      }
+    }
+  }
+
+  /** Every file hashed again, and one that has gone forgotten: for a change no watcher saw. */
+  rescan(): void {
+    this.#hashes.clear()
+    for (const root of this.#roots) {
+      try {
+        if (existsSync(root.dir)) for (const file of filesIn(root.dir)) this.#hash(root, file)
+      } catch {
+        // A file that went while the folder was read: the next change says so.
       }
     }
   }
@@ -52,9 +67,13 @@ export class SiteAssets {
 
   #hash(root: AssetRoot, file: string): void {
     const path = `${root.prefix}/${relative(root.dir, file).split(sep).join('/')}`
-    if (!file.toLowerCase().endsWith(root.extension)) return
     try {
-      if (!statSync(file).isFile()) return
+      // A folder moved in reports only its own name.
+      if (statSync(file).isDirectory()) {
+        for (const inside of filesIn(file)) this.#hash(root, inside)
+        return
+      }
+      if (!file.toLowerCase().endsWith(root.extension)) return
       this.#hashes.set(path, contentHash(readFileSync(file)))
     } catch {
       this.#hashes.delete(path)

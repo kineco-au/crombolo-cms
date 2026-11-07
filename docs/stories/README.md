@@ -311,6 +311,7 @@ requests, only server-side and build-time front ends can call it.
 | `265` | Deferred parts put together by the CDN | could | S | on hold | 263 |
 | `281` | A marked gap in a template | should | S | done | — |
 | `284` | A site's public folder | should | M | done | — |
+| `285` | An import tells the other nodes what it changed | should | S | done | — |
 
 ### Epic P — The command line
 

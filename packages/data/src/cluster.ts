@@ -9,10 +9,16 @@ import { sql } from './query.ts'
 
 /**
  * `views` is a code change, not a data one: a template was written, so every
- * node has to look at its views tree again. The other two invalidate the
- * published cache; this one makes a node take a new snapshot.
+ * node has to look at its views tree again. `schema` and `content` invalidate
+ * the published cache; this one makes a node take a new snapshot. `public-files`
+ * is a site's `public/` folder changed by something a watcher cannot see, so a
+ * node lists it again (story 285).
  */
-export type CacheInstructionKind = 'schema' | 'content' | 'components'
+export type CacheInstructionKind = 'schema' | 'content' | 'components' | 'public-files'
+
+/** Kinds about a site's files, not published content: they move no checkpoint. */
+const isFileChange = (kind: CacheInstructionKind) =>
+  kind === 'components' || kind === 'public-files'
 
 export interface CacheInstruction {
   id: number
@@ -65,7 +71,7 @@ export function instructionEffects(
   kind: CacheInstructionKind,
   payload: Record<string, unknown>,
 ): InstructionEffects {
-  if (kind === 'components') return { pages: false, media: 'keep' }
+  if (isFileChange(kind)) return { pages: false, media: 'keep' }
   if (kind === 'schema') return { pages: true, media: 'clear' }
   const fields = Object.keys(payload)
   const keys = strings(payload.media)
@@ -123,7 +129,7 @@ export async function appendCacheInstruction(
   instruction: { kind: CacheInstructionKind; payload?: Record<string, unknown>; by?: string },
 ): Promise<number | null> {
   return db.transaction(async (tx) => {
-    const checkpoint = instruction.kind === 'components' ? null : await advanceCheckpoint(tx)
+    const checkpoint = isFileChange(instruction.kind) ? null : await advanceCheckpoint(tx)
     await tx.q
       .insertInto('cache_instruction')
       .values({
@@ -221,6 +227,15 @@ export async function latestCacheInstructionId(db: Db): Promise<number> {
     .select((eb) => eb.fn.max('id').as('n'))
     .executeTakeFirst()
   return Number(row?.n ?? 0)
+}
+
+/** The oldest instruction still held, or undefined when there are none. */
+export async function oldestCacheInstructionId(db: Db): Promise<number | undefined> {
+  const row = await db.q
+    .selectFrom('cache_instruction')
+    .select((eb) => eb.fn.min('id').as('n'))
+    .executeTakeFirst()
+  return row?.n === null || row?.n === undefined ? undefined : Number(row.n)
 }
 
 export async function cacheInstructionsAfter(db: Db, afterId: number): Promise<CacheInstruction[]> {

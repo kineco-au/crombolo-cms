@@ -1981,8 +1981,8 @@ import { asset } from '@crombolo/crombolo'
 
 - **Each server hashes every file as it starts**, and a file watcher hashes
   one again when it changes. A watcher does not fire on every mounted volume
-  or bucket: there, a changed file keeps its old address until a restart, and
-  that address answers `404`. A hashed address is checked against the bytes
+  or bucket: there, a changed file keeps its old address until a restart or an
+  import, which tells every node to hash again, and that address answers `404`. A hashed address is checked against the bytes
   it is about to send, so a change the watcher missed is never kept for a
   year under the wrong name.
 - **A file the site does not have** keeps its plain address, and development
@@ -2054,8 +2054,10 @@ and only a path in that list can be served.
 
 - **A file added while the server runs** is served without a restart, in
   development and in production, and so is a folder made after it started.
-- **A watcher does not fire on every mounted volume.** On one that doesn't, a
-  new file stays unseen until a restart, where `/css/` would find it.
+- **A watcher does not fire on every mounted volume,** and never for another
+  machine's write to a network folder. A file written by hand on one stays
+  unseen until a restart, where `/css/` would find it. An import tells every
+  node instead (story 285, `docs/operations.md`, "Nodes sharing a folder").
 - **Behind a proxy,** public files go to a node that serves the site, `web` or
   `all`, and `api` answers `404`. A `web` node on its own disk gets them from a
   deploy, not from a bundle applied on another node.

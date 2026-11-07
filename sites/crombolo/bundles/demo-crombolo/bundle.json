@@ -11,7 +11,7 @@
     "schemaVersion": "1.0.0",
     "schemaRevision": "0",
     "schemaHash": "a3c5f471b0e1a2339488ed167840e8c32fadc041ff67d39f1d74a4840c28929a",
-    "cmsVersion": "0.51.0"
+    "cmsVersion": "0.51.1"
   },
   "selector": {
     "roots": [

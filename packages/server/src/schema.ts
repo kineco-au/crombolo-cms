@@ -24,6 +24,7 @@ import {
   latestCheckpoint,
   latestLedgerId,
   type NodeSchemaState,
+  oldestCacheInstructionId,
   readWritesPaused,
   touchServer,
   updateSchemaStateHash,
@@ -252,6 +253,11 @@ export interface CachePollerOptions {
   /** Called for instructions other nodes appended. */
   onInstruction(kind: CacheInstructionKind, payload: Record<string, unknown>): void
   /**
+   * Instructions this node never read were pruned (story 285). What has a
+   * checkpoint catches up by it; what has none has to look again.
+   */
+  onMissed?(): void
+  /**
    * The published cache's freshness (story 174). With it, content and schema
    * instructions only wake the poll: the node compares the latest committed
    * checkpoint with the one it serves, and is told it is behind. Being ordered
@@ -392,6 +398,10 @@ export class CacheInstructionPoller {
     const { db, nodeId, nodeState, onInstruction } = this.#options
     // Read first: every instruction numbered up to it has committed, and is visible below.
     const latest = await latestCheckpoint(db)
+    // Pruning keeps the newest row, so the log only starts past this node when
+    // it lost rows. A gap in ids makes this a false alarm, which costs a look.
+    const oldest = await oldestCacheInstructionId(db)
+    if (oldest !== undefined && oldest > this.#cursor + 1) this.#options.onMissed?.()
     // A row can commit after one with a higher id (Postgres hands ids out
     // before commit), so a short window behind the cursor is read again and
     // the ids already seen are skipped.
