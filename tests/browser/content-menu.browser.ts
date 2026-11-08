@@ -14,6 +14,8 @@ test('the menu opens each place, with Content marked throughout', async ({ page,
     'Tree context is not set',
     'provideAt is not a function',
     'repository is missing',
+    // Logged, not thrown: a page left as it opens, as in the test below.
+    'Context request was cancelled, host was disconnected',
   )
   await signIn(page)
   await goToSection(page, 'Content')

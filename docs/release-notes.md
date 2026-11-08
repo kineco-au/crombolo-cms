@@ -6,6 +6,15 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.54.1 — 2026-11-08
+
+v0.54.0 was tagged but not published. Its notes apply to this release.
+
+### Fixes
+
+- **A page opened again before its last load finished** no longer reports an error: the editor
+  is loading once, not twice.
+
 ## v0.54.0 — 2026-11-08
 
 ### Features
