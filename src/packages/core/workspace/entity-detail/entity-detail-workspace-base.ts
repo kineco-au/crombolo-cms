@@ -216,6 +216,8 @@ export abstract class UmbEntityDetailWorkspaceContextBase<
 		this.resetState();
 		this.setIsNew(false);
 		this.#entityContext.setUnique(unique);
+		// Crombolo: an editor opened again before its last load let go is loading once, not twice.
+		this.loading.removeState(LOADING_STATE_UNIQUE);
 		this.loading.addState({ unique: LOADING_STATE_UNIQUE, message: `Loading ${this.getEntityType()} Details` });
 		await this.#init;
 		this._getDataPromise = this.#request(unique);
