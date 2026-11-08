@@ -27,6 +27,8 @@ export class UmbBackofficeHeaderLogoElement extends UmbLitElement {
 				--uui-button-padding-top-factor: 1;
 				--uui-button-padding-bottom-factor: 0.5;
 				--uui-button-background-color: transparent;
+				/* Crombolo: the logo is a link home, and does not light up as a button would. */
+				--uui-button-background-color-hover: transparent;
 				display: var(--umb-header-logo-display, inline);
 				margin: var(--umb-header-logo-margin, 0 var(--uui-size-space-2) 0 0);
 			}
