@@ -21,8 +21,13 @@ export const APPROVAL_CHANGED = 'crombolo:approval-changed'
 /** `Crombolo.Condition.Document.MaySendForApproval`, with `action` in its config. */
 export class CromboloMaySendCondition extends UmbConditionBase {
   #key
+  #isNew = true
   #check = async () => {
-    if (!this.#key) return
+    // A page not saved yet has no request to send, and the server does not know it.
+    if (!this.#key || this.#isNew) {
+      this.permitted = false
+      return
+    }
     const key = this.#key
     const approval = await pageApproval(key).catch(() => undefined)
     if (key === this.#key) this.permitted = maySend(approval, this.config.action ?? 'publish')
@@ -31,6 +36,10 @@ export class CromboloMaySendCondition extends UmbConditionBase {
   constructor(host, args) {
     super(host, args)
     this.consumeContext(UMB_DOCUMENT_WORKSPACE_CONTEXT, (context) => {
+      this.observe(context?.isNew, (isNew) => {
+        this.#isNew = isNew !== false
+        this.#check()
+      })
       this.observe(context?.unique, (unique) => {
         this.#key = unique ?? undefined
         this.#check()

@@ -65,7 +65,7 @@ test('a screen that finds the session over asks for sign-in, and shows no error'
   await goToSection(page, 'Content')
   await settle(page)
   await page.context().clearCookies()
-  await page.locator('crombolo-content-strip').getByRole('link', { name: 'Workflows' }).click()
+  await page.locator('crombolo-content-strip').getByRole('link', { name: 'Approvals' }).click()
 
   const dialog = page.locator('crombolo-sign-in-dialog')
   await expect(dialog.getByText('Your session has ended')).toBeVisible()

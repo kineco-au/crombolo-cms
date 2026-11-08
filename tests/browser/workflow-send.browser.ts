@@ -8,7 +8,12 @@ import { expect, signIn, test } from './fixtures.ts'
 const API = '/crombolo/management/api/v1'
 const APPROVALS = '/crombolo/crombolo/api/approvals'
 
-test('Send for approval sits beside Save and publish, and opens a request', async ({ page }) => {
+test('Send for approval sits beside Save and publish, and opens a request', async ({
+  page,
+  diagnostics,
+}) => {
+  // Opening a page's tab by its address races the editor's own routing (see `settle`).
+  diagnostics.allowed.push('provideAt is not a function')
   await signIn(page)
   const types = (await (
     await page.request.get(`${API}/document-type/allowed-at-root?skip=0&take=10`)
