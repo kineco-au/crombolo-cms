@@ -38,6 +38,9 @@ x-test-environment: &test-environment
 services:
   db:
     image: postgres:18-alpine
+    # Room for the local suite's six shards side by side, each with its sites'
+    # pools and listeners; Postgres's 100 ran out (story 231, docs/testing.md).
+    command: ['postgres', '-c', 'max_connections=400']
     environment:
       POSTGRES_USER: crombolo
       POSTGRES_PASSWORD: crombolo

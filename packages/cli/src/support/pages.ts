@@ -58,6 +58,20 @@ function siteRefs(db: Db): ValueRefs {
   return {
     content: (ref) => keyOf(ref, 'content'),
     library: (ref) => keyOf(ref, 'library'),
+    // A Library form by its path or key; anything else is a form's own alias, as before.
+    async form(ref) {
+      if (looksLikeKey(ref)) return normaliseUuid(ref)
+      const key = await keyOf(ref, 'library')
+      if (!key) return ref
+      const rows = await db.q
+        .selectFrom('node as n')
+        .innerJoin('content as c', 'c.node_id', 'n.id')
+        .innerJoin('content_type as ct', 'ct.node_id', 'c.content_type_id')
+        .select('ct.form_key')
+        .where('n.unique_id', '=', key)
+        .execute()
+      return rows[0]?.form_key ? key : undefined
+    },
     linkedMedia: (ref) => keyOf(ref, 'media'),
     async media(ref) {
       const key = await keyOf(ref, 'media')

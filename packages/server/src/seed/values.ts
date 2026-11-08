@@ -82,6 +82,8 @@ export interface ValueRefs {
   content(ref: string, why: string): Promise<string | undefined>
   media(ref: string, why: string): Promise<{ key: string; typeAlias: string } | undefined>
   library(ref: string, why: string): Promise<string | undefined>
+  /** A form picker's value: a Library form's path, or a form's alias or key (story 242). */
+  form(ref: string, why: string): Promise<string | undefined>
   /** A link's path as media, before it is tried as a page. */
   linkedMedia(ref: string): Promise<string | undefined>
 }
@@ -296,6 +298,16 @@ export function valueWriter(lookup: SchemaLookup, refs: ValueRefs) {
         }
         return { ok: true, value: keys }
       }
+      case 'Crombolo.FormPicker': {
+        if (typeof raw !== 'string')
+          return fail("a form picker takes a Library form's path, or a form's alias")
+        const key = await refs.form(raw, why)
+        if (!key)
+          return fail(
+            `"${raw}" is not a Library form or a form, in the content files or on the site`,
+          )
+        return { ok: true, value: key }
+      }
       case 'Umbraco.MultiUrlPicker': {
         const links: unknown[] = []
         for (const entry of list(raw)) {
@@ -403,6 +415,10 @@ export function shorthandReader(
         )
         if (paths.length === 0 || paths.some((p) => p === undefined)) return value
         return paths.length === 1 ? paths[0] : paths
+      }
+      case 'Crombolo.FormPicker': {
+        if (typeof value !== 'string') return value
+        return (await where(value, 'library')) ?? value
       }
       case 'Umbraco.MultiUrlPicker': {
         if (!Array.isArray(value)) return value

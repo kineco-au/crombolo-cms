@@ -25,11 +25,22 @@ applies again unchanged.
 
 ## Acceptance criteria
 
-- [ ] Folders under `content/library` become Library folders, nested, with
+- [x] Folders under `content/library` become Library folders, nested, with
       their elements; `bundle export --source` writes them back as folders
-- [ ] A Form picker value in a content file takes a Library path
+- [x] A Form picker value in a content file takes a Library path
       (`"/contact/main-enquiry"`), resolved as the element picker resolves one,
       or a form's alias for a page that names a form itself
-- [ ] `bundle build --check` names a path that is not a Library form, by file
+- [x] `bundle build --check` names a path that is not a Library form, by file
       and line
-- [ ] Export and apply round-trip with no changes; tests on SQLite and Postgres
+- [x] Export and apply round-trip with no changes; tests on SQLite and Postgres
+
+## What was built (2026-11-08)
+
+- **`content/library/` reads folders** as Library folders, nested, as `element-folder` nodes
+  (story 283's kind), and an element's parent is its folder. `.folder.toml` keeps a folder's
+  key or name when the directory can't say it.
+- **A Form picker value** takes a Library form's path, checked to be one, or a form's alias, or a
+  key as before. `bundle build --check` names a wrong one by file and line (`bad-value`).
+- **`bundle export --source`** writes folders as directories, and a Form picker as its Library
+  path. An exported element is named after its name, as every exported file is.
+- **`crombolo content set`** takes a Library form's path too.

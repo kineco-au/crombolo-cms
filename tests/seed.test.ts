@@ -212,10 +212,13 @@ function write(root: string, files: Record<string, string | Buffer>) {
   }
 }
 
-async function site(seed: Record<string, string | Buffer> = SEED) {
+async function site(
+  seed: Record<string, string | Buffer> = SEED,
+  schema: Record<string, string> = {},
+) {
   const root = mkdtempSync(join(process.cwd(), 'output', 'seed-'))
   dirs.push(root)
-  write(join(root, 'schema'), SCHEMA)
+  write(join(root, 'schema'), { ...SCHEMA, ...schema })
   // Pages are `content/` in the fixtures, as their keys are derived; their folder is `pages/`.
   write(
     join(root, 'content'),
@@ -363,6 +366,126 @@ describe(`compiling a seed (${dialectUnderTest})`, () => {
     expect(lineOf(text, ['values', 'title'])).toBe(4)
     expect(lineOf(text, ['values', 'fr-FR', 'title'])).toBe(7)
     expect(lineOf(text, ['values', 'fr-FR'])).toBe(6)
+  })
+})
+
+const FORM_KEY = '5d1c2b0a-1111-4c2e-9a3b-7e6f5d4c3b2a'
+const FORMS_SCHEMA: Record<string, string> = {
+  'forms/contact.toml': `[form]
+key = "${FORM_KEY}"
+alias = "contact"
+name = "Contact"
+
+[[page]]
+
+  [[page.group]]
+  columns = 1
+
+    [[page.group.field]]
+    alias = "name"
+    type = "shortAnswer"
+    caption = "Name"
+`,
+  'content-types/contact-page.toml': `[content-type]
+alias = "contactPage"
+name = "Contact Page"
+allow-at-root = true
+components = ["page"]
+default-component = "page"
+
+[[property]]
+alias = "enquiryForm"
+name = "Form"
+type = "formPicker"
+`,
+}
+const LIBRARY_SEED: Record<string, string> = {
+  'library/forms/sales.toml': 'type = "contactForm"\nname = "Contact – Sales"\n',
+  'library/forms/nested/blurb.toml': 'type = "card"\n\n[values]\nheading = "Nested"\n',
+  'library/top.toml': 'type = "card"\n\n[values]\nheading = "At the top"\n',
+  'content/contact.toml': 'type = "contactPage"\n\n[values]\nenquiryForm = "forms/sales"\n',
+  'content/own.toml': 'type = "contactPage"\n\n[values]\nenquiryForm = "contact"\n',
+}
+
+describe(`the Library in content files (${dialectUnderTest})`, () => {
+  test('folders become Library folders, nested, with their elements', async () => {
+    const { compile } = await site(LIBRARY_SEED, FORMS_SCHEMA)
+    const build = await compile()
+    expect(build.findings).toEqual([])
+    const forms = nodeAt(build, 'library/forms')
+    const nested = nodeAt(build, 'library/forms/nested')
+    expect([forms.kind, forms.parent, forms.variants[0]?.name]).toEqual([
+      'element-folder',
+      null,
+      'Forms',
+    ])
+    expect([nested.kind, nested.parent]).toEqual(['element-folder', forms.key])
+    expect(nodeAt(build, 'library/forms/sales').parent).toBe(forms.key)
+    expect(nodeAt(build, 'library/forms/nested/blurb').parent).toBe(nested.key)
+    expect(nodeAt(build, 'library/top').parent).toBeNull()
+  })
+
+  test('a Form picker takes a Library form’s path, or a form’s alias', async () => {
+    const { compile } = await site(LIBRARY_SEED, FORMS_SCHEMA)
+    const build = await compile()
+    expect(stored(nodeAt(build, 'content/contact'), 'enquiryForm')).toBe(
+      seedKey('library/forms/sales'),
+    )
+    expect(stored(nodeAt(build, 'content/own'), 'enquiryForm')).toBe(FORM_KEY)
+  })
+
+  test('a path that is not a Library form is named, by file and line', async () => {
+    const { compile } = await site(
+      {
+        ...LIBRARY_SEED,
+        'content/wrong.toml': 'type = "contactPage"\n\n[values]\nenquiryForm = "top"\n',
+      },
+      FORMS_SCHEMA,
+    )
+    const build = await compile()
+    expect(build.findings).toEqual([
+      expect.objectContaining({
+        file: 'content/pages/wrong.toml',
+        line: 4,
+        code: 'bad-value',
+        message: expect.stringContaining('"top" is not a Library form'),
+      }),
+    ])
+  })
+
+  test('export and apply round-trip with no changes', async () => {
+    const source = await site(LIBRARY_SEED, FORMS_SCHEMA)
+    const first = await source.compile()
+    await source.apply(first, { publish: true })
+    const pages = await new NodeRepository(source.h.server.db).children(
+      -1,
+      ObjectTypes.Document,
+      0,
+      100,
+    )
+    const elsewhere = mkdtempSync(join(process.cwd(), 'output', 'seed-export-library-'))
+    dirs.push(elsewhere)
+    await exportSeed(source.h.server.db, elsewhere, { pages: pages.items, library: true })
+    const files: Record<string, string> = {}
+    const walk = (dir: string, prefix: string) => {
+      for (const name of readdirSync(dir)) {
+        const path = join(dir, name)
+        if (statSync(path).isDirectory()) walk(path, `${prefix}${name}/`)
+        else files[`${prefix}${name}`.replace(/^pages\//, 'content/')] = readFileSync(path, 'utf8')
+      }
+    }
+    walk(join(elsewhere, 'content'), '')
+    expect(Object.keys(files)).toContain('library/forms/nested/blurb.toml')
+    // Named after the element, as every exported file is, and keeping its key.
+    expect(files['content/contact.toml']).toContain('enquiryForm = "forms/contact-sales"')
+
+    const again = await (await site(files, FORMS_SCHEMA)).compile()
+    expect(again.findings).toEqual([])
+    const shape = (build: SeedBuild) =>
+      (build.set?.nodes ?? [])
+        .map((n) => [n.key, n.kind, n.parent, n.variants[0]?.name, JSON.stringify(n.values)])
+        .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+    expect(shape(again)).toEqual(shape(first))
   })
 })
 

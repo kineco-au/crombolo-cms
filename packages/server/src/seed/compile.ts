@@ -35,6 +35,7 @@ import {
   type BundleNode,
   type BundleValue,
   type ContentSet,
+  ELEMENT_FOLDER_TYPE,
   referenceCandidates,
   writeBundle,
   writeBundlePackage,
@@ -47,6 +48,7 @@ import { lineOf } from './lines.ts'
 import {
   DICTIONARY_FILE,
   kindDir,
+  nameFromSegment,
   readSeed,
   readSeedDictionary,
   type SeedFinding,
@@ -65,12 +67,6 @@ export interface SeedBuild {
   counts: Record<'content' | 'library' | 'media', number>
   /** `content/dictionary.toml`, as the items it holds (story 168). */
   dictionary?: DictionaryEntry[]
-}
-
-/** A word for a file name: `about-us` → `About us`. */
-const nameFromSegment = (segment: string) => {
-  const words = segment.replace(/[-_]+/g, ' ').trim()
-  return words.charAt(0).toUpperCase() + words.slice(1)
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -214,9 +210,34 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
   }
   const libraryKey = async (ref: string, why: string) => {
     const seeded = libraryByPath.get(trimPath(ref))
-    if (seeded) return keyOf.get(seeded)
+    if (seeded) return seeded.folder ? undefined : keyOf.get(seeded)
     if (looksLikeKey(ref)) return normaliseUuid(ref)
     return siteNode(ref, ObjectTypes.Element, why)
+  }
+  const forms = loadSchemaDirectory(config.schemaDir).set.forms ?? []
+  /** A Library form by its path, else a form by its alias: what a form picker stores. */
+  const formKey = async (ref: string, why: string) => {
+    if (looksLikeKey(ref)) return normaliseUuid(ref)
+    const seeded = libraryByPath.get(trimPath(ref))
+    if (seeded && !seeded.folder) {
+      const type =
+        typeof seeded.data.type === 'string'
+          ? await typeOf(documentTypes, seeded.data.type)
+          : undefined
+      return type?.formKey ? keyOf.get(seeded) : undefined
+    }
+    const form = forms.find((f) => f.alias.toLowerCase() === trimPath(ref))
+    if (form) return form.key ?? form.alias
+    const key = await siteNode(ref, ObjectTypes.Element, why)
+    if (!key) return undefined
+    const rows = await db.q
+      .selectFrom('node as n')
+      .innerJoin('content as c', 'c.node_id', 'n.id')
+      .innerJoin('content_type as ct', 'ct.node_id', 'c.content_type_id')
+      .select('ct.form_key')
+      .where('n.unique_id', '=', key)
+      .execute()
+    return rows[0]?.form_key ? key : undefined
   }
 
   // ---------------------------------------------------------------- values
@@ -224,6 +245,7 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
     content: contentKey,
     media: mediaRef,
     library: libraryKey,
+    form: formKey,
     linkedMedia: async (path) => {
       const media = mediaByPath.get(path.toLowerCase())
       return media ? keyOf.get(media) : undefined
@@ -292,6 +314,29 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
   for (const item of tree.items) {
     const key = keyOf.get(item) as string
     let type = typeOfItem.get(item)
+    if (item.kind === 'library' && item.folder) {
+      // A Library folder: a name and a place, as story 283 carries it.
+      bundleNodes.push({
+        key,
+        kind: 'element-folder',
+        contentType: { ...ELEMENT_FOLDER_TYPE },
+        parent: item.parent
+          ? (keyOf.get(libraryByPath.get(item.parent.toLowerCase()) as SeedItem) ?? null)
+          : null,
+        sortOrder: 0,
+        template: null,
+        variants: [
+          {
+            culture: null,
+            segment: null,
+            name: nameOf(item)[0]?.name ?? item.path,
+            published: false,
+          },
+        ],
+        values: [],
+      })
+      continue
+    }
     if (item.kind !== 'media') {
       if (typeof item.data.type !== 'string') {
         find(item, [], 'no-type', 'an item names its content type: type = "<alias>"')
@@ -444,14 +489,16 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
     if (template) usedComponents.add(template)
     // Media has no published state: it is live as soon as it lands.
     const published = item.kind !== 'media' && item.data.published !== false
-    const parent =
-      item.kind === 'library' || !item.parent
-        ? null
-        : (keyOf.get(
-            (item.kind === 'media' ? mediaByPath : contentByPath).get(
-              item.parent.toLowerCase(),
-            ) as SeedItem,
-          ) ?? null)
+    const parent = !item.parent
+      ? null
+      : (keyOf.get(
+          (item.kind === 'media'
+            ? mediaByPath
+            : item.kind === 'library'
+              ? libraryByPath
+              : contentByPath
+          ).get(item.parent.toLowerCase()) as SeedItem,
+        ) ?? null)
     const names = nameOf(item)
     // A renamed file is a new key: say so where a page of that name is already here.
     if (item.kind === 'content') {

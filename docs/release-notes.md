@@ -6,6 +6,31 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.53.2 — 2026-11-08
+
+v0.53.1 was tagged but not published. Its notes, and v0.53.0's, apply to this release.
+
+### Features
+
+- **The Library in content files (242).** Folders under `content/library/` are Library folders,
+  nested, with their elements, and a page's Form picker can name a Library form by its path, or a
+  form by its alias. `bundle export --source` writes both back the same way.
+- **Code, not Components or Templating.** The row under the header and the tree beside it now
+  share one name for components, modules, stylesheets and scripts.
+
+### Fixes
+
+- **The local Postgres suite has room for its shards (231).** The compose `db` allows 400
+  connections, so six shards side by side no longer run out. Run `docker compose up -d db` once.
+- **A node records itself in one step.** A node registering at boot and on its first poll at once
+  could both find no record of it and both try to add one, and the second failed.
+
+### Upgrade notes
+
+- **No migrations.**
+- **A developer's local Postgres** needs `docker compose up -d db` once, for its new connection
+  limit. Sites are unaffected.
+
 ## v0.53.1 — 2026-11-08
 
 v0.53.0 was tagged but not published. Its notes apply to this release.
@@ -22,10 +47,10 @@ v0.53.0 was tagged but not published. Its notes apply to this release.
 ### Features
 
 - **Choose what a group sees under Content (296).** A user group can be given Structure,
-  Components, Forms or Workflow setup, in its Sections, each without the rest of Settings. The
+  Code, Forms or Workflow setup, in its Sections, each without the rest of Settings. The
   server enforces each one, and the row under the header follows them.
 - **Forms is part of Structure.** It is a node in Structure's tree, with its folders, forms and
-  entries, so the row under the header is now Pages, Structure, Components and Workflows. Create
+  entries, so the row under the header is now Pages, Structure, Code and Workflows. Create
   under Content Types offers Form. Someone with Forms but not Settings finds their forms under
   Structure too, and old addresses still work.
 
@@ -33,7 +58,7 @@ v0.53.0 was tagged but not published. Its notes apply to this release.
 
 - **No migrations.**
 - **No group loses anything.** Groups keep their sections, and whoever holds Settings has Structure
-  and Components. An administrator has Workflow setup. To narrow a group, take Settings away from it
+  and Code. An administrator has Workflow setup. To narrow a group, take Settings away from it
   and give it what it needs in Users, or in its `schema/user-groups/*.toml`:
   `sections = ["content", "structure"]`.
 - **Workflow setup is a new choice.** Setting up workflows was for administrators only, and it

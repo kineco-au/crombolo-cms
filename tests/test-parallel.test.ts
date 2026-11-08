@@ -20,6 +20,8 @@ describe('the number of shards', () => {
     expect(shardCount({}, 14)).toBe(6)
     expect(shardCount({}, 8)).toBe(4)
     expect(shardCount({}, 1)).toBe(1)
+    // Postgres shards share a server locally (story 231).
+    expect(shardCount({ CROMBOLO_DB: 'postgres' }, 14)).toBe(4)
   })
 
   test('CROMBOLO_TEST_SHARDS sets it, and a nonsense value is ignored', () => {

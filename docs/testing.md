@@ -35,6 +35,15 @@ prints as it finishes, then the totals. On 14 cores the SQLite suite takes about
 two minutes and Postgres under four, against 7.5 and 13 in one process. CI keeps
 `test:ci` and shards across jobs instead.
 
+**The compose `db` allows 400 connections** (story 231). Six shards side by side,
+each with its test sites' pools, their LISTEN connections and the jobs', reached
+Postgres's default of 100 and failed in waves with "too many clients". Raising
+the server's limit keeps the sites as they are in production and the shard count
+as it is; CI never needed it, since each shard there has a server of its own. A
+`db` container from before the change needs `docker compose up -d db` to take it.
+Locally a Postgres run uses at most four shards, not six: six on one server kept
+it busy enough that a different timing-based test failed in each run.
+
 `check` and `fix` are deliberately symmetric: both run Biome's own `check`, which
 covers formatting, lint *and* assist actions such as import ordering. Using
 `format` + `lint` as the gate would let `fix` change things the gate never

@@ -1,6 +1,5 @@
 /**
- * The menu under Content (story 289): Pages, Structure, Components, Forms and
- * Workflows, for whoever may open them. A row of its own under the header, shown
+ * The menu under Content (story 289): Pages, Structure, Code and Workflows, for whoever may open them. A row of its own under the header, shown
  * wherever one of them is open, and it keeps Content's tab marked while it shows.
  */
 import { UMB_CURRENT_USER_CONTEXT } from '@umbraco-cms/backoffice/current-user'

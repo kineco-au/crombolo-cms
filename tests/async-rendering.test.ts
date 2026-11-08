@@ -116,6 +116,7 @@ type = "textstring"
 
 /** Marks the signal's abort where the test can see it, then waits for ever. */
 const HANGS = `export default async function Home({ signal }) {
+  globalThis.__renderStarted = true
   signal.addEventListener('abort', () => {
     globalThis.__renderAborted = String(signal.reason?.message ?? signal.reason)
   })
@@ -228,9 +229,15 @@ export default async function Home({ model }) {
 
   test('a visitor who leaves stops the render, and it is not reported as a template error', async () => {
     const h = await site({ 'homePage.tsx': HANGS }, 0)
+    const state = globalThis as { __renderStarted?: boolean }
+    state.__renderStarted = false
     const visitor = new AbortController()
-    setTimeout(() => visitor.abort(), 50)
-    const response = await h.server.fetch(new Request(`${ORIGIN}/`, { signal: visitor.signal }))
+    const pending = h.server.fetch(new Request(`${ORIGIN}/`, { signal: visitor.signal }))
+    // Leaves once the render is under way: a fixed wait could leave before it began.
+    for (let waited = 0; !state.__renderStarted && waited < 10_000; waited += 10)
+      await Bun.sleep(10)
+    visitor.abort()
+    const response = await pending
     expect(response.status).toBe(499)
     expect((globalThis as { __renderAborted?: string }).__renderAborted).toBeDefined()
   })

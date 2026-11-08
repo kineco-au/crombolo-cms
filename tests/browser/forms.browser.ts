@@ -71,13 +71,14 @@ test('a page picks a Library form, keeps a form it named itself, and reveals the
     await expect(preview.getByText(caption, { exact: true })).toBeVisible()
   await expect(preview).toContainText('Trade and allocation')
   await expect(preview).toContainText('Required')
-  await page.getByTestId('workspace-action:Umb.WorkspaceAction.Document.Save').click()
-  await expect
-    .poll(async () => {
-      const doc = await (await page.request.get(`${API}/document/${key}`)).json()
-      return doc.values.find((value: { alias: string }) => value.alias === 'enquiryForm')?.value
-    })
-    .toBe(trade)
+  // A save clicked while the page is still settling is ignored, so it is clicked until it lands.
+  await expect(async () => {
+    await page.getByTestId('workspace-action:Umb.WorkspaceAction.Document.Save').click()
+    const doc = await (await page.request.get(`${API}/document/${key}`)).json()
+    expect(
+      doc.values.find((value: { alias: string }) => value.alias === 'enquiryForm')?.value,
+    ).toBe(trade)
+  }).toPass({ timeout: 15_000 })
 
   await select.selectOption({ label: 'No form' })
   await expect(picker.locator('details')).toHaveCount(0)

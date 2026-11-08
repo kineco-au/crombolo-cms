@@ -104,7 +104,8 @@ describe('importing', () => {
     writeFileSync(join(schemaDir, 'content-types', 'article.toml'), type('article', 'Article'))
     const applied = await h.json<ImportResult>(IMPORT, { method: 'POST' })
 
-    expect(applied.action).toBe('applied')
+    // The node's own watcher may take the file first, and then this finds nothing to do.
+    expect(['applied', 'skipped-same']).toContain(applied.action ?? '')
     expect(await aliases(h, 'article')).toBeDefined()
   })
 

@@ -34,8 +34,12 @@ pushed. A failed release is fixed by a **new** patch version.
    - `docker compose run --rm cms-test-sqlite bun run test`
    - the integration suite when the CLI changed:
      `docker compose run --rm cms-test-sqlite bun run test:integration`
-   - a failing browser test, alone:
+   - the Postgres suite when the data layer changed: `bun run docker:test:postgres`
+   - the browser tests a change touches, or a failing one, alone:
      `docker compose run --rm cms-test-browser bun run test:browser <file>`
+
+   CI runs the rest across runners, so the full Postgres and browser suites
+   aren't run locally as a matter of course.
 2. **Release notes.** In `docs/release-notes.md`, rename `## Unreleased` to
    `## v<version> — <date>` and add a fresh empty `## Unreleased` above it.
    Check the section against `git log <last-tag>..HEAD` and the stories moved
@@ -44,14 +48,21 @@ pushed. A failed release is fixed by a **new** patch version.
    operator must act on. A patch release that only fixes a failed release adds
    a short section of its own.
 3. `bun run release:version <version>`, then `bun install` so `bun.lock` agrees.
-4. Commit everything the bump touched with the fix, release notes included:
-   `git commit -am "<what changed>; bump version->v<version>"`.
-5. `git tag v<version>` and `git push origin main v<version>`.
+4. Commit everything the bump touched with the fix, release notes included,
+   with both CI switches in the message:
+   `git commit -am "<what changed>; bump version->v<version> --browser-tests --postgres-tests"`.
+   CI on `main` runs the browser suite and Postgres only when the **last**
+   commit's message says so, and a release always runs both.
+5. **Push `main` alone first:** `git push origin main`. Watch that CI run, as
+   below, and fix anything it finds with a new commit carrying both flags.
+6. **Only once it has passed,** `git tag v<version>` and
+   `git push origin v<version>`. A failure the Release pipeline finds costs a
+   version number, which this step is there to save.
 
 ## Watch it
 
-Both workflows start from the push: **CI** (for `main`) and **Release** (for the
-tag, which runs CI again with the browser suite and Postgres, then publishes).
+**CI** starts from the push of `main`, and **Release** from the push of the tag,
+which runs CI again with the browser suite and Postgres, then publishes.
 
 ```bash
 gh run list --limit 4 --json databaseId,workflowName,headSha,status,conclusion

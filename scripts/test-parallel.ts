@@ -35,7 +35,10 @@ export function namesTests(args: readonly string[]): boolean {
 export function shardCount(env: Record<string, string | undefined>, cpus: number): number {
   const asked = Number(env.CROMBOLO_TEST_SHARDS)
   if (Number.isInteger(asked) && asked >= 1) return asked
-  return Math.max(1, Math.min(6, Math.floor(cpus / 2)))
+  // Postgres shards share one server locally, so fewer of them keep its timing
+  // close to CI's, where each shard has a server of its own (story 231).
+  const most = env.CROMBOLO_DB === 'postgres' ? 4 : 6
+  return Math.max(1, Math.min(most, Math.floor(cpus / 2)))
 }
 
 export interface Totals {

@@ -1,6 +1,6 @@
 /**
  * What the menu under Content offers (story 289), and which item a page belongs
- * to. Pure, so each is tested on its own. Structure and Components stay in
+ * to. Pure, so each is tested on its own. Structure and Code stay in
  * Settings: the client links to them there, and the menu is what puts them
  * together. Forms is a node in Structure, and Workflows stays in the Forms section.
  */
@@ -25,7 +25,7 @@ const ITEMS = [
     section: STRUCTURE,
     or: STRUCTURE_FORMS,
   },
-  { label: 'Components', path: 'section/settings/code', section: COMPONENTS },
+  { label: 'Code', path: 'section/settings/code', section: COMPONENTS },
   { label: 'Workflows', path: 'section/forms/view/workflows', section: WORKFLOW_SETUP },
 ]
 
@@ -59,7 +59,7 @@ export function activeItem(path) {
   if (name === 'forms') return rest.startsWith('view/workflows') ? 'Workflows' : 'Structure'
   if (name !== 'settings') return undefined
   if (rest.startsWith('structure') || rest.startsWith('forms')) return 'Structure'
-  if (rest.startsWith('code')) return 'Components'
+  if (rest.startsWith('code')) return 'Code'
   const tree = treeFor(/^workspace\/([^/]+)/.exec(rest)?.[1])
-  return tree === 'structure' ? 'Structure' : tree === 'code' ? 'Components' : undefined
+  return tree === 'structure' ? 'Structure' : tree === 'code' ? 'Code' : undefined
 }

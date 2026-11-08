@@ -1156,6 +1156,7 @@ Values are given by property alias, in a shorthand for each editor:
 | Content picker | a content path, `/home/about` | `umb://document/<key>` |
 | Media picker | a media path, or a list of them | the picker's items, with each item's type |
 | Element picker | a Library path, or a list | the element keys |
+| Form picker | a Library form's path, `forms/contact-sales`, or a form's alias | the Library form's key, or the form's |
 | Multi-URL picker | paths, URLs, or `{ path \| url, name, target }` | the links |
 | Block list and block grid | `[{ type = "<element alias>", key = "…", values = {…}, settings = { type, key, values } }]` (grid: `columns`, `rows`) | layout, content data and settings data; a block's key is derived unless it gives one |
 | Tags | a list of strings | the list |
@@ -1170,6 +1171,11 @@ Values are given by property alias, in a shorthand for each editor:
   `bundle export --source` writes that shape.
 
 ### Media
+
+**The Library** is `content/library/`, where a folder is a Library folder, nested as deep as the
+Library's (story 242), and its elements are the files in it. A folder's name comes from its
+directory; `.folder.toml` in it gives a `name` or `key` the directory can't, and `bundle export
+--source` writes one only then.
 
 `content/dictionary.toml` holds the dictionary, in the format of
 `docs/content-transfer.md`, "The dictionary as a file". It travels as the

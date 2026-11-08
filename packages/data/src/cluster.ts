@@ -276,42 +276,34 @@ export async function touchServer(db: Db, identity: ServerIdentity): Promise<voi
   const now = DbDate.toDb(new Date())
   const role = identity.role ?? null
   const crombolo = identity.cromboloVersion ?? null
-  const existing = await db.q
-    .selectFrom('server')
-    .select('node_id')
-    .where('node_id', '=', identity.nodeId)
-    .executeTakeFirst()
   const served = identity.served?.checkpoint ?? null
   const servedAt = identity.served ? DbDate.toDb(identity.served.at) : null
-  if (existing) {
-    await db.q
-      .updateTable('server')
-      .set({
+  // One statement, so a boot and a poll writing at once can't both find no row and
+  // both insert one.
+  await db.q
+    .insertInto('server')
+    .values({
+      node_id: identity.nodeId,
+      version: identity.version,
+      revision: identity.revision,
+      role,
+      crombolo_version: crombolo,
+      last_seen: now,
+      served_checkpoint: served,
+      served_at: servedAt,
+    })
+    .onConflict((conflict) =>
+      conflict.column('node_id').doUpdateSet({
         version: identity.version,
         revision: identity.revision,
         role,
         crombolo_version: crombolo,
         last_seen: now,
-        served_checkpoint: sql<number>`coalesce(${served}, ${sql.ref('served_checkpoint')})`,
-        served_at: sql<string>`coalesce(${servedAt}, ${sql.ref('served_at')})`,
-      })
-      .where('node_id', '=', identity.nodeId)
-      .execute()
-  } else {
-    await db.q
-      .insertInto('server')
-      .values({
-        node_id: identity.nodeId,
-        version: identity.version,
-        revision: identity.revision,
-        role,
-        crombolo_version: crombolo,
-        last_seen: now,
-        served_checkpoint: served,
-        served_at: servedAt,
-      })
-      .execute()
-  }
+        served_checkpoint: sql<number>`coalesce(${served}, ${sql.ref('server.served_checkpoint')})`,
+        served_at: sql<string>`coalesce(${servedAt}, ${sql.ref('server.served_at')})`,
+      }),
+    )
+    .execute()
 }
 
 export interface LiveNode {

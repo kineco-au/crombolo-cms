@@ -167,6 +167,9 @@ interface Site {
 const sites: Site[] = []
 
 async function boot(config: Partial<CromboloConfig> = {}): Promise<Site> {
+  // Each section's site is done with by the next boot, whose reset it would deadlock
+  // on with its jobs still running (Postgres).
+  for (const { h } of sites) await h.db.close().catch(() => {})
   const root = mkdtempSync(join(process.cwd(), 'output', 'page-logic-'))
   for (const dir of ['schema/content-types', 'components/folder'])
     mkdirSync(join(root, dir), { recursive: true })
@@ -199,6 +202,8 @@ async function boot(config: Partial<CromboloConfig> = {}): Promise<Site> {
     })
     await docs.publish(doc.key, null)
     h.server.cache.invalidate()
+    // Rebuilt before the page is asked for, or a slow rebuild answers 404.
+    await h.server.cache.fresh()
     home ??= doc.key
     return doc.key
   }
@@ -212,7 +217,8 @@ async function boot(config: Partial<CromboloConfig> = {}): Promise<Site> {
 
 afterAll(async () => {
   for (const { h, root } of sites) {
-    await h.db.close().catch(() => {})
+    // The server, not only its database: its jobs would run on into the next file's reset.
+    await h.server.close().catch(() => {})
     rmSync(root, { recursive: true, force: true })
   }
 })

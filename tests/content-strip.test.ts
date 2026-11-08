@@ -17,7 +17,7 @@ describe('what the menu offers', () => {
   test('everything, to an administrator', () => {
     expect(
       labels({ allowedSections: [CONTENT, ...SETTINGS, FORMS, WORKFLOW_SETUP], isAdmin: true }),
-    ).toEqual(['Pages', 'Structure', 'Components', 'Workflows'])
+    ).toEqual(['Pages', 'Structure', 'Code', 'Workflows'])
   })
 
   test('only what someone may open', () => {
@@ -39,7 +39,7 @@ describe('what the menu offers', () => {
     expect(labels({ allowedSections: [CONTENT, ...SETTINGS], isAdmin: false })).toEqual([
       'Pages',
       'Structure',
-      'Components',
+      'Code',
     ])
   })
 
@@ -56,8 +56,8 @@ describe('where a page belongs', () => {
     ['section/content/workspace/document/edit/1', 'Pages'],
     ['section/settings/structure', 'Structure'],
     ['section/settings/workspace/document-type/edit/1', 'Structure'],
-    ['section/settings/code', 'Components'],
-    ['section/settings/workspace/stylesheet/edit/1', 'Components'],
+    ['section/settings/code', 'Code'],
+    ['section/settings/workspace/stylesheet/edit/1', 'Code'],
     ['section/forms', 'Structure'],
     ['section/forms/view/forms', 'Structure'],
     ['section/settings/forms', 'Structure'],
@@ -76,7 +76,7 @@ describe('where a page belongs', () => {
 })
 
 describe('what a group is given', () => {
-  test('Structure alone, without Components', () => {
+  test('Structure alone, without Code', () => {
     expect(labels({ allowedSections: [CONTENT, STRUCTURE], isAdmin: false })).toEqual([
       'Pages',
       'Structure',

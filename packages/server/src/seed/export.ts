@@ -22,7 +22,14 @@ import {
 } from '@crombolo/data'
 import type { MediaFileStore } from '../media-files.ts'
 import { seedKey } from './keys.ts'
-import { CONTENT_FILES_DIR, KIND_DIRS, kindDir, type SeedKind } from './read.ts'
+import {
+  CONTENT_FILES_DIR,
+  KIND_DIRS,
+  kindDir,
+  LIBRARY_FOLDER_FILE,
+  nameFromSegment,
+  type SeedKind,
+} from './read.ts'
 import { schemaLookup, shorthandReader } from './values.ts'
 
 /** A URL segment from a name: `About us` → `about-us`. */
@@ -150,10 +157,31 @@ export async function exportSeed(
   }
   for (const [index, root] of options.pages.entries()) await walkPages(root, null, index)
 
+  /** Library folders, which are directories rather than files (story 242). */
+  const libraryFolders = new Set<string>()
   if (options.library) {
-    const roots = await nodes.children(-1, ObjectTypes.Element, 0, Number.MAX_SAFE_INTEGER)
-    for (const [index, element] of roots.items.entries())
-      place('library', element, null, index, segmentOf(element.text ?? element.key))
+    const walkLibrary = async (parentId: number, parent: string | null) => {
+      const folders = await nodes.children(
+        parentId,
+        ObjectTypes.ElementContainer,
+        0,
+        Number.MAX_SAFE_INTEGER,
+      )
+      for (const [index, folder] of folders.items.entries()) {
+        libraryFolders.add(folder.key)
+        const path = place('library', folder, parent, index, segmentOf(folder.text ?? folder.key))
+        await walkLibrary(folder.id, path)
+      }
+      const elements = await nodes.children(
+        parentId,
+        ObjectTypes.Element,
+        0,
+        Number.MAX_SAFE_INTEGER,
+      )
+      for (const [index, element] of elements.items.entries())
+        place('library', element, parent, index, segmentOf(element.text ?? element.key))
+    }
+    await walkLibrary(-1, null)
   }
 
   const mediaFile = new Map<string, string>()
@@ -237,8 +265,19 @@ export async function exportSeed(
   }
 
   for (const { kind, node, path, order } of entries) {
-    const doc = await repos[kind].byKey(node.key)
     const derived = seedKey(`${kind}/${path}`)
+    if (kind === 'library' && libraryFolders.has(node.key)) {
+      // A folder is its directory; `.folder.toml` only for what the directory can't say.
+      mkdirSync(under(`library/${path}`), { recursive: true })
+      const own: string[] = []
+      if (normaliseUuid(node.key) !== derived) own.push(`key = ${JSON.stringify(node.key)}`)
+      const segment = path.split('/').at(-1) as string
+      if ((node.text ?? '') !== nameFromSegment(segment))
+        own.push(`name = ${JSON.stringify(node.text ?? '')}`)
+      if (own.length > 0) write(`library/${path}/${LIBRARY_FOLDER_FILE}`, `${own.join('\n')}\n`)
+      continue
+    }
+    const doc = await repos[kind].byKey(node.key)
     const lines: string[] = []
     if (kind === 'media') {
       const src = mediaFile.get(node.key)

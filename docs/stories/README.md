@@ -372,7 +372,7 @@ files kept as the committed record nobody has to open.
 | `180` | A working site from an empty directory, from the command line | should | S | done | 163 |
 | `240` | Approvals from the command line | should | M | on hold | a CLI sign-in story, not written yet |
 | `241` | Bundles managed from the command line | should | L | done | 160, 167 |
-| `242` | The Library in content files | could | S | ready | — |
+| `242` | The Library in content files | could | S | done | — |
 | `243` | Form entries from the command line | could | S | ready | — |
 | `245` | A bundle installed from a file is kept in the site | should | S | done | 241 |
 | `247` | The schema read from the command line | should | M | done | — |
@@ -418,4 +418,4 @@ implementation; creating them does not settle those architectural choices.
 | `175` | Published cache growth stays within measured limits | could | L | done | 086, 174 |
 | `221` | Kysely as the query layer | should | XL | done | — |
 | `230` | No render waits seconds through a burst of publishes | could | M | done | 175 |
-| `231` | The local Postgres suite fits the database's connections | could | S | ready | — |
+| `231` | The local Postgres suite fits the database's connections | could | S | done | — |

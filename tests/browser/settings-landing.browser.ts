@@ -67,7 +67,7 @@ test('Settings opens on cards, and each tool or tree opens from one', async ({ p
   await expect(page.getByTestId(CODE_TREE)).toBeHidden()
   // A tree shown a second time once threw "reading 'forEach'" as its menu reopened.
   const menu = page.locator('crombolo-content-strip')
-  await menu.getByRole('link', { name: 'Components' }).click()
+  await menu.getByRole('link', { name: 'Code' }).click()
   await expect(page.getByTestId(CODE_TREE)).toBeVisible()
   await menu.getByRole('link', { name: 'Structure' }).click()
   await expect(page.getByTestId(STRUCTURE_TREE)).toBeVisible()

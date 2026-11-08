@@ -92,6 +92,8 @@ export default {
     newPartialViewFromSnippet: 'Component from snippet',
   },
   treeHeaders: {
+    // Components, modules, stylesheets and scripts: more than templates.
+    templatingGroup: 'Code',
     // One tree over one directory: templates and partial views are the same
     // kind of file here, and what makes one a template is that a content type
     // names it, not where it sits.

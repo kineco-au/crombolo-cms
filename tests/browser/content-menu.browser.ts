@@ -1,6 +1,6 @@
 /**
  * Story 289: the menu under Content, which keeps Content's tab marked across
- * Pages, Structure, Components and Workflows, and the tree beside forms
+ * Pages, Structure, Code and Workflows, and the tree beside forms
  * and workflows, with folders.
  */
 import type { Page } from '@playwright/test'
@@ -20,7 +20,7 @@ test('the menu opens each place, with Content marked throughout', async ({ page,
   await settle(page)
   for (const [label, address] of [
     ['Structure', /\/section\/settings\/structure$/],
-    ['Components', /\/section\/settings\/code$/],
+    ['Code', /\/section\/settings\/code$/],
     ['Workflows', /\/section\/forms\/view\/workflows/],
     ['Pages', /\/section\/content/],
   ] as const) {
@@ -53,6 +53,8 @@ test('leaving a page while it opens throws nothing', async ({ page, diagnostics 
     'Tree context is not set',
     'provideAt is not a function',
     'repository is missing',
+    // Logged, not thrown: a part of the page asked for something as it was taken away.
+    'Context request was cancelled, host was disconnected',
   )
   await signIn(page)
   for (let i = 0; i < 6; i++) {

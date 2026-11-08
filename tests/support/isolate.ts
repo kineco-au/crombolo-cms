@@ -59,12 +59,15 @@ async function isolatePostgres(): Promise<void> {
   url.pathname = `/${name}`
   Bun.env.CROMBOLO_POSTGRES_URL = url.toString()
   afterAll(async () => {
+    // Six shards dropping their databases at once can outlast a hook's time, which
+    // failed a run that had passed (story 231). One still left is dropped by a later
+    // run once it is stale, so the run doesn't wait past a few seconds for it.
     const cleanup = new SQL({ url: base, max: 1 })
-    try {
-      await cleanup.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`)
-    } finally {
-      await cleanup.close()
-    }
+    const drop = cleanup
+      .unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`)
+      .catch(() => {})
+      .finally(() => cleanup.close().catch(() => {}))
+    await Promise.race([drop, Bun.sleep(8_000)])
   })
 }
 

@@ -101,6 +101,17 @@ export async function bootServer(options: HarnessOptions = {}): Promise<ServerHa
     loadConfig({ componentsCacheDir: VIEWS_CACHE, ...options.config }),
     options.server,
   )
+  // Closing a test's database closes its server first, so its jobs stop with it.
+  // Left running, they held locks the next file's schema reset deadlocked on (Postgres).
+  const closeDb = server.db.close.bind(server.db)
+  let closed: Promise<void> | undefined
+  server.db.close = () => {
+    if (closed) return closed
+    let inner: Promise<void> | undefined
+    server.db.close = () => (inner ??= closeDb())
+    closed = server.close()
+    return closed
+  }
   return server
 }
 

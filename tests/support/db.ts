@@ -377,6 +377,19 @@ export async function dropOwners(db: Db): Promise<void> {
  */
 export async function resetPostgresSchema(): Promise<void> {
   if (dialectUnderTest !== 'postgres') return
+  // An earlier site in the same file may still be finishing a job, which Postgres can
+  // find deadlocked with the reset and cancel the reset over. That is safe to try again.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await resetOnce()
+    } catch (error) {
+      if (attempt >= 5 || (error as { errno?: string }).errno !== '40P01') throw error
+      await Bun.sleep(100 * attempt)
+    }
+  }
+}
+
+async function resetOnce(): Promise<void> {
   await ensurePublicSchema()
   const db = await connect({ poolSize: 1 })
   try {

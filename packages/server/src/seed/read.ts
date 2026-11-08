@@ -40,7 +40,7 @@ export interface SeedItem {
   data: Record<string, unknown>
   /** A media file's bytes. */
   bytes?: Uint8Array
-  /** A media folder: a directory under `content/media/`. */
+  /** A folder: a directory under `content/media/` or `content/library/`. */
   folder?: boolean
 }
 
@@ -57,6 +57,9 @@ export interface SeedTree {
 }
 
 const SKIPPED = (name: string) => name.startsWith('.')
+
+/** What keeps a Library folder's key, when it isn't the one its path gives. */
+export const LIBRARY_FOLDER_FILE = '.folder.toml'
 
 /**
  * The line a TOML syntax error is on: the first prefix of the file that does
@@ -118,12 +121,20 @@ export function readSeed(siteDir: string): SeedTree {
       const path = join(dir, name)
       if (statSync(path).isDirectory()) {
         if (kind === 'library') {
-          findings.push({
-            file: shown(path),
-            line: 1,
-            code: 'library-folder',
-            message: 'Library elements sit at the top of content/library: folders are not read yet',
+          // A Library folder (story 242). `.folder.toml` in it keeps a key of its own.
+          const itemPath = parent ? `${parent}/${name}` : name
+          const own = join(path, LIBRARY_FOLDER_FILE)
+          const parsed = existsSync(own) ? parse(own) : undefined
+          items.push({
+            kind,
+            path: itemPath,
+            parent,
+            file: parsed ? shown(own) : null,
+            text: parsed?.text ?? '',
+            data: parsed?.data ?? {},
+            folder: true,
           })
+          content(kind, path, itemPath)
           continue
         }
         if (!names.includes(`${name}.toml`))
@@ -216,3 +227,9 @@ export function readSeedDictionary(siteDir: string) {
 /** Whether a site has content files at all, where they are or where they were. */
 export const hasSeed = (siteDir: string) =>
   existsSync(join(siteDir, CONTENT_FILES_DIR)) || existsSync(join(siteDir, 'seed'))
+
+/** A word for a file name: `about-us` → `About us`. */
+export const nameFromSegment = (segment: string) => {
+  const words = segment.replace(/[-_]+/g, ' ').trim()
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}

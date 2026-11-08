@@ -488,6 +488,7 @@ describe('roles (postgres)', () => {
     )
   })
 
+  // Making a second database waits on the server, which a full parallel run keeps busy (story 231).
   test('two databases on one server get roles of their own, and a role made for another is refused', async () => {
     if (!postgres) return
     const d = await db()
@@ -523,7 +524,7 @@ describe('roles (postgres)', () => {
       await other.close()
       await d.exec(`DROP DATABASE IF EXISTS "${second}" WITH (FORCE)`)
     }
-  })
+  }, 90_000)
 
   test('a user that may not create roles is given the SQL to run, and then the CMS checks it', async () => {
     if (!postgres) return

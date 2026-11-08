@@ -2,7 +2,7 @@
   "$schema": "../../backoffice-dist/dist/umbraco-package-schema.json",
   "name": "Crombolo",
   "id": "Crombolo.Core",
-  "version": "0.53.1",
+  "version": "0.53.2",
   "allowPublicAccess": false,
   "extensions": [
     {
@@ -734,10 +734,10 @@
     {
       "type": "section",
       "alias": "Crombolo.Section.Components",
-      "name": "Crombolo Components Section",
+      "name": "Crombolo Code Section",
       "weight": 29,
       "meta": {
-        "label": "Components",
+        "label": "Code",
         "pathname": "components"
       }
     },
