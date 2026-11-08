@@ -46,6 +46,19 @@ export interface UmbCromboloHooks {
 	notificationsUnavailable?(): Promise<string | undefined>;
 	/** A dictionary item's words, for a label's `{#name}` that names no term of the back office's own. */
 	dictionaryWord?(name: string): Promise<string | undefined>;
+	/**
+	 * A page's template, picked in place of Umbraco's picker: the template chosen,
+	 * and the content type's allowed templates after any were allowed there; undefined when cancelled.
+	 */
+	pickTemplate?(
+		host: HTMLElement,
+		args: {
+			documentTypeUnique: string;
+			documentTypeName: string;
+			allowedTemplateIds: Array<string>;
+			selected: string | undefined;
+		},
+	): Promise<{ unique: string; allowedTemplateIds: Array<string> } | undefined>;
 }
 
 export const umbCromboloHooks: UmbCromboloHooks = {};

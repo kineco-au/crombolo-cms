@@ -7,7 +7,7 @@ import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element';
 import { UmbModalRouteRegistrationController } from '@umbraco-cms/backoffice/router';
 import { umbOpenModal } from '@umbraco-cms/backoffice/modal';
 import { UmbTemplateItemRepository, UMB_TEMPLATE_PICKER_MODAL } from '@umbraco-cms/backoffice/template';
-import { createExtensionApiByAlias } from '@umbraco-cms/backoffice/extension-registry';
+import { createExtensionApiByAlias, umbCromboloHooks } from '@umbraco-cms/backoffice/extension-registry';
 import { UMB_DATE_TIME_FORMAT_OPTIONS } from '@umbraco-cms/backoffice/utils';
 import { UMB_IS_TRASHED_ENTITY_CONTEXT } from '@umbraco-cms/backoffice/recycle-bin';
 import { UMB_SECTION_USER_PERMISSION_CONDITION_ALIAS } from '@umbraco-cms/backoffice/section';
@@ -257,7 +257,7 @@ export class UmbDocumentWorkspaceViewInfoElement extends UmbLitElement {
 								<uui-icon slot="icon" name=${!this.#isTemplateAllowed ? 'icon-alert' : 'icon-document-html'}></uui-icon>
 								${!this._isTrashed
 									? html` <uui-action-bar slot="actions">
-											${this._allowedTemplates?.length
+											${this._allowedTemplates?.length || umbCromboloHooks.pickTemplate
 												? html`<uui-button
 														label=${this.localize.term('general_choose')}
 														@click=${this.#openTemplatePicker}></uui-button>`
@@ -326,6 +326,19 @@ export class UmbDocumentWorkspaceViewInfoElement extends UmbLitElement {
 	}
 
 	async #openTemplatePicker() {
+		// Crombolo: the components in their folders, and one not allowed can be allowed there.
+		if (umbCromboloHooks.pickTemplate) {
+			const picked = await umbCromboloHooks.pickTemplate(this, {
+				documentTypeUnique: this._documentTypeUnique ?? '',
+				documentTypeName: this._documentTypeName ?? '',
+				allowedTemplateIds: (this._allowedTemplates ?? []).map((allowed) => allowed.id),
+				selected: this._templateUnique || undefined,
+			});
+			if (!picked) return;
+			this._allowedTemplates = picked.allowedTemplateIds.map((id) => ({ id }));
+			this.#workspaceContext?.setTemplate(picked.unique);
+			return;
+		}
 		const result = await umbOpenModal(this, UMB_TEMPLATE_PICKER_MODAL, {
 			data: {
 				multiple: false,
