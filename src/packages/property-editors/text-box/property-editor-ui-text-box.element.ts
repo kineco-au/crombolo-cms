@@ -98,6 +98,12 @@ export class UmbPropertyEditorUITextBoxElement
 		return this.localize.term('textbox_characters_exceed', max, exceeded);
 	}
 
+	// Crombolo: a dictionary item chosen, or its chip removed.
+	#onChooseWord(event: CustomEvent<{ value: string }>) {
+		this.value = event.detail.value;
+		this.dispatchEvent(new UmbChangeEvent());
+	}
+
 	#onInput(e: InputEvent) {
 		const newValue = (e.target as HTMLInputElement).value;
 		if (newValue === this.value) return;
@@ -125,6 +131,11 @@ export class UmbPropertyEditorUITextBoxElement
 
 	override render() {
 		return html`
+			<!-- Crombolo: a {#key} shows as a chip, and {# offers the dictionary (story 297). -->
+			<crombolo-dictionary-words
+				.value=${this.value ?? ''}
+				?readonly=${this.readonly}
+				@crombolo-word-choose=${this.#onChooseWord}>
 			<uui-input
 				.name=${this.alias ?? ''}
 				.inputMode=${this._inputMode}
@@ -140,6 +151,7 @@ export class UmbPropertyEditorUITextBoxElement
 				?required=${this.mandatory}
 				@input=${this.#onInput}>
 			</uui-input>
+			</crombolo-dictionary-words>
 			${this.#renderCharacterCount()}
 		`;
 	}

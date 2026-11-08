@@ -44,6 +44,8 @@ export interface UmbCromboloHooks {
 	onEntityLoad?(entityType: string, unique: string): (() => void) | undefined;
 	/** Why a page's notifications cannot be chosen here, or undefined when they can. */
 	notificationsUnavailable?(): Promise<string | undefined>;
+	/** A dictionary item's words, for a label's `{#name}` that names no term of the back office's own. */
+	dictionaryWord?(name: string): Promise<string | undefined>;
 }
 
 export const umbCromboloHooks: UmbCromboloHooks = {};
