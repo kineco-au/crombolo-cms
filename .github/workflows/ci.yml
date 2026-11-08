@@ -98,10 +98,15 @@ jobs:
                   bun-version: ${{ env.BUN_VERSION }}
             - run: bun install --frozen-lockfile
             - name: Fetch the checker
+              env:
+                  # An anonymous download from a runner is sometimes refused; the job's token is not.
+                  GH_TOKEN: ${{ github.token }}
               run: |
                   mkdir -p "$RUNNER_TEMP/clispec" && cd "$RUNNER_TEMP/clispec"
                   archive="clispec-${CLISPEC_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
-                  curl -sfLO "https://github.com/rvben/clispec-cli/releases/download/${CLISPEC_VERSION}/${archive}"
+                  gh release download "${CLISPEC_VERSION}" -R rvben/clispec-cli -p "${archive}" \
+                    || curl -sSfLO --retry 5 --retry-delay 5 --retry-all-errors \
+                      "https://github.com/rvben/clispec-cli/releases/download/${CLISPEC_VERSION}/${archive}"
                   echo "${CLISPEC_SHA256}  ${archive}" | sha256sum -c -
                   tar xzf "${archive}"
             - name: Score the CLI
