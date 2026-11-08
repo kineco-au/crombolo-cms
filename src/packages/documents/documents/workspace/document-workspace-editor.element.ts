@@ -163,6 +163,8 @@ export class UmbDocumentWorkspaceEditorElement extends UmbLitElement {
 					if (!this.#workspaceContext) {
 						throw new Error('Workspace context is not available when resolving the default route.');
 					}
+					// Crombolo: someone went elsewhere while this resolved; the address is no longer the editor's.
+					if (!this.isConnected || window.location.pathname.replace(/\/$/, '') !== this.#workspaceRoute) return;
 
 					// get current get variables from url, and check if openCollection is set:
 					const urlSearchParams = new URLSearchParams(window.location.search);
