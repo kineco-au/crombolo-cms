@@ -5,6 +5,7 @@
  * its owner's public route sees, and nothing acts as the site.
  * docs/rendering.md, "Background jobs"; docs/bundles.md, "Jobs".
  */
+
 import {
   type Db,
   type JobProgress,
@@ -14,6 +15,7 @@ import {
 } from '@crombolo/data'
 import { type Cron, isTimezone, nextOccurrence, parseCron } from './cron.ts'
 import { logger } from './logging.ts'
+import { withSiteWrites } from './site-content.ts'
 import { inSpan, recordJob } from './telemetry.ts'
 
 /**
@@ -283,7 +285,11 @@ export function createJobRunner(options: {
         `job ${job.owner}/${job.name}`,
         { ...attributes, 'crombolo.job.attempt': job.attempts },
         async () => {
-          await handler(job.payload, { ...owner.context(), job: info })
+          const run = () => handler(job.payload, { ...owner.context(), job: info })
+          // The site's jobs may change content (story 298), named for the audit.
+          await (owner.id === 'site'
+            ? withSiteWrites({ via: `job ${job.name}`, source: 'job' }, run)
+            : run())
         },
       )
       await jobs.succeed(job.id)

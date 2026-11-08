@@ -188,7 +188,11 @@ const refuse = (kind: Refusal['kind'], status: number, reason: string): Refusal 
 function refusalFrom(error: unknown, extra?: (error: unknown) => string | undefined): Refusal {
   if (error instanceof WriteRejectedError) return refuse('conflict', 409, error.message)
   if (error instanceof InvalidParentError) return refuse('invalid', 400, error.message)
-  if (error instanceof PublishBlockedError) return refuse('blocked', 400, error.message)
+  if (error instanceof PublishBlockedError)
+    return {
+      ...refuse('blocked', 400, error.message),
+      ...(error.errors.length > 0 ? { errors: error.errors } : {}),
+    }
   if (error instanceof StaleRevisionError) return refuse('stale', 412, STALE)
   const reason = extra?.(error)
   if (reason) return refuse('invalid', 400, reason)

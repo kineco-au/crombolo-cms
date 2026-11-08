@@ -274,7 +274,7 @@ import {
 import { CORE_JOB_OWNER, type JobRunner } from './owner-jobs.ts'
 import { callerAddress } from './rate-limit.ts'
 import { syncConfiguredRedirects } from './redirects.ts'
-import { createRoutes, type DeclaredRoute, siteRouteProblems } from './routes.ts'
+import { createRoutes, type DeclaredRoute, SITE_ROUTE_OWNER, siteRouteProblems } from './routes.ts'
 import { componentAliasesIn, importSchema, type SchemaBoot, watchSchema } from './schema.ts'
 import { publishSchema, type SchemaStore } from './schema-store.ts'
 import { createSeoHost, originOf, publicOrigin } from './seo.ts'
@@ -1198,7 +1198,7 @@ export async function createServer(
   // routes too.
   const declaredRoutes: DeclaredRoute[] = [
     ...(config.routes ?? []).map(
-      (route): DeclaredRoute => ({ route: route as SiteRoute, owner: 'the site' }),
+      (route): DeclaredRoute => ({ route: route as SiteRoute, owner: SITE_ROUTE_OWNER }),
     ),
     ...(bundles?.siteRoutes() ?? []),
   ]

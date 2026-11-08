@@ -22,6 +22,11 @@ export {
   type QueriesOf,
   type QueryCaller,
   type Register,
+  type SiteContent,
+  type SiteContentEvent,
+  type SiteDocument,
+  type SiteDocumentChange,
+  type SiteDocumentInput,
   type SiteJobStatus,
   type SiteJobs,
   type SiteMedia,
@@ -30,7 +35,12 @@ export {
   type SiteServices,
   site,
 } from '@crombolo/render'
-export type { JobInfo, JobSchedule } from '@crombolo/server'
+export type {
+  JobInfo,
+  JobSchedule,
+  SiteEventContext,
+  SiteEventHandler,
+} from '@crombolo/server'
 
 // Decision 8 of story 209: a browser that loads this has been handed server code.
 if (typeof document !== 'undefined')

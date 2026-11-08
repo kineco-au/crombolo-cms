@@ -189,3 +189,7 @@ under `bundle:<id>`. A throw counts as a failure worth retrying. A handler is
 given the event, the payload, the attempt number, `fetch`, a log named for the
 bundle and a signal that aborts after 30 seconds. It never gets the database.
 A bundle naming an event this site does not raise refuses the boot, by name.
+
+The site's own code handles events with `events` in its config instead, each run as a site job
+with its tables and `site()` ([`rendering.md`](rendering.md), "Content events"). It is delivered
+from the same queue, as the subscriber `site`.

@@ -6,6 +6,22 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.56.0 — 2026-11-08
+
+### Features
+
+- **Site code writes content and handles its events (298).** `site().content` reads, creates,
+  updates, publishes, unpublishes and deletes pages, values by alias, as the API user the config's
+  `content.actAs` names, through the same checks, permissions and approval workflows as the back
+  office. `events` in the config handles content events by the names webhooks use, each run as a
+  site job with the site's tables and `site()`. Every change is audited as the API user, naming
+  the route, action, job or event that made it.
+
+### Upgrade notes
+
+- Nothing to do unless the site wants it: without `content.actAs`, `site().content` refuses
+  every write, saying why.
+
 ## v0.55.0 — 2026-11-08
 
 ### Changes

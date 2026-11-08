@@ -3,6 +3,7 @@
  * changes, delivered by a background job with retries, and every attempt
  * logged. A server bundle's event handlers ride the same queue. docs/webhooks.md.
  */
+
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { type RaisedWebhookEvent, WEBHOOK_EVENT_ALIASES } from '@crombolo/api-management/domain'
@@ -15,9 +16,11 @@ import {
   WebhookRepository,
   type WebhookRow,
 } from '@crombolo/data'
+import type { SiteContentEvent } from '@crombolo/render'
 import { retryAfter, type WorkflowRunReport } from './form-workflows.ts'
 import { logger } from './logging.ts'
 import { openSecret, SECRET_KEY_VARIABLE, sealSecret, usableSecretKey } from './secrets.ts'
+import { isOwnChange } from './site-events.ts'
 import { inSpan, recordWebhook, SpanKind, withTraceHeaders } from './telemetry.ts'
 import {
   envReference,
@@ -69,6 +72,8 @@ export type BundleEventHandler = (
 export type BundleEvents = Readonly<Record<string, BundleEventHandler>>
 
 const BUNDLE = 'bundle:'
+/** The site's own `events` handlers (story 298), as a subscriber. */
+const SITE = 'site'
 
 /** Why these bundles' event declarations cannot be accepted. Pure. */
 export function bundleEventProblems(
@@ -87,12 +92,17 @@ export function bundleEventProblems(
   return problems
 }
 
-/** Who should hear about an event: the matching webhooks, then the bundles. Pure. */
+/**
+ * Who should hear about an event: the matching webhooks, the bundles, then the
+ * site's own handlers, unless the event is a site handler's own change to the
+ * page it was called for. Pure.
+ */
 export function subscribersFor(
-  event: RaisedWebhookEvent,
+  event: RaisedWebhookEvent & { via?: string },
   contentTypeKey: string | undefined,
   webhooks: readonly WebhookDefinition[],
   bundles: readonly { id: string; events?: BundleEvents }[],
+  siteHandles: (alias: string) => boolean = () => false,
 ): string[] {
   const out: string[] = []
   for (const webhook of webhooks) {
@@ -108,6 +118,7 @@ export function subscribersFor(
     out.push(webhook.key)
   }
   for (const bundle of bundles) if (bundle.events?.[event.alias]) out.push(`${BUNDLE}${bundle.id}`)
+  if (siteHandles(event.alias) && !isOwnChange(event)) out.push(SITE)
   return out
 }
 
@@ -145,14 +156,37 @@ export interface WebhookServiceOptions {
   now?: () => Date
   /** Whether a bundle is turned on (story 222); its events are not delivered while it is off. */
   isBundleOn?(bundleId: string): boolean
+  /** The site's own handlers (story 298): which events it handles, and how one is handed over. */
+  siteEvents?: {
+    handles(alias: string): boolean
+    /** Queues the job that runs the handler; the delivery is done once it is queued. */
+    deliver(event: SiteContentEvent): Promise<void>
+  }
 }
 
 /** An event as a webhook delivers it, with the item's type and place as they were when it happened. */
 export interface WebhookFacts extends RaisedWebhookEvent {
   contentTypeKey?: string
   contentTypeAlias?: string
+  /** The cultures the change was about, when it was about some (story 298). */
+  cultures?: string[] | null
+  /** Who made the change, and the site code it came through. */
+  actor?: { kind: string; name: string; via?: string }
+  /** The site code a change came through, so a site handler is not called for its own. */
+  via?: string
   /** Its ancestors' keys, nearest first, for Crombolo's payload (story 208). */
   ancestors?: string[]
+}
+
+/** An event as the site's own handler receives it (story 298). Pure. */
+export function siteEventOf(facts: WebhookFacts): SiteContentEvent {
+  return {
+    alias: facts.alias,
+    key: facts.key,
+    contentType: facts.contentTypeAlias ?? null,
+    cultures: facts.cultures ?? null,
+    actor: { kind: facts.actor?.kind ?? 'unknown', name: facts.actor?.name ?? 'Unknown' },
+  }
 }
 
 /** What a webhook is posted. Pure. */
@@ -456,6 +490,28 @@ export function createWebhookService(options: WebhookServiceOptions): WebhookSer
     }
   }
 
+  /** To the site's own handler: a job of its own, queued; the job runs it and retries it. */
+  const deliverToSite = async (
+    delivery: WebhookDelivery,
+  ): Promise<{ ok: true } | { ok: false; error: string; retry: boolean }> => {
+    if (!options.siteEvents?.handles(delivery.eventAlias))
+      return {
+        ok: false,
+        error: `The site no longer handles ${delivery.eventAlias}.`,
+        retry: false,
+      }
+    try {
+      await options.siteEvents.deliver(delivery.payload as SiteContentEvent)
+      return { ok: true }
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+        retry: true,
+      }
+    }
+  }
+
   const deliverToBundle = async (
     delivery: WebhookDelivery,
     bundleId: string,
@@ -578,10 +634,18 @@ export function createWebhookService(options: WebhookServiceOptions): WebhookSer
     },
     async enqueueFor(db, eventId, facts) {
       const webhooks = await all()
-      const subscribers = subscribersFor(facts, facts.contentTypeKey, webhooks, bundles)
+      const subscribers = subscribersFor(
+        facts,
+        facts.contentTypeKey,
+        webhooks,
+        bundles,
+        (alias) => options.siteEvents?.handles(alias) ?? false,
+      )
       if (subscribers.length === 0) return 0
       const payloadOf = (subscriber: string) =>
-        webhookPayload(facts, webhooks.find((webhook) => webhook.key === subscriber)?.payload)
+        subscriber === SITE
+          ? siteEventOf(facts)
+          : webhookPayload(facts, webhooks.find((webhook) => webhook.key === subscriber)?.payload)
       const queued = await new WebhookDeliveryRepository(db).enqueue(
         subscribers.map((subscriber) => ({
           subscriber,
@@ -610,6 +674,7 @@ export function createWebhookService(options: WebhookServiceOptions): WebhookSer
         let result: { ok: true } | { ok: false; error: string; retry: boolean }
         if (delivery.subscriber.startsWith(BUNDLE))
           result = await deliverToBundle(delivery, delivery.subscriber.slice(BUNDLE.length))
+        else if (delivery.subscriber === SITE) result = await deliverToSite(delivery)
         else {
           const webhook = await this.get(delivery.subscriber)
           result = webhook

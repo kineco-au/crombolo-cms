@@ -38,6 +38,14 @@ export interface ContentEventSinkOptions {
 const subjectOf = (event: DocumentEvent): string | null =>
   'key' in event ? event.key : 'parentKey' in event ? event.parentKey : null
 
+/** The cultures an event was about, when it was about some. */
+const culturesOf = (event: DocumentEvent): string[] | null =>
+  'cultures' in event && event.cultures ? [...event.cultures] : null
+
+/** The site code a change came through (story 298), when it did. */
+const viaOf = (actor: MediaActor): { via?: string } =>
+  actor.kind !== 'member' && actor.origin.via ? { via: actor.origin.via } : {}
+
 /** Who made a change, as the outbox keeps it: enough to name them and leave them out. */
 export const outboxActor = (actor: MediaActor) => {
   const memberKey = actorMemberKey(actor)
@@ -70,7 +78,15 @@ export function createContentEventSink(options: ContentEventSinkOptions): EventS
       const hook = webhookFor(event)
       const change = notificationFor(event)
       const webhook =
-        hook && options.webhooks ? await options.webhooks.factsFor(tx, hook) : undefined
+        hook && options.webhooks
+          ? {
+              ...(await options.webhooks.factsFor(tx, hook)),
+              // For the site's own handlers (story 298): what it was about, and who did it.
+              cultures: culturesOf(event),
+              actor: { kind: actor.kind, name: actorName(actor), ...viaOf(actor) },
+              ...viaOf(actor),
+            }
+          : undefined
       const notification =
         change && options.notifier
           ? await options.notifier.factsFor(

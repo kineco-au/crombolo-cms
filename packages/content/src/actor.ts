@@ -24,6 +24,11 @@ export interface ActorOrigin {
   source: 'request' | 'cli' | 'job'
   ipAddress?: string | null
   forwardedFor?: string | null
+  /**
+   * The site's own code that made the change (story 298): `route POST /api/listings`,
+   * `action contact.send`, `job imports.nightly`, `event Umbraco.ContentPublish <key>`.
+   */
+  via?: string
 }
 
 export type Actor =
@@ -129,4 +134,11 @@ export const actorMemberKey = (actor: MediaActor): string | null =>
 
 /** What the actor says alongside the change, if anything. */
 export const actorNote = (actor: MediaActor): string | undefined =>
-  actor.kind === 'system' ? actor.note : undefined
+  actor.kind === 'system'
+    ? actor.note
+    : actor.origin.via
+      ? `through ${viaWords(actor.origin.via)}`
+      : undefined
+
+/** `event <alias> <key>` as the audit log says it: without the key it is already about. */
+const viaWords = (via: string): string => via.replace(/^(event \S+) [0-9a-f-]{36}$/i, '$1')

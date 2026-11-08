@@ -324,6 +324,7 @@ requests, only server-side and build-time front ends can call it.
 | `286` | A date is the same on any server | should | S | done | — |
 | `287` | A template's element has its name | should | S | done | — |
 | `290` | A starter site that shows what the CMS does | should | L | done | — |
+| `298` | Site code writes content and handles its events | should | L | done | 187, 206 |
 
 ### Epic P — The command line
 

@@ -78,6 +78,8 @@ import { createRedirectTracker } from './redirects.ts'
 import { withRemoteMedia } from './remote-media.ts'
 import { bootSchema, CacheInstructionPoller } from './schema.ts'
 import { publishSchema, type SchemaStore, useSchemaStore } from './schema-store.ts'
+import { apiUserPrincipal, createSiteContent } from './site-content.ts'
+import { SITE_EVENT_JOB, siteEventJob, siteEventProblems } from './site-events.ts'
 import { createSiteQueries, queryProblems } from './site-queries.ts'
 import { createSiteServices } from './site-services.ts'
 import { recordCacheLookup, startTelemetry, tracedDb, tracedEmail } from './telemetry.ts'
@@ -155,6 +157,7 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
       ...siteTablesProblems(config),
       ...queryProblems(config),
       ...siteJobProblems(config),
+      ...siteEventProblems(config.events),
     ]
     if (site.length > 0)
       throw new Error(`The site's own tables cannot be used:\n- ${site.join('\n- ')}`)
@@ -362,6 +365,15 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
     secretKey: config.secretKey,
     bundles: config.bundles,
     isBundleOn: (bundleId) => bundleGrants.isOn(bundleId),
+    // The site's own handlers (story 298): each event queues the job that runs one.
+    siteEvents: {
+      handles: (alias) => typeof config.events?.[alias] === 'function',
+      deliver: async (event) => {
+        await jobRunner
+          .jobsFor(SITE_OWNER, `${event.alias} for ${event.key}`)
+          .enqueue(SITE_EVENT_JOB, event)
+      },
+    },
     onFilesChanged: config.schemaStore
       ? async () => {
           await publishSchema(config.schemaStore as SchemaStore, config.schemaDir)
@@ -550,9 +562,21 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
   })
   await poller.start(config.development ? 2_000 : 5_000)
 
+  // The API user `content.actAs` names must be there to act as (story 298).
+  if (config.content?.actAs && !(await apiUserPrincipal(db, config.content.actAs)))
+    throw new Error(
+      `The config's content.actAs names "${config.content.actAs}", which is no API user's client id.`,
+    )
   const siteServicesFor = createSiteServices({
     db,
     cache,
+    content: createSiteContent({
+      db,
+      documents: operations.documents,
+      actAs: config.content?.actAs,
+      nodeState: schema.nodeState,
+      nodeId: schema.nodeId,
+    }),
     queries: createSiteQueries({ queries: config.queries, chain: siteChains[0] }),
     jobs: (queuedBy) => ({
       enqueue: async (name, payload) =>
@@ -561,6 +585,9 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
     }),
   })
   const siteJobs = siteJobHandlers(config.jobs)
+  // Each content event the site handles runs as a site job (story 298).
+  if (config.events && Object.keys(config.events).length > 0)
+    siteJobs.set(SITE_EVENT_JOB, siteEventJob(config.events))
   /** Every owner with jobs: the site's given its tables and `site()` as a visitor; a bundle's, its capabilities for no caller. */
   const jobOwners = (): JobOwner[] => [
     // Core's own queued work: a large media branch's trash, move or delete (story 246).

@@ -30,6 +30,7 @@ import type { JobSchedule } from './owner-jobs.ts'
 import type { ProvenancePolicy, SignaturePolicy } from './provenance.ts'
 import type { SchemaStore } from './schema-store.ts'
 import { setting } from './settings.ts'
+import type { SiteEventHandler } from './site-events.ts'
 import type { SiteDatabaseConfig, SiteQueryModules } from './site-queries.ts'
 import type { TelemetryOptions } from './telemetry.ts'
 
@@ -523,6 +524,18 @@ export interface CromboloConfig {
   jobs?: SiteQueryModules
   /** When the site's jobs run by themselves: cron expressions in a timezone. */
   schedules?: JobSchedule[]
+  /**
+   * `site().content` (story 298): the client id of the API user the site's code
+   * acts as when it writes pages. Its permissions bound what the code may do, and
+   * every change is audited as it. Without it, each write answers `forbidden`.
+   */
+  content?: { actAs?: string }
+  /**
+   * Handlers for content events, by the names webhooks use (story 298), each run
+   * as a site job on a node that owns writes: `(event, { db, site, job })`.
+   * docs/rendering.md, "Content events".
+   */
+  events?: Readonly<Record<string, SiteEventHandler>>
   /**
    * Package names this installation provides to every site it runs, rather
    * than the site choosing them (story 177): a whole-site file leaves them out
@@ -1091,7 +1104,7 @@ export function describeDatabase(
   }
 }
 
-export const VERSION = '0.55.0'
+export const VERSION = '0.56.0'
 
 /** A whole number of seconds from the environment; undefined when unset or not one. */
 /** A positive number from a setting, else the default. */

@@ -5,6 +5,7 @@
  * flash cookie; a call asking for JSON with the result itself.
  * docs/rendering.md, "Server actions".
  */
+
 import {
   ACTIONS_PATH,
   type ActionState,
@@ -17,6 +18,7 @@ import {
 } from '@crombolo/common'
 import { readSignedFlash, writeSignedFlash } from './form-submit.ts'
 import type { DeclaredRoute } from './routes.ts'
+import { withSiteWrites } from './site-content.ts'
 
 /** The cookie an action's result returns to the page in. */
 export const ACTION_FLASH_COOKIE = 'crombolo-action'
@@ -142,7 +144,10 @@ export function actionRoutes(
       const { params: _, ...actionContext } = context
       let answer: Response | Ok<unknown> | Outcome | unknown
       try {
-        answer = await action(form, actionContext)
+        // An action may change content (story 298), named for the audit.
+        answer = await withSiteWrites({ via: `action ${id}`, source: 'request' }, () =>
+          action(form, actionContext),
+        )
       } catch (error) {
         // `redirect()` and `notFound()` throw their outcome, as in a page.
         if (!isOutcome(error)) throw error

@@ -5,6 +5,7 @@
  * response — a `Result`'s value as JSON, an outcome as its status, an error as
  * problem+json or the status page. docs/rendering.md, "Route handlers".
  */
+
 import { type CorsPolicy, isPreflight, preflightResponse, withCors } from '@crombolo/api-delivery'
 import {
   type CookieOptions,
@@ -19,6 +20,7 @@ import {
 import { ANTIFORGERY_HEADER, type PageOutcome, requestScope } from '@crombolo/render'
 import { isSitePath, requestCookies } from './middleware.ts'
 import { RateLimiter } from './rate-limit.ts'
+import { withSiteWrites } from './site-content.ts'
 
 /** A member as a route sees them: their key, for limits, and their group names. */
 export interface RouteMember {
@@ -51,6 +53,9 @@ export interface RouteDeps<Member extends RouteMember> {
 }
 
 /** A route with what it needs added to its context, such as a bundle's capabilities. */
+/** Who the site's own routes are declared by; a bundle's say its id. */
+export const SITE_ROUTE_OWNER = 'the site'
+
 export interface DeclaredRoute {
   route: SiteRoute
   /** Who declared it, for errors and logs: the site, or a bundle by id. */
@@ -342,7 +347,14 @@ export function createRoutes<Member extends RouteMember>(
     let response: Response
     try {
       const work = Promise.resolve().then(() =>
-        requestScope({ headers: request.headers }, site, () => handler(request, context as never)),
+        requestScope({ headers: request.headers }, site, () =>
+          // The site's own routes may change content (story 298), named for the audit.
+          entry.owner === SITE_ROUTE_OWNER
+            ? withSiteWrites({ via: `route ${method} ${route.path}`, source: 'request' }, () =>
+                handler(request, context as never),
+              )
+            : handler(request, context as never),
+        ),
       )
       work.catch(() => {})
       const answer = await Promise.race([work, overran])

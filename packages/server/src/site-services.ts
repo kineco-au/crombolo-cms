@@ -19,6 +19,7 @@ import {
   type PublishedCache,
   type PublishedMedia,
   type RequestMember,
+  type SiteContent,
   type SiteJobs,
   type SiteMembers,
   type SiteQueries,
@@ -37,6 +38,8 @@ export interface SiteServicesDeps {
   queries?: (
     member: RequestMember | undefined | (() => Promise<RequestMember | undefined>),
   ) => SiteQueries
+  /** `site().content` (story 298): one for every caller, acting as the configured API user. */
+  content?: SiteContent
 }
 
 /** Builds `site()`'s services for one request; undefined `member` is a visitor or a previewing editor. */
@@ -110,6 +113,7 @@ export function createSiteServices(deps: SiteServicesDeps) {
           return who ? `member ${who.username}` : 'a visitor'
         }) ?? unavailableServices<SiteJobs>('jobs'),
       members: unavailableServices<SiteMembers>('members'),
+      content: deps.content ?? unavailableServices<SiteContent>('content'),
     }
     return () => services
   }

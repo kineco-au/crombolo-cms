@@ -227,7 +227,15 @@ export interface DocumentRepositoryOptions {
 }
 
 /** Thrown when a publish is refused by a business rule rather than failing. */
-export class PublishBlockedError extends Error {}
+export class PublishBlockedError extends Error {
+  /** The properties that stopped it, when it was their values (story 298). */
+  readonly errors: DocumentValidationError[]
+
+  constructor(message: string, errors: DocumentValidationError[] = []) {
+    super(message)
+    this.errors = errors
+  }
+}
 
 /** The parent named for a new item is gone, or in the recycle bin. */
 export class InvalidParentError extends Error {}
@@ -2659,6 +2667,7 @@ export class DocumentRepository {
       )
       throw new PublishBlockedError(
         `Required: ${[...new Set(names)].join(', ')} must have a value before publishing.`,
+        errors,
       )
     }
   }

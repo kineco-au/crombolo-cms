@@ -83,11 +83,81 @@ export interface SiteJobs {
   status(id: string): Promise<SiteJobStatus | undefined>
 }
 
+/**
+ * A page as the site's code reads and writes it (story 298): its values by
+ * alias, and by culture for a property that varies, `{ title: { 'en-GB': 'Hi' } }`.
+ */
+export interface SiteDocument {
+  key: string
+  /** Its content type's alias. */
+  contentType: string
+  parent: string | null
+  /** Its name, or its name in each culture where the type varies. */
+  name: string | Readonly<Record<string, string>>
+  values: Readonly<Record<string, unknown>>
+  /** Whether it, or any of its cultures, is published. */
+  published: boolean
+}
+
+/** What a new page is: where, of what type, and its name and values. */
+export interface SiteDocumentInput {
+  parent: string | null
+  /** The content type's alias. */
+  contentType: string
+  name: string
+  /** The culture `name`, and any plain value of a varying property, are in. */
+  culture?: string
+  values?: Readonly<Record<string, unknown>>
+}
+
+/** A change to a page: a new name, and the values given; the rest stay. */
+export interface SiteDocumentChange {
+  name?: string
+  culture?: string
+  values?: Readonly<Record<string, unknown>>
+}
+
+type ContentWrite = Promise<Result<{ key: string }, 400 | 403 | 404 | 422>>
+
+/**
+ * Pages, as the API user the config's `content.actAs` names: its permissions
+ * bound what this may do, and every change is audited as it. Writes happen in
+ * an action, a route, a job or an event handler; a page render only reads.
+ */
+export interface SiteContent {
+  /** The page as last saved. */
+  get(key: string): Promise<Result<SiteDocument, 403 | 404>>
+  /** A page's children as last saved, in order; `null` for the top level. */
+  children(key: string | null): Promise<Result<SiteDocument[], 403 | 404>>
+  create(input: SiteDocumentInput): ContentWrite
+  update(key: string, change: SiteDocumentChange): ContentWrite
+  /** Publishes it, or some of its cultures; a workflow may hold it for approval. */
+  publish(key: string, options?: { cultures?: string[] }): ContentWrite
+  unpublish(key: string, options?: { cultures?: string[] }): ContentWrite
+  /** To the recycle bin. */
+  delete(key: string): ContentWrite
+}
+
+/** A content event as the config's `events` handlers receive it (story 298). */
+export interface SiteContentEvent {
+  /** As webhooks name it: `Umbraco.ContentPublish`. */
+  alias: string
+  /** The page it is about. */
+  key: string
+  /** Its content type's alias, when it is still there to say. */
+  contentType: string | null
+  /** The cultures it was about, when it was about some. */
+  cultures: string[] | null
+  /** Who made the change. */
+  actor: { kind: string; name: string }
+}
+
 export interface SiteServices {
   media: SiteMedia
   queries: SiteQueries
   members: SiteMembers
   jobs: SiteJobs
+  content: SiteContent
 }
 
 /** The site's services as the visitor; only while a page renders. */

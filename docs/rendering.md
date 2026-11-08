@@ -741,6 +741,67 @@ export default defineConfig({
   bundles', newest first, with their progress and errors; a failed one can be
   run again by hand, which is audited. Done jobs are kept a week.
 
+### Writing content
+
+`site().content` (story 298) reads and writes pages as an API user, named in the config by its
+client id, so a route that takes a visitor's submission or a job that imports listings needs no
+call to the Management API:
+
+```ts
+export default defineConfig({
+  content: { actAs: 'crombolo-back-office-site-code' },
+})
+
+const made = await site().content.create({
+  parent: listingsKey,
+  contentType: 'listing',
+  name: 'Harbour view',
+  values: { title: 'Harbour view', price: '450000' },
+})
+if (made.isOk()) await site().content.publish(made.value.key)
+```
+
+- **Values by alias.** A property that varies by culture takes `{ 'en-GB': …, 'fr-FR': … }`, or a
+  plain value with `culture`. `get` and `children` answer the draft in the same shape, with its
+  name (one per culture where the type varies) and whether it is published.
+- **Through the document operations** the Management API uses, so the API user's permissions,
+  start nodes and languages bound what the code may do, values are checked as the back office
+  checks them, and approval workflows apply.
+- **Answers:** `forbidden` outside the API user's rights, and for every write when no `actAs`
+  is set; `unprocessableContent` with the fields for a value that cannot be placed, and for a
+  publish missing a required value; `badRequest`, saying so, for a publish a workflow holds for
+  approval; `notFound` for a page the API user cannot see.
+- **Where it writes:** a route, an action, a job or an event handler. A page render only reads,
+  and a write from one answers `forbidden`. A bundle's routes do not act as the site.
+- **Audited** as the API user, the entry naming the code: `Through route POST /listings`,
+  `Through action listings.publish`, `Through job imports.nightly`,
+  `Through event Umbraco.ContentPublish`. Notifications say the same.
+- **Refused at boot:** an `actAs` that is no API user's client id.
+
+### Content events
+
+`events` in the config handles content events by the names webhooks use (story 298):
+
+```ts
+export default defineConfig({
+  events: {
+    'Umbraco.ContentPublish': async (event, { db, site, job }) => {
+      await db.insertInto('listing_index').values({ key: event.key }).execute()
+    },
+  },
+})
+```
+
+- **Each event is a site job,** `crombolo:event`: the outbox dispatcher, which feeds webhooks and
+  bundles' handlers, queues one per event the site handles, so it runs once per cluster, on a
+  node that owns writes, retried on the jobs' back-off and listed with the site's other jobs.
+- **A handler gets** the event (`alias`, `key`, `contentType`, `cultures`, and `actor` with its
+  kind and name), the site's own tables as `db`, `site()` and the job.
+- **A handler that writes** does so as the API user, through `event <alias>`. A change it makes
+  to the page it was called for is not handed to the site's handlers again, so a handler can
+  stamp its own page without calling itself; webhooks and bundles still hear it.
+- **Refused at boot:** an event this site does not raise, and a handler that is not a function.
+
 ### Named queries
 
 The site's own tables ([`data-model.md`](data-model.md#custom-tables)) are
