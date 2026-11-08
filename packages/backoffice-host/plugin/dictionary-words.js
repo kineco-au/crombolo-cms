@@ -1,9 +1,10 @@
 /**
  * Dictionary words in the back office (stories 294, 297). `crombolo-dictionary-words`
  * goes around a text box, the form editor's and the text boxes and text areas
- * of a page: a `{#key}` naming an item shows as a chip, and typing `{#`, or `#`
- * at the start, offers the items. It sends `crombolo-word-choose` with the new
- * value; the box it holds sends its own input as before. Without this module the
+ * of a page: a `{#key}` naming an item shows as a chip, and typing `{#` anywhere,
+ * or `#` at the start, offers the items, the chosen one going in at the cursor.
+ * It sends `crombolo-word-choose` with the new value; the box it holds sends its
+ * own input as before. Without this module the
  * element is unknown, and the box shows as it always did.
  *
  * Its entry point also tells the fork what `{#key}` in a block's label reads as.
@@ -11,7 +12,7 @@
 import { css, html, LitElement, nothing } from '@umbraco-cms/backoffice/external/lit'
 import './dictionary-chip.js'
 import { dictionaryWords, WORDS_CHANGED } from './dictionary-words-client.js'
-import { chipWord, suggestions, wordLine, wordValue } from './form-word-input-model.js'
+import { chipWord, insertWord, suggestions, wordLine } from './form-word-input-model.js'
 
 export class CromboloDictionaryWordsElement extends LitElement {
   static properties = {
@@ -32,9 +33,13 @@ export class CromboloDictionaryWordsElement extends LitElement {
     super()
     this._open = false
     this._active = 0
-    this.addEventListener('input', () => {
+    this.addEventListener('input', (event) => {
+      this.#follow(event)
       this._active = 0
       this._open = true
+    })
+    this.addEventListener('keyup', (event) => {
+      if (event.key.startsWith('Arrow') && !this.#found.rows.length) this.#follow(event)
     })
     this.addEventListener('keydown', (event) => this.#onKeydown(event))
     this.addEventListener('focusout', () => {
@@ -57,10 +62,37 @@ export class CromboloDictionaryWordsElement extends LitElement {
     return this.words ?? this._loaded
   }
 
+  /** The box being typed in, and where its cursor is. */
+  #box
+  #caret
+
+  #follow(event) {
+    const box = event
+      .composedPath()
+      .find((el) => el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)
+    if (!box) return
+    this.#box = box
+    this.#caret = box.selectionStart ?? undefined
+  }
+
   get #found() {
     return this.readonly || !this._open
       ? { rows: [], more: false }
-      : suggestions(this.#words ?? [], this.value ?? '')
+      : suggestions(this.#words ?? [], this.value ?? '', this.#caret)
+  }
+
+  /** The item chosen, made `{#key}` where the cursor is. */
+  #pick(word) {
+    const value = this.value ?? ''
+    const at = insertWord(value, this.#caret ?? value.length, word.name)
+    this.#choose(at.value)
+    const box = this.#box
+    if (box)
+      requestAnimationFrame(() => {
+        box.focus()
+        box.setSelectionRange?.(at.caret, at.caret)
+        this.#caret = at.caret
+      })
   }
 
   #choose(value) {
@@ -82,7 +114,7 @@ export class CromboloDictionaryWordsElement extends LitElement {
       this._active = (this._active + step) % rows.length
     } else if (event.key === 'Enter') {
       event.preventDefault()
-      this.#choose(wordValue((rows[this._active] ?? rows[0]).name))
+      this.#pick(rows[this._active] ?? rows[0])
     }
   }
 
@@ -121,7 +153,7 @@ export class CromboloDictionaryWordsElement extends LitElement {
                   aria-selected=${index === this._active ? 'true' : 'false'}
                   @pointerdown=${(event) => {
                     event.preventDefault()
-                    this.#choose(wordValue(word.name))
+                    this.#pick(word)
                   }}
                 >
                   <strong>${word.name}</strong> <span>${word.text}</span>

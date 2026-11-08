@@ -196,6 +196,7 @@ export default class CromboloFormsEntriesElement extends UmbLitElement {
               : nothing
           }
           <uui-input
+            label="Search the answers"
             placeholder="Search the answers"
             .value=${this._search}
             @change=${(event) => {

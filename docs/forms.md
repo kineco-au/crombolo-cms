@@ -149,8 +149,10 @@ mandatory-message = "Please tell us {#contact.nameNeeded}"
 ```
 
 - **What can name one:** the caption and help text of a field, a group or a page, a placeholder,
-  a text block, the required and pattern messages, the submit, next and previous labels and the
-  message on submit. For a choice list, use a dictionary source.
+  a text block, the required and pattern messages, the submit, next and previous labels, the
+  message on submit, and the default value of a short or long answer, which is words in the box.
+  Any other default is a value the field compares, so it stays as written. For a choice list, use
+  a dictionary source.
 - **A key that names no item shows as written,** and so does any `#` outside braces: "#1 choice"
   is only text. `crombolo bundle build --check` reports a `{#key}` that matches nothing in
   `content/dictionary.toml`, when a site has that file.
@@ -165,8 +167,12 @@ mandatory-message = "Please tell us {#contact.nameNeeded}"
 - **A submission saves its language,** from `Accept-Language` or the page it came from. Entries
   shows it, and filters by it, once a form has entries in more than one. The CSV export and
   e-mails show words, not keys.
-- **The form editor** lists dictionary items when `{#`, or `#` at the start, is typed in a text box,
-  in the default language. Choosing one writes `{#key}`, which shows as a chip: its words, and an
+- **Aliases follow names** in the designer while a form or field is new: the form's from its
+  name, a field's from its caption (`{#contact.name}` gives `contactName`), locked, as Umbraco's
+  editors make them. Saved, an alias is locked and stays when the name changes; it is what entries,
+  pages and bundles name the form and its fields by.
+- **The form editor** lists dictionary items when `{#` is typed anywhere in a text box, or `#` at
+  its start, in the default language, and puts the one chosen where the cursor is. Choosing one writes `{#key}`, which shows as a chip: its words, and an
   × that empties the box. Clicking the words opens them in every language, and someone with
   Translation or Settings changes them there. A page's text boxes do the same
   ([`rendering.md`](rendering.md), "Property values").

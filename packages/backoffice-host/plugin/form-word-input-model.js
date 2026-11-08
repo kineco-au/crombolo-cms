@@ -4,8 +4,9 @@
  * so each is tested on its own. Shared by the form editor and a page's text boxes.
  */
 const ROWS = 8
-/** What has been typed of a name: after `{#`, or after a `#` that starts the box. */
-const TYPING = /^(?:\{#([^{}\s]*)|#(\S*))$/
+/** What has been typed of a name, up to the cursor: after `{#`, or a `#` that starts the box. */
+const TYPING_IN_TEXT = /\{#([^{}\s]*)$/
+const TYPING_ALONE = /^#(\S*)$/
 const ONLY_WORD = /^\{#([^{}\s]+)\}$/
 const BARE_WORD = /^#(\S+)$/
 
@@ -13,17 +14,49 @@ const BARE_WORD = /^#(\S+)$/
 export const wordValue = (name) => `{#${name}}`
 
 /**
- * The dictionary items to offer for what has been typed: names starting with it
- * first, then those containing it, then those whose words do. Only after `{#`,
- * or a `#` at the start.
+ * The name being typed at the cursor, and where its mark starts: after `{#`
+ * anywhere, or after a `#` that is the whole box. Undefined when none is.
+ *
+ * @param {string} value
+ * @param {number} [caret] where the cursor is; the end when not known
+ */
+export function typedWord(value, caret = (value ?? '').length) {
+  const before = (value ?? '').slice(0, caret)
+  const inText = TYPING_IN_TEXT.exec(before)
+  if (inText) return { typed: inText[1] ?? '', start: inText.index, end: caret }
+  const alone = TYPING_ALONE.exec(value ?? '')
+  if (alone && caret === value.length) return { typed: alone[1] ?? '', start: 0, end: caret }
+  return undefined
+}
+
+/**
+ * The value with the name being typed at the cursor made `{#name}`, and where the
+ * cursor goes after it. The rest of the text stays as it was.
+ *
+ * @param {string} value
+ * @param {number} caret
+ * @param {string} name
+ */
+export function insertWord(value, caret, name) {
+  const at = typedWord(value, caret) ?? { start: caret, end: caret }
+  const rest = value.slice(at.end).replace(/^[^{}\s]*\}/, '')
+  const word = wordValue(name)
+  return { value: value.slice(0, at.start) + word + rest, caret: at.start + word.length }
+}
+
+/**
+ * The dictionary items to offer for what has been typed at the cursor: names
+ * starting with it first, then those containing it, then those whose words do.
+ * Only after `{#`, or a `#` at the start.
  *
  * @param {{ name: string, text: string }[]} words
  * @param {string} value
+ * @param {number} [caret]
  */
-export function suggestions(words, value) {
-  const typing = TYPING.exec(value ?? '')
+export function suggestions(words, value, caret) {
+  const typing = typedWord(value, caret)
   if (!typing) return { rows: [], more: false }
-  const typed = (typing[1] ?? typing[2] ?? '').toLowerCase()
+  const typed = typing.typed.toLowerCase()
   const rank = ({ name, text }) => {
     const lower = name.toLowerCase()
     if (lower.startsWith(typed)) return 0

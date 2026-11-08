@@ -113,7 +113,7 @@ test('a new page saves and publishes, renders at its URL, and keeps its rich tex
 
   // The Info tab loads its history, references and redirects without an error
   await page.getByRole('tab', { name: 'Info' }).click()
-  await expect(page.getByText('Content saved and Published')).toBeVisible()
+  await expect(page.locator('crombolo-page-history').getByText(/Last changed/)).toBeVisible()
   // No re-authentication was asked for along the way
   await expect(page.locator('umb-app-auth-modal')).toHaveCount(0)
 })

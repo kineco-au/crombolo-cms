@@ -44,6 +44,8 @@ export default class CromboloFormWordInputElement extends LitElement {
         ?readonly=${this.readonly}
         @input=${(event) => {
           this.value = event.target.value ?? ''
+          // Each keystroke, for a host that follows the text (an alias from a caption).
+          this.dispatchEvent(new Event('input', { bubbles: true }))
         }}
         @change=${(event) => {
           event.stopPropagation()

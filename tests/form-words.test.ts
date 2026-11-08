@@ -129,3 +129,16 @@ describe('{#key} in a form (story 297)', () => {
     expect(field?.values).toEqual(['#kept'])
   })
 })
+
+describe('a default value (story 297)', () => {
+  test('of a text field is words; of any other field, a value it compares', () => {
+    const words = (type: string) =>
+      withFormWords(form({ type, defaultValue: '{#greeting}' } as never), (text) =>
+        text.replace('{#greeting}', 'Kia ora'),
+      ).pages[0]?.groups[0]?.fields[0]?.defaultValue
+    expect(words('shortAnswer')).toBe('Kia ora')
+    expect(words('longAnswer')).toBe('Kia ora')
+    expect(words('dropdown')).toBe('{#greeting}')
+    expect(words('hidden')).toBe('{#greeting}')
+  })
+})

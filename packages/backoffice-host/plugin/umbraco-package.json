@@ -2,7 +2,7 @@
   "$schema": "../../backoffice-dist/dist/umbraco-package-schema.json",
   "name": "Crombolo",
   "id": "Crombolo.Core",
-  "version": "0.54.1",
+  "version": "0.55.0",
   "allowPublicAccess": false,
   "extensions": [
     {
@@ -863,6 +863,21 @@
           "match": "Crombolo.Section.WorkflowSetup"
         }
       ]
+    },
+    {
+      "type": "workspaceInfoApp",
+      "alias": "Crombolo.WorkspaceInfoApp.Document.History",
+      "name": "Crombolo Page History",
+      "element": "/crombolo-plugin/page-history.js",
+      "overwrites": ["Umb.WorkspaceInfoApp.Document.History"],
+      "weight": 20,
+      "conditions": [{ "alias": "Umb.Condition.WorkspaceAlias", "match": "Umb.Workspace.Document" }]
+    },
+    {
+      "type": "modal",
+      "alias": "Crombolo.Modal.PageHistory",
+      "name": "Crombolo Page History Panel",
+      "element": "/crombolo-plugin/page-history-modal.js"
     },
     {
       "type": "condition",

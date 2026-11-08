@@ -5,7 +5,9 @@
 import { describe, expect, test } from 'bun:test'
 import {
   chipWord,
+  insertWord,
   suggestions,
+  typedWord,
   wordLine,
   wordValue,
 } from '../packages/backoffice-host/plugin/form-word-input-model.js'
@@ -19,10 +21,19 @@ const WORDS = [
 const names = (value: string) => suggestions(WORDS, value).rows.map((word) => word.name)
 
 describe('the suggestions', () => {
-  test('wait for {# or a # at the start', () => {
+  test('wait for {# anywhere, or a # at the start', () => {
     expect(names('contact')).toEqual([])
     expect(names('')).toEqual([])
-    expect(names('Hello {#')).toEqual([])
+    expect(names('Hello #con')).toEqual([])
+  })
+
+  test('follow the cursor, in the middle of other words', () => {
+    expect(names('Hello {#con')).toEqual(['contact.email', 'contact.name', 'nav.contact'])
+    const value = 'Dear {#touch, welcome'
+    expect(suggestions(WORDS, value, 'Dear {#touch'.length).rows.map((w) => w.name)).toEqual([
+      'nav.contact',
+    ])
+    expect(suggestions(WORDS, value, value.length).rows).toEqual([])
   })
 
   test('list everything after {# or # alone', () => {
@@ -81,5 +92,27 @@ describe('the line under a box', () => {
     expect(wordLine(WORDS, 'Name')).toBeUndefined()
     expect(wordLine(WORDS, '#1 choice')).toBeUndefined()
     expect(wordLine(undefined, '{#contact.nmae}')).toBeUndefined()
+  })
+})
+
+describe('choosing one', () => {
+  test('puts {#key} where the cursor is, and keeps the rest of the text', () => {
+    expect(insertWord('Dear {#con', 10, 'contact.name')).toEqual({
+      value: 'Dear {#contact.name}',
+      caret: 20,
+    })
+    expect(insertWord('Dear {#co, welcome', 9, 'contact.name').value).toBe(
+      'Dear {#contact.name}, welcome',
+    )
+    expect(insertWord('#con', 4, 'contact.name').value).toBe('{#contact.name}')
+  })
+
+  test('replaces a name already closed, rather than leaving its brace behind', () => {
+    expect(insertWord('{#con}', 5, 'contact.name').value).toBe('{#contact.name}')
+  })
+
+  test('knows what is being typed, and that nothing is outside a mark', () => {
+    expect(typedWord('Hi {#na', 7)).toEqual({ typed: 'na', start: 3, end: 7 })
+    expect(typedWord('Hi there', 8)).toBeUndefined()
   })
 })

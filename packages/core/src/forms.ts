@@ -360,6 +360,12 @@ export function withResolvedChoices(
   }
 }
 
+/**
+ * The field types whose default value is words a visitor reads in the box, and so
+ * may name a dictionary item. Any other type's default is a value it compares.
+ */
+export const WORDY_DEFAULT_TYPES: readonly string[] = ['shortAnswer', 'longAnswer']
+
 /** Each word a form shows a visitor, passed through `word`. */
 function mapFormWords(form: SchemaForm, word: (text: string) => string): SchemaForm {
   const text = (value: string | undefined) => (value === undefined ? undefined : word(value))
@@ -388,6 +394,9 @@ function mapFormWords(form: SchemaForm, word: (text: string) => string): SchemaF
             content: text(field.content),
             mandatoryMessage: text(field.mandatoryMessage),
             patternMessage: text(field.patternMessage),
+            defaultValue: WORDY_DEFAULT_TYPES.includes(field.type)
+              ? text(field.defaultValue)
+              : field.defaultValue,
           }),
         })),
       })),

@@ -8,6 +8,8 @@
  * the file to the same rules on save, so this only spares a round trip.
  */
 // For its side effect: registers `umb-input-document`, which the shell loads lazily.
+import './alias-input.js'
+import { kebabAlias } from './alias-model.js'
 import '@umbraco-cms/backoffice/document'
 import { css, html, nothing, unsafeCSS } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
@@ -114,6 +116,9 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
     if (named) this.#edit(named)
     else if (asked.has('new')) {
       this.#edit(blank())
+      // New: its alias, and its stages', follow their names until saved or written by hand.
+      this.#freshWorkflow = true
+      for (const stage of this._editing.stages) this.#fresh.add(stage)
       this.#folder = asked.get('new') || undefined
     } else this._editing = undefined
   }
@@ -148,7 +153,34 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
     this.#follow()
   }
 
+  /**
+   * What is new and not saved yet, whose alias follows its name until it is
+   * written by hand. Stages by the object, which an edit keeps; the workflow by
+   * a flag, since every edit copies it.
+   */
+  #fresh = new WeakSet()
+  #own = new WeakSet()
+  #freshWorkflow = false
+  #ownWorkflowAlias = false
+
+  #followsStage(stage) {
+    return this.#fresh.has(stage) && !this.#own.has(stage)
+  }
+
+  /** A stage alias made from its name, unlike every other stage's. */
+  #stageAliasFor(stage, name) {
+    const base = kebabAlias(name) || 'stage'
+    let alias = base
+    for (let n = 2; this._editing.stages.some((s) => s !== stage && s.alias === alias); n++)
+      alias = `${base}-${n}`
+    return alias
+  }
+
   #edit(workflow) {
+    this.#freshWorkflow = false
+    this.#ownWorkflowAlias = false
+    this.#fresh = new WeakSet()
+    this.#own = new WeakSet()
     this.#folder = undefined
     const copy = structuredClone(workflow)
     // Every stage gets the place the canvas would draw it, so dragging starts from there.
@@ -176,7 +208,7 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
     let n = this._editing.stages.length + 1
     while (this.#stage(`stage-${n}`)) n++
     const xs = this._editing.stages.map((s) => s.position?.x ?? 0)
-    this._editing.stages.push({
+    const stage = {
       alias: `stage-${n}`,
       name: `Stage ${n}`,
       approvers: [],
@@ -184,7 +216,9 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
       next: [],
       sendBack: 'editor',
       position: { x: Math.max(0, ...xs) + BOX.width + 80, y: 0 },
-    })
+    }
+    this.#fresh.add(stage)
+    this._editing.stages.push(stage)
     this._selected = `stage-${n}`
     this.#touch()
   }
@@ -310,6 +344,9 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
     // The green toast every workspace shows on a save.
     this.#notifications?.peek('positive', { data: { message: 'Workflow saved' } })
     this._originalAlias = this._editing.alias
+    // Saved, its aliases are what requests and files name: no longer following names.
+    this.#freshWorkflow = false
+    this.#fresh = new WeakSet()
     this.#folder = undefined
     approvalsChanged()
     window.dispatchEvent(new Event('crombolo:definitions-changed'))
@@ -500,18 +537,28 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
       ${property(
         'Name',
         undefined,
-        html`<uui-input label="Name" ?readonly=${!editable} .value=${stage.name ?? ''} @change=${(
+        html`<uui-input label="Name" ?readonly=${!editable} .value=${stage.name ?? ''} @input=${(
           e,
         ) => {
           stage.name = e.target.value
-          this.#touch()
+          if (this.#followsStage(stage))
+            this.#renameStage(stage, this.#stageAliasFor(stage, stage.name))
+          else this.#touch()
         }}></uui-input>`,
         'vertical',
       )}
       ${property(
         'Alias',
         'How the stage is named in the file and in other stages',
-        html`<uui-input label="Alias" ?readonly=${!editable} .value=${stage.alias} @change=${(e) => this.#renameStage(stage, e.target.value)}></uui-input>`,
+        html`<crombolo-alias-input
+          ?readonly=${!editable}
+          ?saved=${!this.#fresh.has(stage)}
+          .value=${stage.alias}
+          @change=${(e) => {
+            this.#own.add(stage)
+            this.#renameStage(stage, e.target.value)
+          }}
+        ></crombolo-alias-input>`,
         'vertical',
       )}
       ${property(
@@ -593,12 +640,24 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
         ${property(
           'Name',
           undefined,
-          html`<uui-input label="Name" ?readonly=${!editable} .value=${w.name} @change=${(e) => set('name')(e.target.value)}></uui-input>`,
+          html`<uui-input label="Name" ?readonly=${!editable} .value=${w.name} @input=${(e) => {
+            if (this.#freshWorkflow && !this.#ownWorkflowAlias)
+              w.alias = kebabAlias(e.target.value) || 'new-workflow'
+            set('name')(e.target.value)
+          }}></uui-input>`,
         )}
         ${property(
           'Alias',
           'The name of its file',
-          html`<uui-input label="Alias" ?readonly=${!editable} .value=${w.alias} @change=${(e) => set('alias')(e.target.value.trim())}></uui-input>`,
+          html`<crombolo-alias-input
+            ?readonly=${!editable}
+            ?saved=${!this.#freshWorkflow}
+            .value=${w.alias}
+            @change=${(e) => {
+              this.#ownWorkflowAlias = true
+              set('alias')(e.target.value)
+            }}
+          ></crombolo-alias-input>`,
         )}
         ${property(
           'Covers the pages under',

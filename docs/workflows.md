@@ -155,9 +155,10 @@ Times are kept in UTC and shown in the reader's own time, with the zone named;
 - **Approvals** — in the menu under Content, after Pages, with no header tab.
   One list of requests, the pending by default, with *Pending* and *Decided*
   to choose what it holds, a page of 25 at a time (`approvals/requests`). A
-  tree beside it has two folders: *Waiting for me* (stages the reader may
-  decide) and *Decided* (the latest 25). A request, in the list or the tree,
-  opens its page's *Workflow* tab, where it is acted on. Admin, Editors and
+  tree beside it has one folder, *Pending*: every request still pending, those
+  waiting on a stage the reader may decide first, marked with an inbox icon. A
+  request, in the list or the tree, opens its page's *Workflow* tab, where it is
+  acted on. Admin, Editors and
   Writers have Approvals; any group can be given it. Its permission is still
   `workflow`. With no workflow set up and no request open, it says so. A
   page's *Workflow* tab shows only while there is one
@@ -167,6 +168,9 @@ Times are kept in UTC and shown in the reader's own time, with the zone named;
   workflows' tree, with folders, and the list and designer beside it. The
   tree's "+" and "…" start a workflow. Deleting one first names the pages whose
   requests it withdraws.
+- **Aliases** — a new workflow's and a new stage's follow their names (`Legal review` gives
+  `legal-review`) until saved or written by hand; a saved one is locked, since a file and the
+  requests in flight name it.
 - **The designer** — two tabs. *Settings*, which opens first: what the workflow
   covers and its rules. *Stages*: stages as boxes on a canvas, dragged into
   place; *Connect stages* draws an arrow, clicking one removes it; beside the

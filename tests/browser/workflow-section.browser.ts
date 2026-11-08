@@ -80,7 +80,7 @@ test('the addresses Workflows had open them in Structure', async ({ page }) => {
   await expect(page.locator('crombolo-workflow-designer')).toBeVisible()
 })
 
-test('the list pages through pending and decided, and the tree holds both folders', async ({
+test('the list pages through pending and decided, and the tree holds what is pending', async ({
   page,
 }) => {
   const request = (state: string, nodeName: string, index: number) => ({
@@ -108,11 +108,15 @@ test('the list pages through pending and decided, and the tree holds both folder
     )
     return route.fulfill({ json: { total, items } })
   })
+  await page.route('**/approvals/in-flight', (route) =>
+    route.fulfill({
+      json: {
+        items: [request('waiting', 'Someone else’s', 2), request('waiting', 'Mine to decide', 1)],
+      },
+    }),
+  )
   await page.route('**/approvals/waiting', (route) =>
     route.fulfill({ json: { items: [request('waiting', 'Mine to decide', 1)] } }),
-  )
-  await page.route('**/approvals/history?**', (route) =>
-    route.fulfill({ json: { total: 1, items: [request('approved', 'Already decided', 2)] } }),
   )
   await signIn(page)
   await page.goto('/crombolo/section/workflow')
@@ -132,18 +136,19 @@ test('the list pages through pending and decided, and the tree holds both folder
   await expect(list.getByRole('link', { name: 'Page 30' })).toBeVisible()
   expect(asked.at(-1)).toContain('skip=25')
 
-  // The tree: two folders, no root, each request opening its page's Workflow tab.
+  // The tree: one Pending folder, no root; what waits for me first, marked.
   const tree = page.locator('crombolo-approvals-tree')
-  await expect(tree.locator('uui-menu-item[label="Approvals"]')).toHaveCount(0)
   await expect(tree.getByRole('heading', { name: 'Approvals' })).toBeVisible()
-  for (const [folder, name] of [
-    ['Waiting for me', 'Mine to decide'],
-    ['Decided', 'Already decided'],
-  ]) {
-    const row = tree.locator(`uui-menu-item[label="${folder}"]`)
-    await expect(row.locator('umb-icon[name="icon-folder"]').first()).toBeAttached()
-    await expect(row.locator(`uui-menu-item[label="${name}"]`)).toBeVisible()
-  }
+  await expect(tree.locator('uui-menu-item[label="Approvals"]')).toHaveCount(0)
+  await expect(tree.locator('uui-menu-item[label="Waiting for me"]')).toHaveCount(0)
+  await expect(tree.locator('uui-menu-item[label="Decided"]')).toHaveCount(0)
+  const pending = tree.locator('uui-menu-item[label="Pending"]')
+  await expect(pending.locator('umb-icon[name="icon-folder"]').first()).toBeAttached()
+  const rows = pending.locator('uui-menu-item')
+  await expect(rows).toHaveCount(2)
+  await expect(rows.first()).toHaveAttribute('label', 'Mine to decide')
+  await expect(rows.first().locator('umb-icon[name="icon-inbox"]')).toBeAttached()
+  await expect(rows.nth(1).locator('umb-icon[name="icon-document"]')).toBeAttached()
   // Not followed: the page is made up, and opening it would fail to load.
   await expect(
     tree.locator('uui-menu-item[label="Mine to decide"] a#label-button'),

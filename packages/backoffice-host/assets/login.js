@@ -245,7 +245,7 @@ class CromboloLoginElement extends LitElement {
       <form @submit=${this.#verifyTwoFactor}>
         <uui-form-layout-item>
           <uui-label for="code" slot="label" required>Code</uui-label>
-          <uui-input id="code" name="code" autocomplete="one-time-code" required ?disabled=${this._busy}></uui-input>
+          <uui-input id="code" label="Code" name="code" autocomplete="one-time-code" required ?disabled=${this._busy}></uui-input>
         </uui-form-layout-item>
         ${this.#messages()}
         <uui-button type="submit" look="primary" color="positive" .state=${this._busy ? 'waiting' : undefined} label="Verify"></uui-button>
@@ -268,11 +268,11 @@ class CromboloLoginElement extends LitElement {
       <form @submit=${this.#setPassword}>
         <uui-form-layout-item>
           <uui-label for="password" slot="label" required>Password</uui-label>
-          <uui-input id="password" name="password" type="password" autocomplete="new-password" required></uui-input>
+          <uui-input id="password" label="Password" name="password" type="password" autocomplete="new-password" required></uui-input>
         </uui-form-layout-item>
         <uui-form-layout-item>
           <uui-label for="confirm" slot="label" required>Confirm password</uui-label>
-          <uui-input id="confirm" name="confirm" type="password" autocomplete="new-password" required></uui-input>
+          <uui-input id="confirm" label="Confirm password" name="confirm" type="password" autocomplete="new-password" required></uui-input>
         </uui-form-layout-item>
         ${this.#messages()}
         <uui-button type="submit" look="primary" color="positive" .state=${this._busy ? 'waiting' : undefined} label="Set password"></uui-button>
@@ -286,7 +286,7 @@ class CromboloLoginElement extends LitElement {
       <form @submit=${this.#requestReset}>
         <uui-form-layout-item>
           <uui-label for="email" slot="label" required>Email</uui-label>
-          <uui-input id="email" name="email" type="email" autocomplete="email" required></uui-input>
+          <uui-input id="email" label="Email" name="email" type="email" autocomplete="email" required></uui-input>
         </uui-form-layout-item>
         ${this.#messages()}
         <uui-button type="submit" look="primary" .state=${this._busy ? 'waiting' : undefined} label="Send reset link"></uui-button>
@@ -346,6 +346,7 @@ class CromboloLoginElement extends LitElement {
               </uui-label>
               <uui-input
                 id="username"
+                label=${this.usernameIsEmail ? 'Email' : 'Username'}
                 name="username"
                 type=${this.usernameIsEmail ? 'email' : 'text'}
                 autocomplete="username"
@@ -357,6 +358,7 @@ class CromboloLoginElement extends LitElement {
               <uui-label for="password" slot="label" required>Password</uui-label>
               <uui-input
                 id="password"
+                label="Password"
                 name="password"
                 type="password"
                 autocomplete="current-password"

@@ -11,6 +11,8 @@
  * refusal a hand-written file would get.
  */
 // For its side effect: registers `umb-input-document`, which the shell loads lazily.
+import './alias-input.js'
+import { camelAlias } from './alias-model.js'
 import '@umbraco-cms/backoffice/document'
 import './form-word-input.js'
 import './forms-entries.js'
@@ -63,6 +65,9 @@ const WORD_SETTINGS = ['messageOnSubmit', 'submitLabel', 'nextLabel', 'previousL
 
 /** The settings of a field's type that can name one. */
 const WORD_FIELD_SETTINGS = ['placeholder', 'content']
+
+/** Whose default value is words in the box, as `WORDY_DEFAULT_TYPES` in `@crombolo/core`. */
+const WORDY_DEFAULT_TYPES = ['shortAnswer', 'longAnswer']
 
 /** The tree beside the list hears of a change this way. */
 const definitionsChanged = () => window.dispatchEvent(new Event('crombolo:definitions-changed'))
@@ -281,7 +286,10 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
             .checked=${value === true}
             @change=${(event) => write(setting.key, event.target.checked || undefined)}
           ></uui-toggle>`
-        if (WORD_FIELD_SETTINGS.includes(setting.key))
+        if (
+          WORD_FIELD_SETTINGS.includes(setting.key) ||
+          (setting.key === 'defaultValue' && WORDY_DEFAULT_TYPES.includes(field.type))
+        )
           return html`<label>
             <span>${label}</span>
             <crombolo-form-word-input
@@ -295,6 +303,7 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
         return html`<label>
           <span>${label}</span>
           <uui-input
+            label=${label}
             title=${setting.description ?? ''}
             type=${setting.kind === 'number' ? 'number' : 'text'}
             .value=${value === undefined ? '' : setting.kind === 'list' ? value.join(', ') : String(value)}
@@ -401,6 +410,27 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
       pages: [{ groups: [{ columns: 1, fields: [] }] }],
       workflows: [],
     }
+    this.#freshForm = this._editing.key
+    this.#ownFormAlias = false
+  }
+
+  /**
+   * What is new in this editor and not saved yet, whose alias follows its name
+   * until it is written by hand. Fields by the object, which an edit keeps; the
+   * form by its key, since every edit copies it. A saved one is reloaded afresh.
+   */
+  #fresh = new WeakSet()
+  #own = new WeakSet()
+  #freshForm
+  #ownFormAlias = false
+
+  #isFresh(item) {
+    return item === this._editing ? item.key === this.#freshForm : this.#fresh.has(item)
+  }
+
+  #follows(item) {
+    if (item === this._editing) return this.#isFresh(item) && !this.#ownFormAlias
+    return this.#fresh.has(item) && !this.#own.has(item)
   }
 
   /** Every field, in order: for the previews, which a layout change does not touch. */
@@ -489,7 +519,7 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
         look="secondary"
         label="Add a field"
         @click=${() => {
-          group.fields.push({
+          const field = {
             alias: '',
             type: 'shortAnswer',
             caption: '',
@@ -497,7 +527,9 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
             sensitive: false,
             values: [],
             accept: [],
-          })
+          }
+          this.#fresh.add(field)
+          group.fields.push(field)
           this.#touch()
         }}
       ></uui-button>
@@ -550,22 +582,32 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
                     .value=${field.caption ?? ''}
                     .words=${this._words}
                     ?readonly=${Boolean(this._because)}
+                    @input=${(event) => {
+                      field.caption = event.target.value
+                      if (this.#follows(field)) {
+                        field.alias = camelAlias(field.caption)
+                        this.requestUpdate()
+                      }
+                    }}
                     @change=${(event) => {
                       field.caption = event.target.value
+                      if (this.#follows(field)) field.alias = camelAlias(field.caption)
                       this.#touch()
                     }}
                   ></crombolo-form-word-input>
                   ${this.#fieldDetails(field)}
                 </uui-table-cell>
                 <uui-table-cell>
-                  <uui-input
-                    label="Alias"
+                  <crombolo-alias-input
                     .value=${field.alias ?? ''}
+                    ?saved=${!this.#fresh.has(field)}
+                    ?readonly=${Boolean(this._because)}
                     @change=${(event) => {
                       field.alias = event.target.value
+                      this.#own.add(field)
                       this.#touch()
                     }}
-                  ></uui-input>
+                  ></crombolo-alias-input>
                 </uui-table-cell>
                 <uui-table-cell>
                   <select
@@ -767,6 +809,8 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
       if (result.ok) {
         // The green toast every workspace shows on a save.
         this.#notifications?.peek('positive', { data: { message: 'Form saved' } })
+        // Saved, its alias is what things will name it by: no longer following its name.
+        this.#freshForm = undefined
         this._editing = undefined
         this.#changed()
         await this.#load()
@@ -850,13 +894,38 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
   /** The form's own settings and layout, which is what its Design tab shows. */
   #design(form, text) {
     return html`      <uui-box>
-        ${text('name', 'Name')}
-        ${text('alias', 'Alias', 'Letters and numbers, starting with a letter. The file is named after it.')}
+        <uui-form-layout-item>
+          <uui-label slot="label">Name</uui-label>
+          <uui-input
+            label="Name"
+            .value=${form.name ?? ''}
+            ?readonly=${Boolean(this._because)}
+            @input=${(event) => {
+              form.name = event.target.value
+              if (this.#follows(form)) form.alias = camelAlias(form.name)
+              this.#touch()
+            }}
+          ></uui-input>
+        </uui-form-layout-item>
+        <uui-form-layout-item>
+          <uui-label slot="label">Alias</uui-label>
+          <crombolo-alias-input
+            .value=${form.alias ?? ''}
+            ?saved=${!this.#isFresh(form)}
+            ?readonly=${Boolean(this._because)}
+            @change=${(event) => {
+              form.alias = event.target.value
+              this.#ownFormAlias = true
+              this.#touch()
+            }}
+          ></crombolo-alias-input>
+        </uui-form-layout-item>
         ${text('messageOnSubmit', 'Message on submit')}
         ${text('submitLabel', 'Submit button')}
         <uui-form-layout-item>
           <uui-label slot="label">Store entries</uui-label>
           <uui-toggle
+            label="Store entries"
             .checked=${form.storeEntries !== false}
             @change=${(event) => {
               form.storeEntries = event.target.checked
@@ -870,6 +939,7 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
                 <uui-label slot="label">Show one page at a time</uui-label>
                 <span slot="description">Each page is checked before the next. Without JavaScript the pages show together.</span>
                 <uui-toggle
+                  label="Show one page at a time"
                   .checked=${form.stepPages === true}
                   @change=${(event) => {
                     if (event.target.checked) form.stepPages = true
@@ -931,7 +1001,7 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
                 ?readonly=${Boolean(this._because)}
                 @change=${change}
               ></crombolo-form-word-input>`
-            : html`<uui-input .value=${form[key] ?? ''} @change=${change}></uui-input>`
+            : html`<uui-input label=${label} .value=${form[key] ?? ''} @change=${change}></uui-input>`
         }
       </uui-form-layout-item>
     `

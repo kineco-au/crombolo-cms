@@ -163,6 +163,9 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'sectionView:Crombolo.SectionView.Workflow.Requests',
       // Setting workflows up is a node in Structure, or beside forms; deciding is Approvals'.
       'sectionView:Crombolo.SectionView.Workflows',
+      // A page's history, a View button whose panel lists and compares its versions.
+      'workspaceInfoApp:Crombolo.WorkspaceInfoApp.Document.History',
+      'modal:Crombolo.Modal.PageHistory',
       // Sending for approval is in the bottom bar, beside Save and publish.
       'condition:Crombolo.Condition.Document.MaySendForApproval',
       'workspaceAction:Crombolo.WorkspaceAction.Document.SendForApproval',

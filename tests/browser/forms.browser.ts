@@ -217,4 +217,20 @@ test('typing # offers dictionary items, chosen as a chip, and a field keeps its 
   await help.fill('Who should we ask for?')
   await help.blur()
   await expect(help).toHaveValue('Who should we ask for?')
+
+  // {# in the middle of other words offers the items too, and the one chosen goes in there.
+  await help.fill('Ask for {#form.wo')
+  const helpBox = page.locator('crombolo-form-word-input[label="Help text"]').first()
+  await expect(helpBox.getByRole('option').first()).toBeVisible()
+  await help.press('Enter')
+  await expect(help).toHaveValue(`Ask for {#${name}}`)
+
+  // A text field's placeholder and default value take dictionary words as well.
+  for (const label of ['Placeholder', 'Default value']) {
+    const box = page.locator(`crombolo-form-word-input[label="${label}"]`).first()
+    await box.locator('input').fill('#form.wo')
+    await expect(box.getByRole('option').first()).toBeVisible()
+    await box.locator('input').press('Enter')
+    await expect(box.locator('crombolo-dictionary-chip')).toBeVisible()
+  }
 })

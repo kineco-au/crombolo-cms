@@ -488,6 +488,12 @@ elements answer at `section/forms/view/forms` and `section/forms/view/workflows`
 Forms section with `meta.noTab`, for someone with Forms or Workflow setup and not Structure:
 the menu's Structure opens there for them.
 
+A page's History box on the Info view is `page-history.js`, a `workspaceInfoApp` that
+`overwrites` Umbraco's audit-log one: the last change, and View, which opens
+`page-history-modal.js` in a sidebar. The panel lists the page's versions from the Management
+API's `document-version` endpoints, and compares a version with the one before it in
+`page-history-model.js`.
+
 A page's template is picked by `template-picker.js`, through the fork's
 `umbCromboloHooks.pickTemplate` in the document Info view, in a sidebar modal
 (`template-picker-modal.js`): every component on disk (`<backoffice>/crombolo/api/templates`) in a tree of the
@@ -498,7 +504,7 @@ API; the picker stays open, and it is picked like the rest.
 
 Approvals is the `workflow` section, in the menu after Pages. It is always there for whoever holds
 it, and its lists say when no workflow is set up. Its one view is `crombolo-approvals-list`; `approvals-tree.js`
-is its sidebar, with Waiting for me and Decided as folders.
+is its sidebar: one Pending folder, the requests waiting on the reader first.
 
 Content's home dashboard opens the first page the user can see, by asking for the
 tree's root, and replaces the address so the back button leaves the section.

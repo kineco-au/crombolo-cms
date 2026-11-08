@@ -6,6 +6,34 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.55.0 — 2026-11-08
+
+### Changes
+
+- **Aliases come from names in the form and workflow designers,** as in Umbraco's own editors.
+  A new form, field, workflow or stage has its alias follow its name or caption, locked, until it
+  is saved or unlocked and written by hand; a caption naming a dictionary item gives the item's
+  name. A saved one keeps its alias when renamed, and unlocking it says that what used the old
+  alias stops finding it.
+- **The form designer's Alias field has no line under it.**
+- **The Crombolo logo at the top left no longer lights up on hover;** it is a link home.
+- **A page's history opens in a panel.** The History box on the Info view says when the page last
+  changed and who changed it, and View all changes slides in every version of the page, newest
+  first. Choosing one shows what changed from the version before: each property, its value before
+  and after, with who made the change and when. On a page in more than one language, chips by
+  culture code, `en-GB`, choose the language, the default first.
+- **The tree beside Approvals is one Pending folder** of every request still pending, those
+  waiting for you first and marked with an inbox icon. Waiting for me and Decided are gone from
+  the tree; the list still shows decided requests.
+- **Dictionary words in more of a form,** the default value of a short or long answer among them.
+  Typing `{#` anywhere in a box offers the dictionary's items, and the one chosen goes in where the
+  cursor is, so `Ask for {#contact.name}` is one box.
+
+### Fixes
+
+- **Every box and switch in the form designer, and on the sign-in screens, has a label,** so screen
+  readers name it and the browser console no longer warns that one is missing.
+
 ## v0.54.1 — 2026-11-08
 
 v0.54.0 was tagged but not published. Its notes apply to this release.
