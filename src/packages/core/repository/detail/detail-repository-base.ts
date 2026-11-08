@@ -69,6 +69,9 @@ export abstract class UmbDetailRepositoryBase<
 		if (!unique) throw new Error('Unique is missing');
 		await this.#init;
 
+		// Crombolo: a repository destroyed while its editor loads, by leaving it, reads nothing.
+		if (!this.detailDataSource) return { data: undefined, asObservable: () => undefined };
+
 		const { data, error } = await this.detailDataSource.read(unique);
 
 		if (data) {

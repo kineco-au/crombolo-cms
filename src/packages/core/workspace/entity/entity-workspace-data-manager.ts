@@ -53,7 +53,7 @@ export class UmbEntityWorkspaceDataManager<ModelType>
 	 * @memberof UmbEntityWorkspaceDataManager
 	 */
 	setPersisted(data: ModelType | undefined) {
-		this._persisted.setValue(data);
+		this._persisted?.setValue(data);
 	}
 
 	/**
@@ -62,7 +62,7 @@ export class UmbEntityWorkspaceDataManager<ModelType>
 	 * @memberof UmbEntityWorkspaceDataManager
 	 */
 	updatePersisted(partialData: Partial<ModelType>) {
-		this._persisted.update(partialData);
+		this._persisted?.update(partialData);
 	}
 
 	/**
@@ -94,12 +94,12 @@ export class UmbEntityWorkspaceDataManager<ModelType>
 	 */
 	setCurrent(data: ModelType | undefined) {
 		if (data) {
-			const persistedData = this._persisted.getValue();
+			const persistedData = this._persisted?.getValue();
 			if (persistedData) {
 				data = this._sortCurrentData(persistedData, data);
 			}
 		}
-		this._current.setValue(data);
+		this._current?.setValue(data);
 	}
 
 	/**
@@ -109,12 +109,12 @@ export class UmbEntityWorkspaceDataManager<ModelType>
 	 */
 	updateCurrent(partialData: Partial<ModelType>) {
 		if (partialData) {
-			const persistedData = this._persisted.getValue();
+			const persistedData = this._persisted?.getValue();
 			if (persistedData) {
 				partialData = this._sortCurrentData(persistedData, partialData);
 			}
 		}
-		this._current.update(partialData);
+		this._current?.update(partialData);
 	}
 
 	/**
@@ -151,7 +151,7 @@ export class UmbEntityWorkspaceDataManager<ModelType>
 	 * @memberof UmbEntityWorkspaceDataManager
 	 */
 	resetCurrent() {
-		this._current.setValue(this._persisted.getValue());
+		this._current?.setValue(this._persisted?.getValue());
 	}
 
 	/**
@@ -159,8 +159,9 @@ export class UmbEntityWorkspaceDataManager<ModelType>
 	 * @memberof UmbEntityWorkspaceDataManager
 	 */
 	clear() {
-		this._persisted.setValue(undefined);
-		this._current.setValue(undefined);
+		// Crombolo: a workspace left while it opens is destroyed before the load that clears it.
+		this._persisted?.setValue(undefined);
+		this._current?.setValue(undefined);
 	}
 
 	override destroy() {
