@@ -197,6 +197,11 @@ export abstract class UmbEntityDetailWorkspaceContextBase<
 
 	/** The editor's own read of its entity, which Crombolo's edit conflicts note (story 172). */
 	#request(unique: string) {
+		// Crombolo: an editor left while it opens has let its repository go: there is nothing to read.
+		if (!this._detailRepository)
+			return Promise.resolve({ data: undefined, asObservable: () => undefined }) as ReturnType<
+				UmbDetailRepository<DetailModelType>['requestByUnique']
+			>;
 		const loaded = umbCromboloHooks.onEntityLoad?.(this.getEntityType(), unique);
 		const request = this._detailRepository!.requestByUnique(unique);
 		return loaded ? request.finally(loaded) : request;
