@@ -1,17 +1,15 @@
 /**
  * A page's Workflow tab (story 028): which workflow covers it, where a request
- * stands in its graph, what the reader may do about it, and its history.
- *
- * Sending for approval sends what is saved: the editor saves first, as they
- * would before publishing. A workflow that allows it lets the request say when
- * to publish or take the page down (story 029): one time for the whole page.
+ * stands in its graph, what an approver may do about it, and its history. A page
+ * is sent for approval from the bottom bar (`workflow-send.js`).
  */
 import { UMB_DOCUMENT_WORKSPACE_CONTEXT } from '@umbraco-cms/backoffice/document'
 import { UmbElementMixin } from '@umbraco-cms/backoffice/element-api'
 import { css, html, LitElement, nothing, unsafeCSS } from '@umbraco-cms/backoffice/external/lit'
-import { decide, pageApproval, sendForApproval } from './workflow-client.js'
+import { decide, pageApproval } from './workflow-client.js'
 import { drawGraph, GRAPH_STYLES } from './workflow-graph.js'
-import { describeWhen, fromLocalInput } from './workflow-time.js'
+import { APPROVAL_CHANGED } from './workflow-send.js'
+import { describeWhen } from './workflow-time.js'
 
 const KIND = {
   sent: 'Sent for approval',
@@ -41,15 +39,25 @@ export default class CromboloWorkflowTabElement extends UmbElementMixin(LitEleme
     _message: { state: true },
     _busy: { state: true },
     _comment: { state: true },
-    _publishAt: { state: true },
-    _unpublishAt: { state: true },
+  }
+
+  #changed = (event) => {
+    if (event.detail?.key === this._key) this.#load()
+  }
+
+  connectedCallback() {
+    super.connectedCallback()
+    window.addEventListener(APPROVAL_CHANGED, this.#changed)
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback()
+    window.removeEventListener(APPROVAL_CHANGED, this.#changed)
   }
 
   constructor() {
     super()
     this._comment = ''
-    this._publishAt = ''
-    this._unpublishAt = ''
     this.consumeContext(UMB_DOCUMENT_WORKSPACE_CONTEXT, (context) => {
       if (!context) return
       this.observe(context.unique, (unique) => {
@@ -76,9 +84,8 @@ export default class CromboloWorkflowTabElement extends UmbElementMixin(LitEleme
       return
     }
     this._comment = ''
-    this._publishAt = ''
-    this._unpublishAt = ''
     await this.#load()
+    window.dispatchEvent(new CustomEvent(APPROVAL_CHANGED, { detail: { key: this._key } }))
   }
 
   render() {
@@ -88,82 +95,23 @@ export default class CromboloWorkflowTabElement extends UmbElementMixin(LitEleme
     return html`
       <uui-box headline=${workflow ? `Workflow: ${workflow.name}` : 'Workflow'}>
         ${
-          workflow
-            ? html`<p class="lead">
-                ${
-                  can.publishDirectly
-                    ? 'This page is covered by this workflow, and you may publish it directly.'
-                    : 'Publishing this page goes through this workflow.'
-                }
-              </p>`
-            : html`<p class="lead">No workflow covers this page: it publishes as soon as someone who may publish does.</p>`
+          !workflow
+            ? html`<p class="lead">No workflow covers this page: it publishes as soon as someone who may publish does.</p>`
+            : can.publishDirectly
+              ? nothing
+              : html`<p class="lead">Publishing this page goes through this workflow.</p>`
         }
         ${this._message ? html`<p class="message">${this._message}</p>` : nothing}
-        ${request ? this.#renderRequest(request) : workflow ? this.#renderSend(workflow, can) : nothing}
+        ${
+          request
+            ? this.#renderRequest(request)
+            : workflow
+              ? html`<div class="graph-wrap">${drawGraph(workflow.stages)}</div>`
+              : nothing
+        }
       </uui-box>
       ${past.length > 0 ? html`<uui-box headline="Earlier requests">${past.map((r) => this.#renderPast(r))}</uui-box>` : nothing}
     `
-  }
-
-  #renderSend(workflow, can) {
-    if (!can.send && !can.requestUnpublish) return nothing
-    return html`
-      <div class="graph-wrap">${drawGraph(workflow.stages)}</div>
-      <uui-textarea
-        label="A note for the approvers"
-        placeholder="A note for the approvers (optional)"
-        .value=${this._comment}
-        @input=${(e) => {
-          this._comment = e.target.value
-        }}
-      ></uui-textarea>
-      ${workflow.scheduling ? this.#renderTimes(can) : nothing}
-      <div class="actions">
-        ${
-          can.send
-            ? html`<uui-button look="primary" ?disabled=${this._busy} label="Send for approval"
-                @click=${() => this.#act(() => sendForApproval(this._key, 'publish', this._comment, this.#schedule('publish')))}
-              >Send for approval</uui-button>`
-            : nothing
-        }
-        ${
-          can.requestUnpublish
-            ? html`<uui-button look="secondary" ?disabled=${this._busy} label="Request unpublish"
-                @click=${() => this.#act(() => sendForApproval(this._key, 'unpublish', this._comment, this.#schedule('unpublish')))}
-              >Request unpublish</uui-button>`
-            : nothing
-        }
-      </div>
-    `
-  }
-
-  /** Optional times, both for the whole page; left empty, approval publishes at once. */
-  #renderTimes(can) {
-    return html`<div class="times">
-      ${
-        can.send
-          ? html`<uui-label for="publish-at">Publish at
-              <uui-input id="publish-at" type="datetime-local" label="Publish at" .value=${this._publishAt}
-                @input=${(e) => {
-                  this._publishAt = e.target.value
-                }}></uui-input></uui-label>`
-          : nothing
-      }
-      <uui-label for="unpublish-at">Take down at
-        <uui-input id="unpublish-at" type="datetime-local" label="Take down at" .value=${this._unpublishAt}
-          @input=${(e) => {
-            this._unpublishAt = e.target.value
-          }}></uui-input></uui-label>
-      <small>Leave empty to publish as soon as it is approved.</small>
-    </div>`
-  }
-
-  #schedule(action) {
-    const publishTime = action === 'publish' ? fromLocalInput(this._publishAt) : null
-    const unpublishTime = fromLocalInput(this._unpublishAt)
-    return publishTime || unpublishTime
-      ? [{ culture: null, publishTime, unpublishTime }]
-      : undefined
   }
 
   #renderRequest(request) {
@@ -250,8 +198,6 @@ export default class CromboloWorkflowTabElement extends UmbElementMixin(LitEleme
     .message { color: var(--uui-color-danger); }
     .graph-wrap { overflow-x: auto; margin: var(--uui-size-space-4) 0; }
     .when { font-weight: 600; }
-    .times { display: flex; flex-wrap: wrap; align-items: end; gap: var(--uui-size-space-4); margin: var(--uui-size-space-3) 0; }
-    .times uui-label { display: flex; flex-direction: column; gap: var(--uui-size-space-1); }
     .actions { display: flex; gap: var(--uui-size-space-3); margin: var(--uui-size-space-3) 0; }
     uui-textarea { width: 100%; }
     .history { padding-left: var(--uui-size-space-5); }

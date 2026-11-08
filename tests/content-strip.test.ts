@@ -9,6 +9,7 @@ const CONTENT = 'Umb.Section.Content'
 const STRUCTURE = 'Crombolo.Section.Structure'
 const COMPONENTS = 'Crombolo.Section.Components'
 const WORKFLOW_SETUP = 'Crombolo.Section.WorkflowSetup'
+const APPROVALS = 'Crombolo.Section.Workflow'
 const SETTINGS = [STRUCTURE, COMPONENTS]
 const FORMS = 'Crombolo.Section.Forms'
 const labels = (user: Parameters<typeof stripItems>[0]) => stripItems(user).map((i) => i.label)
@@ -16,8 +17,11 @@ const labels = (user: Parameters<typeof stripItems>[0]) => stripItems(user).map(
 describe('what the menu offers', () => {
   test('everything, to an administrator', () => {
     expect(
-      labels({ allowedSections: [CONTENT, ...SETTINGS, FORMS, WORKFLOW_SETUP], isAdmin: true }),
-    ).toEqual(['Pages', 'Structure', 'Code', 'Workflows'])
+      labels({
+        allowedSections: [CONTENT, APPROVALS, ...SETTINGS, FORMS, WORKFLOW_SETUP],
+        isAdmin: true,
+      }),
+    ).toEqual(['Pages', 'Approvals', 'Structure', 'Code'])
   })
 
   test('only what someone may open', () => {
@@ -62,7 +66,11 @@ describe('where a page belongs', () => {
     ['section/forms/view/forms', 'Structure'],
     ['section/settings/forms', 'Structure'],
     ['section/settings/forms/entries', 'Structure'],
-    ['section/forms/view/workflows', 'Workflows'],
+    ['section/forms/view/workflows', 'Structure'],
+    ['section/settings/workflows', 'Structure'],
+    ['section/workflow', 'Approvals'],
+    ['section/workflow/view/in-flight', 'Approvals'],
+    ['section/settings/workspace/document-blueprint/edit/1', 'Structure'],
   ])('%s is %s', (path, item) => {
     expect(activeItem(path)).toBe(item)
   })
@@ -83,10 +91,20 @@ describe('what a group is given', () => {
     ])
   })
 
-  test('Workflows alone, with no Forms to find under Structure', () => {
-    expect(labels({ allowedSections: [CONTENT, FORMS, WORKFLOW_SETUP], isAdmin: false })).toEqual([
+  test('Workflow setup alone: Structure is the workflows, beside forms', () => {
+    const user = { allowedSections: [CONTENT, FORMS, WORKFLOW_SETUP], isAdmin: false }
+    expect(labels(user)).toEqual(['Pages', 'Structure'])
+    expect(stripItems(user).find((item) => item.label === 'Structure')?.path).toBe(
+      'section/forms/view/workflows',
+    )
+  })
+
+  test('Approvals, for a group that decides them, after Pages', () => {
+    expect(labels({ allowedSections: [CONTENT, APPROVALS, ...SETTINGS], isAdmin: false })).toEqual([
       'Pages',
-      'Workflows',
+      'Approvals',
+      'Structure',
+      'Code',
     ])
   })
 

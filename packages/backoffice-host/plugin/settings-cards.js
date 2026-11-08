@@ -177,7 +177,14 @@ const rank = (order, alias) => {
   return at === -1 ? order.length : at
 }
 
-const STRUCTURE_TYPES = ['document-type', 'media-type', 'member-type', 'data-type', 'language']
+const STRUCTURE_TYPES = [
+  'document-type',
+  'document-blueprint',
+  'media-type',
+  'member-type',
+  'data-type',
+  'language',
+]
 const CODE_TYPES = ['partial-view', 'template', 'stylesheet', 'script']
 
 /** The tree an editor for `entityType` sits beside, or undefined for none. */

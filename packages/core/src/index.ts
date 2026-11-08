@@ -15,6 +15,7 @@ export {
 } from '@crombolo/common'
 export * from './api-paths.ts'
 export * from './content-types.ts'
+export * from './dictionary-words.ts'
 export * from './documents.ts'
 export * from './form-library.ts'
 export * from './form-submissions.ts'

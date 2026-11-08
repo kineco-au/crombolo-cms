@@ -950,9 +950,23 @@ cache supplies (`@crombolo/render` `values.ts` and `media.ts`):
 | Block List / Block Grid | items with `content` and `settings` as `PublishedElement`s (same `value()`, `name` is `null`, as a block has none, and `contentType.alias` names the element type); grid items add spans, `areaGridColumns` and areas (with their alias and spans), and the list carries `gridColumns`. `<Blocks>` renders them (see "Blocks") |
 | Media Picker            | a promise of `MediaWithCrops`, one or a list as the data type says; `await model.media(alias)` always lists |
 | Image Cropper           | `ImageCropperValue` (`src`, `crops`, `focalPoint`, `cropUrl()`)                                             |
-| Rich text               | the markup, with `/{localLink:…}` links resolved (`#` when gone); a promise when a link names media          |
+| Rich text               | the markup, with `/{localLink:…}` links resolved (`#` when gone) and `{#key}` read as words; a promise when a link names media |
+| Text box / Text area    | the text, with `{#key}` read as words                                                                         |
 
-References to anything unpublished or deleted are dropped. `crombolo
+References to anything unpublished or deleted are dropped.
+
+**Dictionary words in a value (story 297).** `{#key}` in a text box, a text area or rich text,
+at the top of a page or inside a block, reads as the dictionary item's words in the page's
+culture, then its fallbacks, then as the item's name; a key naming no item stays as written.
+It is the forms' syntax ([`forms.md`](forms.md)), resolved by the value context's `word`, so
+templates and the Delivery API read the same words, and rich text gets them escaped. Search
+indexes the words of each culture (`dictionaryWords` in `@crombolo/data`), and changing,
+renaming or deleting an item queues the pages naming it. In the back office, a text box or text
+area whose whole value is one `{#key}` shows it as a chip: `crombolo-dictionary-words`, from
+`dictionary-words.js`, which the fork's two editors put their input in. Clicking the chip opens the
+item's words in every language, at `<backoffice>/crombolo/api/dictionary/words/<name>`; anyone
+signed in reads them, and Translation or Settings changes them. A block label's `{#key}` reads a
+back office term first, then the dictionary item's words. `crombolo
 generate` types all of these, down to a block editor's element types.
 
 Umbraco denormalises segments into `document_url` / `document_url_alias` for

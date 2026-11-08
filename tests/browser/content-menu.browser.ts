@@ -19,9 +19,9 @@ test('the menu opens each place, with Content marked throughout', async ({ page,
   await goToSection(page, 'Content')
   await settle(page)
   for (const [label, address] of [
+    ['Approvals', /\/section\/workflow/],
     ['Structure', /\/section\/settings\/structure$/],
     ['Code', /\/section\/settings\/code$/],
-    ['Workflows', /\/section\/forms\/view\/workflows/],
     ['Pages', /\/section\/content/],
   ] as const) {
     await strip(page).getByRole('link', { name: label }).click()
@@ -82,8 +82,16 @@ test('Forms is a node in Structure, and Content Types can start a form', async (
   await strip(page).getByRole('link', { name: 'Structure' }).click()
 
   // Its tree sits under Structure's, and stays beside a form when one opens.
-  const tree = page.locator('crombolo-definition-tree')
-  await tree.locator('.root').getByRole('link', { name: 'Forms' }).click()
+  // A node of Structure's own menu, after Data Types and before Languages.
+  const tree = page.locator('crombolo-definition-tree').first()
+  await expect(tree.locator('uui-menu-item[label="Forms"]')).toBeVisible()
+  const names = await page
+    .locator('umb-section-sidebar uui-menu-item[label]')
+    .evaluateAll((items) => items.map((item) => item.getAttribute('label')))
+  const at = (label: string) => names.indexOf(label)
+  expect(at('Forms')).toBeGreaterThan(at('Data Types'))
+  expect(at('Languages')).toBeGreaterThan(at('Forms'))
+  await tree.getByRole('link', { name: 'Forms', exact: true }).click()
   await expect(page).toHaveURL(/\/section\/settings\/forms\/entries/)
   await expect(tree).toBeVisible()
   await expect(strip(page).getByRole('link', { name: 'Structure' })).toHaveAttribute(
@@ -110,11 +118,14 @@ test('Forms is a node in Structure, and Content Types can start a form', async (
   await expect(page.locator('crombolo-forms-overview')).toBeVisible()
 })
 
-test('Forms has no tab of its own in the header, and Settings no Build cards', async ({ page }) => {
+test('Forms and Approvals have no tab of their own in the header, and Settings no Build cards', async ({
+  page,
+}) => {
   await signIn(page)
   const tabs = page.locator('umb-backoffice-header-sections uui-tab')
   await expect(tabs.first()).toBeVisible()
   await expect(tabs.filter({ hasText: 'Forms' })).toHaveCount(0)
+  await expect(tabs.filter({ hasText: 'Approvals' })).toHaveCount(0)
 
   await goToSection(page, 'Settings')
   const landing = page.locator('crombolo-settings-landing')
@@ -178,19 +189,70 @@ test('forms sit in folders in the tree, and the root lists every entry', async (
   await signIn(page)
   await page.goto('/crombolo/section/forms')
   const tree = page.locator('crombolo-definition-tree')
-  await expect(tree.locator('.root')).toContainText('Forms')
+  await expect(tree.locator('uui-menu-item[label="Forms"]')).toBeVisible()
 
+  // The "…" beside a row, as every tree in the back office has it.
   const folder = `Folder ${Math.random().toString(36).slice(2, 7)}`
-  await tree.locator('.root').getByRole('button', { name: 'New folder' }).click()
+  // The "…" shows while its own row is hovered, as in every tree.
+  await tree.locator('uui-menu-item[label="Forms"] #menu-item').first().hover()
+  await expect(tree.getByRole('button', { name: 'New form' }).first()).toBeVisible()
+  await tree.getByRole('button', { name: 'Actions for Forms' }).click()
+  await tree.locator('uui-menu-item[label="New folder…"]').click()
   await tree.getByLabel('Folder name').fill(folder)
   await tree.getByRole('button', { name: 'Add' }).click()
-  await expect(tree.locator('summary', { hasText: folder })).toBeVisible()
+  const row = tree.locator(`uui-menu-item[label="${folder}"]`)
+  await expect(row).toBeVisible()
 
-  await tree.locator('summary', { hasText: folder }).getByRole('button', { name: 'Delete' }).click()
-  await expect(tree.locator('summary', { hasText: folder })).toHaveCount(0)
+  await row.locator('#menu-item').first().hover()
+  await tree.getByRole('button', { name: `Actions for ${folder}` }).click()
+  await tree.locator('uui-menu-item[label="Delete"]').click()
+  await expect(row).toHaveCount(0)
 
-  await tree.locator('.root').getByRole('link', { name: 'Forms' }).click()
+  await tree.getByRole('link', { name: 'Forms', exact: true }).click()
   await expect(page).toHaveURL(/\/view\/entries/)
+})
+
+test('Workflows is a node in Structure, below Forms, started from its tree', async ({
+  page,
+  diagnostics,
+}) => {
+  diagnostics.allowed.push(
+    'Tree context is not set',
+    'provideAt is not a function',
+    'repository is missing',
+  )
+  await signIn(page)
+  await page.goto('/crombolo/section/settings/structure')
+  await expect(
+    page.locator('umb-section-sidebar uui-menu-item[label="Workflows"]').first(),
+  ).toBeVisible({ timeout: 30_000 })
+  const names = await page
+    .locator('umb-section-sidebar uui-menu-item[label]')
+    .evaluateAll((items) => items.map((item) => item.getAttribute('label')))
+  const at = (label: string) => names.indexOf(label)
+  expect(at('Workflows')).toBeGreaterThan(at('Forms'))
+  expect(at('Languages')).toBeGreaterThan(at('Workflows'))
+  const tree = page
+    .locator('crombolo-definition-tree')
+    .filter({ has: page.locator('uui-menu-item[label="Workflows"]') })
+  await expect(tree.locator('uui-menu-item[label="Approvals"]')).toHaveCount(0)
+
+  await tree.getByRole('link', { name: 'Workflows', exact: true }).click()
+  await expect(page).toHaveURL(/\/section\/settings\/workflows$/)
+  await expect(page.locator('crombolo-workflow-designer')).toBeVisible()
+  await expect(strip(page).getByRole('link', { name: 'Structure' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
+
+  // A workflow is started from the tree, as a form or a content type is, not from the list.
+  await expect(page.locator('crombolo-workflow-designer .create')).toHaveCount(0)
+  await tree.locator('uui-menu-item[label="Workflows"] #menu-item').first().hover()
+  // "+" beside "…", as every tree has it for a new item.
+  await tree.getByRole('button', { name: 'New workflow' }).click()
+  await expect(page).toHaveURL(/settings\/workflows\?new=/)
+  await expect(page.getByRole('button', { name: 'Back to the list' })).toBeVisible()
+  await expect(tree).toBeVisible()
 })
 
 test('a form is opened from the tree, with its entries a tab', async ({ page }) => {
@@ -244,7 +306,7 @@ test('a site that cannot change them says so, and offers no way to', async ({ pa
   await expect(list.getByRole('button', { name: 'Create' })).toHaveCount(0)
   const tree = page.locator('crombolo-definition-tree')
   await expect(tree.getByRole('status')).toContainText("can't be changed here")
-  await expect(tree.getByRole('button', { name: 'New folder' })).toHaveCount(0)
+  await expect(tree.getByRole('button', { name: 'Actions for Forms' })).toHaveCount(0)
 })
 
 test('Structure says when its types cannot be changed here', async ({ page }) => {
@@ -295,4 +357,26 @@ test('a page leads to its content type', async ({ page }) => {
       .click({ timeout: 2_000 })
   }).toPass({ timeout: 20_000 })
   await expect(page).toHaveURL(/\/section\/settings\/workspace\/document-type\/edit\//)
+})
+
+test('the tree beside each place keeps the one width the reader chose', async ({ page }) => {
+  await signIn(page)
+  await page.goto('/crombolo/section/content')
+  await page.evaluate(() => localStorage.setItem('umb-split-panel-position', '360px'))
+  for (const [address, tree] of [
+    ['/crombolo/section/content', 'umb-section-sidebar'],
+    ['/crombolo/section/settings/structure', 'umb-section-sidebar:not([hidden])'],
+    ['/crombolo/section/settings/code', 'umb-section-sidebar:not([hidden])'],
+    ['/crombolo/section/forms', 'umb-section-sidebar'],
+    ['/crombolo/section/workflow', 'umb-section-sidebar'],
+  ] as const) {
+    await page.goto(address)
+    const sidebar = page.locator(tree).first()
+    await expect(sidebar).toBeVisible({ timeout: 30_000 })
+    await expect
+      .poll(async () => Math.round((await sidebar.boundingBox())?.width ?? 0), {
+        message: address,
+      })
+      .toBe(360)
+  }
 })

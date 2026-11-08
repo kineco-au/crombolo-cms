@@ -3,15 +3,18 @@
  * move rules, and `.udt` export and import as Umbraco writes them.
  */
 import { afterEach, describe, expect, test } from 'bun:test'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { DictionaryRepository } from '@crombolo/data'
 import {
   dictionaryToUdt,
   importDictionaryUdt,
   readUdt,
+  upgradeFormWords,
   writeDictionaryUdt,
   writeUdt,
 } from '@crombolo/server'
-import { type Harness, signedInServer, V1 } from './support/harness.ts'
+import { BACKOFFICE, type Harness, signedInServer, signInAsGroup, V1 } from './support/harness.ts'
 
 const open: Harness[] = []
 afterEach(async () => {
@@ -319,5 +322,66 @@ describe('dictionary items', () => {
     const h = await signedInServer()
     open.push(h)
     expect(await dictionaryToUdt(new DictionaryRepository(h.server.db))).toEqual([])
+  })
+})
+
+describe('an item’s words for a {#key} chip (story 297)', () => {
+  const WORDS = `${BACKOFFICE}/crombolo/api/dictionary/words`
+
+  test('anyone signed in reads them; Translation or Settings changes them', async () => {
+    const { h, key } = await site()
+    const item = await key('site.name', null, { 'en-US': 'Harbourstone' })
+
+    const list = await h.json<{ words: { name: string; text: string }[] }>(WORDS)
+    expect(list.words).toContainEqual({ name: 'site.name', text: 'Harbourstone' })
+    const one = await h.json<{
+      mayChange: boolean
+      languages: { isoCode: string; text: string }[]
+    }>(`${WORDS}/site.name`)
+    expect(one.mayChange).toBe(true)
+    expect(one.languages.map((l) => [l.isoCode, l.text])).toEqual([
+      ['en-US', 'Harbourstone'],
+      ['da-DK', ''],
+    ])
+
+    const saved = await h.put(`${WORDS}/site.name`, { words: { 'da-DK': 'Havnesten' } })
+    expect(saved.status).toBe(200)
+    const stored = await h.json<{ translations: { isoCode: string; translation: string }[] }>(
+      `${V1}/dictionary/${item}`,
+    )
+    expect(stored.translations).toEqual([
+      { isoCode: 'da-DK', translation: 'Havnesten' },
+      { isoCode: 'en-US', translation: 'Harbourstone' },
+    ])
+    expect((await h.put(`${WORDS}/site.name`, { words: { 'xx-XX': 'Nope' } })).status).toBe(400)
+    expect((await h.call(`${WORDS}/no.such.item`)).status).toBe(404)
+
+    const writer = await signInAsGroup(h)
+    const seen = await writer.json<{ mayChange: boolean }>(`${WORDS}/site.name`)
+    expect(seen.mayChange).toBe(false)
+    expect((await writer.put(`${WORDS}/site.name`, { words: { 'en-US': 'Mine' } })).status).toBe(
+      403,
+    )
+  })
+})
+
+describe('forms written #key, upgraded (story 297)', () => {
+  test('a form file’s #key naming an item becomes {#key}; the rest stays as it was', async () => {
+    const { h, key } = await site()
+    await key('contact.send', null, { 'en-US': 'Send' })
+    const dir = mkdtempSync(join(process.cwd(), 'output', 'form-words-'))
+    try {
+      mkdirSync(join(dir, 'forms', 'contact'), { recursive: true })
+      const file = join(dir, 'forms', 'contact', 'contact.toml')
+      writeFileSync(file, 'submit-label = "#contact.send"\nnext-label = "#1 next"\n')
+      expect(await upgradeFormWords(h.server.db, dir)).toEqual([file])
+      expect(readFileSync(file, 'utf8')).toBe(
+        'submit-label = "{#contact.send}"\nnext-label = "#1 next"\n',
+      )
+      // Once upgraded, there is nothing left to do.
+      expect(await upgradeFormWords(h.server.db, dir)).toEqual([])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

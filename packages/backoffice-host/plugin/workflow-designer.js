@@ -358,13 +358,7 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
 
   #renderList() {
     const { items, editable } = this._list
-    // The create button above the list, as the Created bundles view has it.
     return html`<div class="list">
-      ${
-        editable
-          ? html`<uui-button class="create" color="default" look="outline" label="Create" @click=${() => this.#edit(blank())}>Create</uui-button>`
-          : nothing
-      }
       ${this._message ? html`<uui-box><p class="message">${this._message}</p></uui-box>` : nothing}
       <uui-box headline="Workflows">
       ${this.#readOnly()}
@@ -669,7 +663,6 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
   static styles = css`
     :host { display: block; height: 100%; container-type: inline-size; }
     .list { padding: var(--uui-size-layout-1); }
-    .create { margin-bottom: var(--uui-size-space-5); }
     .actions { text-align: right; white-space: nowrap; }
     uui-tab-group { --uui-tab-divider: var(--uui-color-border); border-left: 1px solid var(--uui-color-border); border-right: 1px solid var(--uui-color-border); }
     .notice { margin-bottom: var(--uui-size-layout-1); }

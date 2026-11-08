@@ -134,6 +134,8 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'entityAction:Crombolo.EntityAction.Document.EditTemplate',
       'backofficeEntryPoint:Crombolo.EntryPoint.ContentStrip',
       'entityCreateOptionAction:Crombolo.EntityCreateOptionAction.DocumentType.Form',
+      'menuItem:Crombolo.MenuItem.Forms',
+      'menuItem:Crombolo.MenuItem.Workflows',
       'sectionSidebarApp:Crombolo.SectionSidebarApp.DefinitionTree',
       'sectionView:Crombolo.SectionView.Forms.Overview',
       'sectionView:Crombolo.SectionView.Forms.Entries',
@@ -144,21 +146,27 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'backofficeEntryPoint:Crombolo.EntryPoint.ContentTypeLabels',
       // The sign-in button, in place of Umbraco's "Sign in with Umbraco".
       'backofficeEntryPoint:Crombolo.EntryPoint.SignIn',
+      'backofficeEntryPoint:Crombolo.EntryPoint.TemplatePicker',
+      'backofficeEntryPoint:Crombolo.EntryPoint.DictionaryWords',
       'backofficeEntryPoint:Crombolo.EntryPoint.NotificationsDialog',
       // Keeps the Umbraco mark out of the icon picker.
       'globalContext:Crombolo.GlobalContext.Icons',
       // Approval workflows: Umbraco Workflow's section, in core here (story 028).
-      // Approvals shows only while the site has a workflow or a request is open (234).
+      // A page's Workflow tab shows only while the site has a workflow or a request is open
+      // (234); Approvals, in the menu under Content, says when there is none.
       'condition:Crombolo.Condition.ApprovalsActive',
       'section:Crombolo.Section.Structure',
       'section:Crombolo.Section.Components',
       'section:Crombolo.Section.WorkflowSetup',
       'section:Crombolo.Section.Workflow',
-      'sectionView:Crombolo.SectionView.Workflow.Waiting',
-      'sectionView:Crombolo.SectionView.Workflow.InFlight',
-      'sectionView:Crombolo.SectionView.Workflow.History',
-      // Setting workflows up is a Settings card; deciding is the section's.
+      'sectionSidebarApp:Crombolo.SectionSidebarApp.ApprovalsTree',
+      'sectionView:Crombolo.SectionView.Workflow.Requests',
+      // Setting workflows up is a node in Structure, or beside forms; deciding is Approvals'.
       'sectionView:Crombolo.SectionView.Workflows',
+      // Sending for approval is in the bottom bar, beside Save and publish.
+      'condition:Crombolo.Condition.Document.MaySendForApproval',
+      'workspaceAction:Crombolo.WorkspaceAction.Document.SendForApproval',
+      'workspaceActionMenuItem:Crombolo.WorkspaceActionMenuItem.Document.RequestUnpublish',
       'workspaceView:Crombolo.WorkspaceView.Document.Workflow',
     ])
     // Content's home takes the place of Umbraco's news dashboard through the
@@ -431,7 +439,7 @@ describe('the plugin views', () => {
     expect(plain).toEqual([])
   })
 
-  test("Approvals opens on what waits for me, and setting workflows up is an administrator's Settings card", () => {
+  test('Approvals is one list, always there, and workflows are set up beside forms too', () => {
     const dir = join(import.meta.dir, '..', 'packages', 'backoffice-host', 'plugin')
     const manifest = JSON.parse(readFileSync(join(dir, 'umbraco-package.json'), 'utf8')) as {
       extensions: Array<{
@@ -448,17 +456,15 @@ describe('the plugin views', () => {
           e.conditions?.some((c) => c.match === 'Crombolo.Section.Workflow'),
       )
       .sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0))
-    expect(views.map((v) => v.alias)).toEqual([
-      'Crombolo.SectionView.Workflow.Waiting',
-      'Crombolo.SectionView.Workflow.InFlight',
-      'Crombolo.SectionView.Workflow.History',
-    ])
+    expect(views.map((v) => v.alias)).toEqual(['Crombolo.SectionView.Workflow.Requests'])
     const designer = manifest.extensions.find((e) => e.alias === 'Crombolo.SectionView.Workflows')
     expect(designer?.type).toBe('sectionView')
     expect(designer?.conditions).toEqual([
       { alias: 'Umb.Condition.SectionAlias', match: 'Crombolo.Section.Forms' },
-      { alias: 'Umb.Condition.CurrentUser.IsAdmin' },
+      { alias: 'Umb.Condition.SectionUserPermission', match: 'Crombolo.Section.WorkflowSetup' },
     ])
+    const approvals = manifest.extensions.find((e) => e.alias === 'Crombolo.Section.Workflow')
+    expect(approvals?.conditions).toBeUndefined()
   })
 
   test('no view uses a link to nowhere for an action', () => {

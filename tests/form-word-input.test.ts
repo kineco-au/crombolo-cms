@@ -1,8 +1,14 @@
 /**
- * Story 294: what the form editor suggests after a `#`, and what it says under a box.
+ * Stories 294 and 297: what a text box that can name a dictionary item suggests,
+ * when it shows a chip, and what it says under itself.
  */
 import { describe, expect, test } from 'bun:test'
-import { suggestions, wordLine } from '../packages/backoffice-host/plugin/form-word-input-model.js'
+import {
+  chipWord,
+  suggestions,
+  wordLine,
+  wordValue,
+} from '../packages/backoffice-host/plugin/form-word-input-model.js'
 
 const WORDS = [
   { name: 'contact.email', text: 'Email' },
@@ -13,49 +19,67 @@ const WORDS = [
 const names = (value: string) => suggestions(WORDS, value).rows.map((word) => word.name)
 
 describe('the suggestions', () => {
-  test('wait for a #', () => {
+  test('wait for {# or a # at the start', () => {
     expect(names('contact')).toEqual([])
     expect(names('')).toEqual([])
+    expect(names('Hello {#')).toEqual([])
   })
 
-  test('list everything after a # alone', () => {
+  test('list everything after {# or # alone', () => {
+    expect(names('{#')).toHaveLength(4)
     expect(names('#')).toHaveLength(4)
   })
 
   test('put names starting with the words first, then names, then their text', () => {
-    expect(names('#con')).toEqual(['contact.email', 'contact.name', 'nav.contact'])
+    expect(names('{#con')).toEqual(['contact.email', 'contact.name', 'nav.contact'])
     expect(names('#contact.n')).toEqual(['contact.name'])
-    expect(names('#touch')).toEqual(['nav.contact'])
+    expect(names('{#touch')).toEqual(['nav.contact'])
   })
 
-  test('stop when a # starts a few words', () => {
+  test('stop when a # starts a few words, or the braces close', () => {
     expect(names('#1 choice')).toEqual([])
+    expect(names('{#contact.name}')).toEqual([])
   })
 
   test('show eight, and say there are more', () => {
     const many = Array.from({ length: 12 }, (_, i) => ({ name: `item.${i}`, text: '' }))
-    const found = suggestions(many, '#item')
+    const found = suggestions(many, '{#item')
     expect(found.rows).toHaveLength(8)
     expect(found.more).toBe(true)
+  })
+
+  test('write the chosen item as {#key}', () => {
+    expect(wordValue('contact.name')).toBe('{#contact.name}')
+  })
+})
+
+describe('the chip', () => {
+  test('is a value that is wholly one {#key} naming an item, whatever its case', () => {
+    expect(chipWord(WORDS, '{#Contact.Name}')?.name).toBe('contact.name')
+    expect(chipWord(WORDS, ' {#contact.name} ')?.name).toBe('contact.name')
+  })
+
+  test('is a #key as forms wrote it before, when it names an item', () => {
+    expect(chipWord(WORDS, '#contact.email')?.name).toBe('contact.email')
+  })
+
+  test('is nothing for text around a key, a name nothing has, or before the list loads', () => {
+    expect(chipWord(WORDS, 'Dear {#contact.name}')).toBeUndefined()
+    expect(chipWord(WORDS, '{#contact.nmae}')).toBeUndefined()
+    expect(chipWord(WORDS, 'Name')).toBeUndefined()
+    expect(chipWord(undefined, '{#contact.name}')).toBeUndefined()
   })
 })
 
 describe('the line under a box', () => {
-  test('says what a name reads as, whatever its case', () => {
-    expect(wordLine(WORDS, '#Contact.Name')).toBe('From the dictionary: Name')
+  test('says when a {#key} names nothing', () => {
+    expect(wordLine(WORDS, '{#contact.nmae}')).toContain('No dictionary item')
   })
 
-  test('says when nothing has that name', () => {
-    expect(wordLine(WORDS, '#contact.nmae')).toContain('No dictionary item')
-  })
-
-  test('falls back to the name of an item with no words', () => {
-    expect(wordLine([{ name: 'empty', text: '' }], '#empty')).toBe('From the dictionary: empty')
-  })
-
-  test('is nothing for ordinary text, for words after a #, or before the list loads', () => {
+  test('is nothing for a chip, ordinary text, or before the list loads', () => {
+    expect(wordLine(WORDS, '{#contact.name}')).toBeUndefined()
     expect(wordLine(WORDS, 'Name')).toBeUndefined()
     expect(wordLine(WORDS, '#1 choice')).toBeUndefined()
-    expect(wordLine(undefined, '#contact.name')).toBeUndefined()
+    expect(wordLine(undefined, '{#contact.nmae}')).toBeUndefined()
   })
 })

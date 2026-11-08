@@ -11,6 +11,7 @@
  * (an import as well as a tag) and Razor's sections, are hidden.
  */
 import { PartialViewService, TemplateService } from '@umbraco-cms/backoffice/external/backend-api'
+import { highlightJsx } from './tsx-highlighting.js'
 import { toTsxSnippet } from './tsx-snippets.js'
 import {
   fileBeingCreated,
@@ -120,6 +121,7 @@ async function typeLibs() {
 }
 
 let loaded
+let highlighted
 
 /**
  * Configures monaco's TypeScript service for TSX, and reports both monaco and
@@ -143,6 +145,9 @@ async function configureTsx() {
     const ts = monaco.typescript ?? monaco.languages?.typescript
     if (!ts) throw new Error('monaco exposes no TypeScript service')
     const { JsxEmit, ModuleKind, ScriptTarget, typescriptDefaults } = ts
+    // Colours the markup, which monaco's TypeScript grammar leaves plain.
+    highlighted ??= highlightJsx(monaco)
+    await highlighted
     const { libs, jsxImportSource } = await typeLibs()
     // The site's `apps/site/tsconfig.json`, so that what the editor underlines
     // is what `tsc` would report and nothing else — down to the JSX mode the

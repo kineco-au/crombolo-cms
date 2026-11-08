@@ -14,6 +14,7 @@
 
 import {
   applyLibraryForm,
+  bareDictionaryWord,
   type ChoiceOption,
   type ChoiceSource,
   keyFromReference,
@@ -21,6 +22,7 @@ import {
   libraryFormId,
   libraryFormTypeKey,
   MENU_ALIAS_PROPERTY,
+  resolveDictionaryWords,
   type SchemaForm,
   withFormWords,
   withResolvedChoices,
@@ -755,6 +757,7 @@ export class PublishedCache {
       content: (key) => view?.byKey.get(key.toLowerCase()),
       media: this.#mediaLookup(),
       form: this.#formsIn(snapshot, view, culture ?? null),
+      word: dictionaryWordIn(snapshot, culture ?? null),
       contentTypeAlias: (key) => snapshot.contentTypeAliases.get(key.toLowerCase()),
       urlOf: (content) => content.url,
       mediaUrlOf: (item) => (item as PublishedMedia).url,
@@ -1176,6 +1179,10 @@ export class PublishedCache {
           view,
           culture,
         ),
+        word: dictionaryWordIn(
+          { dictionary, dictionaryOutline, languages, defaultCulture },
+          culture,
+        ),
         contentTypeAlias: (key) => contentTypeAliases.get(key.toLowerCase()),
         urlOf: (content) => content.url,
         mediaUrlOf: (item) => item.url,
@@ -1412,22 +1419,36 @@ function descendantsOf(view: CultureView, content: PublishedContent): PublishedC
   return out
 }
 
-/** A dictionary item's translation in `culture`, then its fallback languages; '' when none. */
+type WordSnapshot = Pick<
+  CacheSnapshot,
+  'dictionary' | 'dictionaryOutline' | 'languages' | 'defaultCulture'
+>
+
 /**
- * A form's text in `culture`. `#name` is a dictionary item's translation, then
- * its fallbacks, then the item's name; a `#` naming no item is only text.
+ * What `{#name}` reads as in `culture` (story 297): the item's translation, then
+ * its fallbacks', then its name; undefined when no item has that name.
  */
-function formWord(
-  snapshot: Pick<
-    CacheSnapshot,
-    'dictionary' | 'dictionaryOutline' | 'languages' | 'defaultCulture'
-  >,
+export function dictionaryWordIn(
+  snapshot: WordSnapshot,
   culture: string | null,
-): (text: string) => string {
+): (name: string) => string | undefined {
   const named = new Map(snapshot.dictionaryOutline.map((item) => [item.name.toLowerCase(), item]))
+  return (name) => {
+    const item = named.get(name.toLowerCase())
+    return item ? translate(snapshot, item.name, culture) || item.name : undefined
+  }
+}
+
+/**
+ * A form's text in `culture`: each `{#name}` in it as `dictionaryWordIn` reads
+ * it, and a whole text of `#name`, as forms wrote it before, the same way.
+ */
+function formWord(snapshot: WordSnapshot, culture: string | null): (text: string) => string {
+  const word = dictionaryWordIn(snapshot, culture)
   return (text) => {
-    const item = text.startsWith('#') ? named.get(text.slice(1).toLowerCase()) : undefined
-    return item ? translate(snapshot, item.name, culture) || item.name : text
+    const bare = bareDictionaryWord(text)
+    const old = bare === undefined ? undefined : word(bare)
+    return old ?? resolveDictionaryWords(text, word)
   }
 }
 

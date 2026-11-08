@@ -166,10 +166,13 @@ describe('the Settings landing page', () => {
 })
 
 describe('which tree an editor sits beside', () => {
-  test('types, data types and languages beside Structure; components, styles and scripts beside Code', () => {
+  test('types, blueprints, data types and languages beside Structure; components, styles and scripts beside Code', () => {
     for (const type of [
       'document-type',
       'document-type-folder',
+      'document-blueprint',
+      'document-blueprint-root',
+      'document-blueprint-folder',
       'media-type',
       'member-type-root',
       'data-type',

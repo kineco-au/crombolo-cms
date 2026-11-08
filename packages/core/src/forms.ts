@@ -11,6 +11,8 @@
  * bundle").
  */
 
+import { bareDictionaryWord, dictionaryWord, dictionaryWordNames } from './dictionary-words.ts'
+
 /** A field type's name: a built-in one, or one a wired bundle provides. */
 export type FormFieldType = string
 
@@ -408,16 +410,50 @@ export function withFormWords(form: SchemaForm, word: (text: string) => string):
 }
 
 /**
- * The dictionary items a form names: `#contact.name` names `contact.name`. A `#`
- * followed by words, as in "#1 choice", is only text unless an item has that name.
+ * The dictionary items a form names with `{#key}` (story 297), and with a whole
+ * text of `#key`, as forms wrote it before (293), which is read for one release.
  */
 export function formWordNames(form: SchemaForm): string[] {
   const names = new Set<string>()
   mapFormWords(form, (text) => {
-    if (/^#\S+$/.test(text)) names.add(text.slice(1))
+    for (const name of dictionaryWordNames(text)) names.add(name)
+    const bare = bareDictionaryWord(text)
+    if (bare) names.add(bare)
     return text
   })
   return [...names]
+}
+
+/** The dictionary items a form names with `{#key}`. */
+export function bracedFormWordNames(form: SchemaForm): string[] {
+  const names = new Set<string>()
+  mapFormWords(form, (text) => {
+    for (const name of dictionaryWordNames(text)) names.add(name)
+    return text
+  })
+  return [...names]
+}
+
+/** The items a form names with a whole text of `#key`, where `{#key}` is the way now. */
+export function bareFormWords(form: SchemaForm): string[] {
+  const names = new Set<string>()
+  mapFormWords(form, (text) => {
+    const bare = bareDictionaryWord(text)
+    if (bare) names.add(bare)
+    return text
+  })
+  return [...names]
+}
+
+/** The form with each `#key` that names an item written `{#key}`; the same form when none does. */
+export function withBracedFormWords(
+  form: SchemaForm,
+  isItem: (name: string) => boolean,
+): SchemaForm {
+  return withFormWords(form, (text) => {
+    const bare = bareDictionaryWord(text)
+    return bare && isItem(bare) ? dictionaryWord(bare) : text
+  })
 }
 
 export interface SchemaFormGroup {

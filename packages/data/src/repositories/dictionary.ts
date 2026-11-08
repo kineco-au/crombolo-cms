@@ -1,6 +1,7 @@
 /** Dictionary items: a tree of keys, each with a translation per language. */
 import { normaliseUuid } from '@crombolo/core'
 import type { Db } from '../database.ts'
+import { queueDictionaryWordsForSearch } from '../search.ts'
 
 export interface DictionaryTranslation {
   isoCode: string
@@ -201,6 +202,8 @@ export class DictionaryRepository {
         })
         .execute()
       await repo.#writeTranslations(key, item.translations, ids)
+      // A page may name it already, and showed `{#name}` as written until now.
+      await queueDictionaryWordsForSearch(tx, [item.name])
       return 'Success'
     })
   }
@@ -212,7 +215,8 @@ export class DictionaryRepository {
     const k = normaliseUuid(key)
     return this.#db.transaction(async (tx) => {
       const repo = new DictionaryRepository(tx)
-      if (!(await repo.get(k))) return 'NotFound'
+      const before = await repo.get(k)
+      if (!before) return 'NotFound'
       const clash = await repo.byName(change.name)
       if (clash && clash.key !== k) return 'DuplicateItemKey'
       const ids = await repo.#languageIds(change.translations)
@@ -223,6 +227,7 @@ export class DictionaryRepository {
         .where('key', '=', k)
         .execute()
       await repo.#writeTranslations(k, change.translations, ids)
+      await queueDictionaryWordsForSearch(tx, [before.name, change.name])
       return 'Success'
     })
   }
@@ -253,10 +258,12 @@ export class DictionaryRepository {
       const repo = new DictionaryRepository(tx)
       if (!(await repo.get(k))) return 'NotFound'
       const doomed = [...(await repo.#descendantKeys(k)).reverse(), k]
+      const names = (await repo.many(doomed)).map((item) => item.name)
       for (const d of doomed) {
         await tx.q.deleteFrom('dictionary_text').where('dictionary_key', '=', d).execute()
         await tx.q.deleteFrom('dictionary_item').where('key', '=', d).execute()
       }
+      await queueDictionaryWordsForSearch(tx, names)
       return 'Success'
     })
   }

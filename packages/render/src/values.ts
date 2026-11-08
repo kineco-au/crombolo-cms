@@ -4,7 +4,12 @@
  * links with their URLs resolved, and block editors yield element models with
  * the same `value()` API as a page.
  */
-import { keyFromReference, type SchemaForm } from '@crombolo/core'
+import {
+  keyFromReference,
+  resolveDictionaryWords,
+  resolveDictionaryWordsInMarkup,
+  type SchemaForm,
+} from '@crombolo/core'
 import { RawHtml } from './html.ts'
 import { ImageCropperValue, MediaWithCrops, PublishedMedia } from './media.ts'
 import type { PublishedProperty } from './model.ts'
@@ -22,6 +27,11 @@ export interface ValueContext<Content = unknown, Media = unknown> {
    * nothing resolves media. Lookups made together go to the database as one.
    */
   media?(key: string): Promise<Media | undefined>
+  /**
+   * What `{#name}` in a text reads as in this culture (story 297): a dictionary
+   * item's words, or undefined when no item has the name. Absent, a text is as written.
+   */
+  word?(name: string): string | undefined
   /** A published library element by key; absent until the cache knows them. */
   element?(key: string): PublishedElement | undefined
   /** A content type's alias by key, which is all a block records of its element type. */
@@ -355,13 +365,17 @@ export function convertValueNow(
   if (editorAlias === 'Umbraco.RichText') {
     const { media: _, ...pagesOnly } = context ?? ({} as ValueContext)
     return resolveLocalLinks(
-      richTextSource(value),
+      wordsInMarkup(richTextSource(value), context),
       context ? (pagesOnly as ValueContext) : undefined,
     )
   }
   if (ASYNC_EDITORS.has(editorAlias)) return null
   return convertValue(editorAlias, value, context, config)
 }
+
+/** Rich text with each `{#name}` in it as the context reads it, escaped for markup. */
+const wordsInMarkup = (markup: string, context: ValueContext | undefined): string =>
+  context?.word ? resolveDictionaryWordsInMarkup(markup, context.word) : markup
 
 /** The editors whose values are read asynchronously, because they can name media (story 197). */
 export const ASYNC_EDITORS: ReadonlySet<string> = new Set([
@@ -391,8 +405,14 @@ export function convertValue(
         const picks = found.filter((pick): pick is MediaWithCrops => pick !== undefined)
         return config.multiple === false ? (picks[0] ?? null) : picks
       })
+    case 'Umbraco.TextBox':
+    case 'Umbraco.TextArea':
+      return typeof value === 'string' && context?.word
+        ? resolveDictionaryWords(value, context.word)
+        : value
     case 'Umbraco.RichText': {
-      if (typeof value === 'string') return resolveLocalLinks(value, context)
+      if (typeof value === 'string')
+        return resolveLocalLinks(wordsInMarkup(value, context), context)
       const source = richTextSource(value)
       const blocks = blockItems<BlockItem>(
         (value as { blocks?: unknown }).blocks,
@@ -400,7 +420,7 @@ export function convertValue(
         context,
         (_, item) => item,
       )
-      const markup = resolveLocalLinks(source, context)
+      const markup = resolveLocalLinks(wordsInMarkup(source, context), context)
       return typeof markup === 'string'
         ? new RichTextValue(markup, source, blocks)
         : markup.then((resolved) => new RichTextValue(resolved, source, blocks))

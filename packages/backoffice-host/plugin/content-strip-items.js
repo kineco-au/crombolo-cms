@@ -2,31 +2,39 @@
  * What the menu under Content offers (story 289), and which item a page belongs
  * to. Pure, so each is tested on its own. Structure and Code stay in
  * Settings: the client links to them there, and the menu is what puts them
- * together. Forms is a node in Structure, and Workflows stays in the Forms section.
+ * together. Forms and Workflows are nodes in Structure; Approvals is its own section,
+ * with no tab in the header.
  */
 import { treeFor } from './settings-cards.js'
 
 const STRUCTURE = 'Crombolo.Section.Structure'
 const COMPONENTS = 'Crombolo.Section.Components'
 const WORKFLOW_SETUP = 'Crombolo.Section.WorkflowSetup'
+const APPROVALS = 'Crombolo.Section.Workflow'
 /** Reading forms, which is what a group's Forms comes to. */
 const FORM_READ = 'Crombolo.Form.Read'
 const FORMS = 'Crombolo.Section.Forms'
 const CONTENT = 'Umb.Section.Content'
 
-/** Forms is a node in Structure; someone with Forms alone gets it where it always was. */
-const STRUCTURE_FORMS = { path: 'section/forms', section: FORMS, verb: FORM_READ }
+/**
+ * Forms and Workflows are nodes in Structure; someone with either alone, and not
+ * Structure, gets it beside the other in the Forms section.
+ */
+const STRUCTURE_ELSE = [
+  { path: 'section/forms', section: FORMS, verb: FORM_READ },
+  { path: 'section/forms/view/workflows', section: WORKFLOW_SETUP },
+]
 
 const ITEMS = [
   { label: 'Pages', path: 'section/content', section: CONTENT },
+  { label: 'Approvals', path: 'section/workflow', section: APPROVALS },
   {
     label: 'Structure',
     path: 'section/settings/structure',
     section: STRUCTURE,
-    or: STRUCTURE_FORMS,
+    or: STRUCTURE_ELSE,
   },
   { label: 'Code', path: 'section/settings/code', section: COMPONENTS },
-  { label: 'Workflows', path: 'section/forms/view/workflows', section: WORKFLOW_SETUP },
 ]
 
 /**
@@ -39,9 +47,10 @@ export function stripItems(user) {
   const may = (verb) => user?.isAdmin === true || (user?.fallbackPermissions ?? []).includes(verb)
   const items = ITEMS.flatMap((item) => {
     if (allowed.includes(item.section)) return [item]
-    return item.or && allowed.includes(item.or.section) && may(item.or.verb)
-      ? [{ ...item, ...item.or }]
-      : []
+    const other = (item.or ?? []).find(
+      (or) => allowed.includes(or.section) && (!or.verb || may(or.verb)),
+    )
+    return other ? [{ ...item, ...other }] : []
   })
   return items.length > 1 ? items : []
 }
@@ -56,9 +65,10 @@ export function activeItem(path) {
   if (!section) return undefined
   const [, name, rest = ''] = section
   if (name === 'content') return 'Pages'
-  if (name === 'forms') return rest.startsWith('view/workflows') ? 'Workflows' : 'Structure'
+  if (name === 'forms') return 'Structure'
+  if (name === 'workflow') return 'Approvals'
   if (name !== 'settings') return undefined
-  if (rest.startsWith('structure') || rest.startsWith('forms')) return 'Structure'
+  if (['structure', 'forms', 'workflows'].some((tree) => rest.startsWith(tree))) return 'Structure'
   if (rest.startsWith('code')) return 'Code'
   const tree = treeFor(/^workspace\/([^/]+)/.exec(rest)?.[1])
   return tree === 'structure' ? 'Structure' : tree === 'code' ? 'Code' : undefined

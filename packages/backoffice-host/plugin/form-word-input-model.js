@@ -1,19 +1,29 @@
 /**
- * What the form editor's text boxes suggest (story 294). Pure, so each is tested
- * on its own.
+ * What a text box that can name a dictionary item shows (stories 294, 297): the
+ * items it suggests, the chip a `{#key}` becomes, and the line under it. Pure,
+ * so each is tested on its own. Shared by the form editor and a page's text boxes.
  */
 const ROWS = 8
+/** What has been typed of a name: after `{#`, or after a `#` that starts the box. */
+const TYPING = /^(?:\{#([^{}\s]*)|#(\S*))$/
+const ONLY_WORD = /^\{#([^{}\s]+)\}$/
+const BARE_WORD = /^#(\S+)$/
+
+/** `{#key}` for an item's name. */
+export const wordValue = (name) => `{#${name}}`
 
 /**
  * The dictionary items to offer for what has been typed: names starting with it
- * first, then those containing it, then those whose words do. Only after a `#`.
+ * first, then those containing it, then those whose words do. Only after `{#`,
+ * or a `#` at the start.
  *
  * @param {{ name: string, text: string }[]} words
  * @param {string} value
  */
 export function suggestions(words, value) {
-  if (!/^#\S*$/.test(value)) return { rows: [], more: false }
-  const typed = value.slice(1).toLowerCase()
+  const typing = TYPING.exec(value ?? '')
+  if (!typing) return { rows: [], more: false }
+  const typed = (typing[1] ?? typing[2] ?? '').toLowerCase()
   const rank = ({ name, text }) => {
     const lower = name.toLowerCase()
     if (lower.startsWith(typed)) return 0
@@ -29,17 +39,27 @@ export function suggestions(words, value) {
 }
 
 /**
- * What goes under a box: what a `#name` reads as, or that nothing has that name.
- * Nothing for ordinary text, or when `#` starts a few words, or before the list has loaded.
+ * The item a value shows as a chip: the whole of it one `{#key}`, or a `#key`
+ * as forms wrote it before, that names an item; undefined otherwise.
+ *
+ * @param {{ name: string, text: string }[] | undefined} words
+ * @param {string} value
+ */
+export function chipWord(words, value) {
+  if (!words) return undefined
+  const name = (ONLY_WORD.exec((value ?? '').trim()) ?? BARE_WORD.exec(value ?? ''))?.[1]
+  if (!name) return undefined
+  return words.find((word) => word.name.toLowerCase() === name.toLowerCase())
+}
+
+/**
+ * What goes under a box: that a `{#key}` names no item. Nothing for ordinary
+ * text, for a chip, or before the list has loaded.
  *
  * @param {{ name: string, text: string }[] | undefined} words
  * @param {string} value
  */
 export function wordLine(words, value) {
-  if (!words || !/^#\S+$/.test(value)) return undefined
-  const name = value.slice(1).toLowerCase()
-  const word = words.find((candidate) => candidate.name.toLowerCase() === name)
-  return word
-    ? `From the dictionary: ${word.text || word.name}`
-    : 'No dictionary item has this name, so it shows as written.'
+  if (!words || !ONLY_WORD.test((value ?? '').trim()) || chipWord(words, value)) return undefined
+  return 'No dictionary item has this name, so it shows as written.'
 }

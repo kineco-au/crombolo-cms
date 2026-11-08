@@ -148,6 +148,28 @@ test('the view editor reads TSX, and checks it against the site’s own types', 
     timeout: 20_000,
   })
 
+  // The markup is coloured: tags and attributes are tokens of their own, and a
+  // type argument is not a tag.
+  const tokens = await editor.evaluate(async () => {
+    const specifier = '@umbraco-cms/backoffice/external/monaco-editor'
+    const { monaco } = (await import(specifier)) as {
+      monaco: { editor: { tokenize(text: string, language: string): { type: string }[][] } }
+    }
+    const types = (text: string) =>
+      monaco.editor
+        .tokenize(text, 'typescript')
+        .flat()
+        .map((token) => token.type)
+    return {
+      markup: types('const x = (<div className="hero">{name}</div>)'),
+      generic: types('const [v] = useState<string>("")'),
+    }
+  })
+  expect(tokens.markup.some((type) => type.startsWith('tag'))).toBe(true)
+  expect(tokens.markup.some((type) => type.startsWith('attribute.name'))).toBe(true)
+  expect(tokens.markup.some((type) => type.startsWith('attribute.value'))).toBe(true)
+  expect(tokens.generic.some((type) => type.startsWith('tag'))).toBe(false)
+
   // And the types are the site's own, not a guess: a property `PublishedContent`
   // does not have can only be an error if `@crombolo/crombolo` resolved to the module the
   // server served.

@@ -357,6 +357,30 @@ describe(`approval before publishing (${dialectUnderTest})`, () => {
     expect((await people.admin.json<{ items: View[] }>(`${API}/in-flight`)).items).toHaveLength(2)
   })
 
+  test('one list of requests: pending first, decided after, by the page', async () => {
+    const { people, page, send, act } = await site()
+    const one = await send(await page('One'))
+    await send(await page('Two'))
+    await send(await page('Three'))
+    expect((await act(one.key, 'withdraw', people.writer)).status).toBe(200)
+    const list = (query: string) =>
+      people.admin.json<{ total: number; items: View[] }>(`${API}/requests?${query}`)
+
+    // Pending alone by default.
+    const pending = await list('')
+    expect(pending.total).toBe(2)
+    expect(pending.items.map((v) => v.state)).toEqual(['waiting', 'waiting'])
+    const all = await list('decided=true&take=2')
+    expect(all.total).toBe(3)
+    expect(all.items.map((v) => v.state)).toEqual(['waiting', 'waiting'])
+    const second = await list('decided=true&take=2&skip=2')
+    expect(second.items.map((v) => v.state)).toEqual(['withdrawn'])
+    const decided = await list('pending=false&decided=true')
+    expect(decided.total).toBe(1)
+    expect(decided.items.map((v) => v.key)).toEqual([one.key])
+    expect((await list('pending=false')).total).toBe(0)
+  })
+
   test('asking about a page needs Read and Update on it, inside one’s start nodes (088)', async () => {
     const { people, page } = await site()
     const theirs = await page('Theirs')

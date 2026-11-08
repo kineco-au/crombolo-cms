@@ -17,7 +17,7 @@ import {
   valueText,
 } from '@crombolo/data'
 import { parseContentType, writeContentType } from '@crombolo/schema'
-import { type Harness, signedInServer, signInAsGroup, V1 } from './support/harness.ts'
+import { BACKOFFICE, type Harness, signedInServer, signInAsGroup, V1 } from './support/harness.ts'
 
 const open: Harness[] = []
 const dirs: string[] = []
@@ -193,6 +193,28 @@ describe(`backoffice search (${process.env.CROMBOLO_DB ?? 'sqlite'})`, () => {
     expect(await search('lighthouse')).toEqual([])
     // A name still matches anywhere inside it, as it did before the index.
     expect(await search('bout')).toEqual([about])
+  })
+
+  test('finds a page by the words its {#key} reads as, and again when they change (297)', async () => {
+    const { h, page, search, index } = await site()
+    const created = await h.post(`${V1}/dictionary`, {
+      name: 'site.tagline',
+      parent: null,
+      translations: [{ isoCode: 'en-US', translation: 'Lighthouse keepers' }],
+    })
+    expect(created.status).toBe(201)
+    const tagline = await page('Tagline', { bodyText: 'Home of the {#site.tagline}' })
+    await index()
+    expect(await search('lighthouse')).toEqual([tagline])
+
+    // A change to the item's words queues the pages naming it.
+    const saved = await h.put(`${BACKOFFICE}/crombolo/api/dictionary/words/site.tagline`, {
+      words: { 'en-US': 'Harbour pilots' },
+    })
+    expect(saved.status).toBe(200)
+    await index()
+    expect(await search('pilots')).toEqual([tagline])
+    expect(await search('lighthouse')).toEqual([])
   })
 
   test('stays current across save, publish, delete and a change of schema', async () => {

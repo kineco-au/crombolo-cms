@@ -3,7 +3,14 @@
  * dictionary item, and everything else stays exactly as written.
  */
 import { describe, expect, test } from 'bun:test'
-import { formWordNames, type SchemaForm, withFormWords } from '@crombolo/core'
+import {
+  bareFormWords,
+  bracedFormWordNames,
+  formWordNames,
+  type SchemaForm,
+  withBracedFormWords,
+  withFormWords,
+} from '@crombolo/core'
 
 const form = (
   overrides: Partial<SchemaForm['pages'][number]['groups'][number]['fields'][number]>,
@@ -87,5 +94,38 @@ describe('a form’s words', () => {
       'needed',
       'pattern',
     ])
+  })
+})
+
+describe('{#key} in a form (story 297)', () => {
+  test('names items anywhere in a text, and the old #key with them', () => {
+    expect(
+      formWordNames(
+        form({
+          caption: 'Your {#contact.name}',
+          helpText: '{#help} and {#help}',
+          placeholder: '#hint',
+        }),
+      ),
+    ).toEqual(['send', 'page', 'group', 'contact.name', 'help', 'hint', 'needed', 'pattern'])
+    expect(bracedFormWordNames(form({ caption: 'Your {#contact.name}' }))).toEqual(['contact.name'])
+  })
+
+  test('lists the texts still written #key', () => {
+    expect(bareFormWords(form({ caption: '{#name}' }))).not.toContain('name')
+    expect(bareFormWords(form({}))).toContain('name')
+  })
+
+  test('writes #key as {#key} when it names an item, and leaves other text alone', () => {
+    const out = withBracedFormWords(form({ helpText: '#1 choice' }), (name) => name !== 'hint')
+    const field = out.pages[0]?.groups[0]?.fields[0]
+    expect([out.submitLabel, field?.caption, field?.placeholder, field?.helpText]).toEqual([
+      '{#send}',
+      '{#name}',
+      '#hint',
+      '#1 choice',
+    ])
+    // A stored choice is a value, not words.
+    expect(field?.values).toEqual(['#kept'])
   })
 })

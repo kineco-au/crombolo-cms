@@ -1,11 +1,11 @@
 /**
- * The tree beside forms and workflows (story 289): their folders and their items,
+ * The tree of forms or of workflows (story 289), in Structure or beside them: their folders
+ * and their items,
  * with making, renaming and moving, or a word saying why they cannot be changed.
  * Forms' root opens every submission; a folder is a real folder of files.
  */
 import { css, html, nothing, repeat } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
-import { activeItem } from './content-strip-items.js'
 import { definitionTree, readOnlyWords } from './definition-tree-model.js'
 import { formsTree, moveForm, sendFormFolder } from './forms-client.js'
 import { listWorkflows, moveWorkflow, sendWorkflowFolder } from './workflow-client.js'
@@ -21,6 +21,10 @@ const formsAt = (view) =>
     ? `section/settings/forms${view === 'entries' ? '/entries' : ''}`
     : `section/forms/view/${view}`
 
+/** The workflow designer, in Structure for those who have it, else beside forms. */
+const workflowsAt = (query = '') =>
+  `${here().startsWith('section/settings') ? 'section/settings/workflows' : 'section/forms/view/workflows'}${query}`
+
 const KINDS = {
   Forms: {
     label: 'Forms',
@@ -28,6 +32,8 @@ const KINDS = {
       return formsAt('entries')
     },
     rootLabel: 'Forms',
+    itemNoun: 'form',
+    icon: 'icon-autofill',
     open: (item) => `${formsAt('forms')}?form=${encodeURIComponent(item.key)}`,
     create: (folder) => `${formsAt('forms')}?new=${encodeURIComponent(folder)}`,
     load: formsTree,
@@ -36,10 +42,14 @@ const KINDS = {
   },
   Workflows: {
     label: 'Workflows',
-    root: 'section/forms/view/workflows',
+    get root() {
+      return workflowsAt()
+    },
     rootLabel: 'Workflows',
-    open: (item) => `section/forms/view/workflows?workflow=${encodeURIComponent(item.alias)}`,
-    create: (folder) => `section/forms/view/workflows?new=${encodeURIComponent(folder)}`,
+    itemNoun: 'workflow',
+    icon: 'icon-mindmap',
+    open: (item) => workflowsAt(`?workflow=${encodeURIComponent(item.alias)}`),
+    create: (folder) => workflowsAt(`?new=${encodeURIComponent(folder)}`),
     load: async () => {
       const list = await listWorkflows()
       return {
@@ -58,8 +68,10 @@ const url = (path) =>
 
 export default class CromboloDefinitionTreeElement extends UmbLitElement {
   static properties = {
-    /** The tree to show; without it, whichever the address belongs to. */
+    /** The tree to show; without it, the menu item's, else whichever the address belongs to. */
     kind: { type: String },
+    /** Set by the menu, as for any menu item: its `meta.kind` names the tree. */
+    manifest: { attribute: false },
     _kind: { state: true },
     _tree: { state: true },
     _because: { state: true },
@@ -68,13 +80,20 @@ export default class CromboloDefinitionTreeElement extends UmbLitElement {
   }
 
   #follow = () => {
-    const kind = this.kind ?? (activeItem(here()) === 'Workflows' ? 'Workflows' : 'Forms')
+    const kind =
+      this.kind ??
+      this.manifest?.meta?.kind ??
+      (/^section\/forms\/view\/workflows/.test(here()) ? 'Workflows' : 'Forms')
     if (kind === this._kind) return
     this._kind = kind
     this.#load()
   }
 
   #reload = () => this.#load()
+
+  willUpdate(changed) {
+    if (changed.has('manifest')) this.#follow()
+  }
 
   connectedCallback() {
     super.connectedCallback()
@@ -96,7 +115,10 @@ export default class CromboloDefinitionTreeElement extends UmbLitElement {
   }
 
   async #load() {
+    const kind = this._kind
     const { items, folders, readOnlyBecause } = await this.#config.load()
+    // A menu item names its tree after it is made: a load for the tree it had is dropped.
+    if (kind !== this._kind) return
     this._tree = definitionTree(items, folders)
     this._folders = folders
     this._because = readOnlyBecause
@@ -147,156 +169,164 @@ export default class CromboloDefinitionTreeElement extends UmbLitElement {
     </form>`
   }
 
-  #folderActions(path) {
-    if (!this.#editable) return nothing
-    return html`<span class="actions">
-      <a href=${url(this.#config.create(path))} title="New in this folder" aria-label="New in this folder">+</a>
-      <button
-        type="button"
-        title="New folder"
-        aria-label="New folder"
-        @click=${() => {
-          this._asking = { verb: 'new', path }
-        }}
-      >▸</button>
+  /** Which folders are open, by path; the root is `''`. Everything starts open. */
+  #closed = new Set()
+
+  #toggle(path, open) {
+    if (open) this.#closed.delete(path)
+    else this.#closed.add(path)
+    this.requestUpdate()
+  }
+
+  /** The popovers this render made: drawn after the tree, since a closed folder hides its children. */
+  #popovers = []
+
+  /**
+   * A row's actions, as Umbraco's tree draws them: "…" for a popover of choices, then the
+   * first choice as a button of its own when it is marked `quick`, e.g. "+" for a new item.
+   */
+  #menu(id, label, choices) {
+    if (choices.length === 0) return nothing
+    const pick = (run) => () => {
+      this.renderRoot.querySelector(`#${id}`)?.hidePopover?.()
+      run()
+    }
+    this.#popovers.push(html`<uui-popover-container id=${id} placement="bottom-start">
+      <umb-popover-layout>
+        ${choices.map(
+          (choice) =>
+            html`<uui-menu-item label=${choice.label} @click-label=${pick(choice.run)}>
+              <umb-icon slot="icon" name=${choice.icon}></umb-icon>
+            </uui-menu-item>`,
+        )}
+      </umb-popover-layout>
+    </uui-popover-container>`)
+    const [first] = choices
+    return html`<uui-action-bar slot="actions">
+      <uui-button compact label=${`Actions for ${label}`} popovertarget=${id}
+        ><uui-symbol-more></uui-symbol-more
+      ></uui-button>
       ${
-        path
-          ? html`<button
-                type="button"
-                title="Rename"
-                aria-label="Rename"
-                @click=${() => {
-                  this._asking = { verb: 'rename', path }
-                }}
-              >✎</button>
-              <button
-                type="button"
-                title="Delete"
-                aria-label="Delete"
-                @click=${() => this.#send(() => this.#config.folder('DELETE', { path }))}
-              >×</button>`
+        first.quick
+          ? html`<uui-button compact label=${first.label} title=${first.label} @click=${first.run}
+              ><umb-icon name=${first.icon}></umb-icon
+            ></uui-button>`
           : nothing
       }
-    </span>`
+    </uui-action-bar>`
   }
 
-  #move(item) {
-    if (!this.#editable || (this._folders ?? []).length === 0) return nothing
-    return html`<select
-      aria-label="Move to a folder"
-      title="Move to a folder"
-      @change=${(event) => this.#send(() => this.#config.move(item.alias, event.target.value))}
+  /** What a folder offers: a new item or folder in it, and, below the root, renaming or deleting it. */
+  #folderChoices(path) {
+    if (!this.#editable) return []
+    const go = (to) => () => window.history.pushState(null, '', url(to))
+    return [
+      {
+        label: `New ${this.#config.itemNoun}`,
+        icon: 'icon-add',
+        quick: true,
+        run: go(this.#config.create(path)),
+      },
+      {
+        label: 'New folder…',
+        icon: 'icon-folder',
+        run: () => {
+          this._asking = { verb: 'new', path }
+        },
+      },
+      ...(path
+        ? [
+            {
+              label: 'Rename…',
+              icon: 'icon-edit',
+              run: () => {
+                this._asking = { verb: 'rename', path }
+              },
+            },
+            {
+              label: 'Delete',
+              icon: 'icon-trash',
+              run: () => this.#send(() => this.#config.folder('DELETE', { path })),
+            },
+          ]
+        : []),
+    ]
+  }
+
+  /** What an item offers: moving it to another folder. */
+  #itemChoices(item) {
+    if (!this.#editable || (this._folders ?? []).length === 0) return []
+    return ['', ...this._folders]
+      .filter((folder) => folder !== (item.folder ?? ''))
+      .map((folder) => ({
+        label: folder ? `Move to ${folder}` : 'Move to the top',
+        icon: 'icon-enter',
+        run: () => this.#send(() => this.#config.move(item.alias, folder)),
+      }))
+  }
+
+  #idFor(kind, key) {
+    return `${kind}-${key.replace(/[^a-z0-9]/gi, '-')}`
+  }
+
+  #folder(node, label, href) {
+    const children = node.folders.length + node.items.length > 0
+    return html`<uui-menu-item
+      label=${label}
+      href=${href ?? nothing}
+      .hasChildren=${children}
+      .showChildren=${children && !this.#closed.has(node.path)}
+      ?active=${href !== undefined && url(this.#config.root) === location.pathname}
+      @show-children=${() => this.#toggle(node.path, true)}
+      @hide-children=${() => this.#toggle(node.path, false)}
+      @click-label=${href ? nothing : () => this.#toggle(node.path, this.#closed.has(node.path))}
     >
-      <option value="" ?selected=${!item.folder}>Top</option>
-      ${this._folders.map(
-        (folder) =>
-          html`<option value=${folder} ?selected=${folder === item.folder}>${folder}</option>`,
-      )}
-    </select>`
-  }
-
-  #items(node) {
-    return html`<ul>
+      <umb-icon slot="icon" name="icon-folder"></umb-icon>
+      ${this.#menu(this.#idFor('folder', node.path || 'root'), label, this.#folderChoices(node.path))}
       ${repeat(
         node.folders,
         (folder) => folder.path,
-        (folder) => html`<li>
-          <details open>
-            <summary><span>${folder.name}</span>${this.#folderActions(folder.path)}</summary>
-            ${this.#items(folder)}
-          </details>
-        </li>`,
+        (folder) => this.#folder(folder, folder.name),
       )}
       ${repeat(
         node.items,
         (item) => item.alias,
-        (item) => html`<li class="item">
-          <a href=${url(this.#config.open(item))}>${item.name}</a>${this.#move(item)}
-        </li>`,
+        (item) => {
+          const href = url(this.#config.open(item))
+          return html`<uui-menu-item
+            label=${item.name}
+            href=${href}
+            ?active=${`${location.pathname}${location.search}` === href}
+          >
+            <umb-icon slot="icon" name=${this.#config.icon}></umb-icon>
+            ${this.#menu(this.#idFor('item', item.alias), item.name, this.#itemChoices(item))}
+          </uui-menu-item>`
+        },
       )}
-    </ul>`
+    </uui-menu-item>`
   }
 
   render() {
     if (!this._tree) return html`<uui-loader></uui-loader>`
     const words = readOnlyWords(this.#config.label, this._because)
-    return html`<div class="root">
-        <a href=${url(this.#config.root)}>${this.#config.rootLabel}</a>
-        ${this.#folderActions('')}
-      </div>
-      ${this.#asking()}
+    this.#popovers = []
+    const tree = this.#folder(this._tree, this.#config.rootLabel, url(this.#config.root))
+    return html`${this.#asking()}
       ${this._problem ? html`<p class="problem" role="alert">${this._problem}</p>` : nothing}
       ${words ? html`<p class="note" role="status">${words}</p>` : nothing}
-      ${this.#items(this._tree)}`
+<uui-menu-item-list>${tree}</uui-menu-item-list>
+      ${this.#popovers}`
   }
 
   static styles = css`
     :host {
       display: block;
-      padding: var(--uui-size-space-3) var(--uui-size-space-4);
-    }
-    a {
-      color: var(--uui-color-text);
-      text-decoration: none;
-    }
-    a:hover {
-      text-decoration: underline;
-    }
-    .root {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-weight: 700;
-      padding-bottom: var(--uui-size-space-2);
-    }
-    ul {
-      list-style: none;
-      margin: 0;
-      padding: 0 0 0 var(--uui-size-space-4);
-    }
-    :host > ul {
-      padding-left: 0;
-    }
-    li {
-      padding: var(--uui-size-space-1) 0;
-    }
-    .item {
-      display: flex;
-      justify-content: space-between;
-      gap: var(--uui-size-space-2);
-    }
-    summary {
-      display: flex;
-      justify-content: space-between;
-      cursor: pointer;
-      list-style-position: inside;
-    }
-    .actions {
-      display: inline-flex;
-      gap: var(--uui-size-space-1);
-    }
-    .actions button,
-    .actions a {
-      background: none;
-      border: 0;
-      padding: 0 var(--uui-size-space-1);
-      cursor: pointer;
-      color: var(--uui-color-text-alt);
-      font: inherit;
-    }
-    select {
-      max-width: 5rem;
-      font: inherit;
-      font-size: var(--uui-type-small-size);
-      color: var(--uui-color-text-alt);
-      background: none;
-      border: 0;
     }
     .ask {
       display: flex;
       flex-wrap: wrap;
       gap: var(--uui-size-space-2);
-      padding-bottom: var(--uui-size-space-2);
+      padding: var(--uui-size-space-2) var(--uui-size-space-4);
     }
     .ask input {
       flex: 1 1 100%;
@@ -304,7 +334,8 @@ export default class CromboloDefinitionTreeElement extends UmbLitElement {
     }
     .note,
     .problem {
-      margin: 0 0 var(--uui-size-space-3);
+      margin: 0;
+      padding: var(--uui-size-space-2) var(--uui-size-space-4);
       font-size: var(--uui-type-small-size);
       line-height: 1.5;
       color: var(--uui-color-text-alt);

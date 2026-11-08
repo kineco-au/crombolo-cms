@@ -6,6 +6,53 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.54.0 — 2026-11-08
+
+### Features
+
+- **Dictionary words as chips, in forms and on pages (297).** `{#key}` names a dictionary item
+  in a form's words and in a page's text boxes, text areas and rich text, inside blocks too, and
+  reads as the item's words in the page's language. In the back office it shows as a chip: click
+  its words to see and change them in every language, or × to remove it. Typing `{#` offers the
+  items. Search finds a page by the words, and a block label's `{#key}` shows them too.
+
+### Changes
+
+- **Workflows are in Structure, below Forms.** Their tree, with folders, sits beside the list and
+  the designer. The list has no Create button: the "+" beside Workflows or a folder starts one,
+  as for forms and content types, and Forms' tree has the same "+". Someone with Workflow setup
+  and not Structure finds them under Structure, beside forms.
+- **Approvals is in the menu under Content,** after Pages, and has no header tab. It is always
+  there for groups that have it, and says when no workflow is set up yet. Its three tabs are now
+  one list, pending requests by default, with Pending and Decided to choose what it shows and
+  pages of 25. The tree beside it has two folders, Waiting for me and Decided. A request, in
+  either, opens its page's Workflow tab.
+- **Send for approval is in the bottom bar,** beside Save and publish, on a page its workflow
+  covers; Request unpublish is in Save and publish's menu. Each asks for a note, and the times
+  where the workflow allows them. The Workflow tab shows where a request stands and its history.
+- **A page's template is picked in a panel that slides in,** from a tree of every component's
+  folders, the first level open, with a search above it that narrows the tree by name. On the
+  Info view, one
+  the content type does not allow says so, and someone with Structure allows it right there:
+  the type gains it, and it can be picked like the others.
+- **JSX is coloured in the component editors.** Tags, attributes and their values, and `{…}`
+  inside markup, have colours of their own, in page templates and blocks alike.
+- **One width for the tree on the left.** Structure and Code now have the same draggable edge as
+  Pages, Approvals and Forms, and the width you drag it to is kept for all of them.
+
+### Upgrade notes
+
+- Forms write a dictionary item as `{#key}` now, not `#key`. A site whose schema the server may
+  write has its form files rewritten as it starts; elsewhere `#key` still reads for this release,
+  and `bundle build --check` reports each one as `bare-dictionary-word`. Write them `{#key}`.
+- `section/forms/view/workflows` and `section/settings/dashboard/workflows` still open the
+  workflows; Approvals keeps its address, `section/workflow`.
+
+### Fixes
+
+- **Document Blueprints keep the Structure tree.** Opening them no longer hides the tree beside
+  them or shows a Settings trail; the menu under Content marks Structure, as for content types.
+
 ## v0.53.2 — 2026-11-08
 
 v0.53.1 was tagged but not published. Its notes, and v0.53.0's, apply to this release.

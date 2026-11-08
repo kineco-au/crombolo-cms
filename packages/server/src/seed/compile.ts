@@ -8,8 +8,9 @@
 import { createHash } from 'node:crypto'
 import { extname } from 'node:path'
 import {
+  bareFormWords,
+  bracedFormWordNames,
   type ContentTypeAggregate,
-  formWordNames,
   IMAGE_CROPPER_EDITOR_ALIAS,
   normaliseUuid,
   ObjectTypes,
@@ -98,15 +99,26 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
       }
     }
     collect(dictionary.entries)
-    for (const form of loadSchemaDirectory(config.schemaDir).set.forms ?? [])
-      for (const name of formWordNames(form))
+    for (const form of loadSchemaDirectory(config.schemaDir).set.forms ?? []) {
+      const file = `schema/forms/${form.alias}.toml`
+      for (const name of bracedFormWordNames(form))
         if (!names.has(name.toLowerCase()))
           findings.push({
-            file: `schema/forms/${form.alias}.toml`,
+            file,
             line: 1,
             code: 'unknown-dictionary-item',
-            message: `the form "${form.alias}" names #${name}, which is not in ${DICTIONARY_FILE}`,
+            message: `the form "${form.alias}" names {#${name}}, which is not in ${DICTIONARY_FILE}`,
           })
+      // Forms wrote `#key` before story 297; the server rewrites it when it starts.
+      for (const name of bareFormWords(form))
+        if (names.has(name.toLowerCase()))
+          findings.push({
+            file,
+            line: 1,
+            code: 'bare-dictionary-word',
+            message: `the form "${form.alias}" writes #${name}; write it as {#${name}}`,
+          })
+    }
   }
 
   const state = await currentSchemaState(db)

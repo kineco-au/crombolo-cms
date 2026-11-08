@@ -191,7 +191,7 @@ test('a Send email workflow is given an e-mail design, and saved', async ({
   await page.request.delete(`${FORMS_API}/${key}`)
 })
 
-test('typing # offers dictionary items, and a field keeps its help and messages', async ({
+test('typing # offers dictionary items, chosen as a chip, and a field keeps its help and messages', async ({
   page,
 }) => {
   await signIn(page)
@@ -207,8 +207,9 @@ test('typing # offers dictionary items, and a field keeps its help and messages'
   await input.fill('#form.word')
   await expect(caption.getByRole('option').first()).toBeVisible()
   await input.press('Enter')
-  await expect(input).toHaveValue(`#${name}`)
-  await expect(caption.getByText('From the dictionary: Your name')).toBeVisible()
+  // Chosen, it is {#key}, shown as a chip with the item's words (story 297).
+  const chip = caption.locator('crombolo-dictionary-chip')
+  await expect(chip.getByRole('button', { name: 'Your name' })).toBeVisible()
   await expect(caption.getByRole('option')).toHaveCount(0)
 
   await page.getByText('Help and messages', { exact: true }).first().click()

@@ -1,13 +1,13 @@
-# One form in every language: a word starting with # names a dictionary item, and
-# shows in the page's language. See content/dictionary.toml and docs/forms.md.
+# One form in every language: {#key} names a dictionary item, and shows in the
+# page's language. See content/dictionary.toml and docs/forms.md.
 [form]
 key = "5e2c7a10-3f4b-4c6d-9a18-6b7d0e1f2a31"
 alias = "contact"
 name = "Contact"
 store-entries = true
 requires-approval = false
-submit-label = "#contact.send"
-message-on-submit = "#contact.thanks"
+submit-label = "{#contact.send}"
+message-on-submit = "{#contact.thanks}"
 honeypot = true
 minimum-submit-seconds = 3
 
@@ -19,23 +19,23 @@ minimum-submit-seconds = 3
     [[page.group.field]]
     alias = "visitorName"
     type = "shortAnswer"
-    caption = "#contact.name"
+    caption = "{#contact.name}"
     mandatory = true
-    mandatory-message = "#contact.nameNeeded"
+    mandatory-message = "{#contact.nameNeeded}"
     autocomplete = "name"
 
     [[page.group.field]]
     alias = "visitorEmail"
     type = "email"
-    caption = "#contact.email"
+    caption = "{#contact.email}"
     mandatory = true
-    mandatory-message = "#contact.emailNeeded"
+    mandatory-message = "{#contact.emailNeeded}"
     autocomplete = "email"
 
     [[page.group.field]]
     alias = "message"
     type = "longAnswer"
-    caption = "#contact.message"
+    caption = "{#contact.message}"
     mandatory = true
-    mandatory-message = "#contact.messageNeeded"
+    mandatory-message = "{#contact.messageNeeded}"
     rows = 5

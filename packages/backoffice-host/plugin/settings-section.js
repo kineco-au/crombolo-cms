@@ -31,7 +31,6 @@ import {
   treeFor,
 } from './settings-cards.js'
 import './breadcrumb.js'
-import './definition-tree.js'
 import { readOnlyWords } from './definition-tree-model.js'
 import './settings-card.js'
 
@@ -48,6 +47,25 @@ const emailStatus = async () => {
   return response.json()
 }
 
+/** Where Umbraco's sections keep the sidebar's width, so every section shares one. */
+const SPLIT_POSITION = 'umb-split-panel-position'
+
+const savedPosition = () => {
+  try {
+    return localStorage.getItem(SPLIT_POSITION) ?? undefined
+  } catch {
+    return undefined
+  }
+}
+
+const savePosition = (event) => {
+  try {
+    localStorage.setItem(SPLIT_POSITION, String(event.detail.position))
+  } catch {
+    // A browser that keeps nothing starts at the default width each time.
+  }
+}
+
 const menuOf = (manifest, menu) => manifest.meta?.menus?.includes(menu) === true
 
 /** Each tree, and the part of Settings that opens it. */
@@ -58,7 +76,6 @@ const TREE_SECTIONS = [
 
 export class CromboloSettingsSectionElement extends UmbLitElement {
   static properties = {
-    _mayForms: { state: true },
     _routes: { state: true },
     _sidebarApps: { state: true },
     _tree: { state: true },
@@ -79,9 +96,6 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
     super()
     this.consumeContext(UMB_CURRENT_USER_CONTEXT, (user) => {
       this.observe(user?.currentUser, (current) => {
-        this._mayForms =
-          current?.isAdmin === true ||
-          (current?.fallbackPermissions ?? []).includes('Crombolo.Form.Read')
         this.#held = current?.allowedSections ?? []
         this.#createRoutes()
       })
@@ -267,7 +281,7 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
         this.#showing(undefined, { title: this.#label(manifest) })
       },
     }))
-    // Forms is a node in Structure, so its tree stays on screen beside the form.
+    // Forms and Workflows are nodes in Structure, so its tree stays on screen beside them.
     const forms = (path, tag, load) => ({
       path,
       component: async () => {
@@ -279,11 +293,12 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
     this._routes = [
       forms('forms/entries', 'crombolo-forms-entries', () => import('./forms-entries.js')),
       forms('forms', 'crombolo-forms-overview', () => import('./forms-overview.js')),
+      forms('workflows', 'crombolo-workflow-designer', () => import('./workflow-designer.js')),
       tree('structure'),
       tree('code'),
       // Umbraco's welcome, which this page replaces: an address people have.
       { path: 'dashboard/welcome', ...landing },
-      // Workflows moved beside forms (story 289): an address people have.
+      // Workflows were a Settings card, then beside forms (story 289): an address people have.
       {
         path: 'dashboard/workflows',
         component: () => document.createElement('div'),
@@ -291,7 +306,7 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
           history.replaceState(
             null,
             '',
-            new URL('section/forms/view/workflows', document.baseURI).pathname,
+            new URL('section/settings/workflows', document.baseURI).pathname,
           )
         },
       },
@@ -321,7 +336,7 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
             ? `${section}/${c.path}`
             : section,
     }))
-    const main = html`<umb-section-main>
+    const main = html`<umb-section-main slot="end">
       ${
         crumbs.length > 0
           ? html`<crombolo-breadcrumb class="crumbs" .items=${crumbs}></crombolo-breadcrumb>`
@@ -332,7 +347,13 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
     // Both trees stay in the page, the one not in use hidden, as Umbraco's own
     // Settings keeps its menus. A tree taken out and put back breaks: the trees
     // share the section's expansion state, and a detached one still answers it.
-    return html`<umb-section-sidebar ?hidden=${!shown}>
+    // Out of the split's start slot, the sidebar stays in the page but takes no room.
+    return html`<umb-split-panel
+      lock="start"
+      snap="300px"
+      .position=${savedPosition() ?? 'var(--umb-split-panel-initial-position)'}
+      @position-changed=${savePosition}
+    ><umb-section-sidebar slot=${shown ? 'start' : 'none'} ?hidden=${!shown}>
         ${
           this._tree === 'structure' && this._readOnly
             ? html`<p class="read-only" role="status">
@@ -343,13 +364,8 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
         ${(this._sidebarApps ?? []).map(
           (app) => html`<div class="tree" ?hidden=${app.alias !== shown}>${app.component}</div>`,
         )}
-        ${
-          this._tree === 'structure' && this._mayForms
-            ? html`<crombolo-definition-tree kind="Forms"></crombolo-definition-tree>`
-            : nothing
-        }
       </umb-section-sidebar>
-      ${main}`
+      ${main}</umb-split-panel>`
   }
 
   static styles = [
@@ -360,8 +376,17 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
         height: 100%;
         display: flex;
       }
-      umb-section-sidebar {
-        --umb-section-sidebar-width: 300px;
+      /* As Umbraco's own sections draw the split, so the width is the same in each. */
+      umb-split-panel {
+        --umb-split-panel-start-min-width: 200px;
+        --umb-split-panel-start-max-width: 400px;
+        --umb-split-panel-end-min-width: 600px;
+        --umb-split-panel-slot-overflow: visible;
+      }
+      @media only screen and (min-width: 800px) {
+        umb-split-panel {
+          --umb-split-panel-initial-position: 300px;
+        }
       }
       umb-section-sidebar[hidden],
       .tree[hidden] {

@@ -203,6 +203,13 @@ export interface Approvals {
     skip: number,
     take: number,
   ): Promise<{ total: number; items: RequestView[] }>
+  /** One page of requests: the pending first, oldest first, then the decided, newest first. */
+  requests(
+    principal: Principal,
+    include: { pending: boolean; decided: boolean },
+    skip: number,
+    take: number,
+  ): Promise<{ total: number; items: RequestView[] }>
 }
 
 const SWEEP_GRACE_MS = 5 * 60_000
@@ -1165,6 +1172,22 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
       return {
         total: page.total,
         items: await Promise.all(page.items.map((r) => view(principal, r))),
+      }
+    },
+
+    async requests(principal, include, skip, take) {
+      const pending = include.pending ? await requests().open() : []
+      const shown = pending.slice(skip, skip + take)
+      const decidedSkip = Math.max(0, skip - pending.length)
+      const decidedTake = take - shown.length
+      // Asked even for none, since its total counts toward the pages.
+      const decided = include.decided
+        ? await requests().finished(decidedSkip, Math.max(1, decidedTake))
+        : { total: 0, items: [] }
+      const page = [...shown, ...(decidedTake > 0 ? decided.items : [])]
+      return {
+        total: pending.length + decided.total,
+        items: await Promise.all(page.map((r) => view(principal, r))),
       }
     },
   }

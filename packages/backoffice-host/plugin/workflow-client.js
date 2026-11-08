@@ -28,6 +28,9 @@ export const decide = (requestKey, verb, body) =>
 export const waitingForMe = () => call('waiting')
 export const inFlight = () => call('in-flight')
 export const finished = (skip = 0, take = 25) => call(`history?skip=${skip}&take=${take}`)
+/** A page of requests: the pending, the decided, or both. */
+export const requestList = ({ pending, decided }, skip = 0, take = 25) =>
+  call(`requests?pending=${pending}&decided=${decided}&skip=${skip}&take=${take}`)
 export const listWorkflows = () => call('workflows')
 export const previewWorkflow = (alias, workflow) =>
   post(`workflows/${encodeURIComponent(alias)}/preview`, { workflow })

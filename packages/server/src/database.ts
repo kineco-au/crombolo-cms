@@ -4,6 +4,7 @@
  * Migration and seeding run at startup rather than through the install wizard;
  * the wizard is story 080. Both are idempotent, so restarting is safe.
  */
+
 import { hashPassword, passwordConfigJson } from '@crombolo/auth'
 import {
   connect,
@@ -25,6 +26,7 @@ import {
 import { ensureApiClient } from './api-client.ts'
 import { type CromboloConfig, runsOnLocalhost } from './config.ts'
 import { migrateTables, pendingTablesSteps, type TablesChain } from './custom-tables.ts'
+import { upgradeFormWords } from './form-word-upgrade.ts'
 import { logger } from './logging.ts'
 import { linkMediaFolders } from './media-folders.ts'
 
@@ -164,6 +166,13 @@ export async function installDatabase(
   await migrate(db, cromboloPlan, { by: config.nodeId })
   // Core first, so a bundle step always runs against a core it declared itself compatible with.
   await migrateTables(db, config, chains, { by: config.nodeId })
+  // Forms' `#key` is `{#key}` now (story 297). A shared schema store is left to
+  // the designer's next save, which writes it the new way.
+  if (config.schemaWritable && !config.schemaStore) {
+    const upgraded = await upgradeFormWords(db, config.schemaDir)
+    if (upgraded.length > 0)
+      logger('install').info(`Wrote dictionary words as {#key} in ${upgraded.length} form file(s)`)
+  }
 
   // In production a password is never made up: the pipeline supplies one, or
   // the owner sets the site up in the browser (docs/operations.md). With an API

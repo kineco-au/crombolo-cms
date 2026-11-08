@@ -128,6 +128,7 @@ not cover.
 | `294` | Dictionary suggestions in the form editor | could | S | done | 293 |
 | `295` | Every form word has a box in the form editor | should | S | done | 294 |
 | `296` | Admins choose what a group sees under Content | should | L | done | — |
+| `297` | Dictionary words as chips, in forms and on pages | should | L | done | 293, 294 |
 
 ### Epic D — Members and identity
 

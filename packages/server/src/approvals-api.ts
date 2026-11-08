@@ -145,6 +145,18 @@ export async function handleApprovalsApi(
       return json(await approvals.finished(principal, skip, take))
     }
 
+    if (path === 'requests' && request.method === 'GET') {
+      const url = new URL(request.url)
+      const skip = Math.max(0, Number(url.searchParams.get('skip') ?? 0) || 0)
+      const take = Math.min(100, Math.max(1, Number(url.searchParams.get('take') ?? 25) || 25))
+      const flag = (name: string, otherwise: boolean) => {
+        const value = url.searchParams.get(name)
+        return value === null ? otherwise : value === 'true'
+      }
+      const include = { pending: flag('pending', true), decided: flag('decided', false) }
+      return json(await approvals.requests(principal, include, skip, take))
+    }
+
     // Whether Approvals and a page's Workflow tab show: a workflow, or a request still open.
     if (path === 'active' && request.method === 'GET') {
       const active =

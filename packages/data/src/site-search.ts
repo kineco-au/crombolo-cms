@@ -14,6 +14,7 @@ import {
 } from '@crombolo/core'
 import type { Db } from './database.ts'
 import { DbDate, fromDbBool } from './dialect.ts'
+import { dictionaryWords } from './dictionary-words.ts'
 import { sql } from './query.ts'
 import { publishedValueRows } from './repositories/documents.ts'
 import { hiddenElementProperties } from './search.ts'
@@ -139,12 +140,16 @@ export async function siteEntriesFor(db: Db, nodeId: number): Promise<SiteSearch
     (row) => row.segment === null,
   )
   const hidden = await hiddenElementProperties(db, true)
+  const words = shown.some((row) => String(row.raw ?? '').includes('{#'))
+    ? await dictionaryWords(db)
+    : undefined
 
   const entry = (culture: string, languageId: number | null, name: string): SiteSearchEntry => {
     const text: SiteSearchText = { name, high: [], normal: [], low: [] }
+    const read = words?.(culture || null)
     for (const row of shown) {
       if (row.languageId !== null && row.languageId !== languageId) continue
-      text[row.level].push(...valueText(row.raw, hidden))
+      text[row.level].push(...valueText(row.raw, hidden).map((t) => read?.(t) ?? t))
     }
     return { culture, text }
   }

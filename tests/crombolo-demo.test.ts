@@ -303,9 +303,9 @@ describe('its one contact form', () => {
       for (const part of ['schema', 'components', 'css', 'content', 'package.json', 'site.json'])
         cpSync(join(SITE, part), join(copy, part), { recursive: true })
       const file = join(copy, 'schema', 'forms', 'contact.toml')
-      writeFileSync(file, readFileSync(file, 'utf8').replace('#contact.send', '#contact.sned'))
+      writeFileSync(file, readFileSync(file, 'utf8').replace('{#contact.send}', '{#contact.sned}'))
       const built = await buildBundleFromDirectory(copy, { media: false })
-      expect(built.problems.join('\n')).toContain('#contact.sned')
+      expect(built.problems.join('\n')).toContain('{#contact.sned}')
     } finally {
       rmSync(copy, { recursive: true, force: true })
     }

@@ -472,20 +472,33 @@ The create menu is built from `entityCreateOptionAction` manifests, not the unus
 the plugin's own requests: a 401 renews the session or opens the sign-in dialog, and the
 request waits and is sent again. The client's calls have their own queue and are left alone.
 
-**The menu under Content (story 289)** is `content-strip.js`: Pages, Structure, Components,
-Forms and Workflows, for whoever may open each, and nothing for someone with one. It is a row of
+**The menu under Content (story 289)** is `content-strip.js`: Pages, Approvals, Structure and
+Code, for whoever may open each, and nothing for someone with one. It is a row of
 its own under the header, which the fork draws and a `backofficeEntryPoint` defines, shown
 wherever one of them is open; `--crombolo-content-strip-height` makes room for it. The trees
 stay where they were, because the client hard-codes `section/settings/...` for types and templates,
 so the menu spans sections and raises `crombolo:mark-section` to keep Content's tab marked.
-The fork hides Forms from the header for anyone with Content. Settings has no Build group.
+The fork hides Forms and Approvals from the header for anyone with Content. Settings has no
+Build group.
 
-Forms is a node in Structure: `settings-section.js` draws the definition tree under Structure's
-and routes `section/settings/forms`, so the tree stays on screen. The same elements answer at
-`section/forms/view/forms` for someone without Settings, and at the old addresses.
+Forms and Workflows are nodes in Structure, below Data Types: two `menuItem`s whose element is
+`definition-tree.js`, told which tree by `meta.kind`. `settings-section.js` routes
+`section/settings/forms` and `section/settings/workflows`, so the tree stays on screen. The same
+elements answer at `section/forms/view/forms` and `section/forms/view/workflows`, views of the
+Forms section with `meta.noTab`, for someone with Forms or Workflow setup and not Structure:
+the menu's Structure opens there for them.
 
-Forms and Workflows are views of the Forms section with `meta.noTab`, which the fork takes
-as no tab bar, opened from `definition-tree.js`.
+A page's template is picked by `template-picker.js`, through the fork's
+`umbCromboloHooks.pickTemplate` in the document Info view, in a sidebar modal
+(`template-picker-modal.js`): every component on disk (`<backoffice>/crombolo/api/templates`) in a tree of the
+folders its alias names; one no template row names yet is registered when it is allowed, as the Code tree shows them, the first level open, with a search that
+narrows it by name. One the content type does not allow is marked so,
+and a reader with Structure allows it beside it, which updates the type through the Management
+API; the picker stays open, and it is picked like the rest.
+
+Approvals is the `workflow` section, in the menu after Pages. It is always there for whoever holds
+it, and its lists say when no workflow is set up. Its one view is `crombolo-approvals-list`; `approvals-tree.js`
+is its sidebar, with Waiting for me and Decided as folders.
 
 Content's home dashboard opens the first page the user can see, by asking for the
 tree's root, and replaces the address so the back button leaves the section.
@@ -520,6 +533,10 @@ editor asks as it opens. In three parts:
   the `typescript` and `javascript` modes, and that worker is where every
   completion, hover and error comes from. A `tsx` language of its own would
   tokenise correctly and then be ignored by it.
+- **Its grammar learns JSX.** monaco's `typescript` highlighting has no rules for markup, so
+  `tsx-highlighting.js` adds states for tags, attributes and `{…}` to it, once, after monaco has
+  set its own. A name with `<` straight after it is read as a type argument first, since the
+  grammar cannot look back to tell `useState<string>` from a tag.
 - **The model is named for what it is.** TypeScript decides whether a file may
   contain JSX from its *file name*, and the model monaco creates for itself is
   `inmemory://model/1` — under which every tag in a view is a syntax error. The

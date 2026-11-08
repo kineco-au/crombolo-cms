@@ -170,6 +170,7 @@ import { CommandError, installBundleContent } from './bundle-install.ts'
 import { BUNDLES_CHANGED_EVENT, type BundleReload, createBundleReloader } from './bundle-reload.ts'
 import { bundleRouteGroups } from './bundles.ts'
 import { busyResponse } from './busy.ts'
+import { handleComponentTemplates } from './component-templates-api.ts'
 import { checkTypes, listEmailTemplates } from './components.ts'
 import {
   type CromboloConfig,
@@ -184,6 +185,7 @@ import { closeTables, tablesReport } from './custom-tables.ts'
 import { folderAction, folderOf, foldersIn } from './definition-folders.ts'
 import { createDeliveryMediaPort } from './delivery-media.ts'
 import { createDeliveryMemberSecurity } from './delivery-members.ts'
+import { handleDictionaryWords } from './dictionary-words-api.ts'
 import { syncDomainsFile } from './domains.ts'
 import { editorTypeLibs, siteJsxImportSource } from './editor-types.ts'
 import { emailAvailability } from './email.ts'
@@ -1924,6 +1926,29 @@ export async function createServer(
       if (!principal) return new Response('Unauthorized', { status: 401 })
       if (!hasSection(principal, 'settings')) return new Response('Forbidden', { status: 403 })
       const response = await git.handle(request, pathname.slice(gitPath.length), principal)
+      if (response) return response
+    }
+
+    // Non-contract, signed-in: every component, for a page's template picker.
+    if (pathname === `${paths.pluginPath}/api/templates`) {
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      return handleComponentTemplates(request, principal, {
+        db,
+        componentsDir: config.componentsDir,
+      })
+    }
+
+    // Non-contract, signed-in: a dictionary item's words, for a `{#key}` chip (story 297).
+    if (pathname.startsWith(`${paths.pluginPath}/api/dictionary/`)) {
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      const response = await handleDictionaryWords(
+        request,
+        pathname.slice(`${paths.pluginPath}/api/dictionary`.length),
+        principal,
+        { db, onChange: () => cache.invalidate(), nodeId: schema.nodeId },
+      )
       if (response) return response
     }
 

@@ -2,7 +2,7 @@
   "$schema": "../../backoffice-dist/dist/umbraco-package-schema.json",
   "name": "Crombolo",
   "id": "Crombolo.Core",
-  "version": "0.53.2",
+  "version": "0.54.0",
   "allowPublicAccess": false,
   "extensions": [
     {
@@ -614,6 +614,41 @@
       "meta": { "icon": "icon-autofill", "label": "Form" }
     },
     {
+      "type": "menuItem",
+      "alias": "Crombolo.MenuItem.Forms",
+      "name": "Crombolo Forms In Structure",
+      "weight": 500,
+      "element": "/crombolo-plugin/definition-tree.js",
+      "meta": {
+        "menus": ["Umb.Menu.StructureSettings"],
+        "label": "Forms",
+        "icon": "icon-autofill",
+        "kind": "Forms"
+      },
+      "conditions": [
+        { "alias": "Umb.Condition.SectionUserPermission", "match": "Crombolo.Section.Forms" }
+      ]
+    },
+    {
+      "type": "menuItem",
+      "alias": "Crombolo.MenuItem.Workflows",
+      "name": "Crombolo Workflows In Structure",
+      "weight": 450,
+      "element": "/crombolo-plugin/definition-tree.js",
+      "meta": {
+        "menus": ["Umb.Menu.StructureSettings"],
+        "label": "Workflows",
+        "icon": "icon-mindmap",
+        "kind": "Workflows"
+      },
+      "conditions": [
+        {
+          "alias": "Umb.Condition.SectionUserPermission",
+          "match": "Crombolo.Section.WorkflowSetup"
+        }
+      ]
+    },
+    {
       "type": "sectionSidebarApp",
       "alias": "Crombolo.SectionSidebarApp.DefinitionTree",
       "name": "Crombolo Forms And Workflows Tree",
@@ -704,6 +739,18 @@
     },
     {
       "type": "backofficeEntryPoint",
+      "alias": "Crombolo.EntryPoint.TemplatePicker",
+      "name": "Crombolo Template Picker In Folders",
+      "js": "/crombolo-plugin/template-picker.js"
+    },
+    {
+      "type": "backofficeEntryPoint",
+      "alias": "Crombolo.EntryPoint.DictionaryWords",
+      "name": "Crombolo Dictionary Words As Chips",
+      "js": "/crombolo-plugin/dictionary-words.js"
+    },
+    {
+      "type": "backofficeEntryPoint",
       "alias": "Crombolo.EntryPoint.NotificationsDialog",
       "name": "Crombolo Notifications Dialog Without E-mail",
       "js": "/crombolo-plugin/notifications-dialog.js"
@@ -759,58 +806,33 @@
       "meta": {
         "label": "Approvals",
         "pathname": "workflow"
-      },
-      "conditions": [{ "alias": "Crombolo.Condition.ApprovalsActive" }]
+      }
+    },
+    {
+      "type": "sectionSidebarApp",
+      "alias": "Crombolo.SectionSidebarApp.ApprovalsTree",
+      "name": "Crombolo Approvals Tree",
+      "element": "/crombolo-plugin/approvals-tree.js",
+      "weight": 100,
+      "conditions": [
+        {
+          "alias": "Umb.Condition.SectionAlias",
+          "match": "Crombolo.Section.Workflow"
+        }
+      ]
     },
     {
       "type": "sectionView",
-      "alias": "Crombolo.SectionView.Workflow.Waiting",
-      "name": "Crombolo Workflow Waiting",
+      "alias": "Crombolo.SectionView.Workflow.Requests",
+      "name": "Crombolo Approvals List",
       "element": "/crombolo-plugin/workflow-requests.js",
-      "elementName": "crombolo-workflow-waiting",
+      "elementName": "crombolo-approvals-list",
       "weight": 400,
       "meta": {
-        "label": "Waiting for me",
-        "pathname": "waiting",
+        "label": "Approvals",
+        "pathname": "approvals",
+        "noTab": true,
         "icon": "icon-inbox"
-      },
-      "conditions": [
-        {
-          "alias": "Umb.Condition.SectionAlias",
-          "match": "Crombolo.Section.Workflow"
-        }
-      ]
-    },
-    {
-      "type": "sectionView",
-      "alias": "Crombolo.SectionView.Workflow.InFlight",
-      "name": "Crombolo Workflow In Flight",
-      "element": "/crombolo-plugin/workflow-requests.js",
-      "elementName": "crombolo-workflow-in-flight",
-      "weight": 300,
-      "meta": {
-        "label": "In flight",
-        "pathname": "in-flight",
-        "icon": "icon-time"
-      },
-      "conditions": [
-        {
-          "alias": "Umb.Condition.SectionAlias",
-          "match": "Crombolo.Section.Workflow"
-        }
-      ]
-    },
-    {
-      "type": "sectionView",
-      "alias": "Crombolo.SectionView.Workflow.History",
-      "name": "Crombolo Workflow History",
-      "element": "/crombolo-plugin/workflow-requests.js",
-      "elementName": "crombolo-workflow-history",
-      "weight": 200,
-      "meta": {
-        "label": "Decided",
-        "pathname": "history",
-        "icon": "icon-check"
       },
       "conditions": [
         {
@@ -837,8 +859,41 @@
           "match": "Crombolo.Section.Forms"
         },
         {
-          "alias": "Umb.Condition.CurrentUser.IsAdmin"
+          "alias": "Umb.Condition.SectionUserPermission",
+          "match": "Crombolo.Section.WorkflowSetup"
         }
+      ]
+    },
+    {
+      "type": "condition",
+      "alias": "Crombolo.Condition.Document.MaySendForApproval",
+      "name": "Crombolo May Send For Approval Condition",
+      "api": "/crombolo-plugin/workflow-send-condition.js"
+    },
+    {
+      "type": "workspaceAction",
+      "kind": "default",
+      "alias": "Crombolo.WorkspaceAction.Document.SendForApproval",
+      "name": "Crombolo Send For Approval",
+      "weight": 75,
+      "api": "/crombolo-plugin/workflow-send.js",
+      "meta": { "label": "Send for approval", "look": "secondary" },
+      "conditions": [
+        { "alias": "Umb.Condition.WorkspaceAlias", "match": "Umb.Workspace.Document" },
+        { "alias": "Crombolo.Condition.Document.MaySendForApproval", "action": "publish" }
+      ]
+    },
+    {
+      "type": "workspaceActionMenuItem",
+      "kind": "default",
+      "alias": "Crombolo.WorkspaceActionMenuItem.Document.RequestUnpublish",
+      "name": "Crombolo Request Unpublish",
+      "weight": 5,
+      "api": "/crombolo-plugin/workflow-send-unpublish.js",
+      "forWorkspaceActions": "Umb.WorkspaceAction.Document.SaveAndPublish",
+      "meta": { "label": "Request unpublish", "icon": "icon-globe" },
+      "conditions": [
+        { "alias": "Crombolo.Condition.Document.MaySendForApproval", "action": "unpublish" }
       ]
     },
     {

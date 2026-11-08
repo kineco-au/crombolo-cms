@@ -134,34 +134,44 @@ without a second concept.
 
 ## A form in every language
 
-A form is one form, whatever languages a site has (story 293). A word starting with `#` names a
-dictionary item, and shows in the page's language, then its fallbacks, then as the item's name:
+A form is one form, whatever languages a site has (story 293). `{#key}` names a dictionary item
+(story 297), and shows in the page's language, then its fallbacks, then as the item's name. It can
+be the whole of a text or a part of one:
 
 ```toml
-submit-label = "#contact.send"
+submit-label = "{#contact.send}"
 
 [[page.group.field]]
 alias = "visitorName"
 type = "shortAnswer"
-caption = "#contact.name"
-mandatory-message = "#contact.nameNeeded"
+caption = "{#contact.name}"
+mandatory-message = "Please tell us {#contact.nameNeeded}"
 ```
 
 - **What can name one:** the caption and help text of a field, a group or a page, a placeholder,
   a text block, the required and pattern messages, the submit, next and previous labels and the
   message on submit. For a choice list, use a dictionary source.
-- **A `#` that names no item is only text,** so "#1 choice" shows as written, and an existing form
-  can't change. `crombolo bundle build --check` reports a `#word` with no spaces that matches
-  nothing in `content/dictionary.toml`, when a site has that file.
+- **A key that names no item shows as written,** and so does any `#` outside braces: "#1 choice"
+  is only text. `crombolo bundle build --check` reports a `{#key}` that matches nothing in
+  `content/dictionary.toml`, when a site has that file.
+- **From `#key` to `{#key}`.** Story 293 wrote a whole text of `#key`. On a site whose schema it
+  may write, the server rewrites each one that names an item as it starts, on the lines that hold
+  words, so a choice's value and the file's comments stay as they are. A site whose schema is
+  read-only, or kept in a shared store, still reads `#key` for this release, and
+  `bundle build --check` reports each one as `bare-dictionary-word`. The designer writes `{#key}`
+  on its next save.
 - **One resolution.** The published cache fills in a form's words as it fills in its choices, so
   `<Form>`, the Delivery API and the submission check read the same text.
 - **A submission saves its language,** from `Accept-Language` or the page it came from. Entries
   shows it, and filters by it, once a form has entries in more than one. The CSV export and
   e-mails show words, not keys.
-- **The form editor** lists dictionary items when `#` is typed in a text box, in the default
-  language, and says under the box what one reads as.
+- **The form editor** lists dictionary items when `{#`, or `#` at the start, is typed in a text box,
+  in the default language. Choosing one writes `{#key}`, which shows as a chip: its words, and an
+  × that empties the box. Clicking the words opens them in every language, and someone with
+  Translation or Settings changes them there. A page's text boxes do the same
+  ([`rendering.md`](rendering.md), "Property values").
 - **Why the dictionary:** it is where translators already work, with its fallbacks, so a form
-  needs no list of languages of its own. Umbraco Forms' `#Key` works the same way.
+  needs no list of languages of its own. Umbraco Forms' `#Key` works much the same way.
 
 ## Field types
 

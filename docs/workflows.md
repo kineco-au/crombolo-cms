@@ -152,27 +152,36 @@ Times are kept in UTC and shown in the reader's own time, with the zone named;
 
 ## In the backoffice
 
-- **The Approvals section** — *Waiting for me* (stages the reader may decide),
-  which it opens on, *In flight* and *Decided*. Admin, Editors and Writers have
-  the section; any group can be given it. Its permission is still `workflow`.
-  It shows only while the site has a workflow or a request is open, and so
-  does a page's *Workflow* tab (`Crombolo.Condition.ApprovalsActive`, which
-  asks `approvals/active`); saving the first workflow brings both in without a
-  reload.
-- **Settings → Workflows** — for administrators, a card under Build (story
-  234): the list of workflows and the designer. Deleting one first names the
-  pages whose requests it withdraws.
+- **Approvals** — in the menu under Content, after Pages, with no header tab.
+  One list of requests, the pending by default, with *Pending* and *Decided*
+  to choose what it holds, a page of 25 at a time (`approvals/requests`). A
+  tree beside it has two folders: *Waiting for me* (stages the reader may
+  decide) and *Decided* (the latest 25). A request, in the list or the tree,
+  opens its page's *Workflow* tab, where it is acted on. Admin, Editors and
+  Writers have Approvals; any group can be given it. Its permission is still
+  `workflow`. With no workflow set up and no request open, it says so. A
+  page's *Workflow* tab shows only while there is one
+  (`Crombolo.Condition.ApprovalsActive`, which asks `approvals/active`);
+  saving the first workflow brings it in without a reload.
+- **Structure → Workflows** — below Forms, for whoever has Workflow setup: the
+  workflows' tree, with folders, and the list and designer beside it. The
+  tree's "+" and "…" start a workflow. Deleting one first names the pages whose
+  requests it withdraws.
 - **The designer** — two tabs. *Settings*, which opens first: what the workflow
   covers and its rules. *Stages*: stages as boxes on a canvas, dragged into
   place; *Connect stages* draws an arrow, clicking one removes it; beside the
   canvas, the selected stage's approvers, required count and send-back.
   Read-only where the schema directory is.
+- **The bottom bar** — on a page its workflow lets the reader send, *Send for
+  approval* sits between *Save* and *Save and publish*, and *Request unpublish*
+  is in *Save and publish*'s menu (`workflow-send.js`). Each shows only while no
+  request is open (`Crombolo.Condition.Document.MaySendForApproval`), saves the
+  page first, and asks for a note for the approvers and, where the workflow
+  allows it, *Publish at* and *Take down at*.
 - **A page's Workflow tab** — which workflow covers it, the graph coloured by
-  where a request stands, *Send for approval* and *Request unpublish*, *Approve*
-  and *Send back* for the approvers of a waiting stage, *Withdraw* for the
-  sender, and the history of each request. Where the workflow allows it,
-  *Publish at* and *Take down at* beside the send buttons; a request shows the
-  time it asked for. The section's lists have a *When* column.
+  where a request stands, *Approve* and *Send back* for the approvers of a
+  waiting stage, *Withdraw* for the sender, and the history of each request. A
+  request shows the time it asked for. The list in Approvals has a *When* column.
 
 Approvers are e-mailed when a stage starts waiting on them, and the sender when
 the request is decided, through the e-mail port when one is configured. Every

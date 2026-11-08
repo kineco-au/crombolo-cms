@@ -14,7 +14,8 @@ import {
 } from '@crombolo/core'
 import type { Db } from './database.ts'
 import { fromDbBool } from './dialect.ts'
-import { type Expression, now, rowLock } from './query.ts'
+import { dictionaryWords } from './dictionary-words.ts'
+import { type Expression, now, rowLock, sql } from './query.ts'
 import {
   forgetSearchRemovals,
   isInDatabase,
@@ -23,7 +24,7 @@ import {
   searchItemFor,
   searchProvidersOf,
 } from './search-providers.ts'
-import { searchWords, type UnsearchableProperty, valueText } from './search-text.ts'
+import { escapeLike, searchWords, type UnsearchableProperty, valueText } from './search-text.ts'
 import { siteEntriesFor } from './site-search.ts'
 
 /** Umbraco's names for the two backoffice indexes, which the dashboard shows. */
@@ -112,6 +113,38 @@ export async function queueContentTypesForSearch(
       .selectFrom('content')
       .select((eb) => ['node_id', eb.lit(1).as('generation'), now(db).as('queued_at')])
       .where('content_type_id', 'in', [...types]),
+  )
+}
+
+/**
+ * Queues the items whose values name these dictionary items as `{#name}`, whose
+ * words in the index change with the item's (story 297).
+ */
+export async function queueDictionaryWordsForSearch(
+  db: Db,
+  names: Iterable<string>,
+): Promise<void> {
+  const patterns = [...new Set([...names].map((name) => name.toLowerCase()))].map(
+    (name) => `%{#${escapeLike(name)}}%`,
+  )
+  if (patterns.length === 0) return
+  const rows = await db.q
+    .selectFrom('property_value')
+    .select('node_id')
+    .distinct()
+    .where('is_current', '=', db.dialect.boolValue(true) as boolean)
+    .where((eb) =>
+      eb.or(
+        patterns.flatMap((pattern) => [
+          sql<boolean>`lower(${eb.ref('text_value')}) like ${pattern} escape '\\'`,
+          sql<boolean>`lower(${eb.ref('varchar_value')}) like ${pattern} escape '\\'`,
+        ]),
+      ),
+    )
+    .execute()
+  await queueForSearch(
+    db,
+    rows.map((row) => Number(row.node_id)),
   )
 }
 
@@ -407,6 +440,12 @@ export async function entriesFor(db: Db, nodeId: number): Promise<SearchEntry[]>
     .orderBy('p.id')
     .execute()
   const unsearchable = await unsearchableElementProperties(db)
+  // A text naming a dictionary item is found by the item's words, in each culture.
+  const words = values.some((row) =>
+    String(row.text_value ?? row.varchar_value ?? '').includes('{#'),
+  )
+    ? await dictionaryWords(db)
+    : undefined
   const names = await db.q
     .selectFrom('content_version as cv')
     .innerJoin('content_version_culture_variation as cvcv', 'cvcv.version_id', 'cv.id')
@@ -433,10 +472,13 @@ export async function entriesFor(db: Db, nodeId: number): Promise<SearchEntry[]>
 
   const textOf = (culture: string | null) => {
     const fields: Record<string, string[]> = {}
+    const read = words?.(culture)
     for (const row of values) {
       const iso = row.iso_code === null || row.iso_code === undefined ? null : String(row.iso_code)
       if (iso !== null && iso.toLowerCase() !== culture?.toLowerCase()) continue
-      const texts = valueText(row.text_value ?? row.varchar_value, unsearchable)
+      const texts = valueText(row.text_value ?? row.varchar_value, unsearchable).map(
+        (text) => read?.(text) ?? text,
+      )
       if (texts.length === 0) continue
       const name = iso ? `${String(row.alias)}_${iso.toLowerCase()}` : String(row.alias)
       fields[name] = [...(fields[name] ?? []), ...texts]
