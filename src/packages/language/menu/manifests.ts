@@ -5,7 +5,8 @@ export const manifests: Array<UmbExtensionManifest> = [
 		type: 'menuItem',
 		alias: 'Umb.MenuItem.Languages',
 		name: 'Languages Menu Item',
-		weight: 100,
+		// Crombolo: Languages sit at the bottom of Structure, under Forms and Document Blueprints.
+		weight: 50,
 		meta: {
 			label: '#treeHeaders_languages',
 			icon: 'icon-globe',
