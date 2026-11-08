@@ -42,8 +42,8 @@ Each webhook chooses, on its screen's **Where it's kept** panel:
 - **With the site's files**, as `schema/webhooks/<key>.toml`. It is versioned
   and deployed with the site, and a backoffice edit writes the file back, as a
   form's does. A header that carries a secret names a server setting instead:
-  `Authorization = "env:SEARCH_TOKEN"`. A typed-in value is refused, so a
-  secret never reaches a repository.
+  `Authorization = "env:CROMBOLO_WEBHOOK_SEARCH_TOKEN"`. A typed-in value is
+  refused, so a secret never reaches a repository.
 - **In this environment only**, in the database. A secret may be typed in.
   The headers are sealed with AES-256-GCM using `CROMBOLO_SECRET_KEY` (32+
   characters), which lives only in the environment, so a database dump alone
@@ -67,7 +67,7 @@ events = ["Umbraco.ContentPublish", "Umbraco.ContentDelete"]
 content-types = ["article"]
 
 [webhook.headers]
-Authorization = "env:SEARCH_TOKEN"
+Authorization = "env:CROMBOLO_WEBHOOK_SEARCH_TOKEN"
 ```
 
 A file is `schema/webhooks/<alias>.toml` (story 161). Its key is derived from
@@ -150,11 +150,17 @@ event carries the facts from its own commit. Receivers should de-duplicate on
 - **5xx, 408, 429, a timeout (30 s) or a network failure** is retried, at 1,
   5, 15 and 60 minutes, five attempts in all, as form workflows are.
 - **Any other status** is not retried: the receiver refused, and will again.
-- **An `env:` setting that is not set** fails at once and says which.
+- **An `env:` setting that is not set**, or one a webhook may not send, fails
+  at once and says which.
+- **An address this site does not send to** fails at once, saying why, with
+  nothing sent ("What a webhook may reach").
 
 Every attempt is in the delivery log (`webhook_log`), which the backoffice
-shows per webhook and for all of them. It holds the status, the request body,
-the response and the names of the headers sent. Header values are masked.
+shows per webhook and for all of them. It holds the status, the request body
+and the names of the headers sent, with their values masked. Of the answer it
+keeps only the status, the `Content-Type` and the first 1 KB of a text body:
+enough to see why a receiver refused, not enough to read a page back through
+it. Nothing of a binary answer is kept, and no other header.
 
 **Keeping and recovering.**
 - Delivered rows, log entries and dispatched events are pruned after
@@ -166,6 +172,48 @@ the response and the names of the headers sent. Header values are masked.
     again.
 - The **Outgoing changes** health check, under Servers, warns when anything
   has failed, or when work has waited more than ten minutes.
+
+## What a webhook may reach
+
+Whoever may edit webhooks chooses where they go and what they send, so three
+rules keep one from reading the server's secrets or its network (story 301).
+
+- **The variables a header may name.** `env:NAME` takes a variable starting
+  `CROMBOLO_WEBHOOK_`, `CROMBOLO_REVALIDATE_SECRET` (made to be sent, to a
+  Next.js front end), or one the config lists:
+
+  ```ts
+  webhooks: { headerVariables: ['SEARCH_TOKEN'] }
+  ```
+
+  No other `CROMBOLO_` setting is ever sent, listed or not, and nor is anything
+  else on the server: not the database password, the secret key or a client
+  secret. Saving a webhook that names one is refused, saying how to allow it,
+  and one stored before fails its delivery with the same words.
+- **Where a delivery may go.** The host is resolved before connecting, every
+  address it has is checked, and the request goes to the address that was
+  checked, with the hostname kept for the `Host` header and the certificate. So
+  a name cannot be pointed somewhere else between the check and the connection.
+  Refused: loopback, private (10/8, 172.16/12, 192.168/16, `fc00::/7`),
+  link-local (169.254/16, a cloud's metadata endpoint among them, and
+  `fe80::/10`), carrier-grade NAT (100.64/10), multicast, unspecified and
+  broadcast addresses, and IPv4 addresses written as IPv6. Saving checks it
+  where the host already resolves; each delivery checks it again, and a refusal
+  is not retried. Redirects are never followed.
+
+  ```ts
+  webhooks: { allowPrivateAddresses: true }
+  ```
+
+  allows those addresses, for an intranet, or a front end beside the CMS on a
+  private network. A development site (`NODE_ENV` other than `production`) allows
+  them unless this says `false`, since its receivers, such as the Next.js template's at
+  `localhost:3000`, are usually on the same machine.
+- **What is kept of the answer:** the status, `Content-Type` and 1 KB of text,
+  as above.
+
+A bundle's handlers reach the outside through the `fetch` they are given, held
+to the same address rule.
 
 ## A bundle's handlers
 

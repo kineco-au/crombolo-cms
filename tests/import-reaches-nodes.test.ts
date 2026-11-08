@@ -284,6 +284,7 @@ describe('what an install changed', () => {
   const plan = (files: Array<[string, 'create' | 'overwrite' | 'unchanged']>) => ({
     files: files.map(([path, action]) => ({ path, target: path, action })),
     dictionaryItems: 0,
+    migrations: [],
     schema: undefined,
     sections: [],
   })

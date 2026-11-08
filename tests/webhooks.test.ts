@@ -215,8 +215,11 @@ function receiver(statuses: number[] = []) {
   return { url: `${server.url}hook`, received }
 }
 
+/** Deliveries go to a receiver on this machine, so a site allows that unless a test says not. */
+const LOCAL = { allowPrivateAddresses: true, headerVariables: ['WEBHOOK_TEST_TOKEN', 'TOKEN'] }
+
 async function site(config: Record<string, unknown> = {}) {
-  const s = await treeSite({ config: { secretKey: KEY, ...config } })
+  const s = await treeSite({ config: { secretKey: KEY, webhooks: LOCAL, ...config } })
   sites.push(s)
   return s
 }
@@ -541,6 +544,38 @@ describe('a bundle handles the events', () => {
       ['bundle:acme-hooks', false],
     ])
   })
+
+  test('its fetch goes to no address the site does not send to (story 301)', async () => {
+    let refusal = ''
+    const bundle: ServerBundle = {
+      id: 'acme-hooks',
+      section: 'settings',
+      capabilities: [],
+      routes: [],
+      events: {
+        'Umbraco.ContentPublish': async ({ fetch }) => {
+          await fetch('http://169.254.169.254/latest/meta-data').catch((error: Error) => {
+            refusal = error.message
+          })
+          return { ok: true }
+        },
+      },
+    }
+    const root = writeTreeSchema(
+      siteDeclaring('webhook-bundle', {
+        '@acme/hooks': { json: { crombolo: { id: 'acme-hooks', server: 'hooks' } } },
+      }),
+    )
+    const s = await treeSite({
+      root,
+      config: { siteDir: root, bundles: [bundle], webhooks: { allowPrivateAddresses: false } },
+    })
+    sites.push(s)
+    await treeOps(s).publish(await createPage(s, 'Home'))
+    await Bun.sleep(20)
+    await s.h.server.jobs.runWebhooks()
+    expect(refusal).toContain('a link-local address')
+  })
 })
 
 test.skipIf(dialectUnderTest !== 'postgres')(
@@ -565,3 +600,126 @@ test.skipIf(dialectUnderTest !== 'postgres')(
     expect(remote.received).toHaveLength(3)
   },
 )
+
+describe('what a webhook may reach (story 301)', () => {
+  /** A webhook written straight to the site's files, as a deploy or an older version left it. */
+  const filed = (s: TreeSite, over: Partial<WebhookDefinition>) => {
+    const dir = join(s.h.server.config.schemaDir, 'webhooks')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(
+      join(dir, 'filed.toml'),
+      writeWebhookFile(definition({ alias: 'filed', ...over })),
+    )
+  }
+
+  const publishOnce = async (s: TreeSite) => {
+    await treeOps(s).publish(await createPage(s, 'Home'))
+    await Bun.sleep(20)
+    return s.h.server.jobs.runWebhooks()
+  }
+
+  const lastLog = async (s: TreeSite) => {
+    const logs = await s.h.json<{ items: Array<{ responseBody: string }> }>(
+      `${V1}/webhook/logs?skip=0&take=10`,
+    )
+    return logs.items[0]?.responseBody ?? ''
+  }
+
+  test('a header may not send the server\u2019s own secrets; a listed or CROMBOLO_WEBHOOK_ name it may', async () => {
+    const s = await site()
+    for (const variable of ['DATABASE_PASSWORD', 'CROMBOLO_SECRET_KEY']) {
+      const refused = await create(s, {
+        url: 'https://search.example/hook',
+        headers: { 'X-Token': `env:${variable}` },
+      })
+      expect(refused.status).toBe(400)
+      expect(((await refused.json()) as { detail: string }).detail).toContain(
+        `names ${variable}, which a webhook may not send`,
+      )
+    }
+    for (const variable of ['WEBHOOK_TEST_TOKEN', 'CROMBOLO_WEBHOOK_PARTNER'])
+      expect(
+        (
+          await create(s, {
+            url: 'https://search.example/hook',
+            headers: { 'X-Token': `env:${variable}` },
+          })
+        ).status,
+      ).toBe(201)
+  })
+
+  test('a stored webhook naming one sends nothing, says why, and is not retried', async () => {
+    Bun.env.DATABASE_PASSWORD_FOR_TEST = 'hunter2'
+    const remote = receiver()
+    const s = await site()
+    filed(s, { url: remote.url, headers: { 'X-Token': 'env:DATABASE_PASSWORD_FOR_TEST' } })
+    expect((await publishOnce(s)).failed).toBe(1)
+    expect(remote.received).toEqual([])
+    expect(await lastLog(s)).toContain('which a webhook may not send')
+    delete Bun.env.DATABASE_PASSWORD_FOR_TEST
+  })
+
+  test('an address on this machine or its network is refused when saved', async () => {
+    const s = await site({ webhooks: { allowPrivateAddresses: false } })
+    for (const url of [
+      'http://127.0.0.1:8080/hook',
+      'http://10.0.0.1/hook',
+      'http://169.254.169.254/latest/meta-data',
+      'http://[::1]/hook',
+      'http://[::ffff:10.0.0.1]/hook',
+    ]) {
+      const refused = await create(s, { url })
+      expect(refused.status, url).toBe(400)
+      expect(((await refused.json()) as { detail: string }).detail).toContain(
+        'which this site does not send to',
+      )
+    }
+  })
+
+  test('a delivery to one is refused without connecting, and not retried; the config may allow it', async () => {
+    const remote = receiver()
+    const s = await site({ webhooks: { allowPrivateAddresses: false } })
+    filed(s, { url: remote.url })
+    expect((await publishOnce(s)).failed).toBe(1)
+    expect(remote.received).toEqual([])
+    expect(await lastLog(s)).toContain('a loopback address')
+
+    const allowed = await site()
+    filed(allowed, { url: remote.url })
+    expect((await publishOnce(allowed)).done).toBe(1)
+    expect(remote.received).toHaveLength(1)
+  })
+
+  test('the log keeps the status, the content type and 1 KB of a text answer, no other header', async () => {
+    const server = Bun.serve({
+      port: 0,
+      fetch: (request) =>
+        new URL(request.url).pathname === '/binary'
+          ? new Response(new Uint8Array(4096), {
+              status: 400,
+              headers: { 'content-type': 'image/png' },
+            })
+          : new Response('x'.repeat(5000), {
+              status: 400,
+              headers: { 'content-type': 'text/html', 'set-cookie': 'session=secret' },
+            }),
+    })
+    listeners.push(server)
+    const s = await site()
+    filed(s, { url: `${server.url}text` })
+    await publishOnce(s)
+    const logs = await s.h.json<{
+      items: Array<{ statusCode: string; responseHeaders: string; responseBody: string }>
+    }>(`${V1}/webhook/logs?skip=0&take=10`)
+    const [text] = logs.items
+    expect(text?.statusCode).toBe('400')
+    expect(text?.responseBody).toHaveLength(1024)
+    expect(text?.responseHeaders).toContain('text/html')
+    expect(text?.responseHeaders).not.toContain('session=secret')
+
+    const other = await site()
+    filed(other, { url: `${server.url}binary` })
+    await publishOnce(other)
+    expect(await lastLog(other)).toBe('(a binary answer, not kept)')
+  })
+})

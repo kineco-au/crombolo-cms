@@ -146,6 +146,7 @@ not cover.
 | `205` | Media Public Access with inherited permissions | should | M | done | 204 |
 | `191` | Azure AD B2C user flows for members | should | M | ready | 031 |
 | `282` | A member resets their password | should | M | ready | — |
+| `305` | An identity provider the config declares can be locked | should | S | ready | — |
 
 ### Epic E — Cross-cutting
 
@@ -232,6 +233,11 @@ requests, only server-side and build-time front ends can call it.
 | `088` | A read-only group changes nothing | must | M | done | 023, 026, 027, 028 |
 | `200` | Bundle import fixtures close before reset | must | S | done | — |
 | `201` | Postgres load and benchmark shards | should | S | done | — |
+| `300` | Checking a bundle runs none of its code | must | S | done | — |
+| `301` | A webhook reaches only what it should | must | M | done | — |
+| `302` | A group grants only what its editor holds | should | S | ready | — |
+| `303` | A bundle's code lands only in code folders | could | S | ready | — |
+| `304` | Every request a user sets up goes only outside | should | S | ready | 301 |
 
 ### Epic J — Forms
 

@@ -73,6 +73,7 @@ import {
   changedFileSections,
   keepDictionary,
   keptDictionary,
+  migrationChanges,
   planSections,
   promoteStaged,
   type RestoredFiles,
@@ -655,11 +656,20 @@ export async function installBundleContent(
     )
   // The code half (story 241): only when asked, only where installs happen here.
   const code = effective.installCode ? codeChanges(planCode(config, carried)) : []
-  if (code.length > 0 && !config.runtimeInstalls)
+  const installsElsewhere =
+    config.installsElsewhere?.message ??
+    "this site does not install code while it runs: add the bundle's code to the site and deploy it"
+  if (code.length > 0 && !config.runtimeInstalls) return refuse([installsElsewhere], backup)
+  // A bundle's value migrations are code too (story 300), unless they are the site's own.
+  const migrations =
+    input.provenance === 'local' || effective.withoutSchema ? [] : migrationChanges(config, carried)
+  if (migrations.length > 0 && (!effective.installCode || !config.runtimeInstalls))
     return refuse(
       [
-        config.installsElsewhere?.message ??
-          "this site does not install code while it runs: add the bundle's code to the site and deploy it",
+        effective.installCode
+          ? installsElsewhere
+          : 'this bundle brings schema migrations, which are code: install its code to bring them',
+        ...migrations.map((file) => file.path),
       ],
       backup,
     )

@@ -364,6 +364,11 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
     filesWritable: config.schemaWritable,
     secretKey: config.secretKey,
     bundles: config.bundles,
+    // A development site's receivers are on this machine, as the Next.js template's is.
+    outbound: {
+      ...config.webhooks,
+      allowPrivateAddresses: config.webhooks?.allowPrivateAddresses ?? config.development,
+    },
     isBundleOn: (bundleId) => bundleGrants.isOn(bundleId),
     // The site's own handlers (story 298): each event queues the job that runs one.
     siteEvents: {

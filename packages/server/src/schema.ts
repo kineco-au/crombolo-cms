@@ -76,7 +76,11 @@ export async function checkSchemaDirectory(
   db: Db,
   config: CromboloConfig,
   node: { nodeId: string; revision: string },
-  options: { set?: Record<string, unknown> } = {},
+  options: {
+    set?: Record<string, unknown>
+    /** Where the value migrations are loaded from: the schema's own, unless a check says otherwise. */
+    migrationsDir?: string
+  } = {},
 ): Promise<CheckReport> {
   const loaded = loadSchemaDirectory(config.schemaDir, { formTypes: formTypesFor(config) })
   return runCheck(
@@ -86,7 +90,7 @@ export async function checkSchemaDirectory(
     {
       ...syncOptionsFor(config),
       set: options.set,
-      migrations: await loadValueMigrations(config.schemaDir),
+      migrations: await loadValueMigrations(options.migrationsDir ?? config.schemaDir),
       backOfficePath: config.backOfficePath,
     },
   )

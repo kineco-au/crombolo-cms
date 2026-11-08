@@ -58,6 +58,11 @@ export interface SectionPlan {
    * site: `none` when the bundle carries no schema.
    */
   schema: { classification: string; findings: string[] } | undefined
+  /**
+   * The value migrations the bundle carries, `schema/migrations/<name>`: code,
+   * listed and never run by a check; they run only at install (story 300).
+   */
+  migrations: string[]
   /** Sections present in the bundle, for a caller that only wants to say so. */
   sections: BundleSection[]
 }
@@ -119,6 +124,21 @@ const FILE_SECTIONS: readonly BundleSection[] = ['components', 'styles', 'script
 /** The path inside a section, with the section's own directory stripped. */
 const withinSection = (path: string, section: BundleSection): string =>
   path.slice(`${BUNDLE_SECTIONS[section]}/`.length)
+
+/** A value migration a bundle carries: code, run when the schema syncs. */
+export const isMigration = (path: string): boolean =>
+  /^migrations\/[^/]+\.(ts|js)$/.test(withinSection(path, 'schema'))
+
+/** The value migrations a bundle would add or change here: code, as its `code/` is. */
+export function migrationChanges(config: CromboloConfig, carried: CarriedSections): SectionFile[] {
+  return (carried.carries.schema ?? [])
+    .filter(isMigration)
+    .map((path) => {
+      const target = join(config.schemaDir, withinSection(path, 'schema'))
+      return { path, target, action: actionFor(target, sourceOf(carried, path)) }
+    })
+    .filter((file) => file.action !== 'unchanged')
+}
 
 /** Compared as bytes: a public file is an image as often as it is text. */
 function actionFor(target: string, source: string): FileAction {
@@ -185,6 +205,7 @@ export async function planSections(
   return {
     files,
     dictionaryItems: (carried.carries.dictionary ?? []).length,
+    migrations: schemaPaths.filter(isMigration),
     schema:
       schemaPaths.length > 0
         ? await checkSchemaOverlay(db, config, carried, schemaPaths)
@@ -215,15 +236,20 @@ async function checkSchemaOverlay(
       mkdirSync(dirname(target), { recursive: true })
       writeFileSync(target, read(carried, path))
     }
+    // The site's own migrations only: a check never imports a module the bundle brings.
     const report = await checkSchemaDirectory(
       db,
       { ...config, schemaDir: overlay },
       { nodeId: config.nodeId, revision: config.schemaRevision },
+      { migrationsDir: config.schemaDir },
     )
-    return {
-      classification: report.classification,
-      findings: report.outstanding.map((finding) => finding.message),
-    }
+    const carriedMigrations = paths.filter(isMigration).map((path) => withinSection(path, 'schema'))
+    const findings = report.outstanding.map((finding) => finding.message)
+    if (carriedMigrations.length > 0 && report.outstanding.length > 0)
+      findings.push(
+        `The bundle brings ${carriedMigrations.map((m) => `schema/${m}`).join(', ')}, which runs only at install, so this check could not count on it.`,
+      )
+    return { classification: report.classification, findings }
   } finally {
     rmSync(overlay, { recursive: true, force: true })
   }

@@ -49,7 +49,12 @@ import {
   readBundle,
   revertSections,
 } from './bundle-install.ts'
-import { carriesSections, type SectionFile, swappedSections } from './bundle-sections.ts'
+import {
+  carriesSections,
+  migrationChanges,
+  type SectionFile,
+  swappedSections,
+} from './bundle-sections.ts'
 import { type CromboloConfig, REMOTE_ACCESS_LEVELS, type RemoteAccess } from './config.ts'
 import { answerContentQuery, contentQueryScope } from './content-query.ts'
 import { mediaStoreFor } from './media-files.ts'
@@ -699,7 +704,8 @@ export function createRemote(options: RemoteOptions): Remote {
       try {
         const carried = readBundle(dir, config.siteDir).carried
         structural = carriesSections(carried)
-        code = codeChanges(planCode(config, carried))
+        // A bundle's value migrations are code too (story 300).
+        code = [...codeChanges(planCode(config, carried)), ...migrationChanges(config, carried)]
       } catch (error) {
         return problem(400, {
           code: 'not-a-bundle',

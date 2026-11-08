@@ -616,6 +616,10 @@ payload (`payload = "crombolo"`, [`webhooks.md`](webhooks.md)) to
 - Its `X-Crombolo-Secret` header is checked in constant time against
   `CROMBOLO_REVALIDATE_SECRET`.
 - The item's and each ancestor's tags are cleared.
+- In production, a front end on the same host or a private network needs
+  `webhooks: { allowPrivateAddresses: true }` in the CMS's config: a webhook
+  sends to no private address otherwise ([`webhooks.md`](webhooks.md), "What a
+  webhook may reach").
 
 **Live reload** in development (story 214). `<CromboloLiveReload />` from
 `@crombolo/next-integration/client`, in the root layout, refreshes the page's

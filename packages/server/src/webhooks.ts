@@ -19,6 +19,13 @@ import {
 import type { SiteContentEvent } from '@crombolo/render'
 import { retryAfter, type WorkflowRunReport } from './form-workflows.ts'
 import { logger } from './logging.ts'
+import {
+  checkedAddress,
+  headerVariableProblem,
+  type OutboundOptions,
+  OutboundRefused,
+  pinnedFetch,
+} from './outbound-address.ts'
 import { openSecret, SECRET_KEY_VARIABLE, sealSecret, usableSecretKey } from './secrets.ts'
 import { isOwnChange } from './site-events.ts'
 import { inSpan, recordWebhook, SpanKind, withTraceHeaders } from './telemetry.ts'
@@ -36,6 +43,52 @@ const log = logger('webhooks')
 
 /** What the backoffice shows instead of a typed-in secret, and sends back to keep it. */
 export const MASKED = '********'
+
+/** The most of a receiver's text answer the delivery log keeps (story 301). */
+const KEPT_ANSWER_BYTES = 1024
+
+const TEXTUAL = /^text\/|json|xml|x-www-form-urlencoded/i
+
+/**
+ * What the log keeps of an answer: its `Content-Type`, and the first 1 KB of a
+ * text body, read no further. Enough to see a refusal, not to read back a page.
+ */
+async function keptAnswer(
+  response: Response,
+): Promise<{ responseHeaders: string; responseBody: string }> {
+  const type = response.headers.get('content-type')
+  const responseHeaders = JSON.stringify(type ? { 'content-type': type } : {})
+  if (!response.body) return { responseHeaders, responseBody: '' }
+  if (type && !TEXTUAL.test(type)) {
+    await response.body.cancel().catch(() => {})
+    return { responseHeaders, responseBody: '(a binary answer, not kept)' }
+  }
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  try {
+    while (size < KEPT_ANSWER_BYTES) {
+      const { done, value } = await reader.read()
+      if (done) break
+      chunks.push(value)
+      size += value.length
+    }
+  } catch {
+    // What arrived before the answer broke off is kept.
+  } finally {
+    await reader.cancel().catch(() => {})
+  }
+  const bytes = new Uint8Array(size)
+  let at = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, at)
+    at += chunk.length
+  }
+  return {
+    responseHeaders,
+    responseBody: new TextDecoder().decode(bytes.subarray(0, KEPT_ANSWER_BYTES)),
+  }
+}
 
 /** How long a delivery may take before it counts as failed and is retried. */
 const DELIVERY_TIMEOUT_MS = 30_000
@@ -151,6 +204,12 @@ export interface WebhookServiceOptions {
   secretKey?: string
   bundles?: readonly { id: string; events?: BundleEvents }[]
   fetch?: typeof fetch
+  /** What a delivery may reach and send (story 301): the config's `webhooks`. */
+  outbound?: {
+    headerVariables?: readonly string[]
+    allowPrivateAddresses?: boolean
+    lookup?: OutboundOptions['lookup']
+  }
   /** Publishes the schema directory to a shared store, when there is one. */
   onFilesChanged?: () => Promise<void>
   now?: () => Date
@@ -359,12 +418,40 @@ export function createWebhookService(options: WebhookServiceOptions): WebhookSer
     where: WebhookStore,
   ): Promise<WebhookWriteResult> => {
     if (!stores()[where]) return unavailable(where)
-    const problems = webhookProblems(webhook, where)
+    const problems = [...webhookProblems(webhook, where), ...(await reachProblems(webhook))]
     if (problems.length > 0)
       return { ok: false, status: 400, reason: 'The webhook is not valid.', problems }
     if (where === 'files') await writeFile(webhook)
     else await writeRow(webhook)
     return { ok: true, key: webhook.key }
+  }
+
+  const outbound: OutboundOptions = {
+    allowPrivateAddresses: options.outbound?.allowPrivateAddresses,
+    lookup: options.outbound?.lookup,
+    fetch: options.fetch,
+  }
+
+  /**
+   * What saving a webhook refuses beyond its shape (story 301): a header naming a
+   * variable it may not send, and an address this site does not send to, where
+   * the host resolves already; one that does not yet is checked at each delivery.
+   */
+  const reachProblems = async (webhook: WebhookDefinition): Promise<string[]> => {
+    const problems: string[] = []
+    for (const [name, value] of Object.entries(webhook.headers)) {
+      const variable = envReference(value)
+      const problem =
+        variable && headerVariableProblem(name, variable, options.outbound?.headerVariables)
+      if (problem) problems.push(problem)
+    }
+    try {
+      await checkedAddress(new URL(webhook.url), outbound)
+    } catch (error) {
+      if (error instanceof OutboundRefused && !/has no address/.test(error.message))
+        problems.push(error.message)
+    }
+    return problems
   }
 
   /** A masked value sent back means "keep what is stored". */
@@ -383,6 +470,8 @@ export function createWebhookService(options: WebhookServiceOptions): WebhookSer
         out[name] = value
         continue
       }
+      const refused = headerVariableProblem(name, variable, options.outbound?.headerVariables)
+      if (refused) throw new Error(refused)
       const found = Bun.env[variable]
       if (found === undefined)
         throw new Error(`The header "${name}" names ${variable}, which is not set on the server.`)
@@ -456,21 +545,17 @@ export function createWebhookService(options: WebhookServiceOptions): WebhookSer
       return { ok: false, error: message, retry: false }
     }
     try {
-      const response = await (options.fetch ?? fetch)(webhook.url, {
-        method: 'POST',
-        headers,
-        body,
-        signal: AbortSignal.timeout(DELIVERY_TIMEOUT_MS),
-        redirect: 'manual',
-      })
-      const responseBody = await response.text().catch(() => '')
+      const response = await pinnedFetch(
+        webhook.url,
+        { method: 'POST', headers, body, signal: AbortSignal.timeout(DELIVERY_TIMEOUT_MS) },
+        outbound,
+      )
       await deliveries.log({
         ...entry,
         statusCode: response.status,
         success: response.ok,
         exception: false,
-        responseHeaders: JSON.stringify(Object.fromEntries(response.headers)),
-        responseBody,
+        ...(await keptAnswer(response)),
       })
       if (response.ok) return { ok: true }
       // A refusal will refuse again; a fault or a busy receiver may not last.
@@ -486,7 +571,7 @@ export function createWebhookService(options: WebhookServiceOptions): WebhookSer
         responseHeaders: '{}',
         responseBody: message,
       })
-      return { ok: false, error: message, retry: true }
+      return { ok: false, error: message, retry: !(error instanceof OutboundRefused) }
     }
   }
 
@@ -549,7 +634,7 @@ export function createWebhookService(options: WebhookServiceOptions): WebhookSer
         payload: delivery.payload as { Id: string },
         deliveryId: delivery.id,
         attempt: delivery.attempts,
-        fetch: (input, init) => (options.fetch ?? fetch)(input, { signal, ...init }),
+        fetch: (input, init) => pinnedFetch(input, { signal, ...init }, outbound),
         log: {
           info: (message, properties) => named.info(message, properties),
           warn: (message, properties) => named.warn(message, properties),

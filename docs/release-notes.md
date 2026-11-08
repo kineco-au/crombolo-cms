@@ -17,10 +17,37 @@ point at `docs/stories/`.
   site job with the site's tables and `site()`. Every change is audited as the API user, naming
   the route, action, job or event that made it.
 
+### Security
+
+- **Checking a bundle runs none of its code (300).** A check never imports the value migrations a
+  bundle carries (`schema/migrations/*.ts`); it lists them as running at install. Installing one
+  is installing code: it needs code installs on (`runtimeInstalls`) and install code asked for
+  (over the remote API, `Crombolo.Remote.InstallCode`). `bundle apply --local` is unaffected.
+- **A webhook reaches only what it should (301).**
+  - A header's `env:NAME` takes only a variable starting `CROMBOLO_WEBHOOK_`,
+    `CROMBOLO_REVALIDATE_SECRET`, or one listed in the config's `webhooks.headerVariables`.
+  - Deliveries, and a bundle's event `fetch`, go to no loopback, private, link-local, CGNAT,
+    multicast or mapped address, and connect to the address that was checked.
+    `webhooks.allowPrivateAddresses` allows them, and is on by default for a development site.
+  - The delivery log keeps the status, `Content-Type` and 1 KB of a text answer, nothing else.
+
+### Fixes
+
+- Leaving a page, a media item or a blueprint while it opens no longer reports an error, or
+  takes you back to it after you have gone elsewhere.
+
 ### Upgrade notes
 
-- Nothing to do unless the site wants it: without `content.actAs`, `site().content` refuses
-  every write, saying why.
+- **Breaking, webhooks (301):** a webhook header naming any other server variable stops
+  delivering, and its log says why. List the variable in `webhooks: { headerVariables: [...] }`,
+  or rename it to start `CROMBOLO_WEBHOOK_`. A production webhook sending to a private address,
+  such as a Next.js front end on the same host, needs `webhooks: { allowPrivateAddresses: true }`.
+- Delivery log entries from before the upgrade keep the whole answer until they are pruned after
+  `CROMBOLO_EVENT_RETENTION_DAYS` (30 by default). A site that keeps them forever (`0`) should
+  clear `webhook_log` itself.
+- A bundle bringing schema migrations now needs install code asked for (300).
+- `site().content` needs nothing unless the site wants it: without `content.actAs`, it refuses
+  every write, saying why (298).
 
 ## v0.55.0 — 2026-11-08
 

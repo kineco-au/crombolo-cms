@@ -25,6 +25,7 @@ import {
 import { ContentTypeRepository, DictionaryRepository, TransferRunRepository } from '@crombolo/data'
 import {
   CommandError,
+  checkBundleContent,
   installBundleContent,
   readBundle,
   syncSchemaDirectory,
@@ -648,5 +649,70 @@ describe('an environment’s export', () => {
     expect(installed.bundle.package).toEqual({ name: 'autumn-campaign', version: '1.0.0' })
     const read = await destination.h.json<{ variants: { name: string }[] }>(`${V1}/document/${key}`)
     expect(read.variants[0]?.name).toBe('Autumn')
+  })
+})
+
+describe("a bundle's value migrations are code (story 300)", () => {
+  /** A migration whose module, when imported, leaves a marker file. */
+  const stamping = (marker: string): BundleFile => ({
+    path: 'schema/migrations/stamp.ts',
+    text: `import { writeFileSync } from 'node:fs'
+writeFileSync(${JSON.stringify(marker)}, 'ran')
+export default {
+  from: { type: 'textstring', property: 'title' },
+  to: { property: 'title' },
+  convert: (value) => value,
+}
+`,
+  })
+
+  test('checking it runs none of them, and lists each as running at install', async () => {
+    const { h, config, db } = await site()
+    const marker = join(outputDir('marker-'), 'ran')
+    const dir = await packageAt(h, outputDir('kit-'), [...SECTIONS(), stamping(marker)])
+    const checked = await checkBundleContent(db, config, { bundle: dir })
+    expect(checked.sections?.migrations).toEqual(['schema/migrations/stamp.ts'])
+    expect(existsSync(marker)).toBe(false)
+  })
+
+  test('installing them needs install code asked for, and a site that installs code', async () => {
+    const { h, root, config, db } = await site()
+    const marker = join(outputDir('marker-'), 'ran')
+    const dir = await packageAt(h, outputDir('kit-'), [...SECTIONS(), stamping(marker)])
+    const migration = join(root, 'schema', 'migrations', 'stamp.ts')
+
+    const unasked = await installBundleContent(db, config, { bundle: dir, backupTaken: true })
+    expect(unasked.runId).toBeUndefined()
+    expect(unasked.problems.join('\n')).toContain('schema migrations, which are code')
+    expect(unasked.problems).toContain('schema/migrations/stamp.ts')
+
+    const elsewhere = await installBundleContent(
+      db,
+      { ...config, runtimeInstalls: false },
+      { bundle: dir, backupTaken: true, installCode: true },
+    )
+    expect(elsewhere.problems.join('\n')).toContain('does not install code while it runs')
+    expect(existsSync(migration) || existsSync(marker)).toBe(false)
+
+    const installed = await installBundleContent(
+      db,
+      { ...config, runtimeInstalls: true },
+      { bundle: dir, backupTaken: true, installCode: true },
+    )
+    expect(installed.problems).toEqual([])
+    expect(existsSync(migration)).toBe(true)
+  })
+
+  test("the site's own content files bring theirs as they always have", async () => {
+    const { h, root, config, db } = await site()
+    const marker = join(outputDir('marker-'), 'ran')
+    const dir = await packageAt(h, outputDir('kit-'), [...SECTIONS(), stamping(marker)])
+    const local = await installBundleContent(db, config, {
+      bundle: dir,
+      backupTaken: true,
+      provenance: 'local',
+    })
+    expect(local.problems).toEqual([])
+    expect(existsSync(join(root, 'schema', 'migrations', 'stamp.ts'))).toBe(true)
   })
 })

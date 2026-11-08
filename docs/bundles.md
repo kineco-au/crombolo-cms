@@ -1029,6 +1029,18 @@ That is why the check runs against an **overlay**: a copy of the site's
 touched until it is known the schema can apply. An install whose schema would
 need data work is refused with nothing written.
 
+A check only reads (story `300`). The value migrations a bundle carries,
+`schema/migrations/*.ts`, are modules, and importing one runs it, so the overlay
+check loads the **site's own** migrations and never the bundle's. The report
+lists each carried migration by name as running at install, and a change one of
+them would have covered is still reported as needing data work, naming it.
+
+Those migrations are **code**, held to the same rule as a bundle's `code/`: an
+install that would add or change one is refused unless the site installs code
+while it runs (`runtimeInstalls`) and whoever installs asked for code (over the
+remote API, `Crombolo.Remote.InstallCode`). `bundle apply --local`, the site's own
+content files built here, is unaffected.
+
 Then three phases (story `105`): every carried section is **staged** into a copy
 under `.crombolo/transfer/pending-…/next/`; **one transaction** syncs the staged
 schema, imports the dictionary items and the content; and once it commits the

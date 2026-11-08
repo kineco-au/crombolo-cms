@@ -537,6 +537,13 @@ export interface CromboloConfig {
    */
   events?: Readonly<Record<string, SiteEventHandler>>
   /**
+   * What a webhook may reach (story 301): the server variables a header's
+   * `env:NAME` may name besides `CROMBOLO_WEBHOOK_*`, and whether deliveries may
+   * go to loopback, private and link-local addresses: by default only on a
+   * development site. docs/webhooks.md.
+   */
+  webhooks?: { headerVariables?: readonly string[]; allowPrivateAddresses?: boolean }
+  /**
    * Package names this installation provides to every site it runs, rather
    * than the site choosing them (story 177): a whole-site file leaves them out
    * of what it requires, so the site starts anywhere without them. Set by

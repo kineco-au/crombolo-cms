@@ -210,6 +210,8 @@ export function printSections(io: Io, plan: ops.SectionPlan | undefined): void {
     io.say(`  schema   ${plan.schema.classification}`)
     for (const finding of plan.schema.findings) io.say(`    ${finding}`)
   }
+  for (const migration of plan.migrations ?? [])
+    io.say(`  migrates ${migration}: runs at install, not during a check`)
 }
 
 export function printTransferFindings(io: Io, check: TransferCheck): void {
