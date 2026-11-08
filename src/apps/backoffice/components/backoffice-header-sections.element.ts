@@ -4,11 +4,12 @@ import { css, customElement, html, ifDefined, repeat, state } from '@umbraco-cms
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element';
 import type { ManifestSection } from '@umbraco-cms/backoffice/section';
 
-/** Crombolo: parts of Settings a group can hold, reached from the menu under Content (story 296). */
+/** Crombolo: sections a group can hold, reached from the menu under Content (story 296), Approvals too. */
 const CROMBOLO_NO_TAB = [
 	'Crombolo.Section.Structure',
 	'Crombolo.Section.Components',
 	'Crombolo.Section.WorkflowSetup',
+	'Crombolo.Section.Workflow',
 ];
 
 @customElement('umb-backoffice-header-sections')
