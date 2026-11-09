@@ -81,6 +81,7 @@ describe('the published package set', () => {
       '@crombolo/data',
       '@crombolo/delivery-client',
       '@crombolo/entra',
+      '@crombolo/extension',
       '@crombolo/next-integration',
       '@crombolo/remote-conformance',
       '@crombolo/render',

@@ -51,6 +51,18 @@ point at `docs/stories/`.
     are stored sealed. Changed settings take effect when the site restarts.
   - Simple Redirects and Entra offer the section they appear in as a setting.
 
+- **Each extension runs in a process of its own (311).** An installed extension's server half
+  runs under Deno, apart from the site, and can reach only what it was granted: no environment
+  or secrets, none of the site's files, no database connection, and only the addresses its grant
+  names.
+  - Its own tables are reached through the site, which runs one statement at a time on the
+    connection that reaches only them, and refuses `ATTACH` and role changes.
+  - One that throws, hangs or stops fails that request, and the site keeps serving. It is started
+    again for the next.
+  - One that cannot run apart is left off, and Installed and the health check say why.
+  - Extensions are written against the new `@crombolo/extension` SDK.
+    `@crombolo/crombolo/bundle` still works.
+
 ### Migrations
 
 - 065 `AddTransferRunBundleType`: a nullable `bundle_type` column on `content_transfer_run`.
@@ -87,6 +99,16 @@ point at `docs/stories/`.
   upgrade to a schema 3 version is refused. Its author moves `permissions` to an object, a reason
   for each, and `"schemaVersion": 4`. Event handlers then need `events.content`, and site routes
   `routes.public`.
+- **Breaking, extensions (311):** an extension's server half runs under Deno.
+  - **Containers:** an image must be glibc-based, such as `oven/bun:1-slim`. Alpine has no Deno
+    build, and on it extensions do not start. `CROMBOLO_DENO` names a Deno binary to use instead.
+  - **Extension authors:**
+    - Bun's own APIs (`Bun.file`, `bun:sqlite`) are not available. Use web APIs, the `node:`
+      built-ins Deno supports, and the host's capabilities.
+    - `context.site()` is not offered: read content through `bundle.api`.
+    - An extension can no longer offer `middleware`, nor add form field types until story 312.
+  - **Imports:** a server half the site's config still imports runs inside the site, unconfined,
+    as before. List it under `extensions` instead.
 - **Breaking, the CLI (310):** `bundle install --wire` is gone. Importing an extension's server
   half in `crombolo.config.ts` still works, with a warning at boot: replace it with an entry under
   `extensions`, `{ redirects: { grant: ['redirects.read', 'redirects.write'] } }`, and drop the

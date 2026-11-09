@@ -1,0 +1,43 @@
+{
+  "name": "@crombolo/extension",
+  "version": "0.57.0",
+  "description": "What an extension's server half is written against: route, the host's capabilities and its own tables. It runs in a Deno process of its own, apart from the CMS.",
+  "license": "MIT",
+  "author": "Crombolo",
+  "homepage": "https://github.com/kineco-au/crombolo-cms#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kineco-au/crombolo-cms.git",
+    "directory": "packages/extension"
+  },
+  "bugs": {
+    "url": "https://github.com/kineco-au/crombolo-cms/issues"
+  },
+  "keywords": [
+    "crombolo",
+    "extension",
+    "deno"
+  ],
+  "engines": {
+    "bun": ">=1.3.0"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./channel": "./src/channel.ts",
+    "./runner": "./src/runner.ts"
+  },
+  "files": [
+    "src",
+    "NOTICE"
+  ],
+  "dependencies": {
+    "@crombolo/common": "workspace:*",
+    "@crombolo/core": "workspace:*",
+    "@crombolo/data": "workspace:*",
+    "kysely": "0.29.6"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

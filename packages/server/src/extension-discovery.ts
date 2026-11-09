@@ -1,10 +1,12 @@
 /**
  * Installed extensions run once granted, with nothing imported by the site
- * (story 310). At boot, each dependency with a server half that the config's
- * `extensions` entry grants, or that a recorded grant covers, is imported by the
- * entry its manifest names and started with its settings.
- * docs/bundles.md, "Extensions run once granted".
+ * (story 310), each in a Deno process of its own (story 311). At boot, each
+ * dependency with a server half that the config's `extensions` entry grants,
+ * or that a recorded grant covers, is built, started with its settings, and
+ * mounted from what it describes. One that cannot start is left off, and the
+ * site starts without it. docs/bundles.md, "Extensions run once granted".
  */
+import { join } from 'node:path'
 import type { BundlePackage } from '@crombolo/backoffice-host'
 import { type ExtensionSetting, readSettings } from '@crombolo/backoffice-host/registry'
 import {
@@ -14,8 +16,9 @@ import {
   ExtensionSettingRepository,
 } from '@crombolo/data'
 import { declaredOrigins, declaredPermissions, grantGaps } from './bundle-grants.ts'
-import type { ServerBundle } from './bundles.ts'
+import type { BundleLog, ServerBundle } from './bundles.ts'
 import type { CromboloConfig, ExtensionEntry } from './config.ts'
+import { ExtensionProcess, isolatedBundle, isolationProblems } from './extension-process.ts'
 import { openSecret } from './secrets.ts'
 
 /** What the database says before the boot touches it: the grants and settings recorded. */
@@ -86,56 +89,92 @@ export function extensionEntryProblems(
   entries: Readonly<Record<string, ExtensionEntry>> | undefined,
   packages: readonly BundlePackage[],
 ): string[] {
-  return Object.keys(entries ?? {})
+  const problems = Object.keys(entries ?? {})
     .filter((id) => !packages.some((pkg) => pkg.id === id))
     .map(
       (id) =>
         `The config's extensions names "${id}", which no extension the site depends on is: add it to package.json, or take it out.`,
     )
+  if (Bun.env.NODE_ENV === 'production')
+    for (const [id, entry] of Object.entries(entries ?? {}))
+      if (entry.dev)
+        problems.push(
+          `The config's extensions gives "${id}" a dev entry, which widens what it may reach and is for a developer's machine only: take it out in production.`,
+        )
+  return problems
+}
+
+/** An extension that could not start, and why: shown where it is listed. */
+export interface FailedExtension {
+  id: string
+  reason: string
 }
 
 /**
- * The installed server halves to start, each built by its own factory with its
- * settings: those the config grants and those a recorded grant covers. Ones
- * the config already wires, the old way, are left to it.
+ * The installed server halves to start, each in its own process with its
+ * settings: those the config grants and those a recorded grant covers. Ones the
+ * config still imports, the old way, are the site's own code and left to it.
  */
 export async function startExtensions(
   config: CromboloConfig,
   packages: readonly BundlePackage[],
   recorded: RecordedExtensions,
-): Promise<{ bundles: ServerBundle[]; problems: string[] }> {
+  log: (id: string) => BundleLog,
+): Promise<{
+  bundles: ServerBundle[]
+  processes: ExtensionProcess[]
+  failed: FailedExtension[]
+}> {
   const wired = new Set(config.bundles.map((bundle) => bundle.id))
   const bundles: ServerBundle[] = []
-  const problems: string[] = []
+  const processes: ExtensionProcess[] = []
+  const failed: FailedExtension[] = []
   for (const pkg of packages) {
     if (!pkg.carries.server || wired.has(pkg.id)) continue
     const entry = config.extensions?.[pkg.id]
     const grant = recorded.grants.get(pkg.id)
+    const byConfig = entryCovers(pkg, entry)
     const granted =
-      entryCovers(pkg, entry) ||
+      byConfig ||
       Boolean(grant?.recorded && !grant.disabledAt && grantGaps(pkg, grant).length === 0)
-    // Nothing of an extension that is not granted is imported, let alone run.
+    // Nothing of an extension that is not granted is built, let alone run.
     if (!granted) continue
+    const process = new ExtensionProcess({
+      pkg,
+      siteDir: config.siteDir,
+      home: join(config.siteDir, '.crombolo', 'extensions', pkg.id),
+      settings: settingsOf(pkg, recorded.settings.get(pkg.id), entry, config.secretKey),
+      dialect: config.dialect,
+      origins: [
+        ...((byConfig ? entry?.origins : grant?.origins) ?? []),
+        ...(entry?.dev?.allowNet ?? []),
+      ],
+      reads: entry?.dev?.allowRead,
+      timeoutMs: entry?.timeoutMs,
+      log: log(pkg.id),
+    })
     try {
-      const entryFile = Bun.resolveSync(pkg.packageName, config.siteDir)
-      const module = (await import(entryFile)) as Record<string, unknown>
-      const factory = module[pkg.field.server as string]
-      if (typeof factory !== 'function') {
+      const description = await process.start()
+      const problems = isolationProblems(description)
+      if (description.id !== pkg.id)
         problems.push(
-          `${pkg.packageName} names "${pkg.field.server}" as its server half, which it does not export.`,
+          `it calls itself "${description.id}", where its package.json says "${pkg.id}"`,
         )
-        continue
-      }
-      bundles.push(
-        (factory as (settings: Record<string, unknown>) => ServerBundle)(
-          settingsOf(pkg, recorded.settings.get(pkg.id), entry, config.secretKey),
-        ),
-      )
+      if (problems.length > 0) throw new Error(`It cannot run: ${problems.join('; ')}.`)
+      bundles.push(isolatedBundle(process))
+      processes.push(process)
     } catch (error) {
-      problems.push(
-        `${pkg.packageName}'s server half could not be started: ${error instanceof Error ? error.message : String(error)}`,
+      await process.stop()
+      const reason = error instanceof Error ? error.message : String(error)
+      failed.push({ id: pkg.id, reason })
+      log(pkg.id).error(
+        '{package} could not be started, and the site starts without it: {reason}',
+        {
+          package: pkg.packageName,
+          reason,
+        },
       )
     }
   }
-  return { bundles, problems }
+  return { bundles, processes, failed }
 }

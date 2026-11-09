@@ -324,6 +324,14 @@ const DECLARED = [
       'The Packages section installs and removes packages on the running site. Off, they are added to `package.json` and deployed.',
   },
   {
+    env: 'CROMBOLO_DENO',
+    kind: 'string',
+    default: 'the binary the `deno` package installed',
+    section: 'Back office and bundles',
+    description:
+      'The Deno binary installed extensions run under, each in a process of its own. Set it where Deno publishes no build, such as Alpine.',
+  },
+  {
     env: 'CROMBOLO_BUNDLE_SIGNATURES',
     kind: 'enum',
     values: ['optional', 'required'],

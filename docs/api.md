@@ -11,6 +11,7 @@ Everything supported comes from `@crombolo/crombolo`, split by who is using it:
 | --- | --- | --- |
 | `@crombolo/crombolo` | a site | `defineConfig`, `crombolo()`, `cromboloServer()` and `ServerHandle`; the site's own tables (`defineSiteTables`, `TablesDatabase`, `ShapeDatabase`, `SiteTables`, `SiteStep`, `SqlStep`, `AnonymiseRules`, story 189); the presets for identity providers, e-mail and media stores; the view API (`Blocks`, `Form`, `Island`, `SeoHead`, `AntiforgeryMeta`, `search`, `usePage` and their types); `VERSION` |
 | `@crombolo/crombolo/bundle` | a server bundle's author | `ServerBundle`; its routes (`route`, `BundleRoute`, `RouteHandler`, `RouteContext`, `RouteMethod`, `RouteOptions`); what a handler is given (`BundleRouteContext`, `Principal`, `BundleMember`, `BundleCaller`, `BundleHost` and the capabilities, `BundleMedia` and its types among them); `BundleSection`; `defineBundleTables`, `TablesDatabase` and their types; jobs (`BundleJob`, `OwnerJobs`, `JobInfo`, `JobSchedule`, `JobStatus`) |
+| `@crombolo/extension` | an extension's author (story 311) | what `./bundle` offers, as the SDK an extension runs on in its own Deno process: `route`, `defineBundleTables`, `hasSection`, `hasCultureAccess`, the `Result` helpers and the same types. The CMS builds an extension with its own copy, so `./bundle` resolves here too ([`extensions.md`](extensions.md)) |
 | `@crombolo/crombolo/navigation` | a site's page code | the functions that end a page early, mirroring `next/navigation`: `redirect`, `permanentRedirect`, `notFound`, `forbidden`, `unauthorized`, the HTTP-named extras (`foundAt`, `movedPermanentlyTo`, `seeOther`, `badRequest`, `gone`, `unprocessableContent`) and `rethrow` (story 206) |
 | `@crombolo/crombolo/headers` | a site's page code | `cookies()` and `headers()`, read-only, mirroring `next/headers` |
 | `@crombolo/crombolo/server` | a site's page and data code | `site()`, the site's services acting as the visitor; named queries (`NamedQuery`, `QueryCaller`, `QueriesOf`, `SiteQueries`, and `Register` for the config's types); background jobs (`SiteJobs`, `SiteJobStatus`, `JobInfo`, `JobSchedule`, story 187); `Result`, `Ok`, `Outcome`, `ok`, `isOk`, `isOutcome` and their types |
@@ -70,12 +71,11 @@ on them. Each one's `package.json` description and README say it is internal.
 
 ## Not a sandbox
 
-This is a stability boundary. A wired server bundle, and a site's own code, run
-in the server process with everything that process can reach: the database,
-the files and the environment. The capabilities in `./bundle` are what crombolo
-hands a bundle, not a limit on what its code can do ([`bundles.md`](bundles.md),
-Part 3). Installing server code from the Marketplace takes an explicit yes for
-that reason (story 194).
+This is a stability boundary, not a confinement. A site's own code, and a
+server bundle its config imports, run in the server process with everything that
+process can reach: the database, the files and the environment. An installed
+extension the CMS starts runs in a Deno process of its own, which can reach only
+what its grant gives it ([`extensions.md`](extensions.md), story 311).
 
 What an extension could do today, and the stories that will confine it, are in
 [`extension-threat-model.md`](extension-threat-model.md).

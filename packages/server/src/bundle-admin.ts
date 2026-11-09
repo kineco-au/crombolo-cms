@@ -45,7 +45,7 @@ export interface InstalledBundles {
   restartPending: RestartPending | null
   /** What this site takes of a bundle's signature (story 060). */
   policy: ProvenancePolicy
-  items: (InstalledListing & { settings?: SettingView[] })[]
+  items: (InstalledListing & { settings?: SettingView[]; couldNotStart?: string })[]
 }
 
 /** A setting as Installed shows it (story 310): its value, masked when secret, and whether the config locks it. */
@@ -116,6 +116,8 @@ export function createBundleAdmin(options: {
   marketplace: Marketplace
   extensions: Pick<ExtensionRegistry, 'bundles'>
   bundleGrants: Pick<BundleGrants, 'disable' | 'enable' | 'grant' | 'state'>
+  /** Granted extensions that could not start, and why (story 311). */
+  failed?: () => readonly { id: string; reason: string }[]
 }): BundleAdmin {
   const { db, config, marketplace, extensions, bundleGrants } = options
   const audit = (actor: BundleActor, action: string, entityName: string, detail: string | null) =>
@@ -168,7 +170,13 @@ export function createBundleAdmin(options: {
         items: await Promise.all(
           (await marketplace.installed()).map(async (item) => {
             const pkg = find(item.packageName)
-            return pkg ? { ...item, settings: await settingsView(pkg) } : item
+            if (!pkg) return item
+            const failed = options.failed?.().find((candidate) => candidate.id === pkg.id)
+            return {
+              ...item,
+              settings: await settingsView(pkg),
+              ...(failed ? { couldNotStart: failed.reason } : {}),
+            }
           }),
         ),
       }

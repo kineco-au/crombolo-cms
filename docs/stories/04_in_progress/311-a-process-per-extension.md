@@ -35,6 +35,23 @@ T11, T14, and decisions D1 and D3.
   binary per platform, so `bun install` brings it and no one installs anything by
   hand. Its version is pinned and kept current, as a security dependency.
 
+## Decisions (2026-11-09, building)
+
+- **The Docker image moves to Debian slim** (`oven/bun:1-slim`): the `deno` npm
+  package ships glibc binaries only, so Alpine would need an unpinned Deno.
+- **Middleware is site code only.** An extension can no longer declare `middleware`,
+  and the install refuses a version that does: it would put a round trip to every
+  extension on every page.
+- **Postgres roles, or refuse.** When the CMS's database user cannot create the
+  extension's role, an extension with tables does not start, and the health check
+  says to grant `CREATEROLE` or create the role. Extensions without tables run.
+- **Form field types wait for 312.** A field type's `render` returns markup inside
+  the page render, which an out-of-process call cannot answer. Until 312 renders
+  an extension's markup in its own process, the install refuses a version that
+  adds field types. Form workflow types run over the channel.
+- **One story:** the process, the channel, tables, and the macOS and Windows CI
+  runners land together.
+
 ## The design
 
 - **One Deno process per extension:**
@@ -105,3 +122,51 @@ T11, T14, and decisions D1 and D3.
 - [ ] The same tests pass on macOS, Linux and Windows CI runners, with no Docker.
 - [ ] The threat model's "what isolation does" table is confirmed by tests, one per
       threat.
+
+## Implemented (0.57.0)
+
+- **The SDK,** `@crombolo/extension` (`packages/extension`): `route`,
+  `defineBundleTables`, `hasSection`, `hasCultureAccess`, the `Result` helpers and
+  the types, with the channel (`channel.ts`) and the Deno-side runner
+  (`runner.ts`). `@crombolo/data` exports `./tables-builder` and `@crombolo/core`
+  `./sections`, so the SDK takes the pure parts only.
+- **The build:** Deno will not strip TypeScript under `node_modules`, so the CMS
+  builds each extension with Bun into `.crombolo/extensions/<id>/build/server.js`:
+  its code, its dependencies and the SDK, in one file. That also leaves Deno one
+  directory to read. `@crombolo/crombolo/bundle` and `@crombolo/common` resolve
+  to the SDK. A Bun macro is refused, since Bun has no switch to turn macros off.
+- **The process** (`packages/server/src/extension-process.ts`): the flags as
+  designed, plus `--no-npm`, `--no-lock` and `--node-modules-dir=none`, a 256 MB
+  heap, and an environment of Deno's own settings only. The binary is the
+  `deno` package's platform binary, found without its install script, or
+  `CROMBOLO_DENO`.
+- **Mounting:** the runner describes the extension, and `isolatedBundle` builds
+  the `ServerBundle` the host mounts and checks as before. Routes, events, jobs,
+  form workflows and table backfills are calls; each call's functions and
+  signals travel as numbers, and stop working once it answers.
+- **Its tables:** the extension's Kysely sends operation trees; the CMS compiles
+  them on the owner's handle and runs only one statement that reads or writes rows
+  (`extension-sql.ts`).
+- **Failures:** a call times out after 30 s (`extensions.<id>.timeoutMs`). A
+  process that then misses a ping is stopped; a stopped one restarts on the next
+  call after a back-off. One that cannot start is left off, with
+  `couldNotStart` in Installed and a warning in the health check.
+- **Docker:** `docker/Dockerfile.cms` is `oven/bun:1-slim`.
+- **CI:** an `extensions` job runs the extension tests on macOS and Windows.
+- **Differences from the plan:**
+  - **Postgres** keeps the CMS's connection confined by `SET LOCAL ROLE`, not a
+    login role per extension: the statement check is what stops the
+    extension's SQL from undoing the role. A login role would need a password per
+    extension and password logins in `pg_hba`. A role the CMS cannot create
+    leaves that extension off, as decided.
+  - **A server half the config imports** still runs in the CMS: importing a
+    module runs it, so it is the site's own code. The boot warns.
+  - **Refusals happen at start, not at install:** middleware, form field types and
+    Bun APIs are found when the extension is built or described, so Installed
+    shows them after the restart.
+  - **A form workflow's `validate`** is not called, since the designer checks
+    synchronously. Its settings are held to their declarations.
+  - **The footprint** is measured on Deno: about 30 ms to start and 27 MB
+    resident.
+- **Tests:** `tests/extension-isolation.test.ts`, and the discovery, Simple
+  Redirects and Entra tests, which now run their extensions in Deno.

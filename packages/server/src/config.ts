@@ -620,6 +620,13 @@ export interface ExtensionEntry {
   actAs?: string
   /** Its settings' values, locked in the back office. */
   settings?: Readonly<Record<string, unknown>>
+  /**
+   * On a developer's machine only: more for its process to read and reach while
+   * the extension is being worked on. Refused when `NODE_ENV` is `production`.
+   */
+  dev?: { allowRead?: readonly string[]; allowNet?: readonly string[] }
+  /** How long a route, event or workflow of it may take, in milliseconds: 30 seconds unless set. */
+  timeoutMs?: number
 }
 
 export type SiteConfig = CromboloConfig

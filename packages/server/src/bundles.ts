@@ -859,7 +859,7 @@ export function createServerBundles(options: ServerBundlesOptions): ServerBundle
         caller.kind === 'member' &&
         !declared.includes('member.delegate')
       ) {
-        host[capability] = refusing(bundle.id, 'member.delegate')
+        host[capability] = refusing(bundle.id, 'member.delegate', MEDIA_METHODS)
         continue
       }
       const forCaller = options.callerHost?.[capability]
@@ -877,15 +877,20 @@ export function createServerBundles(options: ServerBundlesOptions): ServerBundle
     return Object.freeze(host) as Pick<BundleHost, BundleCapability>
   }
 
-  /** A capability whose every method is refused, naming the permission it would need. */
-  const refusing = (bundleId: string, permission: string) =>
-    new Proxy(
-      {},
-      {
-        get: () => () => {
-          throw new PermissionRefusedError(bundleId, permission)
-        },
-      },
+  /**
+   * A capability whose every method is refused, naming the permission it would
+   * need. Its methods are named, so an extension in its own process sees them too.
+   */
+  const refusing = (bundleId: string, permission: string, methods: readonly string[]) =>
+    Object.freeze(
+      Object.fromEntries(
+        methods.map((method) => [
+          method,
+          () => {
+            throw new PermissionRefusedError(bundleId, permission)
+          },
+        ]),
+      ),
     )
 
   /** A site route that answers as waiting while its bundle is off. */
@@ -961,3 +966,13 @@ export function createServerBundles(options: ServerBundlesOptions): ServerBundle
 }
 
 const PUBLIC_CALLER: BundleCaller = Object.freeze({ kind: 'public' })
+
+/** `BundleMedia`'s methods, refused one by one without `member.delegate`. */
+const MEDIA_METHODS: readonly (keyof BundleMedia)[] = [
+  'create',
+  'get',
+  'update',
+  'delete',
+  'list',
+  'crop',
+]

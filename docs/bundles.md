@@ -1444,9 +1444,11 @@ a site's views cache has to resolve `@crombolo/crombolo/jsx-runtime` by walking 
 
 # Part 3 — Server-side bundles
 
-A server bundle is written against `@crombolo/crombolo/bundle`, the supported
-entry point for a bundle's author ([`api.md`](api.md)), and peers on
-`@crombolo/crombolo`. Nothing in `@crombolo/server` is a bundle's to import.
+A server bundle is written against `@crombolo/extension`, the extension SDK, or
+`@crombolo/crombolo/bundle`, which the CMS points at the same SDK when it builds
+it ([`api.md`](api.md)). It peers on `@crombolo/crombolo`. Nothing in
+`@crombolo/server` is a bundle's to import. It runs in a Deno process of its
+own (story 311, [`extensions.md`](extensions.md)).
 
 Part 2 said a bundle that needs to run in the server process is "a dependency
 plus a deploy" and left it there. This is that, made into something a bundle can
@@ -1459,15 +1461,17 @@ Story 310. An installed extension's server half runs once it is granted what it
 asks for, with nothing imported by the site. Until then, the import in
 `crombolo.config.ts` was the gate; now the grant is (story 309).
 
-- **At boot**, each dependency that declares a `server` half is imported by the
-  entry its package exports and started by the factory `crombolo.server` names,
-  given its settings. That happens only where it is granted:
+- **At boot**, each dependency that declares a `server` half is built from the
+  entry its package exports and started in a Deno process of its own, by the
+  factory `crombolo.server` names, given its settings
+  ([`extensions.md`](extensions.md)). That happens only where it is granted:
   - **by the site's code:** the config's `extensions` entry names, exactly, what
     it grants. That grant is "Developer installed", recorded and audited at boot;
   - **or by a grant recorded here:** the Marketplace's install panel, Installed's
     **Grant** button, `crombolo bundle grant`, or a remote.
 
-  Nothing of an extension that is not granted is imported, let alone run.
+  Nothing of an extension that is not granted is built, let alone run. One that
+  cannot start is left off, saying why in Installed, and the site starts.
 
 ```ts
 export default defineConfig({
@@ -1493,10 +1497,11 @@ export default defineConfig({
   - Installed shows the rest, to edit, kept in `extension_setting` (migration 067).
     `crombolo bundle settings <name> [key=value …]` does the same from the CLI.
   - An extension reads its settings when it starts, so a change takes effect at the
-    next restart, until story 311 starts it in its own process.
+    next restart.
 - **The old way:** a site that still imports an extension and lists it in `bundles`
-  starts, for this release, warning that the import is no longer needed. Its
-  wiring grants what it asks for, as before. `bundle install --wire` is gone.
+  starts, warning that the import runs it inside the site, unconfined: importing a
+  module runs it, so it is the site's own code. Its wiring grants what it asks
+  for, as before. `bundle install --wire` is gone.
 - **Remotes:** a grant made on a remote, by someone holding "Install code on this
   site", turns the extension on there at its next restart.
 
@@ -2500,13 +2505,19 @@ The requirement is that the handle never reaches outside the bundle's tables:
   crombolo's database and the other owners' files never attached.
 - **No `Db` is reachable.** The handle is Kysely over a driver that holds the
   owner's connection; crombolo's own is not a property of anything handed out.
+- **An extension holds no connection at all** (story 311). Its Kysely sends each
+  query to the CMS, which compiles it on the owner's handle and runs it only if it
+  is one statement that reads or writes rows: no `ATTACH`, `PRAGMA`, role change,
+  `set_config` or second statement ([`extensions.md`](extensions.md), "Its own
+  tables").
 
 `tests/custom-tables.test.ts` proves it on both engines by trying: a handle
 naming a crombolo table, qualified or not, and another owner's table, fails.
-What it guards against is mistakes and injected input. A site runs unsandboxed
-in the server process (story 173), so deliberately hostile code could issue
-`RESET ROLE` or `ATTACH DATABASE` (Bun's SQLite driver cannot forbid attaching);
-installing a bundle is a decision to trust it.
+For a bundle the site imports, which runs in the server process, that guards
+against mistakes and injected input: deliberately hostile code could issue
+`RESET ROLE` or `ATTACH DATABASE` (Bun's SQLite driver cannot forbid attaching).
+An extension in its own process cannot: its statements are checked before they
+run.
 
 ## Moving from 062's prefixed tables
 
@@ -2560,12 +2571,10 @@ another using `context.bundle.database`, the dashboard's report,
   with core tables; events from core such as "this node was deleted". A whole
   site's export carries them with `--with-site-data`
   ([`data-model.md`](data-model.md#custom-tables)).
-- Isolating a bundle's server code. There is no sandbox and none is implied: a
-  bundle you import is code you run, exactly like any other dependency in the
-  file. What the design buys is that importing it is a decision somebody makes
-  and commits. What each extension could reach, and the plan to run each in a
-  confined process of its own, are in
-  [`extension-threat-model.md`](extension-threat-model.md) (stories 306–313).
+- Confining a bundle the site imports. A bundle you import is code you run,
+  exactly like any other dependency in the file. An installed extension the CMS
+  starts runs in its own process ([`extensions.md`](extensions.md)); what each
+  could reach is in [`extension-threat-model.md`](extension-threat-model.md).
 
 ## The product site's bundle
 

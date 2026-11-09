@@ -33,7 +33,7 @@ are listed at the end.
 
 | Way in | Runs where | Turned on by |
 |---|---|---|
-| **Server half**: `crombolo.server`, a `ServerBundle` with routes, events, jobs, forms, media and tables | In the CMS process | An import in `crombolo.config.ts` (story 225) |
+| **Server half**: `crombolo.server`, a `ServerBundle` with routes, events, jobs, forms, media and tables | A Deno process of its own (story 311); in the CMS when the site's config imports it | Its grant (stories 309, 310) |
 | **Templates**: a `content: true` extension's `components/` | Copied into the site's `components/`, then imported in-process on every render | The Marketplace install itself, with no consent asked |
 | **Screens**: `plugin/` files in the manifest's `extensions` | The back office, in the signed-in user's browser | Being a dependency |
 | **Content**: schema, dictionary, content, styles, scripts, public files | Written into the site | The Marketplace install, unless `CROMBOLO_APPLY_BUNDLE_CONTENT` is off |
@@ -44,21 +44,21 @@ Status: **covered**, **partly** (a gap is named), or **open**.
 
 | # | Threat | Today | Gap |
 |---|---|---|---|
-| T1 | **Reading server secrets**: `process.env`, `.env`, the secret key | **Open.** The server half and an extension's templates run in the CMS process | Everything in the environment is readable |
-| T2 | **Going around the API to the database**: opening the SQLite file, importing `@crombolo/data`, `RESET ROLE` out of its own Postgres schema | **Open.** Part 4 says so: confinement is a guard against mistakes, not hostility | The connection is the CMS's own |
-| T3 | **Calling the host API beyond its permissions** | **Partly.** `gated()` throws for an undeclared method (`bundle-grants.ts:104`) | It checks the package's own declaration, not the grant: the grant row is never read at run time. `log` is ungated |
-| T4 | **Turning itself on, or widening its permissions in an upgrade, without consent** | **Partly.** The Marketplace refuses a version that grew a server half or new permissions after `bun add` | `isOn` is "present and not disabled" (`bundle-grants.ts:201`): a missing grant, or a version asking for more, still runs once wired. The config import is the only real gate |
-| T5 | **Writing the site's files**: config, `package.json`, `.env`, components | **Partly.** A `code/` section needs install code. An overwrite needs `--replace-files` | An extension may carry `code/`. Its components land in `components/` unasked |
+| T1 | **Reading server secrets**: `process.env`, `.env`, the secret key | **Covered (311)** for a server half the CMS starts: its Deno process has no environment and reads only its package, build and data folder | An extension's templates still render in the CMS until story 312; a server half the site imports runs in the CMS |
+| T2 | **Going around the API to the database**: opening the SQLite file, importing `@crombolo/data`, `RESET ROLE` out of its own Postgres schema | **Covered (311).** It holds no connection; its queries are run by the CMS on its own tables' connection, one row statement at a time, with `ATTACH`, role changes and `set_config` refused | A server half the site imports holds the CMS's connection |
+| T3 | **Calling the host API beyond its permissions** | **Covered (309).** Every capability call is checked against the grant row | — |
+| T4 | **Turning itself on, or widening its permissions in an upgrade, without consent** | **Covered (309, 310).** It runs only while its grant covers what its installed version asks for | — |
+| T5 | **Writing the site's files**: config, `package.json`, `.env`, components | **Partly.** A `code/` section needs install code, and an extension may not carry one (306). Its server half may write only its data folder (311) | Its components land in `components/` unasked, until story 312 |
 | T6 | **Running server code through templates** | **Open.** An extension's components run in-process on render, while the Marketplace says it has no server code | Consent looks only at `crombolo.server` |
-| T7 | **Outbound requests and SSRF** from the server | **Partly.** An event handler's `fetch` refuses private addresses and pins DNS (story 301) | Routes, jobs and templates use the global `fetch`, `Bun.connect` and `node:net`, unchecked and undeclared |
+| T7 | **Outbound requests and SSRF** from the server | **Covered (311)** for a server half: Deno allows only the hosts its grant names, and the host's `fetch` adds the address rule (story 301) | Templates, until story 312 |
 | T8 | **Screens misusing the user's session**: calling the Management API as them, sending data anywhere | **Open.** No content security policy on the back office | A screen can do anything the signed-in user can, and talk to any origin |
-| T9 | **Screens of an extension that is off or ungranted** | **Partly.** Their manifests are hidden | Their files are still served (`server.ts:2840`) |
-| T10 | **Acting as a member beyond what was granted** (`member.delegate`) | **Partly.** Checked at boot only | No call is gated on it at run time |
-| T11 | **One extension reading another's data** | **Partly.** Separate Postgres schemas or SQLite files | Same process and connection: T2 |
+| T9 | **Screens of an extension that is off or ungranted** | **Covered (309).** Their manifests are hidden and their files not served | — |
+| T10 | **Acting as a member beyond what was granted** (`member.delegate`) | **Covered (309).** Checked on every call | — |
+| T11 | **One extension reading another's data** | **Covered (311).** Separate processes, separate channels, and each one's queries run on its own tables' connection | — |
 | T12 | **Code at install time**: lifecycle scripts, migrations, a check that imports | **Covered.** `bun add --ignore-scripts`; story 300: a check imports nothing, and migrations are code | — |
 | T13 | **A swapped package**: a version that changed between listing and install, or a registry serving something else | **Covered.** The landed manifest is checked again and removed when it differs. The lockfile pins the hash. Signing is available (story 060) | Signing is optional by default |
-| T14 | **Denial of service**: a busy loop, unbounded memory, a crash | **Open.** Same event loop and heap as the CMS | One extension can stop the site |
-| T15 | **A site package dressed as an extension**, from a registry | **Open.** Nothing marks a site package | A package with `code/` and a config installs like any other |
+| T14 | **Denial of service**: a busy loop, unbounded memory, a crash | **Covered (311)**, but for CPU. A crash or a hang ends its process and its calls, which time out; a 256 MB heap | A busy loop uses a core until its call times out and the process is stopped |
+| T15 | **A site package dressed as an extension**, from a registry | **Covered (306).** A site package says what it is, and is never installed from a registry | — |
 
 ## What process isolation does and does not stop
 
@@ -76,13 +76,15 @@ site goes over a channel the CMS checks against the grant.
 | T3, T4, T10 | Every call is checked against the grant row, which records the version and the permissions | — |
 | T6 templates | An extension's templates render in its own process, not the CMS's | — |
 | T7 outbound | Deno allows only the declared origins, and the host's `fetch` adds the address rule | — |
-| T11 | Separate processes, separate channels | — |
-| T14 | A crash or a hang ends that process, not the site; calls time out | A hard memory or CPU cap needs the OS. Deno's heap limit (`--v8-flags=--max-old-space-size`) caps memory, but not CPU |
+| T11 | **One extension reading another's data** | **Covered (311).** Separate processes, separate channels, and each one's queries run on its own tables' connection | — |
+| T14 | **Denial of service**: a busy loop, unbounded memory, a crash | **Covered (311)**, but for CPU. A crash or a hang ends its process and its calls, which time out; a 256 MB heap | A busy loop uses a core until its call times out and the process is stopped |
 
 What Deno's permissions do not cover is a flaw in Deno itself. Its permission
 system has had escape bugs, so the Deno version is pinned and kept current as a
-security dependency. Until story 311 ships, the docs must not call an extension
-sandboxed.
+security dependency. Story 311 confines a server half the CMS starts; its
+templates are confined only once story 312 ships, and a server half the site
+imports never is. `tests/extension-isolation.test.ts` has a test for each row
+above ([`extensions.md`](extensions.md)).
 
 ## Permissions an extension asks for
 

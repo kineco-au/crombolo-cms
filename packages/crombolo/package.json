@@ -67,6 +67,7 @@
     "@crombolo/contracts": "workspace:*",
     "@crombolo/core": "workspace:*",
     "@crombolo/data": "workspace:*",
+    "@crombolo/extension": "workspace:*",
     "@crombolo/render": "workspace:*",
     "@crombolo/schema": "workspace:*",
     "@crombolo/server": "workspace:*",

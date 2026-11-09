@@ -242,6 +242,26 @@ jobs:
                   fail-on-cache-miss: true
             - run: bun run test:integration
 
+    # Story 311: an extension is confined by Deno's own permissions, which must
+    # hold on every platform a site runs on, with no Docker. The extension tests,
+    # on macOS and Windows; Linux runs them with the rest of the suite.
+    extensions:
+        name: extensions (${{ matrix.os }})
+        needs: [check]
+        strategy:
+            fail-fast: false
+            matrix:
+                os: [macos-latest, windows-latest]
+        runs-on: ${{ matrix.os }}
+        steps:
+            - uses: actions/checkout@v5
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: ${{ env.BUN_VERSION }}
+            - run: bun install --frozen-lockfile
+            - run: bun run generate:types
+            - run: bun run test tests/extension-isolation.test.ts tests/extension-discovery.test.ts tests/simple-redirects.test.ts tests/entra-bundle.test.ts
+
     # The Next.js front end (story 208), built and run on each supported major:
     # the packages packed as they publish, a site scaffolded by `crombolo init`,
     # its CMS and its built app answering real requests. Locally:

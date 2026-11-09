@@ -179,7 +179,9 @@ containerised test runs. Building the back office also needs Node 24 and npm 11:
 it is built from Crombolo's fork of Umbraco's client by that client's own
 scripts ([backoffice hosting](docs/backoffice-hosting.md#the-fork-of-umbracos-client)).
 Nothing in the build, test or run path needs .NET, and a site needs neither
-Node nor npm.
+Node nor npm. Installed extensions run under Deno, which `bun install` brings
+([extensions](docs/extensions.md)); a container needs a glibc image such as
+`oven/bun:1-slim`, not Alpine.
 
 ```bash
 git clone https://github.com/kineco-au/crombolo-cms.git
@@ -287,7 +289,8 @@ Design documents, in reading order; planned work is in the stories:
 | [api](docs/api.md) | the supported API: the entry points of `@crombolo/crombolo`, the compatibility promise, and how a snapshot and an import boundary hold it |
 | [cli](docs/cli/commands.md) | the command line's spec: every command, its arguments, flags, outputs, errors and exit codes, with [clispec.json](docs/cli/clispec.json) for a machine; generated from the commands by `bun run cli:spec`, and a test fails when it is stale |
 | [bundles](docs/bundles.md) | site packages, which move a site and are applied with `crombolo site`, and extensions, installed as npm dependencies with `crombolo bundle` instead of App_Plugins; bundles with a server half; and a site's [content files](docs/bundles.md#content-files) under `content/`: the format, the shorthand per editor, and `crombolo site apply` |
-| [extension threat model](docs/extension-threat-model.md) | what an installed extension could reach, what stops it today, and the stories that run each in a Deno process of its own (306–313) |
+| [extension threat model](docs/extension-threat-model.md) | what an installed extension could reach, what stops it, and the stories that confine it (306–313) |
+| [extensions](docs/extensions.md) | each installed extension in a Deno process of its own: what it may read and reach, the channel, its tables, failures |
 | [forms](docs/forms.md) | form building in core: the TOML definition, entries, workflows, and the e-mail port; approval before publishing, as graphs of stages, in [workflows](docs/workflows.md) |
 | [audit-log](docs/audit-log.md) | who did what, when and from where: what writes an entry, the Info tab and the dashboard, retention |
 | [search](docs/search.md) | backoffice and site search: the indexes on both dialects, the queue that keeps them current, who sees a result |
@@ -320,6 +323,8 @@ crombolo/
 │   │                              #    config, ports, adapters, the schema store, git, background jobs, oEmbed, the event
 │   │                              #    hubs, member sign-in and public access, the media store seam (file system, S3,
 │   │                              #    Azure), imaging and the bundle installer
+│   ├── extension/                 # the extension SDK (story 311): what an extension's server half is written
+│   │                              #    against, and the runner and channel it uses in its own Deno process
 │   ├── core/                      # domain primitives — problem details, notifications, paging
 │   ├── contracts/                 # OpenApi.json (vendored from Umbraco release-18.2.0, never edited; src/overrides.ts) + types
 │   ├── data/                      # dialect seam, drivers, Kysely query layer, migrations, repositories, bundle tables

@@ -100,10 +100,10 @@ S3 and anything that speaks its API (Cloudflare R2, DigitalOcean Spaces, MinIO, 
 
 ## Running in a container
 
-There is nothing special about the container: it needs Bun, the site's files and its dependencies.
+There is nothing special about the container: it needs Bun, the site's files and its dependencies. Use a Debian-based image rather than Alpine: installed extensions each run in a Deno process of their own, and Deno is built for glibc only.
 
 ```dockerfile
-FROM oven/bun:1-alpine
+FROM oven/bun:1-slim
 WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile --production

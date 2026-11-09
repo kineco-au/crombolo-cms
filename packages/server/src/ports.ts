@@ -357,6 +357,8 @@ export function resolveUserLinkSender(
 export interface DepsOptions {
   /** Published pages a site route answers in place of, for the health check (story 211). */
   hiddenByRoutes?: () => Promise<Array<{ route: string; owner: string; page: string; url: string }>>
+  /** Granted extensions that could not start, and why (story 311). */
+  failedExtensions?: () => readonly { id: string; reason: string }[]
   siteSettingsFindings?: () => Promise<
     Array<{ kind: 'second' | 'deep'; name: string; counted?: string }>
   >
@@ -487,6 +489,7 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
       hiddenByRoutes: options.hiddenByRoutes,
       siteSettingsFindings: options.siteSettingsFindings,
       bundleProblems: () => options.extensions.bundles().problems,
+      failedExtensions: options.failedExtensions,
     })
     const tags = new TagRepository(options.db)
     deps.tags = { list: (filter) => tags.all(filter) }

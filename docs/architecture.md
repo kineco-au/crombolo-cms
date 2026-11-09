@@ -199,10 +199,12 @@ operations per area — and fails CI if an implemented operation regresses.
 | **Biome**              | ^2.5     | format and lint, one tool, one config                                                                                                                                           |
 | **openapi-typescript** | **^6.7** | generates `contracts/generated/` from the vendored contract — see below                                                                                                         |
 | **LogTape**            | ^2.3     | the server's logging: message templates with properties, as Serilog's, written as Serilog's compact JSON for the log viewer — zero dependencies of its own                      |
-| **Docker Compose**     | v2       | supplies Postgres for the test suite, runs the stack and the test suites in containers — `oven/bun:1-alpine`, `postgres:18-alpine` and Playwright's image for the browser suite |
+| **Deno**               | 2.9.6    | runs each installed extension's server half in a process of its own, confined by Deno's permissions (story 311, [`extensions.md`](extensions.md)); arrives with `bun install` |
+| **Docker Compose**     | v2       | supplies Postgres for the test suite, runs the stack and the test suites in containers — `oven/bun:1-slim`, `postgres:18-alpine` and Playwright's image for the browser suite |
 
 Docker is optional: it supplies Postgres for the test suite and can run the stack,
-but `bun test` against SQLite needs nothing but Bun. Nothing in the build, test or
+but `bun test` against SQLite needs nothing but Bun, and the Deno that `bun install`
+brings. Nothing in the build, test or
 run path needs Node, npm scripts, or .NET/NuGet.
 
 ### Why openapi-typescript is held at v6

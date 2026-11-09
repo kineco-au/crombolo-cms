@@ -35,8 +35,9 @@ function status(item) {
         ? html`<span>Content added (${item.contentApplied})</span>`
         : html`<span>Content not added yet</span>`,
     )
-  // Story 309: it runs on its grant.
-  if (item.status === 'waiting') parts.push(html`<span>Waiting for a grant</span>`)
+  // Story 309: it runs on its grant. Story 311: and only once it has started.
+  if (item.couldNotStart) parts.push(html`<span>Could not start</span>`)
+  else if (item.status === 'waiting') parts.push(html`<span>Waiting for a grant</span>`)
   else if (item.status === 'not-granted') parts.push(html`<span>Not granted</span>`)
   else if (item.carries?.server)
     parts.push(
@@ -243,6 +244,11 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
               It asks for these without saying why: it was written before extensions gave a
               reason for each. A new install of a version like it is refused.
             </p>`
+          : nothing
+      }
+      ${
+        item.couldNotStart
+          ? html`<p class="note">It is granted, but could not start: ${item.couldNotStart}</p>`
           : nothing
       }
       ${

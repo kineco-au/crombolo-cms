@@ -40,6 +40,7 @@
     "@crombolo/contracts": "workspace:*",
     "@crombolo/core": "workspace:*",
     "@crombolo/data": "workspace:*",
+    "@crombolo/extension": "workspace:*",
     "@crombolo/render": "workspace:*",
     "@crombolo/schema": "workspace:*",
     "@crombolo/transfer": "workspace:*",
@@ -62,7 +63,9 @@
     "@sigstore/protobuf-specs": "^0.4.3",
     "@sigstore/tuf": "^3.1.1",
     "@sigstore/verify": "^2.1.1",
+    "deno": "2.9.6",
     "jose": "^6.2.12",
+    "kysely": "0.29.6",
     "sigstore": "^3.1.0"
   }
 }

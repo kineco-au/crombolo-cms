@@ -66,6 +66,8 @@ export {
   extensionEntryProblems,
   settingsOf,
 } from './extension-discovery.ts'
+export { denoArguments, netHosts } from './extension-process.ts'
+export { extensionSqlProblem } from './extension-sql.ts'
 export * from './extensions-notice.ts'
 export * from './external-sign-in.ts'
 export * from './file-intake.ts'

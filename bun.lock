@@ -190,6 +190,7 @@
         "@crombolo/contracts": "workspace:*",
         "@crombolo/core": "workspace:*",
         "@crombolo/data": "workspace:*",
+        "@crombolo/extension": "workspace:*",
         "@crombolo/render": "workspace:*",
         "@crombolo/schema": "workspace:*",
         "@crombolo/server": "workspace:*",
@@ -219,8 +220,21 @@
     "packages/entra": {
       "name": "@crombolo/entra",
       "version": "0.57.0",
+      "dependencies": {
+        "@crombolo/extension": "workspace:*",
+      },
       "peerDependencies": {
         "@crombolo/crombolo": ">=0.57.0",
+      },
+    },
+    "packages/extension": {
+      "name": "@crombolo/extension",
+      "version": "0.57.0",
+      "dependencies": {
+        "@crombolo/common": "workspace:*",
+        "@crombolo/core": "workspace:*",
+        "@crombolo/data": "workspace:*",
+        "kysely": "0.29.6",
       },
     },
     "packages/next-integration": {
@@ -278,6 +292,7 @@
         "@crombolo/contracts": "workspace:*",
         "@crombolo/core": "workspace:*",
         "@crombolo/data": "workspace:*",
+        "@crombolo/extension": "workspace:*",
         "@crombolo/render": "workspace:*",
         "@crombolo/schema": "workspace:*",
         "@crombolo/transfer": "workspace:*",
@@ -300,13 +315,18 @@
         "@sigstore/protobuf-specs": "^0.4.3",
         "@sigstore/tuf": "^3.1.1",
         "@sigstore/verify": "^2.1.1",
+        "deno": "2.9.6",
         "jose": "^6.2.12",
+        "kysely": "0.29.6",
         "sigstore": "^3.1.0",
       },
     },
     "packages/simple-redirects": {
       "name": "@crombolo/simple-redirects",
       "version": "0.57.0",
+      "dependencies": {
+        "@crombolo/extension": "workspace:*",
+      },
       "peerDependencies": {
         "@crombolo/crombolo": ">=0.57.0",
       },
@@ -432,6 +452,8 @@
 
     "@crombolo/entra": ["@crombolo/entra@workspace:packages/entra"],
 
+    "@crombolo/extension": ["@crombolo/extension@workspace:packages/extension"],
+
     "@crombolo/next-integration": ["@crombolo/next-integration@workspace:packages/next-integration"],
 
     "@crombolo/remote-conformance": ["@crombolo/remote-conformance@workspace:packages/remote-conformance"],
@@ -461,6 +483,18 @@
     "@crombolo/site-starter": ["@crombolo/site-starter@workspace:sites/starter"],
 
     "@crombolo/transfer": ["@crombolo/transfer@workspace:packages/transfer"],
+
+    "@deno/darwin-arm64": ["@deno/darwin-arm64@2.9.6", "", { "os": "darwin", "cpu": "arm64" }, "sha512-V8uO1Aolrl/yvdMb5lOtgtigs8YuZBjrOrgviVMiYkQ0swymFfzkae1wZak4Xi24t7vf7d/eiMb/7ryjjVm+tg=="],
+
+    "@deno/darwin-x64": ["@deno/darwin-x64@2.9.6", "", { "os": "darwin", "cpu": "x64" }, "sha512-tPi3CWPRdjW1MaWlvWjORE7Ass5SADdWdj1BF1Q1PEdzi+5u/mC5YhmZzniMiPr81PpaFeqjXaLAsfb8lFsZ0Q=="],
+
+    "@deno/linux-arm64-glibc": ["@deno/linux-arm64-glibc@2.9.6", "", { "os": "linux", "cpu": "arm64", "libc": "glibc" }, "sha512-poqhoH9B3nYloigEMPT5t8HY+wBeiuea1An5Q7fqgJzP0SYmWsoS/oUnWO/pEiA4ofzIBy1Elt/in58xKtxEoQ=="],
+
+    "@deno/linux-x64-glibc": ["@deno/linux-x64-glibc@2.9.6", "", { "os": "linux", "cpu": "x64", "libc": "glibc" }, "sha512-3md4TKLCuzsLDmfOoC5KN7NAZaxSVkMgm64vg6foD00JBADCpYS2/5QqXfzgnP5ZQz3iLP9vBQJtEgc116OAoQ=="],
+
+    "@deno/win32-arm64": ["@deno/win32-arm64@2.9.6", "", { "os": "win32", "cpu": "arm64" }, "sha512-iHSHs89g2Uy6k0bGHmXkgzTIW8WXImYPpvqRRO/zNsK1/N79PcjvAth1TuQatuIALcLdocstPs/PAYtndbfr0A=="],
+
+    "@deno/win32-x64": ["@deno/win32-x64@2.9.6", "", { "os": "win32", "cpu": "x64" }, "sha512-qRGnmVz/Ea6UWPht/S3xFRK17UZ/ls38DSVfgGB17fpASLxPkksqzWUI/BzL9YYoOknYzfc94mySGyInZu/JXw=="],
 
     "@emnapi/runtime": ["@emnapi/runtime@1.11.3", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-Xz4Tpyki7XyrpbUK1jR1AhdAdaXyhhY4lZ3neLodmhpuWfy2PAQN5B46sAiU4liOXGLkHypn/qU+jvfWSCYYLA=="],
 
@@ -827,6 +861,8 @@
     "define-lazy-prop": ["define-lazy-prop@3.0.0", "", {}, "sha512-N+MeXYoqr3pOgn8xfyRPREN7gHakLYjhsHhWGT3fWAiL4IkAt0iDw14QiiEm2bE30c5XX5q0FtAA3CK5f9/BUg=="],
 
     "defu": ["defu@6.1.7", "", {}, "sha512-7z22QmUWiQ/2d0KkdYmANbRUVABpZ9SNYyH5vx6PZ+nE5bcC0l7uFvEfHlyld/HcGBFTL536ClDt3DEcSlEJAQ=="],
+
+    "deno": ["deno@2.9.6", "", { "optionalDependencies": { "@deno/darwin-arm64": "2.9.6", "@deno/darwin-x64": "2.9.6", "@deno/linux-arm64-glibc": "2.9.6", "@deno/linux-x64-glibc": "2.9.6", "@deno/win32-arm64": "2.9.6", "@deno/win32-x64": "2.9.6" }, "hasInstallScript": true, "bin": { "deno": "bin.cjs" } }, "sha512-cr16GxYiUeH1juNvFTMOxt99V5QRVmANfy5UsZvE5hjC6P/o4Op/MBbRhLeBOL8WJpV6tr9hb+Kjb1MW0nEoVg=="],
 
     "destr": ["destr@2.0.5", "", {}, "sha512-ugFTXCtDZunbzasqBxrK93Ik/DRYsO6S/fedkWEMKqt04xZ4csmnmwGDBAb07QWNaGMAmnTIemsYZCksjATwsA=="],
 

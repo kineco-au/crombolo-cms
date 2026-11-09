@@ -13,7 +13,7 @@ import { join } from 'node:path'
 import { ComponentRepository, ContentTypeRepository, RedirectRepository } from '@crombolo/data'
 import { redirect } from '@crombolo/render'
 import type { CromboloConfig } from '@crombolo/server'
-import { REDIRECTS_BUNDLE_ID, redirects as redirectsBundle } from '@crombolo/simple-redirects'
+import { REDIRECTS_BUNDLE_ID } from '@crombolo/simple-redirects'
 import { type Harness, signedInServer, signInAsGroup, V1 } from './support/harness.ts'
 
 const open: Harness[] = []
@@ -70,8 +70,9 @@ async function site(config: Partial<CromboloConfig> = {}) {
   writeFileSync(join(root, 'schema', 'schema.toml'), '[schema]\nversion = "1.0.0"\n')
   writeFileSync(join(root, 'schema', 'content-types', 'page.toml'), TYPE_TOML)
   writeFileSync(join(root, 'components', 'page.tsx'), VIEW)
-  // The server half is wired below, and it must belong to a package the site
-  // declares; the workspace's own copy resolves from the repository root.
+  // The site depends on the package, and its config grants it, so it runs in a
+  // process of its own (story 311); the workspace's copy resolves from the
+  // repository root.
   writeFileSync(
     join(root, 'package.json'),
     JSON.stringify({ name: 'a-site', dependencies: { '@crombolo/simple-redirects': '*' } }),
@@ -81,7 +82,9 @@ async function site(config: Partial<CromboloConfig> = {}) {
       siteDir: root,
       schemaDir: join(root, 'schema'),
       componentsDir: join(root, 'components'),
-      bundles: [redirectsBundle()],
+      extensions: {
+        [REDIRECTS_BUNDLE_ID]: { grant: ['redirects.read', 'redirects.write', 'content.read'] },
+      },
       ...config,
     },
   })

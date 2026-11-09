@@ -823,7 +823,14 @@ export async function createServer(
           },
         )
       : undefined
-  const bundleAdmin = createBundleAdmin({ db, config, marketplace, extensions, bundleGrants })
+  const bundleAdmin = createBundleAdmin({
+    db,
+    config,
+    marketplace,
+    extensions,
+    bundleGrants,
+    failed: () => core.failedExtensions,
+  })
   const actorOf = (principal: Principal, request: Request): BundleActor => ({
     id: principal.id,
     name: principal.name,
@@ -1282,6 +1289,7 @@ export async function createServer(
     config,
     paths,
     siteSettingsFindings: () => cache.settingsFindings(),
+    failedExtensions: () => core.failedExtensions,
     hiddenByRoutes: async () => {
       const snapshot = await cache.snapshot()
       const hidden: Array<{ route: string; owner: string; page: string; url: string }> = []

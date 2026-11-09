@@ -12,6 +12,7 @@ import {
   appendCacheInstruction,
   type JobWake,
   notifyJobs,
+  OwnerSetupNeededError,
   RedirectRepository,
   SITE_OWNER,
   UserGroupRepository,
@@ -172,7 +173,8 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
     config.bundles = config.bundles.filter((bundle) => !untyped.has(bundle.id))
   }
   // Story 310: installed extensions run once granted, with nothing imported by
-  // the site; one still imported the old way is warned about, and runs as before.
+  // the site; one still imported the old way is the site's own code, and runs in
+  // this process as before. Story 311: the rest each run in a Deno process.
   const wiredByImport = new Set(
     config.bundles
       .filter((bundle) => bundlePackages.some((pkg) => pkg.id === bundle.id))
@@ -180,24 +182,22 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
   )
   for (const id of wiredByImport)
     log.warning(
-      'The extension {id} is imported in crombolo.config.ts, which is no longer needed: list it under extensions instead.',
+      'The extension {id} is imported in crombolo.config.ts, so it runs inside the site, unconfined: list it under extensions instead, and it runs apart.',
       { id },
     )
-  {
-    const started = await startExtensions(
-      config,
-      bundlePackages,
-      await readRecordedExtensions(config),
-    )
-    const problems = [
-      ...extensionEntryProblems(config.extensions, bundlePackages),
-      ...started.problems,
-    ]
-    if (problems.length > 0)
-      throw new Error(`The installed extensions cannot be started:\n- ${problems.join('\n- ')}`)
-    // In place: the caller's config is the server's, and later steps set it too.
-    config.bundles = [...config.bundles, ...started.bundles]
-  }
+  const entryProblems = extensionEntryProblems(config.extensions, bundlePackages)
+  if (entryProblems.length > 0)
+    throw new Error(`The installed extensions cannot be started:\n- ${entryProblems.join('\n- ')}`)
+  const extensionsStarted = await startExtensions(
+    config,
+    bundlePackages,
+    await readRecordedExtensions(config),
+    bundleLog,
+  )
+  const extensionProcesses = extensionsStarted.processes
+  const failedExtensions = extensionsStarted.failed
+  // In place: the caller's config is the server's, and later steps set it too.
+  config.bundles = [...config.bundles, ...extensionsStarted.bundles]
   const formTypes = formTypesOf(config)
   {
     const problems = [
@@ -217,14 +217,38 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
       throw new Error(`The site's own tables cannot be used:\n- ${site.join('\n- ')}`)
   }
   setFormFieldTypes(formTypes.types, formTypes.renderers)
-  const chains = tablesChains(config, config.bundles, bundlePackages)
+  let chains = tablesChains(config, config.bundles, bundlePackages)
   // A `web` node reads the site's tables for its named queries, and nothing of a
   // bundle's; a worker runs bundles' jobs, so it opens every owner's.
+  let opened = config.role === 'web' ? chains.filter((chain) => chain.id === SITE_OWNER) : chains
+  let booted: Awaited<ReturnType<typeof bootstrapDatabase>>
+  for (;;) {
+    try {
+      booted = owns ? await bootstrapDatabase(config, chains) : await attachDatabase(config, opened)
+      break
+    } catch (error) {
+      // An extension whose role this database user may not create is left off,
+      // saying what to run; the site starts without it (story 311).
+      const process = extensionProcesses.find(
+        (candidate) => error instanceof OwnerSetupNeededError && candidate.id === error.owner,
+      )
+      if (!process) throw error
+      await process.stop()
+      extensionProcesses.splice(extensionProcesses.indexOf(process), 1)
+      failedExtensions.push({ id: process.id, reason: (error as Error).message })
+      bundleLog(process.id).error(
+        '{id} could not be started, and the site starts without it: {reason}',
+        {
+          id: process.id,
+          reason: (error as Error).message,
+        },
+      )
+      config.bundles = config.bundles.filter((bundle) => bundle.id !== process.id)
+      chains = tablesChains(config, config.bundles, bundlePackages)
+      opened = config.role === 'web' ? chains.filter((chain) => chain.id === SITE_OWNER) : chains
+    }
+  }
   const siteChains = chains.filter((chain) => chain.id === SITE_OWNER)
-  const opened = config.role === 'web' ? siteChains : chains
-  const booted = owns
-    ? await bootstrapDatabase(config, chains)
-    : await attachDatabase(config, opened)
   const { seededAdminPassword } = booted
   // Story 262: on every role, before anything reads, so each statement is a span.
   await startTelemetry({
@@ -864,14 +888,17 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
           else jobRunner.wake()
         })
     },
-    /** Stops listening, the jobs and the runner, letting what is running finish or go back. */
+    /** Stops listening, the jobs and the runner, letting what is running finish or go back; then the extensions' processes. */
     async stopJobs(): Promise<void> {
       workerWatch.stop()
       await listening?.()
       listening = undefined
       await jobRunner.stop()
       await jobs.stop()
+      await Promise.all(extensionProcesses.map((process) => process.stop()))
     },
+    /** The extensions that are granted but could not start, and why (story 311). */
+    failedExtensions,
   }
 }
 

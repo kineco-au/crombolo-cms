@@ -6,7 +6,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { ENTRA_BUNDLE_ID, entraSettings, readOverrides } from '@crombolo/entra'
+import { ENTRA_BUNDLE_ID, readOverrides } from '@crombolo/entra'
 import {
   type CromboloConfig,
   effectiveProvider,
@@ -139,7 +139,12 @@ async function site(config: Partial<CromboloConfig> = {}, section?: 'content') {
     config: {
       siteDir: root,
       schemaDir: join(root, 'schema'),
-      bundles: [entraSettings(section ? { section } : {})],
+      extensions: {
+        [ENTRA_BUNDLE_ID]: {
+          grant: ['identityProviders.read', 'identityProviders.write'],
+          ...(section ? { settings: { section } } : {}),
+        },
+      },
       backofficeIdentityProviders: [
         entra({ tenantId: 'contoso', clientId: 'code-client', clientSecret: 'code-secret' }),
       ],

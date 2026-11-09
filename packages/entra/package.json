@@ -85,5 +85,8 @@
   },
   "peerDependencies": {
     "@crombolo/crombolo": ">=0.57.0"
+  },
+  "dependencies": {
+    "@crombolo/extension": "workspace:*"
   }
 }

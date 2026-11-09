@@ -95,6 +95,7 @@ const ALLOWED = new Set([
   '@crombolo/crombolo/routes',
   '@crombolo/crombolo/islands-react',
   '@crombolo/common',
+  '@crombolo/extension',
   '@crombolo/crombolo/jsx-runtime',
   '@crombolo/crombolo/jsx-dev-runtime',
   '@crombolo/simple-redirects',
@@ -156,8 +157,9 @@ describe('the import boundary', () => {
       const json = JSON.parse(
         readFileSync(join(ROOT, 'packages', pkg, 'package.json'), 'utf8'),
       ) as { dependencies?: Record<string, string> }
-      const internal = Object.keys(json.dependencies ?? {}).filter((name) =>
-        name.startsWith('@crombolo/'),
+      // The extension SDK is supported, and what a bundle runs on (story 311).
+      const internal = Object.keys(json.dependencies ?? {}).filter(
+        (name) => name.startsWith('@crombolo/') && name !== '@crombolo/extension',
       )
       expect([pkg, internal]).toEqual([pkg, []])
     }
