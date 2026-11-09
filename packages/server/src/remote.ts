@@ -34,14 +34,17 @@ import {
   type TrustRule,
 } from '@crombolo/data'
 import {
+  BUNDLE_FORMAT_VERSION,
   type ContentSet,
   isResolution,
   type NodeResolutions,
+  OLDEST_BUNDLE_FORMAT_VERSION,
   type Resolution,
   revertRun,
 } from '@crombolo/transfer'
 import { readAuditPageQuery, recordAudit } from './adapters/audit.ts'
 import type { BundleAdmin } from './bundle-admin.ts'
+import { actAsChoice } from './bundle-api.ts'
 import { codeChanges, installedCode, planCode } from './bundle-code-install.ts'
 import {
   checkBundleContent,
@@ -197,6 +200,8 @@ export function createRemote(options: RemoteOptions): Remote {
   const discovery = (origin: string) => ({
     protocol: 'crombolo-remote',
     versions: [REMOTE_PROTOCOL_VERSION],
+    // The bundle formats this site reads, oldest and newest (story 306).
+    bundleFormats: [OLDEST_BUNDLE_FORMAT_VERSION, BUNDLE_FORMAT_VERSION],
     name: config.siteName,
     api: `${origin}${REMOTE_API_PATH}`,
     auth: {
@@ -512,6 +517,7 @@ export function createRemote(options: RemoteOptions): Remote {
       const canBackUp = config.dialect === 'sqlite' || Boolean(config.pgDump)
       const result = await installBundleContent(db, config, {
         bundle: dir,
+        expects: 'site' as const,
         replace: 'replace',
         passphrase,
         backupTaken: !canBackUp,
@@ -636,7 +642,7 @@ export function createRemote(options: RemoteOptions): Remote {
     return { sha256: hasher.digest('hex'), size }
   }
 
-  /** The options a bundle apply was sent with, in `Crombolo-Options` (story 167). */
+  /** The options a site apply was sent with, in `Crombolo-Options` (story 167). */
   const applyOptions = (request: Request) => {
     let raw: Record<string, unknown> = {}
     try {
@@ -664,7 +670,7 @@ export function createRemote(options: RemoteOptions): Remote {
 
   /**
    * A bundle applied here (story 167): checked, and unless a dry run backed up
-   * and applied in one transaction as `bundle apply` does on a site's own
+   * and applied in one transaction as `site apply` does on a site's own
    * machine. Content needs the `content` level and the right to change this
    * site; schema, views or code need `all` and Crombolo.Remote.ApplyStructure.
    */
@@ -750,6 +756,7 @@ export function createRemote(options: RemoteOptions): Remote {
         })
       const input = {
         bundle: dir,
+        expects: 'site' as const,
         publish: asked.publish,
         replaceFiles: asked.replaceFiles,
         installCode: code.length > 0,
@@ -778,6 +785,7 @@ export function createRemote(options: RemoteOptions): Remote {
           structural,
           provenance,
           code: code.map((file) => ({ path: file.path, action: file.action })),
+          sitePackage: checked.sitePackage ?? null,
           bundle: checked.bundle,
           ...report(checked.check),
           clean: checked.clean,
@@ -823,7 +831,7 @@ export function createRemote(options: RemoteOptions): Remote {
     }
   }
 
-  /** The applies on this site, newest first: for `bundle runs --remote`. */
+  /** The applies on this site, newest first: for `site runs --remote`. */
   async function listRuns(url: URL, principal: Principal): Promise<Response> {
     if (!atLeast('read')) return notAtLevel('read', 'reads')
     if (!may(principal, RemotePermissions.Pull) && !mayChange(principal))
@@ -843,6 +851,7 @@ export function createRemote(options: RemoteOptions): Remote {
         bundleId: run.bundleId,
         bundleLabel: run.bundleLabel ?? null,
         appliedBy: run.appliedBy ?? null,
+        bundleType: run.bundleType,
       })),
     })
   }
@@ -878,6 +887,30 @@ export function createRemote(options: RemoteOptions): Remote {
     }
     if (!fromThisSiteOrBearer(request)) return new Response('Forbidden', { status: 403 })
     if (!atLeast('all')) return notAtLevel('all', 'installing and switching bundles')
+    // Story 309: granting an installed extension what it asks for.
+    const granting = /^installed\/(.+)\/grant$/.exec(what)
+    if (granting && request.method === 'POST') {
+      if (!may(principal, RemotePermissions.InstallCode))
+        return problem(403, {
+          code: 'forbidden-code',
+          title: 'You may not grant an extension on this site',
+          detail: 'Granting one needs Crombolo.Remote.InstallCode, given by a group.',
+        })
+      const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
+      const { status, ...outcome } = await bundles.grant(
+        actor,
+        decodeURIComponent(granting[1] as string),
+        {
+          grant: Array.isArray(body.grant)
+            ? body.grant.filter((p): p is string => typeof p === 'string')
+            : [],
+          actAs: actAsChoice(body.actAs),
+        },
+      )
+      return status === 200
+        ? Response.json(outcome)
+        : problem(status, { code: 'grant-mismatch', title: outcome.message })
+    }
     const switched = /^installed\/(.+)\/(disable|enable)$/.exec(what)
     if (switched && request.method === 'POST') {
       if (principal.ci ? !may(principal, RemotePermissions.ApplyStructure) : !principal.isAdmin)
@@ -920,7 +953,9 @@ export function createRemote(options: RemoteOptions): Remote {
       })
     if (removing) {
       const name = decodeURIComponent(what.slice('installed/'.length))
-      const outcome = await bundles.uninstall(actor, name)
+      const outcome = await bundles.uninstall(actor, name, {
+        revertContent: new URL(request.url).searchParams.get('revertContent') === 'true',
+      })
       return outcome.ok
         ? Response.json(outcome)
         : problem(409, { code: 'uninstall-refused', title: outcome.message })
@@ -935,11 +970,11 @@ export function createRemote(options: RemoteOptions): Remote {
       version: typeof body.version === 'string' ? body.version : undefined,
       applyContent: body.applyContent === true,
       // Naming the grant is the consent: a script that names what it grants has said yes.
-      acceptServerCode: true,
       grant,
+      actAs: typeof body.actAs === 'string' ? body.actAs : null,
     })
     if (outcome.ok) return Response.json(outcome)
-    if (outcome.needsServerConsent) {
+    if (outcome.needsGrant) {
       const asked = (outcome.permissions ?? []).map((p) => p.permission)
       const missing = asked.filter((p) => !grant.includes(p))
       const extra = grant.filter((p) => !asked.includes(p))
@@ -956,7 +991,7 @@ export function createRemote(options: RemoteOptions): Remote {
     return problem(409, { code: 'install-refused', title: outcome.message })
   }
 
-  /** Undoes an apply (story 167), as `bundle revert` does here; files it replaced come back too. */
+  /** Undoes an apply (story 167), as `site revert` does here; files it replaced come back too. */
   async function revertBundleRun(
     request: Request,
     principal: Principal,
@@ -967,6 +1002,14 @@ export function createRemote(options: RemoteOptions): Remote {
       return problem(403, { code: 'forbidden', title: 'You may not change this environment' })
     if (!fromThisSiteOrBearer(request)) return new Response('Forbidden', { status: 403 })
     const body = (await request.json().catch(() => ({}))) as { force?: unknown }
+    // An extension's content is put back by uninstalling it (story 306).
+    const run = await new TransferRunRepository(db).byId(runId)
+    if (run?.bundleType === 'extension')
+      return problem(409, {
+        code: 'extension-run',
+        title: "That run brought an extension's content",
+        detail: `It is put back by uninstalling ${run.packageName ?? 'the extension'}, with its content reverted.`,
+      })
     // A run that installed code changes code back, which needs what it did.
     if (
       installedCode(config, runId) &&

@@ -85,6 +85,7 @@ async function bundleWithPeople(source: Harness, content?: 'open'): Promise<stri
     label: 'People',
     private: true,
     peerRange: '*',
+    bundleType: 'site',
   })) {
     mkdirSync(join(dir, file.path, '..'), { recursive: true })
     writeFileSync(join(dir, file.path), file.bytes ?? (file.text as string))

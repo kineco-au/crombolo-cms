@@ -92,7 +92,7 @@ passphrase apart from a damaged file. The key is never written anywhere.
 | Schema, components, styles, scripts and dictionary | |
 | Redirects, schedules, and protected pages by member group | |
 
-`bundle export` leaves values and media files out unless `--include-content`
+`site export --subtree` leaves values and media files out unless `--include-content`
 is given: such a bundle places and names pages and writes no value, and its
 check says so. `--include-content` seals them; `--allow-content-unencrypted`
 writes them readable, with a warning. People are never written readable.
@@ -168,7 +168,7 @@ layout it was built from. A file the site already has is not replaced without
 `--replace-files`, and what is replaced is copied aside so a revert can put it
 back — these files are editable in the backoffice, and a site need not be a git
 checkout ([`bundles.md`](bundles.md)). The manifest's `carries` declares every one, the
-integrity hash covers them, and `bundle apply` applies them before the content
+integrity hash covers them, and `site apply` applies them before the content
 that needs them. A content-only bundle carries no `carries` key.
 
 Every bundle is written as `formatVersion` 7, whatever it carries: `bundle.json`
@@ -247,12 +247,12 @@ destination must satisfy is checked element by element instead.
 
 ## Naming a node
 
-`bundle export --root` and `bundle apply --under` both take **either** a uuid
+`site export --subtree` and `site apply --under` both take **either** a uuid
 or a path by name, through one resolver, so the two cannot drift.
 
 ```
-crombolo bundle export --root /Campaigns/Autumn 2026 --out bundles/campaign-x
-crombolo bundle export --root 9a1f3c2e-5d4f-4d3e-9d6d-2b7f8a1c9e10 --out …
+crombolo site export --subtree /Campaigns/Autumn 2026 --out bundles/campaign-x
+crombolo site export --subtree 9a1f3c2e-5d4f-4d3e-9d6d-2b7f8a1c9e10 --out …
 ```
 
 A path is resolved at export time and the resolved **uuid** is what lands in the
@@ -280,7 +280,7 @@ CLI is not a node asserting a deployment, and `exportBundle` sets its state from
 
 ## The dry run
 
-`bundle apply --dry-run` is read-only, and the same check runs **before every import** rather than
+`site apply --dry-run` is read-only, and the same check runs **before every import** rather than
 only when asked. Nothing is written until the conflicts have been named and
 answered, so a transfer is never a surprise.
 
@@ -326,10 +326,10 @@ properties:
 | `skip` | leave the node alone entirely — a whole node only |
 
 ```bash
-crombolo bundle apply bundles/campaign-x --dry-run --resolve 9a1f…=take-bundle
-crombolo bundle apply bundles/campaign-x --dry-run --resolve 9a1f…/title=keep-local
-crombolo bundle apply bundles/campaign-x --dry-run --resolve 9a1f…/heading@da-DK=keep-local
-crombolo bundle apply bundles/campaign-x --dry-run --resolve-all take-bundle --save
+crombolo site apply bundles/campaign-x --dry-run --resolve 9a1f…=take-bundle
+crombolo site apply bundles/campaign-x --dry-run --resolve 9a1f…/title=keep-local
+crombolo site apply bundles/campaign-x --dry-run --resolve 9a1f…/heading@da-DK=keep-local
+crombolo site apply bundles/campaign-x --dry-run --resolve-all take-bundle --save
 ```
 
 The most specific answer wins: a property in one culture, then the property, then
@@ -366,12 +366,12 @@ stable shape and the CLI and the dashboard offer the same advice. A `person`
 finding that suggests nothing is a dead end, and a test holds the two lists in
 step.
 
-`bundle apply --dry-run` exits non-zero while anything is outstanding, so it
+`site apply --dry-run` exits non-zero while anything is outstanding, so it
 drops straight into a pipeline.
 
 ## The import
 
-`bundle apply` re-runs the check **inside the lock** and refuses while
+`site apply` re-runs the check **inside the lock** and refuses while
 anything is outstanding, so a decision made against a stale read cannot slip
 through. Then it writes, in one transaction.
 
@@ -405,7 +405,7 @@ Each run records, per node, what it applied (story 163): the bundle's values by
 property, culture and segment, its names, its parent, and its order (the
 bundle's, and the one the node had here afterwards). They live in
 `content_applied` (migration 049), written in the run's transaction, with the
-state each row replaced so that `bundle revert` puts it back too.
+state each row replaced so that `site revert` puts it back too.
 
 The next check compares each field three ways:
 
@@ -440,7 +440,7 @@ draft here. Publishing runs last and parents first, because an unpublished
 ancestor makes a published descendant unreachable and the repository refuses it.
 A refusal is reported per node rather than failing the run.
 
-`bundle apply --dry-run --publish` says which pages would be refused, before anything is
+`site apply --dry-run --publish` says which pages would be refused, before anything is
 written. It does this by **rehearsing** the import — running it with `--publish`
 in a transaction that is always rolled back — so the rules, and their wording, are
 publish's own rather than a second copy that could drift: an unpublished
@@ -472,7 +472,7 @@ happens because it cannot be recovered afterwards: nothing distinguishes one
 run's `save` events from an editor's concurrent save in the same second, and
 once a node exists there is no way to tell that the import created it.
 
-`bundle runs` lists them, newest first. Every import ends by naming the command
+`site runs` lists them, newest first. Every import ends by naming the command
 that would put it back.
 
 `EventKind` is left alone — `'save'`, `'publish'`, `'rollback'`, `'migrate'`.
@@ -490,7 +490,7 @@ undone.
 
 ## The revert
 
-`bundle revert <run-id>` is the existing rollback path driven in bulk.
+`site revert <run-id>` is the existing rollback path driven in bulk.
 `DocumentRepository.rollback` already appends the values as of a given event
 under a *new* event — history is never rewritten — so putting a run back is:
 for each node it touched, roll back to the event it was at beforehand, then
@@ -664,14 +664,14 @@ as installing a bundle is; everyone with Settings still sees the findings.
 ## Commands
 
 ```
-crombolo bundle export --root <path|uuid> [--root …] --out <dir>
+crombolo site export --subtree <path|uuid> [--root …] --out <dir>
                         [--only] [--drafts] [--with-blueprints]
                         [--include-content [--with-media] [--allow-content-unencrypted]]
                         [--with-members] [--with-users]
 
-crombolo bundle export … [--name <npm name>] [--package-version <version>]
+crombolo site export --subtree … [--name <npm name>] [--package-version <version>]
 
-crombolo bundle apply [<pkg>]         a package directory, a .tgz, a bundle this site depends on,
+crombolo site apply [<pkg>]         a package directory, a .tgz, a bundle this site depends on,
                                       or `.` (the default) for this site's own content files
                         [--under <path|uuid>] [--resolve <key>[/<alias>[@<culture>]]=<choice>]
                         [--resolve-all <choice>] [--allow-missing-blobs]
@@ -681,8 +681,8 @@ crombolo bundle apply [<pkg>]         a package directory, a .tgz, a bundle this
                         [--replace-files]           allow replacing files this site has
                         [--dry-run [--save]]        the check alone; --save writes the answers
                         [--remote <name> [--env <id>] [--structure]]  apply it on a remote
-crombolo bundle runs    [--limit N] [--remote <name> [--env <id>]]
-crombolo bundle revert <run-id>
+crombolo site runs    [--limit N] [--remote <name> [--env <id>]]
+crombolo site revert <run-id>
                         [--resolve <key>=discard|skip] [--resolve-all <choice>]
                         [--force] [--backup-taken] [--remote <name> [--env <id>]]
 
@@ -713,8 +713,8 @@ acts on; today's blockers are not the question for a date in the future.
 
 `start --bundle` applies a bundle before the site serves anything, which is how a
 container can bring its own content with it, and how a bare site becomes a whole
-site from `crombolo bundle build` (story 164): a bundle that carries schema and
-views is installed as `bundle apply` installs it, and the server boots again
+site from `crombolo site build` (story 164): a bundle that carries schema and
+views is installed as `site apply` installs it, and the server boots again
 to load them. A starter template's content is its content files, applied by
 `start --bundle .` ([`bundles.md`](bundles.md#content-files)). It imports **once per bundle** —
 an import run still standing here means this site has that content already, so a
@@ -782,9 +782,9 @@ Stories `104`–`106`. A bundle with **every** section and every node is a whole
 site, and moving one is two commands:
 
 ```bash
-bunx crombolo export --site --out site.tgz     # [--with-media] [--drafts] [--with-members] [--with-users] [--with-site-data] [--anonymise]
+bunx crombolo site export --out site.tgz     # [--with-media] [--drafts] [--with-members] [--with-users] [--with-site-data] [--anonymise]
 bunx @crombolo/cli@latest start --from site.tgz  # in an empty folder: scaffold, bun install, import, serve
-bunx crombolo import site.tgz --replace        # or replace a site that already exists
+bunx crombolo site import site.tgz --replace        # or replace a site that already exists
 ```
 
 **The file** is the bundle format — a private npm package, `.tgz` — with three
@@ -816,7 +816,7 @@ store (`StoredFile.stream()`, implemented by the file system, S3 and Azure store
 into the gzip, and the integrity hash is computed as files pass in the path order
 `bundleIntegrity` defines, so it matches what the reader recomputes. Only the small
 files are held. The file is written to `<out>.partial` and renamed once complete.
-`extractTarball` reads one back the same way, and `bundle apply` (with or
+`extractTarball` reads one back the same way, and `site apply` (with or
 without `--dry-run`) accepts a `.tgz` too, unpacked under `.crombolo/transfer/incoming/`.
 
 **`--anonymise`** runs `sanitise` (`packages/transfer/src/sanitise.ts`) over what
@@ -860,7 +860,7 @@ flag needs a passphrase, under `--anonymise` too.
   emptied, children first, and the file's rows go in, parents first and one
   row at a time. Owners, tables and columns this site does not have are skipped
   and listed; an owner that fails is rolled back and reported without undoing
-  the content. `bundle revert` does not bring site data back: the
+  the content. `site revert` does not bring site data back: the
   pre-import backup has it, and the command says so.
 - **`--exclude-people`** leaves site data behind too, so it needs no passphrase.
 - **A pull** carries site data, anonymised under the rules unless `--full`;
@@ -873,7 +873,7 @@ flag needs a passphrase, under `--anonymise` too.
 
 ### Replacing a site
 
-`crombolo import <file>` first prints what would change — what the file brings,
+`crombolo site import <file>` first prints what would change — what the file brings,
 what this site has that the file does not, and the files that would go — and
 changes nothing without a mode:
 
@@ -882,7 +882,7 @@ changes nothing without a mode:
 | `--replace` | recycled, so a revert brings them back | removed, kept for the revert | kept, unless the file carries them |
 | `--replace-all` | deleted | removed, kept for the revert | those the file lacks are deleted |
 
-`--exclude-people` (with `--replace`, or on `bundle apply`)
+`--exclude-people` (with `--replace`, or on `site apply`)
 leaves the file's members, users and their groups out entirely: this site's own
 are untouched, the check reports what was left out (`peopleExcluded`, by count),
 and a file whose content is open needs no passphrase for the people it leaves.
@@ -897,7 +897,7 @@ to a page the file does not carry goes with that page. A site that others are co
 onto should declare its hostnames in `domains.toml` for that reason
 (`tests/site-replace.test.ts` › "hostnames").
 
-**All or nothing.** Every import — a replace or an ordinary `bundle apply` — now
+**All or nothing.** Every import — a replace or an ordinary `site apply` — now
 runs in three phases (`installBundleContent`):
 
 1. **Stage.** Each carried section is written into a copy under
@@ -916,7 +916,7 @@ for an alias it has, is that same type: the sync keeps the row's key and writes 
 into the file, as it already did for properties, so two sites whose types were
 created separately can replace one another.
 
-**Reverting** (`bundle revert <run>`) puts the content back as for any import —
+**Reverting** (`site revert <run>`) puts the content back as for any import —
 recycled nodes come out of the bin — then swaps the folders back, re-syncs the
 schema and restores the dictionary as the run found it (`revertSections`). What
 `--replace-all` deleted is not in a run; it is in the backup taken first.
@@ -937,20 +937,20 @@ no credentials for one stored in another; the bundle travels as a file does.
 
 ```bash
 # where the content is
-bunx crombolo bundle export --root "/Campaigns/Autumn 2026" --out bundles/campaign-x
-bunx crombolo bundle export --root 9a1f3c2e-… --only --drafts --out bundles/one-page
-bunx crombolo bundle export --root "/Campaigns" --include-content --with-media --out bundles/campaign-x
+bunx crombolo site export --subtree "/Campaigns/Autumn 2026" --out bundles/campaign-x
+bunx crombolo site export --subtree 9a1f3c2e-… --only --drafts --out bundles/one-page
+bunx crombolo site export --subtree "/Campaigns" --include-content --with-media --out bundles/campaign-x
                                       # values and media bytes, sealed: the bundle is self-contained
 
 # where it is going: read-only, and non-zero while anything is outstanding
-bunx crombolo bundle apply bundles/campaign-x --dry-run
-bunx crombolo bundle apply bundles/campaign-x --dry-run --under "/Campaigns"
-bunx crombolo bundle apply bundles/campaign-x --dry-run --resolve-all take-bundle --save
+bunx crombolo site apply bundles/campaign-x --dry-run
+bunx crombolo site apply bundles/campaign-x --dry-run --under "/Campaigns"
+bunx crombolo site apply bundles/campaign-x --dry-run --resolve-all take-bundle --save
 
 # apply it: re-checks, backs up, then writes in one transaction
-bunx crombolo bundle apply bundles/campaign-x
-bunx crombolo bundle apply bundles/campaign-x --publish --label "autumn campaign"
-bunx crombolo bundle runs
+bunx crombolo site apply bundles/campaign-x
+bunx crombolo site apply bundles/campaign-x --publish --label "autumn campaign"
+bunx crombolo site runs
 
 # going live, separately from landing the content
 bunx crombolo content publish "/Campaigns/Autumn 2026" --descendants
@@ -980,7 +980,7 @@ key and property, so a decision made once promotes with it rather than being wor
 in every environment. Findings land in the **Changes** dashboard under the
 bundle's own scope, so two bundles in flight do not resolve each other's.
 
-`bundle apply` re-runs the check inside the content-tree lock, backs up as `upgrade`
+`site apply` re-runs the check inside the content-tree lock, backs up as `upgrade`
 does, and then writes in **one transaction** — so a failure anywhere leaves
 nothing behind. Documents and elements arrive as **drafts** for a person to
 publish; media is live as soon as it lands. `--publish` publishes what the
@@ -989,7 +989,7 @@ bundle says was live at the source, parents first. Values are applied as an
 the same bundle twice writes nothing the second time.
 
 Each run is recorded with, per node, the event it was at and the event it was
-serving, so `bundle revert <run-id>` can put the site back: values restored,
+serving, so `site revert <run-id>` can put the site back: values restored,
 the published state restored (a page that was live goes live again with the old
 values; one that was a draft stays a draft), and nodes the run created
 unpublished and moved to the recycle bin rather than deleted. It refuses to
@@ -997,9 +997,9 @@ discard an edit somebody made since, or to undo a run a later one built on,
 until told to. The revert is itself a run, so it can be reverted in turn.
 
 ```bash
-bunx crombolo bundle runs
-bunx crombolo bundle revert 5192ca80-…
-bunx crombolo bundle revert 5192ca80-… --resolve-all discard   # over later edits
+bunx crombolo site runs
+bunx crombolo site revert 5192ca80-…
+bunx crombolo site revert 5192ca80-… --resolve-all discard   # over later edits
 
 # the dictionary stays in the database, so it moves on its own
 bunx crombolo dictionary export --out dictionary.udt

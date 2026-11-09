@@ -10,8 +10,8 @@ export default class Start extends BaseCommand {
   static override summary = 'boot the site in the current directory'
   static override description = [
     "In development it resets and prints the administrator's password on every start; --keep-admin leaves it alone.",
-    "--bundle applies a bundle's content first, once per bundle, taking `bundle apply`'s flags. `--bundle .` applies this site's own content files, once for each change to them.",
-    "--from, in an empty folder: scaffold a site, install it, import a whole-site file (`crombolo export --site`) and serve it; the new administrator's password is printed once.",
+    "--bundle applies a bundle's content first, once per bundle, taking `site apply`'s flags. `--bundle .` applies this site's own content files, once for each change to them.",
+    "--from, in an empty folder: scaffold a site, install it, import a whole-site file (`crombolo site export`) and serve it; the new administrator's password is printed once.",
     'It serves until stopped, and supervises the server: `crombolo restart`, or SIGHUP, starts a new one that takes over once it is up. With -o json it prints one object saying where it answers.',
   ].join('\n\n')
   static override examples = [

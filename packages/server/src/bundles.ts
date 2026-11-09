@@ -49,8 +49,8 @@
 import { hasCultureAccess, hasSection, type Principal } from '@crombolo/api-management/domain'
 import {
   BUNDLE_ID,
-  BUNDLE_SCHEMA_VERSION,
   type BundlePackage,
+  OLDEST_BUNDLE_SCHEMA_VERSION,
   peerRangeProblem,
   schemaProblem,
 } from '@crombolo/backoffice-host/registry'
@@ -82,10 +82,13 @@ import {
   type SiteServices,
 } from '@crombolo/render'
 import { anonymiseProblems } from './anonymise-rules.ts'
+import type { BundleApi } from './bundle-api.ts'
 import {
   declaredPermissions,
   disabledResponse,
   gated,
+  isSchema3,
+  PermissionRefusedError,
   permissionProblems,
 } from './bundle-grants.ts'
 import type { BundleMedia, BundleMediaDeclaration } from './bundle-media.ts'
@@ -180,6 +183,19 @@ export interface BundleHost {
    * given or the back-office user; refused on a public route (story 198).
    */
   media: BundleMedia
+  /**
+   * The site's areas through the Management API and the CMS's back-office API,
+   * as the extension or the user it acts for, each call held to its grant
+   * (story 308): `api.get('management/api/v1/document/<key>')`.
+   */
+  api: BundleApi
+  /** Requests out, only to the origins its `http.outbound` names, by the address rule (story 301). */
+  fetch: BundleFetch
+}
+
+/** `fetch`, held to the origins an extension was granted. */
+export interface BundleFetch {
+  fetch(input: string | URL | Request, init?: RequestInit): Promise<Response>
 }
 
 export type BundleCapability = keyof BundleHost
@@ -219,6 +235,8 @@ export const BUNDLE_CAPABILITIES: readonly BundleCapability[] = [
   'log',
   'identityProviders',
   'media',
+  'api',
+  'fetch',
 ]
 
 /**
@@ -436,11 +454,31 @@ export function validateServerBundles(
     problems.push(...jobProblems(`Bundle "${label}"`, bundle.jobs, bundle.schedules))
     {
       const pkg = packages.find((candidate) => candidate.id === bundle.id)
-      if (pkg?.carries.server && Array.isArray(pkg.field.permissions))
-        problems.push(...permissionProblems(label, bundle.capabilities, declaredPermissions(pkg)))
+      if (pkg?.carries.server && pkg.field.permissions !== undefined) {
+        const declared = declaredPermissions(pkg)
+        problems.push(...permissionProblems(label, bundle.capabilities, declared))
+        // Schema 4 asks for what it does as well as what it calls (story 308).
+        if (!isSchema3(pkg)) {
+          if (
+            bundle.events &&
+            Object.keys(bundle.events).length > 0 &&
+            !declared.includes('events.content')
+          )
+            problems.push(
+              `Bundle "${label}" handles content events, and so needs "events.content" in "crombolo.permissions".`,
+            )
+          if (
+            (bundle.routes ?? []).some((route) => route?.options && onSite(route)) &&
+            !declared.includes('routes.public')
+          )
+            problems.push(
+              `Bundle "${label}" answers routes on the site, and so needs "routes.public" in "crombolo.permissions".`,
+            )
+        }
+      }
     }
     const owner = packages.find((pkg) => pkg.id === bundle.id)
-    if (owner?.carries.server && (owner.field.schemaVersion ?? 1) < BUNDLE_SCHEMA_VERSION)
+    if (owner?.carries.server && (owner.field.schemaVersion ?? 1) < OLDEST_BUNDLE_SCHEMA_VERSION)
       problems.push(`Bundle "${label}": ${schemaProblem(owner.field.schemaVersion ?? 1)}.`)
     const routes = new Set<string>()
     for (const route of bundle.routes ?? []) {
@@ -689,13 +727,15 @@ export interface ServerBundlesOptions {
   coreVersion: string
   /** `<backoffice>/crombolo/api`, from `createBackOfficePaths`. */
   pluginApiPath: string
-  host: Omit<BundleHost, 'media'> & { media?: BundleMedia }
+  host: Omit<BundleHost, 'media' | 'api' | 'fetch'> & { media?: BundleMedia }
   /** Capabilities built per request from the caller, in place of the ones in `host`. */
   callerHost?: CallerCapabilities
   /** Named per bundle, so a log line says which one wrote it. */
   log(bundleId: string): BundleLog
   /** A bundle's own tables, on the connection that reaches only them; absent where none are. */
   database?(bundle: ServerBundle): TablesDatabase | undefined
+  /** What a bundle may use now, from its grant (story 309); its declaration when absent. */
+  granted?(bundleId: string): readonly string[]
   /**
    * Whether a bundle is turned on: its grant covers what it declares (story
    * 222). A bundle that is off answers every route as waiting. Absent, all are on.
@@ -808,14 +848,26 @@ export function createServerBundles(options: ServerBundlesOptions): ServerBundle
     caller: BundleCaller,
   ): Pick<BundleHost, BundleCapability> => {
     const host: Record<string, unknown> = {}
-    const declared = declaredPermissions(owners.get(bundle.id))
+    // What it was granted, not what it declares (story 309).
+    const declared = options.granted
+      ? options.granted(bundle.id)
+      : declaredPermissions(owners.get(bundle.id))
     for (const capability of bundle.capabilities) {
+      // Acting for a member needs `member.delegate`, on every call (story 309).
+      if (
+        capability === 'media' &&
+        caller.kind === 'member' &&
+        !declared.includes('member.delegate')
+      ) {
+        host[capability] = refusing(bundle.id, 'member.delegate')
+        continue
+      }
       const forCaller = options.callerHost?.[capability]
       const given = forCaller
         ? forCaller(caller, bundle)
         : capability === 'log'
           ? (logs.get(bundle.id) as BundleLog)
-          : options.host[capability]
+          : (options.host as Partial<BundleHost>)[capability]
       // Only what its declared permissions allow (story 222).
       host[capability] = given ? gated(bundle.id, capability, given, declared) : given
     }
@@ -824,6 +876,17 @@ export function createServerBundles(options: ServerBundlesOptions): ServerBundle
     if (bundle.jobs && options.jobs) host.jobs = options.jobs(bundle.id, queuedByOf(caller))
     return Object.freeze(host) as Pick<BundleHost, BundleCapability>
   }
+
+  /** A capability whose every method is refused, naming the permission it would need. */
+  const refusing = (bundleId: string, permission: string) =>
+    new Proxy(
+      {},
+      {
+        get: () => () => {
+          throw new PermissionRefusedError(bundleId, permission)
+        },
+      },
+    )
 
   /** A site route that answers as waiting while its bundle is off. */
   const whileOn = (bundleId: string, route: SiteRoute): SiteRoute => {

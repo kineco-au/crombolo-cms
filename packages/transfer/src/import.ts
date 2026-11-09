@@ -235,6 +235,7 @@ async function applyBundle(tx: Db, set: ContentSet, options: ImportOptions): Pro
       bundleLabel: options.label ?? null,
       packageName: options.package?.name ?? null,
       packageVersion: options.package?.version ?? null,
+      bundleType: set.manifest.bundleType ?? null,
       direction: 'import',
       revertsRunId: null,
       schemaStateId: state.id,

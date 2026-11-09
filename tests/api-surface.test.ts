@@ -191,7 +191,13 @@ describe('an outside consumer', () => {
       name: '@acme/greetings',
       version: '1.0.0',
       peerDependencies: { '@crombolo/crombolo': '>=0.1.0' },
-      crombolo: { id: 'greetings', server: 'greetings', schemaVersion: 3, permissions: [] },
+      crombolo: {
+        bundleType: 'extension',
+        id: 'greetings',
+        server: 'greetings',
+        schemaVersion: 3,
+        permissions: [],
+      },
     }
     expect(vet(valid)).toEqual([])
     expect(vet({ ...valid, peerDependencies: { '@crombolo/crombolo': '<0.1.0' } })[0]).toContain(

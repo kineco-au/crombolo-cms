@@ -13,7 +13,6 @@ import {
   BUNDLE_SECTIONS,
   type BundleFile,
   type BundleNode,
-  bundleIntegrity,
   type ContentSet,
   loadBundle,
   MANIFEST_FILE,
@@ -54,6 +53,7 @@ function set(nodes: BundleNode[]): ContentSet {
     manifest: {
       formatVersion: BUNDLE_FORMAT_VERSION,
       id: 'bundle-1',
+      bundleType: 'site',
       createdAt: '2026-10-01T09:12:04.000Z',
       createdBy: 'test',
       integrity: '',
@@ -174,9 +174,9 @@ describe('the bundle format', () => {
       expect(problems).toEqual([])
       expect(read?.nodes).toEqual([...original.nodes].sort((a, b) => a.key.localeCompare(b.key)))
       expect(read?.manifest.selector).toEqual(original.manifest.selector)
-      expect(read?.manifest.integrity).toBe(
-        bundleIntegrity(writeBundle(original).filter((f) => f.path !== MANIFEST_FILE)),
-      )
+      // The hash the writer took, over the files, the manifest and nothing else here.
+      const written = writeBundle(original).find((f) => f.path === MANIFEST_FILE)?.text ?? '{}'
+      expect(read?.manifest.integrity).toBe(JSON.parse(written).integrity)
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
@@ -217,7 +217,7 @@ describe('the bundle format', () => {
         const { set: read, problems } = loadBundle(dir)
         expect(read).toBeUndefined()
         expect(problems[0]?.message).toBe(OLD_LAYOUT)
-        expect(OLD_LAYOUT).toContain('rebuild it')
+        expect(OLD_LAYOUT).toContain('build it again')
       }
     } finally {
       rmSync(dir, { recursive: true, force: true })

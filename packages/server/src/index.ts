@@ -20,6 +20,13 @@ export * from './atomic-write.ts'
 export * from './backup.ts'
 export * from './boot-failure.ts'
 export * from './bundle-admin.ts'
+export {
+  API_PERMISSIONS,
+  ApiRefusedError,
+  actAsChoice,
+  type BundleApi,
+  permissionsFor,
+} from './bundle-api.ts'
 export * from './bundle-build.ts'
 export * from './bundle-code.ts'
 export * from './bundle-grants.ts'
@@ -54,6 +61,11 @@ export * from './email-postmark.ts'
 export * from './email-resend.ts'
 export * from './email-ses.ts'
 export * from './email-text.ts'
+export {
+  entryCovers,
+  extensionEntryProblems,
+  settingsOf,
+} from './extension-discovery.ts'
 export * from './extensions-notice.ts'
 export * from './external-sign-in.ts'
 export * from './file-intake.ts'

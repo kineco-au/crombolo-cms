@@ -71,6 +71,7 @@ const manifest = (name: string, version: string, field: Record<string, unknown> 
   peerDependencies: { '@crombolo/crombolo': `^${VERSION}` },
   crombolo: {
     id: idOf(name),
+    bundleType: 'extension',
     extensions: [{ type: 'dashboard', alias: `${name}.d`, name, element: 'd.js' }],
     ...field,
   },
@@ -106,6 +107,8 @@ function registry(options: {
   declaring: string[]
   /** Hits whose manifest declares a server half. */
   server?: string[]
+  /** Hits that are site packages, which a registry should never offer (story 306). */
+  sitePackages?: string[]
   onSearch?: (text: string) => void
   fail?: boolean
 }): typeof fetch {
@@ -120,16 +123,22 @@ function registry(options: {
     const name = decodeURIComponent(url.slice(`${REGISTRY}/`.length))
     if (!options.hits.includes(name)) return new Response('Not Found', { status: 404 })
     const at = (version: string) =>
-      options.declaring.includes(name)
-        ? manifest(
-            name,
-            version,
-            options.server?.includes(name)
-              ? { server: 'serve', schemaVersion: 3, permissions: ['redirects.read'] }
-              : {},
-          )
-        : // Claims the field, but is no valid bundle: no id, no peer range.
-          { name, version, crombolo: { extensions: [{ type: 'dashboard' }] } }
+      options.sitePackages?.includes(name)
+        ? { ...manifest(name, version, { bundleType: 'site' }), private: true }
+        : options.declaring.includes(name)
+          ? manifest(
+              name,
+              version,
+              options.server?.includes(name)
+                ? {
+                    server: 'serve',
+                    schemaVersion: 4,
+                    permissions: { 'redirects.read': 'Lists the rules' },
+                  }
+                : {},
+            )
+          : // Claims the field, but is no valid bundle: no id, no peer range.
+            { name, version, crombolo: { extensions: [{ type: 'dashboard' }] } }
     return Response.json({
       'dist-tags': { latest: '1.2.3' },
       versions: { '1.0.0': at('1.0.0'), '1.2.3': at('1.2.3'), '2.0.0': at('2.0.0') },
@@ -150,6 +159,7 @@ function marketplace(options: {
   hits?: string[]
   declaring?: string[]
   server?: string[]
+  sitePackages?: string[]
   fail?: boolean
   calls?: Call[]
   installs?: (call: Call) => { ok: boolean; output: string }
@@ -182,6 +192,7 @@ function marketplace(options: {
         hits: options.hits ?? INSTALLABLE,
         declaring: options.declaring ?? INSTALLABLE,
         server: options.server,
+        sitePackages: options.sitePackages,
         fail: options.fail,
         onSearch: options.onSearch,
       }),
@@ -504,7 +515,13 @@ describe('a bundle that runs code on the server (story 194)', () => {
       '@acme/tasks',
       true,
       '1.2.3',
-      server ? { server: 'serve', schemaVersion: 3, permissions: ['redirects.read'] } : {},
+      server
+        ? {
+            server: 'serve',
+            schemaVersion: 4,
+            permissions: { 'redirects.read': 'Lists the rules' },
+          }
+        : {},
     )
     writeFileSync(
       join(root, 'package.json'),
@@ -513,17 +530,17 @@ describe('a bundle that runs code on the server (story 194)', () => {
     return { ok: true, output: '' }
   }
 
-  test('is refused without an explicit yes, and nothing is installed', async () => {
+  test('is refused without a grant, and nothing is installed', async () => {
     const calls: Call[] = []
     const { market } = marketplace({ calls, server: ['@acme/tasks'] })
     const outcome = await market.install('@acme/tasks', undefined)
     expect(outcome.ok).toBe(false)
-    expect(outcome.needsServerConsent).toBe(true)
-    expect(outcome.message).toContain("access to the site's data, files and settings")
+    expect(outcome.needsGrant).toBe(true)
+    expect(outcome.message).toContain('asks for these permissions')
     expect(calls).toEqual([])
   })
 
-  test('installs with the yes, and says when its code will run', async () => {
+  test('installs with the grant, and says when its code will run', async () => {
     const root = site()
     const calls: Call[] = []
     const { market } = marketplace({
@@ -532,17 +549,14 @@ describe('a bundle that runs code on the server (story 194)', () => {
       server: ['@acme/tasks'],
       installs: leaves(root, true),
     })
-    const outcome = await market.install('@acme/tasks', undefined, {
-      acceptServerCode: true,
-      grant: ['redirects.read'],
-    })
+    const outcome = await market.install('@acme/tasks', undefined, { grant: ['redirects.read'] })
     expect(outcome.ok).toBe(true)
     expect(calls.map((c) => c.action)).toEqual(['add'])
     expect(outcome.message).toContain("once your site's developers turn it on")
     expect(outcome.message).not.toContain('crombolo.config.ts')
   })
 
-  test('says what it asks to do, and installs only when exactly that is granted (story 222)', async () => {
+  test('says what it asks for and why, and installs only when exactly that is granted (stories 222, 308)', async () => {
     const root = site()
     const calls: Call[] = []
     const recorded: { id: string; by: string | null }[] = []
@@ -562,19 +576,19 @@ describe('a bundle that runs code on the server (story 194)', () => {
       },
     })
     const asked = await market.install('@acme/tasks', undefined)
-    expect(asked.needsServerConsent).toBe(true)
+    expect(asked.needsGrant).toBe(true)
     expect(asked.permissions).toEqual([
-      { permission: 'redirects.read', allows: "See the site's redirects" },
+      {
+        permission: 'redirects.read',
+        allows: "See the site's redirects",
+        reason: 'Lists the rules',
+      },
     ])
-    // The yes without the grant, or a grant that is not the whole list, installs nothing.
+    // A grant that is not the whole list installs nothing.
     for (const grant of [[], ['redirects.read', 'redirects.write']])
-      expect(
-        (await market.install('@acme/tasks', undefined, { acceptServerCode: true, grant }))
-          .needsServerConsent,
-      ).toBe(true)
+      expect((await market.install('@acme/tasks', undefined, { grant })).needsGrant).toBe(true)
     expect(calls).toEqual([])
     const outcome = await market.install('@acme/tasks', undefined, {
-      acceptServerCode: true,
       grant: ['redirects.read'],
       by: 'admin@example.com',
     })
@@ -582,14 +596,14 @@ describe('a bundle that runs code on the server (story 194)', () => {
     expect(recorded).toEqual([{ id: 'acme-tasks', by: 'admin@example.com' }])
   })
 
-  test('a version that gained server code after the listing is removed again', async () => {
+  test('a version that asks for more after the listing is removed again', async () => {
     const root = site()
     const calls: Call[] = []
     // The registry says no server half; the version that lands has one.
     const { market } = marketplace({ root, calls, installs: leaves(root, true) })
     const outcome = await market.install('@acme/tasks', undefined)
     expect(outcome.ok).toBe(false)
-    expect(outcome.needsServerConsent).toBe(true)
+    expect(outcome.needsGrant).toBe(true)
     expect(outcome.message).toContain('so it was removed again')
     expect(calls.map((c) => `${c.action} ${c.specifier}`)).toEqual([
       'add @acme/tasks',
@@ -600,7 +614,7 @@ describe('a bundle that runs code on the server (story 194)', () => {
   test('the version asked for is the one checked, not the latest', async () => {
     const calls: Call[] = []
     const { market } = marketplace({ calls, server: ['@acme/tasks'] })
-    expect((await market.install('@acme/tasks', '^2')).needsServerConsent).toBe(true)
+    expect((await market.install('@acme/tasks', '^2')).needsGrant).toBe(true)
     expect(calls).toEqual([])
   })
 
@@ -618,7 +632,7 @@ describe('a bundle that runs code on the server (story 194)', () => {
     const { market } = marketplace({ root, installs: leaves(root, false) })
     const outcome = await market.install('@acme/tasks', undefined)
     expect(outcome.ok).toBe(true)
-    expect(outcome.needsServerConsent).toBeUndefined()
+    expect(outcome.needsGrant).toBeUndefined()
     expect(outcome.message).toContain(SCREENS_NOTICE)
   })
 
@@ -743,7 +757,7 @@ describe('the endpoints', () => {
     expect(((await response.json()) as { message: string }).message).toContain('not a package name')
   })
 
-  test('refuse server code without the yes, and write no entry for a refusal (story 194)', async () => {
+  test('refuse an extension that asks for permissions without the grant, and write no entry (story 308)', async () => {
     const npm = Bun.serve({
       port: 0,
       fetch: () =>
@@ -752,8 +766,8 @@ describe('the endpoints', () => {
           versions: {
             '1.2.3': manifest('@acme/tasks', '1.2.3', {
               server: 'serve',
-              schemaVersion: 3,
-              permissions: [],
+              schemaVersion: 4,
+              permissions: { 'redirects.read': 'Lists the rules' },
             }),
           },
         }),
@@ -765,7 +779,7 @@ describe('the endpoints', () => {
       const floor = (await log.page({}, { limit: 1 })).items[0]?.id ?? 0
       const response = await h.post(`${PACKAGES}/install`, { name: '@acme/tasks' })
       expect(response.status).toBe(400)
-      expect(await response.json()).toMatchObject({ ok: false, needsServerConsent: true })
+      expect(await response.json()).toMatchObject({ ok: false, needsGrant: true })
       const entries = await log.page({ category: 'system' }, { after: floor, limit: 10 })
       expect(entries.items.filter((e) => e.entityType === 'Bundle')).toEqual([])
     } finally {
@@ -790,5 +804,63 @@ describe('the endpoints', () => {
     const h = await signedInServer()
     open.push(h)
     expect((await h.call(`${PACKAGES}/nonsense`)).status).toBe(404)
+  })
+})
+
+describe('a version that says nothing of why it asks (story 308)', () => {
+  test('is refused for a new install, and nothing is added', async () => {
+    const npm = Bun.serve({
+      port: 0,
+      fetch: () =>
+        Response.json({
+          'dist-tags': { latest: '1.0.0' },
+          versions: {
+            '1.0.0': manifest('@acme/old', '1.0.0', {
+              server: 'serve',
+              schemaVersion: 3,
+              permissions: ['redirects.read'],
+            }),
+          },
+        }),
+    })
+    try {
+      const calls: Call[] = []
+      const root = site()
+      const market = createMarketplace({
+        registry: `http://localhost:${npm.port}`,
+        keyword: 'crombolo-bundle',
+        marketplaceUrl: 'https://example.com',
+        extensions: createExtensionRegistry(root, { cache: false }),
+        siteDir: root,
+        install: async (action, specifier, siteDir) => {
+          calls.push({ action, specifier, siteDir })
+          return { ok: true, output: '' }
+        },
+      })
+      const outcome = await market.install('@acme/old', undefined, { grant: ['redirects.read'] })
+      expect(outcome.ok).toBe(false)
+      expect(outcome.message).toContain('bundle schema 3')
+      expect(calls).toEqual([])
+    } finally {
+      npm.stop(true)
+    }
+  })
+})
+
+describe('a site package on a registry (story 306)', () => {
+  test('is never installed, and nothing is added', async () => {
+    const calls: Call[] = []
+    const { market } = marketplace({
+      hits: ['@acme/whole-site'],
+      sitePackages: ['@acme/whole-site'],
+      calls,
+    })
+    const outcome = await market.install('@acme/whole-site', undefined)
+    expect(outcome.ok).toBe(false)
+    expect(outcome.message).toContain('is a site package')
+    expect(calls).toEqual([])
+    expect(((await market.inspect('@acme/whole-site')) as { message?: string }).message).toContain(
+      'site package',
+    )
   })
 })

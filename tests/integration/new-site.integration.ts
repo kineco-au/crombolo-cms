@@ -316,7 +316,7 @@ describe('creating a site, end to end through the CLI', () => {
     expect(await page(second, '/')).toContain('A new crombolo site')
     await second.stop()
 
-    const runs = await cli('basic', 'bundle', 'runs')
+    const runs = await cli('basic', 'site', 'runs')
     expect(runs.code, runs.out).toBe(0)
     expect(runs.out.trim().split('\n').filter(Boolean)).toHaveLength(1)
     expect(runs.out).toContain('import')

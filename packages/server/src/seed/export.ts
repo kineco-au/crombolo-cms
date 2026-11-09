@@ -4,7 +4,7 @@
  * `content/pages/`, Library elements to `content/library/`, and media, files and
  * all, to `content/media/`.
  *
- * Values are written in the shorthand `bundle apply` reads back — rich text as
+ * Values are written in the shorthand `site apply` reads back — rich text as
  * `{ html }`, pickers and links as paths to what the export carries, blocks as
  * `{ type, key, values }` — and in their editor's stored shape where there is
  * none. A node keeps its key in its file wherever it is not the one its path

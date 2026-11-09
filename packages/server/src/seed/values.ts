@@ -1,9 +1,9 @@
 /**
  * Values in the shorthand a person writes, both ways (stories 163, 253):
  * Markdown, paths and `{ type, alias, values }` blocks into each property
- * editor's stored shape, as `bundle apply` reads content files and the
+ * editor's stored shape, as `site apply` reads content files and the
  * `content` commands read `--set`; and stored values back into that shorthand,
- * as `bundle export --source` and `content show` write them.
+ * as `content export` and `content show` write them.
  */
 import { type ContentTypeAggregate, dateFromText, normaliseUuid } from '@crombolo/core'
 import { ContentTypeRepository, DataTypeRepository, type Db, looksLikeKey } from '@crombolo/data'
@@ -314,7 +314,7 @@ export function valueWriter(lookup: SchemaLookup, refs: ValueRefs) {
           const link = typeof entry === 'string' ? { path: entry } : entry
           if (!isRecord(link))
             return fail('a link is a path, a URL, or { path | url, name, target }')
-          // A link as the editor stores it, as `bundle export --source` writes one.
+          // A link as the editor stores it, as `content export` writes one.
           if ('unique' in link || 'type' in link) {
             links.push(link)
             continue

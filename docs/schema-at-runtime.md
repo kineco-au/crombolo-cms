@@ -53,9 +53,9 @@ configuring it. An explicit setting still wins.
 
 **Everything that writes schema publishes it**, or the next boot's materialise
 lays the store's older copy over the write: a backoffice edit, a webhook or form
-kept with the files, and a bundle's schema through `bundle apply`.
+kept with the files, and a bundle's schema through `site apply`.
 **Everything that reads schema outside the server materialises
-first** — `bundle apply`, with or without `--dry-run`, from the CLI calls
+first** — `site apply`, with or without `--dry-run`, from the CLI calls
 `useSchemaStore`, so they diff against the store and not whatever local
 directory there is (story `106`).
 

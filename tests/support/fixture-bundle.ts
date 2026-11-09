@@ -59,6 +59,7 @@ export const tasksPackage = (version: '1.1.0' | '2.0.0') =>
     version,
     name: 'Tasks',
     field: {
+      bundleType: 'extension',
       id: TASKS_ID,
       server: 'tasks',
       schemaVersion: 3,

@@ -16,7 +16,14 @@
 import { css, html, nothing, repeat } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { carriesTags } from './bundles-carries.js'
-import { disableBundle, enableBundle, listInstalled, uninstallBundle } from './bundles-client.js'
+import {
+  disableBundle,
+  enableBundle,
+  grantBundle,
+  listInstalled,
+  saveSettings,
+  uninstallBundle,
+} from './bundles-client.js'
 import { signatureBlock, signatureStyles, signatureWords } from './bundles-signature.js'
 
 /** Where each part of a bundle stands on this site, in the words of someone running it. */
@@ -28,7 +35,10 @@ function status(item) {
         ? html`<span>Content added (${item.contentApplied})</span>`
         : html`<span>Content not added yet</span>`,
     )
-  if (item.carries?.server)
+  // Story 309: it runs on its grant.
+  if (item.status === 'waiting') parts.push(html`<span>Waiting for a grant</span>`)
+  else if (item.status === 'not-granted') parts.push(html`<span>Not granted</span>`)
+  else if (item.carries?.server)
     parts.push(
       !item.on
         ? html`<span>Server features turned off by ${item.disabledBy ?? 'an administrator'}</span>`
@@ -50,6 +60,8 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
     _filter: { state: true },
     _selected: { state: true },
     _policy: { state: true },
+    _actAs: { state: true },
+    _edits: { state: true },
   }
 
   constructor() {
@@ -61,6 +73,8 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
     this._installs = true
     this._restartPending = false
     this._filter = ''
+    this._actAs = 'installer'
+    this._edits = {}
     // Settings links a bundle's cards here, naming it in `?bundle=`.
     this._selected = new URLSearchParams(window.location.search).get('bundle') ?? ''
   }
@@ -100,6 +114,92 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
     }
   }
 
+  /** Saves the settings changed in its form (story 310). */
+  async #saveSettings(item) {
+    this._busy = item.packageName
+    try {
+      const outcome = await saveSettings(item.id, this._edits)
+      this._notice = outcome.message ?? ''
+      if (outcome.ok) {
+        this._edits = {}
+        await this.#load()
+      }
+    } catch (error) {
+      this._notice = error instanceof Error ? error.message : String(error)
+    } finally {
+      this._busy = ''
+    }
+  }
+
+  #edit(key, value) {
+    this._edits = { ...this._edits, [key]: value }
+  }
+
+  /** Its settings: the config's locked, the rest edited here (story 310). */
+  #settings(item) {
+    const settings = item.settings ?? []
+    if (settings.length === 0) return nothing
+    const field = (setting) => {
+      const value = setting.key in this._edits ? this._edits[setting.key] : setting.value
+      if (setting.type === 'boolean')
+        return html`<uui-toggle
+          label=${setting.label}
+          ?disabled=${setting.locked}
+          .checked=${value === true}
+          @change=${(event) => this.#edit(setting.key, event.target.checked)}></uui-toggle>`
+      if (setting.type === 'choice')
+        return html`<uui-select
+          label=${setting.label}
+          ?disabled=${setting.locked}
+          .options=${setting.values.map((choice) => ({ name: choice, value: choice, selected: choice === value }))}
+          @change=${(event) => this.#edit(setting.key, event.target.value)}></uui-select>`
+      return html`<uui-input
+        label=${setting.label}
+        type=${setting.secret ? 'password' : setting.type === 'number' ? 'number' : 'text'}
+        ?disabled=${setting.locked}
+        .value=${value ?? ''}
+        @change=${(event) =>
+          this.#edit(
+            setting.key,
+            setting.type === 'number' ? Number(event.target.value) : event.target.value,
+          )}></uui-input>`
+    }
+    return html`
+      <h4>Settings</h4>
+      ${settings.map(
+        (setting) => html`<div class="setting">
+          <span>${setting.label}</span>
+          ${field(setting)}
+          ${setting.locked ? html`<span class="note">Set in the site's configuration.</span>` : nothing}
+        </div>`,
+      )}
+      <uui-button
+        look="primary"
+        label="Save settings"
+        ?disabled=${Object.keys(this._edits).length === 0}
+        .state=${this._busy === item.packageName ? 'waiting' : undefined}
+        @click=${() => this.#saveSettings(item)}></uui-button>
+    `
+  }
+
+  /** Grants what its installed version asks for (story 309). */
+  async #grant(item) {
+    this._busy = item.packageName
+    try {
+      const outcome = await grantBundle(
+        item.id,
+        (item.permissions ?? []).map((ask) => ask.permission),
+        item.asksActAs ? this._actAs : undefined,
+      )
+      this._notice = outcome.message ?? ''
+      if (outcome.ok) await this.#load()
+    } catch (error) {
+      this._notice = error instanceof Error ? error.message : String(error)
+    } finally {
+      this._busy = ''
+    }
+  }
+
   /** Turns its server features off, or back on (story 225). */
   async #setEnabled(item, enabled) {
     this._busy = item.packageName
@@ -116,10 +216,11 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
 
   /** What it may do with the site, who approved it, and the button that turns it off or on. */
   #permissions(item) {
-    if (!item.carries?.server) return nothing
     const asks = item.permissions ?? []
     const approved = item.granted
-      ? `Approved by ${item.granted.by ?? 'an administrator'} on ${new Date(item.granted.at).toLocaleDateString()}.`
+      ? item.granted.by === "the site's code"
+        ? `Developer installed, on ${new Date(item.granted.at).toLocaleDateString()}.`
+        : `Approved by ${item.granted.by ?? 'an administrator'} on ${new Date(item.granted.at).toLocaleDateString()}.`
       : ''
     return html`
       <h4>What it may do</h4>
@@ -127,19 +228,63 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
         asks.length === 0
           ? html`<p>Nothing beyond its own data: it asks for no access to the site's content, members or settings.</p>`
           : html`<ul class="asks">
-              ${asks.map((ask) => html`<li>${ask.allows}</li>`)}
+              ${asks.map(
+                (ask) =>
+                  html`<li>
+                    ${ask.allows}${ask.origins?.length ? html`: ${ask.origins.join(', ')}` : nothing}
+                    ${ask.reason ? html`<span class="reason">${ask.reason}</span>` : nothing}
+                  </li>`,
+              )}
             </ul>`
       }
       ${
-        item.on
-          ? html`${approved ? html`<p class="note">${approved}</p>` : nothing}
+        item.schema3
+          ? html`<p class="note">
+              It asks for these without saying why: it was written before extensions gave a
+              reason for each. A new install of a version like it is refused.
+            </p>`
+          : nothing
+      }
+      ${
+        item.status === 'waiting' || item.status === 'not-granted'
+          ? html`<p class="note">
+                ${
+                  item.status === 'waiting'
+                    ? html`Waiting for a grant: it now asks for ${item.missing.join(', ')}, which was not granted.`
+                    : 'Not granted: it does nothing until it is granted what it asks for.'
+                }
+              </p>
+              ${
+                item.asksActAs
+                  ? html`<uui-select
+                      label="Acts for"
+                      .options=${[
+                        { name: 'You', value: 'installer', selected: this._actAs === 'installer' },
+                        {
+                          name: 'Whoever uses it',
+                          value: 'caller',
+                          selected: this._actAs === 'caller',
+                        },
+                      ]}
+                      @change=${(event) => {
+                        this._actAs = event.target.value
+                      }}></uui-select>`
+                  : nothing
+              }
+              <uui-button
+                look="primary"
+                label="Grant"
+                .state=${this._busy === item.packageName ? 'waiting' : undefined}
+                @click=${() => this.#grant(item)}></uui-button>`
+          : item.on
+            ? html`${approved ? html`<p class="note">${approved}</p>` : nothing}
               <uui-button
                 look="secondary"
                 color="danger"
                 label="Disable"
                 .state=${this._busy === item.packageName ? 'waiting' : undefined}
                 @click=${() => this.#setEnabled(item, false)}></uui-button>`
-          : html`<p class="note">
+            : html`<p class="note">
                 Turned off by ${item.disabledBy ?? 'an administrator'}: its pages, jobs and screens
                 stay off, through updates, until it is enabled again.
               </p>
@@ -248,6 +393,7 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
         <dd>${signatureBlock(this.#words(item))}</dd>
       </dl>
       ${this.#permissions(item)}
+      ${this.#settings(item)}
       ${
         this._installs
           ? html`<uui-button
@@ -266,6 +412,15 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
     css`
     .asks {
       padding-left: 1.25em;
+    }
+    .setting {
+      display: grid;
+      gap: var(--uui-size-space-1);
+      margin-bottom: var(--uui-size-space-3);
+    }
+    .asks .reason {
+      display: block;
+      color: var(--uui-color-text-alt);
     }
     :host {
       display: block;

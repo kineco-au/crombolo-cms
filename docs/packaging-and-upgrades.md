@@ -116,7 +116,7 @@ empty. Same commands, same ledger, same dashboard.
 production; content lives where it is edited. Moving content — a campaign
 promoted up, or production content pulled down to develop against — is a
 separate, explicit act with its own artifact and its own audit trail:
-`crombolo bundle export/check/import`, in `content-transfer.md`. Nothing
+`crombolo site export --subtree/check/import`, in `content-transfer.md`. Nothing
 about a deploy touches content.
 
 ### Why Umbraco majors hurt
@@ -650,23 +650,23 @@ config, and anything that runs it boots without the site's bundles; the release
 notes give the fix.
 
 A site on a host that runs the server for it deploys one bundle instead
-([`bundles.md`](bundles.md), "A site's bundle with code"):
+([`bundles.md`](bundles.md), "A site package with code"):
 
-1. `crombolo bundle build --out <dir>` packs the content, the schema, the views
+1. `crombolo site build --out <dir>` packs the content, the schema, the views
    and the code the site's `crombolo.code` names.
-2. The host runs `crombolo bundle check-code <dir>` against the CMS version it will
+2. The host runs `crombolo site check-code <dir>` against the CMS version it will
    run, and refuses the deploy if it lists any problem. The check runs none of
    the site's code.
 3. The host runs `crombolo bundle install-code <dir> <site dir>` into a fresh
    directory, where its own `@crombolo/*` packages resolve, and
-   `bundle apply` for the content.
+   `site apply` for the content.
 4. The host starts the new directory and retires the old one. A server half is
    wired only at boot, so new code always means a restart, and the boot is
    where the wiring in `crombolo.config.ts` is checked.
 
 The `@crombolo/*` packages are peers of the site, so the host's copy of the
 CMS is the only one. An upgrade of the CMS needs no change to the site's code,
-as long as its peer ranges admit the new version, and `bundle check-code` says
+as long as its peer ranges admit the new version, and `site check-code` says
 whether they do.
 
 ## Publishing

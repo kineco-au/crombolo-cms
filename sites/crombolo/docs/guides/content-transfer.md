@@ -29,7 +29,7 @@ The same format carries more. A bundle built in the back office's **Bundles** se
 ## Exporting
 
 ```sh
-bunx crombolo bundle export --root "/Campaigns/Autumn" --out bundles/campaign
+bunx crombolo site export --subtree "/Campaigns/Autumn" --out bundles/campaign
 ```
 
 `--root` takes a page by its path or its UUID, and can be repeated. The export takes the page and everything below it (`--only` takes just the page), and records what the destination must already have: a parent, or a page that a link in the content points at.
@@ -41,7 +41,7 @@ A bundle holds what the site serves. A published page carries its published valu
 By default a bundle places and names pages but carries no property values, so it is safe to commit anywhere. To move the content itself:
 
 ```sh
-bunx crombolo bundle export --root "/Campaigns/Autumn" --include-content --with-blobs --out bundles/campaign
+bunx crombolo site export --subtree "/Campaigns/Autumn" --include-content --with-media --out bundles/campaign
 ```
 
 `--include-content` adds property values, and `--with-blobs` adds the media files. Both are encrypted under a passphrase, which you are asked for or can give in `CROMBOLO_BUNDLE_PASSPHRASE`. The structure, names and schema stay readable for review. `--allow-content-unencrypted` writes the values in the clear, if you need to.
@@ -59,7 +59,7 @@ Nothing that belongs to one environment ever travels: domains, sessions, sign-in
 Before anything is written, see what the import would do:
 
 ```sh
-bunx crombolo bundle apply bundles/campaign --dry-run
+bunx crombolo site apply bundles/campaign --dry-run
 ```
 
 `--dry-run` changes nothing. It reports how many items would be created, updated or left alone, and sorts anything worth knowing into three kinds:
@@ -75,19 +75,19 @@ bunx crombolo bundle apply bundles/campaign --dry-run
 Each decision is `take-bundle`, `keep-local` or `skip`, for a whole page or for one property:
 
 ```sh
-bunx crombolo bundle apply bundles/campaign --dry-run --resolve 9a1f3c2e-…=take-bundle
-bunx crombolo bundle apply bundles/campaign --dry-run --resolve 9a1f3c2e-…/title=keep-local
-bunx crombolo bundle apply bundles/campaign --dry-run --resolve-all take-bundle --save
+bunx crombolo site apply bundles/campaign --dry-run --resolve 9a1f3c2e-…=take-bundle
+bunx crombolo site apply bundles/campaign --dry-run --resolve 9a1f3c2e-…/title=keep-local
+bunx crombolo site apply bundles/campaign --dry-run --resolve-all take-bundle --save
 ```
 
 `--save` writes the answers into the bundle, so a decision made once on staging goes with the bundle to production rather than being made again. The findings also appear in the back office, on the **Changes** dashboard.
 
-`bundle apply --dry-run` exits with code 21 while anything needs a person, so it can gate a pipeline.
+`site apply --dry-run` exits with code 21 while anything needs a person, so it can gate a pipeline.
 
 ## Importing
 
 ```sh
-bunx crombolo bundle apply bundles/campaign
+bunx crombolo site apply bundles/campaign
 ```
 
 The import checks again, takes a backup, and writes everything in one transaction, so a failure leaves nothing behind. On Postgres it needs `CROMBOLO_PG_DUMP` or `--backup-taken`; see [Operations](/docs/guides/operations/).
@@ -95,7 +95,7 @@ The import checks again, takes a backup, and writes everything in one transactio
 Pages arrive as drafts, for someone to review and publish. Media is live as soon as it lands. To publish what was live where the bundle came from:
 
 ```sh
-bunx crombolo bundle apply bundles/campaign --publish --label "autumn campaign"
+bunx crombolo site apply bundles/campaign --publish --label "autumn campaign"
 ```
 
 Values are laid over what is there, so a bundle carrying a page's title cannot empty its summary. Importing the same bundle twice writes nothing the second time.
@@ -112,8 +112,8 @@ bunx crombolo content publish "/Campaigns/Autumn" --at 2026-11-01T09:00
 Every import is recorded as a run, and every run can be undone:
 
 ```sh
-bunx crombolo bundle runs
-bunx crombolo bundle revert 5192ca80-…
+bunx crombolo site runs
+bunx crombolo site revert 5192ca80-…
 ```
 
 A revert puts the site back to what it served: values and published state are restored, and pages the import created are unpublished and moved to the recycle bin, never deleted. If someone has edited a page since, the revert asks first; `--resolve-all discard` goes ahead. A revert is a run too, so it can itself be reverted.
@@ -132,9 +132,9 @@ bunx crombolo dictionary import dictionary.udt
 To move everything, schema and templates included, use a whole-site file:
 
 ```sh
-bunx crombolo export --site --out site.tgz
+bunx crombolo site export --out site.tgz
 bunx crombolo start --from site.tgz            # in an empty folder: a new site, running
-bunx crombolo import site.tgz --replace        # or replace an existing site
+bunx crombolo site import site.tgz --replace        # or replace an existing site
 ```
 
 `import` says what would change before it changes anything. `--replace` moves what the file lacks to the recycle bin and keeps this site's people; `--replace-all` deletes it, and asks you to type the site's name first. Domains, the secret key and settings always stay as they are.

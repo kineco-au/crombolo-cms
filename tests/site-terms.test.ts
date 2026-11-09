@@ -262,11 +262,11 @@ describe('the commands, in the site’s own terms', () => {
   test('a bundle build raises the version once when the definitions changed under it', () => {
     const schemaFile = join(site, 'schema/schema.toml')
     expect(readFileSync(schemaFile, 'utf8')).toContain('version = "1.0.0"')
-    const first = ok('bundle', 'build', '.', '--out', join(site, 'out-1'))
+    const first = ok('site', 'build', '.', '--out', join(site, 'out-1'))
     expect(first.out).toContain('version  1.0.0 → 1.1.0')
     expect(readFileSync(schemaFile, 'utf8')).toContain('version = "1.1.0"')
     // Nothing changed since 1.1.0 was applied: no second step
-    const again = ok('bundle', 'build', '.', '--out', join(site, 'out-2'))
+    const again = ok('site', 'build', '.', '--out', join(site, 'out-2'))
     expect(again.out).not.toContain('version  ')
     expect(readFileSync(schemaFile, 'utf8')).toContain('version = "1.1.0"')
   }, 60_000)

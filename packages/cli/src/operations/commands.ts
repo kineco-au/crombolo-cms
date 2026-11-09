@@ -116,6 +116,7 @@ export {
   type SectionOptions,
   type SectionPlan,
   type SectionResult,
+  type SitePackageChanges,
   stageBackups,
   type TransferInput,
   transferOptions,
@@ -129,7 +130,7 @@ export {
 export type { BackupResult, ReplaceMode, ReplaceSummary, WritesPaused }
 
 /**
- * A bundle file (`.tgz`, as `export --site` writes) unpacked under the site's
+ * A bundle file (`.tgz`, as `site export` writes) unpacked under the site's
  * transfer directory, where an import can read it; a directory or a package
  * name is a bundle as it is.
  */
@@ -199,11 +200,13 @@ export async function siteReplaceCheck(
   const bundle = await unpackBundle(input.bundle, config.siteDir)
   const resolved = readBundle(bundle, config.siteDir, input.passphrase, {
     withoutPeople: input.excludePeople,
+    expects: 'site',
   })
   const { db } = await bootstrapDatabase(config)
   try {
     const check = await checkBundleContent(db, config, {
       ...input,
+      expects: 'site',
       bundle,
       resolveAll: 'take-bundle',
       replaceFiles: true,
@@ -361,6 +364,7 @@ export async function contentExport(
               ? newSeal(input.passphrase)
               : undefined,
           people,
+          bundleType: 'site',
         }),
         {
           ...pkg,
@@ -368,6 +372,7 @@ export async function contentExport(
           label: `Content from ${config.siteName}`,
           private: true,
           peerRange: bundlePeerRange(VERSION),
+          bundleType: 'site',
         },
       ),
       blobs: {

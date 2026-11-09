@@ -16,6 +16,7 @@ import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import {
   type BundlePackage,
+  type BundleType,
   discoverBundles,
   isDirectory,
   PAYLOAD_MANIFEST,
@@ -71,6 +72,7 @@ import {
   carriedSections,
   carriesSections,
   changedFileSections,
+  type FileAction,
   keepDictionary,
   keptDictionary,
   migrationChanges,
@@ -185,7 +187,7 @@ export function readBundle(
   target: string,
   siteDir: string,
   passphrase?: string,
-  options: { withoutPeople?: boolean } = {},
+  options: { withoutPeople?: boolean; expects?: BundleType } = {},
 ): ResolvedBundle {
   const { directory, dependency } = locate(target, siteDir)
   const json = readPackageJson(join(directory, 'package.json'))
@@ -204,6 +206,18 @@ export function readBundle(
       read.problems.length > 0 ? read.problems : ['its package.json has no "crombolo" field'],
     )
   const pkg = read.bundle
+  // One way in for each kind (story 306): a site package is applied from a file,
+  // an extension installed as a dependency.
+  if (pkg.bundleType === 'site' && dependency)
+    throw new CommandError(
+      `${pkg.packageName} is a site package, which is applied to a site with \`crombolo site apply\`, never installed as a dependency.`,
+    )
+  if (options.expects && pkg.bundleType !== options.expects)
+    throw new CommandError(
+      pkg.bundleType === 'site'
+        ? `${target} is a site package: apply it with \`crombolo site apply\`.`
+        : `${target} is an extension: install it with \`crombolo bundle install\`.`,
+    )
   if (!pkg.contentDir)
     throw new CommandError(
       `${pkg.packageName} carries no content to install: its manifest names no "content".`,
@@ -286,6 +300,8 @@ function summarise(bundle: ResolvedBundle): BundleSummary {
 export interface TransferInput extends SectionOptions {
   /** A package directory on this machine, or the name of a bundle the site depends on. */
   bundle: string
+  /** The kind of bundle this way in takes (story 306); another is refused, saying which to use. */
+  expects?: BundleType
   /** Where the bundle's roots go: a path or a key. */
   under?: string
   /** Decisions by node key, on top of any the bundle carries: `"*"` and per property. */
@@ -379,6 +395,8 @@ export interface ContentCheckResult {
   sections: SectionPlan | undefined
   /** The code files installing it would change here; empty when it carries none, or the same. */
   code: SectionFile[]
+  /** For a site package (story 306): what it would replace that decides how the site runs. */
+  sitePackage?: SitePackageChanges
   /** Where it was built, from its signature (story 060). */
   provenance: ProvenanceResult
   /** Nothing outstanding: the bundle would import cleanly. */
@@ -390,6 +408,55 @@ export interface ContentCheckResult {
   problems: string[]
 }
 
+/** What a site package would replace that decides how the site runs: shown before the rest (story 306). */
+export interface SitePackageChanges {
+  /** `crombolo.config.ts`: created, overwritten, or the same; null when it carries none. */
+  config: FileAction | null
+  /** `package.json`, which says what the site installs. */
+  packageJson: FileAction | null
+  /** Dependencies its `package.json` adds, removes or moves to another range. */
+  dependencies: { added: string[]; removed: string[]; changed: string[] }
+}
+
+const dependenciesOf = (text: string | undefined): Record<string, string> => {
+  try {
+    const json = JSON.parse(text ?? '{}') as { dependencies?: Record<string, string> }
+    return json.dependencies ?? {}
+  } catch {
+    return {}
+  }
+}
+
+/** What a site package's code half would change of the site's config and dependencies. */
+export function sitePackageChanges(
+  config: CromboloConfig,
+  carried: CarriedSections,
+): SitePackageChanges {
+  const plan = planCode(config, carried)
+  const action = (file: string) =>
+    plan.find((entry) => entry.path === `${BUNDLE_SECTIONS.code}/${file}`)?.action ?? null
+  const carriedJson = carried.files.get(`${BUNDLE_SECTIONS.code}/package.json`)
+  const sitePackage = join(config.siteDir, 'package.json')
+  const incoming = dependenciesOf(carriedJson ? readFileSync(carriedJson, 'utf8') : undefined)
+  const current = dependenciesOf(
+    existsSync(sitePackage) ? readFileSync(sitePackage, 'utf8') : undefined,
+  )
+  const names = (record: Record<string, string>) => Object.keys(record).sort()
+  return {
+    config: action('crombolo.config.ts'),
+    packageJson: action('package.json'),
+    dependencies: carriedJson
+      ? {
+          added: names(incoming).filter((name) => !(name in current)),
+          removed: names(current).filter((name) => !(name in incoming)),
+          changed: names(incoming).filter(
+            (name) => name in current && current[name] !== incoming[name],
+          ),
+        }
+      : { added: [], removed: [], changed: [] },
+  }
+}
+
 /** Read-only: what installing a bundle here would do. Its findings go to the Changes dashboard. */
 export async function checkBundleContent(
   db: Db,
@@ -397,6 +464,7 @@ export async function checkBundleContent(
   input: TransferInput,
 ): Promise<ContentCheckResult> {
   const bundle = readBundle(input.bundle, config.siteDir, input.passphrase, {
+    expects: input.expects,
     withoutPeople: input.excludePeople,
   })
   const provenance = await bundleProvenance(bundle, input)
@@ -436,6 +504,9 @@ export async function checkBundleContent(
       ? await planSections(db, config, bundle.carried, input)
       : undefined,
     code: codeChanges(planCode(config, bundle.carried)),
+    ...(bundle.set.manifest.bundleType === 'site'
+      ? { sitePackage: sitePackageChanges(config, bundle.carried) }
+      : {}),
     provenance,
     clean: check.outstanding.length === 0,
     publishRefusals: refusals,
@@ -562,6 +633,7 @@ export async function installBundleContent(
   input: ContentImportInput,
 ): Promise<ContentImportResult> {
   const bundle = readBundle(input.bundle, config.siteDir, input.passphrase, {
+    expects: input.expects,
     withoutPeople: input.excludePeople,
   })
   const { set, blobs, carried } = bundle
@@ -591,7 +663,7 @@ export async function installBundleContent(
   if (signatureRefused)
     return { ...refuse([`this bundle is refused: ${signatureRefused}`]), provenance }
   if (replace && manifest.scope !== 'site')
-    return refuse(['only a whole-site file (crombolo export --site) can replace a site'])
+    return refuse(['only a whole-site file (crombolo site export) can replace a site'])
   const missing = requiresProblems(manifest, config.siteDir)
   if (missing.length > 0) return refuse(missing)
   if (manifest.media === 'omitted' && !input.allowMissingBlobs)

@@ -20,7 +20,6 @@ import {
   VERSION,
 } from '@crombolo/server'
 import { grantGaps, parseSpec } from '../packages/cli/src/support/bundles.ts'
-import { newConfigWiring, wireBundle } from '../packages/cli/src/support/wire.ts'
 import { dialectUnderTest } from './support/db.ts'
 import { type Harness, ORIGIN, signedInServer, signInAsGroup, V1 } from './support/harness.ts'
 
@@ -43,13 +42,18 @@ const temp = (name: string) => {
   return dir
 }
 
-const SERVER = { server: 'crm', schemaVersion: 3, permissions: ['documents.read'] }
+const SERVER = {
+  server: 'crm',
+  schemaVersion: 4,
+  permissions: { 'content.read': 'Links each contact to the page they came from' },
+}
 
 const manifest = (name: string, version: string, field: Record<string, unknown> = {}) => ({
   name,
   version,
   peerDependencies: { '@crombolo/crombolo': `^${VERSION}` },
   crombolo: {
+    bundleType: 'extension',
     id: name.replace(/[^a-z0-9]+/g, '-').replace(/^-+/, ''),
     extensions: [{ type: 'dashboard', alias: `${name}.d`, name, element: 'd.js' }],
     ...field,
@@ -75,71 +79,13 @@ function addPackage(root: string, name: string, field: Record<string, unknown>) 
   writeFileSync(join(root, 'package.json'), JSON.stringify(json))
 }
 
-/** A registry answering one bundle, with a server half asking for `documents.read`. */
+/** A registry answering one bundle, with a server half asking for `content.read`. */
 const registry = (name: string) =>
   (async () =>
     Response.json({
       'dist-tags': { latest: '1.0.0' },
       versions: { '1.0.0': manifest(name, '1.0.0', SERVER) },
     })) as unknown as typeof fetch
-
-describe('--wire: the bundle turned on in crombolo.config.ts', () => {
-  const BARE =
-    "import { defineConfig } from '@crombolo/crombolo'\n\nexport default defineConfig({\n  siteName: 'Acme',\n})\n"
-
-  test('adds the import and a bundles entry, and changes nothing the second time', () => {
-    const once = wireBundle(BARE, 'crm', '@acme/crm')
-    expect(once).toMatchObject({ ok: true, changed: true })
-    if (!once.ok) return
-    expect(once.text).toContain("import { crm } from '@acme/crm'")
-    expect(once.text).toContain('bundles: [crm()],')
-    expect(once.text).toContain("siteName: 'Acme'")
-    expect(wireBundle(once.text, 'crm', '@acme/crm')).toMatchObject({ ok: true, changed: false })
-  })
-
-  test('appends to a bundles list there already, and to an import of the same package', () => {
-    const source =
-      "import { defineConfig } from '@crombolo/crombolo'\nimport { other } from '@acme/crm'\nimport { redirects } from '@crombolo/simple-redirects'\n\nexport default defineConfig({\n  bundles: [redirects(), other()],\n})\n"
-    const wired = wireBundle(source, 'crm', '@acme/crm')
-    expect(wired.ok).toBe(true)
-    if (!wired.ok) return
-    expect(wired.text).toContain("import { other, crm } from '@acme/crm'")
-    expect(wired.text).toContain('bundles: [redirects(), other(), crm()]')
-  })
-
-  test('fills an empty list, and an empty config', () => {
-    const empty = wireBundle(
-      "import { defineConfig } from '@crombolo/crombolo'\nexport default defineConfig({ bundles: [] })\n",
-      'crm',
-      '@acme/crm',
-    )
-    expect(empty.ok && empty.text).toContain('bundles: [crm()]')
-    const none = wireBundle(
-      "import { defineConfig } from '@crombolo/crombolo'\nexport default defineConfig({})\n",
-      'crm',
-      '@acme/crm',
-    )
-    expect(none.ok && none.text).toContain('bundles: [crm()],')
-  })
-
-  test('refuses a config it cannot edit safely, giving the two lines to add by hand', () => {
-    for (const source of [
-      'export default { bundles: [] }\n',
-      "import { defineConfig } from '@crombolo/crombolo'\nconst list = []\nexport default defineConfig({ bundles: list })\n",
-    ]) {
-      const refused = wireBundle(source, 'crm', '@acme/crm')
-      expect(refused.ok).toBe(false)
-      if (refused.ok) continue
-      expect(refused.lines).toEqual(["import { crm } from '@acme/crm'", 'bundles: [crm()]'])
-    }
-  })
-
-  test('writes a whole config for a site with none', () => {
-    const text = newConfigWiring('crm', '@acme/crm')
-    expect(text).toContain("import { defineConfig } from '@crombolo/crombolo'")
-    expect(wireBundle(text, 'crm', '@acme/crm')).toMatchObject({ ok: true, changed: false })
-  })
-})
 
 describe('naming what is installed and granted', () => {
   test('a spec is a name, a scoped name with a version, or a packed file', () => {
@@ -185,6 +131,8 @@ describe('the bundle admin', () => {
         state.set(pkg.id, true)
         return { on: true } as never
       },
+      grant: async () => true,
+      state: (pkg: { id: string }) => ({ on: state.get(pkg.id) !== false }) as never,
     }
     return {
       db,
@@ -205,16 +153,14 @@ describe('the bundle admin', () => {
       const actor = { id: null, name: 'someone', email: null, source: 'cli' as const }
       const refused = await bundles.install(actor, {
         name: '@acme/crm',
-        acceptServerCode: true,
         grant: [],
       })
-      expect(refused).toMatchObject({ ok: false, needsServerConsent: true })
+      expect(refused).toMatchObject({ ok: false, needsGrant: true })
       expect(restartPending(root)).toBeUndefined()
 
       const installed = await bundles.install(actor, {
         name: '@acme/crm',
-        acceptServerCode: true,
-        grant: ['documents.read'],
+        grant: ['content.read'],
       })
       expect(installed).toMatchObject({ ok: true, restartPending: true })
       expect(restartPending(root)?.reasons).toEqual(['@acme/crm@1.0.0 installed'])
@@ -363,7 +309,7 @@ describe(`installed bundles on a remote (${dialectUnderTest})`, () => {
       expect(response.status).toBe(409)
       const problem = (await response.json()) as { code: string; items: string[] }
       expect(problem.code).toBe('grant-mismatch')
-      expect(problem.items).toEqual(['not granted: documents.read'])
+      expect(problem.items).toEqual(['not granted: content.read'])
     } finally {
       npm.stop(true)
     }
@@ -399,6 +345,13 @@ describe(`installed bundles on a remote (${dialectUnderTest})`, () => {
   test('an administrator turns a bundle off and on; nobody else may', async () => {
     const { h, api } = await remote({ access: 'all' }, site({ '@acme/crm': SERVER }))
     const writer = await deployer(h, 'deployers', true)
+    // It runs once granted (story 309), by someone who may install code.
+    const granted = await api(writer, 'installed/acme-crm/grant', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ grant: ['content.read'] }),
+    })
+    expect(granted.status, await granted.clone().text()).toBe(200)
     expect((await api(writer, 'installed/acme-crm/disable', { method: 'POST' })).status).toBe(403)
     const off = await api(h, 'installed/acme-crm/disable', { method: 'POST' })
     expect(off.status).toBe(200)

@@ -108,15 +108,14 @@ async function built(root: string) {
 const problemsOf = (dir: string) => loadBundle(dir).problems.map((problem) => problem.message)
 
 describe('a bundle built from a site', () => {
-  test('carries public/ as format 7, without its dotfiles', async () => {
+  test('carries public/, without its dotfiles', async () => {
     const root = temp('source')
     siteFiles(root)
     withPublicFiles(root)
     const { out, result } = await built(root)
     const loaded = loadBundle(out)
     expect(loaded.problems).toEqual([])
-    expect(BUNDLE_FORMAT_VERSION).toBe(7)
-    expect(loaded.set?.manifest.formatVersion).toBe(7)
+    expect(loaded.set?.manifest.formatVersion).toBe(BUNDLE_FORMAT_VERSION)
     expect(loaded.set?.manifest.carries?.public).toEqual([
       'public/.gitkeep',
       'public/.well-known/security.txt',
@@ -211,15 +210,20 @@ describe('reading one', () => {
     expect(loadBundle(dir).set?.manifest.carries?.public).not.toContain('public/forged.txt')
   })
 
-  test('a format 6 bundle is still read, and a newer one refused by name', async () => {
-    expect(OLDEST_BUNDLE_FORMAT_VERSION).toBeLessThanOrEqual(6)
+  test('an older format is refused, saying to build it again, and a newer one by name', async () => {
     const root = temp('source')
     siteFiles(root)
     const dir = (await built(root)).out
     const manifest = JSON.parse(readFileSync(join(dir, 'bundle.json'), 'utf8'))
-    writeFileSync(join(dir, 'bundle.json'), JSON.stringify({ ...manifest, formatVersion: 6 }))
-    expect(problemsOf(dir)).toEqual([])
-    writeFileSync(join(dir, 'bundle.json'), JSON.stringify({ ...manifest, formatVersion: 8 }))
+    writeFileSync(
+      join(dir, 'bundle.json'),
+      JSON.stringify({ ...manifest, formatVersion: OLDEST_BUNDLE_FORMAT_VERSION - 1 }),
+    )
+    expect(problemsOf(dir).join()).toContain('build it again')
+    writeFileSync(
+      join(dir, 'bundle.json'),
+      JSON.stringify({ ...manifest, formatVersion: BUNDLE_FORMAT_VERSION + 1 }),
+    )
     expect(problemsOf(dir).join()).toContain('upgrade crombolo')
   })
 })

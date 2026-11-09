@@ -486,6 +486,7 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
       fetch: options.fetch,
       hiddenByRoutes: options.hiddenByRoutes,
       siteSettingsFindings: options.siteSettingsFindings,
+      bundleProblems: () => options.extensions.bundles().problems,
     })
     const tags = new TagRepository(options.db)
     deps.tags = { list: (filter) => tags.all(filter) }

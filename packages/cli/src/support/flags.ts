@@ -27,7 +27,7 @@ export const excludePeople = Flags.boolean({
 export const many = (summary: string, helpValue?: string) =>
   Flags.string({ summary, helpValue, multiple: true, multipleNonGreedy: true, default: [] })
 
-/** The flags `bundle apply` takes, dry run or not: resolutions, placement, files. */
+/** The flags `site apply` takes, dry run or not: resolutions, placement, files. */
 export const transferFlags = {
   under: Flags.string({ summary: 'place the bundle under this page', helpValue: '<path|uuid>' }),
   resolve: many(
@@ -91,6 +91,8 @@ export function transferInput(bundle: string, flags: TransferFlagValues): ops.Tr
     excludePeople: flags['exclude-people'],
     // The code a bundle carries is installed too (story 241); live after `crombolo restart`.
     installCode: true,
+    // What is applied here is a site package (story 306); an extension is installed.
+    expects: 'site' as const,
   }
 }
 

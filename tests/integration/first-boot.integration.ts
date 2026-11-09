@@ -135,6 +135,13 @@ describe('the first boot of a self-hosted site', () => {
   test('a database the previous release left is upgraded by `crombolo upgrade`, and then starts', async () => {
     const file = readdirSync(site()).find((name) => name.endsWith('.sqlite')) as string
     const sqlite = new Database(join(site(), file))
+    sqlite.exec('DROP TABLE IF EXISTS extension_setting')
+    sqlite.exec("DELETE FROM migration_history WHERE name = 'AddExtensionSettings'")
+    sqlite.exec('ALTER TABLE bundle_grant DROP COLUMN act_as')
+    sqlite.exec('ALTER TABLE bundle_grant DROP COLUMN origins')
+    sqlite.exec("DELETE FROM migration_history WHERE name = 'AddBundleGrantReach'")
+    sqlite.exec('ALTER TABLE content_transfer_run DROP COLUMN bundle_type')
+    sqlite.exec("DELETE FROM migration_history WHERE name = 'AddTransferRunBundleType'")
     sqlite.exec('DROP TABLE IF EXISTS search_removal')
     sqlite.exec("DELETE FROM migration_history WHERE name = 'AddSearchRemovals'")
     sqlite.exec("DELETE FROM migration_history WHERE name = 'AddImageAltText'")

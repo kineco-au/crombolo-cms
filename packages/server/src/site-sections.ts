@@ -1,7 +1,7 @@
 /**
  * The sections a bundle carries beyond its content — schema, components,
  * styles, scripts and the dictionary — gathered from a site. One place, so the
- * backoffice's Packages builder (picked items) and `crombolo export --site`
+ * backoffice's Packages builder (picked items) and `crombolo site export`
  * (everything) compose a bundle the same way. `docs/bundles.md`.
  */
 import { readdir, readFile } from 'node:fs/promises'

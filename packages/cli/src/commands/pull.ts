@@ -3,7 +3,9 @@ import { join } from 'node:path'
 import { mediaStoreFor, writeRemoteMedia } from '@crombolo/server'
 import { Args, Flags } from '@oclif/core'
 import { BaseCommand } from '../base.ts'
+import { CliError } from '../errors.ts'
 import * as ops from '../operations/commands.ts'
+import { bundleFormatProblem } from '../remote/client.ts'
 import { fetchReferencedMedia, pullFile, referencedBlobs } from '../remote/transfer.ts'
 import {
   counted,
@@ -78,6 +80,8 @@ export default class Pull extends BaseCommand {
     const { args, flags } = await this.parse(Pull)
     const { client, environment: env, discovery } = await connectRemote(args.remote, flags.env)
     const environment = needEnvironment(env, discovery)
+    const formats = bundleFormatProblem(discovery, 'receive')
+    if (formats) throw new CliError('refused', formats)
     const media = flags['no-media']
       ? ('omitted' as const)
       : flags['media-info-only'] || flags['lazy-media']
@@ -139,7 +143,7 @@ export default class Pull extends BaseCommand {
         )
       }
       runId = result.runId
-      this.say(`  replaced, run ${runId}: \`crombolo bundle revert ${runId}\` puts it back`)
+      this.say(`  replaced, run ${runId}: \`crombolo site revert ${runId}\` puts it back`)
       if (result.siteData) {
         this.say(
           `  site data  ${result.siteData.tables} table(s), ${result.siteData.rows} row(s) replaced`,

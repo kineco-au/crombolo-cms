@@ -6,9 +6,17 @@
  * The payload is `writeBundle`'s output unchanged. The package is what gives
  * it a name, a version and a core it was written for.
  */
+import type { BundleType } from './model.ts'
 import { PEOPLE_DIR } from './people.ts'
 import { SITE_DATA_DIR } from './site-data.ts'
-import { type BundleFile, MANIFEST_FILE } from './write.ts'
+import {
+  type BundleFile,
+  blankedManifest,
+  bundleIntegrity,
+  MANIFEST_FILE,
+  PACKAGE_FILE,
+  packageIdentity,
+} from './write.ts'
 
 /** The npm keyword a bundle publishes so the marketplace can find it. */
 export const BUNDLE_KEYWORD = 'crombolo-bundle'
@@ -26,6 +34,8 @@ export interface BundlePackageInfo {
   private?: boolean
   /** The range on `@crombolo/crombolo` it is written for. */
   peerRange: string
+  /** A site package or an extension (story 306); a site package is always private. */
+  bundleType: BundleType
 }
 
 const NPM_NAME = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/
@@ -85,7 +95,7 @@ export function bundlePackageJson(
     ...(info.private ? { private: true } : { keywords: [BUNDLE_KEYWORD] }),
     files: packageFilesFor(paths),
     peerDependencies: { '@crombolo/crombolo': info.peerRange },
-    crombolo: { id: info.id, name: info.label, content: true },
+    crombolo: { id: info.id, name: info.label, bundleType: info.bundleType, content: true },
   }
 }
 
@@ -95,6 +105,8 @@ export function writeBundlePackage(
   info: BundlePackageInfo,
 ): BundleFile[] {
   if (!isPackageName(info.name)) throw new Error(`"${info.name}" is not a package name npm accepts`)
+  if (info.bundleType === 'site' && !info.private)
+    throw new Error('A site package is never published: it can only be a private package.')
   // Personal data never goes where `npm publish` can take it, sealed or not;
   // and sealed content would be no use to anyone who installed it.
   if (!info.private && payload.some((file) => file.path.startsWith(`${PEOPLE_DIR}/`)))
@@ -103,18 +115,42 @@ export function writeBundlePackage(
     throw new Error("A bundle that carries the site's own data can only be a private package.")
   if (!info.private && payload.some((file) => file.path.startsWith('values/')))
     throw new Error('A bundle whose content is encrypted can only be a private package.')
+  const pkg = bundlePackageJson(
+    info,
+    payload.map((file) => file.path),
+  )
   return [
-    {
-      path: 'package.json',
-      text: `${JSON.stringify(
-        bundlePackageJson(
-          info,
-          payload.map((file) => file.path),
-        ),
-        null,
-        2,
-      )}\n`,
-    },
-    ...payload,
+    { path: PACKAGE_FILE, text: `${JSON.stringify(pkg, null, 2)}\n` },
+    ...rehashed(payload, pkg),
   ]
+}
+
+/**
+ * The payload with its manifest's hash taken again over the package's identity
+ * too, now that there is one (story 306). Files a caller streams in after the
+ * hash, the public files, carry a `source` and are left out of it as before.
+ */
+function rehashed(payload: readonly BundleFile[], pkg: Record<string, unknown>): BundleFile[] {
+  const manifest = payload.find((file) => file.path === MANIFEST_FILE)
+  if (!manifest?.text) throw new Error('A bundle package needs its bundle.json.')
+  const parsed = JSON.parse(manifest.text) as { integrity?: string; bundleType?: string }
+  const crombolo = pkg.crombolo as { bundleType: string }
+  if (parsed.bundleType && parsed.bundleType !== crombolo.bundleType)
+    throw new Error(
+      `bundle.json says it is a ${parsed.bundleType} bundle, and package.json a ${crombolo.bundleType} one.`,
+    )
+  // Written where `writeManifest` puts it, straight after the id.
+  const typed = parsed.bundleType
+    ? manifest.text
+    : manifest.text.replace(
+        /\n {2}"id": ("[^"\n]*"),\n/,
+        (line) => `${line}  "bundleType": ${JSON.stringify(crombolo.bundleType)},\n`,
+      )
+  const blank = blankedManifest(typed, parsed.integrity ?? '')
+  const integrity = bundleIntegrity(
+    payload.filter((file) => file.text !== undefined || file.bytes !== undefined),
+    { manifest: blank, packageIdentity: packageIdentity(pkg) },
+  )
+  const text = blank.replace('"integrity": ""', `"integrity": ${JSON.stringify(integrity)}`)
+  return payload.map((file) => (file.path === MANIFEST_FILE ? { ...file, text } : file))
 }

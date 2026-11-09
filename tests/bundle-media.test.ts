@@ -310,6 +310,7 @@ describe('declaring media', () => {
       [
         stubBundlePackage('observations', {
           field: {
+            bundleType: 'extension',
             id: 'observations',
             server: 'observations',
             schemaVersion: 3,

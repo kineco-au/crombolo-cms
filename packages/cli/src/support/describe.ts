@@ -195,6 +195,24 @@ export function describeBundle(io: Io, bundle: ops.BundleSummary): void {
 export const CARRIES_CODE =
   '  code     carried, and not installed by an import: `crombolo bundle install <bundle> --code-into <dir>` installs it'
 
+/**
+ * What a site package replaces that decides how the site runs, said before
+ * anything else (story 306): its config, its package.json and the dependencies
+ * that changes.
+ */
+export function printSitePackage(io: Io, changes: ops.SitePackageChanges | undefined): void {
+  if (!changes) return
+  io.say("  Site package: replaces this site's code, config and dependencies")
+  const what = (action: string | null) =>
+    action === 'create' ? 'added' : action === 'overwrite' ? 'REPLACED' : 'the same'
+  if (changes.config) io.say(`  config   crombolo.config.ts ${what(changes.config)}`)
+  if (changes.packageJson) io.say(`  package  package.json ${what(changes.packageJson)}`)
+  const { added, removed, changed } = changes.dependencies
+  for (const name of added) io.say(`    adds     ${name}`)
+  for (const name of removed) io.say(`    removes  ${name}`)
+  for (const name of changed) io.say(`    changes  ${name}`)
+}
+
 /** What the carried sections would do, or did. */
 export function printSections(io: Io, plan: ops.SectionPlan | undefined): void {
   if (!plan) return

@@ -14,7 +14,7 @@ import {
   createBundleReloader,
   VERSION,
 } from '@crombolo/server'
-import { type Harness, ORIGIN, signedInServer } from './support/harness.ts'
+import { BACKOFFICE, type Harness, ORIGIN, signedInServer } from './support/harness.ts'
 
 const open: Harness[] = []
 const dirs: string[] = []
@@ -58,6 +58,7 @@ function install(
       version,
       peerDependencies: { '@crombolo/crombolo': `^${VERSION}` },
       crombolo: {
+        bundleType: 'extension',
         id: name.replace(/[^a-z0-9]+/g, '-').replace(/^-+/, ''),
         extensions: [{ type: 'dashboard', alias: `${name}.d`, name, element: 'd.js' }],
         ...field,
@@ -128,6 +129,13 @@ describe('a running node (story 181)', () => {
     // Unseen until it is told: discovery is cached outside development.
     const reload = await h.server.reloadBundles()
     expect(reload.added.map((b) => b.packageName)).toEqual(['acme-seo'])
+    // It runs once granted (story 309).
+    expect((await h.server.fetch(new Request(file))).status).toBe(404)
+    const granted = await h.post(`${BACKOFFICE}/crombolo/api/bundles/grant`, {
+      id: 'acme-seo',
+      grant: [],
+    })
+    expect(granted.status, await granted.clone().text()).toBe(200)
     expect((await h.server.fetch(new Request(file))).status).toBe(200)
     expect(sent).toEqual([['notify', BUNDLES_CHANGED_EVENT]])
 

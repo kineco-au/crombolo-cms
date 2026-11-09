@@ -18,7 +18,7 @@ import {
   resolveStaticFile,
 } from '@crombolo/backoffice-host'
 import { VERSION, warnAboutAppPlugins } from '@crombolo/server'
-import { type Harness, signedInServer, V1 } from './support/harness.ts'
+import { BACKOFFICE, type Harness, signedInServer, V1 } from './support/harness.ts'
 
 const dirs: string[] = []
 const open: Harness[] = []
@@ -68,15 +68,17 @@ function siteWith(
   for (const [name, fixture] of Object.entries(dependencies)) {
     const dir = join(root, 'node_modules', name)
     mkdirSync(dir, { recursive: true })
-    writeFileSync(
-      join(dir, 'package.json'),
-      JSON.stringify({
-        name,
-        version: '1.2.3',
-        peerDependencies: { '@crombolo/crombolo': `^${VERSION}` },
-        ...fixture.json,
-      }),
-    )
+    const json: Record<string, unknown> = {
+      name,
+      version: '1.2.3',
+      peerDependencies: { '@crombolo/crombolo': `^${VERSION}` },
+      ...fixture.json,
+    }
+    // An extension unless it says otherwise, as every bundle must (story 306).
+    const field = json.crombolo as Record<string, unknown> | undefined
+    if (field && typeof field === 'object' && !('bundleType' in field))
+      json.crombolo = { bundleType: 'extension', ...field }
+    writeFileSync(join(dir, 'package.json'), JSON.stringify(json))
     for (const [path, content] of Object.entries(fixture.files ?? {})) {
       const file = join(dir, path)
       mkdirSync(join(file, '..'), { recursive: true })
@@ -88,6 +90,7 @@ function siteWith(
 
 const extension = (over: Record<string, unknown> = {}) => ({
   crombolo: {
+    bundleType: 'extension',
     id: 'acme-seo',
     extensions: [
       { type: 'dashboard', alias: 'Acme.Dashboard.Seo', name: 'SEO', element: 'dist/seo.js' },
@@ -364,6 +367,11 @@ describe('over HTTP', () => {
       config: { siteDir: root, componentsDir: join(root, 'components') },
     })
     open.push(h)
+    // It runs once granted (story 309): it asks for nothing, so that is all.
+    expect(
+      (await h.post(`${BACKOFFICE}/crombolo/api/bundles/grant`, { id: 'acme-seo', grant: [] }))
+        .status,
+    ).toBe(200)
 
     const manifests = await h.json<Array<{ id?: string | null }>>(`${V1}/manifest/manifest`)
     expect(manifests.some((manifest) => manifest.id === 'acme-seo')).toBe(true)

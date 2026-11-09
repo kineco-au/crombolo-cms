@@ -6,7 +6,8 @@
   "bundles": [
     {
       "package": "@crombolo/simple-redirects",
-      "import": "redirects"
+      "id": "redirects",
+      "grant": ["redirects.read", "redirects.write", "content.read"]
     }
   ],
   "dependencies": {

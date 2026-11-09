@@ -431,7 +431,14 @@ describe('anonymise rules', () => {
       name: '@acme/tasks',
       version: '1.1.0',
       peerDependencies: { '@crombolo/crombolo': `>=${VERSION}` },
-      crombolo: { id: TASKS_ID, server: 'tasks', schemaVersion: 3, permissions: [], anonymise },
+      crombolo: {
+        bundleType: 'extension',
+        id: TASKS_ID,
+        server: 'tasks',
+        schemaVersion: 3,
+        permissions: [],
+        anonymise,
+      },
     })
     expect(validateBundlePackage(json(TASK_RULES))).toEqual([])
     expect(validateBundlePackage(json({ task: 'drop' })).join(' ')).toContain('crombolo.anonymise')
@@ -443,6 +450,7 @@ describe('anonymise rules', () => {
           stubBundlePackage(TASKS_ID, {
             version: '1.1.0',
             field: {
+              bundleType: 'extension',
               id: TASKS_ID,
               server: 'tasks',
               schemaVersion: 3,

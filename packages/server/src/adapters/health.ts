@@ -114,7 +114,7 @@ const GROUPS: HealthCheckGroup[] = [
       {
         ...CHECKS.code,
         description:
-          'Who may install code on this site, and whether installed code is waiting for a restart.',
+          'Who may install code on this site, whether installed code is waiting for a restart, and which installed extensions cannot be used.',
       },
     ],
   },
@@ -199,6 +199,8 @@ export interface HealthCheckOptions {
   siteSettingsFindings?: () => Promise<
     Array<{ kind: 'second' | 'deep'; name: string; counted?: string }>
   >
+  /** Dependencies that claim to be bundles and are not usable ones, and why (story 306). */
+  bundleProblems?: () => Array<{ packageName: string; problems: string[]; untyped?: unknown }>
 }
 
 const result = (
@@ -447,6 +449,15 @@ export function createDiagnosticsPort(options: HealthCheckOptions): DiagnosticsP
         )
       if (results.length === 0)
         results.push(result('Success', 'Nobody may install code on this site.'))
+      for (const found of options.bundleProblems?.() ?? [])
+        results.push(
+          result(
+            'Warning',
+            found.untyped
+              ? `${found.packageName} is turned off: it does not say it is an extension. Install a version that does.`
+              : `${found.packageName} is not used: ${found.problems.join('; ')}.`,
+          ),
+        )
       const pending = restartPending(config.siteDir)
       if (pending)
         results.push(

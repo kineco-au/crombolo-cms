@@ -370,287 +370,60 @@
       "errors": ["usage", "internal", "not_found", "refused"]
     },
     {
-      "name": "bundle apply",
-      "description": "apply a bundle's content here or to a remote: checked, backed up, one transaction",
-      "effects": "idempotent",
-      "cardinality": "single",
-      "output_fields": [
-        {
-          "name": "runId",
-          "type": "string",
-          "nullable": true
-        },
-        {
-          "name": "bundle",
-          "type": "object",
-          "nullable": true
-        },
-        {
-          "name": "counts",
-          "type": "object"
-        },
-        {
-          "name": "findings",
-          "type": "array",
-          "items": {
-            "type": "object"
-          }
-        },
-        {
-          "name": "outstanding",
-          "type": "integer"
-        },
-        {
-          "name": "backup",
-          "type": "string",
-          "nullable": true
-        },
-        {
-          "name": "published",
-          "type": "integer"
-        },
-        {
-          "name": "saved",
-          "type": "string",
-          "nullable": true
-        },
-        {
-          "name": "remote",
-          "type": "string",
-          "nullable": true
-        }
-      ],
-      "args": [
-        {
-          "name": "bundle",
-          "type": "string",
-          "description": "a package directory, a .tgz, a bundle this site depends on, or `.` for this site's content files"
-        },
-        {
-          "name": "--under",
-          "type": "string",
-          "description": "place the bundle under this page"
-        },
-        {
-          "name": "--resolve",
-          "type": "string[]",
-          "description": "answer a finding: <key>=take-bundle|keep-local|skip, or <key>/<property>[@<culture>]=take-bundle|keep-local"
-        },
-        {
-          "name": "--resolve-all",
-          "type": "string",
-          "enum": ["take-bundle", "keep-local", "skip"],
-          "description": "answer every finding the same way"
-        },
-        {
-          "name": "--allow-missing-blobs",
-          "type": "boolean",
-          "description": "import media items whose files the bundle does not carry"
-        },
-        {
-          "name": "--publish",
-          "type": "boolean",
-          "description": "publish what it imports"
-        },
-        {
-          "name": "--no-schema",
-          "type": "boolean",
-          "description": "decline the schema the bundle carries"
-        },
-        {
-          "name": "--no-files",
-          "type": "boolean",
-          "description": "decline the views, styles and scripts it carries"
-        },
-        {
-          "name": "--replace-files",
-          "type": "boolean",
-          "description": "allow replacing files this site has; the originals are kept for a revert"
-        },
-        {
-          "name": "--exclude-people",
-          "type": "boolean",
-          "description": "leave out the members and users it carries; this site's own are untouched"
-        },
-        {
-          "name": "--label",
-          "type": "string",
-          "description": "a label for the run"
-        },
-        {
-          "name": "--backup-taken",
-          "type": "boolean",
-          "description": "a backup was taken another way: Postgres needs this, or CROMBOLO_PG_DUMP"
-        },
-        {
-          "name": "--dry-run",
-          "type": "boolean",
-          "description": "say what it would do, and change nothing"
-        },
-        {
-          "name": "--save",
-          "type": "boolean",
-          "description": "with --dry-run: write the answers into the bundle"
-        },
-        {
-          "name": "--remote",
-          "type": "string",
-          "description": "apply it on this remote instead"
-        },
-        {
-          "name": "--env",
-          "type": "string",
-          "description": "with --remote: the remote's environment"
-        },
-        {
-          "name": "--structure",
-          "type": "boolean",
-          "description": "with --remote, from a site directory: send its schema, views, styles and code too, not its content alone"
-        }
-      ],
-      "errors": ["usage", "internal", "refused", "auth", "not_found", "unavailable"],
-      "outcomes": ["blocked"]
-    },
-    {
       "name": "bundle build",
-      "description": "a bundle from a site directory: its schema, views, styles and content",
-      "effects": "idempotent",
+      "description": "build a bundle made in the Bundle Editor as an extension package",
+      "effects": "non_idempotent",
       "cardinality": "single",
       "output_fields": [
-        {
-          "name": "id",
-          "type": "string"
-        },
-        {
-          "name": "name",
-          "type": "string"
-        },
         {
           "name": "out",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "definition",
           "type": "string"
         },
         {
-          "name": "nodes",
+          "name": "bytes",
           "type": "integer"
-        },
-        {
-          "name": "code",
-          "type": "integer"
-        },
-        {
-          "name": "findings",
-          "type": "array",
-          "items": {
-            "type": "object",
-            "fields": [
-              {
-                "name": "file",
-                "type": "string"
-              },
-              {
-                "name": "line",
-                "type": "integer"
-              },
-              {
-                "name": "code",
-                "type": "string"
-              },
-              {
-                "name": "message",
-                "type": "string"
-              }
-            ]
-          }
-        },
-        {
-          "name": "counts",
-          "type": "object",
-          "fields": [
-            {
-              "name": "content",
-              "type": "integer"
-            },
-            {
-              "name": "library",
-              "type": "integer"
-            },
-            {
-              "name": "media",
-              "type": "integer"
-            }
-          ]
         }
       ],
       "args": [
         {
-          "name": "dir",
+          "name": "name",
           "type": "string",
-          "description": "the site directory; this one when left out"
-        },
-        {
-          "name": "--template",
-          "type": "string",
-          "description": "a starter site the CLI ships, instead of a directory"
+          "required": true,
+          "description": "the definition's name or id"
         },
         {
           "name": "--out",
           "type": "string",
-          "description": "the directory to write it to"
-        },
-        {
-          "name": "--check",
-          "type": "boolean",
-          "description": "build it, report its problems, and write nothing"
-        },
-        {
-          "name": "--public-log",
-          "type": "boolean",
-          "description": "sign from a private repository anyway: Sigstore's public log records its name, workflow, ref and commit"
-        },
-        {
-          "name": "--sign",
-          "type": "boolean",
-          "description": "sign it once written, in GitHub Actions: `bundle sign` in the same step"
-        },
-        {
-          "name": "--name",
-          "type": "string",
-          "description": "the bundle's package name"
+          "description": "the file to write; named for the package when left out"
         },
         {
           "name": "--with-media",
           "type": "boolean",
-          "description": "the media files too; left out unless asked"
+          "description": "the media files its picks name"
         },
         {
-          "name": "--code",
-          "type": "string[]",
-          "description": "the site's own code, as globs; in place of crombolo.code in its package.json"
+          "name": "--check",
+          "type": "boolean",
+          "description": "build it and say what it holds, writing nothing"
         }
       ],
-      "errors": ["usage", "internal", "not_found", "refused"],
-      "outcomes": ["problems_found"]
+      "errors": ["usage", "internal", "not_found"]
     },
     {
-      "name": "bundle check-code",
-      "description": "check a bundle's code against this CMS",
+      "name": "bundle check",
+      "description": "check an extension package before publishing or installing it",
       "effects": "read_only",
       "cardinality": "single",
       "output_fields": [
         {
-          "name": "bundle",
-          "type": "string"
-        },
-        {
-          "name": "files",
-          "type": "integer"
-        },
-        {
-          "name": "serverBundles",
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
+          "name": "name",
+          "type": "string",
+          "nullable": true
         },
         {
           "name": "problems",
@@ -665,94 +438,10 @@
           "name": "bundle",
           "type": "string",
           "required": true,
-          "description": "the bundle package directory"
+          "description": "the package directory or .tgz"
         }
       ],
-      "errors": ["usage", "internal", "refused"]
-    },
-    {
-      "name": "bundle deploy",
-      "description": "deploy a site directory to a remote: build, check, apply its structure, content and code, restart",
-      "effects": "non_idempotent",
-      "cardinality": "single",
-      "output_fields": [
-        {
-          "name": "runId",
-          "type": "string",
-          "nullable": true
-        },
-        {
-          "name": "remote",
-          "type": "string"
-        },
-        {
-          "name": "restarted",
-          "type": "boolean"
-        },
-        {
-          "name": "counts",
-          "type": "object"
-        }
-      ],
-      "confirmation_bypass_arg": "--yes",
-      "args": [
-        {
-          "name": "dir",
-          "type": "string",
-          "description": "the site directory; this one when left out"
-        },
-        {
-          "name": "--remote",
-          "type": "string",
-          "required": true,
-          "description": "the remote to deploy to"
-        },
-        {
-          "name": "--env",
-          "type": "string",
-          "description": "the remote's environment"
-        },
-        {
-          "name": "--publish",
-          "type": "boolean",
-          "description": "publish what it applies"
-        },
-        {
-          "name": "--label",
-          "type": "string",
-          "description": "a label for the run"
-        },
-        {
-          "name": "--yes",
-          "type": "boolean",
-          "description": "don't ask before applying"
-        },
-        {
-          "name": "--no-restart",
-          "type": "boolean",
-          "description": "apply it and stop: `crombolo restart` makes it live"
-        },
-        {
-          "name": "--public-log",
-          "type": "boolean",
-          "description": "sign from a private repository anyway: Sigstore's public log records its name, workflow, ref and commit"
-        },
-        {
-          "name": "--sign",
-          "type": "boolean",
-          "description": "sign it before sending, in GitHub Actions, for a remote that takes only signed bundles"
-        }
-      ],
-      "errors": [
-        "usage",
-        "internal",
-        "auth",
-        "refused",
-        "not_found",
-        "unavailable",
-        "confirmation_required"
-      ],
-      "outcomes": ["blocked"]
+      "errors": ["usage", "internal", "not_found", "refused"]
     },
     {
       "name": "bundle digest",
@@ -856,128 +545,58 @@
       "errors": ["usage", "internal", "not_found", "auth", "refused", "unavailable"]
     },
     {
-      "name": "bundle export",
-      "description": "write a subtree as a private bundle package to move elsewhere, or as content files to edit",
-      "effects": "non_idempotent",
+      "name": "bundle grant",
+      "description": "grant an installed extension what it asks for, here or on a remote",
+      "effects": "idempotent",
       "cardinality": "single",
       "output_fields": [
         {
-          "name": "out",
+          "name": "name",
           "type": "string"
         },
         {
-          "name": "package",
-          "type": "object"
+          "name": "on",
+          "type": "boolean"
         },
         {
-          "name": "bundleId",
-          "type": "string"
-        },
-        {
-          "name": "counts",
-          "type": "object"
-        },
-        {
-          "name": "expected",
-          "type": "array",
-          "items": {
-            "type": "object"
-          }
-        },
-        {
-          "name": "content",
+          "name": "remote",
           "type": "string",
-          "enum": ["omitted", "sealed", "open"]
-        },
-        {
-          "name": "blobs",
-          "type": "object"
-        },
-        {
-          "name": "written",
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
+          "nullable": true
         }
       ],
       "args": [
         {
-          "name": "--root",
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "description": "the package name, or its bundle id"
+        },
+        {
+          "name": "--grant",
           "type": "string[]",
-          "description": "the subtree to export; repeatable"
+          "description": "a permission it asks for; name every one"
         },
         {
-          "name": "--out",
+          "name": "--act-as",
           "type": "string",
-          "description": "the directory to write the package to"
+          "description": "with actAs: whom it acts for, the calling user or a named one"
         },
         {
-          "name": "--source",
-          "type": "boolean",
-          "description": "write this site's content files instead of a package"
-        },
-        {
-          "name": "--all",
-          "type": "boolean",
-          "description": "with --source: every page, Library element and media item, with its file"
-        },
-        {
-          "name": "--only",
-          "type": "boolean",
-          "description": "the roots alone, not what is below them"
-        },
-        {
-          "name": "--drafts",
-          "type": "boolean",
-          "description": "drafts, not only what is published"
-        },
-        {
-          "name": "--with-blueprints",
-          "type": "boolean",
-          "description": "the blueprints of its types"
-        },
-        {
-          "name": "--with-media",
-          "type": "boolean",
-          "description": "with --include-content: the media files"
-        },
-        {
-          "name": "--with-members",
-          "type": "boolean",
-          "description": "members, encrypted"
-        },
-        {
-          "name": "--with-users",
-          "type": "boolean",
-          "description": "back-office users, encrypted"
-        },
-        {
-          "name": "--name",
+          "name": "--remote",
           "type": "string",
-          "description": "the package's npm name"
+          "description": "grant it on this remote instead"
         },
         {
-          "name": "--package-version",
+          "name": "--env",
           "type": "string",
-          "description": "the package's version"
-        },
-        {
-          "name": "--include-content",
-          "type": "boolean",
-          "description": "bring property values and media files, encrypted under a passphrase"
-        },
-        {
-          "name": "--allow-content-unencrypted",
-          "type": "boolean",
-          "description": "with --include-content: write them readable"
+          "description": "with --remote: the remote's environment"
         }
       ],
-      "errors": ["usage", "internal", "not_found", "refused", "auth"]
+      "errors": ["usage", "internal", "refused", "auth", "not_found", "unavailable"]
     },
     {
       "name": "bundle install",
-      "description": "add a bundle to this site, or a remote, as a dependency",
+      "description": "add an extension to this site, or a remote, as a dependency",
       "effects": "idempotent",
       "cardinality": "single",
       "output_fields": [
@@ -1019,12 +638,17 @@
           "name": "bundle",
           "type": "string",
           "required": true,
-          "description": "a package name, name@version, a packed .tgz, or with --code-into a site bundle"
+          "description": "a package name, name@version, a packed .tgz, or with --code-into a site package"
         },
         {
           "name": "--grant",
           "type": "string[]",
-          "description": "a permission its server code asks for; name every one"
+          "description": "a permission it asks for; name every one"
+        },
+        {
+          "name": "--act-as",
+          "type": "string",
+          "description": "with actAs: whom it acts for, the calling user or a named one"
         },
         {
           "name": "--apply-content",
@@ -1032,14 +656,9 @@
           "description": "apply the content it carries too"
         },
         {
-          "name": "--wire",
-          "type": "boolean",
-          "description": "turn its server code on in crombolo.config.ts, here"
-        },
-        {
           "name": "--code-into",
           "type": "string",
-          "description": "install a site bundle's own code into this empty directory"
+          "description": "install a site package's own code into this empty directory"
         },
         {
           "name": "--remote",
@@ -1153,161 +772,28 @@
       "errors": ["usage", "internal", "confirmation_required", "refused"]
     },
     {
-      "name": "bundle revert",
-      "description": "put an import back, restoring what the site served",
-      "effects": "non_idempotent",
+      "name": "bundle settings",
+      "description": "read an installed extension's settings, or set them",
+      "effects": "idempotent",
       "cardinality": "single",
       "output_fields": [
         {
-          "name": "runId",
-          "type": "string"
-        },
-        {
-          "name": "reverted",
-          "type": "string"
-        },
-        {
-          "name": "restored",
+          "name": "settings",
           "type": "array",
           "items": {
-            "type": "string"
+            "type": "object"
           }
-        },
-        {
-          "name": "recycled",
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "files",
-          "type": "object"
-        },
-        {
-          "name": "backup",
-          "type": "string",
-          "nullable": true
         }
       ],
       "args": [
         {
-          "name": "run",
+          "name": "name",
           "type": "string",
           "required": true,
-          "description": "the run id: `crombolo bundle runs` lists them"
-        },
-        {
-          "name": "--resolve",
-          "type": "string[]",
-          "description": "answer a finding: <key>=discard|skip"
-        },
-        {
-          "name": "--resolve-all",
-          "type": "string",
-          "enum": ["discard", "skip"],
-          "description": "answer every finding the same way"
-        },
-        {
-          "name": "--force",
-          "type": "boolean",
-          "description": "revert over changes made since the run"
-        },
-        {
-          "name": "--backup-taken",
-          "type": "boolean",
-          "description": "a backup was taken another way: Postgres needs this, or CROMBOLO_PG_DUMP"
-        },
-        {
-          "name": "--remote",
-          "type": "string",
-          "description": "revert it on this remote instead"
-        },
-        {
-          "name": "--env",
-          "type": "string",
-          "description": "with --remote: the remote's environment"
+          "description": "the package name, or its bundle id"
         }
       ],
       "errors": ["usage", "internal", "refused", "not_found"]
-    },
-    {
-      "name": "bundle runs",
-      "description": "the bundles applied here or on a remote, newest first",
-      "effects": "read_only",
-      "cardinality": "unbounded",
-      "output_fields": [
-        {
-          "name": "id",
-          "type": "string"
-        },
-        {
-          "name": "startedAt",
-          "type": "string"
-        },
-        {
-          "name": "direction",
-          "type": "string"
-        },
-        {
-          "name": "status",
-          "type": "string"
-        },
-        {
-          "name": "nodeCount",
-          "type": "integer"
-        },
-        {
-          "name": "bundleId",
-          "type": "string"
-        },
-        {
-          "name": "bundleLabel",
-          "type": "string",
-          "nullable": true
-        },
-        {
-          "name": "appliedBy",
-          "type": "string",
-          "nullable": true
-        }
-      ],
-      "pagination": {
-        "style": "offset",
-        "offset_arg": "--offset",
-        "limit_arg": "--limit"
-      },
-      "fields_arg": "--fields",
-      "args": [
-        {
-          "name": "--limit",
-          "type": "integer",
-          "default": 20,
-          "description": "how many to list"
-        },
-        {
-          "name": "--offset",
-          "type": "integer",
-          "default": 0,
-          "description": "how many to skip first"
-        },
-        {
-          "name": "--fields",
-          "type": "string",
-          "description": "only these fields of each item, comma-separated"
-        },
-        {
-          "name": "--remote",
-          "type": "string",
-          "description": "a remote's applies instead"
-        },
-        {
-          "name": "--env",
-          "type": "string",
-          "description": "with --remote: the remote's environment"
-        }
-      ],
-      "errors": ["usage", "internal"]
     },
     {
       "name": "bundle sign",
@@ -1349,7 +835,7 @@
     },
     {
       "name": "bundle uninstall",
-      "description": "remove an installed bundle, here or on a remote",
+      "description": "remove an installed extension, here or on a remote",
       "effects": "non_idempotent",
       "cardinality": "single",
       "output_fields": [
@@ -1383,6 +869,11 @@
           "name": "--env",
           "type": "string",
           "description": "with --remote: the remote's environment"
+        },
+        {
+          "name": "--revert-content",
+          "type": "boolean",
+          "description": "first put back the content its install applied; nothing is removed if that is refused"
         }
       ],
       "errors": ["usage", "internal", "refused", "auth", "not_found", "unavailable"]
@@ -2066,6 +1557,34 @@
         }
       ],
       "errors": ["usage", "internal", "not_found", "refused"]
+    },
+    {
+      "name": "content export",
+      "description": "write this site's content as content files, to edit and apply again",
+      "effects": "non_idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "written",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "--root",
+          "type": "string[]",
+          "description": "a subtree to write; repeatable"
+        },
+        {
+          "name": "--all",
+          "type": "boolean",
+          "description": "every page, Library element and media item, with its file"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "auth"]
     },
     {
       "name": "content find",
@@ -3180,103 +2699,6 @@
         }
       ],
       "errors": ["usage", "internal"]
-    },
-    {
-      "name": "export",
-      "description": "write the whole site to one file, to move it to another machine or host",
-      "effects": "non_idempotent",
-      "cardinality": "single",
-      "output_fields": [
-        {
-          "name": "out",
-          "type": "string"
-        },
-        {
-          "name": "package",
-          "type": "object"
-        },
-        {
-          "name": "counts",
-          "type": "object"
-        },
-        {
-          "name": "sections",
-          "type": "object"
-        },
-        {
-          "name": "media",
-          "type": "object"
-        },
-        {
-          "name": "people",
-          "type": "object"
-        },
-        {
-          "name": "anonymised",
-          "type": "integer",
-          "nullable": true
-        },
-        {
-          "name": "siteData",
-          "type": "object",
-          "nullable": true,
-          "description": "tables and rows carried; emptied names the tables that travelled empty"
-        }
-      ],
-      "args": [
-        {
-          "name": "--site",
-          "type": "boolean",
-          "required": true,
-          "description": "the whole site (required: a part of it is `bundle export`)"
-        },
-        {
-          "name": "--out",
-          "type": "string",
-          "description": "the file to write"
-        },
-        {
-          "name": "--with-media",
-          "type": "boolean",
-          "description": "the media files too; left out unless asked"
-        },
-        {
-          "name": "--drafts",
-          "type": "boolean",
-          "description": "drafts too"
-        },
-        {
-          "name": "--with-members",
-          "type": "boolean",
-          "description": "members, encrypted"
-        },
-        {
-          "name": "--with-users",
-          "type": "boolean",
-          "description": "back-office users, encrypted"
-        },
-        {
-          "name": "--with-site-data",
-          "type": "boolean",
-          "description": "the site's and its bundles' own data, encrypted"
-        },
-        {
-          "name": "--anonymise",
-          "type": "boolean",
-          "description": "replace every personal value as it writes"
-        },
-        {
-          "name": "--name",
-          "type": "string",
-          "description": "the package's npm name"
-        },
-        {
-          "name": "--package-version",
-          "type": "string",
-          "description": "the package's version"
-        }
-      ],
-      "errors": ["usage", "internal", "auth", "io"]
     },
     {
       "name": "forms field add",
@@ -4877,89 +4299,6 @@
       ],
       "errors": ["usage", "internal", "not_found"],
       "outcomes": ["problems_found"]
-    },
-    {
-      "name": "import",
-      "description": "replace this site with a whole-site file; says what first",
-      "effects": "non_idempotent",
-      "cardinality": "single",
-      "output_fields": [
-        {
-          "name": "bundle",
-          "type": "object"
-        },
-        {
-          "name": "brings",
-          "type": "object"
-        },
-        {
-          "name": "leaving",
-          "type": "object"
-        },
-        {
-          "name": "filesRemoved",
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "runId",
-          "type": "string",
-          "nullable": true
-        },
-        {
-          "name": "backup",
-          "type": "string",
-          "nullable": true
-        },
-        {
-          "name": "siteData",
-          "type": "object",
-          "nullable": true,
-          "description": "the site's own data the file carried: tables and rows written, what was skipped"
-        }
-      ],
-      "confirmation_bypass_arg": "--yes",
-      "args": [
-        {
-          "name": "file",
-          "type": "string",
-          "required": true,
-          "description": "a whole-site file (crombolo export --site)"
-        },
-        {
-          "name": "--replace",
-          "type": "boolean",
-          "description": "replace this site: what it loses is recycled, people kept"
-        },
-        {
-          "name": "--replace-all",
-          "type": "boolean",
-          "description": "make it exactly the file: what it loses is deleted, people too"
-        },
-        {
-          "name": "--yes",
-          "type": "boolean",
-          "description": "with --replace-all: don't ask"
-        },
-        {
-          "name": "--allow-missing-media",
-          "type": "boolean",
-          "description": "import media items whose files the file does not carry"
-        },
-        {
-          "name": "--exclude-people",
-          "type": "boolean",
-          "description": "leave out the members and users it carries; this site's own are untouched"
-        },
-        {
-          "name": "--backup-taken",
-          "type": "boolean",
-          "description": "a backup was taken another way: Postgres needs this, or CROMBOLO_PG_DUMP"
-        }
-      ],
-      "errors": ["usage", "internal", "confirmation_required", "refused", "auth", "not_found"]
     },
     {
       "name": "index list",
@@ -6707,6 +6046,916 @@
         }
       ],
       "errors": ["usage", "internal", "not_found", "refused"]
+    },
+    {
+      "name": "site apply",
+      "description": "apply a site package here or to a remote: checked, backed up, one transaction",
+      "effects": "idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "runId",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "bundle",
+          "type": "object",
+          "nullable": true
+        },
+        {
+          "name": "counts",
+          "type": "object"
+        },
+        {
+          "name": "findings",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "outstanding",
+          "type": "integer"
+        },
+        {
+          "name": "backup",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "published",
+          "type": "integer"
+        },
+        {
+          "name": "saved",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "remote",
+          "type": "string",
+          "nullable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "bundle",
+          "type": "string",
+          "description": "a site package's directory or .tgz, or `.` for this site's content files"
+        },
+        {
+          "name": "--under",
+          "type": "string",
+          "description": "place the bundle under this page"
+        },
+        {
+          "name": "--resolve",
+          "type": "string[]",
+          "description": "answer a finding: <key>=take-bundle|keep-local|skip, or <key>/<property>[@<culture>]=take-bundle|keep-local"
+        },
+        {
+          "name": "--resolve-all",
+          "type": "string",
+          "enum": ["take-bundle", "keep-local", "skip"],
+          "description": "answer every finding the same way"
+        },
+        {
+          "name": "--allow-missing-blobs",
+          "type": "boolean",
+          "description": "import media items whose files the bundle does not carry"
+        },
+        {
+          "name": "--publish",
+          "type": "boolean",
+          "description": "publish what it imports"
+        },
+        {
+          "name": "--no-schema",
+          "type": "boolean",
+          "description": "decline the schema the bundle carries"
+        },
+        {
+          "name": "--no-files",
+          "type": "boolean",
+          "description": "decline the views, styles and scripts it carries"
+        },
+        {
+          "name": "--replace-files",
+          "type": "boolean",
+          "description": "allow replacing files this site has; the originals are kept for a revert"
+        },
+        {
+          "name": "--exclude-people",
+          "type": "boolean",
+          "description": "leave out the members and users it carries; this site's own are untouched"
+        },
+        {
+          "name": "--label",
+          "type": "string",
+          "description": "a label for the run"
+        },
+        {
+          "name": "--backup-taken",
+          "type": "boolean",
+          "description": "a backup was taken another way: Postgres needs this, or CROMBOLO_PG_DUMP"
+        },
+        {
+          "name": "--dry-run",
+          "type": "boolean",
+          "description": "say what it would do, and change nothing"
+        },
+        {
+          "name": "--save",
+          "type": "boolean",
+          "description": "with --dry-run: write the answers into the package"
+        },
+        {
+          "name": "--remote",
+          "type": "string",
+          "description": "apply it on this remote instead"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "with --remote: the remote's environment"
+        },
+        {
+          "name": "--structure",
+          "type": "boolean",
+          "description": "with --remote, from a site directory: send its schema, views, styles and code too, not its content alone"
+        }
+      ],
+      "errors": ["usage", "internal", "refused", "auth", "not_found", "unavailable"],
+      "outcomes": ["blocked"]
+    },
+    {
+      "name": "site build",
+      "description": "a site package from a site directory: its schema, views, styles, content and code",
+      "effects": "idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "out",
+          "type": "string"
+        },
+        {
+          "name": "nodes",
+          "type": "integer"
+        },
+        {
+          "name": "code",
+          "type": "integer"
+        },
+        {
+          "name": "findings",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "fields": [
+              {
+                "name": "file",
+                "type": "string"
+              },
+              {
+                "name": "line",
+                "type": "integer"
+              },
+              {
+                "name": "code",
+                "type": "string"
+              },
+              {
+                "name": "message",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        {
+          "name": "counts",
+          "type": "object",
+          "fields": [
+            {
+              "name": "content",
+              "type": "integer"
+            },
+            {
+              "name": "library",
+              "type": "integer"
+            },
+            {
+              "name": "media",
+              "type": "integer"
+            }
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "dir",
+          "type": "string",
+          "description": "the site directory; this one when left out"
+        },
+        {
+          "name": "--template",
+          "type": "string",
+          "description": "a starter site the CLI ships, instead of a directory"
+        },
+        {
+          "name": "--out",
+          "type": "string",
+          "description": "the directory to write it to"
+        },
+        {
+          "name": "--check",
+          "type": "boolean",
+          "description": "build it, report its problems, and write nothing"
+        },
+        {
+          "name": "--public-log",
+          "type": "boolean",
+          "description": "sign from a private repository anyway: Sigstore's public log records its name, workflow, ref and commit"
+        },
+        {
+          "name": "--sign",
+          "type": "boolean",
+          "description": "sign it once written, in GitHub Actions: `bundle sign` in the same step"
+        },
+        {
+          "name": "--name",
+          "type": "string",
+          "description": "the site package's name"
+        },
+        {
+          "name": "--with-media",
+          "type": "boolean",
+          "description": "the media files too; left out unless asked"
+        },
+        {
+          "name": "--code",
+          "type": "string[]",
+          "description": "the site's own code, as globs; in place of crombolo.code in its package.json"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "refused"],
+      "outcomes": ["problems_found"]
+    },
+    {
+      "name": "site check",
+      "description": "what applying a site package would do, here or on a remote, changing nothing",
+      "effects": "idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "runId",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "bundle",
+          "type": "object",
+          "nullable": true
+        },
+        {
+          "name": "counts",
+          "type": "object"
+        },
+        {
+          "name": "findings",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "outstanding",
+          "type": "integer"
+        },
+        {
+          "name": "backup",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "published",
+          "type": "integer"
+        },
+        {
+          "name": "saved",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "remote",
+          "type": "string",
+          "nullable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "bundle",
+          "type": "string",
+          "description": "a site package's directory or .tgz, or `.` for this site's content files"
+        },
+        {
+          "name": "--under",
+          "type": "string",
+          "description": "place the bundle under this page"
+        },
+        {
+          "name": "--resolve",
+          "type": "string[]",
+          "description": "answer a finding: <key>=take-bundle|keep-local|skip, or <key>/<property>[@<culture>]=take-bundle|keep-local"
+        },
+        {
+          "name": "--resolve-all",
+          "type": "string",
+          "enum": ["take-bundle", "keep-local", "skip"],
+          "description": "answer every finding the same way"
+        },
+        {
+          "name": "--allow-missing-blobs",
+          "type": "boolean",
+          "description": "import media items whose files the bundle does not carry"
+        },
+        {
+          "name": "--publish",
+          "type": "boolean",
+          "description": "publish what it imports"
+        },
+        {
+          "name": "--no-schema",
+          "type": "boolean",
+          "description": "decline the schema the bundle carries"
+        },
+        {
+          "name": "--no-files",
+          "type": "boolean",
+          "description": "decline the views, styles and scripts it carries"
+        },
+        {
+          "name": "--replace-files",
+          "type": "boolean",
+          "description": "allow replacing files this site has; the originals are kept for a revert"
+        },
+        {
+          "name": "--exclude-people",
+          "type": "boolean",
+          "description": "leave out the members and users it carries; this site's own are untouched"
+        },
+        {
+          "name": "--label",
+          "type": "string",
+          "description": "a label for the run"
+        },
+        {
+          "name": "--backup-taken",
+          "type": "boolean",
+          "description": "a backup was taken another way: Postgres needs this, or CROMBOLO_PG_DUMP"
+        },
+        {
+          "name": "--dry-run",
+          "type": "boolean",
+          "description": "say what it would do, and change nothing"
+        },
+        {
+          "name": "--save",
+          "type": "boolean",
+          "description": "with --dry-run: write the answers into the package"
+        },
+        {
+          "name": "--remote",
+          "type": "string",
+          "description": "apply it on this remote instead"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "with --remote: the remote's environment"
+        },
+        {
+          "name": "--structure",
+          "type": "boolean",
+          "description": "with --remote, from a site directory: send its schema, views, styles and code too, not its content alone"
+        }
+      ],
+      "errors": ["usage", "internal", "refused", "auth", "not_found", "unavailable"],
+      "outcomes": ["blocked"]
+    },
+    {
+      "name": "site check-code",
+      "description": "check a site package's code against this CMS",
+      "effects": "read_only",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "bundle",
+          "type": "string"
+        },
+        {
+          "name": "files",
+          "type": "integer"
+        },
+        {
+          "name": "serverBundles",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "problems",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "bundle",
+          "type": "string",
+          "required": true,
+          "description": "the site package's directory"
+        }
+      ],
+      "errors": ["usage", "internal", "refused"]
+    },
+    {
+      "name": "site deploy",
+      "description": "deploy a site directory to a remote: build, check, apply its structure, content and code, restart",
+      "effects": "non_idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "runId",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "remote",
+          "type": "string"
+        },
+        {
+          "name": "restarted",
+          "type": "boolean"
+        },
+        {
+          "name": "counts",
+          "type": "object"
+        }
+      ],
+      "confirmation_bypass_arg": "--yes",
+      "args": [
+        {
+          "name": "dir",
+          "type": "string",
+          "description": "the site directory; this one when left out"
+        },
+        {
+          "name": "--remote",
+          "type": "string",
+          "required": true,
+          "description": "the remote to deploy to"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the remote's environment"
+        },
+        {
+          "name": "--publish",
+          "type": "boolean",
+          "description": "publish what it applies"
+        },
+        {
+          "name": "--label",
+          "type": "string",
+          "description": "a label for the run"
+        },
+        {
+          "name": "--yes",
+          "type": "boolean",
+          "description": "don't ask before applying"
+        },
+        {
+          "name": "--no-restart",
+          "type": "boolean",
+          "description": "apply it and stop: `crombolo restart` makes it live"
+        },
+        {
+          "name": "--public-log",
+          "type": "boolean",
+          "description": "sign from a private repository anyway: Sigstore's public log records its name, workflow, ref and commit"
+        },
+        {
+          "name": "--sign",
+          "type": "boolean",
+          "description": "sign it before sending, in GitHub Actions, for a remote that takes only signed bundles"
+        }
+      ],
+      "errors": [
+        "usage",
+        "internal",
+        "auth",
+        "refused",
+        "not_found",
+        "unavailable",
+        "confirmation_required"
+      ],
+      "outcomes": ["blocked"]
+    },
+    {
+      "name": "site export",
+      "description": "write the site as a site package, to move it to another machine or host, or a subtree of it",
+      "effects": "non_idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "out",
+          "type": "string"
+        },
+        {
+          "name": "package",
+          "type": "object"
+        },
+        {
+          "name": "counts",
+          "type": "object"
+        },
+        {
+          "name": "sections",
+          "type": "object",
+          "nullable": true
+        },
+        {
+          "name": "media",
+          "type": "object",
+          "nullable": true
+        },
+        {
+          "name": "people",
+          "type": "object",
+          "nullable": true
+        },
+        {
+          "name": "anonymised",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "siteData",
+          "type": "object",
+          "nullable": true,
+          "description": "tables and rows carried; emptied names the tables that travelled empty"
+        },
+        {
+          "name": "bundleId",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "expected",
+          "type": "array",
+          "nullable": true,
+          "items": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "content",
+          "type": "string",
+          "nullable": true,
+          "enum": ["omitted", "sealed", "open"]
+        },
+        {
+          "name": "blobs",
+          "type": "object",
+          "nullable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "--out",
+          "type": "string",
+          "description": "the file to write; with --subtree, the directory"
+        },
+        {
+          "name": "--subtree",
+          "type": "string[]",
+          "description": "a subtree to export instead of the whole site; repeatable"
+        },
+        {
+          "name": "--only",
+          "type": "boolean",
+          "description": "with --subtree: the roots alone, not what is below them"
+        },
+        {
+          "name": "--with-blueprints",
+          "type": "boolean",
+          "description": "with --subtree: the blueprints of its types"
+        },
+        {
+          "name": "--with-media",
+          "type": "boolean",
+          "description": "the media files too; left out unless asked"
+        },
+        {
+          "name": "--drafts",
+          "type": "boolean",
+          "description": "drafts too"
+        },
+        {
+          "name": "--with-members",
+          "type": "boolean",
+          "description": "members, encrypted"
+        },
+        {
+          "name": "--with-users",
+          "type": "boolean",
+          "description": "back-office users, encrypted"
+        },
+        {
+          "name": "--with-site-data",
+          "type": "boolean",
+          "description": "the site's and its extensions' own data, encrypted"
+        },
+        {
+          "name": "--anonymise",
+          "type": "boolean",
+          "description": "replace every personal value as it writes"
+        },
+        {
+          "name": "--name",
+          "type": "string",
+          "description": "the package's npm name"
+        },
+        {
+          "name": "--package-version",
+          "type": "string",
+          "description": "the package's version"
+        },
+        {
+          "name": "--include-content",
+          "type": "boolean",
+          "description": "bring property values and media files, encrypted under a passphrase"
+        },
+        {
+          "name": "--allow-content-unencrypted",
+          "type": "boolean",
+          "description": "with --include-content: write them readable"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "refused", "auth", "io"]
+    },
+    {
+      "name": "site import",
+      "description": "replace this site with a whole-site package; says what first",
+      "effects": "non_idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "bundle",
+          "type": "object"
+        },
+        {
+          "name": "brings",
+          "type": "object"
+        },
+        {
+          "name": "leaving",
+          "type": "object"
+        },
+        {
+          "name": "filesRemoved",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "runId",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "backup",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "siteData",
+          "type": "object",
+          "nullable": true,
+          "description": "the site's own data the file carried: tables and rows written, what was skipped"
+        }
+      ],
+      "confirmation_bypass_arg": "--yes",
+      "args": [
+        {
+          "name": "file",
+          "type": "string",
+          "required": true,
+          "description": "a whole-site file (crombolo site export)"
+        },
+        {
+          "name": "--replace",
+          "type": "boolean",
+          "description": "replace this site: what it loses is recycled, people kept"
+        },
+        {
+          "name": "--replace-all",
+          "type": "boolean",
+          "description": "make it exactly the file: what it loses is deleted, people too"
+        },
+        {
+          "name": "--yes",
+          "type": "boolean",
+          "description": "with --replace-all: don't ask"
+        },
+        {
+          "name": "--allow-missing-media",
+          "type": "boolean",
+          "description": "import media items whose files the file does not carry"
+        },
+        {
+          "name": "--exclude-people",
+          "type": "boolean",
+          "description": "leave out the members and users it carries; this site's own are untouched"
+        },
+        {
+          "name": "--backup-taken",
+          "type": "boolean",
+          "description": "a backup was taken another way: Postgres needs this, or CROMBOLO_PG_DUMP"
+        }
+      ],
+      "errors": ["usage", "internal", "confirmation_required", "refused", "auth", "not_found"]
+    },
+    {
+      "name": "site revert",
+      "description": "put an import back, restoring what the site served",
+      "effects": "non_idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "runId",
+          "type": "string"
+        },
+        {
+          "name": "reverted",
+          "type": "string"
+        },
+        {
+          "name": "restored",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "recycled",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "files",
+          "type": "object"
+        },
+        {
+          "name": "backup",
+          "type": "string",
+          "nullable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "run",
+          "type": "string",
+          "required": true,
+          "description": "the run id: `crombolo site runs` lists them"
+        },
+        {
+          "name": "--resolve",
+          "type": "string[]",
+          "description": "answer a finding: <key>=discard|skip"
+        },
+        {
+          "name": "--resolve-all",
+          "type": "string",
+          "enum": ["discard", "skip"],
+          "description": "answer every finding the same way"
+        },
+        {
+          "name": "--force",
+          "type": "boolean",
+          "description": "revert over changes made since the run"
+        },
+        {
+          "name": "--backup-taken",
+          "type": "boolean",
+          "description": "a backup was taken another way: Postgres needs this, or CROMBOLO_PG_DUMP"
+        },
+        {
+          "name": "--remote",
+          "type": "string",
+          "description": "revert it on this remote instead"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "with --remote: the remote's environment"
+        }
+      ],
+      "errors": ["usage", "internal", "refused", "not_found"]
+    },
+    {
+      "name": "site runs",
+      "description": "the site packages applied here or on a remote, and the content extensions brought, newest first",
+      "effects": "read_only",
+      "cardinality": "unbounded",
+      "output_fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "startedAt",
+          "type": "string"
+        },
+        {
+          "name": "direction",
+          "type": "string"
+        },
+        {
+          "name": "status",
+          "type": "string"
+        },
+        {
+          "name": "nodeCount",
+          "type": "integer"
+        },
+        {
+          "name": "bundleId",
+          "type": "string"
+        },
+        {
+          "name": "bundleLabel",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "appliedBy",
+          "type": "string",
+          "nullable": true
+        }
+      ],
+      "pagination": {
+        "style": "offset",
+        "offset_arg": "--offset",
+        "limit_arg": "--limit"
+      },
+      "fields_arg": "--fields",
+      "args": [
+        {
+          "name": "--limit",
+          "type": "integer",
+          "default": 20,
+          "description": "how many to list"
+        },
+        {
+          "name": "--offset",
+          "type": "integer",
+          "default": 0,
+          "description": "how many to skip first"
+        },
+        {
+          "name": "--fields",
+          "type": "string",
+          "description": "only these fields of each item, comma-separated"
+        },
+        {
+          "name": "--remote",
+          "type": "string",
+          "description": "a remote's applies instead"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "with --remote: the remote's environment"
+        }
+      ],
+      "errors": ["usage", "internal"]
     },
     {
       "name": "site show",
@@ -10352,7 +10601,7 @@
     {
       "code": 21,
       "name": "blocked",
-      "description": "Something must be resolved by a person first: `bundle apply --dry-run`, `upgrade check`."
+      "description": "Something must be resolved by a person first: `site apply --dry-run`, `upgrade check`."
     }
   ]
 }

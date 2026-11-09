@@ -454,8 +454,8 @@ default, and each level takes everything the one before it does (story 167):
 starting and names the new setting. A developer's `crombolo` can then:
 - sign in with a code they approve in the back office;
 - pull a sealed, anonymised copy of the site;
-- apply a bundle there: `crombolo bundle apply --remote <name>`, with
-  `bundle runs --remote <name>` and `bundle revert <run> --remote <name>`;
+- apply a bundle there: `crombolo site apply --remote <name>`, with
+  `site runs --remote <name>` and `site revert <run> --remote <name>`;
 - push the whole site back. A push to a protected environment needs its own
   permission, and with `CROMBOLO_REMOTE_APPROVALS` it waits for someone else
   to approve it.
@@ -571,7 +571,7 @@ to stderr in either mode. Text stays the default when the output is piped, so
 nothing that reads it today changes. `crombolo schema` describes every command
 for a machine as a [clispec](https://clispec.dev) v0.3 document: its arguments,
 whether it changes anything, what it prints, how it fails. `crombolo schema
-bundle apply` narrows it to one. It reads no site, no network and no sign-in.
+site apply` narrows it to one. It reads no site, no network and no sign-in.
 
 A command that would ask first refuses at once when there is no terminal, with
 `confirmation_required` and the flag that answers it (`--yes`, or `--auto-approve`
@@ -591,7 +591,7 @@ worked example. CI runs it, one step per test, in this order:
 | A page type and its view | `crombolo types new content-type page --at-root` |
 | Another property | `crombolo types property add page body --type textarea` |
 | Check | `crombolo types check` |
-| The home page | `content/pages/home.toml`, then `crombolo bundle build --check` and `bundle apply` |
+| The home page | `content/pages/home.toml`, then `crombolo site build --check` and `site apply` |
 | Publish | `crombolo content publish /Home` |
 | An image in a folder | `crombolo media import <dir>`, then `media move` |
 | An administrator | `crombolo admin reset-password -o json` |
@@ -664,8 +664,8 @@ below itself) stops the lot, and the failure lists each one and why.
 operator's name, and a move records the redirects an editor's move would. An
 item already where it was asked to go is reported unchanged.
 
-**Content files** (stories 163 and 167): `crombolo bundle build --check`,
-`bundle apply`, `bundle export --source` and `start --bundle .` turn a site's
+**Content files** (stories 163 and 167): `crombolo site build --check`,
+`site apply`, `content export` and `start --bundle .` turn a site's
 `content/` directory into content through the import, three-way on every apply
 ([`bundles.md`](bundles.md#content-files)).
 
@@ -786,7 +786,7 @@ its findings are its output. `packages/cli/src/errors.ts` is this table.
 | 9 | `unavailable` | the database or the remote could not be reached |
 | 10 | `io` | a file could not be read or written |
 | 20 | outcome `problems_found` | `status`, `types check`, `components check` found problems |
-| 21 | outcome `blocked` | `bundle apply --dry-run`, `upgrade check`: a person must resolve something first |
+| 21 | outcome `blocked` | `site apply --dry-run`, `upgrade check`: a person must resolve something first |
 | 130 | `interrupted` | stopped by a signal |
 
 **Changed in 0.15.0.** Before it, nearly every failure exited 1, a refusal before
@@ -1194,7 +1194,7 @@ as NFS. A change reaches them through the database, not the folder (story 285): 
 file watcher sees nothing another machine writes to a network file system.
 
 - **An import or a revert tells every node,** from whichever process ran it: a
-  `bundle apply` or `import` in a cron job or one-off container, the back office,
+  `site apply` or `import` in a cron job or one-off container, the back office,
   or a push. Nothing restarts. A file section the import did not change is not
   mentioned.
 - **What a node does:** it takes a new snapshot of its views, hashes its stylesheets

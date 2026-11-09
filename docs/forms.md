@@ -154,13 +154,13 @@ mandatory-message = "Please tell us {#contact.nameNeeded}"
   Any other default is a value the field compares, so it stays as written. For a choice list, use
   a dictionary source.
 - **A key that names no item shows as written,** and so does any `#` outside braces: "#1 choice"
-  is only text. `crombolo bundle build --check` reports a `{#key}` that matches nothing in
+  is only text. `crombolo site build --check` reports a `{#key}` that matches nothing in
   `content/dictionary.toml`, when a site has that file.
 - **From `#key` to `{#key}`.** Story 293 wrote a whole text of `#key`. On a site whose schema it
   may write, the server rewrites each one that names an item as it starts, on the lines that hold
   words, so a choice's value and the file's comments stay as they are. A site whose schema is
   read-only, or kept in a shared store, still reads `#key` for this release, and
-  `bundle build --check` reports each one as `bare-dictionary-word`. The designer writes `{#key}`
+  `site build --check` reports each one as `bare-dictionary-word`. The designer writes `{#key}`
   on its next save.
 - **One resolution.** The published cache fills in a form's words as it fills in its choices, so
   `<Form>`, the Delivery API and the submission check read the same text.

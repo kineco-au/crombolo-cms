@@ -119,7 +119,7 @@ export interface CommandSource {
   commands: readonly Command.Cached[]
 }
 
-/** The whole CLI, or the commands under `path` (`content`, `bundle apply`). */
+/** The whole CLI, or the commands under `path` (`content`, `site apply`). */
 export function clispecDocument(config: CommandSource, path: readonly string[] = []) {
   const prefix = path.join(' ')
   const commands = config.commands

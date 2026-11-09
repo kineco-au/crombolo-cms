@@ -79,9 +79,11 @@ describe('the sites', () => {
         dependencies: Record<string, string>
       }
       const config = readFileSync(join(site.dir, 'crombolo.config.ts'), 'utf8')
-      for (const bundle of site.bundles as { package: string; import: string }[]) {
+      // Granted by the site's code under `extensions`, with nothing imported (story 310).
+      for (const bundle of site.bundles as { package: string; id: string }[]) {
         expect(Object.keys(manifest.dependencies)).toContain(bundle.package)
-        expect(config).toContain(`import { ${bundle.import} } from '${bundle.package}'`)
+        expect(config).toContain(`${bundle.id}: { grant: [`)
+        expect(config).not.toContain(`from '${bundle.package}'`)
       }
     },
   )
@@ -117,7 +119,11 @@ describe('staging a site as a template', () => {
     stageTemplates(into, [site])
     const template = findTemplate('demo/harbourstone', into)
     expect(template?.serverBundles).toEqual([
-      { package: '@crombolo/simple-redirects', import: 'redirects' },
+      {
+        package: '@crombolo/simple-redirects',
+        id: 'redirects',
+        grant: ['redirects.read', 'redirects.write', 'content.read'],
+      },
     ])
     const dir = join(into, 'demo', 'harbourstone')
     // The content is its files, content/ among them; there is no bundle (stories 164, 167).

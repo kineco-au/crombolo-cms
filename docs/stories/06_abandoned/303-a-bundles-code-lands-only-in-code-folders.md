@@ -3,6 +3,10 @@
 **Epic:** I — Hardening · **Priority:** could · **Size:** S
 **Depends on:** —
 
+**Superseded (2026-11-09)** by stories 306 and 307. A site package may replace the site's
+config, since that is what it is for, and says so. An extension writes none of the site's code.
+See `docs/extension-threat-model.md`.
+
 ## Story
 
 As someone who installs a bundle's code, I want it written only where the site keeps

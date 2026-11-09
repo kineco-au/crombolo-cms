@@ -27,7 +27,7 @@ export const CI_PERMISSIONS = [
     verb: 'Crombolo.Remote.InstallCode',
     label: 'Install code',
     explain:
-      'Install bundles and the code a bundle carries, which runs on the server after a restart.',
+      'Install extensions, and the code a site package carries, which runs on the server after a restart.',
   },
 ]
 

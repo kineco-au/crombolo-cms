@@ -89,6 +89,7 @@ async function sealedMembers(source: Harness): Promise<ContentSet> {
     label: 'Members',
     private: true,
     peerRange: '*',
+    bundleType: 'site',
   })) {
     mkdirSync(join(dir, file.path, '..'), { recursive: true })
     writeFileSync(join(dir, file.path), file.bytes ?? (file.text as string))

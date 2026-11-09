@@ -269,7 +269,9 @@ describe(`the dry run predicts publish refusals (${dialectUnderTest})`, () => {
       version: '1.0.0',
       id: 'rehearsal',
       label: 'Rehearsal',
+      private: true,
       peerRange: `^${VERSION}`,
+      bundleType: 'site' as const,
     }
     for (const file of writeBundlePackage(writeBundle(set), info)) {
       mkdirSync(join(dir, file.path, '..'), { recursive: true })

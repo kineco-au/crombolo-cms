@@ -127,6 +127,16 @@ export async function undoMediaMemberUploads(db: Db): Promise<void> {
   // come after it; 056's columns go with 054's table.
   // 059, forms in the Library (story 239), 058, bundle schema picks (story
   // 226), and 057, site settings types (story 058): columns on tables that stay.
+  // 067, extensions' settings (story 310): a table of its own.
+  await db.exec('DROP TABLE IF EXISTS extension_setting')
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddExtensionSettings'")
+  // 066, what a grant reaches (story 308): columns on a table that stays.
+  await db.exec('ALTER TABLE bundle_grant DROP COLUMN act_as')
+  await db.exec('ALTER TABLE bundle_grant DROP COLUMN origins')
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddBundleGrantReach'")
+  // 065, what kind of bundle a run applied (story 306): a column on a table that stays.
+  await db.exec('ALTER TABLE content_transfer_run DROP COLUMN bundle_type')
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddTransferRunBundleType'")
   // 063, search removals (story 273): a table of its own.
   await db.exec('DROP TABLE IF EXISTS search_removal')
   await db.exec("DELETE FROM migration_history WHERE name = 'AddSearchRemovals'")

@@ -165,6 +165,7 @@ import { createPublishedContentSource, loadDraftNode } from './adapters/document
 import type { Approvals } from './approvals.ts'
 import { handleApprovalsApi } from './approvals-api.ts'
 import { type BundleActor, createBundleAdmin } from './bundle-admin.ts'
+import { actAsChoice, actingPrincipalOf } from './bundle-api.ts'
 import type { BundleGrants } from './bundle-grants.ts'
 import { CommandError, installBundleContent } from './bundle-install.ts'
 import { BUNDLES_CHANGED_EVENT, type BundleReload, createBundleReloader } from './bundle-reload.ts'
@@ -451,6 +452,9 @@ export async function createServer(
     wake,
     urlChange,
   } = core
+  /** The extensions that are on: granted, and not turned off (story 309). */
+  const onExtensions = () =>
+    extensions.list().filter((extension) => bundleGrants.isOn(extension.bundle.id))
   // What this process answers: only `web` serves no back office.
   const servesBackOffice = config.role !== 'web'
   // A host that installs packages itself calls `reloadBundles()` (story 181); the
@@ -481,12 +485,13 @@ export async function createServer(
     applyContent: async (packageName) => {
       // A package from the marketplace is for anyone, so nothing in it can be
       // sealed; one that is is refused rather than half applied.
-      const result = await installBundleContent(db, config, { bundle: packageName }).catch(
-        (error: unknown) => {
-          if (error instanceof CommandError) return error
-          throw error
-        },
-      )
+      const result = await installBundleContent(db, config, {
+        bundle: packageName,
+        expects: 'extension',
+      }).catch((error: unknown) => {
+        if (error instanceof CommandError) return error
+        throw error
+      })
       if (result instanceof CommandError)
         return { applied: false, message: `Its content was not applied: ${result.message}` }
       if (!result.runId) {
@@ -613,6 +618,9 @@ export async function createServer(
    * non-browser client may still present a real bearer token.
    */
   async function authenticate(request: Request): Promise<Principal | undefined> {
+    // An extension's call through `api`, made in this process (story 308).
+    const acting = actingPrincipalOf(request)
+    if (acting) return acting
     const header = request.headers.get('authorization')
     const bearer = header?.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : undefined
     const fromCookie = !bearer || bearer === REDACTED
@@ -1289,17 +1297,8 @@ export async function createServer(
       }
       return hidden
     },
-    // A server bundle's screens show only while it is on (story 222).
-    extensions: {
-      ...extensions,
-      list: () =>
-        extensions
-          .list()
-          .filter(
-            (extension) =>
-              !extension.bundle.carries.server || bundleGrants.isOn(extension.bundle.id),
-          ),
-    },
+    // An extension's screens show only while it is on: granted, and not turned off (story 309).
+    extensions: { ...extensions, list: onExtensions },
     db,
     webhooks,
     contentEvents,
@@ -1432,7 +1431,7 @@ export async function createServer(
   const hostTokenPath = `${paths.pluginPath}/api/host-token`
   const contentQueryPath = `${paths.pluginPath}/api/content-query`
   const bundleInstallPaths = new Set(
-    ['install', 'uninstall', 'disable', 'enable'].map(
+    ['install', 'uninstall', 'disable', 'enable', 'grant', 'settings'].map(
       (action) => `${paths.pluginPath}/api/bundles/${action}`,
     ),
   )
@@ -1463,6 +1462,8 @@ export async function createServer(
    * a request on the new paths is routed as the contract names it, and an
    * address it is answered with points back at the new paths.
    */
+  core.setBundleDispatch((request) => fetch(request))
+
   async function fetch(request: Request): Promise<Response> {
     // Story 262: every request a span, continuing a trace only from a trusted proxy.
     const pathname = new URL(request.url).pathname
@@ -2134,8 +2135,8 @@ export async function createServer(
           name?: unknown
           version?: unknown
           applyContent?: unknown
-          acceptServerCode?: unknown
           grant?: unknown
+          actAs?: unknown
         }
         const name = typeof body.name === 'string' ? body.name : ''
         const actor = actorOf(principal, request)
@@ -2145,7 +2146,7 @@ export async function createServer(
                 name,
                 version: typeof body.version === 'string' ? body.version : undefined,
                 applyContent: body.applyContent !== false,
-                acceptServerCode: body.acceptServerCode === true,
+                actAs: actAsChoice(body.actAs, principal.id),
                 grant: Array.isArray(body.grant)
                   ? body.grant.filter((p): p is string => typeof p === 'string')
                   : [],
@@ -2168,6 +2169,51 @@ export async function createServer(
           actorOf(principal, request),
           typeof body.id === 'string' ? body.id : '',
           action === 'enable',
+        )
+        return Response.json(outcome, { status })
+      }
+
+      // Story 310: an extension's settings, those the config does not lock, administrators only.
+      if (action === 'settings' && request.method === 'POST') {
+        if (!principal.isAdmin)
+          return Response.json(
+            { ok: false, message: "Only an administrator changes an extension's settings." },
+            { status: 403 },
+          )
+        const body = (await request.json().catch(() => ({}))) as { id?: unknown; values?: unknown }
+        const values =
+          body.values && typeof body.values === 'object' && !Array.isArray(body.values)
+            ? (body.values as Record<string, unknown>)
+            : {}
+        const { status, ...outcome } = await bundleAdmin.setSettings(
+          actorOf(principal, request),
+          typeof body.id === 'string' ? body.id : '',
+          values,
+        )
+        return Response.json(outcome, { status })
+      }
+
+      // Story 309: granting an installed extension what it asks for, administrators only.
+      if (action === 'grant' && request.method === 'POST') {
+        if (!principal.isAdmin)
+          return Response.json(
+            { ok: false, message: 'Only an administrator grants an extension.' },
+            { status: 403 },
+          )
+        const body = (await request.json().catch(() => ({}))) as {
+          id?: unknown
+          grant?: unknown
+          actAs?: unknown
+        }
+        const { status, ...outcome } = await bundleAdmin.grant(
+          actorOf(principal, request),
+          typeof body.id === 'string' ? body.id : '',
+          {
+            grant: Array.isArray(body.grant)
+              ? body.grant.filter((p): p is string => typeof p === 'string')
+              : [],
+            actAs: actAsChoice(body.actAs, principal.id),
+          },
         )
         return Response.json(outcome, { status })
       }
@@ -2837,8 +2883,9 @@ export async function createServer(
       })
     }
 
+    // Nor are its files served while it is off (story 309).
     const staticMatch = resolveStaticFile(paths, pathname, {
-      extensions: extensions.list(),
+      extensions: onExtensions(),
       immutable: config.immutableAssets ?? !config.development,
     })
     if (staticMatch) {
@@ -2889,7 +2936,7 @@ export async function createServer(
           },
         })
       }
-      const { importmap } = collectManifests(paths, extensions.list())
+      const { importmap } = collectManifests(paths, onExtensions())
       return html(
         renderDeviceShell(paths, importmap, {
           title: config.siteName,
@@ -2913,7 +2960,7 @@ export async function createServer(
             location: `${paths.backOfficePath}/login?returnUrl=${encodeURIComponent(`${pathname}${url.search}`)}`,
           },
         })
-      const { importmap } = collectManifests(paths, extensions.list())
+      const { importmap } = collectManifests(paths, onExtensions())
       return html(
         renderRemoteApprovalShell(paths, importmap, {
           title: config.siteName,
@@ -2923,7 +2970,7 @@ export async function createServer(
     }
 
     if (pathname === `${paths.backOfficePath}/login`) {
-      const { importmap } = collectManifests(paths, extensions.list())
+      const { importmap } = collectManifests(paths, onExtensions())
       return html(
         renderLoginShell(paths, importmap, {
           defaultUiLanguage: config.defaultUiLanguage,
@@ -2953,7 +3000,7 @@ export async function createServer(
     }
 
     if (isSpaRoute(paths.backOfficePath, pathname)) {
-      const { importmap } = collectManifests(paths, extensions.list())
+      const { importmap } = collectManifests(paths, onExtensions())
       return html(
         renderBackOfficeShell(paths, importmap, {
           defaultUiLanguage: config.defaultUiLanguage,

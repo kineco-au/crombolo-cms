@@ -20,6 +20,7 @@ import {
   importBundle,
   loadBundle,
   newSeal,
+  OLD_LAYOUT,
   openBundle,
   revertRun,
   writeBundle,
@@ -172,7 +173,7 @@ describe('the format', () => {
     const folder = await source.folder('Outer')
     const quote = await source.element('A quote', folder)
     const dir = join(source.root, 'bundle')
-    place(writeBundle(await exported(source, [quote])), dir)
+    place(writeBundle(await exported(source, [quote]), undefined, [], { bundleType: 'site' }), dir)
     return { source, dir, folder, quote }
   }
 
@@ -194,12 +195,18 @@ describe('the format', () => {
     const set = await exported(source, [await source.element('A quote', folder)])
 
     const omitted = join(source.root, 'omitted')
-    place(writeBundle(set, undefined, undefined, { content: 'omitted' }), omitted)
+    place(
+      writeBundle(set, undefined, undefined, { content: 'omitted', bundleType: 'site' }),
+      omitted,
+    )
     expect(loadBundle(omitted).set?.nodes.find((n) => n.key === folder)?.parent).toBeNull()
 
     const sealed = join(source.root, 'sealed')
     const seal = newSeal('a long passphrase', { n: 2 ** 12, r: 8, p: 1 })
-    place(writeBundle(set, undefined, undefined, { content: 'sealed', seal }), sealed)
+    place(
+      writeBundle(set, undefined, undefined, { content: 'sealed', seal, bundleType: 'site' }),
+      sealed,
+    )
     const opened = openBundle(loadBundle(sealed), 'a long passphrase')
     expect(opened.set.nodes.find((n) => n.key === folder)?.kind).toBe('element-folder')
   })
@@ -214,44 +221,14 @@ describe('the format', () => {
     expect(loaded.problems.map((p) => p.message).join(' ')).toContain('holds no values')
   })
 
-  test('a format 5 bundle still loads and imports as it did', async () => {
+  test('a format 5 bundle is refused, saying to build it again (story 306)', async () => {
     const source = await site()
-    const folder = await source.folder('Outer')
-    const quote = await source.element('A quote', folder)
+    const quote = await source.element('A quote', await source.folder('Outer'))
     const dir = join(source.root, 'bundle')
-    const set = await exported(source, [quote])
-    place(
-      writeBundle({
-        ...set,
-        nodes: set.nodes.filter((n) => n.kind !== 'element-folder'),
-        manifest: {
-          ...set.manifest,
-          formatVersion: 5,
-          counts: { element: 1 },
-          dependencies: {
-            ...set.manifest.dependencies,
-            carried: [quote],
-            expected: [
-              {
-                key: folder,
-                objectType: ObjectTypes.ElementContainer,
-                name: 'Outer',
-                why: 'parent of A quote',
-              },
-            ],
-          },
-        },
-      }),
-      dir,
-    )
+    place(writeBundle(await exported(source, [quote]), undefined, [], { bundleType: 'site' }), dir)
     const manifest = JSON.parse(readFileSync(join(dir, 'bundle.json'), 'utf8'))
     writeFileSync(join(dir, 'bundle.json'), JSON.stringify({ ...manifest, formatVersion: 5 }))
-    const loaded = loadBundle(dir)
-    expect(loaded.problems).toEqual([])
-
-    const elsewhere = await site()
-    const check = await checkBundle(elsewhere.db, loaded.set as NonNullable<typeof loaded.set>)
-    expect(check.findings.find((f) => f.code === 'missing-parent')?.kind).toBe('blocking')
+    expect(loadBundle(dir).problems.map((problem) => problem.message)).toContain(OLD_LAYOUT)
   })
 })
 

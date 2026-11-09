@@ -179,6 +179,9 @@ describe('the media verbs (story 088)', () => {
       'AddMediaTreeOrder',
       'AddSearchRemovals',
       'AddImageAltText',
+      'AddTransferRunBundleType',
+      'AddBundleGrantReach',
+      'AddExtensionSettings',
     ])
     const held = async (key: string) =>
       (

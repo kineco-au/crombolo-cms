@@ -106,7 +106,7 @@ async function bundleWith(h: Harness, sections: BundleFile[]): Promise<CarriedSe
   })
   const dir = mkdtempSync(join(process.cwd(), 'output', 'bundle-'))
   dirs.push(dir)
-  for (const file of writeBundle(set as ContentSet, undefined, sections)) {
+  for (const file of writeBundle(set as ContentSet, undefined, sections, { bundleType: 'site' })) {
     const target = join(dir, file.path)
     mkdirSync(join(target, '..'), { recursive: true })
     writeFileSync(target, file.bytes ?? (file.text as string))
@@ -452,6 +452,7 @@ const KIT: BundlePackageInfo = {
   id: 'acme-kit',
   label: 'Kit',
   peerRange: `^${VERSION}`,
+  bundleType: 'extension',
 }
 
 /** A bundle package carrying these sections, written where `dir` says. */
@@ -551,7 +552,7 @@ describe('a bundle is found as a package', () => {
       nodeId: 'source',
     })
     const dir = outputDir('bare-')
-    for (const file of writeBundle(set as ContentSet))
+    for (const file of writeBundle(set as ContentSet, undefined, [], { bundleType: 'site' }))
       writeFileSync(join(dir, file.path), file.text as string)
     expect(refusal(() => readBundle(dir, dir))).toContain('Every bundle is an npm package')
   })
@@ -572,7 +573,11 @@ describe('a bundle is found as a package', () => {
         name: '@acme/screens',
         version: '1.0.0',
         peerDependencies: { '@crombolo/crombolo': `^${VERSION}` },
-        crombolo: { id: 'acme-screens', extensions: [{ type: 'dashboard' }] },
+        crombolo: {
+          bundleType: 'extension',
+          id: 'acme-screens',
+          extensions: [{ type: 'dashboard' }],
+        },
       }),
     )
     expect(refusal(() => readBundle(dir, dir))).toContain('carries no content')

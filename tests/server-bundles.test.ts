@@ -17,6 +17,7 @@ import {
   BUNDLE_API_SEGMENT,
   type BundleHost,
   type BundleRoute,
+  CAPABILITY_PERMISSIONS,
   createRoutes,
   createServerBundles,
   loadConfig,
@@ -46,7 +47,7 @@ const admin: Principal = {
 const editor: Principal = { ...admin, isAdmin: false, allowedSections: ['content'] }
 
 /** Enough of a host to see what a handler is given, without a database. */
-const stubHost = (): Omit<BundleHost, 'tables' | 'media'> => ({
+const stubHost = (): Omit<BundleHost, 'tables' | 'media' | 'api' | 'fetch'> => ({
   redirects: {
     list: async () => ({ total: 0, items: [] }),
     byKey: async () => undefined,
@@ -69,7 +70,29 @@ const silent = () => ({ info: () => {}, warn: () => {}, error: () => {} })
 
 /** The packages a site wiring these bundles would depend on. */
 const packagesFor = (bundles: readonly ServerBundle[]) =>
-  bundles.map((bundle) => stubBundlePackage(bundle.id))
+  bundles.map((bundle) =>
+    stubBundlePackage(bundle.id, {
+      field: {
+        bundleType: 'extension',
+        id: bundle.id,
+        server: bundle.id,
+        schemaVersion: 4,
+        permissions: {
+          'routes.public': 'Answers on the site',
+          'events.content': 'Is told of changes',
+          ...Object.fromEntries(
+            [
+              ...new Set(
+                bundle.capabilities.flatMap(
+                  (capability) => CAPABILITY_PERMISSIONS[capability] ?? [],
+                ),
+              ),
+            ].map((permission) => [permission, 'For the test']),
+          ),
+        },
+      },
+    }),
+  )
 
 /** Validation against the packages the bundles' own ids would come from. */
 const validate = (bundles: ServerBundle[]) =>
@@ -236,7 +259,7 @@ describe('what a bundle may declare', () => {
 
   test('refuses a server half written for an older bundle schema (story 211)', () => {
     const owner = stubBundlePackage('demo', {
-      field: { id: 'demo', server: 'demo', schemaVersion: 1 },
+      field: { bundleType: 'extension', id: 'demo', server: 'demo', schemaVersion: 1 },
     })
     expect(validateServerBundles([simple()], [owner], VERSION).join('\n')).toContain(
       'written for bundle schema 1, and this release reads 3',

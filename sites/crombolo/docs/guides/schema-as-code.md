@@ -127,7 +127,7 @@ On your machine, each command applies its change at once. When the site starts, 
 - **In development** any change is applied, and the files are watched, so a change takes effect without a restart.
 - **In production** a change is applied only when the definitions' version has gone up, or a newer `CROMBOLO_SCHEMA_REVISION` is deployed. The same version with different definitions is refused.
 
-`bundle build` and `push` raise the version for you when the definitions have changed since it was first applied, so a production site takes what they ship ([Deploying](/docs/guides/deploying/)). `CROMBOLO_SCHEMA_REVISION` orders deploys from a pipeline: set it to the build number, and each deploy is newer than the last.
+`site build` and `push` raise the version for you when the definitions have changed since it was first applied, so a production site takes what they ship ([Deploying](/docs/guides/deploying/)). `CROMBOLO_SCHEMA_REVISION` orders deploys from a pipeline: set it to the build number, and each deploy is newer than the last.
 
 A site of several nodes is safe during a rolling deploy. The apply runs under a lock, a node whose definitions are older than the database never writes to it, and an older node keeps serving pages until it is replaced. To apply as a pipeline step rather than at start-up, set `CROMBOLO_SYNC_SCHEMA_AT_BOOT=false` and run `bunx crombolo types sync`.
 

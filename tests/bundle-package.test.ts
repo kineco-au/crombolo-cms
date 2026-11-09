@@ -29,6 +29,7 @@ const valid = (over: Record<string, unknown> = {}, crombolo: Record<string, unkn
     version: '1.0.0',
     peerDependencies: { [CORE_PACKAGE]: `^${VERSION}` },
     crombolo: {
+      bundleType: 'extension',
       id: 'acme-tasks',
       name: 'Tasks',
       server: 'tasks',

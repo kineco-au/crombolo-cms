@@ -27,6 +27,11 @@ import type { CromboloConfig } from './config.ts'
 export interface PendingTransferView {
   bundleId: string
   label: string | null
+  /**
+   * A site package, applied from a file or a directory, rather than an
+   * extension's content, installed with it (story 306).
+   */
+  sitePackage: boolean
   checkedAt: string
   publish: boolean
   allowMissingBlobs: boolean
@@ -41,6 +46,7 @@ export async function pendingTransfers(db: Db): Promise<PendingTransferView[]> {
     out.push({
       bundleId: pending.bundleId,
       label: pending.label,
+      sitePackage: pending.targetKind === 'directory',
       checkedAt: pending.checkedAt.toISOString(),
       publish: pending.publish,
       allowMissingBlobs: pending.allowMissingBlobs,

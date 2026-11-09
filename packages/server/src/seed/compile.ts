@@ -581,7 +581,7 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
       id,
       label: 'Content files',
       createdAt: new Date(0).toISOString(),
-      createdBy: 'crombolo bundle apply',
+      createdBy: 'crombolo site apply',
       integrity: '',
       snapshot: 'drafts',
       provenance: {
@@ -622,15 +622,17 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
           },
         ]
       : [],
+    { bundleType: 'site' },
   )
   const files = writeBundlePackage(payload, {
     name: 'crombolo-site-seed',
     version: '0.0.0',
     id: 'site-seed',
     label: 'Content files',
-    description: `The content files of ${config.siteName}, built by crombolo bundle build`,
+    description: `The content files of ${config.siteName}, built by crombolo site build`,
     private: true,
     peerRange: `>=${VERSION}`,
+    bundleType: 'site',
   })
   return { findings, set, blobs, files, counts, ...(dictionary ? { dictionary: entries } : {}) }
 }

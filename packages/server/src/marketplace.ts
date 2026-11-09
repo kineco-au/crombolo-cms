@@ -21,11 +21,16 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync 
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import {
+  askedPermissions,
   type BundlePackage,
+  type DeclaredPermission,
   describePermissions,
   EXTENSION_KEYWORD,
   type ExtensionRegistry,
+  isSchema3Field,
   type PackageJson,
+  SCHEMA_3_NOT_INSTALLED,
+  SITE_PACKAGE_NOT_INSTALLED,
   validateBundlePackage,
 } from '@crombolo/backoffice-host'
 import {
@@ -34,7 +39,7 @@ import {
   localBundlePath,
   localBundlesNamed,
 } from '@crombolo/transfer'
-import { type BundleGrants, declaredPermissions } from './bundle-grants.ts'
+import { type BundleGrants, declaredEntries, isSchema3 } from './bundle-grants.ts'
 import { logger } from './logging.ts'
 import {
   type ProvenancePolicy,
@@ -153,12 +158,15 @@ export interface InstallOutcome {
   /** What happened to the content the bundle carries; absent when it carries none. */
   content?: ContentOutcome
   /**
-   * Refused because the bundle runs code on the server and the request did not
-   * accept that (story 194): the screen asks, and sends the install again.
+   * Refused because it asks for permissions the request did not grant, exactly
+   * (stories 222, 308): the screen shows them with their reasons, and sends the
+   * install again with the grant.
    */
-  needsServerConsent?: boolean
-  /** With `needsServerConsent`: what it asks to do with the site, to grant as a whole (story 222). */
-  permissions?: { permission: string; allows: string }[]
+  needsGrant?: boolean
+  /** With `needsGrant`: what it asks for, each with its sentence, its reason and its origins. */
+  permissions?: { permission: string; allows: string; reason: string | null; origins?: string[] }[]
+  /** With `needsGrant`: it asks to act for a user, so the grant names whom (story 308). */
+  asksActAs?: boolean
   /** It changed the code the server loads, which runs once the site restarts (story 241). */
   restartPending?: boolean
   /** Where the version checked was built, from its signature (story 060). */
@@ -209,9 +217,10 @@ export interface Marketplace {
     version: string | undefined,
     options?: {
       applyContent?: boolean
-      acceptServerCode?: boolean
-      /** The permissions the administrator granted: the bundle's whole list (story 222). */
+      /** The permissions the administrator granted: the bundle's whole list (stories 222, 308). */
       grant?: readonly string[]
+      /** Whom it acts for, when it asks for `actAs`: `installer:<key>`, `caller` or `user:<key>`. */
+      actAs?: string | null
       /** Who is installing, recorded on the grant. */
       by?: string | null
     },
@@ -237,8 +246,8 @@ export interface Marketplace {
     file: string,
     options?: {
       applyContent?: boolean
-      acceptServerCode?: boolean
       grant?: readonly string[]
+      actAs?: string | null
       by?: string | null
     },
   ): Promise<InstallOutcome>
@@ -347,8 +356,14 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
     name: string,
     wanted?: string,
   ): Promise<
-    | (BundlePackage['carries'] & { permissions: string[]; version: string; dist?: Dist })
+    | (BundlePackage['carries'] & {
+        permissions: DeclaredPermission[]
+        version: string
+        dist?: Dist
+      })
     | 'not-a-bundle'
+    | 'site-package'
+    | 'schema-3'
     | 'unreachable'
   > => {
     try {
@@ -372,19 +387,24 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
                 .sort(Bun.semver.order)
                 .at(-1))
       const version = resolved ? versions[resolved] : undefined
+      // A site package is never installed, whatever a registry offers (story 306).
+      if ((version?.crombolo as { bundleType?: unknown } | undefined)?.bundleType === 'site')
+        return 'site-package'
       if (!resolved || !version || validateBundlePackage(version).length > 0) return 'not-a-bundle'
       const dist = (version as { dist?: Dist }).dist
       const field = version.crombolo as {
         extensions?: unknown[]
         content?: boolean
         server?: string
-        permissions?: string[]
+        permissions?: unknown
       }
+      // Story 308: a version that says nothing of why it asks is not installed.
+      if (isSchema3Field(field)) return 'schema-3'
       return {
         extensions: Array.isArray(field.extensions) && field.extensions.length > 0,
         content: field.content === true,
         server: field.server !== undefined,
-        permissions: Array.isArray(field.permissions) ? field.permissions : [],
+        permissions: askedPermissions(field),
         version: resolved,
         ...(dist ? { dist } : {}),
       }
@@ -475,14 +495,23 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
   }
 
   /** A bundle's permissions, who approved them, and whether it is disabled, for the listing. */
-  const grantOf = (bundle: BundlePackage) => {
-    const declared = describePermissions(declaredPermissions(bundle))
-    if (!bundle.carries.server || !options.grants)
-      return { permissions: declared, on: true, disabledBy: null }
+  const grantOf = (bundle: BundlePackage) => ({
+    // Story 308: one written before permissions said why runs, flagged.
+    schema3: isSchema3(bundle),
+    ...grantStateOf(bundle),
+  })
+  const grantStateOf = (bundle: BundlePackage) => {
+    const declared = describePermissions(declaredEntries(bundle))
+    if (!options.grants)
+      return { permissions: declared, on: true, status: 'on', missing: [], disabledBy: null }
+    // Story 309: every extension runs on its grant, screens-only ones included.
     const state = options.grants.state(bundle)
     return {
       permissions: state.declared,
       on: state.on,
+      status: state.status,
+      missing: state.missing,
+      asksActAs: declaredEntries(bundle).some((entry) => entry.permission === 'actAs'),
       disabledBy: state.disabledBy,
       ...(state.grant?.grantedBy
         ? {
@@ -599,8 +628,9 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
           ok: false,
           message: `${name} is not a bundle for this site, so it was not installed.`,
         }
-      if (declared.server && !consented(request, declared.permissions))
-        return serverConsentNeeded(name, declared.permissions)
+      if (declared === 'site-package') return sitePackageRefused(name)
+      if (declared === 'schema-3') return schema3Refused(name)
+      if (!consented(request, declared.permissions)) return grantNeeded(name, declared.permissions)
       const provenance = await provenanceAt(name, declared.dist)
       const refused = refusedBySignature(`${name}@${declared.version}`, provenance)
       if (refused) return refused
@@ -623,16 +653,23 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
         return { ok: false, message: `The package registry could not say what ${name} contains.` }
       if (declared === 'not-a-bundle')
         return { ok: false, message: `${name} is not a bundle for this site.` }
-      const { dist, ...carries } = declared
-      return { ok: true, ...carries, provenance: await provenanceAt(name, dist) }
+      if (declared === 'site-package') return sitePackageRefused(name)
+      if (declared === 'schema-3') return schema3Refused(name)
+      const { dist, permissions, ...carries } = declared
+      return {
+        ok: true,
+        ...carries,
+        permissions: permissions.map((entry) => entry.permission),
+        provenance: await provenanceAt(name, dist),
+      }
     },
 
     async installFile(file, request = {}) {
       if (options.installs === false) return refusedHere(file, 'add', options.installsElsewhere)
       const declared = await declaresIn(file)
       if (typeof declared === 'string') return { ok: false, message: declared }
-      if (declared.server && !consented(request, declared.permissions))
-        return serverConsentNeeded(declared.name, declared.permissions)
+      if (!consented(request, declared.permissions))
+        return grantNeeded(declared.name, declared.permissions)
       // Kept in the site's bundles/ (story 245), so it is committed and every
       // node, checkout and CI build installs the same file.
       const kept = keepInSite(file, declared)
@@ -690,8 +727,8 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
     version: string | undefined,
     request: {
       applyContent?: boolean
-      acceptServerCode?: boolean
       grant?: readonly string[]
+      actAs?: string | null
       by?: string | null
     },
     checked?: { version: string },
@@ -705,7 +742,19 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
       }
 
     const range = (await rangeFor(name)) ?? version ?? 'latest'
-    const found = options.extensions.bundles().bundles.find((bundle) => bundle.packageName === name)
+    const discovered = options.extensions.bundles()
+    const found = discovered.bundles.find((bundle) => bundle.packageName === name)
+    // The version that landed may turn out to be a site package: never kept (story 306).
+    if (
+      discovered.problems.some(
+        (problem) =>
+          problem.packageName === name && problem.problems.includes(SITE_PACKAGE_NOT_INSTALLED),
+      )
+    ) {
+      await install('remove', name, options.siteDir)
+      options.extensions.invalidate()
+      return sitePackageRefused(name)
+    }
     if (!found)
       return {
         ok: true,
@@ -723,18 +772,24 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
       }
     }
     // The version that landed is what counts: a release published between
-    // reading the registry and installing may have brought server code.
-    if (found.carries.server && !consented(request, declaredPermissions(found))) {
+    // reading the registry and installing may ask for more, or say nothing of why.
+    if (isSchema3(found)) {
       await install('remove', name, options.siteDir)
       options.extensions.invalidate()
-      return serverConsentNeeded(
+      return schema3Refused(name, `${name}@${found.version} turned out to`)
+    }
+    if (!consented(request, declaredEntries(found))) {
+      await install('remove', name, options.siteDir)
+      options.extensions.invalidate()
+      return grantNeeded(
         name,
-        declaredPermissions(found),
-        `${name}@${found.version} turned out to run code on the server, or to ask for more than was granted, so it was removed again.`,
+        declaredEntries(found),
+        `${name}@${found.version} turned out to ask for more than was granted, so it was removed again.`,
       )
     }
-    // What was granted is recorded against the version that landed.
-    if (found.carries.server) await options.grants?.grant(found, request.by ?? null)
+    // What was granted is recorded against the version that landed, for every
+    // extension: a grant is what lets one run (story 309).
+    await options.grants?.grant(found, request.by ?? null, { actAs: request.actAs ?? null })
 
     // The content half lands after the dependency, so a refused check leaves
     // the package installed and says why, rather than undoing an install that
@@ -768,24 +823,37 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
   }
 }
 
+/** A site package offered as a dependency: refused, saying how one is used (story 306). */
+function sitePackageRefused(name: string): { ok: false; message: string } {
+  return {
+    ok: false,
+    message: `${name} is a site package, which is applied to a site with \`crombolo site apply\`, never installed, so it was not installed.`,
+  }
+}
+
 /** What a packed bundle on this machine declares, read from its package.json, or why it cannot be installed. */
 async function declaresIn(
   file: string,
-): Promise<{ name: string; version: string; server: boolean; permissions: string[] } | string> {
+): Promise<
+  { name: string; version: string; server: boolean; permissions: DeclaredPermission[] } | string
+> {
   const dir = mkdtempSync(join(tmpdir(), 'crombolo-bundle-file-'))
   try {
     await extractTarball(file, dir)
     const root = existsSync(join(dir, 'package', 'package.json')) ? join(dir, 'package') : dir
     const json = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as PackageJson
+    if ((json.crombolo as { bundleType?: unknown } | undefined)?.bundleType === 'site')
+      return sitePackageRefused(file).message
     const problems = validateBundlePackage(json)
     if (problems.length > 0 || typeof json.name !== 'string' || typeof json.version !== 'string')
       return `${file} is not a bundle for this site, so it was not installed.`
-    const field = json.crombolo as { server?: string; permissions?: string[] }
+    const field = json.crombolo as { server?: string; permissions?: unknown }
+    if (isSchema3Field(field)) return `${file} was not installed: ${SCHEMA_3_NOT_INSTALLED}.`
     return {
       name: json.name,
       version: json.version,
       server: field.server !== undefined,
-      permissions: Array.isArray(field.permissions) ? field.permissions : [],
+      permissions: askedPermissions(field),
     }
   } catch {
     return `${file} could not be read as a packed bundle, so it was not installed.`
@@ -810,30 +878,42 @@ function descriptionOf(directory: string): string {
 export const SCREENS_NOTICE = 'Its screens run in the browser of everyone who uses the back office.'
 
 /**
- * Whether an install request said yes to server code and granted exactly what
- * the bundle asks for (stories 194, 222): all of it, and nothing it did not ask.
+ * Whether an install request granted exactly what the extension asks for
+ * (stories 222, 308): all of it, nothing it did not ask, and whom it acts for
+ * when it asks for `actAs`. One that asks for nothing needs no grant.
  */
 function consented(
-  request: { acceptServerCode?: boolean; grant?: readonly string[] },
-  permissions: readonly string[],
+  request: { grant?: readonly string[]; actAs?: string | null },
+  asked: readonly DeclaredPermission[],
 ): boolean {
-  if (request.acceptServerCode !== true) return false
+  const permissions = asked.map((entry) => entry.permission)
+  if (permissions.length === 0) return true
   const granted = new Set(request.grant ?? [])
+  if (permissions.includes('actAs') && !request.actAs) return false
   return granted.size === new Set(permissions).size && permissions.every((p) => granted.has(p))
 }
 
-/** A refusal the screen answers by asking for an explicit yes, and the grant (stories 194, 222). */
-function serverConsentNeeded(
+/** A refusal the screen answers by showing what it asks for, with the reasons, and the grant. */
+function grantNeeded(
   name: string,
-  permissions: readonly string[],
+  asked: readonly DeclaredPermission[],
   before = '',
 ): InstallOutcome {
   return {
     ok: false,
-    needsServerConsent: true,
-    permissions: describePermissions(permissions),
-    message: `${before ? `${before} ` : ''}${name} runs code on the server, with access to the site's data, files and settings. Confirm that you trust its publisher, and approve what it asks to do, to install it.`,
+    needsGrant: true,
+    permissions: describePermissions(asked),
+    asksActAs: asked.some((entry) => entry.permission === 'actAs'),
+    message: `${before ? `${before} ` : ''}${name} asks for these permissions. Grant them, each as it asks, to install it.`,
   }
+}
+
+/** A version written before permissions said why (story 308). */
+function schema3Refused(
+  name: string,
+  before = `${name} was not installed:`,
+): { ok: false; message: string } {
+  return { ok: false, message: `${before} ${SCHEMA_3_NOT_INSTALLED}.` }
 }
 
 /** What a site that does not install at runtime says instead, with what to do. */

@@ -11,8 +11,20 @@ export interface BundleGrant {
   packageName: string
   version: string
   permissions: string[]
+  /** What its `http.outbound` may reach (story 308); empty when it was granted none. */
+  origins: string[]
+  /**
+   * Whom it acts for under `actAs`: `installer:<user key>`, `caller`, or
+   * `user:<user key>`; null when it acts as itself.
+   */
+  actAs: string | null
   grantedBy: string | null
   grantedAt: Date
+  /**
+   * Someone granted it (story 309): false for the row `disable` keeps for a
+   * bundle never granted, which grants nothing.
+   */
+  recorded: boolean
   /** Who disabled the bundle, and when; null while it may run. */
   disabledBy: string | null
   disabledAt: Date | null
@@ -41,8 +53,11 @@ export class BundleGrantRepository {
       packageName: row.package_name,
       version: row.version,
       permissions: permissionsOf(row.permissions),
+      origins: row.origins ? permissionsOf(row.origins) : [],
+      actAs: row.act_as ?? null,
       grantedBy: row.granted_by ?? null,
       grantedAt: DbDate.fromDb(row.granted_at) ?? new Date(0),
+      recorded: (DbDate.fromDb(row.granted_at)?.getTime() ?? 0) > 0,
       disabledBy: row.disabled_by ?? null,
       disabledAt: row.disabled_at ? (DbDate.fromDb(row.disabled_at) ?? null) : null,
     }))
@@ -53,11 +68,15 @@ export class BundleGrantRepository {
   }
 
   /** Records what a bundle is approved for, keeping whether it is disabled. */
-  async grant(grant: Omit<BundleGrant, 'grantedAt' | 'disabledBy' | 'disabledAt'>): Promise<void> {
+  async grant(
+    grant: Omit<BundleGrant, 'grantedAt' | 'recorded' | 'disabledBy' | 'disabledAt'>,
+  ): Promise<void> {
     const values = {
       package_name: grant.packageName,
       version: grant.version,
       permissions: JSON.stringify(grant.permissions),
+      origins: JSON.stringify(grant.origins),
+      act_as: grant.actAs,
       granted_by: grant.grantedBy,
       granted_at: DbDate.toDb(new Date()),
     }
@@ -85,7 +104,8 @@ export class BundleGrantRepository {
         version: bundle.version,
         permissions: JSON.stringify([]),
         granted_by: null,
-        granted_at: DbDate.toDb(new Date()),
+        // Not a grant: nobody granted it anything (story 309).
+        granted_at: DbDate.toDb(new Date(0)),
         ...disabled,
       })
       .onConflict((conflict) => conflict.column('bundle_id').doUpdateSet(disabled))

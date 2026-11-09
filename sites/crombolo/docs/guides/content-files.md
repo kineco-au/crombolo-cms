@@ -4,7 +4,7 @@ summary: Write a site's starting pages, Library elements and media as files, and
 order: 5
 ---
 
-A site's content files are its starting content kept in the repository: pages, Library elements and media, written as small TOML files under `content/`. `crombolo bundle apply` turns them into content. A fresh clone plus one command is a populated site, and content that belongs with the code, such as legal pages or a docs section, is reviewed like the code is.
+A site's content files are its starting content kept in the repository: pages, Library elements and media, written as small TOML files under `content/`. `crombolo site apply` turns them into content. A fresh clone plus one command is a populated site, and content that belongs with the code, such as legal pages or a docs section, is reviewed like the code is.
 
 The back office is still where content is edited. The files are where it is declared.
 
@@ -48,14 +48,14 @@ Put the files under `content/media/`, in the folders they should sit in. Each fi
 ## Commands
 
 ```bash
-crombolo bundle build --check            # every problem, with its file and line
-crombolo bundle apply --dry-run          # what applying would change
-crombolo bundle apply --publish          # apply it, and publish it
-crombolo bundle export --source --all    # content files from everything already in a site
+crombolo site build --check            # every problem, with its file and line
+crombolo site apply --dry-run          # what applying would change
+crombolo site apply --publish          # apply it, and publish it
+crombolo content export --all    # content files from everything already in a site
 crombolo start --bundle .                # apply it before serving, once for each change
 ```
 
-With no bundle named, or with `.`, `bundle apply` applies this site's own content files. Name a bundle instead, and it applies that.
+With no bundle named, or with `.`, `site apply` applies this site's own content files. Name a bundle instead, and it applies that.
 
 A site made before the `content/` folder had its files under `seed/`. Move them with `git mv seed content && git mv content/content content/pages`.
 
@@ -72,22 +72,22 @@ crombolo content block move /Home blocks sourdough --first
 crombolo content show /Home                     # its values, and its blocks with their aliases and keys
 ```
 
-A page made by `content new` has the key a content file at its path would, so the same command makes the same page in every environment. `crombolo bundle export --source --root /Home` writes pages made this way out as content files, to ship with the site.
+A page made by `content new` has the key a content file at its path would, so the same command makes the same page in every environment. `crombolo content export --root /Home` writes pages made this way out as content files, to ship with the site.
 
 ## Applying again
 
 Applying unchanged files changes nothing. Change a file and apply again, and that change is taken.
 
-An edit made in the back office since the last apply is kept, not overwritten. Only when the same thing changed in both places does `bundle apply` stop and ask, and `--resolve` answers it.
+An edit made in the back office since the last apply is kept, not overwritten. Only when the same thing changed in both places does `site apply` stop and ask, and `--resolve` answers it.
 
-Every apply is a run that `crombolo bundle revert <run>` undoes. `crombolo bundle runs` lists them.
+Every apply is a run that `crombolo site revert <run>` undoes. `crombolo site runs` lists them.
 
 ## A whole site as one bundle
 
-`crombolo bundle build` turns a site directory into a bundle carrying its schema, views, styles and content files. A bare site becomes that site with `start --bundle`. This is how the demos start:
+`crombolo site build` turns a site directory into a bundle carrying its schema, views, styles and content files. A bare site becomes that site with `start --bundle`. This is how the demos start:
 
 ```bash
 crombolo init --name "Harbourstone"
-crombolo bundle build --template demo/harbourstone --out ./harbourstone-bundle
+crombolo site build --template demo/harbourstone --out ./harbourstone-bundle
 crombolo start --bundle ./harbourstone-bundle --publish
 ```

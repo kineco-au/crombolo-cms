@@ -10,8 +10,8 @@
  * bundle publishes, and filtered to the ones whose manifest is a valid bundle.
  * Installing runs `bun add` on the server, then adds the content the bundle
  * carries unless the site or the person installing declines it. A bundle that
- * runs code on the server installs only after an explicit yes in its card,
- * which the server insists on too (story 194).
+ * asks for permissions installs only once someone grants each one, as it
+ * asks, in its card, which the server insists on too (stories 222, 308).
  */
 import { css, html, nothing, repeat } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
@@ -35,6 +35,8 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
     _consenting: { state: true },
     _trusted: { state: true },
     _asks: { state: true },
+    _asksActAs: { state: true },
+    _actAs: { state: true },
     _reviewing: { state: true },
     _signatures: { state: true },
   }
@@ -56,6 +58,8 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
     this._consenting = ''
     this._trusted = false
     this._asks = []
+    this._asksActAs = false
+    this._actAs = 'installer'
     this._reviewing = ''
     this._signatures = new Map()
   }
@@ -152,10 +156,11 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
     `
   }
 
-  #askConsent(item, asks) {
+  #askConsent(item, outcome) {
     this._consenting = item.name
     this._trusted = false
-    this._asks = asks ?? []
+    this._asks = outcome.permissions ?? []
+    this._asksActAs = outcome.asksActAs === true
   }
 
   #cancelConsent() {
@@ -164,7 +169,7 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
     this._asks = []
   }
 
-  async #install(item, acceptServerCode) {
+  async #install(item, granting) {
     this._busy = item.name
     this._notice = ''
     try {
@@ -172,14 +177,14 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
         item.name,
         item.version,
         !this._declined.has(item.name),
-        acceptServerCode,
-        acceptServerCode ? this._asks.map((ask) => ask.permission) : [],
+        granting ? this._asks.map((ask) => ask.permission) : [],
+        granting && this._asksActAs ? this._actAs : undefined,
       )
-      // Server code, or a version that asks for more than was approved: the
-      // server says what it asks to do, and the card asks.
-      if (outcome.needsServerConsent) {
-        if (acceptServerCode) this._notice = outcome.message ?? ''
-        this.#askConsent(item, outcome.permissions)
+      // It asks for permissions, or a version asks for more than was granted:
+      // the server says what, with the reasons, and the card asks.
+      if (outcome.needsGrant) {
+        if (granting) this._notice = outcome.message ?? ''
+        this.#askConsent(item, outcome)
         return
       }
       this._consenting = ''
@@ -218,22 +223,40 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
     `
   }
 
-  /** The explicit yes a bundle that runs code on the server needs, in its own card. */
+  /** What it asks for, each permission with its reason, granted together in its own card. */
   #consent(item) {
     return html`
-      <div class="consent" role="group" aria-label="Install code that runs on the server">
+      <div class="consent" role="group" aria-label="What it asks for">
         ${this.#signature(item)}
         <p>
-          <strong>This bundle runs code on the server.</strong> Once your site's developers turn
-          it on, its code can read and change the site's data, files and settings.
+          <strong>It asks for these permissions.</strong> Grant them to install it: it may do only
+          this, and its screens act as whoever is signed in.
         </p>
+        <ul class="asks">
+          ${this._asks.map(
+            (ask) =>
+              html`<li>
+                ${ask.allows}${ask.origins?.length ? html`: ${ask.origins.join(', ')}` : nothing}
+                ${ask.reason ? html`<span class="reason">${ask.reason}</span>` : nothing}
+              </li>`,
+          )}
+        </ul>
         ${
-          this._asks.length > 0
-            ? html`<p>It asks to:</p>
-                <ul class="asks">
-                  ${this._asks.map((ask) => html`<li>${ask.allows}</li>`)}
-                </ul>`
-            : html`<p>It asks for no access to the site's content, members or settings.</p>`
+          this._asksActAs
+            ? html`<uui-select
+                label="Acts for"
+                .options=${[
+                  {
+                    name: 'You, who install it',
+                    value: 'installer',
+                    selected: this._actAs === 'installer',
+                  },
+                  { name: 'Whoever uses it', value: 'caller', selected: this._actAs === 'caller' },
+                ]}
+                @change=${(event) => {
+                  this._actAs = event.target.value
+                }}></uui-select>`
+            : nothing
         }
         <p class="meta">
           <span>Published by ${item.publisher ?? 'an unnamed publisher'}</span>
@@ -245,7 +268,7 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
           }
         </p>
         <uui-checkbox
-          label="I trust this publisher, and approve what it asks to do"
+          label="I trust this publisher, and grant what it asks for"
           .checked=${this._trusted}
           @change=${(event) => {
             this._trusted = event.target.checked
@@ -254,7 +277,7 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
           <uui-button
             look="primary"
             color="warning"
-            label="Approve and install"
+            label="Grant and install"
             ?disabled=${!this._trusted}
             .state=${this._busy === item.name ? 'waiting' : undefined}
             @click=${() => this.#install(item, true)}></uui-button>
@@ -407,6 +430,10 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
       padding: var(--uui-size-space-4, 12px);
       border-left: 3px solid var(--uui-color-warning, #f0ac00);
       background: var(--uui-color-surface-alt, #f3f3f5);
+    }
+    .consent .reason {
+      display: block;
+      color: var(--uui-color-text-alt);
     }
     .consent .asks {
       margin: 0 0 var(--uui-size-space-3, 9px);

@@ -441,6 +441,7 @@ describe("a bundle job's capabilities", () => {
       packages: [
         stubBundlePackage('sweeper', {
           field: {
+            bundleType: 'extension',
             id: 'sweeper',
             server: 'sweeper',
             schemaVersion: 3,

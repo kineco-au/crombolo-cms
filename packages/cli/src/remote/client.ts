@@ -12,6 +12,7 @@ import {
   readSignIn,
   saveSignIn,
 } from '@crombolo/server/remote-credentials'
+import { BUNDLE_FORMAT_VERSION, OLDEST_BUNDLE_FORMAT_VERSION } from '@crombolo/transfer'
 
 export const PROTOCOL_VERSION = '1'
 
@@ -36,6 +37,30 @@ export interface Discovery {
   }
   capabilities: string[]
   environments: Array<{ id: string; name: string; protected: boolean }>
+  /** The bundle formats it reads, oldest and newest; absent before story 306. */
+  bundleFormats?: [number, number]
+}
+
+/**
+ * Why this CLI and a remote cannot exchange site packages, or undefined when they
+ * can (story 306): what this side writes the other must read. Pure.
+ */
+export function bundleFormatProblem(
+  discovery: Pick<Discovery, 'bundleFormats' | 'name'>,
+  direction: 'send' | 'receive',
+): string | undefined {
+  const [oldest, newest] = discovery.bundleFormats ?? [0, 0]
+  const remote = discovery.bundleFormats
+    ? `${discovery.name} reads bundle formats ${oldest} to ${newest}`
+    : `${discovery.name} is a release from before site packages`
+  if (direction === 'send' && !(oldest <= BUNDLE_FORMAT_VERSION && BUNDLE_FORMAT_VERSION <= newest))
+    return `${remote}, and this crombolo writes format ${BUNDLE_FORMAT_VERSION}: upgrade ${newest < BUNDLE_FORMAT_VERSION ? 'the remote' : 'this crombolo'} first.`
+  if (
+    direction === 'receive' &&
+    !(OLDEST_BUNDLE_FORMAT_VERSION <= newest && newest <= BUNDLE_FORMAT_VERSION)
+  )
+    return `${remote}, and this crombolo reads formats ${OLDEST_BUNDLE_FORMAT_VERSION} to ${BUNDLE_FORMAT_VERSION}: upgrade ${newest < OLDEST_BUNDLE_FORMAT_VERSION ? 'the remote' : 'this crombolo'} first.`
+  return undefined
 }
 
 export interface Problem {

@@ -45,8 +45,8 @@ export const CLI_PAGES: readonly CliPageSpec[] = [
     slug: 'types',
     title: 'Content types',
     summary:
-      'Check, apply and change the content model kept in schema/: types, languages, forms, workflows, webhooks and page addresses.',
-    topics: ['types', 'languages', 'forms', 'workflows', 'webhooks', 'site'],
+      'Check, apply and change the content model kept in schema/: types, languages, forms, workflows and webhooks.',
+    topics: ['types', 'languages', 'forms', 'workflows', 'webhooks'],
   },
   {
     slug: 'components',
@@ -63,15 +63,10 @@ export const CLI_PAGES: readonly CliPageSpec[] = [
   },
   {
     slug: 'remotes',
-    title: 'Remotes, pull and push',
-    summary: 'Sign in to another environment, and move content and schema between them.',
-    topics: ['login', 'logout', 'whoami', 'remote', 'pull', 'push', 'bundle'],
-  },
-  {
-    slug: 'import',
-    title: 'Importing from Umbraco',
-    summary: 'Bring an Umbraco site’s content types, content and media across.',
-    topics: ['import'],
+    title: 'Sites, extensions and remotes',
+    summary:
+      'Move a site as a site package, install extensions, and sign in to another environment to pull from and push to.',
+    topics: ['site', 'login', 'logout', 'whoami', 'remote', 'pull', 'push', 'bundle'],
   },
   {
     slug: 'users',

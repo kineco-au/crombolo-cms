@@ -41,8 +41,10 @@ export const NEXT_APP_DIR = join(import.meta.dir, '..', 'next-app')
 export interface TemplateServerBundle {
   /** The npm package, added to the site's dependencies. */
   package: string
-  /** The factory it exports, imported by name and called in `bundles`. */
-  import: string
+  /** Its bundle id, under which the config's `extensions` grants it (story 310). */
+  id: string
+  /** What the site's code grants it: exactly what it asks for. */
+  grant: string[]
   /**
    * The range to depend on. Defaults to this release, which is right for a
    * bundle that ships with the CMS; a third-party one names its own.
@@ -117,11 +119,14 @@ function readServerBundles(raw: unknown): TemplateServerBundle[] {
     if (!entry || typeof entry !== 'object') continue
     const record = entry as Record<string, unknown>
     const name = typeof record.package === 'string' ? record.package : ''
-    const imported = typeof record.import === 'string' ? record.import : ''
-    if (!name || !imported) continue
+    const id = typeof record.id === 'string' ? record.id : ''
+    if (!name || !id) continue
     out.push({
       package: name,
-      import: imported,
+      id,
+      grant: Array.isArray(record.grant)
+        ? record.grant.filter((p): p is string => typeof p === 'string')
+        : [],
       ...(typeof record.version === 'string' ? { version: record.version } : {}),
     })
   }
@@ -160,7 +165,7 @@ export interface ScaffoldOptions {
   template?: SiteTemplate
   /**
    * A bundle the site already has, for the `start` script to apply: the path,
-   * relative to the site, and any `bundle apply` flags it needs beyond
+   * relative to the site, and any `site apply` flags it needs beyond
    * `--publish`. A template's own content files are used when this is absent.
    */
   bundle?: { path: string; flags?: readonly string[] }
@@ -259,10 +264,13 @@ function config(
   next = false,
   actions: readonly string[] = [],
 ): string {
-  const imports = [
-    ...bundles.map((bundle) => `import { ${bundle.import} } from ${quote(bundle.package)}\n`),
-    ...actions.map((file) => `import * as ${actionKey(file)} from '#actions/${file}'\n`),
-  ].join('')
+  const imports = actions
+    .map((file) => `import * as ${actionKey(file)} from '#actions/${file}'\n`)
+    .join('')
+  // Story 310: an extension runs once granted; the site's code grants it here.
+  const extensions = `  extensions: {\n${bundles
+    .map((bundle) => `    ${bundle.id}: { grant: [${bundle.grant.map(quote).join(', ')}] },\n`)
+    .join('')}  },\n`
   const listed =
     actions.length > 0
       ? `  // Server actions a page's forms post to (story 219): each export is one.\n  actions: { ${actions.map(actionKey).join(', ')} },\n`
@@ -275,7 +283,7 @@ const APP = process.env.CROMBOLO_APP_URL ?? 'http://localhost:3000'
 
 export default defineConfig({
   siteName: ${quote(siteName)},
-${bundles.length > 0 ? `  bundles: [${bundles.map((bundle) => `${bundle.import}()`).join(', ')}],\n` : ''}${NEXT_CONFIG}})
+${bundles.length > 0 ? extensions : ''}${NEXT_CONFIG}})
 `
   if (bundles.length === 0)
     return `${imports}import { defineConfig } from '@crombolo/crombolo'
@@ -288,10 +296,9 @@ ${listed}${SEO_EXAMPLE}})
 
 export default defineConfig({
   siteName: ${quote(siteName)},
-  // Installing a bundle gives you its backoffice screen. This line is what lets
-  // its endpoints answer a request, so remove it to turn one off.
-  bundles: [${bundles.map((bundle) => `${bundle.import}()`).join(', ')}],
-${listed}${SEO_EXAMPLE}})
+  // An installed extension runs once granted: the site's code grants each exactly
+  // what it asks for. Take one out to turn it off.
+${extensions}${listed}${SEO_EXAMPLE}})
 `
 }
 

@@ -34,6 +34,7 @@ const manifest = (version: string, extra = '') => ({
   description: `the CRM${extra}`,
   peerDependencies: { '@crombolo/crombolo': `^${VERSION}` },
   crombolo: {
+    bundleType: 'extension',
     id: 'acme-crm',
     extensions: [{ type: 'dashboard', alias: 'acme.crm', name: 'CRM', element: 'd.js' }],
   },

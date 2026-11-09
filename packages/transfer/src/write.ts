@@ -19,6 +19,7 @@ import {
   type BundleManifest,
   type BundleNode,
   type BundleSection,
+  type BundleType,
   type BundleValue,
   type BundleVariant,
   type ContentSet,
@@ -167,6 +168,7 @@ export function writeManifest(manifest: BundleManifest): string {
   return json({
     formatVersion: manifest.formatVersion,
     id: manifest.id,
+    ...(manifest.bundleType ? { bundleType: manifest.bundleType } : {}),
     ...(manifest.label ? { label: manifest.label } : {}),
     createdAt: manifest.createdAt,
     createdBy: manifest.createdBy,
@@ -280,22 +282,75 @@ export function writeMediaManifest(bundleId: string, blobs: readonly BundleBlob[
 
 export const MANIFEST_FILE = 'bundle.json'
 
+/** Said wherever a bundle does not say what it is (story 306). */
+export const BUNDLE_TYPE_MISSING =
+  'this bundle does not say what it is: it needs `bundleType`, `site` or `extension`'
+
 /**
  * A hash over everything the bundle carries, in path order, so a bundle that
- * was copied half-way is refused rather than imported as though it were whole.
- * The manifest is excluded — it carries the hash. Media files are hashed by
- * their bytes, which is what makes `--with-blobs` a claim the reader can check.
+ * was copied half-way, or edited, is refused rather than imported as though it
+ * were whole. Media files are hashed by their bytes, which is what makes
+ * `--with-blobs` a claim the reader can check.
+ *
+ * After the files come the manifest, with its own hash blanked, and the
+ * package's identity (story 306): so `bundleType`, and what the package says it
+ * is, cannot change after the build without the hash failing. It has no key, so
+ * it catches an edit, not a forger; only a signature does that (story 060).
  */
-export function bundleIntegrity(files: readonly BundleFile[]): string {
+export function bundleIntegrity(
+  files: readonly BundleFile[],
+  trailer: { manifest: string; packageIdentity?: string },
+): string {
   const hasher = new Bun.CryptoHasher('sha256')
   for (const file of [...files].sort((a, b) => a.path.localeCompare(b.path))) {
-    if (file.path === MANIFEST_FILE) continue
+    if (file.path === MANIFEST_FILE || file.path === PACKAGE_FILE) continue
     hasher.update(file.path)
     hasher.update('\0')
     hasher.update(file.bytes ?? (file.text as string))
     hasher.update('\n')
   }
+  updateTrailer(hasher, trailer)
   return `sha256-${hasher.digest('hex')}`
+}
+
+/** The manifest and the package's identity, after the files: what `bundleIntegrity` ends with. */
+export function updateTrailer(
+  hasher: Bun.CryptoHasher,
+  trailer: { manifest: string; packageIdentity?: string },
+): void {
+  hasher.update(`${MANIFEST_FILE}\0`)
+  hasher.update(trailer.manifest)
+  hasher.update('\n')
+  if (trailer.packageIdentity === undefined) return
+  hasher.update(`${PACKAGE_FILE}\0`)
+  hasher.update(trailer.packageIdentity)
+  hasher.update('\n')
+}
+
+export const PACKAGE_FILE = 'package.json'
+
+/** `bundle.json` as it was hashed: with its `integrity` value blanked. */
+export function blankedManifest(text: string, integrity: string): string {
+  return text.replace(`"integrity": ${JSON.stringify(integrity)}`, '"integrity": ""')
+}
+
+/** JSON with every object's keys sorted, so the same value always reads the same. */
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`
+  if (value && typeof value === 'object')
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson((value as Record<string, unknown>)[key])}`)
+      .join(',')}}`
+  return JSON.stringify(value)
+}
+
+/**
+ * What the hash takes of a `package.json`: its name, version and `crombolo`
+ * field, keys sorted. Not its bytes, which a registry or a packer may normalise.
+ */
+export function packageIdentity(pkg: Record<string, unknown>): string {
+  return stableJson({ name: pkg.name, version: pkg.version, crombolo: pkg.crombolo })
 }
 
 export interface WriteOptions {
@@ -313,6 +368,8 @@ export interface WriteOptions {
   siteData?: readonly SiteDataTable[]
   /** The site's `public/` files, which `public.json` lists and the caller's bytes follow. */
   public?: readonly PublicSource[]
+  /** What the bundle is (story 306), when the set's manifest does not say already. */
+  bundleType?: BundleType
 }
 
 /** Without values, media files or usernames: what `omitted` writes. Pure. */
@@ -361,7 +418,9 @@ export function writeBundle(
   })
   const manifest = {
     ...planned.manifest,
-    integrity: bundleIntegrity([...planned.files, ...carried]),
+    integrity: bundleIntegrity([...planned.files, ...carried], {
+      manifest: writeManifest({ ...planned.manifest, integrity: '' }),
+    }),
   }
   const publicFiles = (options.public ?? []).map(({ path, source }) => ({ path, source }))
   return [
@@ -430,8 +489,12 @@ function planBundle(
   const publicFiles = options.public ?? []
   const people = options.people && seal ? sealPeople(options.people, seal) : undefined
   const siteData = options.siteData && seal ? sealSiteData(options.siteData, seal) : undefined
+  // A bundle written as a package takes what it is from the package when not
+  // given here; one read without a package must say (story 306).
+  const bundleType = options.bundleType ?? set.manifest.bundleType
   const manifest: BundleManifest = {
     ...set.manifest,
+    bundleType,
     formatVersion: BUNDLE_FORMAT_VERSION,
     // Without values nothing names a media file, so none is expected either.
     publicManifest: publicFiles.length > 0 ? PUBLIC_MANIFEST : undefined,

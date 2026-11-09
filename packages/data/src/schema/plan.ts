@@ -18,6 +18,7 @@ import { approvalsMigration } from './approvals.ts'
 import { assistantMigration } from './assistant.ts'
 import { auditLogMigration } from './audit-log.ts'
 import { bundleComponentsMigration } from './bundle-components.ts'
+import { bundleGrantReachMigration } from './bundle-grant-reach.ts'
 import { bundleGrantsMigration } from './bundle-grants.ts'
 import { bundlePackageMigration } from './bundle-package.ts'
 import { bundleSchemaPicksMigration } from './bundle-schema-picks.ts'
@@ -37,6 +38,7 @@ import { deliveryMemberTokensMigration } from './delivery-member-tokens.ts'
 import { diagnosticsMigration } from './diagnostics.ts'
 import { dropAssistantMigration } from './drop-assistant.ts'
 import { elementsMigration } from './elements.ts'
+import { extensionSettingsMigration } from './extension-settings.ts'
 import { formLibraryMigration } from './form-library.ts'
 import { formPermissionPrefixMigration } from './form-permission-prefix.ts'
 import { formPermissionsMigration } from './form-permissions.ts'
@@ -69,6 +71,7 @@ import { sinceVersionMigration } from './since-version.ts'
 import { siteSearchMigration } from './site-search.ts'
 import { siteSettingsTypesMigration } from './site-settings-types.ts'
 import { transferAnswersMigration } from './transfer-answers.ts'
+import { transferRunBundleTypeMigration } from './transfer-run-bundle-type.ts'
 import { transferRunPackageMigration } from './transfer-run-package.ts'
 import { transferRunsMigration } from './transfer-runs.ts'
 import { trashedDateMigration } from './trashed-date.ts'
@@ -143,4 +146,7 @@ export const cromboloPlan = new MigrationPlan([
   mediaTreeOrderMigration,
   searchRemovalsMigration,
   imageAltTextMigration,
+  transferRunBundleTypeMigration,
+  bundleGrantReachMigration,
+  extensionSettingsMigration,
 ])

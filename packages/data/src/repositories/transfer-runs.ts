@@ -28,6 +28,8 @@ export interface TransferRun {
   /** The npm package the content arrived in, and its version. */
   packageName: string | null
   packageVersion: string | null
+  /** A site package's or an extension's (story 306); null for a run before that was recorded. */
+  bundleType: 'site' | 'extension' | null
   direction: TransferDirection
   revertsRunId: string | null
   schemaStateId: number
@@ -67,6 +69,7 @@ export class TransferRunRepository {
         bundle_label: run.bundleLabel,
         package_name: run.packageName,
         package_version: run.packageVersion,
+        bundle_type: run.bundleType,
         direction: run.direction,
         reverts_run_id: run.revertsRunId,
         schema_state_id: run.schemaStateId,
@@ -205,6 +208,8 @@ function mapRun(row: Record<string, unknown>): TransferRun {
     bundleLabel: (row.bundle_label as string | null) ?? null,
     packageName: (row.package_name as string | null) ?? null,
     packageVersion: (row.package_version as string | null) ?? null,
+    bundleType:
+      row.bundle_type === 'site' || row.bundle_type === 'extension' ? row.bundle_type : null,
     direction: String(row.direction) as TransferDirection,
     revertsRunId: (row.reverts_run_id as string | null) ?? null,
     schemaStateId: Number(row.schema_state_id),

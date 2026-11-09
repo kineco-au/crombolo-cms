@@ -11,8 +11,8 @@ A crombolo site in production is the same Bun project you run locally, started w
 **As a bundle.** A bundle carries the site's definitions, views, styles and content. Pages made in the database are exported as content files first, so they go with it:
 
 ```sh
-bunx crombolo bundle export --source --root /Home
-bunx crombolo bundle build . --out ../site-bundle
+bunx crombolo content export --root /Home
+bunx crombolo site build . --out ../site-bundle
 ```
 
 On the server, `start` applies the bundle and serves the site:
@@ -23,10 +23,10 @@ bunx crombolo start --bundle ../site-bundle --publish
 
 Run it again with nothing changed and nothing is applied; build a changed bundle and only the changes are.
 
-**As a deploy.** With a remote set up ([Remotes](/docs/guides/remotes/)), `bundle deploy` sends the site as it is committed: its content, definitions and code, checked first, then applied, then the remote restarted:
+**As a deploy.** With a remote set up ([Remotes](/docs/guides/remotes/)), `site deploy` sends the site as it is committed: its content, definitions and code, checked first, then applied, then the remote restarted:
 
 ```sh
-bunx crombolo bundle deploy --remote production --publish
+bunx crombolo site deploy --remote production --publish
 ```
 
 **As a push.** `push` replaces a remote environment with this one, content and all, after you confirm it by name:
@@ -36,7 +36,7 @@ bunx crombolo push staging --dry-run
 bunx crombolo push staging
 ```
 
-A production site applies changed definitions only under a new version. `bundle build`, `bundle deploy` and `push` raise the version a step when the definitions have changed since it was first applied, so you never edit it by hand. A deploy sends only what is committed, so when it raises the version it asks you to commit that first.
+A production site applies changed definitions only under a new version. `site build`, `site deploy` and `push` raise the version a step when the definitions have changed since it was first applied, so you never edit it by hand. A deploy sends only what is committed, so when it raises the version it asks you to commit that first.
 
 ## What production changes
 

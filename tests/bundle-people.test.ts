@@ -50,6 +50,7 @@ const PEOPLE: BundlePeople = {
 const emptySet: ContentSet = {
   manifest: {
     formatVersion: BUNDLE_FORMAT_VERSION,
+    bundleType: 'site',
     id: 'bundle-people',
     createdAt: '2026-10-15T00:00:00Z',
     createdBy: 'test',
@@ -146,6 +147,7 @@ describe('a bundle with people', () => {
     const manifest = readFileSync(join(dir, MANIFEST_FILE), 'utf8')
     expect(JSON.parse(manifest)).toMatchObject({
       formatVersion: BUNDLE_FORMAT_VERSION,
+      bundleType: 'site',
       people: { counts: { members: 1, memberGroups: 1, users: 0, userGroups: 0 } },
     })
     // As a word: a hex hash in the manifest may hold the letters by chance.
@@ -213,6 +215,7 @@ describe('sealed content', () => {
       expect(all).not.toContain(secret)
     expect(JSON.parse(readFileSync(join(dir, MANIFEST_FILE), 'utf8'))).toMatchObject({
       formatVersion: BUNDLE_FORMAT_VERSION,
+      bundleType: 'site',
       content: 'sealed',
       seal: { kdf: 'scrypt' },
     })
@@ -268,25 +271,44 @@ describe('a package for anyone to install', () => {
     id: 'starter',
     label: 'Starter',
     peerRange: '*',
+    bundleType: 'extension' as const,
   }
 
   test('carries open content, and refuses people or sealed content', () => {
-    expect(() => writeBundlePackage(writeBundle(pageSet, undefined, [], {}), info)).not.toThrow()
     expect(() =>
-      writeBundlePackage(writeBundle(pageSet, undefined, [], { seal: newSeal(PASS, CHEAP) }), info),
+      writeBundlePackage(writeBundle(pageSet, undefined, [], { bundleType: 'extension' }), info),
+    ).not.toThrow()
+    expect(() =>
+      writeBundlePackage(
+        writeBundle(pageSet, undefined, [], {
+          seal: newSeal(PASS, CHEAP),
+          bundleType: 'extension',
+        }),
+        info,
+      ),
     ).toThrow('encrypted')
     expect(() =>
       writeBundlePackage(
-        writeBundle(emptySet, undefined, [], { seal: newSeal(PASS, CHEAP), people: PEOPLE }),
+        writeBundle(emptySet, undefined, [], {
+          seal: newSeal(PASS, CHEAP),
+          people: PEOPLE,
+          bundleType: 'extension',
+        }),
         info,
       ),
     ).toThrow('members or users')
     // A private one, an environment's export, may carry either.
     expect(() =>
-      writeBundlePackage(writeBundle(pageSet, undefined, [], { seal: newSeal(PASS, CHEAP) }), {
-        ...info,
-        private: true,
-      }),
+      writeBundlePackage(
+        writeBundle(pageSet, undefined, [], {
+          seal: newSeal(PASS, CHEAP),
+          bundleType: 'extension',
+        }),
+        {
+          ...info,
+          private: true,
+        },
+      ),
     ).not.toThrow()
   })
 })

@@ -1,5 +1,5 @@
 /**
- * Writing a site's content out as the files `bundle apply` reads back (stories
+ * Writing a site's content out as the files `site apply` reads back (stories
  * 163, 164, 167): pages to content/pages, and with --all every Library element
  * and media item too, in the shorthand a person writes.
  */

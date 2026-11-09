@@ -67,7 +67,7 @@ The pause takes effect on every node at once. Editors who try to save are told t
 
 ### Taken for you
 
-Anything that changes the database in bulk takes a backup first: `upgrade`, `upgrade check --fix`, `bundle apply`, `bundle revert`, `import`, `pull` into an existing site, `types purge` and `bundle purge`.
+Anything that changes the database in bulk takes a backup first: `upgrade`, `upgrade check --fix`, `site apply`, `site revert`, `import`, `pull` into an existing site, `types purge` and `bundle purge`.
 
 - **On SQLite** the backup is a copy of the database file beside it, named with the time and the reason.
 - **On Postgres** crombolo runs the command in `CROMBOLO_PG_DUMP`. It is given `CROMBOLO_BACKUP_STAMP` and `CROMBOLO_BACKUP_REASON` to name the file with. Without the setting, these commands refuse unless you pass `--backup-taken` to say you have taken one another way.
@@ -85,10 +85,10 @@ The database is not the whole site. Back up the media library too: the `media/` 
 ### A portable copy
 
 ```sh
-bunx crombolo export --site --out site-2026-10-17.tgz
+bunx crombolo site export --out site-2026-10-17.tgz
 ```
 
-A whole-site file holds the schema, templates, styles, every page and media item and the media files, in one file that `crombolo start --from` or `crombolo import` can bring back anywhere. It leaves out domains, the secret key and settings, and leaves out members and users unless you add `--with-members` or `--with-users`. It is a good way to move a site, and a useful extra copy, but it is not a replacement for a database backup.
+A whole-site file holds the schema, templates, styles, every page and media item and the media files, in one file that `crombolo start --from` or `crombolo site import` can bring back anywhere. It leaves out domains, the secret key and settings, and leaves out members and users unless you add `--with-members` or `--with-users`. It is a good way to move a site, and a useful extra copy, but it is not a replacement for a database backup.
 
 ## Rebuilding the cache
 

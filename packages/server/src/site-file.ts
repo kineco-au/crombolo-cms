@@ -23,10 +23,12 @@ import {
   MANIFEST_FILE,
   mediaPath,
   newSeal,
+  packageIdentity,
   packageNameFor,
   planStreamedBundle,
   sanitise,
   sealBytes,
+  updateTrailer,
   writeManifest,
 } from '@crombolo/transfer'
 import { createComponentsPort, createFileSystemPort } from './adapters/file-system.ts'
@@ -245,6 +247,7 @@ export async function exportSite(
       seal,
       content: options.sealContent ? 'sealed' : 'open',
       public: publicFiles,
+      bundleType: 'site',
     },
   )
 
@@ -256,7 +259,13 @@ export async function exportSite(
     label: site.manifest.label,
     private: true,
     peerRange: `>=${VERSION}`,
+    bundleType: 'site',
   }
+  const pkg = bundlePackageJson(info, [
+    ...planned.files.map((file) => file.path),
+    ...planned.blobs.map(mediaPath),
+    ...publicFiles.map((file) => file.path),
+  ])
 
   const partial = `${options.out}.partial`
   const writer = TarballWriter.create(partial)
@@ -299,14 +308,14 @@ export async function exportSite(
     // Outside the bundle's hash: `public.json`, inside it, holds each file's own.
     for (const file of publicFiles)
       await writer.addStream(file.path, file.size, Bun.file(file.source).stream())
+    // The manifest and the package's identity close the hash, as `bundleIntegrity` has it.
+    updateTrailer(hasher, {
+      manifest: writeManifest({ ...planned.manifest, integrity: '' }),
+      packageIdentity: packageIdentity(pkg),
+    })
     const manifest = { ...planned.manifest, integrity: `sha256-${hasher.digest('hex')}` }
     await writer.add(MANIFEST_FILE, encoder.encode(writeManifest(manifest)))
-    await writer.add(
-      'package.json',
-      encoder.encode(
-        `${JSON.stringify(bundlePackageJson(info, [...paths, ...publicFiles.map((file) => file.path)]), null, 2)}\n`,
-      ),
-    )
+    await writer.add('package.json', encoder.encode(`${JSON.stringify(pkg, null, 2)}\n`))
     await writer.close()
     await rename(partial, options.out)
   } catch (error) {

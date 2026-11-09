@@ -428,7 +428,10 @@ describe('expand and contract, per bundle', () => {
     expect(validateServerBundles([tasksBundle(tasksV2)], [wrong], VERSION).join('\n')).toContain(
       'its tables make 2.0.0 "breaking"',
     )
-    const missing = { ...tasksPackage('1.1.0'), field: { id: TASKS_ID, server: 'tasks' } }
+    const missing = {
+      ...tasksPackage('1.1.0'),
+      field: { bundleType: 'extension' as const, id: TASKS_ID, server: 'tasks' },
+    }
     expect(validateServerBundles([tasksBundle()], [missing], VERSION).join('\n')).toContain(
       '"crombolo.migrations": null',
     )

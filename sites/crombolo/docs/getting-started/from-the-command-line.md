@@ -279,8 +279,8 @@ bunx crombolo webhooks new published --url https://example.test/hook --event con
 Export the pages as files, and build the whole site into a bundle.
 
 ```sh
-bunx crombolo bundle export --source --root /Home
-bunx crombolo bundle build . --out ../bakery-bundle
+bunx crombolo content export --root /Home
+bunx crombolo site build . --out ../bakery-bundle
 ```
 
 > You'll see the pages written under `content/`, the version raised to `1.1.0`, then `wrote ../bakery-bundle`.

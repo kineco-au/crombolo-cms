@@ -6,20 +6,36 @@
  * docs/bundles.md, "Permissions".
  */
 import {
+  askedPermissions,
   type BundlePackage,
   type BundlePermission,
+  type DeclaredPermission,
   describePermissions,
+  isSchema3Field,
 } from '@crombolo/backoffice-host/registry'
 import { type BundleGrant, BundleGrantRepository, type Db } from '@crombolo/data'
+import { API_PERMISSIONS } from './bundle-api.ts'
 
 /** The permissions each capability serves; `log` needs none. */
 export const CAPABILITY_PERMISSIONS: Record<string, readonly BundlePermission[]> = {
   redirects: ['redirects.read', 'redirects.write'],
-  documents: ['documents.read'],
+  documents: ['content.read'],
   identityProviders: ['identityProviders.read', 'identityProviders.write'],
   media: ['media.read', 'media.write', 'member.delegate'],
   log: [],
+  // Story 308: the areas through the Management API, and requests out.
+  api: Object.keys(API_PERMISSIONS) as BundlePermission[],
+  fetch: ['http.outbound'],
 }
+
+/** Permissions a bundle uses by what it declares, not by a capability: checked at boot instead. */
+const DECLARATION_PERMISSIONS: ReadonlySet<string> = new Set([
+  'events.content',
+  'routes.public',
+  'actAs',
+  'templates',
+  'member.delegate',
+])
 
 /** The permission each capability method needs. */
 const METHOD_PERMISSIONS: Record<string, Record<string, BundlePermission>> = {
@@ -30,7 +46,8 @@ const METHOD_PERMISSIONS: Record<string, Record<string, BundlePermission>> = {
     replace: 'redirects.write',
     remove: 'redirects.write',
   },
-  documents: { url: 'documents.read' },
+  documents: { url: 'content.read' },
+  fetch: { fetch: 'http.outbound' },
   identityProviders: {
     list: 'identityProviders.read',
     test: 'identityProviders.read',
@@ -48,9 +65,24 @@ const METHOD_PERMISSIONS: Record<string, Record<string, BundlePermission>> = {
   },
 }
 
-/** The permissions a package declares. */
+/**
+ * What a package declares: each permission, its reason and its origins. Schema
+ * 3 listed names, read here in schema 4's terms, `documents.read` as
+ * `content.read`, so an extension already installed keeps working (story 308).
+ */
+export const declaredEntries = (pkg: BundlePackage | undefined): DeclaredPermission[] =>
+  askedPermissions(pkg?.field)
+
+/** The permissions a package declares, by name. */
 export const declaredPermissions = (pkg: BundlePackage | undefined): string[] =>
-  Array.isArray(pkg?.field.permissions) ? [...(pkg?.field.permissions ?? [])] : []
+  declaredEntries(pkg).map((entry) => entry.permission)
+
+/** The origins its `http.outbound` names; none when it asks for none. */
+export const declaredOrigins = (pkg: BundlePackage | undefined): string[] =>
+  declaredEntries(pkg).find((entry) => entry.permission === 'http.outbound')?.origins ?? []
+
+/** Whether it was written before permissions said why (story 308). */
+export const isSchema3 = (pkg: BundlePackage | undefined): boolean => isSchema3Field(pkg?.field)
 
 /**
  * Why a bundle's capabilities and its declared permissions disagree: a
@@ -78,6 +110,7 @@ export function permissionProblems(
       )
   }
   for (const permission of declared) {
+    if (DECLARATION_PERMISSIONS.has(permission)) continue
     const used = capabilities.some((c) => CAPABILITY_PERMISSIONS[c]?.includes(permission as never))
     if (!used)
       problems.push(
@@ -130,12 +163,36 @@ export interface BundleGrantState {
   bundleId: string
   packageName: string
   version: string
-  declared: { permission: string; allows: string }[]
-  /** On unless an administrator disabled it: the site's code is its approval. */
+  declared: { permission: string; allows: string; reason: string | null; origins?: string[] }[]
+  /** It runs: granted what the installed version asks for, and not turned off (story 309). */
   on: boolean
+  /**
+   * Why, in a word: `on`; `off`, turned off by an administrator; `waiting`, its
+   * version asks for more than was granted; `not-granted`, never granted.
+   */
+  status: 'on' | 'off' | 'waiting' | 'not-granted'
+  /** With `waiting`: what it asks for that the grant does not cover. */
+  missing: string[]
   grant: BundleGrant | undefined
   /** Who disabled it, when it is off. */
   disabledBy: string | null
+}
+
+/**
+ * What the installed version asks for that a grant does not cover (story 309):
+ * permissions, `http.outbound` origins, and whom `actAs` acts for. Empty when it
+ * covers it all. Pure.
+ */
+export function grantGaps(pkg: BundlePackage, grant: BundleGrant | undefined): string[] {
+  if (!grant) return declaredPermissions(pkg)
+  // A schema 3 grant names `documents.read`, which is `content.read` now (story 308).
+  const has = new Set(grant.permissions.map((p) => (p === 'documents.read' ? 'content.read' : p)))
+  const gaps = declaredPermissions(pkg).filter((permission) => !has.has(permission))
+  for (const origin of declaredOrigins(pkg))
+    if (!grant.origins.includes(origin)) gaps.push(`http.outbound ${origin}`)
+  if (declaredPermissions(pkg).includes('actAs') && !grant.actAs && !gaps.includes('actAs'))
+    gaps.push('actAs: whom it acts for')
+  return gaps
 }
 
 /** Whether a bundle may run, what it was approved for, and the switch to stop one. */
@@ -143,20 +200,40 @@ export interface BundleGrants {
   /** Reads the rows again, as a node elsewhere may have changed them. */
   refresh(): Promise<void>
   isOn(bundleId: string): boolean
+  /** What it may use now: what it asks for while it is on, nothing otherwise (story 309). */
+  granted(bundleId: string): string[]
+  /**
+   * Narrows a grant to what the installed version asks for, when it asks for no
+   * more than was granted: a version that asks for less stays on. True when changed.
+   */
+  narrow(pkg: BundlePackage): Promise<boolean>
   state(pkg: BundlePackage): BundleGrantState
-  /** Records what a bundle is approved for, and by whom; true when that changed. */
-  grant(pkg: BundlePackage, by: string | null): Promise<boolean>
+  /**
+   * Records what a bundle is approved for, and by whom; true when that changed.
+   * `actAs` is whom it acts for, when it asks to act for a user (story 308).
+   */
+  grant(
+    pkg: BundlePackage,
+    by: string | null,
+    options?: { actAs?: string | null },
+  ): Promise<boolean>
   disable(pkg: BundlePackage, by: string | null): Promise<BundleGrantState>
   enable(pkg: BundlePackage): Promise<BundleGrantState>
 }
 
 /** Whether a recorded approval already holds this version and list. */
-export function approvalHolds(pkg: BundlePackage, grant: BundleGrant | undefined): boolean {
+export function approvalHolds(
+  pkg: BundlePackage,
+  grant: BundleGrant | undefined,
+  actAs?: string | null,
+): boolean {
   if (!grant || grant.version !== pkg.version) return false
-  const declared = declaredPermissions(pkg)
+  const same = (a: readonly string[], b: readonly string[]) =>
+    a.length === b.length && a.every((entry) => b.includes(entry))
   return (
-    grant.permissions.length === declared.length &&
-    declared.every((permission) => grant.permissions.includes(permission))
+    same(grant.permissions, declaredPermissions(pkg)) &&
+    same(grant.origins, declaredOrigins(pkg)) &&
+    (actAs === undefined || grant.actAs === actAs)
   )
 }
 
@@ -185,12 +262,22 @@ export function createBundleGrants(options: {
   }
   const stateOf = (pkg: BundlePackage): BundleGrantState => {
     const grant = grants.get(pkg.id)
+    const missing = grantGaps(pkg, grant)
+    const status = grant?.disabledAt
+      ? 'off'
+      : !grant?.recorded
+        ? 'not-granted'
+        : missing.length > 0
+          ? 'waiting'
+          : 'on'
     return {
       bundleId: pkg.id,
       packageName: pkg.packageName,
       version: pkg.version,
-      declared: describePermissions(declaredPermissions(pkg)),
-      on: !grant?.disabledAt,
+      declared: describePermissions(declaredEntries(pkg)),
+      on: status === 'on',
+      status,
+      missing: status === 'waiting' ? missing : [],
       grant,
       disabledBy: grant?.disabledAt ? grant.disabledBy : null,
     }
@@ -200,19 +287,44 @@ export function createBundleGrants(options: {
     refresh: read,
     isOn(bundleId) {
       stale()
-      return options.packages().has(bundleId) && !grants.get(bundleId)?.disabledAt
+      const pkg = options.packages().get(bundleId)
+      return pkg !== undefined && stateOf(pkg).on
     },
-    state(pkg) {
+    granted(bundleId) {
       stale()
-      return stateOf(pkg)
+      const pkg = options.packages().get(bundleId)
+      return pkg && stateOf(pkg).on ? declaredPermissions(pkg) : []
     },
-    async grant(pkg, by) {
-      if (approvalHolds(pkg, grants.get(pkg.id))) return false
+    async narrow(pkg) {
+      const grant = grants.get(pkg.id)
+      if (!grant?.recorded || grantGaps(pkg, grant).length > 0 || approvalHolds(pkg, grant))
+        return false
       await repository.grant({
         bundleId: pkg.id,
         packageName: pkg.packageName,
         version: pkg.version,
         permissions: declaredPermissions(pkg),
+        origins: declaredOrigins(pkg),
+        actAs: declaredPermissions(pkg).includes('actAs') ? grant.actAs : null,
+        grantedBy: grant.grantedBy,
+      })
+      await read()
+      return true
+    },
+    state(pkg) {
+      stale()
+      return stateOf(pkg)
+    },
+    async grant(pkg, by, options = {}) {
+      if (approvalHolds(pkg, grants.get(pkg.id), options.actAs)) return false
+      const asks = declaredPermissions(pkg)
+      await repository.grant({
+        bundleId: pkg.id,
+        packageName: pkg.packageName,
+        version: pkg.version,
+        permissions: asks,
+        origins: declaredOrigins(pkg),
+        actAs: asks.includes('actAs') ? (options.actAs ?? grants.get(pkg.id)?.actAs ?? null) : null,
         grantedBy: by,
       })
       await read()

@@ -73,10 +73,10 @@ afterAll(() => rmSync(site, { recursive: true, force: true }))
 describe('bundle build --check', () => {
   test('names each problem by file and line, and exits 20', () => {
     writeSeed('content/home.toml', 'type = "page"\n\n[values]\ntitle = "Home"\nsubtitle = "x"\n')
-    const run = cli(['bundle', 'build', '--check'])
+    const run = cli(['site', 'build', '--check'])
     expect(run.code).toBe(OUTCOMES.problems_found.code)
     expect(run.out).toContain('content/pages/home.toml:5  "page" has no property "subtitle"')
-    const json = JSON.parse(cli(['bundle', 'build', '--check', '-o', 'json']).out) as {
+    const json = JSON.parse(cli(['site', 'build', '--check', '-o', 'json']).out) as {
       findings: Array<{ file: string; line: number; code: string }>
     }
     expect(json.findings).toEqual([
@@ -91,7 +91,7 @@ describe('bundle build --check', () => {
   test('a seed with nothing wrong is all good', () => {
     writeSeed('content/home.toml', 'type = "page"\n\n[values]\ntitle = "Home"\n')
     writeSeed('content/home/about.toml', 'type = "page"\n\n[values]\ntitle = "About"\n')
-    const run = cli(['bundle', 'build', '--check'])
+    const run = cli(['site', 'build', '--check'])
     expect(run.code, run.err).toBe(0)
     expect(run.out).toContain('2 page(s)')
   })
@@ -100,7 +100,7 @@ describe('bundle build --check', () => {
 describe('bundle build and apply', () => {
   test('bundle build: the site, schema and views with its content', () => {
     const out = join(site, 'built')
-    const run = cli(['bundle', 'build', '--out', out])
+    const run = cli(['site', 'build', '--out', out])
     expect(run.code, run.err).toBe(0)
     expect(existsSync(join(out, 'package.json'))).toBe(true)
     expect(existsSync(join(out, 'schema', 'content-types', 'page.toml'))).toBe(true)
@@ -110,19 +110,19 @@ describe('bundle build and apply', () => {
   })
 
   test('a dry run writes nothing; apply creates and publishes; again changes nothing', async () => {
-    const dry = cli(['bundle', 'apply', '--dry-run'])
+    const dry = cli(['site', 'apply', '--dry-run'])
     expect(dry.code, dry.err).toBe(0)
     expect(dry.out).toContain('2 create')
     expect(await title(seedKey('content/home'))).toBeUndefined()
 
-    const applied = cli(['bundle', 'apply', '--publish', '-o', 'json'])
+    const applied = cli(['site', 'apply', '--publish', '-o', 'json'])
     expect(applied.code, applied.err).toBe(0)
     const result = JSON.parse(applied.out) as { counts: { create: number }; published: number }
     expect(result.counts.create).toBe(2)
     expect(result.published).toBe(2)
     expect(await title(seedKey('content/home/about'))).toBe('About')
 
-    const again = JSON.parse(cli(['bundle', 'apply', '-o', 'json']).out) as {
+    const again = JSON.parse(cli(['site', 'apply', '-o', 'json']).out) as {
       counts: { create: number; update: number }
     }
     expect(again.counts).toMatchObject({ create: 0, update: 0 })
@@ -130,7 +130,7 @@ describe('bundle build and apply', () => {
 
   test('a changed seed file updates its page', async () => {
     writeSeed('content/home/about.toml', 'type = "page"\n\n[values]\ntitle = "About us"\n')
-    const run = cli(['bundle', 'apply'])
+    const run = cli(['site', 'apply'])
     expect(run.code, run.err).toBe(0)
     expect(run.out).toContain('changed in the bundle since it was last imported')
     expect(await title(seedKey('content/home/about'))).toBe('About us')
@@ -170,14 +170,14 @@ describe('content find (story 183)', () => {
 describe('bundle export --source', () => {
   test('writes the pages back as seed files, keeping their keys', () => {
     rmSync(join(site, 'content'), { recursive: true, force: true })
-    const run = cli(['bundle', 'export', '--source', '--root', '/Home'])
+    const run = cli(['content', 'export', '--root', '/Home'])
     expect(run.code, run.err).toBe(0)
     const about = readFileSync(join(site, 'content', 'pages', 'home', 'about.toml'), 'utf8')
     expect(about).toContain('type = "page"')
     expect(about).toContain('title = "About us"')
     // Exported from where its file is, so the key it derives is the one it has.
     expect(about).not.toContain('key =')
-    expect(cli(['bundle', 'build', '--check']).code).toBe(0)
+    expect(cli(['site', 'build', '--check']).code).toBe(0)
   })
 })
 
@@ -194,9 +194,9 @@ describe('media in folders on a site never started (story 180)', () => {
       ),
     )
     try {
-      const check = cli(['bundle', 'build', '--check'])
+      const check = cli(['site', 'build', '--check'])
       expect(check.code, check.out + check.err).toBe(0)
-      const apply = cli(['bundle', 'apply'])
+      const apply = cli(['site', 'apply'])
       expect(apply.code, apply.out + apply.err).toBe(0)
     } finally {
       rmSync(join(site, 'content', 'media'), { recursive: true, force: true })

@@ -111,9 +111,9 @@ describe('an empty directory to "Hello, world", through the command line alone',
       join(dir, 'content', 'pages', 'home.toml'),
       'type = "page"\nname = "Home"\n\n[values]\ntitle = "Hello, world"\n',
     )
-    const check = await cli('bundle', 'build', '--check')
+    const check = await cli('site', 'build', '--check')
     expect(check.code, said(check)).toBe(0)
-    const run = await cli('bundle', 'apply')
+    const run = await cli('site', 'apply')
     expect(run.code, said(run)).toBe(0)
   })
 

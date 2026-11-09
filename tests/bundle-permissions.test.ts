@@ -37,7 +37,14 @@ const manifest = (crombolo: Record<string, unknown>) => ({
   name: '@acme/notes',
   version: '1.0.0',
   peerDependencies: { '@crombolo/crombolo': '*' },
-  crombolo: { id: 'notes', server: 'notes', schemaVersion: 3, permissions: [], ...crombolo },
+  crombolo: {
+    bundleType: 'extension',
+    id: 'notes',
+    server: 'notes',
+    schemaVersion: 3,
+    permissions: [],
+    ...crombolo,
+  },
 })
 
 describe('what a package declares', () => {
@@ -47,7 +54,7 @@ describe('what a package declares', () => {
       'declares no "crombolo.permissions"',
     )
     expect(validateBundlePackage(manifest({ permissions: ['members.read'] })).join('\n')).toContain(
-      'which this release does not offer',
+      'which schema 3 does not offer',
     )
     expect(
       validateBundlePackage(manifest({ permissions: ['media.read', 'media.read'] })).join('\n'),
@@ -96,18 +103,26 @@ describe('capabilities against permissions', () => {
 })
 
 describe(`approvals and disabling (${dialectUnderTest})`, () => {
-  test('a wired bundle runs with no row; its approval is recorded once per change; disabled holds through an upgrade', async () => {
+  test('a wired bundle runs once its grant is recorded, once per change; disabled holds through an upgrade', async () => {
     const db = await freshDb()
     try {
       await migrate(db, cromboloPlan)
       let pkg = stubBundlePackage('notes', {
-        field: { id: 'notes', server: 'notes', schemaVersion: 3, permissions: ['redirects.read'] },
+        field: {
+          bundleType: 'extension',
+          id: 'notes',
+          server: 'notes',
+          schemaVersion: 3,
+          permissions: ['redirects.read'],
+        },
       })
       const grants = createBundleGrants({ db, packages: () => new Map([['notes', pkg]]) })
       await grants.refresh()
-      expect(grants.isOn('notes')).toBe(true)
+      // Off with no grant (story 309); the boot records the site's code's.
+      expect(grants.isOn('notes')).toBe(false)
       expect(grants.isOn('elsewhere')).toBe(false)
       expect(await grants.grant(pkg, "the site's code")).toBe(true)
+      expect(grants.isOn('notes')).toBe(true)
       expect(await grants.grant(pkg, "the site's code")).toBe(false)
       expect(grants.state(pkg).grant).toMatchObject({
         grantedBy: "the site's code",
@@ -139,7 +154,13 @@ describe(`approvals and disabling (${dialectUnderTest})`, () => {
     try {
       await migrate(db, cromboloPlan)
       const pkg = stubBundlePackage('notes', {
-        field: { id: 'notes', server: 'notes', schemaVersion: 3, permissions: ['redirects.read'] },
+        field: {
+          bundleType: 'extension',
+          id: 'notes',
+          server: 'notes',
+          schemaVersion: 3,
+          permissions: ['redirects.read'],
+        },
       })
       const grants = createBundleGrants({ db, packages: () => new Map([['notes', pkg]]) })
       await grants.refresh()

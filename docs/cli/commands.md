@@ -139,40 +139,6 @@ crombolo generate [--delivery] [--out <out>] [--schema <schema>]
 
 **Fails with:** `usage`, `internal`, `refused`.
 
-### `crombolo export`
-
-Write the whole site to one file, to move it to another machine or host. Each run acts again.
-
-```
-crombolo export --site [--out <out>] [--with-media] [--drafts] [--with-members] [--with-users] [--with-site-data] [--anonymise] [--name <name>] [--package-version <package-version>]
-```
-
-| Argument | Type | What it is |
-| --- | --- | --- |
-| `--site` | boolean | The whole site (required: a part of it is `bundle export`). Required. |
-| `--out` | string | The file to write. |
-| `--with-media` | boolean | The media files too; left out unless asked. |
-| `--drafts` | boolean | Drafts too. |
-| `--with-members` | boolean | Members, encrypted. |
-| `--with-users` | boolean | Back-office users, encrypted. |
-| `--with-site-data` | boolean | The site's and its bundles' own data, encrypted. |
-| `--anonymise` | boolean | Replace every personal value as it writes. |
-| `--name` | string | The package's npm name. |
-| `--package-version` | string | The package's version. |
-
-**Output** (single, with `-o json`):
-
-- `out` (string)
-- `package` (object)
-- `counts` (object)
-- `sections` (object)
-- `media` (object)
-- `people` (object)
-- `anonymised` (integer)
-- `siteData` (object)
-
-**Fails with:** `usage`, `internal`, `auth`, `io`.
-
 ### `crombolo schema`
 
 This CLI described for machines, as a clispec v0.3 document. Changes nothing.
@@ -334,7 +300,7 @@ crombolo schema sync [--force-retire-types]
 
 ## Content types
 
-Check, apply and change the content model kept in schema/: types, languages, forms, workflows, webhooks and page addresses.
+Check, apply and change the content model kept in schema/: types, languages, forms, workflows and webhooks.
 
 ### `crombolo types check`
 
@@ -1931,52 +1897,6 @@ crombolo webhooks update <alias> [--name <name>] [--description <description>] [
 
 **Fails with:** `usage`, `internal`, `not_found`, `refused`.
 
-### `crombolo site show`
-
-What this site is: its languages, addresses, types, forms, workflows, groups and webhooks. Changes nothing.
-
-```
-crombolo site show
-```
-
-**Output** (single, with `-o json`):
-
-- `name` (string)
-- `languages` (array of object)
-- `urls` (object)
-- `types` (object)
-- `forms` (array of object)
-- `workflows` (array of object)
-- `userGroups` (array of object)
-- `webhooks` (array of object)
-
-**Fails with:** `usage`, `internal`, `not_found`, `refused`.
-
-### `crombolo site urls`
-
-Whether page addresses leave out the top-level page. Safe to run again: a second run changes nothing more.
-
-```
-crombolo site urls [--hide-top-level] [--show-top-level] [--dry-run] [--no-apply]
-```
-
-| Argument | Type | What it is |
-| --- | --- | --- |
-| `--hide-top-level` | boolean | Leave the top-level page out of every address. |
-| `--show-top-level` | boolean | Put the top-level page in every address. |
-| `--dry-run` | boolean | Say what would change, and change nothing. |
-| `--no-apply` | boolean | Change it, and leave applying it to `crombolo types sync`. |
-
-**Output** (single, with `-o json`):
-
-- `type` (string)
-- `changed` (boolean)
-- `applied` (boolean)
-- `findings` (array of string)
-- `schema` (string)
-
-**Fails with:** `usage`, `internal`, `not_found`, `refused`.
-
 ## Components and assets
 
 Create and check the templates under components/, and the styles and scripts beside them.
@@ -2266,6 +2186,25 @@ crombolo content delete <page> [--dry-run]
 - `changed` (boolean)
 
 **Fails with:** `usage`, `internal`, `not_found`, `refused`.
+
+### `crombolo content export`
+
+Write this site's content as content files, to edit and apply again. Each run acts again.
+
+```
+crombolo content export [--root <root>] [--all]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `--root` | string[] | A subtree to write; repeatable. |
+| `--all` | boolean | Every page, Library element and media item, with its file. |
+
+**Output** (single, with `-o json`):
+
+- `written` (array of string)
+
+**Fails with:** `usage`, `internal`, `not_found`, `auth`.
 
 ### `crombolo content find`
 
@@ -2833,9 +2772,366 @@ crombolo recycle-bin empty [--content] [--media] [--older-than <older-than>] [--
 
 **Fails with:** `usage`, `internal`, `confirmation_required`, `refused`.
 
-## Remotes, pull and push
+## Sites, extensions and remotes
 
-Sign in to another environment, and move content and schema between them.
+Move a site as a site package, install extensions, and sign in to another environment to pull from and push to.
+
+### `crombolo site apply`
+
+Apply a site package here or to a remote: checked, backed up, one transaction. Safe to run again: a second run changes nothing more.
+
+```
+crombolo site apply [<bundle>] [--under <under>] [--resolve <resolve>] [--resolve-all <resolve-all>] [--allow-missing-blobs] [--publish] [--no-schema] [--no-files] [--replace-files] [--exclude-people] [--label <label>] [--backup-taken] [--dry-run] [--save] [--remote <remote>] [--env <env>] [--structure]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `bundle` | string | A site package's directory or .tgz, or `.` for this site's content files. |
+| `--under` | string | Place the bundle under this page. |
+| `--resolve` | string[] | Answer a finding: <key>=take-bundle\|keep-local\|skip, or <key>/<property>[@<culture>]=take-bundle\|keep-local. |
+| `--resolve-all` | string | Answer every finding the same way. One of `take-bundle`, `keep-local`, `skip`. |
+| `--allow-missing-blobs` | boolean | Import media items whose files the bundle does not carry. |
+| `--publish` | boolean | Publish what it imports. |
+| `--no-schema` | boolean | Decline the schema the bundle carries. |
+| `--no-files` | boolean | Decline the views, styles and scripts it carries. |
+| `--replace-files` | boolean | Allow replacing files this site has; the originals are kept for a revert. |
+| `--exclude-people` | boolean | Leave out the members and users it carries; this site's own are untouched. |
+| `--label` | string | A label for the run. |
+| `--backup-taken` | boolean | A backup was taken another way: Postgres needs this, or CROMBOLO_PG_DUMP. |
+| `--dry-run` | boolean | Say what it would do, and change nothing. |
+| `--save` | boolean | With --dry-run: write the answers into the package. |
+| `--remote` | string | Apply it on this remote instead. |
+| `--env` | string | With --remote: the remote's environment. |
+| `--structure` | boolean | With --remote, from a site directory: send its schema, views, styles and code too, not its content alone. |
+
+**Output** (single, with `-o json`):
+
+- `runId` (string)
+- `bundle` (object)
+- `counts` (object)
+- `findings` (array of object)
+- `outstanding` (integer)
+- `backup` (string)
+- `published` (integer)
+- `saved` (string)
+- `remote` (string)
+
+**Fails with:** `usage`, `internal`, `refused`, `auth`, `not_found`, `unavailable`.
+
+**Outcomes:** `blocked`.
+
+### `crombolo site build`
+
+A site package from a site directory: its schema, views, styles, content and code. Safe to run again: a second run changes nothing more.
+
+```
+crombolo site build [<dir>] [--template <template>] [--out <out>] [--check] [--public-log] [--sign] [--name <name>] [--with-media] [--code <code>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `dir` | string | The site directory; this one when left out. |
+| `--template` | string | A starter site the CLI ships, instead of a directory. |
+| `--out` | string | The directory to write it to. |
+| `--check` | boolean | Build it, report its problems, and write nothing. |
+| `--public-log` | boolean | Sign from a private repository anyway: Sigstore's public log records its name, workflow, ref and commit. |
+| `--sign` | boolean | Sign it once written, in GitHub Actions: `bundle sign` in the same step. |
+| `--name` | string | The site package's name. |
+| `--with-media` | boolean | The media files too; left out unless asked. |
+| `--code` | string[] | The site's own code, as globs; in place of crombolo.code in its package.json. |
+
+**Output** (single, with `-o json`):
+
+- `id` (string)
+- `name` (string)
+- `out` (string)
+- `nodes` (integer)
+- `code` (integer)
+- `findings` (array of object)
+  - `file` (string)
+  - `line` (integer)
+  - `code` (string)
+  - `message` (string)
+- `counts` (object)
+  - `content` (integer)
+  - `library` (integer)
+  - `media` (integer)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+
+**Outcomes:** `problems_found`.
+
+### `crombolo site check`
+
+What applying a site package would do, here or on a remote, changing nothing. Safe to run again: a second run changes nothing more.
+
+```
+crombolo site check [<bundle>] [--under <under>] [--resolve <resolve>] [--resolve-all <resolve-all>] [--allow-missing-blobs] [--publish] [--no-schema] [--no-files] [--replace-files] [--exclude-people] [--label <label>] [--backup-taken] [--dry-run] [--save] [--remote <remote>] [--env <env>] [--structure]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `bundle` | string | A site package's directory or .tgz, or `.` for this site's content files. |
+| `--under` | string | Place the bundle under this page. |
+| `--resolve` | string[] | Answer a finding: <key>=take-bundle\|keep-local\|skip, or <key>/<property>[@<culture>]=take-bundle\|keep-local. |
+| `--resolve-all` | string | Answer every finding the same way. One of `take-bundle`, `keep-local`, `skip`. |
+| `--allow-missing-blobs` | boolean | Import media items whose files the bundle does not carry. |
+| `--publish` | boolean | Publish what it imports. |
+| `--no-schema` | boolean | Decline the schema the bundle carries. |
+| `--no-files` | boolean | Decline the views, styles and scripts it carries. |
+| `--replace-files` | boolean | Allow replacing files this site has; the originals are kept for a revert. |
+| `--exclude-people` | boolean | Leave out the members and users it carries; this site's own are untouched. |
+| `--label` | string | A label for the run. |
+| `--backup-taken` | boolean | A backup was taken another way: Postgres needs this, or CROMBOLO_PG_DUMP. |
+| `--dry-run` | boolean | Say what it would do, and change nothing. |
+| `--save` | boolean | With --dry-run: write the answers into the package. |
+| `--remote` | string | Apply it on this remote instead. |
+| `--env` | string | With --remote: the remote's environment. |
+| `--structure` | boolean | With --remote, from a site directory: send its schema, views, styles and code too, not its content alone. |
+
+**Output** (single, with `-o json`):
+
+- `runId` (string)
+- `bundle` (object)
+- `counts` (object)
+- `findings` (array of object)
+- `outstanding` (integer)
+- `backup` (string)
+- `published` (integer)
+- `saved` (string)
+- `remote` (string)
+
+**Fails with:** `usage`, `internal`, `refused`, `auth`, `not_found`, `unavailable`.
+
+**Outcomes:** `blocked`.
+
+### `crombolo site check-code`
+
+Check a site package's code against this CMS. Changes nothing.
+
+```
+crombolo site check-code <bundle>
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `bundle` | string | The site package's directory. Required. |
+
+**Output** (single, with `-o json`):
+
+- `bundle` (string)
+- `files` (integer)
+- `serverBundles` (array of string)
+- `problems` (array of string)
+
+**Fails with:** `usage`, `internal`, `refused`.
+
+### `crombolo site deploy`
+
+Deploy a site directory to a remote: build, check, apply its structure, content and code, restart. Each run acts again.
+
+```
+crombolo site deploy [<dir>] --remote <remote> [--env <env>] [--publish] [--label <label>] [--yes] [--no-restart] [--public-log] [--sign]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `dir` | string | The site directory; this one when left out. |
+| `--remote` | string | The remote to deploy to. Required. |
+| `--env` | string | The remote's environment. |
+| `--publish` | boolean | Publish what it applies. |
+| `--label` | string | A label for the run. |
+| `--yes` | boolean | Don't ask before applying. |
+| `--no-restart` | boolean | Apply it and stop: `crombolo restart` makes it live. |
+| `--public-log` | boolean | Sign from a private repository anyway: Sigstore's public log records its name, workflow, ref and commit. |
+| `--sign` | boolean | Sign it before sending, in GitHub Actions, for a remote that takes only signed bundles. |
+
+**Output** (single, with `-o json`):
+
+- `runId` (string)
+- `remote` (string)
+- `restarted` (boolean)
+- `counts` (object)
+
+**Fails with:** `usage`, `internal`, `auth`, `refused`, `not_found`, `unavailable`, `confirmation_required`.
+
+**Outcomes:** `blocked`.
+
+### `crombolo site export`
+
+Write the site as a site package, to move it to another machine or host, or a subtree of it. Each run acts again.
+
+```
+crombolo site export [--out <out>] [--subtree <subtree>] [--only] [--with-blueprints] [--with-media] [--drafts] [--with-members] [--with-users] [--with-site-data] [--anonymise] [--name <name>] [--package-version <package-version>] [--include-content] [--allow-content-unencrypted]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `--out` | string | The file to write; with --subtree, the directory. |
+| `--subtree` | string[] | A subtree to export instead of the whole site; repeatable. |
+| `--only` | boolean | With --subtree: the roots alone, not what is below them. |
+| `--with-blueprints` | boolean | With --subtree: the blueprints of its types. |
+| `--with-media` | boolean | The media files too; left out unless asked. |
+| `--drafts` | boolean | Drafts too. |
+| `--with-members` | boolean | Members, encrypted. |
+| `--with-users` | boolean | Back-office users, encrypted. |
+| `--with-site-data` | boolean | The site's and its extensions' own data, encrypted. |
+| `--anonymise` | boolean | Replace every personal value as it writes. |
+| `--name` | string | The package's npm name. |
+| `--package-version` | string | The package's version. |
+| `--include-content` | boolean | Bring property values and media files, encrypted under a passphrase. |
+| `--allow-content-unencrypted` | boolean | With --include-content: write them readable. |
+
+**Output** (single, with `-o json`):
+
+- `out` (string)
+- `package` (object)
+- `counts` (object)
+- `sections` (object)
+- `media` (object)
+- `people` (object)
+- `anonymised` (integer)
+- `siteData` (object)
+- `bundleId` (string)
+- `expected` (array of object)
+- `content` (string)
+- `blobs` (object)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `auth`, `io`.
+
+### `crombolo site import`
+
+Replace this site with a whole-site package; says what first. Each run acts again.
+
+```
+crombolo site import <file> [--replace] [--replace-all] [--yes] [--allow-missing-media] [--exclude-people] [--backup-taken]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `file` | string | A whole-site file (crombolo site export). Required. |
+| `--replace` | boolean | Replace this site: what it loses is recycled, people kept. |
+| `--replace-all` | boolean | Make it exactly the file: what it loses is deleted, people too. |
+| `--yes` | boolean | With --replace-all: don't ask. |
+| `--allow-missing-media` | boolean | Import media items whose files the file does not carry. |
+| `--exclude-people` | boolean | Leave out the members and users it carries; this site's own are untouched. |
+| `--backup-taken` | boolean | A backup was taken another way: Postgres needs this, or CROMBOLO_PG_DUMP. |
+
+**Output** (single, with `-o json`):
+
+- `bundle` (object)
+- `brings` (object)
+- `leaving` (object)
+- `filesRemoved` (array of string)
+- `runId` (string)
+- `backup` (string)
+- `siteData` (object)
+
+**Fails with:** `usage`, `internal`, `confirmation_required`, `refused`, `auth`, `not_found`.
+
+### `crombolo site revert`
+
+Put an import back, restoring what the site served. Each run acts again.
+
+```
+crombolo site revert <run> [--resolve <resolve>] [--resolve-all <resolve-all>] [--force] [--backup-taken] [--remote <remote>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `run` | string | The run id: `crombolo site runs` lists them. Required. |
+| `--resolve` | string[] | Answer a finding: <key>=discard\|skip. |
+| `--resolve-all` | string | Answer every finding the same way. One of `discard`, `skip`. |
+| `--force` | boolean | Revert over changes made since the run. |
+| `--backup-taken` | boolean | A backup was taken another way: Postgres needs this, or CROMBOLO_PG_DUMP. |
+| `--remote` | string | Revert it on this remote instead. |
+| `--env` | string | With --remote: the remote's environment. |
+
+**Output** (single, with `-o json`):
+
+- `runId` (string)
+- `reverted` (string)
+- `restored` (array of string)
+- `recycled` (array of string)
+- `files` (object)
+- `backup` (string)
+
+**Fails with:** `usage`, `internal`, `refused`, `not_found`.
+
+### `crombolo site runs`
+
+The site packages applied here or on a remote, and the content extensions brought, newest first. Changes nothing.
+
+```
+crombolo site runs [--limit <limit>] [--offset <offset>] [--fields <fields>] [--remote <remote>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `--limit` | integer | How many to list. Default `20`. |
+| `--offset` | integer | How many to skip first. Default `0`. |
+| `--fields` | string | Only these fields of each item, comma-separated. |
+| `--remote` | string | A remote's applies instead. |
+| `--env` | string | With --remote: the remote's environment. |
+
+**Output** (unbounded, with `-o json`):
+
+- `id` (string)
+- `startedAt` (string)
+- `direction` (string)
+- `status` (string)
+- `nodeCount` (integer)
+- `bundleId` (string)
+- `bundleLabel` (string)
+- `appliedBy` (string)
+
+**Fails with:** `usage`, `internal`.
+
+### `crombolo site show`
+
+What this site is: its languages, addresses, types, forms, workflows, groups and webhooks. Changes nothing.
+
+```
+crombolo site show
+```
+
+**Output** (single, with `-o json`):
+
+- `name` (string)
+- `languages` (array of object)
+- `urls` (object)
+- `types` (object)
+- `forms` (array of object)
+- `workflows` (array of object)
+- `userGroups` (array of object)
+- `webhooks` (array of object)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+
+### `crombolo site urls`
+
+Whether page addresses leave out the top-level page. Safe to run again: a second run changes nothing more.
+
+```
+crombolo site urls [--hide-top-level] [--show-top-level] [--dry-run] [--no-apply]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `--hide-top-level` | boolean | Leave the top-level page out of every address. |
+| `--show-top-level` | boolean | Put the top-level page in every address. |
+| `--dry-run` | boolean | Say what would change, and change nothing. |
+| `--no-apply` | boolean | Change it, and leave applying it to `crombolo types sync`. |
+
+**Output** (single, with `-o json`):
+
+- `type` (string)
+- `changed` (boolean)
+- `applied` (boolean)
+- `findings` (array of string)
+- `schema` (string)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`.
 
 ### `crombolo login`
 
@@ -3154,142 +3450,47 @@ crombolo push [<remote>] [--env <env>] [--force] [--auto-approve] [--media-info-
 
 **Fails with:** `usage`, `internal`, `auth`, `not_found`, `refused`, `timeout`, `unavailable`, `confirmation_required`.
 
-### `crombolo bundle apply`
-
-Apply a bundle's content here or to a remote: checked, backed up, one transaction. Safe to run again: a second run changes nothing more.
-
-```
-crombolo bundle apply [<bundle>] [--under <under>] [--resolve <resolve>] [--resolve-all <resolve-all>] [--allow-missing-blobs] [--publish] [--no-schema] [--no-files] [--replace-files] [--exclude-people] [--label <label>] [--backup-taken] [--dry-run] [--save] [--remote <remote>] [--env <env>] [--structure]
-```
-
-| Argument | Type | What it is |
-| --- | --- | --- |
-| `bundle` | string | A package directory, a .tgz, a bundle this site depends on, or `.` for this site's content files. |
-| `--under` | string | Place the bundle under this page. |
-| `--resolve` | string[] | Answer a finding: <key>=take-bundle\|keep-local\|skip, or <key>/<property>[@<culture>]=take-bundle\|keep-local. |
-| `--resolve-all` | string | Answer every finding the same way. One of `take-bundle`, `keep-local`, `skip`. |
-| `--allow-missing-blobs` | boolean | Import media items whose files the bundle does not carry. |
-| `--publish` | boolean | Publish what it imports. |
-| `--no-schema` | boolean | Decline the schema the bundle carries. |
-| `--no-files` | boolean | Decline the views, styles and scripts it carries. |
-| `--replace-files` | boolean | Allow replacing files this site has; the originals are kept for a revert. |
-| `--exclude-people` | boolean | Leave out the members and users it carries; this site's own are untouched. |
-| `--label` | string | A label for the run. |
-| `--backup-taken` | boolean | A backup was taken another way: Postgres needs this, or CROMBOLO_PG_DUMP. |
-| `--dry-run` | boolean | Say what it would do, and change nothing. |
-| `--save` | boolean | With --dry-run: write the answers into the bundle. |
-| `--remote` | string | Apply it on this remote instead. |
-| `--env` | string | With --remote: the remote's environment. |
-| `--structure` | boolean | With --remote, from a site directory: send its schema, views, styles and code too, not its content alone. |
-
-**Output** (single, with `-o json`):
-
-- `runId` (string)
-- `bundle` (object)
-- `counts` (object)
-- `findings` (array of object)
-- `outstanding` (integer)
-- `backup` (string)
-- `published` (integer)
-- `saved` (string)
-- `remote` (string)
-
-**Fails with:** `usage`, `internal`, `refused`, `auth`, `not_found`, `unavailable`.
-
-**Outcomes:** `blocked`.
-
 ### `crombolo bundle build`
 
-A bundle from a site directory: its schema, views, styles and content. Safe to run again: a second run changes nothing more.
+Build a bundle made in the Bundle Editor as an extension package. Each run acts again.
 
 ```
-crombolo bundle build [<dir>] [--template <template>] [--out <out>] [--check] [--public-log] [--sign] [--name <name>] [--with-media] [--code <code>]
+crombolo bundle build <name> [--out <out>] [--with-media] [--check]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `dir` | string | The site directory; this one when left out. |
-| `--template` | string | A starter site the CLI ships, instead of a directory. |
-| `--out` | string | The directory to write it to. |
-| `--check` | boolean | Build it, report its problems, and write nothing. |
-| `--public-log` | boolean | Sign from a private repository anyway: Sigstore's public log records its name, workflow, ref and commit. |
-| `--sign` | boolean | Sign it once written, in GitHub Actions: `bundle sign` in the same step. |
-| `--name` | string | The bundle's package name. |
-| `--with-media` | boolean | The media files too; left out unless asked. |
-| `--code` | string[] | The site's own code, as globs; in place of crombolo.code in its package.json. |
+| `name` | string | The definition's name or id. Required. |
+| `--out` | string | The file to write; named for the package when left out. |
+| `--with-media` | boolean | The media files its picks name. |
+| `--check` | boolean | Build it and say what it holds, writing nothing. |
 
 **Output** (single, with `-o json`):
 
-- `id` (string)
-- `name` (string)
 - `out` (string)
-- `nodes` (integer)
-- `code` (integer)
-- `findings` (array of object)
-  - `file` (string)
-  - `line` (integer)
-  - `code` (string)
-  - `message` (string)
-- `counts` (object)
-  - `content` (integer)
-  - `library` (integer)
-  - `media` (integer)
+- `definition` (string)
+- `bytes` (integer)
 
-**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+**Fails with:** `usage`, `internal`, `not_found`.
 
-**Outcomes:** `problems_found`.
+### `crombolo bundle check`
 
-### `crombolo bundle check-code`
-
-Check a bundle's code against this CMS. Changes nothing.
+Check an extension package before publishing or installing it. Changes nothing.
 
 ```
-crombolo bundle check-code <bundle>
+crombolo bundle check <bundle>
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `bundle` | string | The bundle package directory. Required. |
+| `bundle` | string | The package directory or .tgz. Required. |
 
 **Output** (single, with `-o json`):
 
-- `bundle` (string)
-- `files` (integer)
-- `serverBundles` (array of string)
+- `name` (string)
 - `problems` (array of string)
 
-**Fails with:** `usage`, `internal`, `refused`.
-
-### `crombolo bundle deploy`
-
-Deploy a site directory to a remote: build, check, apply its structure, content and code, restart. Each run acts again.
-
-```
-crombolo bundle deploy [<dir>] --remote <remote> [--env <env>] [--publish] [--label <label>] [--yes] [--no-restart] [--public-log] [--sign]
-```
-
-| Argument | Type | What it is |
-| --- | --- | --- |
-| `dir` | string | The site directory; this one when left out. |
-| `--remote` | string | The remote to deploy to. Required. |
-| `--env` | string | The remote's environment. |
-| `--publish` | boolean | Publish what it applies. |
-| `--label` | string | A label for the run. |
-| `--yes` | boolean | Don't ask before applying. |
-| `--no-restart` | boolean | Apply it and stop: `crombolo restart` makes it live. |
-| `--public-log` | boolean | Sign from a private repository anyway: Sigstore's public log records its name, workflow, ref and commit. |
-| `--sign` | boolean | Sign it before sending, in GitHub Actions, for a remote that takes only signed bundles. |
-
-**Output** (single, with `-o json`):
-
-- `runId` (string)
-- `remote` (string)
-- `restarted` (boolean)
-- `counts` (object)
-
-**Fails with:** `usage`, `internal`, `auth`, `refused`, `not_found`, `unavailable`, `confirmation_required`.
-
-**Outcomes:** `blocked`.
+**Fails with:** `usage`, `internal`, `not_found`, `refused`.
 
 ### `crombolo bundle digest`
 
@@ -3353,59 +3554,45 @@ crombolo bundle enable <name> [--remote <remote>] [--env <env>]
 
 **Fails with:** `usage`, `internal`, `not_found`, `auth`, `refused`, `unavailable`.
 
-### `crombolo bundle export`
+### `crombolo bundle grant`
 
-Write a subtree as a private bundle package to move elsewhere, or as content files to edit. Each run acts again.
+Grant an installed extension what it asks for, here or on a remote. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo bundle export [--root <root>] [--out <out>] [--source] [--all] [--only] [--drafts] [--with-blueprints] [--with-media] [--with-members] [--with-users] [--name <name>] [--package-version <package-version>] [--include-content] [--allow-content-unencrypted]
+crombolo bundle grant <name> [--grant <grant>] [--act-as <act-as>] [--remote <remote>] [--env <env>]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `--root` | string[] | The subtree to export; repeatable. |
-| `--out` | string | The directory to write the package to. |
-| `--source` | boolean | Write this site's content files instead of a package. |
-| `--all` | boolean | With --source: every page, Library element and media item, with its file. |
-| `--only` | boolean | The roots alone, not what is below them. |
-| `--drafts` | boolean | Drafts, not only what is published. |
-| `--with-blueprints` | boolean | The blueprints of its types. |
-| `--with-media` | boolean | With --include-content: the media files. |
-| `--with-members` | boolean | Members, encrypted. |
-| `--with-users` | boolean | Back-office users, encrypted. |
-| `--name` | string | The package's npm name. |
-| `--package-version` | string | The package's version. |
-| `--include-content` | boolean | Bring property values and media files, encrypted under a passphrase. |
-| `--allow-content-unencrypted` | boolean | With --include-content: write them readable. |
+| `name` | string | The package name, or its bundle id. Required. |
+| `--grant` | string[] | A permission it asks for; name every one. |
+| `--act-as` | string | With actAs: whom it acts for, the calling user or a named one. |
+| `--remote` | string | Grant it on this remote instead. |
+| `--env` | string | With --remote: the remote's environment. |
 
 **Output** (single, with `-o json`):
 
-- `out` (string)
-- `package` (object)
-- `bundleId` (string)
-- `counts` (object)
-- `expected` (array of object)
-- `content` (string)
-- `blobs` (object)
-- `written` (array of string)
+- `name` (string)
+- `on` (boolean)
+- `remote` (string)
 
-**Fails with:** `usage`, `internal`, `not_found`, `refused`, `auth`.
+**Fails with:** `usage`, `internal`, `refused`, `auth`, `not_found`, `unavailable`.
 
 ### `crombolo bundle install`
 
-Add a bundle to this site, or a remote, as a dependency. Safe to run again: a second run changes nothing more.
+Add an extension to this site, or a remote, as a dependency. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo bundle install <bundle> [--grant <grant>] [--apply-content] [--wire] [--code-into <code-into>] [--remote <remote>] [--env <env>] [--dry-run]
+crombolo bundle install <bundle> [--grant <grant>] [--act-as <act-as>] [--apply-content] [--code-into <code-into>] [--remote <remote>] [--env <env>] [--dry-run]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `bundle` | string | A package name, name@version, a packed .tgz, or with --code-into a site bundle. Required. |
-| `--grant` | string[] | A permission its server code asks for; name every one. |
+| `bundle` | string | A package name, name@version, a packed .tgz, or with --code-into a site package. Required. |
+| `--grant` | string[] | A permission it asks for; name every one. |
+| `--act-as` | string | With actAs: whom it acts for, the calling user or a named one. |
 | `--apply-content` | boolean | Apply the content it carries too. |
-| `--wire` | boolean | Turn its server code on in crombolo.config.ts, here. |
-| `--code-into` | string | Install a site bundle's own code into this empty directory. |
+| `--code-into` | string | Install a site package's own code into this empty directory. |
 | `--remote` | string | Install it on this remote instead. |
 | `--env` | string | With --remote: the remote's environment. |
 | `--dry-run` | boolean | Say what it would install and grant; install nothing. |
@@ -3467,63 +3654,23 @@ crombolo bundle purge <id> [--yes] [--dry-run] [--backup-taken]
 
 **Fails with:** `usage`, `internal`, `confirmation_required`, `refused`.
 
-### `crombolo bundle revert`
+### `crombolo bundle settings`
 
-Put an import back, restoring what the site served. Each run acts again.
+Read an installed extension's settings, or set them. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo bundle revert <run> [--resolve <resolve>] [--resolve-all <resolve-all>] [--force] [--backup-taken] [--remote <remote>] [--env <env>]
+crombolo bundle settings <name>
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `run` | string | The run id: `crombolo bundle runs` lists them. Required. |
-| `--resolve` | string[] | Answer a finding: <key>=discard\|skip. |
-| `--resolve-all` | string | Answer every finding the same way. One of `discard`, `skip`. |
-| `--force` | boolean | Revert over changes made since the run. |
-| `--backup-taken` | boolean | A backup was taken another way: Postgres needs this, or CROMBOLO_PG_DUMP. |
-| `--remote` | string | Revert it on this remote instead. |
-| `--env` | string | With --remote: the remote's environment. |
+| `name` | string | The package name, or its bundle id. Required. |
 
 **Output** (single, with `-o json`):
 
-- `runId` (string)
-- `reverted` (string)
-- `restored` (array of string)
-- `recycled` (array of string)
-- `files` (object)
-- `backup` (string)
+- `settings` (array of object)
 
 **Fails with:** `usage`, `internal`, `refused`, `not_found`.
-
-### `crombolo bundle runs`
-
-The bundles applied here or on a remote, newest first. Changes nothing.
-
-```
-crombolo bundle runs [--limit <limit>] [--offset <offset>] [--fields <fields>] [--remote <remote>] [--env <env>]
-```
-
-| Argument | Type | What it is |
-| --- | --- | --- |
-| `--limit` | integer | How many to list. Default `20`. |
-| `--offset` | integer | How many to skip first. Default `0`. |
-| `--fields` | string | Only these fields of each item, comma-separated. |
-| `--remote` | string | A remote's applies instead. |
-| `--env` | string | With --remote: the remote's environment. |
-
-**Output** (unbounded, with `-o json`):
-
-- `id` (string)
-- `startedAt` (string)
-- `direction` (string)
-- `status` (string)
-- `nodeCount` (integer)
-- `bundleId` (string)
-- `bundleLabel` (string)
-- `appliedBy` (string)
-
-**Fails with:** `usage`, `internal`.
 
 ### `crombolo bundle sign`
 
@@ -3549,10 +3696,10 @@ crombolo bundle sign <bundle> [--public-log]
 
 ### `crombolo bundle uninstall`
 
-Remove an installed bundle, here or on a remote. Each run acts again.
+Remove an installed extension, here or on a remote. Each run acts again.
 
 ```
-crombolo bundle uninstall <name> [--remote <remote>] [--env <env>]
+crombolo bundle uninstall <name> [--remote <remote>] [--env <env>] [--revert-content]
 ```
 
 | Argument | Type | What it is |
@@ -3560,6 +3707,7 @@ crombolo bundle uninstall <name> [--remote <remote>] [--env <env>]
 | `name` | string | The package name. Required. |
 | `--remote` | string | Remove it on this remote instead. |
 | `--env` | string | With --remote: the remote's environment. |
+| `--revert-content` | boolean | First put back the content its install applied; nothing is removed if that is refused. |
 
 **Output** (single, with `-o json`):
 
@@ -3592,40 +3740,6 @@ crombolo bundle verify <bundle> [--require] [--source <source>]
 - `reason` (string)
 
 **Fails with:** `usage`, `internal`, `refused`, `not_found`.
-
-## Importing from Umbraco
-
-Bring an Umbraco site’s content types, content and media across.
-
-### `crombolo import`
-
-Replace this site with a whole-site file; says what first. Each run acts again.
-
-```
-crombolo import <file> [--replace] [--replace-all] [--yes] [--allow-missing-media] [--exclude-people] [--backup-taken]
-```
-
-| Argument | Type | What it is |
-| --- | --- | --- |
-| `file` | string | A whole-site file (crombolo export --site). Required. |
-| `--replace` | boolean | Replace this site: what it loses is recycled, people kept. |
-| `--replace-all` | boolean | Make it exactly the file: what it loses is deleted, people too. |
-| `--yes` | boolean | With --replace-all: don't ask. |
-| `--allow-missing-media` | boolean | Import media items whose files the file does not carry. |
-| `--exclude-people` | boolean | Leave out the members and users it carries; this site's own are untouched. |
-| `--backup-taken` | boolean | A backup was taken another way: Postgres needs this, or CROMBOLO_PG_DUMP. |
-
-**Output** (single, with `-o json`):
-
-- `bundle` (object)
-- `brings` (object)
-- `leaving` (object)
-- `filesRemoved` (array of string)
-- `runId` (string)
-- `backup` (string)
-- `siteData` (object)
-
-**Fails with:** `usage`, `internal`, `confirmation_required`, `refused`, `auth`, `not_found`.
 
 ## Users and access
 
@@ -4383,5 +4497,5 @@ crombolo restart [--remote <remote>] [--env <env>]
 | 9 | `unavailable` | The database or the remote could not be reached. |
 | 10 | `io` | A file could not be read or written. |
 | 20 | `problems_found` | The check found problems: `status`, `types check`, `components check`. |
-| 21 | `blocked` | Something must be resolved by a person first: `bundle apply --dry-run`, `upgrade check`. |
+| 21 | `blocked` | Something must be resolved by a person first: `site apply --dry-run`, `upgrade check`. |
 | 130 | `interrupted` | Stopped by a signal. |

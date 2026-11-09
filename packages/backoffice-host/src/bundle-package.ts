@@ -8,7 +8,7 @@
  */
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, normalize } from 'node:path'
-import { permissionsProblem } from './bundle-permissions.ts'
+import { permissionsProblem, readSettings } from './bundle-permissions.ts'
 import type { PackageManifestImportmap } from './manifests.ts'
 
 /** The package a bundle declares its peer range on. */
@@ -27,9 +27,26 @@ export const PAYLOAD_MANIFEST = 'bundle.json'
 /** An exported binding name: what a site imports to wire the server half. */
 const EXPORT_NAME = /^[A-Za-z_$][A-Za-z0-9_$]*$/
 
+/**
+ * What a bundle is (story 306): a site package, made from a site to move it and
+ * only ever applied from a file, or an extension, installed as a dependency.
+ * Every bundle says which.
+ */
+export type BundleType = 'site' | 'extension'
+
+/** Said when a bundle does not say what it is. */
+export const UNTYPED_BUNDLE =
+  'it does not say what it is: its package.json needs "crombolo.bundleType", "site" or "extension"'
+
+/** Said when a site package is offered as a dependency. */
+export const SITE_PACKAGE_NOT_INSTALLED =
+  'it is a site package, which is applied to a site with `crombolo site apply`, never installed'
+
 /** The `crombolo` field, as a bundle declares it. */
 export interface CromboloField {
   id: string
+  /** A site package or an extension (story 306); required. */
+  bundleType: BundleType
   name?: string
   allowPublicAccess?: boolean
   allowTelemetry?: boolean
@@ -57,17 +74,29 @@ export interface CromboloField {
    */
   anonymise?: Record<string, 'keep' | Record<string, 'member' | 'email' | 'scrub'>>
   /**
-   * What its server half may do with the site (story 222), granted as a whole
-   * by an administrator. Required of a server half from schema 3.
+   * What it may do with the site (stories 222, 308), granted as a whole. From
+   * schema 4, each permission with its reason; schema 3 listed names only.
    */
-  permissions?: string[]
+  permissions?: string[] | Record<string, string | { reason: string; origins?: string[] }>
+  /** What it may be set to, by the config or in the back office (story 310). */
+  settings?: Record<string, unknown>
 }
 
 /**
  * The bundle schema a server half must be written for: 3 since it declares the
  * permissions it needs (story 222); 2 made its routes route handlers (211).
  */
-export const BUNDLE_SCHEMA_VERSION = 3
+export const BUNDLE_SCHEMA_VERSION = 4
+
+/**
+ * The oldest schema read, for an extension already installed: 3 listed its
+ * permissions without reasons (story 308). A new install needs 4.
+ */
+export const OLDEST_BUNDLE_SCHEMA_VERSION = 3
+
+/** Said when a schema 3 extension is offered for a new install (story 308). */
+export const SCHEMA_3_NOT_INSTALLED =
+  'it asks for permissions without saying why (bundle schema 3); install a version written for schema 4'
 
 /** A bundle as read from its package. */
 export interface BundlePackage {
@@ -79,6 +108,7 @@ export interface BundlePackage {
   /** `peerDependencies["@crombolo/crombolo"]`. */
   peerRange: string
   private: boolean
+  bundleType: BundleType
   field: CromboloField
   /** The package's directory, when it carries content: the payload is the package. */
   contentDir: string | undefined
@@ -123,7 +153,7 @@ export function schemaProblem(schema: number): string {
       ? 'it declares the permissions it needs in "crombolo.permissions" (docs/bundles.md, "Permissions")'
       : '',
   ].filter(Boolean)
-  return `its server half is written for bundle schema ${schema}, and this release reads ${BUNDLE_SCHEMA_VERSION}: ${changes.join(', and ')}, with "crombolo.schemaVersion": ${BUNDLE_SCHEMA_VERSION}`
+  return `its server half is written for bundle schema ${schema}, and this release reads ${OLDEST_BUNDLE_SCHEMA_VERSION} to ${BUNDLE_SCHEMA_VERSION}: ${changes.join(', and ')}, with "crombolo.schemaVersion": ${BUNDLE_SCHEMA_VERSION}`
 }
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
@@ -160,6 +190,19 @@ export function validateBundlePackage(json: PackageJson, directory?: string): st
         typeof f.id === 'string' ? `, not "${f.id}"` : ''
       }`,
     )
+  if (f.bundleType !== 'site' && f.bundleType !== 'extension') problems.push(UNTYPED_BUNDLE)
+  else if (f.bundleType === 'site') {
+    // A site's own extensions travel as dependencies in the package.json it carries.
+    for (const key of ['server', 'extensions', 'permissions', 'importmap'])
+      if (f[key] !== undefined)
+        problems.push(
+          `it is a site package, which declares no "crombolo.${key}": that is an extension's`,
+        )
+    if (json.private !== true)
+      problems.push(
+        'it is a site package, which is never published: its package.json needs "private": true',
+      )
+  }
   if (f.name !== undefined && (typeof f.name !== 'string' || f.name.trim() === ''))
     problems.push('"crombolo.name" must be a non-empty string')
   if (typeof json.name !== 'string' || json.name === '')
@@ -184,16 +227,21 @@ export function validateBundlePackage(json: PackageJson, directory?: string): st
     problems.push('"crombolo.schemaVersion" is a whole number')
   else if (
     f.server !== undefined &&
-    ((f.schemaVersion as number | undefined) ?? 1) < BUNDLE_SCHEMA_VERSION
+    ((f.schemaVersion as number | undefined) ?? 1) < OLDEST_BUNDLE_SCHEMA_VERSION
   )
     problems.push(schemaProblem((f.schemaVersion as number | undefined) ?? 1))
+  const schema = (f.schemaVersion as number | undefined) ?? 1
   if (f.server !== undefined && f.permissions === undefined)
     problems.push(
-      'its server half declares no "crombolo.permissions": list what it may do with the site, [] for nothing (docs/bundles.md, "Permissions")',
+      'its server half declares no "crombolo.permissions": each permission it asks for with its reason, {} for nothing (docs/bundles.md, "Permissions")',
     )
   else if (f.permissions !== undefined) {
-    const problem = permissionsProblem(f.permissions)
+    const problem = permissionsProblem(f.permissions, schema)
     if (problem) problems.push(problem)
+  }
+  {
+    const settings = readSettings(f.settings)
+    if ('problem' in settings) problems.push(settings.problem)
   }
   if (f.content !== undefined) {
     if (typeof f.content === 'string')
@@ -204,6 +252,14 @@ export function validateBundlePackage(json: PackageJson, directory?: string): st
       problems.push(`"crombolo.content" is true: ${PAYLOAD_MANIFEST} sits at the package root`)
     else if (directory && !existsSync(join(directory, PAYLOAD_MANIFEST)))
       problems.push(`it declares content, and holds no ${PAYLOAD_MANIFEST} at its root`)
+  }
+
+  if (f.bundleType === 'extension' && directory) {
+    const code = carriedCode(directory)
+    if (code)
+      problems.push(
+        `it is an extension, which never carries the site's code, and ${PAYLOAD_MANIFEST} lists ${code}`,
+      )
   }
 
   const hasExtensions = Array.isArray(f.extensions) && f.extensions.length > 0
@@ -218,6 +274,19 @@ export function validateBundlePackage(json: PackageJson, directory?: string): st
   return problems
 }
 
+/** What a bundle's `bundle.json` lists under `code/`, said briefly; undefined when nothing. */
+function carriedCode(directory: string): string | undefined {
+  try {
+    const manifest = JSON.parse(readFileSync(join(directory, PAYLOAD_MANIFEST), 'utf8')) as {
+      carries?: { code?: unknown[] }
+    }
+    const code = manifest.carries?.code ?? []
+    return code.length > 0 ? `${code.length} file(s) under code/` : undefined
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * The package at a directory, read as a bundle.
  *
@@ -227,10 +296,15 @@ export function validateBundlePackage(json: PackageJson, directory?: string): st
 export function readBundlePackage(directory: string): {
   bundle: BundlePackage | undefined
   problems: string[]
+  /** Its only fault is that it does not say what it is: an extension from before 306, turned off. */
+  untyped?: { id: string }
 } {
   const json = readPackageJson(join(directory, 'package.json'))
   if (!declaresBundle(json)) return { bundle: undefined, problems: [] }
   const problems = validateBundlePackage(json as PackageJson, directory)
+  const declared = (json as PackageJson).crombolo as Record<string, unknown>
+  if (problems.length === 1 && problems[0] === UNTYPED_BUNDLE && typeof declared.id === 'string')
+    return { bundle: undefined, problems, untyped: { id: declared.id } }
   if (problems.length > 0) return { bundle: undefined, problems }
   const pkg = json as Required<Pick<PackageJson, 'name' | 'version'>> & PackageJson
   const field = pkg.crombolo as CromboloField
@@ -243,6 +317,7 @@ export function readBundlePackage(directory: string): {
       name: field.name ?? pkg.name,
       peerRange: pkg.peerDependencies?.[CORE_PACKAGE] as string,
       private: pkg.private === true,
+      bundleType: field.bundleType,
       field,
       contentDir: field.content === true ? directory : undefined,
       carries: {
@@ -293,8 +368,12 @@ export function resolvePackageDir(from: string, name: string): string | undefine
 
 export interface DiscoveredBundles {
   bundles: BundlePackage[]
-  /** A declared dependency that claims to be a bundle and is not a valid one. */
-  problems: { packageName: string; problems: string[] }[]
+  /**
+   * A declared dependency that claims to be a bundle and is not a valid one, or
+   * is a site package, which is never a dependency. `untyped` names the id of
+   * one whose only fault is that it does not say what it is: it is turned off.
+   */
+  problems: { packageName: string; problems: string[]; untyped?: { id: string } }[]
 }
 
 /**
@@ -316,9 +395,15 @@ export function discoverBundles(siteDir: string): DiscoveredBundles {
     const directory = resolvePackageDir(siteDir, name)
     if (!directory) continue
     const read = readBundlePackage(directory)
-    if (read.bundle) found.bundles.push(read.bundle)
+    if (read.bundle?.bundleType === 'site')
+      found.problems.push({ packageName: name, problems: [SITE_PACKAGE_NOT_INSTALLED] })
+    else if (read.bundle) found.bundles.push(read.bundle)
     else if (read.problems.length > 0)
-      found.problems.push({ packageName: name, problems: read.problems })
+      found.problems.push({
+        packageName: name,
+        problems: read.problems,
+        ...(read.untyped ? { untyped: read.untyped } : {}),
+      })
   }
   return found
 }

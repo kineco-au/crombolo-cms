@@ -132,8 +132,8 @@ footer and a two-column layout to restyle), and `next` and
   templates, and [rendering](docs/rendering.md) the reference.
 - To run on Postgres, scaffold with `bunx @crombolo/cli@latest init --postgres`, and
   point `CROMBOLO_POSTGRES_URL` in the `.env` it writes at your database.
-- To move a site between machines or environments, `bunx crombolo export --site`
-  and `bunx crombolo import`, or `crombolo pull` and `push` against a running
+- To move a site between machines or environments, `bunx crombolo site export`
+  and `bunx crombolo site import`, or `crombolo pull` and `push` against a running
   site ([content transfer](docs/content-transfer.md)).
 - To move an existing Umbraco site, Crombolo Cloud does that.
 
@@ -286,7 +286,8 @@ Design documents, in reading order; planned work is in the stories:
 | [next-integration](docs/next-integration.md) | what `@crombolo/next-integration` offers a Next.js front end: reads, caching, preview, members, middleware, components and images |
 | [api](docs/api.md) | the supported API: the entry points of `@crombolo/crombolo`, the compatibility promise, and how a snapshot and an import boundary hold it |
 | [cli](docs/cli/commands.md) | the command line's spec: every command, its arguments, flags, outputs, errors and exit codes, with [clispec.json](docs/cli/clispec.json) for a machine; generated from the commands by `bun run cli:spec`, and a test fails when it is stale |
-| [bundles](docs/bundles.md) | created bundles, extensions as npm dependencies instead of App_Plugins, bundles with a server half, and a site's [content files](docs/bundles.md#content-files) under `content/`: the format, the shorthand per editor, and `crombolo bundle apply` |
+| [bundles](docs/bundles.md) | site packages, which move a site and are applied with `crombolo site`, and extensions, installed as npm dependencies with `crombolo bundle` instead of App_Plugins; bundles with a server half; and a site's [content files](docs/bundles.md#content-files) under `content/`: the format, the shorthand per editor, and `crombolo site apply` |
+| [extension threat model](docs/extension-threat-model.md) | what an installed extension could reach, what stops it today, and the stories that run each in a Deno process of its own (306–313) |
 | [forms](docs/forms.md) | form building in core: the TOML definition, entries, workflows, and the e-mail port; approval before publishing, as graphs of stages, in [workflows](docs/workflows.md) |
 | [audit-log](docs/audit-log.md) | who did what, when and from where: what writes an entry, the Info tab and the dashboard, retention |
 | [search](docs/search.md) | backoffice and site search: the indexes on both dialects, the queue that keeps them current, who sees a result |

@@ -521,7 +521,15 @@ describe('a bundle handles the events', () => {
     }
     const root = writeTreeSchema(
       siteDeclaring('webhook-bundle', {
-        '@acme/hooks': { json: { crombolo: { id: 'acme-hooks', server: 'hooks' } } },
+        '@acme/hooks': {
+          json: {
+            crombolo: {
+              id: 'acme-hooks',
+              server: 'hooks',
+              permissions: { 'events.content': 'Is told when a page is published' },
+            },
+          },
+        },
       }),
     )
     const s = await treeSite({ root, config: { siteDir: root, bundles: [bundle] } })
@@ -563,7 +571,12 @@ describe('a bundle handles the events', () => {
     }
     const root = writeTreeSchema(
       siteDeclaring('webhook-bundle', {
-        '@acme/hooks': { json: { crombolo: { id: 'acme-hooks', server: 'hooks' } } },
+        '@acme/hooks': {
+          json: {
+            // Schema 3: the address rule alone, as story 301 had it, with no origins named.
+            crombolo: { id: 'acme-hooks', server: 'hooks', permissions: [] },
+          },
+        },
       }),
     )
     const s = await treeSite({

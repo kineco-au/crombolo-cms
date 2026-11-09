@@ -349,6 +349,7 @@ export async function revertRun(
         bundleLabel: `revert of ${runId}`,
         packageName: original.packageName,
         packageVersion: original.packageVersion,
+        bundleType: original.bundleType,
         direction: 'revert',
         revertsRunId: runId,
         schemaStateId: state.id,

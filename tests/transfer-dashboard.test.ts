@@ -130,11 +130,12 @@ async function conflicted(sealedWith?: string) {
     id: 'campaign',
     label: 'Campaign',
     peerRange: `^${VERSION}`,
+    bundleType: 'site' as const,
   }
   const payload = writeBundle(changed, undefined, [], {
     seal: sealedWith ? newSeal(sealedWith, { n: 2 ** 10, r: 8, p: 1 }) : undefined,
   })
-  for (const file of writeBundlePackage(payload, { ...info, private: Boolean(sealedWith) })) {
+  for (const file of writeBundlePackage(payload, { ...info, private: true })) {
     mkdirSync(join(dir, file.path, '..'), { recursive: true })
     writeFileSync(join(dir, file.path), file.bytes ?? (file.text as string))
   }

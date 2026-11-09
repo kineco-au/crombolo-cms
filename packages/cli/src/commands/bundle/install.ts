@@ -1,5 +1,6 @@
 import { relative, resolve } from 'node:path'
 import {
+  actAsChoice,
   createMarketplace,
   describeProvenance,
   installBundleCode,
@@ -8,13 +9,15 @@ import {
 import { Args, Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
 import { CliError } from '../../errors.ts'
+
+/** `--act-as` as a grant stores it; the CLI has no installing user of its own. */
+const actAsOf = (value: string | undefined) => (value ? actAsChoice(value) : null)
+
 import {
   cliActor,
   grantGaps,
   parseSpec,
   remoteBundles,
-  serverFactoryOf,
-  wireIntoConfig,
   withLocalBundles,
 } from '../../support/bundles.ts'
 
@@ -28,34 +31,42 @@ const NO_EXTENSIONS = {
 }
 
 export default class BundleInstall extends BaseCommand {
-  static override summary = 'add a bundle to this site, or a remote, as a dependency'
+  static override summary = 'add an extension to this site, or a remote, as a dependency'
   static override description = [
     'What Install does in Settings, under Bundles: `bun add`, then the content the bundle carries with --apply-content. A bundle with server code names every permission it asks for with --grant, or nothing is installed: a newer version that asks for more is refused until the script grants it.',
-    "Installing does not turn a bundle's server code on. --wire does, here: it adds the import and the `bundles` entry to crombolo.config.ts, a change to commit and send with `bundle apply --structure` or `bundle deploy`. A remote never wires one itself. Installed code runs after `crombolo restart`.",
+    "An extension runs once it is granted what it asks for: --grant names every permission, exactly. Nothing is imported into crombolo.config.ts; to grant it from the site's code, list it under `extensions` there. Installed code runs after `crombolo restart`.",
     'On a remote it needs CROMBOLO_REMOTE_ACCESS=all, "Change a site\'s structure and code" and "Install code on this site", which administrators have only when a group gives it to them.',
-    "--code-into installs a site bundle's own code into an empty directory, ready for a host to start it: the argument is then the bundle's package directory.",
+    "--code-into installs a site package's own code into an empty directory, ready for a host to start it: the argument is then the site package's directory.",
   ].join('\n\n')
   static override examples = [
-    '<%= config.bin %> bundle install @acme/crm --grant documents.read --grant crm.write --wire',
+    '<%= config.bin %> bundle install @acme/crm --grant content.read --grant members.read',
     '<%= config.bin %> bundle install @acme/crm@2.1.0 --grant documents.read --remote production',
     '<%= config.bin %> bundle install ./acme-site-bundle --code-into /srv/sites/acme',
   ]
   static override args = {
     bundle: Args.string({
       required: true,
-      description: 'a package name, name@version, a packed .tgz, or with --code-into a site bundle',
+      description:
+        'a package name, name@version, a packed .tgz, or with --code-into a site package',
     }),
   }
   static override flags = {
     grant: Flags.string({
       multiple: true,
-      summary: 'a permission its server code asks for; name every one',
+      summary: 'a permission it asks for; name every one',
       helpValue: '<permission>',
     }),
+    'act-as': Flags.string({
+      summary: 'with actAs: whom it acts for, the calling user or a named one',
+      helpValue: 'caller|user:<key>',
+    }),
     'apply-content': Flags.boolean({ summary: 'apply the content it carries too' }),
-    wire: Flags.boolean({ summary: 'turn its server code on in crombolo.config.ts, here' }),
+    wire: Flags.boolean({
+      summary: 'retired: an extension runs once granted, with nothing imported',
+      hidden: true,
+    }),
     'code-into': Flags.string({
-      summary: "install a site bundle's own code into this empty directory",
+      summary: "install a site package's own code into this empty directory",
       helpValue: '<dir>',
       exclusive: ['remote', 'wire', 'grant', 'apply-content'],
     }),
@@ -81,10 +92,15 @@ export default class BundleInstall extends BaseCommand {
   async run() {
     const { args, flags } = await this.parse(BundleInstall)
     if (flags['code-into']) return this.#codeInto(args.bundle, flags['code-into'])
-    if (flags.wire && flags.remote)
-      throw new CliError('usage', 'A remote never turns server code on by itself.', {
-        hint: 'Wire it here with --wire, commit, and send it with `crombolo bundle apply . --structure --remote <name>` or `crombolo bundle deploy --remote <name>`.',
-      })
+    // Story 310: nothing is wired any more.
+    if (flags.wire)
+      throw new CliError(
+        'usage',
+        '--wire is gone: an extension runs once it is granted, with nothing imported.',
+        {
+          hint: "Grant it with --grant, or list it under `extensions` in crombolo.config.ts with what the site's code grants it.",
+        },
+      )
     const spec = parseSpec(args.bundle)
     if (spec.file && flags.remote)
       throw new CliError('usage', 'A remote installs from the package registry, not a file here.')
@@ -145,17 +161,17 @@ export default class BundleInstall extends BaseCommand {
       }
     }
 
-    return withLocalBundles(async (admin, siteDir) => {
+    return withLocalBundles(async (admin, _siteDir) => {
       const outcome = await admin.install(cliActor(), {
         name: spec.file ?? spec.name,
         version: spec.version,
         file: Boolean(spec.file),
         applyContent: flags['apply-content'],
-        acceptServerCode: true,
         grant,
+        actAs: actAsOf(flags['act-as']),
       })
       if (!outcome.ok) {
-        if (outcome.needsServerConsent)
+        if (outcome.needsGrant)
           this.#refuseGaps(
             spec.name,
             (outcome.permissions ?? []).map((p) => p.permission),
@@ -167,20 +183,8 @@ export default class BundleInstall extends BaseCommand {
       this.say(`  ${outcome.message}`)
       if (outcome.content) this.say(`  ${outcome.content.message}`)
       const name = outcome.dependency?.name ?? spec.name
-      let wired = false
-      if (flags.wire) {
-        const factory = serverFactoryOf(siteDir, name)
-        if (!factory) this.warning(`  ${name} has no server code to wire.`)
-        else {
-          wired = wireIntoConfig(siteDir, factory, name)
-          this.say(
-            wired
-              ? `  wired    ${factory}() in crombolo.config.ts: commit it with package.json and bun.lock`
-              : `  wired    ${factory}() was already in crombolo.config.ts`,
-          )
-        }
-      }
-      if (outcome.restartPending || wired) this.say(`  ${RESTART}\`.`)
+      const wired = false
+      if (outcome.restartPending) this.say(`  ${RESTART}\`.`)
       return {
         name,
         version: outcome.dependency?.version ?? spec.version ?? null,

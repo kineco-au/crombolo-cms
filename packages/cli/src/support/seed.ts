@@ -64,7 +64,7 @@ export function refuseFindings(build: SeedBuild): void {
     'refused',
     `The content files have ${build.findings.length} problem(s), so nothing was built.`,
     {
-      hint: '`crombolo bundle build --check` lists them.',
+      hint: '`crombolo site build --check` lists them.',
       details: build.findings.map((f) => `${f.file}:${f.line}  ${f.message}`),
     },
   )

@@ -1,5 +1,7 @@
 import { Args, Flags } from '@oclif/core'
 import { BaseCommand } from '../base.ts'
+import { CliError } from '../errors.ts'
+import { bundleFormatProblem } from '../remote/client.ts'
 import { pushSite } from '../remote/transfer.ts'
 import { counted, describeBytes, describeJob } from '../support/describe.ts'
 import { confirm } from '../support/prompt.ts'
@@ -59,6 +61,8 @@ export default class Push extends BaseCommand {
     const { args, flags } = await this.parse(Push)
     const { client, environment: env, discovery } = await connectRemote(args.remote, flags.env)
     const environment = needEnvironment(env, discovery)
+    const formats = bundleFormatProblem(discovery, 'send')
+    if (formats) throw new CliError('refused', formats)
     if (flags['dry-run']) this.changedNothing = true
     const config = await siteConfig()
     if (!flags['dry-run']) await raiseVersionIfChanged(this, config)

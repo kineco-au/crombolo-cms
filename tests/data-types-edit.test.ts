@@ -121,7 +121,7 @@ describe('the commands, on a site with a page', () => {
       writeFileSync(join(site, path), body)
     }
     expect(cli('types', 'sync').code).toBe(0)
-    const applied = cli('bundle', 'apply')
+    const applied = cli('site', 'apply')
     expect(applied.code, applied.out).toBe(0)
   }, 120_000)
   afterAll(() => rmSync(site, { recursive: true, force: true }))

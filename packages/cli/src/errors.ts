@@ -59,7 +59,7 @@ export const OUTCOMES = {
   blocked: {
     code: 21,
     description:
-      'Something must be resolved by a person first: `bundle apply --dry-run`, `upgrade check`.',
+      'Something must be resolved by a person first: `site apply --dry-run`, `upgrade check`.',
   },
 } as const
 

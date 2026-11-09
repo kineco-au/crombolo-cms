@@ -100,7 +100,7 @@ sign-in page still learns nothing beyond the status it always got.
 entry after it succeeds:
 
 - `types sync` and `types purge`
-- `bundle apply` and `bundle revert`
+- `site apply` and `site revert`
 - `bundle purge`
 - `dictionary import`
 - the `domains` writes

@@ -86,6 +86,7 @@ async function brochurePackage(h: Harness): Promise<string> {
     id: 'acme-brochure',
     label: 'Brochure',
     peerRange: `^${VERSION}`,
+    bundleType: 'extension',
   })) {
     const target = join(dir, file.path)
     mkdirSync(join(target, '..'), { recursive: true })

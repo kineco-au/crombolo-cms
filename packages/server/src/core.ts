@@ -36,7 +36,14 @@ import { recordAudit } from './adapters/audit.ts'
 import { createMediaSource, createPublishedContentSource } from './adapters/documents.ts'
 import { backOfficeUrl, documentEditUrl } from './back-office-url.ts'
 import { BACKOFFICE_EXTERNAL_PATH } from './backoffice-external.ts'
-import { APPROVED_BY_CODE, createBundleGrants, declaredPermissions } from './bundle-grants.ts'
+import { actAsChoice, createBundleApi, extensionPrincipal } from './bundle-api.ts'
+import {
+  APPROVED_BY_CODE,
+  createBundleGrants,
+  declaredOrigins,
+  declaredPermissions,
+  isSchema3,
+} from './bundle-grants.ts'
 import {
   type BundleMediaFactory,
   createBundleMedia,
@@ -52,6 +59,12 @@ import { databaseFor, openTables, siteTablesProblems, tablesChains } from './cus
 import { attachDatabase, bootstrapDatabase } from './database.ts'
 import { createDiagnostics } from './diagnostics.ts'
 import { resolveEmailPort } from './email.ts'
+import {
+  entryCovers,
+  extensionEntryProblems,
+  readRecordedExtensions,
+  startExtensions,
+} from './extension-discovery.ts'
 import { createFormRegistry, formSigningSecret, signFormToken } from './form-submit.ts'
 import { formTypesOf } from './form-types.ts'
 import { createWorkflowRunner } from './form-workflows.ts'
@@ -66,6 +79,7 @@ import { logger } from './logging.ts'
 import { MediaFileStore } from './media-files.ts'
 import { mediaStoreFromEnvironment } from './media-store.ts'
 import { createNodeOperations } from './node-operations.ts'
+import { OutboundRefused, pinnedFetch } from './outbound-address.ts'
 import {
   CORE_JOB_OWNER,
   createJobRunner,
@@ -78,7 +92,7 @@ import { createRedirectTracker } from './redirects.ts'
 import { withRemoteMedia } from './remote-media.ts'
 import { bootSchema, CacheInstructionPoller } from './schema.ts'
 import { publishSchema, type SchemaStore, useSchemaStore } from './schema-store.ts'
-import { apiUserPrincipal, createSiteContent } from './site-content.ts'
+import { apiUserPrincipal, createSiteContent, userPrincipalByKey } from './site-content.ts'
 import { SITE_EVENT_JOB, siteEventJob, siteEventProblems } from './site-events.ts'
 import { createSiteQueries, queryProblems } from './site-queries.ts'
 import { createSiteServices } from './site-services.ts'
@@ -143,7 +157,47 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
   // On every role: a bundle's form types are needed wherever forms render and
   // submit, and its member and public routes wherever the site is served. Its
   // tables are migrated only by the nodes that own the database.
-  const bundlePackages = extensions.bundles().bundles
+  const discovered = extensions.bundles()
+  const bundlePackages = discovered.bundles
+  let bundleDispatch: ((request: Request) => Promise<Response>) | undefined
+  // An extension from before story 306 does not say what it is: it is turned
+  // off, not mounted, and the site starts without it.
+  const untyped = new Set(discovered.problems.flatMap((found) => found.untyped?.id ?? []))
+  if (config.bundles.some((bundle) => untyped.has(bundle.id))) {
+    for (const bundle of config.bundles.filter((candidate) => untyped.has(candidate.id)))
+      log.warning(
+        'The bundle {id} is turned off: it does not say it is an extension. Install a version that does.',
+        { id: bundle.id },
+      )
+    config.bundles = config.bundles.filter((bundle) => !untyped.has(bundle.id))
+  }
+  // Story 310: installed extensions run once granted, with nothing imported by
+  // the site; one still imported the old way is warned about, and runs as before.
+  const wiredByImport = new Set(
+    config.bundles
+      .filter((bundle) => bundlePackages.some((pkg) => pkg.id === bundle.id))
+      .map((bundle) => bundle.id),
+  )
+  for (const id of wiredByImport)
+    log.warning(
+      'The extension {id} is imported in crombolo.config.ts, which is no longer needed: list it under extensions instead.',
+      { id },
+    )
+  {
+    const started = await startExtensions(
+      config,
+      bundlePackages,
+      await readRecordedExtensions(config),
+    )
+    const problems = [
+      ...extensionEntryProblems(config.extensions, bundlePackages),
+      ...started.problems,
+    ]
+    if (problems.length > 0)
+      throw new Error(`The installed extensions cannot be started:\n- ${problems.join('\n- ')}`)
+    // In place: the caller's config is the server's, and later steps set it too.
+    config.bundles = [...config.bundles, ...started.bundles]
+  }
   const formTypes = formTypesOf(config)
   {
     const problems = [
@@ -199,11 +253,20 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
       if (!runsJobs(config)) wake('jobs')
     },
   })
-  for (const bundle of config.bundles) {
-    const pkg = bundlePackages.find((candidate) => candidate.id === bundle.id)
-    if (!pkg) continue
+  for (const pkg of bundlePackages) {
+    const entry = config.extensions?.[pkg.id]
+    // The site's code grants what it names (story 310), or what an old-style
+    // import wires; anything else waits for a grant recorded here.
+    const byCode = wiredByImport.has(pkg.id) || entryCovers(pkg, entry)
+    if (!byCode) continue
+    const bundle = { id: pkg.id }
     // Recorded where the database is written, and audited when it changes.
-    if (owns && (await bundleGrants.grant(pkg, APPROVED_BY_CODE)))
+    if (
+      owns &&
+      (await bundleGrants.grant(pkg, APPROVED_BY_CODE, {
+        actAs: entry?.actAs ? actAsChoice(entry.actAs) : undefined,
+      }))
+    )
       await recordAudit(db, {
         category: 'system',
         action: 'Grant',
@@ -212,12 +275,31 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
         detail: `approved by the site's code: ${declaredPermissions(pkg).join(', ') || 'nothing'}`,
         source: 'boot',
       })
-    if (!bundleGrants.isOn(bundle.id))
-      log.warning('The bundle {bundle} is disabled by {by}; enable it in Packages → Installed.', {
+    const state = bundleGrants.state(pkg)
+    if (state.status === 'off')
+      log.warning('The bundle {bundle} is turned off by {by}; turn it on in Bundles → Installed.', {
         bundle: bundle.id,
-        by: bundleGrants.state(pkg).disabledBy ?? 'an administrator',
+        by: state.disabledBy ?? 'an administrator',
+      })
+    else if (state.status === 'waiting')
+      log.warning('The bundle {bundle} waits for a grant of {missing}.', {
+        bundle: bundle.id,
+        missing: state.missing.join(', '),
       })
   }
+  // Story 309: a version that asks for less than was granted keeps running, its
+  // grant narrowed to what it asks for, audited.
+  if (owns)
+    for (const pkg of bundlePackages)
+      if (await bundleGrants.narrow(pkg))
+        await recordAudit(db, {
+          category: 'system',
+          action: 'Grant',
+          entityType: 'Bundle',
+          entityName: `${pkg.packageName}@${pkg.version}`,
+          detail: `narrowed to what it asks for: ${declaredPermissions(pkg).join(', ') || 'nothing'}`,
+          source: 'boot',
+        })
   // A configured schema store is copied down before anything reads `schema/`, and
   // becomes the schema directory for this boot. Everything after here — loading,
   // validation, hashing, sync, the writer — works on files exactly as it always has.
@@ -370,6 +452,10 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
       allowPrivateAddresses: config.webhooks?.allowPrivateAddresses ?? config.development,
     },
     isBundleOn: (bundleId) => bundleGrants.isOn(bundleId),
+    bundleOrigins: (bundleId) => {
+      const pkg = bundlePackages.find((candidate) => candidate.id === bundleId)
+      return pkg && !isSchema3(pkg) ? declaredOrigins(pkg) : undefined
+    },
     // The site's own handlers (story 298): each event queues the job that runs one.
     siteEvents: {
       handles: (alias) => typeof config.events?.[alias] === 'function',
@@ -451,6 +537,7 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
             return chain ? databaseFor(chain) : undefined
           },
           isOn: (bundleId) => bundleGrants.isOn(bundleId),
+          granted: (bundleId) => bundleGrants.granted(bundleId),
           jobs: (bundleId, queuedBy) => jobRunner.jobsFor(bundleId, queuedBy),
           pluginApiPath: `${paths.pluginPath}/api`,
           host: {
@@ -486,6 +573,47 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
           },
           log: (id) => bundleLog(id),
           callerHost: {
+            // Story 308: the site's areas, as the extension or whom it acts for.
+            api: (caller, bundle) => {
+              const pkg = bundlePackages.find((candidate) => candidate.id === bundle.id)
+              const granted = () => bundleGrants.granted(bundle.id)
+              return createBundleApi({
+                bundleId: bundle.id,
+                origin: (config.applicationUrl || 'http://localhost').replace(/\/+$/, ''),
+                backOfficePath: config.backOfficePath,
+                granted,
+                dispatch: () => bundleDispatch,
+                principal: async () => {
+                  const itself = extensionPrincipal(
+                    { id: bundle.id, name: pkg?.name ?? bundle.id },
+                    granted(),
+                  )
+                  const choice =
+                    pkg && granted().includes('actAs') ? bundleGrants.state(pkg).grant?.actAs : null
+                  if (!choice) return itself
+                  if (choice === 'caller')
+                    return caller.kind === 'backoffice' ? caller.principal : itself
+                  return userPrincipalByKey(db, choice.slice(choice.indexOf(':') + 1))
+                },
+              })
+            },
+            fetch: (_caller, bundle) => {
+              const pkg = bundlePackages.find((candidate) => candidate.id === bundle.id)
+              return {
+                fetch: async (input, init) => {
+                  const url = new URL(input instanceof Request ? input.url : String(input))
+                  const origins = declaredOrigins(pkg)
+                  if (!origins.includes(url.origin))
+                    throw new OutboundRefused(
+                      `${bundle.id} may not reach ${url.origin}: its http.outbound names ${origins.join(', ') || 'nothing'}.`,
+                    )
+                  return pinnedFetch(input, init, {
+                    allowPrivateAddresses:
+                      config.webhooks?.allowPrivateAddresses ?? config.development,
+                  })
+                },
+              }
+            },
             media: (caller, bundle) => {
               bundleMedia ??= createBundleMedia({
                 db,
@@ -675,6 +803,10 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
   // Where jobs are left to a worker: whether one is running them (decision 4).
   const workerWatch = createWorkerWatch({ db, config })
   return {
+    /** The server's own handler, which `api` calls through once the server is built (story 308). */
+    setBundleDispatch(dispatch: (request: Request) => Promise<Response>) {
+      bundleDispatch = dispatch
+    },
     diagnostics,
     extensions,
     paths,

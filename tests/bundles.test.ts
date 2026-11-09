@@ -393,7 +393,8 @@ describe('the download', () => {
       throw new Error(`creating the document failed ${made.status}: ${await made.text()}`)
     const document = made.headers.get('umb-generated-resource') as string
 
-    const entries = await download(
+    // The whole package: its package.json is inside the bundle's hash (story 306).
+    const entries = await downloadPackage(
       h,
       await create({ name: 'With content', contentNodeId: document, contentLoadChildNodes: true }),
     )
@@ -404,8 +405,10 @@ describe('the download', () => {
     const dir = mkdtempSync(join(tmpdir(), 'crombolo-package-'))
     temporary.push(dir)
     for (const [path, bytes] of entries) {
+      // package.json too: the hash covers the package's identity (story 306).
       if (
         !path.startsWith('bundle.json') &&
+        !path.startsWith('package.json') &&
         !path.startsWith('nodes/') &&
         !path.startsWith('media')
       )
@@ -679,7 +682,7 @@ describe('the download is an npm package', () => {
       keywords: ['crombolo-bundle'],
       files: ['bundle.json'],
       peerDependencies: { '@crombolo/crombolo': `>=${VERSION}` },
-      crombolo: { id: 'starter-kit', name: 'Starter Kit', content: true },
+      crombolo: { id: 'starter-kit', name: 'Starter Kit', bundleType: 'extension', content: true },
     })
   })
 

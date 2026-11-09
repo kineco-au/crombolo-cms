@@ -25,7 +25,7 @@ jobs:
             - uses: actions/checkout@v5
             - uses: oven-sh/setup-bun@v2
             - run: bun install --frozen-lockfile
-            - run: bunx crombolo bundle build --out dist/acme-bundle --sign
+            - run: bunx crombolo site build --out dist/acme-bundle --sign
             - run: npm publish dist/acme-bundle
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

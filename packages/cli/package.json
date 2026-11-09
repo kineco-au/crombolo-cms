@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/cli",
-  "version": "0.56.0",
+  "version": "0.57.0",
   "description": "The crombolo command line: scaffolding a site, schema, views, domains, content transfer and upgrades.",
   "license": "MIT",
   "author": "Crombolo",
@@ -40,6 +40,7 @@
     "@crombolo/api-delivery": "workspace:*",
     "@crombolo/api-management": "workspace:*",
     "@crombolo/auth": "workspace:*",
+    "@crombolo/backoffice-host": "workspace:*",
     "@crombolo/content": "workspace:*",
     "@crombolo/core": "workspace:*",
     "@crombolo/data": "workspace:*",

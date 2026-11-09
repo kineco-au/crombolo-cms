@@ -276,14 +276,14 @@ describe('the commands, on a site with page types and a block list', () => {
   }, 30_000)
 
   test('exported as a content file, aliases and all, and read back the same', () => {
-    ok('bundle', 'export', '--source', '--root', '/Home')
+    ok('content', 'export', '--root', '/Home')
     const file = readFileSync(join(site, 'content/pages/home.toml'), 'utf8')
     expect(file).toContain('alias = "sourdough"')
     expect(file).not.toMatch(/^key = /m)
     ok('content', 'block', 'update', '/Home', 'blocks', 'sourdough', '--set', 'heading=Changed')
     // Changed here since: the file wins only when told to.
-    expect(cli('bundle', 'apply').code).toBe(ERROR_KINDS.refused.exitCode)
-    ok('bundle', 'apply', '--resolve-all=take-bundle')
+    expect(cli('site', 'apply').code).toBe(ERROR_KINDS.refused.exitCode)
+    ok('site', 'apply', '--resolve-all=take-bundle')
     expect(blocksOf('/Home')[0]).toMatchObject({
       alias: 'sourdough',
       values: { heading: 'Sourdough' },
@@ -317,7 +317,7 @@ describe('the commands, on a site with page types and a block list', () => {
       join(site, 'content/pages/twice.toml'),
       'type = "page"\n\n[values]\nblocks = [\n  { type = "highlight", alias = "a", values = { heading = "1" } },\n  { type = "highlight", alias = "A", values = { heading = "2" } },\n]\n',
     )
-    const run = cli('bundle', 'apply')
+    const run = cli('site', 'apply')
     expect(run.code).not.toBe(0)
     expect(run.out).toContain('two blocks are called "A"')
     rmSync(join(site, 'content/pages/twice.toml'))

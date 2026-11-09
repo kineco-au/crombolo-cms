@@ -20,7 +20,7 @@ const ROOT = resolve(import.meta.dir, '..', '..')
 const CLI = join(ROOT, 'packages/cli/bin/crombolo.ts')
 
 /** The commands whose job is files, which name them. */
-const FILE_COMMANDS = ['generate', 'bundle export', 'bundle build']
+const FILE_COMMANDS = ['generate', 'content export', 'site export', 'site build']
 
 const WALKTHROUGH = 'getting-started/from-the-command-line.md'
 

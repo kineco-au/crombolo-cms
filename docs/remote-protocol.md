@@ -23,6 +23,7 @@ stated otherwise. Errors are `application/problem+json` with a stable `code`
 {
   "protocol": "crombolo-remote",
   "versions": ["1"],
+  "bundleFormats": [8, 8],
   "name": "Harbourstone Distillery",
   "api": "https://example.com/umbraco/remote/v1",
   "auth": {
@@ -38,6 +39,15 @@ stated otherwise. Errors are `application/problem+json` with a stable `code`
 
 - **`versions`:** the protocol versions served. A client refuses a remote that
   serves none it speaks.
+- **`bundleFormats`:** the oldest and newest bundle formats the remote reads
+  (story 306). Before `push`, `site apply --remote` or `site deploy` builds
+  anything, the CLI checks that the remote reads the format it writes. Before
+  `pull`, it checks that it reads what the remote writes. Either way it says
+  which side to upgrade. A remote that names none is a release from before site
+  packages, and is refused the same way.
+- **What each endpoint takes:** the apply endpoint (`environments/<env>/bundles`)
+  and a push take only site packages. `bundle-manage` installs and removes only
+  extensions. Each refuses the other kind, naming the command to use.
 - **`api`:** the base for everything below. It need not share the discovery
   document's origin.
 - **`environments`:** what the remote offers.
@@ -176,7 +186,7 @@ Pulls and pushes are **jobs**. Starting one answers `202` with the job.
 | `download` | a finished pull: `url`, `expiresAt`, `size`, `sha256` |
 | `approvalUrl`, `approvalExpiresAt` | while `approval-required` |
 | `problem` | a failed or refused job: `code`, `title`, `detail`, `items` |
-| `runId` | a finished push: the import's run, which `bundle revert` undoes |
+| `runId` | a finished push: the import's run, which `site revert` undoes |
 
 A job is visible to the person who started it. On a remote with approvals,
 it's also visible to whoever may approve it. Anyone else gets 404.
@@ -224,7 +234,7 @@ never from the media store's public address.
 The remote refuses a file whose hash doesn't match (400 `hash-mismatch`)
 before anything is replaced. Accepted, the push is a job that:
 1. backs up where the remote can;
-2. replaces the environment with the file, as `crombolo import --replace` does;
+2. replaces the environment with the file, as `crombolo site import --replace` does;
 3. refreshes the published content of the node that took it, so visitors see the
    push at once. The import also tells every other node, through a cache
    instruction; a node skips its own instructions, so this step is what reaches the
@@ -251,12 +261,12 @@ it is sending.
 ## Applying a bundle (`bundle-apply`, optional)
 
 `PUT <api>/environments/{id}/bundles` applies a bundle to the environment, as
-`crombolo bundle apply` does on its own machine (story 167):
+`crombolo site apply` does on its own machine (story 167):
 - **Body:** the bundle as an npm tarball (`application/gzip`).
 - **`Crombolo-Sha256`:** its SHA-256, in hex (400 `hash-mismatch` when it differs).
 - **`Crombolo-Options`:** JSON, every field optional: `dryRun`, `publish`,
   `label`, `resolutions`, `resolveAll` and `replaceFiles` (allow replacing
-  files the remote has; `bundle deploy` sends it).
+  files the remote has; `site deploy` sends it).
 
 A bundle of content alone needs the `content` level and the push permission. One
 that carries content types, views, styles or code needs the `all` level (403

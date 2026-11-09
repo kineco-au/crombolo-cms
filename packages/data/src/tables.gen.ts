@@ -113,11 +113,13 @@ export interface CoreTables {
     update_date: Timestamp
   }
   bundle_grant: {
+    act_as: string | null
     bundle_id: string
     disabled_at: Timestamp | null
     disabled_by: string | null
     granted_at: Timestamp
     granted_by: string | null
+    origins: string | null
     package_name: string
     permissions: string
     version: string
@@ -223,6 +225,7 @@ export interface CoreTables {
     applied_by: string | null
     bundle_id: string
     bundle_label: string | null
+    bundle_type: string | null
     direction: string
     finished_at: Timestamp | null
     id: string
@@ -366,6 +369,13 @@ export interface CoreTables {
     language_id: number | null
     node_id: number
     sort_order: number
+  }
+  extension_setting: {
+    bundle_id: string
+    setting_key: string
+    updated_at: Timestamp
+    updated_by: string | null
+    value: string
   }
   external_login: {
     create_date: Timestamp

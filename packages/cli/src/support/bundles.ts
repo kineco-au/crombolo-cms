@@ -1,11 +1,5 @@
-/**
- * Installed bundles from the CLI (story 241): on the site's own machine through
- * the server's bundle admin over its database, or on a remote through
- * `bundle-manage`. One shape either way, so a command prints both alike.
- */
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { userInfo } from 'node:os'
-import { join, resolve } from 'node:path'
+import { resolve } from 'node:path'
 import {
   type BundleActor,
   type BundleAdmin,
@@ -18,7 +12,6 @@ import {
 import { CliError } from '../errors.ts'
 import { connectRemote, needEnvironment } from './remote.ts'
 import { siteConfig } from './site.ts'
-import { newConfigWiring, wireBundle } from './wire.ts'
 
 /** The person at this terminal, as the audit log names them. */
 export const cliActor = (): BundleActor => ({
@@ -68,15 +61,24 @@ export async function remoteBundles(remote: string, env: string | undefined) {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
       }),
-    uninstall: (name: string) =>
+    uninstall: (name: string, options: { revertContent?: boolean } = {}) =>
       client.json<{ ok: boolean; message: string; restartPending?: boolean }>(
-        `${base}/${encodeURIComponent(name)}`,
+        `${base}/${encodeURIComponent(name)}${options.revertContent ? '?revertContent=true' : ''}`,
         { method: 'DELETE' },
       ),
     setEnabled: (name: string, enabled: boolean) =>
       client.json<{ ok: boolean; message: string; on?: boolean }>(
         `${base}/${encodeURIComponent(name)}/${enabled ? 'enable' : 'disable'}`,
         { method: 'POST' },
+      ),
+    grant: (name: string, grant: readonly string[], actAs: string | null) =>
+      client.json<{ ok: boolean; message: string; on?: boolean }>(
+        `${base}/${encodeURIComponent(name)}/grant`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ grant, actAs }),
+        },
       ),
   }
 }
@@ -95,34 +97,4 @@ export function grantGaps(asked: readonly string[], granted: readonly string[]) 
     missing: asked.filter((p) => !granted.includes(p)),
     extra: granted.filter((p) => !asked.includes(p)),
   }
-}
-
-/** The factory an installed package exports for its server half, from its manifest. */
-export function serverFactoryOf(siteDir: string, packageName: string): string | undefined {
-  const file = join(siteDir, 'node_modules', ...packageName.split('/'), 'package.json')
-  if (!existsSync(file)) return undefined
-  try {
-    const json = JSON.parse(readFileSync(file, 'utf8')) as { crombolo?: { server?: unknown } }
-    return typeof json.crombolo?.server === 'string' ? json.crombolo.server : undefined
-  } catch {
-    return undefined
-  }
-}
-
-/** Wires a bundle's server half into the site's `crombolo.config.ts`; true when the file changed. */
-export function wireIntoConfig(siteDir: string, factory: string, packageName: string): boolean {
-  const file = join(siteDir, 'crombolo.config.ts')
-  if (!existsSync(file)) {
-    writeFileSync(file, newConfigWiring(factory, packageName))
-    return true
-  }
-  const result = wireBundle(readFileSync(file, 'utf8'), factory, packageName)
-  if (!result.ok)
-    throw new CliError(
-      'refused',
-      `crombolo.config.ts was not changed: ${result.reason}. The bundle is installed; wire it by hand.`,
-      { hint: 'Add these two lines', details: [...result.lines] },
-    )
-  if (result.changed) writeFileSync(file, result.text)
-  return result.changed
 }

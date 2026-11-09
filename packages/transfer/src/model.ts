@@ -23,14 +23,29 @@ import type { SiteDataBlock, SiteDataTable } from './site-data.ts'
  * `media/<key>` with a `bundle://` URI (story 195).
  * 6: a Library folder may travel as a node (story 283).
  * 7: the site's `public/` folder, listed in `public.json` (story 284).
+ * 8: `bundleType` says whether it is a site package or an extension, and the
+ * hash covers `bundle.json` and the package's identity too (story 306).
  *
  * An older version is refused rather than read (no older layout is kept up),
  * with a message saying to rebuild it.
  */
-export const BUNDLE_FORMAT_VERSION = 7
+export const BUNDLE_FORMAT_VERSION = 8
 
-/** The oldest version this reader reads: the first with media listed in `media.json`. */
-export const OLDEST_BUNDLE_FORMAT_VERSION = 5
+/** The oldest version this reader reads: the first that says what kind of bundle it is. */
+export const OLDEST_BUNDLE_FORMAT_VERSION = 8
+
+/**
+ * What a bundle is (story 306). A site package is a site, or part of one, made to
+ * move it: trusted as the site is, it may carry the site's code and config, and is
+ * only ever applied from a file. An extension is installed as a dependency, and
+ * never carries the site's code.
+ */
+export type BundleType = 'site' | 'extension'
+
+export const BUNDLE_TYPES: readonly BundleType[] = ['site', 'extension']
+
+export const isBundleType = (value: unknown): value is BundleType =>
+  value === 'site' || value === 'extension'
 
 /**
  * The sections a bundle can carry beyond its content, and the directory each
@@ -289,6 +304,8 @@ export interface BundleManifest {
    * selection, overlaid as always.
    */
   scope?: 'site'
+  /** Whether this is a site package or an extension; every bundle says (story 306). */
+  bundleType?: BundleType
   /**
    * `omitted`: a whole-site file written without its media files (`--no-media`).
    * `referenced`: without them because they move one at a time between the

@@ -570,7 +570,17 @@ describe('the anti-forgery script', () => {
 // --- On a real site -----------------------------------------------------------
 
 const BUNDLE_ID = 'visits'
-const PACKAGE = { '@acme/visits': { json: { crombolo: { id: BUNDLE_ID, server: 'visits' } } } }
+const PACKAGE = {
+  '@acme/visits': {
+    json: {
+      crombolo: {
+        id: BUNDLE_ID,
+        server: 'visits',
+        permissions: { 'routes.public': 'Answers the visits counter on the site' },
+      },
+    },
+  },
+}
 const PASSWORD = 'correct-horse-battery'
 
 const TYPE = `[content-type]

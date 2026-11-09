@@ -268,7 +268,7 @@ export async function serveSite(io: Io, options: StartOptions): Promise<Started>
     lines.push(
       "  ⚠ the database is ahead of the site's definitions: reads only, writes refused with 409",
     )
-  // Story 225: a wired bundle runs unless an administrator has disabled it.
+  // Story 225: a wired site runs unless an administrator has disabled it.
   const disabled = config.role === 'web' ? [] : server.disabledBundles()
   if (disabled.length > 0) {
     lines.push('', '  Disabled')
@@ -402,7 +402,7 @@ async function bootWithRetries(io: Io, config: CromboloConfig, options: StartOpt
 
 /**
  * `start --bundle <dir>`, repeatable: apply a bundle before the site serves
- * anything, taking the flags `bundle apply` takes.
+ * anything, taking the flags `site apply` takes.
  *
  * Imported once per bundle — a run still standing here means this site already
  * has that content — so a restart costs a query and a line in the banner. It
@@ -432,7 +432,7 @@ async function importStartupBundles(
         'refused',
         "This site's content files have problems, so it has not started.",
         {
-          hint: '`crombolo bundle build --check` lists them.',
+          hint: '`crombolo site build --check` lists them.',
           details: build.findings.map((f) => `${f.file}:${f.line}  ${f.message}`),
         },
       )
@@ -473,7 +473,7 @@ async function importStartupBundles(
       }
 
       // A bundle that carries the site's schema and views (`crombolo bundle
-      // build`, story 164) installs as `bundle apply` installs it: files
+      // build`, story 164) installs as `site apply` installs it: files
       // staged, schema synced and content imported in one transaction. The
       // server then boots again to load what it brought.
       if (Object.keys(resolved.carried.carries).length > 0) {
@@ -561,7 +561,7 @@ async function importStartupBundles(
       for (const failure of result.publishFailures)
         io.warning(`  not published  ${failure.key}: ${failure.reason}`)
       await recordInLedger(db, {
-        name: `bundle apply ${set.manifest.id}`,
+        name: `site apply ${set.manifest.id}`,
         kind: 'transfer',
         durationMs: Math.round(performance.now() - started),
         appliedBy: config.nodeId,
@@ -607,7 +607,7 @@ export async function startFromFile(
   const manifest = ops.readBundle(dir, cwd()).set.manifest
   if (manifest.scope !== 'site')
     throw new CliError('usage', `${from} is not a whole-site file.`, {
-      hint: 'Write one with `crombolo export --site`.',
+      hint: 'Write one with `crombolo site export`.',
     })
   const sealed =
     manifest.people !== undefined ||

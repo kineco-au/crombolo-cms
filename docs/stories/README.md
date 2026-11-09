@@ -147,6 +147,7 @@ not cover.
 | `191` | Azure AD B2C user flows for members | should | M | ready | 031 |
 | `282` | A member resets their password | should | M | ready | — |
 | `305` | An identity provider the config declares can be locked | should | S | ready | — |
+| `314` | An administrator sees the back office as a group does | should | M | ready | — |
 
 ### Epic E — Cross-cutting
 
@@ -236,8 +237,17 @@ requests, only server-side and build-time front ends can call it.
 | `300` | Checking a bundle runs none of its code | must | S | done | — |
 | `301` | A webhook reaches only what it should | must | M | done | — |
 | `302` | A group grants only what its editor holds | should | S | ready | — |
-| `303` | A bundle's code lands only in code folders | could | S | ready | — |
+| `303` | A bundle's code lands only in code folders | could | S | abandoned | superseded by 306, 312 |
 | `304` | Every request a user sets up goes only outside | should | S | ready | 301 |
+| `306` | A site package says what it is | must | L | done | — |
+| `307` | An extension writes none of the site's code | must | S | abandoned | merged into 306, 312 |
+| `308` | Each permission an extension asks for says why | must | XL | done | — |
+| `309` | A grant is what lets an extension run | must | M | done | 308 |
+| `310` | A granted extension runs without wiring | must | M | done | 309 |
+| `311` | A Deno process per extension | must | XL | ready | 310 |
+| `312` | An extension's templates render in its own process | must | L | backlog | 311 |
+| `313` | The back office reaches only the origins extensions declared | should | S | ready | 308 |
+| `315` | A typed SDK for extensions | could | L | ready | 308 |
 
 ### Epic J — Forms
 

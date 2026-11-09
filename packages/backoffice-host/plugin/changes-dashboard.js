@@ -207,7 +207,13 @@ export default class CromboloChangesDashboardElement extends UmbLitElement {
       <h4>
         ${SOURCE_LABEL[group.source] ?? group.source}
         ${pending?.label ? html`<strong>${pending.label}</strong>` : group.scope ? html`<code>${group.scope}</code>` : nothing}
+        ${pending?.sitePackage ? html`<uui-tag look="secondary">Site package</uui-tag>` : nothing}
       </h4>
+      ${
+        pending?.sitePackage
+          ? html`<p class="note">Applying it replaces this site's code, settings and installed extensions with the ones it carries.</p>`
+          : nothing
+      }
       ${
         group.findings.length === 0
           ? nothing

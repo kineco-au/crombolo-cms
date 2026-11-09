@@ -17,7 +17,14 @@ export function stubBundlePackage(id: string, over: Partial<BundlePackage> = {})
     name: id,
     peerRange: `^${VERSION}`,
     private: false,
-    field: { id, server: id, schemaVersion: BUNDLE_SCHEMA_VERSION, permissions: [] },
+    bundleType: 'extension',
+    field: {
+      id,
+      bundleType: 'extension',
+      server: id,
+      schemaVersion: BUNDLE_SCHEMA_VERSION,
+      permissions: {},
+    },
     contentDir: undefined,
     carries: { extensions: false, content: false, server: true },
     ...over,
@@ -65,12 +72,21 @@ export function siteDeclaring(
     }
     // A server half is written for this release's bundle schema, asking for
     // nothing, unless a test says otherwise.
+    // An extension unless it says otherwise, as every bundle must (story 306).
     const field = json.crombolo as Record<string, unknown> | undefined
-    if (field && typeof field === 'object' && field.server !== undefined)
+    if (field && typeof field === 'object')
       json.crombolo = {
+        ...(!('bundleType' in field) ? { bundleType: 'extension' } : {}),
         ...field,
-        schemaVersion: field.schemaVersion ?? BUNDLE_SCHEMA_VERSION,
-        permissions: field.permissions ?? [],
+        ...(field.server !== undefined
+          ? {
+              // A list of permissions is schema 3's way; schema 4 gives reasons (story 308).
+              schemaVersion:
+                field.schemaVersion ??
+                (Array.isArray(field.permissions) ? 3 : BUNDLE_SCHEMA_VERSION),
+              permissions: field.permissions ?? {},
+            }
+          : {}),
       }
     writeFileSync(join(dir, 'package.json'), JSON.stringify(json))
     for (const [path, content] of Object.entries(fixture.files ?? {})) {

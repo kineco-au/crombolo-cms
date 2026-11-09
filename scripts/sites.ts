@@ -87,6 +87,7 @@ export function contentPackage(target: { id: string; name: string }): BundlePack
     label: target.name,
     private: true,
     peerRange: `^${VERSION}`,
+    bundleType: 'site',
   }
 }
 

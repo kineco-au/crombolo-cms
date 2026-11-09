@@ -42,12 +42,14 @@ import {
   writeBundle,
   writeBundlePackage,
 } from '@crombolo/transfer'
-import { VERSION } from '../config.ts'
-import { readBlobs } from '../media-files.ts'
+import { type CromboloConfig, VERSION } from '../config.ts'
+import { mediaStoreFor, readBlobs } from '../media-files.ts'
 import type { MediaStore } from '../media-store.ts'
 import { carriedPicks, schemaPickFiles } from '../schema-picks.ts'
 import { siteSections } from '../site-sections.ts'
 import { writeNpmTarball } from '../tar.ts'
+import { createComponentsPort, createFileSystemPort } from './file-system.ts'
+import { createTemplateFileStore } from './template-files.ts'
 
 /** The npm package a definition is built as: what was set on it, or what its name gives. */
 export function bundlePackageOf(row: Bundle): { name: string; version: string } {
@@ -343,13 +345,18 @@ export function createPackagePort(db: Db, options: PackagePortOptions): PackageP
 
       const labelled: ContentSet = { ...set, manifest: { ...set.manifest, label: from.name } }
       const encoder = new TextEncoder()
-      const files = writeBundlePackage(writeBundle(labelled, content.blobs, sections), {
-        name: pkg.name,
-        version: pkg.version,
-        id: bundleIdFor(pkg.name.replace(/^@[^/]+\//, '')),
-        label: from.name,
-        peerRange: bundlePeerRange(VERSION),
-      })
+      // What the Bundle Editor builds is an extension (story 306).
+      const files = writeBundlePackage(
+        writeBundle(labelled, content.blobs, sections, { bundleType: 'extension' }),
+        {
+          name: pkg.name,
+          version: pkg.version,
+          id: bundleIdFor(pkg.name.replace(/^@[^/]+\//, '')),
+          label: from.name,
+          peerRange: bundlePeerRange(VERSION),
+          bundleType: 'extension',
+        },
+      )
       const entries = files.map((file) => ({
         path: file.path,
         bytes: file.bytes ?? encoder.encode(file.text ?? ''),
@@ -465,4 +472,36 @@ export async function writeSchemaPicks(
 ): Promise<BundleSchemaPicks | undefined> {
   const picks = schemaPicksOf(body)
   return (await new BundleRepository(db).setSchemaPicks(id, picks)) ? picks : undefined
+}
+
+/**
+ * A Bundle Editor definition built as the extension package the back office's
+ * download gives (story 306), found by its name or its id; undefined when there
+ * is no such definition. For `crombolo bundle build`.
+ */
+export async function buildCreatedBundle(
+  db: Db,
+  config: CromboloConfig,
+  nameOrId: string,
+  options: { withMedia?: boolean } = {},
+): Promise<{ definition: PackageDefinition; built: BuiltPackage } | undefined> {
+  const port = createPackagePort(db, {
+    siteName: config.siteName,
+    nodeId: config.nodeId,
+    marketplaceUrl: config.marketplaceUrl,
+    componentFiles: createTemplateFileStore(config.componentsDir),
+    mediaStore: await mediaStoreFor(config),
+    components: createComponentsPort(config.componentsDir),
+    stylesheets: createFileSystemPort(config.stylesheetsDir, { extension: '.css' }),
+    scripts: createFileSystemPort(config.scriptsDir, { extension: '.js' }),
+    schemaDir: config.schemaDir,
+  })
+  const wanted = nameOrId.trim().toLowerCase()
+  const definitions = (await port.list({ skip: 0, take: 10_000 })).items
+  const definition = definitions.find(
+    (candidate) => candidate.id.toLowerCase() === wanted || candidate.name.toLowerCase() === wanted,
+  )
+  if (!definition) return undefined
+  const built = await port.build(definition.id, options)
+  return built ? { definition, built } : undefined
 }

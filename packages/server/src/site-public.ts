@@ -14,7 +14,7 @@ import { isSitePath } from './middleware.ts'
 /** Where a CLI finds out what a server is: never a site's to answer. */
 export const REMOTE_DISCOVERY_PATH = '/.well-known/crombolo-remote'
 
-/** Above this, `bundle build` says what is making the bundle heavy. */
+/** Above this, `site build` says what is making the bundle heavy. */
 export const PUBLIC_WARNING_BYTES = 100 * 1024 ** 2
 
 const IMMUTABLE = 'public, max-age=31536000, immutable'

@@ -123,7 +123,7 @@ describe('a demo site in three commands', () => {
     expect(init.code, init.out).toBe(0)
     const built = await cli(
       'from-path',
-      'bundle',
+      'site',
       'build',
       join(ROOT, 'sites', 'harbourstone'),
       '--out',
@@ -154,7 +154,7 @@ describe('a demo site in three commands', () => {
     expect((await cli('from-template', 'init', '--name', 'Harbourstone')).code).toBe(0)
     const built = await cli(
       'from-template',
-      'bundle',
+      'site',
       'build',
       '--template',
       'demo/harbourstone',
@@ -174,7 +174,7 @@ describe('a demo site in three commands', () => {
     mkdirSync(join(dir, 'broken', 'schema'), { recursive: true })
     await Bun.write(join(dir, 'broken', 'schema', 'schema.toml'), '[schema]\nversion = "1.0.0"\n')
     await Bun.write(join(dir, 'broken', 'content', 'pages', 'home.toml'), 'type = "nothing"\n')
-    const built = await cli('broken', 'bundle', 'build', '--out', './out')
+    const built = await cli('broken', 'site', 'build', '--out', './out')
     expect(built.code).not.toBe(0)
     expect(built.out).toContain('content/pages/home.toml:1')
   }, 120_000)

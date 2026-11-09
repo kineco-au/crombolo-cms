@@ -544,6 +544,13 @@ export interface CromboloConfig {
    */
   webhooks?: { headerVariables?: readonly string[]; allowPrivateAddresses?: boolean }
   /**
+   * Installed extensions the site's code grants and sets (story 310), by bundle
+   * id: what it grants, as "Developer installed", and settings, which lock them
+   * in the back office. Plain data: nothing is imported.
+   * docs/bundles.md, "Extensions run once granted".
+   */
+  extensions?: Readonly<Record<string, ExtensionEntry>>
+  /**
    * Package names this installation provides to every site it runs, rather
    * than the site choosing them (story 177): a whole-site file leaves them out
    * of what it requires, so the site starts anywhere without them. Set by
@@ -601,6 +608,18 @@ export interface CromboloConfig {
    * `crombolo.config.ts` only; without it no token is issued.
    */
   host: HostConfig | undefined
+}
+
+/** One installed extension, as the config grants and sets it (story 310). */
+export interface ExtensionEntry {
+  /** Exactly the permissions it may use; a version asking for more is off until this names it. */
+  grant?: readonly string[]
+  /** The origins its `http.outbound` may reach, when it asks for any. */
+  origins?: readonly string[]
+  /** Whom `actAs` acts for: `caller`, or `user:<key>`. */
+  actAs?: string
+  /** Its settings' values, locked in the back office. */
+  settings?: Readonly<Record<string, unknown>>
 }
 
 export type SiteConfig = CromboloConfig
@@ -1111,7 +1130,7 @@ export function describeDatabase(
   }
 }
 
-export const VERSION = '0.56.0'
+export const VERSION = '0.57.0'
 
 /** A whole number of seconds from the environment; undefined when unset or not one. */
 /** A positive number from a setting, else the default. */

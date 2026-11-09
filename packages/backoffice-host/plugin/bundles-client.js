@@ -33,21 +33,23 @@ export const bundleSignature = (name, version) =>
     `/signature?name=${encodeURIComponent(name)}${version ? `&version=${encodeURIComponent(version)}` : ''}`,
   )
 
-export const installBundle = (
-  name,
-  version,
-  applyContent = true,
-  acceptServerCode = false,
-  grant = [],
-) =>
+export const installBundle = (name, version, applyContent = true, grant = [], actAs = undefined) =>
   json('/install', {
     method: 'POST',
-    body: JSON.stringify({ name, version, applyContent, acceptServerCode, grant }),
+    body: JSON.stringify({ name, version, applyContent, grant, actAs }),
   })
 
 /** Turns an installed bundle's server features off until it is enabled again (story 225). */
 export const disableBundle = (id) =>
   json('/disable', { method: 'POST', body: JSON.stringify({ id }) })
+
+/** Grants an installed extension exactly what it asks for, and whom it acts for (story 309). */
+export const grantBundle = (id, grant, actAs = undefined) =>
+  json('/grant', { method: 'POST', body: JSON.stringify({ id, grant, actAs }) })
+
+/** Saves an extension's settings: `null` takes one back to its default (story 310). */
+export const saveSettings = (id, values) =>
+  json('/settings', { method: 'POST', body: JSON.stringify({ id, values }) })
 
 /** Turns a disabled bundle's server features back on. */
 export const enableBundle = (id) =>

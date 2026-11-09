@@ -57,7 +57,7 @@ If port 8080 is taken, start on another: `PORT=3000 bun start`.
 ```sh
 bunx crombolo components check       # compile and type-check every view
 bunx crombolo types check --static   # check the definitions without a database
-bunx crombolo bundle build --check   # check the content files against them
+bunx crombolo site build --check   # check the content files against them
 bunx crombolo status                 # whether this environment is working
 ```
 

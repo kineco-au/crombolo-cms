@@ -22,10 +22,12 @@ import {
   type BundleRedirect,
   type BundleSchedule,
   type BundleSection,
+  type BundleType,
   type BundleValue,
   type BundleVariant,
   type ContentSet,
   ELEMENT_FOLDER_TYPE,
+  isBundleType,
   OLDEST_BUNDLE_FORMAT_VERSION,
 } from './model.ts'
 import { type BundlePeople, openPeople, type PeopleBlock, parsePeopleBlock } from './people.ts'
@@ -38,6 +40,8 @@ import {
   type SiteDataTable,
 } from './site-data.ts'
 import {
+  BUNDLE_TYPE_MISSING,
+  blankedManifest,
   bundleIntegrity,
   MANIFEST_FILE,
   MEDIA_DIR,
@@ -45,6 +49,8 @@ import {
   mediaPath,
   mediaUri,
   nodePath,
+  PACKAGE_FILE,
+  packageIdentity,
   type SealedValues,
   sectionOf,
   valuesPath,
@@ -317,6 +323,10 @@ function parseManifest(text: string, problems: BundleProblem[]): BundleManifest 
     problems.push({ file: MANIFEST_FILE, message: OLD_LAYOUT })
     return undefined
   }
+  if (!isBundleType(raw.bundleType)) {
+    problems.push({ file: MANIFEST_FILE, message: BUNDLE_TYPE_MISSING })
+    return undefined
+  }
   const provenance = isRecord(raw.provenance) ? raw.provenance : {}
   const selector = isRecord(raw.selector) ? raw.selector : {}
   const dependencies = isRecord(raw.dependencies) ? raw.dependencies : {}
@@ -327,6 +337,7 @@ function parseManifest(text: string, problems: BundleProblem[]): BundleManifest 
   return {
     formatVersion,
     id: str(raw.id) ?? '',
+    bundleType: raw.bundleType as BundleType,
     ...(str(raw.label) ? { label: str(raw.label) as string } : {}),
     createdAt: str(raw.createdAt) ?? '',
     createdBy: str(raw.createdBy) ?? '',
@@ -424,7 +435,7 @@ function parseCarries(raw: Record<string, unknown>): Partial<Record<BundleSectio
 
 /** Why a bundle in the layout before format 4 is refused, and what to do about it. */
 export const OLD_LAYOUT =
-  'this bundle was written by an older crombolo, in a layout no longer read; rebuild it with the command that made it (bundle build, content export, export, or a created package download)'
+  "this bundle was written by an older crombolo, in a layout no longer read; build it again with the command that made it: site build, site export, or the Bundle Editor's download"
 
 /**
  * `media.json`, read and checked: each entry's URI must be this bundle's own
@@ -537,6 +548,18 @@ const isSafeKey = (key: string): boolean =>
   key !== '' && !key.startsWith('/') && !key.split('/').some((part) => part === '' || part === '..')
 
 /** Reads a bundle directory. `set` is undefined when it cannot be trusted at all. */
+/** The package's `package.json`, when the bundle has one; a broken one is a problem. */
+function readPackage(dir: string, problems: BundleProblem[]): Record<string, unknown> | undefined {
+  const file = join(dir, PACKAGE_FILE)
+  if (!existsSync(file)) return undefined
+  try {
+    const parsed = JSON.parse(readFileSync(file, 'utf8')) as unknown
+    if (isRecord(parsed)) return parsed
+  } catch {}
+  problems.push({ file: PACKAGE_FILE, message: 'is not a JSON object' })
+  return undefined
+}
+
 export function loadBundle(dir: string): LoadedBundle {
   const problems: BundleProblem[] = []
   const blobs = new Map<string, string>()
@@ -546,8 +569,22 @@ export function loadBundle(dir: string): LoadedBundle {
     problems.push({ file: MANIFEST_FILE, message: `no bundle at ${dir}` })
     return { set: undefined, problems, blobs, files }
   }
-  const manifest = parseManifest(readFileSync(manifestFile, 'utf8'), problems)
+  const manifestText = readFileSync(manifestFile, 'utf8')
+  const manifest = parseManifest(manifestText, problems)
   if (!manifest) return { set: undefined, problems, blobs, files }
+  if (manifest.bundleType === 'extension' && (manifest.carries?.code?.length ?? 0) > 0)
+    problems.push({
+      file: MANIFEST_FILE,
+      message:
+        "it is an extension, which never carries the site's code, and it lists files under code/",
+    })
+  const pkg = readPackage(dir, problems)
+  const packageType = (pkg?.crombolo as { bundleType?: unknown } | undefined)?.bundleType
+  if (pkg && packageType !== manifest.bundleType)
+    problems.push({
+      file: PACKAGE_FILE,
+      message: `says it is ${isBundleType(packageType) ? `a ${packageType} bundle` : 'nothing'}, and bundle.json that it is a ${manifest.bundleType} bundle`,
+    })
 
   const nodesDir = join(dir, 'nodes')
   const nodeFiles = existsSync(nodesDir)
@@ -712,11 +749,20 @@ export function loadBundle(dir: string): LoadedBundle {
     }
 
   // Before shape: a truncated copy produces confusing field errors otherwise.
-  const integrity = bundleIntegrity(read)
-  if (manifest.integrity && manifest.integrity !== integrity)
+  // The manifest and the package's identity are hashed too (story 306).
+  const integrity = bundleIntegrity(read, {
+    manifest: blankedManifest(manifestText, manifest.integrity),
+    ...(pkg ? { packageIdentity: packageIdentity(pkg) } : {}),
+  })
+  if (!manifest.integrity)
     problems.push({
       file: MANIFEST_FILE,
-      message: `integrity does not match the node files (${manifest.integrity} vs ${integrity}) — the bundle is incomplete or was edited`,
+      message: 'has no integrity hash, so nothing says it is whole',
+    })
+  else if (manifest.integrity !== integrity)
+    problems.push({
+      file: MANIFEST_FILE,
+      message: `integrity does not match the files (${manifest.integrity} vs ${integrity}) — the bundle is incomplete or was edited`,
     })
 
   const nodes = read.flatMap((file) => {

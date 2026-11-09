@@ -41,7 +41,7 @@ export interface BundleBuildOptions {
   code?: readonly string[]
   /**
    * Carry the seed's media files (story 195). On unless turned off, so seeding
-   * a site still brings its media; `crombolo bundle build` turns it off unless
+   * a site still brings its media; `crombolo site build` turns it off unless
    * `--with-media` is passed.
    */
   media?: boolean
@@ -150,7 +150,7 @@ export async function buildBundleFromDirectory(
         manifest: {
           ...seed.set.manifest,
           label: config.siteName,
-          createdBy: 'crombolo bundle build',
+          createdBy: 'crombolo site build',
         },
       }
       const publicFiles = publicSources(config.publicDir)
@@ -159,7 +159,7 @@ export async function buildBundleFromDirectory(
           set,
           options.media === false ? new Map() : seed.blobs,
           [...sections, ...(code ? readCodeFiles(dir, code.paths) : [])],
-          { public: publicFiles },
+          { public: publicFiles, bundleType: 'site' },
         ),
         {
           name,
@@ -169,6 +169,7 @@ export async function buildBundleFromDirectory(
           private: true,
           // As `release:version` writes it into every committed bundle.
           peerRange: `>=${VERSION}`,
+          bundleType: 'site',
         },
       )
       return {

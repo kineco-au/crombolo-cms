@@ -200,7 +200,7 @@ export async function syncSchema(
           if (hash === current.hash) return emptySyncReport('skipped-same')
           if (options.mode === 'production')
             return emptySyncReport('refused', {
-              reason: `the definitions changed without a new version (still ${set.version}); \`crombolo bundle build\` or \`crombolo push\` from the site gives them one, or deploy with a newer revision`,
+              reason: `the definitions changed without a new version (still ${set.version}); \`crombolo site build\` or \`crombolo push\` from the site gives them one, or deploy with a newer revision`,
             })
         }
 

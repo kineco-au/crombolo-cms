@@ -142,7 +142,7 @@ bunx crombolo content show /Home
 Values take the shorthand content files use: Markdown for rich text, a path
 for a picked page. A block is named by its alias, here `sourdough`, or by its
 key. Pages are written to the site's database, as the back office writes
-them. `bundle export --source --root /Home` writes them out as content files
+them. `content export --root /Home` writes them out as content files
 to ship with the site (story 253).
 
 ## 6. Published, and served
@@ -189,7 +189,7 @@ bunx crombolo media import ./photos
 
 Imported media goes into the site's database, not its content files. Two ways
 to carry it elsewhere:
-- `bundle export --source --with-media` brings it into files;
+- `content export --with-media` brings it into files;
 - `push` carries the whole site.
 
 ## 8. Deployed
@@ -197,7 +197,7 @@ to carry it elsewhere:
 There are two ways to deploy:
 
 ```sh
-bunx crombolo bundle build . --out ../bakery-bundle
+bunx crombolo site build . --out ../bakery-bundle
 #   wrote    ../bakery-bundle  (riverside-bakery: 2 node(s), with its schema and views)
 
 bunx crombolo remote add live https://riverside.example
@@ -205,7 +205,7 @@ bunx crombolo push live --dry-run
 ```
 
 - **A bundle** carries the schema, the views and the content files (export the
-  pages made by command first, with `bundle export --source`), and
+  pages made by command first, with `content export`), and
   installs into another site (`crombolo start --bundle … --publish`, or
   `bundle install`).
 - **`push`** replaces a remote environment with this site

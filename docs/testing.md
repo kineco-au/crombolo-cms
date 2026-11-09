@@ -164,11 +164,11 @@ calls the functions directly.
   database and once it is running.
 - `hello-world.integration.ts` — an empty directory to a served "Hello, world"
   through the CLI alone (stories 163 and 180): `init`, `types new`, a content
-  file and `bundle apply`, `content publish`, `admin reset-password`, `health`,
+  file and `site apply`, `content publish`, `admin reset-password`, `health`,
   `start`, then the page and a back-office sign-in. A step the CLI cannot do yet
   is `test.todo`, named by its story.
 - `demo-from-bundle.integration.ts` — a demo in three commands (story 164):
-  `init`, `bundle build` from `sites/harbourstone` and from `--template
+  `init`, `site build` from `sites/harbourstone` and from `--template
   demo/harbourstone`, then `start --bundle`, serving the home page and a
   photograph; started again it imports nothing; a broken content file is refused with
   its file and line.

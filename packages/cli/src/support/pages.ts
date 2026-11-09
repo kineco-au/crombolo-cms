@@ -1,7 +1,7 @@
 /**
  * Pages written from the command line (story 253): made and changed in the
  * site's database through the same operations as the back office, with values
- * read in the shorthand content files use, by the converter `bundle apply`
+ * read in the shorthand content files use, by the converter `site apply`
  * uses. `content new`, `content update`, `content show` and `content block`
  * share it.
  */

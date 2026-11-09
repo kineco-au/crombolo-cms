@@ -1,12 +1,13 @@
 import { defineConfig } from '@crombolo/crombolo'
-import { redirects } from '@crombolo/simple-redirects'
 import * as bottlings from '#actions/bottlings.ts'
 
 export default defineConfig({
   siteName: 'Harbourstone Distillery',
-  // Installing a bundle gives you its backoffice screen. This line is what lets
-  // its endpoints answer a request, so remove it to turn one off.
-  bundles: [redirects()],
+  // An installed extension runs once granted (story 310). The site's code grants
+  // Simple Redirects exactly what it asks for; take it out to turn it off.
+  extensions: {
+    redirects: { grant: ['redirects.read', 'redirects.write', 'content.read'] },
+  },
   // Server actions a page's forms post to (story 219): each export is one.
   actions: { bottlings },
 })

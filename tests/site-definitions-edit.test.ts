@@ -171,7 +171,7 @@ describe('the commands, on a site with a page in French and a user', () => {
     for (const [path, body] of Object.entries(files)) write(path, body)
     const synced = cli('types', 'sync')
     expect(synced.code, synced.out).toBe(0)
-    const applied = cli('bundle', 'apply')
+    const applied = cli('site', 'apply')
     expect(applied.code, applied.out).toBe(0)
     // Drafters stays in the database alone, as a group made in the back office would.
     rmSync(join(site, 'schema/user-groups/drafters.toml'))

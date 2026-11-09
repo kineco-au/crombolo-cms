@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/simple-redirects",
-  "version": "0.56.0",
+  "version": "0.57.0",
   "description": "Manage redirects in the Crombolo backoffice: a Settings screen over the redirect engine in core.",
   "license": "MIT",
   "author": "Crombolo",
@@ -36,15 +36,27 @@
     "access": "public"
   },
   "crombolo": {
+    "bundleType": "extension",
     "id": "redirects",
     "name": "Redirects",
     "server": "redirects",
-    "schemaVersion": 3,
-    "permissions": [
-      "redirects.read",
-      "redirects.write",
-      "documents.read"
-    ],
+    "schemaVersion": 4,
+    "settings": {
+      "section": {
+        "label": "Where redirects are managed",
+        "type": "choice",
+        "values": [
+          "settings",
+          "content"
+        ],
+        "default": "settings"
+      }
+    },
+    "permissions": {
+      "redirects.read": "Lists the redirect rules on the Redirects screen",
+      "redirects.write": "Saves the rules you add, change and remove there",
+      "content.read": "Shows the address of the page each rule sends people to"
+    },
     "extensions": [
       {
         "type": "menuItem",
@@ -73,6 +85,6 @@
     ]
   },
   "peerDependencies": {
-    "@crombolo/crombolo": ">=0.56.0"
+    "@crombolo/crombolo": ">=0.57.0"
   }
 }

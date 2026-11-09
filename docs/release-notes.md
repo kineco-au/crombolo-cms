@@ -6,6 +6,93 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+### Features
+
+- **A site package says what it is (306).** Every bundle states its `bundleType`: `"site"`,
+  the site or a part of it moved elsewhere, or `"extension"`, someone's addition to a site.
+  - Each way in takes only its own kind: `site apply`, `push`, `pull` and `site deploy` take site
+    packages; `bundle install` and the Marketplace take extensions. A site package is never
+    installed from a registry.
+  - Applying a site package opens with what it replaces: its config, its `package.json`, and the
+    dependencies that adds and removes.
+  - The integrity hash now covers `bundle.json` and the package's identity, and an empty hash is
+    refused.
+  - `site runs` labels each run with its kind. `bundle uninstall --revert-content` puts back an
+    extension's content.
+  - `bundle build <name>` builds a Bundle Editor bundle as an extension, and `bundle check`
+    validates an extension package.
+  - A remote names the bundle formats it reads, and the CLI checks before building.
+
+- **Each permission an extension asks for says why (308).** Bundle schema 4 gives each
+  permission a reason, which the install shows. Every area asks to read and to write apart:
+  content, media, members, users (read only), forms, form entries, the dictionary, content types,
+  webhooks, workflows, redirects and sign-in providers. `http.outbound`, `routes.public`,
+  `events.content` and `actAs` are new too.
+  - Extensions reach the areas through the Management API with the new `api` capability, held to
+    their grant.
+  - Acting as itself, an extension holds nothing it was not granted, and is never an
+    administrator.
+  - The install has no separate question about server code.
+
+- **A grant is what lets an extension run (309).** An extension runs only while its grant covers
+  what its installed version asks for: one that asks for more waits for a grant, and one that asks
+  for less stays on, narrowed.
+  - Its screens and files are off with it, and every capability call is held to the grant.
+  - Installed shows **Grant** for one waiting, and `crombolo bundle grant` grants from the CLI or
+    on a remote.
+  - An extension wired in the config is "Developer installed".
+
+- **A granted extension runs without wiring (310).** Installing an extension and granting it is
+  all it takes: nothing is imported into `crombolo.config.ts`, and it runs after a restart.
+  - A site that grants from its code lists the extension under `extensions` in the config, naming
+    what it grants; that is shown as "Developer installed".
+  - An extension may declare settings, which an administrator sets in Installed or with
+    `crombolo bundle settings`. A value in the config's `extensions` entry locks it, and secrets
+    are stored sealed. Changed settings take effect when the site restarts.
+  - Simple Redirects and Entra offer the section they appear in as a setting.
+
+### Migrations
+
+- 065 `AddTransferRunBundleType`: a nullable `bundle_type` column on `content_transfer_run`.
+- 066 `AddBundleGrantReach`: `origins` and `act_as` on `bundle_grant`.
+- 067 `AddExtensionSettings`: the `extension_setting` table, an extension's saved settings.
+
+### Upgrade notes
+
+- **Breaking, the CLI (306):** the site commands moved under `crombolo site`, and the old names
+  now only say where:
+  - `export --site` is `site export`, and `import` is `site import`;
+  - `bundle build` is `site build`, `bundle apply` is `site apply`, `bundle deploy` is
+    `site deploy`;
+  - `bundle runs` is `site runs`, `bundle revert` is `site revert`, `bundle check-code` is
+    `site check-code`;
+  - `bundle export --root` is `site export --subtree`, and `bundle export --source` is
+    `content export`.
+  - `bundle build <name>` is now the extension build.
+- **Breaking, bundles (306):** bundle format 8 is the oldest read. Build site packages again with
+  `site build` or `site export`, and download Bundle Editor bundles again.
+  - An installed extension whose `package.json` has no `"crombolo.bundleType": "extension"` is
+    turned off, and the site starts without it. The health check names it. Its author adds that
+    one line and publishes a new version.
+  - The CLI and a remote must be on releases that read the same bundle format: upgrade the
+    remote first.
+  - The product site's committed bundle is format 8, so the platform reads it only once it runs
+    this release.
+- **Breaking, extensions (309):** an extension installed before this release and not wired in the
+  config has no grant, and is off after the upgrade, its screens included. Grant it in Bundles →
+  Installed, or with `crombolo bundle grant`. Simple Redirects and Entra, wired in the config,
+  are granted by it.
+- **Breaking, extensions (308):** bundle schema 4 is current. `documents.read` is now
+  `content.read`. A schema 3 extension already installed keeps running, but a new install or an
+  upgrade to a schema 3 version is refused. Its author moves `permissions` to an object, a reason
+  for each, and `"schemaVersion": 4`. Event handlers then need `events.content`, and site routes
+  `routes.public`.
+- **Breaking, the CLI (310):** `bundle install --wire` is gone. Importing an extension's server
+  half in `crombolo.config.ts` still works, with a warning at boot: replace it with an entry under
+  `extensions`, `{ redirects: { grant: ['redirects.read', 'redirects.write'] } }`, and drop the
+  import and its `bundles` line.
+
+
 ## v0.56.0 — 2026-11-08
 
 ### Features

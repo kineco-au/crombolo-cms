@@ -1,5 +1,5 @@
 /**
- * `bundle apply --remote` (story 167): the bundle built or packed here, sent to
+ * `site apply --remote` (story 167): the bundle built or packed here, sent to
  * the remote, which checks it and, unless a dry run, applies it as `bundle
  * apply` does on its own machine. A site directory sends its content alone,
  * built against its own schema; --structure sends its schema, views, styles
@@ -13,12 +13,13 @@ import {
   buildBundleFromDirectory,
   describeProvenance,
   type ProvenanceResult,
+  type SitePackageChanges,
   type TarEntry,
   writeNpmTarball,
 } from '@crombolo/server'
 import { CliError } from '../errors.ts'
-import { problemOf } from '../remote/client.ts'
-import { findingsOf } from './describe.ts'
+import { bundleFormatProblem, problemOf } from '../remote/client.ts'
+import { findingsOf, printSitePackage } from './describe.ts'
 import { type TransferFlagValues, transferInput } from './flags.ts'
 import { connectRemote, needEnvironment } from './remote.ts'
 import { writeSeedPackage } from './seed.ts'
@@ -41,6 +42,8 @@ interface RemoteReport {
     | { written: number; installed: boolean; live: boolean }
     | null
   bundle?: { id: string }
+  /** A site package's config and dependency changes, on a dry run (story 306). */
+  sitePackage?: SitePackageChanges | null
   runId?: string | null
   counts: { create: number; update: number; unchanged: number; skip: number }
   findings: Array<{ kind: string; code: string; key: string | null; message: string }>
@@ -77,7 +80,7 @@ export async function packed(source: string, structure: boolean): Promise<Uint8A
   const built = await buildBundleFromDirectory(dir, { media: true })
   if (built.problems.length > 0 || !built.files || !built.seed)
     throw new CliError('refused', `${relative(process.cwd(), dir) || '.'} cannot be built.`, {
-      hint: '`crombolo bundle build --check` lists what is wrong.',
+      hint: '`crombolo site build --check` lists what is wrong.',
       details: built.problems,
     })
   const out = mkdtempSync(join(tmpdir(), 'crombolo-remote-bundle-'))
@@ -94,6 +97,8 @@ export async function packed(source: string, structure: boolean): Promise<Uint8A
 export async function applyToRemote(io: Io, source: string, flags: ApplyFlags, bytes?: Uint8Array) {
   const { entry, client, discovery, environment } = await connectRemote(flags.remote, flags.env)
   const env = needEnvironment(environment, discovery)
+  const formats = bundleFormatProblem(discovery, 'send')
+  if (formats) throw new CliError('refused', formats)
   const input = transferInput(source, flags)
   bytes ??= await packed(source, flags.structure === true)
   const response = await client.api(`environments/${env}/bundles`, {
@@ -115,6 +120,7 @@ export async function applyToRemote(io: Io, source: string, flags: ApplyFlags, b
   if (!response.ok && response.status !== 409) throw await problemOf(response)
   const report = (await response.json()) as RemoteReport
   for (const problem of report.problems ?? []) io.warning(`  ${problem}`)
+  printSitePackage(io, report.sitePackage ?? undefined)
   if (report.provenance) io.say(`  signed   ${describeProvenance(report.provenance)}`)
   for (const finding of report.findings) io.say(`  [${finding.kind.padEnd(8)}] ${finding.message}`)
   const c = report.counts
@@ -146,9 +152,7 @@ export async function applyToRemote(io: Io, source: string, flags: ApplyFlags, b
       io.say(
         `  code     ${report.code.written} file(s) installed; live after \`crombolo restart --remote ${entry.name}\``,
       )
-    io.say(
-      `\nDone. \`crombolo bundle revert ${report.runId} --remote ${entry.name}\` puts it back.`,
-    )
+    io.say(`\nDone. \`crombolo site revert ${report.runId} --remote ${entry.name}\` puts it back.`)
   }
   const result = {
     runId: report.runId ?? null,

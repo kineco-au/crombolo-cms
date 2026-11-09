@@ -77,6 +77,9 @@ hands a bundle, not a limit on what its code can do ([`bundles.md`](bundles.md),
 Part 3). Installing server code from the Marketplace takes an explicit yes for
 that reason (story 194).
 
+What an extension could do today, and the stories that will confine it, are in
+[`extension-threat-model.md`](extension-threat-model.md).
+
 ## Moving to the entry points (0.34.0)
 
 Names that belong to a bundle's author or a host moved off the root. They still

@@ -1099,6 +1099,9 @@ describe(`the migration (${dialectUnderTest})`, () => {
       'AddMediaTreeOrder',
       'AddSearchRemovals',
       'AddImageAltText',
+      'AddTransferRunBundleType',
+      'AddBundleGrantReach',
+      'AddExtensionSettings',
     ])
     const found = await new MediaAccessRepository(db).byUrl(photo.src)
     expect(found?.key).toBe(photo.key)

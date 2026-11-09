@@ -60,8 +60,18 @@ export interface SiteContentDeps {
 export async function apiUserPrincipal(db: Db, clientId: string): Promise<Principal | undefined> {
   const owner = await new UserRepository(db).clientCredentialOwner(clientId)
   if (!owner) return undefined
+  return userPrincipal(db, owner.userId)
+}
+
+/** A back-office user, by key, as the Management API would see them signed in; undefined when none (story 308). */
+export async function userPrincipalByKey(db: Db, key: string): Promise<Principal | undefined> {
+  const user = await new UserRepository(db).byKey(key)
+  return user ? userPrincipal(db, user.id) : undefined
+}
+
+async function userPrincipal(db: Db, userId: number): Promise<Principal | undefined> {
   const store = new AuthStore(db)
-  const user = await store.findUserById(owner.userId)
+  const user = await store.findUserById(userId)
   if (!user || user.isLockedOut || !user.isApproved) return undefined
   const authorization = await store.loadAuthorization(user.id)
   return {

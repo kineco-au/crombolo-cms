@@ -69,7 +69,7 @@ describe('arguments', () => {
   })
 
   test('an unknown flag is a usage error, exit 2, before anything runs', () => {
-    const result = run(['import', 'site.tgz', '--dyr-run'])
+    const result = run(['site', 'import', 'site.tgz', '--dyr-run'])
     expect(result.code).toBe(2)
     expect(result.err).toContain('--dyr-run')
   })
@@ -99,16 +99,16 @@ describe('arguments', () => {
 
 describe('failures and outcomes', () => {
   test('in JSON mode a failure ends stderr with one envelope line, and stdout is empty', () => {
-    const result = run(['bundle', 'revert', '-o', 'json'])
+    const result = run(['site', 'revert', '-o', 'json'])
     expect(result.code).toBe(2)
     expect(result.out).toBe('')
     expect(result.envelope()).toMatchObject({ kind: 'usage' })
   })
 
   test('in text mode a failure says what to do, and a pipe still ends with the envelope', () => {
-    const result = run(['bundle', 'revert'])
+    const result = run(['site', 'revert'])
     expect(result.code).toBe(2)
-    expect(result.err).toContain('bundle')
+    expect(result.err).toContain('site runs')
     expect(result.err).toContain('--help')
     expect(result.envelope()).toMatchObject({ kind: 'usage', exit_code: 2 })
   })
@@ -160,7 +160,7 @@ describe('failures and outcomes', () => {
   test('bundle install refuses --wire with --remote, and --code-into with a grant', () => {
     const wired = run(['bundle', 'install', '@acme/crm', '--wire', '--remote', 'production'])
     expect(wired.code).toBe(ERROR_KINDS.usage.exitCode)
-    expect(wired.err).toContain('never turns server code on')
+    expect(wired.err).toContain('--wire is gone')
     expect(
       run(['bundle', 'install', '.', '--code-into', 'out', '--grant', 'documents.read']).code,
     ).toBe(ERROR_KINDS.usage.exitCode)
@@ -281,10 +281,10 @@ describe('crombolo schema', () => {
   })
 
   test('narrows to a command path, and refuses one that is not there', () => {
-    const narrowed = JSON.parse(run(['schema', 'bundle', 'apply']).out) as {
+    const narrowed = JSON.parse(run(['schema', 'site', 'apply']).out) as {
       commands: { name: string }[]
     }
-    expect(narrowed.commands.map((c) => c.name)).toEqual(['bundle apply'])
+    expect(narrowed.commands.map((c) => c.name)).toEqual(['site apply'])
     expect(run(['schema', 'nothing', 'here']).code).toBe(ERROR_KINDS.not_found.exitCode)
   })
 

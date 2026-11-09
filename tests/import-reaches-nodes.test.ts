@@ -148,7 +148,7 @@ function bundleOf(files: Record<string, string>) {
   const source = temp('source')
   write(source, { ...STRUCTURE, 'components/page.tsx': view('The old view'), ...files })
   const out = join(temp('bundle'), 'bundle')
-  crombolo(source, ['bundle', 'build', source, '--out', out])
+  crombolo(source, ['site', 'build', source, '--out', out])
   return out
 }
 
@@ -181,7 +181,7 @@ describe(`an import in its own process (${dialectUnderTest})`, () => {
     })
     // What a replace takes out is `changedFileSections`'s, below; here, only that a node hears.
     rmSync(join(root, 'public', 'gone.txt'))
-    crombolo(root, ['bundle', 'apply', bundle, '--replace-files', '--backup-taken'])
+    crombolo(root, ['site', 'apply', bundle, '--replace-files', '--backup-taken'])
 
     // A node's own connection may still be inside a job's transaction.
     await until(async () => (await kinds(h.server.db, before)).length >= 2)
@@ -218,7 +218,7 @@ describe(`an import in its own process (${dialectUnderTest})`, () => {
     }
     const bundle = bundleOf(same)
     const before = await latestCacheInstructionId(h.server.db)
-    crombolo(root, ['bundle', 'apply', bundle, '--backup-taken'])
+    crombolo(root, ['site', 'apply', bundle, '--backup-taken'])
     // A poll lets any job holding this connection finish, so absence means something.
     await h.server.poll()
     const told = await kinds(h.server.db, before)
@@ -230,7 +230,7 @@ describe(`an import in its own process (${dialectUnderTest})`, () => {
     const { h, root } = await cluster()
     const bundle = bundleOf({ 'public/new.txt': 'new\n' })
     const before = await latestCacheInstructionId(h.server.db)
-    crombolo(root, ['bundle', 'apply', bundle, '--backup-taken'])
+    crombolo(root, ['site', 'apply', bundle, '--backup-taken'])
     await until(async () => (await kinds(h.server.db, before)).includes('public-files'))
     const told = await kinds(h.server.db, before)
     expect(told).not.toContain('components')
@@ -241,13 +241,13 @@ describe(`a revert, and an import inside a node (${dialectUnderTest})`, () => {
   test('a revert from the command line reaches the nodes too', async () => {
     const { h, root, visit, nodes } = await cluster()
     const bundle = bundleOf({ 'public/new.txt': 'new\n' })
-    const applied = crombolo(root, ['bundle', 'apply', bundle, '--backup-taken', '-o', 'json'])
+    const applied = crombolo(root, ['site', 'apply', bundle, '--backup-taken', '-o', 'json'])
     const { runId } = JSON.parse(applied) as { runId: string }
     for (const node of nodes) await node.poll()
     for (const node of nodes) expect((await visit(node, '/new.txt')).status).toBe(200)
 
     const before = await latestCacheInstructionId(h.server.db)
-    crombolo(root, ['bundle', 'revert', runId, '--backup-taken'])
+    crombolo(root, ['site', 'revert', runId, '--backup-taken'])
     await until(async () => (await kinds(h.server.db, before)).includes('public-files'))
     for (const node of nodes) await node.poll()
     for (const node of nodes) expect((await visit(node, '/new.txt')).status).toBe(404)

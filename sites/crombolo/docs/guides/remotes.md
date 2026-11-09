@@ -117,7 +117,7 @@ bunx crombolo push staging --dry-run
 bunx crombolo push staging
 ```
 
-`push` replaces the remote environment with your local site. It always says first what it would move to the recycle bin and which files it would remove there; `--dry-run` stops at that point. The remote takes a backup where it can, then replaces itself as `crombolo import --replace` would, so what it loses goes to its recycle bin and its own people are kept.
+`push` replaces the remote environment with your local site. It always says first what it would move to the recycle bin and which files it would remove there; `--dry-run` stops at that point. The remote takes a backup where it can, then replaces itself as `crombolo site import --replace` would, so what it loses goes to its recycle bin and its own people are kept.
 
 A push to a protected environment needs two more things: `--force`, and the environment's name typed back to confirm it. In a pipeline, `--auto-approve` skips the typing.
 
@@ -132,31 +132,31 @@ If the remote has approvals turned on, the push then waits for someone else with
 To change part of a remote rather than replace it, apply a bundle there:
 
 ```sh
-bunx crombolo bundle apply ./bundles/campaign --remote staging --dry-run
-bunx crombolo bundle apply ./bundles/campaign --remote staging --publish
-bunx crombolo bundle apply --remote staging --publish     # this site's own content files
+bunx crombolo site apply ./bundles/campaign --remote staging --dry-run
+bunx crombolo site apply ./bundles/campaign --remote staging --publish
+bunx crombolo site apply --remote staging --publish     # this site's own content files
 ```
 
 The remote checks the bundle and applies it as [Content transfer](/docs/guides/content-transfer/) describes. From a site directory it sends the content alone; `--structure` sends its schema, views, styles and code too, which needs the remote at `all` and the structure permission. Every apply is a run there:
 
 ```sh
-bunx crombolo bundle runs --remote staging
-bunx crombolo bundle revert 5192ca80-… --remote staging
+bunx crombolo site runs --remote staging
+bunx crombolo site revert 5192ca80-… --remote staging
 ```
 
 ## Deploying a site
 
-`bundle deploy` sends a site directory as it is committed: its content, structure and code, checked first, then applied, then the remote restarted:
+`site deploy` sends a site directory as it is committed: its content, structure and code, checked first, then applied, then the remote restarted:
 
 ```sh
-bunx crombolo bundle install @acme/crm --grant crm.read --wire   # adds it, and turns its server code on
+bunx crombolo bundle install @acme/crm --grant content.read   # adds it, granting what it asks for
 git commit -am "Add the CRM bundle"
-bunx crombolo bundle deploy --remote production
+bunx crombolo site deploy --remote production
 ```
 
 A bundle you have as a file goes the same way: `bunx crombolo bundle install ./acme-crm-1.2.0.tgz` copies it into `bundles/` and installs it from there. Commit `bundles/` with `package.json` and `bun.lock`, and the deploy carries it.
 
-It needs the remote at `all`, **Change a site's structure and code** and **Install code on this site**. The code it installs runs once the remote restarts; `--no-restart` leaves that to `crombolo restart --remote production`. If the new server does not start, the old one keeps serving and the deploy prints the `bundle revert` that undoes it.
+It needs the remote at `all`, **Change a site's structure and code** and **Install code on this site**. The code it installs runs once the remote restarts; `--no-restart` leaves that to `crombolo restart --remote production`. If the new server does not start, the old one keeps serving and the deploy prints the `site revert` that undoes it.
 
 ## Long transfers
 

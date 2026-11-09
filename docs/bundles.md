@@ -22,10 +22,58 @@ keeps them apart:
   `App_Plugins` directory convention inherited from Umbraco; it is now npm
   dependencies, and `App_Plugins` has been removed.
 
+## Site packages and extensions
+
+Every bundle says which of two kinds it is (story 306), in `bundleType`:
+`"crombolo": { "bundleType": "site" }` or `"extension"` in its `package.json`,
+and the same in its `bundle.json`. A bundle that says neither, or whose two
+files disagree, is refused. Nothing is assumed.
+
+| | Site package (`site`) | Extension (`extension`) |
+|---|---|---|
+| **What it is** | This site, or a part of it, made to move it: a backup, the next environment, a subtree to copy | Someone's addition to a site: screens, a server half, content and structure |
+| **Made by** | `site build`, `site export` (and `--subtree`), `site deploy`, `push`, `pull` | The Bundle Editor (Created), `bundle build <name>`, or by hand |
+| **Brought in by** | `site apply` (here or `--remote`), `site deploy`, `push`, `pull`, `start --bundle`, `--code-into`: from a file or a directory only | `bundle install` (here or `--remote`), the Marketplace: as a dependency |
+| **May carry** | Everything the site has, `code/` included: its config, `package.json` and `bun.lock` | Never `code/` |
+| **Published** | Never: it is `private`, and declares no `server`, `extensions`, `permissions` or `importmap`, which are an extension's | To a registry, or kept as a file |
+| **Undone by** | `site revert <run>` | `bundle uninstall --revert-content` |
+
+Each way in takes only its own kind and names the other's command when given
+the wrong one. A site package found on a registry, as a dependency, or in a
+`.tgz` given to `bundle install` is refused: "it is a site package, which is
+applied to a site with `crombolo site apply`, never installed". Applying one
+opens with what it replaces that decides how the site runs: "Site package:
+replaces this site's code, config and dependencies", then
+`crombolo.config.ts` and `package.json`, then the dependencies its
+`package.json` adds, removes and changes, then the rest.
+
+**The marker cannot change unnoticed, but it is not a lock.** From format 8
+the integrity hash covers `bundle.json`, with its own `integrity` value blanked,
+and the package's identity (its `name`, `version` and `crombolo` field, keys
+sorted, so a packer's normalising of the rest does not matter) after every file
+it carries. An edit to either file after the build fails it, and so does an
+empty hash. It has no key, though: whoever changes the marker can work the hash
+out again. Only a signature (story 060), whose digest covers both files, makes
+it unforgeable, and a site that wants that sets
+`CROMBOLO_BUNDLE_SIGNATURES=required`. The rules above are built so that a
+forged marker gains nothing:
+- an extension marked as a site package is refused by every registry route, and
+  is applied only by someone choosing to run `site apply` on the file, which is
+  trusted as restoring a backup is;
+- a site package marked as an extension can do less, since an extension never
+  carries `code/`;
+- one marked as neither is refused.
+
+**Installed extensions from before 306** say nothing, so each is turned off: the
+site starts without it, the boot log and the Installing code health check name
+it, and installing a version that says `"extension"` turns it back on. Older
+bundle files are refused, with a message to build them again: format 8 is the
+oldest read.
+
 ## One artifact: a bundle is an npm package
 
 Every bundle is an npm package, with no exceptions: the Created view's
-download, an environment's `bundle export`, a site directory's `bundle build`, and
+download, an environment's `site export --subtree`, a site directory's `site build`, and
 anything published to the registry. Its `package.json` carries the **bundle
 manifest** in its `crombolo` field, and the manifest declares the bundle's three
 possible halves:
@@ -166,7 +214,7 @@ page exists where the bundle lands.
 The build carries the form, workflow and group files as the site holds them;
 a brought document type goes through the same path as a picked one. Installing
 copies them into `schema/` and syncs them, as any schema file. A site-directory
-bundle (`crombolo bundle build`) carries every file under `schema/` anyway.
+bundle (`crombolo site build`) carries every file under `schema/` anyway.
 
 The npm *identifier* keeps the name npm gives it — the Installed table's column
 reads `npm package`, and an install still writes `package.json`. Renaming that
@@ -229,7 +277,7 @@ The download is laid out as `npm pack` lays out a package, so `bun add
 ./acme-tasks-1.0.0.tgz` installs it and `bun publish` publishes it as it is. Its
 `package.json` names the package, carries the `crombolo-bundle` keyword, and
 declares a peer range of `>=` the release it was built by — the same range an
-environment's export, an Umbraco import and a `bundle build` carry.
+environment's export, an Umbraco import and a `site build` carry.
 A later release reads every earlier bundle format, so it is never a reason to
 refuse one, and an earlier release is turned away by name. Not `^`: before 1.0
 a caret pins the minor, and a production one minor ahead of its preview would
@@ -264,7 +312,7 @@ message saying to rebuild it (stories 193, 195, 283 and 284).
 ### Public files
 
 A site's `public/` folder (story 284, `docs/rendering.md`, "Public files")
-travels as files at `public/<path>`, carried by `bundle build`, a whole-site
+travels as files at `public/<path>`, carried by `site build`, a whole-site
 export and so `push` and `pull`. A created package from the back office does
 not carry it.
 
@@ -579,37 +627,33 @@ hand-maintaining a lockfile, and a lockfile maintained badly is worse than none.
 Then discovery is invalidated and the next manifest read picks the extension up.
 No restart.
 
-**Only a bundle, and server code only on an explicit yes** (story 194). Before
-`bun add`, the install reads the registry's manifest for the version asked for:
-the exact version, the highest a range admits, or the latest.
+**Only a bundle, and only with its grant** (stories 194, 308). Before `bun add`,
+the install reads the registry's manifest for the version asked for: the exact
+version, the highest a range admits, or the latest.
 - A package that is not a valid bundle is refused, so the endpoint never
-  installs an arbitrary package.
+  installs an arbitrary package. Neither is a site package, nor a version written
+  for bundle schema 3.
 - A registry that cannot be read is refused too, because what the package
   carries cannot be checked.
-- A bundle that declares `server` is refused, with `needsServerConsent` and the
-  permissions it asks for, unless the request carries `acceptServerCode: true`
-  and grants exactly those permissions (`grant`), no fewer and no others
+- An extension that asks for permissions is refused with `needsGrant`, each
+  permission with its sentence, its reason and its origins, unless the request
+  grants exactly those (`grant`, and `actAs` when it asks to act for a user)
   ([Permissions](#permissions)).
 - After `bun add`, the installed package's own manifest is checked again. A
-  version that turned out to have a server half nobody accepted, or to ask for
-  more than was granted, is removed, and the install is refused. This catches a
-  `latest` that moved between the listing and the install. Otherwise the grant
-  is recorded against the version that landed.
+  version that asks for more than was granted is removed, and the install is
+  refused. This catches a `latest` that moved between the listing and the
+  install. Otherwise the grant is recorded against the version that landed, for
+  every extension, since a grant is what lets one run (story 309).
 
-The Marketplace asks for the yes in the bundle's own card:
-- The tag reads "Runs code on the server", in warning colour.
-- **Install** opens a panel. It says the code can read and change the site's
-  data, files and settings once the developers turn it on, lists in plain words
-  what the bundle asks to do, and names the publisher with links to npm and the
-  source.
-- The panel has an unticked "I trust this publisher, and approve what it asks
-  to do" box, and **Approve and install** stays disabled until it is ticked.
+The Marketplace asks for the grant in the extension's own card:
+- **Install** opens a panel listing each permission with its reason, and asks
+  whom it acts for when it asks to. It names the publisher, with links to npm and
+  the source, and says its screens act as whoever is signed in.
+- The panel has an unticked "I trust this publisher, and grant what it asks for"
+  box, and **Grant and install** stays disabled until it is ticked.
 
-The yes is for what the code may do once wired. Installing still does not wire
-it: that takes the import in `crombolo.config.ts` and a deploy, as before. The
-audit log records each install and uninstall once: `system` / `Install` /
-`Bundle`, naming `package@version`, with `accepted server code; granted …`
-when it was.
+The audit log records each install and uninstall once: `system` / `Install` /
+`Bundle`, naming `package@version`, with what was granted.
 A bundle with screens says, after install, that they run in the browser of
 everyone who uses the back office.
 
@@ -619,7 +663,7 @@ list of trusted packages or the site's `trustedDependencies` say.
 
 **Then its content, unless declined.** A bundle that carries content has it
 applied straight after `bun add`, through the same installer and overlay check
-as `crombolo bundle apply` (`server/src/bundle-install.ts`), with the server's
+as `crombolo site apply` (`server/src/bundle-install.ts`), with the server's
 own connection. The site turns this off with `applyBundleContentOnInstall: false`
 (`CROMBOLO_APPLY_BUNDLE_CONTENT=false`), and the Marketplace card has a toggle
 that declines it for one install. A refused check or a backup the site cannot
@@ -644,7 +688,7 @@ implementation serves Settings → Bundles, the remote protocol and the CLI
 | Command | Does |
 | --- | --- |
 | `crombolo bundle list [--remote <name>]` | the installed bundles: version, whether their server features are on, what was granted and by whom, and whether installed changes wait for a restart |
-| `crombolo bundle install <name[@version] \| file.tgz> [--grant <p>…] [--apply-content] [--wire] [--remote <name>] [--dry-run]` | `bun add`, as Install does; the content too with `--apply-content` |
+| `crombolo bundle install <name[@version] \| file.tgz> [--grant <p>…] [--act-as …] [--apply-content] [--remote <name>] [--dry-run]` | `bun add`, as Install does, granting what it asks for; the content too with `--apply-content` |
 | `crombolo bundle uninstall <name> [--remote <name>]` | `bun remove` |
 | `crombolo bundle disable\|enable <id> [--remote <name>]` | a bundle's server features off or on, at once ([story 225](#permissions)) |
 
@@ -663,19 +707,13 @@ implementation serves Settings → Bundles, the remote protocol and the CLI
   `bundles/`, or the same bytes again, is used as it is; another file of the
   same version is refused, since one version is one file. A new version from a
   file, or an uninstall, removes the old file unless another dependency still
-  names it. A site bundle carries each `bundles/*.tgz` its `package.json` names,
-  so `bundle apply --structure` and `bundle deploy` install it on the remote from
+  names it. A site package carries each `bundles/*.tgz` its `package.json` names,
+  so `site apply --structure` and `site deploy` install it on the remote from
   the lockfile; a named file that is missing stops the build. A remote takes
   registry names only, so a file reaches a remote this way.
-- **Installing does not wire.** `--wire` does, on the site's own machine only:
-  it adds `import { <server> } from '<package>'` and `<server>()` in
-  `bundles` to `crombolo.config.ts` (the manifest's `crombolo.server` names the
-  factory), or writes the file when there is none. It changes nothing the
-  second time, and a config it cannot edit safely (one that does not export
-  `defineConfig({ … })`, or builds `bundles` elsewhere) is left alone with the
-  two lines to add by hand. `--wire` with `--remote` is refused: a remote's
-  server code is only ever turned on by a reviewed change, sent with
-  `bundle apply --structure` or `bundle deploy`.
+- **Granting is installing (story 310).** An extension runs once granted, with
+  nothing imported: `--grant` names what it asks for, or the site's config grants
+  it under `extensions` ("Extensions run once granted"). `--wire` is gone.
 - **Installed code waits for a restart.** Installing or removing a bundle with
   a server half records it in `.crombolo/restart-pending.json`
   (`server/src/restart-pending.ts`), which `bundle list`, the remote's listing
@@ -824,7 +862,7 @@ without a restart.
   on the node fails in the browser. The import map covers the vendored client
   (`@umbraco-cms/backoffice/*`), and nothing else is promised.
 
-### A site's bundle with code
+### A site package with code
 
 A site that is part application has server code of its own: the server
 bundles its `crombolo.config.ts` wires, and their source. A self-hosted site
@@ -834,7 +872,7 @@ bundle is that artifact (story 192).
 
 - **Which files.** The site's `package.json` names them, as globs in
   `crombolo.code` (`"code": ["src/**", "vendor/**"]`), and
-  `crombolo bundle build --code <glob>…` overrides the list. Once there is
+  `crombolo site build --code <glob>…` overrides the list. Once there is
   code, `package.json`, `bun.lock` and `crombolo.config.ts` are always packed.
   These are never packed, whatever a glob matches: `node_modules`, `.git`,
   `.env` files, SQLite files, the folders the bundle already carries as
@@ -852,7 +890,7 @@ bundle is that artifact (story 192).
   `bun install --frozen-lockfile --ignore-scripts --omit peer`, so it never
   carries a copy of the CMS. Discovery reads peers as well as dependencies, so
   a server bundle from the `@crombolo` scope is still found.
-- **`crombolo bundle check-code <bundle>`** (`checkBundleCode`) lists every
+- **`crombolo site check-code <bundle>`** (`checkBundleCode`) lists every
   problem, not just the first:
   - the hash;
   - the frozen install;
@@ -876,19 +914,19 @@ bundle is that artifact (story 192).
   to sit where the host's `@crombolo/*` packages resolve from. Starting the
   site, or restarting it so its server bundles are wired, is the host's step.
 - **An apply installs it** (story 241; story 192 left it to a host).
-  `bundle apply` writes each file under `code/` to its site path, keeps what
+  `site apply` writes each file under `code/` to its site path, keeps what
   it replaces under the run, and runs `bun install --frozen-lockfile
   --ignore-scripts` when `package.json` or `bun.lock` changed
   (`server/src/bundle-code-install.ts`). Code the site already has is not a
   change. An overwrite needs `--replace-files`, as for a view; where runtime
   installs are off (`CROMBOLO_RUNTIME_INSTALLS`) it is refused, with the
-  host's message. `bundle revert` puts the files back and installs again.
+  host's message. `site revert` puts the files back and installs again.
   The server loads code at boot, so installed code waits for `crombolo
   restart`, and the health check "Installing code" says so.
-- **What a site bundle always carries.** Once the site has a `bun.lock`, a
-  site bundle carries `package.json`, `bun.lock` and `crombolo.config.ts` even
+- **What a site package always carries.** Once the site has a `bun.lock`, a
+  site package carries `package.json`, `bun.lock` and `crombolo.config.ts` even
   when `crombolo.code` names nothing, so a dependency `bundle install` added and
-  the import `--wire` wrote travel with `bundle apply --structure`.
+  the config's `extensions` entry travel with `site apply --structure`.
 - **`start --bundle`** leaves the code alone: the code a host starts is its
   own step.
 
@@ -929,7 +967,7 @@ steps:
     - uses: actions/checkout@v5
     - uses: oven-sh/setup-bun@v2
     - run: bun install --frozen-lockfile
-    - run: bunx crombolo bundle build --out dist/acme-bundle --sign
+    - run: bunx crombolo site build --out dist/acme-bundle --sign
     # or, for a package packed some other way: bunx crombolo bundle sign dist/acme-bundle-1.2.0.tgz
     - run: npm publish dist/acme-bundle
 ```
@@ -988,8 +1026,8 @@ A bundle's content installs through the bundle's own commands — there is no
 second importer:
 
 ```
-crombolo bundle apply <pkg> --dry-run   # read-only: what it would do here
-crombolo bundle apply <pkg>             # apply it
+crombolo site apply <pkg> --dry-run   # read-only: what it would do here
+crombolo site apply <pkg>             # apply it
 ```
 
 `<pkg>` is either the name of a bundle the site depends on, resolved exactly as
@@ -1012,7 +1050,7 @@ anything is backed up or written. A package meant for anyone is open:
 sealed content, and the marketplace's install of one that does anyway is
 refused with the reason.
 
-`bundle apply` is the one command for a bundle's content, whether it came from
+`site apply` is the one command for a bundle's content, whether it came from
 another environment, the registry or this site's own content files (story 167).
 A bundle applies whatever it carries by default — that is the point of carrying
 it — with `--no-schema` and `--no-files` to decline a half.
@@ -1038,7 +1076,7 @@ them would have covered is still reported as needing data work, naming it.
 Those migrations are **code**, held to the same rule as a bundle's `code/`: an
 install that would add or change one is refused unless the site installs code
 while it runs (`runtimeInstalls`) and whoever installs asked for code (over the
-remote API, `Crombolo.Remote.InstallCode`). `bundle apply --local`, the site's own
+remote API, `Crombolo.Remote.InstallCode`). `site apply --local`, the site's own
 content files built here, is unaffected.
 
 Then three phases (story `105`): every carried section is **staged** into a copy
@@ -1070,7 +1108,7 @@ file is not a replacement.
 
 ### Undoing one
 
-The content half is a transfer run, so `bundle revert <run>` takes it back as
+The content half is a transfer run, so `site revert <run>` takes it back as
 any import. The files are not in that ledger — but they are not left to git
 either. The swap keeps what each staged folder replaced under
 `.crombolo/transfer/<runId>/previous/<section>`, with `swap.json` naming the
@@ -1140,7 +1178,7 @@ name = "Home"            # or { "en-US" = "Home", "fr-FR" = "Accueil" }; default
 key = "…"                # optional: otherwise derived from the path
 order = 1                # optional: siblings sort by order, then name
 template = "page"        # optional: default, the type's own
-published = false        # optional: everything else is published by `bundle apply --publish`
+published = false        # optional: everything else is published by `site apply --publish`
 
 [values]
 title = "Welcome"
@@ -1153,7 +1191,7 @@ title = "Bienvenue"
 (`content/home/about`) under Crombolo's own namespace
 (`packages/server/src/seed/keys.ts`). A rebuild therefore names the same
 nodes, and two sites built from the same files share keys, which is what lets
-pulls and pushes match them. Renaming a file makes a new page. `bundle apply`
+pulls and pushes match them. Renaming a file makes a new page. `site apply`
 says so, and stops, when a page of that name is already there under another
 key, and `key = "…"` keeps the old one.
 
@@ -1180,14 +1218,14 @@ Values are given by property alias, in a shorthand for each editor:
   already on the site by its names. A uuid is taken as it is.
 - **Any other editor** takes its value in the editor's stored shape, as does
   any value given as a table that is not one of the shorthands.
-  `bundle export --source` writes that shape.
+  `content export` writes that shape.
 
 ### Media
 
 **The Library** is `content/library/`, where a folder is a Library folder, nested as deep as the
 Library's (story 242), and its elements are the files in it. A folder's name comes from its
-directory; `.folder.toml` in it gives a `name` or `key` the directory can't, and `bundle export
---source` writes one only then.
+directory; `.folder.toml` in it gives a `name` or `key` the directory can't, and `content
+export` writes one only then.
 
 `content/dictionary.toml` holds the dictionary, in the format of
 `docs/content-transfer.md`, "The dictionary as a file". It travels as the
@@ -1212,19 +1250,19 @@ A file under `content/media/` becomes a media item:
 
 | Command | Does |
 | --- | --- |
-| `crombolo bundle build --check` | builds the site's bundle and writes nothing; exits 20 with each finding as `file:line  message` |
-| `crombolo bundle build [<dir>] [--template <id>] --out <dir>` | a bundle of a site directory: its schema, views, styles and content files, built with no database of its own (story 164) |
-| `crombolo bundle apply [--publish] [--resolve …] [--dry-run]` | with no argument, or `.`, builds this site's content files and imports them; `--dry-run` is the import's check |
-| `crombolo bundle export --source --root <page>… \| --source --all` | writes content files from a site: the pages named, or with `--all` every page, Library element and media item with its file, in shorthand where `bundle apply` reads it back (story 164) |
+| `crombolo site build --check` | builds the site's bundle and writes nothing; exits 20 with each finding as `file:line  message` |
+| `crombolo site build [<dir>] [--template <id>] --out <dir>` | a bundle of a site directory: its schema, views, styles and content files, built with no database of its own (story 164) |
+| `crombolo site apply [--publish] [--resolve …] [--dry-run]` | with no argument, or `.`, builds this site's content files and imports them; `--dry-run` is the import's check |
+| `crombolo content export --root <page>… \| --source --all` | writes content files from a site: the pages named, or with `--all` every page, Library element and media item with its file, in shorthand where `site apply` reads it back (story 164) |
 | `crombolo start --bundle .` | applies this site's content files before the site serves, once for each change to them |
 
-- **What `bundle build --check` finds:** an unknown type or property, a value
+- **What `site build --check` finds:** an unknown type or property, a value
   its editor cannot take, a path that names nothing, a language the site has
   not got, a type its parent does not allow, an element in the content tree or
   a page in the Library, a duplicate key, and a TOML syntax error.
-- **Where it reads from:** `bundle build --check` makes a throwaway database
+- **Where it reads from:** `site build --check` makes a throwaway database
   from the directory's own schema, so it needs no site, in CI or anywhere
-  else. `bundle apply` builds the files against this site's database, so a
+  else. `site apply` builds the files against this site's database, so a
   path there may name a page only this site has, and a renamed page is found;
   any finding stops it before anything is written.
 - **Lines:** `Bun.TOML` gives no positions, so a finding's line comes from
@@ -1233,9 +1271,9 @@ A file under `content/media/` becomes a media item:
 
 ### Applying, and applying again
 
-`bundle apply` with this site's own files builds them and imports the result
+`site apply` with this site's own files builds them and imports the result
 as it would any bundle, content only: it backs up, checks, applies in one
-transaction and records a run that `bundle revert` undoes.
+transaction and records a run that `site revert` undoes.
 
 **Applying again is three-way.** The import records what it applied to each
 node (`content_applied`, `content-transfer.md`, "The import"). On the next
@@ -1256,7 +1294,7 @@ means the site already has this version.
 
 ### A site in three commands
 
-`crombolo bundle build` turns a site directory into one bundle, carrying its
+`crombolo site build` turns a site directory into one bundle, carrying its
 schema, components, styles and content files. `crombolo start --bundle`
 installs that into a bare site: the files are staged, the schema synced and the
 content imported in one transaction, and the server boots again to load the
@@ -1264,7 +1302,7 @@ views. The demo sites start that way (story 164):
 
 ```bash
 crombolo init --name "Harbourstone"
-crombolo bundle build sites/harbourstone --out ./harbourstone-bundle   # or --template demo/harbourstone
+crombolo site build sites/harbourstone --out ./harbourstone-bundle   # or --template demo/harbourstone
 crombolo start --bundle ./harbourstone-bundle --publish
 ```
 
@@ -1415,58 +1453,55 @@ plus a deploy" and left it there. This is that, made into something a bundle can
 be written against: `bundles.ts` in `packages/server`, and
 `@crombolo/simple-redirects` as the first one.
 
-## The objection, and what actually answers it
+## Extensions run once granted
 
-The original objection was specific, and it was right: loading third-party JS
-into a running node has no isolation story, and a `role: web` node would never
-see a runtime install. Neither is solved by a sandbox — Bun has no mechanism that
-would make a hostile dependency safe inside this process.
+Story 310. An installed extension's server half runs once it is granted what it
+asks for, with nothing imported by the site. Until then, the import in
+`crombolo.config.ts` was the gate; now the grant is (story 309).
 
-What answers it is that **nothing here is discovered**. There is no
-`CROMBOLO_BUNDLES` and no scan of `node_modules`; a bundle's server half runs
-only because a site wrote this:
+- **At boot**, each dependency that declares a `server` half is imported by the
+  entry its package exports and started by the factory `crombolo.server` names,
+  given its settings. That happens only where it is granted:
+  - **by the site's code:** the config's `extensions` entry names, exactly, what
+    it grants. That grant is "Developer installed", recorded and audited at boot;
+  - **or by a grant recorded here:** the Marketplace's install panel, Installed's
+    **Grant** button, `crombolo bundle grant`, or a remote.
+
+  Nothing of an extension that is not granted is imported, let alone run.
 
 ```ts
-import { redirects } from '@crombolo/simple-redirects'
-
 export default defineConfig({
-  bundles: [redirects()],
+  extensions: {
+    redirects: {
+      grant: ['redirects.read', 'redirects.write', 'content.read'],
+      settings: { section: 'content' },
+    },
+  },
 })
 ```
 
-So the two halves of a bundle arrive by different routes on purpose:
+- **A version that asks for more** than the entry names is off until the entry
+  names it too, or an administrator grants it. So a dependency bumped in `bun.lock`
+  cannot widen what it may do unnoticed. `origins` and `actAs` are named beside
+  `grant` when it asks for them.
+- **An entry for an extension the site does not depend on** stops the boot,
+  naming it.
+- **Settings:** the manifest's `crombolo.settings` declares each setting, with a
+  key, a label, a type (`text`, `number`, `boolean`, or `choice` with its `values`),
+  a `default`, and `secret` for one kept sealed.
+  - The config's `settings` lock a value.
+  - Installed shows the rest, to edit, kept in `extension_setting` (migration 067).
+    `crombolo bundle settings <name> [key=value …]` does the same from the CLI.
+  - An extension reads its settings when it starts, so a change takes effect at the
+    next restart, until story 311 starts it in its own process.
+- **The old way:** a site that still imports an extension and lists it in `bundles`
+  starts, for this release, warning that the import is no longer needed. Its
+  wiring grants what it asks for, as before. `bundle install --wire` is gone.
+- **Remotes:** a grant made on a remote, by someone holding "Install code on this
+  site", turns the extension on there at its next restart.
 
-| Half | How it arrives | What it takes |
-| --- | --- | --- |
-| The backoffice screen | discovered from the `crombolo` field once the package is a dependency | `bun add`, no restart |
-| The server endpoints | imported by name into `crombolo.config.ts` | an edit, a review, a deploy |
-
-That asymmetry is the whole security story. Clicking *Install* in Settings →
-Bundles never puts third-party code in the request path: the screen has no way
-to. The import is a committed diff that reaches every node, which is also what
-makes `role: web` coherent: the import is in the site's code, so every node has
-it or none does.
-
-Story 241 adds one route from outside the server, and guards it rather than
-leaving it out: a bundle applied to a remote can carry `crombolo.config.ts`, so
-the import arrives the way it would in a deploy. It needs:
-- `CROMBOLO_REMOTE_ACCESS=all`, and runtime installs on;
-- `Crombolo.Remote.ApplyStructure` and **`Crombolo.Remote.InstallCode`**,
-  "Install code on this site". That one is held only where a group names it:
-  administrators do not have it by being administrators (`EXPLICIT_PERMISSIONS`
-  in `core/src/permissions.ts`), new sites give it to no group, and a CI trust
-  rule has it only when the rule names it;
-- `crombolo restart`, since nothing else loads the code.
-
-`bundle install --wire` writes the import on the developer's own machine, and is
-refused with `--remote`: on a remote, server code is turned on only by a change
-that was committed and sent, as `bundle deploy` sends it.
-
-A test holds this down rather than leaving it to the prose:
-`tests/server-bundles.test.ts` asserts the default is `[]` whatever the
-environment says, that no environment variable names a bundle, that discovery
-parses JSON and never imports a dependency's module, and that the install path
-runs the package manager and nothing of the package.
+The tests are `tests/extension-discovery.test.ts`, and `tests/server-bundles.test.ts`
+for what a host passes in `bundles`.
 
 ### Bundles a host provides
 
@@ -1650,50 +1685,108 @@ a section of the bundle's own by its manifest alias (`Acme.Section.Design`).
 
 ### Permissions
 
-Story 222. A bundle's package says what its server half may do with the site,
-and its capabilities are held to that. Wiring it in `crombolo.config.ts`
-approves it (story 225); an administrator can disable it.
+Stories 222 and 308. An extension's package says what it may do with the site,
+each permission with the reason it needs it, and it is held to that.
 
 ```json
 "crombolo": {
+  "bundleType": "extension",
   "id": "redirects",
   "server": "redirects",
-  "schemaVersion": 3,
-  "permissions": ["redirects.read", "redirects.write", "documents.read"]
+  "schemaVersion": 4,
+  "permissions": {
+    "redirects.read": "Lists the redirect rules on the Redirects screen",
+    "redirects.write": "Saves the rules you add, change and remove there",
+    "content.read": "Shows the address of the page each rule sends people to",
+    "http.outbound": { "reason": "Checks each target answers", "origins": ["https://api.acme.com"] }
+  }
 }
 ```
 
-| Permission | Allows | Capability |
+- **A reason for each, shown beside its sentence:** 1 to 200 characters. A
+  missing reason, an unknown permission, `users.write` and an origin that is not
+  `https://host[:port]` (`http://localhost` on a development site) are refused,
+  each by name.
+- **The catalogue** (`BUNDLE_PERMISSIONS` in `@crombolo/backoffice-host`): every area
+  asks to read and to write apart.
+
+| Area | Read | Write |
 | --- | --- | --- |
-| `redirects.read` | `list`, `byKey` | `redirects` |
-| `redirects.write` | `save`, `replace`, `remove` | `redirects` |
-| `documents.read` | `url` | `documents` |
-| `identityProviders.read` | `list`, `test`, `groups` | `identityProviders` |
-| `identityProviders.write` | `update`, `reset` | `identityProviders` |
-| `media.read` | `get`, `list`, `crop` | `media` |
-| `media.write` | `create`, `update`, `delete` | `media` |
-| `member.delegate` | acting as the signed-in member calling a route | `media`, which always acts as the caller |
+| Pages | `content.read` | `content.write` |
+| Media | `media.read` | `media.write` |
+| Members | `members.read` | `members.write` |
+| Back-office users | `users.read` | never offered |
+| Forms | `forms.read` | `forms.write` |
+| Form entries | `formEntries.read` | `formEntries.write` |
+| Dictionary | `dictionary.read` | `dictionary.write` |
+| Content, media and member types, data types | `contentTypes.read` | `contentTypes.write` |
+| Webhooks | `webhooks.read` | `webhooks.write` |
+| Approval workflows | `workflows.read` | `workflows.write` |
+| Redirects | `redirects.read` | `redirects.write` |
+| Sign-in providers | `identityProviders.read` | `identityProviders.write` |
 
-Each has a plain sentence the install panel and the Installed view show
-(`BUNDLE_PERMISSIONS` in `@crombolo/backoffice-host`). `log` and a bundle's own
-`database` (Part 4) need none: neither reaches the site's data.
+  Besides the areas:
+  - `member.delegate` acts for the member calling a site route;
+  - `actAs` acts for a back-office user, as granted;
+  - `events.content` is called for content events;
+  - `http.outbound` sends to the origins it names;
+  - `routes.public` answers routes anyone may call;
+  - `templates` renders components into pages, from story 312.
 
-- **Declared, and held to the code.** Schema 3 makes `permissions` required of
-  a server half; `[]` is a bundle that asks for nothing. A package written for
-  an earlier schema, or naming a permission this release does not offer, is
-  refused by name. At boot each capability must have one of its permissions
-  (`media` also `member.delegate`), and each permission must be used by a
-  capability the bundle declares.
-- **Only what is declared.** A capability method whose permission is not
-  declared throws `PermissionRefusedError`, naming it: a bundle that asked only
-  to read redirects cannot save one.
-- **Approved by the site's code.** Wiring a bundle in `crombolo.config.ts` is
-  its approval: it runs from its first boot. Each boot of a node that writes
-  records its version and permission list in `bundle_grant` (migration 054) as
-  approved by the site's code, audited (`system` / `Grant` / `Bundle`, from
-  `boot`) when they change. An install from the back office records the
-  administrator who approved it in the install panel instead. The bundle's card
-  in Installed shows what it may do and who approved it.
+- **The areas through `api`:** one capability calls the Management API, and the
+  CMS's own back-office API, in this process:
+  `bundle.api.get('management/api/v1/document/<key>')`, `post`, `put`, `delete`.
+  - Each permission reaches a set of paths and methods (`API_PERMISSIONS` in
+    `server/src/bundle-api.ts`). A call no granted permission covers throws
+    `ApiRefusedError` before it is made, naming what would have covered it.
+  - The API's own validation, permissions, approval workflows and audit then
+    apply. A typed SDK over it is story 315.
+- **Least privilege:** acting as itself, an extension's principal holds only what
+  its grant gives: the sections, document and media verbs on the whole tree, and
+  languages, that its paths need. It is never an administrator, so its publishes
+  meet the approval workflows, and the audit names it "Extension <name>".
+  - Under `actAs` it acts for the installer, the caller (itself where there is
+    none), or a named user, as the grant chose, and that user's rights bound it too.
+- **Requests out:** `fetch`, as a capability, and an event handler's `fetch`,
+  reach only the origins `http.outbound` names, by the address rule of story 301.
+- **At boot:**
+  - each capability needs one of its permissions (`media` also `member.delegate`);
+  - each permission must be used;
+  - event handlers need `events.content`, and site routes `routes.public`.
+- **Schema 3,** names without reasons, is still read for an extension already
+  installed: `documents.read` is read as `content.read`. A new install, or an
+  upgrade, to a schema 3 version is refused, saying why.
+- **The install** shows every permission with its reason and the origins, and asks
+  whom `actAs` acts for. Granting is the whole list, exactly: in the panel, in
+  `bundle install --grant … [--act-as caller|user:<key>]`, and over a remote.
+  There is no separate question about server code.
+- **A grant is what lets it run (story 309).** An extension runs, its screens,
+  files, routes, events and jobs alike, while its grant covers everything its
+  installed version asks for: each permission, each `http.outbound` origin, and
+  whom `actAs` acts for.
+  - **States:** Installed shows one of four:
+    - **on**;
+    - **turned off** by an administrator;
+    - **waiting for a grant**: its version asks for more, and the view names what;
+    - **not granted**: never granted.
+  - **Fewer permissions:** a version that asks for less stays on, its grant
+    narrowed at the next boot and audited.
+  - **Every call** to a capability is held to what was granted, not to what the
+    manifest declares, and a call made as a member needs `member.delegate`.
+- **Who grants:**
+  - **The site's code:** wiring an extension in `crombolo.config.ts` grants what its
+    installed version asks for at each boot of a node that writes. It is recorded in
+    `bundle_grant` as the site's code, shown as **Developer installed**, and audited
+    when it changes.
+  - **An administrator:** the Marketplace's install panel, or **Grant** in
+    Installed for one installed by a deploy or waiting after an upgrade.
+  - **The CLI:** `crombolo bundle grant <name> --grant … [--act-as …]`.
+  - **A remote:** someone holding "Install code on this site" (`bundle-manage`'s
+    `installed/<name>/grant`).
+  - **Exactly:** a grant is exactly what is asked for, or it is refused, saying
+    what differs.
+  - **No grant, no run:** an extension installed before 0.57 and not wired has no
+    grant, and is off until granted.
 - **Disabled by an administrator.** **Disable** on its card turns a bundle off,
   and **Enable** turns it on again, for anyone with Settings,
   audited (`Disable` or `Enable`). A disabled bundle is still mounted: its
@@ -2410,7 +2503,7 @@ The requirement is that the handle never reaches outside the bundle's tables:
 
 `tests/custom-tables.test.ts` proves it on both engines by trying: a handle
 naming a crombolo table, qualified or not, and another owner's table, fails.
-What it guards against is mistakes and injected input. A bundle runs unsandboxed
+What it guards against is mistakes and injected input. A site runs unsandboxed
 in the server process (story 173), so deliberately hostile code could issue
 `RESET ROLE` or `ATTACH DATABASE` (Bun's SQLite driver cannot forbid attaching);
 installing a bundle is a decision to trust it.
@@ -2470,7 +2563,9 @@ another using `context.bundle.database`, the dashboard's report,
 - Isolating a bundle's server code. There is no sandbox and none is implied: a
   bundle you import is code you run, exactly like any other dependency in the
   file. What the design buys is that importing it is a decision somebody makes
-  and commits.
+  and commits. What each extension could reach, and the plan to run each in a
+  confined process of its own, are in
+  [`extension-threat-model.md`](extension-threat-model.md) (stories 306–313).
 
 ## The product site's bundle
 

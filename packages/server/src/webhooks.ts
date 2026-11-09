@@ -213,6 +213,11 @@ export interface WebhookServiceOptions {
   /** Publishes the schema directory to a shared store, when there is one. */
   onFilesChanged?: () => Promise<void>
   now?: () => Date
+  /**
+   * The origins a bundle's event `fetch` may reach (story 308); undefined for a
+   * bundle written before schema 4, which the address rule alone holds.
+   */
+  bundleOrigins?(bundleId: string): readonly string[] | undefined
   /** Whether a bundle is turned on (story 222); its events are not delivered while it is off. */
   isBundleOn?(bundleId: string): boolean
   /** The site's own handlers (story 298): which events it handles, and how one is handed over. */
@@ -634,7 +639,17 @@ export function createWebhookService(options: WebhookServiceOptions): WebhookSer
         payload: delivery.payload as { Id: string },
         deliveryId: delivery.id,
         attempt: delivery.attempts,
-        fetch: (input, init) => pinnedFetch(input, { signal, ...init }, outbound),
+        fetch: (input, init) => {
+          const origins = options.bundleOrigins?.(bundleId)
+          const url = new URL(input instanceof Request ? input.url : String(input))
+          if (origins && !origins.includes(url.origin))
+            return Promise.reject(
+              new OutboundRefused(
+                `${bundleId} may not reach ${url.origin}: its http.outbound names ${origins.join(', ') || 'nothing'}.`,
+              ),
+            )
+          return pinnedFetch(input, { signal, ...init }, outbound)
+        },
         log: {
           info: (message, properties) => named.info(message, properties),
           warn: (message, properties) => named.warn(message, properties),

@@ -2,7 +2,7 @@
 type = "docsPage"
 key = "2603f397-f28b-4a0e-8775-57ba021acc9b"
 name = "Users and access"
-order = 6
+order = 5
 
 [values]
 title = "Users and access"

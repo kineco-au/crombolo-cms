@@ -123,6 +123,7 @@ const manifest = (version = '1.2.3') => ({
   version,
   peerDependencies: { '@crombolo/crombolo': `^${VERSION}` },
   crombolo: {
+    bundleType: 'extension',
     id: 'acme-seo',
     extensions: [{ type: 'dashboard', alias: 'acme.d', name: NAME, element: 'd.js' }],
   },
@@ -411,11 +412,11 @@ describe('bundle apply on this machine (story 060)', () => {
   test("the site's own content files are its own; another unsigned bundle is refused", async () => {
     const site = siteDirectory()
     expect(cli(site, ['types', 'sync']).code).toBe(0)
-    const own = cli(site, ['bundle', 'apply', '--dry-run'])
+    const own = cli(site, ['site', 'apply', '--dry-run'])
     expect(own.code, own.out).toBe(0)
     expect(own.out).toContain('Local: from this machine')
 
-    const other = cli(site, ['bundle', 'apply', await contentBundle(site), '--dry-run'])
+    const other = cli(site, ['site', 'apply', await contentBundle(site), '--dry-run'])
     expect(other.code, other.out).toBe(ERROR_KINDS.refused.exitCode)
     expect(other.out).toContain('only signed bundles')
   }, 60_000)

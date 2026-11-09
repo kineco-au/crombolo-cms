@@ -319,8 +319,11 @@ describe('a template that wires a server bundle', () => {
     ).toEqual([])
 
     const config = files.find((file) => file.path === 'crombolo.config.ts')?.text as string
-    expect(config).toContain("import { redirects } from '@crombolo/simple-redirects'")
-    expect(config).toContain('bundles: [redirects()]')
+    // Granted by the site's code, with nothing imported (story 310).
+    expect(config).not.toContain('@crombolo/simple-redirects')
+    expect(config).toContain(
+      "redirects: { grant: ['redirects.read', 'redirects.write', 'content.read'] }",
+    )
     // The site is still named what was asked for, which a template shipping its
     // own config file would have thrown away.
     expect(config).toContain("siteName: 'Harbourstone'")
@@ -337,7 +340,11 @@ describe('a template that wires a server bundle', () => {
   test('ignores a malformed entry rather than scaffolding a broken import', () => {
     expect(byId('basic').serverBundles).toEqual([])
     expect(byId('demo/harbourstone').serverBundles).toEqual([
-      { package: '@crombolo/simple-redirects', import: 'redirects' },
+      {
+        package: '@crombolo/simple-redirects',
+        id: 'redirects',
+        grant: ['redirects.read', 'redirects.write', 'content.read'],
+      },
     ])
   })
 })

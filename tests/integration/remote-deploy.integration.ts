@@ -358,7 +358,7 @@ describe('a template edited locally and deployed to a remote', () => {
     // A deploy sends only what is committed.
     const dirty = await cli(
       'laptop-deploy',
-      ['bundle', 'deploy', '--remote', 'live', '--yes'],
+      ['site', 'deploy', '--remote', 'live', '--yes'],
       await identity(),
     )
     expect(dirty.code, dirty.out).not.toBe(0)
@@ -368,7 +368,7 @@ describe('a template edited locally and deployed to a remote', () => {
 
     let deployed = await cli(
       'laptop-deploy',
-      ['bundle', 'deploy', '--remote', 'live', '--yes'],
+      ['site', 'deploy', '--remote', 'live', '--yes'],
       await identity(),
     )
     // A change to the definitions raises the site's version first, which is committed in turn.
@@ -377,7 +377,7 @@ describe('a template edited locally and deployed to a remote', () => {
       git('laptop-deploy', 'commit', '--quiet', '-m', 'the raised version')
       deployed = await cli(
         'laptop-deploy',
-        ['bundle', 'deploy', '--remote', 'live', '--yes'],
+        ['site', 'deploy', '--remote', 'live', '--yes'],
         await identity(),
       )
     }
