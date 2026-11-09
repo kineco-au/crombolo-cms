@@ -180,7 +180,9 @@ writeFileSync(
     version: '1.0.0',
     peerDependencies: { '@crombolo/crombolo': `^${VERSION}` },
     crombolo: {
+      bundleType: 'extension',
       id: 'test-side-panel',
+      schemaVersion: 4,
       extensions: [
         {
           type: 'sidePanel',
@@ -239,6 +241,8 @@ const server = await createServer(
       // re-vendors, so the hashed path is safe to cache.
       immutableAssets: true,
       allowPasswordReset: true,
+      // It asks for no permissions; the site's code grants it, so it runs (story 310).
+      extensions: { 'test-side-panel': { grant: [] } },
       sendUserLink: async (message) => {
         appendFileSync(
           LINKS,
