@@ -36,7 +36,8 @@ const manifest = (version: string, extra = '') => ({
   crombolo: {
     bundleType: 'extension',
     id: 'acme-crm',
-    extensions: [{ type: 'dashboard', alias: 'acme.crm', name: 'CRM', element: 'd.js' }],
+    // A menu entry that runs no code, so it asks for nothing (story 320).
+    extensions: [{ type: 'menuItem', alias: 'acme.crm', name: 'CRM', meta: { label: 'CRM' } }],
   },
 })
 

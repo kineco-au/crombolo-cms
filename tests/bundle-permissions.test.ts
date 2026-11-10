@@ -41,29 +41,31 @@ const manifest = (crombolo: Record<string, unknown>) => ({
     bundleType: 'extension',
     id: 'notes',
     server: 'notes',
-    schemaVersion: 3,
-    permissions: [],
+    schemaVersion: 5,
+    permissions: {},
     ...crombolo,
   },
 })
 
 describe('what a package declares', () => {
-  test('a server half declares its permissions, from the list this release offers', () => {
-    expect(validateBundlePackage(manifest({ permissions: ['redirects.read'] }))).toEqual([])
+  test('a server half declares its permissions, each with its reason, from the list this release offers', () => {
+    expect(
+      validateBundlePackage(manifest({ permissions: { 'redirects.read': 'Lists the rules' } })),
+    ).toEqual([])
     expect(validateBundlePackage(manifest({ permissions: undefined })).join('\n')).toContain(
       'declares no "crombolo.permissions"',
     )
-    expect(validateBundlePackage(manifest({ permissions: ['members.read'] })).join('\n')).toContain(
-      'which schema 3 does not offer',
-    )
     expect(
-      validateBundlePackage(manifest({ permissions: ['media.read', 'media.read'] })).join('\n'),
-    ).toContain('names a permission twice')
+      validateBundlePackage(manifest({ permissions: { 'members.fly': 'Flies' } })).join('\n'),
+    ).toContain('is not a permission this release offers')
+    expect(
+      validateBundlePackage(manifest({ permissions: { 'redirects.read': ' ' } })).join('\n'),
+    ).toContain('gives no reason')
   })
 
   test('a server half written for schema 2 is refused, naming what changed', () => {
     const problems = validateBundlePackage(manifest({ schemaVersion: 2 })).join('\n')
-    expect(problems).toContain('this release reads 3')
+    expect(problems).toContain('this release reads 5')
     expect(problems).toContain('"crombolo.permissions"')
   })
 })
@@ -80,6 +82,13 @@ describe('capabilities against permissions', () => {
     expect(permissionProblems('notes', ['log'], ['documents.read']).join('\n')).toContain(
       'which none of its capabilities uses',
     )
+  })
+
+  test('http.outbound is for its screens and its event handlers too; backoffice.code is its screens’ (story 320)', () => {
+    expect(permissionProblems('notes', [], ['http.outbound'])).toHaveLength(1)
+    expect(permissionProblems('notes', [], ['http.outbound'], true)).toEqual([])
+    expect(permissionProblems('notes', [], ['http.outbound'], false, { events: true })).toEqual([])
+    expect(permissionProblems('notes', [], ['backoffice.code'], true)).toEqual([])
   })
 
   test('a capability serves only the methods its permissions allow', async () => {
@@ -183,7 +192,7 @@ function notesSite() {
           id: 'notes',
           name: 'Notes',
           server: 'notes',
-          permissions: ['redirects.read'],
+          permissions: ['redirects.read', 'routes.public'],
           extensions: [{ type: 'dashboard', alias: 'Acme.Notes.Dashboard', name: 'Notes' }],
         },
       },
@@ -242,7 +251,7 @@ describe(`a wired bundle (${dialectUnderTest})`, () => {
     expect(await notes()).toMatchObject({
       on: true,
       granted: { by: "the site's code" },
-      permissions: [{ allows: "See the site's redirects" }],
+      permissions: [{ allows: "See the site's redirects" }, { permission: 'routes.public' }],
     })
 
     const post = (action: string) =>

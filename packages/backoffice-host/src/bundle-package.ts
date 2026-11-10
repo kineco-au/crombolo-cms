@@ -6,9 +6,9 @@
  * marketplace, the server half and the installer cannot disagree about what a
  * bundle is.
  */
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, normalize } from 'node:path'
-import { permissionsProblem, readSettings } from './bundle-permissions.ts'
+import { BACKOFFICE_CODE, permissionsProblem, readSettings } from './bundle-permissions.ts'
 import type { PackageManifestImportmap } from './manifests.ts'
 
 /** The package a bundle declares its peer range on. */
@@ -83,20 +83,82 @@ export interface CromboloField {
 }
 
 /**
- * The bundle schema a server half must be written for: 3 since it declares the
- * permissions it needs (story 222); 2 made its routes route handlers (211).
+ * The bundle schema an extension with code must be written for: 5 put its server
+ * half in `src/server/` and its back-office code in `src/backoffice/` (story 320);
+ * 4 gave each permission a reason (308); 3 declared them (222); 2 made its routes
+ * route handlers (211).
  */
-export const BUNDLE_SCHEMA_VERSION = 4
+export const BUNDLE_SCHEMA_VERSION = 5
+
+/** The oldest schema read: an extension at 4 or before is refused until it is migrated (story 320). */
+export const OLDEST_BUNDLE_SCHEMA_VERSION = 5
 
 /**
- * The oldest schema read, for an extension already installed: 3 listed its
- * permissions without reasons (story 308). A new install needs 4.
+ * The oldest server half the site's config may still wire in itself: its own
+ * code, run in the CMS, so the layout does not apply, only the routes and
+ * permissions it is written against (stories 211, 222).
  */
-export const OLDEST_BUNDLE_SCHEMA_VERSION = 3
+export const OLDEST_WIRED_SCHEMA_VERSION = 3
+
+/** Where an extension's server half lives (story 320). */
+export const SERVER_DIR = 'src/server'
+
+/** Where an extension's back-office code lives (story 320). */
+export const BACKOFFICE_DIR = 'src/backoffice'
+
+/** The manifest keys that name a module, in an entry and nested in it. */
+const MODULE_KEYS = new Set(['element', 'api', 'js', 'loader'])
+
+/**
+ * Every module an extension's manifest names: its entries' `element`, `api`,
+ * `js` and `loader`, however deep, and its import map's targets. Pure.
+ */
+export function backOfficeModules(field: { extensions?: unknown; importmap?: unknown }): string[] {
+  const found = new Set<string>()
+  const walk = (value: unknown) => {
+    if (Array.isArray(value)) for (const item of value) walk(item)
+    else if (value && typeof value === 'object')
+      for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+        if (MODULE_KEYS.has(key) && typeof item === 'string') found.add(item)
+        else walk(item)
+      }
+  }
+  walk(field.extensions)
+  const importmap = field.importmap as
+    | { imports?: Record<string, unknown>; scopes?: Record<string, Record<string, unknown>> }
+    | undefined
+  for (const target of Object.values(importmap?.imports ?? {}))
+    if (typeof target === 'string') found.add(target)
+  for (const scope of Object.values(importmap?.scopes ?? {}))
+    for (const target of Object.values(scope ?? {}))
+      if (typeof target === 'string') found.add(target)
+  return [...found]
+}
+
+/** A module path as the package names it, without a leading `./`. */
+const packagePath = (path: string) => path.replace(/^\.\//, '')
+
+const SOURCE_FILE = /\.(m?[jt]s|[jt]sx)$/
+
+/** The entry a package exports, as its `package.json` says, relative to the package. */
+export function exportedEntry(json: PackageJson): string | undefined {
+  const pick = (value: unknown): string | undefined => {
+    if (typeof value === 'string') return value
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const conditions = value as Record<string, unknown>
+      if ('.' in conditions) return pick(conditions['.'])
+      for (const key of ['bun', 'import', 'default', 'node', 'require'])
+        if (key in conditions) return pick(conditions[key])
+    }
+    return undefined
+  }
+  const entry = pick(json.exports) ?? json.main
+  return entry ? packagePath(entry) : undefined
+}
 
 /** Said when a schema 3 extension is offered for a new install (story 308). */
 export const SCHEMA_3_NOT_INSTALLED =
-  'it asks for permissions without saying why (bundle schema 3); install a version written for schema 4'
+  'it asks for permissions without saying why (bundle schema 3); install a version written for schema 5'
 
 /** A bundle as read from its package. */
 export interface BundlePackage {
@@ -121,6 +183,8 @@ export interface PackageJson {
   private?: boolean
   dependencies?: Record<string, string>
   peerDependencies?: Record<string, string>
+  exports?: unknown
+  main?: string
   crombolo?: unknown
 }
 
@@ -145,15 +209,64 @@ export function declaresBundle(json: PackageJson | undefined): boolean {
   return Boolean(json?.crombolo) && json?.name !== CORE_PACKAGE
 }
 
-/** What a server half written for an older schema must change, by the schema it is at. */
-export function schemaProblem(schema: number): string {
+/** What an extension written for an older schema must change, by the schema it is at. */
+export function schemaProblem(schema: number, options: { wired?: boolean } = {}): string {
   const changes = [
     schema < 2 ? 'its routes are route handlers since 0.37 (docs/bundles.md, "Routes")' : '',
     schema < 3
       ? 'it declares the permissions it needs in "crombolo.permissions" (docs/bundles.md, "Permissions")'
       : '',
+    schema < 4 && !options.wired ? 'each permission gives its reason' : '',
+    options.wired
+      ? ''
+      : `its server code moves to ${SERVER_DIR}/ and its back-office code to ${BACKOFFICE_DIR}/, which \`crombolo extension migrate <dir>\` does`,
   ].filter(Boolean)
-  return `its server half is written for bundle schema ${schema}, and this release reads ${OLDEST_BUNDLE_SCHEMA_VERSION} to ${BUNDLE_SCHEMA_VERSION}: ${changes.join(', and ')}, with "crombolo.schemaVersion": ${BUNDLE_SCHEMA_VERSION}`
+  const reads = options.wired ? OLDEST_WIRED_SCHEMA_VERSION : BUNDLE_SCHEMA_VERSION
+  return `it is written for bundle schema ${schema}, and this release reads ${reads}${options.wired ? ` to ${BUNDLE_SCHEMA_VERSION}` : ''}: ${changes.join(', and ')}, with "crombolo.schemaVersion": ${BUNDLE_SCHEMA_VERSION}${options.wired ? '' : '; then publish it again'}`
+}
+
+/**
+ * Where an extension's files must sit (story 320): its exported entry under
+ * `src/server/`, every module its manifest names under `src/backoffice/`, and
+ * nothing in the layout before it. Pure but for reading the directory.
+ */
+function layoutProblems(
+  json: PackageJson,
+  f: Record<string, unknown>,
+  directory?: string,
+): string[] {
+  const problems: string[] = []
+  for (const module of backOfficeModules(f)) {
+    const path = packagePath(module)
+    if (module.startsWith('/') || /^[a-z][a-z0-9+.-]*:/i.test(module) || path.includes('..'))
+      problems.push(`its manifest names ${module}, which is not a file under ${BACKOFFICE_DIR}/`)
+    else if (!path.startsWith(`${BACKOFFICE_DIR}/`) || !SOURCE_FILE.test(path))
+      problems.push(
+        `its manifest names ${path}, and its back-office code is a .ts or .js file under ${BACKOFFICE_DIR}/`,
+      )
+    else if (directory && !existsSync(join(directory, path)))
+      problems.push(`its manifest names ${path}, which it does not hold`)
+  }
+  // One the site's config wires in itself may export nothing: the config holds its code.
+  const entry = f.server !== undefined ? exportedEntry(json) : undefined
+  if (entry && !entry.startsWith(`${SERVER_DIR}/`))
+    problems.push(
+      `its server half is the entry its package exports, which must be under ${SERVER_DIR}/, not ${entry}`,
+    )
+  if (directory) {
+    if (existsSync(join(directory, 'plugin')))
+      problems.push(
+        `it holds plugin/, the layout before bundle schema 5: its back-office code belongs in ${BACKOFFICE_DIR}/`,
+      )
+    const src = join(directory, 'src')
+    if (isDirectory(src))
+      for (const name of readdirSync(src))
+        if (name !== 'server' && name !== 'backoffice')
+          problems.push(
+            `it holds src/${name}, and an extension's code is under ${SERVER_DIR}/ or ${BACKOFFICE_DIR}/`,
+          )
+  }
+  return problems
 }
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
@@ -220,24 +333,33 @@ export function validateBundlePackage(json: PackageJson, directory?: string): st
     )
   if (f.server !== undefined && (typeof f.server !== 'string' || !EXPORT_NAME.test(f.server)))
     problems.push('"crombolo.server" must name the factory the package exports')
+  // Code of either half: a server, or a module the back office would load.
+  const modules = backOfficeModules(f)
+  const hasCode = f.server !== undefined || modules.length > 0
+  const schema = (f.schemaVersion as number | undefined) ?? 1
   if (
     f.schemaVersion !== undefined &&
     (!Number.isInteger(f.schemaVersion) || (f.schemaVersion as number) < 1)
   )
     problems.push('"crombolo.schemaVersion" is a whole number')
-  else if (
-    f.server !== undefined &&
-    ((f.schemaVersion as number | undefined) ?? 1) < OLDEST_BUNDLE_SCHEMA_VERSION
-  )
-    problems.push(schemaProblem((f.schemaVersion as number | undefined) ?? 1))
-  const schema = (f.schemaVersion as number | undefined) ?? 1
-  if (f.server !== undefined && f.permissions === undefined)
+  else if (hasCode && schema < OLDEST_BUNDLE_SCHEMA_VERSION) problems.push(schemaProblem(schema))
+  else if (hasCode) problems.push(...layoutProblems(json, f, directory))
+  if (hasCode && f.permissions === undefined)
     problems.push(
-      'its server half declares no "crombolo.permissions": each permission it asks for with its reason, {} for nothing (docs/bundles.md, "Permissions")',
+      'it declares no "crombolo.permissions": each permission it asks for with its reason, {} for nothing (docs/bundles.md, "Permissions")',
     )
   else if (f.permissions !== undefined) {
     const problem = permissionsProblem(f.permissions, schema)
     if (problem) problems.push(problem)
+    else if (schema >= BUNDLE_SCHEMA_VERSION) {
+      const asksForCode = Object.hasOwn(f.permissions as object, BACKOFFICE_CODE)
+      if (modules.length > 0 && !asksForCode)
+        problems.push(
+          `it runs code in the back office and does not ask for "${BACKOFFICE_CODE}": that code acts as whoever is signed in, so it is asked for, with its reason`,
+        )
+      if (modules.length === 0 && asksForCode)
+        problems.push(`it asks for "${BACKOFFICE_CODE}" and has no back-office code`)
+    }
   }
   {
     const settings = readSettings(f.settings)

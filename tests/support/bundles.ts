@@ -2,10 +2,16 @@
  * Bundles as the tests need them: a package as discovery would return it, and a
  * site directory whose `package.json` declares packages for discovery to find.
  */
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { BUNDLE_SCHEMA_VERSION, type BundlePackage } from '@crombolo/backoffice-host'
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import {
+  BUNDLE_SCHEMA_VERSION,
+  type BundlePackage,
+  backOfficeModules,
+  readPackageJson,
+} from '@crombolo/backoffice-host'
 import { VERSION } from '@crombolo/server'
+import { applyMigration, planMigration } from '../../packages/cli/src/support/extension-migrate.ts'
 
 /** A bundle package with a server half, for code that only reads what discovery found. */
 export function stubBundlePackage(id: string, over: Partial<BundlePackage> = {}): BundlePackage {
@@ -70,21 +76,29 @@ export function siteDeclaring(
       peerDependencies: { '@crombolo/crombolo': `^${VERSION}` },
       ...fixture.json,
     }
-    // A server half is written for this release's bundle schema, asking for
-    // nothing, unless a test says otherwise.
     // An extension unless it says otherwise, as every bundle must (story 306).
     const field = json.crombolo as Record<string, unknown> | undefined
+    const hasCode =
+      field !== undefined && (field.server !== undefined || backOfficeModules(field).length > 0)
+    // A list of permissions with no schema named is a test's shorthand for asking
+    // for each; one that names schema 3 is a test of its refusal (story 308).
+    const asked =
+      Array.isArray(field?.permissions) && field?.schemaVersion === undefined
+        ? Object.fromEntries(
+            (field.permissions as string[]).map((permission) => [
+              permission === 'documents.read' ? 'content.read' : permission,
+              'Needed for its work',
+            ]),
+          )
+        : field?.permissions
     if (field && typeof field === 'object')
       json.crombolo = {
         ...(!('bundleType' in field) ? { bundleType: 'extension' } : {}),
         ...field,
-        ...(field.server !== undefined
+        ...(hasCode
           ? {
-              // A list of permissions is schema 3's way; schema 4 gives reasons (story 308).
-              schemaVersion:
-                field.schemaVersion ??
-                (Array.isArray(field.permissions) ? 3 : BUNDLE_SCHEMA_VERSION),
-              permissions: field.permissions ?? {},
+              schemaVersion: field.schemaVersion ?? (Array.isArray(asked) ? 3 : 4),
+              permissions: asked ?? {},
             }
           : {}),
       }
@@ -94,6 +108,33 @@ export function siteDeclaring(
       mkdirSync(join(file, '..'), { recursive: true })
       writeFileSync(file, content)
     }
+    toCurrentLayout(dir)
   }
   return root
+}
+
+/**
+ * A fixture package written as a test gives it, moved into this release's layout
+ * by `extension migrate` (story 320). One at schema 3 or before is left as it
+ * is: those tests are of its refusal. A module its manifest names that the test
+ * did not write is written as an empty element, since the test does not use it.
+ */
+export function toCurrentLayout(dir: string): void {
+  const json = readPackageJson(join(dir, 'package.json'))
+  const field = json?.crombolo as Record<string, unknown> | undefined
+  if (field?.bundleType !== 'extension') return
+  const schema = typeof field.schemaVersion === 'number' ? field.schemaVersion : 4
+  const modules = backOfficeModules(field)
+  if (schema !== 4 || Array.isArray(field.permissions)) return
+  if (field.server === undefined && modules.length === 0) return
+  for (const module of modules) {
+    const file = join(dir, module.replace(/^\.\//, ''))
+    if (module.startsWith('/') || /^[a-z]+:/i.test(module) || existsSync(file)) continue
+    mkdirSync(dirname(file), { recursive: true })
+    writeFileSync(file, 'export default class extends HTMLElement {}\n')
+  }
+  const plan = planMigration(dir, { reason: 'Shows its screens' })
+  if (plan.problems.length > 0)
+    throw new Error(`The fixture at ${dir} cannot be migrated: ${plan.problems.join('; ')}`)
+  applyMigration(dir, plan)
 }

@@ -9,7 +9,11 @@ export function registerManifestHandlers(
   router: ManagementApiRouter,
   manifests: ManifestPort,
 ): void {
-  router.handle('GetManifestManifest', () => Response.json(manifests.list('all')))
-  router.handle('GetManifestManifestPublic', () => Response.json(manifests.list('public')))
-  router.handle('GetManifestManifestPrivate', () => Response.json(manifests.list('private')))
+  router.handle('GetManifestManifest', async () => Response.json(await manifests.list('all')))
+  router.handle('GetManifestManifestPublic', async () =>
+    Response.json(await manifests.list('public')),
+  )
+  router.handle('GetManifestManifestPrivate', async () =>
+    Response.json(await manifests.list('private')),
+  )
 }

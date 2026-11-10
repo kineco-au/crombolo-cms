@@ -14,6 +14,7 @@ import {
   createBundleReloader,
   VERSION,
 } from '@crombolo/server'
+import { toCurrentLayout } from './support/bundles.ts'
 import { BACKOFFICE, type Harness, ORIGIN, signedInServer } from './support/harness.ts'
 
 const open: Harness[] = []
@@ -65,6 +66,7 @@ function install(
       },
     }),
   )
+  toCurrentLayout(dir)
 }
 
 describe('reloading what a host installed', () => {
@@ -103,7 +105,7 @@ describe('reloading what a host installed', () => {
       wired: () => [],
       changed: () => {},
     })
-    install(root, 'acme-forms', '1.0.0', { server: 'acmeForms', schemaVersion: 3, permissions: [] })
+    install(root, 'acme-forms', '1.0.0', { server: 'acmeForms', schemaVersion: 4, permissions: {} })
     depend(root, { 'acme-forms': '^1.0.0' })
     const [found] = reloader.reload().added
     expect(found?.carries.server).toBe(true)
@@ -133,7 +135,7 @@ describe('a running node (story 181)', () => {
     expect((await h.server.fetch(new Request(file))).status).toBe(404)
     const granted = await h.post(`${BACKOFFICE}/crombolo/api/bundles/grant`, {
       id: 'acme-seo',
-      grant: [],
+      grant: ['backoffice.code'],
     })
     expect(granted.status, await granted.clone().text()).toBe(200)
     expect((await h.server.fetch(new Request(file))).status).toBe(200)

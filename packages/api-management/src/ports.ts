@@ -45,7 +45,8 @@ export interface ServerPort {
 export type ManifestVisibility = 'all' | 'public' | 'private'
 
 export interface ManifestPort {
-  list(visibility: ManifestVisibility): ResponseOf<'GetManifestManifest'>
+  /** Asynchronous: an extension's back-office code is built before it is listed (story 320). */
+  list(visibility: ManifestVisibility): Promise<ResponseOf<'GetManifestManifest'>>
 }
 
 export interface LanguageInput {

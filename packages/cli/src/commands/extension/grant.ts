@@ -2,7 +2,12 @@ import { actAsChoice } from '@crombolo/server'
 import { Args, Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
 import { CliError } from '../../errors.ts'
-import { cliActor, remoteBundles, withLocalBundles } from '../../support/bundles.ts'
+import {
+  cliActor,
+  confirmBackOfficeCode,
+  remoteBundles,
+  withLocalBundles,
+} from '../../support/bundles.ts'
 
 /** Grants an installed extension what it asks for (story 309), here or on a remote. */
 export default class ExtensionGrant extends BaseCommand {
@@ -46,6 +51,7 @@ export default class ExtensionGrant extends BaseCommand {
     const actAs = flags['act-as'] ? actAsChoice(flags['act-as']) : null
     if (flags['act-as'] && !actAs)
       this.fail('usage', `--act-as is "caller" or "user:<key>", not "${flags['act-as']}".`)
+    await confirmBackOfficeCode((line) => this.say(line), args.name, flags.grant)
     const outcome = flags.remote
       ? await (await remoteBundles(flags.remote, flags.env)).grant(args.name, flags.grant, actAs)
       : await withLocalBundles((admin) =>

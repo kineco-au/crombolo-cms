@@ -17,6 +17,7 @@ import { tmpdir } from 'node:os'
 import { join, sep } from 'node:path'
 import { hasSection, type Principal } from '@crombolo/api-management/domain'
 import { DEVICE_CODE_GRANT, REMOTE_CLIENT_ID } from '@crombolo/auth'
+import { BACKOFFICE_CODE, BACKOFFICE_CODE_WARNING } from '@crombolo/backoffice-host/registry'
 import {
   EXPLICIT_PERMISSIONS,
   managementApiPath,
@@ -988,6 +989,10 @@ export function createRemote(options: RemoteOptions): Remote {
         items: [
           ...missing.map((p) => `not granted: ${p}`),
           ...extra.map((p) => `not asked for: ${p}`),
+          // The one that is not confined, said wherever it is asked for (story 320).
+          ...(asked.includes(BACKOFFICE_CODE)
+            ? [`${BACKOFFICE_CODE}: ${BACKOFFICE_CODE_WARNING}`]
+            : []),
         ],
       })
     }

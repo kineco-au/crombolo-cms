@@ -35,7 +35,7 @@ are listed at the end.
 |---|---|---|
 | **Server half**: `crombolo.server`, a `ServerBundle` with routes, events, jobs, forms, media and tables | A Deno process of its own (story 311); in the CMS when the site's config imports it | Its grant (stories 309, 310) |
 | **Templates**: a `content: true` extension's `components/` | Copied into the site's `components/`, then imported in-process on every render | The Marketplace install itself, with no consent asked |
-| **Screens**: `plugin/` files in the manifest's `extensions` | The back office, in the signed-in user's browser | Being a dependency |
+| **Screens**: `src/backoffice/` files the manifest's `extensions` name, built (story 320) | The back office, in the signed-in user's browser | Being a dependency |
 | **Content**: schema, dictionary, content, styles, scripts, public files | Written into the site | The Marketplace install, unless `CROMBOLO_APPLY_BUNDLE_CONTENT` is off |
 
 ## Threats
@@ -51,7 +51,7 @@ Status: **covered**, **partly** (a gap is named), or **open**.
 | T5 | **Writing the site's files**: config, `package.json`, `.env`, components | **Covered (306, 311, 312).** An extension's payload may not carry `code/`, `components/` or value migrations; its process may write only its data folder | Components an install copied before 312 stay in the site, as its own; `bundle list` names them |
 | T6 | **Running server code through templates** | **Covered (312).** An extension's components render in its own process, and only with `templates` granted | — |
 | T7 | **Outbound requests and SSRF** from the server | **Covered (311, 312)**: Deno allows only the hosts its grant names, and the host's `fetch` adds the address rule (story 301) | — |
-| T8 | **Screens misusing the user's session**: calling the Management API as them, sending data anywhere | **Covered (313)** for sending: the back office's content security policy lets its pages reach the site and the origins granted extensions declare, and nothing else | A screen can still do anything the signed-in user can on the site itself |
+| T8 | **Screens misusing the user's session**: calling the Management API as them, sending data anywhere | **Covered (313)** for sending: the back office's content security policy lets its pages reach the site and the origins granted extensions declare, and nothing else. **Asked for (320):** back-office code needs `backoffice.code`, granted under a warning that names the publisher, so none runs that was not granted knowingly | A screen, once granted, can still do anything the signed-in user can on the site itself |
 | T9 | **Screens of an extension that is off or ungranted** | **Covered (309).** Their manifests are hidden and their files not served | — |
 | T10 | **Acting as a member beyond what was granted** (`member.delegate`) | **Covered (309).** Checked on every call | — |
 | T11 | **One extension reading another's data** | **Covered (311).** Separate processes, separate channels, and each one's queries run on its own tables' connection | — |
@@ -95,8 +95,9 @@ asks for more, or for different ones, is off until someone grants them again.
 ```json
 "crombolo": {
   "id": "redirects",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "permissions": {
+    "backoffice.code": "Shows the redirects screen in Settings",
     "redirects.read": "Lists the rules you have added",
     "redirects.write": "Saves the rules you add or change",
     "content.read": "Shows the page each rule sends people to"
@@ -114,10 +115,12 @@ workflows, redirects and sign-in providers, with users read only. Besides the ar
 - `member.delegate`;
 - `actAs`, to act for the installer, the caller or a named user, where it otherwise
   acts as itself;
-- `templates`, from 312.
+- `templates`, from 312;
+- `backoffice.code`, from 320.
 
-What needs no permission is the extension's own: its log, its own tables, its own
-back-office screen and the section it declares.
+What needs no permission is the extension's own: its log, its own tables, and
+the section it declares. Its back-office screens need `backoffice.code` (story 320),
+the one permission that is not confined: they act as whoever is signed in.
 
 Never offered, whatever is asked: the server's settings and secrets, the
 site's files, writing back-office users or groups, and the Management API as
@@ -134,6 +137,7 @@ the CMS.
 | 311 | A Deno process per extension, confined by Deno's permissions (T1, T2, T7, T11, T14) |
 | 312 | An extension's components stay in its package and render in its own process; it writes none of the site's code (T5, T6) |
 | 313 | The back office's content security policy names only the origins extensions declared (T8) |
+| 320 | An extension's back-office code is asked for, granted under a warning, built, and served only from its build (T8) |
 | 316 | A site bundle is applied only from a key or CI build the site trusts (T16) |
 
 Story 303 is absorbed by 306 and 312, and 307 was merged into them.

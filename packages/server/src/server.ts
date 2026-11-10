@@ -50,6 +50,7 @@ import {
   backOfficePolicy,
   collectManifests,
   type createBackOfficePaths,
+  EXTENSION_PATH,
   isSpaRoute,
   newNonce,
   renderBackOfficeShell,
@@ -193,6 +194,7 @@ import { syncDomainsFile } from './domains.ts'
 import { editorTypeLibs, siteJsxImportSource } from './editor-types.ts'
 import { emailAvailability } from './email.ts'
 import { noticeAboutEmail } from './email-notice.ts'
+import { createBackOfficeBuilds } from './extension-backoffice.ts'
 import { warnAboutAppPlugins } from './extensions-notice.ts'
 import { coerceForm, deleteForm, saveForm } from './form-files.ts'
 import {
@@ -458,6 +460,16 @@ export async function createServer(
   /** The extensions that are on: granted, and not turned off (story 309). */
   const onExtensions = () =>
     extensions.list().filter((extension) => bundleGrants.isOn(extension.bundle.id))
+  // Their back-office code, built when first asked for (story 320).
+  const backOfficeBuilds = createBackOfficeBuilds(config.siteDir, (id) => {
+    const named = logger('bundle', id)
+    return {
+      info: (message, properties) => named.info(message, properties),
+      warn: (message, properties) => named.warn(message, properties),
+      error: (message, properties) => named.error(message, properties),
+    }
+  })
+  const readyExtensions = () => backOfficeBuilds.ready(onExtensions())
   // What this process answers: only `web` serves no back office.
   const servesBackOffice = config.role !== 'web'
   // A host that installs packages itself calls `reloadBundles()` (story 181); the
@@ -833,7 +845,7 @@ export async function createServer(
     marketplace,
     extensions,
     bundleGrants,
-    failed: () => core.failedExtensions,
+    failed: () => [...core.failedExtensions, ...backOfficeBuilds.failed()],
   })
   const actorOf = (principal: Principal, request: Request): BundleActor => ({
     id: principal.id,
@@ -1350,6 +1362,7 @@ export async function createServer(
     },
     // An extension's screens show only while it is on: granted, and not turned off (story 309).
     extensions: { ...extensions, list: onExtensions },
+    readyExtensions,
     db,
     webhooks,
     contentEvents,
@@ -2993,7 +3006,7 @@ export async function createServer(
 
     // Nor are its files served while it is off (story 309).
     const staticMatch = resolveStaticFile(paths, pathname, {
-      extensions: onExtensions(),
+      extensions: pathname.startsWith(`${EXTENSION_PATH}/`) ? await readyExtensions() : [],
       immutable: config.immutableAssets ?? !config.development,
     })
     if (staticMatch) {
@@ -3044,7 +3057,7 @@ export async function createServer(
           },
         })
       }
-      const { importmap } = collectManifests(paths, onExtensions())
+      const { importmap } = collectManifests(paths, await readyExtensions())
       return backOfficePage(
         renderDeviceShell(paths, importmap, {
           title: config.siteName,
@@ -3068,7 +3081,7 @@ export async function createServer(
             location: `${paths.backOfficePath}/login?returnUrl=${encodeURIComponent(`${pathname}${url.search}`)}`,
           },
         })
-      const { importmap } = collectManifests(paths, onExtensions())
+      const { importmap } = collectManifests(paths, await readyExtensions())
       return backOfficePage(
         renderRemoteApprovalShell(paths, importmap, {
           title: config.siteName,
@@ -3078,7 +3091,7 @@ export async function createServer(
     }
 
     if (pathname === `${paths.backOfficePath}/login`) {
-      const { importmap } = collectManifests(paths, onExtensions())
+      const { importmap } = collectManifests(paths, await readyExtensions())
       return backOfficePage(
         renderLoginShell(paths, importmap, {
           defaultUiLanguage: config.defaultUiLanguage,
@@ -3108,7 +3121,7 @@ export async function createServer(
     }
 
     if (isSpaRoute(paths.backOfficePath, pathname)) {
-      const { importmap } = collectManifests(paths, onExtensions())
+      const { importmap } = collectManifests(paths, await readyExtensions())
       return backOfficePage(
         renderBackOfficeShell(paths, importmap, {
           defaultUiLanguage: config.defaultUiLanguage,

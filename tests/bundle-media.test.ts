@@ -422,7 +422,7 @@ const PACKAGE = {
         id: BUNDLE,
         server: BUNDLE,
         name: 'Observations',
-        permissions: ['media.read', 'media.write', 'member.delegate'],
+        permissions: ['media.read', 'media.write', 'member.delegate', 'routes.public'],
       },
     },
   },

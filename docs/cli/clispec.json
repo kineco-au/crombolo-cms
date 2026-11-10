@@ -2577,6 +2577,48 @@
       "errors": ["usage", "internal", "auth", "not_found", "unavailable"]
     },
     {
+      "name": "extension migrate",
+      "description": "rewrite an extension's package to the layout this release takes",
+      "effects": "non_idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "moves",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "asksForBackOfficeCode",
+          "type": "boolean"
+        },
+        {
+          "name": "dropsSignature",
+          "type": "boolean"
+        }
+      ],
+      "args": [
+        {
+          "name": "dir",
+          "type": "string",
+          "required": true,
+          "description": "the extension's package directory"
+        },
+        {
+          "name": "--reason",
+          "type": "string",
+          "description": "why its back-office code is needed, shown when it is installed"
+        },
+        {
+          "name": "--dry-run",
+          "type": "boolean",
+          "description": "say what would move, and write nothing"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "refused"]
+    },
+    {
       "name": "extension purge",
       "description": "back up, then drop a bundle's tables and clear its state",
       "effects": "idempotent",

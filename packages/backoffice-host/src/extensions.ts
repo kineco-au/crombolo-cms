@@ -12,6 +12,7 @@
  */
 import { join, normalize, sep } from 'node:path'
 import {
+  BACKOFFICE_DIR,
   type BundlePackage,
   type DiscoveredBundles,
   discoverBundles,
@@ -36,6 +37,11 @@ export interface InstalledExtension {
   directory: string
   manifest: PackageManifest
   bundle: BundlePackage
+  /**
+   * Where its back-office code was built (story 320), which is all that is
+   * served of it; undefined until the server has built it.
+   */
+  servedDir?: string
 }
 
 /**
@@ -44,11 +50,21 @@ export interface InstalledExtension {
  */
 const ASSET_KEYS = new Set(['element', 'api', 'js', 'loader'])
 
-/** `dist/seo.js` inside `@acme/seo` becomes `/bundles/@acme/seo/dist/seo.js`. */
+/**
+ * Where a module is served from its build (story 320): `src/backoffice/seo.ts`
+ * inside `@acme/seo` is built to `seo.js`, served at `/bundles/@acme/seo/seo.js`.
+ */
+export function builtModulePath(target: string): string {
+  return target
+    .replace(/^\.?\//, '')
+    .slice(BACKOFFICE_DIR.length + 1)
+    .replace(/\.(m?[jt]s|[jt]sx)$/, '.js')
+}
+
 const assetPath = (packageName: string, target: string): string =>
   target.startsWith('/') || /^[a-z][a-z0-9+.-]*:/i.test(target)
     ? target
-    : `${EXTENSION_PATH}/${packageName}/${target.replace(/^\.?\//, '')}`
+    : `${EXTENSION_PATH}/${packageName}/${builtModulePath(target)}`
 
 function rewriteAssets(value: unknown, packageName: string): unknown {
   if (Array.isArray(value)) return value.map((item) => rewriteAssets(item, packageName))
@@ -121,11 +137,12 @@ export function discoverExtensions(siteDir: string): InstalledExtension[] {
 }
 
 /**
- * The package a `/packages/…` request names, and the file inside it.
+ * The extension a `/bundles/…` request names, and the file inside its build.
  *
- * The name is matched against the site's own extensions rather than trusted, so
- * this cannot be used to read an arbitrary file out of `node_modules`; a scoped
- * name takes two segments, as npm writes it.
+ * The name is matched against the site's own extensions rather than trusted, and
+ * the file is looked for only where its back-office code was built, so nothing
+ * else of the package, nor anything in `node_modules`, is served; a scoped name
+ * takes two segments, as npm writes it.
  */
 export function resolveExtensionFile(
   extensions: readonly InstalledExtension[],
@@ -148,14 +165,14 @@ export function resolveExtensionFile(
   }
   const relative = segments.slice(take).join('/')
   const extension = extensions.find((candidate) => candidate.packageName === name)
-  if (!extension || relative.length === 0) return undefined
+  // Only what was built from its back-office code, never the package itself (story 320).
+  const served = extension?.servedDir
+  if (!served || relative.length === 0) return undefined
 
   const decoded = decodeURIComponent(relative)
   if (decoded.includes('\0')) return undefined
-  const root = extension.directory.endsWith(sep)
-    ? extension.directory
-    : `${extension.directory}${sep}`
-  const target = normalize(join(extension.directory, decoded))
+  const root = served.endsWith(sep) ? served : `${served}${sep}`
+  const target = normalize(join(served, decoded))
   return target.startsWith(root) ? target : undefined
 }
 

@@ -3633,6 +3633,28 @@ crombolo extension list [--remote <remote>] [--env <env>]
 
 **Fails with:** `usage`, `internal`, `auth`, `not_found`, `unavailable`.
 
+### `crombolo extension migrate`
+
+Rewrite an extension's package to the layout this release takes. Each run acts again.
+
+```
+crombolo extension migrate <dir> [--reason <reason>] [--dry-run]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `dir` | string | The extension's package directory. Required. |
+| `--reason` | string | Why its back-office code is needed, shown when it is installed. |
+| `--dry-run` | boolean | Say what would move, and write nothing. |
+
+**Output** (single, with `-o json`):
+
+- `moves` (array of object)
+- `asksForBackOfficeCode` (boolean)
+- `dropsSignature` (boolean)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+
 ### `crombolo extension purge`
 
 Back up, then drop a bundle's tables and clear its state. Safe to run again: a second run changes nothing more.

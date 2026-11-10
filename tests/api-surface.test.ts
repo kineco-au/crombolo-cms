@@ -137,8 +137,8 @@ describe('the import boundary', () => {
     const files = boundedFiles()
     // It looked where it should, rather than passing on an empty list.
     for (const expected of [
-      'packages/simple-redirects/src/index.ts',
-      'packages/entra/src/index.ts',
+      'packages/simple-redirects/src/server/index.ts',
+      'packages/entra/src/server/index.ts',
       'sites/starter/server.ts',
       'tests/fixtures/consumers/bundle.ts',
     ])
@@ -171,7 +171,7 @@ describe('an outside consumer', () => {
     const dir = siteDeclaring('api-consumer', {
       'greetings-bundle': {
         json: {
-          crombolo: { id: GREETINGS_ID, server: 'greetings', schemaVersion: 3, permissions: [] },
+          crombolo: { id: GREETINGS_ID, server: 'greetings', permissions: {} },
         },
       },
     })
@@ -197,8 +197,8 @@ describe('an outside consumer', () => {
         bundleType: 'extension',
         id: 'greetings',
         server: 'greetings',
-        schemaVersion: 3,
-        permissions: [],
+        schemaVersion: 5,
+        permissions: {},
       },
     }
     expect(vet(valid)).toEqual([])

@@ -141,7 +141,7 @@ async function site(config: Partial<CromboloConfig> = {}, section?: 'content') {
       schemaDir: join(root, 'schema'),
       extensions: {
         [ENTRA_BUNDLE_ID]: {
-          grant: ['identityProviders.read', 'identityProviders.write'],
+          grant: ['backoffice.code', 'identityProviders.read', 'identityProviders.write'],
           ...(section ? { settings: { section } } : {}),
         },
       },

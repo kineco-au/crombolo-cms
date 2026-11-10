@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/simple-redirects",
-  "version": "0.58.1",
+  "version": "0.59.0",
   "description": "Manage redirects in the Crombolo backoffice: a Settings screen over the redirect engine in core.",
   "license": "MIT",
   "author": "Crombolo",
@@ -26,12 +26,11 @@
   },
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/server/index.ts"
   },
   "files": [
-    "plugin",
-    "src",
-    "NOTICE"
+    "NOTICE",
+    "src"
   ],
   "publishConfig": {
     "access": "public"
@@ -41,7 +40,7 @@
     "id": "redirects",
     "name": "Redirects",
     "server": "redirects",
-    "schemaVersion": 4,
+    "schemaVersion": 5,
     "settings": {
       "section": {
         "label": "Where redirects are managed",
@@ -54,6 +53,7 @@
       }
     },
     "permissions": {
+      "backoffice.code": "Shows the redirects screen in Settings",
       "redirects.read": "Lists the redirect rules on the Redirects screen",
       "redirects.write": "Saves the rules you add, change and remove there",
       "content.read": "Shows the address of the page each rule sends people to"
@@ -78,7 +78,7 @@
         "type": "workspace",
         "alias": "Crombolo.Workspace.Redirects",
         "name": "Redirects Workspace",
-        "element": "plugin/redirects-workspace.js",
+        "element": "src/backoffice/redirects-workspace.js",
         "meta": {
           "entityType": "crombolo-redirects"
         }
@@ -86,7 +86,7 @@
     ]
   },
   "peerDependencies": {
-    "@crombolo/crombolo": ">=0.58.1"
+    "@crombolo/crombolo": ">=0.59.0"
   },
   "dependencies": {
     "@crombolo/extension": "workspace:*"

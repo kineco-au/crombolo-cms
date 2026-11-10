@@ -113,7 +113,7 @@ export function bundlePackageJson(
       bundleType: info.bundleType,
       content: true,
       ...(info.code
-        ? { server: info.code.server, schemaVersion: 4, permissions: { ...info.code.permissions } }
+        ? { server: info.code.server, schemaVersion: 5, permissions: { ...info.code.permissions } }
         : {}),
     },
   }

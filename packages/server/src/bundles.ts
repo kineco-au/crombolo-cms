@@ -50,7 +50,7 @@ import { hasCultureAccess, hasSection, type Principal } from '@crombolo/api-mana
 import {
   BUNDLE_ID,
   type BundlePackage,
-  OLDEST_BUNDLE_SCHEMA_VERSION,
+  OLDEST_WIRED_SCHEMA_VERSION,
   peerRangeProblem,
   schemaProblem,
 } from '@crombolo/backoffice-host/registry'
@@ -457,7 +457,9 @@ export function validateServerBundles(
       if (pkg?.carries.server && pkg.field.permissions !== undefined) {
         const declared = declaredPermissions(pkg)
         problems.push(
-          ...permissionProblems(label, bundle.capabilities, declared, pkg.carries.extensions),
+          ...permissionProblems(label, bundle.capabilities, declared, pkg.carries.extensions, {
+            events: Object.keys(bundle.events ?? {}).length > 0,
+          }),
         )
         // Schema 4 asks for what it does as well as what it calls (story 308).
         if (!isSchema3(pkg)) {
@@ -480,8 +482,10 @@ export function validateServerBundles(
       }
     }
     const owner = packages.find((pkg) => pkg.id === bundle.id)
-    if (owner?.carries.server && (owner.field.schemaVersion ?? 1) < OLDEST_BUNDLE_SCHEMA_VERSION)
-      problems.push(`Bundle "${label}": ${schemaProblem(owner.field.schemaVersion ?? 1)}.`)
+    if (owner?.carries.server && (owner.field.schemaVersion ?? 1) < OLDEST_WIRED_SCHEMA_VERSION)
+      problems.push(
+        `Bundle "${label}": ${schemaProblem(owner.field.schemaVersion ?? 1, { wired: true })}.`,
+      )
     const routes = new Set<string>()
     for (const route of bundle.routes ?? []) {
       if (!route || typeof route !== 'object' || !route.handlers || !route.options) {

@@ -6,6 +6,50 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.59.0 — 2026-11-10
+
+### Features
+
+- **An extension's back-office code is asked for, built and kept apart (320).**
+  - **The layout (bundle schema 5):** an extension keeps its server code in
+    `src/server/` and its back-office code in `src/backoffice/`, and neither half
+    imports the other's folder.
+  - **The build:** back-office code may be TypeScript and import npm packages. The
+    CMS builds it and serves only that build, so an extension's server source and
+    `package.json` are no longer fetchable. Its server half's process can no longer
+    read its back-office code.
+  - **A new permission, `backoffice.code`:** any back-office code needs it. Its
+    screens act as whoever is signed in, with everything that person can do, and
+    nothing keeps them apart from the site. The Marketplace and Installed show it
+    first, as a warning that names the publisher and what its signature shows, and
+    ask for a confirmation of its own before installing or granting. The CLI prints
+    the warning and asks.
+  - **`crombolo extension migrate <dir> --reason "…"`** rewrites a schema 4
+    extension into the layout.
+  - **A refused package says why:** the Marketplace says why a package is not an
+    extension this site takes.
+- **Simple Redirects and Entra** use the layout, and ask for `backoffice.code`.
+
+### Fixes
+
+- **An extension whose event handlers send requests out** may ask for `http.outbound`
+  for them; it was refused as a permission none of its capabilities uses.
+
+### Migrations
+
+- None.
+
+### Upgrade notes
+
+- **Every installed extension written before this release is refused** until its
+  author runs `crombolo extension migrate` and publishes it again. Installed shows
+  why. A site that depends on one stays on its current CMS release until then.
+- **A site whose config grants Simple Redirects or Entra** adds `backoffice.code` to
+  that grant, or the extension stays off, saying what was not granted:
+  `redirects: { grant: ['backoffice.code', 'redirects.read', 'redirects.write', 'content.read'] }`.
+- **A host that serves an extension's files itself** serves them from
+  `.crombolo/extensions/<id>/backoffice/`, not the package.
+
 ## v0.58.1 — 2026-11-10
 
 ### Fixes

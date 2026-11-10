@@ -15,6 +15,8 @@
  */
 import { css, html, nothing, repeat } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
+import { backOfficeCodeBlock, backOfficeCodeStyles } from './bundles-backoffice-code.js'
+import { backOfficeCodeWords, splitBackOfficeCode } from './bundles-backoffice-code-words.js'
 import { carriesTags } from './bundles-carries.js'
 import { bundleSignature, installBundle, searchMarketplace } from './bundles-client.js'
 import { signatureBlock, signatureStyles, signatureWords } from './bundles-signature.js'
@@ -34,6 +36,7 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
     _elsewhere: { state: true },
     _consenting: { state: true },
     _trusted: { state: true },
+    _trustsCode: { state: true },
     _asks: { state: true },
     _asksActAs: { state: true },
     _layout: { state: true },
@@ -161,6 +164,7 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
   #askConsent(item, outcome) {
     this._consenting = item.name
     this._trusted = false
+    this._trustsCode = false
     this._asks = outcome.permissions ?? []
     this._asksActAs = outcome.asksActAs === true
     // Story 312: the site layout its page templates sit in, its suggestion first.
@@ -168,9 +172,14 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
     this._layoutChoice = outcome.layout?.suggested ?? ''
   }
 
+  #asksForCode() {
+    return Boolean(splitBackOfficeCode(this._asks).code)
+  }
+
   #cancelConsent() {
     this._consenting = ''
     this._trusted = false
+    this._trustsCode = false
     this._asks = []
   }
 
@@ -233,15 +242,32 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
 
   /** What it asks for, each permission with its reason, granted together in its own card. */
   #consent(item) {
+    // Back-office code first and apart, with a confirmation of its own (story 320).
+    const { code, rest } = splitBackOfficeCode(this._asks)
+    const checked = this._signatures.get(item.name)
+    const signature = checked
+      ? signatureWords(checked.provenance, checked.refused, checked.policy)
+      : undefined
     return html`
       <div class="consent" role="group" aria-label="What it asks for">
         ${this.#signature(item)}
+        ${
+          code
+            ? backOfficeCodeBlock(
+                backOfficeCodeWords(code, item.publisher, signature),
+                this._trustsCode,
+                (confirmed) => {
+                  this._trustsCode = confirmed
+                },
+              )
+            : nothing
+        }
         <p>
           <strong>It asks for these permissions.</strong> Grant them to install it: it may do only
-          this, and its screens act as whoever is signed in.
+          this.
         </p>
         <ul class="asks">
-          ${this._asks.map(
+          ${rest.map(
             (ask) =>
               html`<li>
                 ${ask.allows}${ask.origins?.length ? html`: ${ask.origins.join(', ')}` : nothing}
@@ -303,7 +329,7 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
             look="primary"
             color="warning"
             label="Grant and install"
-            ?disabled=${!this._trusted}
+            ?disabled=${!this._trusted || (this.#asksForCode() && !this._trustsCode)}
             .state=${this._busy === item.name ? 'waiting' : undefined}
             @click=${() => this.#install(item, true)}></uui-button>
           <uui-button look="secondary" label="Cancel" @click=${this.#cancelConsent}></uui-button>
@@ -399,6 +425,7 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
 
   static styles = [
     signatureStyles,
+    backOfficeCodeStyles,
     css`
     :host {
       display: block;

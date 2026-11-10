@@ -125,7 +125,8 @@ const manifest = (version = '1.2.3') => ({
   crombolo: {
     bundleType: 'extension',
     id: 'acme-seo',
-    extensions: [{ type: 'dashboard', alias: 'acme.d', name: NAME, element: 'd.js' }],
+    // A menu entry that runs no code, so it asks for nothing (story 320).
+    extensions: [{ type: 'menuItem', alias: 'acme.m', name: NAME, meta: { label: NAME } }],
   },
 })
 

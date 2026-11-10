@@ -91,6 +91,8 @@ export interface InstalledListing {
   contentApplied: string | null
   /** What the package says it is, from its `package.json`; empty when it says nothing. */
   description: string
+  /** Who made it, as its `author` says; null when it does not say (story 320). */
+  publisher: string | null
   /** The crombolo releases it is written for. */
   peerRange: string
   /** What its server half may do with the site, each with what it allows (story 222). */
@@ -169,7 +171,14 @@ export interface InstallOutcome {
    */
   needsGrant?: boolean
   /** With `needsGrant`: what it asks for, each with its sentence, its reason and its origins. */
-  permissions?: { permission: string; allows: string; reason: string | null; origins?: string[] }[]
+  permissions?: {
+    permission: string
+    allows: string
+    reason: string | null
+    origins?: string[]
+    /** What the install says before it is granted: only back-office code has one (story 320). */
+    warning?: string
+  }[]
   /** With `needsGrant`: it asks to act for a user, so the grant names whom (story 308). */
   asksActAs?: boolean
   /**
@@ -396,6 +405,7 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
         dist?: Dist
       })
     | 'not-a-bundle'
+    | { refused: string[] }
     | 'site-package'
     | 'schema-3'
     | 'unreachable'
@@ -424,7 +434,10 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
       // A site package is never installed, whatever a registry offers (story 306).
       if ((version?.crombolo as { bundleType?: unknown } | undefined)?.bundleType === 'site')
         return 'site-package'
-      if (!resolved || !version || validateBundlePackage(version).length > 0) return 'not-a-bundle'
+      if (!resolved || !version) return 'not-a-bundle'
+      // Why it is not one, so its author knows what to change: a layout before 0.59 among them (story 320).
+      const problems = validateBundlePackage(version)
+      if (problems.length > 0) return { refused: problems }
       const dist = (version as { dist?: Dist }).dist
       const field = version.crombolo as {
         extensions?: unknown[]
@@ -525,7 +538,7 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
   /** What the registry says this package's latest version carries, when it is a valid bundle. */
   const declares = async (name: string): Promise<BundlePackage['carries'] | undefined> => {
     const declared = await declaresAt(name)
-    if (typeof declared === 'string') return undefined
+    if (typeof declared === 'string' || 'refused' in declared) return undefined
     const { permissions: _, version: _version, dist: _dist, ...carries } = declared
     return carries
   }
@@ -638,6 +651,7 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
           wired: wired.has(bundle.id),
           contentApplied: (await options.contentApplied?.(bundle.packageName)) ?? null,
           description: descriptionOf(bundle.directory),
+          publisher: authorOf(bundle.directory),
           peerRange: bundle.peerRange,
           ...grantOf(bundle),
           provenance: await provenanceOfInstalled(bundle),
@@ -668,6 +682,11 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
         }
       if (declared === 'site-package') return sitePackageRefused(name)
       if (declared === 'schema-3') return schema3Refused(name)
+      if ('refused' in declared)
+        return {
+          ok: false,
+          message: `${name} is not an extension this site takes, so it was not installed: ${declared.refused.join('; ')}.`,
+        }
       if (!consented(request, declared.permissions))
         return grantNeeded(name, declared.permissions, '', layoutChoice(declared.layout))
       const provenance = await provenanceAt(name, declared.dist)
@@ -694,6 +713,11 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
         return { ok: false, message: `${name} is not an extension for this site.` }
       if (declared === 'site-package') return sitePackageRefused(name)
       if (declared === 'schema-3') return schema3Refused(name)
+      if ('refused' in declared)
+        return {
+          ok: false,
+          message: `${name} is not an extension this site takes: ${declared.refused.join('; ')}.`,
+        }
       const { dist, permissions, ...carries } = declared
       return {
         ok: true,
@@ -909,6 +933,26 @@ async function declaresIn(file: string): Promise<
 }
 
 /** A package's own description, read leniently: anything unreadable is none. */
+/** Who made an installed package, as its `author` says: npm's publisher is not kept with it. */
+function authorOf(directory: string): string | null {
+  try {
+    const json = JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8')) as {
+      author?: unknown
+    }
+    const author = json.author
+    if (typeof author === 'string') return author.replace(/\s*[<(].*$/, '').trim() || null
+    if (
+      author &&
+      typeof author === 'object' &&
+      typeof (author as { name?: unknown }).name === 'string'
+    )
+      return (author as { name: string }).name
+    return null
+  } catch {
+    return null
+  }
+}
+
 function descriptionOf(directory: string): string {
   try {
     const json = JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8')) as {

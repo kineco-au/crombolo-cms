@@ -562,7 +562,7 @@ describe('a bundle handles the events', () => {
       routes: [],
       events: {
         'Umbraco.ContentPublish': async ({ fetch }) => {
-          await fetch('http://169.254.169.254/latest/meta-data').catch((error: Error) => {
+          await fetch('https://169.254.169.254/latest/meta-data').catch((error: Error) => {
             refusal = error.message
           })
           return { ok: true }
@@ -573,8 +573,18 @@ describe('a bundle handles the events', () => {
       siteDeclaring('webhook-bundle', {
         '@acme/hooks': {
           json: {
-            // Schema 3: the address rule alone, as story 301 had it, with no origins named.
-            crombolo: { id: 'acme-hooks', server: 'hooks', permissions: [] },
+            // Its origins let the address through, and the address rule still refuses it (story 301).
+            crombolo: {
+              id: 'acme-hooks',
+              server: 'hooks',
+              permissions: {
+                'events.content': 'Is told when a page is published',
+                'http.outbound': {
+                  reason: 'Tells the cloud',
+                  origins: ['https://169.254.169.254'],
+                },
+              },
+            },
           },
         },
       }),

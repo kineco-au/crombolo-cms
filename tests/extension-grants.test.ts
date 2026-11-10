@@ -171,7 +171,7 @@ describe(`an extension's screens (${dialectUnderTest})`, () => {
 
     const granted = await h.post(`${BACKOFFICE}/crombolo/api/bundles/grant`, {
       id: 'acme-seo',
-      grant: [],
+      grant: ['backoffice.code'],
     })
     expect(granted.status, await granted.clone().text()).toBe(200)
     expect(await shown()).toBe(true)

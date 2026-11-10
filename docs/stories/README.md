@@ -252,6 +252,7 @@ requests, only server-side and build-time front ends can call it.
 | `315` | A typed SDK for extensions | could | L | ready | 308 |
 | `316` | A site bundle is applied only from a key you trust | must | M | done | 306 |
 | `317` | An administrator sets where a page's search and sharing values come from | should | M | done | — |
+| `320` | An extension's back-office code is asked for, built and kept apart | must | L | done | 311, 308 |
 
 ### Epic J — Forms
 

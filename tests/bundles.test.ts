@@ -618,7 +618,7 @@ describe('the files half of a package', () => {
     expect(text(entries, 'styles/site.css')).toBe('body { margin: 0 }')
     expect(text(entries, 'scripts/site.js')).toBe('console.log(1)')
     // A component picked either way is the extension's code (story 312).
-    expect(text(entries, 'src/components/nav.tsx')).toBe('export default () => <nav />')
+    expect(text(entries, 'src/server/components/nav.tsx')).toBe('export default () => <nav />')
     expect(entries.has('components/nav.tsx')).toBe(false)
   })
 
@@ -651,14 +651,14 @@ describe('the files half of a package', () => {
     const id = await create({ name: 'Templates', templates: [key] })
     const entries = await downloadPackage(h, id)
     // An extension's components are its code, declared by its factory (story 312).
-    expect(text(entries, 'src/components/homePage.tsx')).toContain('<h1>Home</h1>')
-    expect(text(entries, 'src/index.ts')).toContain(`"homePage": c0`)
+    expect(text(entries, 'src/server/components/homePage.tsx')).toContain('<h1>Home</h1>')
+    expect(text(entries, 'src/server/index.ts')).toContain(`"homePage": c0`)
     expect(JSON.parse(text(entries, 'package.json'))).toMatchObject({
-      exports: { '.': './src/index.ts' },
+      exports: { '.': './src/server/index.ts' },
       crombolo: {
         bundleType: 'extension',
         server: 'extension',
-        schemaVersion: 4,
+        schemaVersion: 5,
         permissions: { templates: expect.any(String) },
       },
     })
@@ -671,7 +671,7 @@ describe('the files half of a package', () => {
     expect(kind.status).toBe(200)
     const site = await downloadPackage(h, id)
     expect(text(site, 'components/homePage.tsx')).toContain('<h1>Home</h1>')
-    expect(site.has('src/index.ts')).toBe(false)
+    expect(site.has('src/server/index.ts')).toBe(false)
     expect(JSON.parse(text(site, 'package.json'))).toMatchObject({
       private: true,
       crombolo: { bundleType: 'site' },

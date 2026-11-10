@@ -2,9 +2,9 @@
  * What an extension may ask to do with the site (stories 222, 308): each
  * permission, and the sentence an administrator reads before granting it.
  *
- * Schema 4 asks for each with a reason, which the install shows beside the
- * sentence; `http.outbound` also names its origins. Schema 3 listed names
- * only, and is still read for an extension already installed.
+ * From schema 4 each is asked for with a reason, which the install shows beside
+ * the sentence; `http.outbound` also names its origins. Schema 5 (story 320)
+ * adds `backoffice.code`, the one that runs unconfined: `BACKOFFICE_CODE_WARNING`.
  * docs/bundles.md, "Permissions".
  */
 
@@ -43,6 +43,8 @@ export const BUNDLE_PERMISSIONS = {
     'Send requests from the server, and from its screens in your browser, to the addresses it names',
   'routes.public': 'Answer addresses on the site that anyone may call',
   templates: "Render its own components into the site's pages",
+  // Story 320: the one permission that is not confined. Its words are the install's warning.
+  'backoffice.code': 'Runs in your back office as each person using it',
 } as const
 
 export type BundlePermission = keyof typeof BUNDLE_PERMISSIONS
@@ -58,6 +60,16 @@ export const SCHEMA_3_PERMISSIONS = {
   'media.write': BUNDLE_PERMISSIONS['media.write'],
   'member.delegate': BUNDLE_PERMISSIONS['member.delegate'],
 } as const
+
+/** The permission an extension's back-office code needs (story 320). */
+export const BACKOFFICE_CODE = 'backoffice.code'
+
+/**
+ * What the install says beside `backoffice.code`, before the publisher's name and
+ * what its signature shows.
+ */
+export const BACKOFFICE_CODE_WARNING =
+  "Its screens act as whoever is signed in, with everything that person can do on this site. Unlike the rest of an extension, this part can't be kept apart from the site. Don't install this from a publisher you don't trust."
 
 /** Never offered, whatever an extension asks: writing users could make anyone an administrator. */
 export const NEVER_OFFERED: ReadonlySet<string> = new Set(['users.write'])
@@ -130,9 +142,14 @@ export function readPermissions(
 }
 
 /** Each permission with what it lets the extension do, and its reason, in the order declared. */
-export function describePermissions(
-  permissions: readonly (string | DeclaredPermission)[],
-): { permission: string; allows: string; reason: string | null; origins?: string[] }[] {
+export function describePermissions(permissions: readonly (string | DeclaredPermission)[]): {
+  permission: string
+  allows: string
+  reason: string | null
+  origins?: string[]
+  /** What the install says before it is granted: only `backoffice.code` has one (story 320). */
+  warning?: string
+}[] {
   return permissions.map((entry) => {
     const declared = typeof entry === 'string' ? { permission: entry, reason: null } : entry
     return {
@@ -140,6 +157,7 @@ export function describePermissions(
       allows: SENTENCES[declared.permission] ?? declared.permission,
       reason: declared.reason,
       ...(declared.origins ? { origins: declared.origins } : {}),
+      ...(declared.permission === BACKOFFICE_CODE ? { warning: BACKOFFICE_CODE_WARNING } : {}),
     }
   })
 }

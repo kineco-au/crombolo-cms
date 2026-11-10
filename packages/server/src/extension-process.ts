@@ -11,9 +11,9 @@
  * connection that reaches only them. docs/extensions.md.
  */
 import { AsyncResource } from 'node:async_hooks'
-import { mkdirSync } from 'node:fs'
-import { dirname, extname, join } from 'node:path'
-import type { BundlePackage } from '@crombolo/backoffice-host/registry'
+import { mkdirSync, realpathSync } from 'node:fs'
+import { dirname, extname, join, sep } from 'node:path'
+import { BACKOFFICE_DIR, type BundlePackage, SERVER_DIR } from '@crombolo/backoffice-host/registry'
 import {
   CHUNK_BYTES,
   decode,
@@ -67,6 +67,8 @@ export async function buildExtension(
   outDir: string,
 ): Promise<string> {
   const entryFile = Bun.resolveSync(pkg.packageName, siteDir)
+  // As the build sees it: a workspace link resolves to its real place.
+  const backOffice = `${join(realpathSync(pkg.directory), BACKOFFICE_DIR)}${sep}`
   mkdirSync(outDir, { recursive: true })
   const wrapper = join(outDir, 'entry.ts')
   const runner = Bun.resolveSync('@crombolo/extension/runner', import.meta.dir)
@@ -103,6 +105,10 @@ export async function buildExtension(
             )
           })
           build.onLoad({ filter: SOURCE }, async (args) => {
+            if (args.path.startsWith(backOffice))
+              throw new Error(
+                `${args.path} is the back-office code's, which the server half never imports.`,
+              )
             const contents = await Bun.file(args.path).text()
             if (MACRO.test(contents))
               throw new Error(`${args.path} imports a Bun macro, which would run in the CMS.`)
@@ -124,6 +130,15 @@ export async function buildExtension(
       `It could not be built to run apart from the CMS: ${result.logs.map((log) => log.message).join('; ')}`,
     )
   return join(outDir, 'server.js')
+}
+
+/** What its process may read: its own server half and its build, never its back-office code (story 320). */
+export function processReads(
+  pkg: Pick<BundlePackage, 'directory'>,
+  build: string,
+  extra: readonly string[] = [],
+): string[] {
+  return [join(pkg.directory, SERVER_DIR), build, ...extra]
 }
 
 /** `--allow-net`'s hosts for a set of origins: host, and port where one is named. */
@@ -288,7 +303,7 @@ export class ExtensionProcess {
         denoBinary(),
         ...denoArguments({
           serverFile: this.#serverFile,
-          reads: [pkg.directory, build, ...(this.#options.reads ?? [])],
+          reads: processReads(pkg, build, this.#options.reads),
           dataDir: data,
           origins: this.#options.origins,
           memoryMb: this.#options.memoryMb ?? 256,

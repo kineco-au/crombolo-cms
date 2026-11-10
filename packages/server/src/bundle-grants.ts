@@ -35,6 +35,8 @@ const DECLARATION_PERMISSIONS: ReadonlySet<string> = new Set([
   'actAs',
   'templates',
   'member.delegate',
+  // What the screens need, not the server half (story 320).
+  'backoffice.code',
 ])
 
 /** The permission each capability method needs. */
@@ -95,6 +97,8 @@ export function permissionProblems(
   declared: readonly string[],
   /** It has back-office screens, which `http.outbound` lets reach its origins too (story 313). */
   screens = false,
+  /** It handles events, whose `fetch` `http.outbound` is for too (story 301). */
+  options: { events?: boolean } = {},
 ): string[] {
   const problems: string[] = []
   const has = new Set(declared)
@@ -113,7 +117,7 @@ export function permissionProblems(
   }
   for (const permission of declared) {
     if (DECLARATION_PERMISSIONS.has(permission)) continue
-    if (permission === 'http.outbound' && screens) continue
+    if (permission === 'http.outbound' && (screens || options.events)) continue
     const used = capabilities.some((c) => CAPABILITY_PERMISSIONS[c]?.includes(permission as never))
     if (!used)
       problems.push(

@@ -18,6 +18,7 @@ import {
   resolveStaticFile,
 } from '@crombolo/backoffice-host'
 import { VERSION, warnAboutAppPlugins } from '@crombolo/server'
+import { toCurrentLayout } from './support/bundles.ts'
 import { BACKOFFICE, type Harness, signedInServer, V1 } from './support/harness.ts'
 
 const dirs: string[] = []
@@ -84,6 +85,7 @@ function siteWith(
       mkdirSync(join(file, '..'), { recursive: true })
       writeFileSync(file, content)
     }
+    toCurrentLayout(dir)
   }
   return root
 }
@@ -190,7 +192,6 @@ describe('asset paths', () => {
                 name: 'dist/not-a-path-but-a-name',
                 element: './dist/ui.js',
                 api: 'dist/api.js',
-                js: '/already/absolute.js',
                 meta: { label: 'dist/also-a-label' },
               },
             ],
@@ -201,8 +202,6 @@ describe('asset paths', () => {
     const first = discoverExtensions(root)[0]?.manifest.extensions[0] as Record<string, unknown>
     expect(first.element).toBe(`${EXTENSION_PATH}/tool/dist/ui.js`)
     expect(first.api).toBe(`${EXTENSION_PATH}/tool/dist/api.js`)
-    // An absolute path is the package's own business, and is left as it is.
-    expect(first.js).toBe('/already/absolute.js')
     expect(first.name).toBe('dist/not-a-path-but-a-name')
     expect((first.meta as { label: string }).label).toBe('dist/also-a-label')
   })
@@ -242,17 +241,38 @@ describe('asset paths', () => {
 })
 
 describe('serving an extension file', () => {
-  const found = (root: string) => discoverExtensions(root)
+  /** What the server would serve: each extension with its back-office code built, here by hand. */
+  const found = (root: string) =>
+    discoverExtensions(root).map((extension) => {
+      const servedDir = join(root, '.crombolo', 'extensions', extension.bundle.id, 'backoffice')
+      mkdirSync(join(servedDir, 'dist'), { recursive: true })
+      writeFileSync(join(servedDir, 'dist', 'seo.js'), 'export default 1')
+      return { ...extension, servedDir }
+    })
+  const built = (root: string) =>
+    join(root, '.crombolo', 'extensions', 'acme-seo', 'backoffice', 'dist', 'seo.js')
 
-  test('serves a file from inside the package', () => {
+  test('serves a file from its build, never from the package (story 320)', () => {
     const root = siteWith({
       '@acme/seo': { json: extension(), files: { 'dist/seo.js': 'export default 1' } },
     })
-    const file = resolveExtensionFile(found(root), `${EXTENSION_PATH}/@acme/seo/dist/seo.js`)
-    expect(file).toBe(join(root, 'node_modules', '@acme/seo', 'dist', 'seo.js'))
+    const extensions = found(root)
+    expect(resolveExtensionFile(extensions, `${EXTENSION_PATH}/@acme/seo/dist/seo.js`)).toBe(
+      built(root),
+    )
+    // Only ever looked for in the build: what is in the package is never there.
+    for (const inPackage of ['package.json', 'src/backoffice/dist/seo.js'])
+      expect(
+        resolveExtensionFile(extensions, `${EXTENSION_PATH}/@acme/seo/${inPackage}`),
+        inPackage,
+      ).toStartWith(join(root, '.crombolo', 'extensions', 'acme-seo', 'backoffice'))
+    // Not yet built, nothing of it is served.
+    expect(
+      resolveExtensionFile(discoverExtensions(root), `${EXTENSION_PATH}/@acme/seo/dist/seo.js`),
+    ).toBeUndefined()
   })
 
-  test('refuses a path that escapes the package', () => {
+  test('refuses a path that escapes the build', () => {
     const root = siteWith({ '@acme/seo': { json: extension() } })
     for (const attack of [
       `${EXTENSION_PATH}/@acme/seo/../../../../etc/passwd`,
@@ -261,7 +281,7 @@ describe('serving an extension file', () => {
       expect(resolveExtensionFile(found(root), attack)).toBeUndefined()
   })
 
-  /** Otherwise `/packages/` would be a file server over the whole of node_modules. */
+  /** Otherwise `/bundles/` would be a file server over the whole of node_modules. */
   test('refuses a package that is not a declared extension', () => {
     const root = siteWith(
       { '@acme/seo': { json: extension() }, lodash: { json: {} } },
@@ -275,7 +295,7 @@ describe('serving an extension file', () => {
       '@acme/seo': { json: extension(), files: { 'dist/seo.js': 'export default 1' } },
     })
     expect(resolveExtensionFile(found(root), `${EXTENSION_PATH}/%40acme/seo/dist/seo.js`)).toBe(
-      join(root, 'node_modules', '@acme/seo', 'dist', 'seo.js'),
+      built(root),
     )
   })
 
@@ -298,7 +318,7 @@ describe('serving an extension file', () => {
     const match = resolveStaticFile(paths, `${EXTENSION_PATH}/@acme/seo/dist/seo.js`, {
       extensions: found(root),
     })
-    expect(match?.file).toBe(join(root, 'node_modules', '@acme/seo', 'dist', 'seo.js'))
+    expect(match?.file).toBe(built(root))
     expect(match?.cacheControl).toBe('no-cache')
     expect(
       resolveStaticFile(paths, '/App_Plugins/@acme/seo/dist/seo.js', { extensions: found(root) }),
@@ -323,6 +343,7 @@ describe('the registry', () => {
         ...extension({ id: 'later' }),
       }),
     )
+    toCurrentLayout(added)
     writeFileSync(
       join(root, 'package.json'),
       JSON.stringify({ name: 'a-site', dependencies: { '@acme/seo': '^1', later: '^2' } }),
@@ -367,18 +388,24 @@ describe('over HTTP', () => {
       config: { siteDir: root, componentsDir: join(root, 'components') },
     })
     open.push(h)
-    // It runs once granted (story 309): it asks for nothing, so that is all.
+    // It runs once granted (story 309): its screens are back-office code (story 320).
     expect(
-      (await h.post(`${BACKOFFICE}/crombolo/api/bundles/grant`, { id: 'acme-seo', grant: [] }))
-        .status,
+      (
+        await h.post(`${BACKOFFICE}/crombolo/api/bundles/grant`, {
+          id: 'acme-seo',
+          grant: ['backoffice.code'],
+        })
+      ).status,
     ).toBe(200)
 
     const manifests = await h.json<Array<{ id?: string | null }>>(`${V1}/manifest/manifest`)
     expect(manifests.some((manifest) => manifest.id === 'acme-seo')).toBe(true)
 
+    // What is served is its build (story 320), and the package's own files are not.
     const asset = await h.call(`${EXTENSION_PATH}/@acme/seo/dist/seo.js`)
     expect(asset.status).toBe(200)
-    expect(await asset.text()).toBe('export default class {}')
+    expect(await asset.text()).toContain('export {')
+    expect((await h.call(`${EXTENSION_PATH}/@acme/seo/package.json`)).status).toBe(404)
   })
 
   test('a file outside a declared extension is a 404', async () => {

@@ -348,7 +348,7 @@ function jobsSite() {
         crombolo: {
           id: 'sweeper',
           server: 'sweeper',
-          permissions: ['redirects.read'],
+          permissions: ['redirects.read', 'routes.public'],
         },
       },
     },

@@ -1,6 +1,6 @@
 /**
  * A Bundle Editor definition built as an extension for other sites (story 312):
- * the templates and partial views it picks are its code, under `src/components/`
+ * the templates and partial views it picks are its code, under `src/server/components/`
  * with a factory that declares them, and render in its own process where it is
  * installed. Its schema and pages name them by its id, `<id>/<alias>`. The rest
  * is its payload, as data. docs/bundles.md, "The Bundle Editor".
@@ -87,14 +87,14 @@ export function createdExtension(
     payload,
     set: renamedSet,
     code: {
-      entry: 'src/index.ts',
+      entry: 'src/server/index.ts',
       server: CREATED_EXTENSION_FACTORY,
       permissions: {
         templates: 'Renders the templates and partial views it brings in your pages',
       },
       files: [
-        { path: 'src/index.ts', text: entry },
-        ...components.map((file) => ({ ...file, path: `src/${file.path}` })),
+        { path: 'src/server/index.ts', text: entry },
+        ...components.map((file) => ({ ...file, path: `src/server/${file.path}` })),
       ],
     },
   }

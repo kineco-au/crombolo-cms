@@ -83,7 +83,9 @@ async function site(config: Partial<CromboloConfig> = {}) {
       schemaDir: join(root, 'schema'),
       componentsDir: join(root, 'components'),
       extensions: {
-        [REDIRECTS_BUNDLE_ID]: { grant: ['redirects.read', 'redirects.write', 'content.read'] },
+        [REDIRECTS_BUNDLE_ID]: {
+          grant: ['backoffice.code', 'redirects.read', 'redirects.write', 'content.read'],
+        },
       },
       ...config,
     },
@@ -515,7 +517,7 @@ describe('the bundle as a package', () => {
 
   test('its element path is inside the files npm will carry', () => {
     const [, workspace] = manifest.crombolo.extensions as Array<{ element?: string }>
-    expect(workspace?.element).toBe('plugin/redirects-workspace.js')
+    expect(workspace?.element).toBe('src/backoffice/redirects-workspace.js')
   })
 
   test('carries the keyword the Bundles section searches', () => {
@@ -532,7 +534,7 @@ describe('the bundle as a package', () => {
 
 describe('the client half', () => {
   const source = (file: string) =>
-    readFileSync(join(process.cwd(), 'packages/simple-redirects/plugin', file), 'utf8')
+    readFileSync(join(process.cwd(), 'packages/simple-redirects/src/backoffice', file), 'utf8')
 
   test('calls the path its own bundle id is mounted at', () => {
     expect(source('redirects-client.js')).toContain(`/crombolo/api/bundle/${REDIRECTS_BUNDLE_ID}`)

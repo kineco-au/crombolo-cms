@@ -22,6 +22,7 @@ import {
   SCREENS_NOTICE,
   VERSION,
 } from '@crombolo/server'
+import { toCurrentLayout } from './support/bundles.ts'
 import {
   BACKOFFICE,
   type Harness,
@@ -64,7 +65,10 @@ function site(installed: Record<string, { declares: boolean }> = {}): string {
 /** A bundle id from a package name: `@acme/seo` is `acme-seo`. */
 const idOf = (name: string) => name.replace(/[^a-z0-9]+/g, '-').replace(/^-+/, '')
 
-/** The manifest of a valid bundle, as a package.json or a packument version holds it. */
+/**
+ * The manifest of a valid bundle, as a package.json or a packument version holds
+ * it: a menu entry that runs no code, so it asks for no back-office code (story 320).
+ */
 const manifest = (name: string, version: string, field: Record<string, unknown> = {}) => ({
   name,
   version,
@@ -72,7 +76,8 @@ const manifest = (name: string, version: string, field: Record<string, unknown> 
   crombolo: {
     id: idOf(name),
     bundleType: 'extension',
-    extensions: [{ type: 'dashboard', alias: `${name}.d`, name, element: 'd.js' }],
+    schemaVersion: 5,
+    extensions: [{ type: 'menuItem', alias: `${name}.m`, name, meta: { label: name } }],
     ...field,
   },
 })
@@ -91,6 +96,7 @@ function addPackage(
     join(dir, 'package.json'),
     JSON.stringify(declares ? manifest(name, version, field) : { name, version }),
   )
+  toCurrentLayout(dir)
 }
 
 const declare = (name: string) => ({
@@ -134,7 +140,7 @@ function registry(options: {
               options.server?.includes(name)
                 ? {
                     server: 'serve',
-                    schemaVersion: 4,
+                    schemaVersion: 5,
                     permissions: { 'redirects.read': 'Lists the rules' },
                     ...options.field?.[name],
                   }
@@ -381,7 +387,9 @@ describe('installing', () => {
     const { market } = marketplace({ calls, hits: ['lodash'], declaring: [] })
     const outcome = await market.install('lodash', undefined)
     expect(outcome.ok).toBe(false)
-    expect(outcome.message).toContain('is not an extension for this site')
+    // Saying why, so its author knows what to change (story 320).
+    expect(outcome.message).toContain('is not an extension this site takes')
+    expect(outcome.message).toContain('"crombolo.bundleType"')
     expect(calls).toEqual([])
   })
 
@@ -525,7 +533,7 @@ describe('a bundle that runs code on the server (story 194)', () => {
       server
         ? {
             server: 'serve',
-            schemaVersion: 4,
+            schemaVersion: 5,
             permissions: { 'redirects.read': 'Lists the rules' },
           }
         : {},
@@ -601,6 +609,36 @@ describe('a bundle that runs code on the server (story 194)', () => {
     })
     expect(outcome.ok).toBe(true)
     expect(recorded).toEqual([{ id: 'acme-tasks', by: 'admin@example.com' }])
+  })
+
+  test('back-office code is asked for first, with its warning, and installs only once granted (story 320)', async () => {
+    const calls: Call[] = []
+    const { market } = marketplace({
+      calls,
+      server: ['@acme/tasks'],
+      field: {
+        '@acme/tasks': {
+          extensions: [
+            { type: 'dashboard', alias: 'acme.d', name: 'D', element: 'src/backoffice/d.js' },
+          ],
+          permissions: {
+            'backoffice.code': 'Shows its dashboard',
+            'redirects.read': 'Lists the rules',
+          },
+        },
+      },
+    })
+    const asked = await market.install('@acme/tasks', undefined)
+    expect(asked.needsGrant).toBe(true)
+    expect(asked.permissions?.[0]).toMatchObject({
+      permission: 'backoffice.code',
+      allows: 'Runs in your back office as each person using it',
+      reason: 'Shows its dashboard',
+      warning: expect.stringContaining("Don't install this from a publisher you don't trust"),
+    })
+    const without = await market.install('@acme/tasks', undefined, { grant: ['redirects.read'] })
+    expect(without.needsGrant).toBe(true)
+    expect(calls).toEqual([])
   })
 
   test('a version that asks for more after the listing is removed again', async () => {
@@ -773,7 +811,7 @@ describe('the endpoints', () => {
           versions: {
             '1.2.3': manifest('@acme/tasks', '1.2.3', {
               server: 'serve',
-              schemaVersion: 4,
+              schemaVersion: 5,
               permissions: { 'redirects.read': 'Lists the rules' },
             }),
           },

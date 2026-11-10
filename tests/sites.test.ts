@@ -122,7 +122,7 @@ describe('staging a site as a template', () => {
       {
         package: '@crombolo/simple-redirects',
         id: 'redirects',
-        grant: ['redirects.read', 'redirects.write', 'content.read'],
+        grant: ['backoffice.code', 'redirects.read', 'redirects.write', 'content.read'],
       },
     ])
     const dir = join(into, 'demo', 'harbourstone')

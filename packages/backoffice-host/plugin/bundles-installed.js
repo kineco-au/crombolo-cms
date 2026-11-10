@@ -15,6 +15,8 @@
  */
 import { css, html, nothing, repeat } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
+import { backOfficeCodeBlock, backOfficeCodeStyles } from './bundles-backoffice-code.js'
+import { backOfficeCodeWords, splitBackOfficeCode } from './bundles-backoffice-code-words.js'
 import { carriesTags } from './bundles-carries.js'
 import {
   disableBundle,
@@ -63,6 +65,7 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
     _policy: { state: true },
     _actAs: { state: true },
     _edits: { state: true },
+    _trustsCode: { state: true },
   }
 
   constructor() {
@@ -234,7 +237,10 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
 
   /** What it may do with the site, who approved it, and the button that turns it off or on. */
   #permissions(item) {
-    const asks = item.permissions ?? []
+    // Back-office code first and apart, confirmed on its own before it is granted (story 320).
+    const { code, rest: asks } = splitBackOfficeCode(item.permissions ?? [])
+    const granting = item.status === 'waiting' || item.status === 'not-granted'
+    const confirmed = this._trustsCode === item.packageName
     const approved = item.granted
       ? item.granted.by === "the site's code"
         ? `Developer installed, on ${new Date(item.granted.at).toLocaleDateString()}.`
@@ -243,7 +249,20 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
     return html`
       <h4>What it may do</h4>
       ${
-        asks.length === 0
+        code
+          ? backOfficeCodeBlock(
+              backOfficeCodeWords(code, item.publisher, this.#words(item)),
+              confirmed,
+              granting
+                ? (yes) => {
+                    this._trustsCode = yes ? item.packageName : ''
+                  }
+                : undefined,
+            )
+          : nothing
+      }
+      ${
+        asks.length === 0 && !code
           ? html`<p>Nothing beyond its own data: it asks for no access to the site's content, members or settings.</p>`
           : html`<ul class="asks">
               ${asks.map(
@@ -305,6 +324,7 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
               <uui-button
                 look="primary"
                 label="Grant"
+                ?disabled=${Boolean(code) && !confirmed}
                 .state=${this._busy === item.packageName ? 'waiting' : undefined}
                 @click=${() => this.#grant(item)}></uui-button>`
           : item.on
@@ -440,6 +460,7 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
 
   static styles = [
     signatureStyles,
+    backOfficeCodeStyles,
     css`
     .asks {
       padding-left: 1.25em;

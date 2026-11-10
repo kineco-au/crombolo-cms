@@ -781,8 +781,8 @@ implementation serves Settings → Extensions, the remote protocol and the CLI
 
   | Part | Lands | Runs |
   |---|---|---|
-  | its code (`src/`): the server half and its components | stays in the package | in its own Deno process: routes, events and jobs as calls, components as `render` calls |
-  | its screens (`plugin/`) | stays in the package, served to the browser | in the back office, as the signed-in user |
+  | its server code (`src/server/`): the server half and its components | stays in the package | in its own Deno process: routes, events and jobs as calls, components as `render` calls |
+  | its back-office code (`src/backoffice/`) | built to `.crombolo/extensions/<id>/backoffice/`, and only that build is served (story 320) | in the back office, as the signed-in user, once `backoffice.code` is granted |
   | `schema/`, `nodes/`, `values/`, media, dictionary | applied into the site, then the site's own | nothing; it is data |
   | `styles/`, `scripts/` | copied into the site | in the visitor's browser |
 
@@ -979,7 +979,7 @@ otherwise.
 - **What is signed.** The package digest: SHA-256 over every file in the
   package, in path order, but `provenance.json` (`packageDigest` in
   `server/src/provenance.ts`). It covers what a bundle's own `integrity` does
-  not: `package.json`, and an extension bundle's `plugin/` and `src/`. The
+  not: `package.json`, and an extension bundle's `src/`. The
   signature cannot sign itself, and nothing else is left out. `crombolo bundle
   digest <dir|tgz>` prints it.
 - **How.** Sigstore, keyless, in GitHub Actions. The job's identity token gets
@@ -1424,7 +1424,7 @@ writes through the transfer package's pure writer (`writeBundle`).
 | The two native views | `backoffice-host/plugin/bundles-marketplace.js`, `bundles-installed.js` |
 | The App_Plugins notice | `server/src/extensions-notice.ts` |
 | Server-side bundles | `server/src/bundles.ts`, wired in `server.ts`, `bundles` in `config.ts`, matched to their packages at boot |
-| The redirects bundle | `packages/simple-redirects` — `src/index.ts` and `plugin/` |
+| The redirects bundle | `packages/simple-redirects` — `src/server/index.ts` and `src/backoffice/` |
 
 Adding the migration needed `bun run release:version 0.5.0` first: `v0.4.0` was
 tagged and `tests/migrations.test.ts` asserts `release <= VERSION`, so a
@@ -1548,7 +1548,7 @@ asks for, with nothing imported by the site. Until then, the import in
 export default defineConfig({
   extensions: {
     redirects: {
-      grant: ['redirects.read', 'redirects.write', 'content.read'],
+      grant: ['backoffice.code', 'redirects.read', 'redirects.write', 'content.read'],
       settings: { section: 'content' },
     },
   },
@@ -1760,6 +1760,63 @@ a section of the bundle's own by its manifest alias (`Acme.Section.Design`).
   validated on every node, because its `forms` types are needed where forms
   render and submit (story `095`).
 
+### The layout
+
+Story 320. An extension with code keeps each half in a folder of its own, and the
+CMS holds it to that:
+
+```
+@acme/seo-tools/
+├── package.json             crombolo.extensions, crombolo.server, exports
+└── src/
+    ├── server/              the server half: its entry, its components (312)
+    │   └── index.ts
+    └── backoffice/          its back-office code: what the manifest's entries name
+        └── seo-dashboard.ts
+```
+
+- **`crombolo.schemaVersion: 5`.** An extension at 4 or before is refused at
+  discovery, install and `extension check`, saying to run `crombolo extension
+  migrate <dir>`.
+- **The server half** is the entry its package exports, under `src/server/`. Its
+  process reads `src/server/` and its build, and nothing else of the package.
+- **Back-office code:**
+  - every `element`, `js`, `api` and `loader` its manifest names, and every import
+    map target, is a `.ts` or `.js` file under `src/backoffice/`;
+  - absolute paths and URLs are refused;
+  - an entry that names none, such as a menu item that is a label and an icon, runs
+    no code.
+- **Neither half imports the other's folder.** The build refuses it, naming the file.
+- **`plugin/`, and any other folder under `src/`, is refused,** naming the folder.
+- **The build:** granted back-office code is built with `Bun.build` when first
+  asked for, and again when its files change:
+  - one output per module the manifest names, into
+    `.crombolo/extensions/<id>/backoffice/`;
+  - TypeScript compiled, and its own imports and npm packages bundled;
+  - `@umbraco-cms/*` left as imports, for the back office's import map.
+
+  `/bundles/<package>/<path>` serves only that build, so `src/server/`,
+  `package.json` and the rest of the package are never served. One that cannot be
+  built is left out of the back office, saying why in Installed.
+
+### Moving an extension to the layout
+
+`crombolo extension migrate <dir> --reason "<why its screens need it>"` rewrites a
+schema 4 package in place, and `--dry-run` says what it would do:
+
+- **The server half:** its exported entry, the files it imports and the rest of
+  `src/` move under `src/server/`.
+- **The back-office half:** `plugin/`, each module the manifest names and what it
+  imports move under `src/backoffice/`.
+- **Imports and the manifest:** a relative import that crosses out of a moved folder
+  is rewritten, and so are the manifest, `exports`, `main` and `files`.
+- **The permission:** with back-office code, it asks for `backoffice.code` with the
+  reason given, and never writes a placeholder.
+- **What it refuses:** a file both halves import, or a schema 3 package, is named,
+  and nothing moves.
+- **Signatures:** `provenance.json` is removed, since moving files changes the
+  digest. Sign it again before publishing.
+
 ### Permissions
 
 Stories 222 and 308. An extension's package says what it may do with the site,
@@ -1770,8 +1827,9 @@ each permission with the reason it needs it, and it is held to that.
   "bundleType": "extension",
   "id": "redirects",
   "server": "redirects",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "permissions": {
+    "backoffice.code": "Shows the redirects screen in Settings",
     "redirects.read": "Lists the redirect rules on the Redirects screen",
     "redirects.write": "Saves the rules you add, change and remove there",
     "content.read": "Shows the address of the page each rule sends people to",
@@ -1808,8 +1866,27 @@ each permission with the reason it needs it, and it is held to that.
   - `events.content` is called for content events;
   - `http.outbound` sends to the origins it names;
   - `routes.public` answers routes anyone may call;
-  - `templates` renders components into pages, from story 312.
+  - `templates` renders components into pages, from story 312;
+  - `backoffice.code` runs its back-office code, from story 320: see "Back-office
+    code" below.
 
+- **Back-office code** (story 320). Any back-office code needs `backoffice.code`:
+  - Its screens run in the back office's page as whoever is signed in, with
+    everything that person can do on the site. Unlike the server half, nothing
+    keeps them apart from it: the grant makes the authority visible, and does not
+    take it away.
+  - **Required both ways:** an extension with back-office code that does not ask
+    for it is refused, and so is one that asks for it with none.
+  - **Granted, never implied:** until it is granted, none of its back-office code is
+    built, served or in the back office's manifest.
+  - **Said wherever it is asked for:** in the Marketplace's install panel and
+    Installed, first and apart, as a warning (`BACKOFFICE_CODE_WARNING`). The warning
+    names the publisher and what its signature shows, and its own box must be ticked:
+    "I trust <publisher> to act as anyone signed in to this back office".
+    - `extension install` and `extension grant` print it, and at a terminal ask
+      y/N. From a script, `--grant backoffice.code` is the answer.
+    - The boot logs it for each extension the config grants it.
+    - A remote's grant check names it.
 - **The areas through `api`:** one capability calls the Management API, and the
   CMS's own back-office API, in this process:
   `bundle.api.get('management/api/v1/document/<key>')`, `post`, `put`, `delete`.
@@ -2347,7 +2424,7 @@ const response = await fetch(`${base()}/rules`, {
 
 `base()` is read from `<base href>` rather than hard-coded, because the
 backoffice path is configurable (`CROMBOLO_BACKOFFICE_PATH`) and the plugin path
-moves with it — see `plugin/redirects-client.js`.
+moves with it — see `src/backoffice/redirects-client.js`.
 
 The identity needs no passing: the cookie is the session, the server resolves it
 to a `Principal`, and the same `Principal` is what reaches the handler. There is

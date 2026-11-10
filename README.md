@@ -348,7 +348,8 @@ crombolo/
 │   ├── transfer/                  # content transfer: the bundle format, canonical writer, reader, exporter
 │   ├── remote-conformance/        # opt-in: checks a server against the remote protocol (docs/remote-protocol.md)
 │   ├── simple-redirects/          # opt-in bundle: manage redirects in Settings; the reference example
-│   │                              #    of a bundle with a server half (docs/bundles.md)
+│   │                              #    of a bundle with a server half (docs/bundles.md): its server half in
+│   │                              #    src/server/, its screen in src/backoffice/ (story 320)
 │   ├── backoffice-dist/           # the built Umbraco backoffice; dist/ is generated, upstream-static/ is committed
 │   └── render/                    # the JSX→HTML runtime behind TSX templates, published cache (one view per culture),
 │                                  #    URL and hostname routing, language fallback, the dictionary,

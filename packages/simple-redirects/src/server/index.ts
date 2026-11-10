@@ -20,7 +20,7 @@ import {
   route,
   type ServerBundle,
 } from '@crombolo/extension'
-import manifest from '../package.json' with { type: 'json' }
+import manifest from '../../package.json' with { type: 'json' }
 
 /** What this bundle asks the host for, and all it can reach. */
 const CAPABILITIES = ['redirects', 'documents', 'log'] as const

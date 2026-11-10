@@ -3,11 +3,12 @@
  * manifest, read and validated in one place. docs/bundles.md, story 063.
  */
 import { afterEach, describe, expect, test } from 'bun:test'
-import { rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   CORE_PACKAGE,
   declaresBundle,
+  describePermissions,
   discoverBundles,
   type PackageJson,
   peerRangeProblem,
@@ -33,8 +34,8 @@ const valid = (over: Record<string, unknown> = {}, crombolo: Record<string, unkn
       id: 'acme-tasks',
       name: 'Tasks',
       server: 'tasks',
-      schemaVersion: 3,
-      permissions: [],
+      schemaVersion: 5,
+      permissions: {},
       ...crombolo,
     },
     ...over,
@@ -160,5 +161,82 @@ describe('the peer range', () => {
     expect(
       peerRangeProblem(stubBundlePackage('tasks', { peerRange: 'not a range' }), VERSION),
     ).toBeDefined()
+  })
+})
+
+/** A package directory under `output/` holding these files, for the checks that read it. */
+function packageAt(json: PackageJson, files: Record<string, string>): string {
+  mkdirSync(join(process.cwd(), 'output'), { recursive: true })
+  const dir = mkdtempSync(join(process.cwd(), 'output', 'bundle-layout-'))
+  dirs.push(dir)
+  for (const [path, text] of Object.entries({ 'package.json': JSON.stringify(json), ...files })) {
+    mkdirSync(join(dir, path, '..'), { recursive: true })
+    writeFileSync(join(dir, path), text)
+  }
+  return dir
+}
+
+describe('the layout (story 320)', () => {
+  const screen = { type: 'dashboard', alias: 'Acme.D', name: 'D', element: 'src/backoffice/d.ts' }
+  const withScreen = (permissions: Record<string, string>, extra: Record<string, unknown> = {}) =>
+    valid(
+      { exports: { '.': './src/server/index.ts' } },
+      { extensions: [screen], permissions, ...extra },
+    )
+
+  test('takes server code under src/server and back-office code under src/backoffice', () => {
+    const json = withScreen({ 'backoffice.code': 'Shows its dashboard' })
+    const dir = packageAt(json, {
+      'src/server/index.ts': 'export const tasks = () => ({})',
+      'src/backoffice/d.ts': 'export default class {}',
+    })
+    expect(validateBundlePackage(json, dir)).toEqual([])
+  })
+
+  test('refuses back-office code that does not ask for backoffice.code, and the ask without the code', () => {
+    expect(problemsOf(withScreen({}))).toContain('does not ask for "backoffice.code"')
+    expect(
+      problemsOf(valid({}, { permissions: { 'backoffice.code': 'Shows nothing' } })),
+    ).toContain('has no back-office code')
+  })
+
+  test('refuses a module outside src/backoffice, or one that is not a file in the package', () => {
+    const at = (element: string) =>
+      problemsOf(
+        valid(
+          {},
+          {
+            extensions: [{ ...screen, element }],
+            permissions: { 'backoffice.code': 'Shows its dashboard' },
+          },
+        ),
+      )
+    expect(at('plugin/d.js')).toContain('under src/backoffice/')
+    expect(at('/umbraco/elsewhere.js')).toContain('not a file under src/backoffice/')
+    expect(at('https://cdn.example.com/d.js')).toContain('not a file under src/backoffice/')
+    expect(at('src/backoffice/../server/index.ts')).toContain('not a file under src/backoffice/')
+  })
+
+  test('refuses an export outside src/server, and the layout before schema 5', () => {
+    expect(problemsOf(valid({ exports: { '.': './src/index.ts' } }))).toContain(
+      'must be under src/server/, not src/index.ts',
+    )
+    const dir = packageAt(valid(), { 'plugin/d.js': '', 'src/helpers/x.ts': '' })
+    expect(problemsOf(valid(), dir)).toContain('it holds plugin/')
+    expect(problemsOf(valid(), dir)).toContain('it holds src/helpers')
+  })
+
+  test('refuses schema 4, naming the command that moves it', () => {
+    const problems = problemsOf(valid({}, { schemaVersion: 4 }))
+    expect(problems).toContain('bundle schema 4')
+    expect(problems).toContain('crombolo extension migrate')
+  })
+
+  test('says what backoffice.code grants, with its warning', () => {
+    const [described] = describePermissions([
+      { permission: 'backoffice.code', reason: 'Shows its dashboard' },
+    ])
+    expect(described?.allows).toBe('Runs in your back office as each person using it')
+    expect(described?.warning).toContain("Don't install this from a publisher you don't trust")
   })
 })

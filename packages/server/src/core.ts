@@ -5,7 +5,13 @@
  * "Running a cluster".
  */
 import type { ServerEvent } from '@crombolo/api-management/domain'
-import { createBackOfficePaths, createExtensionRegistry } from '@crombolo/backoffice-host/registry'
+import {
+  BACKOFFICE_CODE,
+  BACKOFFICE_CODE_WARNING,
+  BUNDLE_PERMISSIONS,
+  createBackOfficePaths,
+  createExtensionRegistry,
+} from '@crombolo/backoffice-host/registry'
 import { mediaJobHandlers } from '@crombolo/content'
 import { ObjectTypes } from '@crombolo/core'
 import {
@@ -284,6 +290,16 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
     // import wires; anything else waits for a grant recorded here.
     const byCode = wiredByImport.has(pkg.id) || entryCovers(pkg, entry)
     if (!byCode) continue
+    // The one grant that is not confined, said each boot (story 320).
+    if (declaredPermissions(pkg).includes(BACKOFFICE_CODE))
+      log.warning(
+        "{package} is granted back-office code by the site's code: {permission}. {warning}",
+        {
+          package: pkg.packageName,
+          permission: BUNDLE_PERMISSIONS[BACKOFFICE_CODE],
+          warning: BACKOFFICE_CODE_WARNING,
+        },
+      )
     const bundle = { id: pkg.id }
     // Recorded where the database is written, and audited when it changes.
     if (

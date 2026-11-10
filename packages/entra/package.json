@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/entra",
-  "version": "0.58.1",
+  "version": "0.59.0",
   "description": "Edit a Microsoft Entra sign-in from the Crombolo backoffice: tenant, app credentials and group mappings, over the provider the site declares in code.",
   "license": "MIT",
   "author": "Crombolo",
@@ -27,12 +27,11 @@
   },
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/server/index.ts"
   },
   "files": [
-    "plugin",
-    "src",
-    "NOTICE"
+    "NOTICE",
+    "src"
   ],
   "publishConfig": {
     "access": "public"
@@ -42,7 +41,7 @@
     "id": "entra",
     "name": "Microsoft Entra",
     "server": "entraSettings",
-    "schemaVersion": 4,
+    "schemaVersion": 5,
     "settings": {
       "section": {
         "label": "Where the Entra settings are",
@@ -55,6 +54,7 @@
       }
     },
     "permissions": {
+      "backoffice.code": "Shows the Microsoft Entra sign-in settings screen",
       "identityProviders.read": "Shows the Microsoft Entra sign-in settings on its screen",
       "identityProviders.write": "Saves the Entra settings an administrator changes there"
     },
@@ -77,7 +77,7 @@
         "type": "workspace",
         "alias": "Crombolo.Workspace.Entra",
         "name": "Microsoft Entra Workspace",
-        "element": "plugin/entra-workspace.js",
+        "element": "src/backoffice/entra-workspace.js",
         "meta": {
           "entityType": "crombolo-entra"
         }
@@ -85,7 +85,7 @@
     ]
   },
   "peerDependencies": {
-    "@crombolo/crombolo": ">=0.58.1"
+    "@crombolo/crombolo": ">=0.59.0"
   },
   "dependencies": {
     "@crombolo/extension": "workspace:*"

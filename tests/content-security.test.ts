@@ -85,7 +85,12 @@ describe('the back office', () => {
       config: {
         siteDir: dir,
         componentsDir: join(dir, 'components'),
-        extensions: { reports: { grant: ['http.outbound'], origins: ['https://api.acme.test'] } },
+        extensions: {
+          reports: {
+            grant: ['backoffice.code', 'http.outbound'],
+            origins: ['https://api.acme.test'],
+          },
+        },
       },
     })
     open.push(h)
@@ -129,7 +134,12 @@ describe('the back office', () => {
       config: {
         siteDir: dir,
         componentsDir: join(dir, 'components'),
-        extensions: { reports: { grant: ['http.outbound'], origins: ['https://api.acme.test'] } },
+        extensions: {
+          reports: {
+            grant: ['backoffice.code', 'http.outbound'],
+            origins: ['https://api.acme.test'],
+          },
+        },
         host: {
           origin: 'https://console.example.com',
           signingKey: 'a key of at least thirty-two bytes, kept by the host',

@@ -435,8 +435,8 @@ describe('anonymise rules', () => {
         bundleType: 'extension',
         id: TASKS_ID,
         server: 'tasks',
-        schemaVersion: 3,
-        permissions: [],
+        schemaVersion: 5,
+        permissions: {},
         anonymise,
       },
     })

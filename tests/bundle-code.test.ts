@@ -40,14 +40,14 @@ function vendorBundle(site: string, id: string, peerRange = '>=0.1.0'): void {
       name: `${id}-bundle`,
       version: '1.0.0',
       type: 'module',
-      main: 'index.js',
-      crombolo: { bundleType: 'extension', id, server: id, schemaVersion: 3, permissions: [] },
+      main: 'src/server/index.js',
+      crombolo: { bundleType: 'extension', id, server: id, schemaVersion: 5, permissions: {} },
       peerDependencies: { '@crombolo/crombolo': peerRange },
     }),
   )
   write(
     site,
-    `vendor/${id}/index.js`,
+    `vendor/${id}/src/server/index.js`,
     `export const ${id} = () => ({ id: '${id}', section: 'content', capabilities: [], routes: [{ method: 'GET', path: 'ping', handler: () => new Response('ok') }] })\n`,
   )
 }
@@ -141,7 +141,7 @@ describe('which files are the code', () => {
     expect(problems).toEqual([])
     expect(paths).toContain('src/records.ts')
     expect(paths).toContain('src/logo.png')
-    expect(paths).toContain('vendor/fx/index.js')
+    expect(paths).toContain('vendor/fx/src/server/index.js')
     for (const always of ['package.json', 'bun.lock', 'crombolo.config.ts'])
       expect(paths).toContain(always)
   })
@@ -271,7 +271,7 @@ describe('installing the code', () => {
     const result = await installBundleCode(bundle, target)
     expect(result.problems).toEqual([])
     expect(existsSync(join(target, 'src/records.ts'))).toBe(true)
-    expect(existsSync(join(target, 'node_modules/fx-bundle/index.js'))).toBe(true)
+    expect(existsSync(join(target, 'node_modules/fx-bundle/src/server/index.js'))).toBe(true)
     expect(existsSync(join(target, 'node_modules/@crombolo'))).toBe(false)
   }, 60_000)
 

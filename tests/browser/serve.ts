@@ -182,9 +182,10 @@ writeFileSync(
     crombolo: {
       bundleType: 'extension',
       id: 'test-side-panel',
-      schemaVersion: 4,
+      schemaVersion: 5,
       // Its screens may reach this origin, and only this one (story 313).
       permissions: {
+        'backoffice.code': 'Shows its notes beside the page',
         'http.outbound': { reason: 'Reads its notes', origins: ['https://notes.crombolo.test'] },
       },
       extensions: [
@@ -192,15 +193,16 @@ writeFileSync(
           type: 'sidePanel',
           alias: 'Test.SidePanel.Notes',
           name: 'Notes',
-          element: 'panel.js',
+          element: 'src/backoffice/panel.js',
           meta: { label: 'Notes', icon: 'icon-notepad', defaultWidth: 360, toggle: true },
         },
       ],
     },
   }),
 )
+mkdirSync(join(sidePanel, 'src', 'backoffice'), { recursive: true })
 writeFileSync(
-  join(sidePanel, 'panel.js'),
+  join(sidePanel, 'src', 'backoffice', 'panel.js'),
   `class TestNotesPanel extends HTMLElement {
   count = 0
   connectedCallback() {
@@ -247,10 +249,11 @@ const server = await createServer(
       allowPasswordReset: true,
       // Seals the site's own signing key, which Trusted signers lists (story 316).
       secretKey: 'browser-suite-secret-key-that-is-long-enough-0123',
-      // It asks for no permissions; the site's code grants it, so it runs (story 310).
+      // The site's code grants what it asks for, its back-office code included, so it runs
+      // (stories 310, 320).
       extensions: {
         'test-side-panel': {
-          grant: ['http.outbound'],
+          grant: ['backoffice.code', 'http.outbound'],
           origins: ['https://notes.crombolo.test'],
         },
       },

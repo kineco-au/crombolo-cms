@@ -14,7 +14,7 @@ ask for is [`bundles.md`](bundles.md), "Permissions".
 | An installed extension the CMS starts (granted, listed under `extensions` or granted in Installed) | A Deno process per extension |
 | An extension the site's `crombolo.config.ts` still imports | The Bun process: importing a module runs it, so it is the site's own code, unconfined. The boot warns, and says to list it under `extensions` instead |
 | An extension's components (story 312) | Its Deno process: each is a `render` call, and its HTML goes in the page |
-| An extension's screens | The back office, in the browser (story 313) |
+| An extension's screens | The back office, in the browser, as whoever is signed in (story 313). Built from `src/backoffice/` and served only from that build, once `backoffice.code` is granted (story 320) |
 
 ## Starting one
 

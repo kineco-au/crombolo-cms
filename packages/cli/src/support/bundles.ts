@@ -1,6 +1,11 @@
 import { userInfo } from 'node:os'
 import { resolve } from 'node:path'
 import {
+  BACKOFFICE_CODE,
+  BACKOFFICE_CODE_WARNING,
+  BUNDLE_PERMISSIONS,
+} from '@crombolo/backoffice-host/registry'
+import {
   type BundleActor,
   type BundleAdmin,
   bootstrapDatabase,
@@ -10,6 +15,7 @@ import {
   useSchemaStore,
 } from '@crombolo/server'
 import { CliError } from '../errors.ts'
+import { confirm, interactive } from './prompt.ts'
 import { connectRemote, needEnvironment } from './remote.ts'
 import { siteConfig } from './site.ts'
 
@@ -103,4 +109,23 @@ export function grantGaps(asked: readonly string[], granted: readonly string[]) 
     missing: asked.filter((p) => !granted.includes(p)),
     extra: granted.filter((p) => !asked.includes(p)),
   }
+}
+
+/**
+ * Before back-office code is granted (story 320): the warning, always, and at a
+ * terminal a question that defaults to no. Off a terminal, naming
+ * `backoffice.code` with --grant is the answer.
+ */
+export async function confirmBackOfficeCode(
+  say: (line: string) => void,
+  name: string,
+  grant: readonly string[],
+): Promise<void> {
+  if (!grant.includes(BACKOFFICE_CODE)) return
+  say(`  warning  ${BUNDLE_PERMISSIONS[BACKOFFICE_CODE]}. ${BACKOFFICE_CODE_WARNING}`)
+  if (!interactive()) return
+  await confirm(`Grant back-office code to ${name}? (y/N)`, {
+    bypass: `--grant ${BACKOFFICE_CODE} from a script`,
+    declined: `Nothing was granted to ${name}.`,
+  })
 }

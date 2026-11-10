@@ -22,6 +22,7 @@ import {
   type BackOfficePaths,
   collectManifests,
   type ExtensionRegistry,
+  type InstalledExtension,
   toResponseModels,
 } from '@crombolo/backoffice-host'
 import type { EventSink } from '@crombolo/content'
@@ -142,13 +143,13 @@ function createPreviewPort(config: CromboloConfig, inApp?: PreviewPort['inApp'])
 
 function createManifestPort(
   paths: BackOfficePaths,
-  extensions: ExtensionRegistry,
+  extensions: () => Promise<readonly InstalledExtension[]>,
   omit: readonly string[],
 ): ManifestPort {
   return {
-    list: (visibility) =>
+    list: async (visibility) =>
       toResponseModels(
-        collectManifests(paths, extensions.list(), { omit }).all,
+        collectManifests(paths, await extensions(), { omit }).all,
         paths.cacheBustHash,
         visibility,
       ),
@@ -368,6 +369,8 @@ export interface DepsOptions {
   paths: BackOfficePaths
   /** The site's installed npm extensions, which contribute their manifests. */
   extensions: ExtensionRegistry
+  /** Those extensions with their back-office code built (story 320); `extensions.list()` when absent. */
+  readyExtensions?: () => Promise<readonly InstalledExtension[]>
   /** Omitted only by tests that exercise the contract without a database. */
   db?: Db
   /** Where document operations announce what they did; nothing hears them when absent. */
@@ -433,7 +436,7 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
     // Without an app to preview in, Preview in app contributes no extension.
     manifests: createManifestPort(
       options.paths,
-      options.extensions,
+      options.readyExtensions ?? (async () => options.extensions.list()),
       options.previewInApp ? [] : [APP_PREVIEW_MANIFEST_ID],
     ),
     localization: createLocalizationPort(

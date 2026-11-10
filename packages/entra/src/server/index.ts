@@ -16,7 +16,7 @@ import {
   route,
   type ServerBundle,
 } from '@crombolo/extension'
-import manifest from '../package.json' with { type: 'json' }
+import manifest from '../../package.json' with { type: 'json' }
 
 const CAPABILITIES = ['identityProviders', 'log'] as const
 

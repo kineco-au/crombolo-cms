@@ -20,6 +20,7 @@ import {
   VERSION,
 } from '@crombolo/server'
 import { grantGaps, parseSpec } from '../packages/cli/src/support/bundles.ts'
+import { toCurrentLayout } from './support/bundles.ts'
 import { dialectUnderTest } from './support/db.ts'
 import { type Harness, ORIGIN, signedInServer, signInAsGroup, V1 } from './support/harness.ts'
 
@@ -44,7 +45,7 @@ const temp = (name: string) => {
 
 const SERVER = {
   server: 'crm',
-  schemaVersion: 4,
+  schemaVersion: 5,
   permissions: { 'content.read': 'Links each contact to the page they came from' },
 }
 
@@ -55,7 +56,8 @@ const manifest = (name: string, version: string, field: Record<string, unknown> 
   crombolo: {
     bundleType: 'extension',
     id: name.replace(/[^a-z0-9]+/g, '-').replace(/^-+/, ''),
-    extensions: [{ type: 'dashboard', alias: `${name}.d`, name, element: 'd.js' }],
+    // A menu entry that runs no code, so it asks for nothing (story 320).
+    extensions: [{ type: 'menuItem', alias: `${name}.m`, name, meta: { label: name } }],
     ...field,
   },
 })
@@ -72,6 +74,7 @@ function addPackage(root: string, name: string, field: Record<string, unknown>) 
   const dir = join(root, 'node_modules', name)
   mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, 'package.json'), JSON.stringify(manifest(name, '1.0.0', field)))
+  toCurrentLayout(dir)
   const json = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as {
     dependencies: Record<string, string>
   }
