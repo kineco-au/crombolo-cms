@@ -488,6 +488,51 @@ export default function ShowcasePage({ model, nav }: PageProps<Page>) {
 its content type, so `model.value('title')` is a `string` and a misspelt alias
 is a type error.
 
+## An extension's components
+
+An installed extension may bring components of its own (story 312). They stay in
+its package and render in its own process, never in the site's: the page, its
+layouts and the site's own components render here, and only the extension's
+component crosses.
+
+- **As a page's template:** its content types name them by its id,
+  `components = ["brochures/brochure"]`, and the template picker lists them under
+  the extension's name, read-only. The page renders inside the site layout chosen
+  for it when it was installed: its `layout` setting, changed in Bundles →
+  Installed or locked in `crombolo.config.ts`. With none, the page renders on its
+  own.
+- **In a site component:** `<Extension use="<id>/<component>" />` puts one in
+  place. It is given the page's props and these, and its children render here
+  first and go to it as HTML.
+
+```tsx
+import { Extension } from '@crombolo/crombolo'
+
+export default function Page() {
+  return (
+    <main>
+      <Extension use="brochures/card" heading="This season">
+        <p>Our pick of the range.</p>
+      </Extension>
+    </main>
+  )
+}
+```
+
+- **As a block:** an extension's component named `blocks/<element alias>` renders
+  that element type's blocks where the site has no component of its own.
+- **The site's own wins:** a component in the site's `components/` with the same
+  path is used instead.
+- **It reads the page live,** over the channel: `model`, `nav`, `media()`,
+  `menu()`. Each read is a call to the site, so an extension's component awaits
+  what it reads, and a value put straight into its markup may be a promise.
+- **It renders nothing** where the extension is not granted `templates`, or its
+  render fails or takes too long. The page still renders, and the site's log says
+  why. A page with a signed-in member and an extension's component is not shared
+  between visitors.
+- **It carries no browser code:** an extension's component using islands,
+  `'use client'` or deferred parts is refused when the extension starts.
+
 ## Server code, coming from Next.js
 
 A page can read the request, load data as the visitor and end early with a

@@ -350,7 +350,8 @@ describe('the Crombolo demo, as a template', () => {
     })
 
   test('names nothing of Umbraco’s events or community', () => {
-    const banned = /codegarden|umbraco|our\.umbraco|hq\b/i
+    // Saying where Crombolo comes from is the one mention the home page makes.
+    const banned = /codegarden|(?<!inspirado en )umbraco(?!-inspired)|our\.umbraco|hq\b/i
     // Media types are generated, and their aliases are the CMS's own.
     const found = textFiles(SITE)
       .filter((file) => !file.includes('media-types'))

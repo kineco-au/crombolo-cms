@@ -126,6 +126,10 @@ const SECTIONS = (): BundleFile[] => [
   { path: 'scripts/brochure.js', text: 'console.log("brochure")\n' },
 ]
 
+/** What an extension may carry: no components, which are its code (story 312). */
+const EXTENSION_SECTIONS = (): BundleFile[] =>
+  SECTIONS().filter((file) => !file.path.startsWith('components/'))
+
 describe('what a bundle carries', () => {
   test('a content-only bundle carries no sections', async () => {
     const { h } = await site()
@@ -502,12 +506,12 @@ const refusal = (run: () => unknown): string => {
 describe('a bundle is found as a package', () => {
   test('a package directory installs in place, and the site does not come to depend on it', async () => {
     const { h, root, config, db } = await site()
-    const dir = await packageAt(h, outputDir('kit-'), SECTIONS())
+    const dir = await packageAt(h, outputDir('kit-'), EXTENSION_SECTIONS())
     const before = readFileSync(join(root, 'package.json'), 'utf8')
     const result = await installBundleContent(db, config, { bundle: dir, backupTaken: true })
     expect(result.problems).toEqual([])
     expect(result.runId).toBeDefined()
-    expect(existsSync(join(root, 'components', 'brochure.tsx'))).toBe(true)
+    expect(existsSync(join(root, 'css', 'brochure.css'))).toBe(true)
     expect(readFileSync(join(root, 'package.json'), 'utf8')).toBe(before)
     expect(result.bundle.package).toEqual({ name: '@acme/kit', version: '1.4.0' })
   })
@@ -525,13 +529,13 @@ describe('a bundle is found as a package', () => {
 
   test('a dependency installs by its package name', async () => {
     const { h, root, config, db } = await site({ '@acme/kit': '^1.4.0' })
-    await packageAt(h, join(root, 'node_modules', '@acme', 'kit'), SECTIONS())
+    await packageAt(h, join(root, 'node_modules', '@acme', 'kit'), EXTENSION_SECTIONS())
     const result = await installBundleContent(db, config, {
       bundle: '@acme/kit',
       backupTaken: true,
     })
     expect(result.runId).toBeDefined()
-    expect(existsSync(join(root, 'components', 'brochure.tsx'))).toBe(true)
+    expect(existsSync(join(root, 'css', 'brochure.css'))).toBe(true)
   })
 
   test('a name the site does not depend on is refused, naming how to add it', async () => {
@@ -657,7 +661,10 @@ describe('an environment’s export', () => {
   })
 })
 
-describe("a bundle's value migrations are code (story 300)", () => {
+/** A site package: an extension may not carry value migrations at all (story 312). */
+const SITE_KIT: BundlePackageInfo = { ...KIT, bundleType: 'site', private: true }
+
+describe("a site package's value migrations are code (story 300)", () => {
   /** A migration whose module, when imported, leaves a marker file. */
   const stamping = (marker: string): BundleFile => ({
     path: 'schema/migrations/stamp.ts',
@@ -674,7 +681,7 @@ export default {
   test('checking it runs none of them, and lists each as running at install', async () => {
     const { h, config, db } = await site()
     const marker = join(outputDir('marker-'), 'ran')
-    const dir = await packageAt(h, outputDir('kit-'), [...SECTIONS(), stamping(marker)])
+    const dir = await packageAt(h, outputDir('kit-'), [...SECTIONS(), stamping(marker)], SITE_KIT)
     const checked = await checkBundleContent(db, config, { bundle: dir })
     expect(checked.sections?.migrations).toEqual(['schema/migrations/stamp.ts'])
     expect(existsSync(marker)).toBe(false)
@@ -683,7 +690,7 @@ export default {
   test('installing them needs install code asked for, and a site that installs code', async () => {
     const { h, root, config, db } = await site()
     const marker = join(outputDir('marker-'), 'ran')
-    const dir = await packageAt(h, outputDir('kit-'), [...SECTIONS(), stamping(marker)])
+    const dir = await packageAt(h, outputDir('kit-'), [...SECTIONS(), stamping(marker)], SITE_KIT)
     const migration = join(root, 'schema', 'migrations', 'stamp.ts')
 
     const unasked = await installBundleContent(db, config, { bundle: dir, backupTaken: true })
@@ -711,7 +718,7 @@ export default {
   test("the site's own content files bring theirs as they always have", async () => {
     const { h, root, config, db } = await site()
     const marker = join(outputDir('marker-'), 'ran')
-    const dir = await packageAt(h, outputDir('kit-'), [...SECTIONS(), stamping(marker)])
+    const dir = await packageAt(h, outputDir('kit-'), [...SECTIONS(), stamping(marker)], SITE_KIT)
     const local = await installBundleContent(db, config, {
       bundle: dir,
       backupTaken: true,

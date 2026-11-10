@@ -1,6 +1,6 @@
 /**
  * Bundles, a Settings tool (story 238): Marketplace, Installed and Created as
- * tabs, each at an address of its own under `dashboard/bundles/`. The views
+ * tabs, each at an address of its own under `dashboard/extensions/`. The views
  * are the ones Umbraco's Packages section showed, which this replaces.
  */
 import { css, html } from '@umbraco-cms/backoffice/external/lit'
@@ -14,7 +14,7 @@ export const BUNDLE_TABS = [
 ]
 
 /** Where the tool is, relative to the back office. */
-export const BUNDLES_PATH = 'section/settings/dashboard/bundles'
+export const BUNDLES_PATH = 'section/settings/dashboard/extensions'
 
 export default class CromboloBundlesToolElement extends UmbLitElement {
   static properties = { _routerPath: { state: true }, _active: { state: true } }

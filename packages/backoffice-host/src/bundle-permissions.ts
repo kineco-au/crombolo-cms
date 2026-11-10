@@ -39,7 +39,8 @@ export const BUNDLE_PERMISSIONS = {
     'Act for a signed-in member who uses it: what it adds is theirs, and it sees only what they may see',
   actAs: 'Act for a back-office user, as chosen when it is granted, within what that user may do',
   'events.content': 'Be told when pages are saved, published, moved or deleted',
-  'http.outbound': 'Send requests from the server to the addresses it names',
+  'http.outbound':
+    'Send requests from the server, and from its screens in your browser, to the addresses it names',
   'routes.public': 'Answer addresses on the site that anyone may call',
   templates: "Render its own components into the site's pages",
 } as const
@@ -195,7 +196,8 @@ export function isSchema3Field(
 /** One setting an extension declares (story 310): what the back office shows and the config may lock. */
 export interface ExtensionSetting {
   label: string
-  type: 'text' | 'number' | 'boolean' | 'choice'
+  /** `layout`: one of the site's components, the layout its page templates sit in (story 312). */
+  type: 'text' | 'number' | 'boolean' | 'choice' | 'layout'
   /** With `choice`: the values it may take. */
   values?: string[]
   default?: string | number | boolean
@@ -219,8 +221,8 @@ export function readSettings(
     if (!SETTING_KEY.test(key)) problems.push(`the setting "${key}" is not a camelCase key`)
     if (!setting || typeof setting.label !== 'string' || !setting.label.trim())
       problems.push(`the setting "${key}" has no label`)
-    if (!['text', 'number', 'boolean', 'choice'].includes(setting?.type as string))
-      problems.push(`the setting "${key}" is text, number, boolean or choice`)
+    if (!['text', 'number', 'boolean', 'choice', 'layout'].includes(setting?.type as string))
+      problems.push(`the setting "${key}" is text, number, boolean, choice or layout`)
     if (
       setting?.type === 'choice' &&
       (!Array.isArray(setting.values) || setting.values.length === 0)
@@ -242,6 +244,10 @@ export function settingValueProblem(setting: ExtensionSetting, value: unknown): 
         : `${setting.label} is a number`
     case 'boolean':
       return typeof value === 'boolean' ? undefined : `${setting.label} is yes or no`
+    case 'layout':
+      return typeof value === 'string' && /^[A-Za-z0-9_-]+(\/[A-Za-z0-9_-]+)*$/.test(value)
+        ? undefined
+        : `${setting.label} is one of the site's layouts`
     case 'choice':
       return typeof value === 'string' && (setting.values ?? []).includes(value)
         ? undefined

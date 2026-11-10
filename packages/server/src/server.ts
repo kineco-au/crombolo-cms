@@ -47,9 +47,11 @@ import {
   serializeCookie,
 } from '@crombolo/auth'
 import {
+  backOfficePolicy,
   collectManifests,
   type createBackOfficePaths,
   isSpaRoute,
+  newNonce,
   renderBackOfficeShell,
   renderDeviceShell,
   renderLoginShell,
@@ -164,15 +166,15 @@ import {
 import { createPublishedContentSource, loadDraftNode } from './adapters/documents.ts'
 import type { Approvals } from './approvals.ts'
 import { handleApprovalsApi } from './approvals-api.ts'
-import { type BundleActor, createBundleAdmin } from './bundle-admin.ts'
+import { type BundleActor, createBundleAdmin, settingsIn } from './bundle-admin.ts'
 import { actAsChoice, actingPrincipalOf } from './bundle-api.ts'
-import type { BundleGrants } from './bundle-grants.ts'
+import { type BundleGrants, declaredOrigins } from './bundle-grants.ts'
 import { CommandError, installBundleContent } from './bundle-install.ts'
 import { BUNDLES_CHANGED_EVENT, type BundleReload, createBundleReloader } from './bundle-reload.ts'
 import { bundleRouteGroups } from './bundles.ts'
 import { busyResponse } from './busy.ts'
 import { handleComponentTemplates } from './component-templates-api.ts'
-import { checkTypes, listEmailTemplates } from './components.ts'
+import { checkTypes, listEmailTemplates, siteLayouts } from './components.ts'
 import {
   type CromboloConfig,
   listeningBodyLimit,
@@ -246,6 +248,7 @@ import {
   stopTelemetry,
 } from './telemetry.ts'
 import { handleTransferAction, pendingTransfers } from './transfer-dashboard.ts'
+import { createTrustedSignersAdmin } from './trusted-signers-admin.ts'
 import { changeUrlOptions, urlSettingEditable } from './url-settings.ts'
 import type { JobsStatus } from './worker-watch.ts'
 
@@ -273,7 +276,7 @@ import {
   runStage,
 } from './middleware.ts'
 import { CORE_JOB_OWNER, type JobRunner } from './owner-jobs.ts'
-import { callerAddress } from './rate-limit.ts'
+import { callerAddress, RateLimiter } from './rate-limit.ts'
 import { syncConfiguredRedirects } from './redirects.ts'
 import { createRoutes, type DeclaredRoute, SITE_ROUTE_OWNER, siteRouteProblems } from './routes.ts'
 import { componentAliasesIn, importSchema, type SchemaBoot, watchSchema } from './schema.ts'
@@ -469,6 +472,7 @@ export async function createServer(
     registry: config.npmRegistry,
     keyword: config.packageKeyword,
     marketplaceUrl: config.marketplaceUrl,
+    componentsDir: config.componentsDir,
     extensions: { ...extensions, invalidate: () => void bundleReloader.reload() },
     siteDir: config.siteDir,
     wired: () => bundles?.mounted.map((bundle) => bundle.id) ?? [],
@@ -1195,6 +1199,7 @@ export async function createServer(
       content,
       contentTypeAlias: draft.contentTypeAlias,
       published: Boolean(published),
+      ...(published ? { live: published.withValueContext(await cache.valueContext(culture)) } : {}),
       culture,
     }
   }
@@ -1269,6 +1274,36 @@ export async function createServer(
   // Asked at boot, so the first AVIF request does not wait on it.
   void canEncodeAvif()
   const publicMedia = mediaStore.publicUrl?.('media/file')
+
+  /** At most 30 reports a minute from one address. */
+  const cspReports = new RateLimiter({ max: 30, windowMs: 60_000 })
+
+  /**
+   * A back-office page, with its content security policy (story 313): its
+   * inline scripts carry a nonce made for it, and it may reach the site and the
+   * origins the extensions that are on declare in `http.outbound`.
+   */
+  const backOfficePage = (body: string): Response => {
+    const nonce = newNonce()
+    const connect = extensions
+      .bundles()
+      .bundles.filter((pkg) => bundleGrants.isOn(pkg.id))
+      .flatMap((pkg) => declaredOrigins(pkg))
+    return new Response(body.replaceAll('<script', `<script nonce="${nonce}"`), {
+      headers: {
+        'content-type': 'text/html; charset=utf-8',
+        'content-security-policy': backOfficePolicy({
+          nonce,
+          connect,
+          media: publicMedia ? [publicMedia] : [],
+          frames: [config.seo.publicUrl, config.applicationUrl].filter(
+            (url): url is string => typeof url === 'string',
+          ),
+          reportUri: `${paths.pluginPath}/api/csp-report`,
+        }),
+      },
+    })
+  }
   if (publicMedia)
     log.warning(
       'Media files are also served from {where}. Protected files are always sent by this site and never from there, but anyone with a file’s address there can open it: keep protected files in a store nothing public serves.',
@@ -1290,6 +1325,10 @@ export async function createServer(
     paths,
     siteSettingsFindings: () => cache.settingsFindings(),
     failedExtensions: () => core.failedExtensions,
+    lostLayouts: () => {
+      const layouts = siteLayouts(config.componentsDir)
+      return core.extensionComponents.layouts().filter((entry) => !layouts.includes(entry.layout))
+    },
     hiddenByRoutes: async () => {
       const snapshot = await cache.snapshot()
       const hidden: Array<{ route: string; owner: string; page: string; url: string }> = []
@@ -1439,9 +1478,10 @@ export async function createServer(
   const hostTokenPath = `${paths.pluginPath}/api/host-token`
   const contentQueryPath = `${paths.pluginPath}/api/content-query`
   const bundleInstallPaths = new Set(
-    ['install', 'uninstall', 'disable', 'enable', 'grant', 'settings'].map(
-      (action) => `${paths.pluginPath}/api/bundles/${action}`,
-    ),
+    ['install', 'uninstall', 'disable', 'enable', 'grant', 'settings'].flatMap((action) => [
+      `${paths.pluginPath}/api/extensions/${action}`,
+      `${paths.pluginPath}/api/bundles/${action}`,
+    ]),
   )
   /** Per node: ten a minute for each person, three hundred in all. */
   const hostTokens = new AttemptLimiter({ max: 10, maxAll: 300, windowMs: 60_000 })
@@ -1939,12 +1979,34 @@ export async function createServer(
     }
 
     // Non-contract, signed-in: every component, for a page's template picker.
+    // Story 313: what the browser blocked on a back-office page, to the site's log.
+    // Taken without signing in, as browsers send it; small, and rate limited.
+    if (pathname === `${paths.pluginPath}/api/csp-report` && request.method === 'POST') {
+      if (cspReports.take(clientAddress(request).ipAddress ?? 'unknown') !== undefined)
+        return new Response(null, { status: 429 })
+      const text = await request.text().catch(() => '')
+      if (text.length > 10_000) return new Response(null, { status: 413 })
+      try {
+        const parsed = JSON.parse(text) as { 'csp-report'?: Record<string, unknown> }
+        const report = parsed['csp-report'] ?? {}
+        const blocked = String(report['blocked-uri'] ?? '')
+        log.warning('The back office blocked {blocked}, under {directive}', {
+          blocked: /^https?:/.test(blocked) ? new URL(blocked).origin : blocked.slice(0, 40),
+          directive: String(report['violated-directive'] ?? report['effective-directive'] ?? ''),
+        })
+      } catch {
+        return new Response(null, { status: 400 })
+      }
+      return new Response(null, { status: 204 })
+    }
+
     if (pathname === `${paths.pluginPath}/api/templates`) {
       const principal = await authenticate(request)
       if (!principal) return new Response('Unauthorized', { status: 401 })
       return handleComponentTemplates(request, principal, {
         db,
         componentsDir: config.componentsDir,
+        extensionComponents: () => core.extensionComponents.listed(),
       })
     }
 
@@ -2047,11 +2109,16 @@ export async function createServer(
      * marketplace is an iframe — so this is ours, and it answers to the
      * Packages section exactly as the operations beside it would.
      */
-    if (pathname.startsWith(`${paths.pluginPath}/api/bundles/`)) {
+    // Extensions (`/api/extensions/`), and the same at `/api/bundles/`, as it was.
+    const extensionsApi = [
+      `${paths.pluginPath}/api/extensions/`,
+      `${paths.pluginPath}/api/bundles/`,
+    ].find((prefix) => pathname.startsWith(prefix))
+    if (extensionsApi) {
       const principal = await authenticate(request)
       if (!principal) return new Response('Unauthorized', { status: 401 })
       if (!hasSection(principal, 'settings')) return new Response('Forbidden', { status: 403 })
-      const action = pathname.slice(`${paths.pluginPath}/api/bundles/`.length)
+      const action = pathname.slice(extensionsApi.length)
 
       if (action === 'marketplace' && request.method === 'GET') {
         return Response.json({
@@ -2145,6 +2212,7 @@ export async function createServer(
           applyContent?: unknown
           grant?: unknown
           actAs?: unknown
+          settings?: unknown
         }
         const name = typeof body.name === 'string' ? body.name : ''
         const actor = actorOf(principal, request)
@@ -2158,6 +2226,7 @@ export async function createServer(
                 grant: Array.isArray(body.grant)
                   ? body.grant.filter((p): p is string => typeof p === 'string')
                   : [],
+                settings: settingsIn(body.settings),
               })
             : await bundleAdmin.uninstall(actor, name)
         log.info('{user} {action} the package {name}: {outcome}', {
@@ -2199,6 +2268,33 @@ export async function createServer(
           values,
         )
         return Response.json(outcome, { status })
+      }
+
+      // Story 316: the keys and builds this site trusts to sign site bundles, administrators only.
+      const signerId = /^signers\/([0-9a-f-]{36})$/i.exec(action)?.[1]
+      if (action === 'signers' || signerId) {
+        if (!principal.isAdmin)
+          return Response.json(
+            { ok: false, message: 'Only an administrator manages trusted signers.' },
+            { status: 403 },
+          )
+        const signers = createTrustedSignersAdmin(db, config)
+        const actor = { ...actorOf(principal, request), source: 'request' as const }
+        if (action === 'signers' && request.method === 'GET')
+          return Response.json({ items: await signers.list() })
+        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
+        const outcome =
+          action === 'signers' && request.method === 'POST'
+            ? await signers.add(actor, body)
+            : signerId && request.method === 'PUT'
+              ? await signers.rename(actor, signerId, body.name)
+              : signerId && request.method === 'DELETE'
+                ? await signers.remove(actor, signerId)
+                : undefined
+        if (!outcome) return new Response('Method Not Allowed', { status: 405 })
+        return outcome.ok
+          ? Response.json(outcome)
+          : Response.json({ ok: false, message: outcome.message }, { status: outcome.status })
       }
 
       // Story 309: granting an installed extension what it asks for, administrators only.
@@ -2409,7 +2505,7 @@ export async function createServer(
         schemaDir: config.schemaDir,
         writable: config.schemaWritable,
         formTypes: formTypes.types,
-        componentAliases: () => componentAliasesIn(config.componentsDir),
+        componentAliases: () => componentAliasesIn(config.componentsDir, config.siteDir),
         onChanged: config.schemaStore
           ? async () => {
               await publishSchema(config.schemaStore as SchemaStore, config.schemaDir)
@@ -2945,7 +3041,7 @@ export async function createServer(
         })
       }
       const { importmap } = collectManifests(paths, onExtensions())
-      return html(
+      return backOfficePage(
         renderDeviceShell(paths, importmap, {
           title: config.siteName,
           userCode: url.searchParams.get('user_code') ?? undefined,
@@ -2969,7 +3065,7 @@ export async function createServer(
           },
         })
       const { importmap } = collectManifests(paths, onExtensions())
-      return html(
+      return backOfficePage(
         renderRemoteApprovalShell(paths, importmap, {
           title: config.siteName,
           job: url.searchParams.get('job') ?? '',
@@ -2979,7 +3075,7 @@ export async function createServer(
 
     if (pathname === `${paths.backOfficePath}/login`) {
       const { importmap } = collectManifests(paths, onExtensions())
-      return html(
+      return backOfficePage(
         renderLoginShell(paths, importmap, {
           defaultUiLanguage: config.defaultUiLanguage,
           keepUserLoggedIn: config.keepUserLoggedIn,
@@ -3009,7 +3105,7 @@ export async function createServer(
 
     if (isSpaRoute(paths.backOfficePath, pathname)) {
       const { importmap } = collectManifests(paths, onExtensions())
-      return html(
+      return backOfficePage(
         renderBackOfficeShell(paths, importmap, {
           defaultUiLanguage: config.defaultUiLanguage,
           keepUserLoggedIn: config.keepUserLoggedIn,
@@ -4005,10 +4101,6 @@ export async function createServer(
       await stopTelemetry()
     },
   }
-}
-
-function html(body: string): Response {
-  return new Response(body, { headers: { 'content-type': 'text/html; charset=utf-8' } })
 }
 
 /**

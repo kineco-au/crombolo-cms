@@ -114,6 +114,8 @@ export {
   Blocks,
   type Context,
   createContext,
+  Extension,
+  type ExtensionProps,
   externalSignInUrl,
   Form,
   formAction,

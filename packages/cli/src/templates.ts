@@ -171,6 +171,8 @@ export interface ScaffoldOptions {
   bundle?: { path: string; flags?: readonly string[] }
   /** `--next`: a Next.js front end in `web/`, whatever the template says. */
   next?: boolean
+  /** The site's `CROMBOLO_SECRET_KEY`; a random one when unset. */
+  secretKey?: string
   /** Secrets for a front end's `.env` files; random ones when unset. */
   secrets?: NextSecrets
 }
@@ -402,12 +404,19 @@ export default await crombolo(config)
 
   const secrets = next ? (options.secrets ?? randomSecrets()) : undefined
   if (next && secrets) files.push(...nextFiles(siteName, secrets))
-  const nextEnv = secrets
-    ? `CROMBOLO_DELIVERY_API_KEY=${secrets.apiKey}
+  // Every site has a secret key from the start: it seals the site's secrets and
+  // its signing key, which signs the site bundles it makes (story 316).
+  const keyEnv = `# Seals this site's secrets and the key that signs its site bundles. Keep it secret.
+CROMBOLO_SECRET_KEY=${options.secretKey ?? randomSecretKey()}
+`
+  const nextEnv = `${keyEnv}${
+    secrets
+      ? `CROMBOLO_DELIVERY_API_KEY=${secrets.apiKey}
 CROMBOLO_REVALIDATE_SECRET=${secrets.revalidate}
 `
-    : ''
-  if (nextEnv && !options.postgres) files.push({ path: '.env', text: nextEnv })
+      : ''
+  }`
+  if (!options.postgres) files.push({ path: '.env', text: nextEnv })
   if (options.postgres)
     files.push({
       path: '.env',
@@ -427,6 +436,13 @@ CROMBOLO_POSTGRES_URL=postgres://crombolo:crombolo@localhost:5432/${packageNameF
 }
 
 /** Secrets a front end and its CMS share, made fresh for each site. */
+/** A secret key long enough for `CROMBOLO_SECRET_KEY`. */
+function randomSecretKey(): string {
+  const bytes = new Uint8Array(32)
+  crypto.getRandomValues(bytes)
+  return Buffer.from(bytes).toString('base64url')
+}
+
 function randomSecrets(): NextSecrets {
   const secret = () => `${crypto.randomUUID()}${crypto.randomUUID()}`.replaceAll('-', '')
   return { apiKey: secret(), revalidate: secret(), session: secret() }

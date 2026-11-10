@@ -1,5 +1,5 @@
 /**
- * Stories 163 and 167: `crombolo bundle build --check`, `bundle apply`,
+ * Stories 163 and 167: `crombolo extension build --check`, `bundle apply`,
  * `bundle export --source` and `start --bundle .`,
  * through the CLI against a SQLite site of its own. What a seed compiles to,
  * and how it applies, is tested on both dialects in seed.test.ts.

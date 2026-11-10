@@ -110,6 +110,7 @@ export async function applyToRemote(io: Io, source: string, flags: ApplyFlags, b
         dryRun: flags['dry-run'] === true,
         publish: flags.publish === true,
         replaceFiles: flags['replace-files'] === true,
+        allowDowngrade: flags['allow-downgrade'] === true,
         label: flags.label,
         resolutions: input.resolutions,
         resolveAll: input.resolveAll,

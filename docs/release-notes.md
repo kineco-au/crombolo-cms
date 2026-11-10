@@ -6,6 +6,8 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.57.0 — 2026-11-10
+
 ### Features
 
 - **A site package says what it is (306).** Every bundle states its `bundleType`: `"site"`,
@@ -63,11 +65,67 @@ point at `docs/stories/`.
   - Extensions are written against the new `@crombolo/extension` SDK.
     `@crombolo/crombolo/bundle` still works.
 
+- **An extension's components render in its own process (312).** An extension's components stay
+  in its package and render apart from the site; the page, its layouts and the site's components
+  render as before.
+  - Its content types name them by its id, `brochures/brochure`, and the template picker lists them
+    under its name, read-only.
+  - `<Extension use="brochures/card" />` puts one in a site component.
+  - Its page templates sit in a site layout picked when it is installed, or later in its settings.
+  - It needs the `templates` permission. A render that fails leaves its place empty, and the page
+    still renders.
+  - Components an earlier install copied into the site are named by `bundle list` and Installed,
+    to review.
+  - The Bundle Editor makes two kinds of bundle: an extension for other sites, whose templates and
+    partial views render in its own process, or a site bundle to move this site, applied with
+    `site apply`.
+
+- **A site bundle is applied only from a signer you trust (316).** Every site bundle a site makes
+  is signed with its own key, and in production a site applies one only when a key or a CI build
+  it trusts signed it.
+  - Settings → Trusted signers lists them, as GitHub lists SSH keys: this site's own key, keys of
+    people and other sites, and CI builds. Administrators add, rename and remove them, and each
+    change is audited.
+  - `crombolo keys create` makes a key of your own; `site build --sign-with` signs with it.
+    `crombolo keys trust`, `keys untrust` and `keys trusted` manage the list, and `crombolo site key`
+    shows this site's key.
+  - An older version than one already applied from the same signer is refused, unless
+    `--allow-downgrade`, which the audit log records.
+
+- **The back office reaches only the addresses extensions declared (313).** Every back-office page
+  sends a content security policy: it talks to the site, and to the addresses granted extensions
+  declare, and the browser blocks the rest. What it blocks is written to the site's log. An
+  extension's `http.outbound` now says it covers its screens in your browser too.
+
+- **Extensions, by name.** An npm package that adds to a site is an extension everywhere: Settings
+  → Extensions (`dashboard/extensions`, the old address redirecting), its words, and
+  `crombolo extension install`, `uninstall`, `list`, `grant`, `settings`, `disable`, `enable`,
+  `purge`, `check` and `build`. The old `crombolo bundle …` names say where each went. A bundle is
+  the file format, and a site bundle a whole site's package.
+  - Extensions are published with the `crombolo-extension` keyword. The Marketplace still finds
+    those with `crombolo-bundle`.
+- **Settings, tidied.**
+  - Every tool opens with a title section under its breadcrumb, and Umbraco's own tools, such as
+    Webhooks, have shorter headers to match.
+  - Search & sharing and Search indexes are one tool, Search, with a tab for each.
+  - Relations is under Site, Trusted signers has a description, and Redirects reads "Configure the
+    site's redirect rules".
+  - CI access says when pull and push are off, and how to turn them on.
+  - Trusted signers has **Add my key**, with the steps to make one.
+- **Every box in the back office**, and the Settings cards, heads its title on a pale
+  brown band. A page's Search & sharing
+  view is one card: the result as a search engine shows it, with the page's name, then its
+  searchable property values: a value nothing sets says "Not configured", and an empty one shows
+  `-`.
+- **The demo site** says what Crombolo does for editors and for developers.
+
 ### Migrations
 
 - 065 `AddTransferRunBundleType`: a nullable `bundle_type` column on `content_transfer_run`.
 - 066 `AddBundleGrantReach`: `origins` and `act_as` on `bundle_grant`.
 - 067 `AddExtensionSettings`: the `extension_setting` table, an extension's saved settings.
+- 068 `AddBundleKind`: a `kind` column on `bundle`, what a Bundle Editor definition builds.
+- 069 `AddTrustedSigners`: the `trusted_signer` table, and `signed_by` on `content_transfer_run`.
 
 ### Upgrade notes
 
@@ -109,6 +167,23 @@ point at `docs/stories/`.
     - An extension can no longer offer `middleware`, nor add form field types until story 312.
   - **Imports:** a server half the site's config still imports runs inside the site, unconfined,
     as before. List it under `extensions` instead.
+- **Breaking, extensions (312):** an extension's payload may not carry `components/` or value
+  migrations (`schema/migrations/*.ts`): both are code. Its author moves its components into the
+  package, declares them in the factory's `components`, names them in its schema as
+  `<id>/<component>`, and asks for `templates`. Its components carry no browser code.
+- **Breaking, site bundles in production (316):** a production site applies a site bundle only
+  when a signer it trusts signed it. Before upgrading production:
+  - set `CROMBOLO_SECRET_KEY` on each site that makes site bundles, so it has a key to sign with;
+  - on production, trust the sites and people that make its bundles: `crombolo site key` on
+    staging, then `crombolo keys trust Staging "<its line>" --site` on production, or Settings →
+    Trusted signers;
+  - a site that deploys from CI with `--sign` adds its repository as a trusted CI build, or lists
+    it in `CROMBOLO_BUNDLE_SOURCES`, which is now read as one.
+- **Extensions (313):** an extension's screens may reach only the origins it declares in
+  `http.outbound`. One that calls another service from the browser adds that origin, with a reason.
+- **The CLI and extensions:** `crombolo bundle install` and the other extension commands are now
+  `crombolo extension …`; scripts change the word. `bundle sign`, `verify` and `digest` stay.
+  Publishers add the `crombolo-extension` keyword.
 - **Breaking, the CLI (310):** `bundle install --wire` is gone. Importing an extension's server
   half in `crombolo.config.ts` still works, with a warning at boot: replace it with an entry under
   `extensions`, `{ redirects: { grant: ['redirects.read', 'redirects.write'] } }`, and drop the

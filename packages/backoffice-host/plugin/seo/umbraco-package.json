@@ -8,11 +8,12 @@
     {
       "type": "dashboard",
       "alias": "Crombolo.Dashboard.Seo",
-      "name": "Crombolo Search & Sharing Dashboard",
-      "element": "/crombolo-plugin/seo/dashboard.js",
+      "name": "Crombolo Search Dashboard",
+      "element": "/crombolo-plugin/search-tool.js",
+      "overwrites": ["Umb.Dashboard.ExamineManagement"],
       "weight": 10,
       "meta": {
-        "label": "Search & sharing",
+        "label": "Search",
         "pathname": "search-and-sharing"
       },
       "conditions": [

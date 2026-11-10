@@ -252,7 +252,10 @@ describe('creating a site, end to end through the CLI', () => {
     expect(readFileSync(join(siteDir('bare'), 'crombolo.config.ts'), 'utf8')).toContain(
       "siteName: 'Bare Site'",
     )
-    expect(existsSync(join(siteDir('bare'), '.env'))).toBe(false)
+    // A secret key from the start, and nothing else in its environment (story 316).
+    expect(readFileSync(join(siteDir('bare'), '.env'), 'utf8')).toMatch(
+      /^CROMBOLO_SECRET_KEY=[\w-]{43}$/m,
+    )
   })
 
   test('--postgres writes the environment a Postgres site needs, and nothing else changes', () => {

@@ -74,17 +74,17 @@ test('Settings opens on cards, and each tool or tree opens from one', async ({ p
   await page.getByText('Content Types', { exact: true }).first().click()
   await expect(page.getByTestId(CODE_TREE)).toBeHidden()
 
-  // Bundles is a tool here (story 238), opening on its first tab.
+  // Extensions is a tool here (story 238), opening on its first tab.
   await page.goto(SETTINGS)
-  await landing.getByRole('link', { name: /Bundles/ }).click()
-  await expect(page).toHaveURL(/\/section\/settings\/dashboard\/bundles\/marketplace$/)
+  await landing.getByRole('link', { name: /^Extensions/ }).click()
+  await expect(page).toHaveURL(/\/section\/settings\/dashboard\/extensions\/marketplace$/)
   await expect(page.locator('crombolo-bundles-tool uui-tab')).toHaveText([
     'Marketplace',
     'Installed',
     'Created',
   ])
   const trail = page.locator('crombolo-breadcrumb')
-  await expect(trail).toContainText('Bundles')
+  await expect(trail).toContainText('Extensions')
 
   // A tool that was in the Advanced tree opens without one.
   await page.goto(`${SETTINGS}/workspace/logviewer/view/overview`)

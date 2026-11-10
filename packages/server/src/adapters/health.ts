@@ -203,6 +203,8 @@ export interface HealthCheckOptions {
   bundleProblems?: () => Array<{ packageName: string; problems: string[]; untyped?: unknown }>
   /** Granted extensions that could not start, and why (story 311). */
   failedExtensions?: () => readonly { id: string; reason: string }[]
+  /** Extensions whose `layout` setting names a layout the site no longer has (story 312). */
+  lostLayouts?: () => readonly { id: string; layout: string }[]
 }
 
 const result = (
@@ -458,6 +460,13 @@ export function createDiagnosticsPort(options: HealthCheckOptions): DiagnosticsP
             found.untyped
               ? `${found.packageName} is turned off: it does not say it is an extension. Install a version that does.`
               : `${found.packageName} is not used: ${found.problems.join('; ')}.`,
+          ),
+        )
+      for (const lost of options.lostLayouts?.() ?? [])
+        results.push(
+          result(
+            'Warning',
+            `The extension ${lost.id}'s layout setting names "${lost.layout}", which the site no longer has, so its pages render on their own. Choose another in Bundles → Installed.`,
           ),
         )
       for (const failed of options.failedExtensions?.() ?? [])

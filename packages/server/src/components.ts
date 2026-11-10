@@ -540,3 +540,10 @@ export function assetScaffold(kind: AssetKind, name: string): string {
     ? `/* ${name} — linked from a view with <link rel="stylesheet" href="/css/${name}"> */\n`
     : `// ${name} — loaded by a view with <script src="/scripts/${name}"></script>\n`
 }
+
+/** The site's components a `layout` setting may name: all but blocks (story 312). */
+export const siteLayouts = (componentsDir: string): string[] =>
+  listComponents(componentsDir)
+    .map((component) => component.alias)
+    .filter((alias) => !alias.startsWith('blocks/'))
+    .sort()

@@ -207,7 +207,9 @@ bunx crombolo push live --dry-run
 - **A bundle** carries the schema, the views and the content files (export the
   pages made by command first, with `content export`), and
   installs into another site (`crombolo start --bundle … --publish`, or
-  `bundle install`).
+  `site apply`). It is signed with this site's key, and the other site applies it
+  once it trusts that key: `crombolo keys trust <name> --bundle … --site`
+  (story 316).
 - **`push`** replaces a remote environment with this site
   ([`remotes`](../sites/crombolo/docs/guides/remotes.md)).
 

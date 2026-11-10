@@ -213,7 +213,7 @@ describe('the section Umbraco calls Packages', () => {
   test('a bundle is found on npm by the keyword that names it', async () => {
     // The client shows the keyword in its empty state, so the two must agree or
     // the screen tells you to publish under a keyword nothing searches for.
-    expect(EXTENSION_KEYWORD).toBe('crombolo-bundle')
+    expect(EXTENSION_KEYWORD).toBe('crombolo-extension')
     const marketplace = await Bun.file(
       'packages/backoffice-host/plugin/bundles-marketplace.js',
     ).text()

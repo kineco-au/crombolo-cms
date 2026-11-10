@@ -418,7 +418,7 @@ describe('bundle apply on this machine (story 060)', () => {
 
     const other = cli(site, ['site', 'apply', await contentBundle(site), '--dry-run'])
     expect(other.code, other.out).toBe(ERROR_KINDS.refused.exitCode)
-    expect(other.out).toContain('only signed bundles')
+    expect(other.out).toContain('applies only site bundles signed')
   }, 60_000)
 })
 

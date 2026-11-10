@@ -5,6 +5,7 @@
  */
 
 import { existsSync, watch } from 'node:fs'
+import { discoverBundles } from '@crombolo/backoffice-host/registry'
 import {
   CACHE_INSTRUCTION_CHANNEL,
   type CacheInstructionKind,
@@ -108,16 +109,42 @@ export class SchemaBootError extends Error {
 
 /**
  * The components a schema may name as templates: every one of them, at any
- * depth, keyed by the path that is its alias.
+ * depth, keyed by the path that is its alias. With the site's directory, an
+ * installed extension's too, as `<id>/<name>` (story 312): its own components
+ * are known only once it has started, so any name under its id is accepted, and
+ * one it does not offer is logged when a page renders it.
  */
-export function componentAliasesIn(componentsDir: string): Set<string> {
-  return new Set(listComponents(componentsDir).map((component) => component.alias))
+export function componentAliasesIn(componentsDir: string, siteDir?: string): ReadonlySet<string> {
+  const files = new Set(listComponents(componentsDir).map((component) => component.alias))
+  if (!siteDir) return files
+  const ids = new Set(
+    discoverBundles(siteDir)
+      .bundles.filter((pkg) => pkg.bundleType === 'extension' && pkg.carries.server)
+      .map((pkg) => pkg.id),
+  )
+  return new ComponentAliases(files, ids)
+}
+
+/** The site's component files, and any name under an installed extension's id. */
+class ComponentAliases extends Set<string> {
+  readonly #extensions: ReadonlySet<string>
+  constructor(files: Iterable<string>, extensions: ReadonlySet<string>) {
+    super(files)
+    this.#extensions = extensions
+  }
+  override has(alias: string): boolean {
+    const slash = alias.indexOf('/')
+    return (
+      super.has(alias) ||
+      (slash > 0 && slash < alias.length - 1 && this.#extensions.has(alias.slice(0, slash)))
+    )
+  }
 }
 
 export function syncOptionsFor(config: CromboloConfig): SyncOptions {
   return {
     mode: config.development ? 'development' : 'production',
-    componentAliases: componentAliasesIn(config.componentsDir),
+    componentAliases: componentAliasesIn(config.componentsDir, config.siteDir),
     formTypes: formTypesFor(config),
   }
 }

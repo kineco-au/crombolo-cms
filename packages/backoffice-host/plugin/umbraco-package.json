@@ -192,12 +192,31 @@
     },
     {
       "type": "dashboard",
+      "alias": "Crombolo.Dashboard.TrustedSigners",
+      "name": "Crombolo Trusted Signers",
+      "element": "/crombolo-plugin/trusted-signers.js",
+      "meta": {
+        "label": "Trusted signers",
+        "pathname": "trusted-signers"
+      },
+      "conditions": [
+        {
+          "alias": "Umb.Condition.SectionAlias",
+          "match": "Umb.Section.Settings"
+        },
+        {
+          "alias": "Umb.Condition.CurrentUser.IsAdmin"
+        }
+      ]
+    },
+    {
+      "type": "dashboard",
       "alias": "Crombolo.Dashboard.Bundles",
       "name": "Crombolo Bundles",
       "element": "/crombolo-plugin/bundles-tool.js",
       "meta": {
-        "label": "Bundles",
-        "pathname": "bundles"
+        "label": "Extensions",
+        "pathname": "extensions"
       },
       "conditions": [
         {

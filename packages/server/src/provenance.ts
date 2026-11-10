@@ -13,6 +13,14 @@ import { bundleFromJSON, type SerializedBundle } from '@sigstore/bundle'
 import { X509Certificate } from '@sigstore/core'
 import { TrustedRoot } from '@sigstore/protobuf-specs'
 import { toSignedEntity, toTrustMaterial, Verifier } from '@sigstore/verify'
+import {
+  type KeyPair,
+  type PublicKey,
+  readPublicKey,
+  signedStatement,
+  signWith,
+  verifiedBy,
+} from './signing-keys.ts'
 
 /** The file in a package that holds its signature, and the one file the digest leaves out. */
 export const PROVENANCE_FILE = 'provenance.json'
@@ -67,13 +75,22 @@ export interface ProvenanceLinks {
   log: string | null
 }
 
-/** `provenance.json`. */
+/** A key's signature (story 316): its public line, over the digest, name and version. */
+export interface KeySignatureFile {
+  publicKey: string
+  signature: string
+  name: string
+  version: string
+}
+
+/** `provenance.json`: a Sigstore signature from CI, a key's, or both. */
 export interface ProvenanceFile {
   format: 1
   digest: string
-  signature: SerializedBundle
-  source: ProvenanceSource
-  links: ProvenanceLinks
+  signature?: SerializedBundle
+  source?: ProvenanceSource
+  links?: ProvenanceLinks
+  key?: KeySignatureFile
 }
 
 /**
@@ -85,10 +102,24 @@ export type ProvenanceState = 'signed' | 'unsigned' | 'invalid' | 'unchecked' | 
 export interface ProvenanceResult {
   state: ProvenanceState
   digest?: string
+  /** The CI build that signed it, by Sigstore. */
   source?: ProvenanceSource
   links?: ProvenanceLinks
+  /** The key that signed it (story 316). */
+  key?: PublicKey
+  /** The package it is, from its own signed `package.json`, for the downgrade check. */
+  package?: { name: string; version: string }
   /** Why a signature was not accepted, in words a person can act on. */
   reason?: string
+}
+
+/** A package's `provenance.json`, when it has one that reads. */
+function readProvenance(dir: string): ProvenanceFile | undefined {
+  try {
+    return JSON.parse(readFileSync(join(dir, PROVENANCE_FILE), 'utf8')) as ProvenanceFile
+  } catch {
+    return undefined
+  }
 }
 
 /** Every file a package's digest covers: all of it but its signature, installs and history. */
@@ -113,14 +144,71 @@ function packageFiles(dir: string): string[] {
  * integrity does not: `package.json` and an extension bundle's code.
  */
 export function packageDigest(dir: string): string {
+  return digestOfFiles(
+    packageFiles(dir).map((path) => ({ path, bytes: readFileSync(join(dir, path)) })),
+  )
+}
+
+/** The same digest, of files held in memory: a package not yet written out. */
+export function digestOfFiles(files: readonly { path: string; bytes: Uint8Array }[]): string {
   const hasher = new Bun.CryptoHasher('sha256')
-  for (const path of packageFiles(dir)) {
-    hasher.update(path)
+  for (const file of files
+    .filter((entry) => entry.path !== PROVENANCE_FILE)
+    .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))) {
+    hasher.update(file.path)
     hasher.update('\0')
-    hasher.update(readFileSync(join(dir, path)))
+    hasher.update(file.bytes)
     hasher.update('\n')
   }
   return `sha256-${hasher.digest('hex')}`
+}
+
+/** A package's name and version, from its `package.json`. */
+function packageOf(dir: string): { name: string; version: string } | undefined {
+  try {
+    const json = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as {
+      name?: unknown
+      version?: unknown
+    }
+    return typeof json.name === 'string' && typeof json.version === 'string'
+      ? { name: json.name, version: json.version }
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * A key's signature over a package's files (story 316), as `provenance.json`
+ * holds it; a Sigstore signature already there is kept beside it.
+ */
+export function keySignatureOver(
+  files: readonly { path: string; bytes: Uint8Array }[],
+  pair: KeyPair,
+  existing?: ProvenanceFile,
+): ProvenanceFile {
+  const json = files.find((file) => file.path === 'package.json')
+  const pkg = json
+    ? (JSON.parse(new TextDecoder().decode(json.bytes)) as { name?: string; version?: string })
+    : {}
+  if (!pkg.name || !pkg.version) throw new Error('A bundle is signed once it is a package.')
+  const digest = digestOfFiles(files)
+  if (existing?.digest && existing.digest !== digest)
+    throw new Error('The bundle changed after its CI signature: sign it with its key first.')
+  return {
+    ...(existing ?? {}),
+    format: 1,
+    digest,
+    key: {
+      publicKey: pair.publicKey.line,
+      signature: signWith(
+        pair.privateKey,
+        signedStatement({ digest, name: pkg.name, version: pkg.version }),
+      ),
+      name: pkg.name,
+      version: pkg.version,
+    },
+  }
 }
 
 const hexOf = (digest: string) => digest.replace(/^sha256-/, '')
@@ -189,8 +277,15 @@ export const refName = (ref: string): string => ref.replace(/^refs\/(tags|heads)
 export function describeProvenance(result: ProvenanceResult): string {
   switch (result.state) {
     case 'signed': {
-      const source = result.source as ProvenanceSource
-      return `Signed: built from github.com/${source.repository} at ${refName(source.ref)} (${source.commit.slice(0, 7)})`
+      const source = result.source
+      const built = source
+        ? `built from github.com/${source.repository} at ${refName(source.ref)} (${source.commit.slice(0, 7)})`
+        : undefined
+      const key = result.key
+        ? `signed by ${result.key.comment || 'a key'} (${result.key.fingerprint})`
+        : undefined
+      const said = [built, key].filter(Boolean).join(', and ')
+      return `Signed: ${said}`
     }
     case 'unsigned':
       return 'Not signed'
@@ -237,7 +332,17 @@ export function repositoryVisibility(): 'public' | 'private' | 'internal' | unde
  * job needs `id-token: write`; Sigstore turns its identity token into a
  * short-lived certificate naming the repository, ref, commit and workflow.
  */
-export async function signPackage(dir: string, options: SignOptions = {}): Promise<ProvenanceFile> {
+/** What a Sigstore signing writes: its source and links always there. */
+export type SigstoreProvenance = ProvenanceFile & {
+  signature: SerializedBundle
+  source: ProvenanceSource
+  links: ProvenanceLinks
+}
+
+export async function signPackage(
+  dir: string,
+  options: SignOptions = {},
+): Promise<SigstoreProvenance> {
   if (Bun.env.GITHUB_ACTIONS !== 'true' || !Bun.env.ACTIONS_ID_TOKEN_REQUEST_URL)
     throw new Error(
       'A bundle is signed in GitHub Actions, by a job with `permissions: id-token: write`: run `crombolo bundle sign` there.',
@@ -252,7 +357,10 @@ export async function signPackage(dir: string, options: SignOptions = {}): Promi
   const signature = await attest(statement(digest), IN_TOTO)
   const source = sourceOf(signature)
   if (!source) throw new Error('The signature Sigstore returned names no GitHub repository.')
-  const file: ProvenanceFile = {
+  // A key's signature already there is over the same digest, and kept (story 316).
+  const existing = readProvenance(dir)
+  const file: SigstoreProvenance = {
+    ...(existing?.digest === digest && existing.key ? { key: existing.key } : {}),
     format: 1,
     digest,
     signature,
@@ -338,11 +446,33 @@ export async function verifyProvenanceWith(
   } catch {
     return invalid(`${PROVENANCE_FILE} is not JSON`)
   }
-  if (provenance.format !== 1 || !provenance.signature)
+  if (provenance.format !== 1 || (!provenance.signature && !provenance.key))
     return invalid(`${PROVENANCE_FILE} is not a format this release reads`)
   const digest = packageDigest(dir)
   if (provenance.digest !== digest)
     return invalid('the bundle has changed since it was signed', digest)
+  const pkg = packageOf(dir)
+
+  // A key's signature (story 316), checked on its own terms.
+  let key: PublicKey | undefined
+  if (provenance.key) {
+    const read = readPublicKey(provenance.key.publicKey)
+    if ('problem' in read) return invalid(`its key is not one: ${read.problem}`, digest)
+    if (
+      !pkg ||
+      provenance.key.name !== pkg.name ||
+      provenance.key.version !== pkg.version ||
+      !verifiedBy(
+        read,
+        signedStatement({ digest, name: pkg.name, version: pkg.version }),
+        provenance.key.signature,
+      )
+    )
+      return invalid('the key signature does not check out', digest)
+    key = read
+  }
+  if (!provenance.signature)
+    return { state: 'signed', digest, key, ...(pkg ? { package: pkg } : {}) }
 
   let check = seams.verifySignature
   if (!check) {
@@ -403,7 +533,14 @@ export async function verifyProvenanceWith(
         `${PROVENANCE_FILE} says ${key} ${claimed?.[key] ?? '(none)'}, and the certificate says ${source[key]}`,
         digest,
       )
-  return { state: 'signed', digest, source, links: linksFor(source, provenance.signature) }
+  return {
+    state: 'signed',
+    digest,
+    source,
+    links: linksFor(source, provenance.signature),
+    ...(key ? { key } : {}),
+    ...(pkg ? { package: pkg } : {}),
+  }
 }
 
 export type SignaturePolicy = 'optional' | 'required'
@@ -439,7 +576,9 @@ export function provenanceProblem(
     return policy.signatures === 'required'
       ? 'this site takes only signed bundles (CROMBOLO_BUNDLE_SIGNATURES=required); the producer signs it with `crombolo bundle sign` in GitHub Actions'
       : undefined
-  const source = result.source as ProvenanceSource
+  const source = result.source
+  // A bundle signed by a key alone is a site bundle's matter (story 316).
+  if (!source) return undefined
   if (policy.sources.length > 0 && !policy.sources.some((entry) => sourceAllowed(source, entry)))
     return `it was built from github.com/${source.repository} at ${refName(source.ref)}, and this site takes signed bundles only from ${policy.sources.join(', ')} (CROMBOLO_BUNDLE_SOURCES)`
   return undefined
@@ -479,11 +618,38 @@ export async function verifyPackage(
 }
 
 /** Signs a package directory, or a `.tgz` in place with `provenance.json` added to it. */
-export async function signPath(path: string, options: SignOptions = {}): Promise<ProvenanceFile> {
+export async function signPath(
+  path: string,
+  options: SignOptions = {},
+): Promise<SigstoreProvenance> {
   if (!isTarball(path)) return signPackage(path, options)
   const { writeNpmTarball } = await import('./tar.ts')
   return withUnpacked(path, async (dir) => {
     const signed = await signPackage(dir, options)
+    const entries = [...packageFiles(dir), PROVENANCE_FILE].map((file) => ({
+      path: file,
+      bytes: new Uint8Array(readFileSync(join(dir, file))),
+    }))
+    writeFileSync(path, writeNpmTarball(entries))
+    return signed
+  })
+}
+
+/** Signs a package directory, or a `.tgz` in place, with a key (story 316). */
+export async function signPathWithKey(path: string, pair: KeyPair): Promise<ProvenanceFile> {
+  const sign = (dir: string) => {
+    const files = packageFiles(dir).map((file) => ({
+      path: file,
+      bytes: new Uint8Array(readFileSync(join(dir, file))),
+    }))
+    const signed = keySignatureOver(files, pair, readProvenance(dir))
+    writeFileSync(join(dir, PROVENANCE_FILE), `${JSON.stringify(signed, null, 2)}\n`)
+    return signed
+  }
+  if (!isTarball(path)) return sign(path)
+  const { writeNpmTarball } = await import('./tar.ts')
+  return withUnpacked(path, async (dir) => {
+    const signed = sign(dir)
     const entries = [...packageFiles(dir), PROVENANCE_FILE].map((file) => ({
       path: file,
       bytes: new Uint8Array(readFileSync(join(dir, file))),

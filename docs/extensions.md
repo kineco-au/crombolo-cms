@@ -13,6 +13,7 @@ ask for is [`bundles.md`](bundles.md), "Permissions".
 | The CMS, its database connections, its secrets | The Bun process, as before |
 | An installed extension the CMS starts (granted, listed under `extensions` or granted in Installed) | A Deno process per extension |
 | An extension the site's `crombolo.config.ts` still imports | The Bun process: importing a module runs it, so it is the site's own code, unconfined. The boot warns, and says to list it under `extensions` instead |
+| An extension's components (story 312) | Its Deno process: each is a `render` call, and its HTML goes in the page |
 | An extension's screens | The back office, in the browser (story 313) |
 
 ## Starting one
@@ -81,6 +82,35 @@ channel.
   extension reads it, and a response's as the extension writes it. A route that
   hands its own request to `media.create` sends it back by reference, unread.
 - **`site()`** is not offered: an extension reads content through `bundle.api`.
+
+## Components
+
+Story 312. An extension's factory declares its components as it declares its
+routes, `components: { brochure, card }`, each a render function or a module with
+a `default` and, for a page template, the `layout` it suggests. They are built
+into the same file as its server half.
+
+- **What renders where:** the page, its layouts and the site's components render
+  in the CMS. When the render reaches one the extension owns (`<id>/<name>` as a
+  page's template, `blocks/<alias>` as a block's, or `<Extension use>`), that one
+  component is a `render` call (`extension-components.ts`), and its HTML goes in
+  its place. The renderer finds it where the site has no component of that path
+  (`Renderer`'s `extensionComponents`).
+- **The page, live:** its props cross as any call's context does. A page's
+  `model`, its values and `nav` are lent by reference: their methods are calls
+  back to the CMS, and an object passed back (`nav.children(model)`) arrives as
+  itself. Each lent function runs in the render's own async context, so what
+  marks a page personal still does. `searchParams` is asked for only when read.
+- **The layout:** a page template sits in the site layout its `layout` setting
+  names, a setting of type `layout` the install panel and `bundle install
+  --layout` offer, preselecting the extension's suggestion when the site has it.
+  Without one, the layout the component suggests is tried, and failing that the
+  page renders on its own.
+- **`templates`:** without it, its components render nothing, and the log says
+  why.
+- **Refused at build:** browser code (`'use client'`, `'use deferred'`), and
+  importing any of the CMS's packages but `@crombolo/extension`,
+  `@crombolo/crombolo/bundle`, `@crombolo/common` and the JSX runtime.
 
 ## Its own tables
 

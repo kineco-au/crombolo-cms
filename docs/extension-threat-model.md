@@ -44,14 +44,14 @@ Status: **covered**, **partly** (a gap is named), or **open**.
 
 | # | Threat | Today | Gap |
 |---|---|---|---|
-| T1 | **Reading server secrets**: `process.env`, `.env`, the secret key | **Covered (311)** for a server half the CMS starts: its Deno process has no environment and reads only its package, build and data folder | An extension's templates still render in the CMS until story 312; a server half the site imports runs in the CMS |
+| T1 | **Reading server secrets**: `process.env`, `.env`, the secret key | **Covered (311, 312)** for what the CMS starts: its Deno process has no environment and reads only its package, build and data folder | A server half the site imports runs in the CMS |
 | T2 | **Going around the API to the database**: opening the SQLite file, importing `@crombolo/data`, `RESET ROLE` out of its own Postgres schema | **Covered (311).** It holds no connection; its queries are run by the CMS on its own tables' connection, one row statement at a time, with `ATTACH`, role changes and `set_config` refused | A server half the site imports holds the CMS's connection |
 | T3 | **Calling the host API beyond its permissions** | **Covered (309).** Every capability call is checked against the grant row | — |
 | T4 | **Turning itself on, or widening its permissions in an upgrade, without consent** | **Covered (309, 310).** It runs only while its grant covers what its installed version asks for | — |
-| T5 | **Writing the site's files**: config, `package.json`, `.env`, components | **Partly.** A `code/` section needs install code, and an extension may not carry one (306). Its server half may write only its data folder (311) | Its components land in `components/` unasked, until story 312 |
-| T6 | **Running server code through templates** | **Open.** An extension's components run in-process on render, while the Marketplace says it has no server code | Consent looks only at `crombolo.server` |
-| T7 | **Outbound requests and SSRF** from the server | **Covered (311)** for a server half: Deno allows only the hosts its grant names, and the host's `fetch` adds the address rule (story 301) | Templates, until story 312 |
-| T8 | **Screens misusing the user's session**: calling the Management API as them, sending data anywhere | **Open.** No content security policy on the back office | A screen can do anything the signed-in user can, and talk to any origin |
+| T5 | **Writing the site's files**: config, `package.json`, `.env`, components | **Covered (306, 311, 312).** An extension's payload may not carry `code/`, `components/` or value migrations; its process may write only its data folder | Components an install copied before 312 stay in the site, as its own; `bundle list` names them |
+| T6 | **Running server code through templates** | **Covered (312).** An extension's components render in its own process, and only with `templates` granted | — |
+| T7 | **Outbound requests and SSRF** from the server | **Covered (311, 312)**: Deno allows only the hosts its grant names, and the host's `fetch` adds the address rule (story 301) | — |
+| T8 | **Screens misusing the user's session**: calling the Management API as them, sending data anywhere | **Covered (313)** for sending: the back office's content security policy lets its pages reach the site and the origins granted extensions declare, and nothing else | A screen can still do anything the signed-in user can on the site itself |
 | T9 | **Screens of an extension that is off or ungranted** | **Covered (309).** Their manifests are hidden and their files not served | — |
 | T10 | **Acting as a member beyond what was granted** (`member.delegate`) | **Covered (309).** Checked on every call | — |
 | T11 | **One extension reading another's data** | **Covered (311).** Separate processes, separate channels, and each one's queries run on its own tables' connection | — |
@@ -59,6 +59,7 @@ Status: **covered**, **partly** (a gap is named), or **open**.
 | T13 | **A swapped package**: a version that changed between listing and install, or a registry serving something else | **Covered.** The landed manifest is checked again and removed when it differs. The lockfile pins the hash. Signing is available (story 060) | Signing is optional by default |
 | T14 | **Denial of service**: a busy loop, unbounded memory, a crash | **Covered (311)**, but for CPU. A crash or a hang ends its process and its calls, which time out; a 256 MB heap | A busy loop uses a core until its call times out and the process is stopped |
 | T15 | **A site package dressed as an extension**, from a registry | **Covered (306).** A site package says what it is, and is never installed from a registry | — |
+| T16 | **A site bundle overwritten** on disk, in an artifact store or in transit, or an older one put back | **Covered (316).** In production a site bundle applies only when a key or CI build the site trusts signed it, and never an older version from the same signer without `--allow-downgrade` | Outside production it applies, with a warning |
 
 ## What process isolation does and does not stop
 
@@ -81,9 +82,8 @@ site goes over a channel the CMS checks against the grant.
 
 What Deno's permissions do not cover is a flaw in Deno itself. Its permission
 system has had escape bugs, so the Deno version is pinned and kept current as a
-security dependency. Story 311 confines a server half the CMS starts; its
-templates are confined only once story 312 ships, and a server half the site
-imports never is. `tests/extension-isolation.test.ts` has a test for each row
+security dependency. Stories 311 and 312 confine a server half the CMS starts
+and its components; a server half the site imports never is. `tests/extension-isolation.test.ts` has a test for each row
 above ([`extensions.md`](extensions.md)).
 
 ## Permissions an extension asks for
@@ -134,6 +134,7 @@ the CMS.
 | 311 | A Deno process per extension, confined by Deno's permissions (T1, T2, T7, T11, T14) |
 | 312 | An extension's components stay in its package and render in its own process; it writes none of the site's code (T5, T6) |
 | 313 | The back office's content security policy names only the origins extensions declared (T8) |
+| 316 | A site bundle is applied only from a key or CI build the site trusts (T16) |
 
 Story 303 is absorbed by 306 and 312, and 307 was merged into them.
 

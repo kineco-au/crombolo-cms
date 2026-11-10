@@ -55,22 +55,22 @@ describe('the Created view, which replaces a router', () => {
     // same segments; a rename of any one would break the link.
     const overview = await Bun.file(`${PLUGIN}/bundles-created-overview.js`).text()
     expect(overview).toContain(
-      "BUILDER_PATH = 'section/settings/dashboard/bundles/created/package-builder'",
+      "BUILDER_PATH = 'section/settings/dashboard/extensions/created/package-builder'",
     )
     const plugin = await Bun.file(`${PLUGIN}/umbraco-package.json`).json()
     const dashboard = plugin.extensions.find(
       (e: { alias: string }) => e.alias === 'Crombolo.Dashboard.Bundles',
     )
-    expect(dashboard.meta.pathname).toBe('bundles')
+    expect(dashboard.meta.pathname).toBe('extensions')
     const tool = await Bun.file(`${PLUGIN}/bundles-tool.js`).text()
-    expect(tool).toContain("BUNDLES_PATH = 'section/settings/dashboard/bundles'")
+    expect(tool).toContain("BUNDLES_PATH = 'section/settings/dashboard/extensions'")
     expect([...tool.matchAll(/\{ path: '([a-z]+)'/g)].map((m) => m[1])).toEqual([
       'marketplace',
       'installed',
       'created',
     ])
     const editor = await Bun.file(`${PLUGIN}/bundle-editor.js`).text()
-    expect(editor).toContain('back-path="section/settings/dashboard/bundles/created"')
+    expect(editor).toContain('back-path="section/settings/dashboard/extensions/created"')
   })
 
   test('says bundle where Umbraco said package', async () => {

@@ -20,7 +20,7 @@ import { downloadFile } from './download.js'
 const TAKE = 10
 
 /** Where the builder lives, which is Umbraco's route and not ours to rename. */
-export const BUILDER_PATH = 'section/settings/dashboard/bundles/created/package-builder'
+export const BUILDER_PATH = 'section/settings/dashboard/extensions/created/package-builder'
 
 export default class CromboloBundlesCreatedOverviewElement extends UmbLitElement {
   static properties = {
@@ -80,6 +80,7 @@ export default class CromboloBundlesCreatedOverviewElement extends UmbLitElement
     this._draft = {
       name: pkg?.set?.name ? pkg.name : '',
       version: pkg?.set?.version ? pkg.version : '',
+      kind: pkg?.kind ?? 'extension',
     }
   }
 
@@ -102,6 +103,30 @@ export default class CromboloBundlesCreatedOverviewElement extends UmbLitElement
           This bundle downloads as the npm package <code>${pkg?.name}@${pkg?.version}</code>.
           Leave a field empty to go back to the name taken from the bundle's own name, and
           version 1.0.0.
+        </p>
+        <uui-select
+          label="What it is for"
+          .options=${[
+            {
+              name: 'An extension, for other sites to install',
+              value: 'extension',
+              selected: this._draft.kind !== 'site',
+            },
+            {
+              name: 'A site bundle, to move this site to another environment',
+              value: 'site',
+              selected: this._draft.kind === 'site',
+            },
+          ]}
+          @change=${(event) => (this._draft = { ...this._draft, kind: event.target.value })}></uui-select>
+        <p class="note">
+          ${
+            this._draft.kind === 'site'
+              ? html`A site bundle carries its templates and partial views as the other site's own,
+                  and is applied there with <code>crombolo site apply</code>. It is never installed.`
+              : html`An extension's templates and partial views render in its own process on the
+                  sites that install it, which grant it permission to.`
+          }
         </p>
         <uui-input
           label="Name"
@@ -155,7 +180,7 @@ export default class CromboloBundlesCreatedOverviewElement extends UmbLitElement
 
   #detail(item) {
     const pkg = this._packages[item.unique]
-    return pkg ? `${pkg.name}@${pkg.version}` : ''
+    return pkg ? `${pkg.name}@${pkg.version}${pkg.kind === 'site' ? ', a site bundle' : ''}` : ''
   }
 
   #onPageChange(event) {
@@ -287,6 +312,9 @@ export default class CromboloBundlesCreatedOverviewElement extends UmbLitElement
     }
     .problem {
       color: var(--uui-color-danger);
+    }
+    .note {
+      color: var(--uui-color-text-alt);
     }
     .buttons {
       white-space: nowrap;

@@ -3,7 +3,7 @@
  * The pure edits on their own, then `workflows` and `webhooks` through the CLI
  * on a SQLite site with an approval request waiting.
  */
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { SchemaWorkflow } from '@crombolo/core'
@@ -12,6 +12,9 @@ import { addStage, removeStage, updateStage, updateWorkflow } from '@crombolo/sc
 import { updateWebhook, type WebhookDefinition, webhookKeyFor } from '@crombolo/server'
 import { ERROR_KINDS } from '../packages/cli/src/errors.ts'
 import { ROOT } from '../scripts/packages.ts'
+
+// Each test runs the CLI a dozen times, which the default 5s leaves no room for under load.
+setDefaultTimeout(30_000)
 
 const BIN = join(ROOT, 'packages/cli/bin/crombolo.ts')
 

@@ -551,6 +551,13 @@ export interface CromboloConfig {
    */
   extensions?: Readonly<Record<string, ExtensionEntry>>
   /**
+   * Keys this site trusts to sign the site bundles it applies, locked in
+   * Settings (story 316): a person's, a CI job's or another site's public line.
+   */
+  trustedKeys?: readonly { name: string; publicKey: string; kind?: 'user' | 'site' }[]
+  /** CI builds this site trusts to sign them, by Sigstore: `org/repo@v*` (story 316). */
+  trustedSources?: readonly { name: string; source: string }[]
+  /**
    * Package names this installation provides to every site it runs, rather
    * than the site choosing them (story 177): a whole-site file leaves them out
    * of what it requires, so the site starts anywhere without them. Set by
@@ -666,8 +673,8 @@ export const DEFAULTS = {
   logsDir: 'logs',
   scriptsDir: 'scripts',
   publicDir: 'public',
-  marketplaceUrl: 'https://www.npmjs.com/search?q=keywords%3Acrombolo-bundle',
-  packageKeyword: 'crombolo-bundle',
+  marketplaceUrl: 'https://www.npmjs.com/search?q=keywords%3Acrombolo-extension',
+  packageKeyword: 'crombolo-extension',
   npmRegistry: 'https://registry.npmjs.org',
   keepAllVersionsNewerThanDays: 7,
   keepLatestVersionPerDayForDays: 90,

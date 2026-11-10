@@ -338,14 +338,14 @@ const DECLARED = [
     default: 'optional',
     section: 'Back office and bundles',
     description:
-      'Whether this site takes only bundles signed in GitHub Actions with `crombolo bundle sign`. A signature that does not check out is refused either way.',
+      'Whether this site installs only extensions signed in GitHub Actions with `crombolo bundle sign`. A signature that does not check out is refused either way. Site bundles have their own rule: in production, only from a signer on Settings → Trusted signers.',
   },
   {
     env: 'CROMBOLO_BUNDLE_SOURCES',
     kind: 'list',
     section: 'Back office and bundles',
     description:
-      'Where a signed bundle has to come from, separated by commas: `org/*`, `org/repo`, or `org/repo@v*` for its tags. Empty takes signed bundles from anywhere.',
+      'Where a signed bundle has to come from, separated by commas: `org/*`, `org/repo`, or `org/repo@v*` for its tags. Empty takes signed extensions from anywhere. Each is also a trusted CI build for site bundles, locked on Settings → Trusted signers.',
   },
   {
     env: 'CROMBOLO_INSTALLS_ELSEWHERE_MESSAGE',
@@ -363,14 +363,14 @@ const DECLARED = [
   {
     env: 'CROMBOLO_MARKETPLACE_URL',
     kind: 'string',
-    default: 'https://www.npmjs.com/search?q=keywords%3Acrombolo-bundle',
+    default: 'https://www.npmjs.com/search?q=keywords%3Acrombolo-extension',
     section: 'Back office and bundles',
     description: 'Where the Marketplace sends someone browsing for bundles.',
   },
   {
     env: 'CROMBOLO_PACKAGE_KEYWORD',
     kind: 'string',
-    default: 'crombolo-bundle',
+    default: 'crombolo-extension',
     section: 'Back office and bundles',
     description: 'The npm keyword a bundle publishes under to be found by the Marketplace.',
   },

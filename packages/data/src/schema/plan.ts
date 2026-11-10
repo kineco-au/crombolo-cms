@@ -20,6 +20,7 @@ import { auditLogMigration } from './audit-log.ts'
 import { bundleComponentsMigration } from './bundle-components.ts'
 import { bundleGrantReachMigration } from './bundle-grant-reach.ts'
 import { bundleGrantsMigration } from './bundle-grants.ts'
+import { bundleKindMigration } from './bundle-kind.ts'
 import { bundlePackageMigration } from './bundle-package.ts'
 import { bundleSchemaPicksMigration } from './bundle-schema-picks.ts'
 import { bundlesDisabledMigration } from './bundles-disabled.ts'
@@ -75,6 +76,7 @@ import { transferRunBundleTypeMigration } from './transfer-run-bundle-type.ts'
 import { transferRunPackageMigration } from './transfer-run-package.ts'
 import { transferRunsMigration } from './transfer-runs.ts'
 import { trashedDateMigration } from './trashed-date.ts'
+import { trustedSignersMigration } from './trusted-signers.ts'
 import { twoFactorMigration } from './two-factor.ts'
 import { upgradeReportMigration } from './upgrade-report.ts'
 import { usersLocalisationMigration } from './users-localisation.ts'
@@ -149,4 +151,6 @@ export const cromboloPlan = new MigrationPlan([
   transferRunBundleTypeMigration,
   bundleGrantReachMigration,
   extensionSettingsMigration,
+  bundleKindMigration,
+  trustedSignersMigration,
 ])

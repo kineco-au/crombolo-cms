@@ -77,7 +77,10 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
     this._actAs = 'installer'
     this._edits = {}
     // Settings links a bundle's cards here, naming it in `?bundle=`.
-    this._selected = new URLSearchParams(window.location.search).get('bundle') ?? ''
+    this._selected =
+      new URLSearchParams(window.location.search).get('extension') ??
+      new URLSearchParams(window.location.search).get('bundle') ??
+      ''
   }
 
   connectedCallback() {
@@ -148,6 +151,20 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
           ?disabled=${setting.locked}
           .checked=${value === true}
           @change=${(event) => this.#edit(setting.key, event.target.checked)}></uui-toggle>`
+      // Story 312: the site layout its page templates sit in, or none.
+      if (setting.type === 'layout')
+        return html`<uui-select
+          label=${setting.label}
+          ?disabled=${setting.locked}
+          .options=${[
+            { name: 'None: a page of its own', value: '', selected: !value },
+            ...setting.values.map((layout) => ({
+              name: layout,
+              value: layout,
+              selected: layout === value,
+            })),
+          ]}
+          @change=${(event) => this.#edit(setting.key, event.target.value || null)}></uui-select>`
       if (setting.type === 'choice')
         return html`<uui-select
           label=${setting.label}
@@ -252,6 +269,14 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
           : nothing
       }
       ${
+        item.copiedComponents
+          ? html`<p class="note">
+              An earlier install copied these into the site's components, where they are the
+              site's own now. Review them: ${item.copiedComponents.join(', ')}
+            </p>`
+          : nothing
+      }
+      ${
         item.status === 'waiting' || item.status === 'not-granted'
           ? html`<p class="note">
                 ${
@@ -323,7 +348,7 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
     if (this._items.length === 0)
       return html`
         ${this._notice ? html`<div id="notice">${this._notice}</div>` : nothing}
-        <uui-box headline="No bundles installed">
+        <uui-box headline="No extensions installed">
           <p>Install one from the Marketplace tab, and it appears here.</p>
         </uui-box>
       `
@@ -337,7 +362,7 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
           : nothing
       }
       <div id="columns">
-        <uui-box headline="Installed bundles" style="--uui-box-default-padding:0;">
+        <uui-box headline="Installed extensions" style="--uui-box-default-padding:0;">
           <div id="filter">
             <uui-input
               label="Filter"
@@ -351,7 +376,7 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
           </div>
           ${
             shown.length === 0
-              ? html`<p class="empty">No bundle matches.</p>`
+              ? html`<p class="empty">No extension matches.</p>`
               : html`<uui-ref-list>
                   ${repeat(
                     shown,
@@ -408,7 +433,7 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
               label="Uninstall"
               .state=${this._busy === item.packageName ? 'waiting' : undefined}
               @click=${() => this.#uninstall(item)}></uui-button>`
-          : html`<p class="note">This site adds and removes bundles with a deploy, so every server has the same ones.</p>`
+          : html`<p class="note">This site adds and removes extensions with a deploy, so every server has the same ones.</p>`
       }
     </uui-box>`
   }

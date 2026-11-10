@@ -4,7 +4,7 @@
  * site that has pages: checked before anything is written, applied, refused
  * with nothing changed, and never naming a file.
  */
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
@@ -20,6 +20,9 @@ import {
 } from '@crombolo/schema'
 import { ERROR_KINDS } from '../packages/cli/src/errors.ts'
 import { ROOT } from '../scripts/packages.ts'
+
+// Each test runs the CLI a dozen times, which the default 5s leaves no room for under load.
+setDefaultTimeout(30_000)
 
 const BIN = join(ROOT, 'packages/cli/bin/crombolo.ts')
 

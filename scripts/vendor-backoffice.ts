@@ -306,6 +306,15 @@ export const DEPENDENCY_PATCHES: DependencyPatch[] = [
     replace:
       '      #button:focus-visible {\n        outline: calc(2px * var(--uui-show-focus-outline, 1)) solid\n          var(--uui-focus-outline-color, var(--uui-color-focus));\n        outline-offset: -2px;\n      }\n\n      :host(:not([disabled])) #button:hover {\n        color: var(--uui-tab-text-hover,',
   },
+  // A box's header has no colour of its own to set, so the theme can't band it
+  // as the Settings cards are. Two properties, unset by default, as UUI names its own.
+  {
+    file: 'external/uui/index.js',
+    source: '@umbraco-ui/uui/dist/components/box/box.element.js',
+    find: '      #header {\n        display: flex;\n        align-items: center;\n        column-gap: var(--uui-size-space-5);\n        border-bottom: 1px solid var(--uui-color-divider-standalone);\n',
+    replace:
+      '      #header {\n        display: flex;\n        align-items: center;\n        column-gap: var(--uui-size-space-5);\n        border-bottom: 1px solid var(--uui-color-divider-standalone);\n        background: var(--uui-box-header-background, transparent);\n        color: var(--uui-box-header-color, inherit);\n        border-radius: calc(var(--uui-box-border-radius, var(--uui-border-radius-3)) - var(--uui-box-border-width, 1px))\n          calc(var(--uui-box-border-radius, var(--uui-border-radius-3)) - var(--uui-box-border-width, 1px)) 0 0;\n',
+  },
 ]
 
 /**

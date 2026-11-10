@@ -127,6 +127,13 @@ export async function undoMediaMemberUploads(db: Db): Promise<void> {
   // come after it; 056's columns go with 054's table.
   // 059, forms in the Library (story 239), 058, bundle schema picks (story
   // 226), and 057, site settings types (story 058): columns on tables that stay.
+  // 069, trusted signers (story 316): a table of its own, and a column on one that stays.
+  await db.exec('DROP TABLE IF EXISTS trusted_signer')
+  await db.exec('ALTER TABLE content_transfer_run DROP COLUMN signed_by')
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddTrustedSigners'")
+  // 068, what a Bundle Editor definition builds (story 312): a column on a table that stays.
+  await db.exec('ALTER TABLE bundle DROP COLUMN kind')
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddBundleKind'")
   // 067, extensions' settings (story 310): a table of its own.
   await db.exec('DROP TABLE IF EXISTS extension_setting')
   await db.exec("DELETE FROM migration_history WHERE name = 'AddExtensionSettings'")

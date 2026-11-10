@@ -11,6 +11,8 @@ import type { Db } from '../database.ts'
 import { DbDate, fromDbBool } from '../dialect.ts'
 import { sql } from '../query.ts'
 
+export type BundleDefinitionKind = 'extension' | 'site'
+
 export interface Bundle {
   id: string
   name: string
@@ -33,6 +35,11 @@ export interface Bundle {
    */
   packageName: string | null
   packageVersion: string | null
+  /**
+   * What it builds (story 312): an extension for other sites, or a site bundle
+   * to move this site. Not in Umbraco's definition either.
+   */
+  kind: BundleDefinitionKind
   createDate: Date
   updateDate: Date
 }
@@ -40,12 +47,13 @@ export interface Bundle {
 /** A definition to store; `id` is assigned when it is new, the dates always. */
 export type BundleInput = Omit<
   Bundle,
-  'id' | 'createDate' | 'updateDate' | 'packageName' | 'packageVersion'
+  'id' | 'createDate' | 'updateDate' | 'packageName' | 'packageVersion' | 'kind'
 >
 
 interface Row {
   id: string
   name: string
+  kind: string
   content_node_id: string | null
   content_load_child_nodes: unknown
   media_load_child_nodes: unknown
@@ -83,6 +91,7 @@ const COLUMNS = [
   'dictionary_items',
   'package_name',
   'package_version',
+  'kind',
   'create_date',
   'update_date',
 ] as const
@@ -135,6 +144,7 @@ const hydrate = (row: Row): Bundle => ({
   dictionaryItems: list(row.dictionary_items),
   packageName: row.package_name ?? null,
   packageVersion: row.package_version ?? null,
+  kind: row.kind === 'site' ? 'site' : 'extension',
   createDate: DbDate.fromDb(row.create_date) ?? new Date(0),
   updateDate: DbDate.fromDb(row.update_date) ?? new Date(0),
 })
@@ -248,6 +258,7 @@ export class BundleRepository {
       id,
       packageName: null,
       packageVersion: null,
+      kind: 'extension',
       createDate: now,
       updateDate: now,
     }
@@ -262,6 +273,14 @@ export class BundleRepository {
   }
 
   /** The npm package a definition is built as; null clears a value back to its default. */
+  async setKind(id: string, kind: BundleDefinitionKind): Promise<void> {
+    await this.#db.q
+      .updateTable('bundle')
+      .set({ kind, update_date: DbDate.toDb(new Date()) })
+      .where('id', '=', id)
+      .execute()
+  }
+
   async setPackage(
     id: string,
     pkg: { name: string | null; version: string | null },

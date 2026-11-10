@@ -23,7 +23,10 @@ import type { PackageManifest, PackageManifestImportmap } from './manifests.ts'
 export const EXTENSION_PATH = '/bundles'
 
 /** The npm keyword a bundle publishes so the marketplace can find it. */
-export const EXTENSION_KEYWORD = 'crombolo-bundle'
+export const EXTENSION_KEYWORD = 'crombolo-extension'
+
+/** The keyword extensions published before 0.57 carry, which the Marketplace still finds. */
+export const LEGACY_EXTENSION_KEYWORD = 'crombolo-bundle'
 
 /** A bundle's backoffice half, as the manifest endpoint serves it. */
 export interface InstalledExtension {

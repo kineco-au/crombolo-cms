@@ -1,20 +1,3 @@
-import { BaseCommand } from '../../base.ts'
-import { switchArgs, switchBundle, switchFlags, switchSpec } from '../../support/bundle-switch.ts'
+import { movedCommand } from '../../support/moved.ts'
 
-export default class BundleDisable extends BaseCommand {
-  static override summary = "turn a bundle's server features off, here or on a remote"
-  static override description =
-    'Its pages, jobs and screens stop or start at once, with no restart, as Disable and Enable do in Settings, under Bundles. On a remote it needs CROMBOLO_REMOTE_ACCESS=all and an administrator.'
-  static override examples = [
-    '<%= config.bin %> bundle disable redirects',
-    '<%= config.bin %> bundle disable redirects --remote production',
-  ]
-  static override args = switchArgs
-  static override flags = switchFlags
-  static override spec = switchSpec
-
-  async run() {
-    const { args, flags } = await this.parse(BundleDisable)
-    return switchBundle(this, args.name, flags, false)
-  }
-}
+export default movedCommand('bundle disable', 'extension disable')

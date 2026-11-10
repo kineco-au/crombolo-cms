@@ -36,6 +36,8 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
     _trusted: { state: true },
     _asks: { state: true },
     _asksActAs: { state: true },
+    _layout: { state: true },
+    _layoutChoice: { state: true },
     _actAs: { state: true },
     _reviewing: { state: true },
     _signatures: { state: true },
@@ -48,7 +50,7 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
     this._error = ''
     this._busy = ''
     this._notice = ''
-    this._keyword = 'crombolo-bundle'
+    this._keyword = 'crombolo-extension'
     this._url = ''
     this._query = ''
     this._appliesContent = true
@@ -90,7 +92,7 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
   /** The host's own place for installs, when it gave one. */
   #elsewhereLink() {
     const url = this._elsewhere?.url
-    return url ? html`<a href=${url} target="_blank" rel="noopener">Add bundles</a>` : ''
+    return url ? html`<a href=${url} target="_blank" rel="noopener">Add extensions</a>` : ''
   }
 
   #search(event) {
@@ -161,6 +163,9 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
     this._trusted = false
     this._asks = outcome.permissions ?? []
     this._asksActAs = outcome.asksActAs === true
+    // Story 312: the site layout its page templates sit in, its suggestion first.
+    this._layout = outcome.layout
+    this._layoutChoice = outcome.layout?.suggested ?? ''
   }
 
   #cancelConsent() {
@@ -179,6 +184,9 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
         !this._declined.has(item.name),
         granting ? this._asks.map((ask) => ask.permission) : [],
         granting && this._asksActAs ? this._actAs : undefined,
+        granting && this._layout && this._layoutChoice
+          ? { [this._layout.key]: this._layoutChoice }
+          : undefined,
       )
       // It asks for permissions, or a version asks for more than was granted:
       // the server says what, with the reasons, and the card asks.
@@ -258,6 +266,23 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
                 }}></uui-select>`
             : nothing
         }
+        ${
+          this._layout
+            ? html`<uui-select
+                label=${this._layout.label}
+                .options=${[
+                  { name: 'None: a page of its own', value: '', selected: !this._layoutChoice },
+                  ...this._layout.values.map((layout) => ({
+                    name: layout,
+                    value: layout,
+                    selected: layout === this._layoutChoice,
+                  })),
+                ]}
+                @change=${(event) => {
+                  this._layoutChoice = event.target.value
+                }}></uui-select>`
+            : nothing
+        }
         <p class="meta">
           <span>Published by ${item.publisher ?? 'an unnamed publisher'}</span>
           <a href=${item.links.npm} target="_blank" rel="noopener">npm</a>
@@ -289,7 +314,7 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
 
   #empty() {
     return html`
-      <uui-box headline="No bundles published yet">
+      <uui-box headline="No extensions published yet">
         <p>Nothing on npm carries the <code>${this._keyword}</code> keyword yet.</p>
       </uui-box>
     `
@@ -303,8 +328,8 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
       <div id="head">
         <uui-input
           type="search"
-          label="Search bundles"
-          placeholder="Search npm for bundles"
+          label="Search extensions"
+          placeholder="Search npm for extensions"
           @change=${this.#search}></uui-input>
         ${
           this._url
@@ -319,7 +344,7 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
           ? nothing
           : this._elsewhere
             ? html`<div id="notice">${this._elsewhere.message} ${this.#elsewhereLink()}</div>`
-            : html`<div id="notice">Bundles are added to this site by a deploy, so that every server has them: add one to the site's <code>package.json</code> and deploy it.</div>`
+            : html`<div id="notice">Extensions are added to this site by a deploy, so that every server has them: add one to the site's <code>package.json</code> and deploy it.</div>`
       }
       ${
         this._items.length === 0 && !this._error

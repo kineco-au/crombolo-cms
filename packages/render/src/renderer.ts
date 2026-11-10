@@ -72,6 +72,12 @@ export interface RenderOptions {
    * with (story 209); by default the generation's own build.
    */
   islandsManifest?: (generation: string | undefined) => string | undefined
+  /**
+   * Components an extension owns (story 312): `<id>/<name>`, or a block's
+   * `blocks/<alias>`, where the site has none of its own. Each renders in the
+   * extension's process.
+   */
+  extensionComponents?: { module(alias: string): ComponentModule | undefined }
 }
 
 export const DEFAULT_RENDER_TIMEOUT_MS = 10_000
@@ -228,6 +234,8 @@ export class Renderer {
   #renderTimeoutMs: number
   #islandsManifest: (generation: string | undefined) => string | undefined
 
+  #extensionComponents: RenderOptions['extensionComponents']
+
   constructor(options: RenderOptions) {
     this.#cache = options.cache
     // Resolved to an absolute path: a dynamic import of a relative specifier
@@ -235,6 +243,7 @@ export class Renderer {
     this.#componentsDir = resolve(options.componentsDir)
     this.#snapshots = options.snapshots
     this.#renderTimeoutMs = options.renderTimeoutMs ?? DEFAULT_RENDER_TIMEOUT_MS
+    this.#extensionComponents = options.extensionComponents
     this.#islandsManifest =
       options.islandsManifest ??
       ((generation) => (generation ? `${ISLANDS_PATH}/${generation}/manifest.json` : undefined))
@@ -577,6 +586,10 @@ export class Renderer {
           preview: request.preview,
           antiforgery: request.antiforgery,
           blockComponent: (blockAlias) => this.blockComponent(blockAlias, used),
+          extensionComponent: (use) =>
+            this.#extensionComponents?.module(use)?.default as
+              | ((props: object) => Child | Promise<Child>)
+              | undefined,
           request: { headers: shared ? new Headers() : (request.headers ?? new Headers()) },
           site: request.site,
           personal: shared ? { value: false } : personal,
@@ -662,7 +675,8 @@ export class Renderer {
 
   async #load(alias: string, used?: Set<string>): Promise<ComponentModule | undefined> {
     const file = this.componentPath(alias)
-    if (!file) return undefined
+    // The site's own component wins; an extension's renders in its own process.
+    if (!file) return this.#extensionComponents?.module(alias)
     used?.add(file)
     // The path carries the generation, so one entry per view per generation and
     // a swap never answers from the generation before it.

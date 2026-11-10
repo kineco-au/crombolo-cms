@@ -100,6 +100,7 @@ export interface CoreTables {
     dictionary_items: string
     element_ids: string | null
     id: string
+    kind: Generated<string>
     languages: string
     media_ids: string
     media_load_child_nodes: Bool
@@ -234,6 +235,7 @@ export interface CoreTables {
     package_version: string | null
     reverts_run_id: string | null
     schema_state_id: number
+    signed_by: string | null
     started_at: Timestamp
     status: string
   }
@@ -748,6 +750,17 @@ export interface CoreTables {
     target: string
     target_kind: string
     under_target: string | null
+  }
+  trusted_signer: {
+    added_at: Timestamp
+    added_by: string | null
+    fingerprint: string | null
+    id: string
+    kind: string
+    last_signed_at: Timestamp | null
+    name: string
+    public_key: string | null
+    source: string | null
   }
   two_factor_login: {
     create_date: Timestamp

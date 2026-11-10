@@ -10,6 +10,7 @@ import { BaseCommand } from '../../base.ts'
 import { CliError } from '../../errors.ts'
 import { describeBytes } from '../../support/describe.ts'
 import { findingFields, writeSeedPackage } from '../../support/seed.ts'
+import { signBuilt } from '../../support/signing.ts'
 import { cwd, siteConfig } from '../../support/site.ts'
 import { raiseVersionIfChanged } from '../../support/types.ts'
 import { listTemplates } from '../../templates.ts'
@@ -44,6 +45,10 @@ export default class SiteBuild extends BaseCommand {
     'public-log': Flags.boolean({
       summary:
         "sign from a private repository anyway: Sigstore's public log records its name, workflow, ref and commit",
+    }),
+    'sign-with': Flags.string({
+      summary: "sign it with this user key, as a CI job does, rather than the site's own",
+      helpValue: '<key>',
     }),
     sign: Flags.boolean({
       summary: 'sign it once written, in GitHub Actions: `bundle sign` in the same step',
@@ -158,6 +163,8 @@ export default class SiteBuild extends BaseCommand {
     this.say(
       `  wrote    ${relative(process.cwd(), out) || '.'}  (${built.name}: ${nodes} node(s), with its schema and views)`,
     )
+    // With a key first: a Sigstore signature after it keeps it (story 316).
+    this.say(`  ${await signBuilt(out, flags['sign-with'])}`)
     if (flags.sign) {
       const signed = await signPackage(out, { publicLog: flags['public-log'] }).catch(
         (error: unknown) => {
@@ -171,7 +178,7 @@ export default class SiteBuild extends BaseCommand {
     }
     if (built.code)
       this.say(
-        `  code     ${built.code.length} file(s); \`crombolo site check-code\` checks them, \`crombolo bundle install <bundle> --code-into <dir>\` installs them`,
+        `  code     ${built.code.length} file(s); \`crombolo site check-code\` checks them, \`crombolo extension install <bundle> --code-into <dir>\` installs them`,
       )
     this.say(
       `\n  \`crombolo start --bundle ${relative(process.cwd(), out) || '.'} --publish\` installs it into a site.`,

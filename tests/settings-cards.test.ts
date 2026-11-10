@@ -22,7 +22,6 @@ const EVERYTHING = {
   code: true,
   dashboards: [
     dashboard('Umb.Dashboard.HealthCheck', 'health-check'),
-    dashboard('Umb.Dashboard.ExamineManagement', 'examine-management'),
     dashboard('Umb.Dashboard.PublishedStatus', 'published-status'),
     dashboard('Umb.Dashboard.ModelsBuilder', 'models-builder'),
     dashboard('Crombolo.Dashboard.Seo', 'search-and-sharing'),
@@ -31,7 +30,7 @@ const EVERYTHING = {
     dashboard('Crombolo.Dashboard.Changes', 'changes'),
     dashboard('Crombolo.Dashboard.AuditLog', 'audit-log'),
     dashboard('Crombolo.Dashboard.BackgroundJobs', 'background-jobs'),
-    dashboard('Crombolo.Dashboard.Bundles', 'bundles'),
+    dashboard('Crombolo.Dashboard.Bundles', 'extensions'),
   ],
   advanced: [
     { alias: 'Umb.MenuItem.Relations', label: 'Relations', entityType: 'relations-root' },
@@ -48,19 +47,19 @@ describe('the Settings landing page', () => {
   test('an administrator sees every tool, grouped and in order', () => {
     expect(titles(settingsCards(EVERYTHING))).toEqual({
       Site: [
-        'Search & sharing',
+        'Search',
         'Page addresses',
         'Redirects',
         'Webhooks',
         'Logs',
-        'Search indexes',
         'Background jobs',
+        'Relations',
       ],
-      Health: ['Health check', 'Published status', 'Relations'],
+      Health: ['Health check', 'Published status'],
       History: ['Changes', 'Audit log'],
-      // Story 238: after History, a developer's tool, then installing bundles.
+      // Story 238: after History, a developer's tool, then installing extensions.
       Developers: ['Extension insights', 'Types for code'],
-      Extensions: ['Bundles'],
+      Extensions: ['Extensions'],
     })
   })
 
@@ -78,7 +77,7 @@ describe('the Settings landing page', () => {
       dashboards: [dashboard('Crombolo.Dashboard.Seo', 'search-and-sharing')],
       advanced: [],
     })
-    expect(titles(groups)).toEqual({ Site: ['Search & sharing'] })
+    expect(titles(groups)).toEqual({ Site: ['Search'] })
   })
 
   test('a dashboard we have no words for, from no bundle, is a card under Other, by its own label', () => {
@@ -150,10 +149,14 @@ describe('the Settings landing page', () => {
     // A bundle's group links to the bundle in the Bundles section.
     expect(groups.map((g) => [g.group, g.bundle?.path, g.cards.map((c) => c.title)])).toEqual([
       ['Other', undefined, ['Loose']],
-      ['Acme', 'section/settings/dashboard/bundles/installed?bundle=%40acme%2Fstock', ['Stock']],
+      [
+        'Acme',
+        'section/settings/dashboard/extensions/installed?extension=%40acme%2Fstock',
+        ['Stock'],
+      ],
       [
         'Redirects',
-        'section/settings/dashboard/bundles/installed?bundle=%40crombolo%2Fsimple-redirects',
+        'section/settings/dashboard/extensions/installed?extension=%40crombolo%2Fsimple-redirects',
         ['Redirects'],
       ],
     ])

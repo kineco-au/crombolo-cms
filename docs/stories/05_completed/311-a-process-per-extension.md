@@ -108,19 +108,19 @@ T11, T14, and decisions D1 and D3.
 
 ## Acceptance criteria
 
-- [ ] An extension's process has no environment, and its attempts to read the site's
+- [x] An extension's process has no environment, and its attempts to read the site's
       `.env`, its SQLite file and its `crombolo.config.ts` are refused by Deno.
-- [ ] A `fetch` to an origin it did not declare, or to a private address, is refused.
+- [x] A `fetch` to an origin it did not declare, or to a private address, is refused.
       So is a raw connection.
-- [ ] It cannot run a program or load native code.
-- [ ] An extension that throws, hangs or exits fails its call, and the site keeps
+- [x] It cannot run a program or load native code.
+- [x] An extension that throws, hangs or exits fails its call, and the site keeps
       serving. It is restarted for the next call.
-- [ ] Its own tables are reachable through the channel, and no others. On SQLite, an
+- [x] Its own tables are reachable through the channel, and no others. On SQLite, an
       `ATTACH` is refused.
-- [ ] Simple Redirects and Entra run in their own Deno processes, on the extension
+- [x] Simple Redirects and Entra run in their own Deno processes, on the extension
       SDK, their tests unchanged apart from setup.
-- [ ] The same tests pass on macOS, Linux and Windows CI runners, with no Docker.
-- [ ] The threat model's "what isolation does" table is confirmed by tests, one per
+- [x] The same tests pass on macOS, Linux and Windows CI runners, with no Docker.
+- [x] The threat model's "what isolation does" table is confirmed by tests, one per
       threat.
 
 ## Implemented (0.57.0)

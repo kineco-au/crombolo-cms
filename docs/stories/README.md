@@ -244,10 +244,12 @@ requests, only server-side and build-time front ends can call it.
 | `308` | Each permission an extension asks for says why | must | XL | done | — |
 | `309` | A grant is what lets an extension run | must | M | done | 308 |
 | `310` | A granted extension runs without wiring | must | M | done | 309 |
-| `311` | A Deno process per extension | must | XL | in progress | 310 |
-| `312` | An extension's templates render in its own process | must | L | backlog | 311 |
-| `313` | The back office reaches only the origins extensions declared | should | S | ready | 308 |
+| `311` | A Deno process per extension | must | XL | done | 310 |
+| `312` | An extension's templates render in its own process | must | L | done | 311 |
+| `313` | The back office reaches only the origins extensions declared | should | S | done | 308 |
 | `315` | A typed SDK for extensions | could | L | ready | 308 |
+| `316` | A site bundle is applied only from a key you trust | must | M | done | 306 |
+| `317` | An administrator sets where a page's search and sharing values come from | should | M | backlog | — |
 
 ### Epic J — Forms
 

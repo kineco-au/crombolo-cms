@@ -151,9 +151,24 @@ export default class CromboloCiAccessElement extends UmbLitElement {
       ${
         state.remoteEnabled
           ? nothing
-          : html`<p class="notice" role="status">
-              This site does not take pulls or pushes yet, so these rules do nothing until it does.
-            </p>`
+          : html`<div class="notice" role="status">
+              <p>Pull and push is disabled on this site.</p>
+              <details>
+                <summary>How to enable it</summary>
+                <ol>
+                  <li>
+                    On the server, set <code>CROMBOLO_REMOTE_ACCESS</code>: <code>read</code> to let
+                    others pull, <code>content</code> to also take content, or <code>all</code> to
+                    take whole-site pushes and deploys.
+                  </li>
+                  <li>Restart the site.</li>
+                  <li>
+                    Trust the CI jobs that may reach it below, and give people the pull and push
+                    permissions they need on their user groups.
+                  </li>
+                </ol>
+              </details>
+            </div>`
       }
       ${this._draft ? this.#form() : nothing}
       <uui-box headline="Trusted CI jobs">
@@ -218,6 +233,15 @@ export default class CromboloCiAccessElement extends UmbLitElement {
     }
     uui-box + uui-box {
       margin-top: var(--uui-size-layout-1);
+    }
+    .notice p {
+      margin: 0;
+    }
+    .notice details {
+      margin-top: var(--uui-size-space-3);
+    }
+    .notice summary {
+      cursor: pointer;
     }
     .notice {
       padding: var(--uui-size-space-4) var(--uui-size-space-5);

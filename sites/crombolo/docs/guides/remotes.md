@@ -149,12 +149,12 @@ bunx crombolo site revert 5192ca80-… --remote staging
 `site deploy` sends a site directory as it is committed: its content, structure and code, checked first, then applied, then the remote restarted:
 
 ```sh
-bunx crombolo bundle install @acme/crm --grant content.read   # adds it, granting what it asks for
+bunx crombolo extension install @acme/crm --grant content.read   # adds it, granting what it asks for
 git commit -am "Add the CRM bundle"
 bunx crombolo site deploy --remote production
 ```
 
-A bundle you have as a file goes the same way: `bunx crombolo bundle install ./acme-crm-1.2.0.tgz` copies it into `bundles/` and installs it from there. Commit `bundles/` with `package.json` and `bun.lock`, and the deploy carries it.
+A bundle you have as a file goes the same way: `bunx crombolo extension install ./acme-crm-1.2.0.tgz` copies it into `bundles/` and installs it from there. Commit `bundles/` with `package.json` and `bun.lock`, and the deploy carries it.
 
 It needs the remote at `all`, **Change a site's structure and code** and **Install code on this site**. The code it installs runs once the remote restarts; `--no-restart` leaves that to `crombolo restart --remote production`. If the new server does not start, the old one keeps serving and the deploy prints the `site revert` that undoes it.
 

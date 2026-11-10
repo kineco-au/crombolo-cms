@@ -175,6 +175,8 @@ export interface DraftModel {
   content: PublishedContent
   contentTypeAlias: string
   published: boolean
+  /** The page as visitors see it now, when it is published. */
+  live?: PublishedContent
   culture: string | null
 }
 
@@ -412,17 +414,23 @@ export function createSeoHost(options: SeoHostOptions): SeoHost {
     if (!draft) return Response.json({ message: 'That page could not be found.' }, { status: 404 })
     const origin = publicOrigin(request, config)
     const snapshot = await cache.snapshot()
-    const meta = await effectiveMeta(draft.content, {
-      origin,
-      alternates: urlsIn(snapshot, key),
-      site: await siteDefaults(),
-    })
+    const context = { origin, alternates: urlsIn(snapshot, key), site: await siteDefaults() }
+    const meta = await effectiveMeta(draft.content, context)
+    // Said only when what search engines see now is not this: unpublished, or changed since.
+    const live = draft.live ? await effectiveMeta(draft.live, context) : undefined
+    const differs = !draft.published
+      ? 'unpublished'
+      : live && JSON.stringify(live) !== JSON.stringify(meta)
+        ? 'changed'
+        : null
     return Response.json({
       hasSeoFields: await composesSeoFields(draft.contentTypeAlias),
       published: draft.published,
+      differs,
       culture: draft.culture,
       meta,
       snippet: {
+        name: draft.content.name,
         title: meta.fullTitle,
         url: meta.canonical.value ?? '',
         description: meta.description.value ?? '',

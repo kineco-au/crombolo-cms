@@ -109,12 +109,12 @@ rather than the running server. Secret ones are never printed or logged.
 | `CROMBOLO_APPLY_BUNDLE_CONTENT` | `true` / `false` | `true` | Installing a bundle from the Marketplace also applies the schema, components and content it carries. |
 | `CROMBOLO_RUNTIME_INSTALLS` | `true` / `false` | true, false with a schema store | The Packages section installs and removes packages on the running site. Off, they are added to `package.json` and deployed. |
 | `CROMBOLO_DENO` | string | the binary the `deno` package installed | The Deno binary installed extensions run under, each in a process of its own. Set it where Deno publishes no build, such as Alpine. |
-| `CROMBOLO_BUNDLE_SIGNATURES` | `optional`, `required` | `optional` | Whether this site takes only bundles signed in GitHub Actions with `crombolo bundle sign`. A signature that does not check out is refused either way. |
-| `CROMBOLO_BUNDLE_SOURCES` | list | — | Where a signed bundle has to come from, separated by commas: `org/*`, `org/repo`, or `org/repo@v*` for its tags. Empty takes signed bundles from anywhere. |
+| `CROMBOLO_BUNDLE_SIGNATURES` | `optional`, `required` | `optional` | Whether this site installs only extensions signed in GitHub Actions with `crombolo bundle sign`. A signature that does not check out is refused either way. Site bundles have their own rule: in production, only from a signer on Settings → Trusted signers. |
+| `CROMBOLO_BUNDLE_SOURCES` | list | — | Where a signed bundle has to come from, separated by commas: `org/*`, `org/repo`, or `org/repo@v*` for its tags. Empty takes signed extensions from anywhere. Each is also a trusted CI build for site bundles, locked on Settings → Trusted signers. |
 | `CROMBOLO_INSTALLS_ELSEWHERE_MESSAGE` | string | — | With runtime installs off, what the Marketplace says about where bundles are added, in place of "add it to package.json and deploy". For a host that installs them itself. |
 | `CROMBOLO_INSTALLS_ELSEWHERE_URL` | string | — | A link shown with that message: the host’s own place for installing bundles. |
-| `CROMBOLO_MARKETPLACE_URL` | string | `https://www.npmjs.com/search?q=keywords%3Acrombolo-bundle` | Where the Marketplace sends someone browsing for bundles. |
-| `CROMBOLO_PACKAGE_KEYWORD` | string | `crombolo-bundle` | The npm keyword a bundle publishes under to be found by the Marketplace. |
+| `CROMBOLO_MARKETPLACE_URL` | string | `https://www.npmjs.com/search?q=keywords%3Acrombolo-extension` | Where the Marketplace sends someone browsing for bundles. |
+| `CROMBOLO_PACKAGE_KEYWORD` | string | `crombolo-extension` | The npm keyword a bundle publishes under to be found by the Marketplace. |
 | `CROMBOLO_NPM_REGISTRY` | string | `https://registry.npmjs.org` | The registry the Marketplace searches, such as a mirror. |
 
 ### Schema

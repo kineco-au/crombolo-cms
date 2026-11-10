@@ -8,7 +8,8 @@
 
 /**
  * A component: `id` is its template's key, null while nothing names it.
- * @typedef {{ id: string | null, name: string, alias: string, allowed: boolean }} TemplateItem
+ * `extension` names the extension that renders it, when one does.
+ * @typedef {{ id: string | null, name: string, alias: string, allowed: boolean, extension?: string }} TemplateItem
  * @typedef {{ name: string, path: string, folders: TemplateFolder[], items: TemplateItem[] }} TemplateFolder
  */
 
@@ -24,7 +25,10 @@ export function templateTree(templates, allowedIds) {
   const allowed = new Set(allowedIds.map((id) => id.toLowerCase()))
   const root = { name: '', path: '', folders: [], items: [] }
   for (const template of templates) {
-    const parts = template.alias.split('/').slice(0, -1)
+    // An extension's component sits under the extension's name, not its id's folder (story 312).
+    const parts = template.extension
+      ? [`${template.extension} (extension)`, ...template.alias.split('/').slice(1, -1)]
+      : template.alias.split('/').slice(0, -1)
     let at = root
     for (const part of parts) {
       const path = at.path ? `${at.path}/${part}` : part

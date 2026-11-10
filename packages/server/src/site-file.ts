@@ -36,9 +36,11 @@ import { createTemplateFileStore } from './adapters/template-files.ts'
 import { type CromboloConfig, VERSION } from './config.ts'
 import { mediaStoreFor } from './media-files.ts'
 import { type StoredFile, streamOf } from './media-store.ts'
+import { signPathWithKey } from './provenance.ts'
 import { readSiteData } from './site-data.ts'
 import { publicSources } from './site-public.ts'
 import { siteSections } from './site-sections.ts'
+import { siteSigningKey } from './site-trust.ts'
 import { TarballWriter } from './tar.ts'
 
 export interface SiteExportOptions {
@@ -318,6 +320,9 @@ export async function exportSite(
     await writer.add('package.json', encoder.encode(`${JSON.stringify(pkg, null, 2)}\n`))
     await writer.close()
     await rename(partial, options.out)
+    // Signed with this site's key, so a site that trusts it knows it came from here (story 316).
+    const key = await siteSigningKey(db, config)
+    if (key) await signPathWithKey(options.out, key)
   } catch (error) {
     await writer.abort()
     await rm(partial, { force: true })

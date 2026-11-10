@@ -43,7 +43,7 @@ import {
   revertRun,
 } from '@crombolo/transfer'
 import { readAuditPageQuery, recordAudit } from './adapters/audit.ts'
-import type { BundleAdmin } from './bundle-admin.ts'
+import { type BundleAdmin, settingsIn } from './bundle-admin.ts'
 import { actAsChoice } from './bundle-api.ts'
 import { codeChanges, installedCode, planCode } from './bundle-code-install.ts'
 import {
@@ -662,6 +662,7 @@ export function createRemote(options: RemoteOptions): Remote {
       dryRun: raw.dryRun === true,
       publish: raw.publish === true,
       replaceFiles: raw.replaceFiles === true,
+      allowDowngrade: raw.allowDowngrade === true,
       label: typeof raw.label === 'string' ? raw.label.slice(0, 200) : undefined,
       resolutions,
       resolveAll,
@@ -762,6 +763,7 @@ export function createRemote(options: RemoteOptions): Remote {
         installCode: code.length > 0,
         resolutions: asked.resolutions,
         resolveAll: asked.resolveAll,
+        allowDowngrade: asked.allowDowngrade,
         by: principal.name,
       }
       const report = (check: {
@@ -972,6 +974,7 @@ export function createRemote(options: RemoteOptions): Remote {
       // Naming the grant is the consent: a script that names what it grants has said yes.
       grant,
       actAs: typeof body.actAs === 'string' ? body.actAs : null,
+      settings: settingsIn(body.settings),
     })
     if (outcome.ok) return Response.json(outcome)
     if (outcome.needsGrant) {

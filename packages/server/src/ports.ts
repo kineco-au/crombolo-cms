@@ -359,6 +359,8 @@ export interface DepsOptions {
   hiddenByRoutes?: () => Promise<Array<{ route: string; owner: string; page: string; url: string }>>
   /** Granted extensions that could not start, and why (story 311). */
   failedExtensions?: () => readonly { id: string; reason: string }[]
+  /** Extensions whose `layout` setting names a layout the site no longer has (story 312). */
+  lostLayouts?: () => readonly { id: string; layout: string }[]
   siteSettingsFindings?: () => Promise<
     Array<{ kind: 'second' | 'deep'; name: string; counted?: string }>
   >
@@ -490,6 +492,7 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
       siteSettingsFindings: options.siteSettingsFindings,
       bundleProblems: () => options.extensions.bundles().problems,
       failedExtensions: options.failedExtensions,
+      lostLayouts: options.lostLayouts,
     })
     const tags = new TagRepository(options.db)
     deps.tags = { list: (filter) => tags.all(filter) }
@@ -619,6 +622,7 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
       siteName: options.config.siteName,
       nodeId: options.config.nodeId,
       marketplaceUrl: options.config.marketplaceUrl,
+      secretKey: options.config.secretKey,
       componentFiles: createTemplateFileStore(options.config.componentsDir, options.onViewsChange),
       mediaStore: mediaFiles.store,
       components: deps.components,

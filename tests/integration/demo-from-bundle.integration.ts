@@ -2,7 +2,7 @@
  * Story 164: a demo site in three commands, through the real CLI.
  *
  *   crombolo init --name "Harbourstone"
- *   crombolo bundle build sites/harbourstone --out ./harbourstone-bundle
+ *   crombolo extension build sites/harbourstone --out ./harbourstone-bundle
  *   crombolo start --bundle ./harbourstone-bundle --publish
  *
  * The bundle carries the demo's schema, views, styles and seed, so the bare

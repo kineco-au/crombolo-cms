@@ -138,7 +138,7 @@ describe('the Packages section loads', () => {
   test('configuration names where the marketplace is', async () => {
     const { h } = await site()
     const config = await h.json<{ marketplaceUrl: string }>(`${PACKAGES}/configuration`)
-    expect(config.marketplaceUrl).toContain('crombolo-bundle')
+    expect(config.marketplaceUrl).toContain('crombolo-extension')
   })
 
   test('migration status is an empty page, not a 501', async () => {
@@ -617,8 +617,9 @@ describe('the files half of a package', () => {
     )
     expect(text(entries, 'styles/site.css')).toBe('body { margin: 0 }')
     expect(text(entries, 'scripts/site.js')).toBe('console.log(1)')
-    // One section: a component picked either way lands in components/.
-    expect(text(entries, 'components/nav.tsx')).toBe('export default () => <nav />')
+    // A component picked either way is the extension's code (story 312).
+    expect(text(entries, 'src/components/nav.tsx')).toBe('export default () => <nav />')
+    expect(entries.has('components/nav.tsx')).toBe(false)
   })
 
   test('keeps a file inside a folder at its folder path', async () => {
@@ -647,8 +648,34 @@ describe('the files half of a package', () => {
     expect(made.status).toBe(201)
     const key = made.headers.get('umb-generated-resource') as string
 
-    const entries = await download(h, await create({ name: 'Templates', templates: [key] }))
-    expect(text(entries, 'components/homePage.tsx')).toContain('<h1>Home</h1>')
+    const id = await create({ name: 'Templates', templates: [key] })
+    const entries = await downloadPackage(h, id)
+    // An extension's components are its code, declared by its factory (story 312).
+    expect(text(entries, 'src/components/homePage.tsx')).toContain('<h1>Home</h1>')
+    expect(text(entries, 'src/index.ts')).toContain(`"homePage": c0`)
+    expect(JSON.parse(text(entries, 'package.json'))).toMatchObject({
+      exports: { '.': './src/index.ts' },
+      crombolo: {
+        bundleType: 'extension',
+        server: 'extension',
+        schemaVersion: 4,
+        permissions: { templates: expect.any(String) },
+      },
+    })
+    expect(JSON.parse(text(entries, 'bundle.json')).carries?.components).toBeUndefined()
+
+    // A site bundle carries it as the other site's own (story 312).
+    const kind = await h.put(`${BACKOFFICE}/crombolo/api/bundles/created/${id}/package`, {
+      kind: 'site',
+    })
+    expect(kind.status).toBe(200)
+    const site = await downloadPackage(h, id)
+    expect(text(site, 'components/homePage.tsx')).toContain('<h1>Home</h1>')
+    expect(site.has('src/index.ts')).toBe(false)
+    expect(JSON.parse(text(site, 'package.json'))).toMatchObject({
+      private: true,
+      crombolo: { bundleType: 'site' },
+    })
   })
 
   test('a file that has since been deleted is dropped, not an error', async () => {
@@ -679,7 +706,7 @@ describe('the download is an npm package', () => {
     expect(json).toEqual({
       name: 'starter-kit',
       version: '1.0.0',
-      keywords: ['crombolo-bundle'],
+      keywords: ['crombolo-extension'],
       files: ['bundle.json'],
       peerDependencies: { '@crombolo/crombolo': `>=${VERSION}` },
       crombolo: { id: 'starter-kit', name: 'Starter Kit', bundleType: 'extension', content: true },
@@ -707,6 +734,7 @@ describe('the download is an npm package', () => {
     expect(await h.json<Record<string, unknown>>(route)).toEqual({
       name: 'named',
       version: '1.0.0',
+      kind: 'extension',
       set: { name: false, version: false },
     })
 

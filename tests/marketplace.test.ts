@@ -107,6 +107,8 @@ function registry(options: {
   declaring: string[]
   /** Hits whose manifest declares a server half. */
   server?: string[]
+  /** More of a server half's `crombolo` field, by name. */
+  field?: Record<string, Record<string, unknown>>
   /** Hits that are site packages, which a registry should never offer (story 306). */
   sitePackages?: string[]
   onSearch?: (text: string) => void
@@ -134,6 +136,7 @@ function registry(options: {
                     server: 'serve',
                     schemaVersion: 4,
                     permissions: { 'redirects.read': 'Lists the rules' },
+                    ...options.field?.[name],
                   }
                 : {},
             )
@@ -169,6 +172,8 @@ function marketplace(options: {
   runtimeInstalls?: boolean
   installsElsewhere?: { message: string; url?: string }
   grants?: Parameters<typeof createMarketplace>[0]['grants']
+  field?: Record<string, Record<string, unknown>>
+  componentsDir?: string
 }) {
   const root = options.root ?? site()
   const extensions = createExtensionRegistry(root, { cache: false })
@@ -187,7 +192,9 @@ function marketplace(options: {
       extensions,
       siteDir: root,
       grants: options.grants,
+      componentsDir: options.componentsDir,
       fetch: registry({
+        field: options.field,
         // The bundles the install cases use, unless a case says otherwise.
         hits: options.hits ?? INSTALLABLE,
         declaring: options.declaring ?? INSTALLABLE,
@@ -374,7 +381,7 @@ describe('installing', () => {
     const { market } = marketplace({ calls, hits: ['lodash'], declaring: [] })
     const outcome = await market.install('lodash', undefined)
     expect(outcome.ok).toBe(false)
-    expect(outcome.message).toContain('is not a bundle for this site')
+    expect(outcome.message).toContain('is not an extension for this site')
     expect(calls).toEqual([])
   })
 
@@ -422,7 +429,7 @@ describe('installing', () => {
     const outcome = await market.install('@acme/kit', undefined, { applyContent: false })
     expect(applied).toEqual([])
     expect(outcome.content?.applied).toBe(false)
-    expect(outcome.content?.message).toContain('crombolo bundle install @acme/kit')
+    expect(outcome.content?.message).toContain('crombolo extension install @acme/kit')
   })
 
   test('leaves the content alone when the site turns it off, whatever the request says', async () => {
@@ -720,8 +727,8 @@ describe('the endpoints', () => {
     const body = await h.json<{ keyword: string; url: string; items: unknown[] }>(
       `${PACKAGES}/marketplace`,
     )
-    expect(body.keyword).toBe('crombolo-bundle')
-    expect(body.url).toContain('crombolo-bundle')
+    expect(body.keyword).toBe('crombolo-extension')
+    expect(body.url).toContain('crombolo-extension')
     expect(Array.isArray(body.items)).toBe(true)
   })
 
@@ -862,5 +869,38 @@ describe('a site package on a registry (story 306)', () => {
     expect(((await market.inspect('@acme/whole-site')) as { message?: string }).message).toContain(
       'site package',
     )
+  })
+})
+
+describe('an extension whose page templates sit in a site layout (story 312)', () => {
+  test('the grant asks which, offering the site’s layouts and its suggestion when the site has it', async () => {
+    const root = site()
+    const components = join(root, 'components')
+    mkdirSync(join(components, 'shared'), { recursive: true })
+    mkdirSync(join(components, 'blocks'), { recursive: true })
+    writeFileSync(join(components, 'shared', 'layout.tsx'), 'export default () => null\n')
+    writeFileSync(join(components, 'blocks', 'quote.tsx'), 'export default () => null\n')
+    const asking = (suggested: string) =>
+      marketplace({
+        root,
+        server: ['@acme/tasks'],
+        componentsDir: components,
+        field: {
+          '@acme/tasks': {
+            settings: { layout: { label: 'Its layout', type: 'layout', default: suggested } },
+          },
+        },
+      }).market.install('@acme/tasks', undefined)
+    expect((await asking('shared/layout')).layout).toEqual({
+      key: 'layout',
+      label: 'Its layout',
+      values: ['shared/layout'],
+      suggested: 'shared/layout',
+    })
+    expect((await asking('layout')).layout).toEqual({
+      key: 'layout',
+      label: 'Its layout',
+      values: ['shared/layout'],
+    })
   })
 })

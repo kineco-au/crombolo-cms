@@ -48,6 +48,10 @@ export const transferFlags = {
     summary: 'allow replacing files this site has; the originals are kept for a revert',
   }),
   'exclude-people': excludePeople,
+  'allow-downgrade': Flags.boolean({
+    summary:
+      'apply a site bundle older than one this site applied from the same signer: a deliberate rollback, recorded in the audit log',
+  }),
 }
 
 export interface TransferFlagValues {
@@ -60,6 +64,7 @@ export interface TransferFlagValues {
   'no-files': boolean
   'replace-files': boolean
   'exclude-people'?: boolean
+  'allow-downgrade'?: boolean
 }
 
 export function parseResolutions(values: readonly string[]): Record<string, NodeResolutions> {
@@ -89,6 +94,7 @@ export function transferInput(bundle: string, flags: TransferFlagValues): ops.Tr
     withoutFiles: flags['no-files'],
     replaceFiles: flags['replace-files'],
     excludePeople: flags['exclude-people'],
+    allowDowngrade: flags['allow-downgrade'],
     // The code a bundle carries is installed too (story 241); live after `crombolo restart`.
     installCode: true,
     // What is applied here is a site package (story 306); an extension is installed.

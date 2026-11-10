@@ -93,6 +93,8 @@ export function permissionProblems(
   label: string,
   capabilities: readonly string[],
   declared: readonly string[],
+  /** It has back-office screens, which `http.outbound` lets reach its origins too (story 313). */
+  screens = false,
 ): string[] {
   const problems: string[] = []
   const has = new Set(declared)
@@ -111,6 +113,7 @@ export function permissionProblems(
   }
   for (const permission of declared) {
     if (DECLARATION_PERMISSIONS.has(permission)) continue
+    if (permission === 'http.outbound' && screens) continue
     const used = capabilities.some((c) => CAPABILITY_PERMISSIONS[c]?.includes(permission as never))
     if (!used)
       problems.push(

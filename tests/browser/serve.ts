@@ -183,6 +183,10 @@ writeFileSync(
       bundleType: 'extension',
       id: 'test-side-panel',
       schemaVersion: 4,
+      // Its screens may reach this origin, and only this one (story 313).
+      permissions: {
+        'http.outbound': { reason: 'Reads its notes', origins: ['https://notes.crombolo.test'] },
+      },
       extensions: [
         {
           type: 'sidePanel',
@@ -241,8 +245,15 @@ const server = await createServer(
       // re-vendors, so the hashed path is safe to cache.
       immutableAssets: true,
       allowPasswordReset: true,
+      // Seals the site's own signing key, which Trusted signers lists (story 316).
+      secretKey: 'browser-suite-secret-key-that-is-long-enough-0123',
       // It asks for no permissions; the site's code grants it, so it runs (story 310).
-      extensions: { 'test-side-panel': { grant: [] } },
+      extensions: {
+        'test-side-panel': {
+          grant: ['http.outbound'],
+          origins: ['https://notes.crombolo.test'],
+        },
+      },
       sendUserLink: async (message) => {
         appendFileSync(
           LINKS,

@@ -10,7 +10,7 @@
  *
  * An install is `bun add`, and then — unless the site or the request says not
  * to — the content the bundle carries, through the same installer as
- * `crombolo bundle install`. A bundle's server half is never loaded by an
+ * `crombolo extension install`. A bundle's server half is never loaded by an
  * install: that still takes an edit to `crombolo.config.ts` and a deploy.
  *
  * The search is proxied rather than done in the browser: it works where the
@@ -28,7 +28,9 @@ import {
   EXTENSION_KEYWORD,
   type ExtensionRegistry,
   isSchema3Field,
+  LEGACY_EXTENSION_KEYWORD,
   type PackageJson,
+  readSettings,
   SCHEMA_3_NOT_INSTALLED,
   SITE_PACKAGE_NOT_INSTALLED,
   validateBundlePackage,
@@ -40,6 +42,7 @@ import {
   localBundlesNamed,
 } from '@crombolo/transfer'
 import { type BundleGrants, declaredEntries, isSchema3 } from './bundle-grants.ts'
+import { siteLayouts } from './components.ts'
 import { logger } from './logging.ts'
 import {
   type ProvenancePolicy,
@@ -116,6 +119,8 @@ export interface MarketplaceOptions {
   marketplaceUrl: string
   extensions: ExtensionRegistry
   fetch?: typeof fetch
+  /** The site's components, whose layouts an extension's page templates may sit in (story 312). */
+  componentsDir?: string
   /** Where `bun add` runs, which is the site that owns the package.json. */
   siteDir: string
   /** Overridden by tests; the real one shells out to Bun. */
@@ -167,6 +172,11 @@ export interface InstallOutcome {
   permissions?: { permission: string; allows: string; reason: string | null; origins?: string[] }[]
   /** With `needsGrant`: it asks to act for a user, so the grant names whom (story 308). */
   asksActAs?: boolean
+  /**
+   * With `needsGrant`: its page templates sit in a site layout, picked here
+   * (story 312). `suggested` is the one it names, when the site has it.
+   */
+  layout?: { key: string; label: string; values: string[]; suggested?: string }
   /** It changed the code the server loads, which runs once the site restarts (story 241). */
   restartPending?: boolean
   /** Where the version checked was built, from its signature (story 060). */
@@ -295,7 +305,30 @@ export const bunInstaller: PackageInstaller = async (action, specifier, siteDir)
   }
 }
 
+/** The layout setting a version declares, if it has page templates to place (story 312). */
+type AskedLayout = { key: string; label: string; suggested?: string }
+
+function layoutAsked(field: { settings?: unknown } | undefined): AskedLayout | undefined {
+  const read = readSettings(field?.settings)
+  if (!('settings' in read)) return undefined
+  const found = Object.entries(read.settings).find(([, setting]) => setting.type === 'layout')
+  if (!found) return undefined
+  const [key, setting] = found
+  return {
+    key,
+    label: setting.label,
+    ...(typeof setting.default === 'string' ? { suggested: setting.default } : {}),
+  }
+}
+
 export function createMarketplace(options: MarketplaceOptions): Marketplace {
+  /** The site's layouts to pick from, the suggestion kept only when the site has it. */
+  const layoutChoice = (asked: AskedLayout | undefined): InstallOutcome['layout'] => {
+    if (!asked) return undefined
+    const values = options.componentsDir ? siteLayouts(options.componentsDir) : []
+    const { suggested, ...rest } = asked
+    return { ...rest, values, ...(suggested && values.includes(suggested) ? { suggested } : {}) }
+  }
   const call = options.fetch ?? fetch
   const install = options.install ?? bunInstaller
 
@@ -358,6 +391,7 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
   ): Promise<
     | (BundlePackage['carries'] & {
         permissions: DeclaredPermission[]
+        layout?: AskedLayout
         version: string
         dist?: Dist
       })
@@ -397,6 +431,7 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
         content?: boolean
         server?: string
         permissions?: unknown
+        settings?: unknown
       }
       // Story 308: a version that says nothing of why it asks is not installed.
       if (isSchema3Field(field)) return 'schema-3'
@@ -405,6 +440,7 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
         content: field.content === true,
         server: field.server !== undefined,
         permissions: askedPermissions(field),
+        layout: layoutAsked(field),
         version: resolved,
         ...(dist ? { dist } : {}),
       }
@@ -529,7 +565,9 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
     url: () => options.marketplaceUrl,
 
     async search(query) {
-      const text = [`keywords:${options.keyword}`, query?.trim()].filter(Boolean).join(' ')
+      // Extensions published before 0.57 carry the old keyword, and are found too.
+      const keywords = [...new Set([options.keyword, LEGACY_EXTENSION_KEYWORD])]
+      const text = [`keywords:${keywords.join(',')}`, query?.trim()].filter(Boolean).join(' ')
       if (cached && cached.query === text && Date.now() - cached.at < CACHE_MS)
         return cached.listings.map((listing) => ({
           ...listing,
@@ -626,11 +664,12 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
       if (declared === 'not-a-bundle')
         return {
           ok: false,
-          message: `${name} is not a bundle for this site, so it was not installed.`,
+          message: `${name} is not an extension for this site, so it was not installed.`,
         }
       if (declared === 'site-package') return sitePackageRefused(name)
       if (declared === 'schema-3') return schema3Refused(name)
-      if (!consented(request, declared.permissions)) return grantNeeded(name, declared.permissions)
+      if (!consented(request, declared.permissions))
+        return grantNeeded(name, declared.permissions, '', layoutChoice(declared.layout))
       const provenance = await provenanceAt(name, declared.dist)
       const refused = refusedBySignature(`${name}@${declared.version}`, provenance)
       if (refused) return refused
@@ -652,7 +691,7 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
       if (declared === 'unreachable')
         return { ok: false, message: `The package registry could not say what ${name} contains.` }
       if (declared === 'not-a-bundle')
-        return { ok: false, message: `${name} is not a bundle for this site.` }
+        return { ok: false, message: `${name} is not an extension for this site.` }
       if (declared === 'site-package') return sitePackageRefused(name)
       if (declared === 'schema-3') return schema3Refused(name)
       const { dist, permissions, ...carries } = declared
@@ -669,7 +708,7 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
       const declared = await declaresIn(file)
       if (typeof declared === 'string') return { ok: false, message: declared }
       if (!consented(request, declared.permissions))
-        return grantNeeded(declared.name, declared.permissions)
+        return grantNeeded(declared.name, declared.permissions, '', layoutChoice(declared.layout))
       // Kept in the site's bundles/ (story 245), so it is committed and every
       // node, checkout and CI build installs the same file.
       const kept = keepInSite(file, declared)
@@ -759,7 +798,7 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
       return {
         ok: true,
         dependency: { name, range, version: version ?? range },
-        message: `${name} was installed, but it is not a valid bundle, so nothing was added to the backoffice.`,
+        message: `${name} was installed, but it is not a valid extension, so nothing was added to the back office.`,
       }
     // The version whose signature was checked is the one that has to land
     // (story 060): one published in between was never checked.
@@ -785,6 +824,7 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
         name,
         declaredEntries(found),
         `${name}@${found.version} turned out to ask for more than was granted, so it was removed again.`,
+        layoutChoice(layoutAsked(found.field)),
       )
     }
     // What was granted is recorded against the version that landed, for every
@@ -801,7 +841,7 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
         declined || !options.applyContent
           ? {
               applied: false,
-              message: `Its content was not applied. Run \`crombolo bundle install ${name}\` to apply it.`,
+              message: `Its content was not applied. Run \`crombolo extension install ${name}\` to apply it.`,
             }
           : await options.applyContent(name).catch((error: unknown) => ({
               applied: false,
@@ -832,10 +872,15 @@ function sitePackageRefused(name: string): { ok: false; message: string } {
 }
 
 /** What a packed bundle on this machine declares, read from its package.json, or why it cannot be installed. */
-async function declaresIn(
-  file: string,
-): Promise<
-  { name: string; version: string; server: boolean; permissions: DeclaredPermission[] } | string
+async function declaresIn(file: string): Promise<
+  | {
+      name: string
+      version: string
+      server: boolean
+      permissions: DeclaredPermission[]
+      layout?: AskedLayout
+    }
+  | string
 > {
   const dir = mkdtempSync(join(tmpdir(), 'crombolo-bundle-file-'))
   try {
@@ -846,14 +891,15 @@ async function declaresIn(
       return sitePackageRefused(file).message
     const problems = validateBundlePackage(json)
     if (problems.length > 0 || typeof json.name !== 'string' || typeof json.version !== 'string')
-      return `${file} is not a bundle for this site, so it was not installed.`
-    const field = json.crombolo as { server?: string; permissions?: unknown }
+      return `${file} is not an extension for this site, so it was not installed.`
+    const field = json.crombolo as { server?: string; permissions?: unknown; settings?: unknown }
     if (isSchema3Field(field)) return `${file} was not installed: ${SCHEMA_3_NOT_INSTALLED}.`
     return {
       name: json.name,
       version: json.version,
       server: field.server !== undefined,
       permissions: askedPermissions(field),
+      layout: layoutAsked(field),
     }
   } catch {
     return `${file} could not be read as a packed bundle, so it was not installed.`
@@ -898,12 +944,14 @@ function grantNeeded(
   name: string,
   asked: readonly DeclaredPermission[],
   before = '',
+  layout?: InstallOutcome['layout'],
 ): InstallOutcome {
   return {
     ok: false,
     needsGrant: true,
     permissions: describePermissions(asked),
     asksActAs: asked.some((entry) => entry.permission === 'actAs'),
+    ...(layout ? { layout } : {}),
     message: `${before ? `${before} ` : ''}${name} asks for these permissions. Grant them, each as it asks, to install it.`,
   }
 }

@@ -578,6 +578,23 @@ export function loadBundle(dir: string): LoadedBundle {
       message:
         "it is an extension, which never carries the site's code, and it lists files under code/",
     })
+  if (manifest.bundleType === 'extension' && (manifest.carries?.components?.length ?? 0) > 0)
+    problems.push({
+      file: MANIFEST_FILE,
+      message:
+        'it is an extension, whose components live in its package and render in its own process, and it lists files under components/',
+    })
+  if (
+    manifest.bundleType === 'extension' &&
+    (manifest.carries?.schema ?? []).some((file) =>
+      /(^|\/)migrations\/[^/]+\.[cm]?[jt]sx?$/.test(file),
+    )
+  )
+    problems.push({
+      file: MANIFEST_FILE,
+      message:
+        "it is an extension, and it carries value migrations under schema/migrations/, which are code: an extension's code runs only in its own process",
+    })
   const pkg = readPackage(dir, problems)
   const packageType = (pkg?.crombolo as { bundleType?: unknown } | undefined)?.bundleType
   if (pkg && packageType !== manifest.bundleType)

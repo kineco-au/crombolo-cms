@@ -283,6 +283,17 @@ async function laptopFrom(
   await ok(name, ['pull', 'live', '--yes', '--backup-taken'], await identity())
 }
 
+/**
+ * The live site trusts the laptop's key, as its operator would: it is in
+ * production, so it applies a site bundle only from a key it trusts (story 316).
+ */
+async function trustLaptop(live: string, laptop: string) {
+  const key = JSON.parse((await ok(laptop, ['site', 'key', '-o', 'json'])).out) as {
+    publicKey: string
+  }
+  await ok(live, ['keys', 'trust', 'Laptop', key.publicKey, '--site'])
+}
+
 /** The template changed, its model types generated, and the views checked. */
 async function editTemplate(name: string) {
   writeFileSync(join(siteDir(name), 'components', 'page.tsx'), TEMPLATE)
@@ -305,6 +316,7 @@ describe('a template edited locally and pushed to a remote', () => {
     expect((await page(live, '/')).html).toContain('<h1>Home</h1>')
 
     await laptopFrom('laptop-push', live, identity)
+    await trustLaptop('live-push', 'laptop-push')
     await editTemplate('laptop-push')
 
     // A dry run says what it would replace, and sends nothing.
@@ -338,6 +350,7 @@ describe('a template edited locally and deployed to a remote', () => {
     const identity = identityFor(live)
 
     await laptopFrom('laptop-deploy', live, identity)
+    await trustLaptop('live-deploy', 'laptop-deploy')
     git('laptop-deploy', 'init', '--quiet', '--initial-branch', 'main')
     git('laptop-deploy', 'add', '-A')
     git('laptop-deploy', 'commit', '--quiet', '-m', 'pulled from live')

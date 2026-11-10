@@ -10,6 +10,8 @@
  * docs/extensions.md, "The channel".
  */
 import { schemaBuilder } from '@crombolo/data/tables-builder'
+import { RawHtml } from '@crombolo/render/html'
+import { type Child, renderToString } from '@crombolo/render/jsx-runtime'
 import {
   type CompiledQuery,
   type DatabaseConnection,
@@ -67,7 +69,21 @@ export interface ExtensionDescription {
   workflows: { type: string; label: string; settings?: unknown }[]
   fields: number
   middleware: boolean
+  /** Its components (story 312), each with the layout alias it suggests. */
+  components: { name: string; layout?: string }[]
 }
+
+/** A component as the factory declares it: its render function, or its module. */
+type DeclaredComponent =
+  | ((props: object) => unknown)
+  | { default: (props: object) => unknown; layout?: string }
+
+const renderOf = (component: DeclaredComponent | undefined) =>
+  typeof component === 'function'
+    ? component
+    : typeof component?.default === 'function'
+      ? component.default
+      : undefined
 
 function describe(bundle: Bundle): ExtensionDescription {
   return {
@@ -110,7 +126,46 @@ function describe(bundle: Bundle): ExtensionDescription {
     ),
     fields: (bundle.forms?.fields ?? []).length,
     middleware: bundle.middleware !== undefined,
+    components: Object.entries((bundle.components ?? {}) as Record<string, DeclaredComponent>)
+      .filter(([, component]) => renderOf(component))
+      .map(([name, component]) => ({
+        name,
+        ...(typeof component === 'object' && typeof component.layout === 'string'
+          ? { layout: component.layout }
+          : {}),
+      })),
   }
+}
+
+const hasAny = (value: unknown) =>
+  value !== null &&
+  value !== undefined &&
+  value !== '' &&
+  !(Array.isArray(value) && value.length === 0)
+
+/**
+ * A page or element whose values came with it (story 312): `value()`, `text()`,
+ * `html()` and `hasValue()` answer at once, as a site component's do. With
+ * options, or for a value that did not come, they ask the CMS.
+ */
+function withValues(target: Bundle, values: Record<string, Bundle>): Bundle {
+  const live = {
+    value: target.value,
+    text: target.text,
+    html: target.html,
+    hasValue: target.hasValue,
+  }
+  const sent = (alias: string, options: unknown) =>
+    options === undefined && Object.hasOwn(values, alias) ? values[alias] : undefined
+  target.value = (alias: string, options?: unknown) =>
+    sent(alias, options)?.value ?? (sent(alias, options) ? undefined : live.value?.(alias, options))
+  target.text = (alias: string, options?: unknown) =>
+    sent(alias, options)?.text ?? live.text?.(alias, options)
+  target.html = (alias: string, options?: unknown) =>
+    sent(alias, options)?.html ?? live.html?.(alias, options)
+  target.hasValue = (alias: string, options?: unknown) =>
+    sent(alias, options) ? hasAny(sent(alias, options)?.value) : live.hasValue?.(alias, options)
+  return target
 }
 
 /** Starts the extension's end of the channel: never returns while the CMS keeps it open. */
@@ -221,24 +276,36 @@ export async function run(module: Record<string, unknown>, exportName: string): 
     return found
   }
 
-  const decodeFor = (call: number) => (value: unknown) =>
-    decode(value, {
-      fn:
-        (fn) =>
-        (...args: unknown[]) =>
-          callHost(call, fn, args),
-      signal: (marker, aborted) => {
-        let controller = signals.get(marker)
-        if (!controller) {
-          controller = new AbortController()
-          signals.set(marker, controller)
-        }
-        if (aborted) controller.abort()
-        return controller.signal
-      },
-      special: (tagged) =>
-        '$database' in tagged ? databaseFor(String(tagged.$database)) : undefined,
-    })
+  const decodeFor =
+    (call: number) =>
+    (value: unknown): unknown =>
+      decode(value, {
+        fn:
+          (fn) =>
+          (...args: unknown[]) =>
+            callHost(call, fn, args),
+        signal: (marker, aborted) => {
+          let controller = signals.get(marker)
+          if (!controller) {
+            controller = new AbortController()
+            signals.set(marker, controller)
+          }
+          if (aborted) controller.abort()
+          return controller.signal
+        },
+        special: (tagged): unknown => {
+          if ('$database' in tagged) return databaseFor(String(tagged.$database))
+          if ('$html' in tagged) return new RawHtml(String(tagged.$html))
+          if ('$values' in tagged) {
+            const { $values, ...rest } = tagged
+            return withValues(
+              decodeFor(call)(rest) as Bundle,
+              decodeFor(call)($values) as Record<string, Bundle>,
+            )
+          }
+          return undefined
+        },
+      })
 
   async function callHost(call: number, fn: number, args: unknown[]): Promise<unknown> {
     const encoded = await encode(args, {
@@ -313,6 +380,19 @@ export async function run(module: Record<string, unknown>, exportName: string): 
         )
         if (!workflow) throw new Error(`No workflow type "${frame.name}".`)
         return workflow.run(context)
+      }
+      case 'render': {
+        const render = renderOf(bundle.components?.[frame.name as string])
+        if (!render) throw new Error(`No component "${frame.name}".`)
+        // Asked of the CMS only when read, since reading them makes the page personal.
+        const read = context.readSearchParams
+        delete context.readSearchParams
+        if (typeof read === 'function')
+          Object.defineProperty(context, 'searchParams', {
+            get: () => read(),
+            enumerable: true,
+          })
+        return renderToString(render(context) as Child)
       }
       case 'backfill': {
         const step = bundle.tables?.steps.find(

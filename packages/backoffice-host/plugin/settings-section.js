@@ -23,6 +23,7 @@ import { UmbViewController } from '@umbraco-cms/backoffice/view'
 import {
   ADVANCED_MENU,
   advancedToolTitle,
+  CARDS,
   CODE_MENU,
   crumbsFor,
   SIDEBAR_APPS,
@@ -31,6 +32,7 @@ import {
   treeFor,
 } from './settings-cards.js'
 import './breadcrumb.js'
+import './settings-title.js'
 import { readOnlyWords } from './definition-tree-model.js'
 import './settings-card.js'
 
@@ -80,6 +82,7 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
     _sidebarApps: { state: true },
     _tree: { state: true },
     _crumbs: { state: true },
+    _tool: { state: true },
     _readOnly: { state: true },
   }
 
@@ -206,10 +209,11 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
     if (this.#landing) this.#landing.groups = this.#cards()
   }
 
-  /** Which tree shows, and the trail that heads the page. */
-  #showing(tree, { title } = {}) {
+  /** Which tree shows, the trail that heads the page, and a tool's title section. */
+  #showing(tree, { title, tool } = {}) {
     this._tree = tree
     this._crumbs = crumbsFor({ tree, title })
+    this._tool = tool
   }
 
   #advanced() {
@@ -278,7 +282,14 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
           context.provideAt(component)
           component.manifest = manifest
         }
-        this.#showing(undefined, { title: this.#label(manifest) })
+        this.#showing(undefined, {
+          title: this.#label(manifest),
+          // The landing card's words for it, where there are any.
+          tool: {
+            heading: CARDS[manifest.alias]?.title ?? this.#label(manifest),
+            description: CARDS[manifest.alias]?.description ?? this.#description(manifest),
+          },
+        })
       },
     }))
     // Forms and Workflows are nodes in Structure, so its tree stays on screen beside them.
@@ -298,6 +309,16 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
       tree('code'),
       // Umbraco's welcome, which this page replaces: an address people have.
       { path: 'dashboard/welcome', ...landing },
+      // Bundles became Extensions: its old addresses, tab and all, go to the new ones.
+      {
+        path: 'dashboard/bundles',
+        component: () => {
+          window.location.replace(
+            window.location.href.replace('/dashboard/bundles', '/dashboard/extensions'),
+          )
+          return document.createElement('div')
+        },
+      },
       // Workflows were a Settings card, then beside forms (story 289): an address people have.
       {
         path: 'dashboard/workflows',
@@ -340,6 +361,13 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
       ${
         crumbs.length > 0
           ? html`<crombolo-breadcrumb class="crumbs" .items=${crumbs}></crombolo-breadcrumb>`
+          : nothing
+      }
+      ${
+        this._tool
+          ? html`<crombolo-settings-title
+              heading=${this._tool.heading}
+              description=${this._tool.description ?? ''}></crombolo-settings-title>`
           : nothing
       }
       ${this._routes ? html`<umb-router-slot .routes=${this._routes}></umb-router-slot>` : nothing}
@@ -412,7 +440,11 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
       }
       .crumbs {
         display: block;
-        padding: var(--uui-size-space-4) var(--uui-size-layout-1) 0;
+        padding: var(--uui-size-space-4) var(--uui-size-layout-1) var(--uui-size-space-4);
+      }
+      /* Umbraco's workspace headers, Webhooks' among them, as short as the tools' titles. */
+      umb-section-main {
+        --umb-header-layout-height: 56px;
       }
     `,
   ]

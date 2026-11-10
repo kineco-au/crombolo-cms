@@ -9,7 +9,7 @@ keeps them apart:
   implemented (`api-coverage.md`).
 - **Where it is (story 238).** Bundles is a Settings tool, the Bundles card
   under Extensions (`plugin/bundles-tool.js`), with Marketplace, Installed and
-  Created as tabs at `section/settings/dashboard/bundles/<tab>`. The bundle
+  Created as tabs at `section/settings/dashboard/extensions/<tab>`. The bundle
   builder is under Created, at `created/package-builder/create` and
   `created/package-builder/edit/:unique`.
   - **Who may use it:** whoever has Settings, and the server's bundle
@@ -186,6 +186,26 @@ so the Created view's routes reach it and nothing reaches Umbraco's.
   of, and loads, saves and downloads through Umbraco's own package repository,
   so a definition made before it opens and saves unchanged. It says "bundle"
   throughout, its toasts included.
+
+#### Two kinds: an extension, or a site bundle
+
+Story 312. A definition says what it builds, set beside its package name in
+Created (`<backoffice>/crombolo/api/bundles/created/<id>/package`, `kind`;
+migration 068). Every definition before it is an extension.
+
+- **An extension, for other sites to install:** its schema, content,
+  dictionary, styles and scripts are its payload. The templates and partial
+  views it picks are its code (`server/src/created-extension.ts`):
+  - they are written to `src/components/`, and a generated `src/index.ts`
+    declares them as the factory's `components`, which `crombolo.server` names;
+  - its schema and pages name them by its id, `<id>/<alias>`;
+  - it asks for `templates`, so installing it asks for that grant;
+  - where it is installed, they render in its own process
+    ([`extensions.md`](extensions.md), "Components").
+- **A site bundle, to move this site:** everything it picks, components
+  included, as the payload of a site package (`bundleType: "site"`, private).
+  It is applied with `crombolo site apply` or `push`, and never installed: what
+  `site export` makes, from the back office.
 
 #### Forms, approval workflows and user groups
 
@@ -687,10 +707,10 @@ implementation serves Settings → Bundles, the remote protocol and the CLI
 
 | Command | Does |
 | --- | --- |
-| `crombolo bundle list [--remote <name>]` | the installed bundles: version, whether their server features are on, what was granted and by whom, and whether installed changes wait for a restart |
-| `crombolo bundle install <name[@version] \| file.tgz> [--grant <p>…] [--act-as …] [--apply-content] [--remote <name>] [--dry-run]` | `bun add`, as Install does, granting what it asks for; the content too with `--apply-content` |
-| `crombolo bundle uninstall <name> [--remote <name>]` | `bun remove` |
-| `crombolo bundle disable\|enable <id> [--remote <name>]` | a bundle's server features off or on, at once ([story 225](#permissions)) |
+| `crombolo extension list [--remote <name>]` | the installed bundles: version, whether their server features are on, what was granted and by whom, and whether installed changes wait for a restart |
+| `crombolo extension install <name[@version] \| file.tgz> [--grant <p>…] [--act-as …] [--apply-content] [--remote <name>] [--dry-run]` | `bun add`, as Install does, granting what it asks for; the content too with `--apply-content` |
+| `crombolo extension uninstall <name> [--remote <name>]` | `bun remove` |
+| `crombolo extension disable\|enable <id> [--remote <name>]` | a bundle's server features off or on, at once ([story 225](#permissions)) |
 
 - **A grant names exactly what is asked.** A bundle with server code is
   installed only when `--grant` names every permission it asks for, and nothing
@@ -749,11 +769,23 @@ implementation serves Settings → Bundles, the remote protocol and the CLI
 - **A runtime install never loads a bundle's code.** A package whose code must
   run in the server process is a dependency plus a deploy — see
   [Part 3](#part-3--server-side-bundles), which is what that turned into.
-  Loading third-party JS into a running node has no isolation story and a
-  `role: web` node would never see it, so an install writes `package.json`,
-  applies the content (which is files and data, never code), and stops there. A
+  An install writes `package.json`, applies the payload, and stops there. A
   package that installs but is not a valid bundle is reported as exactly that
   rather than as a success.
+- **Where each part of an extension lands** (story 312). An extension's code,
+  its server half and its components, stays in its package and runs in its own
+  process ([`extensions.md`](extensions.md)). Its payload is data:
+
+  | Part | Lands | Runs |
+  |---|---|---|
+  | its code (`src/`): the server half and its components | stays in the package | in its own Deno process: routes, events and jobs as calls, components as `render` calls |
+  | its screens (`plugin/`) | stays in the package, served to the browser | in the back office, as the signed-in user |
+  | `schema/`, `nodes/`, `values/`, media, dictionary | applied into the site, then the site's own | nothing; it is data |
+  | `styles/`, `scripts/` | copied into the site | in the visitor's browser |
+
+  An extension's `bundle.json` may not list `components/`, `code/` or value
+  migrations (`schema/migrations/*.ts`): each is refused, and nothing is written.
+  A site package carries all of them, as the site's own code.
 - **Content applied at runtime is this node's too.** It writes `schema/` and the
   component directories on the node that served the request. On a
   load-balanced site, turn `applyBundleContentOnInstall` off and let the content
@@ -907,7 +939,7 @@ bundle is that artifact (story 192).
   so a host starts the installed code once in a throwaway directory before it
   serves from it. The check lists the server bundles the declared packages
   carry.
-- **`crombolo bundle install <bundle> --code-into <dir>`** (`installBundleCode`,
+- **`crombolo extension install <bundle> --code-into <dir>`** (`installBundleCode`,
   `bundle install-code` before story 241) checks the hash, then installs the
   code into an empty directory the same way.
   It never writes over a directory that already holds files. The directory has
@@ -1006,6 +1038,42 @@ later may succeed.
 | --- | --- |
 | `CROMBOLO_BUNDLE_SIGNATURES` | `optional` (the default) or `required`: refuse an unsigned bundle |
 | `CROMBOLO_BUNDLE_SOURCES` | where a signed bundle must come from, comma separated: `org/*`, `org/repo`, or `org/repo@v*` for its tags |
+
+### Site bundles: trusted signers
+
+Story 316. A site bundle carries a site's content and code, so a site applies
+one only from a signer it trusts. Extensions keep the rules above.
+
+- **Keys.** Ed25519. A public key is one line, `crombolo-ed25519 <key> <name>`,
+  known by its fingerprint, `SHA256:…` (`server/src/signing-keys.ts`):
+  - **a user key** is a person's, made on their machine with
+    `crombolo keys create <name>`, kept in their config directory, and listed by
+    `crombolo keys list`. A CI job keeps one as a secret;
+  - **a site key** is a site's own, made the first time it signs, its private
+    half kept in the site's database, sealed with `CROMBOLO_SECRET_KEY`.
+    `crombolo site key` prints its public line.
+- **Signing.** Every site package a site makes is signed with its key: `site
+  export` and the bundle `pull` brings, `content export`, `site build`, `site
+  deploy`, and the Bundle Editor's site bundles. `site build --sign-with <key>`
+  and `site deploy --sign-with <key>` sign with a user key instead. The signature
+  is over the package digest above, its name and its version, in
+  `provenance.json` as `key`, beside a Sigstore signature when both are made.
+- **Trusted signers** (Settings → Trusted signers, administrators only): this
+  site's own key, always trusted; the config's `trustedKeys` and
+  `trustedSources`, and `CROMBOLO_BUNDLE_SOURCES`, locked; then what an
+  administrator added, renamed or removed, each audited. An entry is a user
+  key, a site key or a CI build (`org/repo@v*`, signed by Sigstore).
+  `crombolo keys trust`, `keys untrust` and `keys trusted` do the same from the
+  CLI (`server/src/trusted-signers-admin.ts`; migration 069).
+- **Applying one** (`server/src/site-trust.ts`), wherever a site bundle is
+  applied: `site apply`, `push`, `pull`, `site deploy`, a remote's apply and
+  `start --bundle`:
+  - a signature that does not check out is refused, always;
+  - in production, one no trusted signer signed is refused; elsewhere it is
+    applied, with a warning;
+  - an older version than this site applied from the same signer is refused,
+    naming both, unless `--allow-downgrade`, which the audit log records. Each
+    run records its signer (`content_transfer_run.signed_by`).
 
 **Ours are signed.** Every release signs, from its tag:
 - `@crombolo/simple-redirects` and `@crombolo/entra`, after packing and before
@@ -1468,7 +1536,7 @@ asks for, with nothing imported by the site. Until then, the import in
   - **by the site's code:** the config's `extensions` entry names, exactly, what
     it grants. That grant is "Developer installed", recorded and audited at boot;
   - **or by a grant recorded here:** the Marketplace's install panel, Installed's
-    **Grant** button, `crombolo bundle grant`, or a remote.
+    **Grant** button, `crombolo extension grant`, or a remote.
 
   Nothing of an extension that is not granted is built, let alone run. One that
   cannot start is left off, saying why in Installed, and the site starts.
@@ -1495,7 +1563,7 @@ export default defineConfig({
   a `default`, and `secret` for one kept sealed.
   - The config's `settings` lock a value.
   - Installed shows the rest, to edit, kept in `extension_setting` (migration 067).
-    `crombolo bundle settings <name> [key=value …]` does the same from the CLI.
+    `crombolo extension settings <name> [key=value …]` does the same from the CLI.
   - An extension reads its settings when it starts, so a change takes effect at the
     next restart.
 - **The old way:** a site that still imports an extension and lists it in `bundles`
@@ -1785,7 +1853,7 @@ each permission with the reason it needs it, and it is held to that.
     when it changes.
   - **An administrator:** the Marketplace's install panel, or **Grant** in
     Installed for one installed by a deploy or waiting after an upgrade.
-  - **The CLI:** `crombolo bundle grant <name> --grant … [--act-as …]`.
+  - **The CLI:** `crombolo extension grant <name> --grant … [--act-as …]`.
   - **A remote:** someone holding "Install code on this site" (`bundle-manage`'s
     `installed/<name>/grant`).
   - **Exactly:** a grant is exactly what is asked for, or it is refused, saying
@@ -2201,7 +2269,7 @@ On the Settings landing page (story 234) each bundle's Settings dashboards and
 Advanced menu items are cards in a group of their own, headed by the bundle's
 `name`, after the built-in groups. Beside the name, a link with the package's
 name opens the bundle in the Bundles tool's Installed tab
-(`section/settings/dashboard/bundles/installed?bundle=<package>`), so an administrator can
+(`section/settings/dashboard/extensions/installed?extension=<package>`), so an administrator can
 see where the cards come from. A card is named by `meta.label` and described
 by `meta.description`. The server stamps each extension it serves with
 `cromboloBundle: { name, packageName }`, which is how the page knows.
@@ -2534,7 +2602,7 @@ Taking a bundle out of `bundles` leaves its tables, state and ledger rows in
 place, and re-adding it resumes from its recorded state.
 
 ```
-crombolo bundle purge <id> [--yes] [--backup-taken]
+crombolo extension purge <id> [--yes] [--backup-taken]
 ```
 
 drops the bundle's schema and its role on Postgres, or deletes its file on

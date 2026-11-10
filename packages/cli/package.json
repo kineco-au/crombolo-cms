@@ -60,11 +60,20 @@
       "admin": {
         "description": "the administrator's account"
       },
+      "api-client": {
+        "description": "the API client a site seeds from its environment"
+      },
       "assets": {
         "description": "the stylesheets and scripts beside the components"
       },
+      "audit": {
+        "description": "who did what, and when: the audit log, to read or to ship elsewhere"
+      },
       "bundle": {
-        "description": "bundles: install, check, and purge their tables"
+        "description": "the bundle format: sign, verify and digest a bundle"
+      },
+      "cache": {
+        "description": "the published cache on every node"
       },
       "components": {
         "description": "the components in components/: check, list, new"
@@ -81,8 +90,38 @@
       "domains": {
         "description": "the hostnames this site answers on (domains.toml)"
       },
+      "events": {
+        "description": "what is waiting to go out to webhooks and e-mail, and sending failures again"
+      },
+      "extension": {
+        "description": "extensions: install, grant, configure and check them, and purge their tables"
+      },
+      "forms": {
+        "description": "the site's forms: make, list, show, change and remove them"
+      },
+      "forms:field": {
+        "description": "a form's fields: add, change, move and remove them"
+      },
+      "forms:group": {
+        "description": "the fieldsets on a form's pages: add, change, move and remove them"
+      },
+      "forms:page": {
+        "description": "a form's pages: add, change, move and remove them"
+      },
+      "forms:workflow": {
+        "description": "what happens to a form's entries: add, change and remove its workflows"
+      },
       "import": {
         "description": "replace this site with a whole-site file; import an Umbraco backup"
+      },
+      "index": {
+        "description": "the search indexes: what they hold, and rebuilding them"
+      },
+      "keys": {
+        "description": "keys that sign site bundles: your own, and the ones this site trusts"
+      },
+      "languages": {
+        "description": "the languages a site is written in (languages.toml)"
       },
       "maintenance": {
         "description": "pause and resume editors' saves, cluster-wide"
@@ -90,8 +129,17 @@
       "media": {
         "description": "the media library in bulk: import a folder, export one; a pulled site's files"
       },
+      "recycle-bin": {
+        "description": "what has been deleted, before it is gone for good"
+      },
       "remote": {
         "description": "the remotes this site pulls from and pushes to (remotes.toml)"
+      },
+      "seed": {
+        "description": "a site's starting content, written as files and applied"
+      },
+      "site": {
+        "description": "the site as a whole: what it is, and how page addresses are built"
       },
       "types": {
         "description": "schema-as-code: the content types, data types and languages in schema/"
@@ -111,56 +159,14 @@
       "users:groups": {
         "description": "user groups: the site's own and those made in the back office"
       },
-      "site": {
-        "description": "the site as a whole: what it is, and how page addresses are built"
-      },
-      "api-client": {
-        "description": "the API client a site seeds from its environment"
-      },
-      "index": {
-        "description": "the search indexes: what they hold, and rebuilding them"
-      },
-      "cache": {
-        "description": "the published cache on every node"
-      },
-      "audit": {
-        "description": "who did what, and when: the audit log, to read or to ship elsewhere"
-      },
-      "seed": {
-        "description": "a site's starting content, written as files and applied"
-      },
-      "events": {
-        "description": "what is waiting to go out to webhooks and e-mail, and sending failures again"
-      },
-      "recycle-bin": {
-        "description": "what has been deleted, before it is gone for good"
-      },
-      "languages": {
-        "description": "the languages a site is written in (languages.toml)"
-      },
-      "forms": {
-        "description": "the site's forms: make, list, show, change and remove them"
-      },
-      "forms:field": {
-        "description": "a form's fields: add, change, move and remove them"
-      },
-      "forms:page": {
-        "description": "a form's pages: add, change, move and remove them"
-      },
-      "forms:group": {
-        "description": "the fieldsets on a form's pages: add, change, move and remove them"
-      },
-      "forms:workflow": {
-        "description": "what happens to a form's entries: add, change and remove its workflows"
+      "webhooks": {
+        "description": "the webhooks kept with the site, in schema/webhooks"
       },
       "workflows": {
         "description": "the approval workflows in schema/workflows"
       },
       "workflows:stage": {
         "description": "an approval workflow's stages: add, change and remove them"
-      },
-      "webhooks": {
-        "description": "the webhooks kept with the site, in schema/webhooks"
       }
     },
     "optionalPlugins": [

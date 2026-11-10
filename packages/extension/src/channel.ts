@@ -81,7 +81,17 @@ export interface EncodeHooks {
   signal?(signal: AbortSignal): number
   /** A value this end handles itself, such as an extension's database; undefined to carry on. */
   special?(value: unknown, key: string | undefined): unknown
+  /**
+   * An object lent by reference: its number, so when the other end passes it
+   * back (a page to `nav.children`) this end gets the object itself.
+   */
+  ref?(value: object): number
+  /** More to send with an object that is not plain, such as a page's values (story 312). */
+  extra?(value: object): Record<string, unknown> | undefined
 }
+
+/** Where a decoded object keeps the number of the object it stands for at the other end. */
+export const REF = Symbol.for('crombolo.channel.ref')
 
 const isPlain = (value: object): boolean => {
   const proto = Object.getPrototypeOf(value)
@@ -107,6 +117,11 @@ export async function encode(
     if (typeof value === 'number' && !Number.isFinite(value)) return { $num: String(value) }
     return value
   }
+  // One the other end lent goes back as its number, and arrives as itself.
+  const lent = (value as { [REF]?: number })[REF]
+  if (typeof lent === 'number') return { $ref: lent }
+  if (typeof (value as { then?: unknown }).then === 'function')
+    return encode(await (value as PromiseLike<unknown>), hooks, key, seen)
   if (seen.has(value)) return undefined
   seen.add(value)
   try {
@@ -174,6 +189,12 @@ export async function encode(
     if (Array.isArray(value))
       return Promise.all(value.map((v) => encode(v, hooks, undefined, seen)))
     const out: Record<string, unknown> = {}
+    if (hooks.ref && hooks.fn && !isPlain(value)) out.$ref = hooks.ref(value)
+    const extra = isPlain(value) ? undefined : hooks.extra?.(value)
+    for (const [k, v] of Object.entries(extra ?? {})) {
+      const encoded = await encode(v, hooks, k, seen)
+      if (encoded !== undefined) out[k] = encoded
+    }
     for (const [k, v] of Object.entries(value)) {
       if (k.startsWith('$')) continue
       const encoded = await encode(v, hooks, k, seen)
@@ -188,7 +209,14 @@ export async function encode(
       )
         for (const name of Object.getOwnPropertyNames(proto)) {
           if (name === 'constructor' || name in out) continue
-          if (typeof Object.getOwnPropertyDescriptor(proto, name)?.value !== 'function') continue
+          const descriptor = Object.getOwnPropertyDescriptor(proto, name)
+          // A getter's value travels as data: `isVisible`, `culture`.
+          if (descriptor?.get) {
+            const got = await encode((value as Record<string, unknown>)[name], hooks, name, seen)
+            if (got !== undefined) out[name] = got
+            continue
+          }
+          if (typeof descriptor?.value !== 'function') continue
           // Read through the object, so a capability wrapped to check its grant stays wrapped.
           const method = (value as Record<string, unknown>)[name]
           if (typeof method === 'function') out[name] = { $fn: hooks.fn(method.bind(value)) }
@@ -205,6 +233,8 @@ export interface DecodeHooks {
   signal?(marker: number, aborted: boolean): AbortSignal
   /** A tagged value this end owns, such as `$database` or `$incoming`; undefined to carry on. */
   special?(value: Record<string, unknown>): unknown
+  /** The object this end lent under a number, when it comes back. */
+  ref?(marker: number): unknown
 }
 
 /** A value from the channel, with its tags made real again. */
@@ -279,8 +309,15 @@ export function decode(value: unknown, hooks: DecodeHooks = {}): unknown {
       ? new File([bytes], b.name, { type: b.type })
       : new Blob([bytes], { type: b.type })
   }
+  if ('$ref' in tagged && Object.keys(tagged).length === 1)
+    return hooks.ref?.(tagged.$ref as number)
   const out: Record<string, unknown> = {}
-  for (const [k, v] of Object.entries(tagged)) out[k] = decode(v, hooks)
+  for (const [k, v] of Object.entries(tagged)) {
+    if (k === '$ref') continue
+    out[k] = decode(v, hooks)
+  }
+  if (typeof tagged.$ref === 'number')
+    Object.defineProperty(out, REF, { value: tagged.$ref, enumerable: false })
   return out
 }
 

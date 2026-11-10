@@ -42,7 +42,7 @@ crombolo init [--force] [--name <name>] [--next] [--postgres] [--template <templ
 Boot the site in the current directory. Each run acts again.
 
 ```
-crombolo start [--keep-admin] [--bundle <bundle>] [--from <from>] [--postgres] [--name <name>] [--no-install] [--allow-missing-media] [--label <label>] [--backup-taken] [--under <under>] [--resolve <resolve>] [--resolve-all <resolve-all>] [--allow-missing-blobs] [--publish] [--no-schema] [--no-files] [--replace-files] [--exclude-people]
+crombolo start [--keep-admin] [--bundle <bundle>] [--from <from>] [--postgres] [--name <name>] [--no-install] [--allow-missing-media] [--label <label>] [--backup-taken] [--under <under>] [--resolve <resolve>] [--resolve-all <resolve-all>] [--allow-missing-blobs] [--publish] [--no-schema] [--no-files] [--replace-files] [--exclude-people] [--allow-downgrade]
 ```
 
 | Argument | Type | What it is |
@@ -65,6 +65,7 @@ crombolo start [--keep-admin] [--bundle <bundle>] [--from <from>] [--postgres] [
 | `--no-files` | boolean | Decline the views, styles and scripts it carries. |
 | `--replace-files` | boolean | Allow replacing files this site has; the originals are kept for a revert. |
 | `--exclude-people` | boolean | Leave out the members and users it carries; this site's own are untouched. |
+| `--allow-downgrade` | boolean | Apply a site bundle older than one this site applied from the same signer: a deliberate rollback, recorded in the audit log. |
 
 **Output:** stream.
 
@@ -2781,7 +2782,7 @@ Move a site as a site package, install extensions, and sign in to another enviro
 Apply a site package here or to a remote: checked, backed up, one transaction. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo site apply [<bundle>] [--under <under>] [--resolve <resolve>] [--resolve-all <resolve-all>] [--allow-missing-blobs] [--publish] [--no-schema] [--no-files] [--replace-files] [--exclude-people] [--label <label>] [--backup-taken] [--dry-run] [--save] [--remote <remote>] [--env <env>] [--structure]
+crombolo site apply [<bundle>] [--under <under>] [--resolve <resolve>] [--resolve-all <resolve-all>] [--allow-missing-blobs] [--publish] [--no-schema] [--no-files] [--replace-files] [--exclude-people] [--allow-downgrade] [--label <label>] [--backup-taken] [--dry-run] [--save] [--remote <remote>] [--env <env>] [--structure]
 ```
 
 | Argument | Type | What it is |
@@ -2796,6 +2797,7 @@ crombolo site apply [<bundle>] [--under <under>] [--resolve <resolve>] [--resolv
 | `--no-files` | boolean | Decline the views, styles and scripts it carries. |
 | `--replace-files` | boolean | Allow replacing files this site has; the originals are kept for a revert. |
 | `--exclude-people` | boolean | Leave out the members and users it carries; this site's own are untouched. |
+| `--allow-downgrade` | boolean | Apply a site bundle older than one this site applied from the same signer: a deliberate rollback, recorded in the audit log. |
 | `--label` | string | A label for the run. |
 | `--backup-taken` | boolean | A backup was taken another way: Postgres needs this, or CROMBOLO_PG_DUMP. |
 | `--dry-run` | boolean | Say what it would do, and change nothing. |
@@ -2825,7 +2827,7 @@ crombolo site apply [<bundle>] [--under <under>] [--resolve <resolve>] [--resolv
 A site package from a site directory: its schema, views, styles, content and code. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo site build [<dir>] [--template <template>] [--out <out>] [--check] [--public-log] [--sign] [--name <name>] [--with-media] [--code <code>]
+crombolo site build [<dir>] [--template <template>] [--out <out>] [--check] [--public-log] [--sign-with <sign-with>] [--sign] [--name <name>] [--with-media] [--code <code>]
 ```
 
 | Argument | Type | What it is |
@@ -2835,6 +2837,7 @@ crombolo site build [<dir>] [--template <template>] [--out <out>] [--check] [--p
 | `--out` | string | The directory to write it to. |
 | `--check` | boolean | Build it, report its problems, and write nothing. |
 | `--public-log` | boolean | Sign from a private repository anyway: Sigstore's public log records its name, workflow, ref and commit. |
+| `--sign-with` | string | Sign it with this user key, as a CI job does, rather than the site's own. |
 | `--sign` | boolean | Sign it once written, in GitHub Actions: `bundle sign` in the same step. |
 | `--name` | string | The site package's name. |
 | `--with-media` | boolean | The media files too; left out unless asked. |
@@ -2866,7 +2869,7 @@ crombolo site build [<dir>] [--template <template>] [--out <out>] [--check] [--p
 What applying a site package would do, here or on a remote, changing nothing. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo site check [<bundle>] [--under <under>] [--resolve <resolve>] [--resolve-all <resolve-all>] [--allow-missing-blobs] [--publish] [--no-schema] [--no-files] [--replace-files] [--exclude-people] [--label <label>] [--backup-taken] [--dry-run] [--save] [--remote <remote>] [--env <env>] [--structure]
+crombolo site check [<bundle>] [--under <under>] [--resolve <resolve>] [--resolve-all <resolve-all>] [--allow-missing-blobs] [--publish] [--no-schema] [--no-files] [--replace-files] [--exclude-people] [--allow-downgrade] [--label <label>] [--backup-taken] [--dry-run] [--save] [--remote <remote>] [--env <env>] [--structure]
 ```
 
 | Argument | Type | What it is |
@@ -2881,6 +2884,7 @@ crombolo site check [<bundle>] [--under <under>] [--resolve <resolve>] [--resolv
 | `--no-files` | boolean | Decline the views, styles and scripts it carries. |
 | `--replace-files` | boolean | Allow replacing files this site has; the originals are kept for a revert. |
 | `--exclude-people` | boolean | Leave out the members and users it carries; this site's own are untouched. |
+| `--allow-downgrade` | boolean | Apply a site bundle older than one this site applied from the same signer: a deliberate rollback, recorded in the audit log. |
 | `--label` | string | A label for the run. |
 | `--backup-taken` | boolean | A backup was taken another way: Postgres needs this, or CROMBOLO_PG_DUMP. |
 | `--dry-run` | boolean | Say what it would do, and change nothing. |
@@ -2931,7 +2935,7 @@ crombolo site check-code <bundle>
 Deploy a site directory to a remote: build, check, apply its structure, content and code, restart. Each run acts again.
 
 ```
-crombolo site deploy [<dir>] --remote <remote> [--env <env>] [--publish] [--label <label>] [--yes] [--no-restart] [--public-log] [--sign]
+crombolo site deploy [<dir>] --remote <remote> [--env <env>] [--publish] [--label <label>] [--yes] [--no-restart] [--public-log] [--sign-with <sign-with>] [--sign]
 ```
 
 | Argument | Type | What it is |
@@ -2944,6 +2948,7 @@ crombolo site deploy [<dir>] --remote <remote> [--env <env>] [--publish] [--labe
 | `--yes` | boolean | Don't ask before applying. |
 | `--no-restart` | boolean | Apply it and stop: `crombolo restart` makes it live. |
 | `--public-log` | boolean | Sign from a private repository anyway: Sigstore's public log records its name, workflow, ref and commit. |
+| `--sign-with` | string | Sign it with this user key, rather than the site's own. |
 | `--sign` | boolean | Sign it before sending, in GitHub Actions, for a remote that takes only signed bundles. |
 
 **Output** (single, with `-o json`):
@@ -3028,6 +3033,21 @@ crombolo site import <file> [--replace] [--replace-all] [--yes] [--allow-missing
 - `siteData` (object)
 
 **Fails with:** `usage`, `internal`, `confirmation_required`, `refused`, `auth`, `not_found`.
+
+### `crombolo site key`
+
+This site's public key, which signs the site bundles it makes. Safe to run again: a second run changes nothing more.
+
+```
+crombolo site key
+```
+
+**Output** (single, with `-o json`):
+
+- `publicKey` (string)
+- `fingerprint` (string)
+
+**Fails with:** `usage`, `internal`, `refused`.
 
 ### `crombolo site revert`
 
@@ -3450,12 +3470,12 @@ crombolo push [<remote>] [--env <env>] [--force] [--auto-approve] [--media-info-
 
 **Fails with:** `usage`, `internal`, `auth`, `not_found`, `refused`, `timeout`, `unavailable`, `confirmation_required`.
 
-### `crombolo bundle build`
+### `crombolo extension build`
 
 Build a bundle made in the Bundle Editor as an extension package. Each run acts again.
 
 ```
-crombolo bundle build <name> [--out <out>] [--with-media] [--check]
+crombolo extension build <name> [--out <out>] [--with-media] [--check]
 ```
 
 | Argument | Type | What it is |
@@ -3473,12 +3493,12 @@ crombolo bundle build <name> [--out <out>] [--with-media] [--check]
 
 **Fails with:** `usage`, `internal`, `not_found`.
 
-### `crombolo bundle check`
+### `crombolo extension check`
 
 Check an extension package before publishing or installing it. Changes nothing.
 
 ```
-crombolo bundle check <bundle>
+crombolo extension check <bundle>
 ```
 
 | Argument | Type | What it is |
@@ -3492,30 +3512,12 @@ crombolo bundle check <bundle>
 
 **Fails with:** `usage`, `internal`, `not_found`, `refused`.
 
-### `crombolo bundle digest`
-
-Print the digest a bundle's signature covers. Changes nothing.
-
-```
-crombolo bundle digest <bundle>
-```
-
-| Argument | Type | What it is |
-| --- | --- | --- |
-| `bundle` | string | A package directory, a .tgz, a URL, or name@version on the registry. Required. |
-
-**Output** (single, with `-o json`):
-
-- `digest` (string)
-
-**Fails with:** `usage`, `internal`, `not_found`.
-
-### `crombolo bundle disable`
+### `crombolo extension disable`
 
 Turn a bundle's server features off, here or on a remote. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo bundle disable <name> [--remote <remote>] [--env <env>]
+crombolo extension disable <name> [--remote <remote>] [--env <env>]
 ```
 
 | Argument | Type | What it is |
@@ -3532,12 +3534,12 @@ crombolo bundle disable <name> [--remote <remote>] [--env <env>]
 
 **Fails with:** `usage`, `internal`, `not_found`, `auth`, `refused`, `unavailable`.
 
-### `crombolo bundle enable`
+### `crombolo extension enable`
 
 Turn a disabled bundle's server features back on, here or on a remote. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo bundle enable <name> [--remote <remote>] [--env <env>]
+crombolo extension enable <name> [--remote <remote>] [--env <env>]
 ```
 
 | Argument | Type | What it is |
@@ -3554,12 +3556,12 @@ crombolo bundle enable <name> [--remote <remote>] [--env <env>]
 
 **Fails with:** `usage`, `internal`, `not_found`, `auth`, `refused`, `unavailable`.
 
-### `crombolo bundle grant`
+### `crombolo extension grant`
 
 Grant an installed extension what it asks for, here or on a remote. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo bundle grant <name> [--grant <grant>] [--act-as <act-as>] [--remote <remote>] [--env <env>]
+crombolo extension grant <name> [--grant <grant>] [--act-as <act-as>] [--remote <remote>] [--env <env>]
 ```
 
 | Argument | Type | What it is |
@@ -3578,12 +3580,12 @@ crombolo bundle grant <name> [--grant <grant>] [--act-as <act-as>] [--remote <re
 
 **Fails with:** `usage`, `internal`, `refused`, `auth`, `not_found`, `unavailable`.
 
-### `crombolo bundle install`
+### `crombolo extension install`
 
 Add an extension to this site, or a remote, as a dependency. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo bundle install <bundle> [--grant <grant>] [--act-as <act-as>] [--apply-content] [--code-into <code-into>] [--remote <remote>] [--env <env>] [--dry-run]
+crombolo extension install <bundle> [--grant <grant>] [--act-as <act-as>] [--apply-content] [--layout <layout>] [--code-into <code-into>] [--remote <remote>] [--env <env>] [--dry-run]
 ```
 
 | Argument | Type | What it is |
@@ -3592,6 +3594,7 @@ crombolo bundle install <bundle> [--grant <grant>] [--act-as <act-as>] [--apply-
 | `--grant` | string[] | A permission it asks for; name every one. |
 | `--act-as` | string | With actAs: whom it acts for, the calling user or a named one. |
 | `--apply-content` | boolean | Apply the content it carries too. |
+| `--layout` | string | The site's layout its page templates sit in. |
 | `--code-into` | string | Install a site package's own code into this empty directory. |
 | `--remote` | string | Install it on this remote instead. |
 | `--env` | string | With --remote: the remote's environment. |
@@ -3609,12 +3612,12 @@ crombolo bundle install <bundle> [--grant <grant>] [--act-as <act-as>] [--apply-
 
 **Fails with:** `usage`, `internal`, `refused`, `auth`, `not_found`, `unavailable`.
 
-### `crombolo bundle list`
+### `crombolo extension list`
 
 The bundles this site, or a remote, has installed. Changes nothing.
 
 ```
-crombolo bundle list [--remote <remote>] [--env <env>]
+crombolo extension list [--remote <remote>] [--env <env>]
 ```
 
 | Argument | Type | What it is |
@@ -3629,12 +3632,12 @@ crombolo bundle list [--remote <remote>] [--env <env>]
 
 **Fails with:** `usage`, `internal`, `auth`, `not_found`, `unavailable`.
 
-### `crombolo bundle purge`
+### `crombolo extension purge`
 
 Back up, then drop a bundle's tables and clear its state. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo bundle purge <id> [--yes] [--dry-run] [--backup-taken]
+crombolo extension purge <id> [--yes] [--dry-run] [--backup-taken]
 ```
 
 | Argument | Type | What it is |
@@ -3654,12 +3657,12 @@ crombolo bundle purge <id> [--yes] [--dry-run] [--backup-taken]
 
 **Fails with:** `usage`, `internal`, `confirmation_required`, `refused`.
 
-### `crombolo bundle settings`
+### `crombolo extension settings`
 
 Read an installed extension's settings, or set them. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo bundle settings <name>
+crombolo extension settings <name>
 ```
 
 | Argument | Type | What it is |
@@ -3671,6 +3674,47 @@ crombolo bundle settings <name>
 - `settings` (array of object)
 
 **Fails with:** `usage`, `internal`, `refused`, `not_found`.
+
+### `crombolo extension uninstall`
+
+Remove an installed extension, here or on a remote. Each run acts again.
+
+```
+crombolo extension uninstall <name> [--remote <remote>] [--env <env>] [--revert-content]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `name` | string | The package name. Required. |
+| `--remote` | string | Remove it on this remote instead. |
+| `--env` | string | With --remote: the remote's environment. |
+| `--revert-content` | boolean | First put back the content its install applied; nothing is removed if that is refused. |
+
+**Output** (single, with `-o json`):
+
+- `name` (string)
+- `restartPending` (boolean)
+- `remote` (string)
+
+**Fails with:** `usage`, `internal`, `refused`, `auth`, `not_found`, `unavailable`.
+
+### `crombolo bundle digest`
+
+Print the digest a bundle's signature covers. Changes nothing.
+
+```
+crombolo bundle digest <bundle>
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `bundle` | string | A package directory, a .tgz, a URL, or name@version on the registry. Required. |
+
+**Output** (single, with `-o json`):
+
+- `digest` (string)
+
+**Fails with:** `usage`, `internal`, `not_found`.
 
 ### `crombolo bundle sign`
 
@@ -3693,29 +3737,6 @@ crombolo bundle sign <bundle> [--public-log]
 - `links` (object)
 
 **Fails with:** `usage`, `internal`, `refused`, `unavailable`.
-
-### `crombolo bundle uninstall`
-
-Remove an installed extension, here or on a remote. Each run acts again.
-
-```
-crombolo bundle uninstall <name> [--remote <remote>] [--env <env>] [--revert-content]
-```
-
-| Argument | Type | What it is |
-| --- | --- | --- |
-| `name` | string | The package name. Required. |
-| `--remote` | string | Remove it on this remote instead. |
-| `--env` | string | With --remote: the remote's environment. |
-| `--revert-content` | boolean | First put back the content its install applied; nothing is removed if that is refused. |
-
-**Output** (single, with `-o json`):
-
-- `name` (string)
-- `restartPending` (boolean)
-- `remote` (string)
-
-**Fails with:** `usage`, `internal`, `refused`, `auth`, `not_found`, `unavailable`.
 
 ### `crombolo bundle verify`
 
@@ -3740,6 +3761,105 @@ crombolo bundle verify <bundle> [--require] [--source <source>]
 - `reason` (string)
 
 **Fails with:** `usage`, `internal`, `refused`, `not_found`.
+
+### `crombolo keys create`
+
+Make a key of your own, on this machine, to sign site bundles with. Each run acts again.
+
+```
+crombolo keys create <name> [--comment <comment>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `name` | string | What to call it here: lowercase, digits and hyphens. Required. |
+| `--comment` | string | The name sites see beside it; its name by default. |
+
+**Output** (single, with `-o json`):
+
+- `name` (string)
+- `publicKey` (string)
+- `fingerprint` (string)
+- `file` (string)
+
+**Fails with:** `usage`, `internal`, `refused`.
+
+### `crombolo keys list`
+
+The keys of your own on this machine, with their public lines. Changes nothing.
+
+```
+crombolo keys list
+```
+
+**Output** (bounded, with `-o json`):
+
+- `name` (string)
+- `publicKey` (string)
+- `fingerprint` (string)
+
+**Fails with:** `usage`, `internal`.
+
+### `crombolo keys trust`
+
+Trust a key, or a CI build, to sign the site bundles this site applies. Each run acts again.
+
+```
+crombolo keys trust <name> [<publicKey>] [--site] [--source <source>] [--bundle <bundle>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `name` | string | What to call it on the list. Required. |
+| `publicKey` | string | The key's public line. |
+| `--site` | boolean | It is another site's key, not a person's. |
+| `--source` | string | Trust builds of this repository instead: owner/repo, owner/*, or @ a tag pattern. |
+| `--bundle` | string | Trust the key that signed this bundle, once its signature checks out. |
+
+**Output** (single, with `-o json`):
+
+- `name` (string)
+- `fingerprint` (string)
+- `source` (string)
+
+**Fails with:** `usage`, `internal`, `refused`.
+
+### `crombolo keys trusted`
+
+The keys and CI builds this site trusts to sign the site bundles it applies. Changes nothing.
+
+```
+crombolo keys trusted
+```
+
+**Output** (bounded, with `-o json`):
+
+- `id` (string)
+- `kind` (string)
+- `name` (string)
+- `fingerprint` (string)
+- `source` (string)
+- `locked` (boolean)
+
+**Fails with:** `usage`, `internal`.
+
+### `crombolo keys untrust`
+
+Stop trusting a key or a CI build: site bundles it signed are refused from now on. Safe to run again: a second run changes nothing more.
+
+```
+crombolo keys untrust <signer>
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `signer` | string | Its fingerprint, its repository, or its name on the list. Required. |
+
+**Output** (single, with `-o json`):
+
+- `removed` (string)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`.
 
 ## Users and access
 

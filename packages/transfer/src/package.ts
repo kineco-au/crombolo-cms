@@ -19,7 +19,7 @@ import {
 } from './write.ts'
 
 /** The npm keyword a bundle publishes so the marketplace can find it. */
-export const BUNDLE_KEYWORD = 'crombolo-bundle'
+export const BUNDLE_KEYWORD = 'crombolo-extension'
 
 export interface BundlePackageInfo {
   /** The npm package name. */
@@ -36,6 +36,17 @@ export interface BundlePackageInfo {
   peerRange: string
   /** A site package or an extension (story 306); a site package is always private. */
   bundleType: BundleType
+  /**
+   * An extension's code (story 312): its files under `src/`, outside the
+   * payload, the factory `crombolo.server` names, and the permissions it asks
+   * for, each with its reason.
+   */
+  code?: {
+    files: readonly BundleFile[]
+    entry: string
+    server: string
+    permissions: Readonly<Record<string, string>>
+  }
 }
 
 const NPM_NAME = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/
@@ -93,9 +104,18 @@ export function bundlePackageJson(
     version: info.version,
     ...(info.description ? { description: info.description } : {}),
     ...(info.private ? { private: true } : { keywords: [BUNDLE_KEYWORD] }),
-    files: packageFilesFor(paths),
+    ...(info.code ? { exports: { '.': `./${info.code.entry}` } } : {}),
+    files: packageFilesFor([...paths, ...(info.code?.files.map((file) => file.path) ?? [])]),
     peerDependencies: { '@crombolo/crombolo': info.peerRange },
-    crombolo: { id: info.id, name: info.label, bundleType: info.bundleType, content: true },
+    crombolo: {
+      id: info.id,
+      name: info.label,
+      bundleType: info.bundleType,
+      content: true,
+      ...(info.code
+        ? { server: info.code.server, schemaVersion: 4, permissions: { ...info.code.permissions } }
+        : {}),
+    },
   }
 }
 
@@ -105,6 +125,10 @@ export function writeBundlePackage(
   info: BundlePackageInfo,
 ): BundleFile[] {
   if (!isPackageName(info.name)) throw new Error(`"${info.name}" is not a package name npm accepts`)
+  if (info.code && info.bundleType !== 'extension')
+    throw new Error("Only an extension carries code of its own: a site package's is its payload.")
+  if (info.code?.files.some((file) => !file.path.startsWith('src/')))
+    throw new Error("An extension's code is under src/.")
   if (info.bundleType === 'site' && !info.private)
     throw new Error('A site package is never published: it can only be a private package.')
   // Personal data never goes where `npm publish` can take it, sealed or not;
@@ -122,6 +146,7 @@ export function writeBundlePackage(
   return [
     { path: PACKAGE_FILE, text: `${JSON.stringify(pkg, null, 2)}\n` },
     ...rehashed(payload, pkg),
+    ...(info.code?.files ?? []),
   ]
 }
 

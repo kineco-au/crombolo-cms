@@ -60,6 +60,7 @@ import { databaseFor, openTables, siteTablesProblems, tablesChains } from './cus
 import { attachDatabase, bootstrapDatabase } from './database.ts'
 import { createDiagnostics } from './diagnostics.ts'
 import { resolveEmailPort } from './email.ts'
+import { createExtensionComponents } from './extension-components.ts'
 import {
   entryCovers,
   extensionEntryProblems,
@@ -437,9 +438,19 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
   // Before the poller, which tells it to look again on a `views` instruction
   // from another node: a closure over a `const` declared later would be a
   // temporal dead zone waiting for the first instruction to land.
+  const extensionComponents = createExtensionComponents(
+    extensionProcesses.map((process) => ({
+      process,
+      granted: () => bundleGrants.granted(process.id),
+      layout: () =>
+        typeof process.settings.layout === 'string' ? process.settings.layout : undefined,
+      log: bundleLog(process.id),
+    })),
+  )
   const renderer = new Renderer({
     cache,
     componentsDir: config.componentsDir,
+    extensionComponents,
     snapshots,
     renderTimeoutMs: config.renderTimeoutMs,
     islandsManifest: (generation) =>
@@ -899,6 +910,8 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
     },
     /** The extensions that are granted but could not start, and why (story 311). */
     failedExtensions,
+    /** The extensions' components, which render in their processes (story 312). */
+    extensionComponents,
   }
 }
 

@@ -83,8 +83,8 @@ describe('loadConfig reads the environment', () => {
       seo: {},
       deliveryApi: { media: {}, cors: {}, preview: {} },
       cache: {},
-      marketplaceUrl: 'https://www.npmjs.com/search?q=keywords%3Acrombolo-bundle',
-      packageKeyword: 'crombolo-bundle',
+      marketplaceUrl: 'https://www.npmjs.com/search?q=keywords%3Acrombolo-extension',
+      packageKeyword: 'crombolo-extension',
       npmRegistry: 'https://registry.npmjs.org',
     })
     expect(config.adminPassword).toBeUndefined()

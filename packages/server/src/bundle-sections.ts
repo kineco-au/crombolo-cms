@@ -693,3 +693,22 @@ export function promoteStaged(config: CromboloConfig, dir: string, runId: string
   renameSync(dir, target)
   return target
 }
+
+/**
+ * The components a run wrote into the site's `components/` (story 312): an
+ * extension's, copied before its components stayed in its package. A run that
+ * swapped the whole folder in names the folder.
+ */
+export function componentsWritten(config: CromboloConfig, runId: string): string[] {
+  if (swappedSections(config, runId).includes('components')) return ['components/']
+  const record = join(config.siteDir, RUN_BACKUP_DIR, runId, RECORD_FILE)
+  if (!existsSync(record)) return []
+  try {
+    return (JSON.parse(readFileSync(record, 'utf8')) as FileRecord[])
+      .filter((entry) => entry.action !== 'unchanged' && entry.path.startsWith('components/'))
+      .map((entry) => entry.path)
+      .sort()
+  } catch {
+    return []
+  }
+}

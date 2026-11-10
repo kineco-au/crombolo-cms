@@ -283,16 +283,17 @@ bunx crombolo content export --root /Home
 bunx crombolo site build . --out ../bakery-bundle
 ```
 
-> You'll see the pages written under `content/`, the version raised to `1.1.0`, then `wrote ../bakery-bundle`.
+> You'll see the pages written under `content/`, the version raised to `1.1.0`, then `wrote ../bakery-bundle`, signed by this site's own key.
 
 ### Ship it
 
-Make a second site, and start it from the bundle.
+Make a second site, have it trust the site that signed the bundle (a new site trusts only itself), and start it from the bundle.
 
 ```sh
 mkdir ../bakery-copy && cd ../bakery-copy
 bunx @crombolo/cli@latest init --name "Riverside Bakery"
 bun install
+bunx crombolo keys trust "Riverside Bakery" --bundle ../bakery-bundle --site
 bunx crombolo start --bundle ../bakery-bundle --publish --replace-files
 ```
 

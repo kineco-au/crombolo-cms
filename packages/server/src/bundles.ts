@@ -456,7 +456,9 @@ export function validateServerBundles(
       const pkg = packages.find((candidate) => candidate.id === bundle.id)
       if (pkg?.carries.server && pkg.field.permissions !== undefined) {
         const declared = declaredPermissions(pkg)
-        problems.push(...permissionProblems(label, bundle.capabilities, declared))
+        problems.push(
+          ...permissionProblems(label, bundle.capabilities, declared, pkg.carries.extensions),
+        )
         // Schema 4 asks for what it does as well as what it calls (story 308).
         if (!isSchema3(pkg)) {
           if (

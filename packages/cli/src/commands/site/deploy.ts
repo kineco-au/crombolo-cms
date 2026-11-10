@@ -9,6 +9,7 @@ import { CliError } from '../../errors.ts'
 import { confirm } from '../../support/prompt.ts'
 import { applyToRemote, packed } from '../../support/remote-apply.ts'
 import { restartRemote } from '../../support/restart.ts'
+import { signBuilt } from '../../support/signing.ts'
 import { siteConfig } from '../../support/site.ts'
 import { raiseVersionIfChanged } from '../../support/types.ts'
 
@@ -37,7 +38,7 @@ export default class SiteDeploy extends BaseCommand {
   static override description = [
     'Refuses a directory with changes git has not committed, so a remote only ever runs what the repository holds. Builds the site with its schema, views, styles and code, checks it on the remote, applies it, then restarts the remote and waits for the new server to be healthy.',
     'Anything outstanding in the check stops it before anything is written. Off a terminal, --yes is needed to go on. A restart that fails leaves the remote serving as it was, and prints the `site revert` that undoes the apply.',
-    'It does not install or wire bundles: `crombolo bundle install <name> --wire`, a commit, then `crombolo site deploy`.',
+    'It does not install or wire bundles: `crombolo extension install <name> --wire`, a commit, then `crombolo site deploy`.',
   ].join('\n\n')
   static override examples = [
     '<%= config.bin %> site deploy --remote production',
@@ -60,6 +61,10 @@ export default class SiteDeploy extends BaseCommand {
     'public-log': Flags.boolean({
       summary:
         "sign from a private repository anyway: Sigstore's public log records its name, workflow, ref and commit",
+    }),
+    'sign-with': Flags.string({
+      summary: "sign it with this user key, rather than the site's own",
+      helpValue: '<key>',
     }),
     sign: Flags.boolean({
       summary:
@@ -124,6 +129,18 @@ export default class SiteDeploy extends BaseCommand {
       'replace-files': true,
     }
     let bytes = await packed(dir, true)
+    {
+      // Signed with a key, so the remote can tell it came from a site it trusts (story 316).
+      const work = await mkdtemp(join(tmpdir(), 'crombolo-deploy-'))
+      try {
+        const file = join(work, 'bundle.tgz')
+        await writeFile(file, bytes)
+        this.say(`  ${await signBuilt(file, flags['sign-with'])}`)
+        bytes = new Uint8Array(await readFile(file))
+      } finally {
+        await rm(work, { recursive: true, force: true })
+      }
+    }
     if (flags.sign) {
       const work = await mkdtemp(join(tmpdir(), 'crombolo-deploy-'))
       try {

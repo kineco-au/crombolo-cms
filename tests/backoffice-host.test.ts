@@ -149,7 +149,7 @@ describe('manifests', () => {
       'workspaceFooterApp',
     ])
     expect(extensions.map((e) => e.element)).toEqual([
-      '/umbraco/crombolo/seo/dashboard.js',
+      '/umbraco/crombolo/search-tool.js',
       '/umbraco/crombolo/seo/document-view.js',
       '/umbraco/crombolo/seo/type-hint.js',
     ])

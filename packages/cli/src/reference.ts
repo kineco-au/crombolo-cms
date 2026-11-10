@@ -66,7 +66,18 @@ export const CLI_PAGES: readonly CliPageSpec[] = [
     title: 'Sites, extensions and remotes',
     summary:
       'Move a site as a site package, install extensions, and sign in to another environment to pull from and push to.',
-    topics: ['site', 'login', 'logout', 'whoami', 'remote', 'pull', 'push', 'bundle'],
+    topics: [
+      'site',
+      'login',
+      'logout',
+      'whoami',
+      'remote',
+      'pull',
+      'push',
+      'extension',
+      'bundle',
+      'keys',
+    ],
   },
   {
     slug: 'users',

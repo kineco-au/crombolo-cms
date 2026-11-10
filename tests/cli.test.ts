@@ -158,11 +158,11 @@ describe('failures and outcomes', () => {
   })
 
   test('bundle install refuses --wire with --remote, and --code-into with a grant', () => {
-    const wired = run(['bundle', 'install', '@acme/crm', '--wire', '--remote', 'production'])
+    const wired = run(['extension', 'install', '@acme/crm', '--wire', '--remote', 'production'])
     expect(wired.code).toBe(ERROR_KINDS.usage.exitCode)
     expect(wired.err).toContain('--wire is gone')
     expect(
-      run(['bundle', 'install', '.', '--code-into', 'out', '--grant', 'documents.read']).code,
+      run(['extension', 'install', '.', '--code-into', 'out', '--grant', 'documents.read']).code,
     ).toBe(ERROR_KINDS.usage.exitCode)
   })
 
@@ -177,14 +177,14 @@ describe('failures and outcomes', () => {
   }, 30_000)
 
   test('a confirmation with no terminal refuses at once, naming the flag that answers it', () => {
-    const result = run(['bundle', 'purge', 'demo', '-o', 'json'], '')
+    const result = run(['extension', 'purge', 'demo', '-o', 'json'], '')
     expect(result.code).toBe(ERROR_KINDS.confirmation_required.exitCode)
     expect(result.envelope()).toMatchObject({ kind: 'confirmation_required' })
     expect(String(result.envelope().hint)).toContain('--yes')
   })
 
   test('--dry-run on a purge says what it would drop and drops nothing', () => {
-    const result = run(['bundle', 'purge', 'demo', '--dry-run', '-o', 'json'])
+    const result = run(['extension', 'purge', 'demo', '--dry-run', '-o', 'json'])
     expect(result.code).toBe(0)
     expect(JSON.parse(result.out)).toMatchObject({ id: 'demo', dropped: [], changed: false })
   })

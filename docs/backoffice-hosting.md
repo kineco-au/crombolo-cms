@@ -252,6 +252,9 @@ vendoring fails if the code it targets has moved.
 - A tab's keyboard focus outline is drawn inside the tab, in the theme's focus
   colour, as UUI's other controls draw theirs. Left to the browser, it was blue
   and drawn outside the tab, across the header above it.
+- A box's header takes `--uui-box-header-background` and `--uui-box-header-color`,
+  unset by default, so the theme bands every box's headline as the Settings
+  cards are.
 
 **Measured result:** 168 import-map entries, 10 of 10 externals bundled, 27 bare
 dependencies bundled, 103 non-runtime files pruned, 90 MB output.
@@ -840,3 +843,35 @@ splitting**: an entry per specifier, shared modules once under
 rich text editor crashed on load. `tests/vendor.test.ts` checks there is one
 copy.
 
+
+## Content security policy
+
+Story 313. Every back-office page, the sign-in page and the approval pages
+included, sends a content security policy (`backOfficePolicy`,
+`backoffice-host/src/content-security.ts`). An extension's screens run as the
+signed-in user, and the browser cannot tell one screen from another, so the
+policy is what stops a screen sending what it sees anywhere it did not declare.
+
+| Directive | What it allows |
+|---|---|
+| `default-src` | the site |
+| `script-src` | the site, and the page's own inline scripts by their nonce: the early theme script and the import map. A nonce is made for each page |
+| `style-src` | the site, and inline styles: the client's components set `style` attributes |
+| `connect-src` | the site, and each origin an extension that is on declares in `http.outbound`, which its grant names (story 308) |
+| `img-src`, `media-src` | the site, `data:` and `blob:`, the media store's public address, and the embedded video players' thumbnails |
+| `font-src` | the site and `data:` |
+| `worker-src` | the site and `blob:`: the code editor's workers |
+| `frame-src` | the site, the embedded video players, and the site's public address, for the member preview |
+| `frame-ancestors` | the site: no one frames the back office |
+| `object-src` | nothing |
+| `base-uri` | the site |
+| `report-uri` | `<backoffice>/crombolo/api/csp-report` |
+
+- **It follows the grants:** it is built for each page, so granting or removing an
+  extension changes it at the next page load.
+- **No `form-action`:** Chrome applies it to a form's redirects too, which would
+  stop a sign-in handing off to an external provider.
+- **What the browser blocks** is reported to `csp-report`, which takes it without
+  signing in, at most 10 KB and 30 a minute from one address, and writes the
+  directive and the blocked origin to the site's log, never a page's query string.
+- **The site's own pages** are not covered: they are the site's to protect.

@@ -19,9 +19,9 @@ export const GROUPS = ['Site', 'Health', 'History', 'Developers', 'Extensions', 
 export const CARDS = {
   'Crombolo.Dashboard.Seo': {
     group: 'Site',
-    title: 'Search & sharing',
+    title: 'Search',
     description:
-      'What every page falls back to in search results and when shared, the robots file and the missing-page page.',
+      'What pages say in search results and when shared, the robots file, and the search indexes.',
   },
   'Crombolo.Dashboard.Addresses': {
     group: 'Site',
@@ -31,7 +31,7 @@ export const CARDS = {
   'Umb.Dashboard.RedirectManagement': {
     group: 'Site',
     title: 'Redirects',
-    description: "Old addresses that send visitors on to a page's new one.",
+    description: "Configure the site's redirect rules.",
   },
   'Umb.MenuItem.Webhook': {
     group: 'Site',
@@ -43,15 +43,15 @@ export const CARDS = {
     title: 'Logs',
     description: 'Search and read what the server has logged.',
   },
-  'Umb.Dashboard.ExamineManagement': {
-    group: 'Site',
-    title: 'Search indexes',
-    description: "The back office's search indexes: their health, and rebuilding them.",
-  },
   'Crombolo.Dashboard.BackgroundJobs': {
     group: 'Site',
     title: 'Background jobs',
     description: 'Scheduled and queued work, how far each got, and running a failed one again.',
+  },
+  'Umb.MenuItem.Relations': {
+    group: 'Site',
+    title: 'Relations',
+    description: 'How items point at each other, such as a copy and its original.',
   },
   'Umb.Dashboard.HealthCheck': {
     group: 'Health',
@@ -62,11 +62,6 @@ export const CARDS = {
     group: 'Health',
     title: 'Published status',
     description: 'The published cache visitors are served from, and rebuilding it.',
-  },
-  'Umb.MenuItem.Relations': {
-    group: 'Health',
-    title: 'Relations',
-    description: 'How items point at each other, such as a copy and its original.',
   },
   'Crombolo.Dashboard.Changes': {
     group: 'History',
@@ -82,12 +77,18 @@ export const CARDS = {
   'Umb.MenuItem.Extensions': {
     group: 'Developers',
     title: 'Extension insights',
-    description: 'What the back office has loaded, and from which bundle.',
+    description: 'What the back office has loaded, and from which extension.',
   },
   'Crombolo.Dashboard.CiAccess': {
     group: 'Developers',
     title: 'CI access',
     description: 'The CI jobs that may pull and push here without a person, and what each may do.',
+  },
+  'Crombolo.Dashboard.TrustedSigners': {
+    group: 'Developers',
+    title: 'Trusted signers',
+    description:
+      'The keys and builds whose site bundles this site applies: yours, other sites, and CI.',
   },
   'Umb.Dashboard.ModelsBuilder': {
     group: 'Developers',
@@ -96,8 +97,8 @@ export const CARDS = {
   },
   'Crombolo.Dashboard.Bundles': {
     group: 'Extensions',
-    title: 'Bundles',
-    description: 'Find, install and build bundles: what they add, and turning them off.',
+    title: 'Extensions',
+    description: 'Find, install and build extensions: what they add, and turning them off.',
   },
 }
 
@@ -170,7 +171,7 @@ export function settingsCards({ dashboards = [], advanced = [] }) {
 
 /** Where the Bundles section shows an installed bundle, relative to the back office. */
 export const bundlePath = (packageName) =>
-  `section/settings/dashboard/bundles/installed?bundle=${encodeURIComponent(packageName)}`
+  `section/settings/dashboard/extensions/installed?extension=${encodeURIComponent(packageName)}`
 
 const rank = (order, alias) => {
   const at = order.indexOf(alias)

@@ -83,6 +83,8 @@ export interface ImportOptions extends CheckOptions {
   label?: string | undefined
   /** The npm package the bundle arrived in, recorded on the run. */
   package?: { name: string; version: string } | undefined
+  /** Who signed it, a key's fingerprint or a CI source's repository, recorded on the run (story 316). */
+  signedBy?: string | undefined
   /**
    * A node's values become exactly the bundle's, rather than the bundle's laid
    * over what is here: a whole-site replace (story 105).
@@ -236,6 +238,7 @@ async function applyBundle(tx: Db, set: ContentSet, options: ImportOptions): Pro
       packageName: options.package?.name ?? null,
       packageVersion: options.package?.version ?? null,
       bundleType: set.manifest.bundleType ?? null,
+      signedBy: options.signedBy ?? null,
       direction: 'import',
       revertsRunId: null,
       schemaStateId: state.id,

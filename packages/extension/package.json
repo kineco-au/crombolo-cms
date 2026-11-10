@@ -35,6 +35,7 @@
     "@crombolo/common": "workspace:*",
     "@crombolo/core": "workspace:*",
     "@crombolo/data": "workspace:*",
+    "@crombolo/render": "workspace:*",
     "kysely": "0.29.6"
   },
   "publishConfig": {

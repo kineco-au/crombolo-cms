@@ -1,10 +1,10 @@
 /**
  * Reads and drives the Bundles endpoints the server keeps at
- * <backoffice>/crombolo/api/bundles/*. The session cookie carries the auth.
+ * <backoffice>/crombolo/api/extensions/*. The session cookie carries the auth.
  */
 const base = () => {
   const href = document.querySelector('base')?.getAttribute('href') ?? '/umbraco/'
-  return `${href.replace(/\/$/, '')}/crombolo/api/bundles`
+  return `${href.replace(/\/$/, '')}/crombolo/api/extensions`
 }
 
 const json = async (path, init) => {
@@ -33,10 +33,18 @@ export const bundleSignature = (name, version) =>
     `/signature?name=${encodeURIComponent(name)}${version ? `&version=${encodeURIComponent(version)}` : ''}`,
   )
 
-export const installBundle = (name, version, applyContent = true, grant = [], actAs = undefined) =>
+/** `settings` are saved once it is installed: the layout picked for its page templates (story 312). */
+export const installBundle = (
+  name,
+  version,
+  applyContent = true,
+  grant = [],
+  actAs = undefined,
+  settings = undefined,
+) =>
   json('/install', {
     method: 'POST',
-    body: JSON.stringify({ name, version, applyContent, grant, actAs }),
+    body: JSON.stringify({ name, version, applyContent, grant, actAs, settings }),
   })
 
 /** Turns an installed bundle's server features off until it is enabled again (story 225). */

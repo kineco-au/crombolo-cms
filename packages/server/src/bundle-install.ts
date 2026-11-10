@@ -35,6 +35,7 @@ import {
   recordInLedger,
   resolveNodeRef,
   TransferAnswerRepository,
+  TrustedSignerRepository,
   writeReport,
 } from '@crombolo/data'
 import {
@@ -57,6 +58,7 @@ import {
   WrongPassphraseError,
   writeResolutions,
 } from '@crombolo/transfer'
+import { recordAudit } from './adapters/audit.ts'
 import { type BackupResult, backupBefore } from './backup.ts'
 import {
   type CodeInstall,
@@ -108,6 +110,7 @@ import {
   recordPruned,
   requiresProblems,
 } from './site-replace.ts'
+import { type SiteBundleTrust, siteBundleTrust } from './site-trust.ts'
 
 /** The trees a content selector or placement may name. */
 export const CONTENT_OBJECT_TYPES = [
@@ -216,7 +219,7 @@ export function readBundle(
     throw new CommandError(
       pkg.bundleType === 'site'
         ? `${target} is a site package: apply it with \`crombolo site apply\`.`
-        : `${target} is an extension: install it with \`crombolo bundle install\`.`,
+        : `${target} is an extension: install it with \`crombolo extension install\`.`,
     )
   if (!pkg.contentDir)
     throw new CommandError(
@@ -326,6 +329,26 @@ export interface TransferInput extends SectionOptions {
    * signed and the site's policy never refuses (story 060).
    */
   provenance?: 'local'
+  /** Apply a site bundle older than one this site applied from the same signer (story 316). */
+  allowDowngrade?: boolean
+}
+
+/**
+ * Whether a bundle's signature lets it be applied here: a site bundle only from
+ * a signer this site trusts (story 316), an extension by the site's policy
+ * (story 060).
+ */
+async function signatureDecision(
+  db: Db,
+  config: CromboloConfig,
+  bundle: ResolvedBundle,
+  provenance: ProvenanceResult,
+  input: Pick<TransferInput, 'allowDowngrade'>,
+): Promise<SiteBundleTrust> {
+  if (bundle.set.manifest.bundleType === 'site')
+    return siteBundleTrust(db, config, provenance, { allowDowngrade: input.allowDowngrade })
+  const problem = provenanceProblem(provenance, config.bundlePolicy)
+  return problem ? { problem } : {}
 }
 
 /** Where the bundle was built, checked before anything is read further (story 060). */
@@ -374,7 +397,7 @@ export async function transferOptions(
       under,
       resolutions,
       resolveAll,
-      componentAliases: componentAliasesIn(config.componentsDir),
+      componentAliases: componentAliasesIn(config.componentsDir, config.siteDir),
       allowMissingBlobs: input.allowMissingBlobs ?? pending?.allowMissingBlobs ?? false,
       hasBlob: async (key: string) => Boolean(await store.get(key)),
       backOfficePath: config.backOfficePath,
@@ -399,6 +422,8 @@ export interface ContentCheckResult {
   sitePackage?: SitePackageChanges
   /** Where it was built, from its signature (story 060). */
   provenance: ProvenanceResult
+  /** Applied, but a person should know why: unsigned or untrusted, outside production (story 316). */
+  signatureWarning?: string
   /** Nothing outstanding: the bundle would import cleanly. */
   clean: boolean
   /** With `publish`: the pages the import would not publish, and the reason publish gives. */
@@ -468,8 +493,8 @@ export async function checkBundleContent(
     withoutPeople: input.excludePeople,
   })
   const provenance = await bundleProvenance(bundle, input)
-  const refused = provenanceProblem(provenance, config.bundlePolicy)
-  if (refused) throw new CommandError(`This bundle is refused: ${refused}.`)
+  const signature = await signatureDecision(db, config, bundle, provenance, input)
+  if (signature.problem) throw new CommandError(`This bundle is refused: ${signature.problem}.`)
   const set = bundle.set
   const prepared = await transferOptions(db, config, bundle, input)
   const check = await checkBundle(db, set, prepared.options)
@@ -508,6 +533,7 @@ export async function checkBundleContent(
       ? { sitePackage: sitePackageChanges(config, bundle.carried) }
       : {}),
     provenance,
+    ...(signature.warning ? { signatureWarning: signature.warning } : {}),
     clean: check.outstanding.length === 0,
     publishRefusals: refusals,
     decisions: {
@@ -557,6 +583,8 @@ export interface ContentImportResult {
   code?: CodeInstall
   /** Where it was built, from its signature (story 060); absent when refused before it was read. */
   provenance?: ProvenanceResult
+  /** Applied, but a person should know why: unsigned or untrusted, outside production (story 316). */
+  signatureWarning?: string
 }
 
 /**
@@ -659,9 +687,9 @@ export async function installBundleContent(
 
   // What has to be true before anything is backed up or written.
   const provenance = await bundleProvenance(bundle, input)
-  const signatureRefused = provenanceProblem(provenance, config.bundlePolicy)
-  if (signatureRefused)
-    return { ...refuse([`this bundle is refused: ${signatureRefused}`]), provenance }
+  const signature = await signatureDecision(db, config, bundle, provenance, input)
+  if (signature.problem)
+    return { ...refuse([`this bundle is refused: ${signature.problem}`]), provenance }
   if (replace && manifest.scope !== 'site')
     return refuse(['only a whole-site file (crombolo site export) can replace a site'])
   const missing = requiresProblems(manifest, config.siteDir)
@@ -826,6 +854,7 @@ export async function installBundleContent(
             nodeId: config.nodeId,
             label: input.label,
             package: { name: bundle.package.packageName, version: bundle.package.version },
+            ...(signature.signedBy ? { signedBy: signature.signedBy } : {}),
             exact: Boolean(replace),
           })
           if (!imported.runId) throw new InstallRefused([], imported)
@@ -879,6 +908,23 @@ export async function installBundleContent(
     appliedBy: config.nodeId,
     note: `run ${runId}, ${bundle.package.packageName}@${bundle.package.version}${replace ? `, --${replace}` : ''}`,
   })
+  // The trusted signer's "last signed" on the Trusted signers list (story 316).
+  if (signature.entryId)
+    await new TrustedSignerRepository(db).signed(signature.entryId).catch(() => {})
+  // A rollback on purpose is on the record.
+  if (signature.downgraded)
+    await recordAudit(db, {
+      category: 'system',
+      action: 'Downgrade',
+      entityType: 'Site bundle',
+      entityName: `${bundle.package.packageName}@${bundle.package.version}`,
+      detail: `applied over ${signature.downgraded.from}, from the same signer, with --allow-downgrade`,
+      source: 'request',
+      userKey: null,
+      userName: input.by ?? config.nodeId,
+      ipAddress: null,
+      forwardedFor: null,
+    }).catch(() => {})
   return {
     bundle: summarise(bundle),
     backup,
@@ -895,6 +941,7 @@ export async function installBundleContent(
     ...(siteData ? { siteData } : {}),
     ...(codeInstalled ? { code: codeInstalled } : {}),
     provenance,
+    ...(signature.warning ? { signatureWarning: signature.warning } : {}),
     sections: staged
       ? {
           written: staged.written,

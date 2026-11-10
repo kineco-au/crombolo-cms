@@ -69,6 +69,7 @@ import {
   type SiteExportOptions,
   type SiteExportResult,
   setting,
+  signedWithSiteKey,
   syncOptionsFor,
   type TablesChain,
   type TransferInput,
@@ -356,24 +357,29 @@ export async function contentExport(
         name: e.name,
         why: e.why,
       })),
-      files: writeBundlePackage(
-        writeBundle(set, carried, [], {
-          content,
-          seal:
-            input.passphrase && (content === 'sealed' || people)
-              ? newSeal(input.passphrase)
-              : undefined,
-          people,
-          bundleType: 'site',
-        }),
-        {
-          ...pkg,
-          id: bundleIdFor(pkg.name.replace(/^@[^/]+\//, '')),
-          label: `Content from ${config.siteName}`,
-          private: true,
-          peerRange: bundlePeerRange(VERSION),
-          bundleType: 'site',
-        },
+      // Signed with this site's key (story 316).
+      files: await signedWithSiteKey(
+        db,
+        config,
+        writeBundlePackage(
+          writeBundle(set, carried, [], {
+            content,
+            seal:
+              input.passphrase && (content === 'sealed' || people)
+                ? newSeal(input.passphrase)
+                : undefined,
+            people,
+            bundleType: 'site',
+          }),
+          {
+            ...pkg,
+            id: bundleIdFor(pkg.name.replace(/^@[^/]+\//, '')),
+            label: `Content from ${config.siteName}`,
+            private: true,
+            peerRange: bundlePeerRange(VERSION),
+            bundleType: 'site',
+          },
+        ),
       ),
       blobs: {
         carried: carried.size,

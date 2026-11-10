@@ -85,8 +85,27 @@ all at once.
 
 ## Acceptance criteria
 
-- [ ] A screen's `fetch` to an undeclared origin is blocked by the browser.
-- [ ] An origin declared by a granted extension is allowed, and removed when the
+- [x] A screen's `fetch` to an undeclared origin is blocked by the browser.
+- [x] An origin declared by a granted extension is allowed, and removed when the
       extension is.
-- [ ] The back office works under the policy with no violations logged. A browser
+- [x] The back office works under the policy with no violations logged. A browser
       test checks this.
+
+## Implemented (0.57.0)
+
+- **The policy** (`backoffice-host/src/content-security.ts`, `backOfficePolicy`)
+  as planned, without `form-action`: Chrome applies it to a form's redirects,
+  which would stop a sign-in handing off to an external provider.
+- **Served** by `backOfficePage` in `server.ts` for the back office, the sign-in
+  page, the device and remote approval pages: a nonce made for each page is put on
+  every `<script>` tag as it is served, so the shells are unchanged. The origins
+  are those every extension that is on declares, read for each page.
+- **Reports:** `<backoffice>/crombolo/api/csp-report`, without signing in, at most
+  10 KB and 30 a minute from one address; the log gets the directive and the
+  blocked origin only.
+- **`http.outbound`** now reads "Send requests from the server, and from its
+  screens in your browser, to the addresses it names", and an extension with
+  screens may declare it without a server capability that uses it.
+- **Tests:** `tests/content-security.test.ts`, and
+  `tests/browser/content-security.browser.ts`. The browser site's test extension
+  declares one origin, which its page may reach while another is blocked.

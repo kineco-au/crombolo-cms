@@ -49,7 +49,13 @@ export async function remoteBundles(remote: string, env: string | undefined) {
   return {
     name: entry.name,
     installed: () => client.json<InstalledBundles>(base),
-    install: (body: { name: string; version?: string; grant: string[]; applyContent: boolean }) =>
+    install: (body: {
+      name: string
+      version?: string
+      grant: string[]
+      applyContent: boolean
+      settings?: Record<string, unknown>
+    }) =>
       client.json<{
         ok: boolean
         message: string

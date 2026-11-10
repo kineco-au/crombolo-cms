@@ -70,6 +70,8 @@
       "type EmailResult",
       "entra",
       "type ExcerptSegment",
+      "Extension",
+      "type ExtensionProps",
       "externalSignInUrl",
       "type ExtraAttributes",
       "fileSystemMediaStore",

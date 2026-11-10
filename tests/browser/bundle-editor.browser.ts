@@ -69,7 +69,7 @@ test('an address from the old Bundles section opens the same screen in Settings'
   await signIn(page)
   await page.goto('/crombolo/section/packages/view/installed?bundle=missing')
   await expect(page).toHaveURL(
-    /\/section\/settings\/dashboard\/bundles\/installed\?bundle=missing$/,
+    /\/section\/settings\/dashboard\/extensions\/installed\?bundle=missing$/,
     {
       timeout: 30_000,
     },

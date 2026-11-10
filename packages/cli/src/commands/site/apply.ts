@@ -24,7 +24,7 @@ export default class SiteApply extends BaseCommand {
   static override summary =
     'apply a site package here or to a remote: checked, backed up, one transaction'
   static override description = [
-    "The site package is a package directory or a .tgz. It replaces what it carries: this site's code, config and dependencies among them, which the check lists first. This site's own directory, the default, means its content files: content/pages, content/library and content/media, built first. An extension is installed with `crombolo bundle install`, not applied.",
+    "The site package is a package directory or a .tgz. It replaces what it carries: this site's code, config and dependencies among them, which the check lists first. This site's own directory, the default, means its content files: content/pages, content/library and content/media, built first. An extension is installed with `crombolo extension install`, not applied.",
     'Applying again is three-way: a change only the package made is taken, one made only here is kept, and one made in both needs --resolve. An unchanged package changes nothing. `site revert <run>` puts it back.',
     '--dry-run says what it would do and changes nothing; with --save it writes the answers given into the package. --remote applies it on a remote site instead, which checks and applies it there.',
   ].join('\n\n')

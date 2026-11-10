@@ -28,6 +28,8 @@ interface RenderScope {
   ids: { next: number }
   /** A block's component by element type alias, from the page's own views generation. */
   blockComponent?: BlockComponentLoader
+  /** An extension's component, `<id>/<name>`, for `<Extension use>` (story 312). */
+  extensionComponent?: ExtensionComponentLoader
   /** A draft is being previewed in the back office. */
   preview?: boolean
   /** The signed-in member's anti-forgery token, for `<AntiforgeryMeta />`. */
@@ -65,9 +67,15 @@ export type BlockComponentLoader = (
 ) => Promise<((props: never) => Child | Promise<Child>) | undefined>
 
 /** What a page render carries besides its props: the search, blocks, and whether it is a preview. */
+/** An extension's component as a render function, or undefined when no extension offers it. */
+export type ExtensionComponentLoader = (
+  alias: string,
+) => ((props: object) => Child | Promise<Child>) | undefined
+
 export interface RenderScopeOptions {
   search?: SiteSearchPort
   blockComponent?: BlockComponentLoader
+  extensionComponent?: ExtensionComponentLoader
   preview?: boolean
   antiforgery?: string
   request?: RequestValues
@@ -208,6 +216,11 @@ export function actionState<T = unknown>(action: unknown): ActionState<T> | unde
 }
 
 /** The signed-in member's anti-forgery token for this render, or undefined for a visitor. */
+/** The loader for an extension's components, while a page renders; undefined outside one. */
+export function currentExtensionComponent(): ExtensionComponentLoader | undefined {
+  return store.getStore()?.extensionComponent
+}
+
 export function currentAntiforgery(): string | undefined {
   return memberAntiforgery(within('<AntiforgeryMeta />'))
 }

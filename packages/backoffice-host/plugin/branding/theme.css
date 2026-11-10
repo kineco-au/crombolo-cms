@@ -93,8 +93,11 @@
   --crombolo-section-sidebar-background: #fff;
   /* Crombolo's own cards (the Overview, Settings) stand off the page; Umbraco's stay flat. */
   /* A Settings card's title sits on a dark band. */
-  --crombolo-card-header-background: var(--crombolo-cocoa);
-  --crombolo-card-header-text: #fff;
+  --crombolo-card-header-background: #e8d5c6;
+  --crombolo-card-header-text: var(--crombolo-cocoa);
+  /* Every box's header, Umbraco's and ours, through the vendoring's patch to UUI's box. */
+  --uui-box-header-background: var(--crombolo-card-header-background);
+  --uui-box-header-color: var(--crombolo-card-header-text);
   --crombolo-card-shadow: 0 1px 2px rgb(84 50 31 / 6%), 0 10px 28px -18px rgb(84 50 31 / 30%);
 
   /* Pure white panels on a warm off-white page, so cards still separate. */

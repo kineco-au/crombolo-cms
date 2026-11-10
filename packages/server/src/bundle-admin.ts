@@ -15,6 +15,8 @@ import { revertRun } from '@crombolo/transfer'
 import { recordAudit } from './adapters/audit.ts'
 import { type BundleGrants, createBundleGrants, declaredPermissions } from './bundle-grants.ts'
 import { CommandError, installBundleContent, revertSections } from './bundle-install.ts'
+import { componentsWritten } from './bundle-sections.ts'
+import { siteLayouts } from './components.ts'
 import type { CromboloConfig } from './config.ts'
 import {
   createMarketplace,
@@ -45,7 +47,12 @@ export interface InstalledBundles {
   restartPending: RestartPending | null
   /** What this site takes of a bundle's signature (story 060). */
   policy: ProvenancePolicy
-  items: (InstalledListing & { settings?: SettingView[]; couldNotStart?: string })[]
+  items: (InstalledListing & {
+    settings?: SettingView[]
+    couldNotStart?: string
+    /** Components an earlier install copied into the site's `components/`, to review (story 312). */
+    copiedComponents?: string[]
+  })[]
 }
 
 /** A setting as Installed shows it (story 310): its value, masked when secret, and whether the config locks it. */
@@ -54,6 +61,12 @@ export interface SettingView extends ExtensionSetting {
   value: unknown
   locked: boolean
 }
+
+/** Settings sent with an install, as a request carries them: an object, or nothing. */
+export const settingsIn = (value: unknown): Record<string, unknown> | undefined =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined
 
 export interface InstallRequest {
   /** A package name, or with `file` a packed bundle on this machine. */
@@ -64,6 +77,8 @@ export interface InstallRequest {
   grant?: readonly string[]
   /** Whom it acts for, when it asks for `actAs` (story 308). */
   actAs?: string | null
+  /** Its settings' values, saved once it is installed: the layout picked for it (story 312). */
+  settings?: Readonly<Record<string, unknown>>
 }
 
 export interface SwitchOutcome {
@@ -142,16 +157,23 @@ export function createBundleAdmin(options: {
     if (!('settings' in declared)) return []
     const stored = await new ExtensionSettingRepository(db).of(pkg.id).catch(() => ({}))
     const locked = config.extensions?.[pkg.id]?.settings ?? {}
+    const layouts = siteLayouts(config.componentsDir)
     return Object.entries(declared.settings).map(([key, setting]) => {
-      const value =
+      const given =
         key in locked
           ? locked[key]
           : key in stored
             ? (stored as Record<string, unknown>)[key]
             : setting.default
+      // A layout it suggests that the site has not got is no choice at all.
+      const value =
+        setting.type === 'layout' && typeof given === 'string' && !layouts.includes(given)
+          ? undefined
+          : given
       return {
         key,
         ...setting,
+        ...(setting.type === 'layout' ? { values: layouts } : {}),
         value: setting.secret && value !== undefined ? MASKED : (value ?? null),
         locked: key in locked,
       }
@@ -172,10 +194,18 @@ export function createBundleAdmin(options: {
             const pkg = find(item.packageName)
             if (!pkg) return item
             const failed = options.failed?.().find((candidate) => candidate.id === pkg.id)
+            const run =
+              pkg.bundleType === 'extension'
+                ? await new TransferRunRepository(db)
+                    .appliedForPackage(pkg.packageName)
+                    .catch(() => undefined)
+                : undefined
+            const copied = run ? componentsWritten(config, run.id) : []
             return {
               ...item,
               settings: await settingsView(pkg),
               ...(failed ? { couldNotStart: failed.reason } : {}),
+              ...(copied.length > 0 ? { copiedComponents: copied } : {}),
             }
           }),
         ),
@@ -197,6 +227,11 @@ export function createBundleAdmin(options: {
         else if (value !== null && value !== MASKED) {
           const problem = settingValueProblem(setting, value)
           if (problem) problems.push(problem)
+          else if (
+            setting.type === 'layout' &&
+            !siteLayouts(config.componentsDir).includes(value as string)
+          )
+            problems.push(`${setting.label}: the site has no component "${value}"`)
         }
       }
       if (problems.length > 0) return { status: 400, ok: false, message: `${problems.join('; ')}.` }
@@ -222,7 +257,7 @@ export function createBundleAdmin(options: {
         `${pkg.packageName}@${pkg.version}`,
         Object.keys(values).join(', '),
       )
-      // Read when it starts: until story 311 runs it in a process of its own, a restart.
+      // Read when its process starts.
       if (pkg.carries.server) markRestartPending(config.siteDir, `${pkg.name}'s settings changed`)
       return {
         status: 200,
@@ -257,6 +292,12 @@ export function createBundleAdmin(options: {
           .filter(Boolean)
           .join('; ') || null,
       )
+      // The layout picked in the install panel, and any other setting given with it.
+      if (landed && request.settings && Object.keys(request.settings).length > 0) {
+        const saved = await this.setSettings(actor, landed.id, request.settings)
+        if (!saved.ok)
+          return { ...outcome, message: `${outcome.message ?? 'Installed.'} ${saved.message}` }
+      }
       if (!landed?.carries.server) return outcome
       markRestartPending(config.siteDir, `${name}@${landed.version} installed`)
       return { ...outcome, restartPending: true }
@@ -334,7 +375,7 @@ export function createBundleAdmin(options: {
         return {
           status: 404,
           ok: false,
-          message: `No installed bundle with a server half is called "${id}".`,
+          message: `No installed extension with a server half is called "${id}".`,
         }
       const state = enabled
         ? await bundleGrants.enable(pkg)
@@ -378,6 +419,7 @@ export async function localBundleAdmin(
     registry: config.npmRegistry,
     keyword: config.packageKeyword,
     marketplaceUrl: config.marketplaceUrl,
+    componentsDir: config.componentsDir,
     extensions,
     siteDir: config.siteDir,
     grants: bundleGrants,

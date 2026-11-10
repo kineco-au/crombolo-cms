@@ -370,80 +370,6 @@
       "errors": ["usage", "internal", "not_found", "refused"]
     },
     {
-      "name": "bundle build",
-      "description": "build a bundle made in the Bundle Editor as an extension package",
-      "effects": "non_idempotent",
-      "cardinality": "single",
-      "output_fields": [
-        {
-          "name": "out",
-          "type": "string",
-          "nullable": true
-        },
-        {
-          "name": "definition",
-          "type": "string"
-        },
-        {
-          "name": "bytes",
-          "type": "integer"
-        }
-      ],
-      "args": [
-        {
-          "name": "name",
-          "type": "string",
-          "required": true,
-          "description": "the definition's name or id"
-        },
-        {
-          "name": "--out",
-          "type": "string",
-          "description": "the file to write; named for the package when left out"
-        },
-        {
-          "name": "--with-media",
-          "type": "boolean",
-          "description": "the media files its picks name"
-        },
-        {
-          "name": "--check",
-          "type": "boolean",
-          "description": "build it and say what it holds, writing nothing"
-        }
-      ],
-      "errors": ["usage", "internal", "not_found"]
-    },
-    {
-      "name": "bundle check",
-      "description": "check an extension package before publishing or installing it",
-      "effects": "read_only",
-      "cardinality": "single",
-      "output_fields": [
-        {
-          "name": "name",
-          "type": "string",
-          "nullable": true
-        },
-        {
-          "name": "problems",
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        }
-      ],
-      "args": [
-        {
-          "name": "bundle",
-          "type": "string",
-          "required": true,
-          "description": "the package directory or .tgz"
-        }
-      ],
-      "errors": ["usage", "internal", "not_found", "refused"]
-    },
-    {
       "name": "bundle digest",
       "description": "print the digest a bundle's signature covers",
       "effects": "read_only",
@@ -463,337 +389,6 @@
         }
       ],
       "errors": ["usage", "internal", "not_found"]
-    },
-    {
-      "name": "bundle disable",
-      "description": "turn a bundle's server features off, here or on a remote",
-      "effects": "idempotent",
-      "cardinality": "single",
-      "output_fields": [
-        {
-          "name": "name",
-          "type": "string"
-        },
-        {
-          "name": "on",
-          "type": "boolean"
-        },
-        {
-          "name": "remote",
-          "type": "string",
-          "nullable": true
-        }
-      ],
-      "args": [
-        {
-          "name": "name",
-          "type": "string",
-          "required": true,
-          "description": "the bundle id or its package name"
-        },
-        {
-          "name": "--remote",
-          "type": "string",
-          "description": "on this remote instead"
-        },
-        {
-          "name": "--env",
-          "type": "string",
-          "description": "with --remote: the remote's environment"
-        }
-      ],
-      "errors": ["usage", "internal", "not_found", "auth", "refused", "unavailable"]
-    },
-    {
-      "name": "bundle enable",
-      "description": "turn a disabled bundle's server features back on, here or on a remote",
-      "effects": "idempotent",
-      "cardinality": "single",
-      "output_fields": [
-        {
-          "name": "name",
-          "type": "string"
-        },
-        {
-          "name": "on",
-          "type": "boolean"
-        },
-        {
-          "name": "remote",
-          "type": "string",
-          "nullable": true
-        }
-      ],
-      "args": [
-        {
-          "name": "name",
-          "type": "string",
-          "required": true,
-          "description": "the bundle id or its package name"
-        },
-        {
-          "name": "--remote",
-          "type": "string",
-          "description": "on this remote instead"
-        },
-        {
-          "name": "--env",
-          "type": "string",
-          "description": "with --remote: the remote's environment"
-        }
-      ],
-      "errors": ["usage", "internal", "not_found", "auth", "refused", "unavailable"]
-    },
-    {
-      "name": "bundle grant",
-      "description": "grant an installed extension what it asks for, here or on a remote",
-      "effects": "idempotent",
-      "cardinality": "single",
-      "output_fields": [
-        {
-          "name": "name",
-          "type": "string"
-        },
-        {
-          "name": "on",
-          "type": "boolean"
-        },
-        {
-          "name": "remote",
-          "type": "string",
-          "nullable": true
-        }
-      ],
-      "args": [
-        {
-          "name": "name",
-          "type": "string",
-          "required": true,
-          "description": "the package name, or its bundle id"
-        },
-        {
-          "name": "--grant",
-          "type": "string[]",
-          "description": "a permission it asks for; name every one"
-        },
-        {
-          "name": "--act-as",
-          "type": "string",
-          "description": "with actAs: whom it acts for, the calling user or a named one"
-        },
-        {
-          "name": "--remote",
-          "type": "string",
-          "description": "grant it on this remote instead"
-        },
-        {
-          "name": "--env",
-          "type": "string",
-          "description": "with --remote: the remote's environment"
-        }
-      ],
-      "errors": ["usage", "internal", "refused", "auth", "not_found", "unavailable"]
-    },
-    {
-      "name": "bundle install",
-      "description": "add an extension to this site, or a remote, as a dependency",
-      "effects": "idempotent",
-      "cardinality": "single",
-      "output_fields": [
-        {
-          "name": "name",
-          "type": "string"
-        },
-        {
-          "name": "version",
-          "type": "string",
-          "nullable": true
-        },
-        {
-          "name": "restartPending",
-          "type": "boolean"
-        },
-        {
-          "name": "wired",
-          "type": "boolean"
-        },
-        {
-          "name": "remote",
-          "type": "string",
-          "nullable": true
-        },
-        {
-          "name": "dir",
-          "type": "string",
-          "nullable": true
-        },
-        {
-          "name": "files",
-          "type": "integer",
-          "nullable": true
-        }
-      ],
-      "args": [
-        {
-          "name": "bundle",
-          "type": "string",
-          "required": true,
-          "description": "a package name, name@version, a packed .tgz, or with --code-into a site package"
-        },
-        {
-          "name": "--grant",
-          "type": "string[]",
-          "description": "a permission it asks for; name every one"
-        },
-        {
-          "name": "--act-as",
-          "type": "string",
-          "description": "with actAs: whom it acts for, the calling user or a named one"
-        },
-        {
-          "name": "--apply-content",
-          "type": "boolean",
-          "description": "apply the content it carries too"
-        },
-        {
-          "name": "--code-into",
-          "type": "string",
-          "description": "install a site package's own code into this empty directory"
-        },
-        {
-          "name": "--remote",
-          "type": "string",
-          "description": "install it on this remote instead"
-        },
-        {
-          "name": "--env",
-          "type": "string",
-          "description": "with --remote: the remote's environment"
-        },
-        {
-          "name": "--dry-run",
-          "type": "boolean",
-          "description": "say what it would install and grant; install nothing"
-        }
-      ],
-      "errors": ["usage", "internal", "refused", "auth", "not_found", "unavailable"]
-    },
-    {
-      "name": "bundle list",
-      "description": "the bundles this site, or a remote, has installed",
-      "effects": "read_only",
-      "cardinality": "single",
-      "output_fields": [
-        {
-          "name": "restartPending",
-          "type": "object",
-          "nullable": true
-        },
-        {
-          "name": "items",
-          "type": "array",
-          "items": {
-            "type": "object"
-          }
-        }
-      ],
-      "args": [
-        {
-          "name": "--remote",
-          "type": "string",
-          "description": "a remote's bundles instead"
-        },
-        {
-          "name": "--env",
-          "type": "string",
-          "description": "with --remote: the remote's environment"
-        }
-      ],
-      "errors": ["usage", "internal", "auth", "not_found", "unavailable"]
-    },
-    {
-      "name": "bundle purge",
-      "description": "back up, then drop a bundle's tables and clear its state",
-      "effects": "idempotent",
-      "cardinality": "single",
-      "output_fields": [
-        {
-          "name": "id",
-          "type": "string"
-        },
-        {
-          "name": "tables",
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "dropped",
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "backup",
-          "type": "string",
-          "nullable": true
-        },
-        {
-          "name": "changed",
-          "type": "boolean"
-        }
-      ],
-      "confirmation_bypass_arg": "--yes",
-      "args": [
-        {
-          "name": "id",
-          "type": "string",
-          "required": true,
-          "description": "the bundle's id"
-        },
-        {
-          "name": "--yes",
-          "type": "boolean",
-          "description": "don't ask: drop them"
-        },
-        {
-          "name": "--dry-run",
-          "type": "boolean",
-          "description": "say what it would do, and change nothing"
-        },
-        {
-          "name": "--backup-taken",
-          "type": "boolean",
-          "description": "a backup was taken another way: Postgres needs this, or CROMBOLO_PG_DUMP"
-        }
-      ],
-      "errors": ["usage", "internal", "confirmation_required", "refused"]
-    },
-    {
-      "name": "bundle settings",
-      "description": "read an installed extension's settings, or set them",
-      "effects": "idempotent",
-      "cardinality": "single",
-      "output_fields": [
-        {
-          "name": "settings",
-          "type": "array",
-          "items": {
-            "type": "object"
-          }
-        }
-      ],
-      "args": [
-        {
-          "name": "name",
-          "type": "string",
-          "required": true,
-          "description": "the package name, or its bundle id"
-        }
-      ],
-      "errors": ["usage", "internal", "refused", "not_found"]
     },
     {
       "name": "bundle sign",
@@ -832,51 +427,6 @@
         }
       ],
       "errors": ["usage", "internal", "refused", "unavailable"]
-    },
-    {
-      "name": "bundle uninstall",
-      "description": "remove an installed extension, here or on a remote",
-      "effects": "non_idempotent",
-      "cardinality": "single",
-      "output_fields": [
-        {
-          "name": "name",
-          "type": "string"
-        },
-        {
-          "name": "restartPending",
-          "type": "boolean"
-        },
-        {
-          "name": "remote",
-          "type": "string",
-          "nullable": true
-        }
-      ],
-      "args": [
-        {
-          "name": "name",
-          "type": "string",
-          "required": true,
-          "description": "the package name"
-        },
-        {
-          "name": "--remote",
-          "type": "string",
-          "description": "remove it on this remote instead"
-        },
-        {
-          "name": "--env",
-          "type": "string",
-          "description": "with --remote: the remote's environment"
-        },
-        {
-          "name": "--revert-content",
-          "type": "boolean",
-          "description": "first put back the content its install applied; nothing is removed if that is refused"
-        }
-      ],
-      "errors": ["usage", "internal", "refused", "auth", "not_found", "unavailable"]
     },
     {
       "name": "bundle verify",
@@ -2701,6 +2251,461 @@
       "errors": ["usage", "internal"]
     },
     {
+      "name": "extension build",
+      "description": "build a bundle made in the Bundle Editor as an extension package",
+      "effects": "non_idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "out",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "definition",
+          "type": "string"
+        },
+        {
+          "name": "bytes",
+          "type": "integer"
+        }
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "description": "the definition's name or id"
+        },
+        {
+          "name": "--out",
+          "type": "string",
+          "description": "the file to write; named for the package when left out"
+        },
+        {
+          "name": "--with-media",
+          "type": "boolean",
+          "description": "the media files its picks name"
+        },
+        {
+          "name": "--check",
+          "type": "boolean",
+          "description": "build it and say what it holds, writing nothing"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found"]
+    },
+    {
+      "name": "extension check",
+      "description": "check an extension package before publishing or installing it",
+      "effects": "read_only",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "problems",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "bundle",
+          "type": "string",
+          "required": true,
+          "description": "the package directory or .tgz"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "refused"]
+    },
+    {
+      "name": "extension disable",
+      "description": "turn a bundle's server features off, here or on a remote",
+      "effects": "idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "on",
+          "type": "boolean"
+        },
+        {
+          "name": "remote",
+          "type": "string",
+          "nullable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "description": "the bundle id or its package name"
+        },
+        {
+          "name": "--remote",
+          "type": "string",
+          "description": "on this remote instead"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "with --remote: the remote's environment"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "auth", "refused", "unavailable"]
+    },
+    {
+      "name": "extension enable",
+      "description": "turn a disabled bundle's server features back on, here or on a remote",
+      "effects": "idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "on",
+          "type": "boolean"
+        },
+        {
+          "name": "remote",
+          "type": "string",
+          "nullable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "description": "the bundle id or its package name"
+        },
+        {
+          "name": "--remote",
+          "type": "string",
+          "description": "on this remote instead"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "with --remote: the remote's environment"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "auth", "refused", "unavailable"]
+    },
+    {
+      "name": "extension grant",
+      "description": "grant an installed extension what it asks for, here or on a remote",
+      "effects": "idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "on",
+          "type": "boolean"
+        },
+        {
+          "name": "remote",
+          "type": "string",
+          "nullable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "description": "the package name, or its bundle id"
+        },
+        {
+          "name": "--grant",
+          "type": "string[]",
+          "description": "a permission it asks for; name every one"
+        },
+        {
+          "name": "--act-as",
+          "type": "string",
+          "description": "with actAs: whom it acts for, the calling user or a named one"
+        },
+        {
+          "name": "--remote",
+          "type": "string",
+          "description": "grant it on this remote instead"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "with --remote: the remote's environment"
+        }
+      ],
+      "errors": ["usage", "internal", "refused", "auth", "not_found", "unavailable"]
+    },
+    {
+      "name": "extension install",
+      "description": "add an extension to this site, or a remote, as a dependency",
+      "effects": "idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "version",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "restartPending",
+          "type": "boolean"
+        },
+        {
+          "name": "wired",
+          "type": "boolean"
+        },
+        {
+          "name": "remote",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "dir",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "files",
+          "type": "integer",
+          "nullable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "bundle",
+          "type": "string",
+          "required": true,
+          "description": "a package name, name@version, a packed .tgz, or with --code-into a site package"
+        },
+        {
+          "name": "--grant",
+          "type": "string[]",
+          "description": "a permission it asks for; name every one"
+        },
+        {
+          "name": "--act-as",
+          "type": "string",
+          "description": "with actAs: whom it acts for, the calling user or a named one"
+        },
+        {
+          "name": "--apply-content",
+          "type": "boolean",
+          "description": "apply the content it carries too"
+        },
+        {
+          "name": "--layout",
+          "type": "string",
+          "description": "the site's layout its page templates sit in"
+        },
+        {
+          "name": "--code-into",
+          "type": "string",
+          "description": "install a site package's own code into this empty directory"
+        },
+        {
+          "name": "--remote",
+          "type": "string",
+          "description": "install it on this remote instead"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "with --remote: the remote's environment"
+        },
+        {
+          "name": "--dry-run",
+          "type": "boolean",
+          "description": "say what it would install and grant; install nothing"
+        }
+      ],
+      "errors": ["usage", "internal", "refused", "auth", "not_found", "unavailable"]
+    },
+    {
+      "name": "extension list",
+      "description": "the bundles this site, or a remote, has installed",
+      "effects": "read_only",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "restartPending",
+          "type": "object",
+          "nullable": true
+        },
+        {
+          "name": "items",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "--remote",
+          "type": "string",
+          "description": "a remote's bundles instead"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "with --remote: the remote's environment"
+        }
+      ],
+      "errors": ["usage", "internal", "auth", "not_found", "unavailable"]
+    },
+    {
+      "name": "extension purge",
+      "description": "back up, then drop a bundle's tables and clear its state",
+      "effects": "idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "tables",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "dropped",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "backup",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "changed",
+          "type": "boolean"
+        }
+      ],
+      "confirmation_bypass_arg": "--yes",
+      "args": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": true,
+          "description": "the bundle's id"
+        },
+        {
+          "name": "--yes",
+          "type": "boolean",
+          "description": "don't ask: drop them"
+        },
+        {
+          "name": "--dry-run",
+          "type": "boolean",
+          "description": "say what it would do, and change nothing"
+        },
+        {
+          "name": "--backup-taken",
+          "type": "boolean",
+          "description": "a backup was taken another way: Postgres needs this, or CROMBOLO_PG_DUMP"
+        }
+      ],
+      "errors": ["usage", "internal", "confirmation_required", "refused"]
+    },
+    {
+      "name": "extension settings",
+      "description": "read an installed extension's settings, or set them",
+      "effects": "idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "settings",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "description": "the package name, or its bundle id"
+        }
+      ],
+      "errors": ["usage", "internal", "refused", "not_found"]
+    },
+    {
+      "name": "extension uninstall",
+      "description": "remove an installed extension, here or on a remote",
+      "effects": "non_idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "restartPending",
+          "type": "boolean"
+        },
+        {
+          "name": "remote",
+          "type": "string",
+          "nullable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "description": "the package name"
+        },
+        {
+          "name": "--remote",
+          "type": "string",
+          "description": "remove it on this remote instead"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "with --remote: the remote's environment"
+        },
+        {
+          "name": "--revert-content",
+          "type": "boolean",
+          "description": "first put back the content its install applied; nothing is removed if that is refused"
+        }
+      ],
+      "errors": ["usage", "internal", "refused", "auth", "not_found", "unavailable"]
+    },
+    {
       "name": "forms field add",
       "description": "add a field to a form",
       "effects": "idempotent",
@@ -4419,6 +4424,173 @@
           "name": "--verbose",
           "type": "boolean",
           "description": "list every file it writes"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "refused"]
+    },
+    {
+      "name": "keys create",
+      "description": "make a key of your own, on this machine, to sign site bundles with",
+      "effects": "non_idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "publicKey",
+          "type": "string"
+        },
+        {
+          "name": "fingerprint",
+          "type": "string"
+        },
+        {
+          "name": "file",
+          "type": "string"
+        }
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "description": "what to call it here: lowercase, digits and hyphens"
+        },
+        {
+          "name": "--comment",
+          "type": "string",
+          "description": "the name sites see beside it; its name by default"
+        }
+      ],
+      "errors": ["usage", "internal", "refused"]
+    },
+    {
+      "name": "keys list",
+      "description": "the keys of your own on this machine, with their public lines",
+      "effects": "read_only",
+      "cardinality": "bounded",
+      "output_fields": [
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "publicKey",
+          "type": "string"
+        },
+        {
+          "name": "fingerprint",
+          "type": "string"
+        }
+      ],
+      "errors": ["usage", "internal"]
+    },
+    {
+      "name": "keys trust",
+      "description": "trust a key, or a CI build, to sign the site bundles this site applies",
+      "effects": "non_idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "fingerprint",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "source",
+          "type": "string",
+          "nullable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "description": "what to call it on the list"
+        },
+        {
+          "name": "publicKey",
+          "type": "string",
+          "description": "the key's public line"
+        },
+        {
+          "name": "--site",
+          "type": "boolean",
+          "description": "it is another site's key, not a person's"
+        },
+        {
+          "name": "--source",
+          "type": "string",
+          "description": "trust builds of this repository instead: owner/repo, owner/*, or @ a tag pattern"
+        },
+        {
+          "name": "--bundle",
+          "type": "string",
+          "description": "trust the key that signed this bundle, once its signature checks out"
+        }
+      ],
+      "errors": ["usage", "internal", "refused"]
+    },
+    {
+      "name": "keys trusted",
+      "description": "the keys and CI builds this site trusts to sign the site bundles it applies",
+      "effects": "read_only",
+      "cardinality": "bounded",
+      "output_fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "kind",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "fingerprint",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "source",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "locked",
+          "type": "boolean"
+        }
+      ],
+      "errors": ["usage", "internal"]
+    },
+    {
+      "name": "keys untrust",
+      "description": "stop trusting a key or a CI build: site bundles it signed are refused from now on",
+      "effects": "idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "removed",
+          "type": "string"
+        }
+      ],
+      "args": [
+        {
+          "name": "signer",
+          "type": "string",
+          "required": true,
+          "description": "its fingerprint, its repository, or its name on the list"
         }
       ],
       "errors": ["usage", "internal", "not_found", "refused"]
@@ -6151,6 +6323,11 @@
           "description": "leave out the members and users it carries; this site's own are untouched"
         },
         {
+          "name": "--allow-downgrade",
+          "type": "boolean",
+          "description": "apply a site bundle older than one this site applied from the same signer: a deliberate rollback, recorded in the audit log"
+        },
+        {
           "name": "--label",
           "type": "string",
           "description": "a label for the run"
@@ -6286,6 +6463,11 @@
           "description": "sign from a private repository anyway: Sigstore's public log records its name, workflow, ref and commit"
         },
         {
+          "name": "--sign-with",
+          "type": "string",
+          "description": "sign it with this user key, as a CI job does, rather than the site's own"
+        },
+        {
           "name": "--sign",
           "type": "boolean",
           "description": "sign it once written, in GitHub Actions: `bundle sign` in the same step"
@@ -6411,6 +6593,11 @@
           "name": "--exclude-people",
           "type": "boolean",
           "description": "leave out the members and users it carries; this site's own are untouched"
+        },
+        {
+          "name": "--allow-downgrade",
+          "type": "boolean",
+          "description": "apply a site bundle older than one this site applied from the same signer: a deliberate rollback, recorded in the audit log"
         },
         {
           "name": "--label",
@@ -6556,6 +6743,11 @@
           "name": "--public-log",
           "type": "boolean",
           "description": "sign from a private repository anyway: Sigstore's public log records its name, workflow, ref and commit"
+        },
+        {
+          "name": "--sign-with",
+          "type": "string",
+          "description": "sign it with this user key, rather than the site's own"
         },
         {
           "name": "--sign",
@@ -6799,6 +6991,23 @@
         }
       ],
       "errors": ["usage", "internal", "confirmation_required", "refused", "auth", "not_found"]
+    },
+    {
+      "name": "site key",
+      "description": "this site's public key, which signs the site bundles it makes",
+      "effects": "idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "publicKey",
+          "type": "string"
+        },
+        {
+          "name": "fingerprint",
+          "type": "string"
+        }
+      ],
+      "errors": ["usage", "internal", "refused"]
     },
     {
       "name": "site revert",
@@ -7164,6 +7373,11 @@
           "name": "--exclude-people",
           "type": "boolean",
           "description": "leave out the members and users it carries; this site's own are untouched"
+        },
+        {
+          "name": "--allow-downgrade",
+          "type": "boolean",
+          "description": "apply a site bundle older than one this site applied from the same signer: a deliberate rollback, recorded in the audit log"
         }
       ],
       "errors": ["usage", "internal", "not_found", "conflict", "refused", "unavailable", "auth"]

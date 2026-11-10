@@ -3,7 +3,7 @@
  * line. The pure edits on their own, then the commands through the CLI on a
  * SQLite site with a page in French and a user in a group.
  */
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { connect, UserGroupRepository, UserRepository } from '@crombolo/data'
@@ -17,6 +17,9 @@ import {
 } from '@crombolo/schema'
 import { ERROR_KINDS } from '../packages/cli/src/errors.ts'
 import { ROOT } from '../scripts/packages.ts'
+
+// Each test runs the CLI a dozen times, which the default 5s leaves no room for under load.
+setDefaultTimeout(30_000)
 
 const BIN = join(ROOT, 'packages/cli/bin/crombolo.ts')
 

@@ -41,7 +41,7 @@ export default class SiteCheckCode extends BaseCommand {
     this.say(
       `  carries  ${result.serverBundles.length > 0 ? result.serverBundles.join(', ') : 'no server bundles'}`,
     )
-    this.say(`\n  \`crombolo bundle install ${shown} --code-into <dir>\` installs it.`)
+    this.say(`\n  \`crombolo extension install ${shown} --code-into <dir>\` installs it.`)
     return { bundle: dir, files: result.files, serverBundles: result.serverBundles, problems: [] }
   }
 }

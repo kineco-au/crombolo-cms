@@ -70,6 +70,7 @@ export default class CromboloTemplatePickerModalElement extends UmbModalBaseElem
         id: c.id,
         alias: c.alias,
         name: componentName(c.alias),
+        ...(c.extension ? { extension: c.extension } : {}),
       }))
     } catch {
       this._problem = 'The templates could not be listed.'

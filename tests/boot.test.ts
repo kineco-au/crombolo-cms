@@ -147,9 +147,9 @@ describe.skipIf(!vendored)('vendored assets over HTTP', () => {
   test('the entire module graph resolves', async () => {
     const shell = await (await get(BACKOFFICE)).text()
     const importmap: Record<string, string> = JSON.parse(
-      /<script type="importmap">([\s\S]*?)<\/script>/.exec(shell)?.[1] as string,
+      /<script[^>]*\stype="importmap"[^>]*>([\s\S]*?)<\/script>/.exec(shell)?.[1] as string,
     ).imports
-    const entry = /<script type="module" src="([^"]+)"/.exec(shell)?.[1] as string
+    const entry = /<script[^>]*\stype="module"[^>]*\ssrc="([^"]+)"/.exec(shell)?.[1] as string
 
     const transpiler = new Bun.Transpiler({ loader: 'js' })
     const seen = new Set<string>()

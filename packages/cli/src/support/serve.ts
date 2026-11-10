@@ -32,6 +32,7 @@ import {
   type RestartOutcome,
   type ServerHandle,
   setting,
+  siteBundleTrust,
   verifyProvenance,
   type WorkerHandle,
 } from '@crombolo/server'
@@ -457,7 +458,14 @@ async function importStartupBundles(
       const local = target === seedDir
       if (!local) {
         const provenance = await verifyProvenance(resolved.directory)
-        const refused = provenanceProblem(provenance, config.bundlePolicy)
+        // A site bundle only from a signer this site trusts (story 316).
+        const trust =
+          resolved.set.manifest.bundleType === 'site'
+            ? await siteBundleTrust(db, config, provenance)
+            : { problem: provenanceProblem(provenance, config.bundlePolicy) }
+        const refused = trust.problem
+        if ('warning' in trust && trust.warning)
+          io.progress(`  bundle      ${target}: ${trust.warning}`)
         if (refused)
           throw new CliError(
             'refused',

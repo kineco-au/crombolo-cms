@@ -30,6 +30,8 @@ export interface TransferRun {
   packageVersion: string | null
   /** A site package's or an extension's (story 306); null for a run before that was recorded. */
   bundleType: 'site' | 'extension' | null
+  /** Who signed its bundle, a key's fingerprint or a CI source's repository (story 316); null when nobody did. */
+  signedBy?: string | null
   direction: TransferDirection
   revertsRunId: string | null
   schemaStateId: number
@@ -70,6 +72,7 @@ export class TransferRunRepository {
         package_name: run.packageName,
         package_version: run.packageVersion,
         bundle_type: run.bundleType,
+        signed_by: run.signedBy ?? null,
         direction: run.direction,
         reverts_run_id: run.revertsRunId,
         schema_state_id: run.schemaStateId,
@@ -135,6 +138,19 @@ export class TransferRunRepository {
   async appliedForPackage(packageName: string): Promise<TransferRun | undefined> {
     const row = await this.#standing().where('package_name', '=', packageName).executeTakeFirst()
     return row ? mapRun(row) : undefined
+  }
+
+  /** The versions of a package one signer's bundles brought, in applied imports (story 316). */
+  async versionsSignedBy(signer: string, packageName: string): Promise<string[]> {
+    const rows = await this.#db.q
+      .selectFrom('content_transfer_run')
+      .select('package_version')
+      .where('direction', '=', 'import')
+      .where('status', '=', 'applied')
+      .where('signed_by', '=', signer)
+      .where('package_name', '=', packageName)
+      .execute()
+    return rows.flatMap((row) => (row.package_version ? [row.package_version] : []))
   }
 
   /** The latest standing import, narrowed by the caller. */
@@ -210,6 +226,7 @@ function mapRun(row: Record<string, unknown>): TransferRun {
     packageVersion: (row.package_version as string | null) ?? null,
     bundleType:
       row.bundle_type === 'site' || row.bundle_type === 'extension' ? row.bundle_type : null,
+    signedBy: (row.signed_by as string | null) ?? null,
     direction: String(row.direction) as TransferDirection,
     revertsRunId: (row.reverts_run_id as string | null) ?? null,
     schemaStateId: Number(row.schema_state_id),

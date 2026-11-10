@@ -184,6 +184,11 @@ export class CromboloBundleCodeView extends CromboloBundleEditorView {
         'Partial views',
         filePicker(this, d, 'partialViews', 'icon-document-html', UmbPartialViewPickerInputContext),
       )}
+      <p class="note">
+        In an extension, the templates and partial views picked here render in its own process on
+        the sites that install it. In a site bundle they become the other site's own. Which this is
+        is chosen beside its package name, under Created.
+      </p>
       ${field('Stylesheets', filePicker(this, d, 'stylesheets', 'icon-palette', UmbStylesheetPickerInputContext))}
       ${field('Scripts', filePicker(this, d, 'scripts', 'icon-document-js', UmbScriptPickerInputContext))}
     `

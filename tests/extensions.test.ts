@@ -351,7 +351,7 @@ describe('manifests', () => {
   })
 
   test('the keyword packages publish is the one the docs name', () => {
-    expect(EXTENSION_KEYWORD).toBe('crombolo-bundle')
+    expect(EXTENSION_KEYWORD).toBe('crombolo-extension')
   })
 })
 

@@ -10,14 +10,15 @@
  * checked as it is in-process; its tables are queried by the CMS, on the
  * connection that reaches only them. docs/extensions.md.
  */
+import { AsyncResource } from 'node:async_hooks'
 import { mkdirSync } from 'node:fs'
 import { dirname, extname, join } from 'node:path'
 import type { BundlePackage } from '@crombolo/backoffice-host/registry'
 import {
   CHUNK_BYTES,
   decode,
+  type EncodeHooks,
   encode,
-  errorFrom,
   type Frame,
   frameBytes,
   fromBase64,
@@ -25,6 +26,7 @@ import {
   toBase64,
 } from '@crombolo/extension/channel'
 import type { ExtensionDescription } from '@crombolo/extension/runner'
+import { RawHtml } from '@crombolo/render'
 import type { Kysely } from 'kysely'
 import type { BundleLog, ServerBundle } from './bundles.ts'
 import { extensionSqlProblem } from './extension-sql.ts'
@@ -51,6 +53,8 @@ function isMusl(): boolean {
 
 const SOURCE = /\.[cm]?[jt]sx?$/
 const MACRO = /\btype\s*:\s*['"]macro['"]/
+/** A module whose first statement says it runs in the browser, or renders on its own. */
+const BROWSER_CODE = /^(?:\s|\/\/[^\n]*\n|\/\*[\s\S]*?\*\/)*['"]use (client|deferred)['"]/
 
 /**
  * The extension's server half as one file for Deno: its code and its own
@@ -72,6 +76,10 @@ export async function buildExtension(
   )
   const sdk = Bun.resolveSync('@crombolo/extension', import.meta.dir)
   const common = Bun.resolveSync('@crombolo/common', import.meta.dir)
+  const jsx = Bun.resolveSync('@crombolo/render/jsx-runtime', import.meta.dir)
+  // The CMS's own packages the SDK is built from; the extension reaches none of them itself.
+  const own = [sdk, common, jsx].map((file) => dirname(dirname(file)))
+  const ownCode = (importer: string) => own.some((dir) => importer.startsWith(dir))
   const result = await Bun.build({
     entrypoints: [wrapper],
     outdir: outDir,
@@ -79,20 +87,29 @@ export async function buildExtension(
     target: 'node',
     format: 'esm',
     throw: false,
+    jsx: { runtime: 'automatic', importSource: '@crombolo/crombolo' },
     plugins: [
       {
         name: 'crombolo-extension',
         setup(build) {
-          build.onResolve(
-            { filter: /^@crombolo\/(crombolo\/bundle|extension|common)$/ },
-            (args) => ({
-              path: args.path === '@crombolo/common' ? common : sdk,
-            }),
-          )
+          build.onResolve({ filter: /^@crombolo\// }, (args) => {
+            if (/^@crombolo\/(crombolo\/bundle|extension)$/.test(args.path)) return { path: sdk }
+            if (args.path === '@crombolo/common') return { path: common }
+            if (/^@crombolo\/(crombolo|render)\/jsx-(dev-)?runtime$/.test(args.path))
+              return { path: jsx }
+            if (ownCode(args.importer)) return undefined
+            throw new Error(
+              `${args.importer} imports ${args.path}, which is the CMS's own: an extension uses @crombolo/extension.`,
+            )
+          })
           build.onLoad({ filter: SOURCE }, async (args) => {
             const contents = await Bun.file(args.path).text()
             if (MACRO.test(contents))
               throw new Error(`${args.path} imports a Bun macro, which would run in the CMS.`)
+            if (BROWSER_CODE.test(contents))
+              throw new Error(
+                `${args.path} is browser code ('use client' or 'use deferred'), which an extension's components cannot carry yet.`,
+              )
             const ext = extname(args.path).replace(/^\.[cm]?/, '.')
             const loader =
               ext === '.ts' ? 'ts' : ext === '.tsx' ? 'tsx' : ext === '.jsx' ? 'jsx' : 'js'
@@ -171,6 +188,10 @@ export class ExtensionCallError extends Error {
 
 interface Pending {
   fns: ((...args: unknown[]) => unknown)[]
+  /** Objects lent by reference for this call, such as a page the extension may hand back. */
+  refs: object[]
+  /** How what this call lends is encoded: its replies lend the same way. */
+  hooks: EncodeHooks
   request?: Request
   reader?: ReadableStreamDefaultReader<Uint8Array>
   body?: ReadableStreamDefaultController<Uint8Array>
@@ -223,6 +244,16 @@ export class ExtensionProcess {
   constructor(options: ExtensionProcessOptions) {
     this.#options = options
     this.id = options.pkg.id
+  }
+
+  /** What a person calls it: its manifest's name. */
+  get name(): string {
+    return this.#options.pkg.name
+  }
+
+  /** The settings it was started with. */
+  get settings(): Readonly<Record<string, unknown>> {
+    return this.#options.settings
   }
 
   /** Builds, starts and describes it: the boot's first look at what it offers. */
@@ -409,13 +440,23 @@ export class ExtensionProcess {
     kind: string,
     fields: Record<string, unknown>,
     context: unknown,
-    options: { request?: Request; timeoutMs?: number | null } = {},
+    options: {
+      request?: Request
+      timeoutMs?: number | null
+      /** More to send with each object it lends, such as a page's values. */
+      extra?: EncodeHooks['extra']
+    } = {},
   ): Promise<{ value?: unknown; response?: Response }> {
     await this.#ensure()
     const id = this.#nextId++
     const fns: Pending['fns'] = []
-    const encoded = await encode(context, {
-      fn: (fn) => fns.push(fn) - 1,
+    const refs: object[] = []
+    const hooks: EncodeHooks = {
+      // Bound to this call's async context, so a render's own scope still applies
+      // when the extension calls back.
+      fn: (fn) => fns.push(AsyncResource.bind(fn)) - 1,
+      ref: (value) => refs.push(value) - 1,
+      extra: options.extra,
       signal: (signal) => {
         const marker = this.#nextSignal++
         signal.addEventListener('abort', () => this.#send({ t: 'abort', signal: marker }), {
@@ -424,6 +465,8 @@ export class ExtensionProcess {
         return marker
       },
       special: (value, key) => {
+        // Markup travels as markup, so the extension's JSX puts it in unescaped.
+        if (value instanceof RawHtml) return { $html: value.value }
         if (
           key === 'database' &&
           value &&
@@ -434,12 +477,15 @@ export class ExtensionProcess {
         }
         return undefined
       },
-    })
+    }
+    const encoded = await encode(context, hooks)
     const timeoutMs =
       options.timeoutMs === undefined ? (this.#options.timeoutMs ?? 30_000) : options.timeoutMs
     return new Promise((resolve, reject) => {
       const call: Pending = {
         fns,
+        refs,
+        hooks,
         request: options.request,
         resolve: (result) => {
           this.#finish(id)
@@ -584,8 +630,9 @@ export class ExtensionProcess {
               '$incoming' in tagged
                 ? this.#pending.get(tagged.$incoming as number)?.request
                 : undefined,
+            ref: (marker) => call?.refs[marker],
           }) as unknown[]
-          this.#reply(frame.id, { value: await encode(await fn(...args)) })
+          this.#reply(frame.id, { value: await encode(await fn(...args), call?.hooks) })
         } catch (error) {
           this.#reply(frame.id, { error: await encode(error) })
         }

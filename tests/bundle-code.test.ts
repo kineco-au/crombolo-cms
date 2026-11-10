@@ -276,13 +276,13 @@ describe('installing the code', () => {
   }, 60_000)
 
   // Story 241: `bundle install-code` became `bundle install --code-into`.
-  test('through the CLI, as `bundle install <bundle> --code-into <dir>`', () => {
+  test('through the CLI, as `extension install <extension> --code-into <dir>`', () => {
     const target = join(scratch(), 'site')
     const run = Bun.spawnSync(
       [
         'bun',
         join(import.meta.dir, '..', 'packages/cli/bin/crombolo.ts'),
-        'bundle',
+        'extension',
         'install',
         bundle,
         '--code-into',

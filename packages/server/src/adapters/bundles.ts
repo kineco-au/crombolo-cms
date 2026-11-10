@@ -20,6 +20,7 @@ import {
 import { ObjectTypes, type Page } from '@crombolo/core'
 import {
   type Bundle,
+  type BundleDefinitionKind,
   BundleRepository,
   type BundleSchemaPicks,
   type ComponentFileStore,
@@ -43,10 +44,12 @@ import {
   writeBundlePackage,
 } from '@crombolo/transfer'
 import { type CromboloConfig, VERSION } from '../config.ts'
+import { createdExtension } from '../created-extension.ts'
 import { mediaStoreFor, readBlobs } from '../media-files.ts'
 import type { MediaStore } from '../media-store.ts'
 import { carriedPicks, schemaPickFiles } from '../schema-picks.ts'
 import { siteSections } from '../site-sections.ts'
+import { signedWithSiteKey } from '../site-trust.ts'
 import { writeNpmTarball } from '../tar.ts'
 import { createComponentsPort, createFileSystemPort } from './file-system.ts'
 import { createTemplateFileStore } from './template-files.ts'
@@ -64,6 +67,8 @@ const CONTENT_OBJECT_TYPES = [ObjectTypes.Document, ObjectTypes.Media, ObjectTyp
 
 export interface PackagePortOptions {
   siteName: string
+  /** Seals this site's signing key, which signs a site bundle it builds (story 316). */
+  secretKey?: string
   nodeId: string
   marketplaceUrl: string
   /** Reads a template's view, which lives on disk rather than in the row. */
@@ -345,18 +350,33 @@ export function createPackagePort(db: Db, options: PackagePortOptions): PackageP
 
       const labelled: ContentSet = { ...set, manifest: { ...set.manifest, label: from.name } }
       const encoder = new TextEncoder()
-      // What the Bundle Editor builds is an extension (story 306).
-      const files = writeBundlePackage(
-        writeBundle(labelled, content.blobs, sections, { bundleType: 'extension' }),
-        {
-          name: pkg.name,
-          version: pkg.version,
-          id: bundleIdFor(pkg.name.replace(/^@[^/]+\//, '')),
-          label: from.name,
-          peerRange: bundlePeerRange(VERSION),
-          bundleType: 'extension',
-        },
-      )
+      const bundleId = bundleIdFor(pkg.name.replace(/^@[^/]+\//, ''))
+      const info = {
+        name: pkg.name,
+        version: pkg.version,
+        id: bundleId,
+        label: from.name,
+        peerRange: bundlePeerRange(VERSION),
+      }
+      // Story 312: a site bundle moves this site, its components and all, as a
+      // site package; an extension's picked components are its code.
+      const files =
+        row.kind === 'site'
+          ? await signedWithSiteKey(
+              db,
+              { secretKey: options.secretKey, siteName: options.siteName },
+              writeBundlePackage(
+                writeBundle(labelled, content.blobs, sections, { bundleType: 'site' }),
+                { ...info, bundleType: 'site', private: true },
+              ),
+            )
+          : (() => {
+              const built = createdExtension(bundleId, sections, labelled)
+              return writeBundlePackage(
+                writeBundle(built.set, content.blobs, built.payload, { bundleType: 'extension' }),
+                { ...info, bundleType: 'extension', ...(built.code ? { code: built.code } : {}) },
+              )
+            })()
       const entries = files.map((file) => ({
         path: file.path,
         bytes: file.bytes ?? encoder.encode(file.text ?? ''),
@@ -374,6 +394,8 @@ export function createPackagePort(db: Db, options: PackagePortOptions): PackageP
 export interface CreatedBundlePackage {
   name: string
   version: string
+  /** What it builds (story 312): an extension for other sites, or a site bundle to move this site. */
+  kind: BundleDefinitionKind
   /** Whether each was set, rather than derived from the definition's name. */
   set: { name: boolean; version: boolean }
 }
@@ -389,6 +411,7 @@ export async function readCreatedBundlePackage(
   if (!row) return undefined
   return {
     ...bundlePackageOf(row),
+    kind: row.kind,
     set: { name: row.packageName !== null, version: row.packageVersion !== null },
   }
 }
@@ -400,7 +423,7 @@ export async function readCreatedBundlePackage(
 export async function writeCreatedBundlePackage(
   db: Db,
   id: string,
-  input: { name?: unknown; version?: unknown },
+  input: { name?: unknown; version?: unknown; kind?: unknown },
 ): Promise<{ ok: true; package: CreatedBundlePackage } | { ok: false; message: string }> {
   const bundles = new BundleRepository(db)
   if (!(await bundles.byId(id))) return { ok: false, message: 'That bundle no longer exists.' }
@@ -415,7 +438,10 @@ export async function writeCreatedBundlePackage(
     }
   if (version && !SEMVER.test(version))
     return { ok: false, message: 'A version is three numbers, like 1.0.0.' }
+  if (input.kind !== undefined && input.kind !== 'extension' && input.kind !== 'site')
+    return { ok: false, message: 'A bundle is an extension for other sites, or a site bundle.' }
   await bundles.setPackage(id, { name: name || null, version: version || null })
+  if (input.kind !== undefined) await bundles.setKind(id, input.kind)
   return { ok: true, package: (await readCreatedBundlePackage(db, id)) as CreatedBundlePackage }
 }
 
@@ -477,7 +503,7 @@ export async function writeSchemaPicks(
 /**
  * A Bundle Editor definition built as the extension package the back office's
  * download gives (story 306), found by its name or its id; undefined when there
- * is no such definition. For `crombolo bundle build`.
+ * is no such definition. For `crombolo extension build`.
  */
 export async function buildCreatedBundle(
   db: Db,
@@ -487,6 +513,7 @@ export async function buildCreatedBundle(
 ): Promise<{ definition: PackageDefinition; built: BuiltPackage } | undefined> {
   const port = createPackagePort(db, {
     siteName: config.siteName,
+    secretKey: config.secretKey,
     nodeId: config.nodeId,
     marketplaceUrl: config.marketplaceUrl,
     componentFiles: createTemplateFileStore(config.componentsDir),

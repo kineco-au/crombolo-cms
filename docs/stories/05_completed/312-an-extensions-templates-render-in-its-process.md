@@ -43,6 +43,27 @@ therefore needs somewhere else for those names to resolve to.
 - **No browser code in this story:** an extension's component renders HTML
   only. One using islands, `'use client'` or deferred parts is refused.
 
+## Decisions (2026-11-10)
+
+- **The page's values go with each render.** The CMS sends a page's converted
+  values with it, so an extension's component reads `model.value()`, `text()`,
+  `html()` and `hasValue()` synchronously, as a site component does. `nav`,
+  `media()` and other lookups stay calls back to the site. A value that is itself
+  a page or an element carries its own values the same way, up to a limit per
+  render.
+- **The Bundle Editor makes two kinds of bundle,** chosen when one is created:
+  - **An extension for other sites:** schema, content, dictionary, styles and
+    scripts as its payload. The templates and partial views it picks go to
+    `src/components/`, declared by a generated factory, and it asks for
+    `templates`. It downloads as an installable extension, and its components
+    render in its own process.
+  - **A site bundle, to move this site:** everything, components and code
+    included, as a site package (`bundleType: "site"`), applied with
+    `site apply` or `push` and never installed: what `site export` makes, from the
+    back office.
+  - The editor shows only what fits the kind. Existing definitions are
+    extensions, as 306 made them.
+
 ## The bundle structure
 
 Code and data are apart: code stays in the package and runs in the extension's
@@ -155,27 +176,77 @@ administrator decides:
 
 ## Acceptance criteria
 
-- [ ] An extension's components are not written to the site's `components/`; they
+- [x] An extension's components are not written to the site's `components/`; they
       live in its package, declared by its factory, and its content types resolve
       them as `<id>/<alias>`; its pages render with them.
-- [ ] An extension whose `bundle.json` lists `components/` is refused, and nothing
+- [x] An extension whose `bundle.json` lists `components/` is refused, and nothing
       is written.
-- [ ] An extension carrying `schema/migrations/*.ts` is refused, and nothing is
+- [x] An extension carrying `schema/migrations/*.ts` is refused, and nothing is
       written.
-- [ ] Its styles, scripts, public files, schema and content install as now.
-- [ ] Components an earlier install copied are listed by `bundle list`.
-- [ ] `bundles.md` no longer says content is never code; it says where each section
+- [x] Its styles, scripts, public files, schema and content install as now.
+- [x] Components an earlier install copied are listed by `bundle list`.
+- [x] `bundles.md` no longer says content is never code; it says where each section
       lands.
 
-- [ ] A page embedding an extension's component renders its HTML, and the
+- [x] A page embedding an extension's component renders its HTML, and the
       extension's code ran in its own process; the page's layouts and the site's
       components rendered in the CMS.
-- [ ] Without `templates`, the embed renders nothing and logs why.
-- [ ] A failing extension render leaves the page rendering.
-- [ ] The install panel and `bundle install --layout` offer the site's layouts for
+- [x] Without `templates`, the embed renders nothing and logs why.
+- [x] A failing extension render leaves the page rendering.
+- [x] The install panel and `bundle install --layout` offer the site's layouts for
       an extension with page templates, preselecting the one its component names
       when the site has it; the choice is its `layout` setting, editable in
       Installed and lockable in the config.
-- [ ] Its page templates render inside the chosen site layout, or a bare page
+- [x] Its page templates render inside the chosen site layout, or a bare page
       without one.
-- [ ] `writing-components.md` describes using an extension's components.
+- [x] `writing-components.md` describes using an extension's components.
+
+## Implemented (0.57.0)
+
+- **Rendering** (`packages/server/src/extension-components.ts`): the renderer
+  asks `extensionComponents` for a component the site has none of
+  (`Renderer`'s `#load`), so a page template, a block (`blocks/<alias>`) and
+  `<Extension use>` (`packages/render/src/extension.ts`, through the render
+  scope) all become one `render` call. The layout chain is the renderer's own:
+  the stand-in module's `layout` is the extension's `layout` setting, else the
+  one its component exports.
+- **The page over the channel:** the codec lends objects by reference (`$ref`),
+  sends getters as values, awaits promises, and carries `RawHtml` as `$html`.
+  Each lent function is bound to the render's async context
+  (`AsyncResource.bind`), so personal marking still works. `searchParams` is
+  asked for only when read; a render with a signed-in member marks the page
+  personal.
+- **Values up front:** each page and element a render lends carries its values,
+  text and HTML (`$values`, up to 200 per render), and the runner answers
+  `value()`, `text()`, `html()` and `hasValue()` from them.
+- **The SDK:** the runner describes `components` and answers `render` with the
+  CMS's JSX runtime (`@crombolo/render/jsx-runtime`), which the build maps
+  `@crombolo/crombolo/jsx-runtime` to. The build refuses `'use client'` and
+  `'use deferred'` modules, and any import of the CMS's packages but the SDK's.
+- **The payload:** `loadBundle` refuses an extension listing `components/` or
+  `schema/migrations/*.ts`.
+- **Schema and picker:** `componentAliasesIn(componentsDir, siteDir)` accepts
+  any `<id>/<name>` for an installed extension with a server half, since its
+  components are known only once it starts. The template picker lists them under
+  the extension's name; the template file store already refuses an alias with a
+  `/`.
+- **The layout setting:** a `layout` setting type, offered with the site's
+  components (`siteLayouts`) in Installed and in the Marketplace's grant panel
+  (`InstallOutcome.layout`, preselecting the suggestion the site has), set with
+  `bundle install --layout`, and saved after install (`InstallRequest.settings`).
+  The health check names one whose layout is gone.
+- **Copied components:** `componentsWritten` reads a run's file record;
+  `bundle list` and Installed name what an extension's last applied run wrote
+  under `components/`.
+- **The Bundle Editor:** migration 068 adds `bundle.kind`. An extension build
+  moves its components to `src/components/` with a generated factory and the
+  `templates` permission (`created-extension.ts`, `BundlePackageInfo.code`); a
+  site build is a private site package.
+- **Differences from the plan:**
+  - Schema validation accepts any name under an installed extension's id; a name
+    it does not offer renders nothing, and the log says so.
+  - The Bundle Editor's kind is set beside the package name in Created, not
+    chosen in a separate creation step.
+- **Tests:** `tests/extension-components.test.ts`, with the payload refusals in
+  `tests/site-packages.test.ts`, the layout offer in `tests/marketplace.test.ts`,
+  and both kinds of download in `tests/bundles.test.ts`.

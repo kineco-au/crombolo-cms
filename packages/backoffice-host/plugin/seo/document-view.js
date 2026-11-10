@@ -17,7 +17,7 @@ const SOURCES = {
   template: 'From the page design',
   site: 'Site setting',
   name: 'Page name',
-  none: 'Not set',
+  none: 'Not configured',
 }
 
 export default class CromboloSeoDocumentViewElement extends UmbLitElement {
@@ -58,8 +58,14 @@ export default class CromboloSeoDocumentViewElement extends UmbLitElement {
     return html`
       <tr>
         <th>${label}</th>
-        <td>${item.value ? render(item.value) : html`<em>Nothing yet</em>`}</td>
-        <td><uui-tag look="secondary">${SOURCES[item.source] ?? item.source}</uui-tag></td>
+        <td>${item.value ? render(item.value) : '-'}</td>
+        <td>
+          ${
+            item.source === 'none'
+              ? html`<span class="unset"><uui-icon name="icon-alert"></uui-icon>Not configured</span>`
+              : html`<uui-tag look="secondary">${SOURCES[item.source] ?? item.source}</uui-tag>`
+          }
+        </td>
       </tr>
     `
   }
@@ -72,11 +78,11 @@ export default class CromboloSeoDocumentViewElement extends UmbLitElement {
     return html`
       <uui-box headline="In search results">
         <div class="snippet">
-          <div class="url">${snippet.url || 'This page has no address yet'}</div>
-          <div class="title">${snippet.title}</div>
-          <div class="description">
-            ${snippet.description || html`<em>Search engines will pick some text from the page.</em>`}
+          ${snippet.name ? html`<div class="field"><span class="label">Name:</span> ${snippet.name}</div>` : nothing}
+          <div class="field url">
+            <span class="label">URL:</span> ${snippet.url || 'This page has no address yet'}
           </div>
+          ${snippet.description ? html`<div class="description">${snippet.description}</div>` : nothing}
         </div>
         ${
           meta.noindex.value
@@ -89,11 +95,14 @@ export default class CromboloSeoDocumentViewElement extends UmbLitElement {
               </p>`
             : nothing
         }
-        <p class="note">
-          Shows the last saved version${preview.published ? '' : ', which is not published yet'}.
-        </p>
-      </uui-box>
-      <uui-box headline="Where each value comes from">
+        ${
+          preview.differs === 'unpublished'
+            ? html`<p class="note">This page is not published yet, so search engines do not see it.</p>`
+            : preview.differs === 'changed'
+              ? html`<p class="note">Includes saved changes that are not published yet.</p>`
+              : nothing
+        }
+        <h4>Searchable property values</h4>
         <table>
           ${this.#row('Title', meta.title)}
           ${this.#row('Description', meta.description)}
@@ -105,6 +114,14 @@ export default class CromboloSeoDocumentViewElement extends UmbLitElement {
   }
 
   static styles = css`
+    /* A value nothing sets: a warning, so it is put right. */
+    .unset {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--uui-size-space-1);
+      color: var(--uui-color-warning-standalone, var(--uui-color-warning-emphasis));
+      font-weight: 600;
+    }
     :host {
       display: block;
       padding: var(--uui-size-layout-1);
@@ -116,16 +133,21 @@ export default class CromboloSeoDocumentViewElement extends UmbLitElement {
       max-width: 600px;
       font-family: arial, sans-serif;
     }
+    /* The page's name and address, each on a line with its label. */
+    .snippet .field {
+      font-size: 14px;
+      overflow-wrap: anywhere;
+    }
+    .snippet .field .label {
+      display: inline-block;
+      min-width: 3.5em;
+      color: var(--uui-color-text-alt);
+      font-weight: 600;
+    }
     .snippet .url {
       color: var(--uui-color-text-alt);
       font-size: 14px;
       overflow-wrap: anywhere;
-    }
-    .snippet .title {
-      /* A search result's link blue: Google's own, light and dark. */
-      color: var(--crombolo-snippet-title, #1a0dab);
-      font-size: 20px;
-      margin: 4px 0;
     }
     .snippet .description {
       color: var(--uui-color-text);
@@ -133,6 +155,11 @@ export default class CromboloSeoDocumentViewElement extends UmbLitElement {
     }
     .warning {
       color: var(--uui-color-danger);
+    }
+    h4 {
+      margin: var(--uui-size-layout-1) 0 var(--uui-size-space-3);
+      padding-top: var(--uui-size-space-5);
+      border-top: 1px solid var(--uui-color-divider);
     }
     .note {
       color: var(--uui-color-text-alt);

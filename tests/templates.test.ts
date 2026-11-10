@@ -48,7 +48,7 @@ const byId = (id: string): SiteTemplate => {
   return found
 }
 
-/** A template built as `crombolo bundle build --template` builds it, once per run. */
+/** A template built as `crombolo extension build --template` builds it, once per run. */
 const built = new Map<string, Promise<BundleBuildResult>>()
 const templateBundle = (template: SiteTemplate): Promise<BundleBuildResult> => {
   const cached = built.get(template.id)
@@ -358,7 +358,10 @@ describe('what init writes', () => {
     expect(paths).toContain('tsconfig.json')
     expect(paths).toContain('schema/schema.toml')
     expect(paths).toContain('.gitignore')
-    expect(paths).not.toContain('.env')
+    // A secret key from the start, which seals the key that signs its bundles (story 316).
+    expect(scaffoldFiles().find((f) => f.path === '.env')?.text).toMatch(
+      /^CROMBOLO_SECRET_KEY=[\w-]{43}$/m,
+    )
   })
 
   test('names the site, and the package after it', () => {

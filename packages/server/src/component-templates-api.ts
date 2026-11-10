@@ -13,28 +13,49 @@ export interface ComponentTemplate {
   alias: string
   /** The template's key, or null for a component no template row names yet. */
   id: string | null
+  /** The extension that renders it, by name, when one does (story 312). */
+  extension?: string
 }
 
-/** Every component on disk and every template row, joined by alias, by alias. Pure. */
+/**
+ * Every component on disk, every extension's, and every template row, joined by
+ * alias, by alias. The site's own file wins over an extension's of the same alias. Pure.
+ */
 export function componentTemplates(
   onDisk: readonly string[],
   rows: readonly { key: string; alias: string }[],
+  extensions: readonly { alias: string; extension: string }[] = [],
 ): ComponentTemplate[] {
   const keys = new Map(rows.map((row) => [row.alias, row.key]))
-  const aliases = new Set([...onDisk, ...rows.map((row) => row.alias)])
-  return [...aliases].sort().map((alias) => ({ alias, id: keys.get(alias) ?? null }))
+  const files = new Set(onDisk)
+  const owners = new Map(
+    extensions
+      .filter((entry) => !files.has(entry.alias))
+      .map((entry) => [entry.alias, entry.extension]),
+  )
+  const aliases = new Set([...onDisk, ...owners.keys(), ...rows.map((row) => row.alias)])
+  return [...aliases].sort().map((alias) => {
+    const extension = owners.get(alias)
+    return { alias, id: keys.get(alias) ?? null, ...(extension ? { extension } : {}) }
+  })
 }
 
 export async function handleComponentTemplates(
   request: Request,
   principal: Principal,
-  options: { db: Db; componentsDir: string },
+  options: {
+    db: Db
+    componentsDir: string
+    /** The extensions' components, read-only, each with its extension's name. */
+    extensionComponents?: () => readonly { alias: string; extension: string }[]
+  },
 ): Promise<Response> {
   const repo = new ComponentRepository(options.db)
   const onDisk = listComponents(options.componentsDir).map((file) => file.alias)
+  const extensions = options.extensionComponents?.() ?? []
 
   if (request.method === 'GET')
-    return Response.json({ items: componentTemplates(onDisk, await repo.all()) })
+    return Response.json({ items: componentTemplates(onDisk, await repo.all(), extensions) })
 
   if (request.method === 'POST') {
     // As changing which templates a type allows: Structure, which Settings brings.
@@ -45,7 +66,7 @@ export async function handleComponentTemplates(
       )
     const body = (await request.json().catch(() => ({}))) as { alias?: unknown }
     const alias = typeof body.alias === 'string' ? body.alias : ''
-    if (!onDisk.includes(alias))
+    if (!onDisk.includes(alias) && !extensions.some((entry) => entry.alias === alias))
       return Response.json({ message: 'There is no component with that name.' }, { status: 404 })
     const existing = await repo.byAlias(alias)
     if (existing) return Response.json({ id: existing.key })
