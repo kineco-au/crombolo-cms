@@ -253,6 +253,7 @@ requests, only server-side and build-time front ends can call it.
 | `316` | A site bundle is applied only from a key you trust | must | M | done | 306 |
 | `317` | An administrator sets where a page's search and sharing values come from | should | M | done | — |
 | `320` | An extension's back-office code is asked for, built and kept apart | must | L | done | 311, 308 |
+| `321` | A host provisions custom-table owners itself | should | M | done | 189, 311 |
 
 ### Epic J — Forms
 

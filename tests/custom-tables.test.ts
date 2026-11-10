@@ -26,6 +26,7 @@ import {
   OwnerSetupNeededError,
   type OwnerSlot,
   openOwner,
+  ownerSetup,
   ownerTablesIn,
   pendingMigrations,
   planUpgrade,
@@ -33,6 +34,7 @@ import {
   purgeOwnerTables,
   readLedger,
   readState,
+  recordedOwner,
   roleComment,
   roleName,
   sql,
@@ -47,6 +49,7 @@ import {
   bootstrapDatabase,
   closeTables,
   databaseFor,
+  installDatabase,
   loadConfig,
   openTables,
   tablesChains,
@@ -548,7 +551,9 @@ describe('roles (postgres)', () => {
       const error = await provisionOwner(limited, SETTINGS, 'site').catch((e) => e)
       expect(error).toBeInstanceOf(OwnerSetupNeededError)
       const statements = (error as OwnerSetupNeededError).statements
-      expect(statements.join('\n')).toContain('CREATE ROLE')
+      expect(statements).toEqual(
+        ownerSetup({ siteName: 'Test Site', owner: 'site', database, grantee: user }).statements,
+      )
       expect(statements.join('\n')).toContain(
         `GRANT "${roleName('Test Site', 'site', database)}" TO "${user}"`,
       )
@@ -565,6 +570,70 @@ describe('roles (postgres)', () => {
       await d.exec(`REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM "${user}"`)
       await d.exec(`REVOKE ALL ON SCHEMA public FROM "${user}"`)
       await d.exec(`REVOKE ALL ON DATABASE "${database}" FROM "${user}"`)
+      await d.exec(`DROP ROLE IF EXISTS "${user}"`)
+    }
+  })
+
+  // Story 321: a host that never gives the site CREATEROLE makes each owner first.
+  test('a host makes each owner from ownerSetup, and a site without CREATEROLE boots on them', async () => {
+    if (!postgres) return
+    const d = await db()
+    await migrate(d, cromboloPlan)
+    const database = (
+      await d.q.selectNoFrom(sql<string>`current_database()`.as('db')).executeTakeFirstOrThrow()
+    ).db
+    const user = `hosted_${database}`.slice(0, 60)
+    await d.exec(`DROP ROLE IF EXISTS "${user}"`)
+    await d.exec(`CREATE ROLE "${user}" LOGIN PASSWORD 'hosted'`)
+    await d.exec(`GRANT ALL ON SCHEMA public TO "${user}"`)
+    await d.exec(`GRANT ALL ON ALL TABLES IN SCHEMA public TO "${user}"`)
+    await d.exec(`GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO "${user}"`)
+    const url = new URL(Bun.env.CROMBOLO_POSTGRES_URL ?? Bun.env.DATABASE_URL ?? '')
+    url.username = user
+    url.password = 'hosted'
+    const hosted = await connect({ dialect: 'postgres', url: url.toString(), readOnly: false })
+    const dir = mkdtempSync(join(process.cwd(), 'output', 'tables-hosted-'))
+    dirs.push(dir)
+    const config = loadConfig({
+      dialect: 'postgres',
+      siteName: 'Test Site',
+      development: false,
+      componentsDir: dir,
+      schemaDir: join(dir, 'schema'),
+      siteDir: dir,
+      database: { tables: observations },
+    })
+    const chains = tablesChains(config, [tasksBundle(tasksV1)], [tasksPackage('1.1.0')])
+    try {
+      for (const owner of ['site', TASKS_ID])
+        for (const statement of ownerSetup({
+          siteName: 'Test Site',
+          owner,
+          database,
+          grantee: user,
+        }).statements)
+          await d.exec(statement)
+
+      await installDatabase(hosted, config, chains)
+      for (const owner of ['site', TASKS_ID]) {
+        const place = await recordedOwner(hosted, SETTINGS, owner)
+        expect(place?.role).toBe(
+          ownerSetup({ siteName: 'Test Site', owner, database, grantee: user }).role,
+        )
+        expect(
+          (await ownerTablesIn(hosted, place as NonNullable<typeof place>)).length,
+        ).toBeGreaterThan(0)
+      }
+      const site = chains.find((chain) => chain.id === 'site')?.slot.db as Db
+      await site.exec("INSERT INTO species (id, code, name) VALUES (1, 'WREN', 'Wren')")
+      expect(await site.query('SELECT name FROM species')).toEqual([{ name: 'Wren' }])
+    } finally {
+      await closeTables(chains)
+      await hosted.close()
+      await dropOwners(d)
+      await d.exec(`REVOKE ALL ON ALL TABLES IN SCHEMA public FROM "${user}"`)
+      await d.exec(`REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM "${user}"`)
+      await d.exec(`REVOKE ALL ON SCHEMA public FROM "${user}"`)
       await d.exec(`DROP ROLE IF EXISTS "${user}"`)
     }
   })

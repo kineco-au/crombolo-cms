@@ -6,6 +6,26 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.60.0 — 2026-11-10
+
+### Features
+
+- **A host makes custom-table owners itself (321).**
+  - `@crombolo/crombolo/host` exports `ownerSetup({ siteName, owner, database, grantee })`:
+    the role, schema and statements the CMS would use for the site's tables or an
+    extension's, with no connection. A host that never gives a site's database user
+    `CREATEROLE` runs them as its own administrator before the site boots, and the
+    boot finds them and carries on. `OwnerSetupNeededError` prints the same statements.
+  - **A new permission, `data.tables`:** "Keep its own data in the site's database".
+    An extension with tables asks for it, and one asking for it must have tables, so
+    a host can tell from the package which extensions need a role and schema.
+
+### Upgrade notes
+
+- An extension with tables, at schema 4 or later, must ask for `data.tables`, or the
+  boot refuses it. No extension crombolo ships has tables. An installed one asking
+  for it in a new version is off until it is granted again.
+
 ## v0.59.0 — 2026-11-10
 
 ### Features

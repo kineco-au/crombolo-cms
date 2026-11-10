@@ -95,6 +95,7 @@ async function site(options: { wireTasks?: boolean } = {}) {
           name: 'Tasks',
           server: 'tasks',
           migrations: 'compatible',
+          permissions: { 'data.tables': 'Keeps the task list' },
           anonymise: TASK_RULES,
         },
       },

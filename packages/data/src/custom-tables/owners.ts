@@ -14,7 +14,7 @@ import { connect, type Db } from '../database.ts'
 import { Locks } from '../locks.ts'
 import { deleteKeyValue, readKeyValue, writeKeyValue } from '../migrations.ts'
 import { queryFor } from '../query.ts'
-import { ownerFile, roleComment, roleName, schemaName } from './names.ts'
+import { EXTENSION_ID, ownerFile, roleComment, roleName, SITE_OWNER, schemaName } from './names.ts'
 
 /** Where one owner's tables are. */
 export interface OwnerPlace {
@@ -82,20 +82,58 @@ export class OwnerSchemaTakenError extends Error {
 
 const literal = (value: string): string => `'${value.replaceAll("'", "''")}'`
 
-/** The statements that make an owner's role and schema, as an operator would run them. */
-export function ownerSetupStatements(
-  db: Db,
-  place: { role: string; schema: string },
-  database: string,
-  grantee: string,
-): string[] {
-  const q = (id: string) => db.dialect.quote(id)
-  return [
-    `CREATE ROLE ${q(place.role)} NOLOGIN;`,
-    `COMMENT ON ROLE ${q(place.role)} IS ${literal(roleComment(database))};`,
-    `GRANT ${q(place.role)} TO ${q(grantee)};`,
-    `CREATE SCHEMA IF NOT EXISTS ${q(place.schema)} AUTHORIZATION ${q(place.role)};`,
-  ]
+const quote = (id: string): string => `"${id.replaceAll('"', '""')}"`
+
+/** What a host provisioning an owner itself needs to know (story 321). */
+export interface OwnerSetupInput {
+  /** The site name the CMS will boot with. */
+  siteName: string
+  /** `site`, or an extension's id. */
+  owner: string
+  /** The Postgres database's name. */
+  database: string
+  /** The site's database user, which is granted the role. */
+  grantee: string
+}
+
+/** An owner's role and schema, and the statements that make them. */
+export interface OwnerSetup {
+  role: string
+  schema: string
+  comment: string
+  statements: string[]
+}
+
+/**
+ * The role, schema and statements the CMS would use for an owner, without a
+ * connection, so a host may make them as its own administrator before a site
+ * boots. A role name the database already recorded wins over this one.
+ */
+export function ownerSetup(input: OwnerSetupInput): OwnerSetup {
+  if (input.owner !== SITE_OWNER && !EXTENSION_ID.test(input.owner))
+    throw new Error(`"${input.owner}" is neither "${SITE_OWNER}" nor an extension's id.`)
+  return setupFor(
+    roleName(input.siteName, input.owner, input.database),
+    input.owner,
+    input.database,
+    input.grantee,
+  )
+}
+
+function setupFor(role: string, owner: string, database: string, grantee: string): OwnerSetup {
+  const schema = schemaName(owner)
+  const comment = roleComment(database)
+  return {
+    role,
+    schema,
+    comment,
+    statements: [
+      `CREATE ROLE ${quote(role)} NOLOGIN;`,
+      `COMMENT ON ROLE ${quote(role)} IS ${literal(comment)};`,
+      `GRANT ${quote(role)} TO ${quote(grantee)};`,
+      `CREATE SCHEMA IF NOT EXISTS ${quote(schema)} AUTHORIZATION ${quote(role)};`,
+    ],
+  }
 }
 
 interface Catalogue {
@@ -169,8 +207,7 @@ export async function provisionOwner(
     const found = await catalogue(db)
     const role =
       (await readKeyValue(db, roleKey(owner))) ?? roleName(settings.siteName, owner, found.database)
-    const place = { role, schema }
-    const statements = ownerSetupStatements(db, place, found.database, found.user)
+    const { statements } = setupFor(role, owner, found.database, found.user)
     const q = (id: string) => db.dialect.quote(id)
     const k = queryFor(db)
 

@@ -4,7 +4,8 @@
  *
  * From schema 4 each is asked for with a reason, which the install shows beside
  * the sentence; `http.outbound` also names its origins. Schema 5 (story 320)
- * adds `backoffice.code`, the one that runs unconfined: `BACKOFFICE_CODE_WARNING`.
+ * adds `backoffice.code`, the one that runs unconfined: `BACKOFFICE_CODE_WARNING`,
+ * and `data.tables` (story 321) for an extension that keeps tables.
  * docs/bundles.md, "Permissions".
  */
 
@@ -43,6 +44,8 @@ export const BUNDLE_PERMISSIONS = {
     'Send requests from the server, and from its screens in your browser, to the addresses it names',
   'routes.public': 'Answer addresses on the site that anyone may call',
   templates: "Render its own components into the site's pages",
+  // Story 321: so a host knows before installing which extensions need a role and schema.
+  'data.tables': "Keep its own data in the site's database",
   // Story 320: the one permission that is not confined. Its words are the install's warning.
   'backoffice.code': 'Runs in your back office as each person using it',
 } as const

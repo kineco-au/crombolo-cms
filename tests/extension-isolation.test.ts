@@ -98,6 +98,7 @@ async function probeSite() {
           server: 'probe',
           migrations: 'compatible',
           permissions: {
+            'data.tables': 'Keeps its own',
             'http.outbound': {
               reason: 'Calls its own service',
               origins: ['https://api.acme.test'],
@@ -117,7 +118,7 @@ async function probeSite() {
       componentsDir: join(dir, 'components'),
       extensions: {
         probe: {
-          grant: ['http.outbound'],
+          grant: ['data.tables', 'http.outbound'],
           origins: ['https://api.acme.test'],
           timeoutMs: 2000,
         },

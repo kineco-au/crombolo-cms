@@ -37,6 +37,8 @@ const DECLARATION_PERMISSIONS: ReadonlySet<string> = new Set([
   'member.delegate',
   // What the screens need, not the server half (story 320).
   'backoffice.code',
+  // Checked against the tables it declares, not a capability (story 321).
+  'data.tables',
 ])
 
 /** The permission each capability method needs. */

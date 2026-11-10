@@ -2,7 +2,8 @@
  * The supported API for whoever runs sites (story 173): booting a site from
  * its config, the stores it keeps media and schema in, checking and installing
  * a site's bundles and code, checking a bundle's signature as the CMS does
- * (story 244), and the upgrade, import and export a deploy runs.
+ * (story 244), the upgrade, import and export a deploy runs, and the role and
+ * schema a custom-table owner needs, for a host that makes them itself (story 321).
  * `docs/api.md`.
  */
 export type { BundlePackage, CromboloField, PackageJson } from '@crombolo/backoffice-host'
@@ -17,7 +18,13 @@ export {
   upgradeFix,
   upgradePlan,
 } from '@crombolo/cli'
-export { type LiveNode, liveNodes } from '@crombolo/data'
+export {
+  type LiveNode,
+  liveNodes,
+  type OwnerSetup,
+  type OwnerSetupInput,
+  ownerSetup,
+} from '@crombolo/data'
 export {
   type AzureMediaStoreOptions,
   type AzureSchemaStoreOptions,

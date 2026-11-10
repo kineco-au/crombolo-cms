@@ -1867,6 +1867,8 @@ each permission with the reason it needs it, and it is held to that.
   - `http.outbound` sends to the origins it names;
   - `routes.public` answers routes anyone may call;
   - `templates` renders components into pages, from story 312;
+  - `data.tables` keeps its own tables in the site's database, from story 321:
+    see Part 4;
   - `backoffice.code` runs its back-office code, from story 320: see "Back-office
     code" below.
 
@@ -1906,7 +1908,8 @@ each permission with the reason it needs it, and it is held to that.
 - **At boot:**
   - each capability needs one of its permissions (`media` also `member.delegate`);
   - each permission must be used;
-  - event handlers need `events.content`, and site routes `routes.public`.
+  - event handlers need `events.content`, and site routes `routes.public`;
+  - tables need `data.tables`, and `data.tables` needs tables.
 - **Schema 3,** names without reasons, is still read for an extension already
   installed: `documents.read` is read as `content.read`. A new install, or an
   upgrade, to a schema 3 version is refused, saying why.
@@ -2507,9 +2510,15 @@ export const tables = defineBundleTables('acme-tasks', [
 ])
 ```
 
-The bundle hands it to its `ServerBundle` as `tables`. Declaring tables is the
-whole declaration: there is no capability to ask for, and asking for the old
-`tables` capability refuses the boot. A step's `up` returns the builder's
+The bundle hands it to its `ServerBundle` as `tables`. There is no capability
+to ask for, and asking for the old `tables` capability refuses the boot. From
+schema 4 the package asks for `data.tables` in `crombolo.permissions` (story 321),
+so a host can tell before installing it that it needs a role and schema of its
+own:
+
+```json
+"permissions": { "data.tables": "Keeps the task list" }
+``` A step's `up` returns the builder's
 operations as plain data:
 
 | Kind | Operations |

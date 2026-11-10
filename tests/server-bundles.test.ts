@@ -80,6 +80,7 @@ const packagesFor = (bundles: readonly ServerBundle[]) =>
         permissions: {
           'routes.public': 'Answers on the site',
           'events.content': 'Is told of changes',
+          ...(bundle.tables ? { 'data.tables': 'Keeps its own' } : {}),
           ...Object.fromEntries(
             [
               ...new Set(

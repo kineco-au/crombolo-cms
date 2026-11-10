@@ -59,7 +59,8 @@ shows "Could not start" with the reason, and so does the health check
   round trip on every request);
 - it adds form field types, whose markup renders inside the page (story 312);
 - on Postgres, its tables' role cannot be created by the CMS's database user
-  (`OwnerSetupNeededError`, which says what to run).
+  (`OwnerSetupNeededError`, which says what to run). A host avoids it by making
+  the role first with `ownerSetup` (story 321, `data-model.md`).
 
 ## The channel
 
@@ -126,6 +127,10 @@ in the CMS between `begin` and `commit`.
 On Postgres the connection is the CMS's, confined with `SET LOCAL ROLE` to the
 extension's role, which owns its schema and nothing else. The statement check
 is what stops the extension's SQL undoing the role.
+
+An extension with tables asks for `data.tables` (story 321), and one asking for
+it must have them, so a host can tell from `crombolo.permissions`, before it
+installs the extension, that it needs a role and schema of its own.
 
 ## When it fails
 

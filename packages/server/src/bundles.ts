@@ -478,6 +478,14 @@ export function validateServerBundles(
             problems.push(
               `Bundle "${label}" answers routes on the site, and so needs "routes.public" in "crombolo.permissions".`,
             )
+          if (bundle.tables && !declared.includes('data.tables'))
+            problems.push(
+              `Bundle "${label}" declares tables, and so needs "data.tables" in "crombolo.permissions".`,
+            )
+          if (!bundle.tables && declared.includes('data.tables'))
+            problems.push(
+              `Bundle "${label}" declares "data.tables" but no tables; take it out of "crombolo.permissions".`,
+            )
         }
       }
     }

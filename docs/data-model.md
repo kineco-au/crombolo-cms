@@ -400,6 +400,34 @@ and later) and the schema's owner, and carries on. There is no second
 connection string and no stored password. A `web` node never provisions: it
 reads the recorded name, and refuses to boot while the site's steps are pending.
 
+#### A host that provisions roles itself
+
+On a shared Postgres server a host need not give a site's database user
+`CREATEROLE`, which before Postgres 16 lets a login take over any role that is
+not a superuser. Instead it makes each owner's role and schema itself, as its own
+administrator, before the site boots (story 321):
+
+```ts
+import { ownerSetup } from '@crombolo/crombolo/host'
+
+const { role, schema, statements } = ownerSetup({
+  siteName: 'Harbour Stone', // the name the site will boot with
+  owner: 'site', // or an extension's `crombolo.id`
+  database: 'harbour',
+  grantee: 'harbour_app', // the site's database user
+})
+for (const statement of statements) await admin.unsafe(statement)
+```
+
+- `statements` are the ones `OwnerSetupNeededError` prints: both come from
+  `ownerSetup`, which needs no connection.
+- The site's owner is needed when its config declares `database.tables`; an
+  extension's when its package asks for `data.tables` in `crombolo.permissions`.
+- The boot then checks what it finds as above (the comment, the grant, the
+  schema's owner), records the role's name and carries on.
+- A name the database already recorded wins, so provision with the site name the
+  CMS will boot with: one renamed afterwards moves nothing.
+
 ### Connections
 
 - **Postgres:** `db.confine(role, schema)` is a handle on the same pool whose

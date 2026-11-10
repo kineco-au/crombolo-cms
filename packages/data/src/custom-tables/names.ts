@@ -18,6 +18,9 @@ export const SITE_OWNER = 'site'
 /** Table and column names, as an owner writes them. */
 export const LOGICAL_NAME = /^[a-z][a-z0-9_]*$/
 
+/** An extension's id, as `crombolo.id` is read (`BUNDLE_ID` in `@crombolo/backoffice-host`). */
+export const EXTENSION_ID = /^[a-z][a-z0-9-]{1,38}$/
+
 const underscored = (id: string): string => id.replaceAll('-', '_')
 
 /** The owner's Postgres schema: `site`, or `bundle_<id>` with the id's hyphens as underscores. */

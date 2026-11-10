@@ -49,7 +49,13 @@ function siteDir(): string {
     '@acme/tasks': {
       json: {
         version: '1.1.0',
-        crombolo: { id: TASKS_ID, name: 'Tasks', server: 'tasks', migrations: 'compatible' },
+        crombolo: {
+          id: TASKS_ID,
+          name: 'Tasks',
+          server: 'tasks',
+          migrations: 'compatible',
+          permissions: { 'data.tables': 'Keeps the task list' },
+        },
       },
     },
   })

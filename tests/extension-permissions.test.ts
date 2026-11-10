@@ -12,7 +12,7 @@ import {
   validateBundlePackage,
 } from '@crombolo/backoffice-host'
 import { route } from '@crombolo/common'
-import { AuditLog } from '@crombolo/data'
+import { AuditLog, defineBundleTables } from '@crombolo/data'
 import {
   ApiRefusedError,
   type BundleApi,
@@ -233,5 +233,61 @@ describe('the boot', () => {
         config: { siteDir: dir, componentsDir: join(dir, 'components'), bundles: [bundle] },
       }),
     ).rejects.toThrow(/needs "events\.content"[\s\S]*needs "routes\.public"/)
+  })
+
+  // Story 321: a host reads it before installing, to make the extension's role and schema.
+  test('refuses tables without data.tables, and data.tables without tables', async () => {
+    const dir = siteDeclaring('extension-permissions-tables', {
+      '@acme/keeper': {
+        json: {
+          crombolo: {
+            id: 'keeper',
+            name: 'Keeper',
+            server: 'keeper',
+            schemaVersion: 4,
+            permissions: {},
+          },
+        },
+      },
+      '@acme/claimer': {
+        json: {
+          crombolo: {
+            id: 'claimer',
+            name: 'Claimer',
+            server: 'claimer',
+            schemaVersion: 4,
+            permissions: { 'data.tables': 'Keeps notes' },
+          },
+        },
+      },
+    })
+    const keeper = {
+      id: 'keeper',
+      section: 'settings',
+      capabilities: [],
+      tables: defineBundleTables('keeper', [
+        {
+          name: 'notes',
+          release: '0.0.1',
+          up: (s) => s.createTable('note', { id: s.integer().primaryKey() }),
+        },
+      ]),
+    } as unknown as ServerBundle
+    const claimer = {
+      id: 'claimer',
+      section: 'settings',
+      capabilities: [],
+    } as unknown as ServerBundle
+    await expect(
+      signedInServer({
+        config: {
+          siteDir: dir,
+          componentsDir: join(dir, 'components'),
+          bundles: [keeper, claimer],
+        },
+      }),
+    ).rejects.toThrow(
+      /"keeper" declares tables, and so needs "data\.tables"[\s\S]*"claimer" declares "data\.tables" but no tables/,
+    )
   })
 })
