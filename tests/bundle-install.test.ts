@@ -715,15 +715,30 @@ export default {
     expect(existsSync(migration)).toBe(true)
   })
 
+  test('a bundle the host vouches for still meets the gate (story 319)', async () => {
+    const { h, config, db } = await site()
+    const marker = join(outputDir('marker-'), 'ran')
+    const dir = await packageAt(h, outputDir('kit-'), [...SECTIONS(), stamping(marker)], SITE_KIT)
+    const vouched = await installBundleContent(
+      db,
+      config,
+      { bundle: dir, backupTaken: true },
+      { vouchedBy: 'host' },
+    )
+    expect(vouched.runId).toBeUndefined()
+    expect(vouched.problems.join('\n')).toContain('schema migrations, which are code')
+  })
+
   test("the site's own content files bring theirs as they always have", async () => {
     const { h, root, config, db } = await site()
     const marker = join(outputDir('marker-'), 'ran')
     const dir = await packageAt(h, outputDir('kit-'), [...SECTIONS(), stamping(marker)], SITE_KIT)
-    const local = await installBundleContent(db, config, {
-      bundle: dir,
-      backupTaken: true,
-      provenance: 'local',
-    })
+    const local = await installBundleContent(
+      db,
+      config,
+      { bundle: dir, backupTaken: true },
+      { vouchedBy: 'site' },
+    )
     expect(local.problems).toEqual([])
     expect(existsSync(join(root, 'schema', 'migrations', 'stamp.ts'))).toBe(true)
   })

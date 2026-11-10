@@ -10,6 +10,27 @@ import { siteConfig } from '../../support/site.ts'
 const kindOf = (type: 'site' | 'extension' | null | undefined) =>
   type === 'site' ? 'site package' : type === 'extension' ? 'extension' : 'earlier'
 
+/** A run in this site's list: who applied it, its label, and the host when it vouched for it (story 319). */
+export function runLine(run: {
+  startedAt: string
+  direction: string
+  status: string
+  id: string
+  nodeCount: number
+  bundleType: 'site' | 'extension' | null | undefined
+  bundleId: string
+  appliedBy: string | null
+  bundleLabel: string | null
+  signedBy: string | null
+}): string {
+  return (
+    `  ${run.startedAt}  ${run.direction.padEnd(6)} ${run.status.padEnd(8)} ` +
+    `${run.id}  ${run.nodeCount} node(s)  ${kindOf(run.bundleType)} ${run.bundleId}` +
+    `${run.appliedBy ? `  by ${run.appliedBy}` : ''}${run.bundleLabel ? `  (${run.bundleLabel})` : ''}` +
+    `${run.signedBy === 'host' ? '  vouched for by the host' : ''}`
+  )
+}
+
 export default class SiteRuns extends BaseCommand {
   static override summary =
     'the site packages applied here or on a remote, and the content extensions brought, newest first'
@@ -32,6 +53,7 @@ export default class SiteRuns extends BaseCommand {
       { name: 'bundleId', type: 'string' },
       { name: 'bundleLabel', type: 'string', nullable: true },
       { name: 'appliedBy', type: 'string', nullable: true },
+      { name: 'signedBy', type: 'string', nullable: true },
     ],
   } as const
 
@@ -79,13 +101,9 @@ export default class SiteRuns extends BaseCommand {
         bundleLabel: run.bundleLabel ?? null,
         appliedBy: run.appliedBy ?? null,
         bundleType: run.bundleType,
+        signedBy: run.signedBy ?? null,
       }))
-      for (const run of items)
-        this.say(
-          `  ${run.startedAt}  ${run.direction.padEnd(6)} ${run.status.padEnd(8)} ` +
-            `${run.id}  ${run.nodeCount} node(s)  ${kindOf(run.bundleType)} ${run.bundleId}` +
-            `${run.appliedBy ? `  by ${run.appliedBy}` : ''}${run.bundleLabel ? `  (${run.bundleLabel})` : ''}`,
-        )
+      for (const run of items) this.say(runLine(run))
       if (flags.offset + runs.length < total)
         this.say(
           `  … ${total - flags.offset - runs.length} more: --offset ${flags.offset + runs.length}`,

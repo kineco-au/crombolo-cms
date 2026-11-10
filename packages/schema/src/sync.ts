@@ -582,6 +582,7 @@ export async function syncSchema(
                 sinceVersion: t.since ?? null,
                 siteSearch: t.siteSearch !== false,
                 siteSettings: t.siteSettings === true,
+                seo: t.seo ?? null,
                 cleanup: {
                   preventCleanup: t.cleanup.prevent,
                   keepAllVersionsNewerThanDays: t.cleanup.keepAllNewerThanDays ?? null,

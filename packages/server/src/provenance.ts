@@ -96,8 +96,9 @@ export interface ProvenanceFile {
 /**
  * `unchecked`: Sigstore's trusted root could not be had, so the signature was not
  * checked either way (story 244). Refused like `invalid`, and worth trying again.
+ * `vouched`: the host applied it, having authenticated it itself (story 319).
  */
-export type ProvenanceState = 'signed' | 'unsigned' | 'invalid' | 'unchecked' | 'local'
+export type ProvenanceState = 'signed' | 'unsigned' | 'invalid' | 'unchecked' | 'local' | 'vouched'
 
 export interface ProvenanceResult {
   state: ProvenanceState
@@ -291,6 +292,8 @@ export function describeProvenance(result: ProvenanceResult): string {
       return 'Not signed'
     case 'local':
       return 'Local: from this machine, not a registry'
+    case 'vouched':
+      return 'Vouched for by the host'
     case 'invalid':
       return `Signature not accepted: ${result.reason ?? 'it does not check out'}`
     case 'unchecked':
@@ -571,7 +574,7 @@ export function provenanceProblem(
     return `its signature was not accepted: ${result.reason ?? 'it does not check out'}`
   if (result.state === 'unchecked')
     return `its signature could not be checked right now (${result.reason ?? 'try again'}); try again`
-  if (result.state === 'local') return undefined
+  if (result.state === 'local' || result.state === 'vouched') return undefined
   if (result.state === 'unsigned')
     return policy.signatures === 'required'
       ? 'this site takes only signed bundles (CROMBOLO_BUNDLE_SIGNATURES=required); the producer signs it with `crombolo bundle sign` in GitHub Actions'

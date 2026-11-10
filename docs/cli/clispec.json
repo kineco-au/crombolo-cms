@@ -7127,6 +7127,11 @@
           "name": "appliedBy",
           "type": "string",
           "nullable": true
+        },
+        {
+          "name": "signedBy",
+          "type": "string",
+          "nullable": true
         }
       ],
       "pagination": {

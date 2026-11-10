@@ -3,7 +3,12 @@
  * the most common mistake a non-developer makes and silently ignoring it would
  * hide the thing they were trying to do.
  */
-import { SITE_SEARCH_LEVELS, type SiteSearchLevel } from '@crombolo/core'
+import {
+  SEO_MAPPING_FIELDS,
+  type SeoMapping,
+  SITE_SEARCH_LEVELS,
+  type SiteSearchLevel,
+} from '@crombolo/core'
 import {
   type SchemaBlock,
   type SchemaBlockAllowance,
@@ -261,7 +266,7 @@ export function parseContentType(
   const root = toml(source, r)
   if (!root) return { value: undefined, problems: r.problems }
   const header = TYPE_KIND_FILES[kind].header
-  r.unknown(root, [header, 'tab', 'group', 'property'], '')
+  r.unknown(root, [header, 'tab', 'group', 'property', ...(kind === 'document' ? ['seo'] : [])], '')
   const t = r.table(root[header], header)
   if (!t) {
     r.problem(header, `a [${header}] table is required`)
@@ -307,6 +312,7 @@ export function parseContentType(
       ? { siteSearch: false as const }
       : {}),
     ...(r.bool(t, 'site-settings', path, false) ? { siteSettings: true as const } : {}),
+    ...seoMapping(r, root.seo),
     properties: r.tables(root.property, 'property').map((p, i) => property(r, p, `property[${i}]`)),
     tabs: r.tables(root.tab, 'tab').map((x, i) => tab(r, x, `tab[${i}]`)),
     groups: r.tables(root.group, 'group').map((g, i) => group(r, g, `group[${i}]`)),
@@ -317,6 +323,20 @@ export function parseContentType(
       "an element type is never a page, so it cannot be a site's settings",
     )
   return { value: r.problems.length === 0 ? value : undefined, problems: r.problems }
+}
+
+/** `[seo]`: where the type's pages take their search and sharing values from (story 317). */
+function seoMapping(r: Reader, raw: unknown): { seo?: SeoMapping } {
+  if (raw === undefined) return {}
+  const t = r.table(raw, 'seo')
+  if (!t) return {}
+  r.unknown(t, SEO_MAPPING_FIELDS, 'seo')
+  const seo: SeoMapping = {}
+  for (const field of SEO_MAPPING_FIELDS) {
+    const value = r.str(t, field, 'seo')
+    if (value) seo[field] = value
+  }
+  return Object.keys(seo).length > 0 ? { seo } : {}
 }
 
 /** `site-search` on a content type: only false, which leaves its pages out. */

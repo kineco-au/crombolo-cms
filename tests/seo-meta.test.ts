@@ -130,6 +130,50 @@ describe('effectiveMeta', () => {
     expect(meta.image).toEqual({ value: 'https://acme.test/media/share.png', source: 'site' })
   })
 
+  test("a type's setting answers after the page's own fields, before the template's (story 317)", async () => {
+    const words: Record<string, string> = { 'site.name': 'Acme' }
+    const page = content([text('heading', 'Our story'), text('summary', '  ')]).withValueContext({
+      content: () => undefined,
+      urlOf: () => '',
+      word: (name) => words[name],
+    })
+    const site = {
+      ...SITE,
+      types: {
+        page: { title: '{heading} | {#site.name}', description: '{summary}', canonical: '/{{x}}' },
+      },
+    }
+    const meta = await effectiveMeta(
+      page,
+      { origin: ORIGIN, alternates: [], site },
+      { title: 'From the template', description: 'Template text' },
+    )
+    expect(meta.title).toEqual({ value: 'Our story | Acme', source: 'type' })
+    // Everything it names is empty, so the template answers.
+    expect(meta.description).toEqual({ value: 'Template text', source: 'template' })
+    expect(meta.canonical).toEqual({ value: 'https://acme.test/{x}', source: 'type' })
+
+    const own = await effectiveMeta(
+      content([text('seoTitle', 'Mine: {heading}'), text('heading', 'Hello')]),
+      { origin: ORIGIN, alternates: [], site },
+    )
+    expect(own.title).toEqual({ value: 'Mine: Hello', source: 'page' })
+  })
+
+  test("the page design's metadata wins over a type's setting, and says so (story 317)", async () => {
+    const meta = await effectiveMeta(
+      content([text('heading', 'Our story')]),
+      {
+        origin: ORIGIN,
+        alternates: [],
+        site: { ...SITE, types: { page: { title: '{heading}' } } },
+      },
+      {},
+      { title: 'From code' },
+    )
+    expect(meta.title).toEqual({ value: 'From code', source: 'metadata', over: 'type' })
+  })
+
   test('a template can drop the site suffix', async () => {
     const meta = await effectiveMeta(
       content(),

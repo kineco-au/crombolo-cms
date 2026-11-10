@@ -36,6 +36,7 @@ import {
   writeBundle,
   writeBundlePackage,
 } from '@crombolo/transfer'
+import { runLine } from '../packages/cli/src/commands/site/runs.ts'
 import { dialectUnderTest, freshDb } from './support/db.ts'
 import { BACKOFFICE, type Harness, signedInServer, signInAsGroup } from './support/harness.ts'
 
@@ -317,6 +318,74 @@ describe('applying a site package in production', () => {
     expect(JSON.parse(readFileSync(join(signed, 'provenance.json'), 'utf8')).key.version).toBe(
       '2.0.0',
     )
+  })
+})
+
+describe('a site package the host vouches for (story 319)', () => {
+  test('applies unsigned in production, is recorded as the host’s, and is never older without asking', async () => {
+    const root = outputDir('site-trust-host-')
+    for (const dir of ['schema', 'components', 'css', 'scripts'])
+      mkdirSync(join(root, dir), { recursive: true })
+    writeFileSync(join(root, 'schema', 'schema.toml'), '[schema]\nversion = "1.0.0"\n')
+    const h = await signedInServer({
+      config: {
+        secretKey: KEY,
+        siteDir: root,
+        schemaDir: join(root, 'schema'),
+        componentsDir: join(root, 'components'),
+        stylesheetsDir: join(root, 'css'),
+        scriptsDir: join(root, 'scripts'),
+      },
+    })
+    open.push(h)
+    const config = { ...h.server.config, development: false }
+    const db = h.server.db
+    const host = { vouchedBy: 'host' } as const
+
+    const unvouched = await installBundleContent(db, config, {
+      bundle: await sitePackageAt(h, outputDir('host-unvouched-')),
+      backupTaken: true,
+    })
+    expect(unvouched.problems.join()).toContain('not signed')
+
+    const applied = await installBundleContent(
+      db,
+      config,
+      { bundle: await sitePackageAt(h, outputDir('host-2-')), backupTaken: true },
+      host,
+    )
+    expect(applied.problems).toEqual([])
+    expect(applied.provenance?.state).toBe('vouched')
+    const run = await new TransferRunRepository(db).byId(applied.runId as string)
+    expect(run?.signedBy).toBe('host')
+    expect(
+      runLine({
+        ...(run as NonNullable<typeof run>),
+        startedAt: 'now',
+        bundleLabel: null,
+        appliedBy: null,
+        signedBy: 'host',
+      }),
+    ).toContain('vouched for by the host')
+
+    const older = await sitePackageAt(h, outputDir('host-1-'), '1.0.0')
+    const refused = await installBundleContent(
+      db,
+      config,
+      { bundle: older, backupTaken: true },
+      host,
+    )
+    expect(refused.runId).toBeUndefined()
+    expect(refused.problems.join()).toContain('older than 2.0.0')
+    expect(refused.problems.join()).toContain('from the same host')
+    const rolledBack = await installBundleContent(
+      db,
+      config,
+      { bundle: older, backupTaken: true, allowDowngrade: true },
+      host,
+    )
+    expect(rolledBack.problems).toEqual([])
+    expect(rolledBack.runId).toBeDefined()
   })
 })
 

@@ -18,6 +18,7 @@ import {
   type PropertyGroupModel,
   PropertyGroupType,
   type PropertyTypeModel,
+  type SeoMapping,
   type SiteSearchLevel,
   SystemNodes,
   variationFlags,
@@ -61,6 +62,23 @@ async function propertySignature(db: Db, contentTypeNodeId: number): Promise<str
 }
 
 /** How a property's site-search setting is stored: its level, or `off`. */
+/** A type's search and sharing values as stored: JSON, or null when it sets none. */
+function seoColumn(mapping: SeoMapping | null): string | null {
+  const set = Object.entries(mapping ?? {}).filter(
+    ([, value]) => typeof value === 'string' && value !== '',
+  )
+  return set.length > 0 ? JSON.stringify(Object.fromEntries(set)) : null
+}
+
+function seoFromColumn(value: unknown): SeoMapping | null {
+  if (typeof value !== 'string' || value === '') return null
+  try {
+    return JSON.parse(value) as SeoMapping
+  } catch {
+    return null
+  }
+}
+
 function siteSearchColumn(value: SiteSearchLevel | false | undefined): string {
   return value === false ? 'off' : (value ?? 'normal')
 }
@@ -366,6 +384,12 @@ export class ContentTypeRepository {
         await tx.q
           .updateTable('content_type')
           .set({ site_search: bool(aggregate.siteSearch) })
+          .where('node_id', '=', nodeId)
+          .execute()
+      if (aggregate.seo !== undefined)
+        await tx.q
+          .updateTable('content_type')
+          .set({ seo: seoColumn(aggregate.seo) })
           .where('node_id', '=', nodeId)
           .execute()
       if (aggregate.siteSettings !== undefined)
@@ -689,6 +713,24 @@ export class ContentTypeRepository {
     return this.byKeys(rows.map((r) => String(r.unique_id)))
   }
 
+  /** Each live type's search and sharing values, by alias, for the types that set any (story 317). */
+  async seoMappings(): Promise<Record<string, SeoMapping>> {
+    const rows = await this.#db.q
+      .selectFrom('content_type as ct')
+      .innerJoin('node as n', 'n.id', 'ct.node_id')
+      .select(['ct.alias', 'ct.seo'])
+      .where('ct.retired_at', 'is', null)
+      .where('ct.seo', 'is not', null)
+      .where('n.node_object_type', '=', this.#objectType)
+      .execute()
+    const out: Record<string, SeoMapping> = {}
+    for (const row of rows) {
+      const mapping = seoFromColumn(row.seo)
+      if (mapping) out[String(row.alias)] = mapping
+    }
+    return out
+  }
+
   /** Every live type's alias by its key, without loading the types themselves. */
   async aliasesByKey(): Promise<Map<string, string>> {
     const rows = await this.#db.q
@@ -835,6 +877,17 @@ export class ContentTypeRepository {
     return out
   }
 
+  /** Sets a type's search and sharing values alone (story 317); null clears them. */
+  async setSeo(typeKey: string, mapping: SeoMapping | null): Promise<void> {
+    const node = await this.#nodes.byKey(typeKey)
+    if (!node || node.objectType !== this.#objectType) return
+    await this.#db.q
+      .updateTable('content_type')
+      .set({ seo: seoColumn(mapping) })
+      .where('node_id', '=', node.id)
+      .execute()
+  }
+
   async contentCount(typeKey: string): Promise<number> {
     const node = await this.#nodes.byKey(typeKey)
     if (!node) return 0
@@ -931,6 +984,7 @@ export class ContentTypeRepository {
         'ct.since_version',
         'ct.site_search',
         'ct.site_settings',
+        'ct.seo',
         'ct.form_key',
         'ss.version as since_v',
         'ss.revision as since_r',
@@ -1063,6 +1117,7 @@ export class ContentTypeRepository {
       allowedInLibrary: fromDbBool(type.allow_in_library),
       siteSearch: fromDbBool(type.site_search),
       siteSettings: fromDbBool(type.site_settings),
+      seo: seoFromColumn(type.seo),
       formKey: (type.form_key as string | null) ?? null,
       collectionKey: type.list_view ? normaliseUuid(String(type.list_view)) : null,
       cleanup: {

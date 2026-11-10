@@ -8,6 +8,7 @@
 export type { BundlePackage, CromboloField, PackageJson } from '@crombolo/backoffice-host'
 export { peerRangeProblem, validateBundlePackage } from '@crombolo/backoffice-host'
 export {
+  contentCheck,
   contentImport,
   findTemplate,
   type SiteTemplate,
@@ -26,6 +27,9 @@ export {
   type BundleCodeInstall,
   type BundleCodeOptions,
   type BundleReload,
+  type ContentCheckResult,
+  type ContentImportInput,
+  type ContentImportResult,
   type CromboloConfig,
   checkBundleCode,
   createServer,
@@ -49,8 +53,10 @@ export {
   type SignaturePolicy,
   s3MediaStore,
   s3SchemaStore,
+  type TransferInput,
   VERSION,
   type VerifyProvenanceOptions,
+  type Vouch,
   verifyPackage,
   verifyProvenance,
 } from '@crombolo/server'

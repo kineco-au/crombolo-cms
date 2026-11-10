@@ -1281,14 +1281,18 @@ export async function createServer(
   /**
    * A back-office page, with its content security policy (story 313): its
    * inline scripts carry a nonce made for it, and it may reach the site and the
-   * origins the extensions that are on declare in `http.outbound`.
+   * origins the extensions that are on declare in `http.outbound`, and the
+   * host's origin, which it vouches its user to (story 318).
    */
   const backOfficePage = (body: string): Response => {
     const nonce = newNonce()
-    const connect = extensions
-      .bundles()
-      .bundles.filter((pkg) => bundleGrants.isOn(pkg.id))
-      .flatMap((pkg) => declaredOrigins(pkg))
+    const connect = [
+      ...extensions
+        .bundles()
+        .bundles.filter((pkg) => bundleGrants.isOn(pkg.id))
+        .flatMap((pkg) => declaredOrigins(pkg)),
+      ...(config.host ? [config.host.origin] : []),
+    ]
     return new Response(body.replaceAll('<script', `<script nonce="${nonce}"`), {
       headers: {
         'content-type': 'text/html; charset=utf-8',

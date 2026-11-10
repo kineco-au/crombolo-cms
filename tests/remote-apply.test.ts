@@ -296,6 +296,17 @@ describe(`applying a bundle to a remote (${dialectUnderTest})`, () => {
     expect(contentEnv?.may).toMatchObject({ apply: true, push: false, applyStructure: false })
   })
 
+  test('a request cannot vouch for its own bundle (story 319)', async () => {
+    const { h, apply } = await remote({ access: 'content' })
+    const bytes = await packed(siteDirectory())
+    for (const options of [{ provenance: 'local' }, { vouchedBy: 'host' }, { vouchedBy: 'site' }]) {
+      const response = await apply(h, bytes, { dryRun: true, ...options })
+      expect(response.status).toBe(200)
+      const { provenance } = (await response.json()) as { provenance: { state: string } }
+      expect(provenance.state).toBe('unsigned')
+    }
+  })
+
   test('a bundle that is not the one described is refused', async () => {
     const { h, api } = await remote({ access: 'content' })
     const bytes = await packed(siteDirectory())

@@ -58,14 +58,14 @@ export default function Page(props) {
 }
 `
 
-async function site(config: Partial<CromboloConfig> = {}) {
+async function site(config: Partial<CromboloConfig> = {}, pageToml = PAGE_TOML) {
   const root = mkdtempSync(join(process.cwd(), 'output', 'seo-'))
   dirs.push(root)
   const schemaDir = join(root, 'schema')
   mkdirSync(join(schemaDir, 'content-types'), { recursive: true })
   mkdirSync(join(root, 'components'), { recursive: true })
   writeFileSync(join(schemaDir, 'schema.toml'), '[schema]\nversion = "1.0.0"\n')
-  writeFileSync(join(schemaDir, 'content-types', 'page.toml'), PAGE_TOML)
+  writeFileSync(join(schemaDir, 'content-types', 'page.toml'), pageToml)
   writeFileSync(join(schemaDir, 'content-types', 'plain.toml'), PLAIN_TOML)
   writeFileSync(join(root, 'components', 'page.tsx'), VIEW)
   const h = await signedInServer({
@@ -333,6 +333,75 @@ describe('the editor preview', () => {
       seoApi(`/preview?document=${plain}`),
     )
     expect(preview).toMatchObject({ hasSeoFields: false, published: false })
+  })
+})
+
+describe("a type's values (story 317)", () => {
+  const HEADED = PAGE_TOML.replace(
+    '[[property]]',
+    '[[property]]\nalias = "heading"\nname = "Heading"\ntype = "textstring"\n\n[[property]]',
+  )
+
+  test('an administrator sets them for every page of the type, in the database and the file', async () => {
+    const { h, page, seoApi, visit, schemaDir } = await site({}, HEADED)
+    const home = await page('Home', { values: [{ alias: 'heading', value: 'Welcome home' }] })
+
+    const before = await h.json<{
+      mapping: {
+        canEdit: boolean
+        properties: Array<{ alias: string; mediaPicker: boolean }>
+        type: { alias: string; editable: boolean; pages: number; seo: object }
+      }
+    }>(seoApi(`/preview?document=${home}`))
+    expect(before.mapping).toMatchObject({
+      canEdit: true,
+      type: { alias: 'page', editable: true, pages: 1, seo: {} },
+    })
+    expect(before.mapping.properties.find((p) => p.alias === 'seoImage')?.mediaPicker).toBe(true)
+
+    const saved = await h.put(seoApi('/type'), {
+      contentType: 'page',
+      seo: { title: '{heading} | Acme', description: '' },
+    })
+    expect(saved.status).toBe(200)
+    expect(await saved.json()).toEqual({ seo: { title: '{heading} | Acme' }, pages: 1 })
+    expect(readFileSync(join(schemaDir, 'content-types', 'page.toml'), 'utf8')).toContain(
+      '[seo]\ntitle = "{heading} | Acme"',
+    )
+    expect(await (await visit('http://acme.test/')).text()).toContain(
+      '<title>Welcome home | Acme</title>',
+    )
+    const after = await h.json<{ meta: { title: { value: string; source: string } } }>(
+      seoApi(`/preview?document=${home}`),
+    )
+    expect(after.meta.title).toEqual({ value: 'Welcome home | Acme', source: 'type' })
+
+    const wrong = await h.put(seoApi('/type'), { contentType: 'page', seo: { title: '{nope}' } })
+    expect(wrong.status).toBe(400)
+    expect(((await wrong.json()) as { message: string }).message).toContain('no property "nope"')
+  })
+
+  test('an editor sees them, and cannot change them', async () => {
+    const { h, page, seoApi } = await site()
+    const home = await page('Home')
+    const writer = await signInAsGroup(h)
+    expect((await writer.put(seoApi('/type'), { contentType: 'page', seo: {} })).status).toBe(403)
+    const preview = await writer.json<{ mapping: { canEdit: boolean; properties: unknown[] } }>(
+      seoApi(`/preview?document=${home}`),
+    )
+    expect(preview.mapping).toMatchObject({ canEdit: false, properties: [] })
+  })
+
+  test('where the files are read-only, they change with a deploy', async () => {
+    const { h, page, seoApi } = await site({ schemaWritable: false })
+    const home = await page('Home')
+    const preview = await h.json<{ mapping: { type: { editable: boolean } } }>(
+      seoApi(`/preview?document=${home}`),
+    )
+    expect(preview.mapping.type.editable).toBe(false)
+    const refused = await h.put(seoApi('/type'), { contentType: 'page', seo: { title: 'x' } })
+    expect(refused.status).toBe(409)
+    expect(((await refused.json()) as { message: string }).message).toContain('with a deploy')
   })
 })
 

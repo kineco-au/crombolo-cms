@@ -8,7 +8,7 @@
  */
 import type { Principal } from '@crombolo/api-management/domain'
 import { hasSection } from '@crombolo/api-management/domain'
-import { SYSTEM_CONTENT_TYPE_KEYS } from '@crombolo/core'
+import { SEO_MAPPING_FIELDS, type SeoMapping, SYSTEM_CONTENT_TYPE_KEYS } from '@crombolo/core'
 import { ContentTypeRepository, type Db, readKeyValue, writeKeyValue } from '@crombolo/data'
 import {
   effectiveMeta,
@@ -21,6 +21,8 @@ import {
   sitemapEntries,
   urlsIn,
 } from '@crombolo/render'
+import { exportSchemaSet, seoMappingProblems, seoMappingProperties } from '@crombolo/schema'
+import { createSchemaFileWriter, schemaFiles } from './adapters/schema-files.ts'
 import type { CromboloConfig, NotFoundRule } from './config.ts'
 
 export const SEO_SETTINGS_KEY = 'Crombolo.Seo.Settings'
@@ -286,6 +288,23 @@ export function createSeoHost(options: SeoHostOptions): SeoHost {
     return (await cache.media?.byKey(trimmed))?.url
   }
 
+  let typesMemo: { at: number; types: Record<string, SeoMapping> } | undefined
+  /** Each type's `[seo]` values (story 317), a fixed image as its address. */
+  const typeMappings = async (): Promise<Record<string, SeoMapping>> => {
+    if (typesMemo && Date.now() - typesMemo.at < SETTINGS_TTL_MS) return typesMemo.types
+    const stored = await new ContentTypeRepository(db).seoMappings().catch(() => ({}))
+    const types: Record<string, SeoMapping> = {}
+    for (const [alias, mapping] of Object.entries(stored)) {
+      const image =
+        mapping.image && UUID.test(mapping.image)
+          ? await imageAddress(mapping.image)
+          : mapping.image
+      types[alias] = { ...mapping, ...(image ? { image } : { image: undefined }) }
+    }
+    typesMemo = { at: Date.now(), types }
+    return types
+  }
+
   const siteDefaults: SeoHost['siteDefaults'] = async () => {
     const { effective } = await settings()
     return {
@@ -293,6 +312,7 @@ export function createSeoHost(options: SeoHostOptions): SeoHost {
       titleSuffix: effective.titleSuffix || undefined,
       defaultImage: await imageAddress(effective.defaultImage),
       indexable: effective.indexable,
+      types: await typeMappings(),
     }
   }
 
@@ -406,6 +426,71 @@ export function createSeoHost(options: SeoHostOptions): SeoHost {
     return false
   }
 
+  /** What the card needs to set a value for every page of the type (story 317). */
+  const mappingFor = async (alias: string, principal: Principal) => {
+    const repo = new ContentTypeRepository(db)
+    const type = await repo.byAlias(alias)
+    if (!type) return null
+    const canEdit = hasSection(principal, 'settings')
+    const schemaType = canEdit
+      ? await exportSchemaSet(db, '0').then((set) => {
+          const found = set.contentTypes.find((t) => t.alias === type.alias)
+          return found ? seoMappingProperties(set, found) : []
+        })
+      : []
+    return {
+      canEdit,
+      properties: schemaType,
+      type: {
+        alias: type.alias,
+        name: type.name,
+        seo: type.seo ?? {},
+        // Not where the files are read-only: a type changes there with a deploy.
+        editable: createSchemaFileWriter(db, schemaFiles(config)).refuse(type) === undefined,
+        pages: await repo.contentCount(type.key),
+      },
+    }
+  }
+
+  /** `PUT seo/type`: a type's `[seo]` values, in the database and its schema file. */
+  const saveType = async (request: Request, principal: Principal): Promise<Response> => {
+    if (!hasSection(principal, 'settings')) return new Response('Forbidden', { status: 403 })
+    const body = (await request.json().catch(() => undefined)) as
+      | { contentType?: unknown; seo?: unknown }
+      | undefined
+    if (typeof body?.contentType !== 'string' || typeof body.seo !== 'object' || !body.seo)
+      return Response.json({ message: 'Say which type, and its values.' }, { status: 400 })
+    const repo = new ContentTypeRepository(db)
+    const type = await repo.byAlias(body.contentType)
+    if (!type) return Response.json({ message: 'That type could not be found.' }, { status: 404 })
+    const writer = createSchemaFileWriter(db, schemaFiles(config))
+    if (writer.refuse(type))
+      return Response.json(
+        {
+          message: `Every ${type.name} page's values are kept with this site's files, so they change with a deploy rather than here.`,
+        },
+        { status: 409 },
+      )
+    const seo: SeoMapping = {}
+    for (const field of SEO_MAPPING_FIELDS) {
+      const value = (body.seo as Record<string, unknown>)[field]
+      if (typeof value === 'string' && value.trim()) seo[field] = value.trim()
+    }
+    const set = await exportSchemaSet(db, '0')
+    const schemaType = set.contentTypes.find((t) => t.alias === type.alias)
+    const problems = schemaType ? seoMappingProblems(set, { ...schemaType, seo }) : []
+    if (problems.length > 0)
+      return Response.json(
+        { message: problems.map((p) => p.message).join('; '), problems },
+        { status: 400 },
+      )
+    const mapping = Object.keys(seo).length > 0 ? seo : null
+    await repo.setSeo(type.key, mapping)
+    await writer.write({ ...type, seo: mapping })
+    typesMemo = undefined
+    return Response.json({ seo: mapping ?? {}, pages: await repo.contentCount(type.key) })
+  }
+
   const preview = async (request: Request, principal: Principal): Promise<Response> => {
     const url = new URL(request.url)
     const key = url.searchParams.get('document') ?? ''
@@ -425,6 +510,7 @@ export function createSeoHost(options: SeoHostOptions): SeoHost {
         : null
     return Response.json({
       hasSeoFields: await composesSeoFields(draft.contentTypeAlias),
+      mapping: await mappingFor(draft.contentTypeAlias, principal),
       published: draft.published,
       differs,
       culture: draft.culture,
@@ -440,6 +526,7 @@ export function createSeoHost(options: SeoHostOptions): SeoHost {
 
   const handle: SeoHost['handle'] = async (request, subpath, principal) => {
     if (subpath === '/preview' && request.method === 'GET') return preview(request, principal)
+    if (subpath === '/type' && request.method === 'PUT') return saveType(request, principal)
     if (subpath !== '/settings') return undefined
     if (!hasSection(principal, 'settings')) return new Response('Forbidden', { status: 403 })
     if (request.method === 'GET') return Response.json(await settings())

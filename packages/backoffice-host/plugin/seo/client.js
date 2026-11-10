@@ -33,3 +33,7 @@ export const readPreview = (documentKey, culture) => {
   if (culture) query.set('culture', culture)
   return json(`/preview?${query}`)
 }
+
+/** Every page of a type's values (story 317): `{ title, description, image, canonical }`. */
+export const saveTypeValues = (contentType, seo) =>
+  json('/type', { method: 'PUT', body: JSON.stringify({ contentType, seo }) })

@@ -247,9 +247,11 @@ requests, only server-side and build-time front ends can call it.
 | `311` | A Deno process per extension | must | XL | done | 310 |
 | `312` | An extension's templates render in its own process | must | L | done | 311 |
 | `313` | The back office reaches only the origins extensions declared | should | S | done | 308 |
+| `318` | The host's origin is in the back office's content security policy | must | S | done | 313 |
+| `319` | A host vouches for the site bundles it applies | should | S | done | 316 |
 | `315` | A typed SDK for extensions | could | L | ready | 308 |
 | `316` | A site bundle is applied only from a key you trust | must | M | done | 306 |
-| `317` | An administrator sets where a page's search and sharing values come from | should | M | backlog | — |
+| `317` | An administrator sets where a page's search and sharing values come from | should | M | done | — |
 
 ### Epic J — Forms
 

@@ -6,6 +6,7 @@
  * that survive), and none of the quote or blank-line churn of general-purpose
  * TOML serialisers. `parse(write(x))` must equal `x` — the tests hold it to that.
  */
+import { SEO_MAPPING_FIELDS } from '@crombolo/core'
 import {
   dataTypeKeyFor,
   isDerived,
@@ -136,6 +137,10 @@ export function writeContentType(t: SchemaContentType, kind: SchemaTypeKind = 'd
     line(out, 'prevent', true, t.cleanup.prevent)
     line(out, 'keep-all-newer-than-days', t.cleanup.keepAllNewerThanDays)
     line(out, 'keep-latest-per-day-for-days', t.cleanup.keepLatestPerDayForDays)
+  }
+  if (t.seo && Object.keys(t.seo).length > 0) {
+    out.push('', '[seo]')
+    for (const field of SEO_MAPPING_FIELDS) line(out, field, t.seo[field])
   }
   for (const p of t.properties) writeProperty(out, 'property', p, owner)
   for (const g of t.groups ?? []) {

@@ -187,29 +187,58 @@ export async function siteBundleTrust(
       ...(signedBy ? { signedBy } : {}),
     }
   }
-  // An older version from the same signer is an old bundle put back.
   const pkg = result.package
-  let downgraded: SiteBundleTrust['downgraded']
-  if (pkg && signedBy) {
-    const applied = await new TransferRunRepository(db)
-      .versionsSignedBy(signedBy, pkg.name)
-      .catch(() => [] as string[])
-    const newer = applied
-      .filter((version) => Bun.semver.order(version, pkg.version) > 0)
-      .sort(Bun.semver.order)
-      .at(-1)
-    if (newer && !options.allowDowngrade)
-      return {
-        problem: `it is version ${pkg.version}, older than ${newer}, which this site already applied from the same signer. To roll back on purpose, apply it with --allow-downgrade`,
-        signedBy,
-      }
-    if (newer) downgraded = { from: newer, to: pkg.version }
-  }
+  const downgrade = pkg && signedBy ? await downgradeCheck(db, signedBy, pkg, options) : {}
+  if (downgrade.problem) return { problem: downgrade.problem, signedBy }
   return {
     signedBy,
     ...(trusted.id ? { entryId: trusted.id } : {}),
-    ...(downgraded ? { downgraded } : {}),
+    ...(downgrade.downgraded ? { downgraded: downgrade.downgraded } : {}),
   }
+}
+
+/** An older version from the same signer is an old bundle put back. */
+async function downgradeCheck(
+  db: Db,
+  signedBy: string,
+  pkg: { name: string; version: string },
+  options: { allowDowngrade?: boolean },
+): Promise<Pick<SiteBundleTrust, 'problem' | 'downgraded'>> {
+  const applied = await new TransferRunRepository(db)
+    .versionsSignedBy(signedBy, pkg.name)
+    .catch(() => [] as string[])
+  const newer = applied
+    .filter((version) => Bun.semver.order(version, pkg.version) > 0)
+    .sort(Bun.semver.order)
+    .at(-1)
+  if (!newer) return {}
+  if (!options.allowDowngrade)
+    return {
+      problem: `it is version ${pkg.version}, older than ${newer}, which this site already applied from the same ${signedBy === HOST_SIGNER ? 'host' : 'signer'}. To roll back on purpose, apply it with --allow-downgrade`,
+    }
+  return { downgraded: { from: newer, to: pkg.version } }
+}
+
+/** What a run vouched for by the host records as its signer (story 319). */
+export const HOST_SIGNER = 'host'
+
+/**
+ * A bundle the host vouched for (story 319): no signer is asked for, but an
+ * older version than one the host already vouched for, by package name, is
+ * still refused without `allowDowngrade`.
+ */
+export async function vouchedTrust(
+  db: Db,
+  pkg: { name: string; version: string },
+  options: { allowDowngrade?: boolean } = {},
+): Promise<SiteBundleTrust> {
+  const downgrade = await downgradeCheck(db, HOST_SIGNER, pkg, options)
+  return downgrade.problem
+    ? { problem: downgrade.problem, signedBy: HOST_SIGNER }
+    : {
+        signedBy: HOST_SIGNER,
+        ...(downgrade.downgraded ? { downgraded: downgrade.downgraded } : {}),
+      }
 }
 
 /**

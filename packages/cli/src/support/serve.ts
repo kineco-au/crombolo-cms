@@ -485,14 +485,18 @@ async function importStartupBundles(
       // staged, schema synced and content imported in one transaction. The
       // server then boots again to load what it brought.
       if (Object.keys(resolved.carried.carries).length > 0) {
-        const result = await installBundleContent(db, config, {
-          ...transferInput(target, options),
-          ...(local ? { provenance: 'local' as const } : {}),
-          passphrase,
-          publish: options.publish,
-          label: options.label,
-          backupTaken: options.backupTaken || Boolean(server.seededAdminPassword),
-        })
+        const result = await installBundleContent(
+          db,
+          config,
+          {
+            ...transferInput(target, options),
+            passphrase,
+            publish: options.publish,
+            label: options.label,
+            backupTaken: options.backupTaken || Boolean(server.seededAdminPassword),
+          },
+          local ? { vouchedBy: 'site' } : undefined,
+        )
         if (!result.runId) {
           printTransferFindings(io, result.check)
           throw new CliError(

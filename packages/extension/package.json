@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/extension",
-  "version": "0.57.0",
+  "version": "0.58.0",
   "description": "What an extension's server half is written against: route, the host's capabilities and its own tables. It runs in a Deno process of its own, apart from the CMS.",
   "license": "MIT",
   "author": "Crombolo",

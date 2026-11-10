@@ -126,6 +126,11 @@ export class PublishedContent<Properties = any> {
     return !(hidden === true || hidden === 1 || hidden === '1' || hidden === 'true')
   }
 
+  /** A dictionary item's words in the page's culture; undefined when no item has the name. */
+  word(name: string): string | undefined {
+    return this.#context?.word?.(name)
+  }
+
   /** The culture in scope: the request's for content that varies by culture, else null. */
   get culture(): string | null {
     return this.#culture

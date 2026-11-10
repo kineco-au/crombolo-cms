@@ -14,7 +14,7 @@ import {
   readLedger,
   readState,
   STATE_CONTENT_APPLIED,
-  STATE_TRUSTED_SIGNERS,
+  STATE_CONTENT_TYPE_SEO,
   seedIdentity,
 } from '@crombolo/data'
 import { summariseUpgrades, VERSION } from '@crombolo/server'
@@ -137,10 +137,11 @@ describe('upgrading from the previous release', () => {
       'AddExtensionSettings',
       'AddBundleKind',
       'AddTrustedSigners',
+      'AddContentTypeSeo',
     ])
-    expect(await readState(db)).toBe(STATE_TRUSTED_SIGNERS)
+    expect(await readState(db)).toBe(STATE_CONTENT_TYPE_SEO)
     const summary = summariseUpgrades(await readLedger(db), VERSION)
-    expect(summary.lastUpgrade).toMatchObject({ release: '0.57.0', steps: 20 })
+    expect(summary.lastUpgrade).toMatchObject({ release: '0.58.0', steps: 21 })
   })
 
   test('the Changes dashboard reports the version, the install and the last upgrade', async () => {

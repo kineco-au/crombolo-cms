@@ -1,4 +1,4 @@
-import type { SchemaForm, SchemaWorkflow, SiteSearchLevel } from '@crombolo/core'
+import type { SchemaForm, SchemaWorkflow, SeoMapping, SiteSearchLevel } from '@crombolo/core'
 import type { SchemaUserGroup } from './user-groups.ts'
 
 /**
@@ -80,6 +80,8 @@ export interface SchemaContentType {
   siteSearch?: false
   /** A site's settings (story 058): its page, a root's direct child, has no address. */
   siteSettings?: true
+  /** `[seo]`: where its pages take their search and sharing values from (story 317). */
+  seo?: SeoMapping
   /** Properties outside any tab. */
   properties: SchemaProperty[]
   /** Groups outside any tab — `[[group]]`; Umbraco's built-in media types use one. */

@@ -258,6 +258,31 @@ describe('canonical writer', () => {
     expect(again.value).toEqual(d)
   })
 
+  test("round-trips a type's [seo] table, and refuses one on a media type (story 317)", () => {
+    const source = `[content-type]
+alias = "post"
+name = "Post"
+
+[seo]
+title = "{heading} | {#site.name}"
+image = "hero"
+`
+    const parsed = parseContentType('post.toml', source)
+    expect(parsed.problems).toEqual([])
+    expect(parsed.value?.seo).toEqual({ title: '{heading} | {#site.name}', image: 'hero' })
+    expect(writeContentType(parsed.value as SchemaContentType)).toBe(source)
+    expect(
+      parseContentType('post.toml', `${source}colour = "red"\n`).problems.map((p) => p.path),
+    ).toEqual(['seo.colour'])
+    expect(
+      parseContentType(
+        'm.toml',
+        '[media-type]\nalias = "m"\nname = "M"\n\n[seo]\ntitle = "x"\n',
+        'media',
+      ).problems.length,
+    ).toBeGreaterThan(0)
+  })
+
   test('omits defaults so files stay short', () => {
     const written = writeContentType(type('plain'))
     expect(written).toBe('[content-type]\nalias = "plain"\nname = "plain"\n')
@@ -290,6 +315,30 @@ describe('validation', () => {
       { componentAliases: new Set(['home']) },
     )
     expect(problems).toEqual([])
+  })
+
+  test("an [seo] table names the type's properties, and its image a media picker (story 317)", () => {
+    const post = (seo: SchemaContentType['seo']) =>
+      validateSchemaSet(
+        set({
+          contentTypes: [
+            type('base', { isElement: true, properties: [prop('summary')] }),
+            type('post', {
+              compositions: ['base'],
+              properties: [prop('heading'), prop('hero', 'imageMediaPicker')],
+              seo,
+            }),
+          ],
+        }),
+      ).map((p) => `${p.path}: ${p.message}`)
+    expect(
+      post({ title: '{heading} | {#site.name}', description: '{summary}', image: 'hero' }),
+    ).toEqual([])
+    expect(post({ image: '9a1f3c2e-0000-4000-8000-000000000001' })).toEqual([])
+    expect(post({ title: '{headline}', image: 'heading' })).toEqual([
+      'seo.title: "post" has no property "headline"',
+      'seo.image: "heading" is not a media picker, so it cannot be the sharing image',
+    ])
   })
 
   test('reports every kind of reference problem at once', () => {

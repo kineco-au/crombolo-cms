@@ -857,7 +857,7 @@ policy is what stops a screen sending what it sees anywhere it did not declare.
 | `default-src` | the site |
 | `script-src` | the site, and the page's own inline scripts by their nonce: the early theme script and the import map. A nonce is made for each page |
 | `style-src` | the site, and inline styles: the client's components set `style` attributes |
-| `connect-src` | the site, and each origin an extension that is on declares in `http.outbound`, which its grant names (story 308) |
+| `connect-src` | the site, each origin an extension that is on declares in `http.outbound`, which its grant names (story 308), and the host's origin when `host` is configured (story 318) |
 | `img-src`, `media-src` | the site, `data:` and `blob:`, the media store's public address, and the embedded video players' thumbnails |
 | `font-src` | the site and `data:` |
 | `worker-src` | the site and `blob:`: the code editor's workers |

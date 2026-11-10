@@ -110,7 +110,7 @@ import {
   recordPruned,
   requiresProblems,
 } from './site-replace.ts'
-import { type SiteBundleTrust, siteBundleTrust } from './site-trust.ts'
+import { type SiteBundleTrust, siteBundleTrust, vouchedTrust } from './site-trust.ts'
 
 /** The trees a content selector or placement may name. */
 export const CONTENT_OBJECT_TYPES = [
@@ -324,13 +324,20 @@ export interface TransferInput extends SectionOptions {
    * asked, as story 192 had it. Only where runtime installs are on.
    */
   installCode?: boolean
-  /**
-   * `local`: the site's own content files, built here, which no one else
-   * signed and the site's policy never refuses (story 060).
-   */
-  provenance?: 'local'
   /** Apply a site bundle older than one this site applied from the same signer (story 316). */
   allowDowngrade?: boolean
+}
+
+/**
+ * Who vouches for a bundle's source in place of a signer, given only by code in
+ * this process and never from a request (story 319):
+ * - `site`: the site's own content files, built here (story 060), which skip the
+ *   signer, downgrade and value-migration checks;
+ * - `host`: a platform that authenticated the bundle itself, which skips the
+ *   signer check only, and is recorded as `signed_by: 'host'`.
+ */
+export interface Vouch {
+  vouchedBy: 'site' | 'host'
 }
 
 /**
@@ -345,6 +352,12 @@ async function signatureDecision(
   provenance: ProvenanceResult,
   input: Pick<TransferInput, 'allowDowngrade'>,
 ): Promise<SiteBundleTrust> {
+  if (provenance.state === 'vouched')
+    return vouchedTrust(
+      db,
+      { name: bundle.package.packageName, version: bundle.package.version },
+      { allowDowngrade: input.allowDowngrade },
+    )
   if (bundle.set.manifest.bundleType === 'site')
     return siteBundleTrust(db, config, provenance, { allowDowngrade: input.allowDowngrade })
   const problem = provenanceProblem(provenance, config.bundlePolicy)
@@ -352,11 +365,9 @@ async function signatureDecision(
 }
 
 /** Where the bundle was built, checked before anything is read further (story 060). */
-async function bundleProvenance(
-  bundle: ResolvedBundle,
-  input: Pick<TransferInput, 'provenance'>,
-): Promise<ProvenanceResult> {
-  if (input.provenance === 'local') return { state: 'local' }
+async function bundleProvenance(bundle: ResolvedBundle, vouch?: Vouch): Promise<ProvenanceResult> {
+  if (vouch?.vouchedBy === 'site') return { state: 'local' }
+  if (vouch?.vouchedBy === 'host') return { state: 'vouched' }
   return verifyProvenance(bundle.directory)
 }
 
@@ -487,12 +498,13 @@ export async function checkBundleContent(
   db: Db,
   config: CromboloConfig,
   input: TransferInput,
+  vouch?: Vouch,
 ): Promise<ContentCheckResult> {
   const bundle = readBundle(input.bundle, config.siteDir, input.passphrase, {
     expects: input.expects,
     withoutPeople: input.excludePeople,
   })
-  const provenance = await bundleProvenance(bundle, input)
+  const provenance = await bundleProvenance(bundle, vouch)
   const signature = await signatureDecision(db, config, bundle, provenance, input)
   if (signature.problem) throw new CommandError(`This bundle is refused: ${signature.problem}.`)
   const set = bundle.set
@@ -659,6 +671,7 @@ export async function installBundleContent(
   db: Db,
   config: CromboloConfig,
   input: ContentImportInput,
+  vouch?: Vouch,
 ): Promise<ContentImportResult> {
   const bundle = readBundle(input.bundle, config.siteDir, input.passphrase, {
     expects: input.expects,
@@ -686,7 +699,7 @@ export async function installBundleContent(
   })
 
   // What has to be true before anything is backed up or written.
-  const provenance = await bundleProvenance(bundle, input)
+  const provenance = await bundleProvenance(bundle, vouch)
   const signature = await signatureDecision(db, config, bundle, provenance, input)
   if (signature.problem)
     return { ...refuse([`this bundle is refused: ${signature.problem}`]), provenance }
@@ -762,7 +775,7 @@ export async function installBundleContent(
   if (code.length > 0 && !config.runtimeInstalls) return refuse([installsElsewhere], backup)
   // A bundle's value migrations are code too (story 300), unless they are the site's own.
   const migrations =
-    input.provenance === 'local' || effective.withoutSchema ? [] : migrationChanges(config, carried)
+    vouch?.vouchedBy === 'site' || effective.withoutSchema ? [] : migrationChanges(config, carried)
   if (migrations.length > 0 && (!effective.installCode || !config.runtimeInstalls))
     return refuse(
       [

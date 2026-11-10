@@ -6,6 +6,7 @@
  * editor's preview both call it, so what an editor is shown is what is served.
  */
 
+import { expandSeoValue, type SeoMapping } from '@crombolo/core'
 import { currentMetadata } from './context.ts'
 import { RawHtml } from './html.ts'
 import { element } from './jsx-runtime.ts'
@@ -29,6 +30,11 @@ export interface SeoSiteDefaults {
   defaultImage?: string
   /** False on a site search engines should stay out of entirely, such as staging. */
   indexable: boolean
+  /**
+   * Each content type's `[seo]` values, by alias (story 317). A fixed image is
+   * already an address; any other `image` is a media picker property's alias.
+   */
+  types?: Readonly<Record<string, SeoMapping>>
 }
 
 /** What a template supplies when the page itself says nothing. */
@@ -60,12 +66,14 @@ export interface Metadata {
   openGraph?: { images?: string | { url: string } | Array<string | { url: string }> }
 }
 
-/** Where a value came from: the page's own field, the template, the site, or the page name. */
-export type MetaSource = 'page' | 'metadata' | 'template' | 'site' | 'name' | 'none'
+/** Where a value came from: the page's own field, its type's setting, the template, the site, or the page name. */
+export type MetaSource = 'page' | 'metadata' | 'type' | 'template' | 'site' | 'name' | 'none'
 
 export interface MetaValue<T> {
   value: T
   source: MetaSource
+  /** What `generateMetadata` replaced, when that was the type's setting (story 317). */
+  over?: MetaSource
 }
 
 export interface Alternate {
@@ -134,18 +142,28 @@ function firstImage(images: NonNullable<Metadata['openGraph']>['images']): strin
 /** A page's values with what its `generateMetadata` returned laid over them. Pure. */
 function withMetadata(meta: EffectiveMeta, metadata: Metadata, origin: string): EffectiveMeta {
   const out = { ...meta }
+  const over = (was: MetaValue<unknown>) => (was.source === 'type' ? { over: 'type' as const } : {})
   if (filled(metadata.title)) {
     const suffix = meta.fullTitle.slice(meta.title.value.length)
-    out.title = { value: metadata.title, source: 'metadata' }
+    out.title = { value: metadata.title, source: 'metadata', ...over(meta.title) }
     out.fullTitle = `${metadata.title}${suffix}`
   }
   if (filled(metadata.description))
-    out.description = { value: metadata.description, source: 'metadata' }
+    out.description = {
+      value: metadata.description,
+      source: 'metadata',
+      ...over(meta.description),
+    }
   const canonical = metadata.alternates?.canonical
   if (filled(canonical))
-    out.canonical = { value: absoluteUrl(canonical, origin), source: 'metadata' }
+    out.canonical = {
+      value: absoluteUrl(canonical, origin),
+      source: 'metadata',
+      ...over(meta.canonical),
+    }
   const image = firstImage(metadata.openGraph?.images)
-  if (filled(image)) out.image = { value: absoluteUrl(image, origin), source: 'metadata' }
+  if (filled(image))
+    out.image = { value: absoluteUrl(image, origin), source: 'metadata', ...over(meta.image) }
   const robots = metadata.robots
   const noindex = typeof robots === 'string' ? /\bnoindex\b/i.test(robots) : robots?.index === false
   if (noindex && !meta.noindex.value) out.noindex = { value: true, source: 'metadata' }
@@ -160,42 +178,69 @@ function withMetadata(meta: EffectiveMeta, metadata: Metadata, origin: string): 
   return out
 }
 
+/** A type's sharing image: an address as given, or the first pick of the media picker it names. */
+async function mappedImage(
+  content: PublishedContent,
+  image: string | undefined,
+): Promise<string | undefined> {
+  if (!image) return undefined
+  if (/^(https?:)?\/\//i.test(image) || image.startsWith('/')) return image
+  return (await content.media(image))[0]?.url
+}
+
 async function pageMeta(
   content: PublishedContent,
   context: MetaContext,
   overrides: SeoOverrides,
 ): Promise<EffectiveMeta> {
   const { origin, site } = context
-  const own = (alias: string) => content.text(alias).trim()
+  // A value may name the page's properties and dictionary items (story 317).
+  const reader = {
+    property: (alias: string) => content.text(alias),
+    word: (key: string) => content.word(key),
+  }
+  const expanded = (text: string | undefined) => expandSeoValue(text, reader) ?? ''
+  const own = (alias: string) => expanded(content.text(alias))
+  const mapping = site.types?.[content.contentType.alias] ?? {}
+  const typed = (field: 'title' | 'description' | 'canonical') => expanded(mapping[field])
 
   const title: MetaValue<string> = filled(own(SEO_ALIASES.title))
     ? { value: own(SEO_ALIASES.title), source: 'page' }
-    : filled(overrides.title)
-      ? { value: overrides.title, source: 'template' }
-      : { value: content.name, source: 'name' }
+    : filled(typed('title'))
+      ? { value: typed('title'), source: 'type' }
+      : filled(overrides.title)
+        ? { value: overrides.title, source: 'template' }
+        : { value: content.name, source: 'name' }
   const suffix =
     overrides.titleSuffix === null ? '' : (overrides.titleSuffix ?? site.titleSuffix ?? '')
 
   const description: MetaValue<string | undefined> = filled(own(SEO_ALIASES.description))
     ? { value: own(SEO_ALIASES.description), source: 'page' }
-    : filled(overrides.description)
-      ? { value: overrides.description, source: 'template' }
-      : { value: undefined, source: 'none' }
+    : filled(typed('description'))
+      ? { value: typed('description'), source: 'type' }
+      : filled(overrides.description)
+        ? { value: overrides.description, source: 'template' }
+        : { value: undefined, source: 'none' }
 
   const picked = (await content.media(SEO_ALIASES.image))[0]?.url
+  const typeImage = await mappedImage(content, mapping.image)
   const image: MetaValue<string | undefined> = filled(picked)
     ? { value: absoluteUrl(picked, origin), source: 'page' }
-    : filled(overrides.image)
-      ? { value: absoluteUrl(overrides.image, origin), source: 'template' }
-      : filled(site.defaultImage)
-        ? { value: absoluteUrl(site.defaultImage, origin), source: 'site' }
-        : { value: undefined, source: 'none' }
+    : filled(typeImage)
+      ? { value: absoluteUrl(typeImage, origin), source: 'type' }
+      : filled(overrides.image)
+        ? { value: absoluteUrl(overrides.image, origin), source: 'template' }
+        : filled(site.defaultImage)
+          ? { value: absoluteUrl(site.defaultImage, origin), source: 'site' }
+          : { value: undefined, source: 'none' }
 
   const canonical: MetaValue<string | undefined> = filled(own(SEO_ALIASES.canonical))
     ? { value: absoluteUrl(own(SEO_ALIASES.canonical), origin), source: 'page' }
-    : filled(overrides.canonical)
-      ? { value: absoluteUrl(overrides.canonical, origin), source: 'template' }
-      : { value: absoluteUrl(content.url, origin), source: 'name' }
+    : filled(typed('canonical'))
+      ? { value: absoluteUrl(typed('canonical'), origin), source: 'type' }
+      : filled(overrides.canonical)
+        ? { value: absoluteUrl(overrides.canonical, origin), source: 'template' }
+        : { value: absoluteUrl(content.url, origin), source: 'name' }
 
   const noindex: MetaValue<boolean> = !site.indexable
     ? { value: true, source: 'site' }

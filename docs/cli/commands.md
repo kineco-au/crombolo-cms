@@ -3104,6 +3104,7 @@ crombolo site runs [--limit <limit>] [--offset <offset>] [--fields <fields>] [--
 - `bundleId` (string)
 - `bundleLabel` (string)
 - `appliedBy` (string)
+- `signedBy` (string)
 
 **Fails with:** `usage`, `internal`.
 

@@ -34,6 +34,7 @@ import { contentCheckpointMigration } from './content-checkpoint.ts'
 import { contentEditingMigration } from './content-editing.ts'
 import { contentEventsMigration } from './content-events.ts'
 import { contentNotificationsMigration } from './content-notifications.ts'
+import { contentTypeSeoMigration } from './content-type-seo.ts'
 import { createdPackagesMigration } from './created-packages.ts'
 import { deliveryMemberTokensMigration } from './delivery-member-tokens.ts'
 import { diagnosticsMigration } from './diagnostics.ts'
@@ -153,4 +154,5 @@ export const cromboloPlan = new MigrationPlan([
   extensionSettingsMigration,
   bundleKindMigration,
   trustedSignersMigration,
+  contentTypeSeoMigration,
 ])

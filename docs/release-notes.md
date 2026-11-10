@@ -6,6 +6,49 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.58.0 — 2026-11-10
+
+### Features
+
+- **An administrator sets where a page's search and sharing values come from (317).**
+  - A content type's `[seo]` table gives its pages' title, description, sharing image
+    and preferred address when a page gives none: fixed text, `{alias}` for a property
+    of the page, `{#key}` for a dictionary word, or a mix.
+  - A page's own Search & sharing fields take the same tokens.
+  - In a page's Search & sharing view, an administrator changes each value in place,
+    with the page's properties offered after `{` and dictionary words after `{#`.
+    Saving asks "This page only" or "Every <type> page", and says how many pages the
+    second changes. Where the schema files are read-only, only the first is offered.
+  - The view says where each value came from, including the type's setting.
+- **A host vouches for the site bundles it applies (319).** `contentImport` and
+  `contentCheck` from `@crombolo/crombolo/host` take `{ vouchedBy: 'host' }` as a
+  third argument: a production site applies the bundle without a signer of its own,
+  still refuses an older version than one the host already vouched for unless
+  `allowDowngrade` is given, and still meets the value-migration gate. The run is
+  recorded as signed by `host`, and `site runs` lists it as vouched for by the host.
+  No request can vouch: the remote protocol, the transfer dashboard and the back
+  office's install never pass it.
+
+### Fixes
+
+- **A host's tool reaches its own service from the back office again (318).** The back
+  office's content security policy lets its screens reach `config.host.origin`, the
+  one origin it already vouches its user to.
+
+### Migrations
+
+- `AddContentTypeSeo` (070): a nullable `seo` column on `content_type`, holding a
+  type's `[seo]` values.
+
+### Upgrade notes
+
+- **A host that passed `provenance: 'local'`** to `contentImport` or `contentCheck`
+  passes `{ vouchedBy: 'host' }` as the third argument instead. The field is gone from
+  `TransferInput`. A bundle vouched for this way still meets the downgrade check and
+  the value-migration gate, which `provenance: 'local'` skipped.
+- **A page title with braces in it,** such as `{beta}`, now reads `{beta}` as a
+  property of the page. Write `{{beta}}` to keep the braces.
+
 ## v0.57.0 — 2026-11-10
 
 ### Features

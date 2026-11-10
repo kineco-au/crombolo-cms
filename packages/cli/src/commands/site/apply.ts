@@ -112,14 +112,14 @@ export default class SiteApply extends BaseCommand {
   ) {
     const input = {
       ...transferInput(bundle, flags),
-      ...(flags.local ? { provenance: 'local' as const } : {}),
       passphrase: await passphraseToOpen(bundle, config, {
         withoutPeople: flags['exclude-people'],
       }),
     }
+    const vouch = flags.local ? ({ vouchedBy: 'site' } as const) : undefined
     if (flags['dry-run']) {
       this.changedNothing = true
-      const result = await ops.contentCheck(config, input)
+      const result = await ops.contentCheck(config, input, vouch)
       for (const problem of result.problems) this.warning(`  ${problem}`)
       printSitePackage(this, result.sitePackage)
       describeBundle(this, result.bundle)
@@ -172,12 +172,16 @@ export default class SiteApply extends BaseCommand {
       }
     }
 
-    const result = await ops.contentImport(config, {
-      ...input,
-      publish: flags.publish,
-      label: flags.label,
-      backupTaken: flags['backup-taken'],
-    })
+    const result = await ops.contentImport(
+      config,
+      {
+        ...input,
+        publish: flags.publish,
+        label: flags.label,
+        backupTaken: flags['backup-taken'],
+      },
+      vouch,
+    )
     for (const problem of result.problems) this.warning(`  ${problem}`)
     if (result.backup.path) this.progress(`  backup   ${result.backup.path}`)
     describeBundle(this, result.bundle)

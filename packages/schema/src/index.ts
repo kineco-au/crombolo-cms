@@ -43,6 +43,7 @@ export {
   renameType,
 } from './rename.ts'
 export * from './scaffold.ts'
+export * from './seo-mapping.ts'
 export * from './site-edit.ts'
 export * from './sync.ts'
 export * from './upgrade.ts'

@@ -5,34 +5,55 @@
  * The values come from the server, which works them out with the same code the
  * page's head uses, so the preview cannot disagree with what is served. It
  * reads the last saved version, so an editor sees a change once it is saved.
+ *
+ * An administrator may set where each value comes from (story 317), for this
+ * page, in its own field, or for every page of its type.
  */
 import { UMB_DOCUMENT_WORKSPACE_CONTEXT } from '@umbraco-cms/backoffice/document'
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { UMB_PROPERTY_DATASET_CONTEXT } from '@umbraco-cms/backoffice/property'
-import { readPreview } from './client.js'
+import { UmbVariantId } from '@umbraco-cms/backoffice/variant'
+import { readPreview, saveTypeValues } from './client.js'
+import './value-input.js'
 
 const SOURCES = {
   page: 'From this page',
+  type: "This type's setting",
+  metadata: 'From the page design',
   template: 'From the page design',
   site: 'Site setting',
   name: 'Page name',
   none: 'Not configured',
 }
 
+/** Each value, the page's own field for it, and what it is called. */
+const FIELDS = {
+  title: { label: 'Title', alias: 'seoTitle' },
+  description: { label: 'Description', alias: 'seoDescription' },
+  image: { label: 'Sharing image', alias: 'seoImage' },
+  canonical: { label: 'Preferred address', alias: 'seoCanonical' },
+}
+
 export default class CromboloSeoDocumentViewElement extends UmbLitElement {
   static properties = {
     _preview: { state: true },
     _error: { state: true },
+    _editing: { state: true },
+    _draft: { state: true },
+    _saving: { state: true },
+    _problem: { state: true },
   }
 
   #unique = undefined
   #culture = null
+  #workspace = undefined
 
   constructor() {
     super()
     this.consumeContext(UMB_DOCUMENT_WORKSPACE_CONTEXT, (context) => {
       if (!context) return
+      this.#workspace = context
       this.observe(context.unique, (unique) => {
         this.#unique = unique
         this.#load()
@@ -54,16 +75,174 @@ export default class CromboloSeoDocumentViewElement extends UmbLitElement {
     }
   }
 
-  #row(label, item, render = (value) => value) {
+  #row(field, item, render = (value) => value) {
+    const canEdit = this._preview?.mapping?.canEdit
     return html`
       <tr>
-        <th>${label}</th>
+        <th>${FIELDS[field].label}</th>
         <td>${item.value ? render(item.value) : '-'}</td>
         <td>
           ${
             item.source === 'none'
               ? html`<span class="unset"><uui-icon name="icon-alert"></uui-icon>Not configured</span>`
               : html`<uui-tag look="secondary">${SOURCES[item.source] ?? item.source}</uui-tag>`
+          }
+          ${
+            item.over === 'type'
+              ? html`<div class="note">The page design overrides this type's setting.</div>`
+              : nothing
+          }
+        </td>
+        ${
+          canEdit
+            ? html`<td class="action">
+                <uui-button
+                  look="secondary"
+                  compact
+                  label="Change where the ${FIELDS[field].label.toLowerCase()} comes from"
+                  @click=${() => this.#edit(field)}
+                >Change</uui-button>
+              </td>`
+            : nothing
+        }
+      </tr>
+      ${this._editing === field ? this.#editor(field) : nothing}
+    `
+  }
+
+  /** The variant a page's own field is set in: its culture's, when the field varies. */
+  async #variantFor(alias) {
+    const property = await this.#workspace?.structure?.getPropertyStructureByAlias?.(alias)
+    return property?.variesByCulture && this.#culture
+      ? UmbVariantId.CreateFromPartial({ culture: this.#culture })
+      : UmbVariantId.CreateInvariant()
+  }
+
+  async #edit(field) {
+    const { alias } = FIELDS[field]
+    const typeValue = this._preview?.mapping?.type?.seo?.[field] ?? ''
+    const own =
+      field === 'image'
+        ? ''
+        : this.#workspace?.getPropertyValue?.(alias, await this.#variantFor(alias))
+    this._draft = typeof own === 'string' && own.trim() ? own : typeValue
+    this._problem = undefined
+    this._editing = field
+  }
+
+  async #saveForPage(field) {
+    const { alias } = FIELDS[field]
+    this._saving = true
+    try {
+      await this.#workspace.setPropertyValue(
+        alias,
+        this._draft ?? '',
+        await this.#variantFor(alias),
+      )
+      await this.#workspace.requestSave()
+      this._editing = undefined
+      await this.#load()
+    } catch (error) {
+      this._problem = error.message
+    } finally {
+      this._saving = false
+    }
+  }
+
+  async #saveForType(field) {
+    const type = this._preview.mapping.type
+    this._saving = true
+    try {
+      await saveTypeValues(type.alias, { ...type.seo, [field]: this._draft ?? '' })
+      this._editing = undefined
+      await this.#load()
+    } catch (error) {
+      this._problem = error.message
+    } finally {
+      this._saving = false
+    }
+  }
+
+  #editor(field) {
+    const { mapping } = this._preview
+    const type = mapping.type
+    const span = mapping.canEdit ? 4 : 3
+    const pages = `${type.pages} ${type.pages === 1 ? 'page' : 'pages'}`
+    return html`
+      <tr class="editing">
+        <td colspan=${span}>
+          ${
+            field === 'image'
+              ? html`<uui-select
+                  label="Sharing image"
+                  .options=${[
+                    { name: 'None', value: '', selected: !this._draft },
+                    ...mapping.properties
+                      .filter((p) => p.mediaPicker)
+                      .map((p) => ({
+                        name: p.name,
+                        value: p.alias,
+                        selected: this._draft === p.alias,
+                      })),
+                  ]}
+                  @change=${(event) => {
+                    this._draft = event.target.value
+                  }}
+                ></uui-select>
+                <p class="note">
+                  The first image the chosen picker holds. A page's own sharing image is picked
+                  in its Search &amp; sharing fields.
+                </p>`
+              : html`<crombolo-seo-value-input
+                  label=${FIELDS[field].label}
+                  .value=${this._draft ?? ''}
+                  .properties=${mapping.properties.map(({ alias, name }) => ({ alias, name }))}
+                  @change=${(event) => {
+                    this._draft = event.target.value
+                  }}
+                ></crombolo-seo-value-input>
+                <p class="note">
+                  Type text, <code>{</code> for one of this page's values, or <code>{#</code> for a
+                  dictionary word.
+                </p>`
+          }
+          ${this._problem ? html`<p class="warning">${this._problem}</p>` : nothing}
+          <div class="choices">
+            ${
+              field === 'image'
+                ? nothing
+                : html`<uui-button
+                    look="primary"
+                    label="This page only"
+                    ?disabled=${this._saving}
+                    @click=${() => this.#saveForPage(field)}
+                  ></uui-button>`
+            }
+            ${
+              type.editable
+                ? html`<uui-button
+                    look=${field === 'image' ? 'primary' : 'secondary'}
+                    label="Every ${type.name} page (${pages})"
+                    ?disabled=${this._saving}
+                    @click=${() => this.#saveForType(field)}
+                  ></uui-button>`
+                : nothing
+            }
+            <uui-button
+              look="default"
+              label="Cancel"
+              @click=${() => {
+                this._editing = undefined
+              }}
+            ></uui-button>
+          </div>
+          ${
+            type.editable
+              ? nothing
+              : html`<p class="note">
+                  Every ${type.name} page's setting is kept with the site's files here, so it
+                  changes with a deploy.
+                </p>`
           }
         </td>
       </tr>
@@ -104,10 +283,10 @@ export default class CromboloSeoDocumentViewElement extends UmbLitElement {
         }
         <h4>Searchable property values</h4>
         <table>
-          ${this.#row('Title', meta.title)}
-          ${this.#row('Description', meta.description)}
-          ${this.#row('Sharing image', meta.image, (src) => html`<img src=${src} alt="" />`)}
-          ${this.#row('Preferred address', meta.canonical)}
+          ${this.#row('title', meta.title)}
+          ${this.#row('description', meta.description)}
+          ${this.#row('image', meta.image, (src) => html`<img src=${src} alt="" />`)}
+          ${this.#row('canonical', meta.canonical)}
         </table>
       </uui-box>
     `
@@ -182,6 +361,19 @@ export default class CromboloSeoDocumentViewElement extends UmbLitElement {
     img {
       max-width: 240px;
       max-height: 140px;
+    }
+    td.action {
+      width: 1%;
+      white-space: nowrap;
+    }
+    tr.editing td {
+      background: var(--uui-color-surface-alt);
+    }
+    .choices {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--uui-size-space-2);
+      margin-top: var(--uui-size-space-3);
     }
   `
 }

@@ -927,6 +927,39 @@ runs `bun install` (`--no-install` skips it), creates the database — printing 
 new administrator's password once — imports the file as a replace, and serves
 without resetting that password. A file carrying people asks for their passphrase.
 
+## Hosting
+
+Story 319. A platform that runs sites, and authenticates every site bundle it
+accepts itself (deploy tokens, its own sessions, moves and copies between
+environments), applies one without a signer the site trusts by vouching for it:
+
+```ts
+import { contentImport } from '@crombolo/crombolo/host'
+
+await contentImport(config, { bundle: dir, backupTaken: true }, { vouchedBy: 'host' })
+```
+
+- **What it skips:** the signer check. A production site takes the bundle unsigned,
+  and its result's provenance is `vouched`.
+- **What it keeps:**
+  - the downgrade check, with the host as the signer: a version older than one
+    already vouched for under the same package name is refused unless
+    `allowDowngrade` is given;
+  - the value-migration gate;
+  - every other check an import runs.
+- **What it records:** the run's `signed_by` is `host`, and `site runs` lists it
+  as vouched for by the host.
+- **Only from code in the process.** Vouching is an argument, never part of the
+  input. The remote protocol, the transfer dashboard and the back office's install
+  never pass it, and `tests/vouch-boundary.test.ts` fails if one does. A request
+  carrying `provenance` or `vouchedBy` is weighed for its signer like any other.
+- **The host's responsibility:** a host vouches only for a bundle it authenticated
+  itself. Vouching for one it took from a request it did not check gives that
+  request the signer check's place.
+
+The site's own content files are applied with `{ vouchedBy: 'site' }`: they are built
+here, so they skip the downgrade check and the value-migration gate as well.
+
 ## Moving content between environments
 
 A deploy promotes files, never content. Moving content is a separate, explicit

@@ -19,7 +19,7 @@ Everything supported comes from `@crombolo/crombolo`, split by who is using it:
 | `@crombolo/crombolo/middleware` | a site's middleware | the middleware contract bound to crombolo's types (`Middleware`, `MiddlewareHandler`, `MiddlewareContext`), `rewrite`, `withCookie`, `NextResponse` and `fromNextMiddleware` (story 210) |
 | `@crombolo/crombolo/islands-react` | the browser | `mount`, which renders a `'use client'` island with React; Crombolo's island build includes it, and a Vite build lists it as an input (story 209) |
 | `@crombolo/crombolo/transfer` | a tool that writes a site | what schema files and a content bundle are written with: the schema writers and `validateSchemaSet`, the built-in types, `writeBundle`, `writeBundlePackage`, `newSeal`, `loadBundle`, `openBundle`, `scaffoldFiles` and the bundle's types (story 278) |
-| `@crombolo/crombolo/host` | whoever runs sites | `createServer`, `loadConfig`, `cromboloServer` and `ServerHandle`; `createWorker`, `WorkerHandle` and `WorkerHealth`, a node that runs only the jobs (story 223); the media and schema stores; `liveNodes`; the bundle checks (`validateBundlePackage`, `peerRangeProblem`, `checkBundleCode`, `installBundleCode`); the signature check (`verifyPackage`, `verifyProvenance`, `provenanceProblem`, `describeProvenance`, story 244); and the operations a deploy runs (`upgradePlan`, `upgradeFix`, `contentImport`, `siteExport`, `findTemplate`) |
+| `@crombolo/crombolo/host` | whoever runs sites | `createServer`, `loadConfig`, `cromboloServer` and `ServerHandle`; `createWorker`, `WorkerHandle` and `WorkerHealth`, a node that runs only the jobs (story 223); the media and schema stores; `liveNodes`; the bundle checks (`validateBundlePackage`, `peerRangeProblem`, `checkBundleCode`, `installBundleCode`); the signature check (`verifyPackage`, `verifyProvenance`, `provenanceProblem`, `describeProvenance`, story 244); and the operations a deploy runs (`upgradePlan`, `upgradeFix`, `contentCheck`, `contentImport`, `siteExport`, `findTemplate`, with `TransferInput`, `ContentImportInput` and `Vouch`) |
 
 `@crombolo/crombolo/branding` (the marks and the palette) and the JSX runtimes
 are supported too. The JSX runtimes' names are the JSX compiler's contract, not
@@ -189,7 +189,7 @@ offered here: that is a CI job's, with `crombolo bundle sign`.
 | `ProvenanceResult`, `ProvenanceState`, `ProvenanceSource`, `ProvenanceLinks`, `ProvenancePolicy`, `SignaturePolicy`, `VerifyProvenanceOptions` | their types |
 
 A result's `state` is `signed`, `unsigned`, `invalid` (the signature does not
-check out), `local`, or **`unchecked`**: Sigstore's public trusted root, fetched
+check out), `local`, `vouched` (the host applied it, story 319), or **`unchecked`**: Sigstore's public trusted root, fetched
 through TUF at most hourly and cached, could not be had and none was cached.
 `provenanceProblem` refuses `invalid` and `unchecked` under every policy; an
 `unchecked` bundle is worth trying again, an `invalid` one is not. Nothing
@@ -203,3 +203,20 @@ host's own, as JSON, in place of the public one.
 boots its own nodes with `createServer` can boot a worker the same way:
 `createServer` refuses the role, and a host should not reach into
 `@crombolo/server` for it. Nothing is removed.
+
+## A host vouches for the bundles it applies (unreleased)
+
+**An exception to the promise above.** Story 319 removed `provenance: 'local'`
+from `TransferInput`, with no minor of deprecation: it was never documented as a
+host's. A host that authenticates the site bundles it applies says so with a
+third argument, which no request can carry:
+
+```ts
+import { contentCheck, contentImport } from '@crombolo/crombolo/host'
+
+await contentCheck(config, { bundle: dir }, { vouchedBy: 'host' })
+await contentImport(config, { bundle: dir, backupTaken: true }, { vouchedBy: 'host' })
+```
+
+`content-transfer.md`, "Hosting", says what it skips and what it keeps. A host
+that passed `provenance: 'local'` passes `{ vouchedBy: 'host' }` instead.

@@ -28,6 +28,9 @@ export function signatureWords(provenance, refused, policy) {
   } else if (provenance?.state === 'local') {
     label = 'From this site'
     detail = "Linked from this site's own code, not from a package registry."
+  } else if (provenance?.state === 'vouched') {
+    label = 'From the host'
+    detail = 'Applied by the platform that runs this site, which checked where it came from.'
   } else if (provenance?.state === 'unchecked') {
     tone = 'warning'
     label = "Couldn't be checked right now"

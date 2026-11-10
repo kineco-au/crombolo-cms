@@ -253,6 +253,7 @@ export interface CoreTables {
     node_id: Generated<number>
     prevent_cleanup: Bool
     retired_at: Timestamp | null
+    seo: string | null
     since_state_id: number | null
     since_version: string | null
     site_search: Default<Bool>

@@ -65,16 +65,57 @@ type composing it to vary by culture as well.
 ## Fallbacks
 
 `effectiveMeta(content, context, overrides)` is the one place they live. Each
-value carries where it came from — `page`, `template`, `site`, `name` or `none` —
-which is what the editor's view shows.
+value carries where it came from — `metadata`, `page`, `type`, `template`, `site`,
+`name` or `none` — which is what the editor's view shows.
 
 | Value | Order |
 | --- | --- |
-| Title | the page's `seoTitle` → the template's `title` → the page name; then the template's `titleSuffix`, else the site's (`null` from the template drops it) |
-| Description | the page → the template → omitted |
-| Sharing image | the page → the template → the site's default |
-| Preferred address | the page → the template → the page's own URL — never an alias |
+| Title | the page's `seoTitle` → its type's setting → the template's `title` → the page name; then the template's `titleSuffix`, else the site's (`null` from the template drops it) |
+| Description | the page → its type → the template → omitted |
+| Sharing image | the page → its type → the template → the site's default |
+| Preferred address | the page → its type → the template → the page's own URL — never an alias |
 | `noindex` | the site not indexable → the page → the template |
+
+A template's `generateMetadata` (story 206) wins over all of these: a value set in
+code is meant. Where it replaces a type's setting, the value says so (`over: 'type'`).
+
+## Where a type's values come from
+
+Story 317. A content type sets where its pages take their title, description,
+sharing image and preferred address from when a page gives none, in an `[seo]`
+table in its schema file:
+
+```toml
+[seo]
+title = "{heading} | {#site.name}"
+description = "{summary}"
+image = "heroImage"            # a media picker property, or a media item's key
+canonical = ""
+```
+
+- **A value** is fixed text, `{alias}` for a property of the page read as text in
+  its culture, `{#key}` for a dictionary item's words in its culture, or a mix.
+  `{{` and `}}` write a brace.
+- **The page's own fields** take the same tokens: `seoTitle = "{heading} — offer"`
+  is that page's setting.
+- **An empty value** is unset, and so is one whose tokens all read empty: the next
+  source answers.
+- **The validator** refuses an `{alias}` the type and its compositions don't have,
+  and an image that isn't a media picker, naming the field.
+- **The Search & sharing view** lets an administrator (the Settings section)
+  change each value in place. Typing `{` offers the page's properties, and `{#`
+  the dictionary. Saving asks:
+  - **This page only:** the page's own field, saved as a draft and published with
+    the page. The sharing image is picked in the page's fields instead.
+  - **Every <type> page:** the type's `[seo]` table, written to its file and the
+    database (`PUT <backoffice>/crombolo/api/seo/type`). Where the schema files
+    are read-only, it is not offered: the view says the setting changes with a deploy.
+  An editor sees the view read-only.
+- **Other nodes** read a changed setting within ten seconds, as they do the site
+  settings.
+- **The view's preview** doesn't run the page's template, so it shows a value
+  `generateMetadata` would replace as the type's. The page's head and the Delivery
+  API say which wins.
 
 A template supplies its fallbacks as props:
 

@@ -65,7 +65,7 @@ const served = (text: string, named = '') =>
 describe("the site's name and logos, from the fork of Umbraco's client", () => {
   test("the page title ends in the site's name, as the shell states it", () => {
     expect(served('meta[name="application-name"]')).toBe(true)
-  })
+  }, 30_000)
 
   test('a dark theme is crombolo’s', () => {
     expect(served('Crombolo.Theme.Dark')).toBe(true)

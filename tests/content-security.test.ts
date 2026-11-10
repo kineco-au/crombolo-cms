@@ -123,6 +123,32 @@ describe('the back office', () => {
     expect(directive(policy, 'connect-src')).toEqual(["'self'"])
   })
 
+  test('a host’s origin is reachable, beside a granted extension’s, each once (story 318)', async () => {
+    const dir = siteWithScreens()
+    const h = await signedInServer({
+      config: {
+        siteDir: dir,
+        componentsDir: join(dir, 'components'),
+        extensions: { reports: { grant: ['http.outbound'], origins: ['https://api.acme.test'] } },
+        host: {
+          origin: 'https://console.example.com',
+          signingKey: 'a key of at least thirty-two bytes, kept by the host',
+          keyId: 'installation-1',
+        },
+      },
+    })
+    open.push(h)
+    for (const path of ['section/content', 'login']) {
+      const policy =
+        (await h.call(`${BACKOFFICE}/${path}`)).headers.get('content-security-policy') ?? ''
+      expect(directive(policy, 'connect-src')).toEqual([
+        "'self'",
+        'https://api.acme.test',
+        'https://console.example.com',
+      ])
+    }
+  })
+
   test('what the browser blocked is taken, without signing in, and refused when it is not a report', async () => {
     const h = await signedInServer()
     open.push(h)

@@ -76,6 +76,7 @@ import {
   tablesChainsFor,
   useSchemaStore,
   VERSION,
+  type Vouch,
 } from '@crombolo/server'
 import {
   bundleIdFor,
@@ -154,13 +155,14 @@ export async function unpackBundle(target: string, siteDir: string): Promise<str
 export async function contentCheck(
   config: CromboloConfig,
   input: TransferInput,
+  vouch?: Vouch,
 ): Promise<ContentCheckResult> {
   // Against the store's schema, not whatever local directory there is (story 106).
   await useSchemaStore(config)
   const bundle = await unpackBundle(input.bundle, config.siteDir)
   const { db } = await bootstrapDatabase(config)
   try {
-    return await checkBundleContent(db, config, { ...input, bundle })
+    return await checkBundleContent(db, config, { ...input, bundle }, vouch)
   } finally {
     await db.close()
   }
@@ -170,6 +172,7 @@ export async function contentCheck(
 export async function contentImport(
   config: CromboloConfig,
   input: ContentImportInput,
+  vouch?: Vouch,
 ): Promise<ContentImportResult> {
   const bundle = await unpackBundle(input.bundle, config.siteDir)
   // Read before anything is opened or backed up, so a bundle that is not one is
@@ -178,7 +181,7 @@ export async function contentImport(
   await useSchemaStore(config)
   const { db } = await bootstrapDatabase(config)
   try {
-    return await installBundleContent(db, config, { ...input, bundle })
+    return await installBundleContent(db, config, { ...input, bundle }, vouch)
   } finally {
     await db.close()
   }

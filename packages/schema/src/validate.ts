@@ -26,6 +26,7 @@ import {
   type SchemaSet,
   TYPE_KIND_FILES,
 } from './model.ts'
+import { seoMappingProblems } from './seo-mapping.ts'
 import { type ValidateFormsOptions, validateForms } from './validate-forms.ts'
 import { validateWorkflows } from './workflows.ts'
 
@@ -188,6 +189,7 @@ export function validateSchemaSet(set: SchemaSet, options: ValidateOptions = {})
         if (!known(c)) add(file, `${header}.allow-children`, `unknown type "${c}"`)
       if (t.collection && !dataTypeAliases.has(t.collection))
         add(file, `${header}.collection`, `unknown data type "${t.collection}"`)
+      for (const problem of seoMappingProblems(set, t)) add(file, problem.path, problem.message)
     }
     for (const t of types) {
       const cycle = findCompositionCycle(t.alias, byAlias)

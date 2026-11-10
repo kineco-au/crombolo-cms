@@ -1676,8 +1676,9 @@ const { payload } = await jwtVerify(token, keyFor(kidOf(token)), {
 It must check `aud` and `exp`, which `jwtVerify` does when given the audience.
 It should keep a separate key per installation. The key both signs and
 verifies, so only the service that checks tokens should hold it: any component
-that has it can mint tokens the others accept. If the back office ever gains a
-content security policy, it must name the host's origin for these calls.
+that has it can mint tokens the others accept. The back office's content
+security policy lets its screens reach the host's origin for these calls
+(story 318).
 
 ## What a wired bundle gets
 

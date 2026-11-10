@@ -48,6 +48,20 @@ export type SiteSearchLevel = 'high' | 'normal' | 'low'
 
 export const SITE_SEARCH_LEVELS: readonly SiteSearchLevel[] = ['high', 'normal', 'low']
 
+/**
+ * Where a type's pages take their search and sharing values from when the page
+ * gives none (story 317). Text may hold `{alias}` and `{#key}`; `image` is a
+ * media picker property's alias.
+ */
+export interface SeoMapping {
+  title?: string
+  description?: string
+  image?: string
+  canonical?: string
+}
+
+export const SEO_MAPPING_FIELDS = ['title', 'description', 'image', 'canonical'] as const
+
 export interface PropertyGroupModel {
   key: string
   name: string | null
@@ -103,6 +117,8 @@ export interface ContentTypeAggregate {
   siteSearch?: boolean
   /** A site's settings (story 058). Absent means unchanged on a save. */
   siteSettings?: boolean
+  /** Its pages' search and sharing values (story 317); null for none. Absent means unchanged on a save. */
+  seo?: SeoMapping | null
   /** The form a Library form type is made from (story 239); null for every other type. Absent means unchanged on a save. */
   formKey?: string | null
 }
