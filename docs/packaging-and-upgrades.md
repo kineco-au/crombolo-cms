@@ -657,7 +657,7 @@ A site on a host that runs the server for it deploys one bundle instead
 2. The host runs `crombolo site check-code <dir>` against the CMS version it will
    run, and refuses the deploy if it lists any problem. The check runs none of
    the site's code.
-3. The host runs `crombolo bundle install-code <dir> <site dir>` into a fresh
+3. The host runs `crombolo extension install <dir> --code-into <site dir>` into a fresh
    directory, where its own `@crombolo/*` packages resolve, and
    `site apply` for the content.
 4. The host starts the new directory and retires the old one. A server half is

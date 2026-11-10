@@ -575,7 +575,7 @@ site apply` narrows it to one. It reads no site, no network and no sign-in.
 
 A command that would ask first refuses at once when there is no terminal, with
 `confirmation_required` and the flag that answers it (`--yes`, or `--auto-approve`
-for a protected push); it never waits on stdin. `--dry-run` on `bundle purge` and
+for a protected push); it never waits on stdin. `--dry-run` on `extension purge` and
 `push` says what would go and changes nothing. `admin reset-password --stdin`
 reads the new password from a pipe, so it never sits in shell history.
 

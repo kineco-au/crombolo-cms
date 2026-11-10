@@ -7,8 +7,8 @@ keeps them apart:
 - **Created packages** — exporting a slice of this site as a file, which is the
   nine `package` operations in the Management API contract. All nine are
   implemented (`api-coverage.md`).
-- **Where it is (story 238).** Bundles is a Settings tool, the Bundles card
-  under Extensions (`plugin/bundles-tool.js`), with Marketplace, Installed and
+- **Where it is (story 238).** Extensions is a Settings tool, the Extensions
+  card under Extensions (`plugin/bundles-tool.js`), with Marketplace, Installed and
   Created as tabs at `section/settings/dashboard/extensions/<tab>`. The bundle
   builder is under Created, at `created/package-builder/create` and
   `created/package-builder/edit/:unique`.
@@ -32,15 +32,15 @@ files disagree, is refused. Nothing is assumed.
 | | Site package (`site`) | Extension (`extension`) |
 |---|---|---|
 | **What it is** | This site, or a part of it, made to move it: a backup, the next environment, a subtree to copy | Someone's addition to a site: screens, a server half, content and structure |
-| **Made by** | `site build`, `site export` (and `--subtree`), `site deploy`, `push`, `pull` | The Bundle Editor (Created), `bundle build <name>`, or by hand |
-| **Brought in by** | `site apply` (here or `--remote`), `site deploy`, `push`, `pull`, `start --bundle`, `--code-into`: from a file or a directory only | `bundle install` (here or `--remote`), the Marketplace: as a dependency |
+| **Made by** | `site build`, `site export` (and `--subtree`), `site deploy`, `push`, `pull` | The Bundle Editor (Created), `extension build <name>`, or by hand |
+| **Brought in by** | `site apply` (here or `--remote`), `site deploy`, `push`, `pull`, `start --bundle`, `--code-into`: from a file or a directory only | `extension install` (here or `--remote`), the Marketplace: as a dependency |
 | **May carry** | Everything the site has, `code/` included: its config, `package.json` and `bun.lock` | Never `code/` |
 | **Published** | Never: it is `private`, and declares no `server`, `extensions`, `permissions` or `importmap`, which are an extension's | To a registry, or kept as a file |
-| **Undone by** | `site revert <run>` | `bundle uninstall --revert-content` |
+| **Undone by** | `site revert <run>` | `extension uninstall --revert-content` |
 
 Each way in takes only its own kind and names the other's command when given
 the wrong one. A site package found on a registry, as a dependency, or in a
-`.tgz` given to `bundle install` is refused: "it is a site package, which is
+`.tgz` given to `extension install` is refused: "it is a site package, which is
 applied to a site with `crombolo site apply`, never installed". Applying one
 opens with what it replaces that decides how the site runs: "Site package:
 replaces this site's code, config and dependencies", then
@@ -82,7 +82,7 @@ possible halves:
 {
   "name": "@acme/tasks",
   "version": "1.1.0",
-  "keywords": ["crombolo-bundle"],
+  "keywords": ["crombolo-extension"],
   "peerDependencies": { "@crombolo/crombolo": "^0.10.0" },
   "crombolo": {
     "id": "acme-tasks",
@@ -130,10 +130,11 @@ on, so it stays distinct from `crombolo.id`.
 
 ## What the backoffice calls them
 
-The section reads **Bundles**. One word for one thing: the artifact the builder
-produces is a bundle ([`content-transfer.md`](content-transfer.md)), and
-an installable extension is published to npm under the `crombolo-bundle`
-keyword, so both halves of the section hold the same kind of thing by name.
+The tool reads **Extensions**. A bundle is the file format: what the builder
+produces ([`content-transfer.md`](content-transfer.md)), whether an extension
+or a site bundle. An extension is the kind other sites install, published to npm
+under the `crombolo-extension` keyword; a site bundle is a whole site, or part of
+one, moved between environments and never installed.
 
 Its three views are named for what each one holds rather than for the section:
 **Marketplace**, **Installed**, **Created**. Umbraco labels its marketplace view
@@ -190,7 +191,7 @@ so the Created view's routes reach it and nothing reaches Umbraco's.
 #### Two kinds: an extension, or a site bundle
 
 Story 312. A definition says what it builds, set beside its package name in
-Created (`<backoffice>/crombolo/api/bundles/created/<id>/package`, `kind`;
+Created (`<backoffice>/crombolo/api/extensions/created/<id>/package`, `kind`;
 migration 068). Every definition before it is an extension.
 
 - **An extension, for other sites to install:** its schema, content,
@@ -211,9 +212,9 @@ migration 068). Every definition before it is an extension.
 
 Umbraco's definition has no fields for these, so the three tabs keep their
 picks in the `bundle` table's `schema_picks` column (migration 058), through
-`<backoffice>/crombolo/api/bundles/created/<id>/schema`. Each tab lists the
+`<backoffice>/crombolo/api/extensions/created/<id>/schema`. Each tab lists the
 site's own files (`schema/forms/`, `schema/workflows/`, `schema/user-groups/`)
-by name, from `<backoffice>/crombolo/api/bundles/schema`.
+by name, from `<backoffice>/crombolo/api/extensions/schema`.
 
 A pick brings what it needs (`carriedPicks`, `server/src/schema-picks.ts`):
 
@@ -295,7 +296,7 @@ acme-tasks-1.0.0.tgz
 
 The download is laid out as `npm pack` lays out a package, so `bun add
 ./acme-tasks-1.0.0.tgz` installs it and `bun publish` publishes it as it is. Its
-`package.json` names the package, carries the `crombolo-bundle` keyword, and
+`package.json` names the package, carries the `crombolo-extension` keyword, and
 declares a peer range of `>=` the release it was built by — the same range an
 environment's export, an Umbraco import and a `site build` carry.
 A later release reads every earlier bundle format, so it is never a reason to
@@ -433,7 +434,7 @@ them beside the columns the contract names (`package_name` and
 `package_version`, migration 029 in 0.10.0). The builder workspace has no seam
 for a field of its own, so they are set from the Created overview instead: each
 row shows the `name@version` it downloads as, and **Package details** edits
-them, through `<backoffice>/crombolo/api/bundles/created/<id>/package`. Until
+them, through `<backoffice>/crombolo/api/extensions/created/<id>/package`. Until
 they are set, the name is derived from the definition's name and the version is
 `1.0.0`; an empty field goes back to that default.
 
@@ -598,9 +599,11 @@ field cannot be queried.
 But a packument *does* preserve custom top-level fields (confirmed: `oclif` on
 `oclif@6.0.2`, `packageManager` on `netlify-cli`). So:
 
-- **Discovery** is a published keyword convention: `"keywords": ["crombolo-bundle"]`.
+- **Discovery** is a published keyword convention: `"keywords": ["crombolo-extension"]`.
   It is the only thing npm will index, so it is a publishing requirement, and
-  `docs` and the package template say so.
+  `docs` and the package template say so. The marketplace also searches
+  `crombolo-bundle`, the keyword before 0.57.0, so extensions published under it
+  are still found.
 - **Declaration** is the `crombolo` field, which the server reads after install.
 
 The two combine into a free quality gate: the marketplace searches the keyword,
@@ -702,7 +705,7 @@ what there is to commit.
 ### From the command line (story 241)
 
 The same installs, from a script, on the site's own machine or on a remote. One
-implementation serves Settings → Bundles, the remote protocol and the CLI
+implementation serves Settings → Extensions, the remote protocol and the CLI
 (`server/src/bundle-admin.ts`), so all three refuse and audit alike.
 
 | Command | Does |
@@ -717,7 +720,7 @@ implementation serves Settings → Bundles, the remote protocol and the CLI
   else. A newer version that asks for more is refused until the script grants
   it, so a script never grants something new without someone changing it.
   `--dry-run` reads the registry and says what would be installed and granted.
-- **A bundle from a file is kept in the site** (story 245). `bundle install
+- **A bundle from a file is kept in the site** (story 245). `extension install
   ./acme-crm-1.2.0.tgz` copies the file, byte for byte, to
   `bundles/<name>-<version>.tgz` (`@acme/crm` 1.2.0 is
   `bundles/acme-crm-1.2.0.tgz`), checks the copy's signature, and installs
@@ -736,8 +739,8 @@ implementation serves Settings → Bundles, the remote protocol and the CLI
   it under `extensions` ("Extensions run once granted"). `--wire` is gone.
 - **Installed code waits for a restart.** Installing or removing a bundle with
   a server half records it in `.crombolo/restart-pending.json`
-  (`server/src/restart-pending.ts`), which `bundle list`, the remote's listing
-  and Settings → Bundles → Installed show ("Installed changes take effect when
+  (`server/src/restart-pending.ts`), which `extension list`, the remote's listing
+  and Settings → Extensions → Installed show ("Installed changes take effect when
   the site restarts."), until `crombolo restart`. A server that boots clears
   it.
 - **On a remote** (`bundle-manage`, [`remote-protocol.md`](remote-protocol.md)):
@@ -793,7 +796,7 @@ implementation serves Settings → Bundles, the remote protocol and the CLI
 - **Uninstall** is `bun remove`, the same path in reverse.
 
 Supply chain: the install runs third-party JS in the backoffice origin with the
-user's session. It is gated on Settings access, as the Bundles tool is, the
+user's session. It is gated on Settings access, as the Extensions tool is, the
 resolved version is recorded, and nothing is fetched outside the registry.
 
 That is the whole of what an install trusts today: the registry's integrity
@@ -957,7 +960,7 @@ bundle is that artifact (story 192).
   restart`, and the health check "Installing code" says so.
 - **What a site package always carries.** Once the site has a `bun.lock`, a
   site package carries `package.json`, `bun.lock` and `crombolo.config.ts` even
-  when `crombolo.code` names nothing, so a dependency `bundle install` added and
+  when `crombolo.code` names nothing, so a dependency `extension install` added and
   the config's `extensions` entry travel with `site apply --structure`.
 - **`start --bundle`** leaves the code alone: the code a host starts is its
   own step.
@@ -1417,7 +1420,7 @@ writes through the transfer package's pure writer (`writeBundle`).
 | The installer | `server/src/bundle-install.ts` and `bundle-sections.ts`, called by the CLI's `contentCheck`/`contentImport` and by the Marketplace |
 | File safety and revert | `replacementsNeedingPermission`, `stageBackups`/`promoteBackups`/`restoreSectionFiles`, same file |
 | Discovery and serving | `backoffice-host/src/extensions.ts`, wired through `static.ts` and `manifests.ts` |
-| The marketplace and install | `server/src/marketplace.ts`, routed at `<backoffice>/crombolo/api/bundles/*` |
+| The marketplace and install | `server/src/marketplace.ts`, routed at `<backoffice>/crombolo/api/extensions/*` (`api/bundles/*` still answers) |
 | The two native views | `backoffice-host/plugin/bundles-marketplace.js`, `bundles-installed.js` |
 | The App_Plugins notice | `server/src/extensions-notice.ts` |
 | Server-side bundles | `server/src/bundles.ts`, wired in `server.ts`, `bundles` in `config.ts`, matched to their packages at boot |
@@ -1569,7 +1572,7 @@ export default defineConfig({
 - **The old way:** a site that still imports an extension and lists it in `bundles`
   starts, warning that the import runs it inside the site, unconfined: importing a
   module runs it, so it is the site's own code. Its wiring grants what it asks
-  for, as before. `bundle install --wire` is gone.
+  for, as before. `extension install --wire` is gone.
 - **Remotes:** a grant made on a remote, by someone holding "Install code on this
   site", turns the extension on there at its next restart.
 
@@ -1831,7 +1834,7 @@ each permission with the reason it needs it, and it is held to that.
   upgrade, to a schema 3 version is refused, saying why.
 - **The install** shows every permission with its reason and the origins, and asks
   whom `actAs` acts for. Granting is the whole list, exactly: in the panel, in
-  `bundle install --grant … [--act-as caller|user:<key>]`, and over a remote.
+  `extension install --grant … [--act-as caller|user:<key>]`, and over a remote.
   There is no separate question about server code.
 - **A grant is what lets it run (story 309).** An extension runs, its screens,
   files, routes, events and jobs alike, while its grant covers everything its
@@ -2268,7 +2271,7 @@ apply.
 On the Settings landing page (story 234) each bundle's Settings dashboards and
 Advanced menu items are cards in a group of their own, headed by the bundle's
 `name`, after the built-in groups. Beside the name, a link with the package's
-name opens the bundle in the Bundles tool's Installed tab
+name opens the extension in the Extensions tool's Installed tab
 (`section/settings/dashboard/extensions/installed?extension=<package>`), so an administrator can
 see where the cards come from. A card is named by `meta.label` and described
 by `meta.description`. The server stamps each extension it serves with
@@ -2362,8 +2365,8 @@ anything private, so the bundle joined the set by existing.
 
 Two things it needs that an ordinary package does not:
 
-- **The `crombolo-bundle` keyword.** npm indexes keywords and not custom fields
-  (Part 2), so a bundle without it is invisible in the Bundles section however
+- **The `crombolo-extension` keyword.** npm indexes keywords and not custom fields
+  (Part 2), so an extension without it is invisible in the Marketplace however
   correct the rest of it is. `tests/packaging.test.ts` asserts it, and that every
   asset the `crombolo` field points at exists and is inside `files`.
 - **A place in `OPT_IN`.** The packaging suite otherwise requires every published

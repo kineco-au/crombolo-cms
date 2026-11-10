@@ -101,7 +101,7 @@ entry after it succeeds:
 
 - `types sync` and `types purge`
 - `site apply` and `site revert`
-- `bundle purge`
+- `extension purge`
 - `dictionary import`
 - the `domains` writes
 - `upgrade` and `upgrade check --fix`

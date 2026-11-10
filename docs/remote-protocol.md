@@ -385,7 +385,7 @@ read ([`search.md`](search.md), "Finding content by its properties").
 
 ## Installed bundles (`bundle-manage`, optional)
 
-The bundles the environment depends on, managed as its Settings → Bundles does
+The bundles the environment depends on, managed as its Settings → Extensions does
 (story 241).
 
 | | |

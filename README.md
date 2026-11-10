@@ -337,7 +337,7 @@ crombolo/
 │   ├── delivery-client/           # a typed client for the Delivery API, for apps; built to JavaScript
 │   ├── next-integration/          # the Next.js front end (story 208); built to JavaScript too
 │   ├── backoffice-host/           # SPA shells, import map, static serving, graphics, bundle manifest and discovery;
-│   │                              #    plugin/ = the Changes dashboard, the Bundles views, the banner,
+│   │                              #    plugin/ = the Changes dashboard, the Extensions views, the banner,
 │   │                              #    the template editor's TSX scaffold and layout;
 │   │                              #    plugin/seo/ = Settings → Search & sharing and the page preview
 │   │                              #    plugin/branding/ = theme, logos and the overrides that de-Umbraco the client,

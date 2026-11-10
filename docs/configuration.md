@@ -399,7 +399,7 @@ export default defineConfig({
 })
 ```
 
-Installing a bundle from the Bundles section gives you its backoffice screen.
+Installing an extension from Settings → Extensions gives you its backoffice screen.
 This line is what lets it answer a request.
 
 ## E-mail

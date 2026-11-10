@@ -102,7 +102,7 @@ into the same file as its server half.
   itself. Each lent function runs in the render's own async context, so what
   marks a page personal still does. `searchParams` is asked for only when read.
 - **The layout:** a page template sits in the site layout its `layout` setting
-  names, a setting of type `layout` the install panel and `bundle install
+  names, a setting of type `layout` the install panel and `extension install
   --layout` offer, preselecting the extension's suggestion when the site has it.
   Without one, the layout the component suggests is tried, and failing that the
   page renders on its own.

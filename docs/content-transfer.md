@@ -152,7 +152,7 @@ structure it needs — which is the normal case, because a deploy has already pu
 the same `schema/*.toml` in both environments.
 
 A bundle may also carry that structure, and then it installs into a site that
-has none of it. That is what the Bundles section builds
+has none of it. That is what the Bundle Editor in Settings → Extensions builds
 ([`bundles.md`](bundles.md)): the same format, with optional sections.
 
 ```
