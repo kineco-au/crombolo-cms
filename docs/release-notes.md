@@ -6,6 +6,19 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.58.1 — 2026-11-10
+
+### Fixes
+
+- **The release's demo bundles are signed when Sigstore's log is slow.** Signing gives
+  the log a minute to answer rather than five seconds, after which the client retried an
+  upload the log had already taken, and the retry was refused as a duplicate. 0.58.0's
+  packages reached npm, but its demo bundles were not attached to the release.
+
+### Upgrade notes
+
+- None: install 0.58.1 in place of 0.58.0.
+
 ## v0.58.0 — 2026-11-10
 
 ### Features

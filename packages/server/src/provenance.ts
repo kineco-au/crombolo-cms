@@ -37,12 +37,22 @@ const GITHUB_ISSUER = 'https://token.actions.githubusercontent.com'
 const SIGSTORE = 'sigstore'
 const SIGSTORE_TUF = '@sigstore/tuf'
 interface SigstoreModule {
-  attest(payload: Buffer, payloadType: string): Promise<SerializedBundle>
+  attest(
+    payload: Buffer,
+    payloadType: string,
+    options?: { timeout?: number },
+  ): Promise<SerializedBundle>
 }
 interface TufModule {
   getTrustedRoot(options: { cachePath: string; forceCache?: boolean }): Promise<TrustedRoot>
 }
 const IN_TOTO = 'application/vnd.in-toto+json'
+/**
+ * How long Sigstore's log is given to answer. Its default, five seconds, retries
+ * an upload the log has already taken but was slow to confirm, and the retry is
+ * refused as a duplicate entry (0.58.0's release).
+ */
+const SIGSTORE_TIMEOUT_MS = 60_000
 
 /** Fulcio's certificate extensions: what GitHub said about the job that signed. */
 const OID = {
@@ -357,7 +367,7 @@ export async function signPackage(
     )
   const { attest } = (await import(SIGSTORE)) as SigstoreModule
   const digest = packageDigest(dir)
-  const signature = await attest(statement(digest), IN_TOTO)
+  const signature = await attest(statement(digest), IN_TOTO, { timeout: SIGSTORE_TIMEOUT_MS })
   const source = sourceOf(signature)
   if (!source) throw new Error('The signature Sigstore returned names no GitHub repository.')
   // A key's signature already there is over the same digest, and kept (story 316).
