@@ -16,7 +16,7 @@ import {
   userKeyOf,
 } from '@crombolo/server'
 import { retireActAs } from '../packages/cli/src/support/extension-migrate.ts'
-import { siteDeclaring, stubBundlePackage } from './support/bundles.ts'
+import { linkedDependencies, siteDeclaring, stubBundlePackage } from './support/bundles.ts'
 import { dialectUnderTest } from './support/db.ts'
 import { BACKOFFICE, type Harness, signedInServer, signInAsGroup } from './support/harness.ts'
 
@@ -206,6 +206,7 @@ async function delegateSite() {
       files: { 'index.js': DELEGATE },
     },
   })
+  linkedDependencies(dir)
   const config = {
     siteDir: dir,
     componentsDir: join(dir, 'components'),

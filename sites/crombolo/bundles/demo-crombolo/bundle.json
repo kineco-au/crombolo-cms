@@ -1,11 +1,11 @@
 {
   "formatVersion": 8,
-  "id": "06d9ab5e-40a7-544b-9051-26d101c5705c",
+  "id": "31df1bd8-36df-50bf-bb02-043a7a52123b",
   "bundleType": "site",
   "label": "Crombolo",
   "createdAt": "1970-01-01T00:00:00.000Z",
   "createdBy": "crombolo site build",
-  "integrity": "sha256-dcb99d444ca608d56e41ccad37840f7efe8fbf5ee8cf222f5d0993373f356b4f",
+  "integrity": "sha256-57a4dea2f26c30acdaf8b2770d5d3fe37670d0f66c8eb25e516b2f006c035e45",
   "snapshot": "drafts",
   "provenance": {
     "siteName": "Crombolo",

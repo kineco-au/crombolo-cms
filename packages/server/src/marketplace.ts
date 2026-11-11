@@ -21,15 +21,19 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync 
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import {
+  type AccessLevel,
   askedPermissions,
   type BundlePackage,
   type DeclaredPermission,
   describePermissions,
   EXTENSION_KEYWORD,
   type ExtensionRegistry,
+  groupsOf,
   isSchema3Field,
   LEGACY_EXTENSION_KEYWORD,
+  levelOf,
   type PackageJson,
+  type PermissionGroups,
   readSettings,
   SCHEMA_3_NOT_INSTALLED,
   SITE_PACKAGE_NOT_INSTALLED,
@@ -50,6 +54,7 @@ import {
   isSchema3,
 } from './bundle-grants.ts'
 import { siteLayouts } from './components.ts'
+import { grantRefusal, type UnrestrictedFrom } from './grant-policy.ts'
 import { logger } from './logging.ts'
 import {
   type ProvenancePolicy,
@@ -147,6 +152,8 @@ export interface MarketplaceOptions {
   applyContent?: (packageName: string) => Promise<ContentOutcome>
   /** The site's `applyBundleContentOnInstall`. */
   applyContentOnInstall?: boolean
+  /** Where an Unrestricted extension may be granted from (story 324). */
+  unrestrictedFrom?: UnrestrictedFrom
   /**
    * False refuses installing and removing here: the dependency belongs in
    * `package.json` and a deploy, so every node has it and it outlives a restart.
@@ -161,6 +168,12 @@ export interface MarketplaceOptions {
 }
 
 export interface InstallOutcome {
+  /** How far it reaches, when an install was refused for it or needs a grant (story 324). */
+  level?: AccessLevel
+  /** What it asks for, folded into the four groups the panel shows. */
+  groups?: PermissionGroups
+  /** Its extension id, which a config entry is keyed by. */
+  id?: string
   ok: boolean
   /**
    * The dependency line the site's `package.json` now holds, so the UI can show
@@ -250,6 +263,8 @@ export interface Marketplace {
       delegateTo?: string | null
       /** Who is installing, recorded on the grant. */
       by?: string | null
+      /** The person installing is an administrator: only one grants the upper levels (story 324). */
+      isAdmin?: boolean
     },
   ): Promise<InstallOutcome>
   /** What a version would bring, read from the registry and nothing installed: for a dry run. */
@@ -276,6 +291,8 @@ export interface Marketplace {
       grant?: readonly string[]
       delegateTo?: string | null
       by?: string | null
+      /** The person installing is an administrator: only one grants the upper levels (story 324). */
+      isAdmin?: boolean
     },
   ): Promise<InstallOutcome>
   uninstall(name: string): Promise<InstallOutcome>
@@ -411,6 +428,8 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
         layout?: AskedLayout
         version: string
         dist?: Dist
+        id?: string
+        screens?: number
       })
     | 'not-a-bundle'
     | { refused: string[] }
@@ -450,6 +469,7 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
       const field = version.crombolo as {
         extensions?: unknown[]
         content?: boolean
+        id?: string
         server?: string
         permissions?: unknown
         settings?: unknown
@@ -463,6 +483,8 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
         permissions: askedPermissions(field),
         layout: layoutAsked(field),
         version: resolved,
+        ...(typeof field.id === 'string' ? { id: field.id } : {}),
+        screens: screensOf(field),
         ...(dist ? { dist } : {}),
       }
     } catch {
@@ -523,6 +545,26 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
       : undefined
   }
 
+  /** Why the person may not grant what it asks for here: its level, by who they are and its signature (story 324). */
+  const levelRefused = (
+    name: string,
+    asked: readonly DeclaredPermission[],
+    provenance: ProvenanceResult,
+    request: { isAdmin?: boolean; grant?: readonly string[] },
+  ): InstallOutcome | undefined => {
+    const level = levelOf(asked.map((entry) => entry.permission))
+    const why = grantRefusal({
+      level,
+      grants: asked.length > 0,
+      isAdmin: request.isAdmin === true,
+      provenance,
+      from: options.unrestrictedFrom ?? 'backoffice',
+    })
+    return why
+      ? { ok: false, level, message: `${name} was not installed: ${why}`, provenance }
+      : undefined
+  }
+
   /** Each installed version's signature, checked once: a version's files do not change. */
   const installedProvenance = new Map<string, Promise<ProvenanceResult>>()
   const provenanceOfInstalled = async (bundle: BundlePackage): Promise<ProvenanceResult> => {
@@ -547,7 +589,14 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
   const declares = async (name: string): Promise<BundlePackage['carries'] | undefined> => {
     const declared = await declaresAt(name)
     if (typeof declared === 'string' || 'refused' in declared) return undefined
-    const { permissions: _, version: _version, dist: _dist, ...carries } = declared
+    const {
+      permissions: _,
+      version: _version,
+      dist: _dist,
+      id: _id,
+      screens: _screens,
+      ...carries
+    } = declared
     return carries
   }
 
@@ -557,7 +606,16 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
     schema3: isSchema3(bundle),
     ...grantStateOf(bundle),
   })
-  const grantStateOf = (bundle: BundlePackage) => {
+  const grantStateOf = (bundle: BundlePackage) => ({
+    ...grantRows(bundle),
+    // How far it reaches, and what it reached when granted, for Installed's badge (story 324).
+    level: levelOf(declaredEntries(bundle).map((entry) => entry.permission)),
+    groups: groupsOf(declaredEntries(bundle), { screens: screensOf(bundle.field) }),
+    ...(options.grants?.state(bundle).grant?.recorded
+      ? { grantedLevel: levelOf(options.grants.state(bundle).grant?.permissions ?? []) }
+      : {}),
+  })
+  const grantRows = (bundle: BundlePackage) => {
     const declared = describePermissions(declaredEntries(bundle))
     if (!options.grants)
       return { permissions: declared, on: true, status: 'on', missing: [], disabledBy: null }
@@ -696,10 +754,15 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
           message: `${name} is not an extension this site takes, so it was not installed: ${declared.refused.join('; ')}.`,
         }
       if (!consented(request, declared.permissions))
-        return grantNeeded(name, declared.permissions, '', layoutChoice(declared.layout))
+        return grantNeeded(name, declared.permissions, '', layoutChoice(declared.layout), {
+          id: declared.id,
+          screens: declared.screens,
+        })
       const provenance = await provenanceAt(name, declared.dist)
       const refused = refusedBySignature(`${name}@${declared.version}`, provenance)
       if (refused) return refused
+      const beyond = levelRefused(name, declared.permissions, provenance, request)
+      if (beyond) return beyond
       // Pinned to the version whose tarball was checked, when one was.
       const outcome = await added(
         name,
@@ -754,7 +817,9 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
           reason: error instanceof Error ? error.message : String(error),
         }),
       )
-      const refused = refusedBySignature(declared.name, provenance)
+      const refused =
+        refusedBySignature(declared.name, provenance) ??
+        levelRefused(declared.name, declared.permissions, provenance, request)
       if (refused) {
         discard()
         return refused
@@ -801,6 +866,8 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
       grant?: readonly string[]
       delegateTo?: string | null
       by?: string | null
+      /** The person installing is an administrator: only one grants the upper levels (story 324). */
+      isAdmin?: boolean
     },
     checked?: { version: string },
   ): Promise<InstallOutcome> {
@@ -998,17 +1065,29 @@ function consented(
   return granted.size === new Set(permissions).size && permissions.every((p) => granted.has(p))
 }
 
+/** How many screens its manifest's entries name (story 323), for what it adds. */
+const screensOf = (field: { extensions?: unknown }): number =>
+  Array.isArray(field.extensions)
+    ? field.extensions.filter(
+        (entry) => entry && typeof entry === 'object' && 'screen' in (entry as object),
+      ).length
+    : 0
+
 /** A refusal the screen answers by showing what it asks for, with the reasons, and the grant. */
 function grantNeeded(
   name: string,
   asked: readonly DeclaredPermission[],
   before = '',
   layout?: InstallOutcome['layout'],
+  about: { id?: string; screens?: number } = {},
 ): InstallOutcome {
   return {
     ok: false,
     needsGrant: true,
     permissions: describePermissions(asked),
+    level: levelOf(asked.map((entry) => entry.permission)),
+    groups: groupsOf(asked, { screens: about.screens }),
+    ...(about.id ? { id: about.id } : {}),
     delegates: asked.some((entry) => entry.permission === USER_DELEGATE),
     ...(layout ? { layout } : {}),
     message: `${before ? `${before} ` : ''}${name} asks for these permissions. Grant them, each as it asks, to install it.`,

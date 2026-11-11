@@ -2,7 +2,7 @@
  * Bundles as the tests need them: a package as discovery would return it, and a
  * site directory whose `package.json` declares packages for discovery to find.
  */
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import {
   BUNDLE_SCHEMA_VERSION,
@@ -137,4 +137,18 @@ export function toCurrentLayout(dir: string): void {
   if (plan.problems.length > 0)
     throw new Error(`The fixture at ${dir} cannot be migrated: ${plan.problems.join('; ')}`)
   applyMigration(dir, plan)
+}
+
+/**
+ * Marks a fixture site's dependencies as linked, as a package built on this
+ * machine is: someone has vouched for it, so its upper levels may be granted
+ * (story 324). A `*` range reads as one from the registry, unsigned.
+ */
+export function linkedDependencies(dir: string): void {
+  const file = join(dir, 'package.json')
+  const json = JSON.parse(readFileSync(file, 'utf8')) as { dependencies?: Record<string, string> }
+  json.dependencies = Object.fromEntries(
+    Object.keys(json.dependencies ?? {}).map((name) => [name, `link:${name}`]),
+  )
+  writeFileSync(file, JSON.stringify(json))
 }

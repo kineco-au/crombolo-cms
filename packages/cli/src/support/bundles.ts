@@ -1,10 +1,6 @@
 import { userInfo } from 'node:os'
 import { resolve } from 'node:path'
-import {
-  BACKOFFICE_CODE,
-  BACKOFFICE_CODE_WARNING,
-  BUNDLE_PERMISSIONS,
-} from '@crombolo/backoffice-host/registry'
+import { groupsOf, isUpperLevel, LEVEL_WORDS, levelOf } from '@crombolo/backoffice-host/registry'
 import {
   type BundleActor,
   type BundleAdmin,
@@ -24,6 +20,8 @@ export const cliActor = (): BundleActor => ({
   id: null,
   name: userInfo().username,
   email: null,
+  // Whoever runs the command line on the site's own machine holds the site.
+  isAdmin: true,
   source: 'cli',
 })
 
@@ -113,20 +111,32 @@ export function grantGaps(asked: readonly string[], granted: readonly string[]) 
 }
 
 /**
- * Before back-office code is granted (story 320): the warning, always, and at a
- * terminal a question that defaults to no. Off a terminal, naming
- * `backoffice.code` with --grant is the answer.
+ * What is about to be granted, at a glance (story 324): its level's badge and
+ * sentence, and what it sees, changes, sends to and adds. At a terminal, either
+ * upper level asks first, defaulting to no; off one, naming its permissions with
+ * --grant is the answer.
  */
-export async function confirmBackOfficeCode(
+export async function confirmLevel(
   say: (line: string) => void,
   name: string,
   grant: readonly string[],
 ): Promise<void> {
-  if (!grant.includes(BACKOFFICE_CODE)) return
-  say(`  warning  ${BUNDLE_PERMISSIONS[BACKOFFICE_CODE]}. ${BACKOFFICE_CODE_WARNING}`)
-  if (!interactive()) return
-  await confirm(`Grant back-office code to ${name}? (y/N)`, {
-    bypass: `--grant ${BACKOFFICE_CODE} from a script`,
+  if (grant.length === 0) return
+  const level = levelOf(grant)
+  const words = LEVEL_WORDS[level]
+  say(`  access   ${words.label}: ${words.sentence}`)
+  const groups = groupsOf(grant)
+  for (const [label, items] of [
+    ['sees', groups.sees],
+    ['changes', groups.changes],
+    ['sends to', groups.sendsTo],
+    ['adds', groups.adds],
+    ['acts as', groups.actsAs],
+  ] as const)
+    if (items.length > 0) say(`  ${label.padEnd(8)} ${items.join(', ')}`)
+  if (!isUpperLevel(level) || !interactive()) return
+  await confirm(`Grant ${name} ${words.label} access? (y/N)`, {
+    bypass: `--grant ${grant.join(' --grant ')} from a script`,
     declined: `Nothing was granted to ${name}.`,
   })
 }

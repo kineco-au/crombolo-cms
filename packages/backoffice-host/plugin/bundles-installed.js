@@ -15,8 +15,6 @@
  */
 import { css, html, nothing, repeat } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
-import { backOfficeCodeBlock, backOfficeCodeStyles } from './bundles-backoffice-code.js'
-import { backOfficeCodeWords, splitBackOfficeCode } from './bundles-backoffice-code-words.js'
 import { carriesTags } from './bundles-carries.js'
 import {
   disableBundle,
@@ -26,11 +24,14 @@ import {
   saveSettings,
   uninstallBundle,
 } from './bundles-client.js'
+import { levelBlock, levelStyles } from './bundles-level.js'
+import { configSnippet, grantChoice, levelWords, unvouchedLine } from './bundles-level-words.js'
 import { signatureBlock, signatureStyles, signatureWords } from './bundles-signature.js'
 
 /** Where each part of a bundle stands on this site, in the words of someone running it. */
 function status(item) {
-  const parts = []
+  // Story 324: how far it reaches, on every row.
+  const parts = [html`<span class="badge">${levelWords(item.level).label}</span>`]
   if (item.carries?.content)
     parts.push(
       item.contentApplied
@@ -39,7 +40,7 @@ function status(item) {
     )
   // Story 309: it runs on its grant. Story 311: and only once it has started.
   if (item.couldNotStart) parts.push(html`<span>Could not start</span>`)
-  else if (item.status === 'waiting') parts.push(html`<span>Waiting for a grant</span>`)
+  else if (item.status === 'waiting') parts.push(html`<span>Off · asks for more</span>`)
   else if (item.status === 'not-granted') parts.push(html`<span>Not granted</span>`)
   else if (item.carries?.server)
     parts.push(
@@ -49,7 +50,7 @@ function status(item) {
           ? html`<span>Server features on</span>`
           : html`<span>Server features off until the site's configuration includes it</span>`,
     )
-  return parts.length > 0 ? parts : html`<span>Ready</span>`
+  return parts.length > 1 ? parts : [...parts, html`<span>Ready</span>`]
 }
 
 export default class CromboloBundlesInstalledElement extends UmbLitElement {
@@ -64,7 +65,6 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
     _selected: { state: true },
     _policy: { state: true },
     _edits: { state: true },
-    _trustsCode: { state: true },
   }
 
   constructor() {
@@ -97,6 +97,8 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
       this._installs = result.installs !== false
       this._restartPending = Boolean(result.restartPending)
       this._policy = result.policy
+      this._mayGrant = result.mayGrant ?? {}
+      this._isAdmin = this._mayGrant.limited === 'yes'
       if (!this._items.some((item) => item.packageName === this._selected))
         this._selected = this._items[0]?.packageName ?? ''
     } catch (error) {
@@ -234,43 +236,31 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
 
   /** What it may do with the site, who approved it, and the button that turns it off or on. */
   #permissions(item) {
-    // Back-office code first and apart, confirmed on its own before it is granted (story 320).
-    const { code, rest: asks } = splitBackOfficeCode(item.permissions ?? [])
-    const granting = item.status === 'waiting' || item.status === 'not-granted'
-    const confirmed = this._trustsCode === item.packageName
+    const state = item.provenance?.state
+    const choice = grantChoice(item.level, this._mayGrant, state)
     const approved = item.granted
       ? item.granted.by === "the site's code"
         ? `Developer installed, on ${new Date(item.granted.at).toLocaleDateString()}.`
         : `Approved by ${item.granted.by ?? 'an administrator'} on ${new Date(item.granted.at).toLocaleDateString()}.`
       : ''
+    // Story 324: a version that moved up a level, or asks for anything new, is reviewed under this.
+    const movedUp =
+      item.status === 'waiting' && item.grantedLevel && item.grantedLevel !== item.level
+        ? `This version asks for more: it is ${levelWords(item.level).label} now, where it was ${levelWords(item.grantedLevel).label}.`
+        : item.status === 'waiting'
+          ? 'This version asks for more.'
+          : undefined
     return html`
       <h4>What it may do</h4>
-      ${
-        code
-          ? backOfficeCodeBlock(
-              backOfficeCodeWords(code, item.publisher, this.#words(item)),
-              confirmed,
-              granting
-                ? (yes) => {
-                    this._trustsCode = yes ? item.packageName : ''
-                  }
-                : undefined,
-            )
-          : nothing
-      }
-      ${
-        asks.length === 0 && !code
-          ? html`<p>Nothing beyond its own data: it asks for no access to the site's content, members or settings.</p>`
-          : html`<ul class="asks">
-              ${asks.map(
-                (ask) =>
-                  html`<li>
-                    ${ask.allows}${ask.origins?.length ? html`: ${ask.origins.join(', ')}` : nothing}
-                    ${ask.reason ? html`<span class="reason">${ask.reason}</span>` : nothing}
-                  </li>`,
-              )}
-            </ul>`
-      }
+      ${levelBlock(
+        {
+          level: item.level,
+          groups: item.groups,
+          permissions: item.permissions,
+          unvouched: unvouchedLine(item.level, state),
+        },
+        { heading: movedUp },
+      )}
       ${
         item.schema3
           ? html`<p class="note">
@@ -301,12 +291,25 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
                     : 'Not granted: it does nothing until it is granted what it asks for.'
                 }
               </p>
-              <uui-button
-                look="primary"
-                label="Grant"
-                ?disabled=${Boolean(code) && !confirmed}
-                .state=${this._busy === item.packageName ? 'waiting' : undefined}
-                @click=${() => this.#grant(item)}></uui-button>`
+              ${
+                choice.grant
+                  ? html`<uui-button
+                      look="primary"
+                      label="Grant"
+                      .state=${this._busy === item.packageName ? 'waiting' : undefined}
+                      @click=${() => this.#grant(item)}></uui-button>`
+                  : choice.snippet
+                    ? html`<p class="note">
+                          This site turns on Unrestricted extensions only in its configuration. Your
+                          developers add this to crombolo.config.ts:
+                        </p>
+                        <pre class="snippet">${configSnippet(
+                          item.id,
+                          (item.permissions ?? []).map((ask) => ask.permission),
+                          (item.permissions ?? []).flatMap((ask) => ask.origins ?? []),
+                        )}</pre>`
+                    : html`<p class="note">${choice.sentence}</p>`
+              }`
           : item.on
             ? html`${approved ? html`<p class="note">${approved}</p>` : nothing}
               <uui-button
@@ -383,7 +386,7 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
                     (item) => item.packageName,
                     (item) => html`<uui-ref-node
                       name=${item.name}
-                      detail=${`${item.packageName} ${item.version} · ${this.#words(item).label}`}
+                      detail=${`${item.packageName} ${item.version} · ${levelWords(item.level).label} · ${this.#words(item).label}`}
                       selectable
                       select-only
                       ?selected=${item.packageName === this._selected}
@@ -426,21 +429,23 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
       ${this.#permissions(item)}
       ${this.#settings(item)}
       ${
-        this._installs
-          ? html`<uui-button
+        this._installs && !this._isAdmin
+          ? html`<p class="note">An administrator can remove this.</p>`
+          : this._installs
+            ? html`<uui-button
               look="primary"
               color="danger"
               label="Uninstall"
               .state=${this._busy === item.packageName ? 'waiting' : undefined}
               @click=${() => this.#uninstall(item)}></uui-button>`
-          : html`<p class="note">This site adds and removes extensions with a deploy, so every server has the same ones.</p>`
+            : html`<p class="note">This site adds and removes extensions with a deploy, so every server has the same ones.</p>`
       }
     </uui-box>`
   }
 
   static styles = [
     signatureStyles,
-    backOfficeCodeStyles,
+    levelStyles,
     css`
     .asks {
       padding-left: 1.25em;

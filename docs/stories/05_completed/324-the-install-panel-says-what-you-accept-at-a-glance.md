@@ -35,7 +35,8 @@ with the user's session, is one line among them.
   today's list with the reasons. For Acts as you, Sees and Changes read "everything you can
   see" and "everything you can change". For Unrestricted the badge carries the warning and the
   groups follow it with no preface.
-- **Who may grant.** Settings access installs and grants Limited, as today. Acts as you and
+- **Who may grant.** An administrator installs and grants at every level (changed on
+  2026-11-11 from Settings access for Limited, the maintainer's choice). Acts as you and
   Unrestricted need an administrator; anyone else sees "An administrator can turn this on."
   in place of the button. Revoking and removing stay open to Settings access.
 - **Provenance is required for the upper two levels.** Without it the button reads "Nobody
@@ -173,15 +174,54 @@ in `bundles-marketplace.js` and the permissions block in `bundles-installed.js`,
 
 ## Acceptance criteria
 
-- [ ] Every extension lands on one level from its permissions, and the panel shows the badge,
+- [x] Every extension lands on one level from its permissions, and the panel shows the badge,
       its sentence and the four groups before anything else.
-- [ ] The expander shows each permission's sentence and reason, and `http.outbound`'s origins.
-- [ ] Non-administrators cannot grant the upper two levels, from the panel, the API or the CLI.
-- [ ] The upper two levels refuse an unattested package; Limited installs it, saying nobody vouched.
-- [ ] `CROMBOLO_UNRESTRICTED_EXTENSIONS=config` replaces the button with the snippet, and the
+- [x] The expander shows each permission's sentence and reason, and `http.outbound`'s origins.
+- [x] Non-administrators cannot grant the upper two levels, from the panel, the API or the CLI.
+- [x] The upper two levels refuse an unattested package; Limited installs it, saying nobody vouched.
+- [x] `CROMBOLO_UNRESTRICTED_EXTENSIONS=config` replaces the button with the snippet, and the
       grant route refuses the back office while a config entry still grants.
-- [ ] A local build reaches the upper levels; unsigned, invalid and unchecked do not.
-- [ ] `extensions.install` and `extensions.grant` are refused by name; `users.write` as before.
-- [ ] Installed shows each row's badge; a version asking for more is off until re-granted, and
+- [x] A local build reaches the upper levels; unsigned, invalid and unchecked do not.
+- [x] `extensions.install` and `extensions.grant` are refused by name; `users.write` as before.
+- [x] Installed shows each row's badge; a version asking for more is off until re-granted, and
       Review says what changed.
-- [ ] Covering tests; docs and release notes.
+- [x] Covering tests; docs and release notes.
+
+## What was built (2026-11-11)
+
+- **Levels and groups** are pure, in `bundle-permissions.ts`: `levelOf`, `isUpperLevel`,
+  `LEVEL_WORDS`, `groupsOf` (each catalogue entry in exactly one place, `user.delegate` read
+  as "everything you can see" and "everything you can change"); `NEVER_OFFERED` adds
+  `extensions.install` and `extensions.grant`, each refused by name; `BACKOFFICE_CODE_WARNING`
+  is the Unrestricted sentence.
+- **One refusal,** `grantRefusal` in `grant-policy.ts`, with `mayGrant` for the panel and
+  `vouchedFor` (signed, vouched or local). The marketplace's registry and file installs call
+  it after the signature check, and the admin's grant calls it with the installed package's
+  provenance, so the panel, the API, the CLI and a remote refuse alike. `BundleActor` gained
+  `isAdmin`; the CLI's actor is one.
+- **A change beyond the plan (the maintainer's choice):** installing, removing and granting
+  an extension are an administrator's at every level, where the story had Settings access
+  install and grant a Limited one. The grant route was already administrators only (story
+  309); the install and uninstall routes are now too, and the panel and Installed say "An
+  administrator can install this." and "An administrator can remove this." to anyone else.
+  Disabling and enabling stay open to Settings. A remote's actor counts as an administrator,
+  since it reaches extensions only with "Install code on this site".
+- **The setting:** `CROMBOLO_UNRESTRICTED_EXTENSIONS`, `config.unrestrictedExtensions`, in
+  the settings registry and the regenerated `configuration.md`. The CLI and a remote are
+  refused too while it is `config`, since the point is that only a reviewed commit grants it.
+- **The rows:** Installed rows carry `level`, `groups` and, once granted, `grantedLevel`; the
+  consent answer carries `level`, `groups` and the extension `id`; both responses carry
+  `mayGrant`. The audit detail names the level: "granted Unrestricted: backoffice.code".
+- **The panel and Installed** draw `bundles-level.js` (badge, sentence, unvouched line, four
+  groups, the expander) and choose the button, the sentence or the config snippet from
+  `bundles-level-words.js`, tested without a browser. Installed shows the level on every row,
+  "Off · asks for more" for a version waiting on a grant, and names the level it moved to.
+  `bundles-backoffice-code.js`, its words and their test are retired.
+- **The CLI:** `confirmLevel` prints the level and the groups and asks at a terminal for
+  either upper level.
+- **Tests:** `tests/bundle-levels.test.ts`; a `linkedDependencies` helper for fixtures that are
+  granted an upper level, since a `*` range now reads as unsigned; marketplace expectations
+  moved to the new warning and to listings without the id and screen count.
+- **Not done:** badge colours follow the plan's defaults (default, warning, danger) without a
+  design pass; a non-administrator sees an upper-level extension in the Marketplace with the
+  sentence in place of the button.

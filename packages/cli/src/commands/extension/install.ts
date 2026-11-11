@@ -20,7 +20,7 @@ const delegateOf = (value: string | undefined): string | null => {
 
 import {
   cliActor,
-  confirmBackOfficeCode,
+  confirmLevel,
   grantGaps,
   parseSpec,
   remoteBundles,
@@ -115,7 +115,7 @@ export default class ExtensionInstall extends BaseCommand {
     if (spec.file && flags.remote)
       throw new CliError('usage', 'A remote installs from the package registry, not a file here.')
     const grant = flags.grant ?? []
-    if (!flags['dry-run']) await confirmBackOfficeCode((line) => this.say(line), spec.name, grant)
+    if (!flags['dry-run']) await confirmLevel((line) => this.say(line), spec.name, grant)
 
     // Read first, so a grant that does not match refuses before anything lands.
     const inspected = spec.file

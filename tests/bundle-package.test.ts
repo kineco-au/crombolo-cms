@@ -237,6 +237,6 @@ describe('the layout (story 320)', () => {
       { permission: 'backoffice.code', reason: 'Shows its dashboard' },
     ])
     expect(described?.allows).toBe('Runs in your back office as each person using it')
-    expect(described?.warning).toContain("Don't install this from a publisher you don't trust")
+    expect(described?.warning).toContain('Only install this from a publisher you trust')
   })
 })

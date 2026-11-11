@@ -124,8 +124,14 @@ the section it declares. Its back-office screens need `backoffice.code` (story 3
 the one permission that is not confined: they act as whoever is signed in.
 
 Never offered, whatever is asked: the server's settings and secrets, the
-site's files, writing back-office users or groups, and the Management API as
-the CMS.
+site's files, writing back-office users or groups, installing or granting
+extensions (`extensions.install`, `extensions.grant`, refused by name), and the
+Management API as the CMS.
+
+What they add up to is one of three levels (story 324): Limited, Acts as you
+(`user.delegate`) and Unrestricted (`backoffice.code`). The upper two are an
+administrator's to grant, and only for a package someone vouched for; a host may
+keep Unrestricted to the site's config with `CROMBOLO_UNRESTRICTED_EXTENSIONS=config`.
 
 ## Stories
 
@@ -139,6 +145,7 @@ the CMS.
 | 312 | An extension's components stay in its package and render in its own process; it writes none of the site's code (T5, T6) |
 | 313 | The back office's content security policy names only the origins extensions declared (T8) |
 | 320 | An extension's back-office code is asked for, granted under a warning, built, and served only from its build (T8) |
+| 324 | The install panel says the level and the four groups; an administrator grants the upper two, for a vouched package (T8) |
 | 325 | `user.delegate`: an extension acts for the person using it, recorded against them, never installing, granting or changing users (T10) |
 | 323 | An extension's screens are described by its server half and drawn by the back office, so none of its code runs in the page (T8) |
 | 316 | A site bundle is applied only from a key or CI build the site trusts (T16) |

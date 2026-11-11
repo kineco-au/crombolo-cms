@@ -15,10 +15,10 @@
  */
 import { css, html, nothing, repeat } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
-import { backOfficeCodeBlock, backOfficeCodeStyles } from './bundles-backoffice-code.js'
-import { backOfficeCodeWords, splitBackOfficeCode } from './bundles-backoffice-code-words.js'
 import { carriesTags } from './bundles-carries.js'
 import { bundleSignature, installBundle, searchMarketplace } from './bundles-client.js'
+import { levelBlock, levelStyles } from './bundles-level.js'
+import { configSnippet, grantChoice, unvouchedLine } from './bundles-level-words.js'
 import { signatureBlock, signatureStyles, signatureWords } from './bundles-signature.js'
 
 export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
@@ -36,7 +36,6 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
     _elsewhere: { state: true },
     _consenting: { state: true },
     _trusted: { state: true },
-    _trustsCode: { state: true },
     _asks: { state: true },
     _layout: { state: true },
     _layoutChoice: { state: true },
@@ -81,6 +80,9 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
       this._appliesContent = result.appliesContent !== false
       this._installs = result.installs !== false
       this._elsewhere = result.installsElsewhere ?? null
+      this._mayGrant = result.mayGrant ?? {}
+      // Story 324: installing is an administrator's, as granting is.
+      this._isAdmin = this._mayGrant.limited === 'yes'
     } catch (error) {
       this._error = error instanceof Error ? error.message : String(error)
     } finally {
@@ -160,21 +162,19 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
   #askConsent(item, outcome) {
     this._consenting = item.name
     this._trusted = false
-    this._trustsCode = false
     this._asks = outcome.permissions ?? []
+    // Story 324: how far it reaches, and the four groups, before anything else.
+    this._level = outcome.level ?? 'limited'
+    this._groups = outcome.groups ?? {}
+    this._id = outcome.id ?? item.name
     // Story 312: the site layout its page templates sit in, its suggestion first.
     this._layout = outcome.layout
     this._layoutChoice = outcome.layout?.suggested ?? ''
   }
 
-  #asksForCode() {
-    return Boolean(splitBackOfficeCode(this._asks).code)
-  }
-
   #cancelConsent() {
     this._consenting = ''
     this._trusted = false
-    this._trustsCode = false
     this._asks = []
   }
 
@@ -234,41 +234,20 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
     `
   }
 
-  /** What it asks for, each permission with its reason, granted together in its own card. */
+  /** How far it reaches at a glance, the four groups, the detail on asking, and the grant (story 324). */
   #consent(item) {
-    // Back-office code first and apart, with a confirmation of its own (story 320).
-    const { code, rest } = splitBackOfficeCode(this._asks)
     const checked = this._signatures.get(item.name)
-    const signature = checked
-      ? signatureWords(checked.provenance, checked.refused, checked.policy)
-      : undefined
+    const state = checked?.provenance?.state
+    const choice = grantChoice(this._level, this._mayGrant, state)
     return html`
       <div class="consent" role="group" aria-label="What it asks for">
+        ${levelBlock({
+          level: this._level,
+          groups: this._groups,
+          permissions: this._asks,
+          unvouched: unvouchedLine(this._level, state),
+        })}
         ${this.#signature(item)}
-        ${
-          code
-            ? backOfficeCodeBlock(
-                backOfficeCodeWords(code, item.publisher, signature),
-                this._trustsCode,
-                (confirmed) => {
-                  this._trustsCode = confirmed
-                },
-              )
-            : nothing
-        }
-        <p>
-          <strong>It asks for these permissions.</strong> Grant them to install it: it may do only
-          this.
-        </p>
-        <ul class="asks">
-          ${rest.map(
-            (ask) =>
-              html`<li>
-                ${ask.allows}${ask.origins?.length ? html`: ${ask.origins.join(', ')}` : nothing}
-                ${ask.reason ? html`<span class="reason">${ask.reason}</span>` : nothing}
-              </li>`,
-          )}
-        </ul>
         ${
           this._layout
             ? html`<uui-select
@@ -295,22 +274,44 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
               : nothing
           }
         </p>
-        <uui-checkbox
-          label="I trust this publisher, and grant what it asks for"
-          .checked=${this._trusted}
-          @change=${(event) => {
-            this._trusted = event.target.checked
-          }}></uui-checkbox>
-        <div class="actions">
-          <uui-button
-            look="primary"
-            color="warning"
-            label="Grant and install"
-            ?disabled=${!this._trusted || (this.#asksForCode() && !this._trustsCode)}
-            .state=${this._busy === item.name ? 'waiting' : undefined}
-            @click=${() => this.#install(item, true)}></uui-button>
-          <uui-button look="secondary" label="Cancel" @click=${this.#cancelConsent}></uui-button>
-        </div>
+        ${
+          choice.grant
+            ? html`<uui-checkbox
+                  label="I trust this publisher, and grant what it asks for"
+                  .checked=${this._trusted}
+                  @change=${(event) => {
+                    this._trusted = event.target.checked
+                  }}></uui-checkbox>
+                <div class="actions">
+                  <uui-button
+                    look="primary"
+                    color=${this._level === 'limited' ? 'positive' : 'warning'}
+                    label="Grant and install"
+                    ?disabled=${!this._trusted}
+                    .state=${this._busy === item.name ? 'waiting' : undefined}
+                    @click=${() => this.#install(item, true)}></uui-button>
+                  <uui-button look="secondary" label="Cancel" @click=${this.#cancelConsent}></uui-button>
+                </div>`
+            : html`<p class="note">
+                  ${
+                    choice.snippet
+                      ? 'This site turns on Unrestricted extensions only in its configuration. Your developers add this to crombolo.config.ts:'
+                      : choice.sentence
+                  }
+                </p>
+                ${
+                  choice.snippet
+                    ? html`<pre class="snippet">${configSnippet(
+                        this._id,
+                        this._asks.map((ask) => ask.permission),
+                        this._asks.flatMap((ask) => ask.origins ?? []),
+                      )}</pre>`
+                    : nothing
+                }
+                <div class="actions">
+                  <uui-button look="secondary" label="Cancel" @click=${this.#cancelConsent}></uui-button>
+                </div>`
+        }
       </div>
     `
   }
@@ -379,11 +380,13 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
                           ? this._elsewhere
                             ? html`<p class="meta">${this.#elsewhereLink() || this._elsewhere.message}</p>`
                             : html`<p class="meta">Add it to the site with <code>bun add ${item.name}</code>, then deploy.</p>`
-                          : this._consenting === item.name
-                            ? this.#consent(item)
-                            : this._reviewing === item.name
-                              ? this.#review(item)
-                              : html`
+                          : !this._isAdmin
+                            ? html`<p class="meta">An administrator can install this.</p>`
+                            : this._consenting === item.name
+                              ? this.#consent(item)
+                              : this._reviewing === item.name
+                                ? this.#review(item)
+                                : html`
                           <uui-button
                             look="primary"
                             label="Install"
@@ -402,7 +405,7 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
 
   static styles = [
     signatureStyles,
-    backOfficeCodeStyles,
+    levelStyles,
     css`
     :host {
       display: block;

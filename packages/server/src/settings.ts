@@ -348,6 +348,15 @@ const DECLARED = [
       'Where a signed bundle has to come from, separated by commas: `org/*`, `org/repo`, or `org/repo@v*` for its tags. Empty takes signed extensions from anywhere. Each is also a trusted CI build for site bundles, locked on Settings → Trusted signers.',
   },
   {
+    env: 'CROMBOLO_UNRESTRICTED_EXTENSIONS',
+    kind: 'enum',
+    values: ['backoffice', 'config'],
+    default: 'backoffice',
+    section: 'Back office and bundles',
+    description:
+      "Where an Unrestricted extension, one whose own code runs in the back office, may be turned on: by an administrator in Settings, or only in the site's configuration, so a commit someone reviews is the only way.",
+  },
+  {
     env: 'CROMBOLO_INSTALLS_ELSEWHERE_MESSAGE',
     kind: 'string',
     section: 'Back office and bundles',

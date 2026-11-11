@@ -127,7 +127,8 @@ describe('a running node (story 181)', () => {
     expect((await h.server.fetch(new Request(file))).status).toBe(404)
 
     install(root, 'acme-seo')
-    depend(root, { 'acme-seo': '^1.0.0' })
+    // Linked, as one built here is, so its back-office code may be granted (story 324).
+    depend(root, { 'acme-seo': 'link:acme-seo' })
     // Unseen until it is told: discovery is cached outside development.
     const reload = await h.server.reloadBundles()
     expect(reload.added.map((b) => b.packageName)).toEqual(['acme-seo'])

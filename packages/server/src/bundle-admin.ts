@@ -7,6 +7,9 @@ import type { BundlePackage, ExtensionRegistry } from '@crombolo/backoffice-host
 import {
   createExtensionRegistry,
   type ExtensionSetting,
+  isUpperLevel,
+  LEVEL_WORDS,
+  levelOf,
   readSettings,
   settingValueProblem,
   USER_DELEGATE,
@@ -24,6 +27,7 @@ import { CommandError, installBundleContent, revertSections } from './bundle-ins
 import { componentsWritten } from './bundle-sections.ts'
 import { siteLayouts } from './components.ts'
 import type { CromboloConfig } from './config.ts'
+import { grantRefusal } from './grant-policy.ts'
 import {
   createMarketplace,
   type InstalledListing,
@@ -41,6 +45,8 @@ export interface BundleActor {
   id: string | null
   name: string
   email: string | null
+  /** An administrator: only one grants Acts as you and Unrestricted (story 324). */
+  isAdmin: boolean
   source: 'request' | 'cli'
   ipAddress?: string | null
   forwardedFor?: string | null
@@ -283,6 +289,7 @@ export function createBundleAdmin(options: {
         grant: request.grant ?? [],
         delegateTo: request.delegateTo ?? actor.id ?? null,
         by: actor.email ?? actor.name,
+        isAdmin: actor.isAdmin,
       }
       const outcome = request.file
         ? await marketplace.installFile(request.name, asked)
@@ -295,7 +302,7 @@ export function createBundleAdmin(options: {
         'Install',
         outcome.dependency ? `${name}@${outcome.dependency.version}` : name,
         [
-          `granted ${asked.grant.length > 0 ? asked.grant.join(', ') : 'nothing'}${asked.grant.includes(USER_DELEGATE) && asked.delegateTo ? `, acting for ${asked.delegateTo} when nobody is using it` : ''}`,
+          `granted ${LEVEL_WORDS[levelOf(asked.grant)].label}: ${asked.grant.length > 0 ? asked.grant.join(', ') : 'nothing'}${asked.grant.includes(USER_DELEGATE) && asked.delegateTo ? `, acting for ${asked.delegateTo} when nobody is using it` : ''}`,
           outcome.provenance ? describeProvenance(outcome.provenance) : undefined,
         ]
           .filter(Boolean)
@@ -356,6 +363,19 @@ export function createBundleAdmin(options: {
             .filter(Boolean)
             .join(' '),
         }
+      // The upper levels: an administrator, a package someone vouched for, and the host's rule (story 324).
+      const level = levelOf(asks)
+      const provenance = isUpperLevel(level)
+        ? (await marketplace.installed()).find((item) => item.id === pkg.id)?.provenance
+        : undefined
+      const refused = grantRefusal({
+        level,
+        grants: asks.length > 0,
+        isAdmin: actor.isAdmin,
+        provenance,
+        from: config.unrestrictedExtensions ?? 'backoffice',
+      })
+      if (refused) return { status: 403, ok: false, message: `${pkg.name}: ${refused}` }
       const delegateKey = asks.includes(USER_DELEGATE)
         ? (request.delegateTo ?? actor.id ?? null)
         : null
@@ -366,7 +386,7 @@ export function createBundleAdmin(options: {
         actor,
         'Grant',
         `${pkg.packageName}@${pkg.version}`,
-        `granted ${asks.join(', ') || 'nothing'}${delegateKey ? `, acting for ${delegateKey} when nobody is using it` : ''}`,
+        `granted ${LEVEL_WORDS[level].label}: ${asks.join(', ') || 'nothing'}${delegateKey ? `, acting for ${delegateKey} when nobody is using it` : ''}`,
       )
       const state = bundleGrants.state(pkg)
       return {
@@ -434,6 +454,7 @@ export async function localBundleAdmin(
     installs: true,
     policy: config.bundlePolicy,
     applyContentOnInstall: true,
+    unrestrictedFrom: config.unrestrictedExtensions,
     contentApplied: async (packageName) =>
       (await new TransferRunRepository(db).appliedForPackage(packageName))?.packageVersion ?? null,
     applyContent: async (packageName) => {

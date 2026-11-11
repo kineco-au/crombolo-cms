@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import type { BundlePackage } from '@crombolo/backoffice-host'
 import { cromboloPlan, migrate } from '@crombolo/data'
 import { createBundleGrants, grantGaps } from '@crombolo/server'
-import { siteDeclaring, stubBundlePackage } from './support/bundles.ts'
+import { linkedDependencies, siteDeclaring, stubBundlePackage } from './support/bundles.ts'
 import { dialectUnderTest, freshDb } from './support/db.ts'
 import { BACKOFFICE, type Harness, signedInServer, V1 } from './support/harness.ts'
 
@@ -156,6 +156,7 @@ describe(`an extension's screens (${dialectUnderTest})`, () => {
         files: { 'dist/seo.js': 'export default class {}\n' },
       },
     })
+    linkedDependencies(dir)
     const h = await signedInServer({
       config: { siteDir: dir, componentsDir: join(dir, 'components') },
     })

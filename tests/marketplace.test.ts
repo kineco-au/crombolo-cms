@@ -564,7 +564,10 @@ describe('a bundle that runs code on the server (story 194)', () => {
       server: ['@acme/tasks'],
       installs: leaves(root, true),
     })
-    const outcome = await market.install('@acme/tasks', undefined, { grant: ['redirects.read'] })
+    const outcome = await market.install('@acme/tasks', undefined, {
+      isAdmin: true,
+      grant: ['redirects.read'],
+    })
     expect(outcome.ok).toBe(true)
     expect(calls.map((c) => c.action)).toEqual(['add'])
     expect(outcome.message).toContain("once your site's developers turn it on")
@@ -601,9 +604,12 @@ describe('a bundle that runs code on the server (story 194)', () => {
     ])
     // A grant that is not the whole list installs nothing.
     for (const grant of [[], ['redirects.read', 'redirects.write']])
-      expect((await market.install('@acme/tasks', undefined, { grant })).needsGrant).toBe(true)
+      expect(
+        (await market.install('@acme/tasks', undefined, { isAdmin: true, grant })).needsGrant,
+      ).toBe(true)
     expect(calls).toEqual([])
     const outcome = await market.install('@acme/tasks', undefined, {
+      isAdmin: true,
       grant: ['redirects.read'],
       by: 'admin@example.com',
     })
@@ -634,9 +640,12 @@ describe('a bundle that runs code on the server (story 194)', () => {
       permission: 'backoffice.code',
       allows: 'Runs in your back office as each person using it',
       reason: 'Shows its dashboard',
-      warning: expect.stringContaining("Don't install this from a publisher you don't trust"),
+      warning: expect.stringContaining('Only install this from a publisher you trust'),
     })
-    const without = await market.install('@acme/tasks', undefined, { grant: ['redirects.read'] })
+    const without = await market.install('@acme/tasks', undefined, {
+      isAdmin: true,
+      grant: ['redirects.read'],
+    })
     expect(without.needsGrant).toBe(true)
     expect(calls).toEqual([])
   })
@@ -882,7 +891,10 @@ describe('a version that says nothing of why it asks (story 308)', () => {
           return { ok: true, output: '' }
         },
       })
-      const outcome = await market.install('@acme/old', undefined, { grant: ['redirects.read'] })
+      const outcome = await market.install('@acme/old', undefined, {
+        isAdmin: true,
+        grant: ['redirects.read'],
+      })
       expect(outcome.ok).toBe(false)
       expect(outcome.message).toContain('bundle schema 3')
       expect(calls).toEqual([])

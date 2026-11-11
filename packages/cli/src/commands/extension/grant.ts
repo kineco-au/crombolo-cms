@@ -2,12 +2,7 @@ import { userKeyOf } from '@crombolo/server'
 import { Args, Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
 import { CliError } from '../../errors.ts'
-import {
-  cliActor,
-  confirmBackOfficeCode,
-  remoteBundles,
-  withLocalBundles,
-} from '../../support/bundles.ts'
+import { cliActor, confirmLevel, remoteBundles, withLocalBundles } from '../../support/bundles.ts'
 
 /** Grants an installed extension what it asks for (story 309), here or on a remote. */
 export default class ExtensionGrant extends BaseCommand {
@@ -51,7 +46,7 @@ export default class ExtensionGrant extends BaseCommand {
     const delegateTo = flags['delegate-to'] ? userKeyOf(flags['delegate-to']) : null
     if (flags['delegate-to'] && !delegateTo)
       this.fail('usage', `--delegate-to is a user's key, not "${flags['delegate-to']}".`)
-    await confirmBackOfficeCode((line) => this.say(line), args.name, flags.grant)
+    await confirmLevel((line) => this.say(line), args.name, flags.grant)
     const outcome = flags.remote
       ? await (await remoteBundles(flags.remote, flags.env)).grant(
           args.name,

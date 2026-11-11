@@ -153,7 +153,13 @@ describe('the bundle admin', () => {
     const root = site()
     const { bundles, db } = await admin(root)
     try {
-      const actor = { id: null, name: 'someone', email: null, source: 'cli' as const }
+      const actor = {
+        id: null,
+        name: 'someone',
+        email: null,
+        isAdmin: true,
+        source: 'cli' as const,
+      }
       const refused = await bundles.install(actor, {
         name: '@acme/crm',
         grant: [],

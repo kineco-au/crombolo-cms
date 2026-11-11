@@ -214,6 +214,7 @@ import {
   parseEntryState,
   redactSensitive,
 } from './forms.ts'
+import { mayGrant } from './grant-policy.ts'
 import { HOST_TOKEN_SECONDS, issueHostToken } from './host-token.ts'
 import { canEncodeAvif, ImageProcessor, parseImagingQuery } from './imaging.ts'
 import type { BackgroundJobs } from './jobs.ts'
@@ -495,6 +496,7 @@ export async function createServer(
     contentApplied: async (packageName) =>
       (await new TransferRunRepository(db).appliedForPackage(packageName))?.packageVersion ?? null,
     applyContentOnInstall: config.applyBundleContentOnInstall,
+    unrestrictedFrom: config.unrestrictedExtensions,
     installs: config.runtimeInstalls,
     installsElsewhere: config.installsElsewhere,
     policy: config.bundlePolicy,
@@ -851,6 +853,7 @@ export async function createServer(
     id: principal.id,
     name: principal.name,
     email: principal.email,
+    isAdmin: principal.isAdmin,
     source: 'request',
     ...clientAddress(request),
   })
@@ -2142,6 +2145,7 @@ export async function createServer(
           url: marketplace.url(),
           keyword: config.packageKeyword,
           appliesContent: config.applyBundleContentOnInstall,
+          mayGrant: mayGrant(principal.isAdmin, config.unrestrictedExtensions),
           installs: config.runtimeInstalls,
           installsElsewhere: config.runtimeInstalls ? null : (config.installsElsewhere ?? null),
           items: await marketplace.search(url.searchParams.get('q') ?? undefined),
@@ -2203,8 +2207,10 @@ export async function createServer(
         }
       }
 
+      // What this person may grant at each level here (story 324): the panel shows the button, the sentence or the snippet.
+      const granting = mayGrant(principal.isAdmin, config.unrestrictedExtensions)
       if (action === 'installed' && request.method === 'GET')
-        return Response.json(await bundleAdmin.installed())
+        return Response.json({ ...(await bundleAdmin.installed()), mayGrant: granting })
 
       // Where a version was built, for the Install panel before anything is
       // installed (story 060), and whether this site would take it.
@@ -2223,6 +2229,12 @@ export async function createServer(
       }
 
       if ((action === 'install' || action === 'uninstall') && request.method === 'POST') {
+        // Installing or removing code is an administrator's, as granting it is (story 324).
+        if (!principal.isAdmin)
+          return Response.json(
+            { ok: false, message: 'An administrator installs and removes extensions.' },
+            { status: 403 },
+          )
         const body = (await request.json().catch(() => ({}))) as {
           name?: unknown
           version?: unknown
@@ -2312,13 +2324,9 @@ export async function createServer(
           : Response.json({ ok: false, message: outcome.message }, { status: outcome.status })
       }
 
-      // Story 309: granting an installed extension what it asks for, administrators only.
+      // Story 309: granting an installed extension what it asks for, administrators only: the
+      // admin's one refusal says so, for every level and every way in (story 324).
       if (action === 'grant' && request.method === 'POST') {
-        if (!principal.isAdmin)
-          return Response.json(
-            { ok: false, message: 'Only an administrator grants an extension.' },
-            { status: 403 },
-          )
         const body = (await request.json().catch(() => ({}))) as {
           id?: unknown
           grant?: unknown

@@ -1874,6 +1874,37 @@ each permission with the reason it needs it, and it is held to that.
   - `backoffice.code` runs its back-office code, from story 320: see "Back-office
     code" below.
 
+- **Levels** (story 324). The install panel, Installed and the command line say how
+  far an extension reaches before anything else, as one of three levels computed from
+  what it asks for, never declared:
+
+  | Level | What puts it there | Who grants it |
+  |---|---|---|
+  | **Limited** | anything else | an administrator |
+  | **Acts as you** | `user.delegate` | an administrator, for a package someone vouched for |
+  | **Unrestricted** | `backoffice.code` | an administrator, for a package someone vouched for, unless the host keeps it to the config |
+
+  - **Four groups** fold the catalogue: Sees, Changes, Sends to and Adds, with Acts as
+    when it asks to (`groupsOf`). "Show each permission and why it asks" opens the list
+    with each reason and origin.
+  - **Vouched for** means signed, vouched for by the host, or built on this machine (a
+    linked or workspace package). An unsigned Limited extension installs, and the panel
+    says "Nobody has vouched for who built this" in place of its build line.
+  - **Administrators only:** installing, removing and granting an extension are an
+    administrator's in the back office, at every level. Disabling and enabling stay
+    open to Settings access. A remote reaches them with "Install code on this site".
+  - **One refusal** (`grantRefusal`, `grant-policy.ts`) answers the panel, the API, the
+    command line and a remote, with the panel's words. The grant is audited with its
+    level: "granted Unrestricted: backoffice.code".
+  - **`CROMBOLO_UNRESTRICTED_EXTENSIONS=config`** keeps Unrestricted to the site's config:
+    the panel shows the `extensions` entry to add in place of the button, and every other
+    way of granting it is refused. It is an environment setting because a commit that
+    grants an extension should not also be able to lift the rule.
+  - **Never offered:** `users.write`, `extensions.install` and `extensions.grant`, each
+    refused by name.
+  - **Installed** shows each row's level; a version asking for more is "Off · asks for
+    more", and its detail names the level it moved to.
+
 - **Back-office code** (story 320). Any back-office code needs `backoffice.code`:
   - Its screens run in the back office's page as whoever is signed in, with
     everything that person can do on the site. Unlike the server half, nothing

@@ -878,6 +878,9 @@ export function createRemote(options: RemoteOptions): Remote {
       id: principal.ci ? null : principal.id,
       name: `${principal.name}${ciRun(principal)}`,
       email: principal.ci ? null : principal.email,
+      // A remote reaches extensions only with "Install code on this site", which is the
+      // grant itself: it counts as the administrator the back office asks for (story 324).
+      isAdmin: true,
       source: 'request' as const,
       ipAddress: null,
       forwardedFor: request.headers.get('x-forwarded-for'),

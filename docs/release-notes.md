@@ -22,8 +22,18 @@ point at `docs/stories/`.
   and groups, for anyone. The audit log records its writes as the person, with the
   detail "<Extension>, for <person>". It replaces `actAs`.
 
+- **The install panel says what you accept at a glance (324).** Each extension shows one of
+  three levels, Limited, Acts as you or Unrestricted, computed from what it asks for, with
+  what it sees, changes, sends to and adds; each permission and its reason open on request.
+  The same appears in Installed, on every row, and from `crombolo extension install` and
+  `grant`, which ask at a terminal before granting either upper level.
+
 ### Changes
 
+- **Only an administrator installs, removes or grants an extension (324).** Settings access
+  no longer installs one from the Marketplace or removes one from Installed; it still turns
+  one off and on. Acts as you and Unrestricted also need a package that is signed, vouched
+  for by the host, or built on this machine.
 - **Settings is one grant again (322).** Structure, Code and Workflow set-up follow the
   Settings section. The three grants story 296 added, Structure, Components and Workflow
   set-up, are no longer offered in a group's Sections, and the menu under Content shows
@@ -31,6 +41,13 @@ point at `docs/stories/`.
 
 ### Upgrade notes
 
+- Someone who installed extensions with Settings access alone needs an administrator now,
+  or a group that makes them one.
+- **An unsigned extension that runs code in the back office, or acts for the person using
+  it, can no longer be granted (324).** One already granted keeps running; a new grant, an
+  upgrade that asks for more, or a fresh install needs a signed build. A host that wants
+  Unrestricted extensions turned on only in the config sets
+  `CROMBOLO_UNRESTRICTED_EXTENSIONS=config`.
 - **`actAs` is retired (325).** An extension asking for it is refused, and stops until a
   version asking for `user.delegate` is installed: `crombolo extension migrate <dir>`
   rewrites one, and an administrator grants it again. `extensions.<id>.actAs` is gone

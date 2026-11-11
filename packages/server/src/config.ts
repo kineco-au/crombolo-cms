@@ -23,6 +23,7 @@ import {
 import type { ServerBundle } from './bundles.ts'
 import type { EmailPort } from './email.ts'
 import type { GitConfig } from './git-routes.ts'
+import { type UnrestrictedFrom, unrestrictedFrom } from './grant-policy.ts'
 import { checkHost, type HostConfig } from './host-token.ts'
 import { checkIdentityProviders, type IdentityProvider } from './identity-providers.ts'
 import type { MediaStore } from './media-store.ts'
@@ -594,6 +595,13 @@ export interface CromboloConfig {
    */
   bundlePolicy: ProvenancePolicy
   /**
+   * Where an Unrestricted extension may be granted from (story 324): the back
+   * office, by an administrator, or only the site's config, so a commit someone
+   * reviews is the only way. `CROMBOLO_UNRESTRICTED_EXTENSIONS`, `backoffice`
+   * unless it says `config`.
+   */
+  unrestrictedExtensions: UnrestrictedFrom
+  /**
    * Where the Packages section's Marketplace sends someone browsing for
    * extensions. Never framed — npm refuses to be framed — so the native view
    * uses it as the link out while listing the registry itself.
@@ -949,6 +957,7 @@ export function loadConfig(
     applyBundleContentOnInstall: setting('CROMBOLO_APPLY_BUNDLE_CONTENT') !== 'false',
     // Resolved again below, once it is known whether a store was configured.
     runtimeInstalls: setting('CROMBOLO_RUNTIME_INSTALLS') !== 'false',
+    unrestrictedExtensions: unrestrictedFrom(setting('CROMBOLO_UNRESTRICTED_EXTENSIONS')),
     bundlePolicy: {
       signatures: bundleSignatures(setting('CROMBOLO_BUNDLE_SIGNATURES')),
       sources: (setting('CROMBOLO_BUNDLE_SOURCES') ?? '')

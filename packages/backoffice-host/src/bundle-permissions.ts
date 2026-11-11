@@ -74,7 +74,7 @@ export const BACKOFFICE_CODE = 'backoffice.code'
  * what its signature shows.
  */
 export const BACKOFFICE_CODE_WARNING =
-  "Its screens act as whoever is signed in, with everything that person can do on this site. Unlike the rest of an extension, this part can't be kept apart from the site. Don't install this from a publisher you don't trust."
+  "Runs its own code inside your back office, with the same access as the site's own code. Nothing it does there can be watched or limited. Only install this from a publisher you trust as you trust your own developers."
 
 /** The permission to act for the person using it (story 325). */
 export const USER_DELEGATE = 'user.delegate'
@@ -88,8 +88,125 @@ export const AREA_PERMISSIONS: readonly string[] = Object.keys(BUNDLE_PERMISSION
   (permission) => /^[a-zA-Z]+\.(read|write)$/.test(permission),
 )
 
-/** Never offered, whatever an extension asks: writing users could make anyone an administrator. */
-export const NEVER_OFFERED: ReadonlySet<string> = new Set(['users.write'])
+/**
+ * Never offered, whatever an extension asks: writing users could make anyone an
+ * administrator, and no extension brings in another or widens a grant (story 324).
+ */
+export const NEVER_OFFERED: ReadonlySet<string> = new Set([
+  'users.write',
+  'extensions.install',
+  'extensions.grant',
+])
+
+/** Why each never-offered permission is refused, said where it is asked for. */
+const NEVER_OFFERED_WHY: Readonly<Record<string, string>> = {
+  'users.write': 'only an administrator changes users',
+  'extensions.install': 'no extension brings in another',
+  'extensions.grant': 'no extension widens what it, or another, was granted',
+}
+
+/**
+ * How far an extension reaches, computed from what it asks for and never
+ * declared (story 324): `backoffice.code` runs unconfined in the back office,
+ * `user.delegate` acts as the person using it, and anything else is limited.
+ */
+export type AccessLevel = 'limited' | 'acts-as-you' | 'unrestricted'
+
+/** The level a list of permissions adds up to: the highest thing in it. Pure. */
+export function levelOf(permissions: readonly string[]): AccessLevel {
+  if (permissions.includes(BACKOFFICE_CODE)) return 'unrestricted'
+  if (permissions.includes(USER_DELEGATE)) return 'acts-as-you'
+  return 'limited'
+}
+
+/** Whether a level is one of the two only an administrator grants. */
+export const isUpperLevel = (level: AccessLevel) => level !== 'limited'
+
+/** The badge and the sentence under it, per level (the maintainer's words). */
+export const LEVEL_WORDS: Readonly<Record<AccessLevel, { label: string; sentence: string }>> = {
+  limited: {
+    label: 'Limited',
+    sentence:
+      'Works through the site with only the access below. You can see everything it does and undo it.',
+  },
+  'acts-as-you': {
+    label: 'Acts as you',
+    sentence:
+      'Can do anything on this site that the person using it can do. Everything it does is recorded against them.',
+  },
+  unrestricted: {
+    label: 'Unrestricted',
+    sentence:
+      "Runs its own code inside your back office, with the same access as the site's own code. Nothing it does there can be watched or limited. Only install this from a publisher you trust as you trust your own developers.",
+  },
+}
+
+/** What each area is called in the four groups. */
+const AREA_WORDS: Readonly<Record<string, string>> = {
+  content: 'pages',
+  media: 'media',
+  members: 'members',
+  users: 'back-office users',
+  forms: 'forms',
+  formEntries: 'form entries',
+  dictionary: 'dictionary words',
+  contentTypes: 'content types',
+  webhooks: 'webhooks',
+  workflows: 'approval workflows',
+  redirects: 'redirects',
+  identityProviders: 'sign-in providers',
+}
+
+/** What an extension adds, by the permission that says so. */
+const ADDS_WORDS: Readonly<Record<string, string>> = {
+  'routes.public': 'addresses on the site anyone may visit',
+  'events.content': 'something that runs when pages change',
+  'data.tables': 'its own data',
+  templates: 'page templates',
+  [BACKOFFICE_CODE]: 'its own code in your back office',
+}
+
+/** The four groups the install panel shows, and who it acts as when it asks to. */
+export interface PermissionGroups {
+  sees: string[]
+  changes: string[]
+  sendsTo: string[]
+  adds: string[]
+  actsAs: string[]
+}
+
+/**
+ * The catalogue folded into what an administrator reads at a glance (story
+ * 324): Sees, Changes, Sends to and Adds, with Acts as when it asks to. Each
+ * permission lands in exactly one place. Pure.
+ */
+export function groupsOf(
+  declared: readonly (string | DeclaredPermission)[],
+  options: { screens?: number } = {},
+): PermissionGroups {
+  const groups: PermissionGroups = { sees: [], changes: [], sendsTo: [], adds: [], actsAs: [] }
+  const entries = declared.map((entry) =>
+    typeof entry === 'string' ? { permission: entry, reason: null } : entry,
+  )
+  for (const { permission, origins } of entries) {
+    const [area, verb] = permission.split('.')
+    if (permission === USER_DELEGATE) {
+      groups.sees.push('everything you can see')
+      groups.changes.push('everything you can change')
+      groups.actsAs.push('you, or whoever uses it')
+    } else if (permission === 'member.delegate') groups.actsAs.push('members who use it')
+    else if (permission === 'http.outbound')
+      groups.sendsTo.push(...(origins ?? []).map((origin) => origin.replace(/^https?:\/\//, '')))
+    else if (ADDS_WORDS[permission]) groups.adds.push(ADDS_WORDS[permission] as string)
+    else if (area && AREA_WORDS[area] && verb === 'read')
+      groups.sees.push(AREA_WORDS[area] as string)
+    else if (area && AREA_WORDS[area] && verb === 'write')
+      groups.changes.push(AREA_WORDS[area] as string)
+  }
+  if (options.screens)
+    groups.adds.push(options.screens === 1 ? 'a screen' : `${options.screens} screens`)
+  return groups
+}
 
 export const isBundlePermission = (value: unknown): value is BundlePermission =>
   typeof value === 'string' && Object.hasOwn(BUNDLE_PERMISSIONS, value)
@@ -135,7 +252,7 @@ export function readPermissions(
       continue
     }
     if (NEVER_OFFERED.has(permission)) {
-      problems.push(`"${permission}" is never offered: only an administrator changes users`)
+      problems.push(`"${permission}" is never offered: ${NEVER_OFFERED_WHY[permission]}`)
       continue
     }
     if (!isBundlePermission(permission)) {
