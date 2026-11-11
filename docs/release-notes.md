@@ -6,6 +6,8 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.61.0 — 2026-11-11
+
 ### Features
 
 - **An extension's screens are described, not shipped (323).** A server half declares
@@ -15,6 +17,9 @@ point at `docs/stories/`.
   of the extension's code runs in the page and the screen needs no permission. A
   manifest entry names one with `"screen"` at `"crombolo.schemaVersion": 6`.
 
+- **Redirects and Entra describe their screens (329).** Neither runs code in the back office
+  any more: both install at the Limited level, asking only for their areas. The screens look
+  and work as before. Screens gain a `list` field and read-only fields.
 - **Removing an extension leaves nothing but its data (328).** Uninstall stops it, forgets its
   grant and settings, and deletes its files in one step. Its data is kept, under Installed,
   "Data left by…", until deleted there or with `--drop-data`; `--drop-content` takes out the
@@ -52,6 +57,10 @@ point at `docs/stories/`.
   no longer installs one from the Marketplace or removes one from Installed; it still turns
   one off and on. Acts as you and Unrestricted also need a package that is signed, vouched
   for by the host, or built on this machine.
+- **An extension's refusals keep their words.** A capability an isolated extension was refused
+  reached it with an empty message; it now says which permission it needed. And an answer
+  that used one object in two places, such as two buttons sharing what they send, lost it from
+  one of them on the way back from the extension's process.
 - **Settings is one grant again (322).** Structure, Code and Workflow set-up follow the
   Settings section. The three grants story 296 added, Structure, Components and Workflow
   set-up, are no longer offered in a group's Sections, and the menu under Content shows
@@ -66,6 +75,11 @@ point at `docs/stories/`.
   upgrade that asks for more, or a fresh install needs a signed build. A host that wants
   Unrestricted extensions turned on only in the config sets
   `CROMBOLO_UNRESTRICTED_EXTENSIONS=config`.
+- **Bundle schema 6 only (329).** An extension written for schema 5 or earlier is refused at
+  install and at boot. `crombolo extension migrate <dir>` takes a schema 5 package to 6 and
+  names the entries whose back-office code could become a described screen. The Redirects and
+  Entra grants in a site's config drop `backoffice.code`: a config granting it to either is
+  refused, since neither asks for it now.
 - **`extension uninstall --revert-content` is `--drop-content` (328).** The old name is still
   read, with a notice, until a later release; so is a remote's `revertContent`. Uninstall now
   asks before going on: a script passes `--no-verify`.

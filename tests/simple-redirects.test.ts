@@ -84,7 +84,7 @@ async function site(config: Partial<CromboloConfig> = {}) {
       componentsDir: join(root, 'components'),
       extensions: {
         [REDIRECTS_BUNDLE_ID]: {
-          grant: ['backoffice.code', 'redirects.read', 'redirects.write', 'content.read'],
+          grant: ['redirects.read', 'redirects.write', 'content.read'],
         },
       },
       ...config,
@@ -515,9 +515,16 @@ describe('the bundle as a package', () => {
     expect(menuItem?.meta.menus).toContain('Umb.Menu.AdvancedSettings')
   })
 
-  test('its element path is inside the files npm will carry', () => {
-    const [, workspace] = manifest.crombolo.extensions as Array<{ element?: string }>
-    expect(workspace?.element).toBe('src/backoffice/redirects-workspace.js')
+  test('its workspace is a screen it describes, with no code of its own in the back office (story 329)', () => {
+    const [, workspace] = manifest.crombolo.extensions as Array<{
+      element?: string
+      screen?: string
+    }>
+    expect(workspace?.screen).toBe('rules')
+    expect(workspace?.element).toBeUndefined()
+    expect(
+      Object.keys((manifest.crombolo as unknown as { permissions: object }).permissions).sort(),
+    ).toEqual(['content.read', 'redirects.read', 'redirects.write'])
   })
 
   test('carries the keyword the Bundles section searches', () => {
@@ -532,45 +539,127 @@ describe('the bundle as a package', () => {
   })
 })
 
-describe('the client half', () => {
-  const source = (file: string) =>
-    readFileSync(join(process.cwd(), 'packages/simple-redirects/src/backoffice', file), 'utf8')
+describe('the described screen (story 329)', () => {
+  type Answer = {
+    screen: {
+      title: string
+      toolbar?: { type: string }[]
+      body: { type: string; [key: string]: unknown }[]
+    }
+    state?: Record<string, unknown>
+    notice?: string
+  }
+  const call = async (h: Harness, body: object = {}) => {
+    const response = await h.post(
+      `${h.server.paths.pluginPath}/api/bundle/${REDIRECTS_BUNDLE_ID}/_screen/rules`,
+      body,
+    )
+    expect(response.status).toBe(200)
+    return (await response.json()) as Answer
+  }
+  const nodeOf = (answer: Answer, type: string): unknown =>
+    answer.screen.body.find((node) => node.type === type)
 
-  test('calls the path its own bundle id is mounted at', () => {
-    expect(source('redirects-client.js')).toContain(`/crombolo/api/bundle/${REDIRECTS_BUNDLE_ID}`)
+  test('lists each rule with where it came from, with Edit and Delete where it may change one', async () => {
+    const { h } = await site()
+    await call(h, {
+      action: 'save',
+      input: {
+        values: {
+          matchKind: 'exact',
+          pattern: '/typed',
+          targetKind: 'path',
+          target: '/new',
+          statusCode: '302',
+        },
+      },
+    })
+    const answer = await call(h)
+    const rules = nodeOf(answer, 'table') as {
+      rows: { cells: { text: string }[]; actions: { action: string }[] }[]
+    }
+    const typed = rules.rows.find((row) => row.cells[0]?.text === '/typed')
+    expect(typed?.cells.map((c) => c.text)).toEqual(['/typed', '/new', '302', 'Added here'])
+    expect(typed?.actions.map((a) => a.action)).toEqual(['edit', 'remove'])
+    expect(answer.screen.toolbar?.map((item) => item.type)).toEqual(['search', 'button'])
   })
 
-  test('reads the backoffice path rather than assuming /umbraco', () => {
-    expect(source('redirects-client.js')).toContain("querySelector('base')")
+  test('the editor offers every match and target kind and status, and the page picker for a page', async () => {
+    const { h } = await site()
+    const answer = await call(h, { action: 'add' })
+    const editor = nodeOf(answer, 'form') as {
+      fields: { name: string; kind: string; options?: { value: string }[]; visibleWhen?: unknown }[]
+    }
+    const byName = Object.fromEntries(editor.fields.map((f) => [f.name, f]))
+    expect(byName.matchKind?.options?.map((o) => o.value)).toEqual(['exact', 'prefix', 'regex'])
+    expect(byName.targetKind?.options?.map((o) => o.value)).toEqual(['document', 'path', 'url'])
+    expect(byName.statusCode?.options?.map((o) => o.value)).toEqual(['301', '302', '307', '308'])
+    expect(byName.page).toMatchObject({
+      kind: 'page',
+      visibleWhen: { field: 'targetKind', equals: 'document' },
+    })
   })
 
-  test('offers every match and target kind the matcher implements', () => {
-    // A screen quietly weaker than `crombolo.config.ts` is the failure mode
-    // here, and it is invisible until somebody needs the missing option.
-    const workspace = source('redirects-workspace.js')
-    for (const kind of ['exact', 'prefix', 'regex', 'document', 'path', 'url'])
-      expect(workspace, kind).toContain(`'${kind}'`)
-    for (const status of [301, 302, 307, 308]) expect(workspace).toContain(`[${status},`)
+  test('adds, edits and deletes a rule, and a refusal keeps the editor open, saying why', async () => {
+    const { h } = await site()
+    const added = await call(h, {
+      action: 'save',
+      input: {
+        values: {
+          matchKind: 'exact',
+          pattern: '/old',
+          targetKind: 'path',
+          target: '/new',
+          statusCode: '301',
+        },
+      },
+    })
+    expect(added.notice).toBe('Redirect added.')
+    const rules = nodeOf(added, 'table') as { rows: { key: string }[] }
+    const key = rules.rows[0]?.key as string
+    const editing = await call(h, { action: 'edit', input: { key } })
+    expect((nodeOf(editing, 'form') as { values: Record<string, unknown> }).values).toMatchObject({
+      pattern: '/old',
+      target: '/new',
+    })
+    const refused = await call(h, {
+      action: 'save',
+      state: editing.state,
+      input: {
+        values: {
+          matchKind: 'regex',
+          pattern: '([',
+          targetKind: 'path',
+          target: '/x',
+          statusCode: '301',
+        },
+      },
+    })
+    expect(nodeOf(refused, 'problem')).toBeDefined()
+    expect(nodeOf(refused, 'form')).toBeDefined()
+    const removed = await call(h, { action: 'remove', input: { key } })
+    expect(removed.notice).toBe('Redirect deleted.')
+    expect(nodeOf(removed, 'empty')).toBeDefined()
   })
 
-  test('names all three sources, so the table says where a rule came from', () => {
-    const workspace = source('redirects-workspace.js')
-    for (const name of ['manual', 'config', 'tracked']) expect(workspace).toContain(name)
-  })
-
-  test('offers edit and delete only for a rule the server will let it change', () => {
-    expect(source('redirects-workspace.js')).toContain('rule.editable')
-  })
-
-  test('registers the elements it renders that the shell loads lazily', () => {
-    // `uui-*` comes with the app shell, but `umb-body-layout` and
-    // `umb-input-document` live in chunks it loads on demand — and this module
-    // is not part of the client's chunk graph, so an unimported element renders
-    // as an empty box with no error to find it by.
-    const workspace = source('redirects-workspace.js')
-    expect(workspace).toContain("import '@umbraco-cms/backoffice/components'")
-    expect(workspace).toContain("import '@umbraco-cms/backoffice/document'")
-    for (const tag of ['umb-body-layout', 'umb-input-document'])
-      expect(workspace, tag).toContain(`<${tag}`)
+  test('filters by either URL', async () => {
+    const { h } = await site()
+    for (const pattern of ['/alpha', '/beta'])
+      await call(h, {
+        action: 'save',
+        input: {
+          values: {
+            matchKind: 'exact',
+            pattern,
+            targetKind: 'path',
+            target: '/x',
+            statusCode: '301',
+          },
+        },
+      })
+    const found = await call(h, { action: 'find', input: { query: 'alpha' } })
+    const rules = nodeOf(found, 'table') as { rows: { cells: { text: string }[] }[] }
+    expect(rules.rows.map((row) => row.cells[0]?.text)).toEqual(['/alpha'])
+    expect(found.state).toMatchObject({ query: 'alpha' })
   })
 })

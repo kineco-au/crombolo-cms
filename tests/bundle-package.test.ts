@@ -34,7 +34,7 @@ const valid = (over: Record<string, unknown> = {}, crombolo: Record<string, unkn
       id: 'acme-tasks',
       name: 'Tasks',
       server: 'tasks',
-      schemaVersion: 5,
+      schemaVersion: 6,
       permissions: {},
       ...crombolo,
     },

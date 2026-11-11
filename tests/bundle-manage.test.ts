@@ -45,7 +45,7 @@ const temp = (name: string) => {
 
 const SERVER = {
   server: 'crm',
-  schemaVersion: 5,
+  schemaVersion: 6,
   permissions: { 'content.read': 'Links each contact to the page they came from' },
 }
 

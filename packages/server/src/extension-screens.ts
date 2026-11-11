@@ -39,7 +39,10 @@ const FIELD_KINDS = new Set([
   'media',
   'member',
   'secret',
+  'list',
 ])
+/** What a list's rows may hold (story 329). */
+const LIST_SUB_KINDS = new Set(['text', 'number', 'boolean', 'choice'])
 const LOOKS = new Set(['primary', 'secondary', 'danger'])
 const TAG_LOOKS = new Set(['default', 'primary', 'secondary', 'positive', 'danger'])
 const LIMIT = { rows: 1000, nodes: 200, fields: 100, text: 10_000 }
@@ -77,7 +80,23 @@ const value = (raw: unknown): ScreenValue | undefined => {
   if (typeof raw === 'string') return raw.slice(0, LIMIT.text)
   if (typeof raw === 'number') return Number.isFinite(raw) ? raw : undefined
   if (typeof raw === 'boolean') return raw
-  if (Array.isArray(raw)) return raw.filter((item) => typeof item === 'string') as string[]
+  if (Array.isArray(raw)) {
+    if (raw.every((item) => typeof item === 'string')) return raw as string[]
+    // A list field's rows: plain objects of primitives, nothing deeper.
+    return raw.slice(0, LIMIT.rows).flatMap((item) => {
+      if (!isRecord(item)) return []
+      const row: Record<string, string | number | boolean | null> = {}
+      for (const [key, cell] of Object.entries(item).slice(0, LIMIT.fields))
+        if (
+          cell === null ||
+          typeof cell === 'string' ||
+          typeof cell === 'boolean' ||
+          (typeof cell === 'number' && Number.isFinite(cell))
+        )
+          row[key] = typeof cell === 'string' ? cell.slice(0, LIMIT.text) : cell
+      return [row]
+    })
+  }
   return undefined
 }
 
@@ -158,12 +177,12 @@ const cell = (raw: unknown): Cell => {
   }
 }
 
-const field = (raw: unknown, seen: Seen): Field | undefined => {
+const field = (raw: unknown, seen: Seen, inList = false): Field | undefined => {
   if (!isRecord(raw) || typeof raw.name !== 'string' || typeof raw.kind !== 'string') {
     return undefined
   }
-  if (!FIELD_KINDS.has(raw.kind)) {
-    seen.dropped.add(`field ${raw.kind}`)
+  if (!FIELD_KINDS.has(raw.kind) || (inList && !LIST_SUB_KINDS.has(raw.kind))) {
+    seen.dropped.add(inList ? `field ${raw.kind} in a list` : `field ${raw.kind}`)
     return undefined
   }
   const base: Record<string, unknown> = { kind: raw.kind, name: raw.name, label: text(raw.label) }
@@ -172,6 +191,7 @@ const field = (raw: unknown, seen: Seen): Field | undefined => {
   const placeholder = optionalText(raw.placeholder)
   if (placeholder) base.placeholder = placeholder
   if (raw.required === true) base.required = true
+  if (raw.readOnly === true) base.readOnly = true
   const visible = condition(raw.visibleWhen)
   if (visible) base.visibleWhen = visible
   const hints = list(raw.hints, LIMIT.fields).flatMap((entry) => {
@@ -201,6 +221,18 @@ const field = (raw: unknown, seen: Seen): Field | undefined => {
         if (n !== undefined) base[key] = n
       }
       break
+    case 'list': {
+      base.fields = list(raw.fields, LIMIT.fields)
+        .map((entry) => field(entry, seen, true))
+        .filter((entry): entry is Field => entry !== undefined)
+      const label = optionalText(raw.addLabel)
+      if (label) base.addLabel = label
+      for (const key of ['min', 'max'] as const) {
+        const n = finite(raw[key])
+        if (n !== undefined && n >= 0) base[key] = Math.floor(n)
+      }
+      break
+    }
     case 'choice':
       base.options = list(raw.options, LIMIT.rows).flatMap((option) =>
         isRecord(option) && typeof option.value === 'string'

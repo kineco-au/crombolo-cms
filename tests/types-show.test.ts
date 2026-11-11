@@ -154,6 +154,7 @@ describe('types list and types show', () => {
     expect(listed.database).toContain('no database')
   })
 
+  // Three runs of the command line in one test: past the default limit on a busy machine.
   test('once applied: item counts, and what has changed since', () => {
     expect(cli('types', 'sync').code).toBe(0)
     const article = json<{ items: number; applied: string; usedBy: unknown[] }>(
@@ -176,7 +177,7 @@ describe('types list and types show', () => {
     )
     const fromDatabase = json<{ properties: unknown[] }>('types', 'show', 'home', '--from-database')
     expect(fromDatabase.properties).toHaveLength(0)
-  })
+  }, 30_000)
 
   test('a data type with the properties using it, and nothing names a file', () => {
     const shown = cli('types', 'show', 'pageBlocks')

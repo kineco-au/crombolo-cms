@@ -42,7 +42,25 @@ export function fieldProblems(fields, values) {
       problems[field.name] = `${field.label} is required.`
       continue
     }
-    if (isEmpty(value)) continue
+    // A list with a minimum is short of it even when it has no rows.
+    if (isEmpty(value) && !(field.kind === 'list' && field.min)) continue
+    // Story 329: a list's rows, each held to its sub-fields, and to its bounds.
+    if (field.kind === 'list') {
+      const rows = Array.isArray(value) ? value : []
+      if (field.min !== undefined && rows.length < field.min)
+        problems[field.name] = `${field.label} needs at least ${field.min}.`
+      else if (field.max !== undefined && rows.length > field.max)
+        problems[field.name] = `${field.label} takes at most ${field.max}.`
+      else
+        for (const [index, row] of rows.entries()) {
+          const inner = Object.values(fieldProblems(field.fields, row))
+          if (inner.length > 0) {
+            problems[field.name] = `Row ${index + 1}: ${inner[0]}`
+            break
+          }
+        }
+      continue
+    }
     if (field.kind === 'text') {
       const text = String(value)
       if (field.minLength !== undefined && text.length < field.minLength)
@@ -91,6 +109,8 @@ export function sentValues(fields, values, typedSecrets) {
   const out = {}
   for (const field of visibleFields(fields, values)) {
     if (field.kind === 'secret' && !typedSecrets?.has(field.name)) continue
+    // A read-only field is the screen's to show, never the person's to send (story 329).
+    if (field.readOnly) continue
     if (values?.[field.name] !== undefined) out[field.name] = values[field.name]
   }
   return out

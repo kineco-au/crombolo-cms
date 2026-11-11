@@ -23,7 +23,7 @@ import {
   BUNDLE_SCHEMA_VERSION,
   backOfficeModules,
   exportedEntry,
-  OLDEST_BUNDLE_SCHEMA_VERSION,
+  LAYOUT_SCHEMA_VERSION,
   type PackageJson,
   REASON_MAX,
   readPackageJson,
@@ -46,6 +46,8 @@ export interface MigrationPlan {
   problems: string[]
   /** `actAs` rewritten to `user.delegate` (story 325), and the area permissions that made redundant. */
   delegates?: { dropped: string[] }
+  /** Entries whose back-office code could be a described screen instead (story 329). */
+  couldBeScreens?: string[]
 }
 
 /**
@@ -146,9 +148,14 @@ export function planMigration(dir: string, options: { reason?: string } = {}): M
   const field = json.crombolo as Record<string, unknown> | undefined
   if (field?.bundleType !== 'extension') return empty('it is not an extension')
   const schema = typeof field.schemaVersion === 'number' ? field.schemaVersion : 1
-  if (schema >= OLDEST_BUNDLE_SCHEMA_VERSION) {
+  // Schema 5 has the layout already: 6 is the number, actAs retired, and a note of what could be a screen.
+  if (schema >= LAYOUT_SCHEMA_VERSION) {
     const retired = retireActAs(field.permissions)
-    if (!retired) return empty(`it is already written for bundle schema ${schema}`)
+    if (!retired && schema >= BUNDLE_SCHEMA_VERSION)
+      return empty(`it is already written for bundle schema ${schema}`)
+    const couldBeScreens = (Array.isArray(field.extensions) ? field.extensions : [])
+      .filter((entry) => entry && typeof entry === 'object' && 'element' in (entry as object))
+      .map((entry) => String((entry as { alias?: unknown }).alias ?? 'an entry'))
     return {
       moves: [],
       json: {
@@ -156,14 +163,15 @@ export function planMigration(dir: string, options: { reason?: string } = {}): M
         crombolo: {
           ...field,
           schemaVersion: BUNDLE_SCHEMA_VERSION,
-          permissions: retired.permissions,
+          ...(retired ? { permissions: retired.permissions } : {}),
         },
       },
       asksForBackOfficeCode: false,
       dropsSignature: existsSync(join(dir, 'provenance.json')),
       imports: [],
       problems: [],
-      delegates: { dropped: retired.dropped },
+      ...(retired ? { delegates: { dropped: retired.dropped } } : {}),
+      ...(couldBeScreens.length > 0 ? { couldBeScreens } : {}),
     }
   }
   if (field.permissions !== undefined && Array.isArray(field.permissions))

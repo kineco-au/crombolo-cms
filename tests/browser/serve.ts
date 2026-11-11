@@ -12,6 +12,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { join } from 'node:path'
+import { packageInRoot, prepareRoot, recordExtension } from '@crombolo/backoffice-host'
 import { DEFAULT_DATA_TYPES } from '@crombolo/data'
 import { createServer, loadConfig, VERSION } from '@crombolo/server'
 import { BLOCK_ONLY_ELEMENT_TYPE, BROWSER_ADMIN } from './fixtures.ts'
@@ -163,14 +164,20 @@ type = "aliasedBlocks"
 
 // A bundle with a side panel and its header toggle, for the side-panel test
 // (story 182). The panel counts clicks, so a test can tell its state survived.
-const sidePanel = join(root, 'node_modules', 'test-side-panel')
+// Each fixture extension in a root of its own, recorded, as an install puts it (story 326).
+prepareRoot(root, 'test-side-panel')
+recordExtension(root, 'test-side-panel', { name: 'test-side-panel', version: '1.0.0' })
+const sidePanel = packageInRoot(root, 'test-side-panel', 'test-side-panel')
 mkdirSync(sidePanel, { recursive: true })
 writeFileSync(
   join(root, 'package.json'),
   JSON.stringify({
     name: 'browser-site',
     private: true,
-    dependencies: { 'test-side-panel': '1.0.0', 'test-screens': '1.0.0' },
+    dependencies: {
+      // The shipped Redirects, linked from the workspace as a developer's is (stories 326, 329).
+      '@crombolo/simple-redirects': 'workspace:*',
+    },
   }),
 )
 writeFileSync(
@@ -182,7 +189,7 @@ writeFileSync(
     crombolo: {
       bundleType: 'extension',
       id: 'test-side-panel',
-      schemaVersion: 5,
+      schemaVersion: 6,
       // Its screens may reach this origin, and only this one (story 313).
       permissions: {
         'backoffice.code': 'Shows its notes beside the page',
@@ -224,7 +231,9 @@ export default TestNotesPanel
 
 // An extension whose Settings dashboard is a screen it describes (story 323): a
 // table of rules with a confirmed Delete, and a form whose fields depend on a choice.
-const screens = join(root, 'node_modules', 'test-screens')
+prepareRoot(root, 'test-screens')
+recordExtension(root, 'test-screens', { name: 'test-screens', version: '1.0.0' })
+const screens = packageInRoot(root, 'test-screens', 'test-screens')
 mkdirSync(join(screens, 'src', 'server'), { recursive: true })
 writeFileSync(
   join(screens, 'package.json'),
@@ -331,6 +340,7 @@ const server = await createServer(
           origins: ['https://notes.crombolo.test'],
         },
         'test-screens': { grant: [] },
+        redirects: { grant: ['redirects.read', 'redirects.write', 'content.read'] },
       },
       sendUserLink: async (message) => {
         appendFileSync(

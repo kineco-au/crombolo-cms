@@ -113,8 +113,25 @@ describe('extension migrate', () => {
     const listed = schema4({ server: 'seo', schemaVersion: 3, permissions: ['redirects.read'] }, {})
     expect(planMigration(listed).problems.join()).toContain('give each its reason')
 
-    const current = schema4({ schemaVersion: 5, permissions: {} }, {})
-    expect(planMigration(current).problems.join()).toContain('already written for bundle schema 5')
+    const current = schema4({ schemaVersion: 6, permissions: {} }, {})
+    expect(planMigration(current).problems.join()).toContain('already written for bundle schema 6')
+  })
+
+  test('takes schema 5 to 6 with nothing moved, naming entries that could be screens (story 329)', () => {
+    const five = schema4(
+      {
+        server: 'seo',
+        schemaVersion: 5,
+        permissions: { 'backoffice.code': 'Shows its report' },
+        extensions: [{ type: 'dashboard', alias: 'Acme.Seo', element: 'src/backoffice/seo.js' }],
+      },
+      {},
+    )
+    const plan = planMigration(five)
+    expect(plan.problems).toEqual([])
+    expect(plan.moves).toEqual([])
+    expect((plan.json.crombolo as { schemaVersion: number }).schemaVersion).toBe(6)
+    expect(plan.couldBeScreens).toEqual(['Acme.Seo'])
   })
 
   test('a signature no longer matches, so it is removed', () => {

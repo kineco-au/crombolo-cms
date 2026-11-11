@@ -124,8 +124,14 @@ export function screenEntryProblems(f: Record<string, unknown>, schema: number):
   return problems
 }
 
-/** The oldest schema read: an extension at 4 or before is refused until it is migrated (story 320). */
-export const OLDEST_BUNDLE_SCHEMA_VERSION = 5
+/**
+ * The oldest schema read: an extension at 5 or before is refused until it is
+ * migrated (stories 320, 329).
+ */
+export const OLDEST_BUNDLE_SCHEMA_VERSION = 6
+
+/** The schema that put an extension's code in `src/server/` and `src/backoffice/` (story 320). */
+export const LAYOUT_SCHEMA_VERSION = 5
 
 /**
  * The oldest server half the site's config may still wire in itself: its own
@@ -263,12 +269,14 @@ export function schemaProblem(schema: number, options: { wired?: boolean } = {})
       ? 'it declares the permissions it needs in "crombolo.permissions" (docs/bundles.md, "Permissions")'
       : '',
     schema < 4 && !options.wired ? 'each permission gives its reason' : '',
-    options.wired
+    options.wired || schema >= LAYOUT_SCHEMA_VERSION
       ? ''
-      : `its server code moves to ${SERVER_DIR}/ and its back-office code to ${BACKOFFICE_DIR}/, which \`crombolo extension migrate <dir>\` does`,
+      : `its server code moves to ${SERVER_DIR}/ and its back-office code to ${BACKOFFICE_DIR}/`,
+    options.wired ? '' : '"actAs" becomes "user.delegate" (story 325)',
   ].filter(Boolean)
+  const migrate = options.wired ? '' : ', which `crombolo extension migrate <dir>` does'
   const reads = options.wired ? OLDEST_WIRED_SCHEMA_VERSION : BUNDLE_SCHEMA_VERSION
-  return `it is written for bundle schema ${schema}, and this release reads ${reads}${options.wired ? ` to ${BUNDLE_SCHEMA_VERSION}` : ''}: ${changes.join(', and ')}, with "crombolo.schemaVersion": ${BUNDLE_SCHEMA_VERSION}${options.wired ? '' : '; then publish it again'}`
+  return `it is written for bundle schema ${schema}, and this release reads ${reads}${options.wired ? ` to ${BUNDLE_SCHEMA_VERSION}` : ''}: ${changes.join(', and ')}, with "crombolo.schemaVersion": ${BUNDLE_SCHEMA_VERSION}${migrate}${options.wired ? '' : '; then publish it again'}`
 }
 
 /**

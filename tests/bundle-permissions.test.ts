@@ -41,7 +41,7 @@ const manifest = (crombolo: Record<string, unknown>) => ({
     bundleType: 'extension',
     id: 'notes',
     server: 'notes',
-    schemaVersion: 5,
+    schemaVersion: 6,
     permissions: {},
     ...crombolo,
   },

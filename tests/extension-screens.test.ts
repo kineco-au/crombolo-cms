@@ -165,6 +165,68 @@ describe('the tree, held to the catalogue on the server', () => {
   })
 })
 
+describe('a list field and a read-only one (story 329)', () => {
+  const mappings = {
+    kind: 'list',
+    name: 'mappings',
+    label: 'Group mappings',
+    min: 1,
+    fields: [
+      { kind: 'text', name: 'claim', label: 'Entra group', required: true },
+      {
+        kind: 'choice',
+        name: 'group',
+        label: 'Group here',
+        options: [{ value: 'admin', label: 'Admin' }],
+      },
+    ],
+  }
+
+  test('a list keeps its sub-fields of the kinds a row may hold, and its rows as plain objects', () => {
+    const { result, dropped } = normaliseScreenResult({
+      type: 'screen',
+      title: 'Entra',
+      body: [
+        {
+          type: 'form',
+          fields: [
+            { ...mappings, fields: [...mappings.fields, { kind: 'page', name: 'p', label: 'P' }] },
+            { kind: 'text', name: 'tenant', label: 'Tenant', readOnly: true },
+          ],
+          values: {
+            mappings: [{ claim: 'abc', group: 'admin', extra: { deep: 1 } }, 'not a row'],
+            tenant: 't',
+          },
+          actions: [],
+        },
+      ],
+    })
+    const formNode = result.screen.body[0] as unknown as {
+      fields: { kind: string; fields?: { name: string }[]; readOnly?: boolean }[]
+      values: Record<string, unknown>
+    }
+    expect(formNode.fields[0]?.fields?.map((f) => f.name)).toEqual(['claim', 'group'])
+    expect(formNode.fields[1]?.readOnly).toBe(true)
+    expect(formNode.values.mappings).toEqual([{ claim: 'abc', group: 'admin' }])
+    expect(dropped).toContain('field page in a list')
+  })
+
+  test('each row is checked, the bounds are held, and a read-only field is never sent', () => {
+    expect(fieldProblems([mappings], { mappings: [] })).toEqual({
+      mappings: 'Group mappings needs at least 1.',
+    })
+    expect(fieldProblems([mappings], { mappings: [{ claim: '', group: 'admin' }] })).toEqual({
+      mappings: 'Row 1: Entra group is required.',
+    })
+    expect(fieldProblems([mappings], { mappings: [{ claim: 'x', group: 'admin' }] })).toEqual({})
+    const fields = [
+      { kind: 'text', name: 'tenant', label: 'Tenant', readOnly: true },
+      { kind: 'text', name: 'name', label: 'Name' },
+    ]
+    expect(sentValues(fields, { tenant: 't', name: 'n' }, new Set())).toEqual({ name: 'n' })
+  })
+})
+
 describe('in the manifest, schema 6', () => {
   const field = (entry: object, over: object = {}) => ({
     server: 'panel',
@@ -483,5 +545,19 @@ describe('a described screen, through its own process', () => {
     const { h, call } = await panelSite()
     const writer = await signInAsGroup(h, 'writer')
     expect((await call({}, writer)).status).toBe(403)
+  })
+})
+
+describe('the channel', () => {
+  test('an object two siblings share reaches both, and a real cycle is still cut', async () => {
+    const { encode, decode } = await import('../packages/extension/src/channel.ts')
+    const shared = { audience: 'user', id: 'entra' }
+    const sent = decode(await encode([{ input: shared }, { input: shared }])) as {
+      input?: unknown
+    }[]
+    expect(sent).toEqual([{ input: shared }, { input: shared }])
+    const looped: Record<string, unknown> = { name: 'a' }
+    looped.self = looped
+    expect(decode(await encode(looped))).toEqual({ name: 'a' })
   })
 })

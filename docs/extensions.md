@@ -159,7 +159,10 @@ export function redirects() {
 - **The catalogue:** `screen` (a title, a toolbar of buttons and a `search`, a body);
   `table` with `text`, `code`, `tag`, `link` and `date` cells and per-row buttons;
   `form` with `text`, `number`, `boolean`, `choice`, `page`, `media`, `member` and
-  `secret` fields; `button`; `notice`; `problem`; `empty`; `tabs`, with no tabs
+  `secret` fields, and from story 329 a `list` field (rows of `text`, `number`,
+  `boolean` and `choice` sub-fields, added and removed in the browser, within its
+  `min` and `max`, sent as an array of objects); any field may be `readOnly`,
+  drawn disabled and never sent back; `button`; `notice`; `problem`; `empty`; `tabs`, with no tabs
   inside; `progress`. The builders are exported from `@crombolo/extension`, and
   the types from `@crombolo/extension/screens`. It grows by request: each addition
   is host code.

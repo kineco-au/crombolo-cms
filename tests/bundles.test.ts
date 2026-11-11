@@ -658,7 +658,7 @@ describe('the files half of a package', () => {
       crombolo: {
         bundleType: 'extension',
         server: 'extension',
-        schemaVersion: 5,
+        schemaVersion: 6,
         permissions: { templates: expect.any(String) },
       },
     })

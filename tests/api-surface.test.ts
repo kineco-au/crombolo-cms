@@ -197,7 +197,7 @@ describe('an outside consumer', () => {
         bundleType: 'extension',
         id: 'greetings',
         server: 'greetings',
-        schemaVersion: 5,
+        schemaVersion: 6,
         permissions: {},
       },
     }

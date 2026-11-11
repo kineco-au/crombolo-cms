@@ -322,7 +322,7 @@ describe('a template that wires a server bundle', () => {
     // Granted by the site's code, with nothing imported (story 310).
     expect(config).not.toContain('@crombolo/simple-redirects')
     expect(config).toContain(
-      "redirects: { grant: ['backoffice.code', 'redirects.read', 'redirects.write', 'content.read'] }",
+      "redirects: { grant: ['redirects.read', 'redirects.write', 'content.read'] }",
     )
     // The site is still named what was asked for, which a template shipping its
     // own config file would have thrown away.
@@ -343,7 +343,7 @@ describe('a template that wires a server bundle', () => {
       {
         package: '@crombolo/simple-redirects',
         id: 'redirects',
-        grant: ['backoffice.code', 'redirects.read', 'redirects.write', 'content.read'],
+        grant: ['redirects.read', 'redirects.write', 'content.read'],
       },
     ])
   })

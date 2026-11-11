@@ -14,7 +14,7 @@ import {
   IdentityProviderOverrides,
   oidc,
 } from '@crombolo/server'
-import { type Harness, signedInServer, signInAsGroup } from './support/harness.ts'
+import { type Harness, signedInServer, signInAsGroup, V1 } from './support/harness.ts'
 
 const open: Harness[] = []
 const dirs: string[] = []
@@ -141,7 +141,7 @@ async function site(config: Partial<CromboloConfig> = {}, section?: 'content') {
       schemaDir: join(root, 'schema'),
       extensions: {
         [ENTRA_BUNDLE_ID]: {
-          grant: ['backoffice.code', 'identityProviders.read', 'identityProviders.write'],
+          grant: ['identityProviders.read', 'identityProviders.write'],
           ...(section ? { settings: { section } } : {}),
         },
       },
@@ -258,5 +258,103 @@ describe(`the Entra bundle (${process.env.CROMBOLO_DB ?? 'sqlite'})`, () => {
     expect((await editor.call(`${base}/providers/user/entra`, { method: 'DELETE' })).status).toBe(
       403,
     )
+  })
+})
+
+describe(`the described screen (story 329, ${process.env.CROMBOLO_DB ?? 'sqlite'})`, () => {
+  type Answer = {
+    screen: { title: string; body: { type: string; [key: string]: unknown }[] }
+    notice?: string
+  }
+  type FormNode = {
+    fields: { name: string; kind: string; readOnly?: boolean; fields?: { name: string }[] }[]
+    values: Record<string, unknown>
+    actions: { action: string; input?: Record<string, unknown> }[]
+  }
+  const call = async (h: Harness, base: string, body: object = {}) => {
+    const response = await h.post(`${base}/_screen/sign-in`, body)
+    expect(response.status).toBe(200)
+    return (await response.json()) as Answer
+  }
+  const formOf = (answer: Answer): FormNode => {
+    const tabs = answer.screen.body.find((node) => node.type === 'tabs') as unknown as {
+      tabs: { body: { type: string }[] }[]
+    }
+    return tabs.tabs[0]?.body.find((node) => node.type === 'form') as unknown as FormNode
+  }
+
+  test('a tab per Entra sign-in, its mappings a list, and saving changes it', async () => {
+    const { h, base } = await site({ secretKey: 'a-secret-key-long-enough-for-sealing-0123456789' })
+    const form = formOf(await call(h, base))
+    const names = form.fields.map((f) => f.name)
+    expect(names.slice(0, 7)).toEqual([
+      'name',
+      'tenantId',
+      'clientId',
+      'clientSecret',
+      'autoCreate',
+      'linkByEmail',
+      'emailsVerified',
+    ])
+    expect(form.fields.find((f) => f.name === 'mappings')).toMatchObject({
+      kind: 'list',
+      fields: [{ name: 'claim' }, { name: 'group' }],
+    })
+    // The secret is never sent to the browser.
+    expect('clientSecret' in form.values).toBe(false)
+    const save = form.actions.find((a) => a.action === 'save')
+    const saved = await call(h, base, {
+      action: 'save',
+      input: {
+        ...save?.input,
+        values: {
+          ...form.values,
+          tenantId: 'fabrikam',
+          mappings: [{ claim: 'g-1', group: 'admin' }],
+        },
+      },
+    })
+    expect(
+      saved.notice,
+      JSON.stringify([save, saved.screen.body.filter((n) => n.type === 'problem')]),
+    ).toBe('Saved. It applies at the next sign-in.')
+    const after = formOf(saved)
+    expect(after.values).toMatchObject({
+      tenantId: 'fabrikam',
+      mappings: [{ claim: 'g-1', group: 'admin' }],
+    })
+    expect(after.actions.map((a) => a.action)).toContain('reset')
+  })
+
+  test('is read-only, and refuses a change, for someone who is not an administrator', async () => {
+    const { h, base } = await site()
+    const created = await h.post(`${V1}/user-group`, {
+      name: 'Builders',
+      alias: 'builders',
+      sections: ['Umb.Section.Settings'],
+      languages: [],
+      hasAccessToAllLanguages: true,
+      documentRootAccess: true,
+      documentStartNode: null,
+      mediaRootAccess: true,
+      mediaStartNode: null,
+      elementRootAccess: false,
+      elementStartNode: null,
+      fallbackPermissions: [],
+      permissions: [],
+    })
+    expect(created.status).toBe(201)
+    const builder = await signInAsGroup(h, 'builders')
+    const answer = await call(builder, base)
+    const form = formOf(answer)
+    expect(form.fields.every((f) => f.readOnly)).toBe(true)
+    expect(form.actions.map((a) => a.action)).toEqual(['test'])
+    const refused = await call(builder, base, {
+      action: 'save',
+      input: { audience: 'user', id: 'entra', values: { tenantId: 'x' } },
+    })
+    expect(refused.screen.body.find((node) => node.type === 'problem')).toMatchObject({
+      text: 'Only an administrator can change how people sign in.',
+    })
   })
 })

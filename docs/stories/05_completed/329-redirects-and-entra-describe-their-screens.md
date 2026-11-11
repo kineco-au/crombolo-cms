@@ -110,11 +110,42 @@ behaviours that stay in the browser, conditional fields and the confirm, are dec
 
 ## Acceptance criteria
 
-- [ ] Redirects declares `screens` and no `backoffice.code`; its workspace lists, filters,
+- [x] Redirects declares `screens` and no `backoffice.code`; its workspace lists, filters,
       adds, edits and deletes rules, with the page picker, the confirm and the notices.
-- [ ] Entra's settings screen is described, its group mappings a `list` field and its locked
+- [x] Entra's settings screen is described, its group mappings a `list` field and its locked
       fields `readOnly`.
-- [ ] Both install at the Limited level with the panel from story 324.
-- [ ] `extension migrate` takes a schema 5 package to 6, and a schema 5 extension is refused
+- [x] Both install at the Limited level with the panel from story 324.
+- [x] `extension migrate` takes a schema 5 package to 6, and a schema 5 extension is refused
       until it is.
-- [ ] Browser tests for both pass; docs and release notes.
+- [x] Browser tests for both pass; docs and release notes.
+
+## What was built (2026-11-11)
+
+- **The catalogue:** `readOnly` on any field, and the `list` field, in `screens.ts`, the
+  normaliser (a list's sub-fields held to `text`, `number`, `boolean` and `choice`, its rows
+  to plain objects), the model (each row checked, `min` held even when empty, read-only
+  fields never sent) and the element (rows with add and remove, read-only drawn disabled).
+- **Redirects** describes `screens.rules`: the table with source tags and Edit and Delete
+  where `editable`, the search, the editor with the page picker shown for a page target and
+  hints for regex and prefix, and refusals kept in the editor as a `problem`. Its manifest
+  names the screen; `backoffice.code` and `src/backoffice/` are gone; its routes stay.
+- **Entra** describes `screens['sign-in']`: a tab per Entra sign-in with the redirect path,
+  a form with the group mappings as a `list` and the default groups as one switch each,
+  every field read-only for someone who is not an administrator, and Save, Test, "Use the
+  code's settings" and "Remove the secret kept here". A screen id is lower case, so
+  `sign-in`.
+- **Found and fixed on the way:** the channel encoded an array's items at once with one
+  shared set of objects in progress, so two siblings sharing an object lost it from one as
+  if it were a cycle (two buttons sharing an `input`). Each branch now carries its own
+  ancestors; a test covers both the shared object and a real cycle.
+- **Schema 6 only:** `OLDEST_BUNDLE_SCHEMA_VERSION` 6, `LAYOUT_SCHEMA_VERSION` 5;
+  `schemaProblem` names `actAs` and migrate; migrate takes 5 to 6 in place, with
+  `couldBeScreens`; the Bundle Editor writes 6; every fixture, the harbourstone sites' grants
+  and the browser site follow. The browser site's fixture extensions moved into roots
+  (story 326), which they had not yet.
+- **Not done:** an Entra browser test. The browser site declares no Entra sign-in; the
+  screen is covered through its process in `tests/entra-bundle.test.ts`.
+- **Tests:** `tests/simple-redirects.test.ts` and `tests/entra-bundle.test.ts` (the screens
+  through their processes), `tests/extension-screens.test.ts` (list, read-only, the channel),
+  `tests/extension-migrate.test.ts` (5 to 6), `tests/browser/redirects-screen.browser.ts`,
+  run locally and passing with the screens and side-panel browser tests.

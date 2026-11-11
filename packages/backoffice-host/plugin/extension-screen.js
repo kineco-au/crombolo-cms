@@ -245,17 +245,70 @@ export default class CromboloExtensionScreenElement extends UmbLitElement {
     </uui-table>`
   }
 
-  #input(form, field, value) {
+  /** A list's rows, each sub-field drawn as its own field, with add and remove (story 329). */
+  #list(form, field, value) {
+    const rows = Array.isArray(value) ? value : []
     const set = (next) => this.#set(form, field, next)
+    const blank = Object.fromEntries(
+      field.fields.map((sub) => [
+        sub.name,
+        sub.kind === 'boolean' ? false : sub.kind === 'number' ? null : '',
+      ]),
+    )
+    const canAdd = !field.readOnly && (field.max === undefined || rows.length < field.max)
+    const canRemove = !field.readOnly && (field.min === undefined || rows.length > field.min)
+    return html`<div class="list">
+      ${rows.map(
+        (row, index) => html`<div class="list-row">
+          ${field.fields.map((sub) =>
+            this.#input(
+              form,
+              { ...sub, readOnly: field.readOnly || sub.readOnly },
+              row[sub.name],
+              (next) =>
+                set(
+                  rows.map((other, at) => (at === index ? { ...other, [sub.name]: next } : other)),
+                ),
+            ),
+          )}
+          ${
+            canRemove
+              ? html`<uui-button
+                  look="secondary"
+                  compact
+                  label="Remove"
+                  @click=${() => set(rows.filter((_, at) => at !== index))}></uui-button>`
+              : nothing
+          }
+        </div>`,
+      )}
+      ${
+        canAdd
+          ? html`<uui-button
+              look="secondary"
+              label=${field.addLabel ?? 'Add'}
+              @click=${() => set([...rows, { ...blank }])}></uui-button>`
+          : nothing
+      }
+    </div>`
+  }
+
+  #input(form, field, value, onChange) {
+    const set = onChange ?? ((next) => this.#set(form, field, next))
+    const locked = field.readOnly === true
     switch (field.kind) {
+      case 'list':
+        return this.#list(form, field, value)
       case 'boolean':
         return html`<uui-toggle
           label=${field.label}
+          ?disabled=${locked}
           .checked=${value === true}
           @change=${(event) => set(event.target.checked === true)}></uui-toggle>`
       case 'choice':
         return html`<uui-select
           label=${field.label}
+          ?disabled=${locked}
           .options=${(field.options ?? []).map((option) => ({
             value: option.value,
             name: option.label,
@@ -264,16 +317,19 @@ export default class CromboloExtensionScreenElement extends UmbLitElement {
           @change=${(event) => set(event.target.value)}></uui-select>`
       case 'page':
         return html`<umb-input-document
+          ?readonly=${locked}
           max="1"
           .selection=${value ? [value] : []}
           @change=${(event) => set(event.target.selection?.[0] ?? '')}></umb-input-document>`
       case 'media':
         return html`<umb-input-media
+          ?readonly=${locked}
           max="1"
           .selection=${value ? [value] : []}
           @change=${(event) => set(event.target.selection?.[0] ?? '')}></umb-input-media>`
       case 'member':
         return html`<umb-input-member
+          ?readonly=${locked}
           max="1"
           .selection=${value ? [value] : []}
           @change=${(event) => set(event.target.selection?.[0] ?? '')}></umb-input-member>`
@@ -281,6 +337,7 @@ export default class CromboloExtensionScreenElement extends UmbLitElement {
         if (field.multiline)
           return html`<uui-textarea
             label=${field.label}
+            ?readonly=${locked}
             placeholder=${field.placeholder ?? ''}
             .value=${value ?? ''}
             @input=${(event) => set(event.target.value)}></uui-textarea>`
@@ -288,6 +345,7 @@ export default class CromboloExtensionScreenElement extends UmbLitElement {
     }
     return html`<uui-input
       label=${field.label}
+      ?readonly=${locked}
       type=${field.kind === 'secret' ? 'password' : field.kind === 'number' ? 'number' : 'text'}
       placeholder=${field.placeholder ?? ''}
       .value=${value ?? ''}
@@ -462,6 +520,16 @@ export default class CromboloExtensionScreenElement extends UmbLitElement {
       display: flex;
       flex-direction: column;
       gap: var(--uui-size-space-2, 6px);
+    }
+    .list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--uui-size-space-2, 6px);
+    }
+    .list-row {
+      display: flex;
+      gap: var(--uui-size-space-2, 6px);
+      align-items: center;
     }
     .tab {
       display: flex;

@@ -60,6 +60,10 @@ export default class ExtensionMigrate extends BaseCommand {
       this.say(
         `  asks     user.delegate in place of actAs: it acts for the person using it${plan.delegates.dropped.length > 0 ? `, which reaches ${plan.delegates.dropped.join(', ')} already` : ''}; an administrator grants it again`,
       )
+    for (const alias of plan.couldBeScreens ?? [])
+      this.say(
+        `  could be ${alias}: its back-office code could be a screen its server half describes, which needs no backoffice.code (docs/extensions.md, "Screens")`,
+      )
     if (plan.dropsSignature)
       this.say(
         '  signed   no longer: provenance.json is removed, so sign it again before publishing',

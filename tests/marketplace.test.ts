@@ -76,7 +76,7 @@ const manifest = (name: string, version: string, field: Record<string, unknown> 
   crombolo: {
     id: idOf(name),
     bundleType: 'extension',
-    schemaVersion: 5,
+    schemaVersion: 6,
     extensions: [{ type: 'menuItem', alias: `${name}.m`, name, meta: { label: name } }],
     ...field,
   },
@@ -140,7 +140,7 @@ function registry(options: {
               options.server?.includes(name)
                 ? {
                     server: 'serve',
-                    schemaVersion: 5,
+                    schemaVersion: 6,
                     permissions: { 'redirects.read': 'Lists the rules' },
                     ...options.field?.[name],
                   }
@@ -540,7 +540,7 @@ describe('a bundle that runs code on the server (story 194)', () => {
       server
         ? {
             server: 'serve',
-            schemaVersion: 5,
+            schemaVersion: 6,
             permissions: { 'redirects.read': 'Lists the rules' },
           }
         : {},
@@ -824,7 +824,7 @@ describe('the endpoints', () => {
           versions: {
             '1.2.3': manifest('@acme/tasks', '1.2.3', {
               server: 'serve',
-              schemaVersion: 5,
+              schemaVersion: 6,
               permissions: { 'redirects.read': 'Lists the rules' },
             }),
           },

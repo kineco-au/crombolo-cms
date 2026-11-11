@@ -102,7 +102,7 @@ possible halves:
 | `extensions` | the backoffice half, Umbraco extension manifests (Part 2) |
 | `content` | `true` when the package carries a payload: `bundle.json` at its root, and the content, schema, components, styles, scripts, dictionary items and code it lists, beside it (Part 1) |
 | `server` | the factory the package exports for its server half (Part 3). A declaration only: core never imports it |
-| `schemaVersion` | the bundle contract the package is written for; absent means `1`. A package with code must say at least `5` (story 320), or it is refused at install and at boot; `6` lets an entry name a described screen (story 323, [`extensions.md`](extensions.md), "Screens") |
+| `schemaVersion` | the bundle contract the package is written for; absent means `1`. A package with code must say `6` (stories 323, 329), or it is refused at install and at boot, naming `crombolo extension migrate`, which takes 5 to 6; `6` lets an entry name a described screen ([`extensions.md`](extensions.md), "Screens") |
 
 A manifest with none of the three halves is refused, because it declares a
 bundle that does nothing. `peerDependencies["@crombolo/crombolo"]` is required of
@@ -1451,7 +1451,7 @@ writes through the transfer package's pure writer (`writeBundle`).
 | The two native views | `backoffice-host/plugin/bundles-marketplace.js`, `bundles-installed.js` |
 | The App_Plugins notice | `server/src/extensions-notice.ts` |
 | Server-side bundles | `server/src/bundles.ts`, wired in `server.ts`, `bundles` in `config.ts`, matched to their packages at boot |
-| The redirects bundle | `packages/simple-redirects` — `src/server/index.ts` and `src/backoffice/` |
+| The redirects bundle | `packages/simple-redirects` — `src/server/index.ts`, its screen described there (story 329) |
 
 Adding the migration needed `bun run release:version 0.5.0` first: `v0.4.0` was
 tagged and `tests/migrations.test.ts` asserts `release <= VERSION`, so a

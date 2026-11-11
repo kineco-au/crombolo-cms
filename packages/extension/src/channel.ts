@@ -123,7 +123,9 @@ export async function encode(
   if (typeof (value as { then?: unknown }).then === 'function')
     return encode(await (value as PromiseLike<unknown>), hooks, key, seen)
   if (seen.has(value)) return undefined
-  seen.add(value)
+  // Its own ancestors only: an array's items are encoded at once, so siblings that share
+  // an object must not see each other's, or the second loses it as if it were a cycle.
+  seen = new Set(seen).add(value)
   try {
     if (value instanceof Date) return { $date: value.toISOString() }
     if (value instanceof URL) return { $url: value.href }

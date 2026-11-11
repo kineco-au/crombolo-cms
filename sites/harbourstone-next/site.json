@@ -8,7 +8,7 @@
     {
       "package": "@crombolo/simple-redirects",
       "id": "redirects",
-      "grant": ["backoffice.code", "redirects.read", "redirects.write", "content.read"]
+      "grant": ["redirects.read", "redirects.write", "content.read"]
     }
   ]
 }

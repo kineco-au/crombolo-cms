@@ -8,7 +8,7 @@ export default defineConfig({
   // An installed extension runs once granted (story 310). The site's code grants
   // Simple Redirects exactly what it asks for; take it out to turn it off.
   extensions: {
-    redirects: { grant: ['backoffice.code', 'redirects.read', 'redirects.write', 'content.read'] },
+    redirects: { grant: ['redirects.read', 'redirects.write', 'content.read'] },
   },
   // The Next.js app in web/ reads the site through the Delivery API (story 208).
   // The key is CROMBOLO_DELIVERY_API_KEY, in .env.

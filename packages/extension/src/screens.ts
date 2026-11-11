@@ -5,7 +5,14 @@
  */
 
 /** A value a form holds, or a plain object an action is sent. */
-export type ScreenValue = string | number | boolean | null | readonly string[]
+export type ScreenValue =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly string[]
+  /** A list field's rows. */
+  | readonly Readonly<Record<string, string | number | boolean | null>>[]
 
 export type ScreenValues = Readonly<Record<string, ScreenValue>>
 
@@ -73,6 +80,8 @@ interface FieldBase {
   visibleWhen?: Condition
   required?: boolean
   placeholder?: string
+  /** Drawn disabled and never sent back: the site's code sets it, or the person may not change it. */
+  readOnly?: boolean
 }
 
 export type Field =
@@ -86,9 +95,25 @@ export type Field =
   | (FieldBase & { kind: 'number'; min?: number; max?: number; step?: number })
   | (FieldBase & { kind: 'boolean' })
   | (FieldBase & { kind: 'choice'; options: readonly { value: string; label: string }[] })
-  | (FieldBase & { kind: 'page' | 'media' | 'member' })
+  | (FieldBase & { kind: 'page' })
+  | (FieldBase & { kind: 'media' })
+  | (FieldBase & { kind: 'member' })
   /** Never sent back filled: the field starts empty, and is sent only when typed. */
   | (FieldBase & { kind: 'secret' })
+  /**
+   * Rows of sub-fields, added and removed in the browser and sent as an array
+   * of objects (story 329). A sub-field is any kind but a list, a picker or a secret.
+   */
+  | (FieldBase & {
+      kind: 'list'
+      fields: readonly ListSubField[]
+      addLabel?: string
+      min?: number
+      max?: number
+    })
+
+/** What a list's rows may hold. */
+export type ListSubField = Extract<Field, { kind: 'text' | 'number' | 'boolean' | 'choice' }>
 
 export interface Form {
   type: 'form'
@@ -208,6 +233,12 @@ export const field = {
   media: fieldOf('media'),
   member: fieldOf('member'),
   secret: fieldOf('secret'),
+  list: (
+    name: string,
+    label: string,
+    fields: readonly ListSubField[],
+    rest: Omit<FieldOptions<'list'>, 'fields'> = {},
+  ): FieldOf<'list'> => ({ kind: 'list', name, label, fields, ...rest }),
 }
 
 export const form = (

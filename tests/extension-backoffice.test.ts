@@ -30,7 +30,7 @@ function extension(files: Record<string, string>): BundlePackage {
     crombolo: {
       bundleType: 'extension',
       id: 'acme-seo',
-      schemaVersion: 5,
+      schemaVersion: 6,
       permissions: { 'backoffice.code': 'Shows the SEO report' },
       extensions: [
         { type: 'dashboard', alias: 'Acme.Seo', name: 'SEO', element: 'src/backoffice/seo.ts' },
