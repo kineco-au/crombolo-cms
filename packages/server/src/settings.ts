@@ -278,6 +278,13 @@ const DECLARED = [
       'Creates the password administrator even when an API client is set. Honoured only on localhost.',
   },
   {
+    env: 'CROMBOLO_LOCKED_IDENTITY_PROVIDERS',
+    kind: 'list',
+    section: 'Sign-in and secrets',
+    description:
+      "Identity providers nobody can change in the back office, by id, separated by commas, or `all`: they sign in by the site's configuration alone. A provider declared `locked: true` is locked too.",
+  },
+  {
     env: 'CROMBOLO_SECRET_KEY',
     kind: 'string',
     section: 'Sign-in and secrets',

@@ -97,6 +97,7 @@ rather than the running server. Secret ones are never printed or logged.
 | `CROMBOLO_API_CLIENT_ID` | string | — | An API client an unattended install creates in the administrators group; it starts `crombolo-back-office-`. With it, no password administrator is created unless `CROMBOLO_ADMIN_PASSWORD` is set. Read by the server and the command line. |
 | `CROMBOLO_API_CLIENT_SECRET` | string | — | That client's secret, set together with the id. It is used once, when the client is created. Kept secret: never printed. |
 | `CROMBOLO_LOCAL_ADMIN` | `true` / `false` | `false` | Creates the password administrator even when an API client is set. Honoured only on localhost. |
+| `CROMBOLO_LOCKED_IDENTITY_PROVIDERS` | list | — | Identity providers nobody can change in the back office, by id, separated by commas, or `all`: they sign in by the site's configuration alone. A provider declared `locked: true` is locked too. |
 | `CROMBOLO_SECRET_KEY` | string | — | Seals secrets kept in the database, such as a webhook's headers and two-factor keys; 32 or more characters. Features that need it are not offered without it. Kept secret: never printed. |
 | `CROMBOLO_USERNAME_IS_EMAIL` | `true` / `false` | `true` | A back office user's login is their e-mail address. |
 
@@ -364,7 +365,7 @@ is code rather than a value:
 | `host` | the host service the back office vouches for its user to: `{ origin, signingKey, keyId }`, so a host's tool can tell its own service who is signed in ([`bundles.md`](bundles.md#tools-a-host-provides)) |
 | `hostProvided` | package names the installation provides to every site it runs; a whole-site file leaves them out of what it requires ([`bundles.md`](bundles.md#bundles-a-host-provides)) |
 | `memberIdentityProviders` | identity providers members sign in with on the site: `entra()`, `awsIdentityCenter()`, `oidc()` ([`operations.md`](operations.md#signing-in-through-an-identity-provider)) |
-| `backofficeIdentityProviders` | the same, for backoffice users; a separate list, so staff and members can use different providers |
+| `backofficeIdentityProviders` | the same, for backoffice users; a separate list, so staff and members can use different providers. A provider declared `locked: true` takes no change from the back office (story 305); `CROMBOLO_LOCKED_IDENTITY_PROVIDERS` locks by id from the server |
 | `islands` | where `'use client'` islands' browser code comes from: built with each generation of views by default, or `{ manifest, devServer }` for a site's own Vite build ([`rendering.md`](rendering.md#islands)) |
 | `middleware` | the site's middleware by stage, `{ request, route, page }`, each run in the order listed; its time limit is `CROMBOLO_MIDDLEWARE_TIMEOUT_MS` ([`rendering.md`](rendering.md#middleware)) |
 | `database` | the site's own tables, `{ tables: defineSiteTables(steps), anonymise }`: migrated with crombolo's, and what an anonymised export may carry of each ([`data-model.md`](data-model.md#custom-tables)) |

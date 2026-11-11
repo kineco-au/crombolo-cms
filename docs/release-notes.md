@@ -17,6 +17,13 @@ point at `docs/stories/`.
   written in the form is sent exactly as written. An identity provider's test reaches
   only the same addresses and says whether it answered, never its status or body.
 
+- **An identity provider can be locked, and its secret goes only where it was set for (305).**
+  `locked: true` on a provider, or `CROMBOLO_LOCKED_IDENTITY_PROVIDERS` (ids, or `all`) on
+  the server, and no administrator can change it: it signs in by the config alone. A kept
+  client secret goes only to the issuer and client id it was set for, and the config's only
+  to the config's own: changing the issuer, tenant or client id needs the new secret in the
+  same save. Changes and resets of a provider are audited, without secrets.
+
 ### Changes
 
 - **An extension that dies as it starts says why.** When the CMS could not send an extension its
@@ -31,6 +38,10 @@ point at `docs/stories/`.
 
 ### Upgrade notes
 
+- **A provider whose issuer or client id was changed in the back office without a secret of
+  its own stops offering sign-in** (305). It used to send the config's client secret to the
+  new issuer. The boot logs each such provider; an administrator sets its secret on its
+  screen (Settings → Advanced → Microsoft Entra), or puts it back to the code's settings.
 - **`webhooks.allowPrivateAddresses` is now `CROMBOLO_ALLOW_PRIVATE_ADDRESSES`** (304), or
   `allowPrivateAddresses` at the top of the config, and covers forms and identity
   providers as well as webhooks. A config that still sets the old key does not start,

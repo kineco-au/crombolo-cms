@@ -399,6 +399,27 @@ the sign-in options, group mappings and default groups. A change applies at the
 next sign-in on every node, and "Use the code's settings" puts it back. Keeping
 a client secret there needs `CROMBOLO_SECRET_KEY` ([`bundles.md`](bundles.md)).
 
+**Locking a provider** (story 305). A provider the back office must not change,
+such as one a hosting platform relies on to decide who signs in, is locked:
+`locked: true` on `oidc({...})` or `entra({...})`, or, without touching the
+site's code, `CROMBOLO_LOCKED_IDENTITY_PROVIDERS` on the server, its ids
+separated by commas, or `all`. Either one locks it. A locked provider signs in by
+the config alone, ignoring anything stored before it was locked; every change is
+refused, naming who locked it; Entra's screen shows it read-only, and "Clear the
+changes it ignores" removes what was stored. The boot warns of a locked id the
+config does not declare.
+
+**Where a secret goes** (story 305). A client secret kept here is sent only to
+the issuer and client id it was set for, and the config's own only to the
+config's issuer and client id. Changing the issuer, an Entra tenant or the
+client id needs the new secret in the same save ("A new issuer needs its own
+secret"); changing them back to the config's drops the kept secret. A provider
+that sends somewhere the config did not name with no secret of its own, as an
+override from before 0.62 may, signs nobody in until one is set: the sign-in
+says it is not available, the boot and the log say why, and the screen asks for
+the secret. Every change and reset is audited, with the fields changed and
+never a secret.
+
 ## Two-factor sign-in
 
 Backoffice users and members can turn on a second factor: an authenticator app

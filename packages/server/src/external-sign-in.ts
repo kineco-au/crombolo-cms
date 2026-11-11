@@ -265,6 +265,16 @@ export function createExternalSignIn(
       if (!declared || rest.length > 0) return undefined
       if (request.method !== 'GET') return new Response(null, { status: 405 })
       const provider = options.resolve ? await options.resolve(declared) : declared
+      // Story 305: never a sign-in to an issuer without the secret meant for it.
+      if (provider.unavailable) {
+        options.log?.(provider.unavailable)
+        return redirect(
+          audience.failed(
+            localReturnUrl(new URL(request.url).searchParams.get('returnUrl')) ?? '/',
+            `${provider.oidc.name} sign-in is not available right now. Ask an administrator.`,
+          ),
+        )
+      }
       const client = clientFor(provider)
       if (step === undefined || step === '') return start(request, provider, client)
       if (step === 'callback') return finish(request, provider, client)

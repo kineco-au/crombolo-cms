@@ -282,7 +282,11 @@ export function createMemberAuth(
             applicationUrl: config.applicationUrl,
             secureCookies: config.secureCookies,
             resolve: (provider) =>
-              new IdentityProviderOverrides(db, config.secretKey).apply('member', provider),
+              new IdentityProviderOverrides(
+                db,
+                config.secretKey,
+                config.lockedIdentityProviders,
+              ).apply('member', provider),
           },
         )
 

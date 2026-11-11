@@ -637,7 +637,11 @@ export async function createServer(
             secureCookies: config.secureCookies,
             log: (message) => log.warning('Backoffice sign-in: {message}', { message }),
             resolve: (provider) =>
-              new IdentityProviderOverrides(db, config.secretKey).apply('user', provider),
+              new IdentityProviderOverrides(
+                db,
+                config.secretKey,
+                config.lockedIdentityProviders,
+              ).apply('user', provider),
           },
         )
 

@@ -40,7 +40,7 @@ import {
   ViewSnapshots,
 } from '@crombolo/render'
 import type { SyncReport } from '@crombolo/schema'
-import { recordAudit } from './adapters/audit.ts'
+import { attributed, recordAudit } from './adapters/audit.ts'
 import { createMediaSource, createPublishedContentSource } from './adapters/documents.ts'
 import { backOfficeUrl, documentEditUrl } from './back-office-url.ts'
 import { BACKOFFICE_EXTERNAL_PATH } from './backoffice-external.ts'
@@ -575,6 +575,60 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
    * boot — see `createServerBundles`.
    */
   // Story 198: media as the member, built at the first request.
+  /** The identity providers an extension edits (story 033), auditing each change when told how (305). */
+  const identityProvidersFor = (
+    audit?: Parameters<typeof createBundleIdentityProviders>[0]['audit'],
+  ) =>
+    createBundleIdentityProviders({
+      audit,
+      overrides: new IdentityProviderOverrides(
+        db,
+        config.secretKey,
+        config.lockedIdentityProviders,
+      ),
+      members: config.memberIdentityProviders,
+      backoffice: config.backofficeIdentityProviders,
+      memberCallbackPath: MEMBER_EXTERNAL_SIGN_IN_PATH,
+      backofficeCallbackPath: BACKOFFICE_EXTERNAL_PATH,
+      outbound: { allowPrivateAddresses: config.allowPrivateAddresses },
+      groups: async (audience) =>
+        audience === 'user'
+          ? (await new UserGroupRepository(db).all()).map((g) => ({
+              value: g.alias,
+              name: g.name,
+            }))
+          : (
+              await db.q
+                .selectFrom('node')
+                .select('text')
+                .where('node_object_type', '=', ObjectTypes.MemberGroup)
+                .orderBy('text')
+                .execute()
+            ).map((g) => ({ value: String(g.text), name: String(g.text) })),
+    })
+  // Story 305: said at boot, a provider that signs nobody in and a locked id that names none.
+  void (async () => {
+    const overrides = new IdentityProviderOverrides(
+      db,
+      config.secretKey,
+      config.lockedIdentityProviders,
+    )
+    const declared = [
+      ...config.memberIdentityProviders.map((provider) => ['member', provider] as const),
+      ...config.backofficeIdentityProviders.map((provider) => ['user', provider] as const),
+    ]
+    for (const [audience, provider] of declared) {
+      const effective = await overrides.apply(audience, provider).catch(() => provider)
+      if (effective.unavailable) log.warning('{reason}', { reason: effective.unavailable })
+    }
+    if (Array.isArray(config.lockedIdentityProviders))
+      for (const id of config.lockedIdentityProviders)
+        if (!declared.some(([, provider]) => provider.oidc.id === id))
+          log.warning(
+            'CROMBOLO_LOCKED_IDENTITY_PROVIDERS names {id}, which the config declares no identity provider as.',
+            { id },
+          )
+  })()
   let bundleMedia: BundleMediaFactory | undefined
   let bundleMediaFolders = new Map<string, ResolvedMediaFolder[]>()
   const bundles =
@@ -601,31 +655,27 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
               },
             },
             log: bundleLog('bundle'),
-            identityProviders: createBundleIdentityProviders({
-              overrides: new IdentityProviderOverrides(db, config.secretKey),
-              members: config.memberIdentityProviders,
-              backoffice: config.backofficeIdentityProviders,
-              memberCallbackPath: MEMBER_EXTERNAL_SIGN_IN_PATH,
-              backofficeCallbackPath: BACKOFFICE_EXTERNAL_PATH,
-              outbound: { allowPrivateAddresses: config.allowPrivateAddresses },
-              groups: async (audience) =>
-                audience === 'user'
-                  ? (await new UserGroupRepository(db).all()).map((g) => ({
-                      value: g.alias,
-                      name: g.name,
-                    }))
-                  : (
-                      await db.q
-                        .selectFrom('node')
-                        .select('text')
-                        .where('node_object_type', '=', ObjectTypes.MemberGroup)
-                        .orderBy('text')
-                        .execute()
-                    ).map((g) => ({ value: String(g.text), name: String(g.text) })),
-            }),
+            identityProviders: identityProvidersFor(),
           },
           log: (id) => bundleLog(id),
           callerHost: {
+            // Story 305: each change audited as the person, by the extension.
+            identityProviders: (caller, bundle) =>
+              identityProvidersFor(async (action, provider, detail) => {
+                const person = personOf(caller)
+                const name = bundlePackages.find((pkg) => pkg.id === bundle.id)?.name ?? bundle.id
+                await recordAudit(db, {
+                  category: 'settings',
+                  action,
+                  source: 'request',
+                  userKey: person.personKey,
+                  userName: person.personName,
+                  entityType: 'IdentityProvider',
+                  entityKey: `${provider.audience}:${provider.id}`,
+                  entityName: provider.name,
+                  detail: attributed(name, person.personName, detail),
+                })
+              }),
             // Story 308: the site's areas, as the extension; story 325, or as the person using it.
             api: (caller, bundle) => {
               const pkg = bundlePackages.find((candidate) => candidate.id === bundle.id)

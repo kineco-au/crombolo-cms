@@ -6,7 +6,12 @@
  * sign-in, so a change reaches every node with nothing to invalidate.
  */
 import { type Db, type ExternalLoginAudience, now } from '@crombolo/data'
-import { entraIssuer, type IdentityProvider } from './identity-providers.ts'
+import {
+  entraIssuer,
+  type IdentityProvider,
+  type LockedIdentityProviders,
+  lockOf,
+} from './identity-providers.ts'
 import { type OutboundOptions, OutboundRefused, pinnedFetch } from './outbound-address.ts'
 import { openSecret, SECRET_KEY_VARIABLE, sealSecret, usableSecretKey } from './secrets.ts'
 
@@ -28,8 +33,15 @@ export interface ProviderOverrideInput extends ProviderOverrides {
   clientSecret?: string | null
 }
 
+/** The issuer and client id a kept secret was set for (story 305): it goes nowhere else. */
+interface SecretFor {
+  issuer: string
+  clientId: string
+}
+
 interface Stored extends ProviderOverrides {
   clientSecretSealed?: string
+  secretFor?: SecretFor
 }
 
 const OVERRIDABLE: readonly (keyof ProviderOverrides)[] = [
@@ -47,26 +59,56 @@ const OVERRIDABLE: readonly (keyof ProviderOverrides)[] = [
 const keyOf = (audience: ExternalLoginAudience, id: string) =>
   `crombolo:identity-provider:${audience}:${id}`
 
-/** The provider the config declares, with an administrator's changes on top. Pure. */
+/** Where a provider sends its sign-ins with these changes: its issuer and client id. Pure. */
+function targetOf(code: IdentityProvider, overrides: ProviderOverrides): SecretFor {
+  return {
+    issuer:
+      overrides.issuer ??
+      (code.kind === 'entra' && overrides.tenantId
+        ? entraIssuer(overrides.tenantId)
+        : code.oidc.issuer),
+    clientId: overrides.clientId ?? code.oidc.clientId,
+  }
+}
+
+const sameTarget = (a: SecretFor, b: SecretFor) =>
+  a.issuer === b.issuer && a.clientId === b.clientId
+
+/**
+ * The provider the config declares, with an administrator's changes on top.
+ * A kept secret goes only to the issuer and client id it was set for, and the
+ * config's only to the config's own (story 305); left with neither when the
+ * config gave one, the provider is unavailable rather than signing in without.
+ * A kept secret from before 305, with nothing to say where it was set for, is
+ * taken as set for where the provider now sends. Pure.
+ */
 export function effectiveProvider(
   code: IdentityProvider,
-  overrides: ProviderOverrides & { clientSecret?: string },
+  overrides: ProviderOverrides & { clientSecret?: string; secretFor?: SecretFor },
 ): IdentityProvider {
   const tenantId = overrides.tenantId ?? code.tenantId
-  const issuer =
-    overrides.issuer ??
-    (code.kind === 'entra' && overrides.tenantId
-      ? entraIssuer(overrides.tenantId)
-      : code.oidc.issuer)
+  const target = targetOf(code, overrides)
+  const kept =
+    overrides.clientSecret && (!overrides.secretFor || sameTarget(overrides.secretFor, target))
+      ? overrides.clientSecret
+      : undefined
+  const ownTarget = sameTarget(target, { issuer: code.oidc.issuer, clientId: code.oidc.clientId })
+  const clientSecret = kept ?? (ownTarget ? code.oidc.clientSecret : undefined)
+  const name = overrides.name ?? code.oidc.name
   return {
     ...code,
     ...(tenantId ? { tenantId } : {}),
+    ...(code.oidc.clientSecret && !clientSecret
+      ? {
+          unavailable: `${name} sends to ${target.issuer}, which the config did not name, and has no client secret of its own for it: set one in its settings.`,
+        }
+      : {}),
     oidc: {
       ...code.oidc,
-      name: overrides.name ?? code.oidc.name,
-      issuer,
-      clientId: overrides.clientId ?? code.oidc.clientId,
-      clientSecret: overrides.clientSecret ?? code.oidc.clientSecret,
+      name,
+      issuer: target.issuer,
+      clientId: target.clientId,
+      clientSecret,
     },
     autoCreate: overrides.autoCreate ?? code.autoCreate,
     linkByEmail: overrides.linkByEmail ?? code.linkByEmail,
@@ -79,10 +121,17 @@ export function effectiveProvider(
 export class IdentityProviderOverrides {
   #db: Db
   #secretKey: string | undefined
+  #locked: LockedIdentityProviders
 
-  constructor(db: Db, secretKey: string | undefined) {
+  constructor(db: Db, secretKey: string | undefined, locked: LockedIdentityProviders = []) {
     this.#db = db
     this.#secretKey = usableSecretKey(secretKey)
+    this.#locked = locked
+  }
+
+  /** Who locked a provider against changes here, if anyone (story 305). */
+  lockOf(code: IdentityProvider): 'config' | 'environment' | undefined {
+    return lockOf(code, this.#locked)
   }
 
   async #read(audience: ExternalLoginAudience, id: string): Promise<Stored> {
@@ -103,13 +152,15 @@ export class IdentityProviderOverrides {
     audience: ExternalLoginAudience,
     id: string,
   ): Promise<{ overrides: ProviderOverrides; hasClientSecret: boolean }> {
-    const { clientSecretSealed, ...overrides } = await this.#read(audience, id)
+    const { clientSecretSealed, secretFor: _, ...overrides } = await this.#read(audience, id)
     return { overrides, hasClientSecret: Boolean(clientSecretSealed) }
   }
 
   /** A provider as a sign-in uses it: the config's, with the changes and a kept secret on top. */
   async apply(audience: ExternalLoginAudience, code: IdentityProvider): Promise<IdentityProvider> {
-    const { clientSecretSealed, ...overrides } = await this.#read(audience, code.oidc.id)
+    // A locked provider is the config's, whatever was stored before it was locked.
+    if (this.lockOf(code)) return code
+    const { clientSecretSealed, secretFor, ...overrides } = await this.#read(audience, code.oidc.id)
     if (Object.keys(overrides).length === 0 && !clientSecretSealed) return code
     let clientSecret: string | undefined
     if (clientSecretSealed && this.#secretKey) {
@@ -119,33 +170,71 @@ export class IdentityProviderOverrides {
         clientSecret = undefined
       }
     }
-    return effectiveProvider(code, { ...overrides, clientSecret })
+    return effectiveProvider(code, { ...overrides, clientSecret, secretFor })
   }
 
-  /** Changes some fields. An empty string or an empty value clears a field back to the config's. */
+  /**
+   * Changes some fields. An empty string or an empty value clears a field back
+   * to the config's. A locked provider takes none (story 305), and a change of
+   * where it signs in comes with a secret of its own, or goes back to the
+   * config's issuer, whose secret then applies. Answers the fields changed.
+   */
   async update(
     audience: ExternalLoginAudience,
-    id: string,
+    code: IdentityProvider,
     input: ProviderOverrideInput,
-  ): Promise<{ ok: true } | { ok: false; error: string }> {
+  ): Promise<{ ok: true; changed: string[] } | { ok: false; error: string }> {
+    const lock = this.lockOf(code)
+    if (lock)
+      return {
+        ok: false,
+        error:
+          lock === 'config'
+            ? `${code.oidc.name} is locked by the site's configuration, so it cannot be changed here.`
+            : `${code.oidc.name} is locked by the server's CROMBOLO_LOCKED_IDENTITY_PROVIDERS, so it cannot be changed here.`,
+      }
+    const id = code.oidc.id
     const stored = await this.#read(audience, id)
+    const before = stored.secretFor ?? targetOf(code, stored)
+    const changed: string[] = []
     for (const field of OVERRIDABLE) {
       if (!(field in input)) continue
       const value = input[field]
+      if (JSON.stringify(value ?? '') !== JSON.stringify(stored[field] ?? '')) changed.push(field)
       if (value === undefined || value === null || value === '') delete stored[field]
       else (stored as Record<string, unknown>)[field] = value
     }
-    if (input.clientSecret === null || input.clientSecret === '') delete stored.clientSecretSealed
-    else if (typeof input.clientSecret === 'string') {
+    const after = targetOf(code, stored)
+    const own = sameTarget(after, { issuer: code.oidc.issuer, clientId: code.oidc.clientId })
+    const newSecret = typeof input.clientSecret === 'string' && input.clientSecret !== ''
+    if (!sameTarget(before, after) && !newSecret) {
+      if (!own && (code.oidc.clientSecret || stored.clientSecretSealed))
+        return {
+          ok: false,
+          error: `A new issuer needs its own secret: give ${code.oidc.name} the client secret for ${after.issuer} in the same save.`,
+        }
+      if (own && stored.clientSecretSealed) {
+        delete stored.clientSecretSealed
+        delete stored.secretFor
+        changed.push('clientSecret')
+      }
+    }
+    if (input.clientSecret === null || input.clientSecret === '') {
+      if (stored.clientSecretSealed) changed.push('clientSecret')
+      delete stored.clientSecretSealed
+      delete stored.secretFor
+    } else if (newSecret) {
       if (!this.#secretKey)
         return {
           ok: false,
           error: `Keeping a client secret here needs ${SECRET_KEY_VARIABLE} set on the server.`,
         }
-      stored.clientSecretSealed = sealSecret(input.clientSecret, this.#secretKey)
-    }
+      stored.clientSecretSealed = sealSecret(input.clientSecret as string, this.#secretKey)
+      stored.secretFor = after
+      changed.push('clientSecret')
+    } else if (stored.clientSecretSealed && !stored.secretFor) stored.secretFor = after
     await this.#write(audience, id, stored)
-    return { ok: true }
+    return { ok: true, changed: [...new Set(changed)] }
   }
 
   /** Puts a provider back to what the config says. */
@@ -194,6 +283,12 @@ export interface BundleIdentityProvider {
   overridden: string[]
   /** The path to register with the provider as the redirect URL, after the site's address. */
   callbackPath: string
+  /** Who locked it against changes here (story 305), or null. */
+  locked: 'config' | 'environment' | null
+  /** Changes stored before it was locked, which it now ignores. */
+  ignored: string[]
+  /** It sends somewhere the config did not name with no secret of its own, so it signs nobody in. */
+  missingSecret: boolean
 }
 
 /** The `identityProviders` bundle capability (story 033): edit, never declare. */
@@ -204,6 +299,7 @@ export interface BundleIdentityProviders {
     id: string,
     input: ProviderOverrideInput,
   ): Promise<{ ok: true } | { ok: false; error: string }>
+  /** Back to the config, a locked provider included: how its ignored changes are cleared. */
   reset(audience: ExternalLoginAudience, id: string): Promise<boolean>
   /** Whether the provider's discovery document answers, with what it says if not. */
   test(audience: ExternalLoginAudience, id: string): Promise<{ ok: boolean; message: string }>
@@ -220,6 +316,12 @@ export function createBundleIdentityProviders(options: {
   groups(audience: ExternalLoginAudience): Promise<Array<{ value: string; name: string }>>
   /** Where the test may reach (story 304). */
   outbound?: OutboundOptions
+  /** Records a change for the audit log (story 305): never a secret. */
+  audit?: (
+    action: 'identity provider changed' | 'identity provider reset',
+    provider: { audience: ExternalLoginAudience; id: string; name: string },
+    detail: string | null,
+  ) => Promise<void>
 }): BundleIdentityProviders {
   const declared = (audience: ExternalLoginAudience, id: string) =>
     (audience === 'member' ? options.members : options.backoffice).find((p) => p.oidc.id === id)
@@ -230,6 +332,8 @@ export function createBundleIdentityProviders(options: {
   ): Promise<BundleIdentityProvider> => {
     const effective = await options.overrides.apply(audience, code)
     const { overrides, hasClientSecret } = await options.overrides.get(audience, code.oidc.id)
+    const stored = [...Object.keys(overrides), ...(hasClientSecret ? ['clientSecret'] : [])]
+    const locked = options.overrides.lockOf(code) ?? null
     const base = audience === 'member' ? options.memberCallbackPath : options.backofficeCallbackPath
     return {
       audience,
@@ -245,8 +349,11 @@ export function createBundleIdentityProviders(options: {
       emailsVerified: effective.emailsVerified,
       groupMap: { ...effective.groupMap },
       defaultGroups: [...effective.defaultGroups],
-      overridden: [...Object.keys(overrides), ...(hasClientSecret ? ['clientSecret'] : [])],
+      overridden: locked ? [] : stored,
       callbackPath: `${base}/${code.oidc.id}/callback`,
+      locked,
+      ignored: locked ? stored : [],
+      missingSecret: Boolean(effective.unavailable),
     }
   }
 
@@ -258,13 +365,31 @@ export function createBundleIdentityProviders(options: {
       ])
     },
     async update(audience, id, input) {
-      if (!declared(audience, id))
-        return { ok: false, error: 'The config declares no such identity provider.' }
-      return options.overrides.update(audience, id, input)
+      const code = declared(audience, id)
+      if (!code) return { ok: false, error: 'The config declares no such identity provider.' }
+      const outcome = await options.overrides.update(audience, code, input)
+      if (!outcome.ok) return outcome
+      if (outcome.changed.length > 0)
+        await options.audit?.(
+          'identity provider changed',
+          { audience, id, name: code.oidc.name },
+          outcome.changed
+            .map((field) =>
+              field === 'clientSecret'
+                ? typeof input.clientSecret === 'string' && input.clientSecret !== ''
+                  ? 'client secret set'
+                  : 'client secret cleared'
+                : field,
+            )
+            .join(', '),
+        )
+      return { ok: true }
     },
     async reset(audience, id) {
-      if (!declared(audience, id)) return false
+      const code = declared(audience, id)
+      if (!code) return false
       await options.overrides.reset(audience, id)
+      await options.audit?.('identity provider reset', { audience, id, name: code.oidc.name }, null)
       return true
     },
     groups: (audience) => options.groups(audience),

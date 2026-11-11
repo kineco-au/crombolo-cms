@@ -164,6 +164,7 @@ const VIEW = `export default function Page({ model, member }) {
 `
 
 const CLIENT_ID = 'crombolo-site'
+const KEY = 'a-secret-key-for-sealing-client-secrets-305'
 
 /** A site with a members-only page open to the Staff group, and a provider that maps `staff-claim` to it. */
 async function memberSite(
@@ -430,14 +431,78 @@ describe(`members signing in through a provider (${process.env.CROMBOLO_DB ?? 's
 
   test("an administrator's override applies at the next sign-in", async () => {
     // The code names the wrong client, which the provider refuses.
-    const { h, fake, signIn } = await memberSite({ clientId: 'wrong-client' })
+    const { h, fake, signIn } = await memberSite({ clientId: 'wrong-client' }, { secretKey: KEY })
     fake.as({ sub: 'ada-1', email: 'ada@example.test', groups: ['staff-claim'] })
     expect((await signIn('/')).member).toBeUndefined()
 
-    await new IdentityProviderOverrides(h.server.db, undefined).update('member', 'fake', {
-      clientId: CLIENT_ID,
+    // Story 305: a new client id comes with its own secret.
+    const code = oidc({ id: 'fake', name: 'Fake', issuer: fake.issuer, clientId: 'wrong-client' })
+    const store = new IdentityProviderOverrides(h.server.db, KEY)
+    const withSecret = { ...code, oidc: { ...code.oidc, clientSecret: 'shh' } }
+    expect(await store.update('member', withSecret, { clientId: CLIENT_ID })).toMatchObject({
+      ok: false,
+      error: expect.stringContaining('A new issuer needs its own secret'),
     })
+    expect(
+      await store.update('member', withSecret, { clientId: CLIENT_ID, clientSecret: 'shh' }),
+    ).toMatchObject({ ok: true })
     expect((await signIn('/')).member).toBeDefined()
+  })
+
+  test('a locked provider signs in by the config, whatever was stored before (305)', async () => {
+    for (const [options, config] of [
+      [{ locked: true }, {}],
+      [{}, { lockedIdentityProviders: ['fake'] }],
+      [{}, { lockedIdentityProviders: 'all' as const }],
+    ] as const) {
+      const { h, fake, signIn } = await memberSite(options, { secretKey: KEY, ...config })
+      fake.as({ sub: 'ada-1', email: 'ada@example.test', groups: ['staff-claim'] })
+      // Stored while it was not locked: a client the provider refuses.
+      const unlocked = oidc({
+        id: 'fake',
+        name: 'Fake',
+        issuer: fake.issuer,
+        clientId: CLIENT_ID,
+        clientSecret: 'shh',
+      })
+      await new IdentityProviderOverrides(h.server.db, KEY).update('member', unlocked, {
+        clientId: 'wrong-client',
+        clientSecret: 'shh',
+      })
+      expect((await signIn('/')).member, JSON.stringify(config)).toBeDefined()
+      const locked = new IdentityProviderOverrides(
+        h.server.db,
+        KEY,
+        'lockedIdentityProviders' in config ? config.lockedIdentityProviders : [],
+      )
+      const refused = await locked.update(
+        'member',
+        { ...unlocked, locked: 'locked' in options },
+        {
+          name: 'Other',
+        },
+      )
+      expect(refused.ok ? '' : refused.error).toContain('is locked by the')
+    }
+  })
+
+  test('a provider sent to an issuer the config did not name, with no secret of its own, signs nobody in (305)', async () => {
+    const { h, visit } = await memberSite({}, { secretKey: KEY })
+    // As an override from before 305 could be: a new issuer and no secret kept for it.
+    await h.server.db.q
+      .insertInto('key_value')
+      .values({
+        key: 'crombolo:identity-provider:member:fake',
+        value: JSON.stringify({ issuer: 'https://elsewhere.example.test' }),
+        update_date: new Date().toISOString(),
+      })
+      .execute()
+    const started = await visit('/umbraco/members/external/fake?returnUrl=%2F')
+    expect(started.status).toBe(302)
+    const location = started.headers.get('location') as string
+    expect(location).toContain('memberLoginFailed=1')
+    expect(decodeURIComponent(location)).toContain('not available')
+    expect(location).not.toContain('elsewhere.example.test')
   })
 
   test("an app's sign-in naming the provider goes straight to it", async () => {

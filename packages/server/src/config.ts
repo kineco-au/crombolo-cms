@@ -25,7 +25,11 @@ import type { EmailPort } from './email.ts'
 import type { GitConfig } from './git-routes.ts'
 import { type UnrestrictedFrom, unrestrictedFrom } from './grant-policy.ts'
 import { checkHost, type HostConfig } from './host-token.ts'
-import { checkIdentityProviders, type IdentityProvider } from './identity-providers.ts'
+import {
+  checkIdentityProviders,
+  type IdentityProvider,
+  type LockedIdentityProviders,
+} from './identity-providers.ts'
 import type { MediaStore } from './media-store.ts'
 import type { JobSchedule } from './owner-jobs.ts'
 import type { ProvenancePolicy, SignaturePolicy } from './provenance.ts'
@@ -182,6 +186,12 @@ export interface CromboloConfig {
    * 304). `CROMBOLO_ALLOW_PRIVATE_ADDRESSES`; on in development only.
    */
   allowPrivateAddresses: boolean
+  /**
+   * Identity providers no change from the back office reaches (story 305), by
+   * id, or all of them: `CROMBOLO_LOCKED_IDENTITY_PROVIDERS`, so a host locks
+   * them without the site's code. A provider's own `locked: true` does too.
+   */
+  lockedIdentityProviders: LockedIdentityProviders
   /**
    * Whether the cache-busted asset path may be cached immutably. Defaults to
    * `!development`.
@@ -983,6 +993,7 @@ export function loadConfig(
     errors: { showDetails: envFlag(setting('CROMBOLO_SHOW_ERROR_DETAILS')) ?? false },
     liveReload: envFlag(setting('CROMBOLO_LIVE_RELOAD')) ?? false,
     allowPrivateAddresses: envFlag(setting('CROMBOLO_ALLOW_PRIVATE_ADDRESSES')) ?? false,
+    lockedIdentityProviders: lockedProviders(setting('CROMBOLO_LOCKED_IDENTITY_PROVIDERS')),
     seo: stripUndefined({
       sitemap: envFlag(setting('CROMBOLO_SITEMAP')),
       indexable: envFlag(setting('CROMBOLO_INDEXABLE')),
@@ -1137,6 +1148,14 @@ export function loadConfig(
 function nonNegative(value: string | undefined, fallback: number): number {
   const parsed = value === undefined ? Number.NaN : Number(value)
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback
+}
+
+function lockedProviders(value: string | undefined): LockedIdentityProviders {
+  const ids = (value ?? '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean)
+  return ids.includes('all') ? 'all' : ids
 }
 
 function envFlag(value: string | undefined): boolean | undefined {

@@ -38,13 +38,13 @@ decide who signs in has no way to prevent this.
 
 ## Acceptance criteria
 
-- [ ] A provider declared `locked: true` refuses every override, shows read-only, and
+- [x] A provider declared `locked: true` refuses every override, shows read-only, and
       signs in by the config alone, even with an override stored before.
-- [ ] An override changing `issuer` or `clientId` without a new secret is refused. With
+- [x] An override changing `issuer` or `clientId` without a new secret is refused. With
       one, the old secret is gone.
-- [ ] The config's `clientSecret` is never sent to an issuer the config didn't name.
-- [ ] Overrides saved and reset appear in the audit log, without secrets.
-- [ ] `configuration.md` documents `locked`.
+- [x] The config's `clientSecret` is never sent to an issuer the config didn't name.
+- [x] Overrides saved and reset appear in the audit log, without secrets.
+- [x] `configuration.md` documents `locked`.
 
 ## Decisions (2026-11-11)
 
@@ -117,3 +117,41 @@ decide who signs in has no way to prevent this.
   changing the issuer without a secret is refused, with one succeeds and the old secret
   is gone; reset on a locked provider clears the ignored overrides; the screen is
   read-only when locked; update and reset leave audit entries without secrets.
+
+## Implemented (unreleased, for 0.62.0)
+
+- **The lock:** `locked?: boolean` on `IdentityProviderOptions`, carried as `locked` on
+  `IdentityProvider`; `CROMBOLO_LOCKED_IDENTITY_PROVIDERS` → `config.lockedIdentityProviders`
+  (`readonly string[] | 'all'`); `lockOf(provider, setting)` in `identity-providers.ts`.
+  `IdentityProviderOverrides` takes the setting: `apply` answers the config's provider for a
+  locked one, `update` refuses it, naming the config or the server's setting. The boot warns
+  of a locked id the config does not declare.
+- **The secret's binding:** a kept secret is stored with `secretFor: { issuer, clientId }`.
+  `effectiveProvider` sends it only there, and the config's secret only to the config's own
+  issuer and client id; left with neither when the config had one, the provider carries
+  `unavailable` with the reason. `update` now takes the declared provider, refuses a change
+  of issuer, Entra tenant or client id without a new secret ("A new issuer needs its own
+  secret…"), drops the kept secret when they go back to the config's, and answers the
+  fields changed. A secret from before 305 is taken as bound to where the provider sends now.
+- **Sign-in** (`external-sign-in.ts`): an unavailable provider's start and callback redirect
+  to the audience's failure with "<name> sign-in is not available right now. Ask an
+  administrator.", and log the reason; the boot logs each such provider too. The buttons
+  stay listed, since listing them is synchronous; pressing one says why it does not work.
+- **What an extension sees:** `BundleIdentityProvider` gains `locked`, `ignored` and
+  `missingSecret`; `overridden` is empty while locked, the stored fields listed under
+  `ignored`. Reset works on a locked provider.
+- **Audit:** the `identityProviders` capability is built per caller (`callerHost` in
+  `core.ts`), so `update` and `reset` record "identity provider changed" (the fields, and
+  "client secret set" or "cleared") and "identity provider reset" under Settings, as the
+  person, with "<Extension>, for <person>" (story 325's attribution).
+- **Entra's screen:** a locked provider is read-only, every field hinting who locked it,
+  with no Save and a "Clear the changes it ignores" while it ignores some; a provider
+  missing its secret shows a problem at the top of its tab and says so on the secret field.
+- **Docs:** `operations.md` ("Locking a provider", "Where a secret goes"),
+  `configuration.md` (the setting, `locked`), release notes with the upgrade note.
+- **Tests:** new `identity-provider-overrides.test.ts` (`lockOf`, the binding, the
+  capability's refusals, ignored changes, reset and audit); `external-sign-in.test.ts`
+  (locked by config, by id and `all` sign in by the config; an unnamed issuer with no
+  secret is not available; a changed client id needs its secret); `entra-bundle.test.ts`
+  moved to the new signature, and a new tenant now comes with its secret.
+

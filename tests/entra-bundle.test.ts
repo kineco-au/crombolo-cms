@@ -86,8 +86,8 @@ describe(`overrides in the database (${process.env.CROMBOLO_DB ?? 'sqlite'})`, (
     const code = oidc({ id: 'okta', name: 'Okta', issuer: 'https://okta.example', clientId: 'c' })
     const store = new IdentityProviderOverrides(h.server.db, SECRET_KEY)
     expect(
-      await store.update('user', 'okta', { clientId: 'c2', clientSecret: 'shh', name: 'Our Okta' }),
-    ).toEqual({ ok: true })
+      await store.update('user', code, { clientId: 'c2', clientSecret: 'shh', name: 'Our Okta' }),
+    ).toEqual({ ok: true, changed: ['name', 'clientId', 'clientSecret'] })
 
     const row = await h.server.db.query<{ value: string }>(
       "SELECT value FROM key_value WHERE key = 'crombolo:identity-provider:user:okta'",
@@ -107,7 +107,7 @@ describe(`overrides in the database (${process.env.CROMBOLO_DB ?? 'sqlite'})`, (
     expect((await store.apply('member', code)).oidc.clientId).toBe('c')
 
     // Clearing one field puts that field back.
-    await store.update('user', 'okta', { name: '' })
+    await store.update('user', code, { name: '' })
     expect((await store.apply('user', code)).oidc.name).toBe('Okta')
 
     await store.reset('user', 'okta')
@@ -118,10 +118,11 @@ describe(`overrides in the database (${process.env.CROMBOLO_DB ?? 'sqlite'})`, (
     const h = await signedInServer()
     open.push(h)
     const store = new IdentityProviderOverrides(h.server.db, undefined)
-    const refused = await store.update('user', 'okta', { clientSecret: 'shh' })
+    const code = oidc({ id: 'okta', name: 'Okta', issuer: 'https://okta.example', clientId: 'c' })
+    const refused = await store.update('user', code, { clientSecret: 'shh' })
     expect(refused.ok).toBe(false)
     expect(refused.ok ? '' : refused.error).toContain('CROMBOLO_SECRET_KEY')
-    expect(await store.update('user', 'okta', { clientId: 'fine' })).toEqual({ ok: true })
+    expect(await store.update('user', code, { clientId: 'fine' })).toMatchObject({ ok: true })
   })
 })
 
@@ -196,18 +197,28 @@ describe(`the Entra bundle (${process.env.CROMBOLO_DB ?? 'sqlite'})`, () => {
   })
 
   test('changes the tenant and the group mappings, and puts them back', async () => {
-    const { h, base } = await site()
+    const { h, base } = await site({ secretKey: SECRET_KEY })
     const at = `${base}/providers/user/entra`
-    const saved = await h.call(at, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ tenantId: 'fabrikam', groupMap: { 'g-1': 'editor' } }),
+    const put = (body: object) =>
+      h.call(at, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+    // Story 305: another tenant is another issuer, which needs its own secret.
+    const refused = await put({ tenantId: 'fabrikam' })
+    expect(refused.status).toBe(400)
+    expect(await refused.text()).toContain('A new issuer needs its own secret')
+    const saved = await put({
+      tenantId: 'fabrikam',
+      clientSecret: 'fabrikam-secret',
+      groupMap: { 'g-1': 'editor' },
     })
     expect(saved.status).toBe(200)
     const [changed] = (await h.json<Listed>(`${base}/providers`)).providers
     expect(changed?.issuer).toBe('https://login.microsoftonline.com/fabrikam/v2.0')
     expect(changed?.groupMap).toEqual({ 'g-1': 'editor' })
-    expect(changed?.overridden.sort()).toEqual(['groupMap', 'tenantId'])
+    expect(changed?.overridden.sort()).toEqual(['clientSecret', 'groupMap', 'tenantId'])
 
     expect((await h.call(at, { method: 'DELETE' })).status).toBe(200)
     const [back] = (await h.json<Listed>(`${base}/providers`)).providers
@@ -310,6 +321,7 @@ describe(`the described screen (story 329, ${process.env.CROMBOLO_DB ?? 'sqlite'
         values: {
           ...form.values,
           tenantId: 'fabrikam',
+          clientSecret: 'fabrikam-secret',
           mappings: [{ claim: 'g-1', group: 'admin' }],
         },
       },

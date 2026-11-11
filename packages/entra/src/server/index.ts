@@ -113,15 +113,25 @@ const ADMIN_ONLY = 'Only an administrator can change how people sign in.'
 const changedHere = (provider: Provider, name: string) =>
   provider.overridden.includes(name) ? 'Changed here, not in the code.' : undefined
 
+/** Why a sign-in cannot be changed here, when it is locked (story 305). */
+const lockedBecause = (provider: Provider) =>
+  provider.locked === 'config'
+    ? "Locked by the site's configuration: it signs in by the code alone."
+    : provider.locked === 'environment'
+      ? "Locked by the server's settings: it signs in by the code alone."
+      : undefined
+
 /** One sign-in's form: what is in force, read-only for anyone but an administrator. */
 function providerForm(
   provider: Provider,
   groups: Array<{ value: string; name: string }>,
-  canEdit: boolean,
+  isAdmin: boolean,
 ) {
+  const lock = lockedBecause(provider)
+  const canEdit = isAdmin && !lock
   const readOnly = !canEdit
   const hinted = (name: string, options: Record<string, unknown> = {}) => {
-    const hint = changedHere(provider, name)
+    const hint = lock ?? changedHere(provider, name)
     return { readOnly, ...(hint ? { hint } : {}), ...options }
   }
   const fields: Field[] = [
@@ -130,9 +140,11 @@ function providerForm(
     field.text('clientId', 'Application (client) ID', hinted('clientId')),
     field.secret('clientSecret', 'Client secret', {
       readOnly,
-      hint: provider.hasClientSecret
-        ? 'A secret is set. Enter a new one to replace it.'
-        : 'No secret is set.',
+      hint: provider.missingSecret
+        ? 'This sign-in goes somewhere the code did not name, so it needs its own secret. Enter it to sign people in again.'
+        : provider.hasClientSecret
+          ? 'A secret is set. Enter a new one to replace it.'
+          : 'No secret is set.',
     }),
     field.boolean('autoCreate', 'Create accounts', hinted('autoCreate')),
     field.boolean('linkByEmail', 'Link by email', hinted('linkByEmail')),
@@ -165,12 +177,14 @@ function providerForm(
       ? [button('Save', 'save', { submit: true, look: 'primary' as const, input: key })]
       : []),
     button('Test connection', 'test', { input: key }),
-    ...(canEdit && provider.overridden.length > 0
+    ...(isAdmin && (canEdit ? provider.overridden : provider.ignored).length > 0
       ? [
-          button("Use the code's settings", 'reset', {
+          button(lock ? 'Clear the changes it ignores' : "Use the code's settings", 'reset', {
             input: key,
             look: 'danger' as const,
-            confirm: `Put the ${AUDIENCE_NAMES[provider.audience]} sign-in back to what the code says? Every change made here goes.`,
+            confirm: lock
+              ? `Clear the changes made here before it was locked (${provider.ignored.join(', ')})? It signs in by the code either way.`
+              : `Put the ${AUDIENCE_NAMES[provider.audience]} sign-in back to what the code says? Every change made here goes.`,
           }),
         ]
       : []),
@@ -225,6 +239,13 @@ async function signInScreen(
               `${provider.audience}-${provider.id}`,
               `${AUDIENCE_NAMES[provider.audience]} — ${provider.name}`,
               [
+                ...(provider.missingSecret
+                  ? [
+                      problem(
+                        `${provider.name} signs nobody in: it goes somewhere the code did not name, without a secret of its own.`,
+                      ),
+                    ]
+                  : []),
                 table(
                   ['Redirect URL to register in Entra, after the site’s address'],
                   [row('callback', [cell.code(provider.callbackPath)])],

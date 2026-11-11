@@ -43,6 +43,11 @@ export interface IdentityProviderOptions {
   defaultGroups?: readonly string[]
   /** Members only: the member type a new member is created as, by alias; `Member` by default. */
   memberType?: string
+  /**
+   * Takes no change from the back office (story 305): signs in by the config
+   * alone. `CROMBOLO_LOCKED_IDENTITY_PROVIDERS` locks it too.
+   */
+  locked?: boolean
 }
 
 /** Which preset made a provider: what the Entra bundle looks for. */
@@ -60,6 +65,23 @@ export interface IdentityProvider {
   groupMap: Readonly<Record<string, string>>
   defaultGroups: readonly string[]
   memberType: string | undefined
+  /** Declared `locked: true`. */
+  locked: boolean
+  /** Why it cannot sign anyone in as it stands, such as a new issuer with no secret of its own. */
+  unavailable?: string
+}
+
+/** What locks providers from the server's environment: their ids, or all of them. */
+export type LockedIdentityProviders = readonly string[] | 'all'
+
+/** Who locked a provider, if anyone: the site's config or the server's environment. Pure. */
+export function lockOf(
+  provider: IdentityProvider,
+  locked: LockedIdentityProviders = [],
+): 'config' | 'environment' | undefined {
+  if (provider.locked) return 'config'
+  if (locked === 'all' || locked.includes(provider.oidc.id)) return 'environment'
+  return undefined
 }
 
 const ID = /^[a-z0-9][a-z0-9-]*$/
@@ -102,6 +124,7 @@ function preset(
     groupMap: options.groups?.map ?? {},
     defaultGroups: options.defaultGroups ?? [],
     memberType: options.memberType,
+    locked: options.locked === true,
   }
 }
 
