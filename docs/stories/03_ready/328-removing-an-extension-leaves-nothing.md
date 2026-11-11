@@ -1,6 +1,6 @@
 # 328 — Removing an extension leaves nothing
 
-**Epic:** I — Hardening · **Priority:** should · **Size:** M
+**Epic:** I — Hardening · **Priority:** should · **Size:** L
 **Depends on:** 326, 321
 
 ## Story
@@ -45,7 +45,67 @@ and schema, made by the CMS or by the host.
   two switches are `--drop-data`, which deletes the data too, and `--no-verify`, which goes
   ahead without asking; without `--no-verify` it asks first, defaulting to no, and off a
   terminal it refuses rather than asking.
-- **Open:** whether Remove also takes out the content the install applied.
+- **Content is kept by default, and `--drop-content` takes it out** (the maintainer's choice):
+  "Also take out the content it added" in the remove dialog, off by default. It is the
+  existing revert of the install's content run, which `extension uninstall` already offers
+  as `--revert-content`; that flag becomes `--drop-content`, with `--revert-content` still
+  read for one release. A revert the check refuses stops the remove, as now, and says why.
+
+## The plan (2026-11-11)
+
+What exists and is reused: the admin's `uninstall` (`bundle-admin.ts`), which reverts the
+content run when asked and then calls the marketplace's; the marketplace's uninstall, which
+since story 326 deletes the root, its line and any kept file nothing names; `purgeOwnerTables`
+and `recordedOwner` (`@crombolo/data` custom tables), which drop an owner's schema and role or
+its SQLite tables and ledger and name a role left behind, as `crombolo extension purge` uses;
+`BundleGrantRepository`, `ExtensionSettingRepository`; `markRestartPending`.
+
+### Slice 1: one remove, in order
+
+- `bundle-admin.ts` `uninstall(actor, name, { dropData, dropContent })`: refuse a bundle the
+  config still wires (`refuseWired`, as purge does); revert content when `dropContent`; stop
+  the running process (`ExtensionProcess.stop`, through a `stopExtension(id)` port the server
+  gives the admin; a CLI admin has none and marks the restart instead); delete the grant row
+  (`BundleGrantRepository.forget`, new) and its settings (`ExtensionSettingRepository.forget`,
+  new); delete `.crombolo/extensions/<id>/`, its build and data folder, unless the data is
+  kept, in which case the data folder stays and the build goes; call the marketplace's
+  uninstall for the root and the record; drop the tables when `dropData` (`purgeOwnerTables`,
+  no backup) and name a role it could not drop; write one audit entry naming what went:
+  "removed; its data kept" or "removed with its data and content".
+- The order is the story's: stop, revoke, then files, then data, so nothing runs against
+  half-removed tables.
+
+### Slice 2: data left behind
+
+- `orphanedData(db, extensions)`: an owner the tables ledger records (`recordedOwner`) with no
+  installed package of that id, with its table names and a data folder if there is one.
+- The installed listing gains `left: [{ id, tables, folder }]`; Installed shows them under
+  "Data left by…" with "Delete its data", an administrator's, which runs the same drop.
+- An install of the same id finds its tables and resumes, as a wired bundle re-added does today;
+  a test proves it.
+
+### Slice 3: the surfaces
+
+- The back office's uninstall body takes `dropData` and `dropContent`; the Installed dialog
+  asks with two checkboxes, both off, and an `umbConfirmModal` naming what goes.
+- `crombolo extension uninstall <name> [--drop-data] [--drop-content] [--no-verify]`: without
+  `--no-verify` it lists what will go and asks, defaulting to no; off a terminal it refuses
+  without `--no-verify`. `--revert-content` is read as `--drop-content` for one release, with a
+  notice. The remote's uninstall takes `dropData` and `dropContent` in its query, as it takes
+  `revertContent` now.
+- `crombolo extension purge` stays for a wired bundle's tables, the case Remove refuses.
+
+### Slice 4: tests and docs
+
+- `tests/extension-remove.test.ts`, on both dialects: a granted extension with tables, a data
+  folder, settings and applied content, removed plainly, leaves its tables and folder and
+  nothing else (no root, line, grant, settings, build, process), and shows under "Data left
+  by…"; installed again, it reads its old rows; removed with `--drop-data`, its schema and role
+  (Postgres) or tables (SQLite) go and the ledger forgets it; with `--drop-content`, its pages
+  go; a role the CMS cannot drop is named; one audit entry each time; a wired bundle is refused.
+- The CLI: the question, `--no-verify`, the refusal off a terminal, and the alias.
+- Docs: `bundles.md` "Runtime install" and "Uninstall"; `extensions.md`; `release-notes.md`,
+  with the renamed flag in the upgrade notes.
 
 ## Acceptance criteria
 
