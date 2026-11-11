@@ -105,13 +105,13 @@ this:
 
 ## Tests
 
-- **Forms** (`tests/form-workflows.test.ts`): a send-to-URL to `127.0.0.1`, `10.0.0.1`,
+- **Forms** (`tests/forms-workflows.test.ts`): a send-to-URL to `127.0.0.1`, `10.0.0.1`,
   `169.254.169.254`, and to a host whose injected lookup gives `10.0.0.5`, sends nothing
   (`fetch` never called) and fails unretried with the reason; with the setting on it is
   sent. A 302 is not followed and fails unretried. A header `env:DATABASE_PASSWORD` arrives
   as that literal text.
-- **Schema** (`tests/validate-forms.test.ts`): `file:`, `ftp:` and `data:` URLs refused.
-- **Provider test** (`tests/identity-providers.test.ts`): an issuer at `127.0.0.1` is
+- **Schema** (`tests/forms-schema.test.ts`): `file:`, `ftp:` and `data:` URLs refused.
+- **Provider test** (new `tests/identity-provider-test.test.ts`, against `support/fake-oidc.ts`): an issuer at `127.0.0.1` is
   refused with the setting off; an issuer answering 500 with a body, and one answering
   HTML, give messages containing neither the status nor the body text.
 - **Config**: `webhooks.allowPrivateAddresses` is refused naming the new setting;
