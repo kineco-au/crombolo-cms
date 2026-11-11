@@ -66,6 +66,21 @@ Workspace add-ons and Slack apps draw for third parties, as data the host render
   state)`, each carrying `principal` and the grant-checked capabilities as a route call does.
   State is a plain object the host keeps per open screen and sends back with each call, so the
   process holds nothing between calls.
+- **Manifest:** a placement entry names a screen with `"screen": "<id>"` where it named a file
+  with `element`. The manifest's `schemaVersion` steps to 6: a schema 6 entry may carry
+  `screen` or `element`, never both, and `element` is refused unless `backoffice.code` is
+  asked for. `extension migrate` rewrites a schema 5 package (story 329).
+
+  ```json
+  "extensions": [
+    { "type": "menuItem", "alias": "Crombolo.MenuItem.Redirects", "meta": { "menus": ["Umb.Menu.AdvancedSettings"], "entityType": "crombolo-redirects" } },
+    { "type": "workspace", "alias": "Crombolo.Workspace.Redirects", "screen": "rules", "meta": { "entityType": "crombolo-redirects" } }
+  ]
+  ```
+- **The package:** a Limited extension is `package.json` and `src/server/` alone: the
+  factory, its screens (one file per screen if the author likes) and its `components/`.
+  `src/backoffice/` exists only in an Unrestricted extension, and nothing is built to
+  `.crombolo/extensions/<id>/backoffice/` for a Limited one.
 - **Host:** `isolatedBundle` lists the screens from the description. The plugin registers one
   generic element per placement (`crombolo-extension-screen`), told the extension id and screen
   id by its manifest, which the server generates from the description and the manifest's
@@ -87,5 +102,7 @@ Workspace add-ons and Slack apps draw for third parties, as data the host render
       dropped; a test feeds each node type a script tag and an event handler.
 - [ ] `principal` and the grant-checked capabilities reach `view` and `actions` as they reach a route.
 - [ ] A described screen needs no permission; the install panel lists it under Adds.
+- [ ] A schema 6 manifest names a screen with `screen`; an entry with `element` is refused
+      without `backoffice.code`, and one with both is refused.
 - [ ] Covering tests, including the isolation suite's style of one test per threat; docs and
       release notes.

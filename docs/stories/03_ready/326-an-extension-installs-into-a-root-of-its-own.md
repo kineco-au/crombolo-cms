@@ -29,6 +29,16 @@ site for a package that is only being tried. Install-time code is already covere
 - **Nothing of the extension is reachable from the CMS's resolution**, and nothing of the
   CMS's `node_modules` from the extension's build but the SDK copy the build supplies.
 - **A site bundle's `requires`** lists extensions from that file, not from `package.json`.
+- **A site package always carries the record**, under `code/` beside `package.json`,
+  `bun.lock` and `crombolo.config.ts`, once the site has a lockfile. The roots under
+  `.crombolo/extensions/` are never packed: `site apply` reads the record and installs each
+  extension into a fresh root with `bun install --frozen-lockfile`, checked against the
+  record's integrity. A grant still travels in the config's `extensions` entry; the record's
+  grant hash lets the apply refuse an extension whose asked permissions no longer match it.
+- **An extension installed from a file** is still copied to the site's `bundles/<name>-<version>.tgz`
+  (story 245) and carried by a site package. Its root records the file by a path relative to
+  the site root, resolved from `.crombolo/extensions/<id>/`, so one file serves every
+  checkout and the record's integrity is the file's sha512.
 - **Removal deletes the root.** Story 328 says what else removal does.
 - **Developer-linked extensions** (`file:` or a workspace path) are still allowed outside
   production, resolved into the same root as a symlink.
@@ -50,6 +60,10 @@ site for a package that is only being tried. Install-time code is already covere
 - [ ] Installing an extension writes nothing to the site's `package.json` or `bun.lock`.
 - [ ] Each extension has its own root, built and run from it, with its own lockfile.
 - [ ] A deploy from the record reproduces the same versions and integrity.
-- [ ] A site bundle's `requires` names the installed extensions.
+- [ ] A site bundle's `requires` names the installed extensions, and the package carries
+      `crombolo.extensions.json` under `code/` whenever it carries `package.json`; applying
+      it installs each extension into its root from the record.
+- [ ] An extension installed from a file is carried as `bundles/<name>-<version>.tgz` and
+      installs into its root from that file on the remote.
 - [ ] An extension installed as a dependency before is found, named, and moved by `extension migrate`.
 - [ ] Covering tests; docs and release notes with the upgrade path.
