@@ -38,7 +38,9 @@ export const BUNDLE_PERMISSIONS = {
   'identityProviders.write': "Change administrators' settings for those sign-in providers",
   'member.delegate':
     'Act for a signed-in member who uses it: what it adds is theirs, and it sees only what they may see',
-  actAs: 'Act for a back-office user, as chosen when it is granted, within what that user may do',
+  // Story 325: as wide as the person using it, and recorded against them.
+  'user.delegate':
+    'Act for the person using it in the back office: it can do anything they can do here, and everything it does is recorded against them',
   'events.content': 'Be told when pages are saved, published, moved or deleted',
   'http.outbound':
     'Send requests from the server, and from its screens in your browser, to the addresses it names',
@@ -73,6 +75,18 @@ export const BACKOFFICE_CODE = 'backoffice.code'
  */
 export const BACKOFFICE_CODE_WARNING =
   "Its screens act as whoever is signed in, with everything that person can do on this site. Unlike the rest of an extension, this part can't be kept apart from the site. Don't install this from a publisher you don't trust."
+
+/** The permission to act for the person using it (story 325). */
+export const USER_DELEGATE = 'user.delegate'
+
+/** What the install says beside `user.delegate`. */
+export const USER_DELEGATE_DETAIL =
+  'When nobody is using it, for a scheduled job or an event, it acts for whoever granted it instead. It may never install or grant extensions, or change users and groups, for anyone.'
+
+/** Each area's read and write, which `user.delegate` already covers. */
+export const AREA_PERMISSIONS: readonly string[] = Object.keys(BUNDLE_PERMISSIONS).filter(
+  (permission) => /^[a-zA-Z]+\.(read|write)$/.test(permission),
+)
 
 /** Never offered, whatever an extension asks: writing users could make anyone an administrator. */
 export const NEVER_OFFERED: ReadonlySet<string> = new Set(['users.write'])
@@ -114,6 +128,12 @@ export function readPermissions(
   const declared: DeclaredPermission[] = []
   const problems: string[] = []
   for (const [permission, given] of Object.entries(value as Record<string, unknown>)) {
+    if (permission === 'actAs') {
+      problems.push(
+        `"actAs" is retired: ask for "${USER_DELEGATE}", which acts for the person using it across every area (\`crombolo extension migrate\` rewrites it)`,
+      )
+      continue
+    }
     if (NEVER_OFFERED.has(permission)) {
       problems.push(`"${permission}" is never offered: only an administrator changes users`)
       continue
@@ -141,6 +161,14 @@ export function readPermissions(
       declared.push({ permission, reason, origins: origins.filter(isOrigin) })
     } else declared.push({ permission, reason })
   }
+  const names = new Set(declared.map((entry) => entry.permission))
+  if (names.has(USER_DELEGATE)) {
+    const areas = AREA_PERMISSIONS.filter((permission) => names.has(permission))
+    if (areas.length > 0)
+      problems.push(
+        `"${USER_DELEGATE}" already reaches every area the person using it may: drop ${areas.map((p) => `"${p}"`).join(', ')}`,
+      )
+  }
   return problems.length > 0 ? { problem: problems.join('; ') } : { declared }
 }
 
@@ -150,7 +178,7 @@ export function describePermissions(permissions: readonly (string | DeclaredPerm
   allows: string
   reason: string | null
   origins?: string[]
-  /** What the install says before it is granted: only `backoffice.code` has one (story 320). */
+  /** What the install says before it is granted: `backoffice.code` (story 320) and `user.delegate` (325). */
   warning?: string
 }[] {
   return permissions.map((entry) => {
@@ -161,6 +189,7 @@ export function describePermissions(permissions: readonly (string | DeclaredPerm
       reason: declared.reason,
       ...(declared.origins ? { origins: declared.origins } : {}),
       ...(declared.permission === BACKOFFICE_CODE ? { warning: BACKOFFICE_CODE_WARNING } : {}),
+      ...(declared.permission === USER_DELEGATE ? { warning: USER_DELEGATE_DETAIL } : {}),
     }
   })
 }

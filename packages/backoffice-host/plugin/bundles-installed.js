@@ -63,7 +63,6 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
     _filter: { state: true },
     _selected: { state: true },
     _policy: { state: true },
-    _actAs: { state: true },
     _edits: { state: true },
     _trustsCode: { state: true },
   }
@@ -77,7 +76,6 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
     this._installs = true
     this._restartPending = false
     this._filter = ''
-    this._actAs = 'installer'
     this._edits = {}
     // Settings links a bundle's cards here, naming it in `?bundle=`.
     this._selected =
@@ -210,7 +208,6 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
       const outcome = await grantBundle(
         item.id,
         (item.permissions ?? []).map((ask) => ask.permission),
-        item.asksActAs ? this._actAs : undefined,
       )
       this._notice = outcome.message ?? ''
       if (outcome.ok) await this.#load()
@@ -304,23 +301,6 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
                     : 'Not granted: it does nothing until it is granted what it asks for.'
                 }
               </p>
-              ${
-                item.asksActAs
-                  ? html`<uui-select
-                      label="Acts for"
-                      .options=${[
-                        { name: 'You', value: 'installer', selected: this._actAs === 'installer' },
-                        {
-                          name: 'Whoever uses it',
-                          value: 'caller',
-                          selected: this._actAs === 'caller',
-                        },
-                      ]}
-                      @change=${(event) => {
-                        this._actAs = event.target.value
-                      }}></uui-select>`
-                  : nothing
-              }
               <uui-button
                 look="primary"
                 label="Grant"

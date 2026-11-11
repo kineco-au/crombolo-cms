@@ -38,10 +38,8 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
     _trusted: { state: true },
     _trustsCode: { state: true },
     _asks: { state: true },
-    _asksActAs: { state: true },
     _layout: { state: true },
     _layoutChoice: { state: true },
-    _actAs: { state: true },
     _reviewing: { state: true },
     _signatures: { state: true },
   }
@@ -63,8 +61,6 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
     this._consenting = ''
     this._trusted = false
     this._asks = []
-    this._asksActAs = false
-    this._actAs = 'installer'
     this._reviewing = ''
     this._signatures = new Map()
   }
@@ -166,7 +162,6 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
     this._trusted = false
     this._trustsCode = false
     this._asks = outcome.permissions ?? []
-    this._asksActAs = outcome.asksActAs === true
     // Story 312: the site layout its page templates sit in, its suggestion first.
     this._layout = outcome.layout
     this._layoutChoice = outcome.layout?.suggested ?? ''
@@ -192,7 +187,6 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
         item.version,
         !this._declined.has(item.name),
         granting ? this._asks.map((ask) => ask.permission) : [],
-        granting && this._asksActAs ? this._actAs : undefined,
         granting && this._layout && this._layoutChoice
           ? { [this._layout.key]: this._layoutChoice }
           : undefined,
@@ -275,23 +269,6 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
               </li>`,
           )}
         </ul>
-        ${
-          this._asksActAs
-            ? html`<uui-select
-                label="Acts for"
-                .options=${[
-                  {
-                    name: 'You, who install it',
-                    value: 'installer',
-                    selected: this._actAs === 'installer',
-                  },
-                  { name: 'Whoever uses it', value: 'caller', selected: this._actAs === 'caller' },
-                ]}
-                @change=${(event) => {
-                  this._actAs = event.target.value
-                }}></uui-select>`
-            : nothing
-        }
         ${
           this._layout
             ? html`<uui-select

@@ -5,16 +5,20 @@
  * disable it.
  * docs/bundles.md, "Permissions".
  */
+
+import { hasSection, type Principal } from '@crombolo/api-management/domain'
 import {
+  AREA_PERMISSIONS,
   askedPermissions,
   type BundlePackage,
   type BundlePermission,
   type DeclaredPermission,
   describePermissions,
   isSchema3Field,
+  USER_DELEGATE,
 } from '@crombolo/backoffice-host/registry'
 import { type BundleGrant, BundleGrantRepository, type Db } from '@crombolo/data'
-import { API_PERMISSIONS } from './bundle-api.ts'
+import { API_PERMISSIONS, sectionOfPermission } from './bundle-api.ts'
 
 /** The permissions each capability serves; `log` needs none. */
 export const CAPABILITY_PERMISSIONS: Record<string, readonly BundlePermission[]> = {
@@ -32,7 +36,8 @@ export const CAPABILITY_PERMISSIONS: Record<string, readonly BundlePermission[]>
 const DECLARATION_PERMISSIONS: ReadonlySet<string> = new Set([
   'events.content',
   'routes.public',
-  'actAs',
+  // Every area, as the person using it: checked per call, not by a capability (story 325).
+  USER_DELEGATE,
   'templates',
   'member.delegate',
   // What the screens need, not the server half (story 320).
@@ -108,7 +113,9 @@ export function permissionProblems(
     const serves = CAPABILITY_PERMISSIONS[capability]
     if (!serves || serves.length === 0) continue
     const writes = serves.filter((p) => p !== 'member.delegate')
-    if (!writes.some((p) => has.has(p)))
+    // Acting for the person covers every area's capability, not a request out (story 325).
+    const delegated = has.has(USER_DELEGATE) && capability !== 'fetch'
+    if (!writes.some((p) => has.has(p)) && !delegated)
       problems.push(
         `Bundle "${label}" uses "${capability}" but declares none of its permissions (${writes.join(', ')}) in "crombolo.permissions".`,
       )
@@ -128,6 +135,28 @@ export function permissionProblems(
   }
   return problems
 }
+
+/**
+ * What a capability may use for this caller (story 325): its grant, and under
+ * `user.delegate` each area whose section the back-office person using it holds.
+ * A job, an event or a visitor adds nothing: they reach the site only through
+ * `api`, as whoever granted it. Pure.
+ */
+export function delegatedPermissions(
+  granted: readonly string[],
+  person: Principal | undefined,
+): string[] {
+  if (!granted.includes(USER_DELEGATE) || !person) return [...granted]
+  const reached = AREA_PERMISSIONS.filter((permission) => {
+    if (person.isAdmin) return true
+    const section = sectionOfPermission(permission)
+    return section !== undefined && hasSection(person, section)
+  })
+  return [...new Set([...granted, ...reached])]
+}
+
+/** Why `user.delegate` cannot be granted without a person to act for (story 325). */
+export const DELEGATE_NEEDS_PERSON = `${USER_DELEGATE} acts for whoever granted it when nobody is using it, and nobody is named: grant it signed in to the back office, or name the user with --delegate-to <user key>`
 
 /** A capability call the bundle was not given the permission for. */
 export class PermissionRefusedError extends Error {
@@ -189,7 +218,7 @@ export interface BundleGrantState {
 
 /**
  * What the installed version asks for that a grant does not cover (story 309):
- * permissions, `http.outbound` origins, and whom `actAs` acts for. Empty when it
+ * permissions, `http.outbound` origins, and who granted `user.delegate`. Empty when it
  * covers it all. Pure.
  */
 export function grantGaps(pkg: BundlePackage, grant: BundleGrant | undefined): string[] {
@@ -199,8 +228,12 @@ export function grantGaps(pkg: BundlePackage, grant: BundleGrant | undefined): s
   const gaps = declaredPermissions(pkg).filter((permission) => !has.has(permission))
   for (const origin of declaredOrigins(pkg))
     if (!grant.origins.includes(origin)) gaps.push(`http.outbound ${origin}`)
-  if (declaredPermissions(pkg).includes('actAs') && !grant.actAs && !gaps.includes('actAs'))
-    gaps.push('actAs: whom it acts for')
+  if (
+    declaredPermissions(pkg).includes(USER_DELEGATE) &&
+    !grant.delegateKey &&
+    !gaps.includes(USER_DELEGATE)
+  )
+    gaps.push(`${USER_DELEGATE}: who granted it, for when nobody is using it`)
   return gaps
 }
 
@@ -219,12 +252,12 @@ export interface BundleGrants {
   state(pkg: BundlePackage): BundleGrantState
   /**
    * Records what a bundle is approved for, and by whom; true when that changed.
-   * `actAs` is whom it acts for, when it asks to act for a user (story 308).
+   * `delegateKey` is who granted `user.delegate`, whom a job or an event acts for (story 325).
    */
   grant(
     pkg: BundlePackage,
     by: string | null,
-    options?: { actAs?: string | null },
+    options?: { delegateKey?: string | null },
   ): Promise<boolean>
   disable(pkg: BundlePackage, by: string | null): Promise<BundleGrantState>
   enable(pkg: BundlePackage): Promise<BundleGrantState>
@@ -234,7 +267,7 @@ export interface BundleGrants {
 export function approvalHolds(
   pkg: BundlePackage,
   grant: BundleGrant | undefined,
-  actAs?: string | null,
+  delegateKey?: string | null,
 ): boolean {
   if (!grant || grant.version !== pkg.version) return false
   const same = (a: readonly string[], b: readonly string[]) =>
@@ -242,7 +275,7 @@ export function approvalHolds(
   return (
     same(grant.permissions, declaredPermissions(pkg)) &&
     same(grant.origins, declaredOrigins(pkg)) &&
-    (actAs === undefined || grant.actAs === actAs)
+    (delegateKey === undefined || grant.delegateKey === delegateKey)
   )
 }
 
@@ -314,7 +347,7 @@ export function createBundleGrants(options: {
         version: pkg.version,
         permissions: declaredPermissions(pkg),
         origins: declaredOrigins(pkg),
-        actAs: declaredPermissions(pkg).includes('actAs') ? grant.actAs : null,
+        delegateKey: declaredPermissions(pkg).includes(USER_DELEGATE) ? grant.delegateKey : null,
         grantedBy: grant.grantedBy,
       })
       await read()
@@ -325,7 +358,7 @@ export function createBundleGrants(options: {
       return stateOf(pkg)
     },
     async grant(pkg, by, options = {}) {
-      if (approvalHolds(pkg, grants.get(pkg.id), options.actAs)) return false
+      if (approvalHolds(pkg, grants.get(pkg.id), options.delegateKey)) return false
       const asks = declaredPermissions(pkg)
       await repository.grant({
         bundleId: pkg.id,
@@ -333,7 +366,9 @@ export function createBundleGrants(options: {
         version: pkg.version,
         permissions: asks,
         origins: declaredOrigins(pkg),
-        actAs: asks.includes('actAs') ? (options.actAs ?? grants.get(pkg.id)?.actAs ?? null) : null,
+        delegateKey: asks.includes(USER_DELEGATE)
+          ? (options.delegateKey ?? grants.get(pkg.id)?.delegateKey ?? null)
+          : null,
         grantedBy: by,
       })
       await read()

@@ -23,9 +23,10 @@ export * from './bundle-admin.ts'
 export {
   API_PERMISSIONS,
   ApiRefusedError,
-  actAsChoice,
   type BundleApi,
   permissionsFor,
+  refusedForEveryone,
+  userKeyOf,
 } from './bundle-api.ts'
 export * from './bundle-build.ts'
 export * from './bundle-code.ts'

@@ -56,6 +56,10 @@ export default class ExtensionMigrate extends BaseCommand {
       this.say(`  import   ${rewrite.file}: ${rewrite.from} → ${rewrite.to}`)
     if (plan.asksForBackOfficeCode)
       this.say(`  asks     backoffice.code: "${flags.reason?.trim()}"`)
+    if (plan.delegates)
+      this.say(
+        `  asks     user.delegate in place of actAs: it acts for the person using it${plan.delegates.dropped.length > 0 ? `, which reaches ${plan.delegates.dropped.join(', ')} already` : ''}; an administrator grants it again`,
+      )
     if (plan.dropsSignature)
       this.say(
         '  signed   no longer: provenance.json is removed, so sign it again before publishing',

@@ -14,10 +14,10 @@ export interface BundleGrant {
   /** What its `http.outbound` may reach (story 308); empty when it was granted none. */
   origins: string[]
   /**
-   * Whom it acts for under `actAs`: `installer:<user key>`, `caller`, or
-   * `user:<user key>`; null when it acts as itself.
+   * Who granted `user.delegate` (story 325): the user a job or an event acts
+   * for, when nobody is using it. Null for any other grant.
    */
-  actAs: string | null
+  delegateKey: string | null
   grantedBy: string | null
   grantedAt: Date
   /**
@@ -54,7 +54,7 @@ export class BundleGrantRepository {
       version: row.version,
       permissions: permissionsOf(row.permissions),
       origins: row.origins ? permissionsOf(row.origins) : [],
-      actAs: row.act_as ?? null,
+      delegateKey: row.delegate_key ?? null,
       grantedBy: row.granted_by ?? null,
       grantedAt: DbDate.fromDb(row.granted_at) ?? new Date(0),
       recorded: (DbDate.fromDb(row.granted_at)?.getTime() ?? 0) > 0,
@@ -76,7 +76,7 @@ export class BundleGrantRepository {
       version: grant.version,
       permissions: JSON.stringify(grant.permissions),
       origins: JSON.stringify(grant.origins),
-      act_as: grant.actAs,
+      delegate_key: grant.delegateKey,
       granted_by: grant.grantedBy,
       granted_at: DbDate.toDb(new Date()),
     }

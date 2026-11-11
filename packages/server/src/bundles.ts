@@ -86,6 +86,7 @@ import { anonymiseProblems } from './anonymise-rules.ts'
 import type { BundleApi } from './bundle-api.ts'
 import {
   declaredPermissions,
+  delegatedPermissions,
   disabledResponse,
   gated,
   isSchema3,
@@ -898,9 +899,10 @@ export function createServerBundles(options: ServerBundlesOptions): ServerBundle
   ): Pick<BundleHost, BundleCapability> => {
     const host: Record<string, unknown> = {}
     // What it was granted, not what it declares (story 309).
-    const declared = options.granted
-      ? options.granted(bundle.id)
-      : declaredPermissions(owners.get(bundle.id))
+    const declared = delegatedPermissions(
+      options.granted ? options.granted(bundle.id) : declaredPermissions(owners.get(bundle.id)),
+      caller.kind === 'backoffice' ? caller.principal : undefined,
+    )
     for (const capability of bundle.capabilities) {
       // Acting for a member needs `member.delegate`, on every call (story 309).
       if (

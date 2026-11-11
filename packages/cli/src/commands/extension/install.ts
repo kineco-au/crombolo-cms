@@ -1,17 +1,22 @@
 import { relative, resolve } from 'node:path'
 import {
-  actAsChoice,
   createMarketplace,
   describeProvenance,
   installBundleCode,
   loadConfig,
+  userKeyOf,
 } from '@crombolo/server'
 import { Args, Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
 import { CliError } from '../../errors.ts'
 
-/** `--act-as` as a grant stores it; the CLI has no installing user of its own. */
-const actAsOf = (value: string | undefined) => (value ? actAsChoice(value) : null)
+/** `--delegate-to` as a grant stores it; the CLI has no user of its own (story 325). */
+const delegateOf = (value: string | undefined): string | null => {
+  if (!value) return null
+  const key = userKeyOf(value)
+  if (!key) throw new CliError('usage', `--delegate-to is a user's key, not "${value}".`)
+  return key
+}
 
 import {
   cliActor,
@@ -57,9 +62,9 @@ export default class ExtensionInstall extends BaseCommand {
       summary: 'a permission it asks for; name every one',
       helpValue: '<permission>',
     }),
-    'act-as': Flags.string({
-      summary: 'with actAs: whom it acts for, the calling user or a named one',
-      helpValue: 'caller|user:<key>',
+    'delegate-to': Flags.string({
+      summary: 'with user.delegate: the user a job or an event acts for when nobody is using it',
+      helpValue: '<user key>',
     }),
     'apply-content': Flags.boolean({ summary: 'apply the content it carries too' }),
     layout: Flags.string({
@@ -152,6 +157,7 @@ export default class ExtensionInstall extends BaseCommand {
         version: spec.version,
         grant,
         applyContent: flags['apply-content'],
+        delegateTo: delegateOf(flags['delegate-to']),
         ...(flags.layout ? { settings: { layout: flags.layout } } : {}),
       })
       if (outcome.provenance) this.say(`  signed   ${describeProvenance(outcome.provenance)}`)
@@ -175,7 +181,7 @@ export default class ExtensionInstall extends BaseCommand {
         file: Boolean(spec.file),
         applyContent: flags['apply-content'],
         grant,
-        actAs: actAsOf(flags['act-as']),
+        delegateTo: delegateOf(flags['delegate-to']),
         ...(flags.layout ? { settings: { layout: flags.layout } } : {}),
       })
       if (!outcome.ok) {

@@ -40,7 +40,7 @@ const grant = (permissions: string[], over: Record<string, unknown> = {}) => ({
   version: '1.0.0',
   permissions,
   origins: [] as string[],
-  actAs: null,
+  delegateKey: null,
   grantedBy: 'admin@example.com',
   grantedAt: new Date(),
   recorded: true,
@@ -50,23 +50,22 @@ const grant = (permissions: string[], over: Record<string, unknown> = {}) => ({
 })
 
 describe('what a grant leaves out', () => {
-  test('permissions, origins, and whom actAs acts for', () => {
+  test('permissions, origins, and who granted user.delegate', () => {
     const pkg = asking('1.0.0', {
-      'content.read': 'x',
       'http.outbound': { reason: 'x', origins: ['https://api.acme.com'] },
-      actAs: 'x',
+      'user.delegate': 'x',
     })
-    expect(grantGaps(pkg, undefined)).toEqual(['content.read', 'http.outbound', 'actAs'])
-    expect(grantGaps(pkg, grant(['content.read', 'http.outbound', 'actAs']))).toEqual([
+    expect(grantGaps(pkg, undefined)).toEqual(['http.outbound', 'user.delegate'])
+    expect(grantGaps(pkg, grant(['http.outbound', 'user.delegate']))).toEqual([
       'http.outbound https://api.acme.com',
-      'actAs: whom it acts for',
+      'user.delegate: who granted it, for when nobody is using it',
     ])
     expect(
       grantGaps(
         pkg,
-        grant(['content.read', 'http.outbound', 'actAs'], {
+        grant(['http.outbound', 'user.delegate'], {
           origins: ['https://api.acme.com'],
-          actAs: 'caller',
+          delegateKey: '1e5b8c2a-0000-4000-8000-000000000001',
         }),
       ),
     ).toEqual([])

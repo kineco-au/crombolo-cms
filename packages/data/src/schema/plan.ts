@@ -18,6 +18,7 @@ import { approvalsMigration } from './approvals.ts'
 import { assistantMigration } from './assistant.ts'
 import { auditLogMigration } from './audit-log.ts'
 import { bundleComponentsMigration } from './bundle-components.ts'
+import { bundleGrantDelegateMigration } from './bundle-grant-delegate.ts'
 import { bundleGrantReachMigration } from './bundle-grant-reach.ts'
 import { bundleGrantsMigration } from './bundle-grants.ts'
 import { bundleKindMigration } from './bundle-kind.ts'
@@ -155,4 +156,5 @@ export const cromboloPlan = new MigrationPlan([
   bundleKindMigration,
   trustedSignersMigration,
   contentTypeSeoMigration,
+  bundleGrantDelegateMigration,
 ])

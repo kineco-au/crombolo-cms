@@ -9,11 +9,17 @@ import {
   type ExtensionSetting,
   readSettings,
   settingValueProblem,
+  USER_DELEGATE,
 } from '@crombolo/backoffice-host/registry'
 import { type Db, ExtensionSettingRepository, TransferRunRepository } from '@crombolo/data'
 import { revertRun } from '@crombolo/transfer'
 import { recordAudit } from './adapters/audit.ts'
-import { type BundleGrants, createBundleGrants, declaredPermissions } from './bundle-grants.ts'
+import {
+  type BundleGrants,
+  createBundleGrants,
+  DELEGATE_NEEDS_PERSON,
+  declaredPermissions,
+} from './bundle-grants.ts'
 import { CommandError, installBundleContent, revertSections } from './bundle-install.ts'
 import { componentsWritten } from './bundle-sections.ts'
 import { siteLayouts } from './components.ts'
@@ -75,8 +81,11 @@ export interface InstallRequest {
   file?: boolean
   applyContent?: boolean
   grant?: readonly string[]
-  /** Whom it acts for, when it asks for `actAs` (story 308). */
-  actAs?: string | null
+  /**
+   * Under `user.delegate`, the user a job or an event acts for (story 325): the
+   * person granting it, which is the actor's own key unless named.
+   */
+  delegateTo?: string | null
   /** Its settings' values, saved once it is installed: the layout picked for it (story 312). */
   settings?: Readonly<Record<string, unknown>>
 }
@@ -112,13 +121,13 @@ export interface BundleAdmin {
   ): Promise<SwitchOutcome>
   /**
    * Grants an installed extension exactly what its installed version asks for
-   * (story 309), naming whom `actAs` acts for when it asks to; refused, saying
-   * what differs, otherwise.
+   * (story 309), and for `user.delegate` who granted it (story 325); refused,
+   * saying what differs, otherwise.
    */
   grant(
     actor: BundleActor,
     id: string,
-    request: { grant: readonly string[]; actAs?: string | null },
+    request: { grant: readonly string[]; delegateTo?: string | null },
   ): Promise<SwitchOutcome>
 }
 
@@ -272,7 +281,7 @@ export function createBundleAdmin(options: {
       const asked = {
         applyContent: request.applyContent !== false,
         grant: request.grant ?? [],
-        actAs: request.actAs ?? null,
+        delegateTo: request.delegateTo ?? actor.id ?? null,
         by: actor.email ?? actor.name,
       }
       const outcome = request.file
@@ -286,7 +295,7 @@ export function createBundleAdmin(options: {
         'Install',
         outcome.dependency ? `${name}@${outcome.dependency.version}` : name,
         [
-          `granted ${asked.grant.length > 0 ? asked.grant.join(', ') : 'nothing'}${asked.actAs ? `, acting for ${asked.actAs}` : ''}`,
+          `granted ${asked.grant.length > 0 ? asked.grant.join(', ') : 'nothing'}${asked.grant.includes(USER_DELEGATE) && asked.delegateTo ? `, acting for ${asked.delegateTo} when nobody is using it` : ''}`,
           outcome.provenance ? describeProvenance(outcome.provenance) : undefined,
         ]
           .filter(Boolean)
@@ -347,18 +356,17 @@ export function createBundleAdmin(options: {
             .filter(Boolean)
             .join(' '),
         }
-      if (asks.includes('actAs') && !request.actAs)
-        return {
-          status: 409,
-          ok: false,
-          message: `${pkg.name} asks to act for a user: say whom, the installer, the caller or a named user.`,
-        }
-      await bundleGrants.grant(pkg, actor.email ?? actor.name, { actAs: request.actAs ?? null })
+      const delegateKey = asks.includes(USER_DELEGATE)
+        ? (request.delegateTo ?? actor.id ?? null)
+        : null
+      if (asks.includes(USER_DELEGATE) && !delegateKey)
+        return { status: 409, ok: false, message: `${pkg.name}: ${DELEGATE_NEEDS_PERSON}.` }
+      await bundleGrants.grant(pkg, actor.email ?? actor.name, { delegateKey })
       await audit(
         actor,
         'Grant',
         `${pkg.packageName}@${pkg.version}`,
-        `granted ${asks.join(', ') || 'nothing'}${request.actAs ? `, acting for ${request.actAs}` : ''}`,
+        `granted ${asks.join(', ') || 'nothing'}${delegateKey ? `, acting for ${delegateKey} when nobody is using it` : ''}`,
       )
       const state = bundleGrants.state(pkg)
       return {

@@ -15,6 +15,13 @@ point at `docs/stories/`.
   of the extension's code runs in the page and the screen needs no permission. A
   manifest entry names one with `"screen"` at `"crombolo.schemaVersion": 6`.
 
+- **An extension acts for the person using it (325).** A new permission,
+  `user.delegate`: "Act for the person using it in the back office: it can do anything
+  they can do here, and everything it does is recorded against them." A job or an event
+  acts for whoever granted it. It never installs or grants extensions, or changes users
+  and groups, for anyone. The audit log records its writes as the person, with the
+  detail "<Extension>, for <person>". It replaces `actAs`.
+
 ### Changes
 
 - **Settings is one grant again (322).** Structure, Code and Workflow set-up follow the
@@ -24,6 +31,15 @@ point at `docs/stories/`.
 
 ### Upgrade notes
 
+- **`actAs` is retired (325).** An extension asking for it is refused, and stops until a
+  version asking for `user.delegate` is installed: `crombolo extension migrate <dir>`
+  rewrites one, and an administrator grants it again. `extensions.<id>.actAs` is gone
+  from the config, and `user.delegate` cannot be granted there: grant it in Settings,
+  under Extensions, or with `crombolo extension grant --delegate-to <user key>`.
+  `--act-as` is gone from `extension install` and `extension grant`.
+- **Migration** `AddBundleGrantDelegate` adds `bundle_grant.delegate_key`, copying the
+  installer from each grant that acted for its installer. `act_as` stays, unread, until
+  a later release drops it, so this release upgrades node by node.
 - Bundle schema 6 is what this release writes; schema 5 is still read, unchanged. An
   extension that wants a described screen moves to 6.
 - A group that held Structure, Components or Workflow set-up without Settings loses those

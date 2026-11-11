@@ -127,6 +127,9 @@ export async function undoMediaMemberUploads(db: Db): Promise<void> {
   // come after it; 056's columns go with 054's table.
   // 059, forms in the Library (story 239), 058, bundle schema picks (story
   // 226), and 057, site settings types (story 058): columns on tables that stay.
+  // 071, who granted user.delegate (story 325): a column on a table that stays.
+  await db.exec('ALTER TABLE bundle_grant DROP COLUMN delegate_key')
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddBundleGrantDelegate'")
   // 070, a content type's search and sharing values (story 317): a column on a table that stays.
   await db.exec('ALTER TABLE content_type DROP COLUMN seo')
   await db.exec("DELETE FROM migration_history WHERE name = 'AddContentTypeSeo'")

@@ -660,7 +660,7 @@ version, the highest a range admits, or the latest.
   carries cannot be checked.
 - An extension that asks for permissions is refused with `needsGrant`, each
   permission with its sentence, its reason and its origins, unless the request
-  grants exactly those (`grant`, and `actAs` when it asks to act for a user)
+  grants exactly those (`grant`; `user.delegate` also records who granted it)
   ([Permissions](#permissions)).
 - After `bun add`, the installed package's own manifest is checked again. A
   version that asks for more than was granted is removed, and the install is
@@ -711,7 +711,7 @@ implementation serves Settings → Extensions, the remote protocol and the CLI
 | Command | Does |
 | --- | --- |
 | `crombolo extension list [--remote <name>]` | the installed bundles: version, whether their server features are on, what was granted and by whom, and whether installed changes wait for a restart |
-| `crombolo extension install <name[@version] \| file.tgz> [--grant <p>…] [--act-as …] [--apply-content] [--remote <name>] [--dry-run]` | `bun add`, as Install does, granting what it asks for; the content too with `--apply-content` |
+| `crombolo extension install <name[@version] \| file.tgz> [--grant <p>…] [--delegate-to <user key>] [--apply-content] [--remote <name>] [--dry-run]` | `bun add`, as Install does, granting what it asks for; the content too with `--apply-content` |
 | `crombolo extension uninstall <name> [--remote <name>]` | `bun remove` |
 | `crombolo extension disable\|enable <id> [--remote <name>]` | a bundle's server features off or on, at once ([story 225](#permissions)) |
 
@@ -1557,8 +1557,9 @@ export default defineConfig({
 
 - **A version that asks for more** than the entry names is off until the entry
   names it too, or an administrator grants it. So a dependency bumped in `bun.lock`
-  cannot widen what it may do unnoticed. `origins` and `actAs` are named beside
-  `grant` when it asks for them.
+  cannot widen what it may do unnoticed. `origins` are named beside `grant` when
+  it asks for them. `user.delegate` is never granted from the config: it needs a
+  person who granted it, and the boot stops naming who may (story 325).
 - **An entry for an extension the site does not depend on** stops the boot,
   naming it.
 - **Settings:** the manifest's `crombolo.settings` declares each setting, with a
@@ -1862,7 +1863,8 @@ each permission with the reason it needs it, and it is held to that.
 
   Besides the areas:
   - `member.delegate` acts for the member calling a site route;
-  - `actAs` acts for a back-office user, as granted;
+  - `user.delegate` acts for the person using it in the back office, across every
+    area, from story 325: see "Acting for the person" below;
   - `events.content` is called for content events;
   - `http.outbound` sends to the origins it names;
   - `routes.public` answers routes anyone may call;
@@ -1901,8 +1903,16 @@ each permission with the reason it needs it, and it is held to that.
   its grant gives: the sections, document and media verbs on the whole tree, and
   languages, that its paths need. It is never an administrator, so its publishes
   meet the approval workflows, and the audit names it "Extension <name>".
-  - Under `actAs` it acts for the installer, the caller (itself where there is
-    none), or a named user, as the grant chose, and that user's rights bound it too.
+  - **Acting for the person (story 325).** Under `user.delegate` it acts for whoever
+    uses it in the back office: through `api` as their own principal, so the API holds
+    it to their rights, and through the other capabilities with the areas of the
+    sections they hold. A job or an event acts for whoever granted it, through `api`
+    alone; a visitor on a public route borrows nobody. It may never install or grant
+    extensions, reach the site as a remote, or change users and groups, for anyone,
+    administrators included. Asking for it beside an area permission is refused, since
+    it already reaches them. What it writes is in the audit log as the person, with the
+    detail "<Extension>, for <person>". `actAs` is retired: a manifest asking for it is
+    refused by name, and `extension migrate` rewrites it to `user.delegate`.
 - **Requests out:** `fetch`, as a capability, and an event handler's `fetch`,
   reach only the origins `http.outbound` names, by the address rule of story 301.
 - **At boot:**
@@ -1913,14 +1923,15 @@ each permission with the reason it needs it, and it is held to that.
 - **Schema 3,** names without reasons, is still read for an extension already
   installed: `documents.read` is read as `content.read`. A new install, or an
   upgrade, to a schema 3 version is refused, saying why.
-- **The install** shows every permission with its reason and the origins, and asks
-  whom `actAs` acts for. Granting is the whole list, exactly: in the panel, in
-  `extension install --grant … [--act-as caller|user:<key>]`, and over a remote.
+- **The install** shows every permission with its reason and the origins. Granting
+  is the whole list, exactly: in the panel, in `extension install --grant …`, and
+  over a remote; `user.delegate` records who granted it, which a script without a
+  person names with `--delegate-to <user key>`.
   There is no separate question about server code.
 - **A grant is what lets it run (story 309).** An extension runs, its screens,
   files, routes, events and jobs alike, while its grant covers everything its
   installed version asks for: each permission, each `http.outbound` origin, and
-  whom `actAs` acts for.
+  for `user.delegate` who granted it.
   - **States:** Installed shows one of four:
     - **on**;
     - **turned off** by an administrator;
@@ -1937,7 +1948,7 @@ each permission with the reason it needs it, and it is held to that.
     when it changes.
   - **An administrator:** the Marketplace's install panel, or **Grant** in
     Installed for one installed by a deploy or waiting after an upgrade.
-  - **The CLI:** `crombolo extension grant <name> --grant … [--act-as …]`.
+  - **The CLI:** `crombolo extension grant <name> --grant … [--delegate-to <user key>]`.
   - **A remote:** someone holding "Install code on this site" (`bundle-manage`'s
     `installed/<name>/grant`).
   - **Exactly:** a grant is exactly what is asked for, or it is refused, saying

@@ -10,6 +10,7 @@
  */
 import { AsyncLocalStorage } from 'node:async_hooks'
 import type { Principal } from '@crombolo/api-management'
+import { USER_DELEGATE } from '@crombolo/backoffice-host/registry'
 import {
   DocumentPermissions,
   FormPermissions,
@@ -129,6 +130,12 @@ const SECTIONS: Readonly<Record<string, string>> = {
   redirects: SECTION_ALIASES.content,
 }
 
+/** The section an area's permission needs, for acting as the person using it (story 325). */
+export const sectionOfPermission = (permission: string): string | undefined => {
+  const area = permission.split('.')[0] as string
+  return area === 'identityProviders' ? SECTION_ALIASES.settings : SECTIONS[area]
+}
+
 /** The verbs a set of permissions needs, for the API's own permission checks. */
 function verbsOf(granted: ReadonlySet<string>): string[] {
   const verbs = new Set<string>()
@@ -224,10 +231,34 @@ export function actingPrincipalOf(request: Request): Principal | undefined {
   return secret === SECRET && call ? acting.get(call) : undefined
 }
 
-const calling = new AsyncLocalStorage<string>()
+const calling = new AsyncLocalStorage<{ id: string; name: string }>()
 
 /** The extension whose call to `api` is being answered, while it is. */
-export const callingExtension = (): string | undefined => calling.getStore()
+export const callingExtension = (): string | undefined => calling.getStore()?.id
+
+/** Its name, for the audit log's "Redirects, for Adam" (story 325). */
+export const callingExtensionName = (): string | undefined => calling.getStore()?.name
+
+/**
+ * What no extension may do through `api` for anyone, however wide the person's
+ * own access (story 325): install or grant extensions, change users or groups,
+ * or reach a site as a remote. Pure.
+ */
+export function refusedForEveryone(method: string, path: string): string | undefined {
+  const clean = path.replace(/^\/+/, '')
+  if (
+    under(clean, `${PLUGIN}extensions`) ||
+    under(clean, `${PLUGIN}bundles`) ||
+    under(clean, 'remote')
+  )
+    return 'an extension may not install or grant extensions, or reach this site as a remote, for anyone'
+  if (
+    !READING.has(method.toUpperCase()) &&
+    (under(clean, `${MANAGEMENT}user`) || under(clean, `${MANAGEMENT}user-group`))
+  )
+    return 'an extension may not change users or groups, for anyone'
+  return undefined
+}
 
 /**
  * `api` for one extension and caller: refuses what the grant does not cover,
@@ -236,6 +267,8 @@ export const callingExtension = (): string | undefined => calling.getStore()
  */
 export function createBundleApi(options: {
   bundleId: string
+  /** Its name, for the audit log; its id when not given. */
+  bundleName?: string
   origin: string
   backOfficePath: string
   granted: () => readonly string[]
@@ -248,7 +281,11 @@ export function createBundleApi(options: {
     const clean = path.replace(/^\/+/, '')
     const needs = permissionsFor(verb, clean)
     const granted = new Set(options.granted())
-    if (!needs.some((permission) => granted.has(permission)))
+    const never = refusedForEveryone(verb, clean)
+    if (never) throw new ApiRefusedError(`${options.bundleId} may not ${verb} ${clean}: ${never}.`)
+    // Acting for the person reaches every area; the API then holds it to their own rights (story 325).
+    const delegated = granted.has(USER_DELEGATE) && needs.length > 0
+    if (!delegated && !needs.some((permission) => granted.has(permission)))
       throw new ApiRefusedError(
         needs.length > 0
           ? `${options.bundleId} may not ${verb} ${clean}: it needs ${needs.join(' or ')}, which it was not granted.`
@@ -269,7 +306,10 @@ export function createBundleApi(options: {
     })
     acting.set(call, principal)
     try {
-      return await calling.run(options.bundleId, () => dispatch(sent))
+      return await calling.run(
+        { id: options.bundleId, name: options.bundleName ?? options.bundleId },
+        () => dispatch(sent),
+      )
     } finally {
       acting.delete(call)
     }
@@ -285,15 +325,7 @@ export function createBundleApi(options: {
 
 const KEY = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-/**
- * Whom an `actAs` grant names, as stored: `installer` becomes the installing
- * user's key, `caller` stays, and `user:<key>` names a user. Null when no choice
- * was given, or one it cannot be.
- */
-export function actAsChoice(value: unknown, installerKey?: string): string | null {
-  if (value === 'caller') return 'caller'
-  if (value === 'installer') return installerKey ? `installer:${installerKey}` : null
-  if (typeof value === 'string' && value.startsWith('user:') && KEY.test(value.slice(5)))
-    return value.toLowerCase()
-  return null
+/** A user's key, as `--delegate-to` names one: lower case, or null when it is not one. */
+export function userKeyOf(value: unknown): string | null {
+  return typeof value === 'string' && KEY.test(value.trim()) ? value.trim().toLowerCase() : null
 }

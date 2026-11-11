@@ -8,7 +8,11 @@
  */
 import { join } from 'node:path'
 import type { BundlePackage } from '@crombolo/backoffice-host'
-import { type ExtensionSetting, readSettings } from '@crombolo/backoffice-host/registry'
+import {
+  type ExtensionSetting,
+  readSettings,
+  USER_DELEGATE,
+} from '@crombolo/backoffice-host/registry'
 import {
   type BundleGrant,
   BundleGrantRepository,
@@ -52,8 +56,7 @@ export function entryCovers(pkg: BundlePackage, entry: ExtensionEntry | undefine
   const granted = new Set(entry.grant)
   if (!declaredPermissions(pkg).every((permission) => granted.has(permission))) return false
   const origins = new Set(entry.origins ?? [])
-  if (!declaredOrigins(pkg).every((origin) => origins.has(origin))) return false
-  return !declaredPermissions(pkg).includes('actAs') || Boolean(entry.actAs)
+  return declaredOrigins(pkg).every((origin) => origins.has(origin))
 }
 
 /** Its settings: the manifest's defaults, then what the back office set, then the config's. */
@@ -95,6 +98,12 @@ export function extensionEntryProblems(
       (id) =>
         `The config's extensions names "${id}", which no extension the site depends on is: add it to package.json, or take it out.`,
     )
+  // Acting for the person needs a person to have granted it, which a config has not (story 325).
+  for (const [id, entry] of Object.entries(entries ?? {}))
+    if (entry.grant?.includes(USER_DELEGATE))
+      problems.push(
+        `The config's extensions grants "${id}" ${USER_DELEGATE}, which only an administrator who is signed in may grant, so a job or an event has someone to act for: take it out of the config, and grant it in Settings, under Extensions, or with \`crombolo extension grant ${id} --delegate-to <user key>\`.`,
+      )
   if (Bun.env.NODE_ENV === 'production')
     for (const [id, entry] of Object.entries(entries ?? {}))
       if (entry.dev)

@@ -39,12 +39,11 @@ export const installBundle = (
   version,
   applyContent = true,
   grant = [],
-  actAs = undefined,
   settings = undefined,
 ) =>
   json('/install', {
     method: 'POST',
-    body: JSON.stringify({ name, version, applyContent, grant, actAs, settings }),
+    body: JSON.stringify({ name, version, applyContent, grant, settings }),
   })
 
 /** Turns an installed bundle's server features off until it is enabled again (story 225). */
@@ -52,8 +51,8 @@ export const disableBundle = (id) =>
   json('/disable', { method: 'POST', body: JSON.stringify({ id }) })
 
 /** Grants an installed extension exactly what it asks for, and whom it acts for (story 309). */
-export const grantBundle = (id, grant, actAs = undefined) =>
-  json('/grant', { method: 'POST', body: JSON.stringify({ id, grant, actAs }) })
+export const grantBundle = (id, grant) =>
+  json('/grant', { method: 'POST', body: JSON.stringify({ id, grant }) })
 
 /** Saves an extension's settings: `null` takes one back to its default (story 310). */
 export const saveSettings = (id, values) =>

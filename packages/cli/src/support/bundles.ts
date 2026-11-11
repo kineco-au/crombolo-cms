@@ -60,6 +60,7 @@ export async function remoteBundles(remote: string, env: string | undefined) {
       version?: string
       grant: string[]
       applyContent: boolean
+      delegateTo?: string | null
       settings?: Record<string, unknown>
     }) =>
       client.json<{
@@ -83,13 +84,13 @@ export async function remoteBundles(remote: string, env: string | undefined) {
         `${base}/${encodeURIComponent(name)}/${enabled ? 'enable' : 'disable'}`,
         { method: 'POST' },
       ),
-    grant: (name: string, grant: readonly string[], actAs: string | null) =>
+    grant: (name: string, grant: readonly string[], delegateTo: string | null) =>
       client.json<{ ok: boolean; message: string; on?: boolean }>(
         `${base}/${encodeURIComponent(name)}/grant`,
         {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ grant, actAs }),
+          body: JSON.stringify({ grant, delegateTo }),
         },
       ),
   }

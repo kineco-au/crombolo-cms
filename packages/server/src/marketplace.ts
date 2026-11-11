@@ -33,6 +33,7 @@ import {
   readSettings,
   SCHEMA_3_NOT_INSTALLED,
   SITE_PACKAGE_NOT_INSTALLED,
+  USER_DELEGATE,
   validateBundlePackage,
 } from '@crombolo/backoffice-host'
 import {
@@ -41,7 +42,13 @@ import {
   localBundlePath,
   localBundlesNamed,
 } from '@crombolo/transfer'
-import { type BundleGrants, declaredEntries, isSchema3 } from './bundle-grants.ts'
+import {
+  type BundleGrants,
+  DELEGATE_NEEDS_PERSON,
+  declaredEntries,
+  declaredPermissions,
+  isSchema3,
+} from './bundle-grants.ts'
 import { siteLayouts } from './components.ts'
 import { logger } from './logging.ts'
 import {
@@ -180,7 +187,8 @@ export interface InstallOutcome {
     warning?: string
   }[]
   /** With `needsGrant`: it asks to act for a user, so the grant names whom (story 308). */
-  asksActAs?: boolean
+  /** It asks for `user.delegate`: it acts for the person using it (story 325). */
+  delegates?: boolean
   /**
    * With `needsGrant`: its page templates sit in a site layout, picked here
    * (story 312). `suggested` is the one it names, when the site has it.
@@ -238,8 +246,8 @@ export interface Marketplace {
       applyContent?: boolean
       /** The permissions the administrator granted: the bundle's whole list (stories 222, 308). */
       grant?: readonly string[]
-      /** Whom it acts for, when it asks for `actAs`: `installer:<key>`, `caller` or `user:<key>`. */
-      actAs?: string | null
+      /** Under `user.delegate`, the user a job or an event acts for: whoever grants it (story 325). */
+      delegateTo?: string | null
       /** Who is installing, recorded on the grant. */
       by?: string | null
     },
@@ -266,7 +274,7 @@ export interface Marketplace {
     options?: {
       applyContent?: boolean
       grant?: readonly string[]
-      actAs?: string | null
+      delegateTo?: string | null
       by?: string | null
     },
   ): Promise<InstallOutcome>
@@ -560,7 +568,7 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
       on: state.on,
       status: state.status,
       missing: state.missing,
-      asksActAs: declaredEntries(bundle).some((entry) => entry.permission === 'actAs'),
+      delegates: declaredEntries(bundle).some((entry) => entry.permission === USER_DELEGATE),
       disabledBy: state.disabledBy,
       ...(state.grant?.grantedBy
         ? {
@@ -791,7 +799,7 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
     request: {
       applyContent?: boolean
       grant?: readonly string[]
-      actAs?: string | null
+      delegateTo?: string | null
       by?: string | null
     },
     checked?: { version: string },
@@ -853,7 +861,15 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
     }
     // What was granted is recorded against the version that landed, for every
     // extension: a grant is what lets one run (story 309).
-    await options.grants?.grant(found, request.by ?? null, { actAs: request.actAs ?? null })
+    const delegates = declaredPermissions(found).includes(USER_DELEGATE)
+    if (delegates && !request.delegateTo) {
+      await install('remove', name, options.siteDir)
+      options.extensions.invalidate()
+      return { ok: false, message: `${name} was not installed: ${DELEGATE_NEEDS_PERSON}.` }
+    }
+    await options.grants?.grant(found, request.by ?? null, {
+      delegateKey: delegates ? request.delegateTo : null,
+    })
 
     // The content half lands after the dependency, so a refused check leaves
     // the package installed and says why, rather than undoing an install that
@@ -970,16 +986,15 @@ export const SCREENS_NOTICE = 'Its screens run in the browser of everyone who us
 /**
  * Whether an install request granted exactly what the extension asks for
  * (stories 222, 308): all of it, nothing it did not ask, and whom it acts for
- * when it asks for `actAs`. One that asks for nothing needs no grant.
+ * One that asks for nothing needs no grant.
  */
 function consented(
-  request: { grant?: readonly string[]; actAs?: string | null },
+  request: { grant?: readonly string[] },
   asked: readonly DeclaredPermission[],
 ): boolean {
   const permissions = asked.map((entry) => entry.permission)
   if (permissions.length === 0) return true
   const granted = new Set(request.grant ?? [])
-  if (permissions.includes('actAs') && !request.actAs) return false
   return granted.size === new Set(permissions).size && permissions.every((p) => granted.has(p))
 }
 
@@ -994,7 +1009,7 @@ function grantNeeded(
     ok: false,
     needsGrant: true,
     permissions: describePermissions(asked),
-    asksActAs: asked.some((entry) => entry.permission === 'actAs'),
+    delegates: asked.some((entry) => entry.permission === USER_DELEGATE),
     ...(layout ? { layout } : {}),
     message: `${before ? `${before} ` : ''}${name} asks for these permissions. Grant them, each as it asks, to install it.`,
   }

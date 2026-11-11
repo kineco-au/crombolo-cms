@@ -2437,9 +2437,9 @@
           "description": "a permission it asks for; name every one"
         },
         {
-          "name": "--act-as",
+          "name": "--delegate-to",
           "type": "string",
-          "description": "with actAs: whom it acts for, the calling user or a named one"
+          "description": "with user.delegate: the user a job or an event acts for when nobody is using it"
         },
         {
           "name": "--remote",
@@ -2506,9 +2506,9 @@
           "description": "a permission it asks for; name every one"
         },
         {
-          "name": "--act-as",
+          "name": "--delegate-to",
           "type": "string",
-          "description": "with actAs: whom it acts for, the calling user or a named one"
+          "description": "with user.delegate: the user a job or an event acts for when nobody is using it"
         },
         {
           "name": "--apply-content",

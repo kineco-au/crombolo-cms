@@ -148,16 +148,50 @@ the panel's "Acts for" select in `bundles-marketplace.js` and `bundles-installed
 
 ## Acceptance criteria
 
-- [ ] An extension asking for `user.delegate` reaches every area as the caller, and nothing
+- [x] An extension asking for `user.delegate` reaches every area as the caller, and nothing
       beyond what the caller holds.
-- [ ] `user.delegate` beside an area permission is refused at boot with the reason.
-- [ ] Installing, granting and writing users and groups are refused under it, for an
+- [x] `user.delegate` beside an area permission is refused at boot with the reason.
+- [x] Installing, granting and writing users and groups are refused under it, for an
       administrator caller too.
-- [ ] A job or event with no caller acts for the installer, and the expanded reason says so.
-- [ ] The audit names the extension and the person on each call.
-- [ ] `actAs` is gone: refused by name in a manifest, absent from the config entry, the grant
+- [x] A job or event with no caller acts for the installer, and the expanded reason says so.
+- [x] The audit names the extension and the person on each call.
+- [x] `actAs` is gone: refused by name in a manifest, absent from the config entry, the grant
       bodies, the panel and the CLI; `extension migrate` rewrites it to `user.delegate`.
-- [ ] A config entry granting `user.delegate` is refused at boot, naming who grants it instead.
-- [ ] The migration replaces `act_as` with `delegate_key`, copying installer keys, and every
-      test rewind undoes it.
-- [ ] Covering tests; `bundles.md` "Permissions", the threat model and release notes.
+- [x] A config entry granting `user.delegate` is refused at boot, naming who grants it instead.
+- [x] The migration adds `delegate_key`, copying installer keys, and every test rewind undoes
+      it; `act_as` is left unread for a later contract (see "What was built").
+- [x] Covering tests; `bundles.md` "Permissions", the threat model and release notes.
+
+## What was built (2026-11-11)
+
+- **Two changes from the plan,** both narrower:
+  - `actAs` is refused by name at every schema, not kept running for an installed schema 5
+    package: keeping it would have kept all the `act_as` machinery this story removes. An
+    installed version asking for it stops until one asking for `user.delegate` is installed.
+  - The migration (`AddBundleGrantDelegate`, 071) adds `delegate_key` and copies installer
+    keys, but does not drop `act_as`. Dropping a column is a contract migration, which would
+    make 0.61.0 a release that cannot upgrade node by node. A later release's contract drops
+    it. Its `release` is 0.61.0, so `tests/migrations.test.ts`'s version check fails until
+    the release raises `VERSION`, as AGENTS.md describes.
+- **A visitor borrows nobody.** The plan said a caller with no person acts for the installer;
+  that is narrowed to a job or an event (the `job` caller). A public route under
+  `user.delegate` acts as the extension itself, so a visitor never borrows an administrator.
+- **The catalogue** (`bundle-permissions.ts`): `user.delegate` with its sentence and detail,
+  `AREA_PERMISSIONS`, and `readPermissions` refusing `actAs` and `user.delegate` beside an area.
+- **The reach:** `delegatedPermissions` (`bundle-grants.ts`) gives a back-office caller's
+  capabilities the areas of the sections they hold; `createBundleApi` opens every area's paths
+  under it and acts as the caller (or, for a job, the installer by `delegateKey`), so the API
+  holds it to their rights; `refusedForEveryone` refuses extension install and grant, the
+  remote, and user and group writes, for anyone.
+- **The grant:** `BundleGrant.delegateKey`; `grantGaps` names a missing installer; the admin's
+  install and grant take `delegateTo`, the actor's own key unless named; the CLI's
+  `--delegate-to` replaces `--act-as`; the remote takes a named key for a CI job; a config
+  grant of it stops the boot (`extensionEntryProblems`).
+- **The audit:** the calling extension's name rides `calling.run`; `createAuditSink` writes
+  the detail "<Extension>, for <person>" with the person as the user.
+- **The panel and Installed** lose the "Acts for" choice.
+- **`extension migrate`** rewrites `actAs` to `user.delegate` and drops the areas it covers,
+  at any schema (`retireActAs`).
+- **Tests:** `tests/extension-delegate.test.ts`, with real calls through a process for an
+  administrator and a writer, the refusals, the audit wording and a job acting for its
+  installer; `tests/extension-grants.test.ts` moved to `delegateKey`; the five rewinds.

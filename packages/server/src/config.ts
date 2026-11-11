@@ -623,8 +623,6 @@ export interface ExtensionEntry {
   grant?: readonly string[]
   /** The origins its `http.outbound` may reach, when it asks for any. */
   origins?: readonly string[]
-  /** Whom `actAs` acts for: `caller`, or `user:<key>`. */
-  actAs?: string
   /** Its settings' values, locked in the back office. */
   settings?: Readonly<Record<string, unknown>>
   /**

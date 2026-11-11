@@ -54,7 +54,7 @@ Status: **covered**, **partly** (a gap is named), or **open**.
 | T7 | **Outbound requests and SSRF** from the server | **Covered (311, 312)**: Deno allows only the hosts its grant names, and the host's `fetch` adds the address rule (story 301) | — |
 | T8 | **Screens misusing the user's session**: calling the Management API as them, sending data anywhere | **Covered (313)** for sending: the back office's content security policy lets its pages reach the site and the origins granted extensions declare, and nothing else. **Asked for (320):** back-office code needs `backoffice.code`, granted under a warning that names the publisher, so none runs that was not granted knowingly | A screen granted `backoffice.code` can still do anything the signed-in user can on the site itself. **A described screen (323)** runs nothing in the page: the back office draws it from data, every string as text, so it holds no session |
 | T9 | **Screens of an extension that is off or ungranted** | **Covered (309).** Their manifests are hidden and their files not served | — |
-| T10 | **Acting as a member beyond what was granted** (`member.delegate`) | **Covered (309).** Checked on every call | — |
+| T10 | **Acting as a member beyond what was granted** (`member.delegate`), or for a back-office user beyond what they hold (`user.delegate`) | **Covered (309, 325).** Checked on every call; under `user.delegate` the API holds it to the person's own rights, and installing or granting extensions, a remote, and users and groups are refused for anyone | — |
 | T11 | **One extension reading another's data** | **Covered (311).** Separate processes, separate channels, and each one's queries run on its own tables' connection | — |
 | T12 | **Code at install time**: lifecycle scripts, migrations, a check that imports | **Covered.** `bun add --ignore-scripts`; story 300: a check imports nothing, and migrations are code | — |
 | T13 | **A swapped package**: a version that changed between listing and install, or a registry serving something else | **Covered.** The landed manifest is checked again and removed when it differs. The lockfile pins the hash. Signing is available (story 060) | Signing is optional by default |
@@ -114,8 +114,8 @@ workflows, redirects and sign-in providers, with users read only. Besides the ar
 - `routes.public`;
 - `events.content`;
 - `member.delegate`;
-- `actAs`, to act for the installer, the caller or a named user, where it otherwise
-  acts as itself;
+- `user.delegate`, to act for the person using it across every area, from 325;
+  without it, an extension acts as itself;
 - `templates`, from 312;
 - `backoffice.code`, from 320.
 
@@ -139,6 +139,7 @@ the CMS.
 | 312 | An extension's components stay in its package and render in its own process; it writes none of the site's code (T5, T6) |
 | 313 | The back office's content security policy names only the origins extensions declared (T8) |
 | 320 | An extension's back-office code is asked for, granted under a warning, built, and served only from its build (T8) |
+| 325 | `user.delegate`: an extension acts for the person using it, recorded against them, never installing, granting or changing users (T10) |
 | 323 | An extension's screens are described by its server half and drawn by the back office, so none of its code runs in the page (T8) |
 | 316 | A site bundle is applied only from a key or CI build the site trusts (T16) |
 

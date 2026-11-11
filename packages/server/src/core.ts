@@ -11,6 +11,7 @@ import {
   BUNDLE_PERMISSIONS,
   createBackOfficePaths,
   createExtensionRegistry,
+  USER_DELEGATE,
 } from '@crombolo/backoffice-host/registry'
 import { mediaJobHandlers } from '@crombolo/content'
 import { ObjectTypes } from '@crombolo/core'
@@ -43,7 +44,7 @@ import { recordAudit } from './adapters/audit.ts'
 import { createMediaSource, createPublishedContentSource } from './adapters/documents.ts'
 import { backOfficeUrl, documentEditUrl } from './back-office-url.ts'
 import { BACKOFFICE_EXTERNAL_PATH } from './backoffice-external.ts'
-import { actAsChoice, createBundleApi, extensionPrincipal } from './bundle-api.ts'
+import { createBundleApi, extensionPrincipal } from './bundle-api.ts'
 import {
   APPROVED_BY_CODE,
   createBundleGrants,
@@ -302,12 +303,7 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
       )
     const bundle = { id: pkg.id }
     // Recorded where the database is written, and audited when it changes.
-    if (
-      owns &&
-      (await bundleGrants.grant(pkg, APPROVED_BY_CODE, {
-        actAs: entry?.actAs ? actAsChoice(entry.actAs) : undefined,
-      }))
-    )
+    if (owns && (await bundleGrants.grant(pkg, APPROVED_BY_CODE)))
       await recordAudit(db, {
         category: 'system',
         action: 'Grant',
@@ -624,12 +620,13 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
           },
           log: (id) => bundleLog(id),
           callerHost: {
-            // Story 308: the site's areas, as the extension or whom it acts for.
+            // Story 308: the site's areas, as the extension; story 325, or as the person using it.
             api: (caller, bundle) => {
               const pkg = bundlePackages.find((candidate) => candidate.id === bundle.id)
               const granted = () => bundleGrants.granted(bundle.id)
               return createBundleApi({
                 bundleId: bundle.id,
+                bundleName: pkg?.name ?? bundle.id,
                 origin: (config.applicationUrl || 'http://localhost').replace(/\/+$/, ''),
                 backOfficePath: config.backOfficePath,
                 granted,
@@ -639,12 +636,18 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
                     { id: bundle.id, name: pkg?.name ?? bundle.id },
                     granted(),
                   )
-                  const choice =
-                    pkg && granted().includes('actAs') ? bundleGrants.state(pkg).grant?.actAs : null
-                  if (!choice) return itself
-                  if (choice === 'caller')
-                    return caller.kind === 'backoffice' ? caller.principal : itself
-                  return userPrincipalByKey(db, choice.slice(choice.indexOf(':') + 1))
+                  if (!pkg || !granted().includes(USER_DELEGATE)) return itself
+                  if (caller.kind === 'backoffice') return caller.principal
+                  // A job or an event acts for whoever granted it; a visitor never borrows anyone.
+                  const key =
+                    caller.kind === 'job' ? bundleGrants.state(pkg).grant?.delegateKey : null
+                  const installer = key ? await userPrincipalByKey(db, key) : undefined
+                  if (key && !installer)
+                    bundleLog(bundle.id).warn(
+                      'It acts for whoever granted it, {key}, who is no longer a user: it acts as itself.',
+                      { key },
+                    )
+                  return installer ?? itself
                 },
               })
             },

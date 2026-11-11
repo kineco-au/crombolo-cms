@@ -3562,14 +3562,14 @@ crombolo extension enable <name> [--remote <remote>] [--env <env>]
 Grant an installed extension what it asks for, here or on a remote. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo extension grant <name> [--grant <grant>] [--act-as <act-as>] [--remote <remote>] [--env <env>]
+crombolo extension grant <name> [--grant <grant>] [--delegate-to <delegate-to>] [--remote <remote>] [--env <env>]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
 | `name` | string | The package name, or its bundle id. Required. |
 | `--grant` | string[] | A permission it asks for; name every one. |
-| `--act-as` | string | With actAs: whom it acts for, the calling user or a named one. |
+| `--delegate-to` | string | With user.delegate: the user a job or an event acts for when nobody is using it. |
 | `--remote` | string | Grant it on this remote instead. |
 | `--env` | string | With --remote: the remote's environment. |
 
@@ -3586,14 +3586,14 @@ crombolo extension grant <name> [--grant <grant>] [--act-as <act-as>] [--remote 
 Add an extension to this site, or a remote, as a dependency. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo extension install <bundle> [--grant <grant>] [--act-as <act-as>] [--apply-content] [--layout <layout>] [--code-into <code-into>] [--remote <remote>] [--env <env>] [--dry-run]
+crombolo extension install <bundle> [--grant <grant>] [--delegate-to <delegate-to>] [--apply-content] [--layout <layout>] [--code-into <code-into>] [--remote <remote>] [--env <env>] [--dry-run]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
 | `bundle` | string | A package name, name@version, a packed .tgz, or with --code-into a site package. Required. |
 | `--grant` | string[] | A permission it asks for; name every one. |
-| `--act-as` | string | With actAs: whom it acts for, the calling user or a named one. |
+| `--delegate-to` | string | With user.delegate: the user a job or an event acts for when nobody is using it. |
 | `--apply-content` | boolean | Apply the content it carries too. |
 | `--layout` | string | The site's layout its page templates sit in. |
 | `--code-into` | string | Install a site package's own code into this empty directory. |

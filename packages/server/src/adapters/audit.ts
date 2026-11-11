@@ -13,6 +13,7 @@ import {
   auditRecord,
   type Db,
 } from '@crombolo/data'
+import { callingExtensionName } from '../bundle-api.ts'
 import { logger } from '../logging.ts'
 
 const log = logger('Audit')
@@ -37,6 +38,16 @@ export async function recordAudit(
   }
 }
 
+/** An entry's detail when an extension did it for a person: "Redirects, for Adam". */
+export function attributed(
+  extension: string,
+  person: string | null | undefined,
+  detail: string | null | undefined,
+): string {
+  const by = `${extension}, for ${person ?? 'someone'}`
+  return detail ? `${by}: ${detail}` : by
+}
+
 export function createAuditSink(db: Db): AuditSink {
   const audit = new AuditLog(db)
   return {
@@ -52,11 +63,20 @@ export function createAuditSink(db: Db): AuditSink {
         return { entityType, entityKey: key, entityName: null }
       }
     },
-    record: (entries) =>
-      recordAudit(
+    record: (entries) => {
+      // An extension acting for a person is told apart from them (story 325).
+      const extension = callingExtensionName()
+      return recordAudit(
         db,
-        entries.map((entry) => ({ ...entry, source: 'request' as const })),
-      ),
+        entries.map((entry) => ({
+          ...entry,
+          source: 'request' as const,
+          ...(extension && !String(entry.userKey ?? '').startsWith('extension:')
+            ? { detail: attributed(extension, entry.userName, entry.detail) }
+            : {}),
+        })),
+      )
+    },
   }
 }
 

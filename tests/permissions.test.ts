@@ -185,6 +185,7 @@ describe('the media verbs (story 088)', () => {
       'AddBundleKind',
       'AddTrustedSigners',
       'AddContentTypeSeo',
+      'AddBundleGrantDelegate',
     ])
     const held = async (key: string) =>
       (

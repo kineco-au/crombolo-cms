@@ -168,7 +168,7 @@ import { createPublishedContentSource, loadDraftNode } from './adapters/document
 import type { Approvals } from './approvals.ts'
 import { handleApprovalsApi } from './approvals-api.ts'
 import { type BundleActor, createBundleAdmin, settingsIn } from './bundle-admin.ts'
-import { actAsChoice, actingPrincipalOf } from './bundle-api.ts'
+import { actingPrincipalOf } from './bundle-api.ts'
 import { type BundleGrants, declaredOrigins } from './bundle-grants.ts'
 import { CommandError, installBundleContent } from './bundle-install.ts'
 import { BUNDLES_CHANGED_EVENT, type BundleReload, createBundleReloader } from './bundle-reload.ts'
@@ -2228,7 +2228,6 @@ export async function createServer(
           version?: unknown
           applyContent?: unknown
           grant?: unknown
-          actAs?: unknown
           settings?: unknown
         }
         const name = typeof body.name === 'string' ? body.name : ''
@@ -2239,7 +2238,6 @@ export async function createServer(
                 name,
                 version: typeof body.version === 'string' ? body.version : undefined,
                 applyContent: body.applyContent !== false,
-                actAs: actAsChoice(body.actAs, principal.id),
                 grant: Array.isArray(body.grant)
                   ? body.grant.filter((p): p is string => typeof p === 'string')
                   : [],
@@ -2324,7 +2322,6 @@ export async function createServer(
         const body = (await request.json().catch(() => ({}))) as {
           id?: unknown
           grant?: unknown
-          actAs?: unknown
         }
         const { status, ...outcome } = await bundleAdmin.grant(
           actorOf(principal, request),
@@ -2333,7 +2330,6 @@ export async function createServer(
             grant: Array.isArray(body.grant)
               ? body.grant.filter((p): p is string => typeof p === 'string')
               : [],
-            actAs: actAsChoice(body.actAs, principal.id),
           },
         )
         return Response.json(outcome, { status })

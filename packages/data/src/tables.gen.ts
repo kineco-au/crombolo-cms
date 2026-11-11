@@ -116,6 +116,7 @@ export interface CoreTables {
   bundle_grant: {
     act_as: string | null
     bundle_id: string
+    delegate_key: string | null
     disabled_at: Timestamp | null
     disabled_by: string | null
     granted_at: Timestamp

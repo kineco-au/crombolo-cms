@@ -17,6 +17,7 @@ import {
 } from 'node:fs'
 import { dirname, join, normalize, relative, sep } from 'node:path'
 import {
+  AREA_PERMISSIONS,
   BACKOFFICE_CODE,
   BACKOFFICE_DIR,
   BUNDLE_SCHEMA_VERSION,
@@ -27,6 +28,7 @@ import {
   REASON_MAX,
   readPackageJson,
   SERVER_DIR,
+  USER_DELEGATE,
 } from '@crombolo/backoffice-host/registry'
 
 export interface MigrationPlan {
@@ -42,6 +44,29 @@ export interface MigrationPlan {
   imports: Array<{ file: string; from: string; to: string }>
   /** Why it cannot be migrated; nothing is moved when there are any. */
   problems: string[]
+  /** `actAs` rewritten to `user.delegate` (story 325), and the area permissions that made redundant. */
+  delegates?: { dropped: string[] }
+}
+
+/**
+ * `actAs` as `user.delegate` (story 325): the extension acts for the person
+ * using it, which reaches every area, so the areas it listed beside it go.
+ * Undefined when it does not ask for `actAs`.
+ */
+export function retireActAs(
+  permissions: unknown,
+): { permissions: Record<string, unknown>; dropped: string[] } | undefined {
+  if (!permissions || typeof permissions !== 'object' || Array.isArray(permissions))
+    return undefined
+  const asked = permissions as Record<string, unknown>
+  if (!Object.hasOwn(asked, 'actAs')) return undefined
+  const dropped = AREA_PERMISSIONS.filter((permission) => Object.hasOwn(asked, permission))
+  const kept = Object.fromEntries(
+    Object.entries(asked).filter(
+      ([permission]) => permission !== 'actAs' && !dropped.includes(permission),
+    ),
+  )
+  return { permissions: { ...kept, [USER_DELEGATE]: asked.actAs }, dropped }
 }
 
 const SOURCE = /\.(m?[jt]s|[jt]sx)$/
@@ -121,8 +146,26 @@ export function planMigration(dir: string, options: { reason?: string } = {}): M
   const field = json.crombolo as Record<string, unknown> | undefined
   if (field?.bundleType !== 'extension') return empty('it is not an extension')
   const schema = typeof field.schemaVersion === 'number' ? field.schemaVersion : 1
-  if (schema >= OLDEST_BUNDLE_SCHEMA_VERSION)
-    return empty(`it is already written for bundle schema ${schema}`)
+  if (schema >= OLDEST_BUNDLE_SCHEMA_VERSION) {
+    const retired = retireActAs(field.permissions)
+    if (!retired) return empty(`it is already written for bundle schema ${schema}`)
+    return {
+      moves: [],
+      json: {
+        ...json,
+        crombolo: {
+          ...field,
+          schemaVersion: BUNDLE_SCHEMA_VERSION,
+          permissions: retired.permissions,
+        },
+      },
+      asksForBackOfficeCode: false,
+      dropsSignature: existsSync(join(dir, 'provenance.json')),
+      imports: [],
+      problems: [],
+      delegates: { dropped: retired.dropped },
+    }
+  }
   if (field.permissions !== undefined && Array.isArray(field.permissions))
     return empty(
       'its permissions give no reasons (bundle schema 3): give each its reason, as schema 4 does, then migrate it',
@@ -205,6 +248,7 @@ export function planMigration(dir: string, options: { reason?: string } = {}): M
             ]),
           )
         : value
+  const retired = retireActAs(field.permissions)
   const importmap = field.importmap as
     | { imports?: Record<string, string>; scopes?: Record<string, Record<string, string>> }
     | undefined
@@ -252,7 +296,9 @@ export function planMigration(dir: string, options: { reason?: string } = {}): M
         : {}),
       permissions: {
         ...(asks ? { [BACKOFFICE_CODE]: reason } : {}),
-        ...((field.permissions as Record<string, unknown> | undefined) ?? {}),
+        ...(retired?.permissions ??
+          (field.permissions as Record<string, unknown> | undefined) ??
+          {}),
       },
     },
   }
@@ -276,6 +322,7 @@ export function planMigration(dir: string, options: { reason?: string } = {}): M
     dropsSignature: existsSync(join(dir, 'provenance.json')),
     imports,
     problems: [],
+    ...(retired ? { delegates: { dropped: retired.dropped } } : {}),
   }
 }
 
