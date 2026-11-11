@@ -283,6 +283,8 @@ export interface BundleGrants {
   ): Promise<boolean>
   disable(pkg: BundlePackage, by: string | null): Promise<BundleGrantState>
   enable(pkg: BundlePackage): Promise<BundleGrantState>
+  /** Forgets its grant entirely, as removing it does (story 328). */
+  forget(bundleId: string): Promise<void>
 }
 
 /** Whether a recorded approval already holds this version and list. */
@@ -395,6 +397,10 @@ export function createBundleGrants(options: {
       })
       await read()
       return true
+    },
+    async forget(bundleId) {
+      await repository.forget(bundleId)
+      await read()
     },
     async disable(pkg, by) {
       await repository.disable(

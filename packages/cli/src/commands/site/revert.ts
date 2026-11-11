@@ -89,7 +89,7 @@ export default class SiteRevert extends BaseCommand {
         this.fail(
           'refused',
           `${runId} brought ${run.packageName ?? 'an extension'}'s content, which is put back by uninstalling it.`,
-          `\`crombolo extension uninstall ${run.packageName ?? '<name>'} --revert-content\``,
+          `\`crombolo extension uninstall ${run.packageName ?? '<name>'} --drop-content\``,
         )
     }
     const backup = await backupBefore(config, {

@@ -2717,11 +2717,16 @@
           "type": "boolean"
         },
         {
+          "name": "dataKept",
+          "type": "boolean"
+        },
+        {
           "name": "remote",
           "type": "string",
           "nullable": true
         }
       ],
+      "confirmation_bypass_arg": "--no-verify",
       "args": [
         {
           "name": "name",
@@ -2740,12 +2745,30 @@
           "description": "with --remote: the remote's environment"
         },
         {
-          "name": "--revert-content",
+          "name": "--drop-data",
           "type": "boolean",
-          "description": "first put back the content its install applied; nothing is removed if that is refused"
+          "description": "delete its tables and its data folder too, with no backup; kept otherwise"
+        },
+        {
+          "name": "--drop-content",
+          "type": "boolean",
+          "description": "first take out the content its install applied; nothing is removed if that is refused"
+        },
+        {
+          "name": "--no-verify",
+          "type": "boolean",
+          "description": "go ahead without being asked"
         }
       ],
-      "errors": ["usage", "internal", "refused", "auth", "not_found", "unavailable"]
+      "errors": [
+        "usage",
+        "internal",
+        "refused",
+        "auth",
+        "not_found",
+        "unavailable",
+        "confirmation_required"
+      ]
     },
     {
       "name": "forms field add",

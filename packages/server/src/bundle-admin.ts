@@ -3,6 +3,8 @@
  * uninstall, disable and enable, each audited. One implementation behind
  * Settings → Bundles, the remote protocol and the CLI on the site's own machine.
  */
+import { rmSync } from 'node:fs'
+import { join } from 'node:path'
 import type { BundlePackage, ExtensionRegistry } from '@crombolo/backoffice-host'
 import {
   createExtensionRegistry,
@@ -14,7 +16,16 @@ import {
   settingValueProblem,
   USER_DELEGATE,
 } from '@crombolo/backoffice-host/registry'
-import { type Db, ExtensionSettingRepository, TransferRunRepository } from '@crombolo/data'
+import {
+  type Db,
+  ExtensionSettingRepository,
+  ownerTablesIn,
+  purgeOwnerTables,
+  recordedOwner,
+  SITE_OWNER,
+  TransferRunRepository,
+  tablesStateKey,
+} from '@crombolo/data'
 import { revertRun } from '@crombolo/transfer'
 import { recordAudit } from './adapters/audit.ts'
 import {
@@ -59,6 +70,8 @@ export interface InstalledBundles {
   restartPending: RestartPending | null
   /** What this site takes of a bundle's signature (story 060). */
   policy: ProvenancePolicy
+  /** The data removed extensions left behind, kept until deleted (story 328). */
+  left: { id: string; tables: string[] }[]
   items: (InstalledListing & {
     settings?: SettingView[]
     couldNotStart?: string
@@ -108,12 +121,19 @@ export interface BundleAdmin {
   /** What installing a version would bring, with nothing installed. */
   inspect: Marketplace['inspect']
   install(actor: BundleActor, request: InstallRequest): Promise<InstallOutcome>
-  /** `revertContent` first puts back the content its install applied (story 306). */
+  /**
+   * Removes an extension (story 328): stops it, forgets its grant and settings,
+   * deletes its root, its build and its line, and keeps its data unless
+   * `dropData`; `dropContent` first takes out the content its install applied
+   * (`revertContent`, its name before 0.61, still read).
+   */
   uninstall(
     actor: BundleActor,
     name: string,
-    options?: { revertContent?: boolean },
-  ): Promise<InstallOutcome>
+    options?: { dropData?: boolean; dropContent?: boolean; revertContent?: boolean },
+  ): Promise<InstallOutcome & { dropped?: string[]; roleLeft?: string; dataKept?: boolean }>
+  /** Deletes the data an extension removed earlier left behind: its tables and its folder. */
+  dropLeftData(actor: BundleActor, id: string): Promise<SwitchOutcome & { dropped?: string[] }>
   /** Turns a bundle's server features off or on; `id` is its bundle id or its package name. */
   setEnabled(actor: BundleActor, id: string, enabled: boolean): Promise<SwitchOutcome>
   /**
@@ -145,11 +165,51 @@ export function createBundleAdmin(options: {
   config: CromboloConfig
   marketplace: Marketplace
   extensions: Pick<ExtensionRegistry, 'bundles'>
-  bundleGrants: Pick<BundleGrants, 'disable' | 'enable' | 'grant' | 'state'>
+  bundleGrants: Pick<BundleGrants, 'disable' | 'enable' | 'grant' | 'state' | 'forget'>
   /** Granted extensions that could not start, and why (story 311). */
   failed?: () => readonly { id: string; reason: string }[]
+  /** Stops an extension's running process, where this node runs one (story 328). */
+  stopExtension?: (id: string) => Promise<void>
 }): BundleAdmin {
   const { db, config, marketplace, extensions, bundleGrants } = options
+  const options_ = options
+  /**
+   * The data removed extensions left (story 328): an owner the tables ledger
+   * records that no installed package is, nor the site, nor a bundle the
+   * config wires, with its tables.
+   */
+  const leftData = async (): Promise<{ id: string; tables: string[] }[]> => {
+    const rows = await db.q
+      .selectFrom('key_value')
+      .select('key')
+      .where('key', 'like', 'Crombolo.Tables.%.State')
+      .execute()
+      .catch(() => [])
+    // What is installed, the site, and a bundle the site wires as its own code. A removed
+    // extension stays in the running config's bundles until the restart, so it is not one.
+    const discovered = extensions.bundles().bundles
+    const installed = new Set([
+      ...discovered.map((pkg) => pkg.id),
+      ...config.bundles
+        .map((bundle) => bundle.id)
+        .filter((id) => discovered.some((pkg) => pkg.id === id && !pkg.root)),
+      SITE_OWNER,
+    ])
+    const out: { id: string; tables: string[] }[] = []
+    for (const { key } of rows) {
+      const id = key.slice('Crombolo.Tables.'.length, -'.State'.length)
+      if (installed.has(id)) continue
+      const place = await recordedOwner(db, config, id)
+      out.push({ id, tables: place ? await ownerTablesIn(db, place).catch(() => []) : [] })
+    }
+    return out.sort((a, b) => a.id.localeCompare(b.id))
+  }
+  /** Its tables, schema and role, or its SQLite tables and ledger, without a backup (story 328). */
+  const dropData = async (id: string): Promise<{ tables: string[]; roleLeft?: string }> => {
+    const place = await recordedOwner(db, config, id)
+    if (!place) return { tables: [] }
+    return purgeOwnerTables(db, place, { by: config.nodeId, stateKey: tablesStateKey(id) })
+  }
   const audit = (actor: BundleActor, action: string, entityName: string, detail: string | null) =>
     recordAudit(db, {
       category: 'system',
@@ -204,6 +264,7 @@ export function createBundleAdmin(options: {
         installsElsewhere: config.runtimeInstalls ? null : (config.installsElsewhere ?? null),
         restartPending: restartPending(config.siteDir) ?? null,
         policy: config.bundlePolicy,
+        left: await leftData(),
         items: await Promise.all(
           (await marketplace.installed()).map(async (item) => {
             const pkg = find(item.packageName)
@@ -321,7 +382,16 @@ export function createBundleAdmin(options: {
 
     async uninstall(actor, name, options = {}) {
       const before = find(name)
-      if (options.revertContent) {
+      const id = before?.id
+      const dropContent = options.dropContent ?? options.revertContent ?? false
+      // The site's own code wires a bundle; an extension in a root of its own never is (story 326).
+      if (id && !before?.root && config.bundles.some((bundle) => bundle.id === id))
+        return {
+          ok: false,
+          message: `${name} is wired in the site's crombolo.config.ts, as the site's own code: take it out of \`bundles\` and deploy that first.`,
+        }
+      // The order is the story's: content, stop, revoke, files, then data.
+      if (dropContent) {
         const run = await new TransferRunRepository(db).appliedForPackage(name)
         if (run) {
           const reverted = await revertRun(db, run.id, {
@@ -336,12 +406,82 @@ export function createBundleAdmin(options: {
           await revertSections(db, config, run.id)
         }
       }
+      if (id) {
+        await options_.stopExtension?.(id).catch(() => {})
+        await bundleGrants.forget(id)
+        await new ExtensionSettingRepository(db).forget(id).catch(() => {})
+        // Its build goes either way; its data folder only with its data.
+        const home = join(config.siteDir, '.crombolo', 'extensions', id)
+        if (options.dropData) rmSync(home, { recursive: true, force: true })
+        else
+          for (const part of ['build', 'backoffice'])
+            rmSync(join(home, part), { recursive: true, force: true })
+      }
       const outcome = await marketplace.uninstall(name)
       if (!outcome.ok) return outcome
-      await audit(actor, 'Uninstall', name, null)
-      if (!before?.carries.server) return outcome
+      let dropped: string[] = []
+      let roleLeft: string | undefined
+      if (id && options.dropData) {
+        const purged = await dropData(id)
+        dropped = purged.tables
+        roleLeft = purged.roleLeft
+      }
+      await audit(
+        actor,
+        'Uninstall',
+        name,
+        [
+          options.dropData ? 'removed with its data' : 'removed; its data kept',
+          dropContent ? 'and the content it added' : '',
+          roleLeft ? `the role ${roleLeft} could not be dropped` : '',
+        ]
+          .filter(Boolean)
+          .join(', '),
+      )
+      const result = {
+        ...outcome,
+        ...(options.dropData ? { dropped } : { dataKept: true }),
+        ...(roleLeft ? { roleLeft } : {}),
+        message: [
+          outcome.message,
+          options.dropData
+            ? dropped.length > 0
+              ? `Its data was deleted: ${dropped.join(', ')}.`
+              : ''
+            : 'Its data was kept, under Installed, "Data left by…", in case it is installed again.',
+          roleLeft
+            ? `The role ${roleLeft} could not be dropped from here: your host made it, so ask them to.`
+            : '',
+        ]
+          .filter(Boolean)
+          .join(' '),
+      }
+      if (!before?.carries.server) return result
       markRestartPending(config.siteDir, `${name} removed`)
-      return { ...outcome, restartPending: true }
+      return { ...result, restartPending: true }
+    },
+
+    async dropLeftData(actor, id) {
+      if (extensions.bundles().bundles.some((pkg) => pkg.id === id))
+        return {
+          status: 409,
+          ok: false,
+          message: `${id} is installed: remove it with its data, or keep both.`,
+        }
+      const purged = await dropData(id)
+      rmSync(join(config.siteDir, '.crombolo', 'extensions', id), { recursive: true, force: true })
+      await audit(
+        actor,
+        'Purge',
+        id,
+        `its data deleted: ${purged.tables.join(', ') || 'no tables'}`,
+      )
+      return {
+        status: 200,
+        ok: true,
+        dropped: purged.tables,
+        message: `The data ${id} left was deleted.${purged.roleLeft ? ` The role ${purged.roleLeft} could not be dropped from here: your host made it, so ask them to.` : ''}`,
+      }
     },
 
     async grant(actor, id, request) {

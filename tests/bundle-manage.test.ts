@@ -135,6 +135,7 @@ describe('the bundle admin', () => {
         return { on: true } as never
       },
       grant: async () => true,
+      forget: async () => {},
       state: (pkg: { id: string }) => ({ on: state.get(pkg.id) !== false }) as never,
     }
     return {

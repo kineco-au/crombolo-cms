@@ -36,7 +36,7 @@ files disagree, is refused. Nothing is assumed.
 | **Brought in by** | `site apply` (here or `--remote`), `site deploy`, `push`, `pull`, `start --bundle`, `--code-into`: from a file or a directory only | `extension install` (here or `--remote`), the Marketplace: as a dependency |
 | **May carry** | Everything the site has, `code/` included: its config, `package.json` and `bun.lock` | Never `code/` |
 | **Published** | Never: it is `private`, and declares no `server`, `extensions`, `permissions` or `importmap`, which are an extension's | To a registry, or kept as a file |
-| **Undone by** | `site revert <run>` | `extension uninstall --revert-content` |
+| **Undone by** | `site revert <run>` | `extension uninstall --drop-content` |
 
 Each way in takes only its own kind and names the other's command when given
 the wrong one. A site package found on a registry, as a dependency, or in a
@@ -812,7 +812,15 @@ implementation serves Settings → Extensions, the remote protocol and the CLI
   component directories on the node that served the request. On a
   load-balanced site, turn `applyBundleContentOnInstall` off and let the content
   arrive with the deploy that commits it.
-- **Uninstall** is `bun remove`, the same path in reverse.
+- **Uninstall** (story 328) is one step, an administrator's: stop its process, forget its grant
+  and settings, delete its root, its build and its record line, and write one audit entry.
+  Its data, its tables and its data folder, is kept, listed in Installed under "Data left
+  by…" with a delete of its own, and an install of the same extension picks it back up.
+  `--drop-data`, or "Also delete its data", drops the tables, schema and role with it, with
+  no backup, naming a role the host made that the CMS cannot drop. `--drop-content` takes out
+  the content its install applied (`--revert-content` before 0.61, still read for now). The
+  command line asks first unless `--no-verify`, and refuses off a terminal without it. A
+  bundle the site's config wires is its own code, and is refused.
 
 Supply chain: the install runs third-party JS in the backoffice origin with the
 user's session. It is gated on Settings access, as the Extensions tool is, the

@@ -961,7 +961,11 @@ export function createRemote(options: RemoteOptions): Remote {
     if (removing) {
       const name = decodeURIComponent(what.slice('installed/'.length))
       const outcome = await bundles.uninstall(actor, name, {
-        revertContent: new URL(request.url).searchParams.get('revertContent') === 'true',
+        // Story 328: `dropContent`, `revertContent` before 0.61, still read for one release.
+        dropContent: ['dropContent', 'revertContent'].some(
+          (key) => new URL(request.url).searchParams.get(key) === 'true',
+        ),
+        dropData: new URL(request.url).searchParams.get('dropData') === 'true',
       })
       return outcome.ok
         ? Response.json(outcome)

@@ -72,9 +72,16 @@ export async function remoteBundles(remote: string, env: string | undefined) {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
       }),
-    uninstall: (name: string, options: { revertContent?: boolean } = {}) =>
+    uninstall: (name: string, options: { dropData?: boolean; dropContent?: boolean } = {}) =>
       client.json<{ ok: boolean; message: string; restartPending?: boolean }>(
-        `${base}/${encodeURIComponent(name)}${options.revertContent ? '?revertContent=true' : ''}`,
+        `${base}/${encodeURIComponent(name)}${
+          options.dropData || options.dropContent
+            ? `?${new URLSearchParams({
+                ...(options.dropData ? { dropData: 'true' } : {}),
+                ...(options.dropContent ? { dropContent: 'true' } : {}),
+              })}`
+            : ''
+        }`,
         { method: 'DELETE' },
       ),
     setEnabled: (name: string, enabled: boolean) =>

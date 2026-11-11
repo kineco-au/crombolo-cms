@@ -15,6 +15,10 @@ point at `docs/stories/`.
   of the extension's code runs in the page and the screen needs no permission. A
   manifest entry names one with `"screen"` at `"crombolo.schemaVersion": 6`.
 
+- **Removing an extension leaves nothing but its data (328).** Uninstall stops it, forgets its
+  grant and settings, and deletes its files in one step. Its data is kept, under Installed,
+  "Data left by…", until deleted there or with `--drop-data`; `--drop-content` takes out the
+  content it added; `--no-verify` skips the question. Only an administrator removes one.
 - **An extension's templates carry no script (330).** What an extension's component renders
   into a page is held to the HTML Sanitizer API's safe baseline: script, frames, objects,
   embeds, event handlers and `javascript:` links are removed, and the rest stays as written.
@@ -62,6 +66,9 @@ point at `docs/stories/`.
   upgrade that asks for more, or a fresh install needs a signed build. A host that wants
   Unrestricted extensions turned on only in the config sets
   `CROMBOLO_UNRESTRICTED_EXTENSIONS=config`.
+- **`extension uninstall --revert-content` is `--drop-content` (328).** The old name is still
+  read, with a notice, until a later release; so is a remote's `revertContent`. Uninstall now
+  asks before going on: a script passes `--no-verify`.
 - **An extension installed as a dependency stops (326).** One listed in the site's
   `package.json` is named at boot and in Installed and is not run. Remove it from
   `package.json` and install it again with `crombolo extension install`, which gives it a

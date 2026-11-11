@@ -122,4 +122,9 @@ export class BundleGrantRepository {
       .execute()
     return before?.disabledAt != null
   }
+
+  /** Forgets a bundle's grant entirely, as removing it does (story 328). */
+  async forget(bundleId: string): Promise<void> {
+    await this.db.q.deleteFrom('bundle_grant').where('bundle_id', '=', bundleId).execute()
+  }
 }

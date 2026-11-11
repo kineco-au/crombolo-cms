@@ -62,8 +62,13 @@ export const saveSettings = (id, values) =>
 export const enableBundle = (id) =>
   json('/enable', { method: 'POST', body: JSON.stringify({ id }) })
 
-export const uninstallBundle = (name) =>
-  json('/uninstall', { method: 'POST', body: JSON.stringify({ name }) })
+/** Removes an extension; its data and the content it added stay unless asked (story 328). */
+export const uninstallBundle = (name, { dropData = false, dropContent = false } = {}) =>
+  json('/uninstall', { method: 'POST', body: JSON.stringify({ name, dropData, dropContent }) })
+
+/** Deletes the data an extension removed earlier left behind (story 328). */
+export const dropLeftData = (id) =>
+  json('/drop-left-data', { method: 'POST', body: JSON.stringify({ id }) })
 
 /** Where a created bundle's package downloads from, with `?withMedia=true` to carry its media files. */
 export const createdDownloadUrl = (id, query = '') =>

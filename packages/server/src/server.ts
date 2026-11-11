@@ -856,6 +856,7 @@ export async function createServer(
     extensions,
     bundleGrants,
     failed: () => [...core.failedExtensions, ...backOfficeBuilds.failed()],
+    stopExtension: (id) => core.stopExtension(id),
   })
   const actorOf = (principal: Principal, request: Request): BundleActor => ({
     id: principal.id,
@@ -2215,6 +2216,21 @@ export async function createServer(
         }
       }
 
+      // Story 328: the data a removed extension left, deleted on its own, an administrator's.
+      if (action === 'drop-left-data' && request.method === 'POST') {
+        if (!principal.isAdmin)
+          return Response.json(
+            { ok: false, message: 'An administrator deletes what an extension left.' },
+            { status: 403 },
+          )
+        const body = (await request.json().catch(() => ({}))) as { id?: unknown }
+        const { status, ...outcome } = await bundleAdmin.dropLeftData(
+          actorOf(principal, request),
+          typeof body.id === 'string' ? body.id : '',
+        )
+        return Response.json(outcome, { status })
+      }
+
       // Story 327: what one extension did, newest first, its counts, and the same as a file.
       const watching = /^installed\/([a-z0-9][a-z0-9-]*)\/activity(\/summary|\.csv)?$/.exec(action)
       if (watching && request.method === 'GET') {
@@ -2280,6 +2296,8 @@ export async function createServer(
           applyContent?: unknown
           grant?: unknown
           settings?: unknown
+          dropData?: unknown
+          dropContent?: unknown
         }
         const name = typeof body.name === 'string' ? body.name : ''
         const actor = actorOf(principal, request)
@@ -2294,7 +2312,11 @@ export async function createServer(
                   : [],
                 settings: settingsIn(body.settings),
               })
-            : await bundleAdmin.uninstall(actor, name)
+            : // Story 328: its data and the content it added are kept unless asked.
+              await bundleAdmin.uninstall(actor, name, {
+                dropData: body.dropData === true,
+                dropContent: body.dropContent === true,
+              })
         log.info('{user} {action} the package {name}: {outcome}', {
           user: principal.email,
           action: action === 'install' ? 'installed' : 'removed',

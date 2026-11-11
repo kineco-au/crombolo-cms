@@ -48,4 +48,9 @@ export class ExtensionSettingRepository {
       })
       .execute()
   }
+
+  /** Forgets every setting an extension had, as removing it does (story 328). */
+  async forget(bundleId: string): Promise<void> {
+    await this.db.q.deleteFrom('extension_setting').where('bundle_id', '=', bundleId).execute()
+  }
 }

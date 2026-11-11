@@ -3703,7 +3703,7 @@ crombolo extension settings <name>
 Remove an installed extension, here or on a remote. Each run acts again.
 
 ```
-crombolo extension uninstall <name> [--remote <remote>] [--env <env>] [--revert-content]
+crombolo extension uninstall <name> [--remote <remote>] [--env <env>] [--drop-data] [--drop-content] [--no-verify]
 ```
 
 | Argument | Type | What it is |
@@ -3711,15 +3711,18 @@ crombolo extension uninstall <name> [--remote <remote>] [--env <env>] [--revert-
 | `name` | string | The package name. Required. |
 | `--remote` | string | Remove it on this remote instead. |
 | `--env` | string | With --remote: the remote's environment. |
-| `--revert-content` | boolean | First put back the content its install applied; nothing is removed if that is refused. |
+| `--drop-data` | boolean | Delete its tables and its data folder too, with no backup; kept otherwise. |
+| `--drop-content` | boolean | First take out the content its install applied; nothing is removed if that is refused. |
+| `--no-verify` | boolean | Go ahead without being asked. |
 
 **Output** (single, with `-o json`):
 
 - `name` (string)
 - `restartPending` (boolean)
+- `dataKept` (boolean)
 - `remote` (string)
 
-**Fails with:** `usage`, `internal`, `refused`, `auth`, `not_found`, `unavailable`.
+**Fails with:** `usage`, `internal`, `refused`, `auth`, `not_found`, `unavailable`, `confirmation_required`.
 
 ### `crombolo bundle digest`
 

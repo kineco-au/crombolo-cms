@@ -877,6 +877,12 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
   return {
     /** What each extension does, recorded for the Activity view (story 327). */
     activity,
+    /** Stops one extension's process on this node, as removing it does (story 328). */
+    async stopExtension(id: string) {
+      await Promise.all(
+        extensionProcesses.filter((process) => process.id === id).map((process) => process.stop()),
+      )
+    },
     /** The server's own handler, which `api` calls through once the server is built (story 308). */
     setBundleDispatch(dispatch: (request: Request) => Promise<Response>) {
       bundleDispatch = dispatch

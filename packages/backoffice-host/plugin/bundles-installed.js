@@ -15,9 +15,11 @@
  */
 import { css, html, nothing, repeat } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
+import { umbConfirmModal } from '@umbraco-cms/backoffice/modal'
 import { carriesTags } from './bundles-carries.js'
 import {
   disableBundle,
+  dropLeftData,
   enableBundle,
   grantBundle,
   listInstalled,
@@ -56,6 +58,10 @@ function status(item) {
 
 export default class CromboloBundlesInstalledElement extends UmbLitElement {
   static properties = {
+    _removing: { state: true },
+    _dropData: { state: true },
+    _dropContent: { state: true },
+    _left: { state: true },
     _watching: { state: true },
     _items: { state: true },
     _loading: { state: true },
@@ -100,6 +106,7 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
       this._restartPending = Boolean(result.restartPending)
       this._policy = result.policy
       this._mayGrant = result.mayGrant ?? {}
+      this._left = result.left ?? []
       this._isAdmin = this._mayGrant.limited === 'yes'
       if (!this._items.some((item) => item.packageName === this._selected))
         this._selected = this._items[0]?.packageName ?? ''
@@ -110,10 +117,21 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
     }
   }
 
+  /** Story 328: asked first, its data and the content it added kept unless ticked. */
   async #uninstall(item) {
+    this._removing = this._removing === item.packageName ? '' : item.packageName
+    this._dropData = false
+    this._dropContent = false
+  }
+
+  async #remove(item) {
     this._busy = item.packageName
     try {
-      const outcome = await uninstallBundle(item.packageName)
+      const outcome = await uninstallBundle(item.packageName, {
+        dropData: this._dropData,
+        dropContent: this._dropContent,
+      })
+      this._removing = ''
       this._notice = outcome.message ?? ''
       if (outcome.ok) await this.#load()
     } catch (error) {
@@ -400,6 +418,7 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
           }
         </uui-box>
         ${selected ? this.#details(selected) : nothing}
+        ${this.#left()}
       </div>
     `
   }
@@ -409,6 +428,94 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
     const unsignedRefused =
       item.provenance?.state === 'unsigned' && this._policy?.signatures === 'required'
     return signatureWords(item.provenance, unsignedRefused ? 'unsigned' : null, this._policy)
+  }
+
+  /** What removing it takes, and the two things it keeps unless asked. */
+  #removeDialog(item) {
+    return html`<div class="remove" role="group" aria-label="Remove it">
+      <p>
+        Removing ${item.name} stops it, forgets what it was granted, and deletes its files. Its
+        data and any content it added stay unless you tick them here.
+      </p>
+      <uui-checkbox
+        label="Also delete its data. Nothing is backed up first."
+        .checked=${this._dropData}
+        @change=${(event) => {
+          this._dropData = event.target.checked
+        }}></uui-checkbox>
+      ${
+        item.carries?.content
+          ? html`<uui-checkbox
+              label="Also take out the content it added"
+              .checked=${this._dropContent}
+              @change=${(event) => {
+                this._dropContent = event.target.checked
+              }}></uui-checkbox>`
+          : nothing
+      }
+      <div class="actions">
+        <uui-button
+          look="primary"
+          color="danger"
+          label="Remove"
+          .state=${this._busy === item.packageName ? 'waiting' : undefined}
+          @click=${() => this.#remove(item)}></uui-button>
+        <uui-button
+          look="secondary"
+          label="Cancel"
+          @click=${() => {
+            this._removing = ''
+          }}></uui-button>
+      </div>
+    </div>`
+  }
+
+  /** Data removed extensions left, each with a delete of its own (story 328). */
+  #left() {
+    if ((this._left ?? []).length === 0) return nothing
+    return html`<uui-box headline="Data left by extensions you removed">
+      <p>Kept in case they are installed again, which picks it back up.</p>
+      <uui-ref-list>
+        ${this._left.map(
+          (left) => html`<div class="left">
+            <span><strong>${left.id}</strong>: ${left.tables.length > 0 ? left.tables.join(', ') : 'no tables'}</span>
+            ${
+              this._isAdmin
+                ? html`<uui-button
+                    look="secondary"
+                    color="danger"
+                    label="Delete its data"
+                    .state=${this._busy === left.id ? 'waiting' : undefined}
+                    @click=${() => this.#dropLeft(left.id)}></uui-button>`
+                : nothing
+            }
+          </div>`,
+        )}
+      </uui-ref-list>
+    </uui-box>`
+  }
+
+  async #dropLeft(id) {
+    try {
+      await umbConfirmModal(this, {
+        color: 'danger',
+        headline: `Delete the data ${id} left?`,
+        content: 'Its tables and its data folder are deleted, and nothing is backed up first.',
+        confirmLabel: 'Delete',
+      })
+    } catch {
+      return
+    }
+    this._busy = id
+    try {
+      const outcome = await dropLeftData(id)
+      this._notice = outcome.message ?? ''
+      await this.#load()
+    } catch (error) {
+      this._notice = error instanceof Error ? error.message : String(error)
+    } finally {
+      this._busy = ''
+    }
   }
 
   #details(item) {
@@ -454,8 +561,8 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
               look="primary"
               color="danger"
               label="Uninstall"
-              .state=${this._busy === item.packageName ? 'waiting' : undefined}
-              @click=${() => this.#uninstall(item)}></uui-button>`
+              @click=${() => this.#uninstall(item)}></uui-button>
+              ${this._removing === item.packageName ? this.#removeDialog(item) : nothing}`
             : html`<p class="note">This site adds and removes extensions with a deploy, so every server has the same ones.</p>`
       }
     </uui-box>`

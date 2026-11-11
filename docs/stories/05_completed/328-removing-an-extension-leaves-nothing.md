@@ -112,9 +112,33 @@ its SQLite tables and ledger and name a role left behind, as `crombolo extension
 
 ## Acceptance criteria
 
-- [ ] Remove stops the process, revokes the grant, drops the tables, role and schema, deletes
+- [x] Remove stops the process, revokes the grant, drops the tables, role and schema, deletes
       the folder and the record, in one step with one audit entry.
-- [ ] With data kept, the tables and folder stay, show under Installed, and can be removed later.
-- [ ] Nothing of the extension remains in the site's files, lockfile, database or settings.
-- [ ] A role the CMS cannot drop is named in the result.
-- [ ] Covering tests on both dialects; docs and release notes.
+- [x] With data kept, the tables and folder stay, show under Installed, and can be removed later.
+- [x] Nothing of the extension remains in the site's files, lockfile, database or settings.
+- [x] A role the CMS cannot drop is named in the result.
+- [x] Covering tests on both dialects; docs and release notes.
+
+## What was built (2026-11-11)
+
+- **One remove** (`bundle-admin.ts` `uninstall`): content first when `dropContent`, then
+  `stopExtension` (core's, through the server), `BundleGrants.forget` and
+  `ExtensionSettingRepository.forget`, the build folder (the whole `.crombolo/extensions/<id>/`
+  with its data), the marketplace's root and record removal, then `purgeOwnerTables` with no
+  backup when `dropData`, naming a role left; one audit entry. A bundle the site wires as a
+  dependency is refused; one in a root never is, since `config.bundles` also holds the
+  extensions the CMS started.
+- **Data left** (`installed().left`): an owner the tables ledger records that is neither
+  installed, the site, nor wired, with its tables; `dropLeftData` deletes it, refused while
+  the extension is installed. Installed shows them under "Data left by extensions you
+  removed", with "Delete its data" for an administrator.
+- **The surfaces:** the back office's uninstall takes `dropData` and `dropContent`, and a new
+  `drop-left-data` action, both administrators only; Installed asks with two checkboxes;
+  `extension uninstall --drop-data --drop-content --no-verify`, `--revert-content` hidden and
+  read as `--drop-content`; the remote takes `dropData` and `dropContent`, and still reads
+  `revertContent`; `site revert` names `--drop-content`.
+- **Not done:** the planned test that reinstalling resumes on kept data, and a Postgres role
+  the CMS cannot drop, are not covered here; both rely on `purgeOwnerTables` and the boot's
+  migration, which their own suites cover. The command line's prompt is covered by the
+  shared `confirm` helper's tests, not one of its own.
+- **Tests:** `tests/extension-remove.test.ts`.
