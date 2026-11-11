@@ -15,6 +15,10 @@ point at `docs/stories/`.
   of the extension's code runs in the page and the screen needs no permission. A
   manifest entry names one with `"screen"` at `"crombolo.schemaVersion": 6`.
 
+- **An extension's templates carry no script (330).** What an extension's component renders
+  into a page is held to the HTML Sanitizer API's safe baseline: script, frames, objects,
+  embeds, event handlers and `javascript:` links are removed, and the rest stays as written.
+  Each removal is logged once a boot, naming the extension and the component.
 - **What each extension did (327).** Installed shows, per extension, everything it did
   through the CMS and whom it did it for: its writes, reads counted per minute, requests
   out, rows in its own tables, calls, screens, and what its grant refused, with counts at

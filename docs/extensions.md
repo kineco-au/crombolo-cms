@@ -112,6 +112,16 @@ into the same file as its server half.
   page renders on its own.
 - **`templates`:** without it, its components render nothing, and the log says
   why.
+- **No script reaches the page** (story 330). What a component renders is held to
+  the HTML Sanitizer API's safe baseline, the part of `setHTML()` no configuration
+  turns off (`sanitiseHtml`, `@crombolo/render`): `script`, `iframe`, `object`,
+  `embed` and `frame`, and SVG's `script` and `use`, go with what is inside them;
+  every event handler attribute goes; a `javascript:` URL on `a` and `area`
+  `href`, `form` `action`, `button` and `input` `formaction`, SVG `a` and MathML
+  `href` goes, however it is written. Classes, styles, images and the rest stay as
+  written. The lists are copied from the standard's data, and a test holds them to
+  it. What was removed is logged once a boot for each component. The site's own
+  components are its code, and untouched.
 - **Refused at build:** browser code (`'use client'`, `'use deferred'`), and
   importing any of the CMS's packages but `@crombolo/extension`,
   `@crombolo/crombolo/bundle`, `@crombolo/common` and the JSX runtime.

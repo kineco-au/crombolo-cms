@@ -78,12 +78,40 @@ unused, so the tokenizer is new.
 
 ## Acceptance criteria
 
-- [ ] An extension component's rendered HTML keeps only the elements, attributes and URL
+- [x] An extension component's rendered HTML keeps only the elements, attributes and URL
       schemes the HTML Sanitizer API's default configuration allows, and the page renders
       the rest; the lists in code match the spec's and a test says so.
-- [ ] Script, event handlers, script-bearing URLs, frames, embeds, `base` and `meta` are
+- [x] Script, event handlers, script-bearing URLs, frames, embeds, `base` and `meta` are
       removed whether written plainly, nested in SVG, uppercased or entity-encoded.
-- [ ] A removal is logged with the extension, the component and what was removed, once per
+- [x] A removal is logged with the extension, the component and what was removed, once per
       boot.
-- [ ] Site components render as before.
-- [ ] Covering tests; the threat model's T6 row and `extensions.md` "Components" say so.
+- [x] Site components render as before.
+- [x] Covering tests; the threat model's T6 row and `extensions.md` "Components" say so.
+
+## What was built (2026-11-11)
+
+- **The rule changed once more, before building (the maintainer's choice).** Read from the
+  standard's own data, the Sanitizer API's *default* allowlist keeps no `class`, `id` or
+  `style` attribute and no `img`, `form`, `button` or `input`, so an extension's page template
+  would render unstyled and without images: the decision above that inline `style` "is in
+  the default" was wrong. The story applies the standard's **safe baseline** instead, the part
+  of every safe `setHTML()` no configuration turns off: `removeElements` (`embed`, `frame`,
+  `iframe`, `object`, `script`, SVG `script` and `use`, each with what is inside it), every
+  event handler content attribute, and a `javascript:` URL on a navigating URL attribute
+  (HTML `a` and `area` `href`, `form` `action`, `button` and `input` `formaction`, SVG `a`
+  `href` and `xlink:href`, MathML `href`) or an animating one (SVG `animate`,
+  `animateTransform` and `set` aimed at `href`). That is the same reach as the story's first
+  list, sourced from the standard. `base`, `meta` and `data:` URLs are not in it and stay.
+- **The lists** (`packages/render/src/safe-html-lists.ts`) are copied from
+  WICG/sanitizer-api `builtins/` at c56c3d7a95e5; `tests/safe-html.test.ts` holds the same
+  lists and fails when they part.
+- **The tokenizer** (`safe-html.ts`, `sanitiseHtml`) reads tags and attributes in one pass,
+  copies text, comments and raw-text content (`style`, `textarea`, `title`) as written, tracks
+  SVG and MathML, decodes character references and strips controls before judging a URL, and
+  writes a `<` that opens no closed tag as `&lt;` so cut-off markup cannot run on into the page.
+- **Wired** into `createExtensionComponents`' render, the one place an extension's HTML enters
+  a page, with the removal logged once a boot per component.
+- **Tests:** `tests/safe-html.test.ts` (each class of removal, encodings, SVG and MathML, a page
+  kept byte for byte, an unclosed tag), and a hostile component in
+  `tests/extension-components.test.ts` rendered through a real process beside a site component
+  that keeps its own `onclick`.

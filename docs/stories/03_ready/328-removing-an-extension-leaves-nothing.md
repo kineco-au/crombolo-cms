@@ -29,6 +29,21 @@ and schema, made by the CMS or by the host.
 - **A host that made the role itself** (story 321) is told, not overridden: the CMS drops the
   schema and the role it can drop, and names what it could not.
 
+## Decisions (2026-11-11, planning)
+
+- **Data is kept by default** (the maintainer's choice, in place of "default is to remove"
+  above). Remove stops the process, revokes the grant, and deletes the root, the build, the
+  settings and the record line; the extension's tables, schema, role and data folder stay,
+  listed in Installed under "Data left by…" with a delete of their own. Installing the same
+  extension again resumes on them, as re-adding a wired bundle does.
+- **A switch drops the data:** "Also delete its data" in the remove dialog, `--drop-data` on
+  `crombolo extension uninstall`, here or on a remote. It reuses purge's drop
+  (`purgeOwnerTables`: the schema and role, or the SQLite tables and ledger) and names a role
+  it could not drop.
+- **No backup is taken** when the data is dropped (the maintainer's choice); the command line
+  asks first, defaulting to no, unless given `--yes`.
+- **Open:** whether Remove also takes out the content the install applied.
+
 ## Acceptance criteria
 
 - [ ] Remove stops the process, revokes the grant, drops the tables, role and schema, deletes

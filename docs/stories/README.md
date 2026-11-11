@@ -262,7 +262,7 @@ requests, only server-side and build-time front ends can call it.
 | `327` | What each extension did | should | L | done | 309, 311, 325 |
 | `328` | Removing an extension leaves nothing | should | M | ready | 326, 321 |
 | `329` | Redirects and Entra describe their screens | must | M | ready | 323, 324 |
-| `330` | An extension's templates carry no script | must | S | ready | 312 |
+| `330` | An extension's templates carry no script | must | S | done | 312 |
 | `331` | An extension intercepts the paths it names | could | L | ready | 311, 327 |
 
 ### Epic J — Forms

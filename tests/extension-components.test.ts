@@ -26,13 +26,14 @@ const EXTENSION = {
   'index.js': `import * as brochure from './components/brochure.jsx'
 import Card from './components/card.jsx'
 import Broken from './components/broken.jsx'
+import Hostile from './components/hostile.jsx'
 
 export function brochures() {
   return {
     id: 'brochures',
     section: 'content',
     capabilities: [],
-    components: { brochure, card: Card, broken: Broken },
+    components: { brochure, card: Card, broken: Broken, hostile: Hostile },
   }
 }
 `,
@@ -51,6 +52,19 @@ export default async function Brochure({ model, nav }) {
       <span class="children">{children.length}</span>
       <em>{model.hasValue('title') ? model.value('title').toUpperCase() : 'untitled'}</em>
     </article>
+  )
+}
+`,
+  'components/hostile.jsx': `export default function Hostile() {
+  return (
+    <section class="hostile" style="color: red">
+      <script>{'window.stolen = document.cookie'}</script>
+      <button onclick="steal()">Press</button>
+      <a href="javascript:steal()">Go</a>
+      <img src="/x.png" onerror="steal()" alt="x" />
+      <iframe src="https://evil.example"></iframe>
+      <svg><script>{'steal()'}</script><a href="javascript:steal()">s</a></svg>
+    </section>
   )
 }
 `,
@@ -93,6 +107,8 @@ export const layout = 'shared/layout'
 export default function Page() {
   return (
     <main>
+      <button onclick="site()">The sites own</button>
+      <Extension use="brochures/hostile" />
       <Extension use="brochures/card" heading="Hello"><i>inside</i></Extension>
       <Extension use="brochures/broken" />
     </main>
@@ -233,7 +249,7 @@ describe('an extension’s components', () => {
     const response = await h.call('/')
     expect(response.status).toBe(200)
     const html = await response.text()
-    expect(html).toContain('<main></main>')
+    expect(html).toContain('<main><button onclick="site()">The sites own</button></main>')
   }, 60_000)
 
   test('the template picker lists them under the extension’s name', async () => {
@@ -248,6 +264,23 @@ describe('an extension’s components', () => {
 })
 
 describe('an extension’s components cannot', () => {
+  test('carry script into the page: the Sanitizer API’s safe baseline takes it out (story 330)', async () => {
+    const { h, publish } = await brochureSite()
+    await publish('page', 'page', 'About')
+    const html = await (await h.call('/')).text()
+    const hostile = html.slice(
+      html.indexOf('<section class="hostile"'),
+      html.indexOf('</section>') + 10,
+    )
+    expect(hostile).toContain('<section class="hostile" style="color: red">')
+    expect(hostile).toContain('<button>Press</button>')
+    expect(hostile).toContain('<a>Go</a>')
+    expect(hostile).toContain('<img src="/x.png" alt="x"')
+    expect(hostile).not.toMatch(/<script|onclick|onerror|javascript:|<iframe/i)
+    // The site's own components are the site's code, and untouched.
+    expect(html).toContain('<button onclick="site()">The sites own</button>')
+  }, 60_000)
+
   test('carry browser code: one that does is left off, saying why', async () => {
     const dir = siteDeclaring('extension-components-client', {
       '@acme/islands': {

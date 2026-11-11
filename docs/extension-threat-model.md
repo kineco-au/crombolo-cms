@@ -50,7 +50,7 @@ Status: **covered**, **partly** (a gap is named), or **open**.
 | T3 | **Calling the host API beyond its permissions** | **Covered (309).** Every capability call is checked against the grant row | — |
 | T4 | **Turning itself on, or widening its permissions in an upgrade, without consent** | **Covered (309, 310).** It runs only while its grant covers what its installed version asks for | — |
 | T5 | **Writing the site's files**: config, `package.json`, `.env`, components | **Covered (306, 311, 312).** An extension's payload may not carry `code/`, `components/` or value migrations; its process may write only its data folder | Components an install copied before 312 stay in the site, as its own; `bundle list` names them |
-| T6 | **Running server code through templates** | **Covered (312).** An extension's components render in its own process, and only with `templates` granted | — |
+| T6 | **Running code through templates**: on the server, or as script in the visitor's browser, which shares the back office's origin | **Covered (312, 330).** An extension's components render in its own process, only with `templates` granted, and their HTML is held to the Sanitizer API's safe baseline: no script, event handler or `javascript:` URL reaches the page | — |
 | T7 | **Outbound requests and SSRF** from the server | **Covered (311, 312)**: Deno allows only the hosts its grant names, and the host's `fetch` adds the address rule (story 301) | — |
 | T8 | **Screens misusing the user's session**: calling the Management API as them, sending data anywhere | **Covered (313)** for sending: the back office's content security policy lets its pages reach the site and the origins granted extensions declare, and nothing else. **Asked for (320):** back-office code needs `backoffice.code`, granted under a warning that names the publisher, so none runs that was not granted knowingly | A screen granted `backoffice.code` can still do anything the signed-in user can on the site itself. **A described screen (323)** runs nothing in the page: the back office draws it from data, every string as text, so it holds no session |
 | T9 | **Screens of an extension that is off or ungranted** | **Covered (309).** Their manifests are hidden and their files not served | — |
@@ -146,6 +146,7 @@ keep Unrestricted to the site's config with `CROMBOLO_UNRESTRICTED_EXTENSIONS=co
 | 313 | The back office's content security policy names only the origins extensions declared (T8) |
 | 320 | An extension's back-office code is asked for, granted under a warning, built, and served only from its build (T8) |
 | 324 | The install panel says the level and the four groups; an administrator grants the upper two, for a vouched package (T8) |
+| 330 | An extension's rendered components carry no script, by the HTML Sanitizer API's safe baseline (T6) |
 | 325 | `user.delegate`: an extension acts for the person using it, recorded against them, never installing, granting or changing users (T10) |
 | 323 | An extension's screens are described by its server half and drawn by the back office, so none of its code runs in the page (T8) |
 | 316 | A site bundle is applied only from a key or CI build the site trusts (T16) |

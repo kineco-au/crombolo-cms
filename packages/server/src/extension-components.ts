@@ -10,6 +10,7 @@ import {
   PublishedContent,
   PublishedElement,
   RawHtml,
+  sanitiseHtml,
 } from '@crombolo/render'
 import type { BundleLog } from './bundles.ts'
 import type { ExtensionProcess } from './extension-process.ts'
@@ -71,6 +72,8 @@ export function createExtensionComponents(
 ): ExtensionComponents {
   const byId = new Map(sources.map((source) => [source.process.id, source]))
   const warned = new Set<string>()
+  /** Components whose removals were logged this boot, by extension and name. */
+  const stripped = new Set<string>()
   const offers = (source: ExtensionComponentSource, name: string) =>
     source.process.description?.components?.some((component) => component.name === name) ?? false
 
@@ -102,7 +105,20 @@ export function createExtensionComponents(
         { ...rest, readSearchParams: () => searchParams },
         { timeoutMs: options.timeoutMs ?? 10_000, extra: valuesSender() },
       )
-      return new RawHtml(typeof value === 'string' ? value : '')
+      // Story 330: what can run script, by the Sanitizer API's safe baseline, never reaches the page.
+      const removed: string[] = []
+      const safe = sanitiseHtml(typeof value === 'string' ? value : '', (_kind, what) => {
+        removed.push(what)
+      })
+      const key = `${id}/${name}`
+      if (removed.length > 0 && !stripped.has(key)) {
+        stripped.add(key)
+        source.log.warn(
+          "The extension {id}'s component {name} carried {count} thing(s) a page may not: {names}. They were removed.",
+          { id, name, count: removed.length, names: [...new Set(removed)].join(', ') },
+        )
+      }
+      return new RawHtml(safe)
     } catch (error) {
       source.log.error('The extension {id} could not render {name}: {error}', {
         id,
