@@ -57,6 +57,135 @@ Workspace add-ons and Slack apps draw for third parties, as data the host render
 - **`backoffice.code` stays** for the Unrestricted level (story 324). An extension may mix:
   describe most of its screens and ship code for the one that must be custom.
 
+## Decisions (2026-11-11, planning)
+
+- **Transport:** a screen call is `POST <backoffice>/crombolo/api/bundle/<id>/_screen/<screen>`,
+  answered by `ServerBundles.handle` before route matching, so the cookie, the section, the
+  grant and the principal are checked exactly as for a back-office route. No new API.
+- **The catalogue lives in the SDK**, `packages/extension/src/screens.ts`: node types and
+  builders together. The server's normaliser and the plugin import the types from there.
+- **The tree is checked twice:** the server normalises what comes off the channel (unknown
+  node types dropped and logged, link protocols checked, every string coerced), and the
+  element renders with text bindings only.
+- **Browser coverage:** one browser test over a fixture extension exercising every node type,
+  run once locally when the renderer lands, then left to CI.
+- **Scope:** `tabs` and `progress` are built here, so 329 is a pure port; they are the first
+  to drop if the renderer runs long.
+- **Slices:** catalogue and SDK; channel and server; manifest (schema 6); the renderer; tests
+  and docs.
+
+## The plan (2026-11-11)
+
+What exists and is reused: the Deno channel and its `describe` step
+(`packages/extension/src/runner.ts`), `ExtensionProcess.call` and `isolatedBundle`
+(`packages/server/src/extension-process.ts`), the back-office bundle routes in
+`ServerBundles.handle` (`packages/server/src/bundles.ts`), which already check the cookie,
+the section and the grant and build the `BundleCaller`, and `extensionOf`
+(`packages/backoffice-host/src/extensions.ts`), which already rewrites an extension's
+manifest entries. A manifest-created element receives its `manifest`, which the plugin's
+own elements already read.
+
+### Slice 1: catalogue and SDK
+
+- `packages/extension/src/screens.ts`, exported from the SDK's index and as
+  `@crombolo/extension/screens`, so the server imports the types. Data only, no imports:
+  - `Screen { type: 'screen', title, toolbar?: (Button | Search)[], body: Node[] }`
+  - `Node = Table | Form | Button | Notice | Problem | Empty | Tabs | Progress`
+  - `Table { columns: string[], rows: Row[] }`, `Row { key, cells: Cell[], actions?: Button[] }`,
+    `Cell` of kind `text`, `code`, `tag` (with a look), `link` (text and href) or `date`
+  - `Form { title?, fields: Field[], values, actions: Button[] }`; `Field` of kind `text`
+    (multiline, pattern, min and max length), `number` (min, max, step), `boolean`,
+    `choice` (options), `page`, `media`, `member` or `secret`; each with `label`, `hint`,
+    `hints: { when, text }[]`, `visibleWhen`, `required`, `placeholder`
+  - `Condition { field, equals?, oneOf?, notEmpty? }`
+  - `Button { label, action, input?, look?, confirm?, submit?, disabled? }`: `input` is a plain
+    object sent with the action, such as a row's key; `submit` sends the enclosing form's values
+  - `Search { action, placeholder?, value? }` in the toolbar, since Redirects filters
+  - `Notice { text }`, `Problem { text }`, `Empty { title, text?, actions? }`,
+    `Tabs { tabs: { id, label, body }[] }` with no tabs inside tabs, `Progress { label?, value? }`
+  - `ScreenResult<State> { screen, state?, notice? }`: a handler returns a `Screen` or this
+  - builders: `screen`, `table`, `row`, `cell.*`, `form`, `field.*`, `button`, `search`,
+    `notice`, `problem`, `empty`, `tabs`, `tab`, `progress`
+- `runner.ts`: `describe` adds `screens: { id, actions: string[] }[]`; `dispatch` gains
+  `case 'screen'`, calling `bundle.screens[id].view` or `.actions[name]` with the decoded
+  context, and wrapping a bare `Screen` as `{ screen }`.
+- `types.ts` re-exports `BundleScreen`, `BundleScreenContext` and `BundleScreenHandler`.
+- Check: `export *` from the SDK must not collide with `@crombolo/common`'s names; `form`,
+  `table` and `button` are the ones to watch.
+
+### Slice 2: channel and server
+
+- `bundles.ts`: `ServerBundle.screens?: Record<string, BundleScreen>` where
+  `BundleScreen { view, actions? }` and a handler takes
+  `BundleScreenContext = BundleRouteContext & { principal, state, input, signal }`.
+- `handle`: after the section check, a `requested` path of `_screen/<id>` is a screen call.
+  `POST` only; the body is `{ action?, input?, state? }`; `isOn` applies; the caller is
+  `{ kind: 'backoffice', principal }` and `bundle` is `contextFor(bundle, caller)`, so the
+  grant gates every capability as on a route. The answer is JSON `{ screen, state?, notice? }`,
+  or `{ problem }` with status 200 when the handler threw, a refused capability included, so
+  the element keeps the last screen and shows the message. An unknown screen or action is 404.
+- `packages/server/src/extension-screens.ts`: `normaliseScreenResult`. Unknown node types are
+  dropped and logged through the bundle's log, once per type per call; every displayed string
+  is coerced from a primitive or becomes empty; a link `href` is kept only when it starts with
+  `http://`, `https://`, a single `/` or `section/`, otherwise the cell renders as text;
+  `progress.value` is clamped to 0 to 100; `tabs` inside `tabs` are dropped; `input` and
+  `values` pass through as plain JSON objects.
+- `extension-process.ts`: `isolatedBundle` maps `d.screens` to `screens` whose `view` and
+  `actions` are `process.call('screen', { screen, action? }, context)`.
+  `ExtensionDescription.screens` is added.
+
+### Slice 3: manifest, schema 6
+
+- `bundle-package.ts`: `BUNDLE_SCHEMA_VERSION` 6. An `extensions` entry may carry `screen` or
+  `element`, not both; `element` without `backoffice.code` is a problem; a `screen` must name
+  one the description lists, checked at boot when the process is ready, and an entry naming
+  a missing screen is left out with a log line.
+- `extensionOf`: an entry with `screen` becomes
+  `{ ...entry, element: '/crombolo-plugin/extension-screen.js', meta: { ...entry.meta,
+  cromboloScreen: { bundle: <id>, screen } } }`. `createBackOfficeBuilds.ready` already passes
+  an extension with no modules through, so nothing is built and `backoffice.code` is not
+  needed.
+- `backOfficeModules` ignores `screen`, so the install panel's "Adds" lists it as a screen.
+
+### Slice 4: the renderer
+
+- `packages/backoffice-host/plugin/extension-screen.js`: one `UmbLitElement` for every
+  placement, reading `this.manifest.meta.cromboloScreen`. It `POST`s to
+  `<backoffice>/crombolo/api/bundle/<id>/_screen/<screen>` with `credentials: 'include'`,
+  keeps `state`, and re-renders from each answer. Loading, a `problem` banner that keeps the
+  last screen, and a `notice` banner are the element's own.
+- `extension-screen-fields.js`: the form, with `uui-input`, `uui-textarea`, `uui-select`,
+  `uui-toggle`, and `umb-input-document`, `umb-input-media`, `umb-input-member` for the
+  pickers (imported for their side effects, as Redirects does). `visibleWhen` and `hints`
+  are evaluated locally from the current values; `required`, `pattern` and lengths are
+  checked before a submit and shown inline; a `secret` field starts empty and is sent only
+  when typed.
+- `confirm` uses the host's confirm modal; a `tag` cell is `uui-tag`; `date` is formatted in
+  the user's locale; a `link` with a `section/` href is prefixed with the back-office base.
+- Every string is a Lit text binding. `unsafeHTML` does not appear in the file, and a test
+  greps for it.
+- `umbraco-package.json` does not list the element: the server generates one manifest per
+  placement from the extension's entries.
+
+### Slice 5: tests and docs
+
+- `tests/extension-screens.test.ts`, in the isolation suite's style with a fixture extension
+  run in a real Deno process through `signedInServer`: `describe` lists the screens; a view
+  returns a normalised tree; an action receives `input` and `state` and returns the next
+  state; `principal` and a gated capability reach the handler, and a refused one comes back
+  as `problem`; a hostile fixture puts a script tag, an `onclick` string and a `javascript:`
+  href in every node type and the answer carries them only as text or not at all; an unknown
+  node type is dropped and logged; `GET` is refused; a user without the section gets 403.
+- `tests/dashboard.test.ts` (manifests): a `screen` entry is rewritten to the generic element
+  with `cromboloScreen` in `meta`; `element` beside `screen`, or without `backoffice.code`,
+  is a problem.
+- `tests/browser/extension-screen.browser.ts`: the fixture's screen renders every node type,
+  a form with `visibleWhen` and a confirm round-trips, run once locally.
+- Docs: `extensions.md` "Screens" with the catalogue and the call; `bundles.md` Part 3 and
+  the schema 6 line in "`package.json` is the source of truth"; `extension-threat-model.md`
+  T8 and "Permissions"; `release-notes.md` under Unreleased, with the schema 6 upgrade note
+  pointing at `extension migrate` (story 329).
+
 ## The design
 
 - **SDK** (`@crombolo/extension`): `screens: { redirects: { view, actions } }` on the factory's
