@@ -1,6 +1,6 @@
 # 304 — Every request a user sets up goes only outside
 
-**Epic:** I — Hardening · **Priority:** should · **Size:** S
+**Epic:** I — Hardening · **Priority:** should · **Size:** M
 **Depends on:** 301
 
 ## Story
@@ -32,7 +32,8 @@ this:
 - **The forms workflow:**
   - `https://` and `http://` only;
   - redirects not followed: a 3xx is the receiver's answer;
-  - headers sent as written: a form names no server variable;
+  - a header is either written in the form or **secret**: sealed in the database,
+    never shown back, and sent only to the address it was set for;
   - a refused address fails the entry's workflow without retrying, saying why.
 - **The provider test** answers only reachable, not reachable or not a discovery
   document, with the issuer. It never says the status or what the body held.
@@ -44,6 +45,10 @@ this:
 - [ ] A workflow's 302 is not followed.
 - [ ] A `file:`, `ftp:` or `data:` URL is refused on save.
 - [ ] A workflow header `env:NAME` is sent as written, never as the server's variable.
+- [ ] A secret header's value is never returned by the back office's API, and is not in
+      the form's file, a site export or a transfer.
+- [ ] A secret header set for one URL is not sent once the workflow's URL changes; the
+      entry's workflow log says to set it again.
 - [ ] `CROMBOLO_ALLOW_PRIVATE_ADDRESSES=true` lets all three reach a private address;
       `webhooks.allowPrivateAddresses` is gone.
 - [ ] The provider test refuses the same addresses, and its message never includes
@@ -60,9 +65,17 @@ this:
 - **`webhooks.allowPrivateAddresses` is replaced**, not kept as an alias. A config that
   still sets it fails the config check naming the new setting, and the release notes say
   to switch. `webhooks.headerVariables` stays, as webhooks' alone.
-- **A form's headers stay literal.** Forms get no `env:`: a header is sent exactly as
-  written, so a form cannot send a server variable at all, and there is nothing for
-  `301`'s `env:` rule to hold.
+- **A form's headers name no server variable.** Forms get no `env:`: a header written
+  in the form is sent exactly as written, so there is nothing for `301`'s `env:` rule to
+  hold.
+- **A credential is a secret header, sealed like a provider's client secret.** Whoever
+  manages forms types it once in the workflow's settings. It is sealed with
+  `CROMBOLO_SECRET_KEY` and kept in the database, never in the form's file, so a form in
+  git or a schema store carries only that the header is secret. The back office shows
+  "Set" with a Replace, never the value. The secret is bound to the URL it was set for:
+  change the URL, by the back office or by a deploy, and it is not sent until set again,
+  so nobody can point someone else's token at their own address. Each site sets its own,
+  as it does its client secrets.
 
 ## Implementation plan
 
@@ -88,7 +101,26 @@ this:
      webhook's save does; one that does not resolve yet is accepted and checked at send.
    - What the log keeps of a failed answer follows webhooks: the status, and up to 300
      characters of a text body; nothing of a binary one.
-3. **The provider test** (`identity-provider-overrides.ts`): the discovery fetch goes
+3. **Secret headers** (new `form-workflow-secrets.ts`, a migration, the forms API and
+   designer):
+   - In the form's file a secret header is `headers = { Authorization = { secret = true } }`;
+     `validate-forms.ts` takes a string or `{ secret: true }`, and nothing else.
+   - A table `form_workflow_secret` (`form_key`, `workflow_key`, `header`, `sealed`, `url`,
+     `set_by`, `set_at`), migration released in the next version. A secret needs the
+     workflow to have a `key`; the designer gives every new workflow one, and saving a
+     secret on a workflow without one gives it one.
+   - The forms API: `PUT …/forms/<key>/workflows/<workflow>/secrets/<header>` with
+     `{ value }` seals and stores it with the workflow's URL; `DELETE` removes it. Reading a
+     form answers each secret header as `{ secret: true, set: boolean }`. Without a usable
+     `CROMBOLO_SECRET_KEY` the PUT is refused, saying so, as a provider's client secret is.
+   - `sendToUrl` opens each secret header. One that is unset, was set for another URL, or
+     will not open with the key fails the entry's workflow unretried, naming the header and
+     what to do, and sends nothing.
+   - Deleting a form or a workflow deletes its secrets. Setting or replacing one is an
+     audit entry naming the form, workflow and header, never the value.
+   - The designer: beside each header, a "Secret" switch; a secret shows "Set" or "Not set"
+     with Replace and Remove.
+4. **The provider test** (`identity-provider-overrides.ts`): the discovery fetch goes
    through `pinnedFetch` with the same setting, and answers one of three messages, each
    naming the issuer only:
    - "<name> answered at <issuer>.";
@@ -97,8 +129,9 @@ this:
    - "<issuer> did not answer with an OpenID Connect discovery document." (any non-2xx,
      unparseable body, or a document without `authorization_endpoint`).
    Sign-in itself is not changed: it shows nothing of what the issuer answers.
-4. **Docs:** `forms.md` gains "Where a form may send": http/https only, no redirects,
-   private addresses refused unless the setting allows them, headers literal.
+5. **Docs:** `forms.md` gains "Where a form may send": http/https only, no redirects,
+   private addresses refused unless the setting allows them, written and secret
+   headers, and a secret's binding to its URL.
    `webhooks.md` and `delivery-api.md` name the new setting; `configuration.md` lists it.
    Release notes: the forms rule and the provider test's messages under Changes, and the
    setting's rename as an upgrade note.
@@ -110,6 +143,12 @@ this:
   (`fetch` never called) and fails unretried with the reason; with the setting on it is
   sent. A 302 is not followed and fails unretried. A header `env:DATABASE_PASSWORD` arrives
   as that literal text.
+- **Secret headers** (new `tests/forms-secret-headers.test.ts`): set through the API, the
+  value is sent, absent from the form's GET and from the TOML written; after the URL
+  changes it is not sent and the log names the header; a value sealed with another key
+  fails without sending; a writer without forms access is refused; deleting the workflow
+  removes the row; the audit entry has no value.
+- **Schema**: `{ secret = true }` accepted, `{ secret = "x" }` and other shapes refused.
 - **Schema** (`tests/forms-schema.test.ts`): `file:`, `ftp:` and `data:` URLs refused.
 - **Provider test** (new `tests/identity-provider-test.test.ts`, against `support/fake-oidc.ts`): an issuer at `127.0.0.1` is
   refused with the setting off; an issuer answering 500 with a body, and one answering
@@ -117,4 +156,5 @@ this:
 - **Config**: `webhooks.allowPrivateAddresses` is refused naming the new setting;
   `CROMBOLO_ALLOW_PRIVATE_ADDRESSES=true` and `development` both allow.
 - **Existing tests** that set `webhooks.allowPrivateAddresses` move to the new setting.
+- The migration is undone in each of the test rewinds.
 
