@@ -25,7 +25,8 @@ and schema, made by the CMS or by the host.
   tables and the data folder, marked orphaned in Installed under "Data left by…", with a
   Remove of their own. Default is to remove.
 - **Turn off is still separate** (story 225): stop and revoke, keep everything.
-- **The CLI's `extension uninstall`** gains `--keep-data`, and a remote's uninstall the same.
+- **The CLI's `extension uninstall`** gains `--drop-data` and `--no-verify` (see the planning
+  decisions below), and a remote's uninstall the same.
 - **A host that made the role itself** (story 321) is told, not overridden: the CMS drops the
   schema and the role it can drop, and names what it could not.
 
@@ -40,8 +41,10 @@ and schema, made by the CMS or by the host.
   `crombolo extension uninstall`, here or on a remote. It reuses purge's drop
   (`purgeOwnerTables`: the schema and role, or the SQLite tables and ledger) and names a role
   it could not drop.
-- **No backup is taken** when the data is dropped (the maintainer's choice); the command line
-  asks first, defaulting to no, unless given `--yes`.
+- **No backup is taken** when the data is dropped (the maintainer's choice). The command line's
+  two switches are `--drop-data`, which deletes the data too, and `--no-verify`, which goes
+  ahead without asking; without `--no-verify` it asks first, defaulting to no, and off a
+  terminal it refuses rather than asking.
 - **Open:** whether Remove also takes out the content the install applied.
 
 ## Acceptance criteria
