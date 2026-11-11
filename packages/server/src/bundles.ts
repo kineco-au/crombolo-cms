@@ -74,6 +74,7 @@ import {
   SITE_OWNER,
   type TablesDatabase,
 } from '@crombolo/data'
+import type { ScreenAnswer } from '@crombolo/extension/screens'
 import {
   normaliseRedirectPath,
   type PublishedCache,
@@ -92,6 +93,7 @@ import {
   permissionProblems,
 } from './bundle-grants.ts'
 import type { BundleMedia, BundleMediaDeclaration } from './bundle-media.ts'
+import { normaliseScreenResult } from './extension-screens.ts'
 import type { BundleForms } from './form-types.ts'
 import type { BundleIdentityProviders } from './identity-provider-overrides.ts'
 import { type JobInfo, type JobSchedule, jobProblems, type OwnerJobs } from './owner-jobs.ts'
@@ -344,6 +346,37 @@ export interface ServerBundle<
   jobs?: Record<string, BundleJob<C, T>>
   /** When its jobs run by themselves: cron expressions in a timezone. */
   schedules?: readonly JobSchedule[]
+  /**
+   * Screens the back office draws from what they return (story 323), by id:
+   * each a `view` and the `actions` its buttons name. docs/extensions.md, "Screens".
+   */
+  screens?: Readonly<Record<string, BundleScreen<C, T>>>
+}
+
+/** What a screen's view or action is given: a back-office route's context, and the screen's state. */
+export interface BundleScreenContext<
+  C extends BundleCapability = BundleCapability,
+  T extends BundleTables = BundleTables,
+> extends BundleRouteContext<C, T> {
+  principal: Principal
+  /** What the last answer asked the back office to keep, sent back as it was. */
+  state: Record<string, unknown>
+  /** What the button sent, and a form's values under `values` when it submits. */
+  input: Record<string, unknown>
+  signal?: AbortSignal
+}
+
+export type BundleScreenHandler<
+  C extends BundleCapability = BundleCapability,
+  T extends BundleTables = BundleTables,
+> = (context: BundleScreenContext<C, T>) => ScreenAnswer | Promise<ScreenAnswer>
+
+export interface BundleScreen<
+  C extends BundleCapability = BundleCapability,
+  T extends BundleTables = BundleTables,
+> {
+  view: BundleScreenHandler<C, T>
+  actions?: Readonly<Record<string, BundleScreenHandler<C, T>>>
 }
 
 /** A bundle's background job (story 187). */
@@ -423,6 +456,8 @@ export function validateServerBundles(
       problems.push(
         `Bundle "${label}" declares tables under the id "${SITE_OWNER}", which names the site's own tables.`,
       )
+    for (const problem of screenProblems(bundle.screens))
+      problems.push(`Bundle "${label}" screens: ${problem}.`)
     if (bundle.tables) {
       if (bundle.tables.id !== bundle.id)
         problems.push(
@@ -907,6 +942,64 @@ export function createServerBundles(options: ServerBundlesOptions): ServerBundle
       ),
     )
 
+  /**
+   * A screen's view, or one of its actions (story 323): `POST _screen/<id>` with
+   * `{ action?, input?, state? }`, answered with the screen held to the
+   * catalogue. A handler that throws, a refused capability included, answers
+   * `{ problem }`, so the back office keeps the last screen and says why.
+   */
+  const screenCall = async (
+    bundle: ServerBundle,
+    id: string,
+    request: Request,
+    principal: Principal,
+  ): Promise<Response> => {
+    if (request.method !== 'POST')
+      return new Response('Method Not Allowed', { status: 405, headers: { allow: 'POST' } })
+    const screen = Object.hasOwn(bundle.screens ?? {}, id) ? bundle.screens?.[id] : undefined
+    if (!screen) return new Response('Not Found', { status: 404 })
+    if (options.isOn && !options.isOn(bundle.id)) return disabledResponse(bundle.id)
+    let body: Record<string, unknown>
+    try {
+      const parsed = await request.json()
+      body = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+    } catch {
+      body = {}
+    }
+    const action = typeof body.action === 'string' ? body.action : undefined
+    const handler = action
+      ? Object.hasOwn(screen.actions ?? {}, action)
+        ? screen.actions?.[action]
+        : undefined
+      : screen.view
+    if (!handler) return new Response('Not Found', { status: 404 })
+    const caller: BundleCaller = Object.freeze({ kind: 'backoffice', principal })
+    const log = logs.get(bundle.id)
+    try {
+      const answer = await handler({
+        bundle: contextFor(bundle, caller) as BundleScreenContext['bundle'],
+        caller,
+        principal,
+        state: plainObject(body.state),
+        input: plainObject(body.input),
+        signal: request.signal,
+      })
+      const { result, dropped } = normaliseScreenResult(answer)
+      if (dropped.length > 0)
+        log?.warn('Its screen {screen} answered what the back office does not draw: {dropped}', {
+          screen: id,
+          dropped: dropped.join(', '),
+        })
+      return Response.json(result)
+    } catch (error) {
+      // A refusal may cross the channel as an outcome rather than an Error: its message is what to say.
+      const said = (error as { message?: unknown } | null)?.message
+      const message = typeof said === 'string' && said.length > 0 ? said : 'It could not answer.'
+      log?.error('Its screen {screen} failed: {error}', { screen: id, error: message })
+      return Response.json({ problem: message })
+    }
+  }
+
   /** A site route that answers as waiting while its bundle is off. */
   const whileOn = (bundleId: string, route: SiteRoute): SiteRoute => {
     const isOn = options.isOn
@@ -958,6 +1051,9 @@ export function createServerBundles(options: ServerBundlesOptions): ServerBundle
       // the declared section, and a bundle has no way to opt a route out.
       if (!hasSection(principal, bundle.section)) return new Response('Forbidden', { status: 403 })
 
+      if (requested.startsWith(SCREEN_SEGMENT))
+        return screenCall(bundle, requested.slice(SCREEN_SEGMENT.length), request, principal)
+
       for (const route of (bundle.routes ?? []).filter((candidate) => !onSite(candidate))) {
         const params = matchRoute(route.path, requested)
         if (!params) continue
@@ -980,6 +1076,36 @@ export function createServerBundles(options: ServerBundlesOptions): ServerBundle
 }
 
 const PUBLIC_CALLER: BundleCaller = Object.freeze({ kind: 'public' })
+
+const SCREEN_ID = /^[a-z][a-z0-9-]{0,39}$/
+
+/** Why a bundle's `screens` cannot be mounted: a bad id, or a view or action that is not a function. */
+export function screenProblems(screens: ServerBundle['screens']): string[] {
+  if (screens === undefined) return []
+  if (!screens || typeof screens !== 'object') return ['"screens" is an object of screens by id']
+  const problems: string[] = []
+  for (const [id, screen] of Object.entries(screens)) {
+    if (!SCREEN_ID.test(id))
+      problems.push(`"${id}" is not a screen id: lower case letters, digits and dashes`)
+    if (typeof screen?.view !== 'function') problems.push(`"${id}" has no view function`)
+    for (const [name, action] of Object.entries(screen?.actions ?? {}))
+      if (typeof action !== 'function')
+        problems.push(`"${id}"'s action "${name}" is not a function`)
+  }
+  return problems
+}
+
+/** Below a bundle's back-office namespace, where its screens answer (story 323). */
+const SCREEN_SEGMENT = '_screen/'
+
+const plainObject = (value: unknown): Record<string, unknown> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  try {
+    return JSON.parse(JSON.stringify(value)) as Record<string, unknown>
+  } catch {
+    return {}
+  }
+}
 
 /** `BundleMedia`'s methods, refused one by one without `member.delegate`. */
 const MEDIA_METHODS: readonly (keyof BundleMedia)[] = [

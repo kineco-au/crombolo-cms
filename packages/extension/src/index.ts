@@ -12,6 +12,7 @@ import { sectionKey } from '@crombolo/core/sections'
 import type { BundleStep, BundleTables, ShapeOf } from './types.ts'
 
 export * from '@crombolo/common'
+export * from './screens.ts'
 export type * from './types.ts'
 
 /** Declares the extension's own tables, built when the CMS starts it. */

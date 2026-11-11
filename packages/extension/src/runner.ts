@@ -71,6 +71,8 @@ export interface ExtensionDescription {
   middleware: boolean
   /** Its components (story 312), each with the layout alias it suggests. */
   components: { name: string; layout?: string }[]
+  /** Its screens (story 323), each with the actions its buttons may name. */
+  screens: { id: string; actions: string[] }[]
 }
 
 /** A component as the factory declares it: its render function, or its module. */
@@ -133,6 +135,14 @@ function describe(bundle: Bundle): ExtensionDescription {
         ...(typeof component === 'object' && typeof component.layout === 'string'
           ? { layout: component.layout }
           : {}),
+      })),
+    screens: Object.entries((bundle.screens ?? {}) as Record<string, Bundle>)
+      .filter(([, screen]) => typeof screen?.view === 'function')
+      .map(([id, screen]) => ({
+        id,
+        actions: Object.entries(screen.actions ?? {})
+          .filter(([, action]) => typeof action === 'function')
+          .map(([name]) => name),
       })),
   }
 }
@@ -394,6 +404,18 @@ export async function run(module: Record<string, unknown>, exportName: string): 
           })
         return renderToString(render(context) as Child)
       }
+      case 'screen': {
+        const screen = Object.hasOwn(bundle.screens ?? {}, frame.screen as string)
+          ? bundle.screens[frame.screen as string]
+          : undefined
+        const handler = frame.action
+          ? Object.hasOwn(screen?.actions ?? {}, frame.action as string)
+            ? screen.actions[frame.action as string]
+            : undefined
+          : screen?.view
+        if (typeof handler !== 'function') throw new Error('No such screen or action.')
+        return handler(context)
+      }
       case 'backfill': {
         const step = bundle.tables?.steps.find(
           (candidate: { name: string }) => candidate.name === frame.name,
@@ -462,7 +484,13 @@ export async function run(module: Record<string, unknown>, exportName: string): 
         const waiter = pending.get(frame.id as number)
         pending.delete(frame.id as number)
         if (!waiter) break
-        if (frame.error) waiter.reject(errorFrom(frame.error as { name: string; message: string }))
+        // An error the host threw arrives encoded, so a refusal keeps its message and its name.
+        if (frame.error)
+          waiter.reject(
+            '$error' in (frame.error as object) || '$outcome' in (frame.error as object)
+              ? (decode(frame.error) as Error)
+              : errorFrom(frame.error as { name: string; message: string }),
+          )
         else waiter.resolve(frame.value)
         break
       }

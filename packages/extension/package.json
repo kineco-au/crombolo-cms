@@ -25,7 +25,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./channel": "./src/channel.ts",
-    "./runner": "./src/runner.ts"
+    "./runner": "./src/runner.ts",
+    "./screens": "./src/screens.ts"
   },
   "files": [
     "src",

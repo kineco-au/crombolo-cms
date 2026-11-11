@@ -65,7 +65,7 @@ describe('what a package declares', () => {
 
   test('a server half written for schema 2 is refused, naming what changed', () => {
     const problems = validateBundlePackage(manifest({ schemaVersion: 2 })).join('\n')
-    expect(problems).toContain('this release reads 5')
+    expect(problems).toContain('this release reads 6')
     expect(problems).toContain('"crombolo.permissions"')
   })
 })

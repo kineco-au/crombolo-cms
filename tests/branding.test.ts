@@ -55,8 +55,18 @@ const loginSettings = {
 }
 
 /** Whether a module the back office serves (one whose path has `named` in it) contains `text`. */
+let vendored: string[] | undefined
+/** The vendored client's modules, listed once: walking its thousands of files is the slow part. */
+const vendoredFiles = () => (vendored ??= [...new Bun.Glob('**/*.js').scanSync(VENDOR)])
+
+/** The text of the vendored modules whose path names `named`. */
+const vendoredText = (named: string) =>
+  vendoredFiles()
+    .filter((file) => file.includes(named))
+    .map((file) => readFileSync(join(VENDOR, file), 'utf8'))
+
 const served = (text: string, named = '') =>
-  [...new Bun.Glob('**/*.js').scanSync(VENDOR)].some(
+  vendoredFiles().some(
     (file) => file.includes(named) && readFileSync(join(VENDOR, file), 'utf8').includes(text),
   )
 
@@ -557,12 +567,13 @@ describe('the Umbraco mark in the icon registry', () => {
 
 describe('the Log Viewer’s search menu', () => {
   test('searches this repository, and no forum this project does not have', () => {
-    const message = 'log-viewer-message'
-    expect(served('https://github.com/kineco-au/crombolo-cms/search?q=', message)).toBe(true)
-    expect(served('https://github.com/kineco-au/crombolo-cms/issues?q=', message)).toBe(true)
-    expect(served('forum.umbraco.com', message)).toBe(false)
-    expect(served('github.com/umbraco/Umbraco-CMS', message)).toBe(false)
-  })
+    const text = vendoredText('log-viewer-message').join('\n')
+    expect(text.length).toBeGreaterThan(0)
+    expect(text).toContain('https://github.com/kineco-au/crombolo-cms/search?q=')
+    expect(text).toContain('https://github.com/kineco-au/crombolo-cms/issues?q=')
+    expect(text).not.toContain('forum.umbraco.com')
+    expect(text).not.toContain('github.com/umbraco/Umbraco-CMS')
+  }, 30_000)
 
   test('says Crombolo in the two labels it keeps', () => {
     const dictionary = english as Record<string, Record<string, string>>

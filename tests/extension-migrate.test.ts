@@ -70,7 +70,7 @@ describe('extension migrate', () => {
     expect(json?.exports).toEqual({ '.': './src/server/index.ts' })
     expect((json as { files: string[] }).files).toEqual(['NOTICE', 'src'])
     expect(json?.crombolo).toMatchObject({
-      schemaVersion: 5,
+      schemaVersion: 6,
       extensions: [{ element: 'src/backoffice/seo.js' }],
       permissions: { 'backoffice.code': 'Shows the SEO report', 'content.read': 'Reads pages' },
     })

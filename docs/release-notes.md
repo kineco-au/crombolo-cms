@@ -6,6 +6,15 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+### Features
+
+- **An extension's screens are described, not shipped (323).** A server half declares
+  `screens`, each a `view` and its `actions`, returning a screen from a small catalogue:
+  tables, forms with the back office's own page, media and member pickers, buttons,
+  notices, tabs and progress. The back office draws it with its own components, so none
+  of the extension's code runs in the page and the screen needs no permission. A
+  manifest entry names one with `"screen"` at `"crombolo.schemaVersion": 6`.
+
 ### Changes
 
 - **Settings is one grant again (322).** Structure, Code and Workflow set-up follow the
@@ -15,6 +24,8 @@ point at `docs/stories/`.
 
 ### Upgrade notes
 
+- Bundle schema 6 is what this release writes; schema 5 is still read, unchanged. An
+  extension that wants a described screen moves to 6.
 - A group that held Structure, Components or Workflow set-up without Settings loses those
   screens until it is given Settings. A group file in `schema/user-groups/` that names
   one of them still loads, with the alias dropped. Nothing else changes for a group that

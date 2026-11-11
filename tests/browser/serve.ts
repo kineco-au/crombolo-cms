@@ -170,7 +170,7 @@ writeFileSync(
   JSON.stringify({
     name: 'browser-site',
     private: true,
-    dependencies: { 'test-side-panel': '1.0.0' },
+    dependencies: { 'test-side-panel': '1.0.0', 'test-screens': '1.0.0' },
   }),
 )
 writeFileSync(
@@ -222,6 +222,80 @@ export default TestNotesPanel
 `,
 )
 
+// An extension whose Settings dashboard is a screen it describes (story 323): a
+// table of rules with a confirmed Delete, and a form whose fields depend on a choice.
+const screens = join(root, 'node_modules', 'test-screens')
+mkdirSync(join(screens, 'src', 'server'), { recursive: true })
+writeFileSync(
+  join(screens, 'package.json'),
+  JSON.stringify({
+    name: 'test-screens',
+    version: '1.0.0',
+    type: 'module',
+    exports: './src/server/index.js',
+    peerDependencies: { '@crombolo/crombolo': `^${VERSION}` },
+    crombolo: {
+      bundleType: 'extension',
+      id: 'test-screens',
+      server: 'testScreens',
+      schemaVersion: 6,
+      permissions: {},
+      extensions: [
+        {
+          type: 'dashboard',
+          alias: 'Test.Dashboard.Screens',
+          name: 'Test screens',
+          screen: 'main',
+          meta: { label: 'Test screens', pathname: 'test-screens' },
+          conditions: [{ alias: 'Umb.Condition.SectionAlias', match: 'Umb.Section.Settings' }],
+        },
+      ],
+    },
+  }),
+)
+writeFileSync(
+  join(screens, 'src', 'server', 'index.js'),
+  `import { button, cell, field, form, row, screen, table } from '@crombolo/extension'
+
+const draw = (rules) =>
+  screen('Test screens', [
+    table(['Rule'], rules.map((rule) => row(rule, [cell.code(rule)], [button('Delete', 'remove', { input: { rule }, confirm: 'Delete ' + rule + '?', look: 'danger' })]))),
+    form(
+      [
+        field.choice('kind', 'Kind', [{ value: 'path', label: 'A path' }, { value: 'url', label: 'Another site' }]),
+        field.text('rule', 'Rule', { required: true, visibleWhen: { field: 'kind', equals: 'path' } }),
+        field.text('url', 'Address', { visibleWhen: { field: 'kind', equals: 'url' } }),
+      ],
+      { kind: 'path' },
+      [button('Add', 'add', { submit: true, look: 'primary' })],
+    ),
+  ])
+
+export function testScreens() {
+  return {
+    id: 'test-screens',
+    section: 'settings',
+    capabilities: [],
+    screens: {
+      main: {
+        view: ({ state }) => ({ screen: draw(state.rules ?? ['/first']), state: { rules: state.rules ?? ['/first'] } }),
+        actions: {
+          add: ({ input, state }) => {
+            const rules = [...state.rules, input.values.rule]
+            return { screen: draw(rules), state: { rules }, notice: 'Added ' + input.values.rule }
+          },
+          remove: ({ input, state }) => {
+            const rules = state.rules.filter((rule) => rule !== input.rule)
+            return { screen: draw(rules), state: { rules }, notice: 'Deleted ' + input.rule }
+          },
+        },
+      },
+    },
+  }
+}
+`,
+)
+
 // Links the site "e-mails", for the invitation and password-reset tests to follow
 const LINKS = join(repo, 'output', 'browser-links.jsonl')
 writeFileSync(LINKS, '')
@@ -256,6 +330,7 @@ const server = await createServer(
           grant: ['backoffice.code', 'http.outbound'],
           origins: ['https://notes.crombolo.test'],
         },
+        'test-screens': { grant: [] },
       },
       sendUserLink: async (message) => {
         appendFileSync(

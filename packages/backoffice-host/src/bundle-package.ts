@@ -83,12 +83,45 @@ export interface CromboloField {
 }
 
 /**
- * The bundle schema an extension with code must be written for: 5 put its server
- * half in `src/server/` and its back-office code in `src/backoffice/` (story 320);
- * 4 gave each permission a reason (308); 3 declared them (222); 2 made its routes
- * route handlers (211).
+ * The bundle schema this release writes: 6 lets a manifest entry name a screen
+ * its server half describes (story 323); 5 put its server half in `src/server/`
+ * and its back-office code in `src/backoffice/` (story 320); 4 gave each
+ * permission a reason (308); 3 declared them (222); 2 made its routes route
+ * handlers (211).
  */
-export const BUNDLE_SCHEMA_VERSION = 5
+export const BUNDLE_SCHEMA_VERSION = 6
+
+/** The schema whose manifest entries may name a described screen (story 323). */
+export const SCREEN_SCHEMA_VERSION = 6
+
+const SCREEN_ID = /^[a-z][a-z0-9-]{0,39}$/
+
+/**
+ * Why its manifest's entries cannot name the screens they do (story 323): a
+ * screen needs schema 6 and a server half to describe it, and an entry names a
+ * screen or a module, never both. Pure.
+ */
+export function screenEntryProblems(f: Record<string, unknown>, schema: number): string[] {
+  if (!Array.isArray(f.extensions)) return []
+  const problems: string[] = []
+  for (const entry of f.extensions) {
+    if (!isPlainObject(entry) || entry.screen === undefined) continue
+    const alias = typeof entry.alias === 'string' ? entry.alias : 'an entry'
+    if (typeof entry.screen !== 'string' || !SCREEN_ID.test(entry.screen))
+      problems.push(
+        `${alias} names the screen ${JSON.stringify(entry.screen)}, which is not a screen id`,
+      )
+    else if (schema < SCREEN_SCHEMA_VERSION)
+      problems.push(
+        `${alias} names a screen, which needs "crombolo.schemaVersion": ${SCREEN_SCHEMA_VERSION}`,
+      )
+    if (entry.element !== undefined || entry.js !== undefined)
+      problems.push(`${alias} names a screen and a module: it is drawn from one or the other`)
+    if (f.server === undefined)
+      problems.push(`${alias} names a screen, and the package has no server half to describe it`)
+  }
+  return problems
+}
 
 /** The oldest schema read: an extension at 4 or before is refused until it is migrated (story 320). */
 export const OLDEST_BUNDLE_SCHEMA_VERSION = 5
@@ -351,7 +384,7 @@ export function validateBundlePackage(json: PackageJson, directory?: string): st
   else if (f.permissions !== undefined) {
     const problem = permissionsProblem(f.permissions, schema)
     if (problem) problems.push(problem)
-    else if (schema >= BUNDLE_SCHEMA_VERSION) {
+    else if (schema >= OLDEST_BUNDLE_SCHEMA_VERSION) {
       const asksForCode = Object.hasOwn(f.permissions as object, BACKOFFICE_CODE)
       if (modules.length > 0 && !asksForCode)
         problems.push(
@@ -383,6 +416,8 @@ export function validateBundlePackage(json: PackageJson, directory?: string): st
         `it is an extension, which never carries the site's code, and ${PAYLOAD_MANIFEST} lists ${code}`,
       )
   }
+
+  problems.push(...screenEntryProblems(f, schema))
 
   const hasExtensions = Array.isArray(f.extensions) && f.extensions.length > 0
   if (!hasExtensions && f.content === undefined && f.server === undefined)

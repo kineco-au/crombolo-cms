@@ -67,6 +67,7 @@ export {
   settingsOf,
 } from './extension-discovery.ts'
 export { denoArguments, netHosts, processReads } from './extension-process.ts'
+export { normaliseScreenResult, safeScreenHref, screenValues } from './extension-screens.ts'
 export { extensionSqlProblem } from './extension-sql.ts'
 export * from './extensions-notice.ts'
 export * from './external-sign-in.ts'

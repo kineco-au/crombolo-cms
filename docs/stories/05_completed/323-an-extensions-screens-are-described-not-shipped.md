@@ -222,16 +222,47 @@ own elements already read.
 
 ## Acceptance criteria
 
-- [ ] An extension declares `screens`, and each appears where its manifest entry puts it, drawn
+- [x] An extension declares `screens`, and each appears where its manifest entry puts it, drawn
       by the host, with no module of the extension loaded in the page.
-- [ ] A table, a form with every field type, conditional fields and hints, validation rules, a
+- [x] A table, a form with every field type, conditional fields and hints, validation rules, a
       confirm, notices and problems, tabs and progress all render and round-trip to the process.
-- [ ] A `page`, `media` or `member` field opens the host's picker and the extension receives a key.
-- [ ] Hostile strings in every node type render as text; `javascript:` and unknown protocols are
+- [x] A `page`, `media` or `member` field opens the host's picker and the extension receives a key.
+- [x] Hostile strings in every node type render as text; `javascript:` and unknown protocols are
       dropped; a test feeds each node type a script tag and an event handler.
-- [ ] `principal` and the grant-checked capabilities reach `view` and `actions` as they reach a route.
-- [ ] A described screen needs no permission; the install panel lists it under Adds.
-- [ ] A schema 6 manifest names a screen with `screen`; an entry with `element` is refused
+- [x] `principal` and the grant-checked capabilities reach `view` and `actions` as they reach a route.
+- [x] A described screen needs no permission; the install panel lists it under Adds (the
+      panel's Adds group is story 324's, which reads the screen entries).
+- [x] A schema 6 manifest names a screen with `screen`; an entry with `element` is refused
       without `backoffice.code`, and one with both is refused.
-- [ ] Covering tests, including the isolation suite's style of one test per threat; docs and
+- [x] Covering tests, including the isolation suite's style of one test per threat; docs and
       release notes.
+
+## What was built (2026-11-11)
+
+- **The catalogue** is `packages/extension/src/screens.ts`, types and builders, exported from
+  `@crombolo/extension` and as `@crombolo/extension/screens`.
+- **The server:** `ServerBundle.screens` with `BundleScreen`, `BundleScreenContext` and
+  `BundleScreenHandler` (`bundles.ts`); `screenProblems` at boot; `ServerBundles.handle`
+  answers `POST …/_screen/<id>` before route matching, with the caller, the gated
+  capabilities and the principal as a route has them; `normaliseScreenResult` in
+  `extension-screens.ts`, which also never sends a `secret` field's value to the browser.
+- **The process:** the runner describes `screens` with their action names and dispatches a
+  `screen` call; `isolatedBundle` maps each to `process.call('screen', …)`.
+- **Found and fixed on the way:** the runner read an error a host capability threw as a
+  plain `{ name, message }`, when it arrives encoded, so every refusal reached an isolated
+  extension with an empty message. Routes had the same fault; it is fixed in the runner.
+- **The manifest:** `BUNDLE_SCHEMA_VERSION` is 6 and 5 is still read. `screenEntryProblems`
+  holds an entry to a screen or a module, schema 6 and a server half; `describedScreen`
+  points it at `/crombolo-plugin/extension-screen.js` with `meta.cromboloScreen`, and
+  `collectManifests` puts that path below wherever the back office is mounted. The
+  `backoffice.code` rule now applies from schema 5 onward rather than only at the newest.
+  `extension migrate` treats 5 and later as already laid out; rewriting 5 to 6 is story 329's.
+- **The element:** `plugin/extension-screen.js`, with its decisions in the pure
+  `extension-screen-model.js`. Pickers are the back office's `umb-input-document`, `-media`
+  and `-member`; the browser test drives the table, the conditional field, the required
+  check, the confirm and the round trip, not a picker.
+- **Tests:** `tests/extension-screens.test.ts` (normaliser, manifest rules, model, and real
+  round trips through a Deno process: state, input, a refused capability, hostile answers,
+  failures, 404 and 405, the section gate); `tests/browser/extension-screen.browser.ts`, run
+  once locally and passing; `api-surface`, `extension-migrate` and `bundle-permissions`
+  expectations moved to schema 6.

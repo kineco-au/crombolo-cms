@@ -35,7 +35,8 @@ are listed at the end.
 |---|---|---|
 | **Server half**: `crombolo.server`, a `ServerBundle` with routes, events, jobs, forms, media and tables | A Deno process of its own (story 311); in the CMS when the site's config imports it | Its grant (stories 309, 310) |
 | **Templates**: a `content: true` extension's `components/` | Copied into the site's `components/`, then imported in-process on every render | The Marketplace install itself, with no consent asked |
-| **Screens**: `src/backoffice/` files the manifest's `extensions` name, built (story 320) | The back office, in the signed-in user's browser | Being a dependency |
+| **Described screens** (story 323): data the server half returns | Drawn by the back office's own element; the extension's code stays in its process | Its grant, as its routes |
+| **Back-office code**: `src/backoffice/` files the manifest's `extensions` name, built (story 320) | The back office, in the signed-in user's browser | `backoffice.code` |
 | **Content**: schema, dictionary, content, styles, scripts, public files | Written into the site | The Marketplace install, unless `CROMBOLO_APPLY_BUNDLE_CONTENT` is off |
 
 ## Threats
@@ -51,7 +52,7 @@ Status: **covered**, **partly** (a gap is named), or **open**.
 | T5 | **Writing the site's files**: config, `package.json`, `.env`, components | **Covered (306, 311, 312).** An extension's payload may not carry `code/`, `components/` or value migrations; its process may write only its data folder | Components an install copied before 312 stay in the site, as its own; `bundle list` names them |
 | T6 | **Running server code through templates** | **Covered (312).** An extension's components render in its own process, and only with `templates` granted | — |
 | T7 | **Outbound requests and SSRF** from the server | **Covered (311, 312)**: Deno allows only the hosts its grant names, and the host's `fetch` adds the address rule (story 301) | — |
-| T8 | **Screens misusing the user's session**: calling the Management API as them, sending data anywhere | **Covered (313)** for sending: the back office's content security policy lets its pages reach the site and the origins granted extensions declare, and nothing else. **Asked for (320):** back-office code needs `backoffice.code`, granted under a warning that names the publisher, so none runs that was not granted knowingly | A screen, once granted, can still do anything the signed-in user can on the site itself |
+| T8 | **Screens misusing the user's session**: calling the Management API as them, sending data anywhere | **Covered (313)** for sending: the back office's content security policy lets its pages reach the site and the origins granted extensions declare, and nothing else. **Asked for (320):** back-office code needs `backoffice.code`, granted under a warning that names the publisher, so none runs that was not granted knowingly | A screen granted `backoffice.code` can still do anything the signed-in user can on the site itself. **A described screen (323)** runs nothing in the page: the back office draws it from data, every string as text, so it holds no session |
 | T9 | **Screens of an extension that is off or ungranted** | **Covered (309).** Their manifests are hidden and their files not served | — |
 | T10 | **Acting as a member beyond what was granted** (`member.delegate`) | **Covered (309).** Checked on every call | — |
 | T11 | **One extension reading another's data** | **Covered (311).** Separate processes, separate channels, and each one's queries run on its own tables' connection | — |
@@ -138,6 +139,7 @@ the CMS.
 | 312 | An extension's components stay in its package and render in its own process; it writes none of the site's code (T5, T6) |
 | 313 | The back office's content security policy names only the origins extensions declared (T8) |
 | 320 | An extension's back-office code is asked for, granted under a warning, built, and served only from its build (T8) |
+| 323 | An extension's screens are described by its server half and drawn by the back office, so none of its code runs in the page (T8) |
 | 316 | A site bundle is applied only from a key or CI build the site trusts (T16) |
 
 Story 303 is absorbed by 306 and 312, and 307 was merged into them.

@@ -19,6 +19,7 @@ import {
   readBundlePackage,
 } from './bundle-package.ts'
 import type { PackageManifest, PackageManifestImportmap } from './manifests.ts'
+import { PLUGIN_PATH_PLACEHOLDER } from './paths.ts'
 
 /** Where an installed bundle's assets are served from. */
 export const EXTENSION_PATH = '/bundles'
@@ -97,6 +98,28 @@ function rewriteImportmap(
   return Object.keys(scopes).length > 0 ? { imports, scopes } : { imports }
 }
 
+/** The back office's own element that draws every described screen (story 323). */
+export const SCREEN_ELEMENT = `${PLUGIN_PATH_PLACEHOLDER}/extension-screen.js`
+
+/**
+ * An entry that names a screen, as the back office loads it: the host's element,
+ * told which extension and screen to ask for. Any other entry is unchanged.
+ */
+export function describedScreen(entry: unknown, bundleId: string): unknown {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return entry
+  const { screen, ...rest } = entry as Record<string, unknown>
+  if (typeof screen !== 'string') return entry
+  const meta = (rest.meta && typeof rest.meta === 'object' ? rest.meta : {}) as Record<
+    string,
+    unknown
+  >
+  return {
+    ...rest,
+    element: SCREEN_ELEMENT,
+    meta: { ...meta, cromboloScreen: { bundle: bundleId, screen } },
+  }
+}
+
 /** A bundle's backoffice half, or undefined when it declares no extensions. */
 export function extensionOf(bundle: BundlePackage): InstalledExtension | undefined {
   const field = bundle.field
@@ -115,7 +138,7 @@ export function extensionOf(bundle: BundlePackage): InstalledExtension | undefin
       allowTelemetry: field.allowTelemetry ?? false,
       // Each extension names its bundle, so Settings can group a bundle's cards and link to it.
       extensions: (field.extensions ?? []).map((extension) => {
-        const rewritten = rewriteAssets(extension, packageName)
+        const rewritten = rewriteAssets(describedScreen(extension, bundle.id), packageName)
         return rewritten && typeof rewritten === 'object'
           ? { ...rewritten, cromboloBundle: { name: bundle.name, packageName } }
           : rewritten

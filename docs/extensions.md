@@ -14,7 +14,8 @@ ask for is [`bundles.md`](bundles.md), "Permissions".
 | An installed extension the CMS starts (granted, listed under `extensions` or granted in Installed) | A Deno process per extension |
 | An extension the site's `crombolo.config.ts` still imports | The Bun process: importing a module runs it, so it is the site's own code, unconfined. The boot warns, and says to list it under `extensions` instead |
 | An extension's components (story 312) | Its Deno process: each is a `render` call, and its HTML goes in the page |
-| An extension's screens | The back office, in the browser, as whoever is signed in (story 313). Built from `src/backoffice/` and served only from that build, once `backoffice.code` is granted (story 320) |
+| An extension's described screens (story 323) | Its Deno process answers each as data; the back office draws it with its own element. Nothing of the extension's runs in the page |
+| An extension's back-office code | The back office, in the browser, as whoever is signed in (story 313). Built from `src/backoffice/` and served only from that build, once `backoffice.code` is granted (story 320) |
 
 ## Starting one
 
@@ -112,6 +113,67 @@ into the same file as its server half.
 - **Refused at build:** browser code (`'use client'`, `'use deferred'`), and
   importing any of the CMS's packages but `@crombolo/extension`,
   `@crombolo/crombolo/bundle`, `@crombolo/common` and the JSX runtime.
+
+## Screens
+
+Story 323. A screen is data the server half returns, from a small catalogue, and
+the back office draws it with its own components. No markup, script or style of
+the extension's reaches the page, so a described screen needs no permission: it
+can show only what the server half can fetch, which its grant governs.
+
+```ts
+import { button, cell, field, form, row, screen, table } from '@crombolo/extension'
+
+export function redirects() {
+  return {
+    id: 'redirects',
+    section: 'settings',
+    capabilities: ['redirects'],
+    screens: {
+      rules: {
+        view: async ({ bundle }) => screen('Redirects', [table(['From', 'To'], rows(await bundle.redirects.list()))]),
+        actions: { save: async ({ bundle, input, state }) => ({ screen: …, state, notice: 'Redirect added.' }) },
+      },
+    },
+  }
+}
+```
+
+- **Where it appears:** a manifest entry names it with `"screen": "<id>"` in place of
+  `element`, at `"crombolo.schemaVersion": 6`. An entry names a screen or a module,
+  never both, and a screen needs a server half. The server points the entry at the
+  back office's own element, `crombolo-extension-screen`, told the extension and
+  the screen in `meta.cromboloScreen`.
+- **The catalogue:** `screen` (a title, a toolbar of buttons and a `search`, a body);
+  `table` with `text`, `code`, `tag`, `link` and `date` cells and per-row buttons;
+  `form` with `text`, `number`, `boolean`, `choice`, `page`, `media`, `member` and
+  `secret` fields; `button`; `notice`; `problem`; `empty`; `tabs`, with no tabs
+  inside; `progress`. The builders are exported from `@crombolo/extension`, and
+  the types from `@crombolo/extension/screens`. It grows by request: each addition
+  is host code.
+- **The call:** `POST <back office>/crombolo/api/bundle/<id>/_screen/<screen>` with
+  `{ action?, input?, state? }`, gated on the extension's section as its routes
+  are. A view or an action is given `bundle`, `caller`, `principal`, `state`,
+  `input` and `signal`, as a back-office route is, and answers a screen or
+  `{ screen, state?, notice? }`. The back office keeps `state` per open screen and
+  sends it back, so the process holds nothing between calls. A handler that
+  throws, a refused capability included, answers `{ problem }`, and the last
+  screen stays with the message above it.
+- **What stays in the browser:** a field's `visibleWhen`, a hint's `when`, a
+  field's `required`, `pattern` and length or range, and a button's `confirm`,
+  asked in the back office's own dialog. A button with `submit` sends its form's
+  visible values as `input.values`, once they pass. A `page`, `media` or `member`
+  field opens the back office's own picker, with the user's own permissions, and
+  the extension receives a key.
+- **Held to the catalogue twice.** The server normalises every answer
+  (`extension-screens.ts`): an unknown node is dropped and logged once per call
+  in the extension's log, every displayed string is a string, a link is kept
+  only to `http`, `https`, a path on this site or `section/…`, and a `secret`
+  field's value is never sent to the browser. The element then sets every string
+  as text, and never uses `unsafeHTML`; a test says so.
+- **Back-office code stays** for what a description cannot express, under
+  `backoffice.code` (story 320). An extension may describe most of its screens
+  and ship code for one.
 
 ## Its own tables
 

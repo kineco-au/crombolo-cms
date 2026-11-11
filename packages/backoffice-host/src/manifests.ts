@@ -93,7 +93,18 @@ export function collectManifests(
   const all = [...discoverManifests(paths.vendorDir), ...frameworkManifests(paths)].filter(
     (manifest) => !omit.has(manifest.id ?? ''),
   )
-  all.push(...extensions.map((extension) => extension.manifest))
+  // A described screen is drawn by the back office's own element, wherever it is mounted.
+  all.push(
+    ...extensions.map(
+      (extension) =>
+        JSON.parse(
+          JSON.stringify(extension.manifest).replaceAll(
+            `"${PLUGIN_PATH_PLACEHOLDER}/`,
+            `"${paths.pluginPath}/`,
+          ),
+        ) as PackageManifest,
+    ),
+  )
 
   const imports: Record<string, string> = {}
   const scopes: Record<string, Record<string, string>> = {}

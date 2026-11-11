@@ -102,7 +102,7 @@ possible halves:
 | `extensions` | the backoffice half, Umbraco extension manifests (Part 2) |
 | `content` | `true` when the package carries a payload: `bundle.json` at its root, and the content, schema, components, styles, scripts, dictionary items and code it lists, beside it (Part 1) |
 | `server` | the factory the package exports for its server half (Part 3). A declaration only: core never imports it |
-| `schemaVersion` | the bundle contract the package is written for; absent means `1`. A package with a `server` must say `2` (0.37, story 211's [routes](#routes)), or it is refused at install and at boot |
+| `schemaVersion` | the bundle contract the package is written for; absent means `1`. A package with code must say at least `5` (story 320), or it is refused at install and at boot; `6` lets an entry name a described screen (story 323, [`extensions.md`](extensions.md), "Screens") |
 
 A manifest with none of the three halves is refused, because it declares a
 bundle that does nothing. `peerDependencies["@crombolo/crombolo"]` is required of

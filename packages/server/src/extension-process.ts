@@ -836,6 +836,38 @@ export function isolatedBundle(process: ExtensionProcess): ServerBundle {
         }
       : {}),
     ...(d.schedules ? { schedules: d.schedules as ServerBundle['schedules'] } : {}),
+    ...((d.screens ?? []).length > 0
+      ? {
+          screens: Object.fromEntries(
+            (d.screens ?? []).map((screen) => {
+              const handler =
+                (action?: string) =>
+                async (context: { signal?: AbortSignal } & Record<string, unknown>) =>
+                  (
+                    await process.call(
+                      'screen',
+                      { screen: screen.id, ...(action ? { action } : {}) },
+                      {
+                        bundle: context.bundle,
+                        caller: context.caller,
+                        principal: context.principal,
+                        state: context.state,
+                        input: context.input,
+                        signal: context.signal,
+                      },
+                    )
+                  ).value as never
+              return [
+                screen.id,
+                {
+                  view: handler(),
+                  actions: Object.fromEntries(screen.actions.map((name) => [name, handler(name)])),
+                },
+              ]
+            }),
+          ) as unknown as ServerBundle['screens'],
+        }
+      : {}),
     ...(d.workflows.length > 0
       ? {
           forms: {

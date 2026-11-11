@@ -22,6 +22,7 @@ import {
   BUNDLE_SCHEMA_VERSION,
   backOfficeModules,
   exportedEntry,
+  OLDEST_BUNDLE_SCHEMA_VERSION,
   type PackageJson,
   REASON_MAX,
   readPackageJson,
@@ -120,7 +121,7 @@ export function planMigration(dir: string, options: { reason?: string } = {}): M
   const field = json.crombolo as Record<string, unknown> | undefined
   if (field?.bundleType !== 'extension') return empty('it is not an extension')
   const schema = typeof field.schemaVersion === 'number' ? field.schemaVersion : 1
-  if (schema >= BUNDLE_SCHEMA_VERSION)
+  if (schema >= OLDEST_BUNDLE_SCHEMA_VERSION)
     return empty(`it is already written for bundle schema ${schema}`)
   if (field.permissions !== undefined && Array.isArray(field.permissions))
     return empty(
