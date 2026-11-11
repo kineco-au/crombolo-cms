@@ -256,7 +256,7 @@ requests, only server-side and build-time front ends can call it.
 | `320` | An extension's back-office code is asked for, built and kept apart | must | L | done | 311, 308 |
 | `321` | A host provisions custom-table owners itself | should | M | done | 189, 311 |
 | `323` | An extension's screens are described, not shipped | must | XL | ready | 311 |
-| `324` | The install panel says what you accept at a glance | must | L | ready | 308, 320 |
+| `324` | The install panel says what you accept at a glance | must | L | ready | 308, 320, 325 |
 | `325` | An extension acts for the person using it | should | M | ready | 309 |
 | `326` | An extension installs into a root of its own | should | L | ready | 311 |
 | `327` | What each extension did | should | L | ready | 309, 311 |

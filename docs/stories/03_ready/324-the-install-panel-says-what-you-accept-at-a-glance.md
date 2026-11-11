@@ -1,7 +1,7 @@
 # 324 — The install panel says what you accept at a glance
 
 **Epic:** I — Hardening · **Priority:** must · **Size:** L
-**Depends on:** 308, 320
+**Depends on:** 308, 320, 325
 
 ## Story
 
@@ -45,8 +45,11 @@ with the user's session, is one line among them.
 - **Unrestricted can be granted from the back office or the config** (the maintainer's
   choice), as every grant can: an administrator's click is an audit entry naming them, the
   extension and the level. A host that wants the stricter rule sets
-  `extensions.unrestricted: 'config'`, which puts the config snippet in place of the button.
-  Off by default.
+  `CROMBOLO_UNRESTRICTED_EXTENSIONS=config`, which puts the config snippet in place of the
+  button. Off by default. (Planned on 2026-11-11 as `extensions.unrestricted`; moved to an
+  environment setting because `extensions` in the config is a map of extension ids, and
+  because it then sits with the other install policies, `CROMBOLO_BUNDLE_SIGNATURES` and
+  `CROMBOLO_BUNDLE_SOURCES`, set per environment and not undone by the commit that grants.)
 - **Never offered, whatever is asked:** `users.write`, as now, and two new keys the manifest
   reader rejects by name so an author sees why: `extensions.install` and `extensions.grant`.
   No extension may bring in another or widen a grant.
@@ -54,21 +57,119 @@ with the user's session, is one line among them.
   level, or asks for anything new, is "Off · asks for more", with Review opening this panel
   under "This version asks for more".
 
-## The design
+## Decisions (2026-11-11, planning)
 
-- `bundle-permissions.ts`: `levelOf(permissions)`, `groupsOf(declared)` (pure, tested), the
-  level sentences and the group words; `NEVER_OFFERED` grows; `BACKOFFICE_CODE_WARNING` becomes
-  the Unrestricted sentence.
-- The install panel (`bundles-marketplace.js`) and Installed (`bundles-installed.js`): the
-  badge, the four lines, the expander, the button states, the provenance line. Settings for an
-  extension stay below the groups.
-- The server's grant route refuses the upper levels from a non-administrator and from an
-  unattested package, and refuses `backoffice.code` from the back office when
-  `extensions.unrestricted` is `config`, each with the panel's words.
-- `crombolo extension install` prints the same badge and lines, and `--grant` of an upper level
-  needs the same.
-- Docs: `bundles.md` "Permissions" gains the levels and groups; the threat model's permissions
-  section; release notes.
+- **The config lock is an environment setting**, `CROMBOLO_UNRESTRICTED_EXTENSIONS`, `backoffice`
+  (the default) or `config`, documented beside the signature settings in `configuration.md`.
+- **A local build counts as vouched for**, everywhere: a package the signature check reports
+  as `local` came from this machine, not a registry, and is trusted as the site's own code is.
+  Signed and vouched count too. Unsigned, invalid and unchecked do not.
+- **`actAs` is 325's to settle.** This story now depends on 325, so `user.delegate` exists
+  when the levels are built and the panel never has to place the old `actAs` on its own.
+- **The server says what the person may do.** The marketplace and installed listings carry
+  `mayGrant: { limited: true, upper: 'yes' | 'administrator' | 'config' }` computed from the
+  principal and the setting, so the panel renders the button, the sentence or the snippet
+  from that and never reasons about administrators itself.
+- **One refusal function for every path.** The panel, the API, the CLI and a remote all go
+  through `bundle-admin`'s install and grant, so the check lives once, in a pure
+  `grantRefusal` that each calls.
+
+## The plan (2026-11-11)
+
+What exists and is reused: the catalogue and `describePermissions` in
+`packages/backoffice-host/src/bundle-permissions.ts`, where `BACKOFFICE_CODE_WARNING` and
+`NEVER_OFFERED` already live; `grantStateOf` in `packages/server/src/marketplace.ts`, which
+gives each listing row its permissions, status, `missing` and `granted`; `install` and
+`grant` in `packages/server/src/bundle-admin.ts`, which every path calls and which audit with
+`recordAudit`; `provenanceAt` and `provenanceOfInstalled` in `marketplace.ts`; the consent card
+in `bundles-marketplace.js` and the permissions block in `bundles-installed.js`, with
+`bundles-backoffice-code-words.js` as the model for pure, browser-free wording; the CLI's
+`confirmBackOfficeCode` in `packages/cli/src/support/bundles.ts`; the extension API routes in
+`server.ts`, already gated on Settings, with `actorOf` building the actor from the principal.
+
+### Slice 1: levels and groups, pure
+
+- `bundle-permissions.ts`: `levelOf(permissions): 'limited' | 'acts-as-you' | 'unrestricted'`
+  (`backoffice.code` wins, then `user.delegate`, else limited); `groupsOf(declared)` folding
+  the catalogue into Sees, Changes, Sends to, Adds and Acts as, each a short list of plain
+  words (pages, media, members, forms, …; the origins for Sends to; routes, events, tables,
+  templates and screens for Adds); `LEVEL_WORDS` with the badge word and the sentence per level;
+  `NEVER_OFFERED` gains `extensions.install` and `extensions.grant`, and `readPermissions`
+  names each when refused, as it names `users.write`; `BACKOFFICE_CODE_WARNING` becomes the
+  Unrestricted sentence.
+- `bundles-level-words.js` in the plugin: the same words for the element, pure, tested like
+  `backoffice-code-words.test.ts`. The server sends `level` and `groups` on each row, so the
+  element needs no catalogue of its own.
+- `BundleActor` gains `isAdmin`; `actorOf` fills it from the principal; the CLI's actor is an
+  administrator; the remote's actor follows its principal.
+
+### Slice 2: the server
+
+- `packages/server/src/grant-policy.ts`: `grantRefusal({ level, actor, provenance,
+  unrestrictedFrom })` returns a message or nothing: an upper level from a non-administrator,
+  "An administrator can turn this on."; an upper level with provenance unsigned, invalid or
+  unchecked, "Nobody has vouched for who built this, so it can't be turned on here."; the
+  unrestricted level from a request when the setting is `config`, the snippet sentence. Pure,
+  tested.
+- `config.ts`: `unrestrictedExtensions: 'backoffice' | 'config'` from
+  `CROMBOLO_UNRESTRICTED_EXTENSIONS`.
+- `bundle-admin.ts` `install` and `grant`, and `marketplace.ts`'s registry and file installs,
+  call `grantRefusal` after consent and the signature check, with the provenance already in
+  hand, and answer 403 with its message. The audit detail names the level: "granted
+  Unrestricted: backoffice.code, content.read".
+- `grantStateOf` adds `level`, `grantedLevel` (from the recorded grant's permissions) and
+  `groups`; the listings add `mayGrant`. `status: 'waiting'` with `level` above
+  `grantedLevel` is what Installed reads as "asks for more", with the new level named.
+- `server.ts`'s marketplace and installed responses carry `mayGrant` and
+  `unrestrictedExtensions`.
+
+### Slice 3: the panel and Installed
+
+- `bundles-marketplace.js` `#consent`: the badge and its sentence first, in the level's colour;
+  the provenance line, or "Nobody has vouched for who built this" in the badge's colour when
+  Limited and unsigned; the four groups as four lines, with Acts as when asked; "Show each
+  permission and why it asks" expanding to today's list with reasons and origins; then the
+  settings and layout choices as now. The button follows `mayGrant`: Grant and install, the
+  administrator sentence, or the config snippet with the `extensions` entry filled in. The
+  trust checkbox stays; the separate back-office code block and its second checkbox go,
+  since the Unrestricted badge carries that warning.
+- `bundles-installed.js`: the badge on every row's status line; `#permissions` reuses the
+  same block; a waiting row says "Off · asks for more" with Review opening the block under
+  "This version asks for more", naming the new level when it moved.
+- `bundles-backoffice-code.js` and its words module are retired once nothing imports them.
+
+### Slice 4: the CLI and the remote
+
+- `extension install` and `extension grant` print `  access   Unrestricted: <sentence>` and the
+  four group lines before the signature line, from the same words; `confirmBackOfficeCode`
+  becomes `confirmLevel`, asking at a terminal for either upper level; `--dry-run` prints the
+  same. A refusal from `grantRefusal` prints as the server's message.
+- `remote.ts`: the install and grant problems carry the level's sentence where they carried
+  `BACKOFFICE_CODE_WARNING`.
+
+### Slice 5: tests and docs
+
+- `tests/bundle-levels.test.ts`: `levelOf` for each level and for an empty list; `groupsOf`
+  places every catalogue entry in exactly one group; `grantRefusal` for each refusal and for
+  each allowed case, local and vouched included; the two new keys refused by name.
+- `tests/bundle-install.test.ts` and `tests/bundle-manage.test.ts`: a non-administrator with
+  Settings installs Limited and is refused Unrestricted with the sentence, from the install
+  route, the grant route and the CLI's admin; an unsigned upper-level package is refused and
+  a local one is not; with the setting at `config` the back office is refused and a config
+  entry still grants; the listing rows carry `level`, `groups` and `mayGrant`; an upgrade from
+  Limited to Unrestricted is `waiting` with the new level; the audit detail names the level.
+- `tests/backoffice-code-words.test.ts` becomes `tests/level-words.test.ts`.
+- Docs: `bundles.md` "Permissions" gains "Levels" with the table and the groups;
+  `configuration.md` adds the setting beside `CROMBOLO_BUNDLE_SIGNATURES`;
+  `extension-threat-model.md` "Permissions an extension asks for"; `release-notes.md`.
+
+### Open until built
+
+- The badge colours: Limited in the default look, Acts as you in warning, Unrestricted in
+  danger, unless the design pass says otherwise.
+- Whether a Settings holder who is not an administrator sees the Marketplace's Unrestricted
+  entries at all, or sees them with the sentence. The plan shows them with the sentence, so
+  they can ask an administrator.
 
 ## Acceptance criteria
 
@@ -77,7 +178,9 @@ with the user's session, is one line among them.
 - [ ] The expander shows each permission's sentence and reason, and `http.outbound`'s origins.
 - [ ] Non-administrators cannot grant the upper two levels, from the panel, the API or the CLI.
 - [ ] The upper two levels refuse an unattested package; Limited installs it, saying nobody vouched.
-- [ ] `extensions.unrestricted: 'config'` replaces the button with the snippet.
+- [ ] `CROMBOLO_UNRESTRICTED_EXTENSIONS=config` replaces the button with the snippet, and the
+      grant route refuses the back office while a config entry still grants.
+- [ ] A local build reaches the upper levels; unsigned, invalid and unchecked do not.
 - [ ] `extensions.install` and `extensions.grant` are refused by name; `users.write` as before.
 - [ ] Installed shows each row's badge; a version asking for more is off until re-granted, and
       Review says what changed.
