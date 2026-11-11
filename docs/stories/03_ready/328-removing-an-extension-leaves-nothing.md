@@ -92,7 +92,10 @@ its SQLite tables and ledger and name a role left behind, as `crombolo extension
   `--no-verify` it lists what will go and asks, defaulting to no; off a terminal it refuses
   without `--no-verify`. `--revert-content` is read as `--drop-content` for one release, with a
   notice. The remote's uninstall takes `dropData` and `dropContent` in its query, as it takes
-  `revertContent` now.
+  `revertContent` now; the server reads `revertContent` too for one release.
+- Every other mention follows: `site revert`'s refusal of an extension's install run names
+  `--drop-content` (`commands/site/revert.ts`); `bundles.md`'s table of the two kinds, "Undone
+  by"; the regenerated `docs/cli`. The old release note stays, as it describes that release.
 - `crombolo extension purge` stays for a wired bundle's tables, the case Remove refuses.
 
 ### Slice 4: tests and docs
