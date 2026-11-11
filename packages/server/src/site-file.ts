@@ -10,7 +10,7 @@
  * failed export never leaves a file that looks whole.
  */
 import { rename, rm } from 'node:fs/promises'
-import { discoverBundles } from '@crombolo/backoffice-host/registry'
+import { discoverBundles, readRecord } from '@crombolo/backoffice-host/registry'
 import { type Db, NodeRepository, type NodeRow, ObjectTypes } from '@crombolo/data'
 import {
   BUNDLE_SECTIONS,
@@ -125,11 +125,14 @@ export function unknownHostProvided(
 }
 
 function requiredPackages(config: CromboloConfig): Record<string, string> {
-  if (config.bundles.length === 0) return {}
   const wired = new Set(config.bundles.map((bundle) => bundle.id))
   // The installation's own packages are not the site's to need (story 177).
   const hosts = new Set(config.hostProvided)
   const required: Record<string, string> = {}
+  // Story 326: what the record says is installed, each in a root of its own.
+  for (const line of Object.values(readRecord(config.siteDir)))
+    if (!hosts.has(line.name)) required[line.name] = line.version
+  if (config.bundles.length === 0) return required
   for (const found of discoverBundles(config.siteDir).bundles)
     if (wired.has(found.id) && !hosts.has(found.packageName))
       required[found.packageName] = found.version

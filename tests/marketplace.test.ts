@@ -296,18 +296,18 @@ describe('listing what is installed', () => {
 })
 
 describe('installing', () => {
-  test('runs bun add in the site directory and reports the dependency', async () => {
+  test("runs bun add in the extension's own root and reports what to commit", async () => {
     const calls: Call[] = []
     const root = site()
     const { market } = marketplace({
       root,
       calls,
       installs: (call) => {
-        // Stand in for what `bun add` would leave behind.
-        addPackage(root, '@acme/seo', true, '2.0.0')
+        // Stand in for what `bun add` would leave behind, in the extension's root.
+        addPackage(call.siteDir, '@acme/seo', true, '2.0.0')
         writeFileSync(
-          join(root, 'package.json'),
-          JSON.stringify({ name: 'a-site', dependencies: { '@acme/seo': '^2.0.0' } }),
+          join(call.siteDir, 'package.json'),
+          JSON.stringify({ name: 'a-root', dependencies: { '@acme/seo': '^2.0.0' } }),
         )
         expect(call.action).toBe('add')
         return { ok: true, output: 'installed' }
@@ -315,7 +315,14 @@ describe('installing', () => {
     })
 
     const outcome = await market.install('@acme/seo', '2.0.0')
-    expect(calls).toEqual([{ action: 'add', specifier: '@acme/seo@2.0.0', siteDir: root }])
+    // In the extension's own root, never the site's dependencies (story 326).
+    expect(calls).toEqual([
+      {
+        action: 'add',
+        specifier: '@acme/seo@2.0.0',
+        siteDir: expect.stringContaining(join(root, 'extensions')),
+      },
+    ])
     expect(outcome.ok).toBe(true)
     // The exact dependency line the site now holds, which is what there is to commit.
     expect(outcome.dependency).toEqual({
@@ -324,7 +331,7 @@ describe('installing', () => {
       version: '2.0.0',
     })
     // The install is this node's until it is committed, and says so.
-    expect(outcome.message).toContain('Commit the changed package.json')
+    expect(outcome.message).toContain('Commit extensions/acme-seo/ and crombolo.extensions.json')
   })
 
   test('a site that does not install at runtime refuses both ways, and says to deploy instead', async () => {
@@ -659,10 +666,7 @@ describe('a bundle that runs code on the server (story 194)', () => {
     expect(outcome.ok).toBe(false)
     expect(outcome.needsGrant).toBe(true)
     expect(outcome.message).toContain('so it was removed again')
-    expect(calls.map((c) => `${c.action} ${c.specifier}`)).toEqual([
-      'add @acme/tasks',
-      'remove @acme/tasks',
-    ])
+    expect(calls.map((c) => `${c.action} ${c.specifier}`)).toEqual(['add @acme/tasks'])
   })
 
   test('the version asked for is the one checked, not the latest', async () => {

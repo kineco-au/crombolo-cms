@@ -6,7 +6,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { createExtensionRegistry } from '@crombolo/backoffice-host'
+import { createExtensionRegistry, forgetExtension } from '@crombolo/backoffice-host'
 import * as crombolo from '@crombolo/crombolo'
 import {
   BUNDLES_CHANGED_EVENT,
@@ -14,7 +14,7 @@ import {
   createBundleReloader,
   VERSION,
 } from '@crombolo/server'
-import { toCurrentLayout } from './support/bundles.ts'
+import { linkedDependencies, moveIntoRoot, toCurrentLayout } from './support/bundles.ts'
 import { BACKOFFICE, type Harness, ORIGIN, signedInServer } from './support/harness.ts'
 
 const open: Harness[] = []
@@ -127,8 +127,11 @@ describe('a running node (story 181)', () => {
     expect((await h.server.fetch(new Request(file))).status).toBe(404)
 
     install(root, 'acme-seo')
-    // Linked, as one built here is, so its back-office code may be granted (story 324).
-    depend(root, { 'acme-seo': 'link:acme-seo' })
+    depend(root, { 'acme-seo': '^1.0.0' })
+    // Into a root of its own, as an install puts it (story 326), and linked, as one built here
+    // is, so its back-office code may be granted (story 324).
+    moveIntoRoot(root, 'acme-seo')
+    linkedDependencies(root)
     // Unseen until it is told: discovery is cached outside development.
     const reload = await h.server.reloadBundles()
     expect(reload.added.map((b) => b.packageName)).toEqual(['acme-seo'])
@@ -142,7 +145,9 @@ describe('a running node (story 181)', () => {
     expect((await h.server.fetch(new Request(file))).status).toBe(200)
     expect(sent).toEqual([['notify', BUNDLES_CHANGED_EVENT]])
 
-    depend(root, {})
+    // Removed as an uninstall removes one now: its root and its line (story 326).
+    rmSync(join(root, 'extensions', 'acme-seo'), { recursive: true, force: true })
+    forgetExtension(root, 'acme-seo')
     expect((await h.server.reloadBundles()).removed.map((b) => b.packageName)).toEqual(['acme-seo'])
     expect((await h.server.fetch(new Request(file))).status).toBe(404)
   })

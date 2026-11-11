@@ -17,7 +17,7 @@ import {
 } from '@crombolo/backoffice-host'
 import { VERSION } from '@crombolo/server'
 import { bundlePeerRange } from '@crombolo/transfer'
-import { siteDeclaring, stubBundlePackage } from './support/bundles.ts'
+import { fixtureDir, siteDeclaring, stubBundlePackage } from './support/bundles.ts'
 
 const dirs: string[] = []
 afterEach(() => {
@@ -87,7 +87,7 @@ describe('the manifest', () => {
       '@acme/tasks': { json: valid({}, { content: true }) },
     })
     dirs.push(root)
-    const dir = join(root, 'node_modules', '@acme/tasks')
+    const dir = fixtureDir(root, '@acme/tasks')
     expect(problemsOf(valid({}, { content: true }), dir)).toContain(
       'holds no bundle.json at its root',
     )
@@ -116,10 +116,10 @@ describe('reading one', () => {
       },
     })
     dirs.push(root)
-    const { bundle, problems } = readBundlePackage(join(root, 'node_modules', '@acme/tasks'))
+    const { bundle, problems } = readBundlePackage(fixtureDir(root, '@acme/tasks'))
     expect(problems).toEqual([])
     expect(bundle?.carries).toEqual({ extensions: false, content: true, server: false })
-    expect(bundle?.contentDir).toBe(join(root, 'node_modules', '@acme/tasks'))
+    expect(bundle?.contentDir).toBe(fixtureDir(root, '@acme/tasks'))
     expect(bundle?.name).toBe('Tasks')
   })
 

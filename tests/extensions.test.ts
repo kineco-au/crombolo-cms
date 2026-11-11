@@ -18,7 +18,7 @@ import {
   resolveStaticFile,
 } from '@crombolo/backoffice-host'
 import { VERSION, warnAboutAppPlugins } from '@crombolo/server'
-import { linkedDependencies, toCurrentLayout } from './support/bundles.ts'
+import { linkedDependencies, moveIntoRoot, toCurrentLayout } from './support/bundles.ts'
 import { BACKOFFICE, type Harness, signedInServer, V1 } from './support/harness.ts'
 
 const dirs: string[] = []
@@ -384,7 +384,8 @@ describe('over HTTP', () => {
         files: { 'dist/seo.js': 'export default class {}' },
       },
     })
-    // Linked, as one built here is, so its back-office code may be granted (story 324).
+    // Into a root of its own (story 326), linked, so its back-office code may be granted (324).
+    moveIntoRoot(root, '@acme/seo')
     linkedDependencies(root)
     const h = await signedInServer({
       config: { siteDir: root, componentsDir: join(root, 'components') },

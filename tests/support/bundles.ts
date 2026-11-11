@@ -2,13 +2,25 @@
  * Bundles as the tests need them: a package as discovery would return it, and a
  * site directory whose `package.json` declares packages for discovery to find.
  */
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from 'node:fs'
 import { dirname, join } from 'node:path'
 import {
   BUNDLE_SCHEMA_VERSION,
   type BundlePackage,
   backOfficeModules,
+  packageInRoot,
+  prepareRoot,
   readPackageJson,
+  readRecord,
+  recordExtension,
+  writeRecord,
 } from '@crombolo/backoffice-host'
 import { VERSION } from '@crombolo/server'
 import { applyMigration, planMigration } from '../../packages/cli/src/support/extension-migrate.ts'
@@ -45,8 +57,10 @@ export interface FixturePackage {
 }
 
 /**
- * A site directory under `output/` whose `package.json` declares these
- * dependencies. A fixture is written into the site's own `node_modules`; a name
+ * A site directory under `output/` with these packages. An extension fixture is
+ * installed as an install makes one (story 326): into its own root,
+ * `extensions/<id>/node_modules/<name>`, with a line in the site's record. Any
+ * other fixture is a dependency of the site, in its own `node_modules`; a name
  * given `null` is left to resolve from the repository's, which is how a
  * workspace package such as `@crombolo/simple-redirects` is found.
  */
@@ -66,9 +80,23 @@ export function siteDeclaring(
       dependencies: Object.fromEntries(Object.keys(dependencies).map((name) => [name, '*'])),
     }),
   )
+  const rooted: string[] = []
   for (const [name, fixture] of Object.entries(dependencies)) {
     if (!fixture) continue
-    const dir = join(root, 'node_modules', name)
+    const declared = (fixture.json as { crombolo?: { id?: unknown; bundleType?: unknown } })
+      ?.crombolo
+    const id = typeof declared?.id === 'string' ? declared.id : undefined
+    // An extension, which says so or says nothing, goes in a root of its own.
+    const inRoot = id !== undefined && (declared?.bundleType ?? 'extension') === 'extension'
+    const dir = inRoot ? packageInRoot(root, id, name) : join(root, 'node_modules', name)
+    if (inRoot) {
+      prepareRoot(root, id)
+      recordExtension(root, id, {
+        name,
+        version: String((fixture.json as { version?: unknown })?.version ?? '1.0.0'),
+      })
+      rooted.push(name)
+    }
     mkdirSync(dir, { recursive: true })
     const json: Record<string, unknown> = {
       name,
@@ -110,6 +138,12 @@ export function siteDeclaring(
     }
     toCurrentLayout(dir)
   }
+  // What went in a root is not a dependency of the site.
+  if (rooted.length > 0) {
+    const site = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+    for (const name of rooted) delete site.dependencies[name]
+    writeFileSync(join(root, 'package.json'), JSON.stringify(site))
+  }
   return root
 }
 
@@ -145,10 +179,43 @@ export function toCurrentLayout(dir: string): void {
  * (story 324). A `*` range reads as one from the registry, unsigned.
  */
 export function linkedDependencies(dir: string): void {
+  // An extension in a root is linked in the record (story 326).
+  const record = readRecord(dir)
+  for (const line of Object.values(record)) line.linked = true
+  if (Object.keys(record).length > 0) writeRecord(dir, record)
   const file = join(dir, 'package.json')
   const json = JSON.parse(readFileSync(file, 'utf8')) as { dependencies?: Record<string, string> }
   json.dependencies = Object.fromEntries(
     Object.keys(json.dependencies ?? {}).map((name) => [name, `link:${name}`]),
   )
   writeFileSync(file, JSON.stringify(json))
+}
+
+/** Where a fixture package was installed: its root when it is an extension in one, else `node_modules`. */
+export function fixtureDir(siteDir: string, name: string): string {
+  const recorded = Object.entries(readRecord(siteDir)).find(([, line]) => line.name === name)
+  return recorded ? packageInRoot(siteDir, recorded[0], name) : join(siteDir, 'node_modules', name)
+}
+
+/**
+ * Moves a package a test wrote as a dependency of the site into a root of its
+ * own, with its record line, as an install does now (story 326).
+ */
+export function moveIntoRoot(siteDir: string, name: string): string {
+  const from = join(siteDir, 'node_modules', name)
+  const json = JSON.parse(readFileSync(join(from, 'package.json'), 'utf8')) as {
+    version: string
+    crombolo: { id: string }
+  }
+  const id = json.crombolo.id
+  prepareRoot(siteDir, id)
+  const to = packageInRoot(siteDir, id, name)
+  mkdirSync(dirname(to), { recursive: true })
+  renameSync(from, to)
+  recordExtension(siteDir, id, { name, version: json.version })
+  const file = join(siteDir, 'package.json')
+  const site = JSON.parse(readFileSync(file, 'utf8')) as { dependencies?: Record<string, string> }
+  delete site.dependencies?.[name]
+  writeFileSync(file, JSON.stringify(site))
+  return to
 }

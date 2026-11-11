@@ -1,6 +1,7 @@
 export * from './bundle-package.ts'
 export * from './bundle-permissions.ts'
 export * from './content-security.ts'
+export * from './extension-roots.ts'
 export * from './extensions.ts'
 export * from './graphics.ts'
 export * from './login-assets.ts'

@@ -4,7 +4,7 @@
  * listed in `bundle.json` and covered by its one hash like every other section.
  * `docs/bundles.md`, "A site's bundle with code".
  */
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { isAbsolute, join, sep } from 'node:path'
 import { loadBundle } from './load.ts'
 import { BUNDLE_SECTIONS } from './model.ts'
@@ -42,6 +42,29 @@ export function isNeverCode(path: string): boolean {
   )
 }
 
+/** Where installed extensions' roots sit, and the record of them (story 326; `extension-roots.ts`). */
+export const EXTENSION_ROOTS_DIR = 'extensions'
+export const EXTENSION_RECORD = 'crombolo.extensions.json'
+
+/**
+ * The record and each extension root's `package.json` and `bun.lock`: what a
+ * site package always carries once it has them, never a root's `node_modules`.
+ */
+export function extensionRootFiles(siteDir: string): string[] {
+  const out: string[] = []
+  if (existsSync(join(siteDir, EXTENSION_RECORD))) out.push(EXTENSION_RECORD)
+  const dir = join(siteDir, EXTENSION_ROOTS_DIR)
+  if (!existsSync(dir)) return out
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    for (const file of ['package.json', 'bun.lock']) {
+      const path = `${EXTENSION_ROOTS_DIR}/${entry.name}/${file}`
+      if (existsSync(join(siteDir, path))) out.push(path)
+    }
+  }
+  return out
+}
+
 /** The site folder a bundle installed from a file is kept in (story 245). */
 export const LOCAL_BUNDLES_DIR = 'bundles'
 
@@ -51,7 +74,8 @@ export const localBundleFileName = (name: string, version: string): string =>
 
 /** The `bundles/` file a dependency's range names, as `./bundles/x.tgz` or `file:bundles/x.tgz`. */
 export function localBundlePath(range: string | undefined): string | undefined {
-  const match = /^(?:file:)?(?:\.\/)?bundles\/([^/\\]+\.tgz)$/.exec(range ?? '')
+  // From an extension's root, two folders down, it is `file:../../bundles/x.tgz` (story 326).
+  const match = /^(?:file:)?(?:\.\/|(?:\.\.\/){2})?bundles\/([^/\\]+\.tgz)$/.exec(range ?? '')
   return match ? `${LOCAL_BUNDLES_DIR}/${match[1]}` : undefined
 }
 
@@ -69,6 +93,15 @@ export function localBundlesNamed(siteDir: string): string[] {
       const path = localBundlePath(range)
       if (path) named.add(path)
     }
+  for (const root of extensionRootFiles(siteDir).filter((path) => path.endsWith('/package.json'))) {
+    const declared = JSON.parse(readFileSync(join(siteDir, root), 'utf8')) as {
+      dependencies?: Record<string, string>
+    }
+    for (const range of Object.values(declared.dependencies ?? {})) {
+      const path = localBundlePath(range)
+      if (path) named.add(path)
+    }
+  }
   return [...named].sort()
 }
 
@@ -107,6 +140,8 @@ export function selectCodeFiles(
     if (matched === 0) problems.push(`"${pattern}" matches no file the bundle can carry`)
   }
   for (const always of CODE_ALWAYS) if (existsSync(join(siteDir, always))) paths.add(always)
+  // Story 326: the record and each extension's root, which a deploy installs from.
+  for (const path of extensionRootFiles(siteDir)) paths.add(path)
   // A bundle installed from a file (story 245) goes where its lockfile entry does.
   for (const bundle of localBundlesNamed(siteDir))
     if (existsSync(join(siteDir, bundle))) paths.add(bundle)

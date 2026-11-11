@@ -8,7 +8,7 @@
  */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { CODE_DIR } from '@crombolo/transfer'
+import { CODE_DIR, EXTENSION_ROOTS_DIR } from '@crombolo/transfer'
 import type { CarriedSections, FileAction, SectionFile } from './bundle-sections.ts'
 import { RUN_BACKUP_DIR } from './bundle-sections.ts'
 import type { CromboloConfig } from './config.ts'
@@ -106,6 +106,23 @@ export async function installCode(
   if (dependencies) {
     const failed = await installFromLockfile(config.siteDir)
     if (failed) result.problems.push(failed)
+    else result.installed = true
+  }
+  // Story 326: each extension's root whose files changed installs from its own lockfile.
+  const roots = new Set(
+    changed
+      .map((file) => sitePath(file.path).split('/'))
+      .filter(
+        (parts) =>
+          parts.length === 3 &&
+          parts[0] === EXTENSION_ROOTS_DIR &&
+          DEPENDENCY_FILES.has(parts[2] as string),
+      )
+      .map((parts) => parts[1] as string),
+  )
+  for (const id of roots) {
+    const failed = await installFromLockfile(join(config.siteDir, EXTENSION_ROOTS_DIR, id))
+    if (failed) result.problems.push(`${EXTENSION_ROOTS_DIR}/${id}/: ${failed}`)
     else result.installed = true
   }
   const record: CodeRecord = {

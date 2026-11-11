@@ -156,15 +156,47 @@ ledger".
 
 ## Acceptance criteria
 
-- [ ] Installing an extension writes nothing to the site's `package.json` or `bun.lock`.
-- [ ] Each extension has its own root, built and run from it, with its own lockfile.
-- [ ] A deploy from the record reproduces the same versions and integrity.
-- [ ] A site bundle's `requires` names the installed extensions, and the package carries
+- [x] Installing an extension writes nothing to the site's `package.json` or `bun.lock`.
+- [x] Each extension has its own root, built and run from it, with its own lockfile.
+- [x] A deploy from the record reproduces the same versions and integrity.
+- [x] A site bundle's `requires` names the installed extensions, and the package carries
       `crombolo.extensions.json` under `code/` whenever it carries `package.json`; applying
       it installs each extension into its root from the record.
-- [ ] An extension installed from a file is carried as `bundles/<name>-<version>.tgz` and
+- [x] An extension installed from a file is carried as `bundles/<name>-<version>.tgz` and
       installs into its root from that file on the remote.
-- [ ] An extension installed as a dependency before is found and named, at boot and on
+- [x] An extension installed as a dependency before is found and named, at boot and on
       Installed, with what to do; it is not started and nothing moves it.
-- [ ] The process cannot read the root's `node_modules`.
-- [ ] Covering tests; docs and release notes with the upgrade path.
+- [x] The process cannot read the root's `node_modules`.
+- [x] Covering tests; docs and release notes with the upgrade path.
+
+## What was built (2026-11-11)
+
+- **Roots and the record** (`backoffice-host/src/extension-roots.ts`): `ROOTS_DIR`,
+  `RECORD_FILE`, `rootOf`, `packageInRoot`, `readRecord`, `writeRecord`, `recordExtension`,
+  `forgetExtension`, `prepareRoot`, `recordProblems`, `grantHashOf`, and the message
+  `INSTALLED_AS_DEPENDENCY`.
+- **Discovery** reads the record's roots first (`BundlePackage.root`), then the site's
+  dependencies. A dependency extension is `dependency: true`, unless it is a link to a package
+  elsewhere on the machine, which is `linked: true`.
+- **A change from the plan:** a developer's link is told apart by being a symlink rather than
+  by being "resolved into the same root as a symlink". The repo's own sites and tests use the
+  shipped Redirects and Entra as workspace dependencies, which are symlinks: they keep running
+  outside production with no change, and are refused in production (`LINKED_IN_PRODUCTION`).
+  A copied-in dependency extension is not started and not shown, unless the config wires it.
+- **Install and remove** (`marketplace.ts`): `bun add` runs in the root, the record is written
+  from what landed, with the registry's integrity; every refusal after landing deletes the
+  root and its line; an uninstall deletes them, and a kept `bundles/` file nothing names.
+  `rangeFor` reads the root's `package.json` first. A file install names its kept file from
+  the root as `file:../../bundles/...`.
+- **The build** resolves the entry from the root; the process still reads only its own
+  `src/server/` and its build.
+- **A site package** carries the record and each root's two files (`extensionRootFiles`,
+  `@crombolo/transfer`), and the kept files a root names; an apply runs a frozen install in each
+  root whose files changed (`installCode`); `requires` names the recorded extensions.
+- **Not done:** `grantHashOf` is written but the record's `grant` field is not yet filled or
+  checked on apply; that waits for story 328, which compares it. `site check-code` does not yet
+  run its frozen install in each root. The apply's install in a root is not covered by a test,
+  since it runs a real `bun install`.
+- **Tests:** `tests/extension-roots.test.ts`; the fixture helper installs extension fixtures
+  into roots (`siteDeclaring`, `fixtureDir`, `moveIntoRoot`, `linkedDependencies`), and the
+  installer stubs write where they are run.

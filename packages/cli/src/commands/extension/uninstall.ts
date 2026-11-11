@@ -6,7 +6,7 @@ import { cliActor, remoteBundles, withLocalBundles } from '../../support/bundles
 export default class ExtensionUninstall extends BaseCommand {
   static override summary = 'remove an installed extension, here or on a remote'
   static override description =
-    'Removes the dependency (`bun remove`). A bundle with a server half changes the code the site loads, which takes effect at `crombolo restart`; a bundle still wired in crombolo.config.ts has to come out of `bundles` too. On a remote it needs CROMBOLO_REMOTE_ACCESS=all, "Change a site\'s structure and code" and "Install code on this site".'
+    'Removes its root, extensions/<id>/, and its line in crombolo.extensions.json; one installed as a dependency before 0.61 is removed with `bun remove`. A bundle with a server half changes the code the site loads, which takes effect at `crombolo restart`; a bundle still wired in crombolo.config.ts has to come out of `bundles` too. On a remote it needs CROMBOLO_REMOTE_ACCESS=all, "Change a site\'s structure and code" and "Install code on this site".'
   static override examples = [
     '<%= config.bin %> extension uninstall @acme/crm',
     '<%= config.bin %> extension uninstall @acme/crm --remote production',

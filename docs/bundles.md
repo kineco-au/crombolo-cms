@@ -695,12 +695,31 @@ Changes dashboard, where its conflicts are answered and it is run
 ([`content-transfer.md`](content-transfer.md), "In the backoffice"). The install
 that succeeded is not undone.
 
-**`package.json` is the install ledger.** There is no separate record of what was
-installed at runtime, because the dependency list already is one. "Incorporate
-this into future deployments" is therefore just committing the two changed files,
-and the install response carries the dependency line itself — the range as
-`bun add` wrote it and the version it resolved to — so the view shows exactly
-what there is to commit.
+**The record and the roots are the install ledger** (story 326). An extension is
+not a dependency of the site. It installs into a root of its own,
+`extensions/<id>/`, with its own `package.json`, `bun.lock` and `node_modules`,
+and the site records it in `crombolo.extensions.json`: its package name, exact
+version, tarball integrity, and `linked` for one installed from a path on a
+developer's machine. "Incorporate this into future deployments" is committing
+the root's two files and the record; a deploy runs `bun install --frozen-lockfile`
+in each root. The site's own `package.json` and `bun.lock` never change when an
+extension is tried, and removing one deletes its root and its line.
+
+- **Discovery** reads the record and each root first, then the site's dependencies
+  as before, for the bundles the site's config wires as its own code.
+- **One installed as a dependency,** the way before 0.61, is named at boot and in
+  Installed, "installed as a dependency of the site, which this release no longer
+  runs", and is neither started nor shown in the back office unless the config
+  wires it. Nothing moves it: remove it from `package.json` and install it again.
+- **A developer's link** is a dependency that links to a package elsewhere on the
+  machine, a workspace's or one `bun link` made. It runs outside production, as
+  before, and is refused in production with what to do instead.
+- **A file install** is still kept in `bundles/` (story 245); its root names it as
+  `file:../../bundles/<name>-<version>.tgz`.
+- **A site package** always carries the record and each root's `package.json` and
+  `bun.lock`, never a root's `node_modules`; an apply installs each root whose files
+  changed from its own lockfile. A site file's `requires` names each recorded
+  extension.
 
 ### From the command line (story 241)
 

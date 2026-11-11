@@ -15,6 +15,11 @@ point at `docs/stories/`.
   of the extension's code runs in the page and the screen needs no permission. A
   manifest entry names one with `"screen"` at `"crombolo.schemaVersion": 6`.
 
+- **An extension installs into a root of its own (326).** `crombolo extension install` and
+  the Marketplace install into `extensions/<id>/`, with its own lockfile, and record it in
+  `crombolo.extensions.json`; the site's `package.json` and `bun.lock` no longer change.
+  Commit the root's `package.json` and `bun.lock` and the record; `node_modules` stays
+  ignored. A site package carries them, and an apply installs each root.
 - **An extension acts for the person using it (325).** A new permission,
   `user.delegate`: "Act for the person using it in the back office: it can do anything
   they can do here, and everything it does is recorded against them." A job or an event
@@ -48,6 +53,12 @@ point at `docs/stories/`.
   upgrade that asks for more, or a fresh install needs a signed build. A host that wants
   Unrestricted extensions turned on only in the config sets
   `CROMBOLO_UNRESTRICTED_EXTENSIONS=config`.
+- **An extension installed as a dependency stops (326).** One listed in the site's
+  `package.json` is named at boot and in Installed and is not run. Remove it from
+  `package.json` and install it again with `crombolo extension install`, which gives it a
+  root of its own. A bundle the site's config wires in `bundles` is the site's own code and
+  stays a dependency. A dependency that links to a workspace package still runs outside
+  production, and is refused in production.
 - **`actAs` is retired (325).** An extension asking for it is refused, and stops until a
   version asking for `user.delegate` is installed: `crombolo extension migrate <dir>`
   rewrites one, and an administrator grants it again. `extensions.<id>.actAs` is gone

@@ -5,6 +5,7 @@
  */
 export * from './bundle-package.ts'
 export * from './bundle-permissions.ts'
+export * from './extension-roots.ts'
 export * from './extensions.ts'
 export type * from './manifests.ts'
 export * from './paths.ts'

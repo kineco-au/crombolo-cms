@@ -10,6 +10,7 @@ import { join } from 'node:path'
 import type { BundlePackage } from '@crombolo/backoffice-host'
 import {
   type ExtensionSetting,
+  INSTALLED_AS_DEPENDENCY,
   readSettings,
   USER_DELEGATE,
 } from '@crombolo/backoffice-host/registry'
@@ -113,6 +114,10 @@ export function extensionEntryProblems(
   return problems
 }
 
+/** Why a linked extension does not run in production (story 326). */
+export const LINKED_IN_PRODUCTION =
+  "it is linked from elsewhere on this machine, which is for a developer's machine only: install it with `crombolo extension install` so it has a root of its own"
+
 /** An extension that could not start, and why: shown where it is listed. */
 export interface FailedExtension {
   id: string
@@ -140,6 +145,23 @@ export async function startExtensions(
   const failed: FailedExtension[] = []
   for (const pkg of packages) {
     if (!pkg.carries.server || wired.has(pkg.id)) continue
+    // Story 326: an extension runs from a root of its own, never as a dependency of the site.
+    if (pkg.linked && Bun.env.NODE_ENV === 'production') {
+      failed.push({ id: pkg.id, reason: LINKED_IN_PRODUCTION })
+      log(pkg.id).error('{package} is not started: {reason}', {
+        package: pkg.packageName,
+        reason: LINKED_IN_PRODUCTION,
+      })
+      continue
+    }
+    if (pkg.dependency) {
+      failed.push({ id: pkg.id, reason: INSTALLED_AS_DEPENDENCY })
+      log(pkg.id).error('{package} is not started: {reason}', {
+        package: pkg.packageName,
+        reason: INSTALLED_AS_DEPENDENCY,
+      })
+      continue
+    }
     const entry = config.extensions?.[pkg.id]
     const grant = recorded.grants.get(pkg.id)
     const byConfig = entryCovers(pkg, entry)

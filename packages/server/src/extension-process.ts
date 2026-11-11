@@ -66,7 +66,8 @@ export async function buildExtension(
   siteDir: string,
   outDir: string,
 ): Promise<string> {
-  const entryFile = Bun.resolveSync(pkg.packageName, siteDir)
+  // From its own root when it has one (story 326), so its dependencies resolve from there.
+  const entryFile = Bun.resolveSync(pkg.packageName, pkg.root ?? siteDir)
   // As the build sees it: a workspace link resolves to its real place.
   const backOffice = `${join(realpathSync(pkg.directory), BACKOFFICE_DIR)}${sep}`
   mkdirSync(outDir, { recursive: true })

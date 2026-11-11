@@ -24,7 +24,7 @@ import {
   sentValues,
   visibleFields,
 } from '../packages/backoffice-host/plugin/extension-screen-model.js'
-import { siteDeclaring } from './support/bundles.ts'
+import { fixtureDir, siteDeclaring } from './support/bundles.ts'
 import { BACKOFFICE, type Harness, signedInServer, signInAsGroup, V1 } from './support/harness.ts'
 
 const open: Harness[] = []
@@ -396,7 +396,7 @@ type Answer = {
 describe('a described screen, through its own process', () => {
   test('is listed by the package, and drawn by the back office’s element with nothing of its own', async () => {
     const { h, dir } = await panelSite()
-    const read = readBundlePackage(join(dir, 'node_modules/@acme/panel'))
+    const read = readBundlePackage(fixtureDir(dir, '@acme/panel'))
     expect(read.problems).toEqual([])
     const extension = extensionOf(read.bundle as never)
     const manifests = collectManifests(

@@ -460,7 +460,13 @@ export async function createServer(
   } = core
   /** The extensions that are on: granted, and not turned off (story 309). */
   const onExtensions = () =>
-    extensions.list().filter((extension) => bundleGrants.isOn(extension.bundle.id))
+    extensions.list().filter(
+      (extension) =>
+        bundleGrants.isOn(extension.bundle.id) &&
+        // Story 326: one installed as a dependency shows only when the site's code wires it.
+        (!extension.bundle.dependency ||
+          config.bundles.some((bundle) => bundle.id === extension.bundle.id)),
+    )
   // Their back-office code, built when first asked for (story 320).
   const backOfficeBuilds = createBackOfficeBuilds(config.siteDir, (id) => {
     const named = logger('bundle', id)

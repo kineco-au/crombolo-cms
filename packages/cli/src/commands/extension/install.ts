@@ -39,7 +39,7 @@ const NO_EXTENSIONS = {
 export default class ExtensionInstall extends BaseCommand {
   static override summary = 'add an extension to this site, or a remote, as a dependency'
   static override description = [
-    'What Install does in Settings, under Bundles: `bun add`, then the content the bundle carries with --apply-content. A bundle with server code names every permission it asks for with --grant, or nothing is installed: a newer version that asks for more is refused until the script grants it.',
+    "What Install does in Settings, under Extensions: `bun add` in a root of its own, extensions/<id>/, recorded in crombolo.extensions.json, never in the site's package.json; then the content the bundle carries with --apply-content. A bundle with server code names every permission it asks for with --grant, or nothing is installed: a newer version that asks for more is refused until the script grants it.",
     "An extension runs once it is granted what it asks for: --grant names every permission, exactly. Nothing is imported into crombolo.config.ts; to grant it from the site's code, list it under `extensions` there. Installed code runs after `crombolo restart`.",
     'On a remote it needs CROMBOLO_REMOTE_ACCESS=all, "Change a site\'s structure and code" and "Install code on this site", which administrators have only when a group gives it to them.',
     "--code-into installs a site package's own code into an empty directory, ready for a host to start it: the argument is then the site package's directory.",

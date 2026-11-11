@@ -62,21 +62,22 @@ function siteWith(dependencies: Record<string, string> = {}) {
   const root = temp('local-bundles-site')
   writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'a-site', dependencies }))
   const calls: string[] = []
-  const install: PackageInstaller = async (action, specifier) => {
+  // What `bun add` and `bun remove` do in the folder they run in: the site's, or an extension's root.
+  const install: PackageInstaller = async (action, specifier, where) => {
     calls.push(`${action} ${specifier}`)
-    const json = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+    const json = JSON.parse(readFileSync(join(where, 'package.json'), 'utf8'))
     json.dependencies ??= {}
     if (action === 'add') {
       const version = /-(\d+\.\d+\.\d+)\.tgz$/.exec(specifier)?.[1] ?? '1.2.0'
       json.dependencies['@acme/crm'] = specifier
-      const dir = join(root, 'node_modules', '@acme', 'crm')
+      const dir = join(where, 'node_modules', '@acme', 'crm')
       mkdirSync(dir, { recursive: true })
       writeFileSync(join(dir, 'package.json'), JSON.stringify(manifest(version)))
     } else {
       delete json.dependencies[specifier]
-      rmSync(join(root, 'node_modules', '@acme', 'crm'), { recursive: true, force: true })
+      rmSync(join(where, 'node_modules', '@acme', 'crm'), { recursive: true, force: true })
     }
-    writeFileSync(join(root, 'package.json'), JSON.stringify(json))
+    writeFileSync(join(where, 'package.json'), JSON.stringify(json))
     return { ok: true, output: '' }
   }
   const extensions = createExtensionRegistry(root, { cache: false })
@@ -103,7 +104,7 @@ describe('a bundle installed from a file', () => {
     expect(outcome.file).toBe('bundles/acme-crm-1.2.0.tgz')
     expect(outcome.message).toContain('Commit bundles/acme-crm-1.2.0.tgz')
     expect(readFileSync(kept(root)).equals(readFileSync(file))).toBe(true)
-    expect(calls).toEqual(['add ./bundles/acme-crm-1.2.0.tgz'])
+    expect(calls).toEqual(['add file:../../bundles/acme-crm-1.2.0.tgz'])
   })
 
   test('already in bundles/, or the same bytes again, is used as it is', async () => {
@@ -112,7 +113,7 @@ describe('a bundle installed from a file', () => {
     expect((await market.installFile(file)).ok).toBe(true)
     expect((await market.installFile(file)).ok).toBe(true)
     expect((await market.installFile(kept(root))).ok).toBe(true)
-    expect(calls).toEqual(Array(3).fill('add ./bundles/acme-crm-1.2.0.tgz'))
+    expect(calls).toEqual(Array(3).fill('add file:../../bundles/acme-crm-1.2.0.tgz'))
   })
 
   test('another file of the same version is refused, and nothing is installed', async () => {

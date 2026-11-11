@@ -19,10 +19,12 @@ ask for is [`bundles.md`](bundles.md), "Permissions".
 
 ## Starting one
 
-At boot, for each granted extension (`packages/server/src/extension-discovery.ts`):
+At boot, for each granted extension (`packages/server/src/extension-discovery.ts`),
+installed in its own root, `extensions/<id>/` (story 326; one installed as a
+dependency of the site is named and not started):
 
 1. **It is built** (`buildExtension`, `extension-process.ts`): Bun bundles the
-   package's server entry, its own dependencies and the extension SDK into one
+   package's server entry, resolved from its root, its own dependencies and the extension SDK into one
    file, `.crombolo/extensions/<id>/build/server.js`. Nothing of it runs in the
    CMS while it is built: a Bun macro, which would, is refused.
    `@crombolo/crombolo/bundle`, `@crombolo/extension` and `@crombolo/common` all

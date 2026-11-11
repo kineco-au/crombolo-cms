@@ -6,9 +6,10 @@
  * marketplace, the server half and the installer cannot disagree about what a
  * bundle is.
  */
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { dirname, join, normalize } from 'node:path'
 import { BACKOFFICE_CODE, permissionsProblem, readSettings } from './bundle-permissions.ts'
+import { packageInRoot, readRecord, rootOf } from './extension-roots.ts'
 import type { PackageManifestImportmap } from './manifests.ts'
 
 /** The package a bundle declares its peer range on. */
@@ -208,6 +209,18 @@ export interface BundlePackage {
   /** The package's directory, when it carries content: the payload is the package. */
   contentDir: string | undefined
   carries: { extensions: boolean; content: boolean; server: boolean }
+  /** Its root, `extensions/<id>/`, when it was installed into one (story 326). */
+  root?: string
+  /**
+   * An extension the site lists as a dependency, the way before story 326: run
+   * only when the site's config wires it, as the site's own code.
+   */
+  dependency?: true
+  /**
+   * A dependency that is a link to a package on this machine, a workspace's or
+   * one `bun link` made: a developer's, allowed outside production (story 326).
+   */
+  linked?: true
 }
 
 export interface PackageJson {
@@ -542,6 +555,25 @@ export interface DiscoveredBundles {
 export function discoverBundles(siteDir: string): DiscoveredBundles {
   const json = readPackageJson(join(siteDir, 'package.json'))
   const found: DiscoveredBundles = { bundles: [], problems: [] }
+  // Story 326: what the record names, each from its own root.
+  const seen = new Set<string>()
+  for (const [id, line] of Object.entries(readRecord(siteDir)).sort(([a], [b]) =>
+    a.localeCompare(b),
+  )) {
+    const directory = packageInRoot(siteDir, id, line.name)
+    if (!existsSync(join(directory, 'package.json'))) continue
+    const read = readBundlePackage(directory)
+    seen.add(line.name)
+    if (read.bundle?.bundleType === 'site')
+      found.problems.push({ packageName: line.name, problems: [SITE_PACKAGE_NOT_INSTALLED] })
+    else if (read.bundle) found.bundles.push({ ...read.bundle, root: rootOf(siteDir, id) })
+    else if (read.problems.length > 0)
+      found.problems.push({
+        packageName: line.name,
+        problems: read.problems,
+        ...(read.untyped ? { untyped: read.untyped } : {}),
+      })
+  }
   // A peer is declared too: a site whose host provides `@crombolo/*` lists
   // them there (story 192).
   const names = new Set([
@@ -549,12 +581,20 @@ export function discoverBundles(siteDir: string): DiscoveredBundles {
     ...Object.keys(json?.peerDependencies ?? {}),
   ])
   for (const name of [...names].sort()) {
+    if (seen.has(name)) continue
     const directory = resolvePackageDir(siteDir, name)
     if (!directory) continue
     const read = readBundlePackage(directory)
     if (read.bundle?.bundleType === 'site')
       found.problems.push({ packageName: name, problems: [SITE_PACKAGE_NOT_INSTALLED] })
-    else if (read.bundle) found.bundles.push(read.bundle)
+    else if (read.bundle)
+      found.bundles.push(
+        read.bundle.bundleType !== 'extension'
+          ? read.bundle
+          : isLinked(directory)
+            ? { ...read.bundle, linked: true }
+            : { ...read.bundle, dependency: true },
+      )
     else if (read.problems.length > 0)
       found.problems.push({
         packageName: name,
@@ -563,6 +603,15 @@ export function discoverBundles(siteDir: string): DiscoveredBundles {
       })
   }
   return found
+}
+
+/** Whether a package directory is a link to one elsewhere on this machine, as a workspace's is. */
+function isLinked(directory: string): boolean {
+  try {
+    return lstatSync(directory).isSymbolicLink() || realpathSync(directory) !== directory
+  } catch {
+    return false
+  }
 }
 
 /** Whether a path is a directory, for telling a package path from a package name. */

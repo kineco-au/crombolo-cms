@@ -19,7 +19,7 @@
  */
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join, relative, resolve, sep } from 'node:path'
 import {
   type AccessLevel,
   askedPermissions,
@@ -28,13 +28,22 @@ import {
   describePermissions,
   EXTENSION_KEYWORD,
   type ExtensionRegistry,
+  forgetExtension,
   groupsOf,
   isSchema3Field,
   LEGACY_EXTENSION_KEYWORD,
   levelOf,
   type PackageJson,
   type PermissionGroups,
+  packageInRoot,
+  prepareRoot,
+  RECORD_FILE,
+  ROOTS_DIR,
+  readPackageJson,
+  readRecord,
   readSettings,
+  recordExtension,
+  rootOf,
   SCHEMA_3_NOT_INSTALLED,
   SITE_PACKAGE_NOT_INSTALLED,
   USER_DELEGATE,
@@ -368,6 +377,16 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
 
   /** The range `package.json` holds for a dependency, as `bun add` wrote it. */
   const rangeFor = async (name: string): Promise<string | undefined> => {
+    // Story 326: an extension's range is in its own root's package.json, when it names one.
+    const recorded = Object.entries(readRecord(options.siteDir)).find(
+      ([, line]) => line.name === name,
+    )
+    const inRoot = recorded
+      ? readPackageJson(join(rootOf(options.siteDir, recorded[0]), 'package.json'))?.dependencies?.[
+          name
+        ]
+      : undefined
+    if (inRoot) return inRoot
     try {
       const json = (await Bun.file(join(options.siteDir, 'package.json')).json()) as {
         dependencies?: Record<string, string>
@@ -568,6 +587,8 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
   /** Each installed version's signature, checked once: a version's files do not change. */
   const installedProvenance = new Map<string, Promise<ProvenanceResult>>()
   const provenanceOfInstalled = async (bundle: BundlePackage): Promise<ProvenanceResult> => {
+    // Installed from a path or a workspace into its root, as a developer's own is (story 326).
+    if (bundle.root && readRecord(options.siteDir)[bundle.id]?.linked) return { state: 'local' }
     const range = await rangeFor(bundle.packageName)
     if (range && /^(workspace|link|file|portal):/.test(range)) return { state: 'local' }
     const key = `${bundle.packageName}@${bundle.version}`
@@ -770,6 +791,7 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
         version,
         request,
         declared.dist?.tarball ? { version: declared.version } : undefined,
+        { id: declared.id ?? name, integrity: declared.dist?.integrity },
       )
       return { ...outcome, provenance }
     },
@@ -825,7 +847,9 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
         return refused
       }
       const previous = await rangeFor(declared.name)
-      const outcome = await added(declared.name, `./${kept.path}`, undefined, request)
+      const outcome = await added(declared.name, `./${kept.path}`, undefined, request, undefined, {
+        id: declared.id,
+      })
       if (!outcome.ok) {
         discard()
         return { ...outcome, provenance }
@@ -835,7 +859,7 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
         ...outcome,
         provenance,
         file: kept.path,
-        message: `${outcome.message} Commit ${kept.path} with package.json and bun.lock.`,
+        message: `${outcome.message} Commit ${kept.path} with it.`,
       }
     },
 
@@ -843,6 +867,22 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
       if (options.installs === false) return refusedHere(name, 'remove', options.installsElsewhere)
       if (!isValidPackageName(name))
         return { ok: false, message: `'${name}' is not a package name npm would accept.` }
+      // Story 326: removing one is deleting its root and its line.
+      const recorded = Object.entries(readRecord(options.siteDir)).find(
+        ([, line]) => line.name === name,
+      )
+      if (recorded) {
+        const [id] = recorded
+        const previous = await rangeFor(name)
+        rmSync(rootOf(options.siteDir, id), { recursive: true, force: true })
+        forgetExtension(options.siteDir, id)
+        options.extensions.invalidate()
+        removeUnnamed(previous)
+        return {
+          ok: true,
+          message: `${name} was removed. Commit the removal of ${ROOTS_DIR}/${id}/ and the change to ${RECORD_FILE}.`,
+        }
+      }
       const previous = await rangeFor(name)
       const result = await install('remove', name, options.siteDir)
       options.extensions.invalidate()
@@ -869,15 +909,35 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
       /** The person installing is an administrator: only one grants the upper levels (story 324). */
       isAdmin?: boolean
     },
-    checked?: { version: string },
+    checked: { version: string } | undefined,
+    into: { id: string; integrity?: string },
   ): Promise<InstallOutcome> {
-    const result = await install('add', specifier, options.siteDir)
-    options.extensions.invalidate()
-    if (!result.ok)
+    // Story 326: into a root of its own, never the site's dependencies.
+    const root = prepareRoot(options.siteDir, into.id)
+    const inRoot = specifier.startsWith('./')
+      ? `file:${relative(root, join(options.siteDir, specifier)).split(sep).join('/')}`
+      : specifier
+    const result = await install('add', inRoot, root)
+    if (!result.ok) {
+      options.extensions.invalidate()
       return {
         ok: false,
         message: result.output || `Installing ${specifier} failed.`,
       }
+    }
+    const landed = readPackageJson(
+      join(packageInRoot(options.siteDir, into.id, name), 'package.json'),
+    )
+    recordExtension(options.siteDir, into.id, {
+      name,
+      version: landed?.version ?? version ?? 'unknown',
+      ...(into.integrity ? { integrity: into.integrity } : {}),
+    })
+    options.extensions.invalidate()
+    const undo = () => {
+      rmSync(root, { recursive: true, force: true })
+      forgetExtension(options.siteDir, into.id)
+    }
 
     const range = (await rangeFor(name)) ?? version ?? 'latest'
     const discovered = options.extensions.bundles()
@@ -889,7 +949,7 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
           problem.packageName === name && problem.problems.includes(SITE_PACKAGE_NOT_INSTALLED),
       )
     ) {
-      await install('remove', name, options.siteDir)
+      undo()
       options.extensions.invalidate()
       return sitePackageRefused(name)
     }
@@ -902,7 +962,7 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
     // The version whose signature was checked is the one that has to land
     // (story 060): one published in between was never checked.
     if (checked && found.version !== checked.version) {
-      await install('remove', name, options.siteDir)
+      undo()
       options.extensions.invalidate()
       return {
         ok: false,
@@ -912,12 +972,12 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
     // The version that landed is what counts: a release published between
     // reading the registry and installing may ask for more, or say nothing of why.
     if (isSchema3(found)) {
-      await install('remove', name, options.siteDir)
+      undo()
       options.extensions.invalidate()
       return schema3Refused(name, `${name}@${found.version} turned out to`)
     }
     if (!consented(request, declaredEntries(found))) {
-      await install('remove', name, options.siteDir)
+      undo()
       options.extensions.invalidate()
       return grantNeeded(
         name,
@@ -930,7 +990,7 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
     // extension: a grant is what lets one run (story 309).
     const delegates = declaredPermissions(found).includes(USER_DELEGATE)
     if (delegates && !request.delegateTo) {
-      await install('remove', name, options.siteDir)
+      undo()
       options.extensions.invalidate()
       return { ok: false, message: `${name} was not installed: ${DELEGATE_NEEDS_PERSON}.` }
     }
@@ -960,7 +1020,7 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
       dependency: { name, range, version: found.version },
       // The install lives in this node's node_modules until the dependency is
       // committed; saying so is the difference between a surprise and a plan.
-      message: `${name}@${found.version} is installed. Commit the changed package.json and bun.lock to keep it across deployments.${
+      message: `${name}@${found.version} is installed. Commit ${ROOTS_DIR}/${into.id}/ and ${RECORD_FILE} to keep it across deployments.${
         found.carries.server
           ? " Its server code runs only once your site's developers turn it on and deploy the site."
           : ''
@@ -981,6 +1041,7 @@ function sitePackageRefused(name: string): { ok: false; message: string } {
 /** What a packed bundle on this machine declares, read from its package.json, or why it cannot be installed. */
 async function declaresIn(file: string): Promise<
   | {
+      id: string
       name: string
       version: string
       server: boolean
@@ -999,9 +1060,15 @@ async function declaresIn(file: string): Promise<
     const problems = validateBundlePackage(json)
     if (problems.length > 0 || typeof json.name !== 'string' || typeof json.version !== 'string')
       return `${file} is not an extension for this site, so it was not installed.`
-    const field = json.crombolo as { server?: string; permissions?: unknown; settings?: unknown }
+    const field = json.crombolo as {
+      id: string
+      server?: string
+      permissions?: unknown
+      settings?: unknown
+    }
     if (isSchema3Field(field)) return `${file} was not installed: ${SCHEMA_3_NOT_INSTALLED}.`
     return {
+      id: field.id,
       name: json.name,
       version: json.version,
       server: field.server !== undefined,
