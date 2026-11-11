@@ -205,6 +205,14 @@ const DECLARED = [
     description: 'How many days the audit log keeps an entry. `0` keeps them all.',
   },
   {
+    env: 'CROMBOLO_EXTENSION_ACTIVITY_DAYS',
+    kind: 'number',
+    default: '14',
+    section: 'Database',
+    description:
+      'How many days what each extension did is kept for its Activity view in Settings, under Extensions. `0` keeps nothing.',
+  },
+  {
     env: 'CROMBOLO_EVENT_RETENTION_DAYS',
     kind: 'number',
     default: '30',

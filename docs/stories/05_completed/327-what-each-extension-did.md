@@ -147,12 +147,36 @@ Installed view and `audit-dashboard.js` for the list, filters and paging; `downl
 
 ## Acceptance criteria
 
-- [ ] Every write, outbound request, table write, job, event and screen action an extension
+- [x] Every write, outbound request, table write, job, event and screen action an extension
       makes is recorded with the person it acted for and its outcome; reads are counted per
       extension, person, kind and minute.
-- [ ] Refused calls are recorded and shown.
-- [ ] No row holds statement text, a request body or a value.
-- [ ] Activity opens from Installed, filters by kind and person, counts by kind, and exports.
-- [ ] Records older than the window are deleted on schedule, and an extension never holds more
+- [x] Refused calls are recorded and shown.
+- [x] No row holds statement text, a request body or a value.
+- [x] Activity opens from Installed, filters by kind and person, counts by kind, and exports.
+- [x] Records older than the window are deleted on schedule, and an extension never holds more
       than the cap.
-- [ ] Covering tests; docs and release notes.
+- [x] Covering tests; docs and release notes.
+
+## What was built (2026-11-11)
+
+- **The table** (`AddExtensionActivity`, 072, release 0.61.0) and `ExtensionActivityLog` in
+  `@crombolo/data`: record, page, counts, people, prune and cap. The five rewinds undo it.
+- **The recorder** (`server/src/extension-activity.ts`): batches a second apart or at 200
+  rows, folds reads by extension, person, area, verb and minute, opens the database lazily
+  since extensions start before it, and `stop()`s with the server. `personOf` names a
+  back-office caller, a member by username, or nobody; `timed` records a call's outcome and
+  time whether it answers, throws or answers a promise.
+- **The recording points,** as planned: `gated` (capability methods and refusals; `fetch` is
+  left to its wrapper), `createBundleApi` (read or write by verb, the area from the permission,
+  a key from the path, refusals), the `fetch` capability (host, method, refusals), the query
+  handler (table and row count; the driver gives no count for an insert, so one statement
+  counts one), and `isolatedBundle` (routes, events, jobs, screens). Workflows are not
+  recorded; they are form submissions, not the extension's own doing.
+- **Retention:** `CROMBOLO_EXTENSION_ACTIVITY_DAYS` (14), hourly, with a 100,000-row cap
+  per extension (`ACTIVITY_CAP`).
+- **Routes and view:** `installed/<id>/activity`, `/summary` and `.csv` (formula-safe cells);
+  `bundles-activity.js` opened from an Installed extension's details, with the sentences in
+  `bundles-activity-words.js`.
+- **Not done:** a job under `user.delegate` is recorded as itself, not as the installer it
+  acted for, since the job's caller carries no person; the audit entry for its API writes
+  does name the installer.

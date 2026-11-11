@@ -63,6 +63,12 @@ export * from './email-resend.ts'
 export * from './email-ses.ts'
 export * from './email-text.ts'
 export {
+  activityCsv,
+  createActivityRecorder,
+  personOf,
+  readActivityQuery,
+} from './extension-activity.ts'
+export {
   entryCovers,
   extensionEntryProblems,
   settingsOf,

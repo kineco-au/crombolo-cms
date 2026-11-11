@@ -177,6 +177,32 @@ export function redirects() {
   `backoffice.code` (story 320). An extension may describe most of its screens
   and ship code for one.
 
+## Watching one
+
+Story 327. Everything an extension does through the CMS is recorded, attributed to
+it and to the person it acted for, and Installed opens it under "See what it did":
+its counts by kind over the window at the top, then each row newest first,
+filterable by kind and by person, with an export as CSV.
+
+- **What a row is:** a write, a request out, rows written to its own tables, a
+  refused call, a route, event, job or workflow it ran, and a screen opened or
+  pressed. Reads of one kind for one person fold into one row a minute, "read
+  pages, 50 times".
+- **What a row holds:** the kind, the area (the capability, the API's area, the
+  host, the table, the route or the screen), the verb, a key from the path when it
+  names one, a count, the outcome and the time taken. Never a statement, a request
+  body or a value.
+- **Where it is recorded:** where each call is already named, not on the channel:
+  the capability gate (`gated`), the `api` capability, the `fetch` wrapper, the
+  query handler in `ExtensionProcess`, and `isolatedBundle`'s calls.
+  `extension-activity.ts` batches the rows a second apart, so a crash loses at most
+  a second; the audit log still has every write the API made.
+- **How long:** `CROMBOLO_EXTENSION_ACTIVITY_DAYS`, 14 by default, `0` to keep none,
+  pruned hourly, and at most 100,000 rows an extension, oldest first.
+- **The routes:** `GET <back office>/crombolo/api/extensions/installed/<id>/activity`
+  with `before`, `limit`, `kind`, `person` (a key, or `itself`), `since` and `until`;
+  `…/activity/summary`; `…/activity.csv`.
+
 ## Its own tables
 
 `context.bundle.database` is a Kysely in the extension, whose driver sends each

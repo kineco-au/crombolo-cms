@@ -345,6 +345,11 @@ export interface CromboloConfig {
   /** How many days the audit log keeps an entry; 0 keeps them forever. docs/audit-log.md. */
   auditRetentionDays: number
   /**
+   * How many days what each extension did is kept for its Activity view (story
+   * 327); 0 keeps none. `CROMBOLO_EXTENSION_ACTIVITY_DAYS`.
+   */
+  extensionActivityDays: number
+  /**
    * How many days delivered webhooks, their log and dispatched content events
    * are kept; 0 keeps them forever. Failed work stays until retried. docs/webhooks.md.
    */
@@ -685,6 +690,7 @@ export const DEFAULTS = {
   keepAllVersionsNewerThanDays: 7,
   keepLatestVersionPerDayForDays: 90,
   auditRetentionDays: 365,
+  extensionActivityDays: 14,
   eventRetentionDays: 30,
   memberRegistrationType: 'Member',
   memberSessionMinutes: 60 * 24 * 14,
@@ -898,6 +904,10 @@ export function loadConfig(
     auditRetentionDays: nonNegative(
       setting('CROMBOLO_AUDIT_RETENTION_DAYS'),
       DEFAULTS.auditRetentionDays,
+    ),
+    extensionActivityDays: nonNegative(
+      setting('CROMBOLO_EXTENSION_ACTIVITY_DAYS'),
+      DEFAULTS.extensionActivityDays,
     ),
     eventRetentionDays: nonNegative(
       setting('CROMBOLO_EVENT_RETENTION_DAYS'),

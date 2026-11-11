@@ -124,6 +124,11 @@ its arguments, because an argument can be a password.
 - members signing in to the public site, which are visitors rather than
   editors.
 
+An extension's own calls are in the activity view (story 327, [`extensions.md`](extensions.md),
+"Watching one"): its reads, requests out, its own tables' rows and what its grant refused,
+which the audit log does not hold. A write it makes through the API is in both, the audit
+entry naming "<Extension>, for <person>" (story 325).
+
 ## When an entry is written
 
 **Page and media writes commit their entry with the change** (stories 171 and

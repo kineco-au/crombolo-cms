@@ -15,6 +15,7 @@ import {
   ContentEventRepository,
   type Db,
   DocumentRepository,
+  ExtensionActivityLog,
   pruneCacheInstructions,
   SearchIndex,
   WebhookDeliveryRepository,
@@ -33,6 +34,9 @@ import { logger } from './logging.ts'
 import type { MediaFileStore } from './media-files.ts'
 import { tracedJob } from './telemetry.ts'
 import type { WebhookService } from './webhooks.ts'
+
+/** The most rows of activity kept for one extension, oldest deleted first (story 327). */
+export const ACTIVITY_CAP = 100_000
 
 export interface JobsOptions {
   db: Db
@@ -67,6 +71,8 @@ export interface JobsOptions {
   searchIndexingMs?: number
   /** Days the audit log keeps an entry; 0 or absent keeps them forever. */
   auditRetentionDays?: number
+  /** How many days extension activity is kept (story 327); 0 keeps none. */
+  extensionActivityDays?: number
   /** Content notifications (story 045): queued by changes, sent here. Absent without e-mail. */
   contentNotifications?: ContentNotificationRunner
   contentNotificationsMs?: number
@@ -106,6 +112,8 @@ export interface BackgroundJobs {
   kickSearchIndexing(): void
   /** Deletes audit entries older than the retention period, and returns how many. */
   runAuditRetention(now?: Date): Promise<number>
+  /** Deletes extension activity older than the window, and past each extension's cap (story 327). */
+  runActivityRetention(now?: Date): Promise<number>
   /** Runs whether or not the hourly job is enabled; the policy decides what goes. */
   runVersionCleanup(now?: Date): Promise<{ nodes: number; versionsDeleted: number }>
   start(): void
@@ -228,6 +236,15 @@ export function createBackgroundJobs(options: JobsOptions): BackgroundJobs {
     return before ? new AuditLog(options.db).prune(before) : 0
   }
 
+  async function runActivityRetentionUntraced(now = new Date()): Promise<number> {
+    const store = new ExtensionActivityLog(options.db)
+    const days = options.extensionActivityDays ?? 14
+    // Nothing kept is everything older than now.
+    let removed = await store.prune(new Date(now.getTime() - days * 86_400_000))
+    for (const id of await store.extensions()) removed += await store.cap(id, ACTIVITY_CAP)
+    return removed
+  }
+
   async function runVersionCleanupUntraced(now = new Date()) {
     return documents.cleanupVersions(now, options.versionCleanup)
   }
@@ -306,6 +323,10 @@ export function createBackgroundJobs(options: JobsOptions): BackgroundJobs {
     runContentNotificationsUntraced,
   )
   const runAuditRetention = tracedJob('audit retention', runAuditRetentionUntraced)
+  const runActivityRetention = tracedJob(
+    'extension activity retention',
+    runActivityRetentionUntraced,
+  )
   const runVersionCleanup = tracedJob('version cleanup', runVersionCleanupUntraced)
   const runWebhooks = tracedJob('webhooks', runWebhooksUntraced)
   const runFormWorkflows = tracedJob('form workflows', runFormWorkflowsUntraced)
@@ -314,6 +335,7 @@ export function createBackgroundJobs(options: JobsOptions): BackgroundJobs {
     runScheduledPublishing,
     runVersionCleanup,
     runAuditRetention,
+    runActivityRetention,
     runFormWorkflows,
     runWebhooks,
     runEvents,
@@ -351,6 +373,7 @@ export function createBackgroundJobs(options: JobsOptions): BackgroundJobs {
       }
       if (options.versionCleanup.enabled) every(60 * 60_000, runVersionCleanup)
       if (options.auditRetentionDays) every(60 * 60_000, runAuditRetention)
+      every(60 * 60_000, runActivityRetention)
       const files = options.mediaFiles
       if (files) every(60 * 60_000, () => files.cleanupExpired())
     },

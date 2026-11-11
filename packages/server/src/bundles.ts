@@ -94,6 +94,7 @@ import {
   permissionProblems,
 } from './bundle-grants.ts'
 import type { BundleMedia, BundleMediaDeclaration } from './bundle-media.ts'
+import { type ActivityRecorder, personOf } from './extension-activity.ts'
 import { normaliseScreenResult } from './extension-screens.ts'
 import type { BundleForms } from './form-types.ts'
 import type { BundleIdentityProviders } from './identity-provider-overrides.ts'
@@ -771,6 +772,8 @@ export type CallerCapabilities = {
 
 export interface ServerBundlesOptions {
   bundles: readonly ServerBundle[]
+  /** Where each capability call is recorded for the activity view (story 327). */
+  activity?: ActivityRecorder
   /** The bundle packages the site depends on, from discovery. */
   packages: readonly BundlePackage[]
   /** The running release, which every bundle's peer range must admit. */
@@ -920,7 +923,15 @@ export function createServerBundles(options: ServerBundlesOptions): ServerBundle
           ? (logs.get(bundle.id) as BundleLog)
           : (options.host as Partial<BundleHost>)[capability]
       // Only what its declared permissions allow (story 222).
-      host[capability] = given ? gated(bundle.id, capability, given, declared) : given
+      host[capability] = given
+        ? gated(
+            bundle.id,
+            capability,
+            given,
+            declared,
+            options.activity ? { recorder: options.activity, person: personOf(caller) } : undefined,
+          )
+        : given
     }
     const database = databaseOf(bundle)
     if (database) host.database = database

@@ -15,6 +15,11 @@ point at `docs/stories/`.
   of the extension's code runs in the page and the screen needs no permission. A
   manifest entry names one with `"screen"` at `"crombolo.schemaVersion": 6`.
 
+- **What each extension did (327).** Installed shows, per extension, everything it did
+  through the CMS and whom it did it for: its writes, reads counted per minute, requests
+  out, rows in its own tables, calls, screens, and what its grant refused, with counts at
+  the top, filters by kind and person, and an export. Nothing it sent or stored is kept,
+  only what kind of thing it was. `CROMBOLO_EXTENSION_ACTIVITY_DAYS` (14) sets how long.
 - **An extension installs into a root of its own (326).** `crombolo extension install` and
   the Marketplace install into `extensions/<id>/`, with its own lockfile, and record it in
   `crombolo.extensions.json`; the site's `package.json` and `bun.lock` no longer change.
@@ -65,6 +70,7 @@ point at `docs/stories/`.
   from the config, and `user.delegate` cannot be granted there: grant it in Settings,
   under Extensions, or with `crombolo extension grant --delegate-to <user key>`.
   `--act-as` is gone from `extension install` and `extension grant`.
+- **Migration** `AddExtensionActivity` adds the `extension_activity` table (327).
 - **Migration** `AddBundleGrantDelegate` adds `bundle_grant.delegate_key`, copying the
   installer from each grant that acted for its installer. `act_as` stays, unread, until
   a later release drops it, so this release upgrades node by node.

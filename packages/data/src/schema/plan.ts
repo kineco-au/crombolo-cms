@@ -41,6 +41,7 @@ import { deliveryMemberTokensMigration } from './delivery-member-tokens.ts'
 import { diagnosticsMigration } from './diagnostics.ts'
 import { dropAssistantMigration } from './drop-assistant.ts'
 import { elementsMigration } from './elements.ts'
+import { extensionActivityMigration } from './extension-activity.ts'
 import { extensionSettingsMigration } from './extension-settings.ts'
 import { formLibraryMigration } from './form-library.ts'
 import { formPermissionPrefixMigration } from './form-permission-prefix.ts'
@@ -157,4 +158,5 @@ export const cromboloPlan = new MigrationPlan([
   trustedSignersMigration,
   contentTypeSeoMigration,
   bundleGrantDelegateMigration,
+  extensionActivityMigration,
 ])

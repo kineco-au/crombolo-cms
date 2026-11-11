@@ -67,6 +67,7 @@ import { databaseFor, openTables, siteTablesProblems, tablesChains } from './cus
 import { attachDatabase, bootstrapDatabase } from './database.ts'
 import { createDiagnostics } from './diagnostics.ts'
 import { resolveEmailPort } from './email.ts'
+import { createActivityRecorder, personOf, timed } from './extension-activity.ts'
 import { createExtensionComponents } from './extension-components.ts'
 import {
   entryCovers,
@@ -196,11 +197,14 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
   const entryProblems = extensionEntryProblems(config.extensions, bundlePackages)
   if (entryProblems.length > 0)
     throw new Error(`The installed extensions cannot be started:\n- ${entryProblems.join('\n- ')}`)
+  // Story 327: what each extension does, kept for the Activity view.
+  const activity = createActivityRecorder(() => db)
   const extensionsStarted = await startExtensions(
     config,
     bundlePackages,
     await readRecordedExtensions(config),
     bundleLog,
+    activity,
   )
   const extensionProcesses = extensionsStarted.processes
   const failedExtensions = extensionsStarted.failed
@@ -576,6 +580,7 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
   const bundles =
     config.bundles.length > 0
       ? createServerBundles({
+          activity,
           bundles: config.bundles,
           packages: bundlePackages,
           coreVersion: VERSION,
@@ -627,6 +632,7 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
               return createBundleApi({
                 bundleId: bundle.id,
                 bundleName: pkg?.name ?? bundle.id,
+                activity: { recorder: activity, person: personOf(caller) },
                 origin: (config.applicationUrl || 'http://localhost').replace(/\/+$/, ''),
                 backOfficePath: config.backOfficePath,
                 granted,
@@ -657,14 +663,25 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
                 fetch: async (input, init) => {
                   const url = new URL(input instanceof Request ? input.url : String(input))
                   const origins = declaredOrigins(pkg)
-                  if (!origins.includes(url.origin))
+                  const event = {
+                    extensionId: bundle.id,
+                    ...personOf(_caller),
+                    kind: 'request' as const,
+                    area: url.host,
+                    verb: (init?.method ?? 'GET').toUpperCase(),
+                  }
+                  if (!origins.includes(url.origin)) {
+                    activity.record({ ...event, kind: 'refused', outcome: 'refused' })
                     throw new OutboundRefused(
                       `${bundle.id} may not reach ${url.origin}: its http.outbound names ${origins.join(', ') || 'nothing'}.`,
                     )
-                  return pinnedFetch(input, init, {
-                    allowPrivateAddresses:
-                      config.webhooks?.allowPrivateAddresses ?? config.development,
-                  })
+                  }
+                  return timed(activity, event, () =>
+                    pinnedFetch(input, init, {
+                      allowPrivateAddresses:
+                        config.webhooks?.allowPrivateAddresses ?? config.development,
+                    }),
+                  )
                 },
               }
             },
@@ -821,6 +838,7 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
     nodeId: schema.nodeId,
     versionCleanup: config.versionCleanup,
     auditRetentionDays: config.auditRetentionDays,
+    extensionActivityDays: config.extensionActivityDays,
     mediaFiles,
     // The workflow queue drains here rather than in the request: a submission is
     // stored first, and an e-mail that cannot be sent yet must not cost it.
@@ -857,6 +875,8 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
   // Where jobs are left to a worker: whether one is running them (decision 4).
   const workerWatch = createWorkerWatch({ db, config })
   return {
+    /** What each extension does, recorded for the Activity view (story 327). */
+    activity,
     /** The server's own handler, which `api` calls through once the server is built (story 308). */
     setBundleDispatch(dispatch: (request: Request) => Promise<Response>) {
       bundleDispatch = dispatch
@@ -926,6 +946,7 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
       await jobRunner.stop()
       await jobs.stop()
       await Promise.all(extensionProcesses.map((process) => process.stop()))
+      await activity.stop()
     },
     /** The extensions that are granted but could not start, and why (story 311). */
     failedExtensions,

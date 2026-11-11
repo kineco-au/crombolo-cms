@@ -86,3 +86,23 @@ export const readSchemaPicks = (id) => json(`/created/${encodeURIComponent(id)}/
 
 export const saveSchemaPicks = (id, picks) =>
   json(`/created/${encodeURIComponent(id)}/schema`, { method: 'PUT', body: JSON.stringify(picks) })
+
+/** What one extension did (story 327): its counts by kind and the people it acted for. */
+export const activitySummary = (id) => json(`/installed/${encodeURIComponent(id)}/activity/summary`)
+
+/** A page of what it did, newest first, below `before`, with the filters given. */
+export const activityPage = (id, { before, kind, person } = {}) => {
+  const query = new URLSearchParams({ limit: '50' })
+  if (before !== undefined) query.set('before', String(before))
+  if (kind) query.set('kind', kind)
+  if (person) query.set('person', person)
+  return json(`/installed/${encodeURIComponent(id)}/activity?${query}`)
+}
+
+/** Where the same, as a CSV file, is served. */
+export const activityCsvUrl = (id, { kind, person } = {}) => {
+  const query = new URLSearchParams()
+  if (kind) query.set('kind', kind)
+  if (person) query.set('person', person)
+  return `${base()}/installed/${encodeURIComponent(id)}/activity.csv${query.size ? `?${query}` : ''}`
+}

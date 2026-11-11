@@ -23,6 +23,7 @@ import {
 import { declaredOrigins, declaredPermissions, grantGaps } from './bundle-grants.ts'
 import type { BundleLog, ServerBundle } from './bundles.ts'
 import type { CromboloConfig, ExtensionEntry } from './config.ts'
+import type { ActivityRecorder } from './extension-activity.ts'
 import { ExtensionProcess, isolatedBundle, isolationProblems } from './extension-process.ts'
 import { openSecret } from './secrets.ts'
 
@@ -134,6 +135,7 @@ export async function startExtensions(
   packages: readonly BundlePackage[],
   recorded: RecordedExtensions,
   log: (id: string) => BundleLog,
+  activity?: ActivityRecorder,
 ): Promise<{
   bundles: ServerBundle[]
   processes: ExtensionProcess[]
@@ -183,6 +185,7 @@ export async function startExtensions(
       reads: entry?.dev?.allowRead,
       timeoutMs: entry?.timeoutMs,
       log: log(pkg.id),
+      activity,
     })
     try {
       const description = await process.start()

@@ -17,8 +17,9 @@ import {
   isSchema3Field,
   USER_DELEGATE,
 } from '@crombolo/backoffice-host/registry'
-import { type BundleGrant, BundleGrantRepository, type Db } from '@crombolo/data'
+import { type ActivityKind, type BundleGrant, BundleGrantRepository, type Db } from '@crombolo/data'
 import { API_PERMISSIONS, sectionOfPermission } from './bundle-api.ts'
+import { type ActivityPerson, type ActivityRecorder, timed } from './extension-activity.ts'
 
 /** The permissions each capability serves; `log` needs none. */
 export const CAPABILITY_PERMISSIONS: Record<string, readonly BundlePermission[]> = {
@@ -177,6 +178,8 @@ export function gated<T extends object>(
   capability: string,
   host: T,
   declared: readonly string[],
+  /** Records each call for the activity view (story 327), for the person it is made for. */
+  activity?: { recorder: ActivityRecorder; person: ActivityPerson },
 ): T {
   const methods = METHOD_PERMISSIONS[capability]
   if (!methods) return host
@@ -184,13 +187,32 @@ export function gated<T extends object>(
   const out: Record<string, unknown> = {}
   for (const [name, value] of Object.entries(host)) {
     const needs = methods[name]
+    const event = {
+      extensionId: bundle,
+      ...(activity?.person ?? { personKey: null, personName: null }),
+      kind: (needs?.endsWith('.read') ? 'read' : 'write') as ActivityKind,
+      area: capability,
+      verb: name,
+    }
     out[name] =
       typeof value === 'function' && needs && !has.has(needs)
         ? () => {
+            activity?.recorder.record({
+              ...event,
+              kind: 'refused',
+              verb: `${name} (${needs})`,
+              outcome: 'refused',
+            })
             throw new PermissionRefusedError(bundle, needs)
           }
         : typeof value === 'function'
-          ? (value as (...args: unknown[]) => unknown).bind(host)
+          ? // A request out is recorded where its origin is known, as a request (story 327).
+            activity && needs && capability !== 'fetch'
+            ? (...args: unknown[]) =>
+                timed(activity.recorder, event, () =>
+                  (value as (...args: unknown[]) => unknown).apply(host, args),
+                )
+            : (value as (...args: unknown[]) => unknown).bind(host)
           : value
   }
   return Object.freeze(out) as T

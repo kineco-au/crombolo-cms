@@ -374,6 +374,20 @@ export interface CoreTables {
     node_id: number
     sort_order: number
   }
+  extension_activity: {
+    area: string | null
+    count: number
+    entity_key: string | null
+    extension_id: string
+    id: Generated<number>
+    kind: string
+    ms: number | null
+    occurred_at: Timestamp
+    outcome: string
+    person_key: string | null
+    person_name: string | null
+    verb: string | null
+  }
   extension_setting: {
     bundle_id: string
     setting_key: string

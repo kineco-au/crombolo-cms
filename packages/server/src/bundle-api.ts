@@ -18,6 +18,7 @@ import {
   ROOT_ACCESS,
   SECTION_ALIASES,
 } from '@crombolo/core'
+import { type ActivityPerson, type ActivityRecorder, timed } from './extension-activity.ts'
 
 /** A permission's reach: the paths, under the back office, its methods may call. */
 interface Reach {
@@ -269,6 +270,8 @@ export function createBundleApi(options: {
   bundleId: string
   /** Its name, for the audit log; its id when not given. */
   bundleName?: string
+  /** Records each request for the activity view (story 327). */
+  activity?: { recorder: ActivityRecorder; person: ActivityPerson }
   origin: string
   backOfficePath: string
   granted: () => readonly string[]
@@ -281,12 +284,25 @@ export function createBundleApi(options: {
     const clean = path.replace(/^\/+/, '')
     const needs = permissionsFor(verb, clean)
     const granted = new Set(options.granted())
+    const area = needs[0]?.split('.')[0] ?? clean.split('/').slice(0, 4).join('/')
+    const event = {
+      extensionId: options.bundleId,
+      ...(options.activity?.person ?? { personKey: null, personName: null }),
+      kind: (READING.has(verb) ? 'read' : 'write') as 'read' | 'write',
+      area,
+      verb,
+      entityKey: KEY_IN_PATH.exec(clean)?.[0] ?? null,
+    }
+    const refuse = (message: string): never => {
+      options.activity?.recorder.record({ ...event, kind: 'refused', outcome: 'refused' })
+      throw new ApiRefusedError(message)
+    }
     const never = refusedForEveryone(verb, clean)
-    if (never) throw new ApiRefusedError(`${options.bundleId} may not ${verb} ${clean}: ${never}.`)
+    if (never) refuse(`${options.bundleId} may not ${verb} ${clean}: ${never}.`)
     // Acting for the person reaches every area; the API then holds it to their own rights (story 325).
     const delegated = granted.has(USER_DELEGATE) && needs.length > 0
     if (!delegated && !needs.some((permission) => granted.has(permission)))
-      throw new ApiRefusedError(
+      refuse(
         needs.length > 0
           ? `${options.bundleId} may not ${verb} ${clean}: it needs ${needs.join(' or ')}, which it was not granted.`
           : `${options.bundleId} may not ${verb} ${clean}: no permission reaches it.`,
@@ -306,10 +322,12 @@ export function createBundleApi(options: {
     })
     acting.set(call, principal)
     try {
-      return await calling.run(
-        { id: options.bundleId, name: options.bundleName ?? options.bundleId },
-        () => dispatch(sent),
+      const answered = await timed(options.activity?.recorder, event, () =>
+        calling.run({ id: options.bundleId, name: options.bundleName ?? options.bundleId }, () =>
+          dispatch(sent),
+        ),
       )
+      return answered
     } finally {
       acting.delete(call)
     }
@@ -324,6 +342,7 @@ export function createBundleApi(options: {
 }
 
 const KEY = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const KEY_IN_PATH = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
 
 /** A user's key, as `--delegate-to` names one: lower case, or null when it is not one. */
 export function userKeyOf(value: unknown): string | null {

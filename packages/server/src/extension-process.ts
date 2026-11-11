@@ -28,7 +28,8 @@ import {
 import type { ExtensionDescription } from '@crombolo/extension/runner'
 import { RawHtml } from '@crombolo/render'
 import type { Kysely } from 'kysely'
-import type { BundleLog, ServerBundle } from './bundles.ts'
+import type { BundleCaller, BundleLog, ServerBundle } from './bundles.ts'
+import { type ActivityRecorder, personOf, timed } from './extension-activity.ts'
 import { extensionSqlProblem } from './extension-sql.ts'
 
 /** The Deno binary the `deno` package installed for this platform, or `CROMBOLO_DENO`. */
@@ -233,6 +234,8 @@ export interface ExtensionProcessOptions {
   /** Stopped after this long without a call, unless it serves routes. */
   idleMs?: number
   memoryMb?: number
+  /** Where what it does is recorded for the activity view (story 327). */
+  activity?: ActivityRecorder
 }
 
 const START_TIMEOUT_MS = 30_000
@@ -717,11 +720,42 @@ export class ExtensionProcess {
     })
     const problem = extensionSqlProblem(compiled.sql, this.#options.dialect)
     if (problem) throw new Error(problem)
-    return target.executeQuery(compiled)
+    const result = await target.executeQuery(compiled)
+    // Story 327: the table and how many rows, never the statement or its values.
+    const activity = this.#options.activity
+    if (activity) {
+      const words = compiled.sql.trim().toLowerCase()
+      const table = TABLE_OF.exec(compiled.sql)?.[1] ?? null
+      const writes = /^(insert|update|delete|replace)\b/.exec(words)?.[1]
+      activity.record({
+        extensionId: this.id,
+        personKey: null,
+        personName: null,
+        kind: writes ? 'rows' : 'read',
+        area: table,
+        verb: writes ?? 'select',
+        // The rows when the driver says, one statement when it does not.
+        count: writes
+          ? Number(
+              result.numAffectedRows ?? (result as { numChangedRows?: bigint }).numChangedRows ?? 1,
+            )
+          : 1,
+        outcome: 'ok',
+      })
+    }
+    return result
+  }
+
+  /** What it does is recorded, when the site keeps its activity (story 327). */
+  get activity(): ActivityRecorder | undefined {
+    return this.#options.activity
   }
 }
 
 const ROLLBACK = Symbol('rollback')
+
+/** The first table a statement names after `into`, `update` or `from`, quoted or not. */
+const TABLE_OF = /\b(?:into|update|from)\s+["`]?([A-Za-z_][\w.]*)["`]?/i
 
 /**
  * The extension, as the CMS mounts it: what it described, with each handler
@@ -739,30 +773,41 @@ export function isolatedBundle(process: ExtensionProcess): ServerBundle {
       const cookies = request.headers.has('cookie')
         ? [...(context.cookies ?? [])].map(([name, cookie]) => [name, cookie.value])
         : []
-      const { value, response } = await process.call(
-        'route',
+      const { value, response } = await timed(
+        process.activity,
         {
-          route: index,
-          method,
-          cookies,
-          request: {
-            url: request.url,
-            method: request.method,
-            headers: [...request.headers],
-            hasBody: request.body !== null,
-          },
+          extensionId: d.id,
+          ...personOf(context.caller as BundleCaller | undefined),
+          kind: 'call',
+          area: `route ${d.routes[index]?.path ?? index}`,
+          verb: method,
         },
-        {
-          params: context.params,
-          url: context.url,
-          setCookie: context.setCookie,
-          member: context.member,
-          signal: context.signal,
-          bundle: context.bundle,
-          caller: context.caller,
-          principal: context.principal,
-        },
-        { request },
+        () =>
+          process.call(
+            'route',
+            {
+              route: index,
+              method,
+              cookies,
+              request: {
+                url: request.url,
+                method: request.method,
+                headers: [...request.headers],
+                hasBody: request.body !== null,
+              },
+            },
+            {
+              params: context.params,
+              url: context.url,
+              setCookie: context.setCookie,
+              member: context.member,
+              signal: context.signal,
+              bundle: context.bundle,
+              caller: context.caller,
+              principal: context.principal,
+            },
+            { request },
+          ),
       )
       return response ?? value
     }
@@ -819,7 +864,19 @@ export function isolatedBundle(process: ExtensionProcess): ServerBundle {
             d.events.map((alias) => [
               alias,
               async (context: { signal?: AbortSignal }) =>
-                (await process.call('event', { name: alias }, context)).value as never,
+                (
+                  await timed(
+                    process.activity,
+                    {
+                      extensionId: d.id,
+                      personKey: null,
+                      personName: null,
+                      kind: 'call',
+                      area: `event ${alias}`,
+                    },
+                    () => process.call('event', { name: alias }, context),
+                  )
+                ).value as never,
             ]),
           ),
         }
@@ -830,8 +887,19 @@ export function isolatedBundle(process: ExtensionProcess): ServerBundle {
             d.jobs.map((name) => [
               name,
               async (payload: unknown, context: unknown) =>
-                (await process.call('job', { name }, { payload, context }, { timeoutMs: null }))
-                  .value,
+                (
+                  await timed(
+                    process.activity,
+                    {
+                      extensionId: d.id,
+                      personKey: null,
+                      personName: null,
+                      kind: 'call',
+                      area: `job ${name}`,
+                    },
+                    () => process.call('job', { name }, { payload, context }, { timeoutMs: null }),
+                  )
+                ).value,
             ]),
           ),
         }
@@ -845,17 +913,28 @@ export function isolatedBundle(process: ExtensionProcess): ServerBundle {
                 (action?: string) =>
                 async (context: { signal?: AbortSignal } & Record<string, unknown>) =>
                   (
-                    await process.call(
-                      'screen',
-                      { screen: screen.id, ...(action ? { action } : {}) },
+                    await timed(
+                      process.activity,
                       {
-                        bundle: context.bundle,
-                        caller: context.caller,
-                        principal: context.principal,
-                        state: context.state,
-                        input: context.input,
-                        signal: context.signal,
+                        extensionId: d.id,
+                        ...personOf(context.caller as BundleCaller | undefined),
+                        kind: 'screen',
+                        area: screen.id,
+                        verb: action ?? 'view',
                       },
+                      () =>
+                        process.call(
+                          'screen',
+                          { screen: screen.id, ...(action ? { action } : {}) },
+                          {
+                            bundle: context.bundle,
+                            caller: context.caller,
+                            principal: context.principal,
+                            state: context.state,
+                            input: context.input,
+                            signal: context.signal,
+                          },
+                        ),
                     )
                   ).value as never
               return [

@@ -24,6 +24,7 @@ import {
   saveSettings,
   uninstallBundle,
 } from './bundles-client.js'
+import './bundles-activity.js'
 import { levelBlock, levelStyles } from './bundles-level.js'
 import { configSnippet, grantChoice, levelWords, unvouchedLine } from './bundles-level-words.js'
 import { signatureBlock, signatureStyles, signatureWords } from './bundles-signature.js'
@@ -55,6 +56,7 @@ function status(item) {
 
 export default class CromboloBundlesInstalledElement extends UmbLitElement {
   static properties = {
+    _watching: { state: true },
     _items: { state: true },
     _loading: { state: true },
     _busy: { state: true },
@@ -410,6 +412,13 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
   }
 
   #details(item) {
+    // Story 327: what it did, in place of its details while it is open.
+    if (this._watching === item.packageName)
+      return html`<crombolo-bundles-activity
+        .extension=${item}
+        @close=${() => {
+          this._watching = ''
+        }}></crombolo-bundles-activity>`
     return html`<uui-box headline=${item.name}>
       ${item.description ? html`<p>${item.description}</p>` : nothing}
       <dl>
@@ -427,6 +436,15 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
         <dd>${signatureBlock(this.#words(item))}</dd>
       </dl>
       ${this.#permissions(item)}
+      <h4>Activity</h4>
+      <p>
+        <uui-button
+          look="secondary"
+          label="See what it did"
+          @click=${() => {
+            this._watching = item.packageName
+          }}></uui-button>
+      </p>
       ${this.#settings(item)}
       ${
         this._installs && !this._isAdmin
