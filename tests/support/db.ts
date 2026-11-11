@@ -128,6 +128,8 @@ export async function undoMediaMemberUploads(db: Db): Promise<void> {
   // 059, forms in the Library (story 239), 058, bundle schema picks (story
   // 226), and 057, site settings types (story 058): columns on tables that stay.
   // 072, what each extension did (story 327): a table of its own.
+  await db.exec('DROP TABLE IF EXISTS form_workflow_secret')
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddFormWorkflowSecrets'")
   await db.exec('DROP TABLE IF EXISTS extension_activity')
   await db.exec("DELETE FROM migration_history WHERE name = 'AddExtensionActivity'")
   // 071, who granted user.delegate (story 325): a column on a table that stays.

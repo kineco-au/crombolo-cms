@@ -90,6 +90,7 @@ import {
   ensureKeyValue,
   FormEntryRepository,
   FormWorkflowRepository,
+  FormWorkflowSecretRepository,
   JobRepository,
   type JobState,
   latestContentVersionId,
@@ -208,6 +209,7 @@ import {
   writeFlash,
 } from './form-submit.ts'
 import { describeFormTypes, formTypesFor } from './form-types.ts'
+import { isSecretHeader, refusedSendAddresses } from './form-workflows.ts'
 import {
   entriesCsv,
   formDetail,
@@ -286,6 +288,7 @@ import { syncConfiguredRedirects } from './redirects.ts'
 import { createRoutes, type DeclaredRoute, SITE_ROUTE_OWNER, siteRouteProblems } from './routes.ts'
 import { componentAliasesIn, importSchema, type SchemaBoot, watchSchema } from './schema.ts'
 import { publishSchema, type SchemaStore } from './schema-store.ts'
+import { SECRET_KEY_VARIABLE, sealSecret, usableSecretKey } from './secrets.ts'
 import { createSeoHost, originOf, publicOrigin } from './seo.ts'
 import {
   combineHubs,
@@ -2726,11 +2729,74 @@ export async function createServer(
         })
       }
 
+      // A send-to-URL workflow's secret header (story 304): sealed here, never
+      // in the form's file, and never shown back. Set on any site, schema
+      // writable or not, since it is the site's own and not the form's.
+      const secretMatch = /^([^/]+)\/workflows\/([^/]+)\/secrets\/([^/]+)$/.exec(action)
+      if (secretMatch && (request.method === 'PUT' || request.method === 'DELETE')) {
+        if (!may(FormPermissions.Manage)) return new Response('Forbidden', { status: 403 })
+        const [, formKey, workflowKey, header] = secretMatch.map((part) =>
+          decodeURIComponent(part),
+        ) as [string, string, string, string]
+        const form = byKey.get(formKey)
+        const workflow = form?.workflows.find((candidate) => candidate.key === workflowKey)
+        const headers = workflow?.settings.headers as Record<string, unknown> | undefined
+        if (!form?.key || !workflow || !isSecretHeader(headers?.[header]))
+          return Response.json(
+            { message: 'The form names no such secret header; save the form first.' },
+            { status: 404 },
+          )
+        const secrets = new FormWorkflowSecretRepository(db)
+        let set: { sealed: string; url: string } | undefined
+        if (request.method === 'PUT') {
+          const body = (await request.json().catch(() => ({}))) as { value?: unknown }
+          if (typeof body.value !== 'string' || body.value === '')
+            return Response.json({ message: 'Give the header a value.' }, { status: 400 })
+          const key = usableSecretKey(config.secretKey)
+          if (!key)
+            return Response.json(
+              {
+                message: `Keeping a secret header needs ${SECRET_KEY_VARIABLE} set on the server.`,
+              },
+              { status: 409 },
+            )
+          set = { sealed: sealSecret(body.value, key), url: String(workflow.settings.url ?? '') }
+        }
+        await secrets.set(form.key, workflowKey, header, set, principal.name ?? null)
+        await recordAudit(db, {
+          category: 'settings',
+          action: set ? 'secret header set' : 'secret header removed',
+          source: 'request',
+          userKey: principal.id,
+          userName: principal.name,
+          entityType: 'form',
+          entityKey: form.key,
+          entityName: form.name,
+          detail: `${workflow.name}: ${header}`,
+          ...clientAddress(request),
+        })
+        return Response.json({ ok: true })
+      }
+
       if (action && request.method === 'GET') {
         const form = byKey.get(decodeURIComponent(action))
         if (!form) return new Response('Not Found', { status: 404 })
+        // Which secret headers are set for the address each workflow sends to, never their values.
+        const secrets: { workflow: string; header: string; set: boolean }[] = []
+        for (const workflow of form.workflows) {
+          const headers = workflow.settings.headers as Record<string, unknown> | undefined
+          const named = Object.keys(headers ?? {}).filter((name) => isSecretHeader(headers?.[name]))
+          if (named.length === 0 || !workflow.key || !form.key) continue
+          const kept = await new FormWorkflowSecretRepository(db).of(form.key, workflow.key)
+          for (const header of named)
+            secrets.push({
+              workflow: workflow.key,
+              header,
+              set: kept.get(header)?.url === workflow.settings.url,
+            })
+        }
         // The whole definition, which is what the designer edits.
-        return Response.json({ ...formDetail(form), definition: form })
+        return Response.json({ ...formDetail(form), definition: form, secrets })
       }
 
       // What a choice source offers now, in the default language, for the
@@ -2769,6 +2835,9 @@ export async function createServer(
         if (!may(FormPermissions.Manage)) return new Response('Forbidden', { status: 403 })
         const body = await request.json().catch(() => ({}))
         const folder = url.searchParams.get('folder') ?? undefined
+        const refused = await refusedSendAddresses(coerceForm(body), config.allowPrivateAddresses)
+        if (refused.length > 0)
+          return Response.json({ status: 'invalid', problems: refused }, { status: 400 })
         const written = await saveForm(coerceForm(body), { ...formFiles, folder })
         if (!written.ok) {
           log.warning('{user} could not save a form: {detail}', {
@@ -2785,6 +2854,12 @@ export async function createServer(
         forms.invalidate()
         await ensureFormLibraryTypes(db, forms.all())
         cache.invalidate()
+        const saved = coerceForm(body)
+        if (saved.key)
+          await new FormWorkflowSecretRepository(db).forget(
+            saved.key,
+            saved.workflows.flatMap((workflow) => (workflow.key ? [workflow.key] : [])),
+          )
         log.info('{user} saved the form {form}', {
           user: principal.email,
           form: coerceForm(body).alias,
@@ -2805,6 +2880,7 @@ export async function createServer(
         forms.invalidate()
         await ensureFormLibraryTypes(db, forms.all())
         cache.invalidate()
+        if (form.key) await new FormWorkflowSecretRepository(db).forget(form.key)
         log.info('{user} deleted the form {form}; its entries are kept', {
           user: principal.email,
           form: form.alias,

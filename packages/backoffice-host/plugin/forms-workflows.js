@@ -145,3 +145,21 @@ export function describeProblemPath(form, path, types = new Map()) {
   )
   return `${name}: ${setting?.label ?? FILE_ONLY_LABELS[found[2]] ?? found[2]}`
 }
+
+/** The headers a send-to-URL workflow keeps sealed on the site (story 304). */
+export const secretHeaderNames = (workflow) =>
+  Object.entries(workflow.settings?.headers ?? {})
+    .filter(([, value]) => value && typeof value === 'object' && value.secret === true)
+    .map(([name]) => name)
+
+/** Names a header as secret, or with `secret` false takes it out. */
+export const setSecretHeaderName = (form, index, name, secret) =>
+  replace(form, index, (workflow) => {
+    const headers = { ...(workflow.settings?.headers ?? {}) }
+    if (secret) headers[name] = { secret: true }
+    else delete headers[name]
+    const settings = { ...workflow.settings }
+    if (Object.keys(headers).length > 0) settings.headers = headers
+    else delete settings.headers
+    return { settings }
+  })

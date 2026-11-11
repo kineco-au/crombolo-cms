@@ -617,7 +617,7 @@ payload (`payload = "crombolo"`, [`webhooks.md`](webhooks.md)) to
   `CROMBOLO_REVALIDATE_SECRET`.
 - The item's and each ancestor's tags are cleared.
 - In production, a front end on the same host or a private network needs
-  `webhooks: { allowPrivateAddresses: true }` in the CMS's config: a webhook
+  `CROMBOLO_ALLOW_PRIVATE_ADDRESSES=true` on the CMS: a webhook
   sends to no private address otherwise ([`webhooks.md`](webhooks.md), "What a
   webhook may reach").
 

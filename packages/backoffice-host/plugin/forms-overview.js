@@ -29,6 +29,7 @@ import {
   previewChoices,
   readForm,
   saveForm,
+  setSecretHeader,
 } from './forms-client.js'
 import {
   addGroup,
@@ -52,6 +53,8 @@ import {
   addWorkflow,
   describeProblemPath,
   removeWorkflow,
+  secretHeaderNames,
+  setSecretHeaderName,
   setWorkflowName,
   setWorkflowSetting,
   setWorkflowTrigger,
@@ -99,6 +102,7 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
     _types: { state: true },
     _workflowTypes: { state: true },
     _designs: { state: true },
+    _secrets: { state: true },
     _because: { state: true },
     _tab: { state: true },
   }
@@ -183,6 +187,7 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
     this._tab = 'design'
     const detail = await readForm(key)
     this._editing = withLayout(detail.definition)
+    this._secrets = detail.secrets ?? []
     this._choices = new Map()
     for (const field of this.#fields) if (field.source) this.#preview(field)
   }
@@ -792,7 +797,71 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
           ${hint}
         </label>`
       })}
+      ${workflow.type === 'sendToUrl' ? this.#secretHeaders(workflow, index) : nothing}
     </div>`
+  }
+
+  /** Headers kept sealed on the site and sent only to the address they were set for (story 304). */
+  #secretHeaders(workflow, index) {
+    const names = secretHeaderNames(workflow)
+    return html`<div class="secret-headers">
+      <span>Secret headers</span>
+      <small class="offered">For a key or token the address needs. Kept on this site, never shown again, and sent only to the address above: change the address and set them again.</small>
+      ${names.map((name) => {
+        const saved = (this._secrets ?? []).find(
+          (secret) => secret.workflow === workflow.key && secret.header === name,
+        )
+        return html`<div class="secret-header">
+          <code>${name}</code>
+          <span>${saved ? (saved.set ? 'Set' : 'Not set') : 'Save the form, then set it'}</span>
+          ${
+            saved
+              ? html`<uui-input
+                  type="password"
+                  label=${`A value for ${name}`}
+                  placeholder=${saved.set ? 'Replace it' : 'Its value'}
+                  @change=${(event) => this.#setSecret(workflow, name, event.target.value)}
+                ></uui-input>`
+              : nothing
+          }
+          ${
+            saved?.set
+              ? html`<uui-button compact look="secondary" label="Clear"
+                  @click=${() => this.#setSecret(workflow, name, undefined)}></uui-button>`
+              : nothing
+          }
+          <uui-button compact look="secondary" color="danger" label=${`Stop sending ${name}`}
+            @click=${() => this.#apply(setSecretHeaderName, index, name, false)}></uui-button>
+        </div>`
+      })}
+      <uui-input
+        label="Add a secret header"
+        placeholder="Its name, such as Authorization"
+        @change=${(event) => {
+          const name = event.target.value.trim()
+          if (!name) return
+          this.#apply(setSecretHeaderName, index, name, true)
+          event.target.value = ''
+        }}
+      ></uui-input>
+    </div>`
+  }
+
+  async #setSecret(workflow, header, value) {
+    if (value === '') return
+    try {
+      const result = await setSecretHeader(this._editing.key, workflow.key, header, value)
+      if (!result.ok) {
+        this._notice = result.body.message ?? 'That header could not be set.'
+        return
+      }
+      this.#notifications?.peek('positive', {
+        data: { message: value === undefined ? `${header} cleared` : `${header} set` },
+      })
+      this._secrets = (await readForm(this._editing.key)).secrets ?? []
+    } catch (error) {
+      this._notice = error.message
+    }
   }
 
   #touch() {
@@ -1119,6 +1188,16 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
       display: grid;
       gap: var(--uui-size-space-3, 9px);
       max-width: 60ch;
+    }
+    .secret-headers {
+      display: grid;
+      gap: var(--uui-size-space-2, 6px);
+    }
+    .secret-header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--uui-size-space-3, 9px);
     }
     .workflow-settings label,
     .workflow-settings .switch {

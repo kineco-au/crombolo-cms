@@ -40,20 +40,20 @@ this:
 
 ## Acceptance criteria
 
-- [ ] A send-to-URL workflow pointing at `127.0.0.1`, `10.0.0.1` or `169.254.169.254`,
+- [x] A send-to-URL workflow pointing at `127.0.0.1`, `10.0.0.1` or `169.254.169.254`,
       or at a host resolving to one, sends nothing, and the entry's workflow log says why.
-- [ ] A workflow's 302 is not followed.
-- [ ] A `file:`, `ftp:` or `data:` URL is refused on save.
-- [ ] A workflow header `env:NAME` is sent as written, never as the server's variable.
-- [ ] A secret header's value is never returned by the back office's API, and is not in
+- [x] A workflow's 302 is not followed.
+- [x] A `file:`, `ftp:` or `data:` URL is refused on save.
+- [x] A workflow header `env:NAME` is sent as written, never as the server's variable.
+- [x] A secret header's value is never returned by the back office's API, and is not in
       the form's file, a site export or a transfer.
-- [ ] A secret header set for one URL is not sent once the workflow's URL changes; the
+- [x] A secret header set for one URL is not sent once the workflow's URL changes; the
       entry's workflow log says to set it again.
-- [ ] `CROMBOLO_ALLOW_PRIVATE_ADDRESSES=true` lets all three reach a private address;
+- [x] `CROMBOLO_ALLOW_PRIVATE_ADDRESSES=true` lets all three reach a private address;
       `webhooks.allowPrivateAddresses` is gone.
-- [ ] The provider test refuses the same addresses, and its message never includes
+- [x] The provider test refuses the same addresses, and its message never includes
       a status code or body text.
-- [ ] `forms.md` documents the rule.
+- [x] `forms.md` documents the rule.
 
 ## Decisions (2026-11-11)
 
@@ -158,3 +158,39 @@ this:
 - **Existing tests** that set `webhooks.allowPrivateAddresses` move to the new setting.
 - The migration is undone in each of the test rewinds.
 
+
+## Implemented (unreleased, for 0.62.0)
+
+- **The setting:** `allowPrivateAddresses` on the resolved config, from
+  `CROMBOLO_ALLOW_PRIVATE_ADDRESSES`, defaulting to `development` (`config.ts`,
+  `settings.ts`, `docs/configuration.md` regenerated). `webhooks` keeps only
+  `headerVariables`; a config with `webhooks.allowPrivateAddresses` throws naming the new
+  setting. `checkedAddress`'s refusal names it.
+- **The forms workflow** (`form-workflows.ts`): `sendToUrl` goes through `pinnedFetch` with
+  `WorkflowDeps.outbound` and `secretKey`; `OutboundRefused` and a 3xx fail unretried; the
+  log keeps up to 300 characters of a text, JSON or XML answer and nothing else.
+  `refusedSendAddresses` checks a form's addresses on save in the back office (a host that
+  does not resolve passes). `validate-forms.ts` takes only an absolute http(s) URL and a
+  header as text or `{ secret = true }`.
+- **Secret headers:** migration 073 `AddFormWorkflowSecrets` (`form_workflow_secret`,
+  release 0.62.0), `FormWorkflowSecretRepository` in `@crombolo/data`; the forms API's
+  `PUT`/`DELETE …/forms/<key>/workflows/<workflow>/secrets/<header>` (Manage forms; works
+  on a site whose schema is read-only), and `secrets: [{ workflow, header, set }]` on a
+  form's `GET`. Saving a form forgets the secrets of workflows it no longer has; deleting
+  it forgets all of them. Set and cleared are audited under Settings with
+  "<workflow>: <header>", never the value.
+- **The designer:** the designer had no headers editor at all, so rather than a "Secret"
+  switch beside each header, a send-to-URL workflow gains a Secret headers panel: add a
+  header by name (written to the form as `{ secret = true }`), then set, replace or clear
+  its value once the form is saved, with Set or Not set beside it. Headers written as text
+  stay a matter for the form's file or `crombolo forms workflow add --set`.
+- **A fix found on the way:** the form writer wrote any table-valued setting (headers, a
+  `map`) as a JSON string; it now writes an inline table (`write-forms.ts`).
+- **The provider test** (`identity-provider-overrides.ts`): through `pinnedFetch` with the
+  setting; answers "<name> answered at <issuer>.", "<issuer> could not be reached." (with
+  the CMS's own refusal when there is one), or "<issuer> did not answer with an OpenID
+  Connect discovery document."
+- **Tests:** `forms-workflows` (refused addresses, the setting, a 302, a literal `env:`,
+  what the log keeps, pinning), `forms-schema` (schemes and header shapes), new
+  `forms-secret-headers` and `identity-provider-test`; the webhook tests moved to the new
+  setting; migration 073 in every rewind.

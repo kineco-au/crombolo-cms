@@ -25,6 +25,7 @@ import {
   DocumentRepository,
   FormWorkflowRepository,
   type FormWorkflowRun,
+  FormWorkflowSecretRepository,
   type NodeSchemaState,
 } from '@crombolo/data'
 import type { EmailField, EmailProps, EmailRenderResult } from '@crombolo/render'
@@ -33,6 +34,13 @@ import { htmlToText } from './email-text.ts'
 import type { FormWorkflowTypeDefinition } from './form-types.ts'
 import { logger } from './logging.ts'
 import type { MediaFileStore } from './media-files.ts'
+import {
+  checkedAddress,
+  type OutboundOptions,
+  OutboundRefused,
+  pinnedFetch,
+} from './outbound-address.ts'
+import { openSecret, usableSecretKey } from './secrets.ts'
 
 const log = logger('forms')
 
@@ -65,6 +73,10 @@ export interface WorkflowDeps {
   email?: EmailPort
   mediaFiles?: MediaFileStore
   fetch?: typeof fetch
+  /** Where a send-to-URL workflow may go (story 304); a test's own lookup. */
+  outbound?: Omit<OutboundOptions, 'fetch'>
+  /** Opens a send-to-URL workflow's secret headers. */
+  secretKey?: string
   nodeState?: NodeSchemaState
   nodeId?: string
   /** Told when a workflow published something, so the cache is dropped. */
@@ -436,6 +448,84 @@ async function saveAsContent(
 
 // ------------------------------------------------------------------ send to url
 
+/** A header the form names as secret, its value kept sealed in the database (story 304). */
+export const isSecretHeader = (value: unknown): value is { secret: true } =>
+  Boolean(value && typeof value === 'object' && (value as { secret?: unknown }).secret === true)
+
+/** What a log keeps of a refusal: a short text answer, nothing of any other. */
+async function answerText(response: Response): Promise<string> {
+  const type = response.headers.get('content-type') ?? ''
+  if (!/^text\/|json|xml/i.test(type)) return ''
+  return (await response.text().catch(() => '')).trim().slice(0, 300)
+}
+
+/** The headers to send: those written in the form, and its secrets, opened for this URL. */
+async function sendHeaders(
+  workflow: SchemaFormWorkflow,
+  context: WorkflowContext,
+  deps: WorkflowDeps,
+  url: string,
+): Promise<{ headers: Record<string, string> } | { error: string }> {
+  const settings = workflow.settings.headers
+  const written =
+    settings && typeof settings === 'object' && !Array.isArray(settings)
+      ? (settings as Record<string, unknown>)
+      : {}
+  const headers: Record<string, string> = {}
+  const secret: string[] = []
+  for (const [name, value] of Object.entries(written)) {
+    if (isSecretHeader(value)) secret.push(name)
+    else if (typeof value === 'string') headers[name] = value
+  }
+  if (secret.length === 0) return { headers }
+  const key = usableSecretKey(deps.secretKey)
+  const kept =
+    context.form.key && workflow.key
+      ? await new FormWorkflowSecretRepository(deps.db).of(context.form.key, workflow.key)
+      : new Map()
+  for (const name of secret) {
+    const stored = kept.get(name)
+    if (!stored) return { error: `The secret header "${name}" has not been set.` }
+    if (stored.url !== url)
+      return {
+        error: `The secret header "${name}" was set for another address; set it again for this one.`,
+      }
+    try {
+      if (!key) throw new Error('no key')
+      headers[name] = openSecret(stored.sealed, key)
+    } catch {
+      return {
+        error: `The secret header "${name}" cannot be read with this server's CROMBOLO_SECRET_KEY; set it again.`,
+      }
+    }
+  }
+  return { headers }
+}
+
+/**
+ * Why a form may not be saved sending where it says: a send-to-URL workflow's
+ * address, where its host already resolves, that the site does not send to. A
+ * host that does not resolve yet is checked at each send instead.
+ */
+export async function refusedSendAddresses(
+  form: SchemaForm,
+  allowPrivateAddresses: boolean,
+  lookup?: OutboundOptions['lookup'],
+): Promise<{ path: string; message: string }[]> {
+  const problems: { path: string; message: string }[] = []
+  for (const [index, workflow] of form.workflows.entries()) {
+    const url = workflow.type === 'sendToUrl' ? asString(workflow.settings.url) : undefined
+    if (!url || !URL.canParse(url)) continue
+    try {
+      await checkedAddress(new URL(url), { allowPrivateAddresses, lookup })
+    } catch (error) {
+      if (error instanceof OutboundRefused && !error.message.endsWith('has no address.'))
+        problems.push({ path: `workflow[${index}].settings.url`, message: error.message })
+    }
+  }
+  return problems
+}
+
 async function sendToUrl(
   workflow: SchemaFormWorkflow,
   context: WorkflowContext,
@@ -445,10 +535,8 @@ async function sendToUrl(
   const url = asString(settings.url)
   if (!url) return { ok: false, retry: false, error: 'The workflow names no URL.' }
   const method = settings.method === 'PUT' ? 'PUT' : 'POST'
-  const headers =
-    settings.headers && typeof settings.headers === 'object' && !Array.isArray(settings.headers)
-      ? (settings.headers as Record<string, string>)
-      : {}
+  const headers = await sendHeaders(workflow, context, deps, url)
+  if ('error' in headers) return { ok: false, retry: false, error: headers.error }
 
   const fields: Record<string, string | string[]> = {}
   for (const value of context.values)
@@ -463,15 +551,25 @@ async function sendToUrl(
     body.submittedAt = new Date().toISOString()
   }
 
-  const call = deps.fetch ?? fetch
   try {
-    const response = await call(url, {
-      method,
-      headers: { 'content-type': 'application/json', ...headers },
-      body: JSON.stringify(body),
-    })
+    const response = await pinnedFetch(
+      url,
+      {
+        method,
+        headers: { 'content-type': 'application/json', ...headers.headers },
+        body: JSON.stringify(body),
+      },
+      { ...deps.outbound, fetch: deps.fetch },
+    )
     if (response.ok) return { ok: true, detail: String(response.status) }
-    const detail = (await response.text().catch(() => '')).trim().slice(0, 300)
+    // Story 304: a redirect is the receiver's answer, never followed.
+    if (response.status >= 300 && response.status < 400)
+      return {
+        ok: false,
+        retry: false,
+        error: `the endpoint answered ${response.status}, a redirect, which is not followed`,
+      }
+    const detail = await answerText(response)
     // A 4xx will not fix itself; a 5xx might.
     return {
       ok: false,
@@ -481,7 +579,7 @@ async function sendToUrl(
   } catch (error) {
     return {
       ok: false,
-      retry: true,
+      retry: !(error instanceof OutboundRefused),
       error: error instanceof Error ? error.message : String(error),
     }
   }

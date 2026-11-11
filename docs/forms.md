@@ -397,6 +397,45 @@ file and the key.
 - **`sendToUrl`** — POSTs JSON: `{form, formName, entryId, submittedAt, fields}`.
   `method`, `headers` and `include-standard-fields` are configurable.
 
+### Where a form may send
+
+Story 304. Anyone who manages forms chooses a send-to-URL workflow's address,
+and any visitor sets it off, so it is held to the rule webhooks follow
+([`webhooks.md`](webhooks.md), "What a webhook may reach"):
+
+- **Web addresses only.** `http://` and `https://`; a `file:`, `ftp:` or `data:`
+  URL fails the form's check, in the designer and in `crombolo check`.
+- **Not this server's network.** Loopback, private and link-local addresses, a
+  cloud's metadata endpoint among them, are refused, checked at the address
+  actually connected to. Saving checks where the host already resolves; each send
+  checks again, and a refusal fails the entry's workflow without retrying, saying
+  why. `CROMBOLO_ALLOW_PRIVATE_ADDRESSES=true` allows them, for an intranet; a
+  development site allows them already.
+- **Redirects are not followed.** A 3xx is the receiver's answer, and fails the
+  workflow without retrying.
+- **What the log keeps** of a refusal: the status, and up to 300 characters of a
+  text answer; nothing of any other kind.
+- **Headers.** A header written in the form is sent exactly as written: `env:NAME`
+  is not read from the server, as it is for a webhook. A key or token the
+  receiver needs is a **secret header**, named in the form and set on the site:
+
+  ```toml
+    [workflow.settings.headers]
+    X-Source = "website"
+    Authorization = { secret = true }
+  ```
+
+  Its value is set in the designer, under the workflow's Secret headers, by
+  anyone who manages forms. It is sealed with `CROMBOLO_SECRET_KEY` in the
+  database (`form_workflow_secret`, migration 073), never in the form's file, a
+  site export or a transfer, and never shown back: the designer says Set or Not
+  set. It is sent only to the address it was set for: change the address, in the
+  designer or with a deploy, and it is not sent until set again, so nobody can
+  point someone else's token at their own address. Each site sets its own, as it
+  does a provider's client secret. Setting and clearing one is audited, without
+  the value. A secret header unset, set for another address, or sealed with
+  another key fails the workflow without sending, naming the header.
+
 ### An e-mail template
 
 **Built** (story `091`). `template` names a component under `components/`, by

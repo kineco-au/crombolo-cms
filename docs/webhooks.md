@@ -201,13 +201,12 @@ rules keep one from reading the server's secrets or its network (story 301).
   where the host already resolves; each delivery checks it again, and a refusal
   is not retried. Redirects are never followed.
 
-  ```ts
-  webhooks: { allowPrivateAddresses: true }
-  ```
-
-  allows those addresses, for an intranet, or a front end beside the CMS on a
-  private network. A development site (`NODE_ENV` other than `production`) allows
-  them unless this says `false`, since its receivers, such as the Next.js template's at
+  `CROMBOLO_ALLOW_PRIVATE_ADDRESSES=true` (or `allowPrivateAddresses: true` in the
+  config) allows those addresses, for an intranet, or a front end beside the CMS on
+  a private network. It covers a form's send-to-URL workflow and an identity
+  provider's test too (story 304), and replaced `webhooks.allowPrivateAddresses`
+  in 0.62. A development site (`NODE_ENV` other than `production`) allows them
+  unless it says `false`, since its receivers, such as the Next.js template's at
   `localhost:3000`, are usually on the same machine.
 - **What is kept of the answer:** the status, `Content-Type` and 1 KB of text,
   as above.

@@ -90,6 +90,7 @@ rather than the running server. Secret ones are never printed or logged.
 
 | Setting | Takes | Default | Description |
 | --- | --- | --- | --- |
+| `CROMBOLO_ALLOW_PRIVATE_ADDRESSES` | `true` / `false` | — | Lets webhooks, a form's send-to-URL workflow and an identity provider's test reach loopback, private and link-local addresses, for an intranet. On in development, off otherwise. |
 | `CROMBOLO_ADMIN_LOGIN` | string | `admin@crombolo.local` | The login of the first administrator. |
 | `CROMBOLO_ADMIN_PASSWORD` | string | generated in development | The first administrator's password, used only when the database is created. Unset in production, the site is set up in the browser. Kept secret: never printed. |
 | `CROMBOLO_SETUP_CODE` | string | — | Guards "Set up your new site" in production: 16 or more characters, chosen by you. Remove it once the site is set up. Kept secret: never printed. |

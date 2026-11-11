@@ -20,6 +20,16 @@ import {
 } from '@crombolo/core'
 import type { SchemaProblem } from './model.ts'
 
+/** An absolute http or https URL (story 304): no other scheme is sent to. */
+const isWebAddress = (url: string): boolean => {
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const VERSION = /^\d+(\.\d+)*$/
@@ -373,8 +383,29 @@ function validateWorkflows(
 
     if (workflow.type === 'sendToUrl') {
       const url = workflow.settings.url
-      if (typeof url === 'string' && !/^https?:\/\//.test(url))
+      if (typeof url === 'string' && !isWebAddress(url))
         add(file, `${path}.settings.url`, 'must be an http or https URL')
+      const headers = workflow.settings.headers
+      if (headers !== undefined) {
+        if (!headers || typeof headers !== 'object' || Array.isArray(headers))
+          add(file, `${path}.settings.headers`, 'expected a table of header names')
+        else
+          for (const [name, value] of Object.entries(headers))
+            if (
+              typeof value !== 'string' &&
+              !(
+                value &&
+                typeof value === 'object' &&
+                Object.keys(value).length === 1 &&
+                (value as { secret?: unknown }).secret === true
+              )
+            )
+              add(
+                file,
+                `${path}.settings.headers.${name}`,
+                'expected the value as text, or { secret = true } for one kept sealed on the site',
+              )
+      }
       const method = workflow.settings.method
       if (method !== undefined && method !== 'POST' && method !== 'PUT')
         add(file, `${path}.settings.method`, "expected 'POST' or 'PUT'")

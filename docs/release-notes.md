@@ -6,12 +6,36 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+### Features
+
+- **A form sends only outside, and keeps its tokens on the site (304).** A send-to-URL
+  workflow follows webhooks' rule: http and https only, never this server's own network
+  (checked at the address connected to), redirects not followed, and only a short text
+  answer kept in its log. A key or token it sends is a secret header: named in the form
+  as `{ secret = true }`, set in the designer, sealed on the site, never shown back or
+  written to the form's file, and sent only to the address it was set for. A header
+  written in the form is sent exactly as written. An identity provider's test reaches
+  only the same addresses and says whether it answered, never its status or body.
+
 ### Changes
 
 - **An extension that dies as it starts says why.** When the CMS could not send an extension its
   first message, because its process had already died, it reported that failure and hid the
   extension's own error output. It now reports what the extension wrote on its way out, and
   reads that output to its end before reporting any exit.
+
+### Migrations
+
+- **073 `AddFormWorkflowSecrets`** (expand): `form_workflow_secret`, a send-to-URL
+  workflow's sealed secret headers (304).
+
+### Upgrade notes
+
+- **`webhooks.allowPrivateAddresses` is now `CROMBOLO_ALLOW_PRIVATE_ADDRESSES`** (304), or
+  `allowPrivateAddresses` at the top of the config, and covers forms and identity
+  providers as well as webhooks. A config that still sets the old key does not start,
+  naming the new one. A production site whose forms send to an intranet address needs
+  it set, or those workflows now fail, saying why.
 
 ## v0.61.0 — 2026-11-11
 

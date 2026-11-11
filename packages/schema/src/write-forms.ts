@@ -23,7 +23,9 @@ function scalar(value: unknown): string {
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)
   if (Array.isArray(value)) return `[${value.map(scalar).join(', ')}]`
   if (value === null || value === undefined) return '""'
-  return str(JSON.stringify(value))
+  // A table, such as a send-to-URL workflow's headers, as an inline table.
+  const entries = Object.entries(value as Record<string, unknown>)
+  return `{ ${entries.map(([key, inner]) => `${keyOf(key)} = ${scalar(inner)}`).join(', ')} }`
 }
 
 /** Workflow settings arrive from the API, so a key may need quoting. */

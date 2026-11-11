@@ -122,7 +122,7 @@ export async function checkedAddress(
     const reason = refusedAddress(address)
     if (reason)
       throw new OutboundRefused(
-        `${host === address ? host : `${host} (${address})`} is ${reason}, which this site does not send to. The config's webhooks.allowPrivateAddresses allows it.`,
+        `${host === address ? host : `${host} (${address})`} is ${reason}, which this site does not send to. CROMBOLO_ALLOW_PRIVATE_ADDRESSES allows it.`,
       )
   }
   return addresses[0]

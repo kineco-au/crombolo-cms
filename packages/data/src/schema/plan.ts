@@ -46,6 +46,7 @@ import { extensionSettingsMigration } from './extension-settings.ts'
 import { formLibraryMigration } from './form-library.ts'
 import { formPermissionPrefixMigration } from './form-permission-prefix.ts'
 import { formPermissionsMigration } from './form-permissions.ts'
+import { formWorkflowSecretsMigration } from './form-workflow-secrets.ts'
 import { formWorkflowsMigration } from './form-workflows.ts'
 import { formsMigration } from './forms.ts'
 import { groupPermissionsMigration } from './group-permissions.ts'
@@ -159,4 +160,5 @@ export const cromboloPlan = new MigrationPlan([
   contentTypeSeoMigration,
   bundleGrantDelegateMigration,
   extensionActivityMigration,
+  formWorkflowSecretsMigration,
 ])

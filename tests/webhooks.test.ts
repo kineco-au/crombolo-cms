@@ -216,10 +216,12 @@ function receiver(statuses: number[] = []) {
 }
 
 /** Deliveries go to a receiver on this machine, so a site allows that unless a test says not. */
-const LOCAL = { allowPrivateAddresses: true, headerVariables: ['WEBHOOK_TEST_TOKEN', 'TOKEN'] }
+const LOCAL = { headerVariables: ['WEBHOOK_TEST_TOKEN', 'TOKEN'] }
 
 async function site(config: Record<string, unknown> = {}) {
-  const s = await treeSite({ config: { secretKey: KEY, webhooks: LOCAL, ...config } })
+  const s = await treeSite({
+    config: { secretKey: KEY, webhooks: LOCAL, allowPrivateAddresses: true, ...config },
+  })
   sites.push(s)
   return s
 }
@@ -591,7 +593,7 @@ describe('a bundle handles the events', () => {
     )
     const s = await treeSite({
       root,
-      config: { siteDir: root, bundles: [bundle], webhooks: { allowPrivateAddresses: false } },
+      config: { siteDir: root, bundles: [bundle], allowPrivateAddresses: false },
     })
     sites.push(s)
     await treeOps(s).publish(await createPage(s, 'Home'))
@@ -683,7 +685,7 @@ describe('what a webhook may reach (story 301)', () => {
   })
 
   test('an address on this machine or its network is refused when saved', async () => {
-    const s = await site({ webhooks: { allowPrivateAddresses: false } })
+    const s = await site({ allowPrivateAddresses: false })
     for (const url of [
       'http://127.0.0.1:8080/hook',
       'http://10.0.0.1/hook',
@@ -701,7 +703,7 @@ describe('what a webhook may reach (story 301)', () => {
 
   test('a delivery to one is refused without connecting, and not retried; the config may allow it', async () => {
     const remote = receiver()
-    const s = await site({ webhooks: { allowPrivateAddresses: false } })
+    const s = await site({ allowPrivateAddresses: false })
     filed(s, { url: remote.url })
     expect((await publishOnce(s)).failed).toBe(1)
     expect(remote.received).toEqual([])

@@ -14,7 +14,7 @@ import {
   readLedger,
   readState,
   STATE_CONTENT_APPLIED,
-  STATE_EXTENSION_ACTIVITY,
+  STATE_FORM_WORKFLOW_SECRETS,
   seedIdentity,
 } from '@crombolo/data'
 import { summariseUpgrades, VERSION } from '@crombolo/server'
@@ -140,10 +140,11 @@ describe('upgrading from the previous release', () => {
       'AddContentTypeSeo',
       'AddBundleGrantDelegate',
       'AddExtensionActivity',
+      'AddFormWorkflowSecrets',
     ])
-    expect(await readState(db)).toBe(STATE_EXTENSION_ACTIVITY)
+    expect(await readState(db)).toBe(STATE_FORM_WORKFLOW_SECRETS)
     const summary = summariseUpgrades(await readLedger(db), VERSION)
-    expect(summary.lastUpgrade).toMatchObject({ release: '0.61.0', steps: 23 })
+    expect(summary.lastUpgrade).toMatchObject({ release: '0.62.0', steps: 24 })
   })
 
   test('the Changes dashboard reports the version, the install and the last upgrade', async () => {

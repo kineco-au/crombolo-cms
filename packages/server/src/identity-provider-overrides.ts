@@ -7,6 +7,7 @@
  */
 import { type Db, type ExternalLoginAudience, now } from '@crombolo/data'
 import { entraIssuer, type IdentityProvider } from './identity-providers.ts'
+import { type OutboundOptions, OutboundRefused, pinnedFetch } from './outbound-address.ts'
 import { openSecret, SECRET_KEY_VARIABLE, sealSecret, usableSecretKey } from './secrets.ts'
 
 /** The fields an override may change. */
@@ -217,6 +218,8 @@ export function createBundleIdentityProviders(options: {
   memberCallbackPath: string
   backofficeCallbackPath: string
   groups(audience: ExternalLoginAudience): Promise<Array<{ value: string; name: string }>>
+  /** Where the test may reach (story 304). */
+  outbound?: OutboundOptions
 }): BundleIdentityProviders {
   const declared = (audience: ExternalLoginAudience, id: string) =>
     (audience === 'member' ? options.members : options.backoffice).find((p) => p.oidc.id === id)
@@ -269,16 +272,38 @@ export function createBundleIdentityProviders(options: {
       const code = declared(audience, id)
       if (!code) return { ok: false, message: 'The config declares no such identity provider.' }
       const effective = await options.overrides.apply(audience, code)
-      const url = `${effective.oidc.issuer.replace(/\/$/, '')}/.well-known/openid-configuration`
+      const issuer = effective.oidc.issuer
+      const url = `${issuer.replace(/\/$/, '')}/.well-known/openid-configuration`
+      // Story 304: only whether it answered, never its status or what it said,
+      // so the test cannot read back a page from wherever the issuer points.
+      const notDiscovery = {
+        ok: false,
+        message: `${issuer} did not answer with an OpenID Connect discovery document.`,
+      }
+      let response: Response
       try {
-        const response = await fetch(url, { headers: { accept: 'application/json' } })
-        if (!response.ok) return { ok: false, message: `${url} answered ${response.status}.` }
+        response = await pinnedFetch(
+          url,
+          { headers: { accept: 'application/json' } },
+          options.outbound,
+        )
+      } catch (error) {
+        return {
+          ok: false,
+          message:
+            error instanceof OutboundRefused
+              ? `${issuer} could not be reached: ${error.message}`
+              : `${issuer} could not be reached.`,
+        }
+      }
+      if (!response.ok) return notDiscovery
+      try {
         const document = (await response.json()) as { authorization_endpoint?: unknown }
         return typeof document.authorization_endpoint === 'string'
-          ? { ok: true, message: `${effective.oidc.name} answered at ${effective.oidc.issuer}.` }
-          : { ok: false, message: `${url} is not an OpenID Connect discovery document.` }
-      } catch (error) {
-        return { ok: false, message: `${url} could not be reached: ${(error as Error).message}` }
+          ? { ok: true, message: `${effective.oidc.name} answered at ${issuer}.` }
+          : notDiscovery
+      } catch {
+        return notDiscovery
       }
     },
   }

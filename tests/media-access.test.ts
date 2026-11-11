@@ -1107,6 +1107,7 @@ describe(`the migration (${dialectUnderTest})`, () => {
       'AddContentTypeSeo',
       'AddBundleGrantDelegate',
       'AddExtensionActivity',
+      'AddFormWorkflowSecrets',
     ])
     const found = await new MediaAccessRepository(db).byUrl(photo.src)
     expect(found?.key).toBe(photo.key)

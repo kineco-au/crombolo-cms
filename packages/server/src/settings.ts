@@ -223,6 +223,13 @@ const DECLARED = [
 
   // Sign-in and secrets
   {
+    env: 'CROMBOLO_ALLOW_PRIVATE_ADDRESSES',
+    kind: 'boolean',
+    section: 'Sign-in and secrets',
+    description:
+      "Lets webhooks, a form's send-to-URL workflow and an identity provider's test reach loopback, private and link-local addresses, for an intranet. On in development, off otherwise.",
+  },
+  {
     env: 'CROMBOLO_ADMIN_LOGIN',
     kind: 'string',
     default: 'admin@crombolo.local',

@@ -500,7 +500,7 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
     // A development site's receivers are on this machine, as the Next.js template's is.
     outbound: {
       ...config.webhooks,
-      allowPrivateAddresses: config.webhooks?.allowPrivateAddresses ?? config.development,
+      allowPrivateAddresses: config.allowPrivateAddresses,
     },
     isBundleOn: (bundleId) => bundleGrants.isOn(bundleId),
     bundleOrigins: (bundleId) => {
@@ -607,6 +607,7 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
               backoffice: config.backofficeIdentityProviders,
               memberCallbackPath: MEMBER_EXTERNAL_SIGN_IN_PATH,
               backofficeCallbackPath: BACKOFFICE_EXTERNAL_PATH,
+              outbound: { allowPrivateAddresses: config.allowPrivateAddresses },
               groups: async (audience) =>
                 audience === 'user'
                   ? (await new UserGroupRepository(db).all()).map((g) => ({
@@ -678,8 +679,7 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
                   }
                   return timed(activity, event, () =>
                     pinnedFetch(input, init, {
-                      allowPrivateAddresses:
-                        config.webhooks?.allowPrivateAddresses ?? config.development,
+                      allowPrivateAddresses: config.allowPrivateAddresses,
                     }),
                   )
                 },
@@ -854,6 +854,8 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
       resolveForm: (form) => cache.resolveForm(form),
       operations: operations.documents,
       bundleWorkflows: formTypes.workflows,
+      outbound: { allowPrivateAddresses: config.allowPrivateAddresses },
+      secretKey: config.secretKey,
       renderEmail: (alias, props) => renderer.renderEmail(alias, props),
       site: async () => ({
         name: (await hooks.siteName?.()) || config.siteName,

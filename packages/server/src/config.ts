@@ -177,6 +177,12 @@ export interface CromboloConfig {
    */
   liveReload: boolean
   /**
+   * Whether webhooks, a form's send-to-URL workflow and an identity provider's
+   * test may reach loopback, private and link-local addresses (stories 301,
+   * 304). `CROMBOLO_ALLOW_PRIVATE_ADDRESSES`; on in development only.
+   */
+  allowPrivateAddresses: boolean
+  /**
    * Whether the cache-busted asset path may be cached immutably. Defaults to
    * `!development`.
    *
@@ -543,12 +549,10 @@ export interface CromboloConfig {
    */
   events?: Readonly<Record<string, SiteEventHandler>>
   /**
-   * What a webhook may reach (story 301): the server variables a header's
-   * `env:NAME` may name besides `CROMBOLO_WEBHOOK_*`, and whether deliveries may
-   * go to loopback, private and link-local addresses: by default only on a
-   * development site. docs/webhooks.md.
+   * The server variables a webhook header's `env:NAME` may name besides
+   * `CROMBOLO_WEBHOOK_*` (story 301). docs/webhooks.md.
    */
-  webhooks?: { headerVariables?: readonly string[]; allowPrivateAddresses?: boolean }
+  webhooks?: { headerVariables?: readonly string[] }
   /**
    * Installed extensions the site's code grants and sets (story 310), by bundle
    * id: what it grants, as "Developer installed", and settings, which lock them
@@ -978,6 +982,7 @@ export function loadConfig(
     // Resolved again below, once it is known whether this is development.
     errors: { showDetails: envFlag(setting('CROMBOLO_SHOW_ERROR_DETAILS')) ?? false },
     liveReload: envFlag(setting('CROMBOLO_LIVE_RELOAD')) ?? false,
+    allowPrivateAddresses: envFlag(setting('CROMBOLO_ALLOW_PRIVATE_ADDRESSES')) ?? false,
     seo: stripUndefined({
       sitemap: envFlag(setting('CROMBOLO_SITEMAP')),
       indexable: envFlag(setting('CROMBOLO_INDEXABLE')),
@@ -1054,6 +1059,14 @@ export function loadConfig(
     overrides.liveReload ??
     envFlag(setting('CROMBOLO_LIVE_RELOAD')) ??
     (merged.development && setting('NODE_ENV') !== 'test')
+  merged.allowPrivateAddresses =
+    overrides.allowPrivateAddresses ??
+    envFlag(setting('CROMBOLO_ALLOW_PRIVATE_ADDRESSES')) ??
+    merged.development
+  if (overrides.webhooks && 'allowPrivateAddresses' in overrides.webhooks)
+    throw new Error(
+      'webhooks.allowPrivateAddresses is now CROMBOLO_ALLOW_PRIVATE_ADDRESSES (allowPrivateAddresses in the config), which covers forms and identity providers too (story 304).',
+    )
   checkApiClient(merged.apiClient)
   checkHost(merged.host)
   // The key itself is refused, so a config left over from before says so rather

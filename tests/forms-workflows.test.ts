@@ -372,6 +372,9 @@ describe('sendEmail', () => {
   })
 })
 
+/** A public address for hooks.example.com, so no test asks the network. */
+const PUBLIC = { lookup: async () => ['93.184.216.34'] }
+
 describe('sendToUrl', () => {
   const URL_WORKFLOW = `
 [[workflow]]
@@ -385,18 +388,25 @@ name = "Tell the API"
   test('posts the answers as JSON, with the standard fields', async () => {
     const { post, forms, h, entries } = await site({ form: definition(URL_WORKFLOW) })
     await post({ email: 'a@example.com', topic: 'Sales' })
-    const calls: { url: string; body: unknown }[] = []
+    const calls: { url: string; host: string | null; body: unknown }[] = []
     const runner = createWorkflowRunner({
       db: h.server.db,
       forms,
+      outbound: PUBLIC,
       fetch: (async (url: string, init: RequestInit) => {
-        calls.push({ url: String(url), body: JSON.parse(String(init.body)) })
+        calls.push({
+          url: String(url),
+          host: new Headers(init.headers).get('host'),
+          body: await new Response(init.body).json(),
+        })
         return new Response('{}', { status: 200 })
       }) as unknown as typeof fetch,
     })
     expect((await runner.runDue()).done).toBe(1)
 
-    expect(calls[0]?.url).toBe('https://hooks.example.com/forms')
+    // Story 304: sent to the address that was checked, under its own name.
+    expect(calls[0]?.url).toBe('https://93.184.216.34/forms')
+    expect(calls[0]?.host).toBe('hooks.example.com')
     const body = calls[0]?.body as Record<string, unknown>
     expect(body.form).toBe('contactUs')
     expect(body.fields).toEqual({ email: 'a@example.com', topic: 'Sales' })
@@ -415,6 +425,7 @@ name = "Tell the API"
       const runner = createWorkflowRunner({
         db: h.server.db,
         forms,
+        outbound: PUBLIC,
         fetch: (async () => new Response('no', { status })) as unknown as typeof fetch,
       })
       const report = await runner.runDue()
@@ -428,11 +439,134 @@ name = "Tell the API"
     const runner = createWorkflowRunner({
       db: h.server.db,
       forms,
+      outbound: PUBLIC,
       fetch: (async () => {
         throw new Error('ENOTFOUND')
       }) as unknown as typeof fetch,
     })
     expect((await runner.runDue()).retrying).toBe(1)
+  })
+})
+
+describe('where a send-to-URL workflow may go (story 304)', () => {
+  const form = {
+    alias: 'f',
+    name: 'F',
+    storeEntries: true,
+    requiresApproval: false,
+    honeypot: true,
+    pages: [],
+    workflows: [],
+  }
+  const context = { form, values: [], entryId: null }
+  const send = (settings: Record<string, unknown>, deps: Record<string, unknown> = {}) => {
+    const calls: { url: string; init: RequestInit }[] = []
+    const result = runWorkflow({ type: 'sendToUrl', name: 'w', on: 'submit', settings }, context, {
+      db: undefined as never,
+      fetch: (async (url: string, init: RequestInit) => {
+        calls.push({ url: String(url), init })
+        return new Response('{}', { status: 200 })
+      }) as unknown as typeof fetch,
+      ...deps,
+    })
+    return { calls, result }
+  }
+
+  test('an address on this machine or its network sends nothing, and says why', async () => {
+    for (const [url, lookup] of [
+      ['http://127.0.0.1/hook', undefined],
+      ['http://10.0.0.1/hook', undefined],
+      ['http://169.254.169.254/latest/meta-data', undefined],
+      ['https://inside.example.com/hook', async () => ['10.0.0.5']],
+    ] as const) {
+      const { calls, result } = send({ url }, { outbound: lookup ? { lookup } : {} })
+      const outcome = await result
+      expect(calls, url).toEqual([])
+      expect(outcome.ok).toBe(false)
+      expect(outcome.ok === false && outcome.retry, url).toBe(false)
+      expect(outcome.ok === false && outcome.error, url).toContain(
+        'which this site does not send to',
+      )
+    }
+  })
+
+  test('the setting lets it reach a private address', async () => {
+    const { calls, result } = send(
+      { url: 'http://10.0.0.1/hook' },
+      { outbound: { allowPrivateAddresses: true } },
+    )
+    expect((await result).ok).toBe(true)
+    expect(calls[0]?.url).toBe('http://10.0.0.1/hook')
+  })
+
+  test('a redirect is the answer, not followed, and not retried', async () => {
+    const calls: string[] = []
+    const outcome = await runWorkflow(
+      {
+        type: 'sendToUrl',
+        name: 'w',
+        on: 'submit',
+        settings: { url: 'https://hooks.example.com/' },
+      },
+      context,
+      {
+        db: undefined as never,
+        outbound: PUBLIC,
+        fetch: (async (url: string, init: RequestInit) => {
+          calls.push(String(url))
+          expect(init.redirect).toBe('manual')
+          return new Response(null, { status: 302, headers: { location: 'http://10.0.0.1/' } })
+        }) as unknown as typeof fetch,
+      },
+    )
+    expect(calls).toHaveLength(1)
+    expect(outcome).toMatchObject({ ok: false, retry: false })
+    expect(outcome.ok === false && outcome.error).toContain('not followed')
+  })
+
+  test('a header naming a server variable is sent as written', async () => {
+    Bun.env.DATABASE_PASSWORD_FOR_FORMS = 'hunter2'
+    const { calls, result } = send(
+      {
+        url: 'https://hooks.example.com/',
+        headers: { authorization: 'env:DATABASE_PASSWORD_FOR_FORMS' },
+      },
+      { outbound: PUBLIC },
+    )
+    expect((await result).ok).toBe(true)
+    expect(new Headers(calls[0]?.init.headers).get('authorization')).toBe(
+      'env:DATABASE_PASSWORD_FOR_FORMS',
+    )
+    delete Bun.env.DATABASE_PASSWORD_FOR_FORMS
+  })
+
+  test('a failure keeps a short text answer, and nothing of a binary one', async () => {
+    for (const [type, body, kept] of [
+      ['text/plain', 'x'.repeat(1000), 'x'.repeat(300)],
+      ['application/octet-stream', 'secret bytes', ''],
+    ] as const) {
+      const outcome = await runWorkflow(
+        {
+          type: 'sendToUrl',
+          name: 'w',
+          on: 'submit',
+          settings: { url: 'https://hooks.example.com/' },
+        },
+        context,
+        {
+          db: undefined as never,
+          outbound: PUBLIC,
+          fetch: (async () =>
+            new Response(body, {
+              status: 400,
+              headers: { 'content-type': type },
+            })) as unknown as typeof fetch,
+        },
+      )
+      expect(outcome.ok === false && outcome.error).toBe(
+        `the endpoint answered 400${kept ? `: ${kept}` : ''}`,
+      )
+    }
   })
 })
 

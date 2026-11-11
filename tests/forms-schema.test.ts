@@ -497,6 +497,42 @@ describe('validating forms', () => {
     expect(messages.some((m) => m.includes("expected 'POST' or 'PUT'"))).toBe(true)
   })
 
+  test('sendToUrl sends to a web address only, and a header is text or a secret (story 304)', () => {
+    const urlProblems = (url: string, headers?: unknown) =>
+      problems(
+        form({
+          workflows: [
+            {
+              type: 'sendToUrl',
+              name: 'w',
+              on: 'submit',
+              settings: { url, ...(headers ? { headers } : {}) },
+            },
+          ],
+        }),
+      )
+    for (const url of [
+      'file:///etc/passwd',
+      'ftp://x.example.com/',
+      'data:text/plain,hi',
+      'https//x',
+    ])
+      expect(
+        urlProblems(url).some((m) => m.includes('must be an http or https URL')),
+        url,
+      ).toBe(true)
+    expect(
+      urlProblems('https://x.example.com/', { a: 'b', Authorization: { secret: true } }),
+    ).toEqual([])
+    for (const value of [{ secret: 'x' }, { secret: true, value: 'x' }, 3])
+      expect(
+        urlProblems('https://x.example.com/', { a: value }).some((m) =>
+          m.includes('{ secret = true }'),
+        ),
+        JSON.stringify(value),
+      ).toBe(true)
+  })
+
   test("saveAsContent is held to a content type that exists, and to the form's own fields", () => {
     const subject = form({
       workflows: [

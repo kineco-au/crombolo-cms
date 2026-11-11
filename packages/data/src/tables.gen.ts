@@ -447,6 +447,15 @@ export interface CoreTables {
     workflow_name: string
     workflow_type: string
   }
+  form_workflow_secret: {
+    form_key: string
+    header: string
+    sealed: string
+    set_at: Timestamp
+    set_by: string | null
+    url: string
+    workflow_key: string
+  }
   job: {
     attempts: number
     claimed_at: Timestamp | null

@@ -67,6 +67,13 @@ export const previewChoices = (source) =>
 /** Every dictionary item, with its words in the default language. */
 export const listWords = async () => (await call('/words')).body.words ?? []
 
+/** Sets a send-to-URL workflow's secret header (story 304), or with no value removes it. */
+export const setSecretHeader = (form, workflow, header, value) =>
+  call(
+    `/${encodeURIComponent(form)}/workflows/${encodeURIComponent(workflow)}/secrets/${encodeURIComponent(header)}`,
+    value === undefined ? { method: 'DELETE' } : { method: 'PUT', body: JSON.stringify({ value }) },
+  )
+
 export const deleteForm = (key) => call(`/${encodeURIComponent(key)}`, { method: 'DELETE' })
 
 export const listEntries = async (key, query = {}) => {
