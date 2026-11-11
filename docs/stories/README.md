@@ -167,6 +167,7 @@ not cover.
 | `183` | Find content by its properties | should | M | done | 043 |
 | `262` | Telemetry that reaches the tools you already watch | should | L | done | 047 |
 | `273` | Search through providers a site can replace | could | L | done | 043, 140 |
+| `333` | How far Windows is from running the suite | could | S | ready | — |
 
 ### Epic F — Headless
 
