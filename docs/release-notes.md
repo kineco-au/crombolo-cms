@@ -6,6 +6,13 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+### Changes
+
+- **An extension that dies as it starts says why.** When the CMS could not send an extension its
+  first message, because its process had already died, it reported that failure and hid the
+  extension's own error output. It now reports what the extension wrote on its way out, and
+  reads that output to its end before reporting any exit.
+
 ## v0.61.0 — 2026-11-11
 
 ### Features

@@ -6,9 +6,11 @@
  * a broken or hostile extension stopping the site (T14).
  */
 import { afterEach, describe, expect, test } from 'bun:test'
-import { writeFileSync } from 'node:fs'
+import { chmodSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { discoverBundles } from '@crombolo/backoffice-host'
 import { extensionSqlProblem } from '@crombolo/server'
+import { ExtensionProcess } from '../packages/server/src/extension-process.ts'
 import { siteDeclaring } from './support/bundles.ts'
 import { BACKOFFICE, type Harness, signedInServer } from './support/harness.ts'
 
@@ -248,6 +250,76 @@ describe('an extension that cannot run apart from the CMS', () => {
     const reason = (id: string) => listed.items.find((item) => item.id === id)?.couldNotStart
     expect(reason('bunny')).toContain('Bun is not defined')
     expect(reason('chain')).toContain('middleware')
+  }, 60_000)
+
+  test('a process gone before its first message is reported by what it wrote, not by the write', async () => {
+    // A stand-in for Deno that closes its input and exits at once, as one that dies loading
+    // does on a busy machine: the CMS's first write meets a process that has gone.
+    const dir = siteDeclaring('extension-isolation-gone', {
+      '@acme/gone': {
+        json: { exports: './index.js', crombolo: { id: 'gone', name: 'Gone', server: 'gone' } },
+        files: {
+          'index.js': `export function gone() { return { id: 'gone', section: 'settings', capabilities: [] } }\n`,
+        },
+      },
+    })
+    const standIn = join(dir, 'deno-that-dies.sh')
+    writeFileSync(standIn, "#!/bin/sh\nexec 0<&-\necho 'broken while it loads' >&2\nexit 3\n")
+    chmodSync(standIn, 0o755)
+    const [pkg] = discoverBundles(dir).bundles
+    const before = Bun.env.CROMBOLO_DENO
+    Bun.env.CROMBOLO_DENO = standIn
+    const warnings: string[] = []
+    const process = new ExtensionProcess({
+      pkg: pkg as never,
+      siteDir: dir,
+      home: join(dir, '.crombolo', 'extensions', 'gone'),
+      settings: {},
+      dialect: 'sqlite',
+      origins: [],
+      log: { info() {}, warn: (message: string) => warnings.push(message), error() {} },
+    })
+    try {
+      const failed = await process.start().then(
+        () => undefined,
+        (error: unknown) => (error instanceof Error ? error.message : String(error)),
+      )
+      expect(failed).toContain('broken while it loads')
+      expect(failed).not.toMatch(/EPIPE|broken pipe/i)
+    } finally {
+      if (before === undefined) delete Bun.env.CROMBOLO_DENO
+      else Bun.env.CROMBOLO_DENO = before
+      await process.stop()
+    }
+  }, 60_000)
+
+  test('one that dies as its code loads is reported in its own words, not as a broken pipe', async () => {
+    // It throws before it reads its first message, so the CMS's write to it may fail: that
+    // failure is not the reason, and must not hide what the extension wrote on its way out.
+    const dir = siteDeclaring('extension-isolation-dies', {
+      '@acme/early': {
+        json: { exports: './index.js', crombolo: { id: 'early', name: 'Early', server: 'early' } },
+        files: {
+          'index.js': `throw new Error('broken while it loads')\nexport function early() { return { id: 'early', section: 'settings', capabilities: [] } }\n`,
+        },
+      },
+    })
+    const h = await signedInServer({
+      config: {
+        siteDir: dir,
+        componentsDir: join(dir, 'components'),
+        extensions: { early: { grant: [] } },
+      },
+    })
+    open.push(h)
+    const listed = (await (
+      await h.call(`${BACKOFFICE}/crombolo/api/bundles/installed`)
+    ).json()) as {
+      items: { id: string; couldNotStart?: string }[]
+    }
+    const reason = listed.items.find((item) => item.id === 'early')?.couldNotStart
+    expect(reason).toContain('broken while it loads')
+    expect(reason).not.toMatch(/EPIPE|broken pipe|closed/i)
   }, 60_000)
 })
 

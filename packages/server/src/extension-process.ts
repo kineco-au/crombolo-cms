@@ -258,6 +258,8 @@ export class ExtensionProcess {
   #lastCrash = 0
   #idle: ReturnType<typeof setTimeout> | undefined
   #stderr: string[] = []
+  /** Settles once the running process's error output has been read to its end. */
+  #errorsRead: Promise<void> = Promise.resolve()
   #stopped = false
 
   constructor(options: ExtensionProcessOptions) {
@@ -323,7 +325,7 @@ export class ExtensionProcess {
     )
     this.#child = child
     this.#stderr = []
-    this.#readErrors(child.stderr as ReadableStream<Uint8Array>)
+    this.#errorsRead = this.#readErrors(child.stderr as ReadableStream<Uint8Array>)
     const ready = new Promise<void>((resolve, reject) => {
       this.#replies.set(0, {
         resolve: (description) => {
@@ -334,6 +336,9 @@ export class ExtensionProcess {
       })
     })
     this.#listen(child)
+    // A process that died as it started cannot take its first message. Failing to send it is
+    // not the reason to report: `#listen` sees the exit and rejects `ready` with what the
+    // extension itself wrote on its way out.
     this.#send({ t: 'init', settings: this.#options.settings, dialect: this.#options.dialect })
     const timer = setTimeout(
       () =>
@@ -356,11 +361,15 @@ export class ExtensionProcess {
 
   async #readErrors(stream: ReadableStream<Uint8Array>) {
     const decoder = new TextDecoder()
-    for await (const chunk of stream) {
-      for (const line of decoder.decode(chunk).split('\n').filter(Boolean)) {
-        this.#stderr.push(line)
-        if (this.#stderr.length > 20) this.#stderr.shift()
+    try {
+      for await (const chunk of stream) {
+        for (const line of decoder.decode(chunk).split('\n').filter(Boolean)) {
+          this.#stderr.push(line)
+          if (this.#stderr.length > 20) this.#stderr.shift()
+        }
       }
+    } catch {
+      // A stream torn down with its process has nothing more to say.
     }
   }
 
@@ -382,6 +391,8 @@ export class ExtensionProcess {
       this.#kill()
     }
     const code = await exited
+    // What it wrote on its way out is the reason it stopped: read it all before saying so.
+    await Promise.race([this.#errorsRead, Bun.sleep(1000)])
     if (this.#child !== child) return
     this.#child = undefined
     if (!this.#stopped) {
@@ -407,12 +418,24 @@ export class ExtensionProcess {
     this.#replies.clear()
   }
 
+  /**
+   * Writes a frame to the process. A process that has exited cannot take one, and
+   * that is not an error to raise here: `#listen` sees the exit, and rejects every
+   * call waiting on it with the extension's own words.
+   */
   #send(frame: Frame) {
     const child = this.#child
     if (!child) return
     const sink = child.stdin as import('bun').FileSink
-    sink.write(frameBytes(frame))
-    sink.flush()
+    const quiet = (result: unknown) => {
+      if (result instanceof Promise) result.catch(() => {})
+    }
+    try {
+      quiet(sink.write(frameBytes(frame)))
+      quiet(sink.flush())
+    } catch {
+      // Its input is closed: the process has gone, or is going.
+    }
   }
 
   #kill() {
