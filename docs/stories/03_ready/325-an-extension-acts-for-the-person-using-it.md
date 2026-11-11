@@ -1,6 +1,6 @@
 # 325 — An extension acts for the person using it
 
-**Epic:** I — Hardening · **Priority:** should · **Size:** M
+**Epic:** I — Hardening · **Priority:** should · **Size:** L
 **Depends on:** 309
 
 ## Story
@@ -33,6 +33,119 @@ powerful than area grants, far more observable than in-realm code.
 - **Every call is audited** with the extension and the person: "Bulk Editor, for Adam", which
   story 327 shows per extension.
 
+## Decisions (2026-11-11, planning)
+
+- **`actAs` goes in this story.** `user.delegate` replaces it: one permission, no choice of
+  whom to act for at grant time. The manifest reader refuses `actAs` by name from schema 6,
+  with the message naming `user.delegate`; an installed schema 5 package that asks for it
+  keeps running on its recorded grant until its next version, which is refused until rewritten.
+  (`content.actAs`, the config's API user for the site's own code, is story 298's and stays.)
+- **Not from the config.** `user.delegate` is granted only from the back office, the CLI or a
+  remote by a signed-in administrator, who becomes the installer a job or event acts for. A
+  config `extensions` entry granting it is refused at boot, naming the person who must grant
+  it instead. So the config entry loses `actAs` and gains nothing.
+- **`extension migrate` rewrites `actAs` to `user.delegate`**, removing the area permissions
+  beside it, and says so: the extension becomes Acts as you, and administrators grant it again.
+- **The grant row's `act_as` column is replaced by a migration:** `delegate_key`, the
+  installer's user key when `user.delegate` is granted, null otherwise. Rows with
+  `installer:<key>` are copied across; `caller` and `user:<key>` rows become null, since those
+  grants name `actAs`, which the next version cannot ask for. `act_as` is dropped. The
+  migration's `release` is the version it ships in, and every test rewind is extended.
+- **Attribution** rides on what exists: an extension's call through `api` runs inside
+  `calling.run(bundleId, …)`, so the audit sink reads `callingExtension()` and writes the
+  person as `userKey` and `userName` with `detail` prefixed "<Extension name>, for <person>".
+  No new audit column.
+
+## The plan (2026-11-11)
+
+What `actAs` touches today, every line of which changes or goes: the catalogue entry and
+`DECLARATION_PERMISSIONS`; `actAsChoice`, the grant's `actAs` field, `grantGaps`'s "whom it
+acts for", `approvalHolds`' third argument and `narrow`; `core.ts`'s principal choice in the
+`api` capability and the config grant's `actAs`; `ExtensionEntry.actAs` and
+`extensionEntryProblems`; `marketplace.ts`'s `asksActAs` and `consented`; `bundle-admin`'s
+grant and install requests; `server.ts`'s install and grant bodies; `remote.ts`'s two bodies;
+the panel's "Acts for" select in `bundles-marketplace.js` and `bundles-installed.js` and
+`bundles-client.js`'s two calls; the CLI's `--act-as` on `extension install` and
+`extension grant` and `support/bundles.ts`; `tests/extension-grants.test.ts`; `bundles.md`
+(nine mentions), the threat model and the release notes.
+
+### Slice 1: the permission
+
+- `bundle-permissions.ts`: `user.delegate` in the catalogue with the sentence from the
+  decisions and the expanded reason as its `warning`; `actAs` removed; `readPermissions`
+  refuses `actAs` by name ("`actAs` is retired: ask for `user.delegate`, which acts for the
+  person using it across every area") and refuses `user.delegate` beside any area permission
+  ("`user.delegate` already reaches every area: drop the others"). `BUNDLE_SCHEMA_VERSION` 6
+  if 323 has not moved it already.
+- `bundle-grants.ts`: `user.delegate` joins `DECLARATION_PERMISSIONS`; `grantGaps` loses the
+  acting line; `approvalHolds` loses its third argument; `grant` and `narrow` carry
+  `delegateKey`.
+- `bundle-api.ts`: `extensionPrincipal` is unchanged for the extension acting as itself. A new
+  `delegatePrincipalOf(caller, grant)` returns the caller's principal for a back-office caller
+  and `userPrincipalByKey(grant.delegateKey)` otherwise; a missing or deleted installer leaves
+  the extension acting as itself and logs once. `actAsChoice` is deleted.
+- `core.ts`: the `api` capability's `principal` uses the grant's `user.delegate`; the boot
+  refuses a config entry whose `grant` names `user.delegate`, naming the person who must grant
+  it; `ExtensionEntry.actAs` is removed with its reading.
+
+### Slice 2: the three refusals and the audit
+
+- `bundle-api.ts` `permissionsFor`: under `user.delegate` every `API_PERMISSIONS` reach is
+  open, and three are refused whoever the person is: `management/api/v1/user` and `user-group`
+  writes, `crombolo/api/extensions/*` and `crombolo/api/bundles/*`. The refusal names the
+  rule: "an extension may not install or grant extensions, or change users and groups, for
+  anyone". `users.read` stays as the area it is.
+- The audit sink in `server.ts` (`createAuditSink`'s `record`) reads `callingExtension()` and,
+  when set, prefixes `detail` with "<name>, for <person>" and keeps the person as the user;
+  `extensionPrincipal`'s own calls keep "Extension <name>" as today. Story 327 reads the
+  prefix.
+
+### Slice 3: the migration
+
+- `packages/data/src/schema/bundle-grant-delegate.ts`, migration 071 from
+  `STATE_CONTENT_TYPE_SEO`: add `delegate_key` (varchar 36), copy the key out of
+  `act_as` where it starts with `installer:`, drop `act_as` with `ops.dropColumn` as
+  `bundle-components.ts` did. `kind: 'contract'`, as `drop-assistant.ts` is. `release` is the
+  next version at the time it lands.
+- Repository: `BundleGrant.actAs` becomes `delegateKey`; `tables.gen.ts` regenerated.
+- Rewinds: `tests/support/db.ts`, `tests/integration/first-boot.integration.ts`,
+  `tests/media-access.test.ts`, `tests/permissions.test.ts` and
+  `tests/upgrade-from-release.test.ts` each undo it before `AddBundleGrantReach`.
+
+### Slice 4: the surfaces
+
+- `marketplace.ts`: `asksActAs` and `consented`'s acting check go; `grantStateOf` says
+  `delegates: boolean` for the panel's Acts as group (story 324 reads it).
+- `bundle-admin.ts`, `server.ts`, `remote.ts`: the `actAs` field leaves the install and grant
+  bodies; the installer's key is the actor's `id`, which the CLI's actor lacks, so a CLI grant
+  of `user.delegate` needs `--delegate-to user:<key>` or is refused with that message; a remote
+  grant carries the remote principal's key.
+- The panel and Installed drop the "Acts for" select; the client's two calls lose the argument.
+- `extension migrate` (`support/extension-migrate.ts`): a schema 5 manifest with `actAs` is
+  rewritten to `user.delegate` with the areas removed, printed as a move; the reason is the
+  old `actAs` reason.
+- The CLI's `extension install` and `extension grant` lose `--act-as`; `extension list` shows
+  "acts for the person using it" on a delegating row.
+
+### Slice 5: tests and docs
+
+- `tests/extension-permissions.test.ts`: `user.delegate` reaches every area as the caller and
+  not beyond the caller's own rights; a non-administrator caller is still bound; the three
+  refusals hold for an administrator caller; a job acts for the installer; `actAs` is refused by
+  name; `user.delegate` beside an area is refused; a config grant of it is refused at boot.
+- `tests/extension-grants.test.ts`: the acting lines go; `delegateKey` is recorded and
+  narrowed.
+- `tests/migrations.test.ts` and `tests/upgrade-from-release.test.ts`: the new migration, with
+  an `installer:` row copied and a `caller` row nulled.
+- `tests/audit*.test.ts`: an entry written through `api` under `user.delegate` names the person
+  and carries the extension in `detail`.
+- `tests/extension-migrate.test.ts`: the `actAs` rewrite.
+- Docs: `bundles.md` "Permissions" (the catalogue table's acting rows, "Least privilege",
+  "The install", "A grant is what lets it run"), `extensions.md`, `extension-threat-model.md`
+  T10 and "Permissions an extension asks for", `release-notes.md` with the migration listed and
+  the upgrade note: an extension asking for `actAs` must be rewritten with
+  `extension migrate` before its next version installs.
+
 ## Acceptance criteria
 
 - [ ] An extension asking for `user.delegate` reaches every area as the caller, and nothing
@@ -42,4 +155,9 @@ powerful than area grants, far more observable than in-realm code.
       administrator caller too.
 - [ ] A job or event with no caller acts for the installer, and the expanded reason says so.
 - [ ] The audit names the extension and the person on each call.
+- [ ] `actAs` is gone: refused by name in a manifest, absent from the config entry, the grant
+      bodies, the panel and the CLI; `extension migrate` rewrites it to `user.delegate`.
+- [ ] A config entry granting `user.delegate` is refused at boot, naming who grants it instead.
+- [ ] The migration replaces `act_as` with `delegate_key`, copying installer keys, and every
+      test rewind undoes it.
 - [ ] Covering tests; `bundles.md` "Permissions", the threat model and release notes.
