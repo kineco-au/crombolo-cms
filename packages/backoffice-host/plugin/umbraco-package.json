@@ -531,7 +531,7 @@
       "conditions": [
         {
           "alias": "Umb.Condition.SectionUserPermission",
-          "match": "Crombolo.Section.AllSettings"
+          "match": "Umb.Section.Settings"
         }
       ]
     },
@@ -663,7 +663,7 @@
       "conditions": [
         {
           "alias": "Umb.Condition.SectionUserPermission",
-          "match": "Crombolo.Section.WorkflowSetup"
+          "match": "Umb.Section.Settings"
         }
       ]
     },
@@ -789,36 +789,6 @@
     },
     {
       "type": "section",
-      "alias": "Crombolo.Section.Structure",
-      "name": "Crombolo Structure Section",
-      "weight": 30,
-      "meta": {
-        "label": "Structure",
-        "pathname": "structure"
-      }
-    },
-    {
-      "type": "section",
-      "alias": "Crombolo.Section.Components",
-      "name": "Crombolo Code Section",
-      "weight": 29,
-      "meta": {
-        "label": "Code",
-        "pathname": "components"
-      }
-    },
-    {
-      "type": "section",
-      "alias": "Crombolo.Section.WorkflowSetup",
-      "name": "Crombolo Workflow setup Section",
-      "weight": 28,
-      "meta": {
-        "label": "Workflow setup",
-        "pathname": "workflow-setup"
-      }
-    },
-    {
-      "type": "section",
       "alias": "Crombolo.Section.Workflow",
       "name": "Crombolo Workflow Section",
       "weight": 40,
@@ -879,7 +849,7 @@
         },
         {
           "alias": "Umb.Condition.SectionUserPermission",
-          "match": "Crombolo.Section.WorkflowSetup"
+          "match": "Umb.Section.Settings"
         }
       ]
     },

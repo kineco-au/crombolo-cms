@@ -6,6 +6,20 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+### Changes
+
+- **Settings is one grant again (322).** Structure, Code and Workflow set-up follow the
+  Settings section. The three grants story 296 added, Structure, Components and Workflow
+  set-up, are no longer offered in a group's Sections, and the menu under Content shows
+  Structure and Code to whoever holds Settings.
+
+### Upgrade notes
+
+- A group that held Structure, Components or Workflow set-up without Settings loses those
+  screens until it is given Settings. A group file in `schema/user-groups/` that names
+  one of them still loads, with the alias dropped. Nothing else changes for a group that
+  holds Settings.
+
 ## v0.60.0 — 2026-11-10
 
 ### Features

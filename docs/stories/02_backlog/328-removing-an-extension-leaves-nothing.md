@@ -1,0 +1,39 @@
+# 328 — Removing an extension leaves nothing
+
+**Epic:** I — Hardening · **Priority:** should · **Size:** M
+**Depends on:** 326, 321
+
+## Story
+
+As an administrator who tried an extension and decided against it, I want one step that
+stops it, revokes what it held and removes what it left, asking me only about its data, so
+that trying an extension costs nothing afterwards.
+
+## Context
+
+Uninstall today is `bun remove` and the grant row. The extension's process, its data folder,
+its tables and schema (Part 4 of `bundles.md`), its settings and its build stay, or go
+separately. With story 326 its files are one folder; with story 321 its tables are one role
+and schema, made by the CMS or by the host.
+
+## Decisions (2026-11-11)
+
+- **Remove does, in order:** stop the process; revoke the grant and any screen tokens; drop
+  its schema and role, or on SQLite its tables and ledger; delete its data folder, its build
+  and its root; delete its settings and its record. One audit entry.
+- **It asks about data first.** "Keep its data, in case you install it again?" keeps the
+  tables and the data folder, marked orphaned in Installed under "Data left by…", with a
+  Remove of their own. Default is to remove.
+- **Turn off is still separate** (story 225): stop and revoke, keep everything.
+- **The CLI's `extension uninstall`** gains `--keep-data`, and a remote's uninstall the same.
+- **A host that made the role itself** (story 321) is told, not overridden: the CMS drops the
+  schema and the role it can drop, and names what it could not.
+
+## Acceptance criteria
+
+- [ ] Remove stops the process, revokes the grant, drops the tables, role and schema, deletes
+      the folder and the record, in one step with one audit entry.
+- [ ] With data kept, the tables and folder stay, show under Installed, and can be removed later.
+- [ ] Nothing of the extension remains in the site's files, lockfile, database or settings.
+- [ ] A role the CMS cannot drop is named in the result.
+- [ ] Covering tests on both dialects; docs and release notes.

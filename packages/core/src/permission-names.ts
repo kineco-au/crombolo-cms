@@ -143,12 +143,9 @@ export const SECTION_NAMES: ReadonlyArray<{ name: keyof typeof SECTION_ALIASES; 
   { name: 'translation', says: 'Dictionary items: words the site shows in each language' },
   { name: 'workflow', says: 'Approvals: pages waiting for someone to approve them' },
   {
-    name: 'structure',
-    says: 'Content types, data types and languages, which shape the whole site',
+    name: 'settings',
+    says: 'Types, templates, languages, workflows, extensions and the rest of the setup',
   },
-  { name: 'components', says: 'Templates, components, stylesheets and scripts' },
-  { name: 'workflowSetup', says: 'Setting up approval workflows, not deciding on them' },
-  { name: 'settings', says: 'Types, templates, languages, bundles and the rest of the setup' },
 ]
 
 /** An event's plain name from its display name: "Content Published" is `content-published`. */

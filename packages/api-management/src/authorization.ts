@@ -76,9 +76,6 @@ const CONTENT: Sections = ['content']
 const MEDIA: Sections = ['media']
 const SETTINGS: Sections = ['settings']
 const USERS: Sections = ['users']
-/** The parts of Settings a group can hold alone (story 296). */
-const STRUCTURE: Sections = ['settings', 'structure']
-const COMPONENTS: Sections = ['settings', 'components']
 const MEMBERS: Sections = ['members']
 const TRANSLATION: Sections = ['translation']
 const LIBRARY: Sections = ['library']
@@ -89,16 +86,16 @@ const TREES: Record<string, Sections> = {
   document: ANY_TREE,
   media: ANY_TREE,
   element: ANY_TREE,
-  'document-type': STRUCTURE,
-  'document-blueprint': STRUCTURE,
-  'data-type': STRUCTURE,
-  'media-type': STRUCTURE,
-  'member-type': ['settings', 'members', 'structure'],
-  template: ['settings', 'content', 'components'],
+  'document-type': SETTINGS,
+  'document-blueprint': SETTINGS,
+  'data-type': SETTINGS,
+  'media-type': SETTINGS,
+  'member-type': ['settings', 'members'],
+  template: ['settings', 'content'],
   dictionary: ['translation', 'settings'],
-  'partial-view': COMPONENTS,
-  script: COMPONENTS,
-  stylesheet: COMPONENTS,
+  'partial-view': SETTINGS,
+  script: SETTINGS,
+  stylesheet: SETTINGS,
   'relation-type': SETTINGS,
   'static-file': ['settings', 'content', 'media', 'members'],
   'member-group': MEMBERS,
@@ -116,10 +113,10 @@ const SETTINGS_AREAS = new Set([
   'telemetry',
   'webhook',
   'relation-type',
+  'partial-view',
+  'script',
+  'stylesheet',
 ])
-
-/** What a group given Components can write. */
-const COMPONENT_AREAS = new Set(['partial-view', 'script', 'stylesheet'])
 
 /** Type actions only the Settings section may take, beyond every write. */
 const TYPE_ADMIN_ACTIONS = new Set([
@@ -147,7 +144,6 @@ export function sectionRequirements(operation: OperationInfo): Array<Sections | 
   const action = second.startsWith('{') ? third : second
   const typeAdmin = write || TYPE_ADMIN_ACTIONS.has(action)
   if (SETTINGS_AREAS.has(area)) return [SETTINGS]
-  if (COMPONENT_AREAS.has(area)) return [COMPONENTS]
   switch (area) {
     case 'tree':
       return TREES[second] ? [TREES[second]] : []
@@ -170,42 +166,35 @@ export function sectionRequirements(operation: OperationInfo): Array<Sections | 
     case 'dynamic-root':
       return [CONTENT]
     case 'document-type':
-      if (second === 'folder') return [STRUCTURE]
-      if (third === 'blueprint') return [['content', 'library', 'settings', 'structure'], CONTENT]
+      if (second === 'folder') return [SETTINGS]
+      if (third === 'blueprint') return [['content', 'library', 'settings'], CONTENT]
       return typeAdmin
-        ? [['content', 'library', 'settings', 'structure'], STRUCTURE]
-        : [['content', 'library', 'settings', 'structure']]
+        ? [['content', 'library', 'settings'], SETTINGS]
+        : [['content', 'library', 'settings']]
     case 'document-blueprint':
       if (second === 'from-document' || third === 'scaffold') return [CONTENT]
-      if (!write && second.startsWith('{') && third === '')
-        return [['content', 'settings', 'structure']]
-      return [STRUCTURE]
+      if (!write && second.startsWith('{') && third === '') return [['content', 'settings']]
+      return [SETTINGS]
     case 'data-type':
-      if (second === 'folder') return [STRUCTURE]
+      if (second === 'folder') return [SETTINGS]
       return typeAdmin
-        ? [['content', 'library', 'media', 'members', 'settings', 'structure'], STRUCTURE]
-        : [['content', 'library', 'media', 'members', 'settings', 'structure']]
+        ? [['content', 'library', 'media', 'members', 'settings'], SETTINGS]
+        : [['content', 'library', 'media', 'members', 'settings']]
     case 'media':
       return [MEDIA]
     case 'media-type':
-      if (second === 'folder') return [STRUCTURE]
-      return typeAdmin
-        ? [['media', 'settings', 'structure'], STRUCTURE]
-        : [['media', 'settings', 'structure']]
+      if (second === 'folder') return [SETTINGS]
+      return typeAdmin ? [['media', 'settings'], SETTINGS] : [['media', 'settings']]
     case 'member-type':
-      if (second === 'folder') return [STRUCTURE]
-      return typeAdmin
-        ? [['settings', 'members', 'structure'], STRUCTURE]
-        : [['settings', 'members', 'structure']]
+      if (second === 'folder') return [SETTINGS]
+      return typeAdmin ? [['settings', 'members'], SETTINGS] : [['settings', 'members']]
     case 'member':
     case 'member-group':
       return [MEMBERS]
     case 'template':
-      return write
-        ? [['settings', 'content', 'components'], COMPONENTS]
-        : [['settings', 'content', 'components']]
+      return write ? [['settings', 'content'], SETTINGS] : [['settings', 'content']]
     case 'language':
-      return write ? [STRUCTURE] : []
+      return write ? [SETTINGS] : []
     case 'dictionary':
       return [TRANSLATION]
     case 'user':

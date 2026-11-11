@@ -129,6 +129,7 @@ not cover.
 | `295` | Every form word has a box in the form editor | should | S | done | 294 |
 | `296` | Admins choose what a group sees under Content | should | L | done | — |
 | `297` | Dictionary words as chips, in forms and on pages | should | L | done | 293, 294 |
+| `322` | Settings is one grant again | should | M | done | 296 |
 
 ### Epic D — Members and identity
 
@@ -254,6 +255,15 @@ requests, only server-side and build-time front ends can call it.
 | `317` | An administrator sets where a page's search and sharing values come from | should | M | done | — |
 | `320` | An extension's back-office code is asked for, built and kept apart | must | L | done | 311, 308 |
 | `321` | A host provisions custom-table owners itself | should | M | done | 189, 311 |
+| `323` | An extension's screens are described, not shipped | must | XL | ready | 311 |
+| `324` | The install panel says what you accept at a glance | must | L | ready | 308, 320 |
+| `325` | An extension acts for the person using it | should | M | ready | 309 |
+| `326` | An extension installs into a root of its own | should | L | ready | 311 |
+| `327` | What each extension did | should | L | ready | 309, 311 |
+| `328` | Removing an extension leaves nothing | should | M | backlog | 326, 321 |
+| `329` | Redirects and Entra describe their screens | must | M | backlog | 323, 324 |
+| `330` | An extension's templates carry no script | must | S | ready | 312 |
+| `331` | An extension intercepts the paths it names | could | L | backlog | 311, 327 |
 
 ### Epic J — Forms
 

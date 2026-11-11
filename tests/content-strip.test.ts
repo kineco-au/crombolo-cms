@@ -6,11 +6,8 @@ import { describe, expect, test } from 'bun:test'
 import { activeItem, stripItems } from '../packages/backoffice-host/plugin/content-strip-items.js'
 
 const CONTENT = 'Umb.Section.Content'
-const STRUCTURE = 'Crombolo.Section.Structure'
-const COMPONENTS = 'Crombolo.Section.Components'
-const WORKFLOW_SETUP = 'Crombolo.Section.WorkflowSetup'
+const SETTINGS = 'Umb.Section.Settings'
 const APPROVALS = 'Crombolo.Section.Workflow'
-const SETTINGS = [STRUCTURE, COMPONENTS]
 const FORMS = 'Crombolo.Section.Forms'
 const labels = (user: Parameters<typeof stripItems>[0]) => stripItems(user).map((i) => i.label)
 
@@ -18,7 +15,7 @@ describe('what the menu offers', () => {
   test('everything, to an administrator', () => {
     expect(
       labels({
-        allowedSections: [CONTENT, APPROVALS, ...SETTINGS, FORMS, WORKFLOW_SETUP],
+        allowedSections: [CONTENT, APPROVALS, SETTINGS, FORMS],
         isAdmin: true,
       }),
     ).toEqual(['Pages', 'Approvals', 'Structure', 'Code'])
@@ -40,7 +37,7 @@ describe('what the menu offers', () => {
         isAdmin: false,
       }).find((item) => item.label === 'Structure')?.path,
     ).toBe('section/forms')
-    expect(labels({ allowedSections: [CONTENT, ...SETTINGS], isAdmin: false })).toEqual([
+    expect(labels({ allowedSections: [CONTENT, SETTINGS], isAdmin: false })).toEqual([
       'Pages',
       'Structure',
       'Code',
@@ -84,23 +81,23 @@ describe('where a page belongs', () => {
 })
 
 describe('what a group is given', () => {
-  test('Structure alone, without Code', () => {
-    expect(labels({ allowedSections: [CONTENT, STRUCTURE], isAdmin: false })).toEqual([
+  test('Settings brings Structure and Code together (story 322)', () => {
+    expect(labels({ allowedSections: [CONTENT, SETTINGS], isAdmin: false })).toEqual([
       'Pages',
       'Structure',
+      'Code',
     ])
-  })
-
-  test('Workflow setup alone: Structure is the workflows, beside forms', () => {
-    const user = { allowedSections: [CONTENT, FORMS, WORKFLOW_SETUP], isAdmin: false }
-    expect(labels(user)).toEqual(['Pages', 'Structure'])
-    expect(stripItems(user).find((item) => item.label === 'Structure')?.path).toBe(
-      'section/forms/view/workflows',
-    )
+    // The parts of Settings a group could once hold alone open nothing now.
+    expect(
+      labels({
+        allowedSections: [CONTENT, 'Crombolo.Section.Structure', 'Crombolo.Section.Components'],
+        isAdmin: false,
+      }),
+    ).toEqual([])
   })
 
   test('Approvals, for a group that decides them, after Pages', () => {
-    expect(labels({ allowedSections: [CONTENT, APPROVALS, ...SETTINGS], isAdmin: false })).toEqual([
+    expect(labels({ allowedSections: [CONTENT, APPROVALS, SETTINGS], isAdmin: false })).toEqual([
       'Pages',
       'Approvals',
       'Structure',

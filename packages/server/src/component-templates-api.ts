@@ -58,8 +58,8 @@ export async function handleComponentTemplates(
     return Response.json({ items: componentTemplates(onDisk, await repo.all(), extensions) })
 
   if (request.method === 'POST') {
-    // As changing which templates a type allows: Structure, which Settings brings.
-    if (!hasSection(principal, 'structure') && !hasSection(principal, 'settings'))
+    // As changing which templates a type allows: Settings.
+    if (!hasSection(principal, 'settings'))
       return Response.json(
         { message: 'Making a component a template needs access to Structure.' },
         { status: 403 },

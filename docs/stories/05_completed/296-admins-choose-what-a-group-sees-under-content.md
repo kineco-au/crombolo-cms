@@ -115,3 +115,10 @@ written up: these are the screens that idea was for.
 9. **Docs:** `docs/backoffice-hosting.md`, `docs/schema-as-code.md`, `docs/forms.md`, release notes.
 
 No migration: a group's sections are already a list, and no existing group changes.
+
+## Superseded (2026-11-11)
+
+Story 322 removed the three grants: Structure, Code and Workflow set-up follow the Settings
+section again. The role they served, a site builder who is not an administrator, proved rare,
+and holding it needed the client to be told more than the user holds and a fork commit that
+opens Settings for a partial holder. Forms stays as it was before this story.

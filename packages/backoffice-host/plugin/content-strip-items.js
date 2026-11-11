@@ -7,23 +7,15 @@
  */
 import { treeFor } from './settings-cards.js'
 
-const STRUCTURE = 'Crombolo.Section.Structure'
-const COMPONENTS = 'Crombolo.Section.Components'
-const WORKFLOW_SETUP = 'Crombolo.Section.WorkflowSetup'
+const SETTINGS = 'Umb.Section.Settings'
 const APPROVALS = 'Crombolo.Section.Workflow'
 /** Reading forms, which is what a group's Forms comes to. */
 const FORM_READ = 'Crombolo.Form.Read'
 const FORMS = 'Crombolo.Section.Forms'
 const CONTENT = 'Umb.Section.Content'
 
-/**
- * Forms and Workflows are nodes in Structure; someone with either alone, and not
- * Structure, gets it beside the other in the Forms section.
- */
-const STRUCTURE_ELSE = [
-  { path: 'section/forms', section: FORMS, verb: FORM_READ },
-  { path: 'section/forms/view/workflows', section: WORKFLOW_SETUP },
-]
+/** Forms is a node in Structure; someone with Forms and not Settings gets it in the Forms section. */
+const STRUCTURE_ELSE = [{ path: 'section/forms', section: FORMS, verb: FORM_READ }]
 
 const ITEMS = [
   { label: 'Pages', path: 'section/content', section: CONTENT },
@@ -31,10 +23,10 @@ const ITEMS = [
   {
     label: 'Structure',
     path: 'section/settings/structure',
-    section: STRUCTURE,
+    section: SETTINGS,
     or: STRUCTURE_ELSE,
   },
-  { label: 'Code', path: 'section/settings/code', section: COMPONENTS },
+  { label: 'Code', path: 'section/settings/code', section: SETTINGS },
 ]
 
 /**

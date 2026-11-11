@@ -161,3 +161,35 @@ Story 303 is absorbed by 306 and 312, and 307 was merged into them.
 - **D4, an extension's options:** both. The manifest declares a settings
   schema. `crombolo.config.ts` may set values, plain data under `extensions`,
   which locks them. The back office edits the rest.
+
+## Decisions (2026-11-11): the screens
+
+The process confines the server half; a screen granted `backoffice.code` still runs in
+the back-office page with the user's session, so it can call the Management API as an
+administrator, install another package and grant itself the rest. The decisions, each with
+its story:
+
+- **D5, an extension never holds the user's authority.** It acts as itself, for the user,
+  through the CMS, and every call is checked against its grant and the user's own
+  permissions and audited as "Redirects, for Adam". The only unconfined code is code
+  committed to the site's repository, or an extension an administrator has knowingly made
+  Unrestricted.
+- **D6, screens are described, not shipped** (story 323): the server half returns a screen
+  as data from a small catalogue, the host renders it with its own components, and no
+  markup or script of the extension's reaches the page. A described screen needs no
+  permission. Redirects and Entra port first (story 329).
+- **D7, three levels, computed from the permissions** (story 324): Limited, Acts as you
+  (`user.delegate`, story 325) and Unrestricted (`backoffice.code`). Administrators grant
+  the upper two, with provenance required; a host may confine Unrestricted to the config.
+  Installing and granting extensions, and writing users and groups, are never offered at
+  any level.
+- **D8, an extension is not a dependency of the site** (story 326): its own root, its own
+  lockfile, nothing in the site's.
+- **D9, trying an extension is install, grant, watch, remove:** install is inert, the grant
+  is the one decision, the activity view shows everything it did (story 327), and removal
+  leaves nothing (story 328).
+- **D10, templates carry no script** (story 330), since the back office shares the site's
+  origin.
+- **Later:** request-time behaviour on named paths with a budget (story 331); a framed tier
+  for a property editor that must be custom code without the session, when a real
+  extension asks for it.

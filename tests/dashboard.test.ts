@@ -156,9 +156,6 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       // A page's Workflow tab shows only while the site has a workflow or a request is open
       // (234); Approvals, in the menu under Content, says when there is none.
       'condition:Crombolo.Condition.ApprovalsActive',
-      'section:Crombolo.Section.Structure',
-      'section:Crombolo.Section.Components',
-      'section:Crombolo.Section.WorkflowSetup',
       'section:Crombolo.Section.Workflow',
       'sectionSidebarApp:Crombolo.SectionSidebarApp.ApprovalsTree',
       'sectionView:Crombolo.SectionView.Workflow.Requests',
@@ -207,9 +204,6 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'Crombolo.HeaderApp.Settings',
       'Crombolo.Section.Forms',
       'Crombolo.FormPicker',
-      'Crombolo.Section.Structure',
-      'Crombolo.Section.Components',
-      'Crombolo.Section.WorkflowSetup',
       'Crombolo.Section.Workflow',
     ])
     expect(moduleless.map((e) => e.type)).toEqual([
@@ -226,9 +220,6 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'headerApp',
       'section',
       'propertyEditorSchema',
-      'section',
-      'section',
-      'section',
       'section',
     ])
 
@@ -465,7 +456,7 @@ describe('the plugin views', () => {
     expect(designer?.type).toBe('sectionView')
     expect(designer?.conditions).toEqual([
       { alias: 'Umb.Condition.SectionAlias', match: 'Crombolo.Section.Forms' },
-      { alias: 'Umb.Condition.SectionUserPermission', match: 'Crombolo.Section.WorkflowSetup' },
+      { alias: 'Umb.Condition.SectionUserPermission', match: 'Umb.Section.Settings' },
     ])
     const approvals = manifest.extensions.find((e) => e.alias === 'Crombolo.Section.Workflow')
     expect(approvals?.conditions).toBeUndefined()

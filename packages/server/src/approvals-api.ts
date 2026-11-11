@@ -51,9 +51,9 @@ export async function syncWorkflowFiles(db: Db, schemaDir: string) {
 }
 
 /** What saving a workflow would do to the requests in flight under it. */
-/** Setting up workflows, which a group can be given (story 296). Deciding on a page is separate. */
+/** Setting up workflows, which Settings brings (story 322). Deciding on a page is separate. */
 const mayDesignWorkflows = (principal: Principal): boolean =>
-  principal.isAdmin || hasSection(principal, 'workflowSetup')
+  principal.isAdmin || hasSection(principal, 'settings')
 
 async function changePreview(approvals: Approvals, principal: Principal, workflow: SchemaWorkflow) {
   const id = workflow.key ?? workflow.alias

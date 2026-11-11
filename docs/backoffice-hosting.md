@@ -461,12 +461,12 @@ are a box on Home, whose All details opens the client's own dialog.
 
 Every trail in Settings starts at Home, and its landing page has one too.
 
-**Parts of Settings (story 296).** `structure`, `components` and `workflowSetup` are sections a group
-can hold, with no header tab, as `forms` is. `api-management/src/authorization.ts` goes by what is held.
-The client opens those screens only for someone with Settings, so `clientSections` in
-`packages/core/src/sections.ts` adds Settings to what it is told, and `Crombolo.Section.AllSettings`
-marks those with the whole of it. The gear and the cards ask for that. Whoever holds `settings` has
-Structure and Components, and an administrator has Workflow setup too.
+**Settings is one grant (story 322).** Structure, Code and Workflow set-up follow the Settings
+section, as `api-management/src/authorization.ts` says. Between stories 296 and 322 a group could
+hold `structure`, `components` or `workflowSetup` alone; those aliases are read and dropped now
+(`RETIRED_SECTIONS` in `packages/core/src/sections.ts`), and the client is told exactly the
+sections held. The fork's header still lists them among the sections with no tab, inert until the
+next Umbraco rebase takes them out.
 
 **Modules (story 292)** are `.ts` files in the components tree, served by `createComponentsPort`.
 The create menu is built from `entityCreateOptionAction` manifests, not the unused options modal.
@@ -488,7 +488,7 @@ Forms and Workflows are nodes in Structure, below Data Types: two `menuItem`s wh
 `definition-tree.js`, told which tree by `meta.kind`. `settings-section.js` routes
 `section/settings/forms` and `section/settings/workflows`, so the tree stays on screen. The same
 elements answer at `section/forms/view/forms` and `section/forms/view/workflows`, views of the
-Forms section with `meta.noTab`, for someone with Forms or Workflow setup and not Structure:
+Forms section with `meta.noTab`, for someone with Forms and not Settings:
 the menu's Structure opens there for them.
 
 A page's History box on the Info view is `page-history.js`, a `workspaceInfoApp` that

@@ -151,42 +151,6 @@ test('someone with Pages alone sees no menu', async ({ page }) => {
   await expect(strip(page).getByRole('link')).toHaveCount(0)
 })
 
-test('someone given Structure alone gets its tree, with no Settings tools', async ({
-  page,
-  diagnostics,
-}) => {
-  diagnostics.allowed.push(
-    'Tree context is not set',
-    'provideAt is not a function',
-    'repository is missing',
-  )
-  await page.route('**/management/api/v1/user/current', async (route) => {
-    const response = await route.fetch()
-    const user = await response.json()
-    user.allowedSections = [
-      'Umb.Section.Content',
-      'Umb.Section.Settings',
-      'Crombolo.Section.Structure',
-    ]
-    user.isAdmin = false
-    await route.fulfill({ response, json: user })
-  })
-  await signIn(page)
-  await goToSection(page, 'Content')
-  await settle(page)
-  const links = strip(page).getByRole('link')
-  await expect(links).toHaveText(['Pages', 'Structure'])
-  await expect(
-    page.locator('umb-backoffice-header-sections uui-tab', { hasText: 'Structure' }),
-  ).toHaveCount(0)
-  await expect(page.getByRole('link', { name: 'Settings', exact: true })).toHaveCount(0)
-
-  // The cards aren't for them, so the address leads to what they have.
-  await page.goto('/crombolo/section/settings')
-  await expect(page).toHaveURL(/\/section\/settings\/structure$/)
-  await expect(page.locator('crombolo-settings-landing')).toHaveCount(0)
-})
-
 test('forms sit in folders in the tree, and the root lists every entry', async ({ page }) => {
   await signIn(page)
   await page.goto('/crombolo/section/forms')
