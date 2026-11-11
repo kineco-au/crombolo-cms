@@ -168,6 +168,7 @@ not cover.
 | `262` | Telemetry that reaches the tools you already watch | should | L | done | 047 |
 | `273` | Search through providers a site can replace | could | L | done | 043, 140 |
 | `333` | How far Windows is from running the suite | could | S | ready | — |
+| `334` | A Windows developer works through Docker | could | S | ready | — |
 
 ### Epic F — Headless
 

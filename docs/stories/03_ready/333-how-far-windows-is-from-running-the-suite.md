@@ -59,9 +59,9 @@ and record what fails.
 - The results written into this story: each failing test file, grouped by cause
   (paths, symlinks, file locking, shell, line endings, other), with a count per
   cause and an estimate of each fix.
-- The outcome: one or more follow-up stories, sized from the results. One for
-  the Docker route on Windows (setup steps in the README) and, if the numbers
-  justify it, one for native Windows.
+- The outcome: a follow-up story for native Windows, sized from the results, if
+  the numbers justify one. The Docker route is story 334, and `.gitattributes` is
+  in both: whichever lands first adds it.
 
 Not in scope: fixing any of the failures, running the Postgres, browser or
 integration suites on Windows, or adding Windows to the CI that gates a release.
