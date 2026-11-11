@@ -17,12 +17,10 @@
  * browser cannot reach npm, and the backoffice keeps making same-origin
  * requests only.
  */
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join, relative, resolve, sep } from 'node:path'
+import { readFileSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
 import {
   type AccessLevel,
-  askedPermissions,
   type BundlePackage,
   type DeclaredPermission,
   describePermissions,
@@ -30,31 +28,19 @@ import {
   type ExtensionRegistry,
   forgetExtension,
   groupsOf,
-  isSchema3Field,
   LEGACY_EXTENSION_KEYWORD,
   levelOf,
-  type PackageJson,
   type PermissionGroups,
-  packageInRoot,
-  prepareRoot,
   RECORD_FILE,
   ROOTS_DIR,
   readPackageJson,
   readRecord,
-  readSettings,
-  recordExtension,
   rootOf,
   SCHEMA_3_NOT_INSTALLED,
   SITE_PACKAGE_NOT_INSTALLED,
   USER_DELEGATE,
-  validateBundlePackage,
 } from '@crombolo/backoffice-host'
-import {
-  LOCAL_BUNDLES_DIR,
-  localBundleFileName,
-  localBundlePath,
-  localBundlesNamed,
-} from '@crombolo/transfer'
+import { localBundlePath, localBundlesNamed } from '@crombolo/transfer'
 import {
   type BundleGrants,
   DELEGATE_NEEDS_PERSON,
@@ -63,24 +49,40 @@ import {
   isSchema3,
 } from './bundle-grants.ts'
 import { siteLayouts } from './components.ts'
+import {
+  type AskedLayout,
+  bunInstaller,
+  declaresAt as declaresAtRegistry,
+  declaresIn,
+  installIntoRoot,
+  isValidPackageName,
+  isValidVersion,
+  keepInSite,
+  layoutAsked,
+  type PackageInstaller,
+  provenanceAt as provenanceAtRegistry,
+  screensOf,
+  signatureRefusal,
+  sitePackageRefused,
+} from './extension-install.ts'
 import { grantRefusal, type UnrestrictedFrom } from './grant-policy.ts'
 import { logger } from './logging.ts'
 import {
   type ProvenancePolicy,
   type ProvenanceResult,
-  provenanceProblem,
   verifyPackage,
   verifyProvenance,
 } from './provenance.ts'
-import { extractTarball } from './tar.ts'
+
+export {
+  bunInstaller,
+  installCommand,
+  isValidPackageName,
+  isValidVersion,
+  type PackageInstaller,
+} from './extension-install.ts'
 
 const log = logger('packages')
-
-/** Where a registry version's tarball is, and what it hashes to. */
-interface Dist {
-  tarball?: string
-  integrity?: string
-}
 
 /** How long a search is reused. Long enough to page a list, short enough to stay fresh. */
 const CACHE_MS = 5 * 60 * 1000
@@ -224,12 +226,6 @@ export interface InstallOutcome {
   file?: string
 }
 
-export type PackageInstaller = (
-  action: 'add' | 'remove',
-  specifier: string,
-  siteDir: string,
-) => Promise<{ ok: boolean; output: string }>
-
 interface SearchObject {
   package?: {
     name?: string
@@ -238,22 +234,6 @@ interface SearchObject {
     publisher?: { username?: string }
     links?: Record<string, string>
   }
-}
-
-/** A name npm would accept, so nothing shell-ish or path-ish reaches `bun add`. */
-export function isValidPackageName(name: string): boolean {
-  return /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/.test(name) && name.length <= 214
-}
-
-/**
- * A version or range that cannot be mistaken for another argument.
- *
- * Ranges start with an operator — `^2.1`, `>=1 <2` — so those lead; `-` never
- * does, because `bun add` would read it as a flag. No shell is involved
- * (`Bun.spawn` takes an argv), so the space in a range is harmless.
- */
-export function isValidVersion(version: string): boolean {
-  return /^[A-Za-z0-9^~>=<*][A-Za-z0-9.^~>=<| *+-]*$/.test(version) && version.length <= 64
 }
 
 export interface Marketplace {
@@ -307,63 +287,6 @@ export interface Marketplace {
   uninstall(name: string): Promise<InstallOutcome>
 }
 
-/**
- * The argv an install runs. `add` never runs a package's install scripts,
- * whatever Bun's own list of trusted packages says (story 194).
- */
-export function installCommand(action: 'add' | 'remove', specifier: string): string[] {
-  return action === 'add'
-    ? ['bun', 'add', '--ignore-scripts', specifier]
-    : ['bun', action, specifier]
-}
-
-/**
- * `bun add` in the site directory: Bun owns resolution and writes the lockfile.
- *
- * The spawn itself can fail rather than the command — an unreadable site
- * directory or a `bun` that is not on the path both throw out of `Bun.spawn` —
- * and that has to come back as a failed install with a reason, not as an
- * exception the route turns into a 500.
- */
-export const bunInstaller: PackageInstaller = async (action, specifier, siteDir) => {
-  try {
-    const proc = Bun.spawn(installCommand(action, specifier), {
-      cwd: siteDir,
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-    const [stdout, stderr, code] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ])
-    return { ok: code === 0, output: `${stdout}${stderr}`.trim() }
-  } catch (error) {
-    return {
-      ok: false,
-      output: `bun ${action} could not be run in ${siteDir}: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    }
-  }
-}
-
-/** The layout setting a version declares, if it has page templates to place (story 312). */
-type AskedLayout = { key: string; label: string; suggested?: string }
-
-function layoutAsked(field: { settings?: unknown } | undefined): AskedLayout | undefined {
-  const read = readSettings(field?.settings)
-  if (!('settings' in read)) return undefined
-  const found = Object.entries(read.settings).find(([, setting]) => setting.type === 'layout')
-  if (!found) return undefined
-  const [key, setting] = found
-  return {
-    key,
-    label: setting.label,
-    ...(typeof setting.default === 'string' ? { suggested: setting.default } : {}),
-  }
-}
-
 export function createMarketplace(options: MarketplaceOptions): Marketplace {
   /** The site's layouts to pick from, the suggestion kept only when the site has it. */
   const layoutChoice = (asked: AskedLayout | undefined): InstallOutcome['layout'] => {
@@ -399,28 +322,6 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
   }
   let cached: { at: number; query: string; listings: MarketplaceListing[] } | undefined
 
-  /**
-   * A bundle's file at `bundles/<name>-<version>.tgz`: used in place when it is
-   * there already, copied there otherwise. Another file under that name is
-   * refused, since one version is one file.
-   */
-  const keepInSite = (
-    file: string,
-    declared: { name: string; version: string },
-  ): { path: string; copied: boolean } | string => {
-    const path = `${LOCAL_BUNDLES_DIR}/${localBundleFileName(declared.name, declared.version)}`
-    const target = join(options.siteDir, path)
-    if (resolve(file) === resolve(target)) return { path, copied: false }
-    const bytes = readFileSync(file)
-    if (existsSync(target)) {
-      if (readFileSync(target).equals(bytes)) return { path, copied: false }
-      return `${path} already holds a different ${declared.name}@${declared.version} than ${file}, so it was not installed: one version is one file. Remove ${path} first if ${file} is the one to keep.`
-    }
-    mkdirSync(join(options.siteDir, LOCAL_BUNDLES_DIR), { recursive: true })
-    copyFileSync(file, target)
-    return { path, copied: true }
-  }
-
   /** The `bundles/` file a dependency used to name, removed once nothing names it. */
   const removeUnnamed = (previousRange: string | undefined, keep?: string) => {
     const path = localBundlePath(previousRange)
@@ -433,135 +334,19 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
     options.extensions.bundles().bundles.find((bundle) => bundle.packageName === name)?.version ??
     null
 
-  /**
-   * What the registry says a version carries: the version asked for (an exact
-   * one, or the highest a range admits), or the latest. `not-a-bundle` when that
-   * version is no valid bundle, `unreachable` when the registry could not say.
-   */
-  const declaresAt = async (
-    name: string,
-    wanted?: string,
-  ): Promise<
-    | (BundlePackage['carries'] & {
-        permissions: DeclaredPermission[]
-        layout?: AskedLayout
-        version: string
-        dist?: Dist
-        id?: string
-        screens?: number
-      })
-    | 'not-a-bundle'
-    | { refused: string[] }
-    | 'site-package'
-    | 'schema-3'
-    | 'unreachable'
-  > => {
-    try {
-      const response = await call(`${options.registry}/${encodeURIComponent(name)}`, {
-        headers: { accept: 'application/json' },
-      })
-      if (!response.ok) return response.status === 404 ? 'not-a-bundle' : 'unreachable'
-      const packument = (await response.json()) as {
-        'dist-tags'?: Record<string, string>
-        versions?: Record<string, PackageJson>
-      }
-      const versions = packument.versions ?? {}
-      const resolved =
-        wanted === undefined
-          ? packument['dist-tags']?.latest
-          : wanted in versions
-            ? wanted
-            : (packument['dist-tags']?.[wanted] ??
-              Object.keys(versions)
-                .filter((v) => Bun.semver.satisfies(v, wanted))
-                .sort(Bun.semver.order)
-                .at(-1))
-      const version = resolved ? versions[resolved] : undefined
-      // A site package is never installed, whatever a registry offers (story 306).
-      if ((version?.crombolo as { bundleType?: unknown } | undefined)?.bundleType === 'site')
-        return 'site-package'
-      if (!resolved || !version) return 'not-a-bundle'
-      // Why it is not one, so its author knows what to change: a layout before 0.59 among them (story 320).
-      const problems = validateBundlePackage(version)
-      if (problems.length > 0) return { refused: problems }
-      const dist = (version as { dist?: Dist }).dist
-      const field = version.crombolo as {
-        extensions?: unknown[]
-        content?: boolean
-        id?: string
-        server?: string
-        permissions?: unknown
-        settings?: unknown
-      }
-      // Story 308: a version that says nothing of why it asks is not installed.
-      if (isSchema3Field(field)) return 'schema-3'
-      return {
-        extensions: Array.isArray(field.extensions) && field.extensions.length > 0,
-        content: field.content === true,
-        server: field.server !== undefined,
-        permissions: askedPermissions(field),
-        layout: layoutAsked(field),
-        version: resolved,
-        ...(typeof field.id === 'string' ? { id: field.id } : {}),
-        screens: screensOf(field),
-        ...(dist ? { dist } : {}),
-      }
-    } catch {
-      return 'unreachable'
-    }
-  }
-
+  const declaresAt = (name: string, wanted?: string) =>
+    declaresAtRegistry(options.registry, name, wanted, call)
   const verify = options.verify ?? ((dir: string) => verifyProvenance(dir))
-
-  /**
-   * Where a registry version was built (story 060): its exact tarball fetched,
-   * held to the registry's integrity, and its signature checked, so the bytes
-   * checked are the bytes `bun add` then installs. A registry that gives no
-   * tarball leaves nothing to check; one that cannot be fetched is not unsigned.
-   */
-  const provenanceAt = async (name: string, dist: Dist | undefined): Promise<ProvenanceResult> => {
-    if (!dist?.tarball) return { state: 'unsigned' }
-    const dir = mkdtempSync(join(tmpdir(), 'crombolo-bundle-check-'))
-    try {
-      const response = await call(dist.tarball)
-      if (!response.ok)
-        return {
-          state: 'unchecked',
-          reason: `${name} could not be fetched to check its signature (the registry answered ${response.status})`,
-        }
-      const bytes = new Uint8Array(await response.arrayBuffer())
-      if (dist.integrity?.startsWith('sha512-')) {
-        const got = `sha512-${new Bun.CryptoHasher('sha512').update(bytes).digest('base64')}`
-        if (got !== dist.integrity)
-          return { state: 'invalid', reason: `${name} is not the package the registry describes` }
-      }
-      const file = join(dir, 'bundle.tgz')
-      await Bun.write(file, bytes)
-      const unpacked = join(dir, 'package')
-      await extractTarball(file, unpacked)
-      return await verify(unpacked)
-    } catch (error) {
-      return {
-        state: 'unchecked',
-        reason: `${name} could not be checked: ${error instanceof Error ? error.message : String(error)}`,
-      }
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
-  }
+  const provenanceAt = (name: string, dist: Parameters<typeof provenanceAtRegistry>[1]) =>
+    provenanceAtRegistry(name, dist, { fetch: call, verify })
 
   /** Why the site's policy refuses a version, as an outcome, or undefined when it may be installed. */
   const refusedBySignature = (
     label: string,
     provenance: ProvenanceResult,
   ): InstallOutcome | undefined => {
-    const problem = provenanceProblem(
-      provenance,
-      options.policy ?? { signatures: 'optional', sources: [] },
-    )
-    return problem
-      ? { ok: false, message: `${label} was not installed: ${problem}.`, provenance }
-      : undefined
+    const message = signatureRefusal(label, provenance, options.policy)
+    return message ? { ok: false, message, provenance } : undefined
   }
 
   /** Why the person may not grant what it asks for here: its level, by who they are and its signature (story 324). */
@@ -828,7 +613,7 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
         return grantNeeded(declared.name, declared.permissions, '', layoutChoice(declared.layout))
       // Kept in the site's bundles/ (story 245), so it is committed and every
       // node, checkout and CI build installs the same file.
-      const kept = keepInSite(file, declared)
+      const kept = keepInSite(options.siteDir, file, declared)
       if (typeof kept === 'string') return { ok: false, message: kept }
       const discard = () => {
         if (kept.copied) rmSync(join(options.siteDir, kept.path), { force: true })
@@ -913,31 +698,14 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
     into: { id: string; integrity?: string },
   ): Promise<InstallOutcome> {
     // Story 326: into a root of its own, never the site's dependencies.
-    const root = prepareRoot(options.siteDir, into.id)
-    const inRoot = specifier.startsWith('./')
-      ? `file:${relative(root, join(options.siteDir, specifier)).split(sep).join('/')}`
-      : specifier
-    const result = await install('add', inRoot, root)
-    if (!result.ok) {
-      options.extensions.invalidate()
-      return {
-        ok: false,
-        message: result.output || `Installing ${specifier} failed.`,
-      }
-    }
-    const landed = readPackageJson(
-      join(packageInRoot(options.siteDir, into.id, name), 'package.json'),
+    const installed = await installIntoRoot(
+      options.siteDir,
+      { id: into.id, name, specifier, version, integrity: into.integrity },
+      install,
     )
-    recordExtension(options.siteDir, into.id, {
-      name,
-      version: landed?.version ?? version ?? 'unknown',
-      ...(into.integrity ? { integrity: into.integrity } : {}),
-    })
     options.extensions.invalidate()
-    const undo = () => {
-      rmSync(root, { recursive: true, force: true })
-      forgetExtension(options.siteDir, into.id)
-    }
+    if (!installed.ok) return { ok: false, message: installed.message }
+    const undo = installed.undo
 
     const range = (await rangeFor(name)) ?? version ?? 'latest'
     const discovered = options.extensions.bundles()
@@ -1030,58 +798,6 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
   }
 }
 
-/** A site package offered as a dependency: refused, saying how one is used (story 306). */
-function sitePackageRefused(name: string): { ok: false; message: string } {
-  return {
-    ok: false,
-    message: `${name} is a site package, which is applied to a site with \`crombolo site apply\`, never installed, so it was not installed.`,
-  }
-}
-
-/** What a packed bundle on this machine declares, read from its package.json, or why it cannot be installed. */
-async function declaresIn(file: string): Promise<
-  | {
-      id: string
-      name: string
-      version: string
-      server: boolean
-      permissions: DeclaredPermission[]
-      layout?: AskedLayout
-    }
-  | string
-> {
-  const dir = mkdtempSync(join(tmpdir(), 'crombolo-bundle-file-'))
-  try {
-    await extractTarball(file, dir)
-    const root = existsSync(join(dir, 'package', 'package.json')) ? join(dir, 'package') : dir
-    const json = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as PackageJson
-    if ((json.crombolo as { bundleType?: unknown } | undefined)?.bundleType === 'site')
-      return sitePackageRefused(file).message
-    const problems = validateBundlePackage(json)
-    if (problems.length > 0 || typeof json.name !== 'string' || typeof json.version !== 'string')
-      return `${file} is not an extension for this site, so it was not installed.`
-    const field = json.crombolo as {
-      id: string
-      server?: string
-      permissions?: unknown
-      settings?: unknown
-    }
-    if (isSchema3Field(field)) return `${file} was not installed: ${SCHEMA_3_NOT_INSTALLED}.`
-    return {
-      id: field.id,
-      name: json.name,
-      version: json.version,
-      server: field.server !== undefined,
-      permissions: askedPermissions(field),
-      layout: layoutAsked(field),
-    }
-  } catch {
-    return `${file} could not be read as a packed bundle, so it was not installed.`
-  } finally {
-    rmSync(dir, { recursive: true, force: true })
-  }
-}
-
 /** A package's own description, read leniently: anything unreadable is none. */
 /** Who made an installed package, as its `author` says: npm's publisher is not kept with it. */
 function authorOf(directory: string): string | null {
@@ -1131,14 +847,6 @@ function consented(
   const granted = new Set(request.grant ?? [])
   return granted.size === new Set(permissions).size && permissions.every((p) => granted.has(p))
 }
-
-/** How many screens its manifest's entries name (story 323), for what it adds. */
-const screensOf = (field: { extensions?: unknown }): number =>
-  Array.isArray(field.extensions)
-    ? field.extensions.filter(
-        (entry) => entry && typeof entry === 'object' && 'screen' in (entry as object),
-      ).length
-    : 0
 
 /** A refusal the screen answers by showing what it asks for, with the reasons, and the grant. */
 function grantNeeded(

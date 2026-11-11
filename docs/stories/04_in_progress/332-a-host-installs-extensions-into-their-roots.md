@@ -46,14 +46,14 @@ for a site package with code. A host that installs extensions its own way has ne
 
 ## Acceptance criteria
 
-- [ ] The roots helpers and types are exported from `@crombolo/crombolo/host`, and
+- [x] The roots helpers and types are exported from `@crombolo/crombolo/host`, and
       `docs/api.md` lists them.
-- [ ] `installExtension` installs into the root and writes the line the boot accepts; a
+- [x] `installExtension` installs into the root and writes the line the boot accepts; a
       wrong integrity is refused and leaves no root; `removeExtension` removes both.
-- [ ] `installBundleCode` installs each carried root from its lockfile, and reports a root
+- [x] `installBundleCode` installs each carried root from its lockfile, and reports a root
       that fails.
-- [ ] `checkBundleCode` reports an extension listed as a dependency of the code.
-- [ ] Covering tests: a host-installed extension boots and is listed in Installed; a code
+- [x] `checkBundleCode` reports an extension listed as a dependency of the code.
+- [x] Covering tests: a host-installed extension boots and is listed in Installed; a code
       package with a root installs and boots it; a dependency extension is reported.
 
 ## Decisions (2026-11-11)
@@ -128,3 +128,59 @@ for a site package with code. A host that installs extensions its own way has ne
   a root whose lockfile will not install is named in `roots` and the problems; a code
   package listing an extension as a dependency is reported by `checkBundleCode`.
 - **Marketplace tests** run unchanged, on the shared path.
+
+## Implemented (2026-11-11)
+
+- **One install path** in `packages/server/src/extension-install.ts`: `declaresAt`,
+  `declaresIn`, `provenanceAt`, `signatureRefusal`, `keepInSite` and
+  `installIntoRoot` (prepare the root, `bun add --ignore-scripts`, hold what landed
+  to the integrity by the root's `bun.lock`, write the line, undo) moved out of
+  `marketplace.ts`, with `installCommand`, `bunInstaller`, `isValidPackageName`
+  and `isValidVersion`, which `marketplace.ts` re-exports. The Marketplace calls
+  `installIntoRoot` and keeps consent, levels, grants, content and invalidating
+  around it; its tests run unchanged.
+- **`installExtension(siteDir, { name, version?, integrity?, file?, policy?, registry? })`**
+  and **`removeExtension(siteDir, id)`** in the same file. The policy and registry
+  default to what `loadConfig({ siteDir }, siteDir)` resolves (`bundlePolicy`,
+  `npmRegistry`). After the install, what landed is read from the root: a site
+  package, a package that is not an extension, another id, another version than
+  the one checked, or a schema before 6 is taken out again, root and line.
+- **`@crombolo/crombolo/host`** exports `ROOTS_DIR`, `RECORD_FILE`,
+  `RecordedExtension`, `ExtensionRecord`, `rootOf`, `readRecord`,
+  `recordProblems`, `grantHashOf`, `INSTALLED_AS_DEPENDENCY`, `installExtension`,
+  `removeExtension`, `InstallExtensionOptions`, `InstallExtensionResult` and
+  `BundleCodeRoot`; `docs/api/surface.json` regenerated.
+- **`installBundleCode`** (`bundle-code.ts`) installs each `extensions/<id>/` the
+  code carries with the same frozen install as the site's (`--frozen-lockfile
+  --ignore-scripts --omit peer`), then holds it to its line (version, and
+  integrity against the root's `bun.lock`). Its result gains `roots`; a failed
+  root is a problem too, and the others still install.
+- **`checkBundleCode`** installs the roots in its scratch copy, reports
+  `recordProblems`, a root that does not match its line, and an extension the
+  code depends on in `INSTALLED_AS_DEPENDENCY`'s words; root extensions' server
+  halves are in `serverBundles` through discovery.
+- **Docs:** `api.md` ("Extensions installed by a host", and the host row),
+  `bundles.md` ("The record and the roots").
+- **Tests:** `tests/host-extensions.test.ts` (new: a registry stub on `Bun.serve`
+  and a real `bun add`), four new cases in `tests/bundle-code.test.ts`, and
+  `packDirectory`, `integrityOf` and `packedServerExtension` in
+  `tests/support/bundles.ts`.
+
+### Where it differs from the plan
+
+- **`--exact`:** the shared `bun add` was not given `--exact`, which would have
+  changed the Marketplace's dependency line and its tests. `installExtension`
+  pins instead by adding `name@<the resolved version>`, which Bun writes as that
+  exact version.
+- **A dependency the config imports is not named.** A site that wires a bundle
+  from its config the old way (`bundles: [fx()]`) is still run by the boot, so
+  `checkBundleCode` names a dependency extension only when it has no server half
+  or the config does not import its package (read as text: the config is never
+  run). Naming every one would have failed every site that wires its own bundle.
+- **A failed `bun add`** now takes out a root it made, in the Marketplace too,
+  rather than leaving an empty root that `recordProblems` names; a root that was
+  already there is left as it was.
+- **`registry`** is passed to `bun add` as `--registry`, so the install and the
+  checks read the same registry. The Marketplace's own installs still use Bun's.
+- **Release notes** were left to the maintainer's session.
+

@@ -73,6 +73,12 @@ export {
   extensionEntryProblems,
   settingsOf,
 } from './extension-discovery.ts'
+export {
+  type InstallExtensionOptions,
+  type InstallExtensionResult,
+  installExtension,
+  removeExtension,
+} from './extension-install.ts'
 export { denoArguments, netHosts, processReads } from './extension-process.ts'
 export { normaliseScreenResult, safeScreenHref, screenValues } from './extension-screens.ts'
 export { extensionSqlProblem } from './extension-sql.ts'

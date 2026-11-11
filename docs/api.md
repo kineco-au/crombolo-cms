@@ -19,7 +19,7 @@ Everything supported comes from `@crombolo/crombolo`, split by who is using it:
 | `@crombolo/crombolo/middleware` | a site's middleware | the middleware contract bound to crombolo's types (`Middleware`, `MiddlewareHandler`, `MiddlewareContext`), `rewrite`, `withCookie`, `NextResponse` and `fromNextMiddleware` (story 210) |
 | `@crombolo/crombolo/islands-react` | the browser | `mount`, which renders a `'use client'` island with React; Crombolo's island build includes it, and a Vite build lists it as an input (story 209) |
 | `@crombolo/crombolo/transfer` | a tool that writes a site | what schema files and a content bundle are written with: the schema writers and `validateSchemaSet`, the built-in types, `writeBundle`, `writeBundlePackage`, `newSeal`, `loadBundle`, `openBundle`, `scaffoldFiles` and the bundle's types (story 278) |
-| `@crombolo/crombolo/host` | whoever runs sites | `createServer`, `loadConfig`, `cromboloServer` and `ServerHandle`; `createWorker`, `WorkerHandle` and `WorkerHealth`, a node that runs only the jobs (story 223); the media and schema stores; `liveNodes`; the bundle checks (`validateBundlePackage`, `peerRangeProblem`, `checkBundleCode`, `installBundleCode`); the signature check (`verifyPackage`, `verifyProvenance`, `provenanceProblem`, `describeProvenance`, story 244); and the operations a deploy runs (`upgradePlan`, `upgradeFix`, `contentCheck`, `contentImport`, `siteExport`, `findTemplate`, with `TransferInput`, `ContentImportInput` and `Vouch`); and `ownerSetup`, with `OwnerSetup` and `OwnerSetupInput`, the role and schema a custom-table owner needs, for a host that makes them itself (story 321) |
+| `@crombolo/crombolo/host` | whoever runs sites | `createServer`, `loadConfig`, `cromboloServer` and `ServerHandle`; `createWorker`, `WorkerHandle` and `WorkerHealth`, a node that runs only the jobs (story 223); the media and schema stores; `liveNodes`; the bundle checks (`validateBundlePackage`, `peerRangeProblem`, `checkBundleCode`, `installBundleCode`); the extension roots (`installExtension`, `removeExtension`, `readRecord`, `recordProblems`, `rootOf`, `grantHashOf`, `ROOTS_DIR`, `RECORD_FILE`, `INSTALLED_AS_DEPENDENCY`, with `RecordedExtension` and `ExtensionRecord`, story 332); the signature check (`verifyPackage`, `verifyProvenance`, `provenanceProblem`, `describeProvenance`, story 244); and the operations a deploy runs (`upgradePlan`, `upgradeFix`, `contentCheck`, `contentImport`, `siteExport`, `findTemplate`, with `TransferInput`, `ContentImportInput` and `Vouch`); and `ownerSetup`, with `OwnerSetup` and `OwnerSetupInput`, the role and schema a custom-table owner needs, for a host that makes them itself (story 321) |
 
 `@crombolo/crombolo/branding` (the marks and the palette) and the JSX runtimes
 are supported too. The JSX runtimes' names are the JSX compiler's contract, not
@@ -195,6 +195,50 @@ through TUF at most hourly and cached, could not be had and none was cached.
 `unchecked` bundle is worth trying again, an `invalid` one is not. Nothing
 throws. `VerifyProvenanceOptions.trustedRoot` takes a trusted root of the
 host's own, as JSON, in place of the public one.
+
+## Extensions installed by a host (unreleased)
+
+A host that installs a site's extensions itself (story 332) installs them the
+way the Marketplace does, from `@crombolo/crombolo/host`, rather than copying
+the record's format. Nothing is removed.
+
+| Export | For |
+| --- | --- |
+| `installExtension(siteDir, { name, version?, integrity?, file?, policy?, registry? })` | installs into `extensions/<id>/` and writes the line: `{ ok: true, id, root, line, provenance }` or `{ ok: false, problems }` |
+| `removeExtension(siteDir, id)` | deletes the root and the line, and nothing else: `{ removed }` |
+| `readRecord(siteDir)`, `recordProblems(siteDir)` | the record, and where it and the roots disagree |
+| `rootOf(siteDir, id)`, `ROOTS_DIR`, `RECORD_FILE` | where the roots and the record are |
+| `grantHashOf(permissions, origins?)` | the hash a line keeps of what was granted |
+| `INSTALLED_AS_DEPENDENCY` | what the boot says of an extension the site lists as a dependency |
+| `InstallExtensionOptions`, `InstallExtensionResult`, `RecordedExtension`, `ExtensionRecord`, `BundleCodeRoot` | their types |
+
+`installExtension` takes the latest version when none is given, or a packed
+`.tgz` as `file`, which it keeps in the site's `bundles/`. It checks the
+signature against the site's `CROMBOLO_BUNDLE_SIGNATURES` and
+`CROMBOLO_BUNDLE_SOURCES` unless a `policy` is passed in their place; a
+signature that does not check out is refused under any policy. It refuses what
+the Marketplace refuses: a package that is not an extension, a site package, a
+schema before 6, a manifest with problems, and an `integrity` the registry or the
+installed lockfile does not match, and it takes out again whatever landed and
+turned out to be one of these. It grants nothing and applies no content: the
+site's config (`extensions.<id>.grant`) or an administrator grants it.
+
+```ts
+import { installExtension, recordProblems } from '@crombolo/crombolo/host'
+
+for (const { name, version, integrity } of hostList) {
+  const result = await installExtension(siteDir, { name, version, integrity })
+  if (!result.ok) throw new Error(`${name}: ${result.problems.join('; ')}`)
+}
+const problems = recordProblems(siteDir)
+```
+
+`installBundleCode` now installs each extension root the code carries from its
+own lockfile, as `crombolo site apply` does, and its result's `roots` names each
+with whether it installed; one that did not is among the problems too.
+`checkBundleCode` installs them in its scratch copy and names a root that does
+not match its line, and an extension the code's `package.json` lists as a
+dependency that the boot would not run.
 
 ## The worker from the host entry (unreleased)
 

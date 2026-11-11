@@ -1,13 +1,21 @@
 /**
  * A site's bundle carrying its code (story 192): which files are packed, the
- * hash over them, and the check and install a host runs. The fixtures install
- * from `file:` packages under the site, so nothing reaches a registry.
+ * hash over them, and the check and install a host runs, with the extension
+ * roots it carries (story 332). The fixtures install from `file:` packages
+ * under the site, so nothing reaches a registry.
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { discoverBundles, validateBundlePackage } from '@crombolo/backoffice-host'
+import { dirname, join } from 'node:path'
+import {
+  discoverBundles,
+  INSTALLED_AS_DEPENDENCY,
+  packageInRoot,
+  recordExtension,
+  recordProblems,
+  validateBundlePackage,
+} from '@crombolo/backoffice-host'
 import {
   buildBundleFromDirectory,
   checkBundleCode,
@@ -16,6 +24,8 @@ import {
 } from '@crombolo/server'
 import { loadBundleCode, selectCodeFiles } from '@crombolo/transfer'
 import { copyTemplateFiles, findSite } from '../scripts/sites.ts'
+import { integrityOf, packedServerExtension } from './support/bundles.ts'
+import { BACKOFFICE, signedInServer } from './support/harness.ts'
 
 const roots: string[] = []
 const scratch = (): string => {
@@ -331,4 +341,110 @@ describe('a bundle a site lists as a peer', () => {
     )
     expect(discoverBundles(peerSite).bundles.map((b) => b.id)).toEqual(['fx'])
   })
+})
+
+/** An extension's root in the site, installed from a kept file, with its line in the record (story 326). */
+async function addRoot(site: string, id: string): Promise<void> {
+  const name = `@acme/${id}`
+  const { tarball } = packedServerExtension(name, id)
+  const file = `bundles/acme-${id}-1.0.0.tgz`
+  write(site, file, tarball)
+  write(
+    site,
+    `extensions/${id}/package.json`,
+    json({ name: `${id}-root`, private: true, dependencies: { [name]: `file:../../${file}` } }),
+  )
+  const install = Bun.spawn([process.execPath, 'install', '--ignore-scripts'], {
+    cwd: join(site, 'extensions', id),
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  if ((await install.exited) !== 0)
+    throw new Error(`root install failed: ${await new Response(install.stderr).text()}`)
+  recordExtension(site, id, { name, version: '1.0.0', integrity: integrityOf(tarball) })
+}
+
+describe('extension roots the code carries (story 332)', () => {
+  let rooted: string
+
+  beforeAll(async () => {
+    const withRoot = await siteWithCode()
+    await addRoot(withRoot, 'coderoot')
+    rooted = await built(withRoot)
+  }, 120_000)
+
+  test('are checked, and their server halves named with the rest', async () => {
+    const result = await checkBundleCode(rooted)
+    expect(result.problems).toEqual([])
+    expect(result.serverBundles.sort()).toEqual(['coderoot', 'fx'])
+  }, 60_000)
+
+  test('are installed from their own lockfiles, and the extension in one boots', async () => {
+    // Under the repository, whose node_modules the views resolve the CMS from.
+    const parent = join(process.cwd(), 'output')
+    mkdirSync(parent, { recursive: true })
+    const target = join(mkdtempSync(join(parent, 'code-root-')), 'site')
+    roots.push(dirname(target))
+    const result = await installBundleCode(rooted, target)
+    expect(result.problems).toEqual([])
+    expect(result.roots).toEqual([{ id: 'coderoot', ok: true }])
+    expect(recordProblems(target)).toEqual([])
+    const h = await signedInServer({
+      config: {
+        siteDir: target,
+        componentsDir: join(target, 'components'),
+        extensions: { coderoot: { grant: ['content.read'] } },
+      },
+    })
+    try {
+      const answered = await h.call(`${BACKOFFICE}/crombolo/api/bundle/coderoot/settings`)
+      expect(answered.status, await answered.clone().text()).toBe(200)
+      expect(await answered.json()).toEqual({ greeting: 'hello' })
+    } finally {
+      await h.db.close().catch(() => {})
+    }
+  }, 60_000)
+
+  test('a root whose lockfile will not install is named, and the others still install', async () => {
+    const site = await siteWithCode()
+    await addRoot(site, 'goodroot')
+    await addRoot(site, 'badroot')
+    // A dependency its lockfile does not hold: a frozen install refuses it.
+    const manifest = join(site, 'extensions/badroot/package.json')
+    const declared = JSON.parse(readFileSync(manifest, 'utf8'))
+    declared.dependencies['left-pad'] = '1.3.0'
+    writeFileSync(manifest, json(declared))
+    const target = join(scratch(), 'site')
+    const result = await installBundleCode(await built(site), target)
+    expect(result.roots).toEqual([
+      { id: 'badroot', ok: false, problem: expect.stringContaining('bun.lock') },
+      { id: 'goodroot', ok: true },
+    ])
+    expect(result.problems).toEqual([expect.stringContaining('extensions/badroot/: ')])
+    expect(existsSync(packageInRoot(target, 'goodroot', '@acme/goodroot'))).toBe(true)
+  }, 120_000)
+
+  test('an extension the code lists as a dependency is named, as the boot would', async () => {
+    const site = await siteWithCode({
+      files: {
+        'vendor/dep/package.json': json({
+          name: 'dep-bundle',
+          version: '1.0.0',
+          main: 'src/server/index.js',
+          crombolo: {
+            bundleType: 'extension',
+            id: 'dep',
+            server: 'dep',
+            schemaVersion: 6,
+            permissions: {},
+          },
+          peerDependencies: { '@crombolo/crombolo': '>=0.1.0' },
+        }),
+        'vendor/dep/src/server/index.js': 'export const dep = () => ({ id: "dep" })\n',
+      },
+      dependencies: { 'dep-bundle': 'file:./vendor/dep' },
+    })
+    const result = await checkBundleCode(await built(site))
+    expect(result.problems).toEqual([`dep-bundle (dep): ${INSTALLED_AS_DEPENDENCY}`])
+  }, 120_000)
 })

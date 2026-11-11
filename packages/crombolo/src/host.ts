@@ -3,11 +3,28 @@
  * its config, the stores it keeps media and schema in, checking and installing
  * a site's bundles and code, checking a bundle's signature as the CMS does
  * (story 244), the upgrade, import and export a deploy runs, and the role and
- * schema a custom-table owner needs, for a host that makes them itself (story 321).
+ * schema a custom-table owner needs, for a host that makes them itself (story 321),
+ * and installing extensions into their roots as the CMS does (story 332).
  * `docs/api.md`.
  */
-export type { BundlePackage, CromboloField, PackageJson } from '@crombolo/backoffice-host'
-export { peerRangeProblem, validateBundlePackage } from '@crombolo/backoffice-host'
+export type {
+  BundlePackage,
+  CromboloField,
+  ExtensionRecord,
+  PackageJson,
+  RecordedExtension,
+} from '@crombolo/backoffice-host'
+export {
+  grantHashOf,
+  INSTALLED_AS_DEPENDENCY,
+  peerRangeProblem,
+  RECORD_FILE,
+  ROOTS_DIR,
+  readRecord,
+  recordProblems,
+  rootOf,
+  validateBundlePackage,
+} from '@crombolo/backoffice-host'
 export {
   contentCheck,
   contentImport,
@@ -33,6 +50,7 @@ export {
   type BundleCodeCheck,
   type BundleCodeInstall,
   type BundleCodeOptions,
+  type BundleCodeRoot,
   type BundleReload,
   type ContentCheckResult,
   type ContentImportInput,
@@ -42,7 +60,10 @@ export {
   createServer,
   describeProvenance,
   fileSystemMediaStore,
+  type InstallExtensionOptions,
+  type InstallExtensionResult,
   installBundleCode,
+  installExtension,
   loadConfig,
   type MediaStore,
   mediaStoreFor,
@@ -53,6 +74,7 @@ export {
   type ProvenanceState,
   provenanceProblem,
   type ReloadedBundle,
+  removeExtension,
   type S3MediaStoreOptions,
   type S3SchemaStoreOptions,
   type SchemaStore,

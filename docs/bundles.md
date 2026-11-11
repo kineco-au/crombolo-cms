@@ -720,6 +720,15 @@ extension is tried, and removing one deletes its root and its line.
   `bun.lock`, never a root's `node_modules`; an apply installs each root whose files
   changed from its own lockfile. A site file's `requires` names each recorded
   extension.
+- **A host installs with the CMS's own install** (story 332): `installExtension`
+  and `removeExtension` from `@crombolo/crombolo/host` prepare the root, run
+  `bun add`, check what landed and write the line, so what a host installs is
+  what the boot runs. `installExtension` is held to the site's signature policy
+  unless the host passes its own, refuses what the Marketplace refuses, and grants
+  nothing: the config's `extensions` entry or an administrator does that.
+  `installBundleCode` installs the roots a site package's code carries, and
+  `checkBundleCode` names a root that does not match its line and an extension the
+  code lists as a dependency. `api.md` has the exports.
 
 ### From the command line (story 241)
 

@@ -6,11 +6,14 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   renameSync,
+  rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, relative, sep } from 'node:path'
 import {
   BUNDLE_SCHEMA_VERSION,
   type BundlePackage,
@@ -22,7 +25,7 @@ import {
   recordExtension,
   writeRecord,
 } from '@crombolo/backoffice-host'
-import { VERSION } from '@crombolo/server'
+import { VERSION, writeNpmTarball } from '@crombolo/server'
 import { applyMigration, planMigration } from '../../packages/cli/src/support/extension-migrate.ts'
 
 /** A bundle package with a server half, for code that only reads what discovery found. */
@@ -218,4 +221,75 @@ export function moveIntoRoot(siteDir: string, name: string): string {
   delete site.dependencies?.[name]
   writeFileSync(file, JSON.stringify(site))
   return to
+}
+
+/** Every file under a directory, relative and `/`-separated. */
+function filesUnder(dir: string, at = dir): string[] {
+  return readdirSync(at).flatMap((name) => {
+    const path = join(at, name)
+    return statSync(path).isDirectory()
+      ? filesUnder(dir, path)
+      : [relative(dir, path).split(sep).join('/')]
+  })
+}
+
+/** A package directory packed as npm packs one, for a registry stub or a kept file (story 332). */
+export const packDirectory = (dir: string): Uint8Array<ArrayBuffer> =>
+  writeNpmTarball(
+    filesUnder(dir).map((path) => ({
+      path,
+      bytes: new Uint8Array(readFileSync(join(dir, path))),
+    })),
+  )
+
+/** A tarball's integrity, as npm writes one. */
+export const integrityOf = (bytes: Uint8Array): string =>
+  `sha512-${new Bun.CryptoHasher('sha512').update(bytes).digest('base64')}`
+
+/**
+ * An extension with a server half whose back-office route answers its settings,
+ * packed. Its peer on the CMS is optional, so an install never looks for the CMS
+ * on a registry.
+ */
+export function packedServerExtension(
+  name: string,
+  id: string,
+): { tarball: Uint8Array<ArrayBuffer>; json: { name: string; version: string } } {
+  const fixture = siteDeclaring('packed-extension', {
+    [name]: {
+      json: {
+        exports: './index.js',
+        peerDependenciesMeta: { '@crombolo/crombolo': { optional: true } },
+        crombolo: {
+          id,
+          name: id,
+          server: id,
+          schemaVersion: 4,
+          permissions: { 'content.read': 'Shows pages' },
+          settings: { greeting: { label: 'Greeting', type: 'text', default: 'hello' } },
+        },
+      },
+      files: {
+        'index.js': `import { route } from '@crombolo/common'
+export function ${id}(settings) {
+  return {
+    id: '${id}',
+    section: 'settings',
+    capabilities: ['api'],
+    routes: [route('settings', { GET: () => Response.json(settings) }, { audience: 'backoffice' })],
+  }
+}
+`,
+      },
+    },
+  })
+  try {
+    const dir = fixtureDir(fixture, name)
+    return {
+      tarball: packDirectory(dir),
+      json: JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')),
+    }
+  } finally {
+    rmSync(fixture, { recursive: true, force: true })
+  }
 }
