@@ -147,7 +147,7 @@ not cover.
 | `205` | Media Public Access with inherited permissions | should | M | done | 204 |
 | `191` | Azure AD B2C user flows for members | should | M | ready | 031 |
 | `282` | A member resets their password | should | M | ready | — |
-| `305` | An identity provider the config declares can be locked | should | S | in progress | — |
+| `305` | An identity provider the config declares can be locked | should | S | done | — |
 | `314` | An administrator sees the back office as a group does | should | M | ready | — |
 
 ### Epic E — Cross-cutting
@@ -239,7 +239,7 @@ requests, only server-side and build-time front ends can call it.
 | `301` | A webhook reaches only what it should | must | M | done | — |
 | `302` | A group grants only what its editor holds | should | S | ready | — |
 | `303` | A bundle's code lands only in code folders | could | S | abandoned | superseded by 306, 312 |
-| `304` | Every request a user sets up goes only outside | should | M | in progress | 301 |
+| `304` | Every request a user sets up goes only outside | should | M | done | 301 |
 | `306` | A site package says what it is | must | L | done | — |
 | `307` | An extension writes none of the site's code | must | S | abandoned | merged into 306, 312 |
 | `308` | Each permission an extension asks for says why | must | XL | done | — |
@@ -264,7 +264,7 @@ requests, only server-side and build-time front ends can call it.
 | `329` | Redirects and Entra describe their screens | must | L | done | 323, 324 |
 | `330` | An extension's templates carry no script | must | S | done | 312 |
 | `331` | An extension intercepts the paths it names | could | L | ready | 311, 327 |
-| `332` | A host installs extensions into their roots | should | M | in progress | 326 |
+| `332` | A host installs extensions into their roots | should | M | done | 326 |
 
 ### Epic J — Forms
 

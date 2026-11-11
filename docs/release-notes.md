@@ -6,6 +6,8 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.62.0 — 2026-11-11
+
 ### Features
 
 - **A form sends only outside, and keeps its tokens on the site (304).** A send-to-URL
@@ -23,6 +25,14 @@ point at `docs/stories/`.
   client secret goes only to the issuer and client id it was set for, and the config's only
   to the config's own: changing the issuer, tenant or client id needs the new secret in the
   same save. Changes and resets of a provider are audited, without secrets.
+
+- **A host installs extensions the CMS's own way (332).** `@crombolo/crombolo/host` exports
+  `installExtension` and `removeExtension`, which put an extension into its root and record
+  it as the Marketplace does, held to the site's `CROMBOLO_BUNDLE_SIGNATURES` and
+  `CROMBOLO_BUNDLE_SOURCES` unless the host passes its own policy, and the record's readers
+  (`readRecord`, `recordProblems`, `rootOf` and the rest). `installBundleCode` installs the
+  extension roots a site package carries, and says which failed; `checkBundleCode` checks
+  them and reports an extension listed as a dependency of the site.
 
 ### Changes
 
