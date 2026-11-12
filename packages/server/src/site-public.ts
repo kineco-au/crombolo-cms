@@ -299,7 +299,8 @@ export class PublicFiles {
 /** The servable files of a folder, which may not exist. */
 function filesFrom(root: string): string[] {
   try {
-    return existsSync(root) ? filesIn(root).filter(isServable) : []
+    // Sorted: the folder's own order differs between file systems.
+    return existsSync(root) ? filesIn(root).filter(isServable).sort() : []
   } catch {
     return []
   }
