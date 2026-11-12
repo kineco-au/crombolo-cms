@@ -25,6 +25,9 @@ import {
   levelOf,
   libraryFollowsPages,
   OWNED_VERBS,
+  SYSTEM_GROUPS,
+  shownLevel,
+  systemGroupNote,
   withLevel as wordsWithLevel,
 } from '../packages/backoffice-host/plugin/group-editor-words.js'
 import { migratedDb } from './support/db.ts'
@@ -110,6 +113,21 @@ describe('the words', () => {
     expect(exceptionSummary('Editors', 'pages', 'News', 'see')).toBe(
       'Editors will see, but not change, pages under News.',
     )
+  })
+})
+
+describe('built-in groups', () => {
+  test('Administrators show the top level of every kind, whatever they hold', () => {
+    expect(shownLevel('pages', ['Umb.Document.Read'], 'admin')).toBe('full')
+    expect(shownLevel('media', [], 'admin')).toBe('edit')
+    expect(shownLevel('forms', [], 'admin')).toBe('manage')
+    expect(shownLevel('pages', ['Umb.Document.Read'], 'editor')).toBe('see')
+  })
+
+  test('their permissions are shown but never changed, and say why', () => {
+    expect([...SYSTEM_GROUPS].sort()).toEqual(['admin', 'sensitiveData', 'translator'])
+    expect(systemGroupNote('admin')).toBe('This is a system group - settings are locked')
+    expect(systemGroupNote('translator')).toContain('built-in groups')
   })
 })
 

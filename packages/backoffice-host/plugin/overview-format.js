@@ -69,3 +69,16 @@ export function avatarHue(name) {
   for (const char of String(name ?? '')) hash = (hash * 31 + char.codePointAt(0)) >>> 0
   return hash % AVATAR_HUES
 }
+
+/**
+ * The site's content mode in words (story 343), from the runtime mode the back
+ * office is told: Umbraco's `Production` when templates, stylesheets and scripts
+ * are locked, development otherwise.
+ *
+ * @param {string | undefined} runtimeMode
+ * @returns {string}
+ */
+export function contentModeOf(runtimeMode) {
+  if (!runtimeMode) return '…'
+  return runtimeMode === 'Production' ? 'Production' : 'Development'
+}

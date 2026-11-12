@@ -17,12 +17,14 @@ The output quoted is what came back.
 
 ```sh
 mkdir riverside-bakery && cd riverside-bakery
-bunx crombolo init --name "Riverside Bakery"
+bunx crombolo init --name "Riverside Bakery" --empty
 bun install
 ```
 
-`init` writes the site's config, `server.ts`, an empty `components/` and
-`actions/`, and the definitions every site starts with. It names `schema/`
+`init --empty` writes the site's config, `server.ts`, an empty `components/` and
+`actions/`, and the definitions every site starts with. Without `--empty`, a
+new site also gets a Content Page type, its template and a welcome page
+(story 341); this walk builds its own. It names `schema/`
 once, as what to commit, and lists the commands to run next (story 252). A
 SQLite database is created the first time a command needs one.
 

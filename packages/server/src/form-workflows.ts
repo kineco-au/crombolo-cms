@@ -29,7 +29,7 @@ import {
   type NodeSchemaState,
 } from '@crombolo/data'
 import type { EmailField, EmailProps, EmailRenderResult } from '@crombolo/render'
-import type { EmailAttachment, EmailPort } from './email.ts'
+import { type EmailAttachment, type EmailPort, emailReady } from './email.ts'
 import { htmlToText } from './email-text.ts'
 import type { FormWorkflowTypeDefinition } from './form-types.ts'
 import { logger } from './logging.ts'
@@ -234,7 +234,7 @@ async function sendEmail(
   context: WorkflowContext,
   deps: WorkflowDeps,
 ): Promise<WorkflowResult> {
-  if (!deps.email)
+  if (!emailReady(deps.email))
     return {
       ok: false,
       // Retrying cannot help: this is configuration, not weather.
@@ -638,7 +638,7 @@ async function runBundleWorkflow(
     attempt: context.attempt ?? 1,
     fetch: (input, init) => (deps.fetch ?? fetch)(input, { signal, ...init }),
     sendEmail: async (message) =>
-      deps.email
+      emailReady(deps.email)
         ? deps.email.send(message)
         : { ok: false, error: 'This site has no e-mail set up.' },
     log: {

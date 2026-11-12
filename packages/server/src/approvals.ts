@@ -47,7 +47,7 @@ import {
   UserGroupRepository,
 } from '@crombolo/data'
 import type { ContentNotifier } from './content-notifications.ts'
-import type { EmailPort } from './email.ts'
+import { type EmailPort, emailReady } from './email.ts'
 
 /** What publishing and unpublishing go through when approval says yes. */
 export interface ApprovalPublisher {
@@ -388,7 +388,7 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
     subject: string,
     body: string,
   ) => {
-    if (!options.email) return
+    if (!emailReady(options.email)) return
     let emails: string[] = []
     if (to === 'editor') {
       const rows = await db.q

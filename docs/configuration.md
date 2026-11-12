@@ -25,6 +25,13 @@ export default defineConfig({
 })
 ```
 
+[`examples/crombolo.config.ts`](examples/crombolo.config.ts) sets every field a
+site can set, each with the variable that sets it from the environment where there
+is one. It is type-checked with the repository and a test holds it to the config,
+so it stays complete. Only the Postgres address (`CROMBOLO_POSTGRES_URL`, which
+carries the password), the lock timeout and the path to Deno have no field: they
+belong to the machine the site runs on, not to the site.
+
 Grouped settings — `seo`, `remote`, `deliveryApi` — merge field by field, so a
 config file that sets the title suffix keeps the environment's sitemap switch.
 Relative paths are resolved against the site's own folder, not wherever the
@@ -129,7 +136,7 @@ rather than the running server. Secret ones are never printed or logged.
 | `CROMBOLO_SCHEMA_REVISION` | string | `0` | Set by a deploy, to order deploys of the same schema version. |
 | `CROMBOLO_SCHEMA_CACHE_DIR` | string | `<temp>/crombolo-schema` | Where a schema kept in cloud storage is copied to when the server starts. |
 | `CROMBOLO_SCHEMA_WRITABLE` | `true` / `false` | true unless production or with a schema store | Whether the back office may change the schema files. |
-| `CROMBOLO_CONTENT_FILES_READONLY` | `true` / `false` | `false` | Stops the back office changing templates, stylesheets and scripts, for a site whose files come from its repository. |
+| `CROMBOLO_CONTENT_MODE` | `development`, `production` | `development` | In production, the back office cannot change templates, stylesheets and scripts, for a site whose files come from its repository. |
 | `CROMBOLO_SYNC_SCHEMA_AT_BOOT` | `true` / `false` | `true` | Syncs the schema files when the server starts. Turn it off when a deploy runs `crombolo types sync` itself. |
 
 ### Components
@@ -408,6 +415,19 @@ Installing an extension from Settings → Extensions gives you its backoffice sc
 This line is what lets it answer a request.
 
 ## E-mail
+
+When the configuration sets no e-mail, an administrator can set it up in Settings → E-mail
+(story 340). Whatever the configuration sets wins: with `CROMBOLO_EMAIL_PROVIDER`
+set (`none` included, which turns e-mail off) or `email` in `crombolo.config.ts`,
+that card is read-only. Whoever sets e-mail decides where password-reset links go,
+so a host's choice can't be redirected from the back office.
+
+The card's settings are kept in the database (`key_value`, `crombolo:email`), the
+provider's key sealed with `CROMBOLO_SECRET_KEY`; without that key the card can't
+keep one. A kept key is used only with the provider and address it was entered
+for, so changing either needs it entered again. A change takes effect at once on
+the server that saved it, and on the others within 30 seconds, with no restart.
+Saving and removing are audited, never with the key.
 
 Opt-in, and off by default. Nothing is installed, no SMTP is spoken, and a site
 that configures no provider sends no e-mail — which is a supported state, not a

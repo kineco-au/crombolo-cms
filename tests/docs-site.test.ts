@@ -407,7 +407,8 @@ describe('a walkthrough', () => {
       (first?.steps ?? []).filter((s) => !s.only || s.only === option)
     const init = (option: string) =>
       commands(steps(option).filter((s) => s.title === 'Make the site'))
-    expect(init('SQLite')).toMatch(/init --name "Riverside Bakery"$/)
+    // It builds every page itself, so it starts with none (story 341)
+    expect(init('SQLite')).toMatch(/init --name "Riverside Bakery" --empty$/)
     expect(init('SQLite')).not.toContain('--postgres')
     expect(init('Postgres')).toContain('init --name "Riverside Bakery" --postgres')
     expect(commands(steps('Postgres'))).toContain('docker run')

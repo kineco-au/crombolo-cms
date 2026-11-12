@@ -37,3 +37,6 @@ docs/internal/
 
 # The fork of Umbraco's back-office client, a worktree of umbraco/crombolo (story 235).
 /vendor/umbraco-client/
+
+# macOS folder settings
+.DS_Store

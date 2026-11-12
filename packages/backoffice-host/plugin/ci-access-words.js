@@ -55,7 +55,7 @@ export async function trustApi(method, path = '', body) {
   if (response.status === 204) return undefined
   const result = await response.json().catch(() => ({}))
   if (!response.ok) {
-    const error = new Error(result.title ?? `CI access responded ${response.status}`)
+    const error = new Error(result.title ?? `Deployment pipelines responded ${response.status}`)
     error.items = result.items
     throw error
   }

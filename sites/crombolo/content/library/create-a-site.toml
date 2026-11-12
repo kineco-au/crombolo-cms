@@ -5,5 +5,5 @@ order = 20
 
 [values]
 heading = "Create a site"
-detail = "Scaffold a site in an empty folder. Add --template list to see the starter sites, or --postgres to use Postgres."
+detail = "Scaffold a site in an empty folder: it opens on a welcome page you can edit. Add --template list to see the starter sites, or --postgres to use Postgres."
 command = "mkdir my-site && cd my-site\nbunx @crombolo/cli@latest init --name \"My Site\""

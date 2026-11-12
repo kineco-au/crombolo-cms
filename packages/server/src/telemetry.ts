@@ -468,9 +468,16 @@ export function tracedDb(db: Db): Db {
 /** The site's e-mail with each message a span: its provider and outcome, never its addresses. */
 export function tracedEmail<T extends EmailPort | undefined>(email: T): T {
   if (!email) return email
+  // Getters, and `refresh` passed through: e-mail set up in Settings changes under it (story 340).
+  const refresh = (email as { refresh?: () => Promise<void> }).refresh
   return {
-    description: email.description,
-    provider: email.provider,
+    get description() {
+      return email.description
+    },
+    get provider() {
+      return email.provider
+    },
+    ...(refresh ? { refresh: () => refresh.call(email) } : {}),
     send: (message) =>
       inSpan(
         'email send',

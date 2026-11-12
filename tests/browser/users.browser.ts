@@ -357,6 +357,29 @@ test('a group is set up in levels, and its exceptions read as sentences (story 3
   )
   expect(after.fallbackPermissions).not.toContain('Umb.Document.Delete')
   expect(after.permissions).toHaveLength(1)
+
+  // A built-in group's permissions are shown, never changed: Administrators at Full control
+  await goToSection(page, 'Users')
+  await page
+    .locator('umb-section-sidebar')
+    .getByRole('link', { name: 'User Groups', exact: true })
+    .click()
+  await page.getByRole('link', { name: 'Administrators', exact: true }).click()
+  const admins = page.locator('crombolo-group-editor')
+  await expect(admins.getByRole('switch', { name: 'Content: on' })).toBeDisabled()
+  await expect(admins.locator('uui-toggle[label="Everywhere"]').first()).toHaveAttribute(
+    'disabled',
+    '',
+  )
+  await admins.getByRole('tab', { name: 'Permissions' }).click()
+  await expect(
+    admins.getByText('This is a system group - settings are locked').first(),
+  ).toBeVisible()
+  const full = admins.getByRole('radio', { name: /^Full control/ }).first()
+  await expect(full).toBeChecked()
+  await expect(full).toBeDisabled()
+  await admins.getByRole('tab', { name: /Exceptions/ }).click()
+  await expect(admins.getByRole('button', { name: 'Add an exception' })).toBeDisabled()
 })
 
 test('the Translation section: a dictionary item opens from its tree and saves its translation', async ({

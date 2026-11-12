@@ -18,11 +18,12 @@ Create a site, start it, check on it, and describe the command line to a script.
 Scaffold a site in the current, empty directory. Each run acts again.
 
 ```
-crombolo init [--force] [--name <name>] [--next] [--postgres] [--template <template>] [--verbose]
+crombolo init [--empty] [--force] [--name <name>] [--next] [--postgres] [--template <template>] [--verbose]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
+| `--empty` | boolean | Scaffold the files and no type, template or page. |
 | `--force` | boolean | Scaffold into a directory that is not empty, overwriting its files. |
 | `--name` | string | The site's name. |
 | `--next` | boolean | Add a Next.js front end in web/, whatever the template. |

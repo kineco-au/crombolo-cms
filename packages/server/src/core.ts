@@ -66,7 +66,8 @@ import { createContentNotificationRunner, createContentNotifier } from './conten
 import { databaseFor, openTables, siteTablesProblems, tablesChains } from './custom-tables.ts'
 import { attachDatabase, bootstrapDatabase } from './database.ts'
 import { createDiagnostics } from './diagnostics.ts'
-import { resolveEmailPort } from './email.ts'
+import { emailReady } from './email.ts'
+import { siteEmail } from './email-settings.ts'
 import { createActivityRecorder, personOf, timed } from './extension-activity.ts'
 import { createExtensionComponents } from './extension-components.ts'
 import {
@@ -492,10 +493,11 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
   )
   // Resolved once: constructing it twice would warn twice about a provider that
   // is half-configured, and the adapters are cheap but not free of side effects.
-  const email = tracedEmail(resolveEmailPort(config))
+  // Story 340: the config's, or one that follows Settings without a restart.
+  const email = tracedEmail(await siteEmail(db, config))
   // Story 045: a change queues the e-mails its subscribers asked for. Nothing is
   // queued on a site that cannot send; development sends to the console.
-  const notifier = createContentNotifier(db, { canSend: Boolean(email) })
+  const notifier = createContentNotifier(db, { canSend: () => emailReady(email) })
   const mediaFiles = new MediaFileStore(mediaStore)
   const webhooks = createWebhookService({
     db,

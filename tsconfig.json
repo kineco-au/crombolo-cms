@@ -25,6 +25,7 @@
     "sites/*/components/**/*",
     "apps/*/**/*",
     "scripts/**/*",
-    "tests/**/*"
+    "tests/**/*",
+    "docs/examples/**/*"
   ]
 }

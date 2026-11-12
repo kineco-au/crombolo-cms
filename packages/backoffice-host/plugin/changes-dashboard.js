@@ -13,15 +13,26 @@
  * A content bundle waiting to be imported can be answered and imported here,
  * by those allowed to install packages: each finding offers the answers its
  * kind allows, and the import runs once nothing is outstanding.
+ *
+ * A schema uploaded in Settings → Schema (story 342) waits here too, with the
+ * files it brings, until an administrator applies or discards it.
  */
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { downloadFile } from './download.js'
 import { answersUrl, fetchReport, transferAction } from './report-client.js'
+import { applyImport, discardImport } from './schema-transfer-client.js'
+import { describeFile, describeImport } from './schema-transfer-words.js'
 
 const KIND_LABEL = { blocking: 'Blocking', person: 'Needs a person', auto: 'Automatic' }
 const KIND_COLOR = { blocking: 'danger', person: 'warning', auto: 'positive' }
-const SOURCE_LABEL = { upgrade: 'Schema and upgrade', transfer: 'Content transfer' }
+const SOURCE_LABEL = {
+  upgrade: 'Schema and upgrade',
+  transfer: 'Content transfer',
+  import: 'Schema import',
+}
+/** What each row came from, in a word. */
+const ROW_SOURCE = { upgrade: 'Upgrade', transfer: 'Bundle', import: 'Import' }
 const CHOICE_LABEL = {
   'take-bundle': 'Use the incoming version',
   'keep-local': 'Keep this site’s version',
@@ -40,6 +51,7 @@ export default class CromboloChangesDashboardElement extends UmbLitElement {
     _showResolved: { state: true },
     _busy: { state: true },
     _outcome: { state: true },
+    _schemaOutcome: { state: true },
     _backupTaken: { state: true },
     _passphrase: { state: true },
   }
@@ -87,8 +99,29 @@ export default class CromboloChangesDashboardElement extends UmbLitElement {
     }
   }
 
-  #group(findings, transfers = []) {
+  async #schemaImport(action) {
+    this._busy = 'schema-import'
+    try {
+      const result = action === 'apply' ? await applyImport() : await discardImport()
+      this._schemaOutcome = result.ok
+        ? {
+            ok: true,
+            message:
+              action === 'apply'
+                ? 'The schema import was applied.'
+                : 'The schema import was discarded.',
+          }
+        : result
+    } finally {
+      this._busy = undefined
+      await this.#load()
+    }
+  }
+
+  #group(findings, transfers = [], schemaImport = null) {
     const groups = new Map()
+    if (schemaImport)
+      groups.set('import|schema', { source: 'import', scope: 'schema', findings: [] })
     // A bundle with nothing to answer is still waiting to be imported.
     for (const pending of transfers)
       groups.set(`transfer|${pending.bundleId}`, {
@@ -111,7 +144,7 @@ export default class CromboloChangesDashboardElement extends UmbLitElement {
     if (!this._report) return html`<uui-box headline="Changes"><uui-loader></uui-loader></uui-box>`
     const { health, findings, counts, bundles = [], upgrades, transfers = [] } = this._report
     const shown = findings.filter((f) => this._showResolved || f.status === 'open')
-    const groups = this.#group(shown, transfers)
+    const groups = this.#group(shown, transfers, this._report.schemaImport)
     return html`
       <uui-box headline="Changes">
         <p>
@@ -142,6 +175,11 @@ export default class CromboloChangesDashboardElement extends UmbLitElement {
             @change=${(e) => (this._showResolved = e.target.checked)}
           ></uui-toggle>
         </div>
+        ${
+          this._schemaOutcome
+            ? html`<p class=${this._schemaOutcome.ok ? 'done' : 'problem'} role="status">${this._schemaOutcome.message}</p>`
+            : nothing
+        }
         ${
           groups.length === 0
             ? html`<p class="empty">Nothing outstanding. <code>crombolo upgrade check</code> and <code>crombolo content check</code> write findings here.</p>`
@@ -219,6 +257,7 @@ export default class CromboloChangesDashboardElement extends UmbLitElement {
           ? nothing
           : html`<uui-table>
         <uui-table-head>
+          <uui-table-head-cell>Source</uui-table-head-cell>
           <uui-table-head-cell>Kind</uui-table-head-cell>
           <uui-table-head-cell>What</uui-table-head-cell>
           <uui-table-head-cell>Where</uui-table-head-cell>
@@ -226,6 +265,7 @@ export default class CromboloChangesDashboardElement extends UmbLitElement {
         </uui-table-head>
         ${group.findings.map(
           (f) => html`<uui-table-row class=${f.status}>
+            <uui-table-cell><uui-tag look="secondary">${ROW_SOURCE[group.source] ?? group.source}</uui-tag></uui-table-cell>
             <uui-table-cell><uui-tag color=${KIND_COLOR[f.kind]}>${KIND_LABEL[f.kind]}</uui-tag></uui-table-cell>
             <uui-table-cell>${f.message}</uui-table-cell>
             <uui-table-cell>
@@ -239,6 +279,55 @@ export default class CromboloChangesDashboardElement extends UmbLitElement {
       </uui-table>`
       }
       ${answering ? this.#renderPending(pending, group.findings) : nothing}
+      ${group.source === 'import' ? this.#renderSchemaImport() : nothing}
+    `
+  }
+
+  #renderSchemaImport() {
+    const waiting = this._report.schemaImport
+    if (!waiting) return nothing
+    const files = [
+      ...waiting.added.map((path) => ({ path, change: 'New' })),
+      ...waiting.changed.map((path) => ({ path, change: 'Changed' })),
+    ]
+    return html`
+      <p>
+        <strong>${waiting.fileName}</strong>, uploaded by ${waiting.uploadedBy}
+        ${waiting.uploadedAt?.slice(0, 10) ?? ''}, brings ${describeImport(waiting)}.
+        ${waiting.blocked ? 'Something above stops it from being applied.' : 'Nothing changes until it is applied.'}
+      </p>
+      <uui-table>
+        <uui-table-head>
+          <uui-table-head-cell>Change</uui-table-head-cell>
+          <uui-table-head-cell>What</uui-table-head-cell>
+          <uui-table-head-cell>Name</uui-table-head-cell>
+        </uui-table-head>
+        ${files.map(({ path, change }) => {
+          const { kind, name } = describeFile(path)
+          return html`<uui-table-row>
+            <uui-table-cell><uui-tag look="secondary">${change}</uui-tag></uui-table-cell>
+            <uui-table-cell>${kind}</uui-table-cell>
+            <uui-table-cell>${name}</uui-table-cell>
+          </uui-table-row>`
+        })}
+      </uui-table>
+      ${
+        this._report.mayApplySchema
+          ? html`<div class="actions">
+              <uui-button
+                look="primary"
+                label="Apply"
+                ?disabled=${waiting.blocked || this._busy === 'schema-import'}
+                @click=${() => this.#schemaImport('apply')}></uui-button>
+              <uui-button
+                look="secondary"
+                color="danger"
+                label="Discard"
+                ?disabled=${this._busy === 'schema-import'}
+                @click=${() => this.#schemaImport('discard')}></uui-button>
+            </div>`
+          : nothing
+      }
     `
   }
 
@@ -410,6 +499,8 @@ export default class CromboloChangesDashboardElement extends UmbLitElement {
     small { margin-left: var(--uui-size-space-2); }
     .empty { color: var(--uui-color-text-alt); }
     .choices, .actions { display: flex; flex-wrap: wrap; gap: var(--uui-size-space-2); }
+    .done { color: var(--uui-color-positive); }
+    .problem { color: var(--uui-color-danger); }
     .pending { margin: var(--uui-size-space-3) 0 var(--uui-size-space-5); }
     .pending ul { margin: 0 0 var(--uui-size-space-3); padding-left: var(--uui-size-space-5); }
     .state { display: flex; gap: var(--uui-size-space-3); align-items: center; }

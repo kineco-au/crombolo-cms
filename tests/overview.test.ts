@@ -10,6 +10,7 @@ import { ContentTypeRepository } from '@crombolo/data'
 import {
   activityLine,
   ago,
+  contentModeOf,
   firstName,
   initials,
 } from '../packages/backoffice-host/plugin/overview-format.js'
@@ -202,5 +203,13 @@ describe("the Overview's avatars", () => {
     expect(hues.size).toBeGreaterThan(2)
     for (const hue of hues) expect(hue).toBeLessThan(AVATAR_HUES)
     expect(avatarHue('')).toBe(0)
+  })
+})
+
+describe("Home's System information (story 343)", () => {
+  test('says the content mode in words, not the runtime mode it comes from', () => {
+    expect(contentModeOf('Production')).toBe('Production')
+    expect(contentModeOf('BackofficeDevelopment')).toBe('Development')
+    expect(contentModeOf(undefined)).toBe('…')
   })
 })

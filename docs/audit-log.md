@@ -80,7 +80,10 @@ search and sharing settings, bundles and forms, which the contract does not
 cover. A successful write to any `<backoffice>/crombolo/api/…` path writes an
 entry from `pluginAuditPlan` (`packages/server/src/adapters/audit.ts`). A host
 token (story 178) is the exception: issuing one changes nothing, so it is a log
-line rather than an entry.
+line rather than an entry. So are the endpoints that write a fuller entry of their
+own, which would otherwise be recorded twice: bundle installs and removals (story
+194), e-mail settings (story 340), and schema uploads, approvals and discards
+(story 342), each naming the files it changed.
 
 **Sign-ins** (`packages/auth`). The auth routes report the following through
 `onAudit`:

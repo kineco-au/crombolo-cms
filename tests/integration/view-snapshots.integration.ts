@@ -173,7 +173,7 @@ describe('view snapshots, across processes', () => {
       'export const Layout = ({ children }) => <main data-layout="first">{children}</main>\n',
     )
     writeFileSync(
-      join(componentsDir(), 'homePage.tsx'),
+      join(componentsDir(), 'contentPage.tsx'),
       `import { Layout } from './components/layout.tsx'
 export default function Home({ model }) {
   return <Layout><h1>{model.value('title')}</h1></Layout>
@@ -223,7 +223,7 @@ export default function Home({ model }) {
   test('the CLI reads the views, never the snapshot of them', async () => {
     const listed = await cli('api', 'components', 'list')
     expect(listed.code, listed.out).toBe(0)
-    expect(listed.out).toContain('homePage')
+    expect(listed.out).toContain('contentPage')
     expect(listed.out).not.toContain('.crombolo')
 
     const checked = await cli('api', 'components', 'check')

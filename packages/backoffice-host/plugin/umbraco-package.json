@@ -177,8 +177,47 @@
       "name": "Crombolo CI Access",
       "element": "/crombolo-plugin/ci-access.js",
       "meta": {
-        "label": "CI access",
+        "label": "Deployment pipelines",
         "pathname": "ci-access"
+      },
+      "conditions": [
+        {
+          "alias": "Umb.Condition.SectionAlias",
+          "match": "Umb.Section.Settings"
+        },
+        {
+          "alias": "Umb.Condition.CurrentUser.IsAdmin"
+        }
+      ]
+    },
+    {
+      "type": "dashboard",
+      "alias": "Crombolo.Dashboard.Email",
+      "name": "Crombolo E-mail",
+      "element": "/crombolo-plugin/email-settings.js",
+      "meta": {
+        "label": "E-mail",
+        "pathname": "email"
+      },
+      "conditions": [
+        {
+          "alias": "Umb.Condition.SectionAlias",
+          "match": "Umb.Section.Settings"
+        },
+        {
+          "alias": "Umb.Condition.CurrentUser.IsAdmin"
+        }
+      ]
+    },
+    {
+      "type": "dashboard",
+      "alias": "Crombolo.Dashboard.Schema",
+      "name": "Crombolo Schema",
+      "element": "/crombolo-plugin/schema-transfer.js",
+      "overwrites": ["Umb.Dashboard.ModelsBuilder"],
+      "meta": {
+        "label": "Schema",
+        "pathname": "schema"
       },
       "conditions": [
         {

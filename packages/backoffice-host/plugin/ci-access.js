@@ -146,7 +146,7 @@ export default class CromboloCiAccessElement extends UmbLitElement {
     const state = this._state
     if (!state) return html`<uui-loader></uui-loader>`
     if (state.error)
-      return html`<uui-box headline="CI access"><p role="alert">${state.error}</p></uui-box>`
+      return html`<uui-box headline="Deployment pipelines"><p role="alert">${state.error}</p></uui-box>`
     return html`
       ${
         state.remoteEnabled

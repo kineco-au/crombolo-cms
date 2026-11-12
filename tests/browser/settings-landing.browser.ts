@@ -40,23 +40,23 @@ test('Settings opens on cards, and each tool or tree opens from one', async ({ p
   const landingTrail = page.locator('crombolo-breadcrumb')
   await expect(landingTrail.getByRole('link', { name: 'Home' })).toBeVisible()
   await expect(landingTrail).toContainText('Settings')
-  // With no e-mail provider, a banner says so above the cards, not a card of its own.
-  const email = landing.getByRole('status')
-  await expect(email.locator('summary')).toHaveText(/^\s*E-mail is not set up\.\s*$/)
-  // The title alone until asked: the details open, with what is unavailable as a list.
-  const unavailable = email.locator('.affected li')
-  await expect(unavailable.first()).toBeHidden()
-  await email.locator('summary').click()
-  await expect(unavailable.first()).toBeVisible()
+  // With no e-mail provider, the E-mail card is marked (story 340), with no banner on the page.
+  await expect(landing.getByRole('status')).toHaveCount(0)
+  await expect(landing.locator('crombolo-settings-card[heading="E-mail"]')).toHaveAttribute(
+    'warning',
+    'E-mail is not set up',
+  )
   await expect(landing.locator('uui-box')).toHaveCount(0)
   // No tree and no tabs on the landing page.
   await expect(page.getByTestId(STRUCTURE_TREE)).toBeHidden()
   await expect(page.locator('umb-section-main-views')).toHaveCount(0)
 
   // A tool opens alone, headed by its name and the way back.
-  await landing.getByRole('link', { name: /Health check/ }).click()
+  await landing.getByRole('link', { name: /^Service status/ }).click()
   await expect(page).toHaveURL(/\/section\/settings\/dashboard\/health-check/)
-  await expect(page.getByRole('heading', { name: 'Health check' }).first()).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Service status', exact: true }).first(),
+  ).toBeVisible()
   await expect(page.getByTestId(STRUCTURE_TREE)).toBeHidden()
   await page.getByRole('link', { name: 'Settings' }).first().click()
   await expect(landing.getByRole('heading', { name: 'Site' })).toBeVisible()

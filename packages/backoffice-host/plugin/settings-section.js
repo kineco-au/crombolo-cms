@@ -34,6 +34,7 @@ import './breadcrumb.js'
 import './settings-title.js'
 import { readOnlyWords } from './definition-tree-model.js'
 import './settings-card.js'
+import { needsAttention } from './email-settings-words.js'
 
 const base = () =>
   (document.querySelector('base')?.getAttribute('href') ?? '/umbraco/').replace(/\/$/, '')
@@ -420,7 +421,7 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
   ]
 }
 
-/** The landing page: a box of cards per group, and e-mail when it is not set up. */
+/** The landing page: a box of cards per group, E-mail's marked while it is not set up. */
 export class CromboloSettingsLandingElement extends UmbLitElement {
   static properties = { groups: { attribute: false }, _email: { state: true } }
 
@@ -435,32 +436,8 @@ export class CromboloSettingsLandingElement extends UmbLitElement {
     )
   }
 
-  #email() {
-    const status = this._email
-    if (!status || status.available) return nothing
-    return html`<details class="banner" role="status">
-      <summary>
-        <uui-icon name="icon-alert"></uui-icon>
-        <strong>E-mail is not set up.</strong>
-        <uui-icon class="chevron" name="icon-navigation-right"></uui-icon>
-      </summary>
-      <div class="banner-details">
-        <p>${status.reason}</p>
-        ${
-          status.affects?.length > 0
-            ? html`<p>Until it is, these are unavailable:</p>
-                <ul class="affected">
-                  ${status.affects.map((feature) => html`<li>${feature}</li>`)}
-                </ul>`
-            : nothing
-        }
-      </div>
-    </details>`
-  }
-
   render() {
     return html`
-      ${this.#email()}
       ${(this.groups ?? []).map(
         ({ group, bundle, cards }) => html`<section>
           <h2>
@@ -480,6 +457,11 @@ export class CromboloSettingsLandingElement extends UmbLitElement {
                   href=${`section/settings/${card.path}`}
                   heading=${card.title}
                   description=${card.description ?? ''}
+                  warning=${
+                    card.alias === 'Crombolo.Dashboard.Email' && needsAttention(this._email)
+                      ? 'E-mail is not set up'
+                      : nothing
+                  }
                 ></crombolo-settings-card>`,
             )}
           </div>
@@ -526,68 +508,6 @@ export class CromboloSettingsLandingElement extends UmbLitElement {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
         gap: var(--uui-size-space-5);
-      }
-      .banner {
-        margin-bottom: var(--uui-size-layout-1);
-        padding: var(--uui-size-space-4) var(--uui-size-space-5);
-        border: 1px solid color-mix(in srgb, var(--uui-color-warning) 45%, transparent);
-        border-left-width: 4px;
-        border-radius: 8px;
-        background: color-mix(in srgb, var(--uui-color-warning) 12%, var(--uui-color-surface));
-        color: var(--uui-color-text);
-      }
-      .banner summary {
-        display: flex;
-        gap: var(--uui-size-space-4);
-        align-items: center;
-        cursor: pointer;
-        list-style: none;
-      }
-      .banner summary::-webkit-details-marker {
-        display: none;
-      }
-      .banner summary:focus-visible {
-        outline: 2px solid var(--uui-color-focus);
-        outline-offset: 2px;
-      }
-      .banner uui-icon {
-        flex: none;
-        color: var(--uui-color-warning-standalone, var(--uui-color-warning));
-      }
-      .banner .chevron {
-        margin-left: auto;
-        transition: transform 120ms;
-      }
-      .banner[open] .chevron {
-        transform: rotate(90deg);
-      }
-      .banner-details {
-        margin-top: var(--uui-size-space-3);
-        padding-left: calc(1em + var(--uui-size-space-4));
-      }
-      .banner p {
-        margin: 0 0 var(--uui-size-space-2);
-        line-height: 1.5;
-      }
-      .affected {
-        margin: 0;
-        padding: 0;
-        list-style: none;
-      }
-      .affected li {
-        position: relative;
-        padding-left: var(--uui-size-space-5);
-        line-height: 1.6;
-      }
-      .affected li::before {
-        content: '';
-        position: absolute;
-        left: 0.2em;
-        top: 0.6em;
-        width: 0.45em;
-        height: 0.45em;
-        border-radius: 50%;
-        background: var(--uui-color-warning-standalone, var(--uui-color-warning));
       }
     `,
   ]

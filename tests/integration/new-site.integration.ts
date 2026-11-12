@@ -3,8 +3,8 @@
  *
  * `crombolo init`, then `crombolo start`, in a directory of their own — no
  * fixtures written by the test, because the point is to prove that what `init`
- * writes is what boots. Three sites: one scaffolded bare, one from each starter
- * template. Everything is asserted over HTTP against a real boot, including the
+ * writes is what boots. Sites scaffolded with --empty, plain (the welcome page,
+ * story 341) and from the starter templates. Everything is asserted over HTTP against a real boot, including the
  * images, because a template that ships media is only correct if the bytes land
  * where the bundle says they are.
  *
@@ -177,9 +177,9 @@ describe('creating a site, end to end through the CLI', () => {
     mkdirSync(join(ROOT, 'output'), { recursive: true })
     dir = mkdtempSync(join(ROOT, 'output', 'new-site-'))
 
-    const bareInit = await scaffold('bare', '--name', 'Bare Site')
+    const bareInit = await scaffold('bare', '--name', 'Bare Site', '--empty')
     expect(bareInit.code, bareInit.out).toBe(0)
-    const basicInit = await scaffold('basic', '--name', 'Basic Site', '--template', 'basic')
+    const basicInit = await scaffold('basic', '--name', 'Basic Site')
     expect(basicInit.code, basicInit.out).toBe(0)
     const demoInit = await scaffold(
       'demo',
@@ -299,24 +299,30 @@ describe('creating a site, end to end through the CLI', () => {
     expect(await response.text()).toBe('Not Found')
   })
 
-  test('the basic template boots and serves its page, and a second boot imports nothing', async () => {
+  test('a plain init boots and serves its welcome page, and a second boot imports nothing', async () => {
     const manifest = json('basic', 'package.json')
     const start = (manifest.scripts as Record<string, string>).start as string
     expect(start).toBe('crombolo start --bundle . --publish')
 
     // Exactly what the scaffolded script would run.
     const first = await serve('basic', ...start.split(' ').slice(2))
-    expect(first.banner).toMatch(/bundle\s+\S+: 1 created, 0 updated, 1 published/)
+    expect(first.banner).toMatch(/bundle\s+\S+: .*1 published/)
     const html = await page(first, '/')
-    expect(html).toContain('A new crombolo site')
-    expect(html).toContain('schema/content-types/home-page.toml')
+    expect(html).toContain('Welcome to Crombolo')
+    expect(html).toContain('components/contentPage.tsx')
+    // The logo is the page's image, and its bytes are where the page says.
+    const logo = /<img src="([^"]+)" alt="Crombolo logo"/.exec(html)?.[1]
+    expect(logo).toBeDefined()
+    const image = await fetch(new URL(logo?.replaceAll('&amp;', '&') ?? '', first.url))
+    expect(image.status).toBe(200)
+    expect(image.headers.get('content-type')).toContain('image/')
     await first.stop()
 
     const second = await serve('basic', ...start.split(' ').slice(2))
     expect(second.banner).toContain('already imported')
     expect(second.banner).not.toContain('1 created')
     // And the content is still there, imported once.
-    expect(await page(second, '/')).toContain('A new crombolo site')
+    expect(await page(second, '/')).toContain('Welcome to Crombolo')
     await second.stop()
 
     const runs = await cli('basic', 'site', 'runs')
@@ -459,7 +465,7 @@ describe('creating a site, end to end through the CLI', () => {
   test('scaffolds a type and a property, and applies them to the site it is in', async () => {
     // Its own site, rather than one of the sites a server is already serving:
     // this writes schema and syncs it, and nothing here needs an audience.
-    const scaffolded = await scaffold('scaffold', '--name', 'Scaffold Test')
+    const scaffolded = await scaffold('scaffold', '--name', 'Scaffold Test', '--empty')
     expect(scaffolded.code, scaffolded.out).toBe(0)
 
     // No types at all, which is where `types new` earns its place: there is

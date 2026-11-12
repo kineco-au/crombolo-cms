@@ -62,11 +62,11 @@ docker run -d --name riverside-db -p 5432:5432 \
 
 ### Make the site [SQLite]
 
-Create a folder and set up a new site in it, with its content kept in a file beside it.
+Create a folder and set up a new site in it with no pages yet (`--empty`), its content kept in a file beside it.
 
 ```sh
 mkdir riverside-bakery && cd riverside-bakery
-bunx @crombolo/cli@latest init --name "Riverside Bakery"
+bunx @crombolo/cli@latest init --name "Riverside Bakery" --empty
 ```
 
 > You'll see `A site called "Riverside Bakery", on SQLite.`, then the commands to run next.
@@ -77,7 +77,7 @@ Create a folder and set up a new site in it, with its content kept in Postgres.
 
 ```sh
 mkdir riverside-bakery && cd riverside-bakery
-bunx @crombolo/cli@latest init --name "Riverside Bakery" --postgres
+bunx @crombolo/cli@latest init --name "Riverside Bakery" --postgres --empty
 ```
 
 > You'll see `A site called "Riverside Bakery", on Postgres.`, then the commands to run next. The database's address is in `.env`; change `CROMBOLO_POSTGRES_URL` there if yours is somewhere else.
@@ -291,7 +291,7 @@ Make a second site, have it trust the site that signed the bundle (a new site tr
 
 ```sh
 mkdir ../bakery-copy && cd ../bakery-copy
-bunx @crombolo/cli@latest init --name "Riverside Bakery"
+bunx @crombolo/cli@latest init --name "Riverside Bakery" --empty
 bun install
 bunx crombolo keys trust "Riverside Bakery" --bundle ../bakery-bundle --site
 bunx crombolo start --bundle ../bakery-bundle --publish --replace-files

@@ -443,12 +443,13 @@ const DECLARED = [
     description: 'Whether the back office may change the schema files.',
   },
   {
-    env: 'CROMBOLO_CONTENT_FILES_READONLY',
-    kind: 'boolean',
-    default: 'false',
+    env: 'CROMBOLO_CONTENT_MODE',
+    kind: 'enum',
+    values: ['development', 'production'],
+    default: 'development',
     section: 'Schema',
     description:
-      'Stops the back office changing templates, stylesheets and scripts, for a site whose files come from its repository.',
+      'In production, the back office cannot change templates, stylesheets and scripts, for a site whose files come from its repository.',
   },
   {
     env: 'CROMBOLO_SYNC_SCHEMA_AT_BOOT',

@@ -96,7 +96,7 @@ export function createDocumentPort(
   /** The site's own directory: where `domains.toml` is, when the site keeps one. */
   siteDir?: string,
   /** Whether the site can send the e-mails a subscription asks for (story 045). */
-  notificationsAvailable = true,
+  notificationsAvailable: boolean | (() => boolean) = true,
 ): DocumentPort {
   const repo = new DocumentRepository(db, options)
   const domains = new DomainRepository(db)
@@ -442,7 +442,11 @@ export function createDocumentPort(
       const userId = await userIdOf(principal)
       if (!node || node.objectType !== repo.objectType || userId === undefined) return 'notFound'
       // Clearing is always allowed; asking for something the site cannot send is not.
-      if (!notificationsAvailable) {
+      if (
+        !(typeof notificationsAvailable === 'function'
+          ? notificationsAvailable()
+          : notificationsAvailable)
+      ) {
         const had = new Set(await notifications.subscribed(userId, node.id))
         if (actionIds.some((id) => !had.has(id))) return 'unavailable'
       }

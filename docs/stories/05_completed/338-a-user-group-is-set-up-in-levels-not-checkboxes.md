@@ -245,3 +245,12 @@ that field: "can't change it".
   - `tests/browser/users.browser.ts`: the editor sets a group up by level, shows
     "Access is off" and an exception as a sentence, and the server keeps the
     verbs. The owners test now opens People.
+
+### After release (0.63.0)
+
+- The built-in groups (`admin`, `sensitiveData`, `translator`, `SYSTEM_GROUPS` in
+  `group-editor-words.js`) are read-only on every tab but People, with a note
+  saying why. The Administrators group shows the top level of every kind
+  (`shownLevel`) and has no Customise, since administrators pass every
+  permission check. The server still accepts changes to these groups through
+  the API; only the editor holds them read-only.

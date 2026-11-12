@@ -77,8 +77,8 @@ describe('an empty directory to "Hello, world", through the command line alone',
   let login = ''
   let password = ''
 
-  test('1. scaffolds a site with no template', async () => {
-    const run = await cli('init', '--name', 'Hello World')
+  test('1. scaffolds a site with nothing in it', async () => {
+    const run = await cli('init', '--name', 'Hello World', '--empty')
     expect(run.code, said(run)).toBe(0)
     expect(existsSync(join(dir, 'schema', 'schema.toml'))).toBe(true)
   })

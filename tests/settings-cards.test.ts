@@ -23,7 +23,7 @@ const EVERYTHING = {
   dashboards: [
     dashboard('Umb.Dashboard.HealthCheck', 'health-check'),
     dashboard('Umb.Dashboard.PublishedStatus', 'published-status'),
-    dashboard('Umb.Dashboard.ModelsBuilder', 'models-builder'),
+    dashboard('Crombolo.Dashboard.Schema', 'schema'),
     dashboard('Crombolo.Dashboard.Seo', 'search-and-sharing'),
     dashboard('Crombolo.Dashboard.ContentSettings', 'content-settings'),
     dashboard('Crombolo.Dashboard.Addresses', 'addresses'),
@@ -49,10 +49,10 @@ describe('the Settings landing page', () => {
     expect(titles(settingsCards(EVERYTHING))).toEqual({
       // URLs, redirects and relations are tabs of Content settings, first in Site.
       Site: ['Content settings', 'Search', 'Webhooks', 'Logs', 'Background jobs'],
-      Health: ['Health check', 'Published status'],
+      Health: ['Service status', 'Caching'],
       History: ['Changes', 'Audit log'],
       // Story 238: after History, a developer's tool, then installing extensions.
-      Developers: ['Extension insights', 'Types for code'],
+      Developers: ['Extension insights', 'Schema'],
       Extensions: ['Extensions'],
     })
   })
@@ -60,7 +60,7 @@ describe('the Settings landing page', () => {
   test('each card goes to the address the tool already has', () => {
     const cards = settingsCards(EVERYTHING).flatMap((g) => g.cards)
     const path = (title: string) => cards.find((c) => c.title === title)?.path
-    expect(path('Health check')).toBe('dashboard/health-check')
+    expect(path('Service status')).toBe('dashboard/health-check')
     expect(path('Logs')).toBe('workspace/logviewer')
     for (const card of cards)
       expect([card.title, card.description?.length]).not.toEqual([card.title, undefined])
@@ -95,7 +95,7 @@ describe('the Settings landing page', () => {
     ])
   })
 
-  test("a bundle's card carries the description its manifest gives", () => {
+  test("a bundle's card carries the description its manifest gives, without a full stop", () => {
     const cards = settingsCards({
       dashboards: [
         {
@@ -115,9 +115,13 @@ describe('the Settings landing page', () => {
       ],
     }).flatMap((g) => g.cards)
     expect(cards.map((c) => [c.title, c.description])).toEqual([
-      ['Stock levels', 'What is on the shelves.'],
-      ['Redirects', 'Rules you add by hand.'],
+      ['Stock levels', 'What is on the shelves'],
+      ['Redirects', 'Rules you add by hand'],
     ])
+  })
+
+  test('no card description ends in a full stop', () => {
+    for (const card of Object.values(CARDS)) expect(card.description).not.toMatch(/\.$/)
   })
 
   test('a bundle has a group of its own, after ours, by its name and linking to it', () => {

@@ -1200,11 +1200,20 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 bun start
 ## Templates, stylesheets and scripts in the back office
 
 Anyone with the Settings section can change templates, stylesheets and scripts
-in the back office, in production too. `CROMBOLO_CONTENT_FILES_READONLY=true`
-stops that (story 337):
+in the back office, in production too. `CROMBOLO_CONTENT_MODE=production`
+stops that (stories 337, 343):
 - the server refuses every change to them, through any API;
 - the back office shows them read-only, without Create, Rename or Delete;
 - a document type can't add a template; it is added in the site's code.
+
+The mode is `development` when unset, whatever `NODE_ENV` says, and Home's System
+information box shows it. A site can also set it in `crombolo.config.ts`, as
+`contentMode: 'production'`, which wins over the environment, as the file does for
+every setting; that fixes it for every environment the site runs in, local
+development included, so the environment variable is usually the place for it. Any other value stops the server, as does the setting it
+replaced, `CROMBOLO_CONTENT_FILES_READONLY`, so a site that had locked its files
+never finds them editable after an upgrade. The schema has its own switch,
+`CROMBOLO_SCHEMA_WRITABLE`.
 
 Reading them, building a bundle and installing one are unaffected. Installing a
 bundle's templates has its own rule (story 336): it needs "Install code on this

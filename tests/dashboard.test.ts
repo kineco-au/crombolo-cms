@@ -100,6 +100,9 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'userProfileApp:Crombolo.UserProfileApp.SignedInDevices',
       'mfaLoginProvider:Crombolo.MfaLoginProvider.Authenticator',
       'dashboard:Crombolo.Dashboard.CiAccess',
+      'dashboard:Crombolo.Dashboard.Email',
+      // Settings → Schema, in place of Umbraco's Models Builder (story 342).
+      'dashboard:Crombolo.Dashboard.Schema',
       'dashboard:Crombolo.Dashboard.TrustedSigners',
       'dashboard:Crombolo.Dashboard.Bundles',
       // The Bundle Editor, in place of Umbraco's package builder (stories 233, 226).

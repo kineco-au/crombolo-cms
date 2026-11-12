@@ -40,7 +40,7 @@ export interface Actor {
 
 export interface ContentNotifierOptions {
   /** False when the site cannot send e-mail: nothing is queued, and nothing piles up. */
-  canSend: boolean
+  canSend: boolean | (() => boolean)
   delayMs?: number
 }
 
@@ -82,6 +82,9 @@ const pathIds = (path: string): number[] =>
     .filter((id) => Number.isFinite(id) && id > 0)
 
 export function createContentNotifier(db: Db, options: ContentNotifierOptions): ContentNotifier {
+  // Asked each time: e-mail set up in Settings starts and stops without a restart (story 340).
+  const canSend = () =>
+    typeof options.canSend === 'function' ? options.canSend() : options.canSend
   const factsFor: ContentNotifier['factsFor'] = async (on, change, actor, detail) => {
     const nodes = new NodeRepository(on)
     const documents = new DocumentRepository(on)
@@ -126,7 +129,7 @@ export function createContentNotifier(db: Db, options: ContentNotifierOptions): 
 
   const enqueueFor: ContentNotifier['enqueueFor'] = async (on, eventId, facts) => {
     // A site that cannot send e-mail queues nothing, so nothing piles up.
-    if (!options.canSend) return
+    if (!canSend()) return
     const subscriptions = new NotificationRepository(on)
     const actorId = facts.actorUserKey
       ? (await new UserRepository(on).byKey(facts.actorUserKey))?.id
@@ -165,7 +168,7 @@ export function createContentNotifier(db: Db, options: ContentNotifierOptions): 
     factsFor,
     enqueueFor,
     async raise(change, actor, detail) {
-      if (!options.canSend) return
+      if (!canSend()) return
       try {
         const facts = await factsFor(db, change, actor, detail)
         if (facts) await enqueueFor(db, undefined, facts)

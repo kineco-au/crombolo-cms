@@ -766,6 +766,37 @@ output is a diffable text file that developers review like any other change.
   from its shipped definition. Folder actions and moves rewrite every file
   from the database, since a folder path is part of the file.
 
+## Exported and imported from Settings
+
+Story `342`. Settings → Developers → **Schema** is for an administrator moving
+definitions between sites without the command line
+(`packages/server/src/schema-transfer.ts`).
+
+- **Export** downloads every `.toml` under `schema/` as `schema.zip`, which unpacks
+  to a `schema` folder: types, data types, languages, forms, approval workflows,
+  user groups and webhooks. `migrations/` is code, so it stays out.
+- **Import** takes that zip, or a single `.toml`. A single file goes in the folder
+  its first table names, replacing the file whose alias it shares. Only TOML in the
+  folder's own layout is taken, and the set laid over the site's must load and
+  validate, or the upload is refused with the problems.
+- **Nothing applies on upload.** The files that differ are kept in `key_value`
+  (`crombolo:schema-import`), checked as a deploy would check them, and their
+  findings go to the change report as source `import`. The Changes dashboard shows
+  them with the files, and an administrator applies or discards them there. A new
+  upload replaces the one waiting.
+- **Applying** checks again, since the site may have moved on, writes the files under
+  the schema lock, and runs the same sync as `schema-import`. The schema version is
+  raised as far as the change needs, as the back office raises it for a type it
+  saves; an uploaded `schema.toml` brings its `[urls]`, never its version. If the
+  sync refuses, the files are put back.
+- **Where the schema changes only with a deploy** (`schemaWritable` false), export
+  still works and import is refused.
+- Every upload, approval and discard is audited, with the files.
+
+The screen replaces Umbraco's Models Builder dashboard. The TypeScript types a
+template uses come from `crombolo generate`, as before; the Management API's
+models-builder endpoints still answer.
+
 ## Consequences for the rest of the system
 
 - **The content-type repository becomes a cache writer.** `ContentTypeRepository.save`

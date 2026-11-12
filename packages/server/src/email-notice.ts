@@ -4,7 +4,7 @@
  * The alternative is an operator finding out when an invitation never arrives,
  * which is the worst moment and the hardest to diagnose: nothing errored.
  */
-import type { EmailAvailability } from './email.ts'
+import { EMAIL_SETUP_HINT, type EmailAvailability } from './email.ts'
 
 export interface EmailNoticeLog {
   info(message: string, properties?: Record<string, unknown>): void
@@ -28,7 +28,7 @@ export function noticeAboutEmail(
   const message = 'No e-mail provider is configured, so {affected} unavailable. {hint}'
   const properties = {
     affected: `${availability.affects.join(', ')} ${availability.affects.length === 1 ? 'is' : 'are'}`,
-    hint: availability.reason,
+    hint: `Set one up in Settings, under E-mail, or: ${EMAIL_SETUP_HINT}`,
   }
   // In development this is the expected state and not worth a warning.
   if (options.development) log.info(message, properties)

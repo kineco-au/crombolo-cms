@@ -1,7 +1,7 @@
 /**
- * Story 337: CROMBOLO_CONTENT_FILES_READONLY stops the back office changing
- * templates, stylesheets and scripts, on the server as well as in the screens,
- * whose production mode follows it.
+ * Stories 337 and 343: CROMBOLO_CONTENT_MODE=production stops the back office
+ * changing templates, stylesheets and scripts, on the server as well as in the
+ * screens, whose production mode follows it.
  */
 import { afterEach, describe, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -27,7 +27,7 @@ name = "Page"
 allow-at-root = true
 `
 
-async function site(contentFilesReadOnly: boolean) {
+async function site(locked: boolean) {
   const root = mkdtempSync(join(process.cwd(), 'output', 'content-files-'))
   dirs.push(root)
   for (const dir of ['schema/content-types', 'components', 'css', 'scripts'])
@@ -43,7 +43,7 @@ async function site(contentFilesReadOnly: boolean) {
       componentsDir: join(root, 'components'),
       stylesheetsDir: join(root, 'css'),
       scriptsDir: join(root, 'scripts'),
-      contentFilesReadOnly,
+      contentMode: locked ? 'production' : 'development',
     },
   })
   open.push(h)
@@ -119,25 +119,37 @@ describe('read-only content files (story 337)', () => {
     expect(readFileSync(join(root, 'css', 'print.css'), 'utf8')).toBe('a { color: black }')
   })
 
-  test('the setting reads true only when it says so, in production too', () => {
+  test('the content mode is development unless it says production, whatever NODE_ENV says', () => {
     const env = Bun.env as Record<string, string | undefined>
-    const read = (value: string | undefined, nodeEnv?: string) => {
-      const before = [env.CROMBOLO_CONTENT_FILES_READONLY, env.NODE_ENV]
+    const read = (values: Record<string, string | undefined>) => {
+      const names = ['CROMBOLO_CONTENT_MODE', 'CROMBOLO_CONTENT_FILES_READONLY', 'NODE_ENV']
+      const before = names.map((name) => env[name])
       try {
-        env.CROMBOLO_CONTENT_FILES_READONLY = value
-        if (value === undefined) delete env.CROMBOLO_CONTENT_FILES_READONLY
-        if (nodeEnv) env.NODE_ENV = nodeEnv
-        return loadConfig({}).contentFilesReadOnly
+        for (const name of names) {
+          if (values[name] === undefined) delete env[name]
+          else env[name] = values[name]
+        }
+        return loadConfig({}).contentMode
       } finally {
-        env.CROMBOLO_CONTENT_FILES_READONLY = before[0]
-        if (before[0] === undefined) delete env.CROMBOLO_CONTENT_FILES_READONLY
-        env.NODE_ENV = before[1]
-        if (before[1] === undefined) delete env.NODE_ENV
+        names.forEach((name, i) => {
+          if (before[i] === undefined) delete env[name]
+          else env[name] = before[i]
+        })
       }
     }
-    expect(read(undefined)).toBe(false)
-    expect(read(undefined, 'production')).toBe(false)
-    expect(read('false')).toBe(false)
-    expect(read('true')).toBe(true)
+    expect(read({})).toBe('development')
+    expect(read({ NODE_ENV: 'production' })).toBe('development')
+    expect(read({ CROMBOLO_CONTENT_MODE: 'development' })).toBe('development')
+    expect(read({ CROMBOLO_CONTENT_MODE: 'Production' })).toBe('production')
+    expect(() => read({ CROMBOLO_CONTENT_MODE: 'live' })).toThrow('development or production')
+    // The old switch stops the server rather than being ignored, so locked files never unlock.
+    expect(() => read({ CROMBOLO_CONTENT_FILES_READONLY: 'true' })).toThrow('CROMBOLO_CONTENT_MODE')
+  })
+
+  test("the site's config file sets the mode too, over the environment, and is checked the same way", () => {
+    expect(loadConfig({ contentMode: 'production' }).contentMode).toBe('production')
+    expect(() => loadConfig({ contentMode: 'live' as 'production' })).toThrow(
+      'development or production',
+    )
   })
 })

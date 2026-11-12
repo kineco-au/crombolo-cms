@@ -132,6 +132,8 @@ not cover.
 | `322` | Settings is one grant again | should | M | done | 296 |
 | `338` | A user group is set up in levels, not checkboxes | should | XL | done | 302 |
 | `339` | Where a user may work comes only from their groups | could | M | done | 338 |
+| `342` | The schema is exported and imported from Settings | should | L | done | — |
+| `343` | The content mode is development or production | should | S | done | 337 |
 
 ### Epic D — Members and identity
 
@@ -172,6 +174,7 @@ not cover.
 | `333` | How far Windows is from running the suite | could | S | ready | — |
 | `334` | A Windows developer works through Docker | could | S | ready | — |
 | `335` | A key vouches for an extension only when the site trusts it | must | M | done | 316, 324 |
+| `340` | E-mail is set up in Settings, and takes effect at once | should | M | done | 045 |
 
 ### Epic F — Headless
 
@@ -429,6 +432,7 @@ files kept as the committed record nobody has to open.
 | `256` | Getting started from the command line, and the CLI spec | should | M | done | 252, 253 |
 | `257` | The guides written command line first | should | M | done | — |
 | `261` | Crombolo on Windows | could | L | on hold | — |
+| `341` | A new site opens on a welcome page | should | S | done | 163, 180 |
 
 ### Epic R — Architecture and reliability
 

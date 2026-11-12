@@ -11,7 +11,15 @@ import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { umbOpenModal } from '@umbraco-cms/backoffice/modal'
 import { UMB_SYSINFO_MODAL, UmbSysinfoRepository } from '@umbraco-cms/backoffice/sysinfo'
-import { activityLine, ago, avatarHue, firstName, initials, STATES } from './overview-format.js'
+import {
+  activityLine,
+  ago,
+  avatarHue,
+  contentModeOf,
+  firstName,
+  initials,
+  STATES,
+} from './overview-format.js'
 
 const base = () =>
   (document.querySelector('base')?.getAttribute('href') ?? '/umbraco/').replace(/\/$/, '')
@@ -146,8 +154,8 @@ export default class CromboloOverviewDashboardElement extends UmbLitElement {
       <dl class="system">
         <dt>Version</dt>
         <dd>${this._server?.version ?? '…'}</dd>
-        <dt>Mode</dt>
-        <dd>${this._server?.runtimeMode ?? '…'}</dd>
+        <dt>Content mode</dt>
+        <dd>${contentModeOf(this._server?.runtimeMode)}</dd>
       </dl>
       <div class="system-links">
         <a href="https://github.com/kineco-au/crombolo-cms" target="_blank" rel="noopener">

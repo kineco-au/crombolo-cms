@@ -195,8 +195,9 @@ import { createDeliveryMemberSecurity } from './delivery-members.ts'
 import { handleDictionaryWords } from './dictionary-words-api.ts'
 import { syncDomainsFile } from './domains.ts'
 import { editorTypeLibs, siteJsxImportSource } from './editor-types.ts'
-import { emailAvailability } from './email.ts'
+import { emailAvailability, emailReady } from './email.ts'
 import { noticeAboutEmail } from './email-notice.ts'
+import { createEmailSettings, type EmailSettingsInput } from './email-settings.ts'
 import { activityCsv, readActivityQuery } from './extension-activity.ts'
 import { createBackOfficeBuilds } from './extension-backoffice.ts'
 import { warnAboutAppPlugins } from './extensions-notice.ts'
@@ -240,6 +241,7 @@ import {
 } from './preview-tokens.ts'
 import { provenanceProblem } from './provenance.ts'
 import { createRemote, may, type RestartOutcome } from './remote.ts'
+import { createSchemaTransfer, UPLOAD_LIMITS } from './schema-transfer.ts'
 import { SiteAssets } from './site-assets.ts'
 import { unknownHostProvided } from './site-file.ts'
 import { PublicFiles } from './site-public.ts'
@@ -1303,7 +1305,16 @@ export async function createServer(
   // Whether an invitation or a reset link can reach anyone at all, which is what
   // gates the options rather than `emailStatus.available`: development delivers
   // to the console, and that is a working flow for the person using it.
-  const canSendUserLinks = Boolean(resolveUserLinkSender(config, email))
+  // Asked each time, as e-mail set up in Settings changes without a restart (story 340).
+  const canSendUserLinks = () => Boolean(resolveUserLinkSender(config, email))
+  const emailSettings = createEmailSettings(db, config, { port: () => email })
+  const schemaTransfer = createSchemaTransfer(db, config, {
+    boot: schema,
+    afterApply: async (report) => {
+      cache.invalidate()
+      await afterSync(report)
+    },
+  })
   const images = new ImageProcessor(mediaStore)
   // Asked at boot, so the first AVIF request does not wait on it.
   void canEncodeAvif()
@@ -1516,6 +1527,7 @@ export async function createServer(
   const MEDIA_JOB_QUEUED_EVENT = { eventSource: 'Crombolo:MediaJob', eventType: 'Queued' } as const
   const hostTokenPath = `${paths.pluginPath}/api/host-token`
   const contentQueryPath = `${paths.pluginPath}/api/content-query`
+  const selfAudited = [`${paths.pluginPath}/api/email/`, `${paths.pluginPath}/api/schema-transfer/`]
   const bundleInstallPaths = new Set(
     ['install', 'uninstall', 'disable', 'enable', 'grant', 'settings'].flatMap((action) => [
       `${paths.pluginPath}/api/extensions/${action}`,
@@ -1933,8 +1945,10 @@ export async function createServer(
     if (pathname === hostTokenPath) return
     // A content query is a POST that reads.
     if (pathname === contentQueryPath) return
-    // Installs and removals write their own entry, with the package (story 194).
+    // Installs and removals write their own entry, with the package (story 194),
+    // as do e-mail settings (story 340) and schema imports (story 342).
     if (bundleInstallPaths.has(pathname) || pathname.startsWith(`${jobsPath}/`)) return
+    if (selfAudited.some((path) => pathname.startsWith(path))) return
     const principal = await authenticate(request)
     if (!principal) return
     const plan = pluginAuditPlan(request.method, pathname.slice(prefix.length))
@@ -2467,14 +2481,98 @@ export async function createServer(
 
     if (pathname === `${paths.pluginPath}/api/email` && request.method === 'GET') {
       if (!(await authenticate(request))) return new Response('Unauthorized', { status: 401 })
+      const status = emailAvailability(email)
       return Response.json({
-        available: emailStatus.available,
-        provider: emailStatus.provider,
-        reason: emailStatus.reason,
-        affects: emailStatus.affects,
-        canSendUserLinks,
-        canSendNotifications: Boolean(email),
+        available: status.available,
+        provider: status.provider,
+        reason: status.reason,
+        affects: status.affects,
+        canSendUserLinks: canSendUserLinks(),
+        canSendNotifications: emailReady(email),
       })
+    }
+
+    // Story 342: Settings → Schema, administrators only. An upload waits for
+    // approval on the Changes dashboard; nothing changes until it is applied.
+    const schemaAction = /^\/api\/schema-transfer\/(export|import|import\/apply)$/.exec(
+      pathname.slice(paths.pluginPath.length),
+    )?.[1]
+    if (pathname.startsWith(paths.pluginPath) && schemaAction) {
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      if (!principal.isAdmin)
+        return Response.json(
+          { ok: false, message: 'Only an administrator imports or exports the schema.' },
+          { status: 403 },
+        )
+      const actor = actorOf(principal, request)
+      if (schemaAction === 'export' && request.method === 'GET')
+        return new Response(schemaTransfer.exportZip(), {
+          headers: {
+            'content-type': 'application/zip',
+            'content-disposition': 'attachment; filename="schema.zip"',
+            'cache-control': PRIVATE_NO_STORE,
+          },
+        })
+      if (schemaAction === 'import' && request.method === 'GET')
+        return Response.json({
+          pending: (await schemaTransfer.pending()) ?? null,
+          writable: config.schemaWritable,
+        })
+      let outcome: Awaited<ReturnType<typeof schemaTransfer.discard>> | undefined
+      if (schemaAction === 'import' && request.method === 'POST') {
+        const length = Number(request.headers.get('content-length') ?? 0)
+        if (length > UPLOAD_LIMITS.maxUploadBytes)
+          return Response.json(
+            { ok: false, message: 'That file is too large to be a schema.' },
+            { status: 413 },
+          )
+        const name = new URL(request.url).searchParams.get('name') ?? 'schema.zip'
+        outcome = await schemaTransfer.upload(
+          actor,
+          name,
+          new Uint8Array(await request.arrayBuffer()),
+        )
+      } else if (schemaAction === 'import' && request.method === 'DELETE')
+        outcome = await schemaTransfer.discard(actor)
+      else if (schemaAction === 'import/apply' && request.method === 'POST')
+        outcome = await schemaTransfer.apply(actor)
+      if (!outcome) return new Response('Method Not Allowed', { status: 405 })
+      return outcome.ok
+        ? Response.json(outcome)
+        : Response.json(outcome, { status: outcome.status })
+    }
+
+    // Story 340: Settings → E-mail, administrators only.
+    const emailAction = /^\/api\/email\/(settings|test)$/.exec(
+      pathname.slice(paths.pluginPath.length),
+    )?.[1]
+    if (pathname.startsWith(paths.pluginPath) && emailAction) {
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      if (!principal.isAdmin)
+        return Response.json(
+          { ok: false, message: 'Only an administrator sets up e-mail.' },
+          { status: 403 },
+        )
+      const actor = actorOf(principal, request)
+      if (emailAction === 'settings' && request.method === 'GET')
+        return Response.json(await emailSettings.view())
+      const outcome =
+        emailAction === 'settings' && request.method === 'PUT'
+          ? await emailSettings.save(
+              actor,
+              ((await request.json().catch(() => ({}))) ?? {}) as EmailSettingsInput,
+            )
+          : emailAction === 'settings' && request.method === 'DELETE'
+            ? await emailSettings.clear(actor)
+            : emailAction === 'test' && request.method === 'POST'
+              ? await emailSettings.test(actor)
+              : undefined
+      if (!outcome) return new Response('Method Not Allowed', { status: 405 })
+      return outcome.ok
+        ? Response.json(outcome)
+        : Response.json({ ok: false, message: outcome.message }, { status: outcome.status })
     }
 
     /**
@@ -3149,7 +3247,10 @@ export async function createServer(
         bundles,
         upgrades,
         transfers: await pendingTransfers(db),
+        // Story 342: an uploaded schema waiting for an administrator.
+        schemaImport: principal.isAdmin ? ((await schemaTransfer.pending()) ?? null) : null,
         mayImport,
+        mayApplySchema: principal.isAdmin,
       })
     }
 
@@ -3250,7 +3351,7 @@ export async function createServer(
           allowUserInvite: false,
           // Offering "forgot password" with no way to send the link is a dead
           // end that looks like a bug; without a sender the option is not there.
-          allowPasswordReset: config.allowPasswordReset && canSendUserLinks,
+          allowPasswordReset: config.allowPasswordReset && canSendUserLinks(),
           disableLocalLogin: !config.allowLocalLogin,
           // Set by the authorize endpoint so sign-in resumes the OAuth flow. Only
           // a path on this site: the login page hands this to the browser once

@@ -6,6 +6,53 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+### Features
+
+- **E-mail is set up in Settings (340).** Settings → Site → E-mail sets the
+  provider, its key and the sender, and a test e-mail checks them. The change takes
+  effect at once, with no restart. The card is marked while e-mail isn't set up, in place
+  of the banner across the Settings page. E-mail set by the server's configuration
+  wins, and shows there read-only.
+- **A new site opens on a welcome page (341).** A plain `crombolo init` now gives the site
+  a Content Page type (a title, an image and a description), its template, and a published
+  Home page welcoming you to Crombolo with the Crombolo logo, all as files the site owns.
+  `crombolo init --empty` scaffolds the files with no type, template or page, as a plain
+  `init` did before; scripts that build a site from nothing should add it.
+- **The schema is exported and imported from Settings (342).** Settings → Developers →
+  Schema replaces Types for code: it downloads the site's types, data types, languages,
+  forms, approval workflows, user groups and webhooks as TOML, and takes an uploaded zip or
+  file from another site. An upload changes nothing until an administrator applies it on
+  the Changes dashboard, where its files and findings are shown; where the schema changes
+  only with a deploy, import is refused. The TypeScript types for templates still come from
+  `crombolo generate`.
+- **The content mode replaces `CROMBOLO_CONTENT_FILES_READONLY` (343).**
+  `CROMBOLO_CONTENT_MODE=production` keeps templates, stylesheets and scripts read-only in
+  the back office; `development`, the default, leaves them editable. Home's System
+  information box shows the mode in words.
+
+### Fixes
+
+- **`gitHub` is exported from `@crombolo/crombolo`.** The source control setting the docs
+  show, `git: { provider: gitHub({...}) }`, needed an import from `@crombolo/server`, which
+  a site doesn't depend on.
+- **Every config field in one example.** `docs/examples/crombolo.config.ts` sets every
+  field of `crombolo.config.ts`, with the environment variable for each.
+- **Built-in groups are read-only in the group editor (338).** Administrators, Sensitive data
+  and Translators show their access, permissions, exceptions and data transfer settings, but
+  none can be changed there, and each tab says why. The Administrators group shows Full
+  control everywhere, since administrators can do everything whatever their group holds; it
+  had shown Custom.
+- **Each row on the Changes dashboard says whether it came from an upgrade or a bundle.**
+  The Changes card in Settings now reads "View or approve system changes".
+
+### Upgrade notes
+
+- **`CROMBOLO_CONTENT_FILES_READONLY` is refused (343).** A server that sets it stops at
+  start. Replace `CROMBOLO_CONTENT_FILES_READONLY=true` with `CROMBOLO_CONTENT_MODE=production`,
+  and remove it where it was `false`.
+- **A plain `crombolo init` now writes a welcome page (341).** A script that scaffolds a site
+  and then builds every page itself should pass `--empty`.
+
 ## v0.63.0 — 2026-11-12
 
 ### Features

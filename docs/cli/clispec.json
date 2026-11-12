@@ -4475,6 +4475,11 @@
       ],
       "args": [
         {
+          "name": "--empty",
+          "type": "boolean",
+          "description": "scaffold the files and no type, template or page"
+        },
+        {
           "name": "--force",
           "type": "boolean",
           "description": "scaffold into a directory that is not empty, overwriting its files"

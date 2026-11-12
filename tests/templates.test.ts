@@ -450,6 +450,36 @@ describe('what init writes', () => {
   })
 })
 
+describe('the welcome page a plain init gives (story 341)', () => {
+  const template = byId('basic')
+
+  test('a Content Page with a title, an image and a description', () => {
+    const { set } = loadSchemaDirectory(join(template.dir, 'files', 'schema'))
+    const page = set.contentTypes.find((type) => type.alias === 'contentPage')
+    expect(page ? allProperties(page).map((p) => p.alias) : []).toEqual([
+      'title',
+      'image',
+      'description',
+    ])
+    expect(page?.allowAtRoot).toBe(true)
+  })
+
+  test('builds into a welcome home page whose image is the Crombolo logo', async () => {
+    const seed = (await templateBundle(template)).seed
+    expect(seed?.findings ?? []).toEqual([])
+    expect(seed?.counts).toMatchObject({ content: 1, media: 1 })
+    const nodes = seed?.set?.nodes ?? []
+    const home = nodes.find((node) => node.contentType.alias === 'contentPage')
+    const logo = nodes.find((node) => node.kind === 'media')
+    const value = (alias: string) => home?.values.find((v) => v.property === alias)?.value
+    expect(home?.variants[0]?.name).toBe('Home')
+    expect(value('title')).toBe('Welcome to Crombolo')
+    expect(String(value('description'))).toContain('Content Page')
+    expect(logo?.variants[0]?.name).toBe('Crombolo logo')
+    expect(JSON.stringify(value('image'))).toContain(logo?.key ?? 'no logo')
+  }, 60_000)
+})
+
 describe('the demo’s element types, reused across page types', () => {
   const template = byId('demo/harbourstone')
   const set = loadSchemaDirectory(join(template.dir, 'files', 'schema')).set

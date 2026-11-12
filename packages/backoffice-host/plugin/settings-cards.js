@@ -20,75 +20,79 @@ export const CARDS = {
   'Crombolo.Dashboard.ContentSettings': {
     group: 'Site',
     title: 'Content settings',
-    description: 'Page URLs, the redirects from old ones, and how items relate to each other.',
+    description: 'Page URL settings, redirects, and content relations',
   },
   'Crombolo.Dashboard.Seo': {
     group: 'Site',
     title: 'Search',
-    description:
-      'What pages say in search results and when shared, the robots file, and the search indexes.',
+    description: 'Site and page search index settings',
   },
   'Umb.MenuItem.Webhook': {
     group: 'Site',
     title: 'Webhooks',
-    description: 'Tell other systems when content changes.',
+    description: 'Tell other systems when content changes',
+  },
+  'Crombolo.Dashboard.Email': {
+    group: 'Site',
+    title: 'E-mail',
+    description: 'The site email provider settings',
   },
   'Umb.MenuItem.LogViewer': {
     group: 'Site',
     title: 'Logs',
-    description: 'Search and read what the server has logged.',
+    description: 'Search and read what the server has logged',
   },
   'Crombolo.Dashboard.BackgroundJobs': {
     group: 'Site',
     title: 'Background jobs',
-    description: 'Scheduled and queued work, how far each got, and running a failed one again.',
+    description: 'View scheduled and queued tasks',
   },
   'Umb.Dashboard.HealthCheck': {
     group: 'Health',
-    title: 'Health check',
-    description: "Checks on the site's setup and data, with a fix where there is one.",
+    title: 'Service status',
+    description: 'Run site service health checks',
   },
   'Umb.Dashboard.PublishedStatus': {
     group: 'Health',
-    title: 'Published status',
-    description: 'The published cache visitors are served from, and rebuilding it.',
+    title: 'Caching',
+    description: 'The published cache visitors are served from, and rebuilding it',
   },
   'Crombolo.Dashboard.Changes': {
     group: 'History',
     title: 'Changes',
-    description: 'What an upgrade or an arriving bundle needs from you, and what is resolved.',
+    description: 'View or approve system changes',
   },
   'Crombolo.Dashboard.AuditLog': {
     group: 'History',
     title: 'Audit log',
-    description: 'Who did what, when and from where.',
+    description: 'Who did what, when and from where',
   },
   // Story 238: a developer's view of what is loaded, apart from installing bundles.
   'Umb.MenuItem.Extensions': {
     group: 'Developers',
     title: 'Extension insights',
-    description: 'What the back office has loaded, and from which extension.',
+    description: 'What the back office has loaded, and from which extension',
   },
   'Crombolo.Dashboard.CiAccess': {
     group: 'Developers',
-    title: 'CI access',
-    description: 'The CI jobs that may pull and push here without a person, and what each may do.',
+    title: 'Deployment pipelines',
+    description: 'The deployment pipelines trusted to deploy to this site',
   },
   'Crombolo.Dashboard.TrustedSigners': {
     group: 'Developers',
     title: 'Trusted signers',
     description:
-      'The keys and builds whose site bundles this site applies: yours, other sites, and CI.',
+      'The keys and builds whose site bundles this site applies: yours, other sites, and CI',
   },
-  'Umb.Dashboard.ModelsBuilder': {
+  'Crombolo.Dashboard.Schema': {
     group: 'Developers',
-    title: 'Types for code',
-    description: 'The TypeScript types written from the schema, and whether they are out of date.',
+    title: 'Schema',
+    description: 'Import or export the model data types',
   },
   'Crombolo.Dashboard.Bundles': {
     group: 'Extensions',
     title: 'Extensions',
-    description: 'Find, install and build extensions: what they add, and turning them off.',
+    description: 'Find, install and build extensions',
   },
 }
 
@@ -144,7 +148,7 @@ export function settingsCards({ dashboards = [], advanced = [] }) {
             group: card.bundle?.name ?? 'Other',
             bundle: card.bundle,
             title: card.label ?? card.alias,
-            description: card.description,
+            description: card.description?.replace(/\.$/, ''),
           }
     })
     .sort((a, b) => rank(order, a.alias) - rank(order, b.alias))

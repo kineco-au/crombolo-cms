@@ -91,6 +91,25 @@ export interface RemoteSettings {
   oidcIssuers?: string[]
 }
 
+export type ContentMode = 'development' | 'production'
+
+/** `CROMBOLO_CONTENT_MODE`, refusing the switch it replaced so locked files never quietly unlock. */
+function contentModeSetting(): ContentMode {
+  // Read directly: it is no longer a setting, only a name to refuse.
+  if (Bun.env.CROMBOLO_CONTENT_FILES_READONLY !== undefined)
+    throw new Error(
+      'CROMBOLO_CONTENT_FILES_READONLY has gone: set CROMBOLO_CONTENT_MODE to production to keep templates, stylesheets and scripts read-only, or to development (story 343).',
+    )
+  const value = (setting('CROMBOLO_CONTENT_MODE') ?? 'development').trim().toLowerCase()
+  if (value !== 'development' && value !== 'production')
+    throw new Error(`CROMBOLO_CONTENT_MODE is "${value}": it is development or production.`)
+  return value
+}
+
+/** Whether the back office must leave templates, stylesheets and scripts alone. */
+export const contentFilesLocked = (config: Pick<CromboloConfig, 'contentMode'>) =>
+  config.contentMode === 'production'
+
 /** `CROMBOLO_REMOTE_ACCESS`, refusing the switch it replaced so a site does not quietly stop being a remote. */
 function remoteAccessSetting(): RemoteAccess {
   // Read directly: it is no longer a setting, only a name to refuse.
@@ -342,11 +361,11 @@ export interface CromboloConfig {
    */
   schemaWritable: boolean
   /**
-   * The back office may not change templates, stylesheets or scripts (story 337):
-   * for a site whose files come from its repository. Off unless set, in
-   * production too. `CROMBOLO_CONTENT_FILES_READONLY`.
+   * `production` keeps templates, stylesheets and scripts read-only in the back
+   * office, for a site whose files come from its repository (stories 337, 343).
+   * `development` unless set, in production too. `CROMBOLO_CONTENT_MODE`.
    */
-  contentFilesReadOnly: boolean
+  contentMode: ContentMode
   /** Sync `schema/` at boot; a pipeline that runs `crombolo types sync` turns this off. */
   syncSchemaAtBoot: boolean
   /** Which database engine; from CROMBOLO_DB. */
@@ -904,7 +923,7 @@ export function loadConfig(
         ? setting('CROMBOLO_SCHEMA_WRITABLE') === 'true'
         : setting('NODE_ENV') !== 'production',
     syncSchemaAtBoot: setting('CROMBOLO_SYNC_SCHEMA_AT_BOOT') !== 'false',
-    contentFilesReadOnly: setting('CROMBOLO_CONTENT_FILES_READONLY') === 'true',
+    contentMode: contentModeSetting(),
     dialect: setting('CROMBOLO_DB') === 'postgres' ? 'postgres' : 'sqlite',
     pgDump: setting('CROMBOLO_PG_DUMP'),
     upgradePolicy:
@@ -1057,6 +1076,11 @@ export function loadConfig(
     host: undefined,
   }
   const merged: CromboloConfig = { ...fromEnv, ...stripUndefined(overrides) }
+  // The file is checked as the environment is: an unknown mode must not fall back to editable.
+  if (merged.contentMode !== 'development' && merged.contentMode !== 'production')
+    throw new Error(
+      `contentMode is "${String(merged.contentMode)}" in crombolo.config.ts: it is development or production.`,
+    )
   checkIdentityProviders(merged.memberIdentityProviders, 'member')
   checkIdentityProviders(merged.backofficeIdentityProviders, 'backoffice')
   // Field by field, so a site setting its title suffix keeps the environment's switches.

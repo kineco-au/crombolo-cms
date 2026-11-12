@@ -119,7 +119,7 @@ afterAll(() => rmSync(dir, { recursive: true, force: true }))
 describe('a demo site in three commands', () => {
   test('init, bundle build from the directory, start with the bundle', async () => {
     mkdirSync(join(dir, 'from-path'))
-    const init = await cli('from-path', 'init', '--name', 'Harbourstone')
+    const init = await cli('from-path', 'init', '--name', 'Harbourstone', '--empty')
     expect(init.code, init.out).toBe(0)
     const built = await cli(
       'from-path',
@@ -151,7 +151,7 @@ describe('a demo site in three commands', () => {
 
   test('the same from the demo the CLI ships, named by id', async () => {
     mkdirSync(join(dir, 'from-template'))
-    expect((await cli('from-template', 'init', '--name', 'Harbourstone')).code).toBe(0)
+    expect((await cli('from-template', 'init', '--name', 'Harbourstone', '--empty')).code).toBe(0)
     const built = await cli(
       'from-template',
       'site',

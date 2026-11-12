@@ -1,4 +1,4 @@
 {
   "name": "Basic",
-  "description": "a home page type, one view and one published page"
+  "description": "a Content Page type with a title, an image and a description, its template, and a published welcome page; what a plain init gives you"
 }

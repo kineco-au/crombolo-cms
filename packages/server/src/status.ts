@@ -31,6 +31,7 @@ import { loadSchemaDirectory } from '@crombolo/schema'
 import { type CromboloConfig, describeDatabase, VERSION } from './config.ts'
 import { BundleConfigurationError, pendingTablesSteps, tablesChainsFor } from './custom-tables.ts'
 import { type EmailAvailability, emailAvailability, resolveEmailPort } from './email.ts'
+import { siteEmail } from './email-settings.ts'
 import { formTypesFor } from './form-types.ts'
 import { assertViewRuntime } from './view-runtime.ts'
 
@@ -197,6 +198,8 @@ export async function siteStatus(config: CromboloConfig): Promise<SiteStatus> {
       status.problems.push('the database is not installed yet; `crombolo start` will install it')
       return status
     }
+    // Story 340: e-mail may be set up in Settings, which only the database knows.
+    status.email = emailAvailability(await siteEmail(db, config).catch(() => undefined))
     if (status.framework.pending.length > 0 && !config.development)
       status.problems.push(
         `${status.framework.pending.length} framework migration(s) pending: run \`crombolo upgrade\``,

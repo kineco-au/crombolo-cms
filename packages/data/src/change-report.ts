@@ -14,7 +14,7 @@ import { DbDate } from './dialect.ts'
 export type FindingKind = 'auto' | 'person' | 'blocking'
 
 /** Who a run of findings belongs to. Scopes the resolve sweep. */
-export type FindingSource = 'upgrade' | 'transfer'
+export type FindingSource = 'upgrade' | 'transfer' | 'import'
 
 export interface Finding {
   kind: FindingKind

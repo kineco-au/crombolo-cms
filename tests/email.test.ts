@@ -579,7 +579,7 @@ describe('the log adapter', () => {
     expect(await port.send(message())).toEqual({ ok: true, id: null })
     const availability = emailAvailability(port)
     expect(availability.available).toBe(false)
-    expect(availability.reason).toContain('console')
+    expect(availability.reason).toContain("server's log")
     // Nothing is listed as blocked: the links do reach the developer.
     expect(availability.affects).toEqual([])
   })
@@ -590,7 +590,7 @@ describe('availability', () => {
     const availability = emailAvailability(undefined)
     expect(availability.available).toBe(false)
     expect(availability.provider).toBeNull()
-    expect(availability.reason).toContain('CROMBOLO_EMAIL_PROVIDER')
+    expect(availability.reason).toContain('Settings, under E-mail')
     expect(availability.affects).toEqual([
       'Inviting backoffice users',
       'Password reset by e-mail',
@@ -881,7 +881,7 @@ describe('what a site without e-mail will not offer', () => {
     expect(invite.status).toBe(500)
     const problem = (await invite.json()) as { operationStatus: string; detail: string }
     expect(problem.operationStatus).toBe('CannotInvite')
-    expect(problem.detail).toContain('CROMBOLO_EMAIL_PROVIDER')
+    expect(problem.detail).toContain('Settings, under E-mail')
   })
 
   test('the status endpoint explains it, and needs a session', async () => {

@@ -19,7 +19,7 @@ const ROOT = resolve(import.meta.dir, '..', '..')
 const CLI = join(ROOT, 'packages/cli/bin/crombolo.ts')
 /** The one page the `basic` template publishes: its node name, and text from its view. */
 const HOME = 'Home'
-const HOME_TEXT = 'A new crombolo site'
+const HOME_TEXT = 'Welcome to Crombolo'
 
 interface Run {
   code: number

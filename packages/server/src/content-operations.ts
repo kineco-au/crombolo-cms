@@ -14,7 +14,8 @@ import { backOfficeUrl } from './back-office-url.ts'
 import type { CromboloConfig } from './config.ts'
 import { createContentEventSink } from './content-events.ts'
 import { createContentNotifier } from './content-notifications.ts'
-import { resolveEmailPort } from './email.ts'
+import { emailReady } from './email.ts'
+import { siteEmail } from './email-settings.ts'
 import { MediaFileStore, mediaStoreFor } from './media-files.ts'
 import { createNodeOperations } from './node-operations.ts'
 import { createWebhookService } from './webhooks.ts'
@@ -31,8 +32,8 @@ export async function siteDocumentOperations(
 ): Promise<SiteOperations> {
   const state = await currentSchemaState(db)
   const nodeState = { version: state.version, revision: state.revision }
-  const email = resolveEmailPort(config)
-  const notifier = createContentNotifier(db, { canSend: Boolean(email) })
+  const email = await siteEmail(db, config)
+  const notifier = createContentNotifier(db, { canSend: () => emailReady(email) })
   const webhooks = createWebhookService({
     db,
     schemaDir: config.schemaDir,

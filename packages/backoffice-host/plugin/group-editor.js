@@ -23,6 +23,9 @@ import {
   levelOf,
   libraryFollowsPages,
   SENSITIVE_ANSWERS,
+  SYSTEM_GROUPS,
+  shownLevel,
+  systemGroupNote,
   TABS,
   TRANSFER,
   VERB_WORDS,
@@ -124,6 +127,22 @@ export default class CromboloGroupEditorElement extends UmbLitElement {
   #set(key, value) {
     this.#context?.updateProperty(key, value)
   }
+  get #alias() {
+    return this._group.alias ?? ''
+  }
+  get #isAdminGroup() {
+    return this.#alias.toLowerCase() === 'admin'
+  }
+  /** Story 338: a built-in group's access and permissions are shown, never changed. */
+  get #permissionsLocked() {
+    return this._readOnly || SYSTEM_GROUPS.has(this.#alias)
+  }
+  #renderSystemNote() {
+    return SYSTEM_GROUPS.has(this.#alias)
+      ? html`<div class="notice" role="status"><uui-icon name="icon-lock"></uui-icon>${systemGroupNote(this.#alias)}</div>`
+      : nothing
+  }
+
   #hasArea(section) {
     return (this._group.sections ?? []).includes(section)
   }
@@ -174,7 +193,7 @@ export default class CromboloGroupEditorElement extends UmbLitElement {
       class="switch ${on ? 'on' : ''}"
       aria-checked=${on ? 'true' : 'false'}
       aria-label=${`${label}: ${on ? 'on' : 'off'}`}
-      ?disabled=${this._readOnly}
+      ?disabled=${this.#permissionsLocked}
       @click=${() => toggle(!on)}><span></span></button>`
   }
 
@@ -185,7 +204,7 @@ export default class CromboloGroupEditorElement extends UmbLitElement {
         <uui-toggle
           label="Everywhere"
           ?checked=${root}
-          ?readonly=${this._readOnly}
+          ?disabled=${this.#permissionsLocked}
           @change=${(e) => {
             this.#set(rootKey, e.target.checked)
             this.#set(nodeKey, null)
@@ -206,20 +225,20 @@ export default class CromboloGroupEditorElement extends UmbLitElement {
     const g = this._group
     if (section === 'Umb.Section.Content')
       return html`
-        ${this.#renderWhere('Pages', g.documentRootAccess, g.documentStartNode, 'documentRootAccess', 'documentStartNode', (selection) => html`<umb-input-document max="1" ?readonly=${this._readOnly} .selection=${selection} @change=${this.#pick('documentStartNode')}></umb-input-document>`)}
+        ${this.#renderWhere('Pages', g.documentRootAccess, g.documentStartNode, 'documentRootAccess', 'documentStartNode', (selection) => html`<umb-input-document max="1" ?readonly=${this.#permissionsLocked} .selection=${selection} @change=${this.#pick('documentStartNode')}></umb-input-document>`)}
         <div class="row">
           <span class="row-label">Languages</span>
           <div class="row-value">
             <uui-toggle
               label="All languages"
               ?checked=${g.hasAccessToAllLanguages}
-              ?readonly=${this._readOnly}
+              ?disabled=${this.#permissionsLocked}
               @change=${(e) => this.#set('hasAccessToAllLanguages', e.target.checked)}></uui-toggle>
             ${
               g.hasAccessToAllLanguages
                 ? nothing
                 : html`<umb-input-language
-                    ?readonly=${this._readOnly}
+                    ?readonly=${this.#permissionsLocked}
                     .selection=${g.languages ?? []}
                     @change=${(e) => this.#set('languages', e.target.selection)}></umb-input-language>`
             }
@@ -234,7 +253,7 @@ export default class CromboloGroupEditorElement extends UmbLitElement {
         'elementRootAccess',
         'elementStartNode',
         (selection) =>
-          html`<umb-input-element max="1" ?folderOnly=${true} ?readonly=${this._readOnly} .selection=${selection} @change=${this.#pick('elementStartNode')}></umb-input-element>`,
+          html`<umb-input-element max="1" ?folderOnly=${true} ?readonly=${this.#permissionsLocked} .selection=${selection} @change=${this.#pick('elementStartNode')}></umb-input-element>`,
       )
     if (section === 'Umb.Section.Media')
       return this.#renderWhere(
@@ -244,14 +263,14 @@ export default class CromboloGroupEditorElement extends UmbLitElement {
         'mediaRootAccess',
         'mediaStartNode',
         (selection) =>
-          html`<umb-input-media max="1" folder-filter="foldersOnly" ?readonly=${this._readOnly} .selection=${selection} @change=${this.#pick('mediaStartNode')}></umb-input-media>`,
+          html`<umb-input-media max="1" folder-filter="foldersOnly" ?readonly=${this.#permissionsLocked} .selection=${selection} @change=${this.#pick('mediaStartNode')}></umb-input-media>`,
       )
     return nothing
   }
 
   #renderAccess() {
     return html`
-      <p class="intro">Each area of the back office this group can open, and how far into it they can go.</p>
+      ${this.#renderSystemNote()}
       ${AREAS.map((area) => {
         const on = this.#hasArea(area.section)
         const settings = on ? this.#renderAreaSettings(area.section) : nothing
@@ -280,7 +299,7 @@ export default class CromboloGroupEditorElement extends UmbLitElement {
             type="radio"
             name=${`level-${kind}`}
             .checked=${current === level.id}
-            ?disabled=${disabled || this._readOnly}
+            ?disabled=${disabled || this.#permissionsLocked}
             @change=${() => choose(level.id)} />
           <span class="level-text"><strong>${level.label}</strong><span>${level.line}</span></span>
         </label>`,
@@ -290,6 +309,8 @@ export default class CromboloGroupEditorElement extends UmbLitElement {
   }
 
   #renderCustomise(kind, current) {
+    // An administrator can do everything, so their verbs are nothing to customise.
+    if (this.#isAdminGroup) return nothing
     const open = this._open[kind] || current === 'custom'
     const verbs = this.#verbs
     return html`<details ?open=${open} @toggle=${(e) => (this._open = { ...this._open, [kind]: e.target.open })}>
@@ -300,7 +321,7 @@ export default class CromboloGroupEditorElement extends UmbLitElement {
             <input
               type="checkbox"
               .checked=${verbs.includes(verb)}
-              ?disabled=${this._readOnly}
+              ?disabled=${this.#permissionsLocked}
               @change=${(e) => this.#setVerbs(withVerb(verbs, verb, e.target.checked))} />
             ${VERB_WORDS[verb] ?? verb}
           </label>`,
@@ -322,7 +343,7 @@ export default class CromboloGroupEditorElement extends UmbLitElement {
         </div>
         ${this.#renderLevels(kind, 'none', () => {}, true)}
       </section>`
-    const current = levelOf(kind, this.#verbs)
+    const current = shownLevel(kind, this.#verbs, this.#alias)
     return html`<section class="kind">
       <div class="kind-head"><h2>${label}</h2></div>
       ${this.#renderLevels(kind, current, (id) => this.#setVerbs(withLevel(this.#verbs, kind, id)))}
@@ -332,7 +353,7 @@ export default class CromboloGroupEditorElement extends UmbLitElement {
 
   #renderLibrary() {
     if (!this.#hasArea(KIND_AREA.library)) return this.#renderKind('library')
-    const follows = libraryFollowsPages(this.#verbs)
+    const follows = this.#isAdminGroup || libraryFollowsPages(this.#verbs)
     if (!follows || this._open.libraryOwn)
       return this.#renderKind('library', this.#renderFollow(false))
     return html`<section class="kind">
@@ -347,7 +368,7 @@ export default class CromboloGroupEditorElement extends UmbLitElement {
           type="radio"
           name="library-follows"
           .checked=${follows}
-          ?disabled=${this._readOnly}
+          ?disabled=${this.#permissionsLocked}
           @change=${() => {
             this._open = { ...this._open, libraryOwn: false }
             const pages = levelOf('pages', this.#verbs)
@@ -357,7 +378,7 @@ export default class CromboloGroupEditorElement extends UmbLitElement {
           type="radio"
           name="library-follows"
           .checked=${!follows}
-          ?disabled=${this._readOnly}
+          ?disabled=${this.#permissionsLocked}
           @change=${() => (this._open = { ...this._open, libraryOwn: true })} /><strong>Choose separately</strong></label>
     </div>`
   }
@@ -366,13 +387,13 @@ export default class CromboloGroupEditorElement extends UmbLitElement {
     const sensitive = html`<label class="verb">
       <input
         type="checkbox"
-        .checked=${this.#verbs.includes(SENSITIVE_ANSWERS)}
-        ?disabled=${this._readOnly}
+        .checked=${this.#isAdminGroup || this.#verbs.includes(SENSITIVE_ANSWERS)}
+        ?disabled=${this.#permissionsLocked}
         @change=${(e) => this.#setVerbs(withVerb(this.#verbs, SENSITIVE_ANSWERS, e.target.checked))} />
       Can see answers marked sensitive
     </label>`
     return html`
-      <p class="intro">What this group can do with each kind of content, wherever it has access. Anything different for one page or one field goes under Exceptions.</p>
+      ${this.#renderSystemNote()}
       ${this.#renderKind('pages')} ${this.#renderLibrary()} ${this.#renderKind('media')}
       ${this.#renderKind('forms', sensitive)}
     `
@@ -411,12 +432,12 @@ export default class CromboloGroupEditorElement extends UmbLitElement {
   #renderExceptions() {
     const list = this.#exceptions
     return html`
+      ${this.#renderSystemNote()}
       <div class="intro-row">
-        <p class="intro">Places where this group's permissions are different from the ones under Permissions. Everywhere else, the usual ones apply.</p>
         ${
           this._readOnly
             ? nothing
-            : html`<uui-button look="primary" label="Add an exception" @click=${() => (this._adding = { kind: 'pages', level: 'see' })}></uui-button>`
+            : html`<uui-button look="primary" label="Add an exception" ?disabled=${this.#permissionsLocked} @click=${() => (this._adding = { kind: 'pages', level: 'see' })}></uui-button>`
         }
       </div>
       ${this._adding ? this.#renderAdding() : nothing}
@@ -432,7 +453,7 @@ export default class CromboloGroupEditorElement extends UmbLitElement {
                     <div>${said.what}</div>
                   </div>
                   ${
-                    this._readOnly
+                    this.#permissionsLocked
                       ? nothing
                       : html`<uui-button look="secondary" color="danger" label="Remove" @click=${() => this.#remove(item.index)}></uui-button>`
                   }
@@ -573,7 +594,7 @@ export default class CromboloGroupEditorElement extends UmbLitElement {
     const verbs = this.#verbs
     const groups = [...new Set(TRANSFER.map((entry) => entry.group))]
     return html`
-      <p class="intro">Copying content and code between this site and others</p>
+      ${this.#renderSystemNote()}
       ${groups.map(
         (group) => html`<uui-box headline=${group}>
           ${TRANSFER.filter((entry) => entry.group === group).map((entry) => {
@@ -582,7 +603,7 @@ export default class CromboloGroupEditorElement extends UmbLitElement {
               <input
                 type="checkbox"
                 .checked=${verbs.includes(entry.verb)}
-                ?disabled=${this._readOnly || blocked}
+                ?disabled=${this.#permissionsLocked || blocked}
                 @change=${(e) => this.#setVerbs(withVerb(verbs, entry.verb, e.target.checked))} />
               <span><strong>${entry.label}</strong><span class="muted">${entry.line}</span></span>
             </label>`

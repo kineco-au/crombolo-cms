@@ -25,6 +25,8 @@ const NOT_SETTINGS: Record<string, string> = {
   CROMBOLO_REVALIDATE_SECRET: "a Next.js front end's webhook secret, named by the webhook file",
   CROMBOLO_WEBHOOK_: "the prefix of a site's variables a webhook header may send (story 301)",
   CROMBOLO_REMOTE_ENABLED: 'retired by CROMBOLO_REMOTE_ACCESS (story 167): read only to refuse it',
+  CROMBOLO_CONTENT_FILES_READONLY:
+    'retired by CROMBOLO_CONTENT_MODE (story 343): read only to refuse it',
   CROMBOLO_ID_TOKEN: "a GitLab job's identity token, read by the CLI in CI (story 160)",
   ACTIONS_ID_TOKEN_REQUEST_URL:
     "GitHub Actions': where a job asks for its identity token (story 160)",

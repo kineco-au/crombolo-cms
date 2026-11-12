@@ -6,11 +6,17 @@ import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 
 export class CromboloSettingsCardElement extends UmbLitElement {
-  static properties = { href: {}, heading: {}, description: {} }
+  static properties = { href: {}, heading: {}, description: {}, warning: {} }
 
   render() {
     return html`<a href=${this.href}>
-      <strong>${this.heading}</strong>
+      <strong
+        >${this.heading}${
+          this.warning
+            ? html`<uui-icon name="icon-alert" title=${this.warning} aria-label=${this.warning}></uui-icon>`
+            : nothing
+        }</strong
+      >
       ${this.description ? html`<span>${this.description}</span>` : nothing}
     </a>`
   }
@@ -41,10 +47,18 @@ export class CromboloSettingsCardElement extends UmbLitElement {
       outline-offset: 2px;
     }
     strong {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--uui-size-space-3);
       padding: var(--uui-size-space-4) var(--uui-size-space-5);
       background: var(--crombolo-card-header-background, var(--uui-color-header-surface));
       color: var(--crombolo-card-header-text, var(--uui-color-header-contrast-emphasis));
       font-weight: 700;
+    }
+    strong uui-icon {
+      flex: none;
+      color: var(--uui-color-warning-standalone, var(--uui-color-warning));
     }
     span {
       padding: var(--uui-size-space-4) var(--uui-size-space-5) var(--uui-size-space-5);

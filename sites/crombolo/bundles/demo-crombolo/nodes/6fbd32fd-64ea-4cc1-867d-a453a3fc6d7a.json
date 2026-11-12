@@ -29,7 +29,7 @@
       "culture": null,
       "segment": null,
       "editor": "Umbraco.TextArea",
-      "value": "Scaffold a site in an empty folder. Add --template list to see the starter sites, or --postgres to use Postgres."
+      "value": "Scaffold a site in an empty folder: it opens on a welcome page you can edit. Add --template list to see the starter sites, or --postgres to use Postgres."
     },
     {
       "property": "heading",

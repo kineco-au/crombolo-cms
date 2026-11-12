@@ -6,6 +6,9 @@ import { BaseCommand } from '../base.ts'
 import { cwd } from '../support/site.ts'
 import { DEFAULT_SITE_NAME, findTemplate, listTemplates, scaffoldFiles } from '../templates.ts'
 
+/** What a plain `init` scaffolds: a Content Page type, its template and a welcome page (story 341). */
+export const DEFAULT_TEMPLATE = 'basic'
+
 /** What may already be in a folder `init` scaffolds into: a fresh repository, and macOS's folder settings. */
 const IGNORED = new Set(['.git', '.DS_Store'])
 
@@ -16,13 +19,18 @@ export const occupying = (dir: string): string[] =>
 export default class Init extends BaseCommand {
   static override summary = 'scaffold a site in the current, empty directory'
   static override description =
-    'Either a plain site, or one from a --template with its schema, views and content; `--template list` prints the templates. Run it once, in an empty directory.'
+    'A site with a Content Page type, its template and a welcome page; or one from a --template with its schema, views and content; or, with --empty, none of them. `--template list` prints the templates. Run it once, in an empty directory.'
   static override examples = [
     '<%= config.bin %> init',
+    '<%= config.bin %> init --empty',
     '<%= config.bin %> init --template list',
     '<%= config.bin %> init --template next',
   ]
   static override flags = {
+    empty: Flags.boolean({
+      summary: 'scaffold the files and no type, template or page',
+      exclusive: ['template'],
+    }),
     force: Flags.boolean({
       summary: 'scaffold into a directory that is not empty, overwriting its files',
     }),
@@ -50,24 +58,23 @@ export default class Init extends BaseCommand {
     if (flags.template === 'list') {
       const templates = listTemplates().map((t) => ({ id: t.id, description: t.description }))
       for (const t of templates) this.say(`  ${t.id.padEnd(20)} ${t.description}`)
-      this.say('\n  (no --template scaffolds the files and no content)')
+      this.say(
+        `\n  (no --template is ${DEFAULT_TEMPLATE}; --empty scaffolds the files and no content)`,
+      )
       this.changedNothing = true
       return { created: [], templates }
     }
-    const template = flags.template ? findTemplate(flags.template) : undefined
-    if (flags.template && !template)
-      this.fail(
-        'not_found',
-        `No template "${flags.template}".`,
-        '`crombolo init --template list` prints them.',
-      )
+    const id = flags.empty ? undefined : (flags.template ?? DEFAULT_TEMPLATE)
+    const template = id ? findTemplate(id) : undefined
+    if (id && !template)
+      this.fail('not_found', `No template "${id}".`, '`crombolo init --template list` prints them.')
 
     const here = occupying(cwd())
     if (here.length > 0 && !flags.force)
       this.fail(
         'refused',
         `This directory is not empty (${here.slice(0, 3).join(', ')}${here.length > 3 ? ', …' : ''}).`,
-        'Run `crombolo init` once, in an empty directory: either plain or with --template. --force scaffolds here anyway, overwriting its files.',
+        'Run `crombolo init` once, in an empty directory. --force scaffolds here anyway, overwriting its files.',
       )
 
     const created: string[] = []
@@ -89,7 +96,7 @@ export default class Init extends BaseCommand {
     const name = flags.name ?? DEFAULT_SITE_NAME
     this.say(
       `A site called "${name}", on ${flags.postgres ? 'Postgres' : 'SQLite'}` +
-        `${template ? `, from the template "${template.id}"` : ''}` +
+        `${flags.template && template ? `, from the template "${template.id}"` : template ? ', with a Content Page type and a welcome page' : ''}` +
         `${next ? ', with a Next.js front end in web/' : ''}.`,
     )
     this.say("Its definitions are kept in schema/: commit it with the rest of the site's code.")

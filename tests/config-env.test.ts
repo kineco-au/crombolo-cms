@@ -353,3 +353,14 @@ describe('loadConfig reads the environment', () => {
     expect(describeDatabase(postgres)).toBe('postgres db:5432/site')
   })
 })
+
+describe('the full example in docs/examples/crombolo.config.ts', () => {
+  test('sets every field the config has, so a new one is documented there too', async () => {
+    const example = await Bun.file(
+      new URL('../docs/examples/crombolo.config.ts', import.meta.url),
+    ).text()
+    const set = new Set([...example.matchAll(/^ {2}([a-zA-Z]+):/gm)].map((m) => m[1]))
+    const missing = Object.keys(loadConfig({})).filter((field) => !set.has(field))
+    expect(missing).toEqual([])
+  })
+})

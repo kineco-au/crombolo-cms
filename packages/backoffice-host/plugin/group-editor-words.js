@@ -290,5 +290,18 @@ export function exceptionSummary(groupName, kind, placeName, levelId) {
   return `${groupName} will ${what} ${kind === 'library' ? 'Library items' : 'pages'} under ${placeName}.`
 }
 
+/** The site's built-in groups, whose permissions the editor shows but never changes. */
+export const SYSTEM_GROUPS = new Set(['admin', 'sensitiveData', 'translator'])
+
+/** Why a built-in group's access and permissions can't be changed here. */
+export const systemGroupNote = (alias) =>
+  alias.toLowerCase() === 'admin'
+    ? 'This is a system group - settings are locked'
+    : "This is one of the site's built-in groups, so its access and permissions can't be changed here."
+
+/** What a level shows for a group: an administrator's is always the top one, as they can do everything. */
+export const shownLevel = (kind, verbs, alias) =>
+  (alias ?? '').toLowerCase() === 'admin' ? LEVELS[kind].at(-1).id : levelOf(kind, verbs)
+
 export const ACCESS_OFF = (label) =>
   `This group can't open ${label}. Turn it on under Access to choose what they can do with it.`

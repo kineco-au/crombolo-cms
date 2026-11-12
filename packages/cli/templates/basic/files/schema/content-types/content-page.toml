@@ -1,0 +1,35 @@
+[content-type]
+alias = "contentPage"
+name = "Content Page"
+description = "A page with a title, an image and a description"
+icon = "icon-document"
+allow-at-root = true
+allow-children = ["contentPage"]
+compositions = ["seoFields"]
+components = ["contentPage"]
+default-component = "contentPage"
+
+[seo]
+description = "{description}"
+image = "image"
+
+[[tab]]
+name = "Content"
+
+[[tab.property]]
+alias = "title"
+name = "Title"
+description = "Shown as the page heading"
+type = "textstring"
+mandatory = true
+
+[[tab.property]]
+alias = "image"
+name = "Image"
+type = "imageMediaPicker"
+
+[[tab.property]]
+alias = "description"
+name = "Description"
+description = "A few sentences under the heading"
+type = "textarea"

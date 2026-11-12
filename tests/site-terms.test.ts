@@ -6,7 +6,7 @@
  * site: a hand edit applied and changed by command, `site show`, `init`.
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   loadSchemaDirectory,
@@ -296,8 +296,20 @@ describe('crombolo init', () => {
     return proc.stdout.toString()
   }
 
-  test('says what it set up and leads with commands, naming schema/ once', () => {
+  test('a plain init says it gave the site a welcome page, and what to run', () => {
     const out = init('plain', '--name', 'Riverside Bakery')
+    expect(out).toContain(
+      'A site called "Riverside Bakery", on SQLite, with a Content Page type and a welcome page.',
+    )
+    expect(out).toContain('bun start')
+    expect(out).toContain('applies content/ on the first boot')
+    expect(existsSync(join(root, 'plain', 'content', 'pages', 'home.toml'))).toBe(true)
+    expect(existsSync(join(root, 'plain', 'content', 'media', 'crombolo-logo.png'))).toBe(true)
+  })
+
+  test('--empty says what it set up and leads with commands, naming schema/ once', () => {
+    const out = init('empty', '--name', 'Riverside Bakery', '--empty')
+    expect(existsSync(join(root, 'empty', 'content'))).toBe(false)
     expect(out).toContain('A site called "Riverside Bakery", on SQLite.')
     expect(out).toContain('crombolo types new content-type page')
     expect(out).toContain('crombolo content new /Home --type page')

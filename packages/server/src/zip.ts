@@ -1,13 +1,13 @@
 /**
- * A minimal zip writer, because a created package is a zip and nothing else
- * here needs one (`docs/bundles.md`).
+ * A minimal zip writer, because a created package is a zip (`docs/bundles.md`),
+ * and a bounded reader, for a schema uploaded in Settings (story 342).
  *
  * No dependency: `node:zlib` provides `deflateRawSync` and `crc32`, which is
  * everything the format needs. Entries are written in the order given, each
  * stored if deflating does not make it smaller, and timestamps are fixed at the
  * epoch the format starts from so the same selection zips to the same bytes.
  */
-import { crc32, deflateRawSync } from 'node:zlib'
+import { crc32, deflateRawSync, inflateRawSync } from 'node:zlib'
 
 export interface ZipEntry {
   /** The path inside the archive, `/`-separated and never absolute. */
@@ -149,4 +149,87 @@ export function writeZip(entries: readonly ZipEntry[]): Uint8Array<ArrayBuffer> 
   out.u32(centralOffset)
   out.u16(0)
   return out.concat()
+}
+
+export class ZipError extends Error {}
+
+export interface ZipLimits {
+  /** The most entries an archive may hold. */
+  maxEntries: number
+  /** The most bytes one entry may unpack to. */
+  maxEntryBytes: number
+  /** The most bytes every entry together may unpack to. */
+  maxTotalBytes: number
+}
+
+/**
+ * The files in an archive, read through its central directory as an unzip tool
+ * does. Directories are left out. Anything this writer would not write, an
+ * encrypted or unknown entry, or one past the limits, is refused rather than
+ * guessed at, so an upload can't unpack to more than the limits say.
+ */
+export function readZip(archive: Uint8Array, limits: ZipLimits): ZipEntry[] {
+  const view = new DataView(archive.buffer, archive.byteOffset, archive.byteLength)
+  const decoder = new TextDecoder('utf-8', { fatal: true })
+  let end = archive.length - 22
+  const floor = Math.max(0, archive.length - 22 - 0xffff)
+  while (end >= floor && view.getUint32(end, true) !== END_OF_CENTRAL) end -= 1
+  if (end < floor) throw new ZipError('This is not a zip file.')
+
+  const count = view.getUint16(end + 10, true)
+  const centralOffset = view.getUint32(end + 16, true)
+  if (count > limits.maxEntries)
+    throw new ZipError(`It holds more than ${limits.maxEntries} files.`)
+
+  const entries: ZipEntry[] = []
+  let total = 0
+  let cursor = centralOffset
+  for (let index = 0; index < count; index += 1) {
+    if (cursor + 46 > archive.length || view.getUint32(cursor, true) !== CENTRAL_HEADER)
+      throw new ZipError('The zip file is damaged.')
+    const flags = view.getUint16(cursor + 8, true)
+    const method = view.getUint16(cursor + 10, true)
+    const compressedSize = view.getUint32(cursor + 20, true)
+    const size = view.getUint32(cursor + 24, true)
+    const nameLength = view.getUint16(cursor + 28, true)
+    const extraLength = view.getUint16(cursor + 30, true)
+    const commentLength = view.getUint16(cursor + 32, true)
+    const localOffset = view.getUint32(cursor + 42, true)
+    let path: string
+    try {
+      path = decoder.decode(archive.subarray(cursor + 46, cursor + 46 + nameLength))
+    } catch {
+      throw new ZipError('A file in the zip has a name that is not readable text.')
+    }
+    cursor += 46 + nameLength + extraLength + commentLength
+    if (path.endsWith('/')) continue
+    if (flags & 0x1) throw new ZipError(`"${path}" is encrypted.`)
+    if (method !== STORED && method !== DEFLATED)
+      throw new ZipError(`"${path}" is compressed in a way this can't read.`)
+    if (size > limits.maxEntryBytes) throw new ZipError(`"${path}" is too large.`)
+    total += size
+    if (total > limits.maxTotalBytes) throw new ZipError('The files in it are too large together.')
+
+    if (localOffset + 30 > archive.length || view.getUint32(localOffset, true) !== LOCAL_HEADER)
+      throw new ZipError('The zip file is damaged.')
+    const start =
+      localOffset +
+      30 +
+      view.getUint16(localOffset + 26, true) +
+      view.getUint16(localOffset + 28, true)
+    if (start + compressedSize > archive.length) throw new ZipError('The zip file is damaged.')
+    const stored = archive.subarray(start, start + compressedSize)
+    let bytes: Uint8Array
+    try {
+      bytes =
+        method === STORED
+          ? stored.slice()
+          : new Uint8Array(inflateRawSync(stored, { maxOutputLength: limits.maxEntryBytes }))
+    } catch {
+      throw new ZipError(`"${path}" could not be unpacked.`)
+    }
+    if (bytes.length !== size) throw new ZipError('The zip file is damaged.')
+    entries.push({ path, bytes })
+  }
+  return entries
 }

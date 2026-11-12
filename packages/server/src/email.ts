@@ -52,7 +52,8 @@ export interface EmailMessage {
 export type EmailResult = { ok: true; id: string | null } | { ok: false; error: string }
 
 /** Which adapter is in play; named in logs and in the availability report. */
-export type EmailProvider = 'resend' | 'postmark' | 'ses' | 'custom' | 'log'
+/** `none`: a port set up in Settings (story 340) that has nothing set up yet. */
+export type EmailProvider = 'resend' | 'postmark' | 'ses' | 'custom' | 'log' | 'none'
 
 export interface EmailPort {
   /** Named in the boot banner and in logs: `resend`, `postmark (broadcast)`, … */
@@ -224,13 +225,17 @@ export const EMAIL_DEPENDENT_FEATURES = [
 export const EMAIL_SETUP_HINT =
   'Set CROMBOLO_EMAIL_PROVIDER to resend, postmark or custom with its key and CROMBOLO_EMAIL_FROM, or pass `email` in crombolo.config.ts. See docs/configuration.md.'
 
+/** Whether there is a port that would take a message, the console's included. */
+export const emailReady = (port: EmailPort | undefined): port is EmailPort =>
+  port !== undefined && port.provider !== 'none'
+
 export function emailAvailability(port: EmailPort | undefined): EmailAvailability {
-  if (!port)
+  if (!emailReady(port))
     return {
       available: false,
       provider: null,
       description: null,
-      reason: `No e-mail provider is configured. ${EMAIL_SETUP_HINT}`,
+      reason: 'No e-mail provider is configured. Set one up in Settings, under E-mail.',
       affects: [...EMAIL_DEPENDENT_FEATURES],
     }
   if (port.provider === 'log')
@@ -239,7 +244,7 @@ export function emailAvailability(port: EmailPort | undefined): EmailAvailabilit
       provider: 'log',
       description: port.description,
       reason:
-        'E-mail is written to the console in development, not sent. Configure a provider before relying on it.',
+        "E-mail is written to the server's log in development, not sent. Set up a provider before relying on it.",
       affects: [],
     }
   return {

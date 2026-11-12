@@ -175,7 +175,7 @@ describe('hostnames, end to end through the CLI', () => {
     try {
       const response = await visit(server, 'harbourstone.example')
       expect(response.status).toBe(200)
-      expect(await response.text()).toContain('A new crombolo site')
+      expect(await response.text()).toContain('Welcome to Crombolo')
     } finally {
       await server.stop()
     }
@@ -232,7 +232,7 @@ describe('hostnames, end to end through the CLI', () => {
       // No binding means no hostname routing: the request falls through to the
       // ordinary root, which is the behaviour a site without domains has.
       expect(await (await visit(server, 'harbourstone.example')).text()).toContain(
-        'A new crombolo site',
+        'Welcome to Crombolo',
       )
     } finally {
       await server.stop()

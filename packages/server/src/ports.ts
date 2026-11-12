@@ -78,9 +78,9 @@ import { avatarUrls, createUserPorts, type DeclaredGroups } from './adapters/use
 import { createWebhookPort } from './adapters/webhooks.ts'
 import { backOfficeUrl } from './back-office-url.ts'
 import { COMPONENT_SNIPPETS } from './component-snippets.ts'
-import { type CromboloConfig, type UserLinkSender, VERSION } from './config.ts'
+import { type CromboloConfig, contentFilesLocked, type UserLinkSender, VERSION } from './config.ts'
 import type { ContentNotifier } from './content-notifications.ts'
-import { type EmailPort, resolveEmailPort } from './email.ts'
+import { type EmailPort, emailReady, resolveEmailPort } from './email.ts'
 import { createFileIntake } from './file-intake.ts'
 import { createLogViewerPort } from './log-viewer.ts'
 import { logger } from './logging.ts'
@@ -105,14 +105,14 @@ const CULTURES = [
   { name: 'sv-SE', englishName: 'Swedish (Sweden)' },
 ]
 
-function createServerPort(config: CromboloConfig, canSendUserLinks: boolean): ServerPort {
+function createServerPort(config: CromboloConfig, canSendUserLinks: () => boolean): ServerPort {
   return {
     // Story 080 derives this from migration state; until then the site is always up.
     status: () => ({ serverStatus: 'Run' }),
     configuration: () => ({
       // Reported false when no link could be delivered, so the client does not
       // offer a reset that goes nowhere. `email.ts` has the reason.
-      allowPasswordReset: config.allowPasswordReset && canSendUserLinks,
+      allowPasswordReset: config.allowPasswordReset && canSendUserLinks(),
       versionCheckPeriod: config.versionCheckPeriod,
       allowLocalLogin: config.allowLocalLogin,
       umbracoCssPath: config.umbracoCssPath,
@@ -122,8 +122,8 @@ function createServerPort(config: CromboloConfig, canSendUserLinks: boolean): Se
       version: VERSION,
       assemblyVersion: VERSION,
       baseUtcOffset: '00:00:00',
-      // Story 337: the back office keeps templates read-only in production mode, so the mode follows the switch.
-      runtimeMode: config.contentFilesReadOnly ? 'Production' : 'BackofficeDevelopment',
+      // Stories 337, 343: the back office keeps templates read-only in its Production mode, so it follows the content mode.
+      runtimeMode: contentFilesLocked(config) ? 'Production' : 'BackofficeDevelopment',
     }),
   }
 }
@@ -350,6 +350,7 @@ export function resolveUserLinkSender(
   // e-mail must behave that way in development too, or the difference between
   // environments is only discovered in production.
   if (config.email === null) return undefined
+  if (email?.provider === 'none') return config.development ? logUserLink : undefined
   if (email?.provider === 'log') return logUserLink
   if (email) return userLinkViaEmail(email, config.siteName)
   return config.development ? logUserLink : undefined
@@ -429,9 +430,10 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
   // `createServer` resolves the port and passes it in; a test calling this
   // directly gets the same answer from the same config.
   const email = options.email ?? resolveEmailPort(options.config)
-  const sendUserLink = resolveUserLinkSender(options.config, email)
+  // Asked each time: e-mail set up in Settings starts and stops without a restart (story 340).
+  const sendUserLink = () => resolveUserLinkSender(options.config, email)
   const deps: ManagementApiDeps = {
-    server: createServerPort(options.config, Boolean(sendUserLink)),
+    server: createServerPort(options.config, () => Boolean(sendUserLink())),
     preview: createPreviewPort(options.config, options.previewInApp),
     // Without an app to preview in, Preview in app contributes no extension.
     manifests: createManifestPort(
@@ -477,7 +479,7 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
   // through the partial-view file API because that one is path-addressed and
   // already understands folders; the template API is id-addressed and cannot
   // express a folder at all.
-  const readOnly = options.config.contentFilesReadOnly
+  const readOnly = contentFilesLocked(options.config)
   deps.components = createComponentsPort(options.config.componentsDir, readOnly)
   deps.componentSnippets = COMPONENT_SNIPPETS
   deps.stylesheets = createFileSystemPort(options.config.stylesheetsDir, {
@@ -506,10 +508,10 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
     deps.users = createUserItemPort(options.db)
     const store = new AuthStore(options.db)
     const userPorts = createUserPorts(options.db, {
-      config: {
-        ...options.config,
-        sendUserLink,
-      },
+      config: Object.defineProperty({ ...options.config }, 'sendUserLink', {
+        get: sendUserLink,
+        enumerable: true,
+      }),
       mediaFiles,
       nodes: createNodeLookup(options.db),
       declaredGroups: () => declaredGroups(options.config),
@@ -575,7 +577,7 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
       componentFiles: createTemplateFileStore(
         options.config.componentsDir,
         options.onViewsChange,
-        options.config.contentFilesReadOnly,
+        contentFilesLocked(options.config),
       ),
     })
     deps.mediaTypes = createContentTypePort(options.db, schemaFiles(options.config), {
@@ -592,7 +594,7 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
       createTemplateFileStore(
         options.config.componentsDir,
         options.onViewsChange,
-        options.config.contentFilesReadOnly,
+        contentFilesLocked(options.config),
       ),
     )
     deps.logViewer = createLogViewerPort(options.db, options.config)
@@ -641,7 +643,7 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
       componentFiles: createTemplateFileStore(
         options.config.componentsDir,
         options.onViewsChange,
-        options.config.contentFilesReadOnly,
+        contentFilesLocked(options.config),
       ),
       mediaStore: mediaFiles.store,
       components: deps.components,
@@ -685,7 +687,7 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
         },
         operations.tracker,
         options.config.siteDir,
-        Boolean(email),
+        () => emailReady(email),
       )
     if (deps.documents && operations) {
       deps.approvals = operations.approvals

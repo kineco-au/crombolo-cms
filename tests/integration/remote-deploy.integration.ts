@@ -152,7 +152,7 @@ function git(site: string, ...args: string[]) {
 /** A new site with a page type and a published home page, made with the command line. */
 async function newSite(name: string) {
   mkdirSync(siteDir(name))
-  await ok(name, ['init', '--name', 'Harbour'])
+  await ok(name, ['init', '--name', 'Harbour', '--empty'])
   await ok(name, ['types', 'new', 'content-type', 'page', '--name', 'Page', '--at-root'])
   await ok(name, ['content', 'new', '/Home', '--type', 'page', '--set', 'title=Home', '--publish'])
 }
