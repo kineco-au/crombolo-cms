@@ -1,5 +1,6 @@
 import { UMB_USER_GROUP_WORKSPACE_PATH } from '../../paths.js';
 import { UMB_COLLECTION_ALIAS_CONDITION } from '@umbraco-cms/backoffice/collection';
+import { UMB_CURRENT_USER_IS_ADMIN_CONDITION_ALIAS } from '@umbraco-cms/backoffice/current-user';
 
 export const manifests: Array<UmbExtensionManifest> = [
 	{
@@ -17,6 +18,8 @@ export const manifests: Array<UmbExtensionManifest> = [
 				alias: UMB_COLLECTION_ALIAS_CONDITION,
 				match: 'Umb.Collection.UserGroup',
 			},
+			// Crombolo: only an administrator changes groups (story 302)
+			{ alias: UMB_CURRENT_USER_IS_ADMIN_CONDITION_ALIAS },
 		],
 	},
 ];

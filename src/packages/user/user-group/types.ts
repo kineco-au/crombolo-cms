@@ -22,4 +22,7 @@ export interface UmbUserGroupDetailModel {
 	sections: Array<string>;
 	unique: string;
 	description: string | null;
+	// Crombolo: the groups whose members choose who is in this one, and whether the current user is one of them
+	owners: Array<{ unique: string }>;
+	canManageMembers: boolean;
 }

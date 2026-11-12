@@ -53,6 +53,11 @@ export class UmbUserGroupCollectionServerDataSource implements UmbCollectionData
 					permissions: item.permissions,
 					sections: item.sections,
 					unique: item.id,
+					// Crombolo: this list offers only the groups the current user may hand out (story 302)
+					owners: ((item as { owners?: Array<{ id: string }> }).owners ?? []).map((owner) => ({
+						unique: owner.id,
+					})),
+					canManageMembers: true,
 				};
 				return userGroup;
 			});

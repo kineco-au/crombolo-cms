@@ -70,6 +70,10 @@ export class UmbInputSectionElement extends UmbFormControlMixin<string | undefin
 		return this.selection.length > 0 ? this.selection.join(',') : undefined;
 	}
 
+	/** Crombolo: shows the sections without letting them be added or removed. */
+	@property({ type: Boolean, reflect: true })
+	readonly = false;
+
 	@state()
 	private _items?: Array<UmbSectionItemModel>;
 
@@ -111,16 +115,19 @@ export class UmbInputSectionElement extends UmbFormControlMixin<string | undefin
 					(item) => this._renderItem(item),
 				)}</uui-ref-list
 			>
-			<uui-button
-				id="btn-add"
-				look="placeholder"
-				@click=${() => this.#pickerContext.openPicker()}
-				label=${this.localize.term('general_choose')}></uui-button>
+			${this.readonly
+				? ''
+				: html`<uui-button
+						id="btn-add"
+						look="placeholder"
+						@click=${() => this.#pickerContext.openPicker()}
+						label=${this.localize.term('general_choose')}></uui-button>`}
 		`;
 	}
 
 	private _renderItem(item: UmbSectionItemModel) {
 		if (!item.unique) return;
+		if (this.readonly) return html`<umb-ref-section .item=${item}></umb-ref-section>`;
 		return html` <umb-ref-section .item=${item}>
 			<uui-action-bar slot="actions">
 				<uui-button @click=${() => this.#pickerContext.requestRemoveItem(item.unique)} label="Remove ${item.name}"

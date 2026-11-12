@@ -15,6 +15,17 @@ import {
 import { UmbControllerBase } from '@umbraco-cms/backoffice/class-api';
 import { tryExecute } from '@umbraco-cms/backoffice/resources';
 
+// Crombolo: owners are not in Umbraco's contract, so they are read and sent beside it.
+const crombolo = (data: object) => {
+	const extra = data as { owners?: Array<{ id: string }>; canManageMembers?: boolean };
+	return {
+		owners: (extra.owners ?? []).map((owner) => ({ unique: owner.id })),
+		canManageMembers: extra.canManageMembers ?? true,
+	};
+};
+const cromboloBody = (model: UmbUserGroupDetailModel) =>
+	({ owners: model.owners.map((owner) => ({ id: owner.unique })) }) as object;
+
 /**
  * A data source for the User Group that fetches data from the server
  * @class UmbUserGroupServerDataSource
@@ -52,6 +63,8 @@ export class UmbUserGroupServerDataSource
 			sections: [],
 			unique: UmbId.new(),
 			description: '',
+			owners: [],
+			canManageMembers: true,
 		};
 
 		return { data };
@@ -108,6 +121,7 @@ export class UmbUserGroupServerDataSource
 			sections: data.sections,
 			unique: data.id,
 			description: data.description ?? null,
+			...crombolo(data),
 		};
 
 		return { data: userGroup };
@@ -149,6 +163,7 @@ export class UmbUserGroupServerDataSource
 			permissions,
 			sections: model.sections,
 			description: model.description,
+			...cromboloBody(model),
 		};
 
 		const { data, error } = await tryExecute(
@@ -201,6 +216,7 @@ export class UmbUserGroupServerDataSource
 			permissions,
 			sections: model.sections,
 			description: model.description,
+			...cromboloBody(model),
 		};
 
 		const { error } = await tryExecute(

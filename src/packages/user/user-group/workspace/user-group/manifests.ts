@@ -1,6 +1,7 @@
 import { UMB_USER_GROUP_WORKSPACE_ALIAS } from './constants.js';
 import { manifests as viewManifests } from './views/manifests.js';
 import { UmbSubmitWorkspaceAction, UMB_WORKSPACE_CONDITION_ALIAS } from '@umbraco-cms/backoffice/workspace';
+import { UMB_CURRENT_USER_IS_ADMIN_CONDITION_ALIAS } from '@umbraco-cms/backoffice/current-user';
 
 export const manifests: Array<UmbExtensionManifest> = [
 	{
@@ -29,6 +30,8 @@ export const manifests: Array<UmbExtensionManifest> = [
 				alias: UMB_WORKSPACE_CONDITION_ALIAS,
 				match: UMB_USER_GROUP_WORKSPACE_ALIAS,
 			},
+			// Crombolo: only an administrator changes groups (story 302)
+			{ alias: UMB_CURRENT_USER_IS_ADMIN_CONDITION_ALIAS },
 		],
 	},
 	...viewManifests,

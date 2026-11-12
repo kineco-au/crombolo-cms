@@ -4,7 +4,8 @@ import { css, customElement, html, when, state } from '@umbraco-cms/backoffice/e
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element';
 import { UmbTextStyles } from '@umbraco-cms/backoffice/style';
 import type { UmbReferenceByUnique } from '@umbraco-cms/backoffice/models';
-import type { UmbUserGroupInputElement } from '@umbraco-cms/backoffice/user-group';
+import { UmbUserGroupCollectionRepository, type UmbUserGroupInputElement } from '@umbraco-cms/backoffice/user-group';
+import { UMB_CURRENT_USER_CONTEXT } from '@umbraco-cms/backoffice/current-user';
 import type { UUIBooleanInputEvent } from '@umbraco-cms/backoffice/external/uui';
 
 @customElement('umb-user-workspace-assign-access')
@@ -30,10 +31,29 @@ export class UmbUserWorkspaceAssignAccessElement extends UmbLitElement {
 	@state()
 	private _mediaRootAccess: UmbUserDetailModel['hasMediaRootAccess'] = false;
 
+	// Crombolo (story 302): anyone but an administrator may add or take away only the groups they own
+	@state()
+	private _ownedGroupUniques?: Array<string>;
+
 	#workspaceContext?: typeof UMB_USER_WORKSPACE_CONTEXT.TYPE;
 
 	constructor() {
 		super();
+
+		this.consumeContext(UMB_CURRENT_USER_CONTEXT, (currentUser) => {
+			this.observe(
+				currentUser?.isAdmin,
+				async (isAdmin) => {
+					if (isAdmin !== false) {
+						this._ownedGroupUniques = undefined;
+						return;
+					}
+					const { data } = await new UmbUserGroupCollectionRepository(this).requestCollection({ skip: 0, take: 1000 });
+					this._ownedGroupUniques = data?.items.map((group) => group.unique) ?? [];
+				},
+				'_observeIsAdmin',
+			);
+		});
 
 		this.consumeContext(UMB_USER_WORKSPACE_CONTEXT, (instance) => {
 			this.#workspaceContext = instance;
@@ -169,10 +189,15 @@ export class UmbUserWorkspaceAssignAccessElement extends UmbLitElement {
 			<umb-property-layout
 				label=${this.localize.term('general_groups')}
 				description=${this.localize.term('user_groupsHelp')}>
-				<umb-user-group-input
-					slot="editor"
-					.selection=${this._userGroupUniques.map((reference) => reference.unique)}
-					@change=${this.#onUserGroupsChange}></umb-user-group-input>
+				<div slot="editor">
+					<umb-user-group-input
+						.removable=${this._ownedGroupUniques}
+						.selection=${this._userGroupUniques.map((reference) => reference.unique)}
+						@change=${this.#onUserGroupsChange}></umb-user-group-input>
+					${this._ownedGroupUniques
+						? html`<p class="owned-help">You can add people to the groups you own, or take them out of them.</p>`
+						: ''}
+				</div>
 			</umb-property-layout>
 		`;
 	}
@@ -262,6 +287,11 @@ export class UmbUserWorkspaceAssignAccessElement extends UmbLitElement {
 		css`
 			:host {
 				display: block;
+			}
+
+			.owned-help {
+				margin: var(--uui-size-space-3) 0 0;
+				color: var(--uui-color-text-alt);
 			}
 		`,
 	];

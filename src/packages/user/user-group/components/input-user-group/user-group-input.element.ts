@@ -84,6 +84,14 @@ export class UmbUserGroupInputElement extends UUIFormControlWithBasicsMixin(UmbL
 		return this.selection.join(',');
 	}
 
+	/** Crombolo: shows the groups without letting them be added or removed. */
+	@property({ type: Boolean, reflect: true })
+	readonly = false;
+
+	/** Crombolo: when set, only these groups may be removed; the others show a lock (story 302). */
+	@property({ attribute: false })
+	removable?: Array<string>;
+
 	@state()
 	private _items?: Array<UmbUserGroupItemModel>;
 
@@ -139,12 +147,18 @@ export class UmbUserGroupInputElement extends UUIFormControlWithBasicsMixin(UmbL
 						)
 					: nothing}
 			</uui-ref-list>
-			<uui-button
-				id="btn-add"
-				look="placeholder"
-				@click=${() => this.#pickerContext.openPicker()}
-				label=${this.localize.term('general_choose')}></uui-button>
+			${this.readonly
+				? nothing
+				: html`<uui-button
+						id="btn-add"
+						look="placeholder"
+						@click=${() => this.#pickerContext.openPicker()}
+						label=${this.localize.term('general_choose')}></uui-button>`}
 		`;
+	}
+
+	#mayRemove(unique: string) {
+		return !this.readonly && (this.removable === undefined || this.removable.includes(unique));
 	}
 
 	#renderItem(status: UmbRepositoryItemsStatus) {
@@ -156,11 +170,13 @@ export class UmbUserGroupInputElement extends UUIFormControlWithBasicsMixin(UmbL
 		if (isError) {
 			return html`
 				<umb-entity-item-ref id=${unique} ?error=${true} .errorMessage=${status.state.error} .errorDetail=${unique}>
-					<uui-action-bar slot="actions">
-						<uui-button
-							label=${this.localize.term('general_remove')}
-							@click=${() => this.#pickerContext.requestRemoveItem(unique)}></uui-button>
-					</uui-action-bar>
+					${this.#mayRemove(unique)
+						? html`<uui-action-bar slot="actions">
+								<uui-button
+									label=${this.localize.term('general_remove')}
+									@click=${() => this.#pickerContext.requestRemoveItem(unique)}></uui-button>
+							</uui-action-bar>`
+						: nothing}
 				</umb-entity-item-ref>
 			`;
 		}
@@ -171,11 +187,18 @@ export class UmbUserGroupInputElement extends UUIFormControlWithBasicsMixin(UmbL
 		return html`
 			<umb-user-group-ref name="${ifDefined(item.name)}" href=${href}>
 				${item.icon ? html`<umb-icon slot="icon" name=${item.icon}></umb-icon>` : nothing}
-				<uui-action-bar slot="actions">
-					<uui-button
-						@click=${() => this.#pickerContext.requestRemoveItem(unique)}
-						label=${this.localize.term('general_remove')}></uui-button>
-				</uui-action-bar>
+				${this.#mayRemove(unique)
+					? html`<uui-action-bar slot="actions">
+							<uui-button
+								@click=${() => this.#pickerContext.requestRemoveItem(unique)}
+								label=${this.localize.term('general_remove')}></uui-button>
+						</uui-action-bar>`
+					: this.readonly
+						? nothing
+						: html`<umb-icon
+								slot="actions"
+								name="icon-lock"
+								title="Only its owners, or an administrator, can take someone out of this group"></umb-icon>`}
 			</umb-user-group-ref>
 		`;
 	}

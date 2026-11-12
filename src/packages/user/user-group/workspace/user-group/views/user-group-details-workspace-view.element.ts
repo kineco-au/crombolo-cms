@@ -11,6 +11,7 @@ import type { UUIBooleanInputEvent } from '@umbraco-cms/backoffice/external/uui'
 
 import '../components/user-group-entity-type-permission-groups.element.js';
 import '../components/user-group-workspace-users.element.js';
+import '../../../components/input-user-group/user-group-input.element.js';
 
 @customElement('umb-user-group-details-workspace-view')
 export class UmbUserGroupDetailsWorkspaceViewElement extends UmbLitElement implements UmbWorkspaceViewElement {
@@ -43,6 +44,27 @@ export class UmbUserGroupDetailsWorkspaceViewElement extends UmbLitElement imple
 
 	@state()
 	private _mediaRootAccess: UmbUserGroupDetailModel['mediaRootAccess'] = false;
+
+	@state()
+	private _owners: UmbUserGroupDetailModel['owners'] = [];
+
+	@state()
+	private _canManageMembers = false;
+
+	@state()
+	private _readOnly = true;
+
+	@state()
+	private _unownable = false;
+
+	#alias = '';
+	#fallbackPermissions: Array<string> = [];
+
+	#checkOwnable() {
+		this._unownable =
+			this.#alias.toLowerCase() === 'admin' ||
+			this.#fallbackPermissions.some((verb) => verb.startsWith('Crombolo.Remote.'));
+	}
 
 	#workspaceContext?: typeof UMB_USER_GROUP_WORKSPACE_CONTEXT.TYPE;
 
@@ -99,6 +121,39 @@ export class UmbUserGroupDetailsWorkspaceViewElement extends UmbLitElement imple
 			this.#workspaceContext?.mediaStartNode,
 			(value) => (this._mediaStartNode = value),
 			'_observeMediaStartNode',
+		);
+
+		this.observe(this.#workspaceContext?.owners, (value) => (this._owners = value ?? []), '_observeOwners');
+		this.observe(
+			this.#workspaceContext?.canManageMembers,
+			(value) => (this._canManageMembers = value ?? false),
+			'_observeCanManageMembers',
+		);
+		this.observe(this.#workspaceContext?.readOnly, (value) => (this._readOnly = value ?? true), '_observeReadOnly');
+		this.observe(
+			this.#workspaceContext?.alias,
+			(value) => {
+				this.#alias = value ?? '';
+				this.#checkOwnable();
+			},
+			'_observeAliasForOwners',
+		);
+		this.observe(
+			this.#workspaceContext?.fallbackPermissions,
+			(value) => {
+				this.#fallbackPermissions = value ?? [];
+				this.#checkOwnable();
+			},
+			'_observeFallbackPermissionsForOwners',
+		);
+	}
+
+	#onOwnersChange(event: UmbChangeEvent) {
+		event.stopPropagation();
+		const target = event.target as HTMLElement & { selection: Array<string> };
+		this.#workspaceContext?.updateProperty(
+			'owners',
+			target.selection.map((unique) => ({ unique })),
 		);
 	}
 
@@ -182,6 +237,7 @@ export class UmbUserGroupDetailsWorkspaceViewElement extends UmbLitElement imple
 		return html`
 			<div id="main">
 				<umb-stack>
+					${this.#renderReadOnlyNotice()}
 					<uui-box>
 						<div slot="headline"><umb-localize key="user_assignAccess"></umb-localize></div>
 
@@ -190,6 +246,7 @@ export class UmbUserGroupDetailsWorkspaceViewElement extends UmbLitElement imple
 							description=${this.localize.term('user_sectionsHelp')}>
 							<umb-input-section
 								slot="editor"
+								?readonly=${this._readOnly}
 								.selection=${this._sections}
 								@change=${this.#onSectionsChange}></umb-input-section>
 						</umb-property-layout>
@@ -200,9 +257,44 @@ export class UmbUserGroupDetailsWorkspaceViewElement extends UmbLitElement imple
 
 					${this.#renderPermissionGroups()}
 				</umb-stack>
-				<umb-user-group-workspace-users></umb-user-group-workspace-users>
+				<umb-stack>
+					${this.#renderOwners()}
+					<umb-user-group-workspace-users ?readonly=${!this._canManageMembers}></umb-user-group-workspace-users>
+				</umb-stack>
 			</div>
 		`;
+	}
+
+	// Crombolo (story 302): what a group grants is an administrator's; its owners choose who is in it.
+	#renderReadOnlyNotice() {
+		if (!this._readOnly) return nothing;
+		return html`<div id="read-only" role="status">
+			<umb-icon name="icon-lock"></umb-icon>
+			<span>
+				${this._canManageMembers
+					? "Only an administrator can change what this group allows. You can choose who's in it."
+					: 'Only an administrator can change this group.'}
+			</span>
+		</div>`;
+	}
+
+	#renderOwners() {
+		if (this._readOnly && this._owners.length === 0) return nothing;
+		if (this._unownable && this._owners.length === 0)
+			return html`<uui-box headline="Owners">
+				<p id="owners-help">
+					${this.#alias.toLowerCase() === 'admin'
+						? 'The administrators group never has owners: only an administrator can make someone an administrator.'
+						: "This group can't have owners, because it can move sites or install code. Only an administrator can add people to it."}
+				</p>
+			</uui-box>`;
+		return html`<uui-box headline="Owners">
+			<p id="owners-help">Owners can manage group members</p>
+			<umb-user-group-input
+				?readonly=${this._readOnly}
+				.selection=${this._owners.map((owner) => owner.unique)}
+				@change=${this.#onOwnersChange}></umb-user-group-input>
+		</uui-box>`;
 	}
 
 	#renderLanguageAccess() {
@@ -214,6 +306,7 @@ export class UmbUserGroupDetailsWorkspaceViewElement extends UmbLitElement imple
 					<uui-toggle
 						style="margin-bottom: var(--uui-size-space-3);"
 						label=${this.localize.term('user_allowAccessToAllLanguages')}
+						?readonly=${this._readOnly}
 						.checked=${this._hasAccessToAllLanguages}
 						@change=${this.#onAllowAllLanguagesChange}></uui-toggle>
 
@@ -221,6 +314,7 @@ export class UmbUserGroupDetailsWorkspaceViewElement extends UmbLitElement imple
 						this._hasAccessToAllLanguages === false,
 						() => html`
 							<umb-input-language
+								?readonly=${this._readOnly}
 								.selection=${this._languages}
 								@change=${this.#onLanguagePermissionChange}></umb-input-language>
 						`,
@@ -239,6 +333,7 @@ export class UmbUserGroupDetailsWorkspaceViewElement extends UmbLitElement imple
 					<uui-toggle
 						style="margin-bottom: var(--uui-size-space-3);"
 						label=${this.localize.term('user_allowAccessToAllDocuments')}
+						?readonly=${this._readOnly}
 						.checked=${this._documentRootAccess}
 						@change=${this.#onAllowAllDocumentsChange}></uui-toggle>
 				</div>
@@ -247,6 +342,7 @@ export class UmbUserGroupDetailsWorkspaceViewElement extends UmbLitElement imple
 					() => html`
 						<umb-input-document
 							slot="editor"
+							?readonly=${this._readOnly}
 							max="1"
 							.selection=${this._documentStartNode?.unique ? [this._documentStartNode.unique] : []}
 							@change=${this.#onDocumentStartNodeChange}>
@@ -266,6 +362,7 @@ export class UmbUserGroupDetailsWorkspaceViewElement extends UmbLitElement imple
 					<uui-toggle
 						style="margin-bottom: var(--uui-size-space-3);"
 						label=${this.localize.term('user_allowAccessToAllElements')}
+						?readonly=${this._readOnly}
 						.checked=${this._elementRootAccess}
 						@change=${this.#onAllowAllElementsChange}></uui-toggle>
 				</div>
@@ -274,6 +371,7 @@ export class UmbUserGroupDetailsWorkspaceViewElement extends UmbLitElement imple
 					() => html`
 						<umb-input-element
 							slot="editor"
+							?readonly=${this._readOnly}
 							max="1"
 							.selection=${this._elementStartNode?.unique ? [this._elementStartNode.unique] : []}
 							?folderOnly=${true}
@@ -294,6 +392,7 @@ export class UmbUserGroupDetailsWorkspaceViewElement extends UmbLitElement imple
 					<uui-toggle
 						style="margin-bottom: var(--uui-size-space-3);"
 						label=${this.localize.term('user_allowAccessToAllMedia')}
+						?readonly=${this._readOnly}
 						.checked=${this._mediaRootAccess}
 						@change=${this.#onAllowAllMediaChange}></uui-toggle>
 				</div>
@@ -302,6 +401,7 @@ export class UmbUserGroupDetailsWorkspaceViewElement extends UmbLitElement imple
 					() => html`
 						<umb-input-media
 							slot="editor"
+							?readonly=${this._readOnly}
 							max="1"
 							folder-filter="foldersOnly"
 							.selection=${this._mediaStartNode?.unique ? [this._mediaStartNode.unique] : []}
@@ -314,7 +414,10 @@ export class UmbUserGroupDetailsWorkspaceViewElement extends UmbLitElement imple
 	}
 
 	#renderPermissionGroups() {
-		return html`<umb-user-group-entity-type-permission-groups></umb-user-group-entity-type-permission-groups>`;
+		// Crombolo: the permission editors have no read-only state of their own, so they are shown but not usable
+		return html`<umb-user-group-entity-type-permission-groups
+			?inert=${this._readOnly}
+			class=${this._readOnly ? 'read-only' : ''}></umb-user-group-entity-type-permission-groups>`;
 	}
 
 	static override styles = [
@@ -334,6 +437,25 @@ export class UmbUserGroupDetailsWorkspaceViewElement extends UmbLitElement imple
 
 			uui-input {
 				width: 100%;
+			}
+
+			#read-only {
+				display: flex;
+				gap: var(--uui-size-space-3);
+				align-items: center;
+				padding: var(--uui-size-space-4) var(--uui-size-space-5);
+				border: 1px solid var(--uui-color-border);
+				border-radius: var(--uui-border-radius);
+				background: var(--uui-color-surface-alt);
+			}
+
+			#owners-help {
+				margin: 0 0 var(--uui-size-space-4);
+				color: var(--uui-color-text-alt);
+			}
+
+			.read-only {
+				opacity: 0.85;
 			}
 		`,
 	];

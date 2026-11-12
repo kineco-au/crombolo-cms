@@ -3,6 +3,7 @@ import { UMB_USER_GROUP_DETAIL_REPOSITORY_ALIAS, UMB_USER_GROUP_ITEM_REPOSITORY_
 import { UMB_USER_GROUP_ENTITY_TYPE } from '../entity.js';
 import { UMB_ENTITY_BULK_ACTION_DELETE_KIND } from '@umbraco-cms/backoffice/entity-bulk-action';
 import { UMB_COLLECTION_ALIAS_CONDITION } from '@umbraco-cms/backoffice/collection';
+import { UMB_CURRENT_USER_IS_ADMIN_CONDITION_ALIAS } from '@umbraco-cms/backoffice/current-user';
 
 export const manifests: Array<UmbExtensionManifest> = [
 	{
@@ -21,6 +22,8 @@ export const manifests: Array<UmbExtensionManifest> = [
 				alias: UMB_COLLECTION_ALIAS_CONDITION,
 				match: UMB_USER_GROUP_COLLECTION_ALIAS,
 			},
+			// Crombolo: only an administrator changes groups (story 302)
+			{ alias: UMB_CURRENT_USER_IS_ADMIN_CONDITION_ALIAS },
 		],
 	},
 ];

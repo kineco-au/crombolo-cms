@@ -10,6 +10,8 @@ import {
 import type { UmbControllerHost } from '@umbraco-cms/backoffice/controller-api';
 import type { UmbRoutableWorkspaceContext, UmbSubmittableWorkspaceContext } from '@umbraco-cms/backoffice/workspace';
 import type { UmbUserPermissionModel } from '@umbraco-cms/backoffice/user-permission';
+import { UMB_CURRENT_USER_CONTEXT } from '@umbraco-cms/backoffice/current-user';
+import { UmbBooleanState } from '@umbraco-cms/backoffice/observable-api';
 
 export class UmbUserGroupWorkspaceContext
 	extends UmbEntityNamedDetailWorkspaceContextBase<UmbUserGroupDetailModel, UmbUserGroupDetailRepository>
@@ -32,12 +34,21 @@ export class UmbUserGroupWorkspaceContext
 	readonly fallbackPermissions = this._data.createObservablePartOfCurrent((data) => data?.fallbackPermissions || []);
 	readonly permissions = this._data.createObservablePartOfCurrent((data) => data?.permissions || []);
 	readonly description = this._data.createObservablePartOfCurrent((data) => data?.description || '');
+	// Crombolo: only an administrator changes what a group grants; its owners choose who is in it
+	readonly owners = this._data.createObservablePartOfCurrent((data) => data?.owners || []);
+	readonly canManageMembers = this._data.createObservablePartOfCurrent((data) => data?.canManageMembers ?? false);
+	#readOnly = new UmbBooleanState(true);
+	readonly readOnly = this.#readOnly.asObservable();
 
 	constructor(host: UmbControllerHost) {
 		super(host, {
 			workspaceAlias: UMB_USER_GROUP_WORKSPACE_ALIAS,
 			entityType: UMB_USER_GROUP_ENTITY_TYPE,
 			detailRepositoryAlias: UMB_USER_GROUP_DETAIL_REPOSITORY_ALIAS,
+		});
+
+		this.consumeContext(UMB_CURRENT_USER_CONTEXT, (currentUser) => {
+			this.observe(currentUser?.isAdmin, (isAdmin) => this.#readOnly.setValue(isAdmin !== true), '_observeIsAdmin');
 		});
 
 		this.routes.setRoutes([

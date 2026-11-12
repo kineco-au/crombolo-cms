@@ -2,7 +2,7 @@ import { UMB_USER_GROUP_WORKSPACE_CONTEXT } from '../user-group-workspace.contex
 import { UmbUserGroupUsersRepository } from '../../../repository/users/user-group-users.repository.js';
 import type { UmbUserInputElement } from '../../../../user/components/user-input/user-input.element.js';
 import type { UmbChangeEvent } from '@umbraco-cms/backoffice/event';
-import { css, html, customElement, state, nothing } from '@umbraco-cms/backoffice/external/lit';
+import { css, html, customElement, property, state, nothing } from '@umbraco-cms/backoffice/external/lit';
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element';
 import { UmbTextStyles } from '@umbraco-cms/backoffice/style';
 import { UMB_NOTIFICATION_CONTEXT } from '@umbraco-cms/backoffice/notification';
@@ -11,6 +11,10 @@ import '../../../../user/components/user-input/user-input.element.js';
 
 @customElement('umb-user-group-workspace-users')
 export class UmbUserGroupWorkspaceUsersElement extends UmbLitElement {
+	/** Crombolo: only the group's owners, or an administrator, choose who is in it (story 302). */
+	@property({ type: Boolean, reflect: true })
+	readonly = false;
+
 	@state()
 	private _userUniques: string[] = [];
 
@@ -136,7 +140,10 @@ export class UmbUserGroupWorkspaceUsersElement extends UmbLitElement {
 		return html`
 			<uui-box>
 				<div slot="headline"><umb-localize key="general_users"></umb-localize></div>
-				<umb-user-input .selection=${this._userUniques} @change=${this.#onUsersChange}></umb-user-input>
+				<umb-user-input
+					?readonly=${this.readonly}
+					.selection=${this._userUniques}
+					@change=${this.#onUsersChange}></umb-user-input>
 				${this.#renderRemainingCount()}
 			</uui-box>
 		`;

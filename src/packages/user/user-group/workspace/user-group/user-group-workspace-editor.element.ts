@@ -15,6 +15,9 @@ export class UmbUserGroupWorkspaceEditorElement extends UmbLitElement {
 	private _isNew?: boolean = false;
 
 	@state()
+	private _readOnly = true;
+
+	@state()
 	private _name?: UmbUserGroupDetailModel['name'];
 
 	@state()
@@ -47,6 +50,7 @@ export class UmbUserGroupWorkspaceEditorElement extends UmbLitElement {
 
 	#observeUserGroup() {
 		this.observe(this.#workspaceContext?.isNew, (value) => (this._isNew = value), '_observeIsNew');
+		this.observe(this.#workspaceContext?.readOnly, (value) => (this._readOnly = value ?? true), '_observeReadOnly');
 		this.observe(this.#workspaceContext?.name, (value) => (this._name = value), '_observeName');
 		this.observe(this.#workspaceContext?.alias, (value) => (this._alias = value), '_observeAlias');
 		this.observe(
@@ -96,7 +100,13 @@ export class UmbUserGroupWorkspaceEditorElement extends UmbLitElement {
 	#renderHeader() {
 		return html`
 			<div id="header" slot="header">
-				<uui-button id="icon" compact label="icon" look="outline" @click=${this.#onIconClick}>
+				<uui-button
+					id="icon"
+					compact
+					label="icon"
+					look="outline"
+					?disabled=${this._readOnly}
+					@click=${this.#onIconClick}>
 					<umb-icon name=${this._icon || ''}></umb-icon>
 				</uui-button>
 
@@ -107,7 +117,8 @@ export class UmbUserGroupWorkspaceEditorElement extends UmbLitElement {
 						.value=${this._name}
 						alias=${ifDefined(this._alias)}
 						?auto-generate-alias=${this._isNew}
-						?alias-readonly=${this._aliasCanBeChanged === false}
+						?readonly=${this._readOnly}
+						?alias-readonly=${this._aliasCanBeChanged === false || this._readOnly}
 						@change=${this.#onNameAndAliasChange}
 						${umbFocus()}>
 					</umb-input-with-alias>
@@ -117,6 +128,7 @@ export class UmbUserGroupWorkspaceEditorElement extends UmbLitElement {
 						.label=${this.localize.term('placeholders_enterDescription')}
 						.value=${this._description}
 						.placeholder=${this.localize.term('placeholders_enterDescription')}
+						?readonly=${this._readOnly}
 						@input=${this.#onDescriptionChange}></uui-input>
 				</div>
 			</div>
