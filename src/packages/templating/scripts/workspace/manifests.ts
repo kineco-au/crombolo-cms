@@ -1,5 +1,6 @@
 import { UMB_SCRIPT_ENTITY_TYPE } from '../entity.js';
 import { UMB_WORKSPACE_CONDITION_ALIAS, UmbSubmitWorkspaceAction } from '@umbraco-cms/backoffice/workspace';
+import { UMB_IS_SERVER_PRODUCTION_MODE_CONDITION_ALIAS } from '@umbraco-cms/backoffice/server';
 
 export const UMB_SCRIPT_WORKSPACE_ALIAS = 'Umb.Workspace.Script';
 export const UMB_SAVE_SCRIPT_WORKSPACE_ACTION_ALIAS = 'Umb.WorkspaceAction.Script.Save';
@@ -27,6 +28,10 @@ export const manifests: Array<UmbExtensionManifest> = [
 			color: 'positive',
 		},
 		conditions: [
+			{
+				alias: UMB_IS_SERVER_PRODUCTION_MODE_CONDITION_ALIAS,
+				match: false,
+			},
 			{
 				alias: UMB_WORKSPACE_CONDITION_ALIAS,
 				match: UMB_SCRIPT_WORKSPACE_ALIAS,

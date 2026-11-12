@@ -1,6 +1,7 @@
 import type { UmbStylesheetWorkspaceContext } from '../../stylesheet-workspace.context.js';
 import { UMB_STYLESHEET_WORKSPACE_CONTEXT } from '../../stylesheet-workspace.context-token.js';
 import { css, html, customElement, state, nothing } from '@umbraco-cms/backoffice/external/lit';
+import { UMB_SERVER_CONTEXT } from '@umbraco-cms/backoffice/server';
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element';
 import type { UmbCodeEditorElement } from '@umbraco-cms/backoffice/code-editor';
 import { UmbTextStyles } from '@umbraco-cms/backoffice/style';
@@ -9,6 +10,10 @@ import '@umbraco-cms/backoffice/code-editor';
 
 @customElement('umb-stylesheet-code-editor-workspace-view')
 export class UmbStylesheetCodeEditorWorkspaceViewElement extends UmbLitElement {
+	// Crombolo (story 337): read-only where the site keeps these files read-only, as templates are
+	@state()
+	private _isRestricted = true;
+
 	@state()
 	private _content?: string | null = '';
 
@@ -16,6 +21,12 @@ export class UmbStylesheetCodeEditorWorkspaceViewElement extends UmbLitElement {
 
 	constructor() {
 		super();
+
+		this.consumeContext(UMB_SERVER_CONTEXT, (context) => {
+			this.observe(context?.isProductionMode, (isProductionMode) => {
+				this._isRestricted = isProductionMode !== false;
+			});
+		});
 
 		this.consumeContext(UMB_STYLESHEET_WORKSPACE_CONTEXT, (workspaceContext) => {
 			this.#stylesheetWorkspaceContext = workspaceContext;
@@ -46,6 +57,7 @@ export class UmbStylesheetCodeEditorWorkspaceViewElement extends UmbLitElement {
 
 		return html`
 			<umb-code-editor
+				?readonly=${this._isRestricted}
 				id="content"
 				language="css"
 				.code=${this._content ?? ''}

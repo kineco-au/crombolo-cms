@@ -1,5 +1,6 @@
 import { UMB_SCRIPT_WORKSPACE_CONTEXT } from './script-workspace.context-token.js';
 import { css, html, customElement, state, nothing } from '@umbraco-cms/backoffice/external/lit';
+import { UMB_SERVER_CONTEXT } from '@umbraco-cms/backoffice/server';
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element';
 import type { UmbCodeEditorElement } from '@umbraco-cms/backoffice/code-editor';
 
@@ -7,6 +8,10 @@ import '@umbraco-cms/backoffice/code-editor';
 
 @customElement('umb-script-workspace-editor')
 export class UmbScriptWorkspaceEditorElement extends UmbLitElement {
+	// Crombolo (story 337): read-only where the site keeps these files read-only, as templates are
+	@state()
+	private _isRestricted = true;
+
 	@state()
 	private _content?: string | null = '';
 
@@ -17,6 +22,12 @@ export class UmbScriptWorkspaceEditorElement extends UmbLitElement {
 
 	constructor() {
 		super();
+
+		this.consumeContext(UMB_SERVER_CONTEXT, (context) => {
+			this.observe(context?.isProductionMode, (isProductionMode) => {
+				this._isRestricted = isProductionMode !== false;
+			});
+		});
 
 		this.consumeContext(UMB_SCRIPT_WORKSPACE_CONTEXT, (context) => {
 			this.#context = context;
@@ -36,7 +47,7 @@ export class UmbScriptWorkspaceEditorElement extends UmbLitElement {
 			<umb-entity-detail-workspace-editor>
 				<umb-workspace-header-name-editable
 					slot="header"
-					?readonly=${this._isNew === false}></umb-workspace-header-name-editable>
+					?readonly=${this._isNew === false || this._isRestricted}></umb-workspace-header-name-editable>
 				${this.#renderBody()}
 			</umb-entity-detail-workspace-editor>
 		`;
@@ -59,6 +70,7 @@ export class UmbScriptWorkspaceEditorElement extends UmbLitElement {
 
 		return html`
 			<umb-code-editor
+				?readonly=${this._isRestricted}
 				id="content"
 				language="javascript"
 				.code=${this._content ?? ''}
