@@ -1,7 +1,8 @@
 import { UMB_USER_GROUP_WORKSPACE_ALIAS } from '../constants.js';
 import { UMB_WORKSPACE_CONDITION_ALIAS } from '@umbraco-cms/backoffice/workspace';
 
-export const manifests: Array<UmbExtensionManifest> = [
+// Crombolo (story 338): the plugin's group editor takes this view's place; kept, unregistered, for upgrades.
+export const replacedManifests: Array<UmbExtensionManifest> = [
 	{
 		type: 'workspaceView',
 		alias: 'Umb.WorkspaceView.UserGroup.Details',
@@ -21,3 +22,5 @@ export const manifests: Array<UmbExtensionManifest> = [
 		],
 	},
 ];
+
+export const manifests: Array<UmbExtensionManifest> = [];

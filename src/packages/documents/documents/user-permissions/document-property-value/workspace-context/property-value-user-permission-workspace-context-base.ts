@@ -1,8 +1,5 @@
 import { UMB_DOCUMENT_PROPERTY_VALUE_USER_PERMISSION_CONDITION_ALIAS } from '../conditions/constants.js';
-import {
-	UMB_USER_PERMISSION_DOCUMENT_PROPERTY_VALUE_READ,
-	UMB_USER_PERMISSION_DOCUMENT_PROPERTY_VALUE_WRITE,
-} from '../constants.js';
+import { UMB_USER_PERMISSION_DOCUMENT_PROPERTY_VALUE_WRITE } from '../constants.js';
 import { UmbControllerBase } from '@umbraco-cms/backoffice/class-api';
 import { createExtensionApiByAlias } from '@umbraco-cms/backoffice/extension-registry';
 import type { UmbVariantPropertyGuardManager } from '@umbraco-cms/backoffice/property';
@@ -15,10 +12,10 @@ export class UmbPropertyValueUserPermissionWorkspaceContextBase extends UmbContr
 		propertyWriteGuard: UmbVariantPropertyGuardManager,
 	) {
 		properties.forEach((property) => {
-			this.#setPermissionForProperty({
-				verb: UMB_USER_PERMISSION_DOCUMENT_PROPERTY_VALUE_READ,
-				stateManager: propertyViewGuard,
-				property,
+			// Crombolo (story 338): a field is always shown; only changing it is governed
+			propertyViewGuard.addRule({
+				unique: 'UMB_PROPERTY_' + property.unique,
+				propertyType: { unique: property.unique },
 			});
 
 			this.#setPermissionForProperty({
