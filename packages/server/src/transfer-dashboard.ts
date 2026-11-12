@@ -84,6 +84,8 @@ export interface TransferActionContext {
   config: CromboloConfig
   /** Who is acting, recorded with each answer. */
   user: string
+  /** They were given "Install code on this site", so a bundle's templates may come in (story 336). */
+  mayInstallCode?: boolean
   /** After an import lands: the published cache was built before it. */
   onApplied(): void
 }
@@ -185,6 +187,7 @@ export async function handleTransferAction(
       label: pending.label ?? undefined,
       by: ctx.user,
       passphrase,
+      installTemplates: ctx.mayInstallCode === true,
     })
     if (result.runId) ctx.onApplied()
     const names = new Map(result.check.plan.map((entry) => [entry.key, entry.name] as const))

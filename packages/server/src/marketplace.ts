@@ -176,6 +176,8 @@ export interface MarketplaceOptions {
   policy?: ProvenancePolicy
   /** Checks a package directory's signature; `verifyProvenance`, unless a test stands in. */
   verify?: (dir: string) => Promise<ProvenanceResult>
+  /** Whether a signature's signer is on this site's Trusted signers list (story 335). */
+  trustSigner?: (provenance: ProvenanceResult) => Promise<boolean>
 }
 
 export interface InstallOutcome {
@@ -336,7 +338,13 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
 
   const declaresAt = (name: string, wanted?: string) =>
     declaresAtRegistry(options.registry, name, wanted, call)
-  const verify = options.verify ?? ((dir: string) => verifyProvenance(dir))
+  const verifyOnly = options.verify ?? ((dir: string) => verifyProvenance(dir))
+  /** A signature with whether its signer is trusted, asked fresh each time, since the list changes. */
+  const withTrust = async (result: ProvenanceResult): Promise<ProvenanceResult> =>
+    result.state === 'signed'
+      ? { ...result, trusted: (await options.trustSigner?.(result)) ?? false }
+      : result
+  const verify = async (dir: string) => withTrust(await verifyOnly(dir))
   const provenanceAt = (name: string, dist: Parameters<typeof provenanceAtRegistry>[1]) =>
     provenanceAtRegistry(name, dist, { fetch: call, verify })
 
@@ -379,7 +387,7 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
     const key = `${bundle.packageName}@${bundle.version}`
     let found = installedProvenance.get(key)
     if (!found) {
-      found = verify(bundle.directory).catch((error: unknown) => ({
+      found = verifyOnly(bundle.directory).catch((error: unknown) => ({
         state: 'unchecked' as const,
         reason: error instanceof Error ? error.message : String(error),
       }))
@@ -388,7 +396,7 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
     const result = await found
     // Not kept: the next look may be able to check it.
     if (result.state === 'unchecked') installedProvenance.delete(key)
-    return result
+    return withTrust(result)
   }
 
   /** What the registry says this package's latest version carries, when it is a valid bundle. */
@@ -618,11 +626,11 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
       const discard = () => {
         if (kept.copied) rmSync(join(options.siteDir, kept.path), { force: true })
       }
-      const provenance = await verifyPackage(join(options.siteDir, kept.path)).catch(
-        (error: unknown) => ({
+      const provenance = await withTrust(
+        await verifyPackage(join(options.siteDir, kept.path)).catch((error: unknown) => ({
           state: 'unchecked' as const,
           reason: error instanceof Error ? error.message : String(error),
-        }),
+        })),
       )
       const refused =
         refusedBySignature(declared.name, provenance) ??

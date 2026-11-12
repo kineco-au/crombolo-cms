@@ -181,7 +181,13 @@ export async function contentImport(
   await useSchemaStore(config)
   const { db } = await bootstrapDatabase(config)
   try {
-    return await installBundleContent(db, config, { ...input, bundle }, vouch)
+    // The operator's own shell: a bundle's templates come in, as its code does (story 336).
+    return await installBundleContent(
+      db,
+      config,
+      { installTemplates: true, ...input, bundle },
+      vouch,
+    )
   } finally {
     await db.close()
   }

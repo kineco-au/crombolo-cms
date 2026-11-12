@@ -1197,6 +1197,25 @@ docker run --rm -p 4318:4318 -v "$PWD/otel-collector.yaml:/etc/otelcol/config.ya
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 bun start
 ```
 
+## Templates, stylesheets and scripts in the back office
+
+Anyone with the Settings section can change templates, stylesheets and scripts
+in the back office, in production too. `CROMBOLO_CONTENT_FILES_READONLY=true`
+stops that (story 337):
+- the server refuses every change to them, through any API;
+- the back office shows them read-only, without Create, Rename or Delete;
+- a document type can't add a template; it is added in the site's code.
+
+Reading them, building a bundle and installing one are unaffected. Installing a
+bundle's templates has its own rule (story 336): it needs "Install code on this
+site".
+
+Set it when the files come from the site's repository, when the site runs in
+containers that start afresh, or on several nodes that don't share the folder.
+An edit made on one node there reaches only that node, and is lost at the next
+deploy. A template is code the server runs, so a site that wants only its
+developers to change one should set it.
+
 ## Running a cluster
 
 A deployed site is run as well as served: backed up, given content, upgraded.

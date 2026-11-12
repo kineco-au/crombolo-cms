@@ -12,7 +12,6 @@ export type UserKind = 'Default' | 'Api'
 export type StartNodeTree = 'document' | 'media' | 'element'
 
 /** Umbraco's `UserStartNodeDto.StartNodeTypeValue`. */
-const START_NODE_TYPE: Record<StartNodeTree, number> = { document: 1, media: 2, element: 3 }
 const ROOT_ID = -1
 
 /** A user's own start nodes in one tree: root access, and/or specific nodes by key. */
@@ -81,6 +80,8 @@ export interface UserGroupRecord {
   startNodes: Record<StartNodeTree, GroupStartNode>
   permissions: string[]
   granular: GranularPermission[]
+  /** The keys of the groups whose members may choose who is in this one (story 302). */
+  owners: string[]
 }
 
 export interface UserGroupInput {
@@ -106,6 +107,8 @@ export interface DeclaredUserGroup {
   sections: readonly string[]
   permissions: readonly string[]
   languages: readonly string[] | 'all'
+  /** The aliases of the groups that own it (story 302). */
+  owners?: readonly string[]
 }
 
 const sameSet = (a: readonly string[], b: readonly string[]) =>
@@ -142,7 +145,6 @@ export interface UserUpdate {
   email: string
   languageIsoCode: string | null
   groupKeys: string[]
-  startNodes: Record<StartNodeTree, StartNodeSelection>
 }
 
 /** What access checks need about a user: their groups' grants and every start node's position. */
@@ -151,7 +153,6 @@ export interface UserAccessData {
   languages: string[]
   hasAccessToAllLanguages: boolean
   groupStartNodes: Record<StartNodeTree, StartNodePath[]>
-  userStartNodes: Record<StartNodeTree, StartNodePath[]>
 }
 
 const USER_COLUMNS = [
@@ -232,31 +233,14 @@ export class UserRepository {
       .where('m.user_id', 'in', ids)
       .orderBy('g.id')
       .execute()
-    const starts = await this.#db.q
-      .selectFrom('user_start_node')
-      .select(['user_id', 'start_node', 'start_node_type'])
-      .where('user_id', 'in', ids)
-      .execute()
-    const nodes = await this.#nodeKeys(starts.map((s) => Number(s.start_node)))
     return rows.map((row) => {
       const id = Number(row.id)
-      const startNodes = Object.fromEntries(
-        TREES.map((tree) => {
-          const mine = starts.filter(
-            (s) => Number(s.user_id) === id && Number(s.start_node_type) === START_NODE_TYPE[tree],
-          )
-          return [
-            tree,
-            {
-              root: mine.some((s) => Number(s.start_node) === ROOT_ID),
-              keys: mine.flatMap((s) => {
-                const node = nodes.get(Number(s.start_node))
-                return node ? [node.key] : []
-              }),
-            },
-          ]
-        }),
-      ) as Record<StartNodeTree, StartNodeSelection>
+      // Story 339: a user has no start nodes of their own; where they work is their groups'.
+      const startNodes: Record<StartNodeTree, StartNodeSelection> = {
+        document: { root: false, keys: [] },
+        media: { root: false, keys: [] },
+        element: { root: false, keys: [] },
+      }
       return {
         id,
         key: normaliseUuid(String(row.key)),
@@ -366,21 +350,13 @@ export class UserRepository {
   async update(
     key: string,
     change: UserUpdate,
-  ): Promise<'updated' | 'not-found' | 'missing-group' | Exclude<StartNodeTree, never>> {
+  ): Promise<'updated' | 'not-found' | 'missing-group'> {
     return this.#db.transaction(async (tx) => {
       const repo = new UserRepository(tx)
       const user = await repo.byKey(key)
       if (!user) return 'not-found'
       const groupIds = await repo.#groupIds(change.groupKeys)
       if (!groupIds) return 'missing-group'
-      const nodeIds: Array<{ tree: StartNodeTree; id: number }> = []
-      for (const tree of TREES) {
-        const selection = change.startNodes[tree]
-        if (selection.root) nodeIds.push({ tree, id: ROOT_ID })
-        const ids = await repo.nodeIds(selection.keys)
-        if (!ids) return tree
-        for (const id of ids.values()) nodeIds.push({ tree, id })
-      }
       await tx.q
         .updateTable('user_account')
         .set({
@@ -393,12 +369,6 @@ export class UserRepository {
         .where('id', '=', user.id)
         .execute()
       await repo.#setGroups(user.id, groupIds)
-      await tx.q.deleteFrom('user_start_node').where('user_id', '=', user.id).execute()
-      for (const { tree, id } of nodeIds)
-        await tx.q
-          .insertInto('user_start_node')
-          .values({ user_id: user.id, start_node: id, start_node_type: START_NODE_TYPE[tree] })
-          .execute()
       return 'updated'
     })
   }
@@ -497,7 +467,6 @@ export class UserRepository {
     await this.#db.transaction(async (tx) => {
       for (const table of [
         'user_group_member',
-        'user_start_node',
         'user_data',
         'user_token',
         'user_client_credential',
@@ -623,7 +592,6 @@ export class UserRepository {
         const key = group.startNodes[tree].key
         if (key) nodeIds[key] = 0
       }
-    for (const tree of TREES) for (const key of user?.startNodes[tree].keys ?? []) nodeIds[key] = 0
     const keys = Object.keys(nodeIds)
     const rows =
       keys.length > 0
@@ -698,9 +666,6 @@ export class UserRepository {
             }),
           ),
         ]),
-      ) as Record<StartNodeTree, StartNodePath[]>,
-      userStartNodes: Object.fromEntries(
-        TREES.map((tree) => [tree, user ? positions(user.startNodes[tree]) : []]),
       ) as Record<StartNodeTree, StartNodePath[]>,
     }
   }
@@ -786,6 +751,11 @@ export class UserGroupRepository {
       .where('user_group_key', 'in', keys)
       .orderBy('id')
       .execute()
+    const owners = await this.#db.q
+      .selectFrom('user_group_owner')
+      .select(['user_group_key', 'owner_group_key'])
+      .where('user_group_key', 'in', keys)
+      .execute()
     const startIds = rows.flatMap((r) =>
       TREES.map((tree) => Number(r[GROUP_START_COLUMN[tree]] ?? 0)),
     )
@@ -838,6 +808,9 @@ export class UserGroupRepository {
             permission: String(g.permission),
             context: String(g.context),
           })),
+        owners: owners
+          .filter((o) => normaliseUuid(String(o.user_group_key)) === key)
+          .map((o) => normaliseUuid(String(o.owner_group_key))),
       }
     })
   }
@@ -860,6 +833,35 @@ export class UserGroupRepository {
 
   async byAlias(alias: string): Promise<UserGroupRecord | undefined> {
     return (await this.#hydrate(await groups(this.#db).where('alias', '=', alias).execute()))[0]
+  }
+
+  /** The keys of the groups that any of `groupKeys` owns. */
+  async ownedBy(groupKeys: readonly string[]): Promise<string[]> {
+    if (groupKeys.length === 0) return []
+    const rows = await this.#db.q
+      .selectFrom('user_group_owner')
+      .select('user_group_key')
+      .distinct()
+      .where('owner_group_key', 'in', groupKeys.map(normaliseUuid))
+      .execute()
+    return rows.map((r) => normaliseUuid(String(r.user_group_key)))
+  }
+
+  /** Replaces the groups that own `key`; false when it or one of them does not exist. */
+  async setOwners(key: string, ownerKeys: readonly string[]): Promise<boolean> {
+    const group = normaliseUuid(key)
+    const owners = [...new Set(ownerKeys.map(normaliseUuid))]
+    if ((await this.byKeys([group, ...owners])).length !== new Set([group, ...owners]).size)
+      return false
+    await this.#db.transaction(async (tx) => {
+      await tx.q.deleteFrom('user_group_owner').where('user_group_key', '=', group).execute()
+      for (const owner of owners)
+        await tx.q
+          .insertInto('user_group_owner')
+          .values({ user_group_key: group, owner_group_key: owner })
+          .execute()
+    })
+    return true
   }
 
   /** How many users each group has, by group key. */
@@ -1010,6 +1012,25 @@ export class UserGroupRepository {
         throw new Error(`The user group "${group.alias}" keeps a start node that no longer exists.`)
       ;(existing ? updated : created).push(group.alias)
     }
+    // Owners second, once every group they name exists.
+    for (const group of groups) {
+      if (!group.owners) continue
+      const record = await this.byAlias(group.alias)
+      if (!record) continue
+      const keys: string[] = []
+      for (const alias of group.owners) {
+        const owner = await this.byAlias(alias)
+        if (!owner)
+          throw new Error(
+            `The user group "${group.alias}" names an owner the site does not have: ${alias}.`,
+          )
+        keys.push(owner.key)
+      }
+      if (sameSet(record.owners, keys)) continue
+      await this.setOwners(record.key, keys)
+      if (!created.includes(group.alias) && !updated.includes(group.alias))
+        updated.push(group.alias)
+    }
     return { created, updated }
   }
 
@@ -1027,6 +1048,12 @@ export class UserGroupRepository {
       await tx.q
         .deleteFrom('user_group_granular_permission')
         .where('user_group_key', '=', group.key)
+        .execute()
+      await tx.q
+        .deleteFrom('user_group_owner')
+        .where((eb) =>
+          eb.or([eb('user_group_key', '=', group.key), eb('owner_group_key', '=', group.key)]),
+        )
         .execute()
       await tx.q.deleteFrom('user_group').where('id', '=', group.id).execute()
     })

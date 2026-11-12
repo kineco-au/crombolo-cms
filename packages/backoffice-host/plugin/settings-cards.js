@@ -17,21 +17,16 @@ export const GROUPS = ['Site', 'Health', 'History', 'Developers', 'Extensions', 
 
 /** Our words for each tool, by the alias of its dashboard or menu item. */
 export const CARDS = {
+  'Crombolo.Dashboard.ContentSettings': {
+    group: 'Site',
+    title: 'Content settings',
+    description: 'Page URLs, the redirects from old ones, and how items relate to each other.',
+  },
   'Crombolo.Dashboard.Seo': {
     group: 'Site',
     title: 'Search',
     description:
       'What pages say in search results and when shared, the robots file, and the search indexes.',
-  },
-  'Crombolo.Dashboard.Addresses': {
-    group: 'Site',
-    title: 'Page addresses',
-    description: "Whether the top-level page's name is part of every address below it.",
-  },
-  'Umb.Dashboard.RedirectManagement': {
-    group: 'Site',
-    title: 'Redirects',
-    description: "Configure the site's redirect rules.",
   },
   'Umb.MenuItem.Webhook': {
     group: 'Site',
@@ -47,11 +42,6 @@ export const CARDS = {
     group: 'Site',
     title: 'Background jobs',
     description: 'Scheduled and queued work, how far each got, and running a failed one again.',
-  },
-  'Umb.MenuItem.Relations': {
-    group: 'Site',
-    title: 'Relations',
-    description: 'How items point at each other, such as a copy and its original.',
   },
   'Umb.Dashboard.HealthCheck': {
     group: 'Health',
@@ -102,6 +92,13 @@ export const CARDS = {
   },
 }
 
+/** Tools shown as tabs of the Content settings card, not as cards of their own. */
+export const IN_CONTENT_SETTINGS = new Set([
+  'Crombolo.Dashboard.Addresses',
+  'Umb.Dashboard.RedirectManagement',
+  'Umb.MenuItem.Relations',
+])
+
 /**
  * The landing page's groups, in order, each with its cards in the order above.
  * `dashboards` are `{ alias, label, description?, bundle?, path }`; `advanced`
@@ -118,7 +115,7 @@ export const CARDS = {
  */
 export function settingsCards({ dashboards = [], advanced = [] }) {
   const found = []
-  for (const d of dashboards)
+  for (const d of dashboards.filter((d) => !IN_CONTENT_SETTINGS.has(d.alias)))
     found.push({
       alias: d.alias,
       label: d.label,
@@ -126,7 +123,7 @@ export function settingsCards({ dashboards = [], advanced = [] }) {
       bundle: d.bundle,
       path: d.path,
     })
-  for (const item of advanced)
+  for (const item of advanced.filter((item) => !IN_CONTENT_SETTINGS.has(item.alias)))
     found.push({
       alias: item.alias,
       label: item.label,

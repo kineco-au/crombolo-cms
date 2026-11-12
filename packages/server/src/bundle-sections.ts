@@ -140,6 +140,16 @@ export function migrationChanges(config: CromboloConfig, carried: CarriedSection
     .filter((file) => file.action !== 'unchanged')
 }
 
+/** The templates a bundle would add or change here: code the server runs (story 336). */
+export function componentChanges(config: CromboloConfig, carried: CarriedSections): SectionFile[] {
+  return (carried.carries.components ?? [])
+    .map((path) => {
+      const target = join(config.componentsDir, withinSection(path, 'components'))
+      return { path, target, action: actionFor(target, sourceOf(carried, path)) }
+    })
+    .filter((file) => file.action !== 'unchanged')
+}
+
 /** Compared as bytes: a public file is an image as often as it is text. */
 function actionFor(target: string, source: string): FileAction {
   if (!existsSync(target)) return 'create'

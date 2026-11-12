@@ -122,6 +122,11 @@ export interface ProvenanceResult {
   package?: { name: string; version: string }
   /** Why a signature was not accepted, in words a person can act on. */
   reason?: string
+  /**
+   * Whether its signer is on this site's Trusted signers list (story 335), set by
+   * whoever asked; only a trusted signer vouches for an upper level.
+   */
+  trusted?: boolean
 }
 
 /** A package's `provenance.json`, when it has one that reads. */
@@ -296,7 +301,14 @@ export function describeProvenance(result: ProvenanceResult): string {
         ? `signed by ${result.key.comment || 'a key'} (${result.key.fingerprint})`
         : undefined
       const said = [built, key].filter(Boolean).join(', and ')
-      return `Signed: ${said}`
+      // Story 335: said only where someone asked this site's list.
+      const trust =
+        result.trusted === undefined
+          ? ''
+          : result.trusted
+            ? '; this site trusts its signer'
+            : "; this site doesn't trust its signer"
+      return `Signed: ${said}${trust}`
     }
     case 'unsigned':
       return 'Not signed'

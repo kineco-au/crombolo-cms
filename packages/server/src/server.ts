@@ -80,6 +80,7 @@ import {
   managementApiPrefix,
   ObjectTypes,
   PREVIEW_HUB_PATH,
+  RemotePermissions,
   SERVER_EVENT_HUB_PATH,
 } from '@crombolo/core'
 import {
@@ -238,10 +239,11 @@ import {
   signPreviewToken,
 } from './preview-tokens.ts'
 import { provenanceProblem } from './provenance.ts'
-import { createRemote, type RestartOutcome } from './remote.ts'
+import { createRemote, may, type RestartOutcome } from './remote.ts'
 import { SiteAssets } from './site-assets.ts'
 import { unknownHostProvided } from './site-file.ts'
 import { PublicFiles } from './site-public.ts'
+import { signerTrusted } from './site-trust.ts'
 import {
   activeSpan,
   inSpan,
@@ -497,6 +499,7 @@ export async function createServer(
     keyword: config.packageKeyword,
     marketplaceUrl: config.marketplaceUrl,
     componentsDir: config.componentsDir,
+    trustSigner: (provenance) => signerTrusted(db, config, provenance),
     extensions: { ...extensions, invalidate: () => void bundleReloader.reload() },
     siteDir: config.siteDir,
     wired: () => bundles?.mounted.map((bundle) => bundle.id) ?? [],
@@ -3092,6 +3095,7 @@ export async function createServer(
         db,
         config,
         user: principal.email,
+        mayInstallCode: may(principal, RemotePermissions.InstallCode),
         onApplied: () => {
           cache.invalidate()
           mediaCache.clear()

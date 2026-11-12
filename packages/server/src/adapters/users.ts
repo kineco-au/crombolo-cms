@@ -26,17 +26,16 @@ import {
   verifyPassword,
 } from '@crombolo/auth'
 import {
+  ADMIN_GROUP_ALIAS,
   DEFAULT_PASSWORD_CONFIGURATION,
   generateUserPassword,
-  hasPathAccess,
+  isRemotePermission,
   isValidEmail,
   isValidPassword,
   normaliseUuid,
   type Page,
   permissionsForPath,
-  type StartNodes,
   sectionAppAlias,
-  sectionKey,
   sectionName,
 } from '@crombolo/core'
 import {
@@ -105,8 +104,6 @@ function toUserResponse(user: UserRecord, adminKey: string | undefined): UserRes
   }
 }
 
-type Tree = 'document' | 'media' | 'element'
-
 export interface UserPortOptions {
   config: Pick<
     CromboloConfig,
@@ -145,27 +142,8 @@ export function createUserPorts(
     return !targets.some((t) => isAdmin(t, admin))
   }
 
-  const chainsFor = async (tree: Tree, keys: readonly string[]) =>
-    tree === 'media' ? nodes.media(keys) : nodes.documents(keys)
-
-  /** Newly granted start nodes must lie where the performing user may work; root needs root. */
-  const mayGrantStartNodes = async (
-    performing: StartNodes,
-    tree: Tree,
-    granted: { root: boolean; keys: readonly string[] },
-    had: { root: boolean; keys: readonly string[] },
-  ) => {
-    if (granted.root && !had.root && !performing.root) return false
-    const added = granted.keys.filter((k) => !had.keys.includes(normaliseUuid(k)))
-    if (added.length === 0 || tree === 'element') return true
-    const found = await chainsFor(tree, added)
-    return added.every((key) => {
-      const node = found.get(normaliseUuid(key))
-      return !node || hasPathAccess(performing, node.chain, node.trashed)
-    })
-  }
-
   /** Umbraco's `UserEditorAuthorizationHelper`: who may give which groups to whom. */
+  /** Story 302: each group added to or taken from a user must be one the caller owns. */
   const mayAssignGroups = async (
     principal: Principal,
     target: UserRecord | undefined,
@@ -174,11 +152,15 @@ export function createUserPorts(
     if (principal.isAdmin) return true
     const admin = await adminKey()
     if (target && isAdmin(target, admin)) return false
-    const wanted = groupKeys.map(normaliseUuid)
-    if (admin && wanted.includes(admin)) return false
+    const wanted = new Set(groupKeys.map(normaliseUuid))
     const had = new Set(target?.groupKeys ?? [])
-    const mine = new Set(principal.groupKeys.map(normaliseUuid))
-    return wanted.every((k) => had.has(k) || mine.has(k))
+    const changed = [
+      ...[...wanted].filter((k) => !had.has(k)),
+      ...[...had].filter((k) => !wanted.has(k)),
+    ]
+    if (changed.length === 0) return true
+    const owned = new Set(await groups.ownedBy(principal.groupKeys))
+    return changed.every((k) => owned.has(k))
   }
 
   const visibleTo = async (principal: Principal) => {
@@ -254,7 +236,7 @@ export function createUserPorts(
     if ((await groups.byKeys(input.groupKeys)).length !== new Set(input.groupKeys).size)
       return { status: 'MissingUserGroup' }
     if (!(await mayAssignGroups(principal, undefined, input.groupKeys)))
-      return { status: 'Unauthorized' }
+      return { status: 'NotGroupOwner' }
     const created = await users.create({
       key: input.key ?? crypto.randomUUID(),
       name: input.name || input.userName,
@@ -432,35 +414,17 @@ export function createUserPorts(
       if (input.groupKeys.length === 0) return 'NoUserGroup'
       if ((await groups.byKeys(input.groupKeys)).length !== new Set(input.groupKeys).size)
         return 'MissingUserGroup'
-      if (!(await mayAssignGroups(principal, user, input.groupKeys))) return 'Unauthorized'
-      const startNodes = {
-        document: { root: input.hasDocumentRootAccess, keys: input.documentStartNodeKeys },
-        media: { root: input.hasMediaRootAccess, keys: input.mediaStartNodeKeys },
-        element: { root: input.hasElementRootAccess, keys: input.elementStartNodeKeys },
-      }
-      for (const tree of ['document', 'media', 'element'] as const)
-        if (
-          !(await mayGrantStartNodes(
-            principal.startNodes[tree],
-            tree,
-            startNodes[tree],
-            user.startNodes[tree],
-          ))
-        )
-          return 'Unauthorized'
+      if (!(await mayAssignGroups(principal, user, input.groupKeys))) return 'NotGroupOwner'
+      // Story 339: where a user works is their groups'; start nodes sent here are not kept.
       const result = await users.update(key, {
         name: input.name,
         userName: input.userName,
         email: input.email,
         languageIsoCode: input.languageIsoCode || null,
         groupKeys: input.groupKeys,
-        startNodes,
       })
       if (result === 'not-found') return 'UserNotFound'
       if (result === 'missing-group') return 'MissingUserGroup'
-      if (result === 'document') return 'ContentStartNodeNotFound'
-      if (result === 'media') return 'MediaStartNodeNotFound'
-      if (result === 'element') return 'ElementStartNodeNotFound'
       return 'Success'
     },
 
@@ -503,7 +467,7 @@ export function createUserPorts(
       if (!found) return 'UserNotFound'
       if (!(await mayActOn(principal, found))) return 'Forbidden'
       for (const user of found)
-        if (!(await mayAssignGroups(principal, user, groupKeys))) return 'Unauthorized'
+        if (!(await mayAssignGroups(principal, user, groupKeys))) return 'NotGroupOwner'
       return (await users.setGroups(userKeys, groupKeys)) ? 'Success' : 'MissingUserGroup'
     },
 
@@ -805,7 +769,8 @@ function sameFileFields(a: SchemaUserGroup, b: SchemaUserGroup): boolean {
     sameMembers(a.permissions, b.permissions) &&
     (a.languages === 'all' || b.languages === 'all'
       ? a.languages === b.languages
-      : sameMembers(a.languages, b.languages))
+      : sameMembers(a.languages, b.languages)) &&
+    (a.owners === undefined || b.owners === undefined || sameMembers(a.owners, b.owners))
   )
 }
 
@@ -842,16 +807,26 @@ function createUserGroupPort(
     elementRootAccess: group.startNodes.element.root,
     fallbackPermissions: group.permissions,
     permissions: toPermissions(group.granular),
+    owners: group.owners.map((id) => ({ id })),
   })
 
   const isMember = (principal: Principal, key: string) =>
-    principal.isAdmin || principal.groupKeys.map(normaliseUuid).includes(normaliseUuid(key))
+    principal.groupKeys.map(normaliseUuid).includes(normaliseUuid(key))
+  /** Story 302: the members of any of a group's owners choose who is in it. */
+  const owns = async (principal: Principal, key: string) =>
+    principal.isAdmin || (await groups.ownedBy(principal.groupKeys)).includes(normaliseUuid(key))
+  const maySee = async (principal: Principal, key: string) =>
+    isMember(principal, key) || (await owns(principal, key))
+
+  /** Only the admin group and a group holding a remote verb may not have owners. */
+  const ownable = (alias: string, permissions: readonly string[]) =>
+    alias.toLowerCase() !== ADMIN_GROUP_ALIAS && !permissions.some(isRemotePermission)
 
   /** Umbraco's `UserGroupService.ValidateAccess` and input rules for create and update. */
   const validate = async (
     principal: Principal,
     input: UserGroupInput,
-    existing?: { key: string; alias: string },
+    existing?: { key: string; alias: string; owners: string[] },
   ): Promise<UserGroupStatus> => {
     if (!input.name) return 'MissingName'
     if (input.name.length > 200) return 'NameTooLong'
@@ -860,25 +835,14 @@ function createUserGroupPort(
       return 'CanNotUpdateAliasIsSystemUserGroup'
     const clash = await groups.byAlias(input.alias)
     if (clash && clash.key !== existing?.key) return 'DuplicateAlias'
-    const mine = new Set(principal.allowedSections.map(sectionKey))
-    if (!mine.has('users')) return 'Unauthorized'
-    if (!principal.isAdmin) {
-      // A grant is compared by section, not by spelling, so a group may hold an
-      // extension's section only if the caller holds it too.
-      if (!input.sections.every((s) => mine.has(sectionKey(s)))) return 'Unauthorized'
-      for (const [tree, key] of [
-        ['document', input.documentStartNode],
-        ['media', input.mediaStartNode],
-      ] as const) {
-        if (!key) continue
-        const found = await (tree === 'media'
-          ? deps.nodes.media([key])
-          : deps.nodes.documents([key]))
-        const node = found.get(normaliseUuid(key))
-        if (node && !hasPathAccess(principal.startNodes[tree], node.chain, node.trashed))
-          return 'Unauthorized'
-      }
-    }
+    // Story 302: what a group grants is an administrator's to decide.
+    if (!principal.isAdmin) return 'AdministratorsOnly'
+    const owners = input.owners ?? existing?.owners ?? []
+    if (owners.length > 0 && !ownable(input.alias, input.fallbackPermissions))
+      return 'CannotBeOwned'
+    const self = normaliseUuid(existing?.key ?? input.key ?? '')
+    const others = [...new Set(input.owners?.map(normaliseUuid) ?? [])].filter((k) => k !== self)
+    if ((await groups.byKeys(others)).length !== others.length) return 'OwnerNotFound'
     return 'Success'
   }
 
@@ -959,8 +923,10 @@ function createUserGroupPort(
     async filter(principal, filter, skip, take) {
       const admin = await deps.adminKey()
       const text = filter.toLowerCase()
+      // Story 302: anyone else is offered the groups they own, the ones they may hand out.
+      const owned = principal.isAdmin ? [] : await groups.ownedBy(principal.groupKeys)
       const list = (await groups.all())
-        .filter((g) => principal.isAdmin || (g.key !== admin && isMember(principal, g.key)))
+        .filter((g) => principal.isAdmin || (g.key !== admin && owned.includes(g.key)))
         .filter((g) => !text || g.name.toLowerCase().includes(text))
       return page(list, skip, take)
     },
@@ -968,8 +934,8 @@ function createUserGroupPort(
     async get(principal, key) {
       const group = await groups.byKey(key)
       if (!group) return 'NotFound'
-      if (!isMember(principal, group.key)) return 'Forbidden'
-      return toResponse(group)
+      if (!principal.isAdmin && !(await maySee(principal, group.key))) return 'Forbidden'
+      return { ...(await toResponse(group)), canManageMembers: await owns(principal, group.key) }
     },
 
     async items(keys) {
@@ -983,33 +949,38 @@ function createUserGroupPort(
     },
 
     async create(principal, input) {
-      const valid = await validate(principal, input)
-      if (valid !== 'Success') return { status: valid }
       const key = normaliseUuid(input.key ?? crypto.randomUUID())
+      const valid = await validate(principal, { ...input, key })
+      if (valid !== 'Success') return { status: valid }
       if (await groups.byKey(key)) return { status: 'DuplicateAlias' }
       const saved = await save(input, key)
       if (saved !== 'Success') return { status: saved }
+      if (input.owners?.length) await groups.setOwners(key, input.owners)
       await announcePermissions(principal, new Map(), key)
-      // A non-admin who creates a group joins it, as in Umbraco
-      if (!principal.isAdmin) await users.addToGroup(key, [principal.id])
       return { status: 'Success', key }
     },
 
     async update(principal, key, input) {
       const group = await groups.byKey(key)
       if (!group) return 'NotFound'
-      if (!isMember(principal, group.key)) return 'Forbidden'
       const valid = await validate(principal, input, group)
       if (valid !== 'Success') return valid
       // Story 228: its file owns what it is; where it starts is this environment's.
       const file = fileOf(group.alias)
       const owned = fileFieldsOf(input)
+      // Owners are the file's only when it names them; otherwise this environment's.
+      if (file?.owners !== undefined) {
+        const keys = input.owners ?? group.owners
+        const byKey = new Map((await groups.byKeys(keys)).map((g) => [g.key, g.alias]))
+        owned.owners = keys.map((k) => byKey.get(normaliseUuid(k)) ?? group.alias)
+      }
       const rewrite = file !== undefined && !sameFileFields(owned, file)
       if (file && (input.alias !== group.alias || (rewrite && !deps.declared?.().writable)))
         return 'DeclaredInFiles'
       const before = pageVerbs(group)
       const saved = await save(input, group.key)
       if (saved === 'Success') {
+        if (input.owners) await groups.setOwners(group.key, input.owners)
         if (rewrite) deps.declared?.().write(owned)
         await announcePermissions(principal, before, group.key)
       }
@@ -1019,7 +990,7 @@ function createUserGroupPort(
     async delete(principal, keys) {
       const found = await groups.byKeys(keys)
       if (found.length !== new Set(keys.map(normaliseUuid)).size) return 'NotFound'
-      if (!found.every((g) => isMember(principal, g.key))) return 'Forbidden'
+      if (!principal.isAdmin) return 'AdministratorsOnly'
       if (found.some((g) => SYSTEM_GROUPS.has(g.alias))) return 'IsSystemUserGroup'
       if (found.some((g) => fileOf(g.alias))) return 'DeclaredInFiles'
       for (const group of found) await groups.delete(group.key)
@@ -1029,7 +1000,7 @@ function createUserGroupPort(
     async addUsers(principal, key, userKeys) {
       const group = await groups.byKey(key)
       if (!group) return 'NotFound'
-      if (!isMember(principal, group.key)) return 'Forbidden'
+      if (!(await owns(principal, group.key))) return 'NotGroupOwner'
       if ((await users.byKeys(userKeys)).length !== new Set(userKeys.map(normaliseUuid)).size)
         return 'UserNotFound'
       await users.addToGroup(group.key, userKeys)
@@ -1039,7 +1010,7 @@ function createUserGroupPort(
     async removeUsers(principal, key, userKeys) {
       const group = await groups.byKey(key)
       if (!group) return 'NotFound'
-      if (!isMember(principal, group.key)) return 'Forbidden'
+      if (!(await owns(principal, group.key))) return 'NotGroupOwner'
       if ((await users.byKeys(userKeys)).length !== new Set(userKeys.map(normaliseUuid)).size)
         return 'UserNotFound'
       if (await adminWouldBeEmpty(group.key, userKeys)) return 'AdminGroupCannotBeEmpty'

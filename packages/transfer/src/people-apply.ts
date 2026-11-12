@@ -394,7 +394,6 @@ export async function applyPeople(
         email: user.email,
         languageIsoCode: user.languageIsoCode,
         groupKeys: [...new Set([...here.groupKeys, ...groupKeys])],
-        startNodes: here.startNodes,
       })
       if (outcome !== 'updated')
         throw new Error(`The user ${target} could not be updated (${outcome}).`)

@@ -14,6 +14,7 @@ import type {
   TemplatePort,
   TreePage,
 } from '@crombolo/api-management/domain'
+import { CONTENT_FILES_READ_ONLY } from '@crombolo/api-management/domain'
 import {
   type ComponentModel,
   type ContentTypeAggregate,
@@ -330,8 +331,18 @@ export function createContentTypePort(
         if (refused) return refused
         const alias = template.alias || aggregate.alias
         const name = template.name || aggregate.name
+        const existing = await templates.byAlias(alias)
+        // Story 337: a site that keeps its templates read-only adds them in its code.
+        if (!existing && options.componentFiles?.readOnly) {
+          const failure: PortFailure = {
+            ok: false,
+            reason: `${CONTENT_FILES_READ_ONLY} Add the template to the site's code.`,
+            status: 403,
+          }
+          return failure
+        }
         const saved =
-          (await templates.byAlias(alias)) ??
+          existing ??
           (await templates.save({
             key: crypto.randomUUID(),
             name,
@@ -733,6 +744,7 @@ export function createTemplatePort(db: Db, files: ComponentFileStore): TemplateP
   })
 
   return {
+    readOnly: files.readOnly === true,
     async byKey(key) {
       const model = await repo.byKey(key)
       if (!model) return undefined

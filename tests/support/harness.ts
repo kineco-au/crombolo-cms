@@ -5,7 +5,8 @@
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { deriveChallenge, generateToken, parseCookies } from '@crombolo/auth'
-import { MANAGEMENT_API_PATH, managementApiPath } from '@crombolo/core'
+import { MANAGEMENT_API_PATH, managementApiPath, RemotePermissions } from '@crombolo/core'
+import { UserGroupRepository } from '@crombolo/data'
 import {
   type CromboloConfig,
   createServer,
@@ -117,6 +118,20 @@ export async function bootServer(options: HarnessOptions = {}): Promise<ServerHa
 
 export async function signedInServer(options: HarnessOptions = {}): Promise<Harness> {
   return signIn(await bootServer(options), ADMIN)
+}
+
+/**
+ * Gives the Administrators group "Install code on this site", which being an
+ * administrator never does: a whole-site push needs it (story 336).
+ */
+export async function giveAdminsInstallCode(h: Harness): Promise<void> {
+  const groups = new UserGroupRepository(h.server.db)
+  const admin = await groups.byAlias('admin')
+  if (!admin) throw new Error('no admin group')
+  await groups.save({
+    ...admin,
+    permissions: [...new Set([...admin.permissions, RemotePermissions.InstallCode])],
+  })
 }
 
 /**

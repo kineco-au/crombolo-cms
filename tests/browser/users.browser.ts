@@ -186,6 +186,179 @@ test('a user created in the Users section, restricted to one branch, sees only i
   await context.close()
 })
 
+test("a group's owners choose who is in it, and only an administrator changes it (story 302)", async ({
+  page,
+  browser,
+  diagnostics,
+}) => {
+  const LEADS = unique('Leads')
+  const TEAM = unique('Team')
+  const email = `${Math.random().toString(36).slice(2, 9)}@example.com`
+  await signIn(page)
+  const group = async (name: string, extra: Record<string, unknown> = {}) => {
+    const response = await page.request.post(`${API}/user-group`, {
+      data: {
+        name,
+        alias: name.replace(/\W/g, ''),
+        sections: ['Umb.Section.Users', 'Umb.Section.Content'],
+        languages: [],
+        hasAccessToAllLanguages: true,
+        documentRootAccess: true,
+        documentStartNode: null,
+        mediaRootAccess: true,
+        mediaStartNode: null,
+        elementRootAccess: false,
+        elementStartNode: null,
+        fallbackPermissions: ['Umb.Document.Read'],
+        permissions: [],
+        ...extra,
+      },
+    })
+    expect(response.status()).toBe(201)
+    return response.headers()['umb-generated-resource'] as string
+  }
+  const leads = await group(LEADS)
+  await group(TEAM, { owners: [{ id: leads }] })
+  const created = await page.request.post(`${API}/user`, {
+    data: { kind: 'Default', email, userName: email, name: 'Lead', userGroupIds: [{ id: leads }] },
+  })
+  expect(created.status()).toBe(201)
+  const reset = await page.request.post(
+    `${API}/user/${created.headers()['umb-generated-resource']}/reset-password`,
+  )
+  const { resetPassword } = (await reset.json()) as { resetPassword: string }
+
+  // The administrator sees the owners on the group's screen, and may save it
+  await goToSection(page, 'Users')
+  await page
+    .locator('umb-section-sidebar')
+    .getByRole('link', { name: 'User Groups', exact: true })
+    .click()
+  await page.getByRole('link', { name: TEAM, exact: true }).click()
+  // Story 338: owners and members are on the editor's People tab
+  await page.getByRole('tab', { name: 'People' }).click()
+  await expect(page.getByText('Owners can manage group members')).toBeVisible()
+  await expect(page.locator('umb-user-group-ref').filter({ hasText: LEADS })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeVisible()
+
+  // The lead, in their own session: the group is theirs to fill, not to change
+  const context = await browser.newContext()
+  const lead = await context.newPage()
+  diagnostics.attach(lead)
+  await signIn(lead, { login: email, password: resetPassword })
+  await goToSection(lead, 'Users')
+  await lead
+    .locator('umb-section-sidebar')
+    .getByRole('link', { name: 'User Groups', exact: true })
+    .click()
+  await expect(lead.getByRole('link', { name: LEADS, exact: true })).toHaveCount(0)
+  await lead.getByRole('link', { name: TEAM, exact: true }).click()
+  await expect(
+    lead.getByText(
+      "Only an administrator can change what this group allows. You can choose who's in it.",
+    ),
+  ).toBeVisible()
+  await expect(lead.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0)
+  // Data Transfer is an administrator's; the rest are there to read
+  await expect(lead.getByRole('tab', { name: 'Data Transfer' })).toHaveCount(0)
+  await lead.getByRole('tab', { name: 'People' }).click()
+  const people = lead.locator('umb-user-group-workspace-users')
+  await expect(people).not.toHaveAttribute('readonly', '')
+  await expect(
+    lead.locator('umb-user-group-input[readonly]').getByRole('button', { name: 'Choose' }),
+  ).toHaveCount(0)
+  await context.close()
+})
+
+test('a group is set up in levels, and its exceptions read as sentences (story 338)', async ({
+  page,
+}) => {
+  const NAME = unique('Reviewers')
+  const SITE = unique('Site')
+  await signIn(page)
+  const site = await createPage(page, SITE)
+  const response = await page.request.post(`${API}/user-group`, {
+    data: {
+      name: NAME,
+      alias: NAME.replace(/\W/g, ''),
+      sections: ['Umb.Section.Content'],
+      languages: [],
+      hasAccessToAllLanguages: true,
+      documentRootAccess: true,
+      documentStartNode: null,
+      mediaRootAccess: true,
+      mediaStartNode: null,
+      elementRootAccess: false,
+      elementStartNode: null,
+      fallbackPermissions: [
+        'Umb.Document.Read',
+        'Umb.Document.Create',
+        'Umb.Document.Update',
+        'Umb.Document.Move',
+        'Umb.Document.Duplicate',
+        'Umb.Document.Sort',
+        'Umb.Document.PropertyValue.Write',
+      ],
+      permissions: [
+        {
+          $type: 'DocumentPermissionPresentationModel',
+          document: { id: site },
+          verbs: ['Umb.Document.Read'],
+        },
+      ],
+    },
+  })
+  expect(response.status()).toBe(201)
+  const id = response.headers()['umb-generated-resource'] as string
+
+  await goToSection(page, 'Users')
+  await page
+    .locator('umb-section-sidebar')
+    .getByRole('link', { name: 'User Groups', exact: true })
+    .click()
+  await page.getByRole('link', { name: NAME, exact: true }).click()
+
+  // Access: Content is on, Media is off and says nothing more
+  const editor = page.locator('crombolo-group-editor')
+  await expect(editor.getByRole('switch', { name: 'Content: on' })).toBeVisible()
+  await expect(editor.getByRole('switch', { name: 'Media: off' })).toBeVisible()
+
+  // Permissions: the stored verbs read as Edit; Media is greyed with its access off
+  await editor.getByRole('tab', { name: 'Permissions' }).click()
+  await expect(
+    editor.getByRole('radio', { name: /^Edit Write and organise drafts/ }).first(),
+  ).toBeChecked()
+  await expect(editor.getByText('Access is off').first()).toBeVisible()
+  await editor
+    .getByRole('radio', { name: /^Edit and publish/ })
+    .first()
+    .check()
+
+  // Exceptions: the page set to See reads as a sentence
+  await editor.getByRole('tab', { name: /Exceptions/ }).click()
+  await expect(editor.getByText(SITE)).toBeVisible()
+  await expect(editor.getByText('Pages: See, instead of Edit and publish')).toBeVisible()
+
+  const saved = page.waitForResponse(
+    (r) => r.request().method() === 'PUT' && r.url().endsWith(`/user-group/${id}`),
+  )
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).status()).toBe(200)
+  const after = await api<{ fallbackPermissions: string[]; permissions: unknown[] }>(
+    page,
+    `/user-group/${id}`,
+  )
+  expect(after.fallbackPermissions).toEqual(
+    expect.arrayContaining([
+      'Umb.Document.Publish',
+      'Umb.Document.Unpublish',
+      'Umb.Document.Rollback',
+    ]),
+  )
+  expect(after.fallbackPermissions).not.toContain('Umb.Document.Delete')
+  expect(after.permissions).toHaveLength(1)
+})
+
 test('the Translation section: a dictionary item opens from its tree and saves its translation', async ({
   page,
 }) => {

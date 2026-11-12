@@ -16,12 +16,12 @@ import {
 } from '@crombolo/api-management'
 import { listOperations, loadSpec } from '@crombolo/contracts'
 import {
-  combineStartNodes,
   type GroupGrant,
   generateUserPassword,
   hasPathAccess,
   isValidPassword,
   permissionsForPath,
+  unionStartNodes,
 } from '@crombolo/core'
 
 const group = (
@@ -62,18 +62,13 @@ describe('verbs on a node', () => {
   })
 })
 
-describe("combining groups' and a user's start nodes", () => {
-  test("groups keep the topmost, the user's keep the deepest, and the user's replace groups' above or below", () => {
-    expect(combineStartNodes([['a'], ['a', 'b']], [])).toEqual({ root: false, keys: ['a'] })
-    expect(combineStartNodes([[], ['a']], [])).toEqual({ root: true, keys: [] })
-    expect(combineStartNodes([], [['a'], ['a', 'b']])).toEqual({ root: false, keys: ['b'] })
-    // Umbraco's example: a group with root plus a user start node yields just the node
-    expect(combineStartNodes([[]], [['x', 'y']])).toEqual({ root: false, keys: ['y'] })
-    // Unrelated nodes stay side by side
-    expect(combineStartNodes([['a']], [['c']])).toEqual({ root: false, keys: ['a', 'c'] })
-    // A user's root replaces the groups' nodes
-    expect(combineStartNodes([['a']], [[]])).toEqual({ root: true, keys: [] })
-    expect(combineStartNodes([], [])).toEqual({ root: false, keys: [] })
+describe("a user's start nodes are their groups' (story 339)", () => {
+  test('together, keeping the topmost of any that nest', () => {
+    expect(unionStartNodes([['a'], ['a', 'b']])).toEqual({ root: false, keys: ['a'] })
+    expect(unionStartNodes([[], ['a']])).toEqual({ root: true, keys: [] })
+    expect(unionStartNodes([['a'], ['c']])).toEqual({ root: false, keys: ['a', 'c'] })
+    expect(unionStartNodes([['a', 'b'], ['a']])).toEqual({ root: false, keys: ['a'] })
+    expect(unionStartNodes([])).toEqual({ root: false, keys: [] })
   })
 })
 
@@ -388,7 +383,8 @@ describe('verbs on media', () => {
 describe('verbs on elements', () => {
   const { operations, allowed } = asking(['Umb.Section.Library'])
   const E = (verb: string) => `Umb.Element.${verb}`
-  const F = (verb: string) => `Umb.ElementContainer.${verb}`
+  // Story 338: a Library folder is governed by the Library's own verbs.
+  const F = E
   const RULES: Record<string, string[]> = {
     GetElementById: [E('Read')],
     GetElementByIdPublished: [E('Read')],
@@ -412,7 +408,7 @@ describe('verbs on elements', () => {
     PostElementVersionByIdRollback: [E('Rollback')],
     DeleteRecycleBinElementById: [E('Delete')],
     PutRecycleBinElementByIdRestore: [E('Move')],
-    DeleteRecycleBinElement: [E('Delete'), F('Delete')],
+    DeleteRecycleBinElement: [E('Delete')],
     GetElementFolderById: [F('Read')],
     GetRecycleBinElementFolderByIdOriginalParent: [F('Read')],
     PostElementFolder: [F('Create')],

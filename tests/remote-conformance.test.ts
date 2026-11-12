@@ -8,7 +8,13 @@ import { join } from 'node:path'
 import { DEVICE_CODE_GRANT, REMOTE_CLIENT_ID } from '@crombolo/auth'
 import { runConformance } from '@crombolo/remote-conformance'
 import { dialectUnderTest } from './support/db.ts'
-import { type Harness, ORIGIN, signedInServer, V1 } from './support/harness.ts'
+import {
+  giveAdminsInstallCode,
+  type Harness,
+  ORIGIN,
+  signedInServer,
+  V1,
+} from './support/harness.ts'
 
 const SECURITY = `${V1}/security/back-office`
 
@@ -47,6 +53,8 @@ async function remote(protectedEnvironment = false) {
     },
   })
   open.push(h)
+  // A whole-site push needs "Install code on this site" (story 336).
+  await giveAdminsInstallCode(h)
   return h
 }
 

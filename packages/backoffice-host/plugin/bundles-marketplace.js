@@ -18,7 +18,7 @@ import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { carriesTags } from './bundles-carries.js'
 import { bundleSignature, installBundle, searchMarketplace } from './bundles-client.js'
 import { levelBlock, levelStyles } from './bundles-level.js'
-import { configSnippet, grantChoice, unvouchedLine } from './bundles-level-words.js'
+import { configSnippet, grantChoice, unvouchedLine, vouchState } from './bundles-level-words.js'
 import { signatureBlock, signatureStyles, signatureWords } from './bundles-signature.js'
 
 export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
@@ -238,7 +238,7 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
   #consent(item) {
     const checked = this._signatures.get(item.name)
     const state = checked?.provenance?.state
-    const choice = grantChoice(this._level, this._mayGrant, state)
+    const choice = grantChoice(this._level, this._mayGrant, vouchState(checked?.provenance))
     return html`
       <div class="consent" role="group" aria-label="What it asks for">
         ${levelBlock({

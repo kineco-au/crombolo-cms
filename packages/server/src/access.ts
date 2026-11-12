@@ -3,7 +3,7 @@
  * and each signed-in user's combined start nodes, group verbs and languages.
  */
 import type { NodeChain, NodeLookup, Principal } from '@crombolo/api-management/domain'
-import { combineStartNodes, normaliseUuid, ObjectTypes } from '@crombolo/core'
+import { normaliseUuid, ObjectTypes, unionStartNodes } from '@crombolo/core'
 import { type Db, fromDbBool, UserRepository } from '@crombolo/data'
 
 async function chains(
@@ -98,7 +98,7 @@ export function createNodeLookup(db: Db): NodeLookup {
   }
 }
 
-/** A user's languages, combined start nodes per tree, and group verbs. */
+/** A user's languages, their groups' start nodes per tree (story 339), and group verbs. */
 export async function loadAccess(
   db: Db,
   userId: number,
@@ -108,9 +108,9 @@ export async function loadAccess(
     languages: data.languages,
     groups: data.groups,
     startNodes: {
-      document: combineStartNodes(data.groupStartNodes.document, data.userStartNodes.document),
-      media: combineStartNodes(data.groupStartNodes.media, data.userStartNodes.media),
-      element: combineStartNodes(data.groupStartNodes.element, data.userStartNodes.element),
+      document: unionStartNodes(data.groupStartNodes.document),
+      media: unionStartNodes(data.groupStartNodes.media),
+      element: unionStartNodes(data.groupStartNodes.element),
     },
   }
 }

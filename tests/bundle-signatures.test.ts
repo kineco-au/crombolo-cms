@@ -75,11 +75,27 @@ const SIGNED: ProvenanceResult = {
 }
 
 describe('the words the Bundles screens use', () => {
-  test('signed names where it was built, with its links', () => {
-    const words = signatureWords(SIGNED, null, undefined)
+  test('signed names where it was built, with its links, and whether this site trusts it', () => {
+    const words = signatureWords({ ...SIGNED, trusted: true }, null, undefined)
     expect(words).toMatchObject({ tone: 'positive', label: 'Signed', refusal: '' })
-    expect(words.detail).toBe('Built from github.com/acme/bundles at v1.2.3 (0123456).')
+    expect(words.detail).toBe(
+      'Built from github.com/acme/bundles at v1.2.3 (0123456). This site trusts its signer.',
+    )
     expect(words.links.map((link) => link.label)).toEqual(['Commit', 'Release'])
+    const untrusted = signatureWords(SIGNED, null, undefined)
+    expect(untrusted.tone).toBe('default')
+    expect(untrusted.detail).toContain("This site doesn't trust its signer")
+  })
+
+  test('signed with a key names the key (story 335)', () => {
+    const words = signatureWords(
+      { state: 'signed', key: { comment: 'release', fingerprint: 'SHA256:abc' } },
+      null,
+      undefined,
+    )
+    expect(words.label).toBe('Signed')
+    expect(words.detail).toContain('Signed with the key release (SHA256:abc).')
+    expect(words.detail).toContain('Settings → Trusted signers')
   })
 
   test('unsigned, local and a signature that does not match, in plain words', () => {

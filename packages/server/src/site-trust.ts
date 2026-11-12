@@ -119,6 +119,22 @@ export async function trustedSigners(db: Db, config: CromboloConfig): Promise<Tr
   return entries
 }
 
+/** Whether a signature's key, or the repository that built it, is on this site's list (story 335). */
+export async function signerTrusted(
+  db: Db,
+  config: CromboloConfig,
+  result: ProvenanceResult,
+): Promise<boolean> {
+  if (result.state !== 'signed') return false
+  const entries = await trustedSigners(db, config)
+  if (result.key) return entries.some((entry) => entry.fingerprint === result.key?.fingerprint)
+  const source = result.source
+  if (!source) return false
+  return entries.some(
+    (entry) => entry.kind === 'source' && entry.source && sourceAllowed(source, entry.source),
+  )
+}
+
 /** What a site bundle's check decided: refused, or applied, flagged or not, and who signed it. */
 export interface SiteBundleTrust {
   problem?: string

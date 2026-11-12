@@ -341,6 +341,12 @@ export interface CromboloConfig {
    * CROMBOLO_SCHEMA_WRITABLE says otherwise outright.
    */
   schemaWritable: boolean
+  /**
+   * The back office may not change templates, stylesheets or scripts (story 337):
+   * for a site whose files come from its repository. Off unless set, in
+   * production too. `CROMBOLO_CONTENT_FILES_READONLY`.
+   */
+  contentFilesReadOnly: boolean
   /** Sync `schema/` at boot; a pipeline that runs `crombolo types sync` turns this off. */
   syncSchemaAtBoot: boolean
   /** Which database engine; from CROMBOLO_DB. */
@@ -898,6 +904,7 @@ export function loadConfig(
         ? setting('CROMBOLO_SCHEMA_WRITABLE') === 'true'
         : setting('NODE_ENV') !== 'production',
     syncSchemaAtBoot: setting('CROMBOLO_SYNC_SCHEMA_AT_BOOT') !== 'false',
+    contentFilesReadOnly: setting('CROMBOLO_CONTENT_FILES_READONLY') === 'true',
     dialect: setting('CROMBOLO_DB') === 'postgres' ? 'postgres' : 'sqlite',
     pgDump: setting('CROMBOLO_PG_DUMP'),
     upgradePolicy:
@@ -1193,7 +1200,7 @@ export function describeDatabase(
   }
 }
 
-export const VERSION = '0.62.0'
+export const VERSION = '0.63.0'
 
 /** A whole number of seconds from the environment; undefined when unset or not one. */
 /** A positive number from a setting, else the default. */

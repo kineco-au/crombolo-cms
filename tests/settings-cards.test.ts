@@ -25,6 +25,7 @@ const EVERYTHING = {
     dashboard('Umb.Dashboard.PublishedStatus', 'published-status'),
     dashboard('Umb.Dashboard.ModelsBuilder', 'models-builder'),
     dashboard('Crombolo.Dashboard.Seo', 'search-and-sharing'),
+    dashboard('Crombolo.Dashboard.ContentSettings', 'content-settings'),
     dashboard('Crombolo.Dashboard.Addresses', 'addresses'),
     dashboard('Umb.Dashboard.RedirectManagement', 'redirect-management'),
     dashboard('Crombolo.Dashboard.Changes', 'changes'),
@@ -46,15 +47,8 @@ const titles = (groups: ReturnType<typeof settingsCards>) =>
 describe('the Settings landing page', () => {
   test('an administrator sees every tool, grouped and in order', () => {
     expect(titles(settingsCards(EVERYTHING))).toEqual({
-      Site: [
-        'Search',
-        'Page addresses',
-        'Redirects',
-        'Webhooks',
-        'Logs',
-        'Background jobs',
-        'Relations',
-      ],
+      // URLs, redirects and relations are tabs of Content settings, first in Site.
+      Site: ['Content settings', 'Search', 'Webhooks', 'Logs', 'Background jobs'],
       Health: ['Health check', 'Published status'],
       History: ['Changes', 'Audit log'],
       // Story 238: after History, a developer's tool, then installing extensions.

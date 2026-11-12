@@ -272,11 +272,13 @@ A bundle of content alone needs the `content` level and the push permission. One
 that carries content types, views, styles or code needs the `all` level (403
 `access-level`) and `Crombolo.Remote.ApplyStructure` (403 `forbidden-structure`).
 
-A bundle whose code would change the remote's files (story 241) is installed
-there, and also needs `Crombolo.Remote.InstallCode`, which administrators hold
-only when a group gives it to them (403 `forbidden-code`, listing the files in
-`items`), and runtime installs on (409 `installs-elsewhere`, with the host's
-message). The answer's `code` lists the files a dry run would change; after an
+A bundle whose code, value migrations or templates would change the remote's
+files (stories 241, 300, 336) is installed there, and also needs
+`Crombolo.Remote.InstallCode`, which administrators hold only when a group gives
+it to them (403 `forbidden-code`, listing the files in `items`), and runtime
+installs on (409 `installs-elsewhere`: installing code while the site runs is
+turned off). Templates a bundle carries unchanged need nothing more. Reverting a
+run that installed code or changed templates needs `InstallCode` too. The answer's `code` lists the files a dry run would change; after an
 apply it is `{ written, installed, live: false }`: the code runs after a
 restart (`restart`).
 
@@ -488,11 +490,13 @@ stops the site starting, naming `CROMBOLO_REMOTE_ACCESS` instead.
 | `Crombolo.Remote.PullFull` | a full pull |
 | `Crombolo.Remote.Push` | push, and apply or revert a bundle of content |
 | `Crombolo.Remote.PushProtected` | push to, and approve pushes to, a protected environment |
-| `Crombolo.Remote.ApplyStructure` | "Change a site's structure and code": a whole-site push, and a bundle that changes content types, views, styles or code |
-| `Crombolo.Remote.InstallCode` | "Install code on this site": installing a bundle, and a bundle whose code changes the site's files (story 241) |
+| `Crombolo.Remote.ApplyStructure` | "Change a site's structure": a whole-site push, and a bundle that changes content types, stylesheets, scripts or code |
+| `Crombolo.Remote.InstallCode` | "Install code on this site": installing a bundle, a bundle whose code, migrations or templates change the site's files (stories 241, 336), and a whole-site push |
 
 A whole-site push and a structural bundle need `ApplyStructure` as well as
-`Push`, and `PushProtected` too on a protected environment. A bundle of content
+`Push`, and `PushProtected` too on a protected environment. A whole-site push
+also needs `InstallCode` (story 336): it replaces the site's templates, which
+are code, and what it will change is not known until it is uploaded. A bundle of content
 alone needs `Push`, and `PushProtected` where the environment is protected.
 Administrators have the first five. `InstallCode` is held only where a group
 names it, administrators included, and no group has it until someone gives it.

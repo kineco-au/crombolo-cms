@@ -9,6 +9,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { join } from 'node:path'
 import {
   BUNDLE_PERMISSIONS,
+  createExtensionRegistry,
   groupsOf,
   LEVEL_WORDS,
   levelOf,
@@ -17,9 +18,13 @@ import {
 import {
   ADMINISTRATOR_GRANTS,
   CONFIG_GRANTS,
+  createBundleGrants,
+  createKeyPair,
   grantRefusal,
   mayGrant,
   NOBODY_VOUCHED,
+  signPathWithKey,
+  switchOffUntrusted,
   unrestrictedFrom,
   vouchedFor,
 } from '@crombolo/server'
@@ -29,6 +34,7 @@ import {
   groupLines,
   LEVELS,
   unvouchedLine,
+  vouchState,
 } from '../packages/backoffice-host/plugin/bundles-level-words.js'
 import { siteDeclaring } from './support/bundles.ts'
 import { BACKOFFICE, type Harness, signedInServer, signInAsGroup, V1 } from './support/harness.ts'
@@ -129,7 +135,8 @@ describe('never offered', () => {
 })
 
 describe('who may grant what', () => {
-  const signed = { state: 'signed' as const }
+  // Signed by someone on this site's Trusted signers list (story 335).
+  const signed = { state: 'signed' as const, trusted: true }
   const unsigned = { state: 'unsigned' as const }
 
   test('an administrator grants any level; one that asks for nothing needs no grant', () => {
@@ -194,16 +201,53 @@ describe('who may grant what', () => {
     }
   })
 
-  test('a local build, a signed one and one the host vouches for count; unsigned, invalid and unchecked do not', () => {
-    expect(['signed', 'vouched', 'local'].map((state) => vouchedFor({ state } as never))).toEqual([
-      true,
-      true,
-      true,
-    ])
+  test('a local build, a trusted signature and one the host vouches for count; unsigned, invalid and unchecked do not', () => {
+    expect(
+      ['signed', 'vouched', 'local'].map((state) => vouchedFor({ state, trusted: true } as never)),
+    ).toEqual([true, true, true])
     expect(
       ['unsigned', 'invalid', 'unchecked'].map((state) => vouchedFor({ state } as never)),
     ).toEqual([false, false, false])
     expect(vouchedFor(undefined)).toBe(false)
+  })
+
+  test('a signature from a signer this site does not trust vouches for nothing, and says who (story 335)', () => {
+    const byKey = {
+      state: 'signed' as const,
+      trusted: false,
+      key: { comment: 'anyone', fingerprint: 'SHA256:abc' } as never,
+    }
+    const byBuild = {
+      state: 'signed' as const,
+      trusted: false,
+      source: { repository: 'someone/thing' } as never,
+    }
+    expect(vouchedFor(byKey)).toBe(false)
+    expect(vouchedFor({ state: 'signed' })).toBe(false)
+    for (const [provenance, who] of [
+      [byKey, 'the key anyone (SHA256:abc)'],
+      [byBuild, 'a build of github.com/someone/thing'],
+    ] as const) {
+      const why = grantRefusal({
+        grants: true,
+        level: 'unrestricted',
+        isAdmin: true,
+        provenance,
+        from: 'backoffice',
+      })
+      expect(why).toContain(`It is signed by ${who}, which this site doesn't trust`)
+      expect(why).toContain('Settings → Trusted signers')
+    }
+    // Limited is only labelled by a signature, trusted or not
+    expect(
+      grantRefusal({
+        grants: true,
+        level: 'limited',
+        isAdmin: true,
+        provenance: byKey,
+        from: 'backoffice',
+      }),
+    ).toBeUndefined()
   })
 
   test('a host may keep Unrestricted to the config, for an administrator too', () => {
@@ -256,6 +300,14 @@ describe('who may grant what', () => {
     expect(grantChoice('unrestricted', mayGrant(true, 'config'), 'signed')).toEqual({
       snippet: true,
     })
+    // Story 335: a signature counts only when its signer is trusted here
+    expect(vouchState({ state: 'signed', trusted: true })).toBe('signed')
+    expect(vouchState({ state: 'signed' })).toBe('untrusted')
+    expect(vouchState({ state: 'local' })).toBe('local')
+    expect(grantChoice('unrestricted', admin, vouchState({ state: 'signed' })).sentence).toContain(
+      'Settings → Trusted signers',
+    )
+    expect(grantChoice('limited', admin, vouchState({ state: 'signed' }))).toEqual({ grant: true })
     expect(unvouchedLine('limited', 'unsigned')).toBe('Nobody has vouched for who built this')
     expect(unvouchedLine('limited', 'signed')).toBeUndefined()
     expect(
@@ -294,6 +346,14 @@ async function unrestrictedSite(config: Record<string, unknown> = {}, range = 'l
   open.push(h)
   return h
 }
+
+/** Where the test extension is installed: in a root of its own. */
+const seoDirectory = (siteDir: string) =>
+  (
+    createExtensionRegistry(siteDir, { cache: false })
+      .bundles()
+      .bundles.find((pkg) => pkg.id === 'acme-seo') as { directory: string }
+  ).directory
 
 const grant = (h: Harness) =>
   h.post(`${BACKOFFICE}/crombolo/api/bundles/grant`, { id: 'acme-seo', grant: ['backoffice.code'] })
@@ -370,6 +430,65 @@ describe('on a real server', () => {
     expect(log.items.find((item) => item.action === 'Grant')?.detail).toBe(
       'granted Unrestricted: backoffice.code',
     )
+  })
+
+  test('a key vouches only when this site trusts it (story 335)', async () => {
+    const pair = createKeyPair('anyone')
+    const signedSite = async (config: Record<string, unknown> = {}) => {
+      const h = await unrestrictedSite(config, '*')
+      await signPathWithKey(seoDirectory(h.server.config.siteDir), pair)
+      return h
+    }
+    const untrusted = await signedSite()
+    const refused = await grant(untrusted)
+    expect(refused.status).toBe(403)
+    const message = (await refused.json()).message as string
+    expect(message).toContain(`the key anyone (${pair.publicKey.fingerprint})`)
+    expect(message).toContain('Settings → Trusted signers')
+    const row = (
+      await untrusted.json<{ items: { id: string; provenance: { trusted?: boolean } }[] }>(
+        `${BACKOFFICE}/crombolo/api/extensions/installed`,
+      )
+    ).items.find((item) => item.id === 'acme-seo')
+    expect(row?.provenance.trusted).toBe(false)
+
+    const trusting = await signedSite({
+      trustedKeys: [{ name: 'Release', publicKey: pair.publicKey.line }],
+    })
+    const granted = await grant(trusting)
+    expect(granted.status, await granted.clone().text()).toBe(200)
+  })
+
+  test('at start, an upper-level grant nobody trusted vouches for is withdrawn (story 335)', async () => {
+    const pair = createKeyPair('anyone')
+    const h = await unrestrictedSite(
+      { trustedKeys: [{ name: 'Release', publicKey: pair.publicKey.line }] },
+      '*',
+    )
+    const dir = h.server.config.siteDir
+    await signPathWithKey(seoDirectory(dir), pair)
+    expect((await grant(h)).status).toBe(200)
+
+    // The key is no longer trusted: the next start withdraws the grant
+    const config = { ...h.server.config, trustedKeys: [] }
+    const extensions = createExtensionRegistry(dir, { cache: false })
+    const grants = createBundleGrants({
+      db: h.server.db,
+      packages: () => new Map(extensions.bundles().bundles.map((pkg) => [pkg.id, pkg])),
+    })
+    await grants.refresh()
+    expect(grants.isOn('acme-seo')).toBe(true)
+    expect(await switchOffUntrusted(h.server.db, config, extensions, grants)).toEqual(['acme-seo'])
+    expect(grants.isOn('acme-seo')).toBe(false)
+    // Trusted again, nothing is withdrawn
+    await grants.refresh()
+    expect(await switchOffUntrusted(h.server.db, h.server.config, extensions, grants)).toEqual([])
+    const log = await h.json<{ items: { action: string; detail: string | null }[] }>(
+      `${BACKOFFICE}/crombolo/api/audit?take=20`,
+    )
+    expect(
+      log.items.find((item) => item.detail?.startsWith('switched off at start'))?.detail,
+    ).toContain("which this site doesn't trust")
   })
 
   test('a host that keeps Unrestricted to the config refuses the back office, and the config still grants', async () => {

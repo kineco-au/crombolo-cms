@@ -74,6 +74,7 @@ import {
   carriedSections,
   carriesSections,
   changedFileSections,
+  componentChanges,
   type FileAction,
   keepDictionary,
   keptDictionary,
@@ -324,9 +325,18 @@ export interface TransferInput extends SectionOptions {
    * asked, as story 192 had it. Only where runtime installs are on.
    */
   installCode?: boolean
+  /**
+   * Install the templates it adds or changes, which are code the server runs
+   * (story 336); `installCode` unless said. The Transfer dashboard asks for these
+   * alone, for a user given "Install code on this site".
+   */
+  installTemplates?: boolean
   /** Apply a site bundle older than one this site applied from the same signer (story 316). */
   allowDowngrade?: boolean
 }
+
+/** Why a bundle's code, migrations or templates are refused where installs are off (story 336). */
+export const RUNTIME_INSTALLS_OFF = 'installing code while the site runs is turned off on this site'
 
 /**
  * Who vouches for a bundle's source in place of a signer, given only by code in
@@ -769,10 +779,7 @@ export async function installBundleContent(
     )
   // The code half (story 241): only when asked, only where installs happen here.
   const code = effective.installCode ? codeChanges(planCode(config, carried)) : []
-  const installsElsewhere =
-    config.installsElsewhere?.message ??
-    "this site does not install code while it runs: add the bundle's code to the site and deploy it"
-  if (code.length > 0 && !config.runtimeInstalls) return refuse([installsElsewhere], backup)
+  if (code.length > 0 && !config.runtimeInstalls) return refuse([RUNTIME_INSTALLS_OFF], backup)
   // A bundle's value migrations are code too (story 300), unless they are the site's own.
   const migrations =
     vouch?.vouchedBy === 'site' || effective.withoutSchema ? [] : migrationChanges(config, carried)
@@ -780,9 +787,25 @@ export async function installBundleContent(
     return refuse(
       [
         effective.installCode
-          ? installsElsewhere
+          ? RUNTIME_INSTALLS_OFF
           : 'this bundle brings schema migrations, which are code: install its code to bring them',
         ...migrations.map((file) => file.path),
+      ],
+      backup,
+    )
+  // Templates are code as well (story 336): the server imports and runs them.
+  const templates =
+    vouch?.vouchedBy === 'site' || effective.withoutFiles ? [] : componentChanges(config, carried)
+  if (
+    templates.length > 0 &&
+    (!(effective.installTemplates ?? effective.installCode) || !config.runtimeInstalls)
+  )
+    return refuse(
+      [
+        config.runtimeInstalls
+          ? 'this bundle adds or changes templates, which are code: installing them needs the permission to install code on this site'
+          : RUNTIME_INSTALLS_OFF,
+        ...templates.map((file) => file.path),
       ],
       backup,
     )

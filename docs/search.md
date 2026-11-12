@@ -170,8 +170,9 @@ session and the Content section:
   - Browse is checked as back-office search checks it. For a user whose
     groups can withhold it somewhere, the first 1,000 matches are checked and
     paged, and `exact: false` says the window was cut;
-  - a filter on a property the user may not read is refused (400). That is the
-    first place the server checks `Umb.Document.PropertyValue.Read`.
+  - every property may be filtered on by someone who may see the page: there is
+    no field-level read since story 338, which showed it hid only the editor's
+    field, never the value.
 - **Refusals** are 400 with `code: bad-query` and every problem named: an
   unknown type, property or language, a comparison the property cannot make,
   a malformed field.

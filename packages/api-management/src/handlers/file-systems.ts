@@ -10,7 +10,14 @@ import {
   problemDetails,
   problemResponse,
 } from '@crombolo/core'
-import type { FileEntry, FileResult, FileStatus, FileSystemPort, Snippet } from '../ports-files.ts'
+import {
+  CONTENT_FILES_READ_ONLY,
+  type FileEntry,
+  type FileResult,
+  type FileStatus,
+  type FileSystemPort,
+  type Snippet,
+} from '../ports-files.ts'
 import type { ManagementApiRouter, RequestContext } from '../router.ts'
 
 export type FileArea = 'PartialView' | 'Stylesheet' | 'Script'
@@ -37,6 +44,15 @@ const treeItem = (entry: FileEntry) => ({
 })
 
 function failure(area: FileArea, status: FileStatus, folder = false): Response {
+  if (status === 'ReadOnly')
+    return problemResponse(
+      problemDetails({
+        title: "These files can't be changed here",
+        detail: CONTENT_FILES_READ_ONLY,
+        status: 403,
+        operationStatus: status,
+      }),
+    )
   const thing = folder ? 'Folder' : LABEL[area]
   const [code, title] = (
     {

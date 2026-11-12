@@ -110,6 +110,7 @@ icon = "icon-edit"
 sections = ["content", "media"]
 permissions = ["Umb.Document.Read", "Umb.Document.Update", "Umb.Document.Create"]
 languages = "all"           # or a list of ISO codes
+owners = ["subEditors", "editor"]   # optional: groups whose members choose who is in it
 ```
 
 - **Synced as types are,** at every boot, by alias: created when missing, its
@@ -118,13 +119,18 @@ languages = "all"           # or a list of ISO codes
 - **Where it starts and who is in it are the environment's.** Start nodes,
   per-page permissions and members are set in Users and never written to the
   file, in development or production.
+- **Owners are the file's only when it names them** (story `302`). A file with
+  `owners` sets them at every sync, by alias, once every group exists; a file
+  without it leaves them to Users. An owner the site does not have stops the
+  sync, naming it.
 - **Edited as types are.** In development the Users section writes a change to
   the file's fields back to the file; elsewhere they are read-only there, and a
   save that changes one is refused, naming the file. A declared group cannot be
   renamed or deleted in Users: change or remove its file.
 - **Refused:** an unknown section (an application alias such as `content`, or an
-  extension section's dotted alias), an unknown verb, and `admin`, which is
-  built in. A language the site does not have stops the sync, naming the group.
+  extension section's dotted alias), an unknown verb, `admin`, which is
+  built in, and `owners` on a group holding a remote permission, which only an
+  administrator fills. A language the site does not have stops the sync, naming the group.
 - **Removing a file leaves the group,** as one made in Users, so taking a file
   away never takes its members' access away unannounced.
 - Bundles and site files carry `schema/user-groups/` with the rest of `schema/`.

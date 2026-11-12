@@ -129,6 +129,7 @@ rather than the running server. Secret ones are never printed or logged.
 | `CROMBOLO_SCHEMA_REVISION` | string | `0` | Set by a deploy, to order deploys of the same schema version. |
 | `CROMBOLO_SCHEMA_CACHE_DIR` | string | `<temp>/crombolo-schema` | Where a schema kept in cloud storage is copied to when the server starts. |
 | `CROMBOLO_SCHEMA_WRITABLE` | `true` / `false` | true unless production or with a schema store | Whether the back office may change the schema files. |
+| `CROMBOLO_CONTENT_FILES_READONLY` | `true` / `false` | `false` | Stops the back office changing templates, stylesheets and scripts, for a site whose files come from its repository. |
 | `CROMBOLO_SYNC_SCHEMA_AT_BOOT` | `true` / `false` | `true` | Syncs the schema files when the server starts. Turn it off when a deploy runs `crombolo types sync` itself. |
 
 ### Components

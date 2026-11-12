@@ -112,6 +112,8 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'workspaceView:Crombolo.WorkspaceView.BundleEditor.Workflows',
       'workspaceView:Crombolo.WorkspaceView.BundleEditor.UserGroups',
       'workspaceView:Crombolo.WorkspaceView.Webhook.Storage',
+      'workspaceView:Crombolo.WorkspaceView.UserGroup.Editor',
+      'dashboard:Crombolo.Dashboard.ContentSettings',
       'dashboard:Crombolo.Dashboard.Addresses',
       'dashboard:Crombolo.Dashboard.Changes',
       'dashboard:Crombolo.Dashboard.BackgroundJobs',

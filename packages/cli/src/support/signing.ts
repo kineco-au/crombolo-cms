@@ -5,11 +5,13 @@
 import {
   bootstrapDatabase,
   type KeyPair,
+  type ProvenanceResult,
   readUserKey,
+  signerTrusted,
   signPathWithKey,
   siteSigningKey,
 } from '@crombolo/server'
-import { siteConfig } from './site.ts'
+import { hasSite, siteConfig } from './site.ts'
 
 /** The user key named, or this site's own; undefined where the site has no secret key to keep one. */
 export async function signingKey(signWith: string | undefined): Promise<KeyPair | undefined> {
@@ -19,6 +21,21 @@ export async function signingKey(signWith: string | undefined): Promise<KeyPair 
   const { db } = await bootstrapDatabase(config)
   try {
     return await siteSigningKey(db, config)
+  } finally {
+    await db.close()
+  }
+}
+
+/**
+ * A signature with whether the site this runs in trusts its signer (story 335);
+ * as it was outside a site, or for anything but a signature.
+ */
+export async function withSiteTrust(result: ProvenanceResult): Promise<ProvenanceResult> {
+  if (result.state !== 'signed' || !hasSite()) return result
+  const config = await siteConfig()
+  const { db } = await bootstrapDatabase(config)
+  try {
+    return { ...result, trusted: await signerTrusted(db, config, result) }
   } finally {
     await db.close()
   }

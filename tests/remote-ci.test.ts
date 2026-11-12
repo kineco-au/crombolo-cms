@@ -286,11 +286,12 @@ describe('signing in from CI', () => {
 
   test('with PushProtected a job may push to a protected site', async () => {
     const { rule, as, ciToken } = await site()
-    // A whole-site push changes structure too (story 167).
+    // A whole-site push changes structure too (story 167), and templates, which are code (336).
     await rule([
       'Crombolo.Remote.Push',
       'Crombolo.Remote.PushProtected',
       'Crombolo.Remote.ApplyStructure',
+      'Crombolo.Remote.InstallCode',
     ])
     const token = await ciToken()
     expect((await (await as(token, 'environments')).json())[0].may.push).toBe(true)

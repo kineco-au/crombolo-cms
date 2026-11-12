@@ -1186,6 +1186,20 @@ while it runs (`runtimeInstalls`) and whoever installs asked for code (over the
 remote API, `Crombolo.Remote.InstallCode`). `site apply --local`, the site's own
 content files built here, is unaffected.
 
+**Templates are code too** (story `336`): the server imports and runs each one.
+An install that would add or change one, in `components/`, is held to the same
+rule:
+- the site must install code while it runs;
+- whoever installs must be allowed to install code. Over the remote API that is
+  `Crombolo.Remote.InstallCode`; in the Transfer dashboard it is "Install code on
+  this site" from a group. `crombolo bundle install` always installs code.
+
+Templates the bundle carries unchanged, `--no-files`, and the site's own content
+files are unaffected. Stylesheets and scripts are not code: they install under
+ApplyStructure as before. Where installs are off, a bundle's code, migrations and
+templates are all refused with one message: installing code while the site runs
+is turned off on this site.
+
 Then three phases (story `105`): every carried section is **staged** into a copy
 under `.crombolo/transfer/pending-…/next/`; **one transaction** syncs the staged
 schema, imports the dictionary items and the content; and once it commits the
@@ -1923,9 +1937,27 @@ each permission with the reason it needs it, and it is held to that.
   - **Four groups** fold the catalogue: Sees, Changes, Sends to and Adds, with Acts as
     when it asks to (`groupsOf`). "Show each permission and why it asks" opens the list
     with each reason and origin.
-  - **Vouched for** means signed, vouched for by the host, or built on this machine (a
-    linked or workspace package). An unsigned Limited extension installs, and the panel
-    says "Nobody has vouched for who built this" in place of its build line.
+  - **Vouched for** means one of three things (story 335):
+    - signed by a signer this site trusts. That is a key, or a build from a GitHub
+      repository, on Settings → Trusted signers: this site's own key, keys and sources
+      in the config, and those added there. It is the same list site bundles are
+      checked against;
+    - vouched for by the host;
+    - built on this machine (a linked or workspace package).
+
+    A signature from anyone else, key or Sigstore build, only labels the extension. The
+    panel and `bundle verify` say whether this site trusts its signer, and a refusal
+    names the signer and says to add it in Trusted signers. An unsigned Limited
+    extension installs, and the panel says "Nobody has vouched for who built this" in
+    place of its build line.
+  - **Checked at every start.** Before extensions run, an Acts as you or Unrestricted
+    grant recorded here that nobody this site trusts vouches for is withdrawn, audited
+    and logged. It then needs granting again, under the same rule. That covers an
+    upgrade from before 335, and a signer later taken off the list. A grant the site's
+    code makes is the developer's, and kept. A signature that can't be checked at the
+    time, offline say, is left alone.
+  - **`bundle sign --key <name>`** signs a package directory or `.tgz` with one of your
+    keys (`crombolo keys`), for a site that trusts that key.
   - **Administrators only:** installing, removing and granting an extension are an
     administrator's in the back office, at every level. Disabling and enabling stay
     open to Settings access. A remote reaches them with "Install code on this site".

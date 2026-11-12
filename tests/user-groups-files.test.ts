@@ -31,12 +31,12 @@ permissions = ["Umb.Document.Read", "Umb.Document.Update"]
 languages = "all"
 `
 
-async function site(schemaWritable: boolean) {
+async function site(schemaWritable: boolean, source = SUB_EDITORS) {
   const root = mkdtempSync(join(process.cwd(), 'output', 'user-groups-'))
   dirs.push(root)
   mkdirSync(join(root, 'schema', 'user-groups'), { recursive: true })
   writeFileSync(join(root, 'schema', 'schema.toml'), '[schema]\nversion = "1.0.0"\n')
-  writeFileSync(join(root, 'schema', 'user-groups', 'sub-editors.toml'), SUB_EDITORS)
+  writeFileSync(join(root, 'schema', 'user-groups', 'sub-editors.toml'), source)
   const h = await signedInServer({
     config: { schemaDir: join(root, 'schema'), schemaWritable },
   })
@@ -64,6 +64,20 @@ describe('a user group file', () => {
     expect(said).toContain('administrators group is built in')
     expect(said).toContain('"nowhere" is not a section')
     expect(said).toContain('"Umb.Document.Fly" is not a permission verb')
+  })
+
+  test('names its owners by alias, and a group that can move sites cannot have any (story 302)', () => {
+    const owned = `${SUB_EDITORS}owners = ["subEditors", "editor"]\n`
+    const parsed = parseUserGroup('sub-editors.toml', owned)
+    expect(parsed.problems).toEqual([])
+    expect(parsed.value?.owners).toEqual(['subEditors', 'editor'])
+    expect(writeUserGroup(parsed.value as never)).toBe(owned)
+    expect(parseUserGroup('sub-editors.toml', SUB_EDITORS).value?.owners).toBeUndefined()
+    const movers = parseUserGroup(
+      'movers.toml',
+      `[user-group]\nalias = "movers"\nname = "Movers"\npermissions = ["Crombolo.Remote.Push"]\nowners = ["editor"]\n`,
+    )
+    expect(movers.problems.map((p) => p.message).join('\n')).toContain('cannot have owners')
   })
 
   test('a file naming the Packages section still loads, without it (story 238)', () => {
@@ -129,5 +143,44 @@ describe('a declared group', () => {
     await expect(
       groups.syncDeclared([{ ...(declared as object), languages: ['xx-XX'] } as never]),
     ).rejects.toThrow('names a language the site does not have')
+  })
+
+  test('the sync sets the owners a file names, and refuses one the site does not have (story 302)', async () => {
+    const { group, groups } = await site(false)
+    const declared = parseUserGroup('sub-editors.toml', SUB_EDITORS).value as object
+    const editor = (await groups.byAlias('editor'))?.key as string
+    expect(
+      await groups.syncDeclared([{ ...declared, owners: ['subEditors', 'editor'] } as never]),
+    ).toEqual({ created: [], updated: ['subEditors'] })
+    expect((await groups.byKey(group.key))?.owners.sort()).toEqual([group.key, editor].sort())
+    expect(
+      await groups.syncDeclared([{ ...declared, owners: ['editor', 'subEditors'] } as never]),
+    ).toEqual({ created: [], updated: [] })
+    // A file that names no owners leaves the environment's alone
+    expect(await groups.syncDeclared([declared as never])).toEqual({ created: [], updated: [] })
+    expect((await groups.byKey(group.key))?.owners).toHaveLength(2)
+    await expect(
+      groups.syncDeclared([{ ...declared, owners: ['nobody'] } as never]),
+    ).rejects.toThrow('names an owner the site does not have: nobody')
+  })
+
+  test("owners are the environment's unless the file names them (story 302)", async () => {
+    const { root, group, groups, read, put } = await site(false)
+    const editor = (await groups.byAlias('editor'))?.key as string
+    expect((await put({ ...(await read()), owners: [{ id: editor }] })).status).toBe(200)
+    expect((await groups.byKey(group.key))?.owners).toEqual([editor])
+    const file = join(root, 'schema', 'user-groups', 'sub-editors.toml')
+    expect(readFileSync(file, 'utf8')).not.toContain('owners')
+    const named = await site(false, `${SUB_EDITORS}owners = ["editor"]\n`)
+    expect((await named.groups.byKey(named.group.key))?.owners).toEqual([editor])
+    const fixed = await named.put({ ...(await named.read()), owners: [{ id: named.group.key }] })
+    expect(fixed.status).toBe(409)
+  })
+
+  test('in development: changing owners a file names writes them back (story 302)', async () => {
+    const { root, group, read, put } = await site(true, `${SUB_EDITORS}owners = ["editor"]\n`)
+    expect((await put({ ...(await read()), owners: [{ id: group.key }] })).status).toBe(200)
+    const file = readFileSync(join(root, 'schema', 'user-groups', 'sub-editors.toml'), 'utf8')
+    expect(file).toContain('owners = ["subEditors"]')
   })
 })

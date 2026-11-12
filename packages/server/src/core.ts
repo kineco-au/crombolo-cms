@@ -78,6 +78,7 @@ import {
 import { createFormRegistry, formSigningSecret, signFormToken } from './form-submit.ts'
 import { formTypesOf } from './form-types.ts'
 import { createWorkflowRunner } from './form-workflows.ts'
+import { switchOffUntrusted } from './grant-trust.ts'
 import {
   createBundleIdentityProviders,
   IdentityProviderOverrides,
@@ -341,6 +342,11 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
           detail: `narrowed to what it asks for: ${declaredPermissions(pkg).join(', ') || 'nothing'}`,
           source: 'boot',
         })
+  // Story 335: before any extension runs, one nobody this site trusts vouches for loses its upper level.
+  if (owns)
+    await switchOffUntrusted(db, config, extensions, bundleGrants).catch((error: unknown) =>
+      log.error('Checking who vouches for extensions failed: {error}', { error: String(error) }),
+    )
   // A configured schema store is copied down before anything reads `schema/`, and
   // becomes the schema directory for this boot. Everything after here — loading,
   // validation, hashing, sync, the writer — works on files exactly as it always has.

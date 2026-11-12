@@ -6,6 +6,94 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.63.0 — 2026-11-12
+
+### Features
+
+- **A group's owners decide who is in it (302).** Only an administrator creates, changes or
+  deletes a user group. A group may name other groups as its owners, itself included, and
+  the members of those groups add people to it and take them out, from the group or from a
+  user's groups. Belonging to a group no longer lets someone put others in it, and taking
+  someone out of a group needs ownership too. The administrators group, and a group that
+  can move sites or install code, have no owners. Anyone else sees a group's screen
+  view-only, and the group picker offers them only the groups they own. A group file may
+  name its owners with `owners = [...]`.
+
+- **A bundle's templates are installed as code (336).** Installing a bundle that adds or
+  changes a template, which the server runs, needs "Install code on this site": over the
+  remote API, and in the Transfer dashboard, where any Settings user could install one
+  before. Reverting such a run needs it too, and so does a whole-site push, which replaces
+  the site's templates. A site that doesn't install code while it runs refuses a bundle's
+  templates, code and migrations alike, saying installing code while the site runs is
+  turned off. Stylesheets and scripts install as before.
+
+- **Templates, stylesheets and scripts can be made read-only (337).**
+  `CROMBOLO_CONTENT_FILES_READONLY=true` stops the back office changing them, on the server
+  as well as in the screens. The back office's production mode now follows this switch
+  rather than the site's mode.
+
+- **Only a signer the site trusts vouches for an extension (335).** Acts as you and
+  Unrestricted need an extension signed by a key or a GitHub repository on Settings →
+  Trusted signers, the list site bundles use, or vouched for by the host, or built here.
+  Any other signature, key or Sigstore, only labels it, and the refusal names the signer.
+  The panel and `bundle verify` say whether the site trusts the signer, and
+  `bundle sign --key` signs an extension with one of your keys.
+
+- **A user group is set up in levels (338).** The group screen has five tabs: Access, an
+  on/off switch per area with how far into it; Permissions, a level per kind of content
+  (None, See, Edit, Edit and publish, Full control for pages and the Library; See or
+  Upload and edit for media; forms likewise), with Customise for anything in between;
+  Exceptions, each per-page or per-field difference as a sentence, with an Add panel;
+  Data Transfer, the moving-sites permissions in plain words, for administrators; and
+  People, members and owners. A kind whose area is off shows "Access is off".
+
+- **Fewer permissions (338).** Library folder permissions follow the Library's own;
+  making a blueprint follows creating pages; following a page's notifications follows
+  seeing it; and every field is shown to anyone who can see the page, so only changing a
+  field is set per field.
+
+- **Where a user may work comes only from their groups (339).** A user no longer has start
+  nodes of their own: the user screen shows where they can work, worked out from their
+  groups, and the start node pickers are gone.
+
+- **Content settings in Settings.** Page addresses, redirects and relations are one card,
+  Content settings, first under Site, with a tab for each: URLs, Page Redirects and
+  Relations. Their old addresses still open them.
+
+### Migrations
+
+- 074 `AddUserGroupOwners`: the `user_group_owner` table.
+- 075 `PruneGroupPermissions`: groups' permissions rewritten for the pruned verbs.
+- 076 `DropUserStartNodes`: users' own start nodes, recorded on the Changes dashboard and in
+  the audit log, then the `user_start_node` table dropped.
+
+### Upgrade notes
+
+- Users with the Users section who are not administrators can no longer create or change
+  groups, nor put people into groups they belong to. No group has owners after the
+  upgrade: set them on the groups those users should run.
+- A whole-site push, and installing a bundle that adds or changes templates, now need
+  "Install code on this site", which no one holds until a group gives it, administrators
+  included. Give it to the group that deploys.
+- A bundle refused on a site that doesn't install code while it runs no longer shows the
+  host's "deploy it instead" text (`CROMBOLO_INSTALLS_ELSEWHERE_MESSAGE`); the Marketplace
+  still does.
+- Groups' stored permissions are rewritten (migration 075): Library folder permissions
+  become the Library's, Create blueprint becomes Create, and Notifications and field
+  Read are removed. A field that was hidden from a group is now shown to it, still
+  unchangeable: hiding it never kept its value out of the API. A group file naming a
+  removed permission still loads, and is rewritten on its next save.
+- Users' own start nodes are dropped (migration 076). Someone who was held by them to part
+  of the site now works wherever their groups do. The Changes dashboard names each one and
+  where they had been held: put them in a group that reaches only there if that was meant.
+- At the first start, an extension granted Acts as you or Unrestricted whose signer this
+  site doesn't trust has its grant withdrawn, audited and logged. To keep one, add its key
+  or repository in Settings → Trusted signers, then grant it again. Grants made by the
+  site's code are kept.
+- Production sites can now edit templates in the back office, which showed them read-only
+  before. Set `CROMBOLO_CONTENT_FILES_READONLY=true` to keep templates, stylesheets and
+  scripts read-only.
+
 ## v0.62.0 — 2026-11-11
 
 ### Features

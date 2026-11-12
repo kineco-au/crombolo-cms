@@ -4,7 +4,8 @@ import type { Page } from '@crombolo/core'
 import type { Principal } from './router.ts'
 
 export type UserResponse = ResponseOf<'GetUserById'>
-export type UserGroupResponse = ResponseOf<'GetUserGroupById'>
+/** Crombolo adds the groups that own it (story 302), which Umbraco's contract does not have. */
+export type UserGroupResponse = ResponseOf<'GetUserGroupById'> & { owners: Array<{ id: string }> }
 
 /** Umbraco's `UserOperationStatus` names, as its problem details report them. */
 export type UserStatus =
@@ -38,6 +39,8 @@ export type UserStatus =
   | 'DuplicateClientId'
   | 'InvalidClientId'
   | 'InvalidResetCode'
+  /** Crombolo: a group added or removed is not one the caller owns (story 302). */
+  | 'NotGroupOwner'
 
 export type UserOrder =
   | 'UserName'
@@ -185,6 +188,8 @@ export interface UserGroupInput {
   elementRootAccess: boolean
   fallbackPermissions: string[]
   permissions: UserGroupResponse['permissions']
+  /** Crombolo: the keys of the groups that own it; absent keeps what it has (story 302). */
+  owners?: string[]
 }
 
 /** Umbraco's `UserGroupOperationStatus` names. */
@@ -208,6 +213,13 @@ export type UserGroupStatus =
   | 'UserNotFound'
   /** Crombolo: the group comes from the site's files, and this change is the files' to make (story 228). */
   | 'DeclaredInFiles'
+  /** Crombolo: only an administrator creates, changes or deletes a group (story 302). */
+  | 'AdministratorsOnly'
+  /** Crombolo: the caller is not in any of the group's owners (story 302). */
+  | 'NotGroupOwner'
+  /** Crombolo: the admin group, or one holding a remote permission, has no owners (story 302). */
+  | 'CannotBeOwned'
+  | 'OwnerNotFound'
 
 export interface UserGroupPort {
   list(skip: number, take: number): Promise<Page<UserGroupResponse>>
@@ -217,7 +229,10 @@ export interface UserGroupPort {
     skip: number,
     take: number,
   ): Promise<Page<UserGroupResponse>>
-  get(principal: Principal, key: string): Promise<UserGroupResponse | 'NotFound' | 'Forbidden'>
+  get(
+    principal: Principal,
+    key: string,
+  ): Promise<(UserGroupResponse & { canManageMembers: boolean }) | 'NotFound' | 'Forbidden'>
   items(keys: readonly string[]): Promise<ResponseOf<'GetItemUserGroup'>>
   create(
     principal: Principal,

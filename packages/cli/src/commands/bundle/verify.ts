@@ -3,6 +3,7 @@ import { Args, Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
 import { CliError } from '../../errors.ts'
 import { withBundleFile } from '../../support/provenance.ts'
+import { withSiteTrust } from '../../support/signing.ts'
 
 /** Checks where a bundle was built, without installing it (story 060). */
 export default class BundleVerify extends BaseCommand {
@@ -38,13 +39,16 @@ export default class BundleVerify extends BaseCommand {
       { name: 'source', type: 'object', nullable: true },
       { name: 'links', type: 'object', nullable: true },
       { name: 'reason', type: 'string', nullable: true },
+      { name: 'trusted', type: 'boolean', nullable: true },
     ],
     errors: ['refused', 'not_found'],
   } as const
 
   async run() {
     const { args, flags } = await this.parse(BundleVerify)
-    const result = await withBundleFile(args.bundle, (path) => verifyPackage(path))
+    const result = await withSiteTrust(
+      await withBundleFile(args.bundle, (path) => verifyPackage(path)),
+    )
     this.say(`  ${describeProvenance(result)}`)
     if (result.links?.commit) this.say(`  commit   ${result.links.commit}`)
     if (result.links?.tag) this.say(`  tag      ${result.links.tag}`)
@@ -60,6 +64,7 @@ export default class BundleVerify extends BaseCommand {
       source: result.source ?? null,
       links: result.links ?? null,
       reason: result.reason ?? null,
+      trusted: result.trusted ?? null,
     }
   }
 }

@@ -122,7 +122,8 @@ function createServerPort(config: CromboloConfig, canSendUserLinks: boolean): Se
       version: VERSION,
       assemblyVersion: VERSION,
       baseUtcOffset: '00:00:00',
-      runtimeMode: config.development ? 'BackofficeDevelopment' : 'Production',
+      // Story 337: the back office keeps templates read-only in production mode, so the mode follows the switch.
+      runtimeMode: config.contentFilesReadOnly ? 'Production' : 'BackofficeDevelopment',
     }),
   }
 }
@@ -476,10 +477,14 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
   // through the partial-view file API because that one is path-addressed and
   // already understands folders; the template API is id-addressed and cannot
   // express a folder at all.
-  deps.components = createComponentsPort(options.config.componentsDir)
+  const readOnly = options.config.contentFilesReadOnly
+  deps.components = createComponentsPort(options.config.componentsDir, readOnly)
   deps.componentSnippets = COMPONENT_SNIPPETS
-  deps.stylesheets = createFileSystemPort(options.config.stylesheetsDir, { extension: '.css' })
-  deps.scripts = createFileSystemPort(options.config.scriptsDir, { extension: '.js' })
+  deps.stylesheets = createFileSystemPort(options.config.stylesheetsDir, {
+    extension: '.css',
+    readOnly,
+  })
+  deps.scripts = createFileSystemPort(options.config.scriptsDir, { extension: '.js', readOnly })
   if (options.db) {
     const dynamicRoots = new DynamicRootRepository(options.db)
     deps.dynamicRoots = { resolve: (query) => dynamicRoots.resolve(query) }
@@ -567,7 +572,11 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
     })
     deps.contentTypes = createContentTypePort(options.db, schemaFiles(options.config), {
       nodeState: options.schema?.nodeState,
-      componentFiles: createTemplateFileStore(options.config.componentsDir, options.onViewsChange),
+      componentFiles: createTemplateFileStore(
+        options.config.componentsDir,
+        options.onViewsChange,
+        options.config.contentFilesReadOnly,
+      ),
     })
     deps.mediaTypes = createContentTypePort(options.db, schemaFiles(options.config), {
       nodeState: options.schema?.nodeState,
@@ -580,7 +589,11 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
     deps.dataTypes = createDataTypePort(options.db, schemaFiles(options.config))
     deps.templates = createTemplatePort(
       options.db,
-      createTemplateFileStore(options.config.componentsDir, options.onViewsChange),
+      createTemplateFileStore(
+        options.config.componentsDir,
+        options.onViewsChange,
+        options.config.contentFilesReadOnly,
+      ),
     )
     deps.logViewer = createLogViewerPort(options.db, options.config)
     deps.modelsBuilder = createModelsBuilderPort(options.config)
@@ -625,7 +638,11 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
       nodeId: options.config.nodeId,
       marketplaceUrl: options.config.marketplaceUrl,
       secretKey: options.config.secretKey,
-      componentFiles: createTemplateFileStore(options.config.componentsDir, options.onViewsChange),
+      componentFiles: createTemplateFileStore(
+        options.config.componentsDir,
+        options.onViewsChange,
+        options.config.contentFilesReadOnly,
+      ),
       mediaStore: mediaFiles.store,
       components: deps.components,
       stylesheets: deps.stylesheets,

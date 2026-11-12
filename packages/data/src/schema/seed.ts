@@ -18,11 +18,6 @@ const ELEMENT_EDIT = [
   'Umb.Element.Unpublish',
   'Umb.Element.Read',
   'Umb.Element.Rollback',
-  'Umb.ElementContainer.Create',
-  'Umb.ElementContainer.Update',
-  'Umb.ElementContainer.Delete',
-  'Umb.ElementContainer.Move',
-  'Umb.ElementContainer.Read',
 ]
 
 /**
@@ -59,13 +54,10 @@ export const BUILT_IN_GROUP_PERMISSIONS: Record<string, readonly string[]> = {
     'Umb.Document.Permissions',
     'Umb.Document.Unpublish',
     'Umb.Document.Read',
-    'Umb.Document.CreateBlueprint',
-    'Umb.Document.Notifications',
     ':',
     '5',
     '7',
     'T',
-    'Umb.Document.PropertyValue.Read',
     'Umb.Document.PropertyValue.Write',
     ...FORM_FULL,
     ...ELEMENT_EDIT,
@@ -85,12 +77,9 @@ export const BUILT_IN_GROUP_PERMISSIONS: Record<string, readonly string[]> = {
     'Umb.Document.Publish',
     'Umb.Document.Unpublish',
     'Umb.Document.Read',
-    'Umb.Document.CreateBlueprint',
-    'Umb.Document.Notifications',
     ':',
     '5',
     'T',
-    'Umb.Document.PropertyValue.Read',
     'Umb.Document.PropertyValue.Write',
     // An editor reads entries and acts on them, but does not design forms and
     // does not see what a definition marks sensitive.
@@ -104,16 +93,11 @@ export const BUILT_IN_GROUP_PERMISSIONS: Record<string, readonly string[]> = {
     'Umb.Document.Create',
     'Umb.Document.Update',
     'Umb.Document.Read',
-    'Umb.Document.Notifications',
     ':',
-    'Umb.Document.PropertyValue.Read',
     'Umb.Document.PropertyValue.Write',
     'Umb.Element.Create',
     'Umb.Element.Update',
     'Umb.Element.Read',
-    'Umb.ElementContainer.Create',
-    'Umb.ElementContainer.Update',
-    'Umb.ElementContainer.Read',
   ],
   // The group that exists only to carry sensitive-data access; it has no
   // sections of its own and is added alongside another group.
@@ -121,12 +105,9 @@ export const BUILT_IN_GROUP_PERMISSIONS: Record<string, readonly string[]> = {
   translator: [
     'Umb.Document.Update',
     'Umb.Document.Read',
-    'Umb.Document.PropertyValue.Read',
     'Umb.Document.PropertyValue.Write',
     'Umb.Element.Update',
     'Umb.Element.Read',
-    'Umb.ElementContainer.Update',
-    'Umb.ElementContainer.Read',
   ],
 }
 

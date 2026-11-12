@@ -20,7 +20,14 @@ import {
 } from '@crombolo/server'
 import { loadBundle, openBundle } from '@crombolo/transfer'
 import { dialectUnderTest } from './support/db.ts'
-import { type Harness, ORIGIN, signedInServer, signInAsGroup, V1 } from './support/harness.ts'
+import {
+  giveAdminsInstallCode,
+  type Harness,
+  ORIGIN,
+  signedInServer,
+  signInAsGroup,
+  V1,
+} from './support/harness.ts'
 
 const PASSPHRASE = 'a passphrase long enough to use'
 const SECRET_KEY = 'a-test-secret-key-that-is-long-enough-to-use'
@@ -83,6 +90,7 @@ async function remoteSite(
     },
   })
   open.push(h)
+  await giveAdminsInstallCode(h)
   const types = await h.json<{ items: { id: string; name: string }[] }>(
     `${V1}/tree/document-type/root?take=100`,
   )

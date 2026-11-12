@@ -128,6 +128,21 @@ export async function undoMediaMemberUploads(db: Db): Promise<void> {
   // 059, forms in the Library (story 239), 058, bundle schema picks (story
   // 226), and 057, site settings types (story 058): columns on tables that stay.
   // 072, what each extension did (story 327): a table of its own.
+  // 076, users' own start nodes (story 339): the table comes back, empty.
+  const t = db.dialect.types
+  await db.exec(
+    `CREATE TABLE IF NOT EXISTS user_start_node (
+       id ${t.identity},
+       user_id ${t.integer} NOT NULL REFERENCES user_account (id),
+       start_node ${t.integer} NOT NULL,
+       start_node_type ${t.integer} NOT NULL
+     )`,
+  )
+  await db.exec("DELETE FROM migration_history WHERE name = 'DropUserStartNodes'")
+  // 075, the pruned verbs (story 338): a rewrite of rows, replayed harmlessly.
+  await db.exec("DELETE FROM migration_history WHERE name = 'PruneGroupPermissions'")
+  await db.exec('DROP TABLE IF EXISTS user_group_owner')
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddUserGroupOwners'")
   await db.exec('DROP TABLE IF EXISTS form_workflow_secret')
   await db.exec("DELETE FROM migration_history WHERE name = 'AddFormWorkflowSecrets'")
   await db.exec('DROP TABLE IF EXISTS extension_activity')

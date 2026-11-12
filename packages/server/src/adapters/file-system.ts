@@ -15,6 +15,8 @@ export interface FileAreaOptions {
   rewrites?: readonly string[]
   /** Other extensions a file here may have, kept as they are. */
   also?: readonly string[]
+  /** The site keeps these files read-only in the back office (story 337). */
+  readOnly?: boolean
 }
 
 const INVALID_CHARACTERS = /[<>:"|?*\\/]/
@@ -93,7 +95,7 @@ export function createFileSystemPort(root: string, options: FileAreaOptions): Fi
     return (await kindOf(parent.file)) === 'folder' ? parent : undefined
   }
 
-  return {
+  const port: FileSystemPort = {
     async children(parentPath) {
       const parent = locate(parentPath)
       if (!parent) return undefined
@@ -194,8 +196,30 @@ export function createFileSystemPort(root: string, options: FileAreaOptions): Fi
       return { ok: true, path: entry.path }
     },
   }
+  return options.readOnly ? readOnlyPort(port) : port
+}
+
+/** Reads as `port` does, and refuses every change (story 337). */
+function readOnlyPort(port: FileSystemPort): FileSystemPort {
+  const refused = async (): Promise<FileResult> => ({ ok: false, status: 'ReadOnly' })
+  return {
+    children: (path) => port.children(path),
+    entry: (path) => port.entry(path),
+    read: (path) => port.read(path),
+    create: refused,
+    update: refused,
+    rename: refused,
+    delete: refused,
+    createFolder: refused,
+    deleteFolder: refused,
+  }
 }
 
 /** The components tree: its views, and the plain modules they import. */
-export const createComponentsPort = (root: string): FileSystemPort =>
-  createFileSystemPort(root, { extension: '.tsx', also: ['.ts'], rewrites: ['.cshtml'] })
+export const createComponentsPort = (root: string, readOnly = false): FileSystemPort =>
+  createFileSystemPort(root, {
+    extension: '.tsx',
+    also: ['.ts'],
+    rewrites: ['.cshtml'],
+    readOnly,
+  })

@@ -217,13 +217,32 @@ describe('site().content', () => {
       `${V1}/user?take=100`,
     )
     const apiUser = users.items.find((u) => u.userName === CLIENT.id) as { id: string }
-    const detail = await h.json<Record<string, unknown>>(`${V1}/user/${apiUser.id}`)
+    const detail = await h.json<{ userGroupIds: Array<{ id: string }> }>(`${V1}/user/${apiUser.id}`)
+    // Story 339: a user works where their groups do, so a group narrows it.
+    const first = await h.json<{ fallbackPermissions: string[]; sections: string[] }>(
+      `${V1}/user-group/${detail.userGroupIds[0]?.id}`,
+    )
+    const narrow = await h.post(`${V1}/user-group`, {
+      name: 'Home only',
+      alias: 'homeOnly',
+      sections: first.sections,
+      languages: [],
+      hasAccessToAllLanguages: true,
+      documentRootAccess: false,
+      documentStartNode: { id: home.key },
+      mediaRootAccess: true,
+      mediaStartNode: null,
+      elementRootAccess: true,
+      elementStartNode: null,
+      fallbackPermissions: first.fallbackPermissions,
+      permissions: [],
+    })
+    expect(narrow.status, await narrow.clone().text()).toBe(201)
     const updated = await h.put(`${V1}/user/${apiUser.id}`, {
       ...detail,
       email: 'site-code@example.com',
       userName: 'site-code@example.com',
-      hasDocumentRootAccess: false,
-      documentStartNodeIds: [{ id: home.key }],
+      userGroupIds: [{ id: narrow.headers.get('umb-generated-resource') }],
     })
     expect(updated.status, await updated.text()).toBeLessThan(300)
     expect((await h.call(`/listings/${elsewhere.key}`)).status).toBe(404)

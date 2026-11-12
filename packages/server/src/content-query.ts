@@ -9,7 +9,6 @@ import {
   DocumentPermissions,
   type GroupGrant,
   permissionsForPath,
-  propertyValuePermissions,
   ROOT_ACCESS,
 } from '@crombolo/core'
 import {
@@ -37,9 +36,8 @@ export function contentQueryScope(principal: Principal): QueryScope {
       principal.isAdmin || browsesEverything(groups)
         ? undefined
         : (chain) => permissionsForPath(groups, chain).has(DocumentPermissions.Read),
-    readsProperty: (key) =>
-      principal.isAdmin ||
-      propertyValuePermissions(groups, key).has(DocumentPermissions.PropertyValueRead),
+    // Story 338: a field is never hidden from someone who may see the page.
+    readsProperty: () => true,
   }
 }
 

@@ -27,13 +27,7 @@ describe('the names', () => {
     })
     const bare = permissionVerb('read')
     expect(bare.ok).toBe(false)
-    if (!bare.ok)
-      expect(bare.candidates).toEqual([
-        'content:read',
-        'library:read',
-        'library-folders:read',
-        'media:read',
-      ])
+    if (!bare.ok) expect(bare.candidates).toEqual(['content:read', 'library:read', 'media:read'])
   })
 
   test('every permission has one name, and says what it allows', () => {

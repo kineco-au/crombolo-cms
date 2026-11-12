@@ -16,9 +16,26 @@ export type UnrestrictedFrom = 'backoffice' | 'config'
 export const unrestrictedFrom = (value: string | undefined): UnrestrictedFrom =>
   value?.trim().toLowerCase() === 'config' ? 'config' : 'backoffice'
 
-/** A package someone has vouched for: signed, vouched for by the host, or built here. */
+/**
+ * A package someone has vouched for: signed by a signer this site trusts (story
+ * 335), vouched for by the host, or built here.
+ */
 export const vouchedFor = (provenance: ProvenanceResult | undefined): boolean =>
-  provenance?.state === 'signed' || provenance?.state === 'vouched' || provenance?.state === 'local'
+  (provenance?.state === 'signed' && provenance.trusted === true) ||
+  provenance?.state === 'vouched' ||
+  provenance?.state === 'local'
+
+/** Who signed it, in words: a key by its name and fingerprint, or the repository that built it. */
+export function signerWords(provenance: ProvenanceResult): string | undefined {
+  if (provenance.key)
+    return `the key ${provenance.key.comment ? `${provenance.key.comment} ` : ''}(${provenance.key.fingerprint})`
+  if (provenance.source) return `a build of github.com/${provenance.source.repository}`
+  return undefined
+}
+
+/** Why a signature that checks out still does not vouch: its signer is not one this site trusts. */
+export const untrustedSigner = (provenance: ProvenanceResult): string =>
+  `It is signed by ${signerWords(provenance) ?? 'someone'}, which this site doesn't trust, so it can't be turned on here. An administrator can add the signer in Settings → Trusted signers.`
 
 export const ADMINISTRATOR_GRANTS = 'An administrator can turn this on.'
 export const NOBODY_VOUCHED =
@@ -52,6 +69,9 @@ export function grantRefusal(options: {
   if (!options.grants) return undefined
   if (options.level === 'unrestricted' && options.from === 'config') return CONFIG_GRANTS
   if (!options.isAdmin) return ADMINISTRATOR_GRANTS
-  if (isUpperLevel(options.level) && !vouchedFor(options.provenance)) return NOBODY_VOUCHED
+  if (isUpperLevel(options.level) && !vouchedFor(options.provenance))
+    return options.provenance?.state === 'signed'
+      ? untrustedSigner(options.provenance)
+      : NOBODY_VOUCHED
   return undefined
 }

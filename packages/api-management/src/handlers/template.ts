@@ -6,6 +6,7 @@ import type { ResponseOf } from '@crombolo/contracts'
 import type { ComponentModel } from '@crombolo/core'
 import { invalidSkipTake, notFound, problemDetails, problemResponse } from '@crombolo/core'
 import type { TemplatePort } from '../ports-content.ts'
+import { CONTENT_FILES_READ_ONLY } from '../ports-files.ts'
 import type { ManagementApiRouter } from '../router.ts'
 import { created, paging, toTreeItemResponse } from './content-type.ts'
 
@@ -21,6 +22,17 @@ function toResponse(model: ComponentModel): ResponseOf<'GetTemplateById'> {
   } as ResponseOf<'GetTemplateById'>
 }
 
+/** Story 337: a site that keeps its templates read-only in the back office. */
+const readOnly = () =>
+  problemResponse(
+    problemDetails({
+      title: "Templates can't be changed here",
+      detail: CONTENT_FILES_READ_ONLY,
+      status: 403,
+      operationStatus: 'ReadOnly',
+    }),
+  )
+
 export function registerTemplateHandlers(router: ManagementApiRouter, port: TemplatePort): void {
   // Templates are the site's components and are always on.
   router.handle('GetTemplateConfiguration', () => Response.json({ disabled: false }))
@@ -31,6 +43,7 @@ export function registerTemplateHandlers(router: ManagementApiRouter, port: Temp
   })
 
   router.handle('PostTemplate', async (ctx) => {
+    if (port.readOnly) return readOnly()
     const body = (await ctx.request.json()) as Record<string, unknown>
     const key = typeof body.id === 'string' && body.id ? body.id : crypto.randomUUID()
     const name = String(body.name ?? '')
@@ -49,6 +62,7 @@ export function registerTemplateHandlers(router: ManagementApiRouter, port: Temp
   })
 
   router.handle('PutTemplateById', async (ctx) => {
+    if (port.readOnly) return readOnly()
     const key = ctx.params.id as string
     const existing = await port.byKey(key)
     if (!existing) return problemResponse(notFound('The template could not be found'))
@@ -67,6 +81,7 @@ export function registerTemplateHandlers(router: ManagementApiRouter, port: Temp
   })
 
   router.handle('DeleteTemplateById', async (ctx) => {
+    if (port.readOnly) return readOnly()
     const removed = await port.remove(ctx.params.id as string)
     if (!removed) return problemResponse(notFound('The template could not be found'))
     return new Response(null, { status: 200 })

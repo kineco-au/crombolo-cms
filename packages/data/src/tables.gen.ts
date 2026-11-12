@@ -866,6 +866,10 @@ export interface CoreTables {
     user_group_id: number
     user_id: Generated<number>
   }
+  user_group_owner: {
+    owner_group_key: string
+    user_group_key: string
+  }
   user_group_permission: {
     id: Generated<number>
     permission: string
@@ -887,12 +891,6 @@ export interface CoreTables {
     action: string
     node_id: number
     user_id: Generated<number>
-  }
-  user_start_node: {
-    id: Generated<number>
-    start_node: number
-    start_node_type: number
-    user_id: number
   }
   user_token: {
     expires_at: Timestamp

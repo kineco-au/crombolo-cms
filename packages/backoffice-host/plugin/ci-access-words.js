@@ -20,14 +20,14 @@ export const CI_PERMISSIONS = [
   },
   {
     verb: 'Crombolo.Remote.ApplyStructure',
-    label: 'Change structure and code',
-    explain: 'Push a whole site, or apply a bundle that changes its types, views, styles or code.',
+    label: 'Change structure',
+    explain: 'Apply a bundle that changes its types, stylesheets or scripts.',
   },
   {
     verb: 'Crombolo.Remote.InstallCode',
     label: 'Install code',
     explain:
-      'Install extensions, and the code a site package carries, which runs on the server after a restart.',
+      'Install extensions, the code and templates a site package carries, and push a whole site: all of these run on the server.',
   },
 ]
 

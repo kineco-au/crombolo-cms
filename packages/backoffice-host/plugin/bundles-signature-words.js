@@ -7,7 +7,8 @@ const refName = (ref) => (ref ?? '').replace(/^refs\/(tags|heads)\//, '')
 
 /**
  * @param {{ state: string, source?: { repository: string, ref: string, commit: string },
- *   links?: { commit?: string, tag?: string | null, run?: string | null }, reason?: string }} provenance
+ *   links?: { commit?: string, tag?: string | null, run?: string | null }, reason?: string,
+ *   key?: { comment?: string, fingerprint: string }, trusted?: boolean }} provenance
  * @param {string | null | undefined} refused why this site would not install it, when it would not
  * @param {{ signatures?: string, sources?: string[] } | undefined} policy
  * @returns {{ tone: string, label: string, detail: string, links: { label: string, href: string }[], refusal: string }}
@@ -17,14 +18,24 @@ export function signatureWords(provenance, refused, policy) {
   let tone = 'default'
   let label = 'Not signed'
   let detail = "Nobody has signed this bundle, so where it was built can't be checked."
+  // Story 335: whether this site trusts who signed it, which only a trusted signer's signature vouches for.
+  const trust = (trusted) =>
+    trusted
+      ? ' This site trusts its signer.'
+      : " This site doesn't trust its signer: an administrator can add it in Settings → Trusted signers."
   if (provenance?.state === 'signed' && provenance.source) {
     const { repository, ref, commit } = provenance.source
-    tone = 'positive'
+    tone = provenance.trusted ? 'positive' : 'default'
     label = 'Signed'
-    detail = `Built from github.com/${repository} at ${refName(ref)} (${short(commit)}).`
+    detail = `Built from github.com/${repository} at ${refName(ref)} (${short(commit)}).${trust(provenance.trusted)}`
     if (provenance.links?.commit) links.push({ label: 'Commit', href: provenance.links.commit })
     if (provenance.links?.tag) links.push({ label: 'Release', href: provenance.links.tag })
     if (provenance.links?.run) links.push({ label: 'Build', href: provenance.links.run })
+  } else if (provenance?.state === 'signed' && provenance.key) {
+    const { comment, fingerprint } = provenance.key
+    tone = provenance.trusted ? 'positive' : 'default'
+    label = 'Signed'
+    detail = `Signed with the key ${comment ? `${comment} ` : ''}(${fingerprint}).${trust(provenance.trusted)}`
   } else if (provenance?.state === 'local') {
     label = 'From this site'
     detail = "Linked from this site's own code, not from a package registry."

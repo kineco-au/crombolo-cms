@@ -140,9 +140,7 @@ export const sectionOfPermission = (permission: string): string | undefined => {
 /** The verbs a set of permissions needs, for the API's own permission checks. */
 function verbsOf(granted: ReadonlySet<string>): string[] {
   const verbs = new Set<string>()
-  if (granted.has('content.read'))
-    for (const verb of [DocumentPermissions.Read, DocumentPermissions.PropertyValueRead])
-      verbs.add(verb)
+  if (granted.has('content.read')) verbs.add(DocumentPermissions.Read)
   if (granted.has('content.write'))
     for (const verb of Object.values(DocumentPermissions)) {
       if (verb === DocumentPermissions.Permissions || verb === DocumentPermissions.PublicAccess)

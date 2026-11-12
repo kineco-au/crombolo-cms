@@ -234,22 +234,20 @@ describe('users', () => {
       name: 'Renamed',
       languageIsoCode: 'da-DK',
       userGroupIds: [{ id: GROUPS.writer }, { id: GROUPS.editor }],
-      documentStartNodeIds: [{ id: home }],
+      // Story 339: a user's own start nodes are not kept; where they work is their groups'
+      documentStartNodeIds: [],
       hasDocumentRootAccess: false,
     })
     expect(
       (await update(writer.key, { documentStartNodeIds: [{ id: crypto.randomUUID() }] })).status,
-    ).toBe(400)
+    ).toBe(200)
     expect((await update(writer.key, { languageIsoCode: 'not a culture' })).status).toBe(400)
     const calculated = await h.json<{
       documentStartNodeIds: unknown[]
       hasDocumentRootAccess: boolean
     }>(`${V1}/user/${writer.key}/calculate-start-nodes`)
-    // The user's own start node replaces their groups' root
-    expect(calculated).toMatchObject({
-      documentStartNodeIds: [{ id: home }],
-      hasDocumentRootAccess: false,
-    })
+    // Their groups reach the whole site, so they do
+    expect(calculated).toMatchObject({ documentStartNodeIds: [], hasDocumentRootAccess: true })
 
     // Disabling signs the user out and refuses them
     expect((await h.post(`${V1}/user/disable`, { userIds: [{ id: writer.key }] })).status).toBe(200)
@@ -736,6 +734,130 @@ describe('user groups', () => {
   })
 })
 
+describe('group owners (story 302)', () => {
+  const keyOf = (response: Response) => response.headers.get('umb-generated-resource') as string
+
+  test('an administrator names several owners, the group itself included, and a save keeps them', async () => {
+    const { h, group } = await site()
+    const team = keyOf(await group({ name: 'Team', alias: 'team' }))
+    const read = await h.json<Record<string, unknown>>(`${V1}/user-group/${team}`)
+    expect(read.owners).toEqual([])
+    const owned = await h.put(`${V1}/user-group/${team}`, {
+      ...read,
+      owners: [{ id: team }, { id: GROUPS.editor }],
+    })
+    expect(owned.status).toBe(200)
+    const after = await h.json<{ owners: Array<{ id: string }> }>(`${V1}/user-group/${team}`)
+    expect(after.owners.map((o) => o.id).sort()).toEqual([team, GROUPS.editor].sort())
+    // The vendored client's own save sends no owners, and must not lose them
+    const { owners: _, ...plain } = after as Record<string, unknown>
+    expect((await h.put(`${V1}/user-group/${team}`, { ...plain, name: 'Team A' })).status).toBe(200)
+    expect((await h.json<{ owners: unknown[] }>(`${V1}/user-group/${team}`)).owners).toHaveLength(2)
+    const missing = await h.put(`${V1}/user-group/${team}`, {
+      ...after,
+      owners: [{ id: crypto.randomUUID() }],
+    })
+    expect(missing.status).toBe(404)
+    expect((await missing.json()).operationStatus).toBe('OwnerNotFound')
+    const born = await group({ name: 'Born', alias: 'born', owners: [{ id: team }] })
+    expect(born.status).toBe(201)
+    expect((await h.json<{ owners: unknown[] }>(`${V1}/user-group/${keyOf(born)}`)).owners).toEqual(
+      [{ id: team }],
+    )
+  })
+
+  test('an owner chooses who is in the group; a member who is not an owner cannot', async () => {
+    const { h, user, group } = await site()
+    const users = ['Umb.Section.Users', 'Umb.Section.Content']
+    const leads = keyOf(await group({ name: 'Leads', alias: 'leads', sections: users }))
+    const team = keyOf(
+      await group({ name: 'Team', alias: 'team', sections: users, owners: [{ id: leads }] }),
+    )
+    const lead = await user('lead@example.com', [leads])
+    const member = await user('member@example.com', [team])
+    const writer = await user('writer@example.com', [GROUPS.writer])
+    const add = (client: typeof h, key: string) =>
+      client.post(`${V1}/user-group/${team}/users`, [{ id: key }])
+    const remove = (client: typeof h, key: string) =>
+      client.call(`${V1}/user-group/${team}/users`, {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify([{ id: key }]),
+      })
+    const seen = (client: typeof h) =>
+      client.json<{ canManageMembers: boolean }>(`${V1}/user-group/${team}`)
+    expect((await seen(lead.client)).canManageMembers).toBe(true)
+    expect((await seen(member.client)).canManageMembers).toBe(false)
+    expect((await add(lead.client, writer.key)).status).toBe(200)
+    expect((await h.json<UserBody>(`${V1}/user/${writer.key}`)).userGroupIds).toContainEqual({
+      id: team,
+    })
+    expect((await remove(lead.client, writer.key)).status).toBe(200)
+    const refused = await add(member.client, writer.key)
+    expect(refused.status).toBe(403)
+    expect((await refused.json()).operationStatus).toBe('NotGroupOwner')
+    expect((await remove(member.client, member.key)).status).toBe(403)
+    // An owner may add themselves: owning a group means being able to hold it
+    expect((await add(lead.client, lead.key)).status).toBe(200)
+    // From the user screen too: a new user only in groups they own
+    const newUser = (groups: string[], email = `${crypto.randomUUID()}@example.com`) =>
+      lead.client.post(`${V1}/user`, {
+        kind: 'Default',
+        email,
+        userName: email,
+        name: 'New',
+        userGroupIds: groups.map((id) => ({ id })),
+      })
+    expect((await newUser([team])).status).toBe(201)
+    expect((await newUser([GROUPS.writer])).status).toBe(403)
+  })
+
+  test('the admin group, and a group with a remote permission, have no owners', async () => {
+    const { h, group } = await site()
+    const admin = await h.json<Record<string, unknown>>(`${V1}/user-group/${GROUPS.admin}`)
+    const adminOwned = await h.put(`${V1}/user-group/${GROUPS.admin}`, {
+      ...admin,
+      owners: [{ id: GROUPS.editor }],
+    })
+    expect(adminOwned.status).toBe(400)
+    expect((await adminOwned.json()).operationStatus).toBe('CannotBeOwned')
+    const remote = await group({
+      name: 'Movers',
+      alias: 'movers',
+      fallbackPermissions: ['Crombolo.Remote.Push'],
+      owners: [{ id: GROUPS.editor }],
+    })
+    expect(remote.status).toBe(400)
+    const team = keyOf(
+      await group({ name: 'Team', alias: 'team', owners: [{ id: GROUPS.editor }] }),
+    )
+    const read = await h.json<Record<string, unknown>>(`${V1}/user-group/${team}`)
+    const widened = await h.put(`${V1}/user-group/${team}`, {
+      ...read,
+      fallbackPermissions: ['Umb.Document.Read', 'Crombolo.Remote.InstallCode'],
+    })
+    expect(widened.status).toBe(400)
+    expect(
+      (
+        await h.put(`${V1}/user-group/${team}`, {
+          ...read,
+          owners: [],
+          fallbackPermissions: ['Crombolo.Remote.InstallCode'],
+        })
+      ).status,
+    ).toBe(200)
+  })
+
+  test('deleting a group takes it out of every group it owned', async () => {
+    const { h, group } = await site()
+    const owner = keyOf(await group({ name: 'Owner', alias: 'owner' }))
+    const team = keyOf(await group({ name: 'Team', alias: 'team', owners: [{ id: owner }] }))
+    expect((await h.del(`${V1}/user-group/${owner}`)).status).toBe(200)
+    expect((await h.json<{ owners: unknown[] }>(`${V1}/user-group/${team}`)).owners).toEqual([])
+    expect((await h.del(`${V1}/user-group/${team}`)).status).toBe(200)
+  })
+})
+
 describe('who may do what', () => {
   test('sections gate whole areas: a writer reaches content, not settings or users', async () => {
     const { h, user } = await site()
@@ -762,7 +884,7 @@ describe('who may do what', () => {
     ).toBe(403)
   })
 
-  test('only admins see and change admins; a non-admin hands out only groups they hold', async () => {
+  test('only admins see and change admins; a non-admin hands out only groups they own', async () => {
     const { h, user, group } = await site()
     // A manager: the Users section, but not an admin
     const managers = await group({
@@ -772,6 +894,15 @@ describe('who may do what', () => {
       documentRootAccess: true,
     })
     const managersKey = managers.headers.get('umb-generated-resource') as string
+    const writers = await h.json<Record<string, unknown>>(`${V1}/user-group/${GROUPS.writer}`)
+    expect(
+      (
+        await h.put(`${V1}/user-group/${GROUPS.writer}`, {
+          ...writers,
+          owners: [{ id: managersKey }],
+        })
+      ).status,
+    ).toBe(200)
     const manager = await user('manager@example.com', [managersKey, GROUPS.writer])
     const writer = await user('writer@example.com', [GROUPS.writer])
     const other = await user('editor@example.com', [GROUPS.editor])
@@ -785,45 +916,45 @@ describe('who may do what', () => {
     ).toBe(403)
     expect((await manager.client.call(`${V1}/user/${writer.key}`)).status).toBe(200)
 
-    // Adding a group the manager is not in is refused; keeping one the user has is fine
-    const giving = (groups: string[]) =>
+    // Story 302: only a group they own may be added or taken away, being in one is not enough
+    const giving = (key: string, groups: string[]) =>
       manager.client.post(`${V1}/user/set-user-groups`, {
-        userIds: [{ id: writer.key }],
+        userIds: [{ id: key }],
         userGroupIds: groups.map((id) => ({ id })),
       })
-    expect((await giving([GROUPS.writer, GROUPS.editor])).status).toBe(401)
-    expect((await giving([GROUPS.writer, GROUPS.admin])).status).toBe(401)
-    expect((await giving([GROUPS.writer, managersKey])).status).toBe(200)
+    const refused = await giving(writer.key, [GROUPS.writer, managersKey])
+    expect(refused.status).toBe(403)
+    expect((await refused.json()).operationStatus).toBe('NotGroupOwner')
+    expect((await giving(writer.key, [GROUPS.writer, GROUPS.admin])).status).toBe(403)
+    expect((await giving(other.key, [GROUPS.editor, GROUPS.writer])).status).toBe(200)
+    expect((await giving(other.key, [GROUPS.writer])).status).toBe(403)
+    expect((await giving(other.key, [GROUPS.editor])).status).toBe(200)
     expect((await manager.client.post(`${V1}/user/${other.key}/reset-password`, {})).status).toBe(
       200,
     )
 
-    // Groups: only their own, never the admin group
+    // Groups: those they are in or own, never the admin group; the picker offers only owned ones
     expect((await manager.client.call(`${V1}/user-group/${GROUPS.admin}`)).status).toBe(403)
     expect((await manager.client.call(`${V1}/user-group/${GROUPS.editor}`)).status).toBe(403)
     expect((await manager.client.call(`${V1}/user-group/${managersKey}`)).status).toBe(200)
+    expect((await manager.client.call(`${V1}/user-group/${GROUPS.writer}`)).status).toBe(200)
     const filtered = await manager.client.json<{ items: Array<{ id: string }> }>(
       `${V1}/filter/user-group?skip=0&take=10`,
     )
-    expect(filtered.items.map((g) => g.id).sort()).toEqual([managersKey, GROUPS.writer].sort())
-    // A group granting a section they lack is refused; one they may grant, they join
-    expect(
-      (
-        await group(
-          { name: 'Wider', alias: 'wider', sections: ['Umb.Section.Settings'] },
-          manager.client,
-        )
-      ).status,
-    ).toBe(401)
-    const own = await group(
+    expect(filtered.items.map((g) => g.id)).toEqual([GROUPS.writer])
+    // What a group grants is an administrator's: creating, changing or deleting one is refused
+    const created = await group(
       { name: 'Narrow', alias: 'narrow', sections: ['Umb.Section.Content'] },
       manager.client,
     )
-    expect(own.status).toBe(201)
-    const ownKey = own.headers.get('umb-generated-resource') as string
-    expect((await h.json<UserBody>(`${V1}/user/${manager.key}`)).userGroupIds).toContainEqual({
-      id: ownKey,
-    })
+    expect(created.status).toBe(403)
+    expect((await created.json()).operationStatus).toBe('AdministratorsOnly')
+    const mine = await h.json<Record<string, unknown>>(`${V1}/user-group/${managersKey}`)
+    expect(
+      (await manager.client.put(`${V1}/user-group/${managersKey}`, { ...mine, name: 'Mine' }))
+        .status,
+    ).toBe(403)
+    expect((await manager.client.del(`${V1}/user-group/${managersKey}`)).status).toBe(403)
   })
 
   test('the exit: a restricted editor sees only their start node and cannot delete', async () => {

@@ -26,6 +26,7 @@ import { ContentTypeRepository, DictionaryRepository, TransferRunRepository } fr
 import {
   CommandError,
   checkBundleContent,
+  handleTransferAction,
   installBundleContent,
   readBundle,
   syncSchemaDirectory,
@@ -703,7 +704,9 @@ export default {
       { ...config, runtimeInstalls: false },
       { bundle: dir, backupTaken: true, installCode: true },
     )
-    expect(elsewhere.problems.join('\n')).toContain('does not install code while it runs')
+    expect(elsewhere.problems.join('\n')).toContain(
+      'installing code while the site runs is turned off',
+    )
     expect(existsSync(migration) || existsSync(marker)).toBe(false)
 
     const installed = await installBundleContent(
@@ -741,5 +744,95 @@ export default {
     )
     expect(local.problems).toEqual([])
     expect(existsSync(join(root, 'schema', 'migrations', 'stamp.ts'))).toBe(true)
+  })
+})
+
+describe("a site package's templates are code (story 336)", () => {
+  const templates = () => SECTIONS().filter((file) => file.path.startsWith('components/'))
+
+  test('installing them needs the permission, and a site that installs code', async () => {
+    const { h, root, config, db } = await site()
+    const dir = await packageAt(h, outputDir('kit-'), SECTIONS(), SITE_KIT)
+    const view = join(root, 'components', 'brochure.tsx')
+
+    const unasked = await installBundleContent(db, config, { bundle: dir, backupTaken: true })
+    expect(unasked.runId).toBeUndefined()
+    expect(unasked.problems.join('\n')).toContain('templates, which are code')
+    expect(unasked.problems).toContain('components/brochure.tsx')
+    expect(unasked.problems).toContain('components/shared/promo.tsx')
+    expect(existsSync(view)).toBe(false)
+
+    const off = await installBundleContent(
+      db,
+      { ...config, runtimeInstalls: false },
+      { bundle: dir, backupTaken: true, installTemplates: true },
+    )
+    expect(off.problems.join('\n')).toContain('installing code while the site runs is turned off')
+    expect(existsSync(view)).toBe(false)
+
+    const allowed = await installBundleContent(
+      db,
+      { ...config, runtimeInstalls: true },
+      { bundle: dir, backupTaken: true, installTemplates: true },
+    )
+    expect(allowed.problems).toEqual([])
+    expect(existsSync(view)).toBe(true)
+
+    // Brought again unchanged, they are not code being installed
+    const again = await installBundleContent(db, config, { bundle: dir, backupTaken: true })
+    expect(again.problems).toEqual([])
+  })
+
+  test('the Transfer dashboard installs them only for someone given install code', async () => {
+    const { h, root, config, db } = await site()
+    const dir = await packageAt(h, outputDir('kit-'), SECTIONS(), SITE_KIT)
+    await checkBundleContent(db, config, { bundle: dir })
+    const bundleId = readBundle(dir, config.siteDir).set.manifest.id
+    const importAs = async (mayInstallCode: boolean) =>
+      (
+        (await handleTransferAction(
+          new Request('http://x/', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ backupTaken: true }),
+          }),
+          `${bundleId}/import`,
+          { db, config, user: 'someone@example.com', mayInstallCode, onApplied: () => {} },
+        )) as Response
+      ).json() as Promise<{ ok: boolean; message?: string; problems?: string[] }>
+    const refused = await importAs(false)
+    expect(refused.ok).toBe(false)
+    expect(JSON.stringify(refused)).toContain('components/brochure.tsx')
+    expect(existsSync(join(root, 'components', 'brochure.tsx'))).toBe(false)
+    expect((await importAs(true)).ok).toBe(true)
+    expect(existsSync(join(root, 'components', 'brochure.tsx'))).toBe(true)
+  })
+
+  test('stylesheets and scripts are not code', async () => {
+    const { h, root, config, db } = await site()
+    const files = SECTIONS().filter((file) => !file.path.startsWith('components/'))
+    const dir = await packageAt(h, outputDir('kit-'), files, SITE_KIT)
+    const result = await installBundleContent(db, config, { bundle: dir, backupTaken: true })
+    expect(result.problems).toEqual([])
+    expect(existsSync(join(root, 'css', 'brochure.css'))).toBe(true)
+  })
+
+  test("the site's own content files bring theirs, and leaving files out skips them", async () => {
+    const { h, root, config, db } = await site()
+    const dir = await packageAt(h, outputDir('kit-'), templates(), SITE_KIT)
+    const skipped = await installBundleContent(db, config, {
+      bundle: dir,
+      backupTaken: true,
+      withoutFiles: true,
+    })
+    expect(skipped.problems).toEqual([])
+    const local = await installBundleContent(
+      db,
+      config,
+      { bundle: dir, backupTaken: true },
+      { vouchedBy: 'site' },
+    )
+    expect(local.problems).toEqual([])
+    expect(existsSync(join(root, 'components', 'brochure.tsx'))).toBe(true)
   })
 })

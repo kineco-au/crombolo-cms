@@ -52,6 +52,10 @@ export function groupLines(groups) {
 export const NOBODY_VOUCHED = 'Nobody has vouched for who built this'
 const VOUCHED = new Set(['signed', 'vouched', 'local'])
 
+/** What vouches for it: a signature counts only when its signer is trusted here (story 335). */
+export const vouchState = (provenance) =>
+  provenance?.state === 'signed' && provenance.trusted !== true ? 'untrusted' : provenance?.state
+
 /**
  * Whether this person may turn it on here, and if not what to show in place of
  * the button: an administrator's sentence, the unvouched sentence, or the
@@ -62,6 +66,11 @@ export function grantChoice(level, may, provenanceState) {
   if (rule === 'config') return { snippet: true }
   if (rule !== 'yes') return { sentence: 'An administrator can turn this on.' }
   if (level === 'limited' || !level) return { grant: true }
+  if (provenanceState === 'untrusted')
+    return {
+      sentence:
+        "It's signed by someone this site doesn't trust, so it can't be turned on here. An administrator can add the signer in Settings → Trusted signers.",
+    }
   if (!VOUCHED.has(provenanceState))
     return { sentence: `${NOBODY_VOUCHED}, so it can't be turned on here.` }
   return { grant: true }

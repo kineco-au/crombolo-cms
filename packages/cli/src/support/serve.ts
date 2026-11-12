@@ -490,6 +490,8 @@ async function importStartupBundles(
           config,
           {
             ...transferInput(target, options),
+            // Started from the operator's shell, as `bundle install` is (story 336).
+            installTemplates: true,
             passphrase,
             publish: options.publish,
             label: options.label,

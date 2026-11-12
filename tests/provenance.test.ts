@@ -7,6 +7,7 @@
  */
 import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   describeProvenance,
@@ -295,6 +296,30 @@ describe('the commands', () => {
     expect(verified.code).toBe(0)
     expect(verified.out).toContain('Not signed')
     expect(cli('bundle', 'verify', dir, '--require').code).toBe(ERROR_KINDS.refused.exitCode)
+  })
+
+  test('bundle sign --key signs with a key of yours, and bundle verify names it (story 335)', () => {
+    const home = mkdtempSync(join(tmpdir(), 'crombolo-keys-'))
+    const run = (...args: string[]) => {
+      const proc = Bun.spawnSync(['bun', join(ROOT, 'packages/cli/bin/crombolo.ts'), ...args], {
+        stdin: 'ignore',
+        env: { ...process.env, XDG_CONFIG_HOME: home, CROMBOLO_LOG_TO_CONSOLE: 'false' },
+      })
+      return { code: proc.exitCode, out: proc.stdout.toString() + proc.stderr.toString() }
+    }
+    try {
+      expect(run('keys', 'create', 'release').code).toBe(0)
+      const dir = bundleDir()
+      const signed = run('bundle', 'sign', dir, '--key', 'release')
+      expect(signed.code, signed.out).toBe(0)
+      expect(signed.out).toContain('signed by release')
+      const verified = run('bundle', 'verify', dir)
+      expect(verified.code, verified.out).toBe(0)
+      expect(verified.out).toContain('Signed: signed by release')
+      expect(run('bundle', 'sign', dir, '--key', 'nobody').code).toBe(ERROR_KINDS.refused.exitCode)
+    } finally {
+      rmSync(home, { recursive: true, force: true })
+    }
   })
 
   test('bundle verify refuses a bundle changed after signing', () => {

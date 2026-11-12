@@ -392,6 +392,72 @@ describe(`installing the code a bundle carries (story 241, ${dialectUnderTest})`
   })
 })
 
+describe(`templates are code (story 336, ${dialectUnderTest})`, () => {
+  const PROMO = { 'components/promo.tsx': 'export default () => <aside />\n' }
+
+  test('a bundle that adds a template needs InstallCode, and so does reverting it', async () => {
+    const { h, api, apply, root } = await remote({ access: 'all' })
+    const bytes = await packed(siteDirectory('Hello', PROMO), true)
+    const deployer = await deployers(h, false)
+    const refused = await apply(deployer, bytes, { dryRun: true })
+    expect(refused.status).toBe(403)
+    const refusal = (await refused.json()) as { code: string; items: string[] }
+    expect(refusal.code).toBe('forbidden-code')
+    expect(refusal.items).toEqual(['components/promo.tsx'])
+
+    const installer = await deployers(h, true)
+    const applied = await apply(installer, bytes, {})
+    expect(applied.status).toBe(200)
+    expect(existsSync(join(root, 'components', 'promo.tsx'))).toBe(true)
+
+    const { runId } = (await applied.json()) as { runId: string }
+    const revert = (client: Harness) =>
+      api(client, `environments/production/runs/${runId}/revert`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ force: true }),
+      })
+    const byDeployer = await revert(deployer)
+    expect(byDeployer.status).toBe(403)
+    expect(((await byDeployer.json()) as { code: string }).code).toBe('forbidden-code')
+    expect((await revert(installer)).status).toBe(200)
+  })
+
+  test('a site that installs nothing while it runs refuses one, in plain words', async () => {
+    const { h, apply } = await remote({ access: 'all' }, false)
+    const refused = await apply(
+      await deployers(h, true),
+      await packed(siteDirectory('Hello', PROMO), true),
+      {
+        dryRun: true,
+      },
+    )
+    expect(refused.status).toBe(409)
+    expect(((await refused.json()) as { detail: string }).detail).toBe(
+      'Installing code while the site runs is turned off on this site.',
+    )
+  })
+
+  test('a whole-site push needs InstallCode', async () => {
+    const { h, api } = await remote({ access: 'all' })
+    const deployer = await deployers(h, false)
+    const push = await api(deployer, 'environments/production/pushes', {
+      method: 'PUT',
+      headers: { 'crombolo-sha256': 'a'.repeat(64) },
+    })
+    expect(push.status).toBe(403)
+    expect(((await push.json()) as { code: string }).code).toBe('forbidden-code')
+    const [env] = (await (await api(deployer, 'environments')).json()) as Array<{
+      may: Record<string, boolean>
+    }>
+    expect(env?.may.push).toBe(false)
+    const [installerEnv] = (await (
+      await api(await deployers(h, true), 'environments')
+    ).json()) as Array<{ may: Record<string, boolean> }>
+    expect(installerEnv?.may.push).toBe(true)
+  })
+})
+
 describe('CROMBOLO_REMOTE_ACCESS', () => {
   const withEnv = (vars: Record<string, string | undefined>, run: () => void) => {
     const before = Object.fromEntries(Object.keys(vars).map((k) => [k, Bun.env[k]]))

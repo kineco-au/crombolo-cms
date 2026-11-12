@@ -49,6 +49,7 @@ import {
 import { describeProvenance, type ProvenancePolicy } from './provenance.ts'
 import { markRestartPending, type RestartPending, restartPending } from './restart-pending.ts'
 import { sealSecret } from './secrets.ts'
+import { signerTrusted } from './site-trust.ts'
 import { MASKED } from './webhooks.ts'
 
 /** Who acted, and from where, for the audit log. */
@@ -165,7 +166,8 @@ export function createBundleAdmin(options: {
   config: CromboloConfig
   marketplace: Marketplace
   extensions: Pick<ExtensionRegistry, 'bundles'>
-  bundleGrants: Pick<BundleGrants, 'disable' | 'enable' | 'grant' | 'state' | 'forget'>
+  bundleGrants: Pick<BundleGrants, 'disable' | 'enable' | 'grant' | 'state' | 'forget'> &
+    Partial<Pick<BundleGrants, 'granted'>>
   /** Granted extensions that could not start, and why (story 311). */
   failed?: () => readonly { id: string; reason: string }[]
   /** Stops an extension's running process, where this node runs one (story 328). */
@@ -545,6 +547,23 @@ export function createBundleAdmin(options: {
           ok: false,
           message: `No installed extension with a server half is called "${id}".`,
         }
+      // Story 335: turning on an upper level is granting it again, held to the same rule.
+      if (enabled) {
+        const level = levelOf(bundleGrants.granted?.(pkg.id) ?? [])
+        if (isUpperLevel(level)) {
+          const provenance = (await marketplace.installed()).find(
+            (item) => item.id === pkg.id,
+          )?.provenance
+          const refused = grantRefusal({
+            level,
+            grants: true,
+            isAdmin: actor.isAdmin,
+            provenance,
+            from: config.unrestrictedExtensions ?? 'backoffice',
+          })
+          if (refused) return { status: 403, ok: false, message: `${pkg.name}: ${refused}` }
+        }
+      }
       const state = enabled
         ? await bundleGrants.enable(pkg)
         : await bundleGrants.disable(pkg, actor.email ?? actor.name)
@@ -588,6 +607,7 @@ export async function localBundleAdmin(
     keyword: config.packageKeyword,
     marketplaceUrl: config.marketplaceUrl,
     componentsDir: config.componentsDir,
+    trustSigner: (provenance) => signerTrusted(db, config, provenance),
     extensions,
     siteDir: config.siteDir,
     grants: bundleGrants,

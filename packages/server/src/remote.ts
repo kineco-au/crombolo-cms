@@ -55,6 +55,7 @@ import {
 } from './bundle-install.ts'
 import {
   carriesSections,
+  componentChanges,
   migrationChanges,
   type SectionFile,
   swappedSections,
@@ -524,6 +525,8 @@ export function createRemote(options: RemoteOptions): Remote {
         backupTaken: !canBackUp,
         label: `push from ${by}`,
         by,
+        // Whoever pushed was held to InstallCode when the push was sent (story 336).
+        installTemplates: true,
       })
       if (!result.runId) {
         const items = [
@@ -712,8 +715,12 @@ export function createRemote(options: RemoteOptions): Remote {
       try {
         const carried = readBundle(dir, config.siteDir).carried
         structural = carriesSections(carried)
-        // A bundle's value migrations are code too (story 300).
-        code = [...codeChanges(planCode(config, carried)), ...migrationChanges(config, carried)]
+        // A bundle's value migrations are code too (story 300), and so are its templates (336).
+        code = [
+          ...codeChanges(planCode(config, carried)),
+          ...migrationChanges(config, carried),
+          ...componentChanges(config, carried),
+        ]
       } catch (error) {
         return problem(400, {
           code: 'not-a-bundle',
@@ -745,9 +752,7 @@ export function createRemote(options: RemoteOptions): Remote {
         return problem(409, {
           code: 'installs-elsewhere',
           title: 'This site does not install code while it runs',
-          detail:
-            config.installsElsewhere?.message ??
-            "Add the bundle's code to the site and deploy it the way this site is deployed.",
+          detail: 'Installing code while the site runs is turned off on this site.',
         })
       if (code.length > 0 && !may(principal, RemotePermissions.InstallCode))
         return problem(403, {
@@ -1026,9 +1031,9 @@ export function createRemote(options: RemoteOptions): Remote {
         title: "That run brought an extension's content",
         detail: `It is put back by uninstalling ${run.packageName ?? 'the extension'}, with its content reverted.`,
       })
-    // A run that installed code changes code back, which needs what it did.
+    // A run that installed code or changed templates changes code back, which needs what it did.
     if (
-      installedCode(config, runId) &&
+      (installedCode(config, runId) || swappedSections(config, runId).includes('components')) &&
       (!atLeast('all') ||
         !may(principal, RemotePermissions.ApplyStructure) ||
         !may(principal, RemotePermissions.InstallCode))
@@ -1442,10 +1447,12 @@ export function createRemote(options: RemoteOptions): Remote {
               pull: atLeast('read') && may(principal, RemotePermissions.Pull),
               pullFull: atLeast('read') && may(principal, RemotePermissions.PullFull),
               // A whole-site push changes structure, so it needs that right and the top level.
+              // A push replaces templates too, which are code (story 336).
               push:
                 atLeast('all') &&
                 mayChange(principal) &&
-                may(principal, RemotePermissions.ApplyStructure),
+                may(principal, RemotePermissions.ApplyStructure) &&
+                may(principal, RemotePermissions.InstallCode),
               apply: atLeast('content') && mayChange(principal),
               applyStructure:
                 atLeast('all') &&
@@ -1517,6 +1524,14 @@ export function createRemote(options: RemoteOptions): Remote {
           title: 'You may not push a whole site here',
           detail:
             "A push replaces the site's content types, views and code, which needs Crombolo.Remote.ApplyStructure.",
+        })
+      // Its templates are code, and what a push will change is not known until it is uploaded (story 336).
+      if (pushing && mayChange(principal) && !may(principal, RemotePermissions.InstallCode))
+        return problem(403, {
+          code: 'forbidden-code',
+          title: 'You may not push a whole site here',
+          detail:
+            'A push replaces the site\'s templates, which are code, so it needs "Install code on this site" (Crombolo.Remote.InstallCode).',
         })
       if (what === 'bundles' && request.method === 'PUT') return applyBundle(request, principal)
       if (what === 'runs' && request.method === 'GET') return listRuns(url, principal)

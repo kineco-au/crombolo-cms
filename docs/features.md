@@ -32,6 +32,9 @@ tail of 1–3 each.
 ### Users & user groups
 - User CRUD, invite, enable/disable/unlock, avatar, `user/current` + resolved permissions
 - User groups: granular permissions, allowed sections, content/media start nodes, languages
+- Group owners (story 302): only an administrator creates, changes or deletes a group; it
+  may name other groups, itself included, as owners, whose members choose who is in it.
+  This is stricter than Umbraco, where the Users section manages groups
 - `user-data`, current-user configuration
 
 ### Content types (Umbraco's document types)

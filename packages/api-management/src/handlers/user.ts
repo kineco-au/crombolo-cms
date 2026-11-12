@@ -99,6 +99,11 @@ const USER_PROBLEMS: Partial<Record<UserStatus, [number, string, string]>> = {
     'Invalid client ID',
     'The client ID must be prefixed with "crombolo-back-office-".',
   ],
+  NotGroupOwner: [
+    403,
+    "You don't own that group",
+    "You can only add people to the groups you own, or take them out of them. Ask the group's owners, or an administrator.",
+  ],
 }
 
 /** A user status as the response Umbraco sends; undefined for success. */
@@ -121,6 +126,22 @@ const GROUP_PROBLEMS: Partial<Record<UserGroupStatus, [number, string, string]>>
     'The alias of a system user group cannot be changed.',
   ],
   IsSystemUserGroup: [400, 'System user group', 'A system user group cannot be deleted.'],
+  AdministratorsOnly: [
+    403,
+    'Only an administrator can change groups',
+    "Only an administrator can create, change or delete a group. A group's owners can choose who is in it.",
+  ],
+  NotGroupOwner: [
+    403,
+    "You don't own this group",
+    "Only an owner of this group, or an administrator, can choose who's in it.",
+  ],
+  CannotBeOwned: [
+    400,
+    "This group can't have owners",
+    "The administrators group, and a group that can move sites or install code, can't have owners: only an administrator chooses who is in them.",
+  ],
+  OwnerNotFound: [404, 'Owner not found', 'One of the owner groups could not be found.'],
   DeclaredInFiles: [
     409,
     "Kept in the site's files",
@@ -212,6 +233,7 @@ function readGroup(b: Record<string, unknown>): UserGroupInput {
     permissions: (Array.isArray(b.permissions)
       ? b.permissions
       : []) as UserGroupInput['permissions'],
+    ...(Array.isArray(b.owners) ? { owners: refIds(b.owners) } : {}),
   }
 }
 

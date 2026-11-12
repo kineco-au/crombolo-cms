@@ -411,6 +411,10 @@
         {
           "name": "links",
           "type": "object"
+        },
+        {
+          "name": "key",
+          "type": "string"
         }
       ],
       "args": [
@@ -424,6 +428,11 @@
           "name": "--public-log",
           "type": "boolean",
           "description": "sign from a private repository anyway: Sigstore's public log records its name, workflow, ref and commit"
+        },
+        {
+          "name": "--key",
+          "type": "string",
+          "description": "sign it with this key of yours (`crombolo keys`), rather than with Sigstore"
         }
       ],
       "errors": ["usage", "internal", "refused", "unavailable"]
@@ -456,6 +465,11 @@
         {
           "name": "reason",
           "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "trusted",
+          "type": "boolean",
           "nullable": true
         }
       ],

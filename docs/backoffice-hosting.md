@@ -727,7 +727,7 @@ policies:
   Create on the parent, Update, Publish (on the whole branch for publish with
   descendants), Unpublish, Delete and trash, Move plus Create on the target,
   Duplicate plus Create on the target, Sort on the parent and every child,
-  Rollback, CultureAndHostnames, PublicAccess, CreateBlueprint; the recycle
+  Rollback, CultureAndHostnames, PublicAccess, and Create for a blueprint; the recycle
   bin's operations at the bin — and the node must lie at or below one of the
   caller's start nodes (the root and the bin need root access). Publishing
   checks the cultures too, against the group's languages. A missing node is not
@@ -747,10 +747,22 @@ policies:
   section was given both on upgrade (migration 045).
 - **Elements** need the Library section and Umbraco's element verbs
   (`ELEMENT_RULES`), as documents need theirs: `Umb.Element.*` on elements, their
-  versions and the bin, `Umb.ElementContainer.*` on folders; emptying the bin
-  needs Delete on both. They are checked against the groups' fallback verbs,
+  versions, the bin and folders alike, since story 338 folded the folder verbs
+  into the Library's. They are checked against the groups' fallback verbs,
   which is also what the client is told for every element: per-element
   permissions are not stored for checking yet.
+- **Levels and the pruned verbs** (story 338). The group editor is the plugin's
+  (`group-editor.js`): Access, Permissions, Exceptions, Data Transfer and
+  People, where each kind of content is set as a level (`permission-levels.ts`
+  in `@crombolo/core`, mirrored by `group-editor-words.js` and held to it by
+  `tests/permission-levels.test.ts`). A level is only a way of writing verbs:
+  the verbs are what is stored and checked. Story 338 took out
+  `Umb.ElementContainer.*` (now the `Umb.Element.*` verbs),
+  `Umb.Document.CreateBlueprint` (now Create), `Umb.Document.Notifications`
+  (seeing the page is enough) and `Umb.Document.PropertyValue.Read` (a field is
+  always shown). Migration 075 rewrote what groups held, and a group file
+  naming one is read as its replacement (`PRUNED_PERMISSIONS`). The fork moves
+  Umbraco's own checks to match.
 - **Property values.** Saving a document (`PUT`, `PATCH`, update and publish)
   refuses, with a `403` naming the property, a change to a property the
   caller's groups may not write: `Umb.Document.PropertyValue.Write` from the

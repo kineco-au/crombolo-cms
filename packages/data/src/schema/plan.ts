@@ -63,6 +63,7 @@ import { mediaTreeOrderMigration } from './media-tree-order.ts'
 import { memberPropertyTypeMigration } from './member-property-type.ts'
 import { membersMigration } from './members.ts'
 import { propertySearchableMigration } from './property-searchable.ts'
+import { prunedPermissionsMigration } from './pruned-permissions.ts'
 import { publicAccessMigration } from './public-access.ts'
 import { recycleBinMigration } from './recycle-bin.ts'
 import { redirectsMigration } from './redirects.ts'
@@ -83,6 +84,8 @@ import { trashedDateMigration } from './trashed-date.ts'
 import { trustedSignersMigration } from './trusted-signers.ts'
 import { twoFactorMigration } from './two-factor.ts'
 import { upgradeReportMigration } from './upgrade-report.ts'
+import { userGroupOwnersMigration } from './user-group-owners.ts'
+import { userStartNodesDroppedMigration } from './user-start-nodes-dropped.ts'
 import { usersLocalisationMigration } from './users-localisation.ts'
 import { valuesMigration } from './values.ts'
 import { webhooksMigration } from './webhooks.ts'
@@ -161,4 +164,7 @@ export const cromboloPlan = new MigrationPlan([
   bundleGrantDelegateMigration,
   extensionActivityMigration,
   formWorkflowSecretsMigration,
+  userGroupOwnersMigration,
+  prunedPermissionsMigration,
+  userStartNodesDroppedMigration,
 ])

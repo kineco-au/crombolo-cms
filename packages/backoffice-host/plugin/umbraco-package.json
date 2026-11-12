@@ -2,7 +2,7 @@
   "$schema": "../../backoffice-dist/dist/umbraco-package-schema.json",
   "name": "Crombolo",
   "id": "Crombolo.Core",
-  "version": "0.62.0",
+  "version": "0.63.0",
   "allowPublicAccess": false,
   "extensions": [
     {
@@ -83,8 +83,8 @@
       "forEntityTypes": ["crombolo-remote"],
       "meta": {
         "verbs": ["Crombolo.Remote.ApplyStructure"],
-        "label": "Change a site's structure and code",
-        "description": "Push a whole site, or apply a bundle that changes its content types, views, styles or code"
+        "label": "Change a site's structure",
+        "description": "Apply a bundle that changes the site's content types, stylesheets or scripts. Pushing a whole site, or changing templates or code, also needs Install code on this site"
       }
     },
     {
@@ -95,7 +95,7 @@
       "meta": {
         "verbs": ["Crombolo.Remote.InstallCode"],
         "label": "Install code on this site",
-        "description": "Install bundles and the code a bundle carries, which runs on the server after a restart. Administrators only have this when a group gives it to them: give it to a group of its own rather than Administrators"
+        "description": "Install bundles, the code a bundle carries and the templates it adds or changes, and push a whole site: all of these run on the server. Administrators only have this when a group gives it to them: give it to a group of its own rather than Administrators"
       }
     },
     {
@@ -376,6 +376,41 @@
         {
           "alias": "Umb.Condition.WorkspaceAlias",
           "match": "Umb.Workspace.Webhook"
+        }
+      ]
+    },
+    {
+      "type": "workspaceView",
+      "alias": "Crombolo.WorkspaceView.UserGroup.Editor",
+      "name": "Crombolo User Group Editor",
+      "element": "/crombolo-plugin/group-editor.js",
+      "weight": 90,
+      "meta": {
+        "label": "Details",
+        "pathname": "details",
+        "icon": "edit"
+      },
+      "conditions": [
+        {
+          "alias": "Umb.Condition.WorkspaceAlias",
+          "match": "Umb.Workspace.UserGroup"
+        }
+      ]
+    },
+    {
+      "type": "dashboard",
+      "alias": "Crombolo.Dashboard.ContentSettings",
+      "name": "Crombolo Content Settings Dashboard",
+      "element": "/crombolo-plugin/content-settings-dashboard.js",
+      "weight": 7,
+      "meta": {
+        "label": "Content settings",
+        "pathname": "content-settings"
+      },
+      "conditions": [
+        {
+          "alias": "Umb.Condition.SectionAlias",
+          "match": "Umb.Section.Settings"
         }
       ]
     },

@@ -21,12 +21,9 @@ export const DocumentPermissions = {
   Duplicate: 'Umb.Document.Duplicate',
   Sort: 'Umb.Document.Sort',
   Rollback: 'Umb.Document.Rollback',
-  Notifications: 'Umb.Document.Notifications',
   Permissions: 'Umb.Document.Permissions',
   CultureAndHostnames: 'Umb.Document.CultureAndHostnames',
   PublicAccess: 'Umb.Document.PublicAccess',
-  CreateBlueprint: 'Umb.Document.CreateBlueprint',
-  PropertyValueRead: 'Umb.Document.PropertyValue.Read',
   PropertyValueWrite: 'Umb.Document.PropertyValue.Write',
   RecycleBinRestore: 'Umb.DocumentRecycleBin.Restore',
 } as const
@@ -64,12 +61,17 @@ export const RemotePermissions = {
   PullFull: 'Crombolo.Remote.PullFull',
   Push: 'Crombolo.Remote.Push',
   PushProtected: 'Crombolo.Remote.PushProtected',
-  /** Changing a remote's schema, views, styles or code: a whole-site push, or such a bundle (story 167). */
+  /** Changing a remote's schema, styles or scripts: such a bundle, or a whole-site push with InstallCode (story 167). */
   ApplyStructure: 'Crombolo.Remote.ApplyStructure',
-  /** Installing the code a bundle carries, or a bundle as a dependency, on a site (story 241). */
+  /** Installing a bundle's code or templates, a bundle as a dependency, or a whole-site push (stories 241, 336). */
   InstallCode: 'Crombolo.Remote.InstallCode',
 } as const
 export type RemoteVerb = (typeof RemotePermissions)[keyof typeof RemotePermissions]
+
+const REMOTE_VERBS: ReadonlySet<string> = new Set(Object.values(RemotePermissions))
+
+/** A remote verb: a group holding one is only an administrator's to fill (story 302). */
+export const isRemotePermission = (verb: string): boolean => REMOTE_VERBS.has(verb)
 
 /**
  * Permissions an administrator does not hold by being one (story 241): only a
@@ -103,14 +105,33 @@ export const ElementPermissions = {
   Rollback: 'Umb.Element.Rollback',
 } as const
 
-/** Umbraco's element folder verbs. */
-export const ElementContainerPermissions = {
-  Read: 'Umb.ElementContainer.Read',
-  Create: 'Umb.ElementContainer.Create',
-  Update: 'Umb.ElementContainer.Update',
-  Delete: 'Umb.ElementContainer.Delete',
-  Move: 'Umb.ElementContainer.Move',
-} as const
+/**
+ * Verbs taken out of the catalogue (story 338), each with what replaces it, or
+ * null where nothing does: a stored row or a group file naming one is read as
+ * its replacement. A Library folder is governed by the Library's own verbs;
+ * notifications follow seeing the page; a blueprint follows creating one; and a
+ * field is always shown, with only changing it governed.
+ */
+export const PRUNED_PERMISSIONS: Readonly<Record<string, string | null>> = {
+  'Umb.ElementContainer.Read': ElementPermissions.Read,
+  'Umb.ElementContainer.Create': ElementPermissions.Create,
+  'Umb.ElementContainer.Update': ElementPermissions.Update,
+  'Umb.ElementContainer.Delete': ElementPermissions.Delete,
+  'Umb.ElementContainer.Move': ElementPermissions.Move,
+  'Umb.Document.CreateBlueprint': DocumentPermissions.Create,
+  'Umb.Document.Notifications': null,
+  'Umb.Document.PropertyValue.Read': null,
+}
+
+/** A verb list with each pruned verb replaced or dropped, and no repeats. */
+export function withoutPrunedPermissions(verbs: readonly string[]): string[] {
+  const out = new Set<string>()
+  for (const verb of verbs) {
+    const replaced = verb in PRUNED_PERMISSIONS ? PRUNED_PERMISSIONS[verb] : verb
+    if (replaced !== null && replaced !== undefined) out.add(replaced)
+  }
+  return [...out]
+}
 
 /** The discriminator on a granular permission row. */
 export type PermissionContext = 'Document' | 'Element' | 'DocumentTypeProperty'
@@ -122,7 +143,6 @@ export const KNOWN_PERMISSIONS: ReadonlySet<string> = new Set([
   ...Object.values(RemotePermissions),
   ...Object.values(MediaPermissions),
   ...Object.values(ElementPermissions),
-  ...Object.values(ElementContainerPermissions),
 ])
 
 export const ADMIN_GROUP_ALIAS = 'admin'
@@ -169,29 +189,15 @@ const within = (path: StartNodePath, ancestor: StartNodePath) =>
   ancestor.length <= path.length && ancestor.every((key, i) => path[i] === key)
 
 /**
- * Umbraco's `CombineStartNodes`: the groups' start nodes keep the topmost, the
- * user's own keep the deepest, and each of the user's replaces any group start
- * node above or below it. Callers leave out nodes that no longer exist or are
- * in the recycle bin.
+ * Where a user may work in one tree (story 339): their groups' start nodes
+ * together, the topmost of any that nest. Callers leave out nodes that no longer
+ * exist or are in the recycle bin.
  */
-export function combineStartNodes(
-  group: readonly StartNodePath[],
-  user: readonly StartNodePath[],
-): StartNodes {
+export function unionStartNodes(group: readonly StartNodePath[]): StartNodes {
   let kept: StartNodePath[] = []
   for (const path of group) {
     if (kept.some((k) => within(path, k))) continue
     kept = kept.filter((k) => !within(k, path))
-    kept.push(path)
-  }
-  let own: StartNodePath[] = []
-  for (const path of user) {
-    if (own.some((k) => within(k, path))) continue
-    own = own.filter((k) => !within(path, k))
-    own.push(path)
-  }
-  for (const path of own) {
-    kept = kept.filter((k) => !within(path, k) && !within(k, path))
     kept.push(path)
   }
   return {

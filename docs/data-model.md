@@ -31,7 +31,7 @@ meaning, so they are dropped. Singular, snake_case.
 | `umbracoUserGroup2Permission` | `user_group_permission` |
 | `umbracoUserGroup2GranularPermission` | `user_group_granular_permission` |
 | `umbracoUserGroup2App` / `2Language` | `user_group_section` / `user_group_language` |
-| `umbracoUserStartNode` | `user_start_node` |
+| `umbracoUserStartNode` | none: dropped in story 339, a user works where their groups do |
 | `cmsMember`, `cmsMemberType`, `cmsMember2MemberGroup` | `member`, `member_property_type`, `member_group_member` |
 | `umbracoExternalMember` | `external_member` |
 | `umbracoExternalLogin`, `umbracoExternalLoginToken` | `external_login`, `external_login_token` |
@@ -219,19 +219,22 @@ Permissions come in three layers:
    In v18 these are verbs, not the old action letters: `Umb.Document.Read`,
    `Umb.Document.Update`, `Umb.Document.Publish`, `Umb.Document.Unpublish`,
    `Umb.Document.Delete`, `Umb.Document.Create`, `Umb.Document.Move`,
-   `Umb.Document.Sort`, `Umb.Document.Rollback`, `Umb.Document.Notifications`,
-   `Umb.Document.PublicAccess`, `Umb.Document.Permissions`, …
+   `Umb.Document.Sort`, `Umb.Document.Rollback`, `Umb.Document.PublicAccess`,
+   `Umb.Document.Permissions`, … Story 338 took out the folder, notification,
+   blueprint and field-read verbs (`PRUNED_PERMISSIONS`); migration 075 rewrote
+   what groups held.
 3. **Granular, node-scoped** — `user_group_granular_permission(user_group_key,
    unique_id, permission, context, entity_id)`. `context` discriminates
    `"Document"` / `"Element"` / `"DocumentTypeProperty"`, so one table holds both
    per-document ACLs and per-property-type field-level security.
 
-Start nodes have two mechanisms, combined as Umbraco's `CombineStartNodes` does
-(not a plain union — a user's own start node replaces a group's above or below
-it): single-value columns on `user_group` (`start_content_id`,
-`start_media_id`, `start_element_id`; `-1` is the root, null none) and
-multi-value `user_start_node(user_id, start_node, start_node_type)` (1
-content, 2 media, 3 element; `-1` the root). The verbs on a node are
+Start nodes are the groups' alone (story 339): single-value columns on
+`user_group` (`start_content_id`, `start_media_id`, `start_element_id`; `-1`
+is the root, null none), unioned over a user's groups, the topmost of any that
+nest (`unionStartNodes`). Umbraco also gives a user start nodes of their own,
+which replace any group start node they overlap; crombolo dropped them and
+their table, `user_start_node`, in migration 076, naming each user they had
+held on the Changes dashboard. The verbs on a node are
 calculated per group — the nearest node on its path the group sets
 explicitly replaces the group's defaults — then unioned over groups. A
 document's explicit setting is one row per verb, or one empty verb for

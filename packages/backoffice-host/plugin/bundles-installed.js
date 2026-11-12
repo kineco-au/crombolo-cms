@@ -28,7 +28,13 @@ import {
 } from './bundles-client.js'
 import './bundles-activity.js'
 import { levelBlock, levelStyles } from './bundles-level.js'
-import { configSnippet, grantChoice, levelWords, unvouchedLine } from './bundles-level-words.js'
+import {
+  configSnippet,
+  grantChoice,
+  levelWords,
+  unvouchedLine,
+  vouchState,
+} from './bundles-level-words.js'
 import { signatureBlock, signatureStyles, signatureWords } from './bundles-signature.js'
 
 /** Where each part of a bundle stands on this site, in the words of someone running it. */
@@ -257,7 +263,7 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
   /** What it may do with the site, who approved it, and the button that turns it off or on. */
   #permissions(item) {
     const state = item.provenance?.state
-    const choice = grantChoice(item.level, this._mayGrant, state)
+    const choice = grantChoice(item.level, this._mayGrant, vouchState(item.provenance))
     const approved = item.granted
       ? item.granted.by === "the site's code"
         ? `Developer installed, on ${new Date(item.granted.at).toLocaleDateString()}.`

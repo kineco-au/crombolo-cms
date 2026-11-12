@@ -3747,13 +3747,14 @@ crombolo bundle digest <bundle>
 Sign a bundle in GitHub Actions, from the commit or tag it was built at. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo bundle sign <bundle> [--public-log]
+crombolo bundle sign <bundle> [--public-log] [--key <key>]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
 | `bundle` | string | The package directory or .tgz. Required. |
 | `--public-log` | boolean | Sign from a private repository anyway: Sigstore's public log records its name, workflow, ref and commit. |
+| `--key` | string | Sign it with this key of yours (`crombolo keys`), rather than with Sigstore. |
 
 **Output** (single, with `-o json`):
 
@@ -3761,6 +3762,7 @@ crombolo bundle sign <bundle> [--public-log]
 - `digest` (string)
 - `source` (object)
 - `links` (object)
+- `key` (string)
 
 **Fails with:** `usage`, `internal`, `refused`, `unavailable`.
 
@@ -3785,6 +3787,7 @@ crombolo bundle verify <bundle> [--require] [--source <source>]
 - `source` (object)
 - `links` (object)
 - `reason` (string)
+- `trusted` (boolean)
 
 **Fails with:** `usage`, `internal`, `refused`, `not_found`.
 

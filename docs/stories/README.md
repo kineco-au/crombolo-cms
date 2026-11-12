@@ -130,6 +130,8 @@ not cover.
 | `296` | Admins choose what a group sees under Content | should | L | done | — |
 | `297` | Dictionary words as chips, in forms and on pages | should | L | done | 293, 294 |
 | `322` | Settings is one grant again | should | M | done | 296 |
+| `338` | A user group is set up in levels, not checkboxes | should | XL | done | 302 |
+| `339` | Where a user may work comes only from their groups | could | M | done | 338 |
 
 ### Epic D — Members and identity
 
@@ -169,6 +171,7 @@ not cover.
 | `273` | Search through providers a site can replace | could | L | done | 043, 140 |
 | `333` | How far Windows is from running the suite | could | S | ready | — |
 | `334` | A Windows developer works through Docker | could | S | ready | — |
+| `335` | A key vouches for an extension only when the site trusts it | must | M | done | 316, 324 |
 
 ### Epic F — Headless
 
@@ -239,7 +242,7 @@ requests, only server-side and build-time front ends can call it.
 | `201` | Postgres load and benchmark shards | should | S | done | — |
 | `300` | Checking a bundle runs none of its code | must | S | done | — |
 | `301` | A webhook reaches only what it should | must | M | done | — |
-| `302` | A group grants only what its editor holds | should | S | ready | — |
+| `302` | A group's owners decide who is in it | should | M | done | — |
 | `303` | A bundle's code lands only in code folders | could | S | abandoned | superseded by 306, 312 |
 | `304` | Every request a user sets up goes only outside | should | M | done | 301 |
 | `306` | A site package says what it is | must | L | done | — |
@@ -267,6 +270,8 @@ requests, only server-side and build-time front ends can call it.
 | `330` | An extension's templates carry no script | must | S | done | 312 |
 | `331` | An extension intercepts the paths it names | could | L | ready | 311, 327 |
 | `332` | A host installs extensions into their roots | should | M | done | 326 |
+| `336` | A bundle's components are installed as code | must | M | done | — |
+| `337` | The back office writes templates only where the site allows | should | S | done | — |
 
 ### Epic J — Forms
 

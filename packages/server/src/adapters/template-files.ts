@@ -7,6 +7,7 @@
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { CONTENT_FILES_READ_ONLY } from '@crombolo/api-management/domain'
 import type { ComponentFileStore } from '@crombolo/data'
 
 /** Aliases become filenames, so they must not be able to escape the directory. */
@@ -24,6 +25,7 @@ function safeAlias(alias: string): string | undefined {
 export function createTemplateFileStore(
   dir: string,
   onChange?: (alias: string) => void | Promise<void>,
+  readOnly = false,
 ): ComponentFileStore {
   const fileFor = (alias: string): string | undefined => {
     const safe = safeAlias(alias)
@@ -34,7 +36,13 @@ export function createTemplateFileStore(
     return !existsSync(file) && existsSync(folder) ? folder : file
   }
 
+  // Callers check `readOnly` first; this is the backstop (story 337).
+  const refuse = () => {
+    if (readOnly) throw new Error(CONTENT_FILES_READ_ONLY)
+  }
+
   return {
+    readOnly,
     async read(alias) {
       const file = fileFor(alias)
       if (!file) return undefined
@@ -45,6 +53,7 @@ export function createTemplateFileStore(
       }
     },
     async write(alias, content) {
+      refuse()
       const file = fileFor(alias)
       if (!file) throw new Error(`Unsafe template alias '${alias}'.`)
       await mkdir(dir, { recursive: true })
@@ -54,6 +63,7 @@ export function createTemplateFileStore(
       await onChange?.(alias)
     },
     async remove(alias) {
+      refuse()
       const file = fileFor(alias)
       if (!file) return
       await rm(file, { force: true })

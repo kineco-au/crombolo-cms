@@ -260,6 +260,7 @@ describe(`a revert, and an import inside a node (${dialectUnderTest})`, () => {
       'public/new.txt': 'new\n',
     })
     const result = await installBundleContent(h.server.db, h.server.config, {
+      installTemplates: true,
       bundle,
       backupTaken: true,
       replaceFiles: true,

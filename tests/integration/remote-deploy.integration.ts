@@ -304,12 +304,14 @@ async function editTemplate(name: string) {
 describe('a template edited locally and pushed to a remote', () => {
   test('push replaces the remote, and a protected one needs --force', async () => {
     await newSite('live-push')
-    // A whole-site push changes structure, so it needs that right as well as pushing.
+    // A whole-site push changes structure, so it needs that right as well as pushing,
+    // and it replaces templates, which are code (story 336).
     await trustCi('live-push', [
       RemotePermissions.Pull,
       RemotePermissions.Push,
       RemotePermissions.PushProtected,
       RemotePermissions.ApplyStructure,
+      RemotePermissions.InstallCode,
     ])
     const live = await serve('live-push', remoteSettings(true))
     const identity = identityFor(live)

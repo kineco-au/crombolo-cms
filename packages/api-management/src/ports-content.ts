@@ -266,6 +266,8 @@ export interface DataTypePort extends TreePort {
 }
 
 export interface TemplatePort extends TreePort {
+  /** Crombolo: the site keeps template files read-only in the back office (story 337). */
+  readOnly?: boolean
   byKey(key: string): Promise<ComponentModel | undefined>
   save(model: ComponentModel, principal: Principal): Promise<void>
   remove(key: string): Promise<boolean>

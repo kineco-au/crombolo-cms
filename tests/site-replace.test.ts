@@ -326,6 +326,7 @@ describe(`replacing a site (${dialectUnderTest})`, () => {
     const mediaBefore = await store.list('')
 
     const result = await installBundleContent(b.h.server.db, b.config, {
+      installTemplates: true,
       bundle: join(unpacked),
       replace: 'replace',
       backupTaken: true,

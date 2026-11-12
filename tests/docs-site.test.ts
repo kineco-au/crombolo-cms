@@ -208,6 +208,7 @@ describe('installed on a site that has none of it', () => {
     const copy = join(root, 'bundle')
     cpSync(BUNDLE, copy, { recursive: true })
     const result = await installBundleContent(h.server.db, h.server.config, {
+      installTemplates: true,
       bundle: copy,
       publish: true,
       backupTaken: true,
@@ -247,6 +248,7 @@ describe('installed on a site that has none of it', () => {
     writeFileSync(view, readFileSync(view, 'utf8').replace('Suggest a change', 'Propose a change'))
     const install = (replaceFiles: boolean) =>
       installBundleContent(h.server.db, h.server.config, {
+        installTemplates: true,
         bundle: copy,
         publish: true,
         backupTaken: true,

@@ -13,6 +13,8 @@ import type { Db } from '../database.ts'
 import { NodeRepository } from './nodes.ts'
 
 export interface ComponentFileStore {
+  /** The site keeps template files read-only in the back office (story 337). */
+  readOnly?: boolean
   read(alias: string): Promise<string | undefined>
   write(alias: string, content: string): Promise<void>
   remove(alias: string): Promise<void>
