@@ -122,6 +122,17 @@ describe('discovery', () => {
     const [found] = discoverBundles(dir).bundles
     expect(found?.dependency).toBe(true)
     expect(found?.root).toBeUndefined()
+    // Reached through a link to the site's folder, as macOS's /var is to /private/var,
+    // the package is still installed, not a developer's link to one elsewhere.
+    const through = `${dir}-through-a-link`
+    symlinkSync(dir, through)
+    try {
+      const [again] = discoverBundles(through).bundles
+      expect(again?.dependency).toBe(true)
+      expect(again?.linked).toBeUndefined()
+    } finally {
+      rmSync(through, { force: true })
+    }
   })
 })
 

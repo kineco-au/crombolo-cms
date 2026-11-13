@@ -7,7 +7,7 @@
  * bundle is.
  */
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs'
-import { dirname, join, normalize } from 'node:path'
+import { basename, dirname, join, normalize } from 'node:path'
 import { BACKOFFICE_CODE, permissionsProblem, readSettings } from './bundle-permissions.ts'
 import { packageInRoot, readRecord, rootOf } from './extension-roots.ts'
 import type { PackageManifestImportmap } from './manifests.ts'
@@ -616,7 +616,10 @@ export function discoverBundles(siteDir: string): DiscoveredBundles {
 /** Whether a package directory is a link to one elsewhere on this machine, as a workspace's is. */
 function isLinked(directory: string): boolean {
   try {
-    return lstatSync(directory).isSymbolicLink() || realpathSync(directory) !== directory
+    if (lstatSync(directory).isSymbolicLink()) return true
+    // The package's own folder being elsewhere, as a junction is. A link further up
+    // the path, such as macOS's /var to /private/var, moves the site, not the package.
+    return realpathSync(directory) !== join(realpathSync(dirname(directory)), basename(directory))
   } catch {
     return false
   }

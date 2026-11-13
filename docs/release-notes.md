@@ -6,6 +6,14 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+### Fixes
+
+- **An extension installed as a dependency is told apart from a developer's link wherever the
+  site's folder is.** A link anywhere above the package, such as macOS's `/var` to
+  `/private/var` or a site reached through a linked folder, made every installed extension
+  look like one linked from elsewhere, so `extension check` and the boot did not say it is
+  installed the old way. Only the package's own folder being a link counts now.
+
 ## v0.64.0 — 2026-11-13
 
 ### Features
