@@ -21,19 +21,6 @@ const next = {
   draftCalls: [] as string[],
 }
 
-/**
- * Mocks a Next.js module both by name and at the file the package resolves it to.
- * The install can hold more than one copy of `next`, one per set of peers, and
- * the copy this file resolves need not be the one the package does; mocked by
- * name alone, the package then loads the real module, whose CommonJS exports
- * Bun cannot import by name.
- */
-const PACKAGE_DIR = join(import.meta.dir, '..', 'packages', 'next-integration', 'src')
-function mockNext(specifier: string, factory: () => Record<string, unknown>): void {
-  mock.module(specifier, factory)
-  mock.module(Bun.resolveSync(specifier, PACKAGE_DIR), factory)
-}
-
 class NextNavigation extends Error {
   constructor(
     readonly kind: string,
@@ -43,7 +30,7 @@ class NextNavigation extends Error {
   }
 }
 
-mockNext('next/headers', () => ({
+mock.module('next/headers', () => ({
   draftMode: async () => ({
     isEnabled: next.draft,
     enable: () => next.draftCalls.push('enable'),
@@ -54,7 +41,7 @@ mockNext('next/headers', () => ({
       next.cookies.has(name) ? { name, value: next.cookies.get(name) as string } : undefined,
   }),
 }))
-mockNext('next/navigation', () => ({
+mock.module('next/navigation', () => ({
   redirect: (location: string) => {
     throw new NextNavigation('redirect', location)
   },
@@ -72,12 +59,12 @@ mockNext('next/navigation', () => ({
   },
   useRouter: () => ({ push: () => {} }),
 }))
-mockNext('next/cache', () => ({
+mock.module('next/cache', () => ({
   cacheTag: (...tags: string[]) => next.tags.push(...tags),
   cacheLife: (profile: string) => next.life.push(profile),
   revalidateTag: (tag: string, profile?: string) => next.revalidated.push([tag, profile]),
 }))
-mockNext('next/server', () => ({
+mock.module('next/server', () => ({
   NextResponse: {
     next: (init?: { request?: { headers?: Headers } }) => {
       const response = new Response(null, { status: 200 })
