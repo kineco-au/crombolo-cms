@@ -194,7 +194,7 @@ operations per area — and fails CI if an implemented operation regresses.
 
 | Tool                   | Version  | Why                                                                                                                                                                             |
 | ---------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Bun**                | ≥ 1.3    | runtime, test runner, bundler and package manager — the whole build; built and tested against 1.4.2                                                                             |
+| **Bun**                | ≥ 1.3    | runtime, test runner, bundler and package manager — the whole build; built and tested against 1.4.4                                                                             |
 | **TypeScript**         | ^7.0     | typecheck only (`tsc --noEmit`)                                                                                                                                                 |
 | **Biome**              | ^2.5     | format and lint, one tool, one config                                                                                                                                           |
 | **openapi-typescript** | **^6.7** | generates `contracts/generated/` from the vendored contract — see below                                                                                                         |

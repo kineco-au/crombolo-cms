@@ -34,7 +34,7 @@ concurrency:
     cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
-    BUN_VERSION: "1.4.2"
+    BUN_VERSION: "1.4.4"
     # Bumped by the path inputs below, so a re-vendor invalidates it on its own.
     DIST_PATH: packages/backoffice-dist/dist
 

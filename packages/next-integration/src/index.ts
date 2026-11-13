@@ -21,9 +21,7 @@ import {
   type RequestOptions,
 } from '@crombolo/delivery-client'
 import type { Metadata } from 'next'
-// A namespace import: `next/headers` is CommonJS, whose names Bun's test runner
-// cannot always link one by one, and a bundler takes this form just as well.
-import * as headers from 'next/headers'
+import { cookies, draftMode } from 'next/headers'
 import { forbidden, notFound, permanentRedirect, redirect, unauthorized } from 'next/navigation'
 import type { CacheAdapter } from './cache.ts'
 import {
@@ -157,8 +155,8 @@ export function createCrombolo<Schema extends DeliverySchema = DeliverySchema>(
 
   /** In Draft Mode, the editor's drafts and never a kept copy. */
   const draftClient = async (): Promise<DeliveryClient<Schema> | undefined> => {
-    if (!(await headers.draftMode()).isEnabled) return undefined
-    const token = (await headers.cookies()).get(PREVIEW_COOKIE)?.value
+    if (!(await draftMode()).isEnabled) return undefined
+    const token = (await cookies()).get(PREVIEW_COOKIE)?.value
     return createDeliveryClient<Schema>({
       ...base,
       fetch: uncached,
@@ -256,13 +254,13 @@ export function createCrombolo<Schema extends DeliverySchema = DeliverySchema>(
     async member() {
       const secret = sessionSecret(options.secret ?? process.env.CROMBOLO_NEXT_SECRET)
       const session = await unseal<MemberSession>(
-        (await headers.cookies()).get(SESSION_COOKIE)?.value,
+        (await cookies()).get(SESSION_COOKIE)?.value,
         secret,
       )
       // An expired token is refreshed by the middleware, which may set cookies; a page may not.
       if (!session || session.expiresAt <= Date.now()) return undefined
-      const preview = (await headers.draftMode()).isEnabled
-        ? (await headers.cookies()).get(PREVIEW_COOKIE)?.value
+      const preview = (await draftMode()).isEnabled
+        ? (await cookies()).get(PREVIEW_COOKIE)?.value
         : undefined
       const client = createDeliveryClient<Schema>({
         ...base,

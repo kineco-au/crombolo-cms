@@ -9,9 +9,7 @@
  * export const GET = previewHandler(crombolo)
  * ```
  */
-// A namespace import: `next/headers` is CommonJS, whose names Bun's test runner
-// cannot always link one by one, and a bundler takes this form just as well.
-import * as headers from 'next/headers'
+import { draftMode } from 'next/headers'
 import type { Crombolo } from './index.ts'
 import {
   challengeFor,
@@ -74,7 +72,7 @@ export function previewHandler(crombolo: Crombolo) {
     })
     if (checked.status === 401 || checked.status === 403)
       return new Response('This preview link has expired. Press Preview again.', { status: 401 })
-    ;(await headers.draftMode()).enable()
+    ;(await draftMode()).enable()
     return redirectTo(path, [
       cookie(PREVIEW_COOKIE, token, { secure: secure(request), maxAge: 60 * 60 }),
     ])
@@ -84,7 +82,7 @@ export function previewHandler(crombolo: Crombolo) {
 /** `GET ?path=…`: leaves Draft Mode and forgets the preview token. */
 export function exitPreviewHandler() {
   return async (request: Request): Promise<Response> => {
-    ;(await headers.draftMode()).disable()
+    ;(await draftMode()).disable()
     return redirectTo(localPath(new URL(request.url).searchParams.get('path')), [
       cookie(PREVIEW_COOKIE, '', { secure: secure(request), maxAge: 0 }),
     ])
