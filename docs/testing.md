@@ -33,7 +33,10 @@ and Postgres database, so they share nothing. Half the processors, at most six;
 `CROMBOLO_TEST_SHARDS=n` sets it, and `1` runs one process. Each shard's output
 prints as it finishes, then the totals. On 14 cores the SQLite suite takes about
 two minutes and Postgres under four, against 7.5 and 13 in one process. CI keeps
-`test:ci` and shards across jobs instead.
+`test:ci` and shards across jobs instead. CI's SQLite job runs every file in one
+process, where `tests/next-integration.test.ts`'s `mock.module` stand-ins for
+`next/*` stop reaching the package once some earlier file has run, so that job
+leaves the file out (`--path-ignore-patterns`) and runs it in a step of its own.
 
 **The compose `db` allows 400 connections** (story 231). Six shards side by side,
 each with its test sites' pools, their LISTEN connections and the jobs', reached

@@ -205,11 +205,21 @@ jobs:
             - name: Run the suite${{ matrix.shards > 1 && format(', shard {0} of {1}', matrix.shard, matrix.shards) || '' }}
               run: |
                   files=""
+                  # The Next.js test stands in for `next/headers` with `mock.module`, which
+                  # some earlier file in one long-lived process stops reaching the package:
+                  # it then loads the real CommonJS module and fails. Run unsharded, the
+                  # suite leaves it out and the next step runs it alone, as every local
+                  # run does, each file in a process of its own.
+                  ignore="--path-ignore-patterns=tests/next-integration.test.ts"
                   if [ "${{ matrix.shards }}" -gt 1 ]; then
                     files=$(bun run scripts/test-shard.ts ${{ matrix.shard }} ${{ matrix.shards }})
+                    ignore=""
                   fi
                   # Unquoted on purpose: one argument per file.
-                  bun run test:ci --timeout ${{ matrix.dialect == 'postgres' && 20000 || 5000 }} $files
+                  bun run test:ci --timeout ${{ matrix.dialect == 'postgres' && 20000 || 5000 }} $ignore $files
+            - name: Run the Next.js integration test in a process of its own
+              if: ${{ matrix.shards == 1 }}
+              run: bun run test:ci --timeout 5000 tests/next-integration.test.ts
 
     # The integration suites drive the real CLI as a pipeline would: a process per
     # step and two SQLite databases, for content transfer (a bundle written to disk
