@@ -5,17 +5,20 @@
  * `content` commands read `--set`; and stored values back into that shorthand,
  * as `content export` and `content show` write them.
  */
-import { type ContentTypeAggregate, dateFromText, normaliseUuid } from '@crombolo/core'
+import {
+  type Block,
+  type ContentTypeAggregate,
+  dateFromText,
+  isBlockValue,
+  normaliseUuid,
+  readBlocks,
+  SINGLE_BLOCK_EDITOR_ALIAS,
+} from '@crombolo/core'
 import { ContentTypeRepository, DataTypeRepository, type Db, looksLikeKey } from '@crombolo/data'
 import { blockKey, pickKey } from './keys.ts'
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value) && !(value instanceof Date)
-
-const BLOCK_LAYOUT = {
-  'Umbraco.BlockList': 'Umbraco.BlockList',
-  'Umbraco.BlockGrid': 'Umbraco.BlockGrid',
-} as const
 
 /** A block's alias: a name a view or a command picks it out by (story 253). */
 export const BLOCK_ALIAS = /^[A-Za-z][A-Za-z0-9_-]*$/
@@ -136,58 +139,91 @@ export function valueWriter(lookup: SchemaLookup, refs: ValueRefs) {
     return { ok: true, data: { key, contentTypeKey: type.key, values: values.value } }
   }
 
+  /**
+   * Blocks from their shorthand: a list of `{ type, alias, values, settings }`,
+   * a grid block's `areas` as `[{ key, blocks = [ … ] }]`, and a Single Block's one
+   * block as a table (story 345). A value already in the stored shape passes.
+   */
   const blocks = async (
-    editor: keyof typeof BLOCK_LAYOUT,
+    editor: string,
     raw: unknown,
     owner: string,
     where: string,
   ): Promise<Converted> => {
+    const single = editor === SINGLE_BLOCK_EDITOR_ALIAS
+    if (isRecord(raw) && 'layout' in raw) return { ok: true, value: raw }
+    if (single && isRecord(raw)) raw = [raw]
+    if (single && (raw === null || raw === undefined)) raw = []
     if (!Array.isArray(raw)) {
-      if (isRecord(raw) && 'layout' in raw) return { ok: true, value: raw }
-      return fail('blocks are a list of { type = "<element alias>", values = { … } }')
+      return fail(
+        single
+          ? 'a Single Block is one { type = "<element alias>", values = { … } }'
+          : 'blocks are a list of { type = "<element alias>", values = { … } }',
+      )
     }
-    const layout: Record<string, unknown>[] = []
+    if (single && raw.length > 1) return fail('a Single Block holds one block')
     const contentData: unknown[] = []
     const settingsData: unknown[] = []
-    const aliases = new Set<string>()
-    for (const [index, entry] of raw.entries()) {
-      if (!isRecord(entry)) return fail(`block ${index + 1} has no type`)
-      const content = await element(entry, owner, `${where}/${index}`, `block ${index + 1}`)
-      if (!content.ok) return fail(content.message)
-      contentData.push(content.data)
-      const item: Record<string, unknown> = { contentKey: content.data.key }
-      if (entry.alias !== undefined) {
-        if (typeof entry.alias !== 'string' || !BLOCK_ALIAS.test(entry.alias))
-          return fail(
-            `block ${index + 1}: an alias is letters, digits, - and _, starting with a letter`,
+    const entries = async (
+      list: unknown[],
+      path: string,
+      label: string,
+    ): Promise<Record<string, unknown>[] | string> => {
+      const layout: Record<string, unknown>[] = []
+      const aliases = new Set<string>()
+      for (const [index, entry] of list.entries()) {
+        const name = `${label}${index + 1}`
+        if (!isRecord(entry)) return `block ${name} has no type`
+        const content = await element(entry, owner, `${path}/${index}`, `block ${name}`)
+        if (!content.ok) return content.message
+        contentData.push(content.data)
+        const item: Record<string, unknown> = { contentKey: content.data.key }
+        if (entry.alias !== undefined) {
+          if (typeof entry.alias !== 'string' || !BLOCK_ALIAS.test(entry.alias))
+            return `block ${name}: an alias is letters, digits, - and _, starting with a letter`
+          if (aliases.has(entry.alias.toLowerCase()))
+            return `two blocks are called "${entry.alias}"`
+          aliases.add(entry.alias.toLowerCase())
+          item.alias = entry.alias
+        }
+        if (isRecord(entry.settings)) {
+          const settings = await element(
+            entry.settings,
+            owner,
+            `${path}/${index}/settings`,
+            `block ${name} settings`,
           )
-        if (aliases.has(entry.alias.toLowerCase()))
-          return fail(`two blocks are called "${entry.alias}"`)
-        aliases.add(entry.alias.toLowerCase())
-        item.alias = entry.alias
+          if (!settings.ok) return settings.message
+          settingsData.push(settings.data)
+          item.settingsKey = settings.data.key
+        }
+        if (editor === 'Umbraco.BlockGrid') {
+          item.columnSpan = typeof entry.columns === 'number' ? entry.columns : 12
+          item.rowSpan = typeof entry.rows === 'number' ? entry.rows : 1
+          const areas: unknown[] = []
+          for (const [a, area] of (Array.isArray(entry.areas) ? entry.areas : []).entries()) {
+            // An area already in the stored shape, as older files have it, passes.
+            if (!isRecord(area) || !Array.isArray(area.blocks)) {
+              areas.push(area)
+              continue
+            }
+            const items = await entries(
+              area.blocks,
+              `${path}/${index}/areas/${a}`,
+              `${name}.${String(area.key ?? a + 1)}.`,
+            )
+            if (typeof items === 'string') return items
+            areas.push({ key: area.key, items })
+          }
+          item.areas = areas
+        }
+        layout.push(item)
       }
-      if (isRecord(entry.settings)) {
-        const settings = await element(
-          entry.settings,
-          owner,
-          `${where}/${index}/settings`,
-          `block ${index + 1} settings`,
-        )
-        if (!settings.ok) return fail(settings.message)
-        settingsData.push(settings.data)
-        item.settingsKey = settings.data.key
-      }
-      if (editor === 'Umbraco.BlockGrid') {
-        item.columnSpan = typeof entry.columns === 'number' ? entry.columns : 12
-        item.rowSpan = typeof entry.rows === 'number' ? entry.rows : 1
-        item.areas = Array.isArray(entry.areas) ? entry.areas : []
-      }
-      layout.push(item)
+      return layout
     }
-    return {
-      ok: true,
-      value: { layout: { [BLOCK_LAYOUT[editor]]: layout }, contentData, settingsData },
-    }
+    const layout = await entries(raw, where, '')
+    if (typeof layout === 'string') return fail(layout)
+    return { ok: true, value: { layout: { [editor]: layout }, contentData, settingsData } }
   }
 
   const elementValues = async (
@@ -352,6 +388,7 @@ export function valueWriter(lookup: SchemaLookup, refs: ValueRefs) {
       }
       case 'Umbraco.BlockList':
       case 'Umbraco.BlockGrid':
+      case SINGLE_BLOCK_EDITOR_ALIAS:
         return blocks(editor, raw, owner, where)
       default:
         return { ok: true, value: raw }
@@ -428,6 +465,7 @@ export function shorthandReader(
       }
       case 'Umbraco.BlockList':
       case 'Umbraco.BlockGrid':
+      case SINGLE_BLOCK_EDITOR_ALIAS:
         return blocks(editor, value)
       default:
         return value
@@ -453,49 +491,52 @@ export function shorthandReader(
     return link
   }
 
-  /** Blocks as `{ type, alias, key, values, settings }`, when their layout is plain enough to say so. */
+  /**
+   * Blocks as `{ type, alias, key, values, settings }`, read through `readBlocks`
+   * (story 345): a grid block's areas as `[{ key, blocks }]`, and a Single Block as
+   * its one block, or nothing. A value whose blocks cannot all be said that way
+   * stays as it is stored.
+   */
   const blocks = async (editor: string, value: unknown): Promise<unknown> => {
-    if (!isRecord(value) || !isRecord(value.layout) || !Array.isArray(value.contentData))
-      return value
-    const layout = value.layout[editor]
-    if (!Array.isArray(layout)) return value
-    const content = new Map(
-      (value.contentData as unknown[]).filter(isRecord).map((d) => [String(d.key), d]),
-    )
-    const settings = new Map(
-      ((value.settingsData as unknown[] | undefined) ?? [])
-        .filter(isRecord)
-        .map((d) => [String(d.key), d]),
-    )
-    const out: unknown[] = []
-    for (const item of layout) {
-      if (!isRecord(item)) return value
-      const data = content.get(String(item.contentKey))
-      if (!data || typeof data.contentTypeKey !== 'string') return value
-      if (editor === 'Umbraco.BlockGrid' && Array.isArray(item.areas) && item.areas.length > 0)
-        return value
-      const entry: Record<string, unknown> = {
-        type: await aliasOf(data.contentTypeKey),
-        ...(typeof item.alias === 'string' ? { alias: item.alias } : {}),
-        key: item.contentKey,
-        values: await elementValues(data),
-      }
-      if (typeof item.settingsKey === 'string') {
-        const setting = settings.get(item.settingsKey)
-        if (!setting || typeof setting.contentTypeKey !== 'string') return value
-        entry.settings = {
-          type: await aliasOf(setting.contentTypeKey),
-          key: item.settingsKey,
-          values: await elementValues(setting),
+    if (!isBlockValue(value)) return value
+    const say = async (list: Block[]): Promise<unknown[] | undefined> => {
+      const out: unknown[] = []
+      for (const { layout, content, settings, areas } of list) {
+        if (!content || typeof content.contentTypeKey !== 'string') return undefined
+        const entry: Record<string, unknown> = {
+          type: await aliasOf(content.contentTypeKey),
+          ...(typeof layout.alias === 'string' ? { alias: layout.alias } : {}),
+          key: layout.contentKey,
+          values: await elementValues(content as unknown as Record<string, unknown>),
         }
+        if (typeof layout.settingsKey === 'string') {
+          if (!settings || typeof settings.contentTypeKey !== 'string') return undefined
+          entry.settings = {
+            type: await aliasOf(settings.contentTypeKey),
+            key: layout.settingsKey,
+            values: await elementValues(settings as unknown as Record<string, unknown>),
+          }
+        }
+        if (editor === 'Umbraco.BlockGrid') {
+          entry.columns = layout.columnSpan
+          entry.rows = layout.rowSpan
+          if (areas.length > 0) {
+            const said: unknown[] = []
+            for (const area of areas) {
+              const inner = await say(area.blocks)
+              if (!inner) return undefined
+              said.push({ key: area.key, blocks: inner })
+            }
+            entry.areas = said
+          }
+        }
+        out.push(entry)
       }
-      if (editor === 'Umbraco.BlockGrid') {
-        entry.columns = item.columnSpan
-        entry.rows = item.rowSpan
-      }
-      out.push(entry)
+      return out
     }
-    return out
+    const said = await say(readBlocks(value, editor))
+    if (!said) return value
+    return editor === SINGLE_BLOCK_EDITOR_ALIAS ? (said[0] ?? null) : said
   }
 
   const elementValues = async (data: Record<string, unknown>) => {

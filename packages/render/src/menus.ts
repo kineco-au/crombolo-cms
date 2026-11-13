@@ -5,7 +5,12 @@
  * moved page follows; one unpublished or in the bin drops out, with the items
  * below it. docs/rendering.md, "Menus".
  */
-import { keyFromReference, MENU_ALIAS_PROPERTY } from '@crombolo/core'
+import {
+  BLOCK_LIST_EDITOR_ALIAS,
+  keyFromReference,
+  MENU_ALIAS_PROPERTY,
+  readBlocks,
+} from '@crombolo/core'
 import type { PublishedMedia } from './media.ts'
 import type { PublishedContent } from './model.ts'
 import type { PublishedElement } from './values.ts'
@@ -37,11 +42,6 @@ export interface MenuLookup {
   media(key: string): PublishedMedia | undefined
 }
 
-interface StoredBlocks {
-  layout?: Record<string, Array<{ contentKey?: string }> | undefined>
-  contentData?: Array<{ key: string; values?: Array<{ alias: string; value: unknown }> }>
-}
-
 const parsed = (value: unknown): unknown => {
   if (typeof value !== 'string') return value
   try {
@@ -54,11 +54,7 @@ const parsed = (value: unknown): unknown => {
 const text = (value: unknown): string => (typeof value === 'string' ? value.trim() : '')
 
 function items(value: unknown, lookup: MenuLookup): MenuItem[] {
-  const blocks = parsed(value) as StoredBlocks | undefined
-  if (!blocks || typeof blocks !== 'object') return []
-  const data = new Map((blocks.contentData ?? []).map((d) => [d.key, d]))
-  return (blocks.layout?.['Umbraco.BlockList'] ?? []).flatMap((layout) => {
-    const block = data.get(layout.contentKey ?? '')
+  return readBlocks(value, BLOCK_LIST_EDITOR_ALIAS).flatMap(({ content: block }) => {
     if (!block) return []
     const own = (alias: string) => block.values?.find((v) => v.alias === alias)?.value
     const item = menuItem(own('link'), text(own('label')), lookup)
@@ -132,9 +128,8 @@ function isSafe(url: string): boolean {
 export function menuMediaKeys(element: PublishedElement): string[] {
   const keys: string[] = []
   const walk = (value: unknown) => {
-    const blocks = parsed(value) as StoredBlocks | undefined
-    if (!blocks || typeof blocks !== 'object') return
-    for (const block of blocks.contentData ?? []) {
+    for (const { content: block } of readBlocks(value)) {
+      if (!block) continue
       const own = (alias: string) => block.values?.find((v) => v.alias === alias)?.value
       const links = parsed(own('link'))
       const link = Array.isArray(links)

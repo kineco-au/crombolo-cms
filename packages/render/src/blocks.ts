@@ -1,6 +1,6 @@
 /**
  * Blocks render their own components (story 184). `<Blocks items={…} />` renders
- * each block of a Block List or Block Grid with `components/blocks/<element
+ * each block of a Block List, Block Grid or Single Block with `components/blocks/<element
  * alias>.tsx`, so a new kind of block is one new file, not an edit to every
  * template that lists blocks. A grid renders Umbraco's block-grid markup, so its
  * default stylesheet and CSS written for it apply unchanged.
@@ -31,8 +31,11 @@ export interface BlockProps<Content = any, Settings = any> {
 type BlockComponent = (props: BlockProps<any, any>) => Child | Promise<Child>
 
 export interface BlocksProps {
-  /** A Block List or Block Grid property's value: `model.value('sections')`. */
-  items: readonly BlockItem[] | null | undefined
+  /**
+   * A Block List or Block Grid property's value: `model.value('sections')`; or a
+   * Single Block's, the one block or null (story 345).
+   */
+  items: readonly BlockItem[] | BlockItem | null | undefined
   /** Components for some element types, in place of `components/blocks/`, here only. */
   components?: Readonly<Record<string, BlockComponent>>
   /** A grid's columns, when its value does not carry them; 12 otherwise. */
@@ -51,7 +54,11 @@ const css = (vars: Record<string, number>) =>
 
 /** Renders each block with its own component. */
 export async function Blocks(props: BlocksProps): Promise<RawHtml> {
-  const items = props.items ?? []
+  const items = Array.isArray(props.items)
+    ? (props.items as readonly BlockItem[])
+    : props.items
+      ? [props.items as BlockItem]
+      : []
   if (items.length === 0) return new RawHtml('')
   if (!isGrid(items)) {
     const parts = await Promise.all(items.map((item) => renderBlock(item, props.components)))

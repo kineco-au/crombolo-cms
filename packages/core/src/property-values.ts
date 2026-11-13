@@ -4,6 +4,8 @@
  * stored and returned as is.
  */
 
+import { BLOCK_EDITORS } from './blocks.ts'
+
 export const RICH_TEXT_EDITOR_ALIAS = 'Umbraco.RichText'
 export const UPLOAD_FIELD_EDITOR_ALIAS = 'Umbraco.UploadField'
 export const IMAGE_CROPPER_EDITOR_ALIAS = 'Umbraco.ImageCropper'
@@ -16,9 +18,7 @@ export const FILE_VALUE_EDITORS: ReadonlySet<string> = new Set([
 
 /** Editors whose values are objects or arrays, stored as JSON. */
 export const JSON_VALUE_EDITORS: ReadonlySet<string> = new Set([
-  RICH_TEXT_EDITOR_ALIAS,
-  'Umbraco.BlockList',
-  'Umbraco.BlockGrid',
+  ...BLOCK_EDITORS,
   'Umbraco.CheckBoxList',
   'Umbraco.ColorPicker',
   'Umbraco.DateTimeWithTimeZone',

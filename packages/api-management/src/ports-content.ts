@@ -238,7 +238,8 @@ export interface DataTypePort extends TreePort {
   ): Promise<{ valueTypeName: string; jsonSchema: Record<string, unknown> } | undefined>
   byKey(key: string): Promise<DataTypeModel | undefined>
   byKeys(keys: readonly string[]): Promise<DataTypeModel[]>
-  save(model: DataTypeModel, principal: Principal): Promise<void>
+  /** A failure when the save would leave the schema files invalid (story 344). */
+  save(model: DataTypeModel, principal: Principal): Promise<PortFailure | undefined>
   /** 'in-use' when a property type still uses it. */
   remove(key: string): Promise<boolean | 'in-use'>
   filter(

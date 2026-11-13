@@ -1329,7 +1329,8 @@ Values are given by property alias, in a shorthand for each editor:
 | Element picker | a Library path, or a list | the element keys |
 | Form picker | a Library form's path, `forms/contact-sales`, or a form's alias | the Library form's key, or the form's |
 | Multi-URL picker | paths, URLs, or `{ path \| url, name, target }` | the links |
-| Block list and block grid | `[{ type = "<element alias>", key = "…", values = {…}, settings = { type, key, values } }]` (grid: `columns`, `rows`) | layout, content data and settings data; a block's key is derived unless it gives one |
+| Block list and block grid | `[{ type = "<element alias>", key = "…", values = {…}, settings = { type, key, values } }]` (grid: `columns`, `rows`, and `areas = [{ key = "<area key>", blocks = [ … ] }]`, its blocks written the same way) | layout, content data and settings data; a block's key is derived unless it gives one |
+| Single block | one `{ type = "<element alias>", key = "…", values = {…}, settings = {…} }`, as a table rather than a list; more than one is refused (story 345) | the same, with one layout entry |
 | Tags | a list of strings | the list |
 | Date | a TOML date, or an ISO 8601 string | a date picker's `YYYY-MM-DD HH:mm:ss`, as a save stores it; with a time zone, the ISO 8601 string |
 | Toggle | `true` or `false` | the boolean |

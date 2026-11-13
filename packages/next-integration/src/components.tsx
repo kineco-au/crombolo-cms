@@ -7,6 +7,7 @@ import {
   type ApiBlockGrid,
   type ApiBlockGridItem,
   type ApiBlockList,
+  type ApiBlockListItem,
   type ApiElement,
   decodeEntities,
   type RichTextGenericElement,
@@ -165,6 +166,18 @@ function Block({
   ) : (
     <Missing alias={content.contentType} />
   )
+}
+
+/** A Single Block's one block through its element type's component, or nothing (story 345). */
+export function SingleBlock({
+  value,
+  components,
+}: {
+  value: ApiBlockListItem | null | undefined
+  components: BlockComponents
+}) {
+  if (!value?.content) return null
+  return <Block content={value.content} settings={value.settings} components={components} />
 }
 
 /** A block list, each item through the component for its element type. */

@@ -1,11 +1,11 @@
 /**
  * A page's blocks changed from the command line (story 253): the stored block
  * value edited in place, so what a command does not touch stays exactly as it
- * was. A block is named by its alias or its key. A block list, and a block
+ * was. A block is named by its alias or its key. A block list, a single block, and a block
  * grid's top level; a grid's areas and blocks inside a block are not reached.
  */
 import type { ContentTypeAggregate, DocumentValue } from '@crombolo/core'
-import { normaliseUuid } from '@crombolo/core'
+import { BLOCK_VALUE_EDITORS, normaliseUuid, SINGLE_BLOCK_EDITOR_ALIAS } from '@crombolo/core'
 import { BLOCK_ALIAS } from '@crombolo/server'
 import { Args, Flags } from '@oclif/core'
 import { CliError } from '../errors.ts'
@@ -24,8 +24,6 @@ import type { Io } from './site.ts'
 type Data = Record<string, unknown>
 const isRecord = (value: unknown): value is Data =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
-
-const LIST_EDITORS = new Set(['Umbraco.BlockList', 'Umbraco.BlockGrid'])
 
 export interface BlockList {
   page: FoundPage
@@ -52,8 +50,8 @@ export async function blockListOf(
     throw new CliError('not_found', `"${page.type.alias}" has no property "${property}".`, {
       hint: `\`crombolo types show ${page.type.alias}\` lists its properties.`,
     })
-  if (!LIST_EDITORS.has(editor.editor))
-    throw new CliError('refused', `"${property}" is not a block list or grid.`)
+  if (!BLOCK_VALUE_EDITORS.has(editor.editor))
+    throw new CliError('refused', `"${property}" is not a block list, grid or single block.`)
   const at = editor.variesByCulture ? (culture ?? site.languages[0] ?? null) : null
   const stored = page.doc.values.find(
     (v) => v.alias === property && v.culture === at && v.segment === null,
@@ -88,6 +86,20 @@ export async function blockListOf(
         : [],
     ),
   }
+}
+
+/** Whether the property is a Single Block, which holds one block (story 345). */
+export const isSingle = (list: BlockList): boolean => list.editor === SINGLE_BLOCK_EDITOR_ALIAS
+
+/**
+ * Takes a block and its data out of the list; what `remove` does, and what `add`
+ * does first on a Single Block, whose new block replaces the one there.
+ */
+export function takeOut(list: BlockList, index: number): Record<string, unknown> | undefined {
+  const [item] = list.layout.splice(index, 1)
+  list.value.contentData = list.value.contentData.filter((d) => d.key !== item?.contentKey)
+  list.value.settingsData = list.value.settingsData.filter((d) => d.key !== item?.settingsKey)
+  return item
 }
 
 /** Where in the list a block an alias or key names is; refused, listing them, when none is. */
@@ -203,6 +215,8 @@ export async function saveBlockList(
 
 /** Where a block goes in its list: before or after another, first or last. */
 export function placeIn(list: BlockList, flags: PlaceFlags, moving?: number): number {
+  // A Single Block has one place (story 345).
+  if (isSingle(list)) return 0
   const length = list.layout.length - (moving === undefined ? 0 : 1)
   if (flags.first) return 0
   if (flags.before || flags.after) {

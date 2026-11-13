@@ -222,7 +222,7 @@ crombolo schema new <kind> <alias> [--name <name>] [--description <description>]
 | `--library` | boolean | It may be created in the Library. |
 | `--list-view` | boolean | Show the pages beneath it as a list. |
 | `--list-view-type` | string | The list view data type, instead of the default. |
-| `--editor` | string | Data types: the editor it uses. One of `textstring`, `textarea`, `rich-text`, `number`, `toggle`, `date`, `dropdown`, `content-picker`, `media-picker`, `element-picker`, `block-list`, `block-grid`. |
+| `--editor` | string | Data types: the editor it uses. One of `textstring`, `textarea`, `rich-text`, `number`, `toggle`, `date`, `dropdown`, `content-picker`, `media-picker`, `element-picker`, `block-list`, `single-block`, `block-grid`. |
 | `--max-chars` | string | Data types: the most characters allowed. |
 | `--rows` | string | Data types: the rows a text area shows. |
 | `--min` | string | Data types: the least allowed (number, items). |
@@ -424,7 +424,7 @@ crombolo types new <kind> <alias> [--name <name>] [--description <description>] 
 | `--library` | boolean | It may be created in the Library. |
 | `--list-view` | boolean | Show the pages beneath it as a list. |
 | `--list-view-type` | string | The list view data type, instead of the default. |
-| `--editor` | string | Data types: the editor it uses. One of `textstring`, `textarea`, `rich-text`, `number`, `toggle`, `date`, `dropdown`, `content-picker`, `media-picker`, `element-picker`, `block-list`, `block-grid`. |
+| `--editor` | string | Data types: the editor it uses. One of `textstring`, `textarea`, `rich-text`, `number`, `toggle`, `date`, `dropdown`, `content-picker`, `media-picker`, `element-picker`, `block-list`, `single-block`, `block-grid`. |
 | `--max-chars` | string | Data types: the most characters allowed. |
 | `--rows` | string | Data types: the rows a text area shows. |
 | `--min` | string | Data types: the least allowed (number, items). |

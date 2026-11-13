@@ -168,7 +168,7 @@ export async function siteEmail(
   }
   // A stale copy answers at once while the next read is under way.
   const fresh = () => {
-    if (Date.now() - readAt > ttl) void load()
+    if (Date.now() - readAt >= ttl) void load()
     return current
   }
   await load()
@@ -180,7 +180,7 @@ export async function siteEmail(
       return fresh()?.provider ?? 'none'
     },
     async send(message: EmailMessage) {
-      if (Date.now() - readAt > ttl) await load()
+      if (Date.now() - readAt >= ttl) await load()
       return current
         ? current.send(message)
         : { ok: false as const, error: 'This site has no e-mail set up.' }

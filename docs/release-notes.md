@@ -6,8 +6,17 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.64.0 — 2026-11-13
+
 ### Features
 
+- **The Single Block (345).** A Single Block property, one block rather than a list of
+  one, now saves, renders through `<Blocks>` as one block or nothing, is typed by `crombolo
+  generate` and `generate --delivery`, comes out of the Delivery API as one item or `null`,
+  is written to content files as one block, and is added (replacing the one there), changed
+  and removed with `crombolo content block`. `<SingleBlock>` renders it in a Next.js front
+  end, and `crombolo types new data-type --editor single-block` makes one. A block grid's
+  areas are now written to and read from content files too.
 - **E-mail is set up in Settings (340).** Settings → Site → E-mail sets the
   provider, its key and the sender, and a test e-mail checks them. The change takes
   effect at once, with no restart. The card is marked while e-mail isn't set up, in place
@@ -32,6 +41,11 @@ point at `docs/stories/`.
 
 ### Fixes
 
+- **A back-office save the schema files can't take is refused (344).** Saving a type or data
+  type that would leave the site's definitions invalid, such as a block list left offering a
+  type that is no longer an element, is now refused with the problems, and nothing is kept.
+  Before, it was saved to the database while its file was quietly left unwritten, so the
+  change never reached the repository.
 - **`gitHub` is exported from `@crombolo/crombolo`.** The source control setting the docs
   show, `git: { provider: gitHub({...}) }`, needed an import from `@crombolo/server`, which
   a site doesn't depend on.

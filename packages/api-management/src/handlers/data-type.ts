@@ -2,7 +2,7 @@
 import type { ResponseOf } from '@crombolo/contracts'
 import type { DataTypeModel, TreeItem } from '@crombolo/core'
 import { invalidSkipTake, notFound, problemDetails, problemResponse } from '@crombolo/core'
-import type { DataTypePort } from '../ports-content.ts'
+import type { DataTypePort, PortFailure } from '../ports-content.ts'
 import type { ManagementApiRouter, RequestContext } from '../router.ts'
 import {
   created,
@@ -94,7 +94,11 @@ export function registerDataTypeHandlers(router: ManagementApiRouter, port: Data
   router.handle('PostDataType', async (ctx) => {
     const body = (await ctx.request.json()) as Record<string, unknown>
     const key = typeof body.id === 'string' && body.id ? body.id : crypto.randomUUID()
-    await port.save(fromRequest(key, body), ctx.principal as NonNullable<typeof ctx.principal>)
+    const refused = await port.save(
+      fromRequest(key, body),
+      ctx.principal as NonNullable<typeof ctx.principal>,
+    )
+    if (refused) return refusedSave(refused)
     ctx.notifications.push({ message: 'Data type created', category: 'Data Type', type: 'Success' })
     return created(`${ctx.url.origin}/umbraco/management/api/v1/data-type/${key}`, key)
   })
@@ -105,10 +109,11 @@ export function registerDataTypeHandlers(router: ManagementApiRouter, port: Data
     if (!existing) return problemResponse(notFound('The data type could not be found'))
     const body = (await ctx.request.json()) as Record<string, unknown>
     // Keep the storage type the editor was created with.
-    await port.save(
+    const refused = await port.save(
       { ...fromRequest(key, body), dbType: existing.dbType },
       ctx.principal as NonNullable<typeof ctx.principal>,
     )
+    if (refused) return refusedSave(refused)
     ctx.notifications.push({ message: 'Data type saved', category: 'Data Type', type: 'Success' })
     return new Response(null, { status: 200 })
   })
@@ -300,3 +305,13 @@ export function registerDataTypeHandlers(router: ManagementApiRouter, port: Data
     )
   })
 }
+
+/** A save the server refused, such as one that would leave the schema files invalid. */
+const refusedSave = (failure: PortFailure) =>
+  problemResponse(
+    problemDetails({
+      title: 'The data type was not saved',
+      status: failure.status ?? 400,
+      detail: failure.reason,
+    }),
+  )

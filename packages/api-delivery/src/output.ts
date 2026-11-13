@@ -368,6 +368,11 @@ export async function deliveryValue(
       return {
         items: await inOrder(list<BlockItem>(converted), (i) => blockItem(i, ctx, expand, include)),
       }
+    // One item, as a list's are, or null (story 345).
+    case 'Umbraco.SingleBlock':
+      return converted && typeof converted === 'object' && 'content' in converted
+        ? await blockItem(converted as BlockItem, ctx, expand, include)
+        : null
     case 'Umbraco.BlockGrid': {
       const columns = Number(config.gridColumns) || 12
       return {

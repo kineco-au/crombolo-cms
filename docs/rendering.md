@@ -1008,6 +1008,7 @@ cache supplies (`@crombolo/render` `values.ts` and `media.ts`):
 | Multinode Treepicker    | a promise of the published pages and media items, in order                                                  |
 | Element Picker          | `PublishedElement[]`, always a list, dropping any not published in the page's culture; each has its `name`, in that culture |
 | Multi URL Picker        | a promise of `Link[]`, with page and media URLs resolved                                                    |
+| Single Block | one item, as a list's are, or `null` when there is none (story 345). `<Blocks>` takes it as it takes a list |
 | Block List / Block Grid | items with `content` and `settings` as `PublishedElement`s (same `value()`, `name` is `null`, as a block has none, and `contentType.alias` names the element type); grid items add spans, `areaGridColumns` and areas (with their alias and spans), and the list carries `gridColumns`. `<Blocks>` renders them (see "Blocks") |
 | Media Picker            | a promise of `MediaWithCrops`, one or a list as the data type says; `await model.media(alias)` always lists |
 | Image Cropper           | `ImageCropperValue` (`src`, `crops`, `focalPoint`, `cropUrl()`)                                             |
@@ -2157,7 +2158,14 @@ and only a path in that list can be served.
 A block renders with its own component, found by its element type (story 184):
 `<Blocks items={model.value('sections')} />` renders each block with
 `components/blocks/<element alias>.tsx`'s default export, given `{ content,
-settings, block }`. A new kind of block is one new file, not an edit to every
+settings, block }`. A Single Block's value, one block or `null`, is taken as
+well as a list: `<Blocks items={model.value('hero')} />` (story 345).
+
+Every block editor's value is read through one reader, `readBlocks` in
+`@crombolo/core`, with `BLOCK_EDITORS` the one list of the editors that hold
+blocks: Block List, Block Grid, Single Block and rich text. Rendering, menus, the
+Delivery API, content files, the command line and the alias check all read
+blocks through it, so a new block editor is one change there. A new kind of block is one new file, not an edit to every
 template that lists blocks. It is Umbraco's partial-per-element-type convention
 (`blocklist/Components/<alias>`), for TSX.
 

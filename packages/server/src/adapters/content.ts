@@ -43,7 +43,7 @@ import { aliasFromName } from '@crombolo/schema'
 import { readContentTypeUdt, writeContentTypeUdt } from '../content-type-udt.ts'
 import { classifyTypeChange } from '../schema-classify.ts'
 import { contentTypeJsonSchema, schemaForStorage, valueTypeName } from '../value-schemas.ts'
-import { createSchemaFileWriter, type SchemaFiles } from './schema-files.ts'
+import { createSchemaFileWriter, type SchemaFiles, schemaProblems } from './schema-files.ts'
 
 async function toTreeItems(
   nodes: NodeRepository,
@@ -150,6 +150,43 @@ export function underSchemaLock<P extends object>(
   return locked
 }
 
+class InvalidSchemaSave extends Error {
+  constructor(readonly problems: readonly string[]) {
+    super(problems.join('; '))
+  }
+}
+
+/**
+ * A save of a type or data type, in a transaction kept only when it leaves the
+ * definitions the schema files are written from no worse than it found them.
+ * Otherwise nothing is kept, and the save is refused saying why, so a file is
+ * never left behind its row. Problems that were there before are not its own.
+ */
+export async function savedIfValid<T>(
+  db: Db,
+  files: SchemaFiles | undefined,
+  work: (tx: Db) => Promise<T>,
+): Promise<{ ok: true; value: T } | PortFailure> {
+  if (!files) return { ok: true, value: await work(db) }
+  const before = new Set(await schemaProblems(db, files))
+  try {
+    const value = await db.transaction(async (tx) => {
+      const value = await work(tx)
+      const added = (await schemaProblems(tx, files)).filter((p) => !before.has(p))
+      if (added.length > 0) throw new InvalidSchemaSave(added)
+      return value
+    })
+    return { ok: true, value }
+  } catch (error) {
+    if (!(error instanceof InvalidSchemaSave)) throw error
+    return {
+      ok: false,
+      status: 400,
+      reason: `This wasn't saved, because the site's definitions would no longer be valid: ${error.problems.join('; ')}`,
+    }
+  }
+}
+
 export function createFolderPort(
   folders: FolderRepository,
   tree: ReturnType<typeof createSettingsTree>,
@@ -221,6 +258,9 @@ export function createContentTypePort(
 ): ContentTypePort {
   const kind = options.kind ?? 'document'
   const repo = new ContentTypeRepository(db, { nodeState: options.nodeState, kind })
+  /** The same repository over a transaction's handle, for a checked save. */
+  const repoOn = (handle: Db) =>
+    new ContentTypeRepository(handle, { nodeState: options.nodeState, kind })
   const nodes = repo.nodes
   const objectType = repo.objectType
   const containerType = CONTENT_TYPE_OBJECT_TYPES[kind].container
@@ -253,10 +293,11 @@ export function createContentTypePort(
         }
         const refused = files?.refuse(aggregate)
         if (refused) return refused
-        // A new type can only be additive, and the version moves before the write so
-        // the file that lands carries the version it belongs to.
+        const saved = await savedIfValid(db, schemaFiles, (tx) => repoOn(tx).save(aggregate))
+        if (!saved.ok) return saved
+        // A new type can only be additive, and the version moves before the file is
+        // written so the file that lands carries the version it belongs to.
         await files?.bumpVersion('additive')
-        await repo.save(aggregate)
         await files?.write(aggregate)
         void principal
         return { ok: true as const }
@@ -271,10 +312,17 @@ export function createContentTypePort(
         const before = await repo.byKey(key)
         // Classified here, while the database still holds the old type: once it is
         // saved there is nothing left to compare it with.
-        if (files)
-          await files.bumpVersion(await classifyTypeChange(db, before, { ...aggregate, key }))
+        const change = files ? await classifyTypeChange(db, before, { ...aggregate, key }) : 'none'
         // The editor does not send tree placement; keep what the type has.
-        await repo.save({ ...aggregate, key, parentKey: before?.parentKey ?? aggregate.parentKey })
+        const saved = await savedIfValid(db, schemaFiles, (tx) =>
+          repoOn(tx).save({
+            ...aggregate,
+            key,
+            parentKey: before?.parentKey ?? aggregate.parentKey,
+          }),
+        )
+        if (!saved.ok) return saved
+        await files?.bumpVersion(change)
         await files?.write({ ...aggregate, key }, before?.alias)
         void principal
         return { ok: true as const }
@@ -360,7 +408,8 @@ export function createContentTypePort(
               ? saved.key
               : aggregate.defaultComponentKey,
         }
-        await repo.save(updated)
+        const kept = await savedIfValid(db, schemaFiles, (tx) => repoOn(tx).save(updated))
+        if (!kept.ok) return kept
         await files?.write(updated)
         void principal
         return { ok: true as const, key: saved.key }
@@ -505,7 +554,8 @@ export function createContentTypePort(
 
         if (!existing && (await repo.aliasExists(aggregate.alias)))
           return { status: 'invalid', reason: `The alias '${aggregate.alias}' is already in use.` }
-        await repo.save(aggregate)
+        const saved = await savedIfValid(db, schemaFiles, (tx) => repoOn(tx).save(aggregate))
+        if (!saved.ok) return { status: 'invalid', reason: saved.reason }
         await files?.write(aggregate)
         return { status: 'ok', key: aggregate.key }
       },
@@ -608,8 +658,13 @@ export function createDataTypePort(db: Db, schemaFiles?: SchemaFiles): DataTypeP
         }
       },
       async save(model: DataTypeModel) {
-        const saved = await repo.save(await withAlias(model))
-        await files?.writeDataType(saved)
+        const aliased = await withAlias(model)
+        const saved = await savedIfValid(db, schemaFiles, (tx) =>
+          new DataTypeRepository(tx).save(aliased),
+        )
+        if (!saved.ok) return saved
+        await files?.writeDataType(saved.value)
+        return undefined
       },
       async remove(key) {
         const before = await repo.byKey(key)

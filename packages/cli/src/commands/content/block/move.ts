@@ -7,6 +7,7 @@ import {
   blockListOf,
   blockSpec,
   indexOfBlock,
+  isSingle,
   placeFlags,
   placeIn,
   saveBlockList,
@@ -16,6 +17,7 @@ import {
 /** A block put elsewhere in its list (story 253). */
 export default class ContentBlockMove extends BaseCommand {
   static override summary = 'move a block within its list'
+  static override description = 'A single block holds one block, so it has nowhere to move.'
   static override examples = [
     '<%= config.bin %> content block move /Home blocks rye --before sourdough',
     '<%= config.bin %> content block move /Home blocks rye --last',
@@ -33,6 +35,11 @@ export default class ContentBlockMove extends BaseCommand {
       throw new CliError('usage', 'Say where: --before, --after, --first or --last.')
     return withPages(async (site) => {
       const list = await blockListOf(site, args.page, args.property, flags.culture ?? null)
+      if (isSingle(list))
+        throw new CliError(
+          'refused',
+          `Nothing was changed: "${args.property}" holds one block, so there is nowhere to move it.`,
+        )
       const from = indexOfBlock(list, args.block)
       const to = placeIn(list, flags, from)
       const [item] = list.layout.splice(from, 1)

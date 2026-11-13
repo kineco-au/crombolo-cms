@@ -122,6 +122,13 @@ export const DATA_TYPE_PRESETS: Readonly<Record<string, Preset>> = {
     takes: ['block', 'min', 'max'],
     build: (o) => ({ config: defined({ validationLimit: limit(o) }), blocks: blocks(o) }),
   },
+  // One block: a page's one hero or call to action (story 345).
+  'single-block': {
+    editor: 'Umbraco.SingleBlock',
+    editorUi: 'Umb.PropertyEditorUi.BlockSingle',
+    takes: ['block'],
+    build: (o) => ({ config: {}, blocks: blocks(o) }),
+  },
   'block-grid': {
     editor: 'Umbraco.BlockGrid',
     editorUi: 'Umb.PropertyEditorUi.BlockGrid',

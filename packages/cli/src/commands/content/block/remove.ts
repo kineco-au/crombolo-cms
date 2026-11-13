@@ -7,6 +7,7 @@ import {
   blockSpec,
   indexOfBlock,
   saveBlockList,
+  takeOut,
   withPages,
 } from '../../../support/blocks.ts'
 
@@ -25,9 +26,7 @@ export default class ContentBlockRemove extends BaseCommand {
     const { args, flags } = await this.parse(ContentBlockRemove)
     return withPages(async (site) => {
       const list = await blockListOf(site, args.page, args.property, flags.culture ?? null)
-      const [item] = list.layout.splice(indexOfBlock(list, args.block), 1)
-      list.value.contentData = list.value.contentData.filter((d) => d.key !== item?.contentKey)
-      list.value.settingsData = list.value.settingsData.filter((d) => d.key !== item?.settingsKey)
+      takeOut(list, indexOfBlock(list, args.block))
       return saveBlockList(this, site, list, flags, `block "${args.block}" taken off`)
     })
   }

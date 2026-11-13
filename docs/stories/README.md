@@ -115,11 +115,12 @@ not cover.
 | `269` | The pages list view searches, sorts and names who edited | should | M | done | 024 |
 | `270` | Pickers that ignore a user's start nodes | should | M | done | 022, 026 |
 | `271` | The copy dialog does not offer to relate a copy | could | S | done | 046 |
-| `272` | Shared Library elements inside block editors, and the Single Block | should | XL | ready | 027 |
+| `272` | Shared Library elements inside block editors | should | L | backlog | 027, 277, 345 |
 | `274` | Who else is editing a page | could | L | ready | 172 |
 | `275` | Crombolo's own back-office screens are accessible | should | M | ready | 235 |
 | `276` | The pages list view sorts by its property columns | could | M | done | 269 |
-| `277` | The back office on Umbraco 19 | should | L | backlog | 235, 272 |
+| `277` | The back office on Umbraco 19 | should | L | backlog | 235 |
+| `345` | The Single Block | should | L | done | — |
 | `288` | The overview is the home of the back office | should | M | done | — |
 | `289` | A second-level menu under Content | should | L | done | 288 |
 | `291` | A session ending asks you to sign in, on every screen | should | S | done | — |
@@ -433,6 +434,7 @@ files kept as the committed record nobody has to open.
 | `257` | The guides written command line first | should | M | done | — |
 | `261` | Crombolo on Windows | could | L | on hold | — |
 | `341` | A new site opens on a welcome page | should | S | done | 163, 180 |
+| `344` | A save the schema files can't take is refused | must | S | done | 021 |
 
 ### Epic R — Architecture and reliability
 

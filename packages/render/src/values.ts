@@ -5,10 +5,14 @@
  * the same `value()` API as a page.
  */
 import {
+  type Block,
+  type BlockData,
   keyFromReference,
+  readBlocks,
   resolveDictionaryWords,
   resolveDictionaryWordsInMarkup,
   type SchemaForm,
+  SINGLE_BLOCK_EDITOR_ALIAS,
 } from '@crombolo/core'
 import { RawHtml } from './html.ts'
 import { ImageCropperValue, MediaWithCrops, PublishedMedia } from './media.ts'
@@ -211,33 +215,6 @@ export interface TypedElement<Properties> extends PublishedElement {
   value<Alias extends keyof Properties & string>(alias: Alias): Properties[Alias]
 }
 
-interface BlockData {
-  key: string
-  contentTypeKey: string
-  values?: Array<{
-    alias: string
-    value: unknown
-    editorAlias?: string
-    culture?: string | null
-    segment?: string | null
-  }>
-}
-
-interface BlockLayout {
-  contentKey?: string
-  alias?: unknown
-  settingsKey?: string | null
-  columnSpan?: number
-  rowSpan?: number
-  areas?: Array<{ key: string; items?: BlockLayout[] }>
-}
-
-interface BlockValue {
-  layout?: Record<string, BlockLayout[] | undefined>
-  contentData?: BlockData[]
-  settingsData?: BlockData[]
-}
-
 function elementFrom(data: BlockData | undefined, context?: ValueContext): PublishedElement | null {
   if (!data) return null
   return new PublishedElement(
@@ -263,30 +240,28 @@ interface GridBlockConfig {
   areas?: Array<{ key?: string; alias?: unknown; columnSpan?: unknown; rowSpan?: unknown }>
 }
 
+/** A block value's items under one editor's layout, read by `readBlocks` (story 345). */
 function blockItems<T extends BlockItem>(
   value: unknown,
   layoutAlias: string,
   context: ValueContext | undefined,
-  extend: (layout: BlockLayout, item: BlockItem, build: (layouts: BlockLayout[]) => T[]) => T,
+  extend: (block: Block, item: BlockItem, build: (blocks: Block[]) => T[]) => T,
 ): T[] {
-  if (!value || typeof value !== 'object') return []
-  const block = value as BlockValue
-  const contents = new Map((block.contentData ?? []).map((d) => [d.key, d]))
-  const settings = new Map((block.settingsData ?? []).map((d) => [d.key, d]))
-  const build = (layouts: BlockLayout[]): T[] =>
-    layouts.flatMap((layout) => {
-      const content = elementFrom(contents.get(layout.contentKey ?? ''), context)
+  const build = (blocks: Block[]): T[] =>
+    blocks.flatMap((block) => {
+      const content = elementFrom(block.content, context)
       if (!content) return []
+      const { layout } = block
       const item: BlockItem = {
         contentKey: content.key,
         alias: typeof layout.alias === 'string' && layout.alias ? layout.alias : null,
         content,
         settingsKey: layout.settingsKey ?? null,
-        settings: elementFrom(settings.get(layout.settingsKey ?? ''), context),
+        settings: elementFrom(block.settings, context),
       }
-      return [extend(layout, item, build)]
+      return [extend(block, item, build)]
     })
-  return build(block.layout?.[layoutAlias] ?? [])
+  return build(readBlocks(value, layoutAlias))
 }
 
 /**
@@ -495,6 +470,12 @@ export function convertValue(
       return withAliases(
         blockItems<BlockItem>(value, 'Umbraco.BlockList', context, (_, item) => item),
       )
+    // One block, or null: a page's one hero, not a list of one (story 345).
+    case SINGLE_BLOCK_EDITOR_ALIAS:
+      return (
+        blockItems<BlockItem>(value, SINGLE_BLOCK_EDITOR_ALIAS, context, (_, item) => item)[0] ??
+        null
+      )
     case 'Umbraco.BlockGrid': {
       // What the data type says of each block type's areas: their aliases and spans.
       const blockTypes = Array.isArray(config.blocks) ? (config.blocks as GridBlockConfig[]) : []
@@ -507,14 +488,14 @@ export function convertValue(
         value,
         'Umbraco.BlockGrid',
         context,
-        (layout, item, build) => {
+        (block, item, build) => {
           const type = typeOf(item.content.contentType.key)
           return {
             ...item,
-            columnSpan: layout.columnSpan ?? null,
-            rowSpan: layout.rowSpan ?? null,
+            columnSpan: block.layout.columnSpan ?? null,
+            rowSpan: block.layout.rowSpan ?? null,
             areaGridColumns: number(type?.areaGridColumns),
-            areas: (layout.areas ?? []).map((area) => {
+            areas: block.areas.map((area) => {
               const declared = type?.areas?.find(
                 (a) => String(a.key ?? '').toLowerCase() === area.key.toLowerCase(),
               )
@@ -523,7 +504,7 @@ export function convertValue(
                 alias: typeof declared?.alias === 'string' ? declared.alias : null,
                 columnSpan: number(declared?.columnSpan),
                 rowSpan: number(declared?.rowSpan),
-                items: build(area.items ?? []),
+                items: build(area.blocks),
               }
             }),
           }

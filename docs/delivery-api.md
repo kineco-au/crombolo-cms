@@ -180,7 +180,9 @@ Umbraco's shapes, camelCase, nulls written, dates ISO in UTC. A page:
 - Pickers are references — `properties` stays `{}` unless expanded. Media
   picker, multinode tree picker and multi URL picker are always arrays. Blocks
   and elements always carry their properties. A block given an alias on its
-  page has `"alias"` beside `content` and `settings`, Crombolo's own (story 253). Rich text is a tree of elements
+  page has `"alias"` beside `content` and `settings`, Crombolo's own (story 253). A
+  Single Block is its one item, `{ content, settings }` as a list's are, or `null`
+  (story 345). Rich text is a tree of elements
   ("Rich text", below). A member picker is `"(unsupported)"`, as in Umbraco.
   An empty property is `null`.
 - Media answers `path` (names, lowercased, root down, with a trailing slash, as
@@ -347,7 +349,8 @@ type the API does not serve (`allowedContentTypeAliases` /
 `disallowedContentTypeAliases`) is left out. Every property is `| null`, because
 an empty value is written as `null`. Each editor is typed as "Output" above
 describes it: a content picker as a page reference, the media picker as an array
-with crops, blocks with the element types the data type allows, a multinode tree
+with crops, blocks with the element types the data type allows (a Single Block as
+one `ApiBlockListItem`), a multinode tree
 picker narrowed by its start node and `filter`, a member picker as
 `'(unsupported)'`. The form picker is `unknown` until forms reach the API
 (story `056`).
@@ -643,8 +646,8 @@ state. Next.js already reloads the app's own code.
 - `<RichText>` renders the tree: each tag as itself or through a component in
   `components`, a link to a page as a Next link to its route, and each block
   through the component for its element type in `blocks`.
-- `<BlockList>` and `<BlockGrid>` take a component per element type. An
-  unknown block renders nothing, or a notice in Draft Mode.
+- `<BlockList>`, `<BlockGrid>` and `<SingleBlock>` take a component per element
+  type. An unknown block renders nothing, or a notice in Draft Mode.
 - The image loader writes the CMS's imaging query, and `cromboloImage(media,
   { crop })` carries a crop or focal point.
 

@@ -119,6 +119,11 @@ function tsTypeFor(set: SchemaSet, dataTypeAlias: string): string {
       const { content } = blockElements(set, config, blocks)
       return `BlockListValue<BlockGridItem & { content: ${elementUnion(content)} }>`
     }
+    // One block, or null (story 345).
+    case 'Umbraco.SingleBlock': {
+      const { content, settings } = blockElements(set, config, blocks)
+      return `(BlockItem & { content: ${elementUnion(content)}; settings: ${settings.length ? `${elementUnion(settings)} | null` : 'PublishedElement | null'} }) | null`
+    }
   }
   switch (storageTypeFor(editor)) {
     case 'Integer':

@@ -72,6 +72,23 @@ export interface SchemaFileWriter {
  * `schema/content-types/`, media types `schema/media-types/`. Data types,
  * languages and the rewrite are the same whichever kind asks.
  */
+/**
+ * What is wrong with the definitions as the files would be written from the
+ * database `db` sees. A save compares it before and after, inside its
+ * transaction, and refuses what it adds, so a file is never left behind its row.
+ */
+export async function schemaProblems(db: Db, files: SchemaFiles): Promise<string[]> {
+  if (!existsSync(files.schemaDir) || !files.writable) return []
+  const set = await exportSchemaSet(
+    db,
+    loadSchemaDirectory(files.schemaDir, { formTypes: files.formTypes }).set.version,
+  )
+  return validateSchemaSet(set, {
+    componentAliases: files.componentAliases(),
+    types: files.formTypes,
+  }).map((p) => `${p.file}${p.path ? ` (${p.path})` : ''}: ${p.message}`)
+}
+
 export function createSchemaFileWriter(
   db: Db,
   files: SchemaFiles,
@@ -134,18 +151,8 @@ export function createSchemaFileWriter(
             : (set.memberTypes ?? [])
       const type = list.find((t) => t.key === aggregate.key)
       if (!type) return
-      const problems = validateSchemaSet(set, {
-        componentAliases: files.componentAliases(),
-        types: files.formTypes,
-      })
-      if (problems.length > 0) {
-        const detail = problems.map((p) => `${p.file}: ${p.message}`).join('; ')
-        logger('schema').error('Not writing {file}: {detail}', {
-          file: fileNameFor(aggregate.alias),
-          detail,
-        })
-        return
-      }
+      // Checked before the save, which `schemaProblems` refuses, so the file always
+      // follows the database.
       mkdirSync(dir, { recursive: true })
       if (previousAlias && previousAlias !== aggregate.alias)
         rmSync(fileFor(previousAlias), { force: true })
@@ -170,21 +177,6 @@ export function createSchemaFileWriter(
       if (!dataType) {
         rmSync(join(files.schemaDir, 'data-types', fileNameFor(model.alias)), { force: true })
         await settle()
-        return
-      }
-      // The same guard `write` applies to a content type: a set that does not
-      // validate never reaches the disk, because the file is what every other
-      // node reads and what a deploy boots from.
-      const problems = validateSchemaSet(set, {
-        componentAliases: files.componentAliases(),
-        types: files.formTypes,
-      })
-      if (problems.length > 0) {
-        const detail = problems.map((p) => `${p.file}: ${p.message}`).join('; ')
-        logger('schema').error('Not writing {file}: {detail}', {
-          file: fileNameFor(model.alias),
-          detail,
-        })
         return
       }
       mkdirSync(join(files.schemaDir, 'data-types'), { recursive: true })

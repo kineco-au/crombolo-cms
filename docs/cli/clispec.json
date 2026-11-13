@@ -6141,6 +6141,7 @@
             "media-picker",
             "element-picker",
             "block-list",
+            "single-block",
             "block-grid"
           ],
           "description": "data types: the editor it uses"
@@ -7846,6 +7847,7 @@
             "media-picker",
             "element-picker",
             "block-list",
+            "single-block",
             "block-grid"
           ],
           "description": "data types: the editor it uses"

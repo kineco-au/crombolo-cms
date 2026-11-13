@@ -4,6 +4,7 @@
  * the changed type, or the reason it cannot change. Whether the change is safe
  * for the site's content is the check's to say, not these.
  */
+import { BLOCK_EDITORS } from '@crombolo/core'
 import {
   allProperties,
   type SchemaContentType,
@@ -288,8 +289,6 @@ export interface DataTypeChanges {
   /** A picker's start node: the page's key, or null for none. */
   startNode?: string | null
 }
-
-const BLOCK_EDITORS = new Set(['Umbraco.BlockList', 'Umbraco.BlockGrid', 'Umbraco.RichText'])
 
 /** The preset whose editor a data type uses, when there is one. */
 const presetFor = (dataType: SchemaDataType) =>

@@ -747,10 +747,28 @@ Export never deletes a file.
 
 ## The backoffice writes files
 
-The document-type editor keeps its UI unchanged; its save handler writes the
-`.toml` file instead of the database row, and the sync picks it up. That is what
-keeps the editorial workflow: non-developers use the interface they know, and the
-output is a diffable text file that developers review like any other change.
+The document-type editor keeps its UI unchanged, and a save writes both the
+database and the file. That is what keeps the editorial workflow: non-developers
+use the interface they know, and the output is a diffable text file that
+developers review like any other change. A save, in order
+(`server/src/adapters/content.ts`, `adapters/schema-files.ts`):
+
+1. **Refused where the files are read-only**, before anything changes: production
+   without a schema store, unless `CROMBOLO_SCHEMA_WRITABLE=true`.
+2. **Saved in a transaction, then checked** (story 344): the definitions are exported
+   from the database as the transaction sees them and validated as a boot would
+   validate the files. A save that adds a problem — a block list left offering a type
+   that is no longer an element, say — is rolled back and refused with the problems,
+   so the database and the files never part. Problems that were there before are not
+   the save's own and do not stop it.
+3. **The version is raised** in `schema.toml` by what the change costs the content,
+   classified while the database still held the old type.
+4. **The file is written** from the database, canonically; an alias change removes
+   the old file.
+5. **The files' hash is recorded**, so the next sync finds nothing to do, and the
+   files are published to the schema store where there is one.
+
+A site with no `schema/` directory keeps its definitions in the database alone.
 
 - Files are always written in the canonical layout by our own serialiser (about
   a hundred lines for a fixed vocabulary; it also avoids the quote and blank-line
@@ -758,8 +776,9 @@ output is a diffable text file that developers review like any other change.
 - Writing is enabled in development. In production the schema directory is read
   only and the editor shows "defined in `schema/content-types/home-page.toml` —
   change it in source control", unless `CROMBOLO_SCHEMA_WRITABLE=true`.
-- A save validates the whole schema set before writing, so a change that would
-  break another file is refused in the UI with the same messages boot would give.
+- A save validates the whole schema set before it is kept, so a change that would
+  break another file is refused in the UI with the same messages boot would give
+  (step 2 above). Data types are checked the same way.
 - As built: content types, data types and languages are all written by
   their editors (story `021`). A data type saved in the backoffice gets an alias
   derived from its name, once; a built-in gets a file only when it is changed

@@ -7,6 +7,7 @@
  * properties".
  */
 import {
+  BLOCK_EDITORS,
   dateFromText,
   ObjectTypes,
   STORAGE_COLUMN,
@@ -254,9 +255,7 @@ export class ContentQueryRefused extends Error {}
 
 /** Editors whose value is JSON or markup: only `exists` and `empty` apply; `text` searches them. */
 const STRUCTURED_EDITORS = new Set([
-  'Umbraco.BlockList',
-  'Umbraco.BlockGrid',
-  'Umbraco.RichText',
+  ...BLOCK_EDITORS,
   'Umbraco.MediaPicker3',
   'Umbraco.MultiUrlPicker',
   'Umbraco.MultiNodeTreePicker',

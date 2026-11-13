@@ -5,6 +5,7 @@
  * where it expects one), and export writes keys back as aliases. A value shaped
  * like a uuid is a key already and passes through either way.
  */
+import { BLOCK_EDITORS } from '@crombolo/core'
 import type { SchemaTypeKind } from './model.ts'
 
 /** What a reference must name: an element type, or a type of one kind. */
@@ -28,8 +29,8 @@ export const CONFIG_REFERENCES: Readonly<Record<string, readonly FieldReference[
   'Umbraco.ElementPicker': [{ path: ['allowedContentTypes'], many: true, kind: 'element' }],
   'Umbraco.MediaPicker3': [{ path: ['filter'], many: true, kind: 'media' }],
   'Umbraco.MultiNodeTreePicker': [{ path: ['filter'], many: true, kind: 'startNode' }],
-  'Umbraco.BlockList': BLOCK_FIELDS,
-  'Umbraco.RichText': BLOCK_FIELDS,
+  // Every block editor's blocks are element types; a grid's areas name more.
+  ...Object.fromEntries([...BLOCK_EDITORS].map((editor) => [editor, BLOCK_FIELDS])),
   'Umbraco.BlockGrid': [
     ...BLOCK_FIELDS,
     {

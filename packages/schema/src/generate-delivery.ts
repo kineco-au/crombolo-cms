@@ -94,6 +94,11 @@ export function generateDeliveryTypes(set: SchemaSet, options: DeliveryTypesOpti
         const { content, settings } = blockElements(set, config, blocks)
         return `ApiBlockGrid<${elementUnion(content)}, ${elementUnion(settings)}>`
       }
+      // One item; null when empty, as any property here may be (story 345).
+      case 'Umbraco.SingleBlock': {
+        const { content, settings } = blockElements(set, config, blocks)
+        return `ApiBlockListItem<${elementUnion(content)}, ${elementUnion(settings)}>`
+      }
       case 'Umbraco.ElementPicker': {
         return `Array<${elementUnion([...new Set(keyAliases(set, config.allowedContentTypes))])}>`
       }
@@ -212,6 +217,7 @@ export function generateDeliveryTypes(set: SchemaSet, options: DeliveryTypesOpti
   const shapes = [
     'ApiBlockGrid',
     'ApiBlockList',
+    'ApiBlockListItem',
     'ApiColor',
     'ApiContentReference',
     'ApiElement',

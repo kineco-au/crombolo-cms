@@ -9,10 +9,12 @@ import {
   blockSpec,
   checkedAlias,
   elementValuesOf,
+  isSingle,
   placeFlags,
   placeIn,
   saveBlockList,
   setsOf,
+  takeOut,
   withPages,
 } from '../../../support/blocks.ts'
 
@@ -21,6 +23,7 @@ export default class ContentBlockAdd extends BaseCommand {
   static override summary = "add a block to a page's block list"
   static override description = [
     'The block goes last unless --before, --after or --first says where. Give it an --alias to name it by later; otherwise it is named by the key this prints.',
+    'A single block holds one: the new block replaces the one there.',
     'Saved as a draft; --publish publishes the page too.',
   ].join('\n\n')
   static override examples = [
@@ -94,6 +97,8 @@ export default class ContentBlockAdd extends BaseCommand {
       }
       if (list.editor === 'Umbraco.BlockGrid')
         Object.assign(item, { columnSpan: 12, rowSpan: 1, areas: [] })
+      // A Single Block holds one: the new block replaces the one there (story 345).
+      if (isSingle(list)) while (list.layout.length > 0) takeOut(list, 0)
       list.value.contentData.push(contentData)
       list.layout.splice(placeIn(list, flags), 0, item)
       const result = await saveBlockList(
