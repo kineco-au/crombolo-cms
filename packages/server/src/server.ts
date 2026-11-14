@@ -431,6 +431,12 @@ export async function createServer(
       ]),
     streamMemberFile: (src, search) => streamMemberFile(src, search),
     siteName: async () => (await seo.siteDefaults()).siteName,
+    onExtensionsChanged: () => {
+      // An instruction heard while this server is still being built has no hub to tell yet.
+      try {
+        events.broadcast('notify', [BUNDLES_CHANGED_EVENT])
+      } catch {}
+    },
   })
   const {
     diagnostics,
@@ -869,7 +875,7 @@ export async function createServer(
     bundleGrants,
     failed: () => [...core.failedExtensions, ...backOfficeBuilds.failed()],
     stopExtension: (id) => core.stopExtension(id),
-    running: () => bundles?.mounted.map((bundle) => bundle.id) ?? [],
+    changed: (id) => core.extensionChanged(id),
   })
   const actorOf = (principal: Principal, request: Request): BundleActor => ({
     id: principal.id,
@@ -1286,6 +1292,13 @@ export async function createServer(
     logError: (message, properties) => renderLog.error(message, properties),
     showDetails: config.errors.showDetails,
     cors: formCors,
+  })
+  // Story 346: an extension started while the site runs adds its routes here, checked as these were.
+  core.setRouteTable({
+    problems: (entries) =>
+      siteRouteProblems([...siteRoutes.routes, ...entries], config.backOfficePath),
+    add: (entries) => siteRoutes.add(entries),
+    remove: (owner) => siteRoutes.remove(owner),
   })
 
   // Story 219: the site's server actions, a module at a time.
@@ -2392,7 +2405,7 @@ export async function createServer(
             { status: 403 },
           )
         const signers = createTrustedSignersAdmin(db, config, {
-          checks: { extensions, grants: bundleGrants },
+          checks: { extensions, grants: bundleGrants, changed: core.extensionChanged },
         })
         const actor = { ...actorOf(principal, request), source: 'request' as const }
         if (action === 'signers' && request.method === 'GET')

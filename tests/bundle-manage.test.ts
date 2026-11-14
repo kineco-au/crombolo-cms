@@ -362,12 +362,13 @@ describe(`installed bundles on a remote (${dialectUnderTest})`, () => {
       body: JSON.stringify({ grant: ['content.read'] }),
     })
     expect(granted.status, await granted.clone().text()).toBe(200)
-    // Not granted when this server started, so it is not running: it runs after a restart.
-    expect(await granted.json()).toMatchObject({
+    // Granting starts it at once (story 346), or says why it cannot: this one is a dependency of the site.
+    const grantedBody = (await granted.json()) as Record<string, unknown>
+    expect(grantedBody).toMatchObject({
       ok: true,
-      restartPending: true,
-      message: expect.stringContaining('crombolo restart'),
+      couldNotStart: expect.stringContaining('installed as a dependency'),
     })
+    expect(grantedBody.restartPending).toBeUndefined()
     expect((await api(writer, 'installed/acme-crm/disable', { method: 'POST' })).status).toBe(403)
     const off = await api(h, 'installed/acme-crm/disable', { method: 'POST' })
     expect(off.status).toBe(200)
@@ -376,15 +377,13 @@ describe(`installed bundles on a remote (${dialectUnderTest})`, () => {
       items: Array<{ on: boolean }>
     }
     expect(listed.items[0]?.on).toBe(false)
-    expect(
-      await (await api(h, 'installed/acme-crm/enable', { method: 'POST' })).json(),
-    ).toMatchObject({ ok: true, on: true, restartPending: true })
-    expect(restartPending(h.server.config.siteDir)?.reasons).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('granted'),
-        expect.stringContaining('turned on'),
-      ]),
-    )
+    const enabled = (await (
+      await api(h, 'installed/acme-crm/enable', { method: 'POST' })
+    ).json()) as Record<string, unknown>
+    expect(enabled).toMatchObject({ ok: true, on: true })
+    expect(enabled.restartPending).toBeUndefined()
+    // Neither waits for a restart.
+    expect(restartPending(h.server.config.siteDir)).toBeUndefined()
     expect((await api(h, 'installed/nothing/enable', { method: 'POST' })).status).toBe(404)
   })
 })

@@ -2,7 +2,8 @@
  * A host installs a site's bundles itself and tells each node (story 181):
  * `reloadBundles()` reads the site's `package.json` and `node_modules` again,
  * so the back office serves what is there now. It never mounts a server half:
- * configured `bundles` are wired at boot only, and stay as they were.
+ * configured `bundles` are wired at boot only, and an installed extension starts
+ * when it is granted (story 346).
  */
 import type { BundlePackage, ExtensionRegistry } from '@crombolo/backoffice-host'
 

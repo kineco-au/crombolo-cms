@@ -199,6 +199,7 @@ requests, only server-side and build-time front ends can call it.
 | `258` | A page says whether it changed without being rendered | should | M | done | 057, 174 |
 | `259` | Lifetimes that suit a shared cache | should | S | done | 057, 258 |
 | `260` | Stylesheets and scripts at addresses that change with their content | should | M | done | 057 |
+| `347` | Harbourstone as a single-page app | could | L | ready | 051, 053, 054, 208 |
 
 ### Epic G — Trusting and extending bundles
 
@@ -218,7 +219,7 @@ requests, only server-side and build-time front ends can call it.
 | `194` | Installing server code takes an explicit yes | must | S | done | 063, 181 |
 | `222` | Bundles ask for permissions | should | L | done | 063, 194 |
 | `244` | The provenance check from the host entry | should | S | done | 060 |
-| `346` | A granted extension starts without a restart | should | M | ready | 311 |
+| `346` | A granted extension starts without a restart | should | M | done | 311 |
 
 ### Epic H — Importing a site
 

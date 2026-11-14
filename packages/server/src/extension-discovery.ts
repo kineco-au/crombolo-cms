@@ -1,10 +1,11 @@
 /**
  * Installed extensions run once granted, with nothing imported by the site
- * (story 310), each in a Deno process of its own (story 311). At boot, each
- * dependency with a server half that the config's `extensions` entry grants,
- * or that a recorded grant covers, is built, started with its settings, and
- * mounted from what it describes. One that cannot start is left off, and the
- * site starts without it. docs/bundles.md, "Extensions run once granted".
+ * (story 310), each in a Deno process of its own (story 311). At boot, and as
+ * it is granted while the site runs (story 346), each dependency with a server
+ * half that the config's `extensions` entry grants, or that a recorded grant
+ * covers, is built, started with its settings, and mounted from what it
+ * describes. One that cannot start is left off, and the site runs without it.
+ * docs/bundles.md, "Extensions run once granted".
  */
 import { join } from 'node:path'
 import type { BundlePackage } from '@crombolo/backoffice-host'
@@ -125,6 +126,75 @@ export interface FailedExtension {
   reason: string
 }
 
+/** How starting one extension went: running, refused or broken, or not granted. */
+export type ExtensionStart =
+  | { status: 'started'; bundle: ServerBundle; process: ExtensionProcess }
+  | { status: 'failed'; reason: string }
+  | { status: 'not-granted' }
+
+/**
+ * Starts one installed server half, at boot or while the site runs (story 346):
+ * when the config's entry or its recorded grant covers it, built, started with
+ * its settings, checked that it can run apart, and given its stand-in.
+ */
+export async function startExtension(
+  config: CromboloConfig,
+  pkg: BundlePackage,
+  recorded: { grant?: BundleGrant; settings?: Record<string, unknown> },
+  log: BundleLog,
+  activity?: ActivityRecorder,
+): Promise<ExtensionStart> {
+  // Story 326: an extension runs from a root of its own, never as a dependency of the site.
+  const refused =
+    pkg.linked && Bun.env.NODE_ENV === 'production'
+      ? LINKED_IN_PRODUCTION
+      : pkg.dependency
+        ? INSTALLED_AS_DEPENDENCY
+        : undefined
+  if (refused) {
+    log.error('{package} is not started: {reason}', { package: pkg.packageName, reason: refused })
+    return { status: 'failed', reason: refused }
+  }
+  const entry = config.extensions?.[pkg.id]
+  const { grant } = recorded
+  const byConfig = entryCovers(pkg, entry)
+  const granted =
+    byConfig || Boolean(grant?.recorded && !grant.disabledAt && grantGaps(pkg, grant).length === 0)
+  // Nothing of an extension that is not granted is built, let alone run.
+  if (!granted) return { status: 'not-granted' }
+  const process = new ExtensionProcess({
+    pkg,
+    siteDir: config.siteDir,
+    home: join(config.siteDir, '.crombolo', 'extensions', pkg.id),
+    settings: settingsOf(pkg, recorded.settings, entry, config.secretKey),
+    dialect: config.dialect,
+    origins: [
+      ...((byConfig ? entry?.origins : grant?.origins) ?? []),
+      ...(entry?.dev?.allowNet ?? []),
+    ],
+    reads: entry?.dev?.allowRead,
+    timeoutMs: entry?.timeoutMs,
+    log,
+    activity,
+  })
+  try {
+    const description = await process.start()
+    const problems = isolationProblems(description)
+    if (description.id !== pkg.id)
+      problems.push(`it calls itself "${description.id}", where its package.json says "${pkg.id}"`)
+    if (problems.length > 0) throw new Error(`It cannot run: ${problems.join('; ')}.`)
+    return { status: 'started', bundle: isolatedBundle(process), process }
+  } catch (error) {
+    await process.stop()
+    const reason = error instanceof Error ? error.message : String(error)
+    log.error('{package} could not be started, and the site runs without it: {reason}', {
+      package: pkg.packageName,
+      reason,
+    })
+    return { status: 'failed', reason }
+  }
+}
+
 /**
  * The installed server halves to start, each in its own process with its
  * settings: those the config grants and those a recorded grant covers. Ones the
@@ -147,68 +217,17 @@ export async function startExtensions(
   const failed: FailedExtension[] = []
   for (const pkg of packages) {
     if (!pkg.carries.server || wired.has(pkg.id)) continue
-    // Story 326: an extension runs from a root of its own, never as a dependency of the site.
-    if (pkg.linked && Bun.env.NODE_ENV === 'production') {
-      failed.push({ id: pkg.id, reason: LINKED_IN_PRODUCTION })
-      log(pkg.id).error('{package} is not started: {reason}', {
-        package: pkg.packageName,
-        reason: LINKED_IN_PRODUCTION,
-      })
-      continue
-    }
-    if (pkg.dependency) {
-      failed.push({ id: pkg.id, reason: INSTALLED_AS_DEPENDENCY })
-      log(pkg.id).error('{package} is not started: {reason}', {
-        package: pkg.packageName,
-        reason: INSTALLED_AS_DEPENDENCY,
-      })
-      continue
-    }
-    const entry = config.extensions?.[pkg.id]
-    const grant = recorded.grants.get(pkg.id)
-    const byConfig = entryCovers(pkg, entry)
-    const granted =
-      byConfig ||
-      Boolean(grant?.recorded && !grant.disabledAt && grantGaps(pkg, grant).length === 0)
-    // Nothing of an extension that is not granted is built, let alone run.
-    if (!granted) continue
-    const process = new ExtensionProcess({
+    const started = await startExtension(
+      config,
       pkg,
-      siteDir: config.siteDir,
-      home: join(config.siteDir, '.crombolo', 'extensions', pkg.id),
-      settings: settingsOf(pkg, recorded.settings.get(pkg.id), entry, config.secretKey),
-      dialect: config.dialect,
-      origins: [
-        ...((byConfig ? entry?.origins : grant?.origins) ?? []),
-        ...(entry?.dev?.allowNet ?? []),
-      ],
-      reads: entry?.dev?.allowRead,
-      timeoutMs: entry?.timeoutMs,
-      log: log(pkg.id),
+      { grant: recorded.grants.get(pkg.id), settings: recorded.settings.get(pkg.id) },
+      log(pkg.id),
       activity,
-    })
-    try {
-      const description = await process.start()
-      const problems = isolationProblems(description)
-      if (description.id !== pkg.id)
-        problems.push(
-          `it calls itself "${description.id}", where its package.json says "${pkg.id}"`,
-        )
-      if (problems.length > 0) throw new Error(`It cannot run: ${problems.join('; ')}.`)
-      bundles.push(isolatedBundle(process))
-      processes.push(process)
-    } catch (error) {
-      await process.stop()
-      const reason = error instanceof Error ? error.message : String(error)
-      failed.push({ id: pkg.id, reason })
-      log(pkg.id).error(
-        '{package} could not be started, and the site starts without it: {reason}',
-        {
-          package: pkg.packageName,
-          reason,
-        },
-      )
-    }
+    )
+    if (started.status === 'started') {
+      bundles.push(started.bundle)
+      processes.push(started.process)
+    } else if (started.status === 'failed') failed.push({ id: pkg.id, reason: started.reason })
   }
   return { bundles, processes, failed }
 }

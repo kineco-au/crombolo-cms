@@ -19,7 +19,8 @@ ask for is [`bundles.md`](bundles.md), "Permissions".
 
 ## Starting one
 
-At boot, for each granted extension (`packages/server/src/extension-discovery.ts`),
+At boot, and as one is granted or turned on while the site runs (story 346), for
+each granted extension (`startExtension`, `packages/server/src/extension-discovery.ts`),
 installed in its own root, `extensions/<id>/` (story 326; one installed as a
 dependency of the site is named and not started):
 
@@ -52,9 +53,10 @@ dependency of the site is named and not started):
    checks (`bundles.ts`, story 309's grant) run on it exactly as on one
    in-process, before anything is sent.
 
-One that cannot start is left off and the site starts without it. Installed
-shows "Could not start" with the reason, and so does the health check
-"Installing code". The reasons:
+One that cannot start is left off and the site starts, or runs on, without it.
+Installed shows "Could not start" with the reason, and so does the health check
+"Installing code"; a grant or a Turn on made while the site runs says it in its
+answer too. The reasons:
 - it fails to build, or to load under Deno: a Bun API such as `Bun.file` or
   `bun:sqlite`;
 - its factory throws;
@@ -63,7 +65,9 @@ shows "Could not start" with the reason, and so does the health check
 - it adds form field types, whose markup renders inside the page (story 312);
 - on Postgres, its tables' role cannot be created by the CMS's database user
   (`OwnerSetupNeededError`, which says what to run). A host avoids it by making
-  the role first with `ownerSetup` (story 321, `data-model.md`).
+  the role first with `ownerSetup` (story 321, `data-model.md`);
+- started while the site runs, a site route another already answers, which the
+  reason names with its owner.
 
 ## The channel
 

@@ -32,6 +32,9 @@ export interface ExtensionComponents {
   layouts(): { id: string; layout: string }[]
   /** Every component the extensions offer, as `<id>/<name>` with the extension's name: for the template picker. */
   listed(): { alias: string; extension: string }[]
+  /** An extension started while the site runs (story 346), in place of one with its id. */
+  add(source: ExtensionComponentSource): void
+  remove(id: string): void
 }
 
 const BLOCKS = 'blocks/'
@@ -70,7 +73,8 @@ export function createExtensionComponents(
   sources: readonly ExtensionComponentSource[],
   options: { timeoutMs?: number } = {},
 ): ExtensionComponents {
-  const byId = new Map(sources.map((source) => [source.process.id, source]))
+  const live = [...sources]
+  const byId = new Map(live.map((source) => [source.process.id, source]))
   const warned = new Set<string>()
   /** Components whose removals were logged this boot, by extension and name. */
   const stripped = new Set<string>()
@@ -138,13 +142,19 @@ export function createExtensionComponents(
       source.process.description?.components?.find((component) => component.name === name)?.layout,
   })
 
+  const remove = (id: string) => {
+    const at = live.findIndex((source) => source.process.id === id)
+    if (at >= 0) live.splice(at, 1)
+    byId.delete(id)
+  }
+
   return {
     module(alias) {
       // A block's component is found by its element type's alias, in whichever
       // extension offers it.
       if (alias.startsWith(BLOCKS)) {
         const name = alias
-        const source = sources.find((candidate) => offers(candidate, name))
+        const source = live.find((candidate) => offers(candidate, name))
         return source ? moduleFor(source, name) : undefined
       }
       const slash = alias.indexOf('/')
@@ -154,13 +164,13 @@ export function createExtensionComponents(
       return source && offers(source, name) ? moduleFor(source, name) : undefined
     },
     layouts() {
-      return sources.flatMap((source) => {
+      return live.flatMap((source) => {
         const layout = source.layout()
         return layout ? [{ id: source.process.id, layout }] : []
       })
     },
     listed() {
-      return sources.flatMap((source) =>
+      return live.flatMap((source) =>
         (source.process.description?.components ?? [])
           .filter((component) => !component.name.startsWith(BLOCKS))
           .map((component) => ({
@@ -169,5 +179,11 @@ export function createExtensionComponents(
           })),
       )
     },
+    add(source) {
+      remove(source.process.id)
+      live.push(source)
+      byId.set(source.process.id, source)
+    },
+    remove,
   }
 }

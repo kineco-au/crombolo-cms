@@ -6,17 +6,22 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+### Features
+
+- **A granted extension starts without a restart (346).** Granting an installed extension,
+  or turning one on, starts it at once, on every node: its pages answer, its jobs and
+  schedules run, it hears about content changes, and its tables are made. One that cannot
+  start says why in the answer, in Installed and in the health check, and the site runs on.
+  Turning one off stops it, its pages saying "Turned off"; removing one in Settings stops it
+  and takes its pages away. A new version, changed settings and an extension the site's code
+  imports still take effect at the next restart.
+
 ### Fixes
 
 - **Taking a signer off Trusted signers switches off what it vouched for at once (335).** An
   extension that acts as you or runs unrestricted on that signer's word kept running until
   the site next restarted. Now it is switched off as the signer is removed, in Settings or
   with `crombolo keys untrust`, and the answer names it.
-- **Granting or turning on an extension says when it needs a restart.** One whose server
-  half is not running yet runs only after the site restarts; that is now recorded and shown,
-  as it is for an install, rather than the screen saying only that it was granted or turned
-  on. Story 346 is to start it at once instead.
-
 - **An extension installed as a dependency is told apart from a developer's link wherever the
   site's folder is.** A link anywhere above the package, such as macOS's `/var` to
   `/private/var` or a site reached through a linked folder, made every installed extension

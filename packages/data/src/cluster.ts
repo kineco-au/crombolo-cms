@@ -12,13 +12,19 @@ import { sql } from './query.ts'
  * node has to look at its views tree again. `schema` and `content` invalidate
  * the published cache; this one makes a node take a new snapshot. `public-files`
  * is a site's `public/` folder changed by something a watcher cannot see, so a
- * node lists it again (story 285).
+ * node lists it again (story 285). `extensions` is an extension granted, turned
+ * on or off, or removed: each node starts or stops it to match (story 346).
  */
-export type CacheInstructionKind = 'schema' | 'content' | 'components' | 'public-files'
+export type CacheInstructionKind =
+  | 'schema'
+  | 'content'
+  | 'components'
+  | 'public-files'
+  | 'extensions'
 
-/** Kinds about a site's files, not published content: they move no checkpoint. */
+/** Kinds about a site's files or code, not published content: they move no checkpoint. */
 const isFileChange = (kind: CacheInstructionKind) =>
-  kind === 'components' || kind === 'public-files'
+  kind === 'components' || kind === 'public-files' || kind === 'extensions'
 
 export interface CacheInstruction {
   id: number

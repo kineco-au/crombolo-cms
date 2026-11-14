@@ -130,10 +130,12 @@ export function createRoutes<Member extends RouteMember>(
   declared: readonly DeclaredRoute[],
   deps: RouteDeps<Member>,
 ) {
-  const compiled = declared.map((entry) => ({
+  const compile = (entry: DeclaredRoute) => ({
     ...entry,
     pattern: new URLPattern({ pathname: entry.route.path }),
-  }))
+  })
+  const routes = [...declared]
+  const compiled = routes.map(compile)
   const defaultLimiter =
     deps.defaultPerMinute > 0
       ? new RateLimiter({ max: deps.defaultPerMinute, windowMs: MINUTE, now: deps.now })
@@ -433,9 +435,26 @@ export function createRoutes<Member extends RouteMember>(
   }
 
   return {
-    routes: declared,
+    routes: routes as readonly DeclaredRoute[],
     match,
     invoke,
+    /**
+     * Adds routes while the server runs (story 346), checked against those
+     * already there; answers why they cannot be, and adds none then.
+     */
+    add(entries: readonly DeclaredRoute[]): string[] {
+      const problems = siteRouteProblems([...routes, ...entries], deps.backOfficePath)
+      if (problems.length > 0) return problems
+      routes.push(...entries)
+      compiled.push(...entries.map(compile))
+      return []
+    },
+    /** Takes out every route one owner declared. */
+    remove(owner: string): void {
+      for (const list of [routes, compiled])
+        for (let at = list.length - 1; at >= 0; at--)
+          if (list[at]?.owner === owner) list.splice(at, 1)
+    },
     /** A site request a route answers, or undefined for content finding to have it. */
     async handle(request: Request, url: URL): Promise<Response | undefined> {
       const found = match(url.pathname)

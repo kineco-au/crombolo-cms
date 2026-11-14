@@ -9,6 +9,7 @@ import {
   BACKOFFICE_CODE,
   BACKOFFICE_CODE_WARNING,
   BUNDLE_PERMISSIONS,
+  type BundlePackage,
   createBackOfficePaths,
   createExtensionRegistry,
   USER_DELEGATE,
@@ -17,6 +18,7 @@ import { mediaJobHandlers } from '@crombolo/content'
 import { ObjectTypes } from '@crombolo/core'
 import {
   appendCacheInstruction,
+  ExtensionSettingRepository,
   type JobWake,
   notifyJobs,
   OwnerSetupNeededError,
@@ -58,13 +60,29 @@ import {
   type ResolvedMediaFolder,
   resolveBundleMediaFolders,
 } from './bundle-media.ts'
-import { createBundleRedirects, createServerBundles, validateServerBundles } from './bundles.ts'
+import {
+  createBundleRedirects,
+  createServerBundles,
+  type ServerBundle,
+  type ServerBundles,
+  validateServerBundles,
+} from './bundles.ts'
 import { type CromboloConfig, VERSION } from './config.ts'
 import { createContentDispatcher } from './content-dispatch.ts'
 import { createContentEventSink } from './content-events.ts'
 import { createContentNotificationRunner, createContentNotifier } from './content-notifications.ts'
-import { databaseFor, openTables, siteTablesProblems, tablesChains } from './custom-tables.ts'
-import { attachDatabase, bootstrapDatabase } from './database.ts'
+import {
+  closeTables,
+  databaseFor,
+  migrateTables,
+  openTables,
+  pendingTablesSteps,
+  siteTablesProblems,
+  type TablesChain,
+  TablesNotReadyError,
+  tablesChains,
+} from './custom-tables.ts'
+import { attachDatabase, bootstrapDatabase, UpgradePendingError } from './database.ts'
 import { createDiagnostics } from './diagnostics.ts'
 import { emailReady } from './email.ts'
 import { siteEmail } from './email-settings.ts'
@@ -74,8 +92,10 @@ import {
   entryCovers,
   extensionEntryProblems,
   readRecordedExtensions,
+  startExtension,
   startExtensions,
 } from './extension-discovery.ts'
+import type { ExtensionProcess } from './extension-process.ts'
 import { createFormRegistry, formSigningSecret, signFormToken } from './form-submit.ts'
 import { formTypesOf } from './form-types.ts'
 import { createWorkflowRunner } from './form-workflows.ts'
@@ -132,6 +152,25 @@ export interface CoreHooks {
   streamMemberFile?: (src: string, search: URLSearchParams) => Promise<Response>
   /** The site's name as its settings give it, for the e-mails a form sends. */
   siteName?: () => Promise<string>
+  /** An extension was started, stopped or unmounted on this node while it runs (story 346). */
+  onExtensionsChanged?: () => void
+}
+
+/** A site route as the server's route table holds it. */
+type DeclaredRoute = ReturnType<ServerBundles['siteRoutes']>[number]
+
+/** Where the server's route table takes an extension's site routes while it runs (story 346). */
+export interface LiveRouteTable {
+  /** Why these routes cannot be added beside those there now; nothing when they can. */
+  problems(entries: readonly DeclaredRoute[]): string[]
+  add(entries: readonly DeclaredRoute[]): string[]
+  remove(owner: string): void
+}
+
+/** Whether an extension runs on this node, or why it could not start (story 346). */
+export interface ExtensionRunning {
+  running: boolean
+  reason?: string
 }
 
 /**
@@ -461,15 +500,14 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
   // Before the poller, which tells it to look again on a `views` instruction
   // from another node: a closure over a `const` declared later would be a
   // temporal dead zone waiting for the first instruction to land.
-  const extensionComponents = createExtensionComponents(
-    extensionProcesses.map((process) => ({
-      process,
-      granted: () => bundleGrants.granted(process.id),
-      layout: () =>
-        typeof process.settings.layout === 'string' ? process.settings.layout : undefined,
-      log: bundleLog(process.id),
-    })),
-  )
+  const componentSource = (process: ExtensionProcess) => ({
+    process,
+    granted: () => bundleGrants.granted(process.id),
+    layout: () =>
+      typeof process.settings.layout === 'string' ? process.settings.layout : undefined,
+    log: bundleLog(process.id),
+  })
+  const extensionComponents = createExtensionComponents(extensionProcesses.map(componentSource))
   const renderer = new Renderer({
     cache,
     componentsDir: config.componentsDir,
@@ -639,128 +677,125 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
   })()
   let bundleMedia: BundleMediaFactory | undefined
   let bundleMediaFolders = new Map<string, ResolvedMediaFolder[]>()
-  const bundles =
-    config.bundles.length > 0
-      ? createServerBundles({
-          activity,
-          bundles: config.bundles,
-          packages: bundlePackages,
-          coreVersion: VERSION,
-          database: (bundle) => {
-            const chain = chains.find((candidate) => candidate.id === bundle.id)
-            return chain ? databaseFor(chain) : undefined
-          },
-          isOn: (bundleId) => bundleGrants.isOn(bundleId),
-          granted: (bundleId) => bundleGrants.granted(bundleId),
-          jobs: (bundleId, queuedBy) => jobRunner.jobsFor(bundleId, queuedBy),
-          pluginApiPath: `${paths.pluginPath}/api`,
-          host: {
-            redirects: createBundleRedirects({ db, cache }),
-            documents: {
-              url: async (key, culture) => {
-                const content = await cache.byKey(key, culture ?? null)
-                return content && content.url !== '#' ? content.url : undefined
-              },
-            },
-            log: bundleLog('bundle'),
-            identityProviders: identityProvidersFor(),
-          },
-          log: (id) => bundleLog(id),
-          callerHost: {
-            // Story 305: each change audited as the person, by the extension.
-            identityProviders: (caller, bundle) =>
-              identityProvidersFor(async (action, provider, detail) => {
-                const person = personOf(caller)
-                const name = bundlePackages.find((pkg) => pkg.id === bundle.id)?.name ?? bundle.id
-                await recordAudit(db, {
-                  category: 'settings',
-                  action,
-                  source: 'request',
-                  userKey: person.personKey,
-                  userName: person.personName,
-                  entityType: 'IdentityProvider',
-                  entityKey: `${provider.audience}:${provider.id}`,
-                  entityName: provider.name,
-                  detail: attributed(name, person.personName, detail),
-                })
-              }),
-            // Story 308: the site's areas, as the extension; story 325, or as the person using it.
-            api: (caller, bundle) => {
-              const pkg = bundlePackages.find((candidate) => candidate.id === bundle.id)
-              const granted = () => bundleGrants.granted(bundle.id)
-              return createBundleApi({
-                bundleId: bundle.id,
-                bundleName: pkg?.name ?? bundle.id,
-                activity: { recorder: activity, person: personOf(caller) },
-                origin: (config.applicationUrl || 'http://localhost').replace(/\/+$/, ''),
-                backOfficePath: config.backOfficePath,
-                granted,
-                dispatch: () => bundleDispatch,
-                principal: async () => {
-                  const itself = extensionPrincipal(
-                    { id: bundle.id, name: pkg?.name ?? bundle.id },
-                    granted(),
-                  )
-                  if (!pkg || !granted().includes(USER_DELEGATE)) return itself
-                  if (caller.kind === 'backoffice') return caller.principal
-                  // A job or an event acts for whoever granted it; a visitor never borrows anyone.
-                  const key =
-                    caller.kind === 'job' ? bundleGrants.state(pkg).grant?.delegateKey : null
-                  const installer = key ? await userPrincipalByKey(db, key) : undefined
-                  if (key && !installer)
-                    bundleLog(bundle.id).warn(
-                      'It acts for whoever granted it, {key}, who is no longer a user: it acts as itself.',
-                      { key },
-                    )
-                  return installer ?? itself
-                },
-              })
-            },
-            fetch: (_caller, bundle) => {
-              const pkg = bundlePackages.find((candidate) => candidate.id === bundle.id)
-              return {
-                fetch: async (input, init) => {
-                  const url = new URL(input instanceof Request ? input.url : String(input))
-                  const origins = declaredOrigins(pkg)
-                  const event = {
-                    extensionId: bundle.id,
-                    ...personOf(_caller),
-                    kind: 'request' as const,
-                    area: url.host,
-                    verb: (init?.method ?? 'GET').toUpperCase(),
-                  }
-                  if (!origins.includes(url.origin)) {
-                    activity.record({ ...event, kind: 'refused', outcome: 'refused' })
-                    throw new OutboundRefused(
-                      `${bundle.id} may not reach ${url.origin}: its http.outbound names ${origins.join(', ') || 'nothing'}.`,
-                    )
-                  }
-                  return timed(activity, event, () =>
-                    pinnedFetch(input, init, {
-                      allowPrivateAddresses: config.allowPrivateAddresses,
-                    }),
-                  )
-                },
-              }
-            },
-            media: (caller, bundle) => {
-              bundleMedia ??= createBundleMedia({
-                db,
-                operations: operations.media,
-                files: mediaFiles,
-                cache: mediaCache,
-                folders: (id) => bundleMediaFolders.get(id) ?? [],
-                bundleName: (id) => bundles?.mounted.find((b) => b.id === id)?.name ?? id,
-                stream: (src, search) =>
-                  hooks.streamMemberFile?.(src, search) ??
-                  Promise.resolve(new Response(null, { status: 404 })),
-              })
-              return bundleMedia(caller, bundle)
-            },
+  // Made even with none, so an extension granted while the site runs mounts here (story 346).
+  const bundles = createServerBundles({
+    activity,
+    bundles: config.bundles,
+    packages: bundlePackages,
+    coreVersion: VERSION,
+    database: (bundle) => {
+      const chain = chains.find((candidate) => candidate.id === bundle.id)
+      return chain ? databaseFor(chain) : undefined
+    },
+    isOn: (bundleId) => bundleGrants.isOn(bundleId),
+    granted: (bundleId) => bundleGrants.granted(bundleId),
+    jobs: (bundleId, queuedBy) => jobRunner.jobsFor(bundleId, queuedBy),
+    pluginApiPath: `${paths.pluginPath}/api`,
+    host: {
+      redirects: createBundleRedirects({ db, cache }),
+      documents: {
+        url: async (key, culture) => {
+          const content = await cache.byKey(key, culture ?? null)
+          return content && content.url !== '#' ? content.url : undefined
+        },
+      },
+      log: bundleLog('bundle'),
+      identityProviders: identityProvidersFor(),
+    },
+    log: (id) => bundleLog(id),
+    callerHost: {
+      // Story 305: each change audited as the person, by the extension.
+      identityProviders: (caller, bundle) =>
+        identityProvidersFor(async (action, provider, detail) => {
+          const person = personOf(caller)
+          const name = bundlePackages.find((pkg) => pkg.id === bundle.id)?.name ?? bundle.id
+          await recordAudit(db, {
+            category: 'settings',
+            action,
+            source: 'request',
+            userKey: person.personKey,
+            userName: person.personName,
+            entityType: 'IdentityProvider',
+            entityKey: `${provider.audience}:${provider.id}`,
+            entityName: provider.name,
+            detail: attributed(name, person.personName, detail),
+          })
+        }),
+      // Story 308: the site's areas, as the extension; story 325, or as the person using it.
+      api: (caller, bundle) => {
+        const pkg = bundlePackages.find((candidate) => candidate.id === bundle.id)
+        const granted = () => bundleGrants.granted(bundle.id)
+        return createBundleApi({
+          bundleId: bundle.id,
+          bundleName: pkg?.name ?? bundle.id,
+          activity: { recorder: activity, person: personOf(caller) },
+          origin: (config.applicationUrl || 'http://localhost').replace(/\/+$/, ''),
+          backOfficePath: config.backOfficePath,
+          granted,
+          dispatch: () => bundleDispatch,
+          principal: async () => {
+            const itself = extensionPrincipal(
+              { id: bundle.id, name: pkg?.name ?? bundle.id },
+              granted(),
+            )
+            if (!pkg || !granted().includes(USER_DELEGATE)) return itself
+            if (caller.kind === 'backoffice') return caller.principal
+            // A job or an event acts for whoever granted it; a visitor never borrows anyone.
+            const key = caller.kind === 'job' ? bundleGrants.state(pkg).grant?.delegateKey : null
+            const installer = key ? await userPrincipalByKey(db, key) : undefined
+            if (key && !installer)
+              bundleLog(bundle.id).warn(
+                'It acts for whoever granted it, {key}, who is no longer a user: it acts as itself.',
+                { key },
+              )
+            return installer ?? itself
           },
         })
-      : undefined
-  if (bundles) {
+      },
+      fetch: (_caller, bundle) => {
+        const pkg = bundlePackages.find((candidate) => candidate.id === bundle.id)
+        return {
+          fetch: async (input, init) => {
+            const url = new URL(input instanceof Request ? input.url : String(input))
+            const origins = declaredOrigins(pkg)
+            const event = {
+              extensionId: bundle.id,
+              ...personOf(_caller),
+              kind: 'request' as const,
+              area: url.host,
+              verb: (init?.method ?? 'GET').toUpperCase(),
+            }
+            if (!origins.includes(url.origin)) {
+              activity.record({ ...event, kind: 'refused', outcome: 'refused' })
+              throw new OutboundRefused(
+                `${bundle.id} may not reach ${url.origin}: its http.outbound names ${origins.join(', ') || 'nothing'}.`,
+              )
+            }
+            return timed(activity, event, () =>
+              pinnedFetch(input, init, {
+                allowPrivateAddresses: config.allowPrivateAddresses,
+              }),
+            )
+          },
+        }
+      },
+      media: (caller, bundle) => {
+        bundleMedia ??= createBundleMedia({
+          db,
+          operations: operations.media,
+          files: mediaFiles,
+          cache: mediaCache,
+          folders: (id) => bundleMediaFolders.get(id) ?? [],
+          bundleName: (id) => bundles.mounted.find((b) => b.id === id)?.name ?? id,
+          stream: (src, search) =>
+            hooks.streamMemberFile?.(src, search) ??
+            Promise.resolve(new Response(null, { status: 404 })),
+        })
+        return bundleMedia(caller, bundle)
+      },
+    },
+  })
+  {
     // A declared folder that is not there would fail on the first upload; the
     // boot says so instead, naming the bundle and the path.
     const names = new Map(bundles.mounted.map((bundle) => [bundle.id, bundle.name]))
@@ -776,6 +811,171 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
     bundleMediaFolders = resolved.folders
   }
 
+  let routeTable: LiveRouteTable | undefined
+  /** The site routes a bundle declares, as the route table checks them, before it is mounted. */
+  const siteRoutesOf = (bundle: ServerBundle): DeclaredRoute[] =>
+    (bundle.routes ?? [])
+      .filter((route) => route?.options && route.options.audience !== 'backoffice')
+      .map((route) => ({
+        route: route as DeclaredRoute['route'],
+        owner: `the bundle ${bundle.id}`,
+      }))
+  /** The extension's tables, made and migrated where this node owns writes, as at boot. */
+  const tablesOf = async (
+    bundle: ServerBundle,
+    pkg: BundlePackage,
+  ): Promise<TablesChain | undefined> => {
+    if (!bundle.tables) return undefined
+    const kept = chains.find((chain) => chain.id === bundle.id)
+    if (kept) return kept
+    const [chain] = tablesChains({ ...config, database: undefined }, [bundle], [pkg])
+    if (!chain || config.role === 'web') return chain
+    const pending = (await pendingTablesSteps(db, [chain]))[0]?.pending ?? []
+    if (owns) {
+      if (pending.length > 0 && !config.development)
+        throw new UpgradePendingError([], [{ id: bundle.id, steps: pending.map((m) => m.name) }])
+      await migrateTables(db, config, [chain], { by: config.nodeId })
+    } else {
+      if (pending.length > 0) throw new TablesNotReadyError(bundle.id)
+      await openTables(db, config, [chain], { provision: false })
+    }
+    return chain
+  }
+  /** Takes an extension out of everything that serves it; its tables too, unless kept. */
+  const unmount = async (id: string, options: { keepTables: boolean }) => {
+    bundles.remove(id)
+    routeTable?.remove(`the bundle ${id}`)
+    extensionComponents.remove(id)
+    bundleMediaFolders.delete(id)
+    const at = config.bundles.findIndex((bundle) => bundle.id === id)
+    if (at >= 0) config.bundles.splice(at, 1)
+    if (options.keepTables) return
+    const chain = chains.findIndex((candidate) => candidate.id === id)
+    if (chain < 0) return
+    const [closing] = chains.splice(chain, 1)
+    if (closing) await closeTables([closing]).catch(() => {})
+  }
+  const stopProcess = async (id: string) => {
+    const stopping = extensionProcesses.filter((process) => process.id === id)
+    for (const process of stopping)
+      extensionProcesses.splice(extensionProcesses.indexOf(process), 1)
+    await Promise.all(stopping.map((process) => process.stop()))
+  }
+  const setFailed = (id: string, reason?: string) => {
+    for (let at = failedExtensions.length - 1; at >= 0; at--)
+      if (failedExtensions[at]?.id === id) failedExtensions.splice(at, 1)
+    if (reason) failedExtensions.push({ id, reason })
+  }
+  /** Starts an extension and wires it into everything boot wires it into, checked as boot checks it. */
+  const startLive = async (pkg: BundlePackage): Promise<ExtensionRunning> => {
+    const started = await startExtension(
+      config,
+      pkg,
+      {
+        grant: bundleGrants.state(pkg).grant,
+        settings: await new ExtensionSettingRepository(db).of(pkg.id).catch(() => ({})),
+      },
+      bundleLog(pkg.id),
+      activity,
+    )
+    if (started.status === 'not-granted') return { running: false }
+    if (started.status === 'failed') {
+      setFailed(pkg.id, started.reason)
+      return { running: false, reason: started.reason }
+    }
+    const { bundle, process } = started
+    const name = (id: string) => (id === pkg.id ? pkg.name : id)
+    try {
+      // One turned off keeps its routes, answering "Turned off"; on again, its new process takes them.
+      await unmount(pkg.id, { keepTables: true })
+      const problems = [
+        ...validateServerBundles([bundle], [pkg], VERSION),
+        ...bundleEventProblems([bundle]),
+        ...(routeTable?.problems(siteRoutesOf(bundle)) ?? []),
+      ]
+      const media = await resolveBundleMediaFolders(db, [bundle], name)
+      problems.push(...media.problems)
+      if (problems.length > 0) throw new Error(problems.join(' '))
+      const chain = await tablesOf(bundle, pkg)
+      // Nothing awaited from here, so no request sees it half mounted.
+      const mounted = bundles.add(bundle, pkg)
+      const routed = mounted.length > 0 ? [] : (routeTable?.add(bundles.siteRoutes(pkg.id)) ?? [])
+      if (mounted.length + routed.length > 0) {
+        bundles.remove(pkg.id)
+        throw new Error([...mounted, ...routed].join(' '))
+      }
+      if (chain && !chains.includes(chain)) chains.push(chain)
+      const known = bundlePackages.findIndex((candidate) => candidate.id === pkg.id)
+      if (known >= 0) bundlePackages.splice(known, 1, pkg)
+      else bundlePackages.push(pkg)
+      config.bundles.push(bundle)
+      for (const [id, folders] of media.folders) bundleMediaFolders.set(id, folders)
+      extensionProcesses.push(process)
+      extensionComponents.add(componentSource(process))
+      setFailed(pkg.id)
+      bundleLog(pkg.id).info('{package} started, with no restart', { package: pkg.packageName })
+      return { running: true }
+    } catch (error) {
+      await process.stop()
+      const reason = error instanceof Error ? error.message : String(error)
+      setFailed(pkg.id, reason)
+      bundleLog(pkg.id).error(
+        '{package} could not be started, and the site runs without it: {reason}',
+        {
+          package: pkg.packageName,
+          reason,
+        },
+      )
+      return { running: false, reason }
+    }
+  }
+  /**
+   * Brings one extension on this node to what its grant says now (story 346):
+   * started and mounted when granted and on, its process stopped when off (its
+   * routes stay, answering "Turned off"), unmounted when it is no longer installed.
+   */
+  const reconcile = async (id: string): Promise<ExtensionRunning> => {
+    const running = () => extensionProcesses.some((process) => process.id === id)
+    // The site's own code, imported the old way, runs in this process from boot to boot.
+    if (wiredByImport.has(id)) return { running: true }
+    extensions.invalidate()
+    await bundleGrants.refresh()
+    const pkg = extensions.bundles().bundles.find((candidate) => candidate.id === id)
+    if (!pkg?.carries.server) {
+      await stopProcess(id)
+      await unmount(id, { keepTables: false })
+      setFailed(id)
+      return { running: false }
+    }
+    const state = bundleGrants.state(pkg)
+    const want = state.on || (entryCovers(pkg, config.extensions?.[id]) && !state.grant?.disabledAt)
+    if (!want) {
+      await stopProcess(id)
+      setFailed(id)
+      return { running: false }
+    }
+    if (running()) return { running: true }
+    return startLive(pkg)
+  }
+  /** One at a time for each extension, so a change and the instruction it sends cannot race. */
+  const settling = new Map<string, Promise<ExtensionRunning>>()
+  const settle = (id: string): Promise<ExtensionRunning> => {
+    const next = (settling.get(id) ?? Promise.resolve({ running: false }))
+      .catch(() => ({ running: false }))
+      .then(() => reconcile(id))
+      .finally(() => {
+        if (settling.get(id) === next) settling.delete(id)
+        hooks.onExtensionsChanged?.()
+      })
+      .catch((error: unknown) => {
+        const reason = error instanceof Error ? error.message : String(error)
+        log.error('The extension {id} could not be brought up to date: {reason}', { id, reason })
+        return { running: false, reason }
+      })
+    settling.set(id, next)
+    return next
+  }
+
   const poller = new CacheInstructionPoller({
     db,
     nodeId: schema.nodeId,
@@ -785,6 +985,10 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
     // definitions. `views` changes the code that renders it, which is a new
     // snapshot rather than anything in the published cache.
     onInstruction: (kind, payload) => {
+      if (kind === 'extensions') {
+        if (typeof payload.id === 'string') void settle(payload.id)
+        return
+      }
       if (kind === 'public-files') return hooks.onSiteFiles?.('public')
       if (kind !== 'components') return cache.invalidate()
       // The hash only says when to stop looking eagerly; the snapshot is always
@@ -880,7 +1084,7 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
         id: bundle.id,
         handlers: new Map(Object.entries(bundle.jobs ?? {})) as Map<string, JobHandler>,
         schedules: bundle.schedules ?? [],
-        context: () => ({ bundle: bundles?.jobContext(bundle.id) }),
+        context: () => ({ bundle: bundles.jobContext(bundle.id) }),
         on: () => bundleGrants.isOn(bundle.id),
       })),
   ]
@@ -939,9 +1143,29 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
     activity,
     /** Stops one extension's process on this node, as removing it does (story 328). */
     async stopExtension(id: string) {
-      await Promise.all(
-        extensionProcesses.filter((process) => process.id === id).map((process) => process.stop()),
+      await stopProcess(id)
+    },
+    /**
+     * An extension was granted, turned on or off, or removed (story 346): this
+     * node brings it up to date, and tells the others to. Answers whether it runs here.
+     */
+    async extensionChanged(id: string): Promise<ExtensionRunning> {
+      const now = await settle(id)
+      await appendCacheInstruction(db, {
+        kind: 'extensions',
+        payload: { id },
+        by: schema.nodeId,
+      }).catch((error: unknown) =>
+        log.error('Could not tell the other nodes about the extension {id}: {error}', {
+          id,
+          error: String(error),
+        }),
       )
+      return now
+    },
+    /** The server's route table, once it is built, for what an extension started later declares. */
+    setRouteTable(table: LiveRouteTable) {
+      routeTable = table
     },
     /** The server's own handler, which `api` calls through once the server is built (story 308). */
     setBundleDispatch(dispatch: (request: Request) => Promise<Response>) {

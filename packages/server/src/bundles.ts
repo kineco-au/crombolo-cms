@@ -822,10 +822,20 @@ export interface ServerBundles {
     principal: Principal,
     invoke: RouteInvoker,
   ): Promise<Response | undefined>
-  /** The bundles' site routes, for the server's route table, each given its bundle's capabilities. */
-  siteRoutes(): DeclaredRoute[]
+  /**
+   * The bundles' site routes, for the server's route table, each given its
+   * bundle's capabilities; one bundle's when named.
+   */
+  siteRoutes(bundleId?: string): DeclaredRoute[]
   /** What a bundle's job is given: its capabilities for no caller, as on a public route (story 187). */
   jobContext(bundleId: string): Pick<BundleHost, BundleCapability> | undefined
+  /**
+   * Mounts one more bundle while the server runs (story 346), checked as boot
+   * checks them; answers why it cannot be, and mounts nothing then.
+   */
+  add(bundle: ServerBundle, pkg: BundlePackage): string[]
+  /** Unmounts a bundle: its routes answer nothing from now on. */
+  remove(bundleId: string): void
 }
 
 const JOB_CALLER: BundleCaller = Object.freeze({ kind: 'job' })
@@ -862,11 +872,12 @@ export function createServerBundles(options: ServerBundlesOptions): ServerBundle
     throw new Error(`The configured bundles cannot be mounted:\n- ${problems.join('\n- ')}`)
 
   const basePath = `${options.pluginApiPath}/${BUNDLE_API_SEGMENT}/`
-  const byId = new Map(options.bundles.map((bundle) => [bundle.id, bundle]))
-  const logs = new Map(options.bundles.map((bundle) => [bundle.id, options.log(bundle.id)]))
+  const live = [...options.bundles]
+  const byId = new Map(live.map((bundle) => [bundle.id, bundle]))
+  const logs = new Map(live.map((bundle) => [bundle.id, options.log(bundle.id)]))
 
   const owners = new Map(options.packages.map((pkg) => [pkg.id, pkg]))
-  const mounted: MountedBundle[] = options.bundles.map((bundle) => {
+  const mountedOf = (bundle: ServerBundle): MountedBundle => {
     const owner = owners.get(bundle.id) as BundlePackage
     return {
       id: bundle.id,
@@ -881,7 +892,8 @@ export function createServerBundles(options: ServerBundlesOptions): ServerBundle
         audience: onSite(route) ? ('site' as const) : ('backoffice' as const),
       })),
     }
-  })
+  }
+  const mounted: MountedBundle[] = live.map(mountedOf)
 
   // Made once per bundle, at its first request, each on its own tables alone.
   const databases = new Map<string, TablesDatabase>()
@@ -1031,25 +1043,48 @@ export function createServerBundles(options: ServerBundlesOptions): ServerBundle
       const bundle = byId.get(bundleId)
       return bundle ? contextFor(bundle, JOB_CALLER) : undefined
     },
-    siteRoutes() {
-      return options.bundles.flatMap((bundle) =>
-        (bundle.routes ?? []).filter(onSite).map(
-          (route): DeclaredRoute => ({
-            route: whileOn(bundle.id, route as SiteRoute),
-            owner: `the bundle ${bundle.id}`,
-            extra: ({ member, via }) => {
-              const caller: BundleCaller = member
-                ? Object.freeze({
-                    kind: 'member',
-                    member: freezeMember(member as RequestMember),
-                    via,
-                  })
-                : PUBLIC_CALLER
-              return { bundle: contextFor(bundle, caller), caller }
-            },
-          }),
-        ),
-      )
+    add(bundle, pkg) {
+      const problems = byId.has(bundle.id)
+        ? [`Bundle "${bundle.id}" is already mounted.`]
+        : validateServerBundles([bundle], [pkg], options.coreVersion)
+      if (problems.length > 0) return problems
+      owners.set(pkg.id, pkg)
+      live.push(bundle)
+      byId.set(bundle.id, bundle)
+      logs.set(bundle.id, options.log(bundle.id))
+      mounted.push(mountedOf(bundle))
+      return []
+    },
+    remove(bundleId) {
+      const at = live.findIndex((bundle) => bundle.id === bundleId)
+      if (at >= 0) live.splice(at, 1)
+      const shown = mounted.findIndex((bundle) => bundle.id === bundleId)
+      if (shown >= 0) mounted.splice(shown, 1)
+      byId.delete(bundleId)
+      logs.delete(bundleId)
+      databases.delete(bundleId)
+    },
+    siteRoutes(bundleId) {
+      return live
+        .filter((bundle) => bundleId === undefined || bundle.id === bundleId)
+        .flatMap((bundle) =>
+          (bundle.routes ?? []).filter(onSite).map(
+            (route): DeclaredRoute => ({
+              route: whileOn(bundle.id, route as SiteRoute),
+              owner: `the bundle ${bundle.id}`,
+              extra: ({ member, via }) => {
+                const caller: BundleCaller = member
+                  ? Object.freeze({
+                      kind: 'member',
+                      member: freezeMember(member as RequestMember),
+                      via,
+                    })
+                  : PUBLIC_CALLER
+                return { bundle: contextFor(bundle, caller), caller }
+              },
+            }),
+          ),
+        )
     },
     async handle(request, url, principal, invoke) {
       const pathname = url.pathname

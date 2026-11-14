@@ -770,11 +770,11 @@ implementation serves Settings → Extensions, the remote protocol and the CLI
   (`server/src/restart-pending.ts`), which `extension list`, the remote's listing
   and Settings → Extensions → Installed show ("Installed changes take effect when
   the site restarts."), until `crombolo restart`. A server that boots clears
-  it. So do granting one and turning one on, when its server half is not running on
-  this node: an extension is built and started only at boot, so it runs after the
-  restart, and the answer says so (story 346 starts it at once instead). On the
-  command line, with no server to ask, it is always said. Turning one off needs no
-  restart: its routes answer 503 at once.
+  it. Granting an installed extension and turning one on need no restart: it starts
+  at once, on every node (story 346, "Extensions run once granted"). Removing one
+  that runs in a process of its own, in Settings or on a remote, stops and unmounts
+  it at once; on the command line, and for one the site's code imports the old way,
+  removing it still waits for the restart.
 - **On a remote** (`bundle-manage`, [`remote-protocol.md`](remote-protocol.md)):
   listing needs the level `read`; the rest need `all`. Installing and removing
   also need ApplyStructure and "Install code on this site"
@@ -1587,9 +1587,9 @@ Story 310. An installed extension's server half runs once it is granted what it
 asks for, with nothing imported by the site. Until then, the import in
 `crombolo.config.ts` was the gate; now the grant is (story 309).
 
-- **At boot**, each dependency that declares a `server` half is built from the
-  entry its package exports and started in a Deno process of its own, by the
-  factory `crombolo.server` names, given its settings
+- **At boot, and as it is granted**, each dependency that declares a `server` half is
+  built from the entry its package exports and started in a Deno process of its own,
+  by the factory `crombolo.server` names, given its settings
   ([`extensions.md`](extensions.md)). That happens only where it is granted:
   - **by the site's code:** the config's `extensions` entry names, exactly, what
     it grants. That grant is "Developer installed", recorded and audited at boot;
@@ -1598,6 +1598,24 @@ asks for, with nothing imported by the site. Until then, the import in
 
   Nothing of an extension that is not granted is built, let alone run. One that
   cannot start is left off, saying why in Installed, and the site starts.
+- **Granted or turned on while the site runs** (story 346), it starts at once: boot
+  and a live start share one path (`startExtension`, `server/src/extension-discovery.ts`).
+  Its process starts, and it is wired into what boot wires it into, each checked as
+  boot checks it against what is mounted now: its site routes join the route table
+  (a route another already answers refuses the start, naming both), its back-office
+  routes and screens the mounted bundles, its jobs and schedules the job owners, its
+  event handlers the subscribers, and its tables are made and migrated where the node
+  owns writes (a `web` node opens none, as at boot; production leaves pending steps to
+  `crombolo upgrade`, as at boot). One that cannot start says why in the answer, in
+  Installed and in the health check, keeps its grant, and the site runs on.
+  - **Turning one off** stops its process; its routes stay, answering 503 "Turned
+    off". Turning it on starts a new one. **Removing one** stops and unmounts it.
+  - **Other nodes** hear through an `extensions` cache instruction, and each brings
+    the extension to what its grant says; one that cannot start it says so in its own
+    health check. `crombolo extension grant`, `enable` and `disable` on the site's
+    machine write the same instruction, so a site running there follows.
+  - **Still at restart:** a new version's files, its settings, the form workflow types
+    it adds, and an extension the site's code imports the old way.
 
 ```ts
 export default defineConfig({
@@ -1630,10 +1648,11 @@ export default defineConfig({
   module runs it, so it is the site's own code. Its wiring grants what it asks
   for, as before. `extension install --wire` is gone.
 - **Remotes:** a grant made on a remote, by someone holding "Install code on this
-  site", turns the extension on there at its next restart.
+  site", starts the extension there at once.
 
-The tests are `tests/extension-discovery.test.ts`, and `tests/server-bundles.test.ts`
-for what a host passes in `bundles`.
+The tests are `tests/extension-discovery.test.ts`, `tests/extension-live-start.test.ts`
+for starting one while the site runs, and `tests/server-bundles.test.ts` for what a
+host passes in `bundles`.
 
 ### Bundles a host provides
 

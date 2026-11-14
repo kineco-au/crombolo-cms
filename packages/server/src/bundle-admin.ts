@@ -17,6 +17,7 @@ import {
   USER_DELEGATE,
 } from '@crombolo/backoffice-host/registry'
 import {
+  appendCacheInstruction,
   type Db,
   ExtensionSettingRepository,
   ownerTablesIn,
@@ -115,8 +116,8 @@ export interface SwitchOutcome {
   ok: boolean
   on?: boolean
   message: string
-  /** It is on, but its server half starts only when the site restarts. */
-  restartPending?: boolean
+  /** It is granted and on, and its server half could not start, saying why (story 346). */
+  couldNotStart?: string
 }
 
 export interface BundleAdmin {
@@ -175,24 +176,31 @@ export function createBundleAdmin(options: {
   /** Stops an extension's running process, where this node runs one (story 328). */
   stopExtension?: (id: string) => Promise<void>
   /**
-   * The bundles running on this node. An extension is built and started only at
-   * boot, so one granted or turned on that is not among them runs after a restart.
-   * Absent, as on the CLI with no server here, any such extension is taken as not running.
+   * Brings an extension's server half to what its grant says now, on every node
+   * (story 346): started when granted and on, stopped when off, unmounted when
+   * removed. Answers whether it runs here, or why it could not start; nothing
+   * where no server runs here, as on the CLI.
    */
-  running?: () => readonly string[]
+  changed?: (id: string) => Promise<{ running: boolean; reason?: string } | undefined>
 }): BundleAdmin {
   const { db, config, marketplace, extensions, bundleGrants } = options
 
-  /** Granted or turned on but not running: recorded, and said, as an install's restart is. */
-  const afterSwitchOn = (
+  /** Started, stopped or unmounted to match its grant; an answer that says when it could not start. */
+  const afterSwitch = async (
     pkg: { id: string; name: string; carries: { server?: boolean } },
     outcome: SwitchOutcome,
-    what: string,
-  ): SwitchOutcome => {
-    if (!outcome.ok || !outcome.on || !pkg.carries.server) return outcome
-    if (options.running?.().includes(pkg.id)) return outcome
-    markRestartPending(config.siteDir, `${pkg.name} ${what}`)
-    return { ...outcome, restartPending: true, message: `${outcome.message} ${RESTART_NOTICE}` }
+  ): Promise<SwitchOutcome> => {
+    if (!outcome.ok || !pkg.carries.server) return outcome
+    const now = await options.changed?.(pkg.id).catch((error: unknown) => ({
+      running: false,
+      reason: error instanceof Error ? error.message : String(error),
+    }))
+    if (!outcome.on || now?.running !== false || !now.reason) return outcome
+    return {
+      ...outcome,
+      couldNotStart: now.reason,
+      message: `${outcome.message} It could not start: ${now.reason}`,
+    }
   }
   const options_ = options
   /**
@@ -479,6 +487,8 @@ export function createBundleAdmin(options: {
           .join(' '),
       }
       if (!before?.carries.server) return result
+      // One running in a process of its own is unmounted now; one the site's code imported waits.
+      if (id && (await options_.changed?.(id).catch(() => undefined))) return result
       markRestartPending(config.siteDir, `${name} removed`)
       return { ...result, restartPending: true }
     },
@@ -551,16 +561,12 @@ export function createBundleAdmin(options: {
         `granted ${LEVEL_WORDS[level].label}: ${asks.join(', ') || 'nothing'}${delegateKey ? `, acting for ${delegateKey} when nobody is using it` : ''}`,
       )
       const state = bundleGrants.state(pkg)
-      return afterSwitchOn(
-        pkg,
-        {
-          status: 200,
-          ok: true,
-          on: state.on,
-          message: `${pkg.name} is granted what it asks for.`,
-        },
-        'granted',
-      )
+      return afterSwitch(pkg, {
+        status: 200,
+        ok: true,
+        on: state.on,
+        message: `${pkg.name} is granted what it asks for.`,
+      })
     },
 
     async setEnabled(actor, id, enabled) {
@@ -605,7 +611,7 @@ export function createBundleAdmin(options: {
           ? `${pkg.name} is turned on.`
           : `${pkg.name} is turned off until it is enabled again.`,
       }
-      return enabled ? afterSwitchOn(pkg, outcome, 'turned on') : outcome
+      return afterSwitch(pkg, outcome)
     },
   }
 }
@@ -668,5 +674,10 @@ export async function localBundleAdmin(
     marketplace,
     extensions,
     bundleGrants,
+    // A site running on this database starts or stops it when it hears (story 346).
+    changed: async (id) => {
+      await appendCacheInstruction(db, { kind: 'extensions', payload: { id } }).catch(() => null)
+      return undefined
+    },
   })
 }

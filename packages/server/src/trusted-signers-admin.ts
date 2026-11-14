@@ -36,6 +36,8 @@ export type SignerOutcome =
 export interface SignerChecks {
   extensions: ExtensionRegistry
   grants: Pick<BundleGrants, 'granted' | 'isOn' | 'state' | 'forget'>
+  /** Brings a switched-off extension's process to its grant, where a server runs here (story 346). */
+  changed?: (id: string) => Promise<unknown>
 }
 
 /** `org/repo`, `org/*`, or either `@` a ref pattern such as `v*`. */
@@ -154,8 +156,9 @@ export function createTrustedSignersAdmin(
         found.fingerprint ? `${found.kind} key ${found.fingerprint}` : `builds of ${found.source}`,
       )
       // Story 335: what it vouched for loses its upper level now, not at the next start.
-      const { extensions, grants } = await checks()
+      const { extensions, grants, changed } = await checks()
       const ids = await switchOffUntrusted(db, config, extensions, grants, 'untrusted')
+      for (const switched of ids) await changed?.(switched)
       const names = new Map(extensions.bundles().bundles.map((pkg) => [pkg.id, pkg.name]))
       return { ok: true, switchedOff: ids.map((id) => names.get(id) ?? id) }
     },
