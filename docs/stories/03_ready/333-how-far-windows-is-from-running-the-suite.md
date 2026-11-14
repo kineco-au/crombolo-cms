@@ -75,3 +75,9 @@ integration suites on Windows, or adding Windows to the CI that gates a release.
 - [ ] This story lists every failing test file by cause, with a count and an
       estimate per cause.
 - [ ] Follow-up stories exist for the work the results call for, sized from them.
+
+## Found so far
+
+- 2026-11-14, CI's `windows host` job (story 334): on `windows-latest`, `bun install
+  --frozen-lockfile`, `bun run generate:types` and `bun run check` (Biome, tsc and the
+  SQL rule) all pass natively. What remains to measure here is the test suite.

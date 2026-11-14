@@ -302,9 +302,7 @@ jobs:
                   echo "$said"
                   case "$said" in *"in the SQLite test container"*|*"cms-test-sqlite"*) ;; *) exit 1 ;; esac
             - run: bun run generate:types
-            # Not yet known to pass natively (story 333's survey); seen, not gating.
             - name: Format, lint and types, natively
-              continue-on-error: true
               run: bun run check
 
     # The Next.js front end (story 208), built and run on each supported major:

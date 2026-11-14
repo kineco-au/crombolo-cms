@@ -234,7 +234,8 @@ test container instead of on the host; push with `--no-verify` to skip it.
 
 What does not work on Windows yet:
 
-- the suite and `bun run check` natively, outside WSL2 (story 333);
+- the test suite natively, outside WSL2 (story 333); `bun run check` does run natively,
+  and CI checks it on Windows;
 - a checkout on a Windows drive used through Docker, which is too slow, and file
   watching through its mount, so a running CMS does not reload on a change.
 

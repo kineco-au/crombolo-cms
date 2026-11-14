@@ -659,8 +659,7 @@ sequential `test:load` and `test:bench` steps.
 in a few minutes on every push: the checkout's line endings, the frozen install,
 `docker compose config` with a Windows path, and the pre-push hook's Windows path (it
 runs the gate in the SQLite test container, which the job checks with
-`CROMBOLO_HOOK_DRY_RUN`). It also runs `bun run check` natively, seen but not gating
-until story 333's survey shows it passes. Windows runners cannot run Linux containers,
+`CROMBOLO_HOOK_DRY_RUN`), and `bun run check` natively, which passes on Windows. Windows runners cannot run Linux containers,
 so the containers themselves are not tried there. The `extensions` job runs the
 extension tests on macOS and Windows too.
 

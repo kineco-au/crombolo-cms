@@ -171,7 +171,8 @@ does now.
   - `bun install --frozen-lockfile`;
   - `docker compose config` with a Windows path;
   - the hook's Windows path, by its dry run;
-  - `bun run check` natively, seen but not gating until story 333 shows it passes.
+  - `bun run check` natively. It passed on the job's first run (2026-11-14), so it gates
+    like the rest.
 - `docs/testing.md` describes the job.
 
 **Not built:** `docker:setup`, and polling for changes from a Windows drive. Both are
