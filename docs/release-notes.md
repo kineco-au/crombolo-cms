@@ -8,6 +8,15 @@ point at `docs/stories/`.
 
 ### Fixes
 
+- **Taking a signer off Trusted signers switches off what it vouched for at once (335).** An
+  extension that acts as you or runs unrestricted on that signer's word kept running until
+  the site next restarted. Now it is switched off as the signer is removed, in Settings or
+  with `crombolo keys untrust`, and the answer names it.
+- **Granting or turning on an extension says when it needs a restart.** One whose server
+  half is not running yet runs only after the site restarts; that is now recorded and shown,
+  as it is for an install, rather than the screen saying only that it was granted or turned
+  on. Story 346 is to start it at once instead.
+
 - **An extension installed as a dependency is told apart from a developer's link wherever the
   site's folder is.** A link anywhere above the package, such as macOS's `/var` to
   `/private/var` or a site reached through a linked folder, made every installed extension

@@ -20,7 +20,10 @@ export default class KeysUntrust extends BaseCommand {
   static override spec = {
     effects: 'idempotent',
     cardinality: 'single',
-    outputFields: [{ name: 'removed', type: 'string' }],
+    outputFields: [
+      { name: 'removed', type: 'string' },
+      { name: 'switchedOff', type: 'array', items: { type: 'string' } },
+    ],
     errors: ['not_found', 'refused'],
   } as const
 
@@ -40,9 +43,12 @@ export default class KeysUntrust extends BaseCommand {
         )
       const outcome = await admin.remove(actor, found.id)
       if (!outcome.ok) throw new CliError('refused', outcome.message)
-      return found.name
+      return { name: found.name, switchedOff: outcome.switchedOff ?? [] }
     })
-    this.say(`  removed  ${removed}`)
-    return { removed }
+    this.say(`  removed  ${removed.name}`)
+    // Story 335: what it vouched for that acts as you or runs unrestricted stops now.
+    for (const name of removed.switchedOff)
+      this.say(`  off      ${name}, which nothing trusted vouches for now`)
+    return { removed: removed.name, switchedOff: removed.switchedOff }
   }
 }

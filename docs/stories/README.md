@@ -173,7 +173,7 @@ not cover.
 | `262` | Telemetry that reaches the tools you already watch | should | L | done | 047 |
 | `273` | Search through providers a site can replace | could | L | done | 043, 140 |
 | `333` | How far Windows is from running the suite | could | S | ready | — |
-| `334` | A Windows developer works through Docker | could | S | ready | — |
+| `334` | A Windows developer works through Docker | could | M | ready | — |
 | `335` | A key vouches for an extension only when the site trusts it | must | M | done | 316, 324 |
 | `340` | E-mail is set up in Settings, and takes effect at once | should | M | done | 045 |
 
@@ -218,6 +218,7 @@ requests, only server-side and build-time front ends can call it.
 | `194` | Installing server code takes an explicit yes | must | S | done | 063, 181 |
 | `222` | Bundles ask for permissions | should | L | done | 063, 194 |
 | `244` | The provenance check from the host entry | should | S | done | 060 |
+| `346` | A granted extension starts without a restart | should | L | ready | 311 |
 
 ### Epic H — Importing a site
 

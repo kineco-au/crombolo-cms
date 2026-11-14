@@ -5,9 +5,12 @@
  * site's own key, are shown and never removed here. Settings, the CLI and the
  * back-office endpoint share it.
  */
+import { createExtensionRegistry, type ExtensionRegistry } from '@crombolo/backoffice-host/registry'
 import { type Db, TrustedSignerRepository } from '@crombolo/data'
 import { recordAudit } from './adapters/audit.ts'
+import { type BundleGrants, createBundleGrants } from './bundle-grants.ts'
 import type { CromboloConfig } from './config.ts'
+import { switchOffUntrusted } from './grant-trust.ts'
 import { readPublicKey } from './signing-keys.ts'
 import { type TrustEntry, trustedSigners } from './site-trust.ts'
 
@@ -21,14 +24,40 @@ export interface SignerActor {
 }
 
 export type SignerOutcome =
-  | { ok: true; entry?: TrustEntry }
+  | {
+      ok: true
+      entry?: TrustEntry
+      /** Extensions switched off as their signer was removed, by name (story 335). */
+      switchedOff?: string[]
+    }
   | { ok: false; status: number; message: string }
+
+/** What removing a signer re-checks: the server's own, or this site's, read here. */
+export interface SignerChecks {
+  extensions: ExtensionRegistry
+  grants: Pick<BundleGrants, 'granted' | 'isOn' | 'state' | 'forget'>
+}
 
 /** `org/repo`, `org/*`, or either `@` a ref pattern such as `v*`. */
 const SOURCE = /^[A-Za-z0-9_.-]+\/(\*|[A-Za-z0-9_.-]+)(@[A-Za-z0-9_.*/-]+)?$/
 
-export function createTrustedSignersAdmin(db: Db, config: CromboloConfig) {
+export function createTrustedSignersAdmin(
+  db: Db,
+  config: CromboloConfig,
+  options: { checks?: SignerChecks } = {},
+) {
   const repo = new TrustedSignerRepository(db)
+  /** The running server's registry and grants, or this site's, read from its files and database. */
+  const checks = async (): Promise<SignerChecks> => {
+    if (options.checks) return options.checks
+    const extensions = createExtensionRegistry(config.siteDir, { cache: false })
+    const grants = createBundleGrants({
+      db,
+      packages: () => new Map(extensions.bundles().bundles.map((pkg) => [pkg.id, pkg])),
+    })
+    await grants.refresh()
+    return { extensions, grants }
+  }
   const audit = (actor: SignerActor, action: string, name: string, detail: string | null) =>
     recordAudit(db, {
       category: 'system',
@@ -124,7 +153,11 @@ export function createTrustedSignersAdmin(db: Db, config: CromboloConfig) {
         found.name,
         found.fingerprint ? `${found.kind} key ${found.fingerprint}` : `builds of ${found.source}`,
       )
-      return { ok: true }
+      // Story 335: what it vouched for loses its upper level now, not at the next start.
+      const { extensions, grants } = await checks()
+      const ids = await switchOffUntrusted(db, config, extensions, grants, 'untrusted')
+      const names = new Map(extensions.bundles().bundles.map((pkg) => [pkg.id, pkg.name]))
+      return { ok: true, switchedOff: ids.map((id) => names.get(id) ?? id) }
     },
   }
 }

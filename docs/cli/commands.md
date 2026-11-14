@@ -3888,6 +3888,7 @@ crombolo keys untrust <signer>
 **Output** (single, with `-o json`):
 
 - `removed` (string)
+- `switchedOff` (array of string)
 
 **Fails with:** `usage`, `internal`, `not_found`, `refused`.
 

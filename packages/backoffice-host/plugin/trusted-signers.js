@@ -9,6 +9,7 @@ import { UMB_CURRENT_USER_CONTEXT } from '@umbraco-cms/backoffice/current-user'
 import { css, html, nothing, repeat } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { umbConfirmModal } from '@umbraco-cms/backoffice/modal'
+import { switchedOffWords } from './trusted-signers-words.js'
 
 const base = () => {
   const href = document.querySelector('base')?.getAttribute('href') ?? '/umbraco/'
@@ -48,6 +49,7 @@ export default class CromboloTrustedSignersElement extends UmbLitElement {
     _draft: { state: true },
     _renaming: { state: true },
     _problem: { state: true },
+    _notice: { state: true },
     _busy: { state: true },
     _copied: { state: true },
     _mine: { state: true },
@@ -154,10 +156,14 @@ export default class CromboloTrustedSignersElement extends UmbLitElement {
       color: 'danger',
       headline: `Stop trusting ${item.name}?`,
       content:
-        'Site bundles it signed are refused from now on, including ones already made. You can add it again later.',
+        'Site bundles it signed are refused from now on, including ones already made. An extension it vouched for that acts as you or runs unrestricted is switched off now. You can add it again later.',
       confirmLabel: 'Remove',
     })
-    await this.#run(() => call(`/${item.id}`, 'DELETE'))
+    this._notice = ''
+    await this.#run(async () => {
+      const result = await call(`/${item.id}`, 'DELETE')
+      this._notice = switchedOffWords(result.switchedOff)
+    })
   }
 
   async #copy(line) {
@@ -296,6 +302,7 @@ export default class CromboloTrustedSignersElement extends UmbLitElement {
           required; elsewhere an unsigned one is applied, with a warning.
         </p>
         ${this._problem ? html`<p class="problem" role="alert">${this._problem}</p>` : nothing}
+        ${this._notice ? html`<p class="notice" role="status">${this._notice}</p>` : nothing}
         <ul class="signers">
           ${repeat(
             this._items,
@@ -360,6 +367,9 @@ export default class CromboloTrustedSignersElement extends UmbLitElement {
     }
     .problem {
       color: var(--uui-color-danger);
+    }
+    .notice {
+      color: var(--uui-color-warning-standalone);
     }
     .steps {
       margin: 0;

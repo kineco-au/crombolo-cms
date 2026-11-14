@@ -869,6 +869,7 @@ export async function createServer(
     bundleGrants,
     failed: () => [...core.failedExtensions, ...backOfficeBuilds.failed()],
     stopExtension: (id) => core.stopExtension(id),
+    running: () => bundles?.mounted.map((bundle) => bundle.id) ?? [],
   })
   const actorOf = (principal: Principal, request: Request): BundleActor => ({
     id: principal.id,
@@ -2390,7 +2391,9 @@ export async function createServer(
             { ok: false, message: 'Only an administrator manages trusted signers.' },
             { status: 403 },
           )
-        const signers = createTrustedSignersAdmin(db, config)
+        const signers = createTrustedSignersAdmin(db, config, {
+          checks: { extensions, grants: bundleGrants },
+        })
         const actor = { ...actorOf(principal, request), source: 'request' as const }
         if (action === 'signers' && request.method === 'GET')
           return Response.json({ items: await signers.list() })

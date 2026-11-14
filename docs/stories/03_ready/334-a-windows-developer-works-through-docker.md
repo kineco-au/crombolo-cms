@@ -1,6 +1,6 @@
 # 334 — A Windows developer works through Docker
 
-**Epic:** E — Cross-cutting · **Priority:** could · **Size:** S
+**Epic:** E — Cross-cutting · **Priority:** could · **Size:** M
 **Depends on:** —
 
 ## Story
@@ -71,6 +71,55 @@ and the better one recommended:
    - the timings of `docker:test:sqlite` this way, against WSL2's, written down so
      the README can say plainly which to use.
 
+3. **Set up, one section per platform** (planned 2026-11-14). The README's
+   "Crombolo development → Set up" is one sequence of host commands written for a
+   Mac, which a Windows reader has to translate as they go. It becomes two
+   sections, each complete on its own, so nobody reads the other's steps:
+
+   - **On macOS.** What is there today, made explicit:
+     - prerequisites and where each comes from: Bun 1.3 or later, Node 24 and
+       npm 11 (for the back office build), Docker Desktop with Compose v2 (or an
+       equivalent runtime the trial confirms, such as OrbStack or Colima), and Git;
+     - clone, `bun install`, `fork:checkout`, `vendor:backoffice`,
+       `generate:types`, `check`, `hooks:install`;
+     - running it (`start:local`, `docker:up`) and the tests
+       (`docker:test:sqlite`, `docker:test:all`);
+     - one line that Linux follows the same steps.
+   - **On Windows.** The recommended route first, as the trial decides it:
+     - **In WSL2** (expected): installing WSL2 and a distribution, Docker
+       Desktop's WSL integration, then Bun, Node 24 and npm inside the
+       distribution; cloning into its own file system, not `/mnt/c`; from there
+       the macOS steps hold as written, run from the WSL shell; opening the folder
+       from Windows (VS Code's WSL remote, or `\\wsl$\…`);
+     - **From a Windows drive** (only if the trial shows it is usable):
+       PowerShell, `docker:setup` in place of the host build steps, the hook's
+       containerised path, polling for changes, and its timings against WSL2's;
+     - **what does not work**, plainly: the native suite (story 333), file
+       watching from an NTFS drive, and anything the trial finds.
+
+   "Run it from source", "The sites in this repository" and "Running the tests"
+   stay shared, after the two set-up sections, with a platform note only where a
+   command differs. `docs/testing.md` points at the right section rather than
+   repeating either.
+
+4. **A quick Windows job in CI** (planned 2026-11-14). GitHub's Windows runners
+   cannot run Linux containers, so CI cannot prove the containers run from a Windows
+   checkout. It can hold the host's half, in about five minutes beside the existing
+   `extensions (windows-latest)` job, on every push:
+   - after checkout, `git ls-files --eol` finds no CRLF in the working tree, so
+     `.gitattributes` does what it is for;
+   - `bun install --frozen-lockfile`, the first host step;
+   - `docker compose config`, so `compose.yaml` and its mounts parse with a Windows
+     path to the checkout (the Docker CLI, no Linux containers);
+   - the pre-push hook under Git for Windows' `sh`, with Docker absent: it runs the
+     containerised suite or says how to skip, whichever it is built to do;
+   - `bun run check`, so format, lint and types run natively for a Windows editor;
+   - a curated set of unit test files, grown from story 333's survey: those that
+     pass natively, and the path-sensitive ones as they are fixed.
+
+   What it cannot hold stays with the trial: the containers from a Windows
+   checkout, file watching through the mount, and how fast the suite runs that way.
+
 `.gitattributes` is also in story 333's scope. Whichever of the two stories lands
 first adds it, and the other's criterion is then met.
 
@@ -88,7 +137,16 @@ does now.
 - [ ] The same from a clone on a Windows drive, through PowerShell, with whatever
       `docker:setup` and the hook need; or, if the trial shows it is too slow or
       too fragile to recommend, the README says so and why, with the timings.
-- [ ] The README's "Crombolo development" has an "On Windows" part: which setup to
-      use, its steps, and what does not work.
+- [ ] The README's "Crombolo development → Set up" is two sections, **On macOS** and
+      **On Windows**, each complete on its own: prerequisites and where to get
+      them, the clone and setup commands, running the CMS and the tests. macOS
+      says Linux follows its steps; Windows leads with the recommended route,
+      says which to use and why, and lists what does not work.
+- [ ] Every command in both sections was run on its platform as written, from a
+      fresh clone, and the steps that only one platform needs appear only in its
+      section.
+- [ ] CI has a Windows job of about five minutes, on every push: line endings, the
+      frozen install, `docker compose config`, the pre-push hook's Windows path,
+      `bun run check` and a curated set of unit tests.
 - [ ] The trial's results (the machine, Docker Desktop's version, the timings,
       anything that failed and its fix) are recorded in this story.

@@ -4667,6 +4667,13 @@
         {
           "name": "removed",
           "type": "string"
+        },
+        {
+          "name": "switchedOff",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       ],
       "args": [

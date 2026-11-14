@@ -115,6 +115,8 @@ export interface SwitchOutcome {
   ok: boolean
   on?: boolean
   message: string
+  /** It is on, but its server half starts only when the site restarts. */
+  restartPending?: boolean
 }
 
 export interface BundleAdmin {
@@ -172,8 +174,26 @@ export function createBundleAdmin(options: {
   failed?: () => readonly { id: string; reason: string }[]
   /** Stops an extension's running process, where this node runs one (story 328). */
   stopExtension?: (id: string) => Promise<void>
+  /**
+   * The bundles running on this node. An extension is built and started only at
+   * boot, so one granted or turned on that is not among them runs after a restart.
+   * Absent, as on the CLI with no server here, any such extension is taken as not running.
+   */
+  running?: () => readonly string[]
 }): BundleAdmin {
   const { db, config, marketplace, extensions, bundleGrants } = options
+
+  /** Granted or turned on but not running: recorded, and said, as an install's restart is. */
+  const afterSwitchOn = (
+    pkg: { id: string; name: string; carries: { server?: boolean } },
+    outcome: SwitchOutcome,
+    what: string,
+  ): SwitchOutcome => {
+    if (!outcome.ok || !outcome.on || !pkg.carries.server) return outcome
+    if (options.running?.().includes(pkg.id)) return outcome
+    markRestartPending(config.siteDir, `${pkg.name} ${what}`)
+    return { ...outcome, restartPending: true, message: `${outcome.message} ${RESTART_NOTICE}` }
+  }
   const options_ = options
   /**
    * The data removed extensions left (story 328): an owner the tables ledger
@@ -531,12 +551,16 @@ export function createBundleAdmin(options: {
         `granted ${LEVEL_WORDS[level].label}: ${asks.join(', ') || 'nothing'}${delegateKey ? `, acting for ${delegateKey} when nobody is using it` : ''}`,
       )
       const state = bundleGrants.state(pkg)
-      return {
-        status: 200,
-        ok: true,
-        on: state.on,
-        message: `${pkg.name} is granted what it asks for.`,
-      }
+      return afterSwitchOn(
+        pkg,
+        {
+          status: 200,
+          ok: true,
+          on: state.on,
+          message: `${pkg.name} is granted what it asks for.`,
+        },
+        'granted',
+      )
     },
 
     async setEnabled(actor, id, enabled) {
@@ -573,7 +597,7 @@ export function createBundleAdmin(options: {
         `${pkg.packageName}@${pkg.version}`,
         enabled ? 'enabled; it runs again' : 'disabled; it is off',
       )
-      return {
+      const outcome = {
         status: 200,
         ok: true,
         on: state.on,
@@ -581,6 +605,7 @@ export function createBundleAdmin(options: {
           ? `${pkg.name} is turned on.`
           : `${pkg.name} is turned off until it is enabled again.`,
       }
+      return enabled ? afterSwitchOn(pkg, outcome, 'turned on') : outcome
     },
   }
 }

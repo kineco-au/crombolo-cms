@@ -1,8 +1,8 @@
 /**
  * Story 335: an extension granted Acts as you or Unrestricted keeps that only
  * while someone this site trusts vouches for it. Checked at every start, before
- * extensions run, so an upgrade, or a signer taken off Trusted signers, switches
- * off what no longer qualifies.
+ * extensions run, so an upgrade switches off what no longer qualifies; and as a
+ * signer is taken off Trusted signers, so what it vouched for stops at once.
  */
 import { type ExtensionRegistry, isUpperLevel, levelOf } from '@crombolo/backoffice-host/registry'
 import type { Db } from '@crombolo/data'
@@ -27,6 +27,8 @@ export async function switchOffUntrusted(
   config: CromboloConfig,
   extensions: ExtensionRegistry,
   grants: Pick<BundleGrants, 'granted' | 'isOn' | 'state' | 'forget'>,
+  /** At start, or because a signer was just taken off the list. */
+  when: 'start' | 'untrusted' = 'start',
 ): Promise<string[]> {
   const marketplace = createMarketplace({
     registry: config.npmRegistry,
@@ -56,8 +58,8 @@ export async function switchOffUntrusted(
       action: 'Disable',
       entityType: 'Bundle',
       entityName: `${pkg.packageName}@${pkg.version}`,
-      detail: `switched off at start: it acts as you or runs unrestricted, and is ${why}; it needs granting again`,
-      source: 'boot',
+      detail: `switched off ${when === 'start' ? 'at start' : 'as its signer was taken off Trusted signers'}: it acts as you or runs unrestricted, and is ${why}; it needs granting again`,
+      source: when === 'start' ? 'boot' : 'request',
       userKey: null,
       userName: SWITCHED_OFF_BY,
       ipAddress: null,

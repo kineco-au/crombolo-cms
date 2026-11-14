@@ -362,6 +362,12 @@ describe(`installed bundles on a remote (${dialectUnderTest})`, () => {
       body: JSON.stringify({ grant: ['content.read'] }),
     })
     expect(granted.status, await granted.clone().text()).toBe(200)
+    // Not granted when this server started, so it is not running: it runs after a restart.
+    expect(await granted.json()).toMatchObject({
+      ok: true,
+      restartPending: true,
+      message: expect.stringContaining('crombolo restart'),
+    })
     expect((await api(writer, 'installed/acme-crm/disable', { method: 'POST' })).status).toBe(403)
     const off = await api(h, 'installed/acme-crm/disable', { method: 'POST' })
     expect(off.status).toBe(200)
@@ -372,7 +378,13 @@ describe(`installed bundles on a remote (${dialectUnderTest})`, () => {
     expect(listed.items[0]?.on).toBe(false)
     expect(
       await (await api(h, 'installed/acme-crm/enable', { method: 'POST' })).json(),
-    ).toMatchObject({ ok: true, on: true })
+    ).toMatchObject({ ok: true, on: true, restartPending: true })
+    expect(restartPending(h.server.config.siteDir)?.reasons).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('granted'),
+        expect.stringContaining('turned on'),
+      ]),
+    )
     expect((await api(h, 'installed/nothing/enable', { method: 'POST' })).status).toBe(404)
   })
 })

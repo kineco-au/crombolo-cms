@@ -770,7 +770,11 @@ implementation serves Settings → Extensions, the remote protocol and the CLI
   (`server/src/restart-pending.ts`), which `extension list`, the remote's listing
   and Settings → Extensions → Installed show ("Installed changes take effect when
   the site restarts."), until `crombolo restart`. A server that boots clears
-  it.
+  it. So do granting one and turning one on, when its server half is not running on
+  this node: an extension is built and started only at boot, so it runs after the
+  restart, and the answer says so (story 346 starts it at once instead). On the
+  command line, with no server to ask, it is always said. Turning one off needs no
+  restart: its routes answer 503 at once.
 - **On a remote** (`bundle-manage`, [`remote-protocol.md`](remote-protocol.md)):
   listing needs the level `read`; the rest need `all`. Installing and removing
   also need ApplyStructure and "Install code on this site"
@@ -1951,10 +1955,13 @@ each permission with the reason it needs it, and it is held to that.
     names the signer and says to add it in Trusted signers. An unsigned Limited
     extension installs, and the panel says "Nobody has vouched for who built this" in
     place of its build line.
-  - **Checked at every start.** Before extensions run, an Acts as you or Unrestricted
-    grant recorded here that nobody this site trusts vouches for is withdrawn, audited
-    and logged. It then needs granting again, under the same rule. That covers an
-    upgrade from before 335, and a signer later taken off the list. A grant the site's
+  - **Checked at every start, and as a signer is removed.** Before extensions run, an
+    Acts as you or Unrestricted grant recorded here that nobody this site trusts vouches
+    for is withdrawn, audited and logged. It then needs granting again, under the same
+    rule. That covers an upgrade from before 335. Taking a signer off Trusted signers,
+    in Settings or with `crombolo keys untrust`, runs the same check at once, so what it
+    vouched for stops then, not at the next start, and the answer names each extension
+    switched off. A grant the site's
     code makes is the developer's, and kept. A signature that can't be checked at the
     time, offline say, is left alone.
   - **`bundle sign --key <name>`** signs a package directory or `.tgz` with one of your

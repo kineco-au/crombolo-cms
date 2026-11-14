@@ -491,6 +491,31 @@ describe('on a real server', () => {
     ).toContain("which this site doesn't trust")
   })
 
+  test('a signer taken off the list switches off what it vouched for at once, not at the next start (story 335)', async () => {
+    const pair = createKeyPair('release')
+    const h = await unrestrictedSite({}, '*')
+    await signPathWithKey(seoDirectory(h.server.config.siteDir), pair)
+    const signers = `${BACKOFFICE}/crombolo/api/bundles/signers`
+    const added = (await (
+      await h.post(signers, { kind: 'user', name: 'Release', publicKey: pair.publicKey.line })
+    ).json()) as { entry: { id: string } }
+
+    const granted = await grant(h)
+    expect(granted.status, await granted.clone().text()).toBe(200)
+
+    const removed = (await (
+      await h.call(`${signers}/${added.entry.id}`, { method: 'DELETE' })
+    ).json()) as { ok: boolean; switchedOff: string[] }
+    expect(removed).toMatchObject({ ok: true, switchedOff: [expect.stringMatching(/seo/i)] })
+    expect(h.server.bundleGrants.isOn('acme-seo')).toBe(false)
+    const log = await h.json<{ items: { action: string; detail: string | null }[] }>(
+      `${BACKOFFICE}/crombolo/api/audit?take=20`,
+    )
+    expect(
+      log.items.find((item) => item.detail?.includes('taken off Trusted signers'))?.detail,
+    ).toContain('switched off as its signer was taken off Trusted signers')
+  })
+
   test('a host that keeps Unrestricted to the config refuses the back office, and the config still grants', async () => {
     const locked = await unrestrictedSite({ unrestrictedExtensions: 'config' })
     const refused = await grant(locked)
