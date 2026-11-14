@@ -153,7 +153,7 @@ not cover.
 | `191` | Azure AD B2C user flows for members | should | M | ready | 031 |
 | `282` | A member resets their password | should | M | ready | — |
 | `305` | An identity provider the config declares can be locked | should | S | done | — |
-| `314` | An administrator sees the back office as a group does | should | M | in progress (its browser test runs in the release CI) | — |
+| `314` | An administrator sees the back office as a group does | should | M | done | — |
 
 ### Epic E — Cross-cutting
 

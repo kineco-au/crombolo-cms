@@ -117,7 +117,7 @@ Taken 2026-11-14.
 - [x] Other sessions of the same administrator are unaffected.
 - [x] Starting, switching back and changes made while viewing are audited, naming the
       groups.
-- [ ] A browser test views as a group with no Settings, sees no Settings section, and
+- [x] A browser test views as a group with no Settings, sees no Settings section, and
       switches back. It runs in CI only, in the browser suite on a push carrying
       `--browser-tests`, not locally while the story is built; the story is done once
       that CI run passes. *Written (`tests/browser/view-as.browser.ts`), not yet run: it
@@ -161,3 +161,6 @@ As planned, with the notes below.
   room, and reloads the back office when the hour is up. Words in `view-as-words.js`.
 - **Tests:** `tests/view-as.test.ts` (both engines) and `tests/view-as-words.test.ts`; the
   browser test is written and runs in CI only.
+
+The browser test (`tests/browser/view-as.browser.ts`) passed in CI on 2026-11-14, in the
+browser suite of the release run for v0.65.0 (run 43578236030).
