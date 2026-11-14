@@ -199,7 +199,8 @@ requests, only server-side and build-time front ends can call it.
 | `258` | A page says whether it changed without being rendered | should | M | done | 057, 174 |
 | `259` | Lifetimes that suit a shared cache | should | S | done | 057, 258 |
 | `260` | Stylesheets and scripts at addresses that change with their content | should | M | done | 057 |
-| `347` | Harbourstone as a single-page app | could | L | ready | 051, 053, 054, 208 |
+| `347` | Harbourstone as a single-page app | could | L | backlog | 051, 053, 054, 208, 348 |
+| `348` | The Delivery API serves what the site publishes, with no setup | should | S | ready | 050, 051 |
 
 ### Epic G — Trusting and extending bundles
 

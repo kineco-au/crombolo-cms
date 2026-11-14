@@ -1,7 +1,7 @@
 # 347 — Harbourstone as a single-page app
 
 **Epic:** F — Headless · **Priority:** could · **Size:** L
-**Depends on:** 051, 053, 054, 208
+**Depends on:** 051, 053, 054, 208, 348
 
 ## Story
 
@@ -60,9 +60,11 @@ Taken 2026-11-14.
 - **D1, hosting: its own origin.** The built app is served by a static host at another
   address from the CMS (locally a second port), and reads the CMS across origins through
   CORS, as an app on a CDN would.
-- **D2, what is public: the types it shows.** Public access is on and narrowed to the
-  content types the app renders (`allowedContentTypeAliases`). Members-only pages come
-  through only with the signed-in member's own token. No key ships in the app.
+- **D2, what is public: what the site publishes.** Revised 2026-11-14: the Delivery
+  API serves the site's public published pages with no key and no setup, from any
+  origin (story 348), as the site already shows them to anyone. Members-only pages come
+  through only with the signed-in member's own token. No key ships in the app, and the
+  app needs no type list.
 - **D3, rendering: in the browser only.** One static shell; every page is fetched and
   rendered client-side, so a publish shows at once with no rebuild. Search engines get
   only what runs JavaScript, and the docs say so, pointing to the server-rendered
@@ -83,9 +85,8 @@ before it is made.
    serves: the member login page that authorization sends a member to, and the
    not-found. `site.json` has `"distribute": true`.
 2. **The CMS config** (`crombolo.config.ts`):
-   - `deliveryApi.publicAccess: true`, with `allowedContentTypeAliases` naming the types
-     the app renders;
-   - `cors.allowedOrigins: [APP]`;
+   - nothing for reading: the API is on, public and open to any origin by default
+     (story 348);
    - `preview.url: ${APP}/preview?path={path}&token={token}`;
    - `memberAuthorization.authorizationCodeFlow` with `${APP}/signed-in` and `${APP}/`
      registered, and the site's `/login` as `loginPage`;
