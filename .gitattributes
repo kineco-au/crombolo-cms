@@ -1,0 +1,4 @@
+# Every checkout uses LF line endings, Windows included (stories 333, 334): the
+# containers' shell scripts and the tests that hash or snapshot checked-in files
+# expect them. Git detects binary files itself.
+* text=auto eol=lf

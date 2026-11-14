@@ -655,6 +655,15 @@ Every job has its own Postgres service and per-process database, and registry
 publishing waits for every matrix job. `load (sqlite)` keeps its existing
 sequential `test:load` and `test:bench` steps.
 
+**On Windows** (story 334), the `windows host` job checks a Windows developer's host
+in a few minutes on every push: the checkout's line endings, the frozen install,
+`docker compose config` with a Windows path, and the pre-push hook's Windows path (it
+runs the gate in the SQLite test container, which the job checks with
+`CROMBOLO_HOOK_DRY_RUN`). It also runs `bun run check` natively, seen but not gating
+until story 333's survey shows it passes. Windows runners cannot run Linux containers,
+so the containers themselves are not tried there. The `extensions` job runs the
+extension tests on macOS and Windows too.
+
 The large fixtures stay whole: 25,000 pages in three cultures, a million media
 items, 10,000 uploads and 1,500 concurrent-edit operations. Sharding removes
 the wait between workloads; the slowest fixture still sets the lower bound.

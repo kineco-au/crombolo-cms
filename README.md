@@ -172,16 +172,22 @@ Everything in this section runs from the root of a clone of this repository.
 None of these scripts exists in a site made with `init`, which uses
 `bun start`.
 
-### Set up
+### Set up on macOS
 
-You need Bun 1.3 or later, and Docker with Compose v2 for Postgres and the
-containerised test runs. Building the back office also needs Node 24 and npm 11:
-it is built from Crombolo's fork of Umbraco's client by that client's own
-scripts ([backoffice hosting](docs/backoffice-hosting.md#the-fork-of-umbracos-client)).
-Nothing in the build, test or run path needs .NET, and a site needs neither
-Node nor npm. Installed extensions run under Deno, which `bun install` brings
-([extensions](docs/extensions.md)); a container needs a glibc image such as
-`oven/bun:1-slim`, not Alpine.
+You need:
+
+- **Bun 1.3 or later:** `curl -fsSL https://bun.sh/install | bash`, or `brew install oven-sh/bun/bun`.
+- **Node 24 and npm 11**, only to build the back office: `brew install node@24`. It is
+  built from Crombolo's fork of Umbraco's client by that client's own scripts
+  ([backoffice hosting](docs/backoffice-hosting.md#the-fork-of-umbracos-client)). A
+  site needs neither Node nor npm.
+- **Docker with Compose v2**, for Postgres and the containerised test runs: Docker
+  Desktop, or another runtime that provides `docker compose`.
+- **Git**, which the Xcode command line tools include (`xcode-select --install`).
+
+Nothing in the build, test or run path needs .NET. Installed extensions run under Deno,
+which `bun install` brings ([extensions](docs/extensions.md)); a container needs a glibc
+image such as `oven/bun:1-slim`, not Alpine.
 
 ```bash
 git clone https://github.com/kineco-au/crombolo-cms.git
@@ -194,8 +200,43 @@ bun run check                 # format, lint, typecheck and the SQL rule
 bun run hooks:install         # a pre-push hook running the same gate
 ```
 
+On Linux the steps are the same, with Bun, Node and Docker from your distribution's
+packages or their own installers.
+
 [`docs/backoffice-hosting.md`](docs/backoffice-hosting.md) says why the back
 office is assembled rather than used from npm as it is.
+
+### Set up on Windows
+
+Work in **WSL2**, Windows' own Linux, with the checkout inside it. To the repository it
+is then Linux, so the macOS steps hold as written, and Docker's mounts of the checkout
+are fast and see changes. Running the suite natively on Windows is not supported yet
+(story 333).
+
+1. **WSL2 and a distribution:** in PowerShell as an administrator, `wsl --install`, which
+   installs Ubuntu by default, then restart and open **Ubuntu** from the Start menu.
+2. **Docker Desktop** for Windows, with the WSL 2 back end, and under Settings →
+   Resources → WSL integration, your distribution switched on. `docker compose version`
+   then works in the Ubuntu shell.
+3. **Inside Ubuntu,** the tools the macOS section lists, from Linux installers:
+   - `curl -fsSL https://bun.sh/install | bash` for Bun;
+   - Node 24 and npm 11, from NodeSource or `nvm install 24`;
+   - `sudo apt install git`.
+4. **Clone into the Linux file system,** your home directory, not `/mnt/c/…`: a checkout
+   on a Windows drive is many times slower through Docker, and its changes are not seen.
+   Then run the macOS section's commands from the Ubuntu shell.
+5. **Your editor:** VS Code's WSL extension opens the folder as it is (`code .` from the
+   Ubuntu shell); other editors reach it at `\\wsl$\Ubuntu\home\<you>\crombolo-cms`.
+
+Every checkout uses LF line endings, Windows included (`.gitattributes`). The pre-push
+hook, run from Git for Windows on a checkout outside WSL2, runs its gate in the SQLite
+test container instead of on the host; push with `--no-verify` to skip it.
+
+What does not work on Windows yet:
+
+- the suite and `bun run check` natively, outside WSL2 (story 333);
+- a checkout on a Windows drive used through Docker, which is too slow, and file
+  watching through its mount, so a running CMS does not reload on a change.
 
 ### Run it from source
 

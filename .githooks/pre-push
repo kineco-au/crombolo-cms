@@ -1,6 +1,7 @@
 #!/bin/sh
 # Runs the gate CI runs on a pull request, minus the containers: format, lint,
-# types and the SQLite suite. Push with `--no-verify` to skip it.
+# types and the SQLite suite; on Windows, in the SQLite test container instead.
+# Push with `--no-verify` to skip it.
 #
 # Postgres and the browser suite are deliberately left out — both need Docker and
 # are slow enough to make pushing a chore. CI still runs them, so a green hook is
@@ -20,6 +21,27 @@ if [ "$deleted_only" = yes ]; then
 fi
 
 cd "$(git rev-parse --show-toplevel)"
+
+# On Windows (story 334) the gate runs in the SQLite test container, as the host
+# suite does not run natively there (story 333). CROMBOLO_HOOK_DRY_RUN says what it
+# would do and stops, which CI's Windows job checks.
+case "$(uname -s)" in
+    MINGW* | MSYS* | CYGWIN*)
+        gate="docker compose run --rm cms-test-sqlite sh -c 'bun run generate:types && bun run check && bun run test'"
+        if [ -n "$CROMBOLO_HOOK_DRY_RUN" ]; then
+            echo "pre-push: on Windows, would run: $gate"
+            exit 0
+        fi
+        if ! command -v docker >/dev/null 2>&1; then
+            echo "pre-push: on Windows the gate runs in Docker, which was not found." >&2
+            echo "pre-push: start Docker Desktop and push again, or push with --no-verify to skip it." >&2
+            exit 1
+        fi
+        echo "pre-push: on Windows, the gate in the SQLite test container"
+        eval "$gate"
+        exit $?
+        ;;
+esac
 
 if [ ! -d packages/backoffice-dist/dist ]; then
     echo "pre-push: packages/backoffice-dist/dist is missing — run 'bun run vendor:backoffice' first." >&2

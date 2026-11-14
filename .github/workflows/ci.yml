@@ -272,6 +272,41 @@ jobs:
             - run: bun run generate:types
             - run: bun run test tests/extension-isolation.test.ts tests/extension-discovery.test.ts tests/simple-redirects.test.ts tests/entra-bundle.test.ts
 
+    # Story 334: a Windows developer's host, in a few minutes. Windows runners cannot
+    # run Linux containers, so this holds the host's half of working through Docker:
+    # the checkout's line endings, the install, the compose file, the pre-push hook's
+    # Windows path and the checks. The containers themselves were tried by hand.
+    windows:
+        name: windows host
+        needs: [check]
+        runs-on: windows-latest
+        defaults:
+            run:
+                shell: bash
+        steps:
+            - uses: actions/checkout@v5
+            - name: Every text file is checked out with LF line endings
+              run: |
+                  crlf=$(git ls-files --eol | awk '$2 ~ /crlf|mixed/')
+                  if [ -n "$crlf" ]; then echo "$crlf"; exit 1; fi
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: ${{ env.BUN_VERSION }}
+            - run: bun install --frozen-lockfile
+            - name: The compose file parses with a Windows path to the checkout
+              run: docker compose config --quiet
+            - name: The pre-push hook takes its Windows path
+              run: |
+                  said=$(echo "refs/heads/main $(git rev-parse HEAD) refs/heads/main 0000000000000000000000000000000000000000" \
+                    | CROMBOLO_HOOK_DRY_RUN=1 sh .githooks/pre-push)
+                  echo "$said"
+                  case "$said" in *"in the SQLite test container"*|*"cms-test-sqlite"*) ;; *) exit 1 ;; esac
+            - run: bun run generate:types
+            # Not yet known to pass natively (story 333's survey); seen, not gating.
+            - name: Format, lint and types, natively
+              continue-on-error: true
+              run: bun run check
+
     # The Next.js front end (story 208), built and run on each supported major:
     # the packages packed as they publish, a site scaffolded by `crombolo init`,
     # its CMS and its built app answering real requests. Locally:

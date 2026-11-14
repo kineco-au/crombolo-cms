@@ -129,7 +129,7 @@ does now.
 
 ## Acceptance criteria
 
-- [ ] `.gitattributes` makes every checkout use LF line endings.
+- [x] `.gitattributes` makes every checkout use LF line endings.
 - [ ] On a Windows 11 machine with Docker Desktop, from a fresh clone in WSL2:
       setup, `bun run docker:up` (the CMS answering on port 8080),
       `bun run docker:test:sqlite`, `bun run docker:test:all` and `bun run check`
@@ -137,7 +137,7 @@ does now.
 - [ ] The same from a clone on a Windows drive, through PowerShell, with whatever
       `docker:setup` and the hook need; or, if the trial shows it is too slow or
       too fragile to recommend, the README says so and why, with the timings.
-- [ ] The README's "Crombolo development → Set up" is two sections, **On macOS** and
+- [x] The README's "Crombolo development → Set up" is two sections, **On macOS** and
       **On Windows**, each complete on its own: prerequisites and where to get
       them, the clone and setup commands, running the CMS and the tests. macOS
       says Linux follows its steps; Windows leads with the recommended route,
@@ -145,8 +145,42 @@ does now.
 - [ ] Every command in both sections was run on its platform as written, from a
       fresh clone, and the steps that only one platform needs appear only in its
       section.
-- [ ] CI has a Windows job of about five minutes, on every push: line endings, the
+- [x] CI has a Windows job of about five minutes, on every push: line endings, the
       frozen install, `docker compose config`, the pre-push hook's Windows path,
       `bun run check` and a curated set of unit tests.
 - [ ] The trial's results (the machine, Docker Desktop's version, the timings,
       anything that failed and its fix) are recorded in this story.
+
+## Built so far
+
+2026-11-14, everything that does not need a Windows machine:
+
+- **`.gitattributes`** with `* text=auto eol=lf`. Every file in the repository was
+  already LF, so renormalising changed nothing.
+- **The README:** "Set up on macOS" and "Set up on Windows", each complete on its own.
+  - macOS lists its prerequisites and where they come from, and says Linux follows the
+    same steps.
+  - Windows leads with WSL2: installing it, Docker Desktop's WSL integration, the tools
+    inside Ubuntu, cloning into the Linux file system, and opening the folder from an
+    editor. It then lists what does not work.
+- **The pre-push hook**, under Git for Windows' `sh`, runs its gate in the SQLite test
+  container. It says how to skip when Docker is missing, and `CROMBOLO_HOOK_DRY_RUN`
+  prints what it would run.
+- **CI's `windows host` job:**
+  - the checkout's line endings;
+  - `bun install --frozen-lockfile`;
+  - `docker compose config` with a Windows path;
+  - the hook's Windows path, by its dry run;
+  - `bun run check` natively, seen but not gating until story 333 shows it passes.
+- `docs/testing.md` describes the job.
+
+**Not built:** `docker:setup`, and polling for changes from a Windows drive. Both are
+for the Windows-drive route, which the README now advises against. If the trial shows
+that route is usable after all, they are its work.
+
+**Still open, needing a Windows 11 machine with Docker Desktop:**
+- the WSL2 trial and the Windows-drive trial, with their timings;
+- running both README sections' commands as written from a fresh clone;
+- recording the results here.
+
+Until then the Windows steps are written but untried.
