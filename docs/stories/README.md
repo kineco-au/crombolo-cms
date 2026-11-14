@@ -218,7 +218,7 @@ requests, only server-side and build-time front ends can call it.
 | `194` | Installing server code takes an explicit yes | must | S | done | 063, 181 |
 | `222` | Bundles ask for permissions | should | L | done | 063, 194 |
 | `244` | The provenance check from the host entry | should | S | done | 060 |
-| `346` | A granted extension starts without a restart | should | L | ready | 311 |
+| `346` | A granted extension starts without a restart | should | M | ready | 311 |
 
 ### Epic H — Importing a site
 
