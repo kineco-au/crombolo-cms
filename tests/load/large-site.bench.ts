@@ -465,7 +465,8 @@ describe(`a large site (${dialectUnderTest})`, () => {
     const seconds = (performance.now() - started) / 1000
     publishing = false
     await reading
-    const max = Math.max(...samples)
+    // A loop, not a spread: a fast run takes more samples than a call takes arguments.
+    const max = samples.reduce((most, sample) => (sample > most ? sample : most), 0)
     return { p95: p95(samples), max, count: samples.length, seconds }
   }
 

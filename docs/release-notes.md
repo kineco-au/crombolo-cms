@@ -6,7 +6,24 @@ point at `docs/stories/`.
 
 ## Unreleased
 
-## v0.65.0 — 2026-11-14
+## v0.65.1 — 2026-11-14
+
+v0.65.0 was tagged but not published: its release run's SQLite load test failed. This
+release is v0.65.0's changes with that fixed; everything listed under v0.65.0 below ships
+in it.
+
+### Fixes
+
+- **The large-site load test takes the slowest of its renders with a loop.** A fast run took
+  more samples than a function call takes arguments, so `Math.max(...samples)` overflowed the
+  stack; renders themselves were within budget.
+
+### Migrations
+
+- 077 `AddSessionViewAs` now names 0.65.1, the release it ships in, since 0.65.0 was not
+  published.
+
+## v0.65.0 — 2026-11-14 (not published)
 
 ### Features
 

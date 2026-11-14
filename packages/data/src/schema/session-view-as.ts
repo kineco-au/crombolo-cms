@@ -15,7 +15,7 @@ export const sessionViewAsMigration: Migration = {
   to: STATE_SESSION_VIEW_AS,
   name: 'AddSessionViewAs',
   kind: 'expand',
-  release: '0.65.0',
+  release: '0.65.1',
   async up(db: Db) {
     const t = db.dialect.types
     await schemaOps(db).addColumn('user_login_session', 'view_as_groups', t.text)
