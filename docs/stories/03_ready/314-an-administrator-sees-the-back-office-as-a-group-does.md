@@ -72,4 +72,6 @@ place, for one session, without anything else changing.
 - [ ] Starting, switching back and changes made while viewing are audited, naming the
       groups.
 - [ ] A browser test views as a group with no Settings, sees no Settings section, and
-      switches back.
+      switches back. It runs in CI only, in the browser suite on a push carrying
+      `--browser-tests`, not locally while the story is built; the story is done once
+      that CI run passes.
