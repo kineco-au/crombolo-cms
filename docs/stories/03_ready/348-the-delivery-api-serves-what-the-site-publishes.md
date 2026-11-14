@@ -38,6 +38,14 @@ read answers are the site's public pages.
   origins narrows it. With `publicAccess` off, the default is no origins, as now.
 - **Media** stays off by default (`media.enabled`). Its files are already served at
   their own addresses; the media API is a separate decision.
+- **`CROMBOLO_DELIVERY_API_PRIVATE`** replaces `CROMBOLO_DELIVERY_API_PUBLIC`
+  (decided 2026-11-14). Unset or anything but `true`, the API follows what the site
+  publishes; `true` makes it private, every request needing the key. In the config it
+  stays `deliveryApi.publicAccess`, Umbraco's name, and the config wins over the
+  variable as everywhere. `CROMBOLO_DELIVERY_API_PUBLIC` has shipped: a site that set
+  it to `false` to be private would quietly become public if it were ignored, so while
+  it is set the server refuses to start, saying to use `CROMBOLO_DELIVERY_API_PRIVATE`,
+  as `CROMBOLO_CONTENT_FILES_READONLY` is refused (story 343).
 - **The upgrade note** says plainly that after this release a site's public pages are
   readable as JSON, and how to turn it off.
 
@@ -53,8 +61,12 @@ read answers are the site's public pages.
    The environment path (`config.ts`) already leaves an unset variable undefined, so
    it falls through to these. `corsPolicy` (`cors.ts`) already turns `*` into "any
    origin" only while the API is public, with no credentials; nothing changes there.
-2. **The settings list** (`packages/server/src/settings.ts`):
+2. **The settings list** (`packages/server/src/settings.ts`), and `config.ts`:
    - `CROMBOLO_DELIVERY_API` defaults to `true`, said as "on; `false` turns it off";
+   - `CROMBOLO_DELIVERY_API_PRIVATE` (boolean, default `false`) in place of
+     `CROMBOLO_DELIVERY_API_PUBLIC`, read into `publicAccess: !private`. The old name
+     is read only to refuse it, and is named in `tests/settings-list.test.ts` as
+     retired;
    - `CROMBOLO_DELIVERY_API_CORS_ORIGINS` defaults to "any origin while the API is
      public".
 
@@ -73,6 +85,9 @@ read answers are the site's public pages.
      site's public published pages, members-only and drafts excepted, are readable as
      JSON at `/umbraco/delivery/api/v2/` and `/crombolo/delivery/api/v2/`, from any
      origin; `CROMBOLO_DELIVERY_API=false` or `deliveryApi.enabled: false` turns it off.
+     A second note: `CROMBOLO_DELIVERY_API_PUBLIC` is refused; a site that set it to
+     `false` sets `CROMBOLO_DELIVERY_API_PRIVATE=true` instead, and one that set it to
+     `true` removes it.
 5. **Tests:**
    - `tests/delivery-api.test.ts`, "settings": on by default, with `*` while public and
      none while private;
@@ -82,7 +97,9 @@ read answers are the site's public pages.
    - a draft only with a preview token;
    - `enabled: false` answering 404;
    - an explicit origin list narrowing CORS, and `allowedOrigins: []` closing it;
-   - `publicAccess: false` needing the key and allowing no origin.
+   - `publicAccess: false` needing the key and allowing no origin;
+   - `CROMBOLO_DELIVERY_API_PRIVATE=true` making it private, unset leaving it public,
+     and `CROMBOLO_DELIVERY_API_PUBLIC` set at all stopping the start with the message.
 
    The existing tests that assumed the API off by default
    (`contentAccess(resolveDeliveryApiSettings(), …)` is false, and the default-off
@@ -95,7 +112,10 @@ read answers are the site's public pages.
 - [ ] A members-only page is left out without its member's token and served with it;
       a draft only with a preview token; an unpublished page never.
 - [ ] `enabled: false` turns it off; listed origins narrow CORS; `publicAccess: false`
-      needs the key and allows no origin unless listed.
+      or `CROMBOLO_DELIVERY_API_PRIVATE=true` needs the key and allows no origin unless
+      listed.
+- [ ] `CROMBOLO_DELIVERY_API_PUBLIC`, still set from before, stops the server at start,
+      naming `CROMBOLO_DELIVERY_API_PRIVATE`.
 - [ ] `docs/delivery-api.md`, `docs/configuration.md` (regenerated) and the release
       notes' upgrade notes say what changed.
 - [ ] Tests on both engines.
