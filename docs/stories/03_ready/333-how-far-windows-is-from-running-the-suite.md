@@ -79,5 +79,11 @@ integration suites on Windows, or adding Windows to the CI that gates a release.
 ## Found so far
 
 - 2026-11-14, CI's `windows host` job (story 334): on `windows-latest`, `bun install
-  --frozen-lockfile`, `bun run generate:types` and `bun run check` (Biome, tsc and the
-  SQL rule) all pass natively. What remains to measure here is the test suite.
+  --frozen-lockfile`, `bun run generate:types`, Biome and both type checks pass natively.
+  The SQL rule (`scripts/check-sql.ts`) did not: it compared `\`-separated paths with its
+  `/`-separated list of files allowed to hold SQL, so it flagged every one of them. Fixed by
+  making the paths `/`-separated. The job's first run read as passing only because the step
+  was `continue-on-error`, which GitHub reports as success.
+- `scripts/sites.ts:127` compares `relative(root, site.dir)` with a site's name such as
+  `demo/harbourstone`, and would miss on Windows the same way. What remains to measure here
+  is the test suite.

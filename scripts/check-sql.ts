@@ -6,7 +6,7 @@
  * import's staging copy). Any other file holding one fails.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { join, relative, sep } from 'node:path'
 
 const ROOT = join(import.meta.dir, '..')
 
@@ -137,7 +137,8 @@ export function filesWithSql(): string[] {
       continue
     }
     for (const path of sources(src)) {
-      const file = relative(ROOT, path)
+      // `/`-separated, as the allowed list is, on Windows too.
+      const file = relative(ROOT, path).split(sep).join('/')
       if (allowed(file)) continue
       if (literals(readFileSync(path, 'utf8')).some((text) => SQL.test(text))) files.push(file)
     }
