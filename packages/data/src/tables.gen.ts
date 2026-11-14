@@ -886,6 +886,8 @@ export interface CoreTables {
     logged_out_utc: Timestamp | null
     session_id: string
     user_id: number
+    view_as_groups: string | null
+    view_as_until: Timestamp | null
   }
   user_notification: {
     action: string

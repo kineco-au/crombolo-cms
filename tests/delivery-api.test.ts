@@ -35,11 +35,17 @@ import {
 import { type Harness, ORIGIN, signedInServer } from './support/harness.ts'
 
 describe('settings', () => {
-  test('are off by default, as in Umbraco, and a client id gains its prefix', () => {
+  test('serve what the site publishes, to any origin, by default (story 348); a client id gains its prefix', () => {
     const settings = resolveDeliveryApiSettings()
-    expect(settings.enabled).toBe(false)
+    expect(settings.enabled).toBe(true)
     expect(settings.publicAccess).toBe(true)
+    expect(settings.cors.allowedOrigins).toEqual(['*'])
     expect(settings.media).toEqual({ enabled: false, publicAccess: true })
+    // A private API lets no origin in unless listed; a list, an empty one too, is kept.
+    expect(resolveDeliveryApiSettings({ publicAccess: false }).cors.allowedOrigins).toEqual([])
+    expect(
+      resolveDeliveryApiSettings({ cors: { allowedOrigins: [] } }).cors.allowedOrigins,
+    ).toEqual([])
     expect(memberClientId('shop')).toBe('umbraco-member-shop')
     expect(memberClientId('umbraco-member-shop')).toBe('umbraco-member-shop')
   })
@@ -62,7 +68,8 @@ describe('settings', () => {
     expect(
       mediaAccess(resolveDeliveryApiSettings({ enabled: true, media: { enabled: true } }), req({})),
     ).toBe(true)
-    expect(contentAccess(resolveDeliveryApiSettings(), req({}))).toBe(false)
+    expect(contentAccess(resolveDeliveryApiSettings(), req({}))).toBe(true)
+    expect(contentAccess(resolveDeliveryApiSettings({ enabled: false }), req({}))).toBe(false)
   })
 
   test('a culture is read only when plain, and a token only from the header', () => {
@@ -287,7 +294,7 @@ type Item = {
 
 describe('the Delivery API over HTTP', () => {
   test('answers 401 when it is switched off, as Umbraco does', async () => {
-    const { get } = await site({})
+    const { get } = await site({ enabled: false })
     expect((await get('/content')).status).toBe(401)
   })
 
@@ -626,6 +633,21 @@ describe('requests from another origin', () => {
       },
     })
 
+  test('with no settings, any origin reads a public page with no key (story 348)', async () => {
+    const { get, story } = await site({})
+    const read = await get(`/content/item/${story}`, { origin: 'https://app.example.com' })
+    expect(read.status).toBe(200)
+    expect(read.headers.get('access-control-allow-origin')).toBe('*')
+    expect(read.headers.get('access-control-allow-credentials')).toBeNull()
+    const off = await site({ enabled: false })
+    expect((await off.get(`/content/item/${off.story}`)).status).toBe(401)
+    const closed = await site({ cors: { allowedOrigins: [] } })
+    const refused = await closed.get(`/content/item/${closed.story}`, {
+      origin: 'https://app.example.com',
+    })
+    expect(refused.headers.get('access-control-allow-origin')).toBeNull()
+  })
+
   test('a listed origin reads content, and the answer varies by origin', async () => {
     const { get, story } = await site({ enabled: true, cors: { allowedOrigins: [APP] } })
     const allowed = await get(`/content/item/${story}`, { origin: APP })
@@ -685,8 +707,8 @@ describe('requests from another origin', () => {
     expect(signIn.headers.get('access-control-allow-origin')).toBeNull()
   })
 
-  test('with no origins listed nothing changes', async () => {
-    const { get, h, story } = await site()
+  test('with an empty list of origins, nothing changes', async () => {
+    const { get, h, story } = await site({ cors: { allowedOrigins: [] } })
     const response = await get(`/content/item/${story}`, { origin: APP })
     expect(response.headers.get('access-control-allow-origin')).toBeNull()
     expect(response.headers.get('vary')).toBe(

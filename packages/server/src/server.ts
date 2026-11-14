@@ -43,6 +43,7 @@ import {
   isSameOrigin,
   memberCookieName,
   REDACTED,
+  type ResolvedIdentity,
   readCookie,
   serializeCookie,
 } from '@crombolo/auth'
@@ -78,6 +79,7 @@ import {
   localReturnUrl,
   MANAGEMENT_API_PREFIX,
   managementApiPrefix,
+  normaliseUuid,
   ObjectTypes,
   PREVIEW_HUB_PATH,
   RemotePermissions,
@@ -85,6 +87,7 @@ import {
 } from '@crombolo/core'
 import {
   appendCacheInstruction,
+  currentAuditContext,
   type Db,
   ExtensionActivityLog,
   ensureFormLibraryTypes,
@@ -106,6 +109,7 @@ import {
   searchProvidersOf,
   TransferRunRepository,
   type WritesPaused,
+  withAuditContext,
 } from '@crombolo/data'
 import {
   BUNDLE_SCRIPT,
@@ -311,6 +315,7 @@ import {
 } from './status-pages.ts'
 import { TwoFactorService, USER_TWO_FACTOR_PROVIDER } from './two-factor.ts'
 import { summariseUpgrades } from './upgrade-summary.ts'
+import { createViewAs } from './view-as.ts'
 import { webhookStoreView } from './webhooks.ts'
 
 export interface ServerHandle {
@@ -665,6 +670,21 @@ export async function createServer(
     // An extension's call through `api`, made in this process (story 308).
     const acting = actingPrincipalOf(request)
     if (acting) return acting
+    const identity = await identify(request)
+    if (!identity) return undefined
+    const principal = await principalFrom(identity)
+    // Story 314: what this session writes says whose groups it was seen as.
+    const context = currentAuditContext()
+    if (context && principal.viewingAs)
+      context.viewing = {
+        userKey: normaliseUuid(principal.id),
+        groups: principal.viewingAs.groups.map((g) => g.name).join(', '),
+      }
+    return principal
+  }
+
+  /** The signed-in session a request carries, from its cookie or a bearer token. */
+  async function identify(request: Request): Promise<ResolvedIdentity | undefined> {
     const header = request.headers.get('authorization')
     const bearer = header?.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : undefined
     const fromCookie = !bearer || bearer === REDACTED
@@ -684,8 +704,7 @@ export async function createServer(
       return undefined
     }
 
-    const identity = await auth.resolveAccessToken(token)
-    return identity && principalFrom(identity)
+    return auth.resolveAccessToken(token)
   }
 
   /** What a resolved user may do, as every check in the Management API reads it. */
@@ -704,7 +723,12 @@ export async function createServer(
       permissions: identity.permissions,
       groupKeys: identity.groupKeys,
       hasAccessToAllLanguages: identity.hasAccessToAllLanguages,
-      ...(await loadAccess(db, identity.user.id)),
+      ...(await loadAccess(
+        db,
+        identity.user.id,
+        identity.viewingAs ? identity.groupKeys : undefined,
+      )),
+      ...(identity.viewingAs ? { viewingAs: identity.viewingAs } : {}),
     }
   }
 
@@ -1322,6 +1346,7 @@ export async function createServer(
   // Asked each time, as e-mail set up in Settings changes without a restart (story 340).
   const canSendUserLinks = () => Boolean(resolveUserLinkSender(config, email))
   const emailSettings = createEmailSettings(db, config, { port: () => email })
+  const viewAs = createViewAs(db, auth)
   const schemaTransfer = createSchemaTransfer(db, config, {
     boot: schema,
     afterApply: async (report) => {
@@ -1541,7 +1566,12 @@ export async function createServer(
   const MEDIA_JOB_QUEUED_EVENT = { eventSource: 'Crombolo:MediaJob', eventType: 'Queued' } as const
   const hostTokenPath = `${paths.pluginPath}/api/host-token`
   const contentQueryPath = `${paths.pluginPath}/api/content-query`
-  const selfAudited = [`${paths.pluginPath}/api/email/`, `${paths.pluginPath}/api/schema-transfer/`]
+  const viewAsPath = `${paths.pluginPath}/api/view-as`
+  const selfAudited = [
+    `${paths.pluginPath}/api/email/`,
+    `${paths.pluginPath}/api/schema-transfer/`,
+    viewAsPath,
+  ]
   const bundleInstallPaths = new Set(
     ['install', 'uninstall', 'disable', 'enable', 'grant', 'settings'].flatMap((action) => [
       `${paths.pluginPath}/api/extensions/${action}`,
@@ -1578,6 +1608,11 @@ export async function createServer(
   core.setBundleDispatch((request) => fetch(request))
 
   async function fetch(request: Request): Promise<Response> {
+    // A request dispatched from inside another (an extension's call) shares its audit context.
+    return currentAuditContext() ? traced(request) : withAuditContext(() => traced(request))
+  }
+
+  async function traced(request: Request): Promise<Response> {
     // Story 262: every request a span, continuing a trace only from a trusted proxy.
     const pathname = new URL(request.url).pathname
     const route = routeOf(pathname, paths.backOfficePath)
@@ -2557,6 +2592,13 @@ export async function createServer(
       return outcome.ok
         ? Response.json(outcome)
         : Response.json(outcome, { status: outcome.status })
+    }
+
+    // Story 314: an administrator's session seen as user groups, and back.
+    if (pathname === viewAsPath) {
+      const identity = await identify(request)
+      if (!identity) return new Response('Unauthorized', { status: 401 })
+      return viewAs.handle(request, identity, clientAddress(request))
     }
 
     // Story 340: Settings → E-mail, administrators only.

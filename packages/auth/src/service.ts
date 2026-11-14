@@ -11,7 +11,7 @@ import {
 } from './device.ts'
 import { hashPassword, isNativeHash, passwordConfigJson, verifyPassword } from './password.ts'
 import { type CodeChallengeMethod, generateToken, verifyChallenge } from './pkce.ts'
-import type { AuthStore, UserRow } from './store.ts'
+import type { Authorization, AuthStore, UserRow } from './store.ts'
 
 /**
  * The `client_id` the vendored backoffice sends, which `routes.ts` checks an
@@ -87,6 +87,15 @@ export type TokenResult =
   | { ok: true; grant: TokenGrant }
   | { ok: false; error: TokenError; description: string }
 
+/** How long an administrator's session views as groups before it ends by itself (story 314). */
+export const VIEW_AS_MS = 3_600_000
+
+/** The groups a session is viewing as, and when that ends. */
+export interface ViewingAs {
+  groups: Array<{ key: string; name: string }>
+  until: Date
+}
+
 export interface ResolvedIdentity {
   user: UserRow
   sessionId: string
@@ -95,7 +104,27 @@ export interface ResolvedIdentity {
   isAdmin: boolean
   hasAccessToAllLanguages: boolean
   permissions: string[]
+  /**
+   * Set while this session views as groups: everything above is theirs. Only
+   * ever set for a user who is an administrator in their own right.
+   */
+  viewingAs?: ViewingAs
 }
+
+const identityFrom = (
+  user: UserRow,
+  authorization: Authorization,
+): Omit<ResolvedIdentity, 'sessionId'> => ({
+  user,
+  allowedSections: toSectionAliases(authorization.appAliases),
+  groupKeys: authorization.groupKeys,
+  isAdmin: authorization.isAdmin,
+  hasAccessToAllLanguages: authorization.hasAccessToAllLanguages,
+  permissions: authorization.permissions,
+})
+
+const groupsOf = (authorization: Authorization) =>
+  authorization.groupKeys.map((key, i) => ({ key, name: authorization.groupNames[i] ?? key }))
 
 /**
  * Normalises login timing so a valid username with a wrong password takes the
@@ -349,14 +378,31 @@ export class AuthService {
     }
   }
 
-  /** Resolves a reference access token to an identity, or undefined. */
-  async resolveAccessToken(accessToken: string): Promise<ResolvedIdentity | undefined> {
+  /**
+   * Resolves a reference access token to an identity, or undefined. A session
+   * viewing as groups (story 314) resolves to theirs until the view ends.
+   */
+  async resolveAccessToken(
+    accessToken: string,
+    now = new Date(),
+  ): Promise<ResolvedIdentity | undefined> {
     const token = await this.#store.findToken(accessToken, 'access')
-    if (!token || token.revokedAt || token.expiresAt.getTime() < Date.now()) return undefined
+    if (!token || token.revokedAt || token.expiresAt.getTime() < now.getTime()) return undefined
     const session = await this.#store.findSession(token.sessionId)
     if (!session) return undefined
-    const identity = await this.identityOf(token.userId)
-    return identity && { ...identity, sessionId: token.sessionId }
+    const user = await this.#activeUser(token.userId)
+    if (!user) return undefined
+    const own = await this.#store.loadAuthorization(user.id)
+    const view = session.view
+    if (view && view.until.getTime() > now.getTime() && own.isAdmin) {
+      const theirs = await this.#store.loadGroupAuthorization(view.groupKeys)
+      return {
+        ...identityFrom(user, theirs),
+        sessionId: token.sessionId,
+        viewingAs: { groups: groupsOf(theirs), until: view.until },
+      }
+    }
+    return { ...identityFrom(user, own), sessionId: token.sessionId }
   }
 
   /**
@@ -365,16 +411,42 @@ export class AuthService {
    * are locked out or not approved.
    */
   async identityOf(userId: number): Promise<Omit<ResolvedIdentity, 'sessionId'> | undefined> {
+    const user = await this.#activeUser(userId)
+    return user && identityFrom(user, await this.#store.loadAuthorization(user.id))
+  }
+
+  async #activeUser(userId: number): Promise<UserRow | undefined> {
     const user = await this.#store.findUserById(userId)
-    if (!user || user.isLockedOut || !user.isApproved) return undefined
-    const authorization = await this.#store.loadAuthorization(user.id)
+    return user && !user.isLockedOut && user.isApproved ? user : undefined
+  }
+
+  /**
+   * Turns a session to the given groups' rights for an hour (story 314), for an
+   * administrator in their own right only, whatever the session views as now.
+   */
+  async startViewing(
+    sessionId: string,
+    groupKeys: readonly string[],
+    now = new Date(),
+  ): Promise<ViewingAs | 'refused' | 'no-groups'> {
+    const session = await this.#store.findSession(sessionId)
+    const user = session && (await this.#activeUser(session.userId))
+    if (!user || !(await this.#store.loadAuthorization(user.id)).isAdmin) return 'refused'
+    const groups = await this.#store.loadGroupAuthorization(groupKeys)
+    if (groups.groupKeys.length === 0) return 'no-groups'
+    const until = new Date(now.getTime() + VIEW_AS_MS)
+    await this.#store.setSessionView(sessionId, { groupKeys: groups.groupKeys, until })
+    return { groups: groupsOf(groups), until }
+  }
+
+  /** Turns a session back to its user's own rights; answers what it was viewing as, if anything. */
+  async stopViewing(sessionId: string, now = new Date()): Promise<ViewingAs | undefined> {
+    const view = (await this.#store.findSession(sessionId))?.view
+    await this.#store.setSessionView(sessionId, undefined)
+    if (!view || view.until.getTime() <= now.getTime()) return undefined
     return {
-      user,
-      allowedSections: toSectionAliases(authorization.appAliases),
-      groupKeys: authorization.groupKeys,
-      isAdmin: authorization.isAdmin,
-      hasAccessToAllLanguages: authorization.hasAccessToAllLanguages,
-      permissions: authorization.permissions,
+      groups: groupsOf(await this.#store.loadGroupAuthorization(view.groupKeys)),
+      until: view.until,
     }
   }
 

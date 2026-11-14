@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/data",
-  "version": "0.64.0",
+  "version": "0.65.0",
   "description": "Internal to crombolo, with no compatibility promise: use @crombolo/crombolo. SQLite and Postgres storage for crombolo: schema, migrations and repositories.",
   "license": "MIT",
   "author": "Crombolo",

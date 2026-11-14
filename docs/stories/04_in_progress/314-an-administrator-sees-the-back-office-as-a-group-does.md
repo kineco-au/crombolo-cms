@@ -108,16 +108,56 @@ Taken 2026-11-14.
 
 ## Acceptance criteria
 
-- [ ] An administrator can view as one or more groups. A non-administrator can't, and
+- [x] An administrator can view as one or more groups. A non-administrator can't, and
       the endpoint refuses them.
-- [ ] While viewing, sections, tree access, actions, start nodes and languages are
+- [x] While viewing, sections, tree access, actions, start nodes and languages are
       exactly the chosen groups', and the administrators group's are not.
-- [ ] The banner names the groups and switches back in one click. It also ends with
+- [x] The banner names the groups and switches back in one click. It also ends with
       the session or after an hour.
-- [ ] Other sessions of the same administrator are unaffected.
-- [ ] Starting, switching back and changes made while viewing are audited, naming the
+- [x] Other sessions of the same administrator are unaffected.
+- [x] Starting, switching back and changes made while viewing are audited, naming the
       groups.
 - [ ] A browser test views as a group with no Settings, sees no Settings section, and
       switches back. It runs in CI only, in the browser suite on a push carrying
       `--browser-tests`, not locally while the story is built; the story is done once
-      that CI run passes.
+      that CI run passes. *Written (`tests/browser/view-as.browser.ts`), not yet run: it
+      waits for that CI run.*
+
+## Built
+
+As planned, with the notes below.
+
+- **Migration 077, `AddSessionViewAs`** (`data/src/schema/session-view-as.ts`):
+  `user_login_session.view_as_groups` (JSON keys) and `view_as_until`, both null when the
+  session is its user's own. Its `release` is `0.65.0`, the release it ships in, so
+  `tests/migrations.test.ts` "no step claims a release that does not exist yet" fails until
+  `bun run release:version` makes the version 0.65.0, as with earlier migrations added
+  between releases. Undone in every rewind (`tests/support/db.ts`,
+  `tests/integration/first-boot.integration.ts`) and listed where the replays are expected.
+- **Authorization from groups** (`auth/src/store.ts`): `loadAuthorization(userId)` and
+  `loadGroupAuthorization(groupKeys)` both build from a set of groups (`#authorizationOf`),
+  which now also names them. `isAdmin` comes only from those groups.
+- **One session, one override** (`auth/src/service.ts`): `resolveAccessToken` builds the
+  identity from the session's groups while the hour lasts (`VIEW_AS_MS`) and the user is
+  still an administrator in their own right, and carries `viewingAs: { groups, until }`,
+  which `principalFrom` keeps on the principal. `viewingAs` is only ever set for a real
+  administrator, so it stands for the plan's `actualUserIsAdmin`, which is not a separate
+  field. `startViewing` and `stopViewing` set and clear it.
+- **Start nodes and languages:** `loadAccess(db, userId, groupKeys?)` and
+  `UserRepository.access(userId, groupKeys?)` take the viewed groups.
+- **Approvals:** an automatic self-approval asks `requesterIn`, which uses the acting
+  principal's groups when the requester is the one viewing (`reach` and `settle` take the
+  actor).
+- **The endpoint** `<backoffice>/crombolo/api/view-as` (`server/src/view-as.ts`): `GET`
+  status (and, to an administrator, the groups to choose from), `POST {groups}` (replaces a
+  view already on), `DELETE`. It writes its own entries, so it is in `selfAudited`.
+- **The audit context:** `withAuditContext` and `currentAuditContext` in
+  `data/src/audit.ts`. The server opens one around each request, `authenticate` fills in the
+  view, and `AuditLog.record` adds "while viewing as …" to that person's entries
+  (`detailInContext`), whichever path writes them.
+- **The back office** (`backoffice-host/plugin/view-as*.js`): a `currentUserAction`, "View
+  as a group…", for administrators (`Umb.Condition.CurrentUser.IsAdmin`), opening a sidebar
+  panel to tick groups; the banner is put above `umb-app`, which is moved down to make
+  room, and reloads the back office when the hour is up. Words in `view-as-words.js`.
+- **Tests:** `tests/view-as.test.ts` (both engines) and `tests/view-as-words.test.ts`; the
+  browser test is written and runs in CI only.

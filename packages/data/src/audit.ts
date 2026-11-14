@@ -2,6 +2,7 @@
  * The audit log: who did what, when and from where. Entries are only ever
  * added, read and aged out; nothing edits one. docs/audit-log.md.
  */
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { normaliseUuid } from '@crombolo/core'
 import type { Expression, ExpressionBuilder, SqlBool } from 'kysely'
 import type { Db } from './database.ts'
@@ -173,6 +174,35 @@ function toEntry(row: Record<string, unknown>): AuditEntry {
   }
 }
 
+/**
+ * What a request's entries say about how it was made, filled in once the caller
+ * is known: an administrator viewing as groups (story 314) has every entry they
+ * write say so.
+ */
+export interface AuditContext {
+  viewing?: { userKey: string; groups: string }
+}
+
+const contexts = new AsyncLocalStorage<AuditContext>()
+
+/** Runs `work` with an audit context of its own, which it fills in as it learns who is asking. */
+export const withAuditContext = <T>(work: () => T): T => contexts.run({}, work)
+
+/** The context of the request being answered; undefined outside one. */
+export const currentAuditContext = (): AuditContext | undefined => contexts.getStore()
+
+/** The detail an entry is written with: "while viewing as Editors" added to the viewer's own. */
+export function detailInContext(
+  entry: Pick<AuditEntryInput, 'userKey' | 'detail'>,
+  context = currentAuditContext(),
+): string | null | undefined {
+  const viewing = context?.viewing
+  if (!viewing || !entry.userKey || !UUID.test(entry.userKey)) return entry.detail
+  if (normaliseUuid(entry.userKey) !== viewing.userKey) return entry.detail
+  const note = `while viewing as ${viewing.groups}`
+  return entry.detail ? `${entry.detail}, ${note}` : `${note[0]?.toUpperCase()}${note.slice(1)}`
+}
+
 export class AuditLog {
   #db: Db
 
@@ -203,7 +233,7 @@ export class AuditLog {
           source: entry.source,
           ip_address: clip(entry.ipAddress, LIMITS.ipAddress),
           forwarded_for: clip(entry.forwardedFor, LIMITS.forwardedFor),
-          detail: clip(entry.detail, LIMITS.detail),
+          detail: clip(detailInContext(entry), LIMITS.detail),
         })
         .execute()
     }

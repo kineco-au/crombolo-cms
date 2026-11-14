@@ -4,6 +4,7 @@
  * Everything bearer-shaped is stored hashed, so a database read cannot yield a
  * usable credential.
  */
+import { normaliseUuid } from '@crombolo/core'
 import { type Db, DbDate, fromDbBool, Locks } from '@crombolo/data'
 import { DeviceStore } from './device.ts'
 import { hashToken } from './pkce.ts'
@@ -24,6 +25,48 @@ export interface UserRow {
   failedLoginAttempts: number
   /** Umbraco's `UserKind`: API users sign in with client credentials only. */
   kind: 'Default' | 'Api'
+}
+
+/** A session viewing as user groups (story 314): their keys, and when it ends. */
+export interface SessionView {
+  groupKeys: string[]
+  until: Date
+}
+
+export interface SessionRow {
+  userId: number
+  view?: SessionView
+}
+
+/** What a set of groups allows, unioned across them. */
+export interface Authorization {
+  appAliases: string[]
+  groupKeys: string[]
+  groupNames: string[]
+  isAdmin: boolean
+  hasAccessToAllLanguages: boolean
+  permissions: string[]
+  granular: Array<{ nodeKey: string; permission: string; context: string }>
+}
+
+const NO_AUTHORIZATION: Authorization = {
+  appAliases: [],
+  groupKeys: [],
+  groupNames: [],
+  isAdmin: false,
+  hasAccessToAllLanguages: false,
+  permissions: [],
+  granular: [],
+}
+
+const parseKeys = (json: string | null): string[] => {
+  if (!json) return []
+  try {
+    const parsed: unknown = JSON.parse(json)
+    return Array.isArray(parsed) ? parsed.filter((k): k is string => typeof k === 'string') : []
+  } catch {
+    return []
+  }
 }
 
 export interface AuthorizationCodeInit {
@@ -250,14 +293,34 @@ export class AuthStore {
       .execute()
   }
 
-  async findSession(sessionId: string): Promise<{ userId: number } | undefined> {
+  async findSession(sessionId: string): Promise<SessionRow | undefined> {
     const row = await this.#db.q
       .selectFrom('user_login_session')
-      .select('user_id')
+      .select(['user_id', 'view_as_groups', 'view_as_until'])
       .where('session_id', '=', sessionId)
       .where('logged_out_utc', 'is', null)
       .executeTakeFirst()
-    return row ? { userId: Number(row.user_id) } : undefined
+    if (!row) return undefined
+    const until = DbDate.fromDb(row.view_as_until)
+    return {
+      userId: Number(row.user_id),
+      ...(row.view_as_groups && until
+        ? { view: { groupKeys: parseKeys(row.view_as_groups), until } }
+        : {}),
+    }
+  }
+
+  /** Sets, or with undefined clears, what an open session is viewing as. */
+  async setSessionView(sessionId: string, view: SessionView | undefined): Promise<void> {
+    await this.#db.q
+      .updateTable('user_login_session')
+      .set({
+        view_as_groups: view ? JSON.stringify(view.groupKeys) : null,
+        view_as_until: view ? DbDate.toDb(view.until) : null,
+      })
+      .where('session_id', '=', sessionId)
+      .where('logged_out_utc', 'is', null)
+      .execute()
   }
 
   async endSession(sessionId: string): Promise<void> {
@@ -404,65 +467,67 @@ export class AuthStore {
     await this.#db.q.deleteFrom('auth_token').where('expires_at', '<', cutoff).execute()
   }
 
-  /** Section aliases and admin membership, unioned across the user's groups. */
-  async loadAuthorization(userId: number): Promise<{
-    appAliases: string[]
-    groupKeys: string[]
-    isAdmin: boolean
-    hasAccessToAllLanguages: boolean
-    permissions: string[]
-    granular: Array<{ nodeKey: string; permission: string; context: string }>
-  }> {
+  /** What the user's own groups allow. */
+  async loadAuthorization(userId: number): Promise<Authorization> {
     const groups = await this.#db.q
       .selectFrom('user_group as g')
       .innerJoin('user_group_member as m', 'm.user_group_id', 'g.id')
-      .select(['g.id', 'g.key', 'g.alias', 'g.has_access_to_all_languages'])
+      .select(['g.id', 'g.key', 'g.alias', 'g.name', 'g.has_access_to_all_languages'])
       .where('m.user_id', '=', userId)
       .execute()
-    const groupKeys = groups.map((g) => String(g.key))
-    const isAdmin = groups.some((g) => String(g.alias) === 'admin')
-    const hasAccessToAllLanguages = groups.some((g) => fromDbBool(g.has_access_to_all_languages))
+    return this.#authorizationOf(groups)
+  }
 
-    if (groups.length === 0) {
-      return {
-        appAliases: [],
-        groupKeys: [],
-        isAdmin: false,
-        hasAccessToAllLanguages: false,
-        permissions: [],
-        granular: [],
-      }
-    }
+  /** What the groups with these keys allow, as if someone were a member of exactly them. */
+  async loadGroupAuthorization(groupKeys: readonly string[]): Promise<Authorization> {
+    const keys = groupKeys.filter((k) => /^[0-9a-f-]{32,36}$/i.test(k)).map(normaliseUuid)
+    if (keys.length === 0) return NO_AUTHORIZATION
+    const groups = await this.#db.q
+      .selectFrom('user_group as g')
+      .select(['g.id', 'g.key', 'g.alias', 'g.name', 'g.has_access_to_all_languages'])
+      .where('g.key', 'in', keys)
+      .orderBy('g.name')
+      .execute()
+    return this.#authorizationOf(groups)
+  }
 
+  async #authorizationOf(
+    groups: Array<{
+      id: number
+      key: string
+      alias: string
+      name: string | null
+      has_access_to_all_languages: unknown
+    }>,
+  ): Promise<Authorization> {
+    if (groups.length === 0) return NO_AUTHORIZATION
+    const ids = groups.map((g) => Number(g.id))
+    const keys = groups.map((g) => String(g.key))
     const sections = await this.#db.q
-      .selectFrom('user_group_section as s')
-      .innerJoin('user_group_member as m', 'm.user_group_id', 's.user_group_id')
-      .select('s.app_alias')
+      .selectFrom('user_group_section')
+      .select('app_alias')
       .distinct()
-      .where('m.user_id', '=', userId)
+      .where('user_group_id', 'in', ids)
       .execute()
     const permissions = await this.#db.q
-      .selectFrom('user_group_permission as p')
-      .innerJoin('user_group as g', 'g.key', 'p.user_group_key')
-      .innerJoin('user_group_member as m', 'm.user_group_id', 'g.id')
-      .select('p.permission')
+      .selectFrom('user_group_permission')
+      .select('permission')
       .distinct()
-      .where('m.user_id', '=', userId)
+      .where('user_group_key', 'in', keys)
       .execute()
     const granular = await this.#db.q
-      .selectFrom('user_group_granular_permission as gp')
-      .innerJoin('user_group as g', 'g.key', 'gp.user_group_key')
-      .innerJoin('user_group_member as m', 'm.user_group_id', 'g.id')
-      .select(['gp.unique_id', 'gp.permission', 'gp.context'])
-      .where('m.user_id', '=', userId)
-      .where('gp.unique_id', 'is not', null)
+      .selectFrom('user_group_granular_permission')
+      .select(['unique_id', 'permission', 'context'])
+      .where('user_group_key', 'in', keys)
+      .where('unique_id', 'is not', null)
       .execute()
 
     return {
       appAliases: sections.map((s) => String(s.app_alias)),
-      groupKeys,
-      isAdmin,
-      hasAccessToAllLanguages,
+      groupKeys: keys,
+      groupNames: groups.map((g) => String(g.name ?? g.alias)),
+      isAdmin: groups.some((g) => String(g.alias) === 'admin'),
+      hasAccessToAllLanguages: groups.some((g) => fromDbBool(g.has_access_to_all_languages)),
       permissions: permissions.map((p) => String(p.permission)),
       granular: granular.map((g) => ({
         nodeKey: String(g.unique_id),

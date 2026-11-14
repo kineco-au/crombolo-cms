@@ -788,6 +788,37 @@ out only groups they are in and start nodes they reach, a non-admin sees and
 edits only their own groups — which the users port enforces, answering with
 Umbraco's statuses (`401` for the editor rules, `403` for the resource ones).
 
+### Viewing as a group
+
+An administrator can turn their own back-office session, for up to an hour, to
+exactly what one or more user groups may do (story 314): "View as a group…" in
+the user menu (`plugin/view-as.js`), a panel to tick the groups, and a banner
+across the top while it is on, with Switch back. It is for checking a group's
+set-up without making a test user.
+
+- **Kept on the session.** `user_login_session` holds the groups' keys and when
+  the view ends (migration 077), so it holds on every node and through a
+  restart, and ends with the session or after the hour, whichever is first.
+- **The whole session, and only it.** `AuthService.resolveAccessToken` builds the
+  identity from the session's groups instead of the user's
+  (`AuthStore.loadGroupAuthorization`), and the start nodes, languages and group
+  verbs come from the same groups (`loadAccess`). So every request with that
+  session's token, the back office's own Management API calls included, has the
+  groups' rights, and the administrators group's only when it is one of those
+  chosen. Another session of the same person, a device sign-in or an API user's
+  token is unaffected. An automatic self-approval counts the viewed groups too.
+- **Administrators only, judged by who they really are.** The view applies only
+  while the user is still an administrator in their own right; taken out of the
+  group, their session goes back to their own rights. Starting one asks the
+  same, whatever the session is viewing as now.
+- **The endpoint,** `<backoffice>/crombolo/api/view-as`: `GET` says whether this
+  session is viewing, as which groups and until when, and, to an administrator,
+  lists the groups; `POST {groups: [keys]}` starts it (or replaces it), `403` for
+  anyone else and `400` without a group that exists; `DELETE` switches back, for
+  that session whatever it is viewing as, so a view without Settings or Users can
+  always end. Each is audited, and everything changed while viewing says so
+  ([`audit-log.md`](audit-log.md)).
+
 ## Real-time channels
 
 - `/umbraco/serverEventHub` — SignalR hub emitting `notify` with

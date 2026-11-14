@@ -135,6 +135,9 @@ describe('the first boot of a self-hosted site', () => {
   test('a database the previous release left is upgraded by `crombolo upgrade`, and then starts', async () => {
     const file = readdirSync(site()).find((name) => name.endsWith('.sqlite')) as string
     const sqlite = new Database(join(site(), file))
+    sqlite.exec('ALTER TABLE user_login_session DROP COLUMN view_as_until')
+    sqlite.exec('ALTER TABLE user_login_session DROP COLUMN view_as_groups')
+    sqlite.exec("DELETE FROM migration_history WHERE name = 'AddSessionViewAs'")
     sqlite.exec(
       'CREATE TABLE IF NOT EXISTS user_start_node (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES user_account (id), start_node INTEGER NOT NULL, start_node_type INTEGER NOT NULL)',
     )

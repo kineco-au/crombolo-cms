@@ -85,6 +85,17 @@ own, which would otherwise be recorded twice: bundle installs and removals (stor
 194), e-mail settings (story 340), and schema uploads, approvals and discards
 (story 342), each naming the files it changed.
 
+**Viewing as a group** (story 314). An administrator starting to view the
+back office as user groups writes `Started viewing as`, the groups in its
+detail, and switching back writes `Switched back` (`from viewing as Editors`),
+both in `permission`, against the administrator. A view that ends by itself
+after the hour writes nothing. While it is on, every entry the administrator's
+session writes, whichever of the paths above writes it, has `while viewing as
+Editors, Writers` added to its detail. That comes from the request's audit
+context (`withAuditContext` in `packages/data/src/audit.ts`), which the server
+opens around each request and fills in once it knows who is asking, so no
+caller adds it itself.
+
 **Sign-ins** (`packages/auth`). The auth routes report the following through
 `onAudit`:
 

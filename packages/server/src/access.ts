@@ -98,12 +98,16 @@ export function createNodeLookup(db: Db): NodeLookup {
   }
 }
 
-/** A user's languages, their groups' start nodes per tree (story 339), and group verbs. */
+/**
+ * A user's languages, their groups' start nodes per tree (story 339), and group
+ * verbs; from the given groups instead while a session views as them (story 314).
+ */
 export async function loadAccess(
   db: Db,
   userId: number,
+  groupKeys?: readonly string[],
 ): Promise<Pick<Principal, 'languages' | 'startNodes' | 'groups'>> {
-  const data = await new UserRepository(db).access(userId)
+  const data = await new UserRepository(db).access(userId, groupKeys)
   return {
     languages: data.languages,
     groups: data.groups,

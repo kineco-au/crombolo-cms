@@ -21,7 +21,12 @@ The research behind every rule here, with Umbraco file references, is in
 
 ## Settings
 
-Off unless a site turns it on, as Umbraco's `DeliveryApi:Enabled` is.
+On by default, serving the published pages anyone may see (story 348). A page a visitor
+can open as HTML can be read as JSON too: no key, no setting, from any origin. Members-
+only pages still need their member's token, drafts a preview token, and an unpublished
+page is never served. `enabled: false`, or `CROMBOLO_DELIVERY_API=false`, turns it off.
+Umbraco's `DeliveryApi:Enabled` is off by default; here a site does not have to ask for
+what it already shows.
 
 ```ts
 // crombolo.config.ts
@@ -52,12 +57,12 @@ export default defineConfig({
 
 | Setting | Default | Environment |
 | --- | --- | --- |
-| `enabled` | `false` | `CROMBOLO_DELIVERY_API` |
-| `publicAccess` | `true` | `CROMBOLO_DELIVERY_API_PUBLIC` |
+| `enabled` | `true` | `CROMBOLO_DELIVERY_API` (`false` turns it off) |
+| `publicAccess` | `true` | `CROMBOLO_DELIVERY_API_PRIVATE=true` makes it `false`: every request needs the key |
 | `apiKey` | none | `CROMBOLO_DELIVERY_API_KEY` |
 | `allowedContentTypeAliases` / `disallowedContentTypeAliases` | none | — |
 | `media.enabled`, `media.publicAccess` | `false`, `true` | `CROMBOLO_DELIVERY_API_MEDIA` |
-| `cors.allowedOrigins` | none | `CROMBOLO_DELIVERY_API_CORS_ORIGINS`, comma separated |
+| `cors.allowedOrigins` | any origin (`*`) while public; none while private | `CROMBOLO_DELIVERY_API_CORS_ORIGINS`, comma separated |
 | `preview.url` | none | `CROMBOLO_DELIVERY_API_PREVIEW_URL` |
 | `preview.urls` | none — per content type alias, winning over `url` | — |
 | `preview.tokenMinutes` | `60` | `CROMBOLO_DELIVERY_API_PREVIEW_TOKEN_MINUTES` |
@@ -131,11 +136,13 @@ backoffice shows instead of opening anything.
 ## Requests from another origin
 
 An app served from another origin — `https://app.example.com` calling the CMS at
-`https://cms.example.com` — can call the API from the browser only when its
-origin is listed in `cors.allowedOrigins`, in `crombolo.config.ts` or
-`CROMBOLO_DELIVERY_API_CORS_ORIGINS`; code wins when both are set. None are
-listed by default, and then nothing about the API changes. Story `051`;
-`packages/api-delivery/src/cors.ts`.
+`https://cms.example.com` — can call the API from the browser. While the API is public,
+any origin may by default (story 348): its public answers are what anyone can already
+read, no credentials are allowed, and member and preview tokens travel in headers that a
+page elsewhere cannot borrow. Listing origins in `cors.allowedOrigins`, in
+`crombolo.config.ts` or `CROMBOLO_DELIVERY_API_CORS_ORIGINS`, narrows it to them; code
+wins when both are set, and an empty list closes it. A private API allows none unless
+listed. Story `051`; `packages/api-delivery/src/cors.ts`.
 
 - An origin is a scheme and host, with a port if it has one and nothing after:
   `https://app.example.com`, `http://localhost:5173`. Anything else — no scheme,

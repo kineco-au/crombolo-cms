@@ -73,6 +73,7 @@ import { richTextUiMigration } from './rich-text-ui.ts'
 import { searchIndexMigration } from './search-index.ts'
 import { searchRemovalsMigration } from './search-removals.ts'
 import { serverRoleMigration } from './server-role.ts'
+import { sessionViewAsMigration } from './session-view-as.ts'
 import { sinceVersionMigration } from './since-version.ts'
 import { siteSearchMigration } from './site-search.ts'
 import { siteSettingsTypesMigration } from './site-settings-types.ts'
@@ -167,4 +168,5 @@ export const cromboloPlan = new MigrationPlan([
   userGroupOwnersMigration,
   prunedPermissionsMigration,
   userStartNodesDroppedMigration,
+  sessionViewAsMigration,
 ])

@@ -6,6 +6,8 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.65.0 — 2026-11-14
+
 ### Features
 
 - **A granted extension starts without a restart (346).** Granting an installed extension,
@@ -15,6 +17,24 @@ point at `docs/stories/`.
   Turning one off stops it, its pages saying "Turned off"; removing one in Settings stops it
   and takes its pages away. A new version, changed settings and an extension the site's code
   imports still take effect at the next restart.
+- **An administrator sees the back office as a group does (314).** "View as a group…" in an
+  administrator's user menu turns their back office, in that browser, to exactly what the
+  chosen groups may do, for up to an hour: their sections, trees, actions, start nodes,
+  languages and approval stages, and none of the administrator's own. Changes are allowed as
+  the groups would be, and audited as the administrator "while viewing as" the groups. A
+  banner across the top says so, with Switch back. Other sessions, devices and tokens are
+  unaffected.
+
+- **The Delivery API serves what the site publishes, with no setup (348).** It is on by
+  default and answers the published pages anyone may see, with no key, from any origin.
+  Members-only pages still need their member's token, drafts a preview token, and an
+  unpublished page is never served. `CROMBOLO_DELIVERY_API_PRIVATE=true` makes it private,
+  every request needing the key; listing origins narrows who may read it from the browser.
+
+### Migrations
+
+- 077 `AddSessionViewAs`: two columns on `user_login_session`, the groups a session is
+  viewing as and when that ends.
 
 ### Fixes
 
@@ -27,6 +47,19 @@ point at `docs/stories/`.
   `/private/var` or a site reached through a linked folder, made every installed extension
   look like one linked from elsewhere, so `extension check` and the boot did not say it is
   installed the old way. Only the package's own folder being a link counts now.
+
+### Upgrade notes
+
+- **The Delivery API is on (348).** After this release a site's public published pages,
+  members-only pages and drafts excepted, are readable as JSON at
+  `/crombolo/delivery/api/v2/` and `/umbraco/delivery/api/v2/`, from any origin, with no
+  key. A site that does not want that sets `CROMBOLO_DELIVERY_API=false` or
+  `deliveryApi.enabled: false`.
+- **`CROMBOLO_DELIVERY_API_PUBLIC` is refused (348).** A server that sets it stops at start.
+  A site that set it to `false`, to keep the API private, sets
+  `CROMBOLO_DELIVERY_API_PRIVATE=true` instead; one that set it to `true` removes it.
+- **Migration 077** adds two columns to `user_login_session`; it runs as any migration
+  does.
 
 ## v0.64.0 — 2026-11-13
 

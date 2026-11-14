@@ -25,6 +25,8 @@ const NOT_SETTINGS: Record<string, string> = {
   CROMBOLO_REVALIDATE_SECRET: "a Next.js front end's webhook secret, named by the webhook file",
   CROMBOLO_WEBHOOK_: "the prefix of a site's variables a webhook header may send (story 301)",
   CROMBOLO_REMOTE_ENABLED: 'retired by CROMBOLO_REMOTE_ACCESS (story 167): read only to refuse it',
+  CROMBOLO_DELIVERY_API_PUBLIC:
+    'retired by CROMBOLO_DELIVERY_API_PRIVATE (story 348): read only to refuse it',
   CROMBOLO_CONTENT_FILES_READONLY:
     'retired by CROMBOLO_CONTENT_MODE (story 343): read only to refuse it',
   CROMBOLO_ID_TOKEN: "a GitLab job's identity token, read by the CLI in CI (story 160)",
@@ -173,8 +175,8 @@ describe('the settings list', () => {
       CROMBOLO_INDEXABLE: (c) => c.seo.indexable ?? true,
       CROMBOLO_SITEMAP: (c) => c.seo.sitemap ?? true,
       CROMBOLO_TRACK_REDIRECTS: (c) => c.trackRedirects,
-      CROMBOLO_DELIVERY_API: (c) => c.deliveryApi.enabled ?? false,
-      CROMBOLO_DELIVERY_API_PUBLIC: (c) => c.deliveryApi.publicAccess ?? true,
+      CROMBOLO_DELIVERY_API: (c) => c.deliveryApi.enabled ?? true,
+      CROMBOLO_DELIVERY_API_PRIVATE: (c) => !(c.deliveryApi.publicAccess ?? true),
       CROMBOLO_DELIVERY_API_MEDIA: (c) => c.deliveryApi.media?.enabled ?? false,
       CROMBOLO_DELIVERY_API_PREVIEW_TOKEN_MINUTES: (c) => c.deliveryApi.preview?.tokenMinutes ?? 60,
       CROMBOLO_REMOTE_ACCESS: (c) => c.remote.access,

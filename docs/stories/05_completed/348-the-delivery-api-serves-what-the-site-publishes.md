@@ -107,15 +107,30 @@ read answers are the site's public pages.
 
 ## Acceptance criteria
 
-- [ ] With no Delivery API settings, a fresh site answers its public published pages
+- [x] With no Delivery API settings, a fresh site answers its public published pages
       through the API, from another origin, with no key.
-- [ ] A members-only page is left out without its member's token and served with it;
+- [x] A members-only page is left out without its member's token and served with it;
       a draft only with a preview token; an unpublished page never.
-- [ ] `enabled: false` turns it off; listed origins narrow CORS; `publicAccess: false`
+- [x] `enabled: false` turns it off; listed origins narrow CORS; `publicAccess: false`
       or `CROMBOLO_DELIVERY_API_PRIVATE=true` needs the key and allows no origin unless
       listed.
-- [ ] `CROMBOLO_DELIVERY_API_PUBLIC`, still set from before, stops the server at start,
+- [x] `CROMBOLO_DELIVERY_API_PUBLIC`, still set from before, stops the server at start,
       naming `CROMBOLO_DELIVERY_API_PRIVATE`.
-- [ ] `docs/delivery-api.md`, `docs/configuration.md` (regenerated) and the release
+- [x] `docs/delivery-api.md`, `docs/configuration.md` (regenerated) and the release
       notes' upgrade notes say what changed.
-- [ ] Tests on both engines.
+- [x] Tests on both engines.
+
+## Built
+
+- `resolveDeliveryApiSettings` (`packages/api-delivery/src/settings.ts`): `enabled`
+  defaults to `true`; with no origin list, `cors.allowedOrigins` is `['*']` while public
+  and none while private, and a list given, an empty one too, is kept as it is.
+- `CROMBOLO_DELIVERY_API_PRIVATE` in place of `CROMBOLO_DELIVERY_API_PUBLIC`
+  (`deliveryApiPublic`, `server/src/config.ts`), the old name refused at start; the
+  settings list and `docs/configuration.md` say the new defaults.
+- `docs/delivery-api.md`, "Settings" and "Requests from another origin"; the release
+  notes, with two upgrade notes.
+- Tests: `tests/delivery-api.test.ts` (the defaults, a default site read across origins
+  with no key, off answering 401, an empty list closing CORS), `tests/config-env.test.ts`
+  (the variable, and the old one refused), `tests/settings-list.test.ts`. Members-only,
+  draft and unpublished handling is unchanged, under its existing tests.

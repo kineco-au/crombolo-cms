@@ -168,7 +168,7 @@ describe('loadConfig reads the environment', () => {
       CROMBOLO_PUBLIC_URL: 'https://www.example.com',
       CROMBOLO_DELIVERY_API: 'true',
       CROMBOLO_DELIVERY_API_KEY: 'key',
-      CROMBOLO_DELIVERY_API_PUBLIC: 'false',
+      CROMBOLO_DELIVERY_API_PRIVATE: 'true',
       CROMBOLO_DELIVERY_API_MEDIA: 'true',
       CROMBOLO_DELIVERY_API_CORS_ORIGINS: 'https://app.example.com, https://shop.example.com',
       CROMBOLO_DELIVERY_API_PREVIEW_URL: 'https://app.example.com/preview?token={token}',
@@ -362,5 +362,20 @@ describe('the full example in docs/examples/crombolo.config.ts', () => {
     const set = new Set([...example.matchAll(/^ {2}([a-zA-Z]+):/gm)].map((m) => m[1]))
     const missing = Object.keys(loadConfig({})).filter((field) => !set.has(field))
     expect(missing).toEqual([])
+  })
+})
+
+describe('the Delivery API from the environment (story 348)', () => {
+  test('CROMBOLO_DELIVERY_API_PRIVATE makes it private; unset, it follows what is published', () => {
+    expect(loadConfig({}).deliveryApi.publicAccess).toBeUndefined()
+    setEnv({ CROMBOLO_DELIVERY_API_PRIVATE: 'true' })
+    expect(loadConfig({}).deliveryApi.publicAccess).toBe(false)
+    setEnv({ CROMBOLO_DELIVERY_API_PRIVATE: 'false' })
+    expect(loadConfig({}).deliveryApi.publicAccess).toBe(true)
+  })
+
+  test('the switch it replaced stops the start, so a private API never quietly opens', () => {
+    setEnv({ CROMBOLO_DELIVERY_API_PUBLIC: 'false' })
+    expect(() => loadConfig({})).toThrow('CROMBOLO_DELIVERY_API_PRIVATE')
   })
 })

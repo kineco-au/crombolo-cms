@@ -215,11 +215,11 @@ rather than the running server. Secret ones are never printed or logged.
 | `CROMBOLO_LIVE_RELOAD` | `true` / `false` | — | Reloads open pages when the components, the schema or the content change, and shows type errors on them. On in development, off in production and under `bun test`. |
 | `CROMBOLO_SITEMAP` | `true` / `false` | `true` | Serves `/sitemap.xml`. |
 | `CROMBOLO_TRACK_REDIRECTS` | `true` / `false` | `true` | Renaming or moving a page records a redirect from the address it had. |
-| `CROMBOLO_DELIVERY_API` | `true` / `false` | `false` | Turns on the Delivery API, which serves content as JSON. |
+| `CROMBOLO_DELIVERY_API` | `true` / `false` | `true` | The Delivery API, which serves the published pages anyone may see as JSON. false turns it off. |
 | `CROMBOLO_DELIVERY_API_KEY` | string | — | The key that unlocks a private Delivery API, and previews of unpublished content. Kept secret: never printed. |
-| `CROMBOLO_DELIVERY_API_PUBLIC` | `true` / `false` | `true` | Off, every Delivery API request needs the key. |
+| `CROMBOLO_DELIVERY_API_PRIVATE` | `true` / `false` | `false` | Makes the Delivery API private: every request needs the key. Unset, it serves what the site publishes. |
 | `CROMBOLO_DELIVERY_API_MEDIA` | `true` / `false` | `false` | The Delivery API serves media as well as content. |
-| `CROMBOLO_DELIVERY_API_CORS_ORIGINS` | list | — | Other sites whose pages may call the Delivery API from the browser, such as https://app.example.com, separated by commas. |
+| `CROMBOLO_DELIVERY_API_CORS_ORIGINS` | list | any site, while the API is public | Narrows which other sites may call the Delivery API from the browser, such as https://app.example.com, separated by commas. |
 | `CROMBOLO_CACHE_MAX_AGE` | number | — | Seconds browsers and a CDN may reuse a page, an API answer or a media item before asking again; 0 keeps nothing. Unset, nothing is kept. |
 | `CROMBOLO_CACHE_STALE_WHILE_REVALIDATE` | number | — | Seconds an out-of-date copy may still be shown while a fresh one is fetched. |
 | `CROMBOLO_CACHE_TAG_HEADER` | string | — | The header your CDN purges by, such as Surrogate-Key or Cache-Tag. Set, every answer lists the pages and media in it. |

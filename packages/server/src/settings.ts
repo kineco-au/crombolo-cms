@@ -838,9 +838,10 @@ const DECLARED = [
   {
     env: 'CROMBOLO_DELIVERY_API',
     kind: 'boolean',
-    default: 'false',
+    default: 'true',
     section: 'Public site',
-    description: 'Turns on the Delivery API, which serves content as JSON.',
+    description:
+      'The Delivery API, which serves the published pages anyone may see as JSON. false turns it off.',
   },
   {
     env: 'CROMBOLO_DELIVERY_API_KEY',
@@ -851,11 +852,12 @@ const DECLARED = [
     secret: true,
   },
   {
-    env: 'CROMBOLO_DELIVERY_API_PUBLIC',
+    env: 'CROMBOLO_DELIVERY_API_PRIVATE',
     kind: 'boolean',
-    default: 'true',
+    default: 'false',
     section: 'Public site',
-    description: 'Off, every Delivery API request needs the key.',
+    description:
+      'Makes the Delivery API private: every request needs the key. Unset, it serves what the site publishes.',
   },
   {
     env: 'CROMBOLO_DELIVERY_API_MEDIA',
@@ -867,9 +869,10 @@ const DECLARED = [
   {
     env: 'CROMBOLO_DELIVERY_API_CORS_ORIGINS',
     kind: 'list',
+    default: 'any site, while the API is public',
     section: 'Public site',
     description:
-      'Other sites whose pages may call the Delivery API from the browser, such as https://app.example.com, separated by commas.',
+      'Narrows which other sites may call the Delivery API from the browser, such as https://app.example.com, separated by commas.',
   },
   {
     env: 'CROMBOLO_CACHE_MAX_AGE',

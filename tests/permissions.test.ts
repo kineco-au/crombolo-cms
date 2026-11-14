@@ -191,6 +191,7 @@ describe('the media verbs (story 088)', () => {
       'AddUserGroupOwners',
       'PruneGroupPermissions',
       'DropUserStartNodes',
+      'AddSessionViewAs',
     ])
     const held = async (key: string) =>
       (

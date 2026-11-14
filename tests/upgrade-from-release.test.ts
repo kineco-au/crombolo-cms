@@ -14,7 +14,7 @@ import {
   readLedger,
   readState,
   STATE_CONTENT_APPLIED,
-  STATE_USER_START_NODES_DROPPED,
+  STATE_SESSION_VIEW_AS,
   seedIdentity,
 } from '@crombolo/data'
 import { summariseUpgrades, VERSION } from '@crombolo/server'
@@ -144,10 +144,11 @@ describe('upgrading from the previous release', () => {
       'AddUserGroupOwners',
       'PruneGroupPermissions',
       'DropUserStartNodes',
+      'AddSessionViewAs',
     ])
-    expect(await readState(db)).toBe(STATE_USER_START_NODES_DROPPED)
+    expect(await readState(db)).toBe(STATE_SESSION_VIEW_AS)
     const summary = summariseUpgrades(await readLedger(db), VERSION)
-    expect(summary.lastUpgrade).toMatchObject({ release: '0.63.0', steps: 27 })
+    expect(summary.lastUpgrade).toMatchObject({ release: '0.65.0', steps: 28 })
   })
 
   test('the Changes dashboard reports the version, the install and the last upgrade', async () => {

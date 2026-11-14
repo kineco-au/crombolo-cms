@@ -441,6 +441,26 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
     })
   }
 
+  /** Whether the person who made the change is in one of these groups. */
+  const requesterIn = async (
+    request: ApprovalRequest,
+    approvers: readonly string[],
+    actor: Principal | undefined,
+  ): Promise<boolean> => {
+    // Story 314: the requester viewing as groups is in exactly those.
+    if (actor?.viewingAs && normaliseUuid(actor.id) === request.requestedBy)
+      return actor.groups.some((g) => approvers.includes(g.alias))
+    const member = await db.q
+      .selectFrom('user_group_member as m')
+      .innerJoin('user_group as g', 'g.id', 'm.user_group_id')
+      .innerJoin('user_account as u', 'u.id', 'm.user_id')
+      .select((eb) => eb.fn.countAll().as('n'))
+      .where('u.key', '=', request.requestedBy)
+      .where('g.alias', 'in', approvers.length > 0 ? approvers : [''])
+      .execute()
+    return Number(member[0]?.n ?? 0) > 0
+  }
+
   /**
    * Stages just reached count the person who made the change as approving
    * when the workflow says so and they are in the stage's groups.
@@ -449,20 +469,13 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
     repo: ApprovalRepositoryType,
     request: ApprovalRequest,
     stages: readonly string[],
+    actor: Principal | undefined,
   ): Promise<void> => {
     for (const stage of stages) {
       const stepId = await repo.addStep(request.id, stage)
       if (request.workflow.selfApproval !== 'automatic') continue
       const approvers = stageOf(request.workflow, stage)?.approvers ?? []
-      const member = await db.q
-        .selectFrom('user_group_member as m')
-        .innerJoin('user_group as g', 'g.id', 'm.user_group_id')
-        .innerJoin('user_account as u', 'u.id', 'm.user_id')
-        .select((eb) => eb.fn.countAll().as('n'))
-        .where('u.key', '=', request.requestedBy)
-        .where('g.alias', 'in', approvers.length > 0 ? approvers : [''])
-        .execute()
-      if (Number(member[0]?.n ?? 0) > 0)
+      if (await requesterIn(request, approvers, actor))
         await repo.record(request.id, {
           kind: 'approved',
           stepId,
@@ -478,6 +491,7 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
   const settle = async (
     repo: ApprovalRepositoryType,
     request: ApprovalRequest,
+    actor: Principal | undefined,
   ): Promise<boolean> => {
     for (let round = 0; round < request.workflow.stages.length + 1; round++) {
       const steps = await repo.steps(request.id)
@@ -499,7 +513,7 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
       if (workflowComplete(request.workflow, approved)) return true
       const next = stagesNowWaiting(request.workflow, approved, reached)
       if (next.length > 0) {
-        await reach(repo, request, next)
+        await reach(repo, request, next, actor)
         const facts = await page(request.nodeKey)
         await notify(
           'approvers',
@@ -912,7 +926,7 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
           comment: [comment?.trim(), when && `to be ${when}`].filter(Boolean).join('\n\n') || null,
         })
         const first = startStages(workflow)
-        await reach(repo, request, first)
+        await reach(repo, request, first, principal)
         await notify(
           'approvers',
           request,
@@ -920,7 +934,7 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
           `Waiting for your approval: ${facts.name}`,
           `${principal.name} sent "${facts.name}" for approval through "${workflow.name}".${when ? ` It is to be ${when}.` : ''}${comment ? `\n\n${comment}` : ''}`,
         )
-        const complete = await settle(repo, request)
+        const complete = await settle(repo, request, principal)
         await auditStep(
           principal,
           facts,
@@ -958,7 +972,7 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
           userKey: principal.id,
           comment: comment?.trim() || null,
         })
-        const complete = await settle(repo, request)
+        const complete = await settle(repo, request, principal)
         await auditStep(
           principal,
           await page(request.nodeKey),
@@ -1011,7 +1025,7 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
             (s) => (s.state === 'waiting' || s.state === 'approved') && redo.has(s.stage),
           ))
             await repo.setStepState(step.id, step.stage === from ? 'sent-back' : 'discarded')
-          await reach(repo, request, [to])
+          await reach(repo, request, [to], principal)
           await notify(
             'approvers',
             request,
@@ -1019,7 +1033,7 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
             `Back for your approval: ${facts?.name ?? 'a page'}`,
             `"${facts?.name}" was sent back to you${comment ? `:\n\n${comment}` : '.'}`,
           )
-          complete = await settle(repo, request)
+          complete = await settle(repo, request, principal)
         }
         await auditStep(
           principal,

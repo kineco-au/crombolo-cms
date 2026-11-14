@@ -67,7 +67,8 @@ export function resolveDeliveryApiSettings(options: DeliveryApiOptions = {}): De
   const code = options.memberAuthorization?.authorizationCodeFlow ?? {}
   const credentials = options.memberAuthorization?.clientCredentialsFlow ?? {}
   return {
-    enabled: options.enabled ?? false,
+    // Story 348: on, serving what the site publishes to anyone, unless a site says otherwise.
+    enabled: options.enabled ?? true,
     publicAccess: options.publicAccess ?? true,
     apiKey: options.apiKey?.trim() ? options.apiKey : undefined,
     allowedContentTypeAliases: [...(options.allowedContentTypeAliases ?? [])].filter(
@@ -81,9 +82,11 @@ export function resolveDeliveryApiSettings(options: DeliveryApiOptions = {}): De
       publicAccess: options.media?.publicAccess ?? true,
     },
     cors: {
-      allowedOrigins: [...(options.cors?.allowedOrigins ?? [])].filter(
-        (origin): origin is string => typeof origin === 'string' && origin.trim() !== '',
-      ),
+      // Any origin for public reads unless a list is given, an empty one included;
+      // none for a private API, whose key must not be usable from any page.
+      allowedOrigins: [
+        ...(options.cors?.allowedOrigins ?? ((options.publicAccess ?? true) ? ['*'] : [])),
+      ].filter((origin): origin is string => typeof origin === 'string' && origin.trim() !== ''),
     },
     preview: {
       url: options.preview?.url?.trim() || undefined,

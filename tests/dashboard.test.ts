@@ -95,6 +95,7 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'backofficeEntryPoint:Crombolo.EntryPoint.MediaPermissions',
       'backofficeEntryPoint:Crombolo.EntryPoint.PageSharing',
       'backofficeEntryPoint:Crombolo.EntryPoint.PreviewMember',
+      'backofficeEntryPoint:Crombolo.EntryPoint.ViewAs',
       'backofficeEntryPoint:Crombolo.EntryPoint.MediaAccess',
       'backofficeEntryPoint:Crombolo.EntryPoint.EditConflicts',
       'userProfileApp:Crombolo.UserProfileApp.SignedInDevices',

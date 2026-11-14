@@ -66,6 +66,11 @@ export interface Principal {
    * the remote protocol's routes.
    */
   ci?: { rule: string; claims: Record<string, string> }
+  /**
+   * Set while an administrator's session views as user groups (story 314):
+   * everything above is the groups', and they are who this really is.
+   */
+  viewingAs?: { groups: Array<{ key: string; name: string }>; until: Date }
 }
 
 export interface RequestContext {

@@ -128,6 +128,10 @@ export async function undoMediaMemberUploads(db: Db): Promise<void> {
   // 059, forms in the Library (story 239), 058, bundle schema picks (story
   // 226), and 057, site settings types (story 058): columns on tables that stay.
   // 072, what each extension did (story 327): a table of its own.
+  // 077, a session viewing as groups (story 314): columns on a table that stays.
+  await db.exec('ALTER TABLE user_login_session DROP COLUMN view_as_until')
+  await db.exec('ALTER TABLE user_login_session DROP COLUMN view_as_groups')
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddSessionViewAs'")
   // 076, users' own start nodes (story 339): the table comes back, empty.
   const t = db.dialect.types
   await db.exec(

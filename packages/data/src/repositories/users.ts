@@ -582,10 +582,14 @@ export class UserRepository {
       .execute()
   }
 
-  /** The user's groups' grants, languages and start node positions, for access checks. */
-  async access(userId: number): Promise<UserAccessData> {
-    const user = await this.byId(userId)
-    const groups = user ? await new UserGroupRepository(this.#db).byKeys(user.groupKeys) : []
+  /**
+   * The user's groups' grants, languages and start node positions, for access
+   * checks; the given groups' instead, when they are given (story 314).
+   */
+  async access(userId: number, groupKeys?: readonly string[]): Promise<UserAccessData> {
+    const groups = await new UserGroupRepository(this.#db).byKeys(
+      groupKeys ?? (await this.byId(userId))?.groupKeys ?? [],
+    )
     const nodeIds: Record<string, number> = {}
     for (const group of groups)
       for (const tree of TREES) {

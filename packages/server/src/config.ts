@@ -106,6 +106,21 @@ function contentModeSetting(): ContentMode {
   return value
 }
 
+/**
+ * Whether the Delivery API is public, from `CROMBOLO_DELIVERY_API_PRIVATE` (story 348):
+ * unset, it serves what the site publishes. The switch it replaced is refused, since
+ * ignoring `CROMBOLO_DELIVERY_API_PUBLIC=false` would quietly open a private API.
+ */
+function deliveryApiPublic(): boolean | undefined {
+  // Read directly: it is no longer a setting, only a name to refuse.
+  if (Bun.env.CROMBOLO_DELIVERY_API_PUBLIC !== undefined)
+    throw new Error(
+      'CROMBOLO_DELIVERY_API_PUBLIC has gone: set CROMBOLO_DELIVERY_API_PRIVATE=true to keep the Delivery API private, every request needing its key, or leave both unset for it to serve what the site publishes (story 348).',
+    )
+  const isPrivate = envFlag(setting('CROMBOLO_DELIVERY_API_PRIVATE'))
+  return isPrivate === undefined ? undefined : !isPrivate
+}
+
 /** Whether the back office must leave templates, stylesheets and scripts alone. */
 export const contentFilesLocked = (config: Pick<CromboloConfig, 'contentMode'>) =>
   config.contentMode === 'production'
@@ -517,7 +532,7 @@ export interface CromboloConfig {
   /**
    * Umbraco's Delivery API (`docs/delivery-api.md`): off unless enabled.
    * `CROMBOLO_DELIVERY_API`, `CROMBOLO_DELIVERY_API_KEY`,
-   * `CROMBOLO_DELIVERY_API_PUBLIC`, `CROMBOLO_DELIVERY_API_MEDIA`,
+   * `CROMBOLO_DELIVERY_API_PRIVATE`, `CROMBOLO_DELIVERY_API_MEDIA`,
    * `CROMBOLO_DELIVERY_API_CORS_ORIGINS`, `CROMBOLO_DELIVERY_API_PREVIEW_URL` and
    * `CROMBOLO_DELIVERY_API_PREVIEW_TOKEN_MINUTES`; member
    * sign-in is configured here, since its clients and secrets are a list.
@@ -1028,7 +1043,7 @@ export function loadConfig(
     deliveryApi: stripUndefined({
       enabled: envFlag(setting('CROMBOLO_DELIVERY_API')),
       apiKey: setting('CROMBOLO_DELIVERY_API_KEY') || undefined,
-      publicAccess: envFlag(setting('CROMBOLO_DELIVERY_API_PUBLIC')),
+      publicAccess: deliveryApiPublic(),
       media:
         envFlag(setting('CROMBOLO_DELIVERY_API_MEDIA')) === undefined
           ? undefined
@@ -1224,7 +1239,7 @@ export function describeDatabase(
   }
 }
 
-export const VERSION = '0.64.0'
+export const VERSION = '0.65.0'
 
 /** A whole number of seconds from the environment; undefined when unset or not one. */
 /** A positive number from a setting, else the default. */

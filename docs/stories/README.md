@@ -153,7 +153,7 @@ not cover.
 | `191` | Azure AD B2C user flows for members | should | M | ready | 031 |
 | `282` | A member resets their password | should | M | ready | — |
 | `305` | An identity provider the config declares can be locked | should | S | done | — |
-| `314` | An administrator sees the back office as a group does | should | M | ready | — |
+| `314` | An administrator sees the back office as a group does | should | M | in progress (its browser test runs in the release CI) | — |
 
 ### Epic E — Cross-cutting
 
@@ -199,8 +199,8 @@ requests, only server-side and build-time front ends can call it.
 | `258` | A page says whether it changed without being rendered | should | M | done | 057, 174 |
 | `259` | Lifetimes that suit a shared cache | should | S | done | 057, 258 |
 | `260` | Stylesheets and scripts at addresses that change with their content | should | M | done | 057 |
-| `347` | Harbourstone as a single-page app | could | L | backlog | 051, 053, 054, 208, 348 |
-| `348` | The Delivery API serves what the site publishes, with no setup | should | S | ready | 050, 051 |
+| `347` | Harbourstone as a single-page app | could | L | ready | 051, 053, 054, 208, 348 |
+| `348` | The Delivery API serves what the site publishes, with no setup | should | S | done | 050, 051 |
 
 ### Epic G — Trusting and extending bundles
 
