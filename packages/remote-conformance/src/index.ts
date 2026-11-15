@@ -317,6 +317,59 @@ export async function runConformance(options: ConformanceOptions): Promise<Confo
     },
   )
 
+  await check('members: lists members, and a member who is not there is not found', async () => {
+    const capabilities = (state.discovery?.capabilities as string[] | undefined) ?? []
+    if (!capabilities.includes('members')) return 'skip'
+    const env = `environments/${state.environment}`
+    const listed = await api(`${env}/members?take=5`)
+    assert(listed.status === 200, `the list answered ${listed.status}`)
+    const body = (await listed.json()) as { items?: Json[]; total?: unknown }
+    assert(Array.isArray(body.items), 'items is missing')
+    assert(typeof body.total === 'number', 'total is missing')
+    for (const member of body.items ?? [])
+      assert(
+        typeof member.key === 'string' && typeof member.login === 'string',
+        'a member has no key or login',
+      )
+    const missing = await api(`${env}/members/${crypto.randomUUID()}`)
+    assert(missing.status === 404, `an unknown member answered ${missing.status}`)
+    assert(isProblem(missing), 'not application/problem+json')
+    const groups = await api(`${env}/member-groups`)
+    assert(groups.status === 200, `the groups answered ${groups.status}`)
+    assert(Array.isArray(((await groups.json()) as Json).groups), 'groups is missing')
+  })
+
+  await check(
+    "public-access: a page's access reads back, and an unknown page's is not found",
+    async () => {
+      const capabilities = (state.discovery?.capabilities as string[] | undefined) ?? []
+      if (!capabilities.includes('public-access')) return 'skip'
+      const env = `environments/${state.environment}`
+      const missing = await api(`${env}/content/${crypto.randomUUID()}/access`)
+      assert(missing.status === 404, `an unknown page's access answered ${missing.status}`)
+      assert(isProblem(missing), 'not application/problem+json')
+      if (!capabilities.includes('content-query')) return
+      const found = await api(`${env}/content/query`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ take: 1 }),
+      })
+      const page = ((await found.json()) as { items?: Json[] }).items?.[0]
+      if (!page) return
+      const access = await api(`${env}/content/${page.id}/access`)
+      assert(access.status === 200, `a page's access answered ${access.status}`)
+      const read = (await access.json()) as Json
+      assert(
+        read.rule === 'own' || read.rule === 'ancestor' || read.rule === 'none',
+        `a page's rule is ${read.rule}`,
+      )
+      assert(
+        (read.page as Json | undefined)?.key === page.id,
+        'the access is not the page asked for',
+      )
+    },
+  )
+
   await check('a push check answers what would be recycled and removed', async () => {
     const capabilities = (state.discovery?.capabilities as string[] | undefined) ?? []
     if (!capabilities.includes('push-check') || !state.may?.push) return 'skip'

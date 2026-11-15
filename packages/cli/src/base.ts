@@ -91,6 +91,8 @@ export abstract class BaseCommand extends Command implements Io {
   protected auditKey?: string
   /** A dry run or a plan changes nothing, so it writes no audit entry. */
   protected changedNothing = false
+  /** A hosted site audited the change itself, so this site's log has no entry for it. */
+  protected auditedElsewhere = false
 
   override async init(): Promise<void> {
     await super.init()
@@ -147,7 +149,7 @@ export abstract class BaseCommand extends Command implements Io {
 
   protected override async finally(error: Error | undefined): Promise<void> {
     const audit = (this.constructor as typeof BaseCommand).audit
-    if (error || !audit || this.changedNothing) return
+    if (error || !audit || this.changedNothing || this.auditedElsewhere) return
     const [{ recordCommand }, { siteConfig }] = await Promise.all([
       import('./operations/commands.ts'),
       import('./support/site.ts'),

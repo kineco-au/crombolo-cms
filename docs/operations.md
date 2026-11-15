@@ -675,6 +675,7 @@ named for a hosted site is checked there instead:
 | `forms *` | Forms | |
 | `workflows *` | Content or Workflows | |
 | `users *`, `users groups *` | Users | |
+| `members *`, `members groups *` | Members | |
 | `api-client rotate` | Users | yes |
 | `types *` (not `types rewrite`), `webhooks *`, `audit *`, `events *`, `index *`, `cache rebuild`, `health`, `status`, `maintenance status`, `languages add\|update\|remove` | Settings | |
 | `site apply\|export\|show\|urls\|key\|runs\|revert`, `extension list\|enable\|disable` | Settings | |
@@ -892,6 +893,60 @@ view and recycle bin use, so permissions, approvals and the audit log are theirs
   person.
 - **The audit log** records `Rollback` and `Restore` as it does for the back
   office. Keeping a version is not recorded, in either.
+
+**Members from the command line** (story 354): members, their groups, and who may
+see a page, here or on a hosted site with `--profile`, as the person signed in to it.
+Members are saved through the member port the Members section uses, and a page's
+access through the operations its public access dialog uses, so their rules are the
+back office's.
+
+| Command | Does |
+| --- | --- |
+| `crombolo members list [--group <name>] [--type <alias>] [--find <text>]` | login, e-mail, name and type, and "not approved", "locked" or "signs in through a provider" where they apply; `--limit` and `--offset` page it |
+| `crombolo members show <member>` | everything the Members section shows: type, groups, sign-in, second factor, and values as `content show` gives a page's |
+| `crombolo members new <email> --type <alias> [--login] [--name] [--group]... [--set]... [--set-file]... [--stdin]` | a member, approved; a password from `--stdin`, or none |
+| `crombolo members update <member> [--email] [--login] [--name] [--set]... [--unset]... [--group]... [--remove-group]...` | changes what is named, and keeps the rest |
+| `crombolo members approve\|lock\|unlock <member>` | each saying "no change" when it was so already; unlocking clears the failed sign-ins |
+| `crombolo members reset-password <member> [--stdin]` | a new password, made and printed once or read from `--stdin`; their sessions end |
+| `crombolo members reset-2fa <member>` | removes their second factor, for one who lost their device |
+| `crombolo members remove <member> [--yes]` | removes them for good, with their groups and sign-ins; asks first |
+| `crombolo members groups list\|new <name>\|remove <name> [--yes]` | the groups, with how many members each has and the pages that name it |
+| `crombolo members groups add\|leave <member> <group>` | puts a member in a group, or takes them out |
+| `crombolo content access show <page>` | the groups or members a page is for, its sign-in and no-access pages, or that an ancestor's rule protects it, or that it is open to everyone |
+| `crombolo content access set <page> (--group <name>... \| --member <login>...) [--login-page <page>] [--no-access-page <page>]` | makes the page, and those below it, for them |
+| `crombolo content access clear <page>` | removes the page's own rule |
+
+- **A member** is named by their e-mail address, their login or their key,
+  whatever the casing. Their login is their e-mail address unless `--login` gives
+  another. With no password a member signs in only through an identity provider,
+  and `members new` says so.
+- **Values** are in the shorthand `content new` takes, converted by each property's
+  editor. A value marked sensitive is shown and changed only by someone in the
+  Sensitive data group. With nobody signed in, at `cliAccess: open`, the command line
+  sees and changes every value: whoever runs it holds the database anyway. A save by
+  someone outside Sensitive data keeps the values withheld from them, in the back
+  office too.
+- **A password is given, not linked.** `members reset-password` sets one, as the
+  Members section does, and prints it once for you to pass on; a member who signs in
+  only through a provider is refused unless `--stdin` gives them one deliberately.
+  A reset link the member follows themselves waits for story 282.
+- **Member groups** change the database until story 162 decides where they live.
+  A page's rule names a group by its name, so removing a group drops it from every
+  rule that names it, and a page whose rule named only that group is then open to no
+  member: `members groups remove` lists those pages and asks first, unless `--yes`.
+- **A page's access** names member groups or members, never both, and at least one,
+  with a sign-in page for someone not signed in and a no-access page for a member it
+  is not for. A page with a rule of its own keeps the pages a change leaves out. It
+  needs the Public access permission on the page, and it is this site's alone: no
+  content file carries it, so it is set on each site ([`schema-as-code.md`](schema-as-code.md)).
+- **On a hosted site** a page is named by its uuid. The site needs the `members` and
+  `public-access` capabilities ([`remote-protocol.md`](remote-protocol.md)); one from
+  before them is refused, saying it needs a newer crombolo. CI cannot do any of this,
+  as each acts for a person.
+- **The audit log** records each change to a member or a group by its key, with the
+  person who made it: never the member's name, e-mail address or values. A page's
+  access is recorded as the back office's is, `AddPublicAccess`, `SetPublicAccess` or
+  `RemovePublicAccess`.
 
 **Content files** (stories 163 and 167): `crombolo site build --check`,
 `site apply`, `content export` and `start --bundle .` turn a site's

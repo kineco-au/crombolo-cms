@@ -218,6 +218,9 @@ describe(`discovery (${dialectUnderTest})`, () => {
         'content-query',
         'content-history',
         'recycle-bin',
+        // Story 354: members, and who may see a page.
+        'members',
+        'public-access',
         // Story 241: installed bundles, managed as Settings → Bundles does.
         'bundle-manage',
       ],

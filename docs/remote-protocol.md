@@ -61,6 +61,8 @@ stated otherwise. Errors are `application/problem+json` with a stable `code`
   - `content-query` means pages can be found by their facts (see below).
   - `content-history` and `recycle-bin` mean a page's history can be read and
     rolled back, and the recycle bin listed and restored from (see below).
+  - `members` and `public-access` mean members and their groups can be looked
+    after, and who may see a page set (see below).
   - `restart` means the site can be restarted (see below).
   - A client ignores capabilities it doesn't know.
 
@@ -431,6 +433,60 @@ and recycle bin give them, answered as the signed-in person.
   `{ item, queued }`; poll the job until `succeeded` or `failed`.
 - **The audit log** records `Rollback` and `Restore`, as the back office does.
 
+## Members (`members`, `public-access`, optional)
+
+Story 354. Members and member groups as the Members section has them, and who
+may see a page as its public access dialog sets it, answered as the signed-in
+person.
+
+| | |
+| --- | --- |
+| `GET <api>/environments/{id}/members[?group=&type=&find=&skip=&take=]` | `{ items, total }`, by login |
+| `GET <api>/environments/{id}/members/{member}` | one member, named by key, e-mail address or login |
+| `POST <api>/environments/{id}/members` `{ email, type, login?, name?, groups?, sets?, password? }` | a new member, approved; 201 with the member |
+| `PATCH <api>/environments/{id}/members/{key}` | a change, below; `{ member, changed, password }` |
+| `DELETE <api>/environments/{id}/members/{key}` | removes them; the member as they were |
+| `GET <api>/environments/{id}/member-groups` | `{ groups }`: each `{ key, name, members, pages }` |
+| `POST <api>/environments/{id}/member-groups` `{ name }` | a new group; 201 `{ key, name }` |
+| `DELETE <api>/environments/{id}/member-groups/{name}[?confirmed=true]` | removes it; its members stay |
+| `GET <api>/environments/{id}/content/{key}/access` | who may see the page |
+| `PUT <api>/environments/{id}/content/{key}/access` `{ groups?, members?, loginPage?, noAccessPage? }` | makes it for those groups or members; the access as it is then |
+| `DELETE <api>/environments/{id}/content/{key}/access` | removes its own rule; `{ access, changed }` |
+
+```json
+{ "key": "…", "login": "ana@example.com", "email": "ana@example.com", "name": "Ana Lee",
+  "type": "member", "groups": ["Subscribers"], "approved": true, "locked": false,
+  "signsIn": "password", "lastSignIn": null, "twoFactor": false, "failedSignIns": 0,
+  "values": [{ "property": "phone", "culture": null, "value": "0400 111 222" }] }
+```
+
+- **A member** is the summary in a list, and with `twoFactor`, `failedSignIns`,
+  the lockout, password and save dates, and `values` alone. `signsIn` is
+  `password`, `provider` (only through an identity provider) or `api` (a Delivery
+  API client). A sensitive value is left out for a person outside Sensitive data.
+- **A change** names only what changes: `email`, `login`, `name`, `sets` (pairs of
+  property and value in the shorthand content files use, which the server
+  converts), `unset`, `addGroups`, `removeGroups`, `approved`, `locked`, `password`,
+  `generatePassword` (answered once as `password`) and `twoFactor: false`. What it
+  leaves out is kept; a change to nothing saves nothing, with `changed: false`.
+- **A page's access** is `{ page, rule, protectedBy, groups, members, loginPage,
+  noAccessPage }`: `rule` is `own`, `ancestor` (the nearest protected ancestor's,
+  `protectedBy`) or `none`, open to everyone; each page is `{ key, path }`. A rule
+  names groups or members, never both, and at least one, with both pages; a page
+  that has its own rule keeps the pages a `PUT` leaves out.
+- **Who:** a person, never CI (403 `ci-cannot-change-people`), with the Members
+  section for members and groups and the Content section for a page's access (403
+  `forbidden`), which also needs the Public access permission on the page.
+- **The level:** a write needs `content` (403 `access-level`).
+- **Errors:** an unknown member, group or page answers 404 `not-found`; an e-mail
+  or login another member has, or a group name taken, 409 `conflict`; a sensitive
+  value set by a person outside Sensitive data, 403 `forbidden`; a save that does
+  not validate, 400 `invalid` with `items`. Removing a group a page's access names
+  answers 409 `conflict`, listing those pages in `items`, unless `confirmed=true`.
+- **The audit log** records each write to a member or a group by its key, with the
+  person and their address, and never the member's name, e-mail or values. A
+  page's access is recorded as the back office's is.
+
 ## Installed bundles (`bundle-manage`, optional)
 
 The bundles the environment depends on, managed as its Settings → Extensions does
@@ -488,14 +544,15 @@ restarted.
 
 | Status | `code` | |
 | --- | --- | --- |
-| 400 | `passphrase-required`, `hash-required`, `hash-mismatch`, `body-required`, `bad-key`, `too-many`, `bad-query` | the request is wrong |
+| 400 | `passphrase-required`, `hash-required`, `hash-mismatch`, `body-required`, `bad-key`, `too-many`, `bad-query`, `bad-request`, `invalid` | the request is wrong; `invalid`, a member that does not validate |
 | 401 | `sign-in-required` | no token, or a lapsed one |
-| 403 | `forbidden`, `forbidden-protected`, `forbidden-structure`, `forbidden-code`, `own-push`, `needs-person` | the person may not; `needs-person`, CI may not |
+| 403 | `forbidden`, `forbidden-protected`, `forbidden-structure`, `forbidden-code`, `own-push`, `needs-person`, `ci-cannot-change-people` | the person may not; `needs-person` and `ci-cannot-change-people`, CI may not |
 | 403 | `signature-refused` | the site does not take the bundle: unsigned where it requires a signature, from a source it does not list, or a signature that does not check out (story 060) |
 | 403 | `access-level` | the site does not take that, at its `CROMBOLO_REMOTE_ACCESS` |
 | 404 | `not-found`, `no-such-environment`, `not-enabled` | |
 | 409 | `not-waiting`, `approval-expired` | the job is not in a state for that |
 | 409 | `place-gone`, `needs-approval` | a restore needs a `target`; a publish needs an approval |
+| 409 | `conflict` | an e-mail, login or group name taken, or a group a page names removed unconfirmed |
 | 409 | `not-supervised` | nothing on the site can restart it |
 | 409 | `installs-elsewhere`, `grant-mismatch` | the site installs no code while it runs; the grant is not what the bundle asks for |
 | 410 | `gone` | the download has expired |
@@ -620,6 +677,8 @@ The suite is read-only unless `--push` is given. It covers:
 - media links, when offered;
 - an audit page, oldest first, when offered;
 - an unknown page's history and version, and the recycle bin, when offered;
+- members and member groups listed and an unknown member not found, and a page's
+  access read back, when offered;
 - a refused tampered push;
 - with `--push`, a full push.
 

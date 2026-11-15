@@ -11,10 +11,17 @@ import {
   dateFromText,
   isBlockValue,
   normaliseUuid,
+  ObjectTypes,
   readBlocks,
   SINGLE_BLOCK_EDITOR_ALIAS,
 } from '@crombolo/core'
-import { ContentTypeRepository, DataTypeRepository, type Db, looksLikeKey } from '@crombolo/data'
+import {
+  ContentTypeRepository,
+  DataTypeRepository,
+  type Db,
+  looksLikeKey,
+  resolveNodeRef,
+} from '@crombolo/data'
 import { blockKey, pickKey } from './keys.ts'
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -33,27 +40,30 @@ export interface PropertyEditor {
   config: Record<string, unknown>
 }
 
+type TypeKind = 'document' | 'media' | 'member'
+
 /** The site's types and their properties' editors, looked up once each. */
 export function schemaLookup(db: Db) {
   const repos = {
     document: new ContentTypeRepository(db),
     media: new ContentTypeRepository(db, { kind: 'media' }),
+    member: new ContentTypeRepository(db, { kind: 'member' }),
   }
   const dataTypes = new DataTypeRepository(db)
   const types = new Map<string, ContentTypeAggregate | undefined>()
   const editors = new Map<string, Map<string, PropertyEditor>>()
   return {
     repos,
-    async typeOf(kind: 'document' | 'media', alias: string) {
+    async typeOf(kind: TypeKind, alias: string) {
       const key = `${kind}:${alias.toLowerCase()}`
       if (!types.has(key)) types.set(key, await repos[kind].byAlias(alias))
       return types.get(key)
     },
-    async typeByKey(kind: 'document' | 'media', typeKey: string) {
+    async typeByKey(kind: TypeKind, typeKey: string) {
       return repos[kind].byKey(normaliseUuid(typeKey))
     },
     async editorsOf(
-      kind: 'document' | 'media',
+      kind: TypeKind,
       type: Pick<ContentTypeAggregate, 'key'>,
     ): Promise<Map<string, PropertyEditor>> {
       const cached = editors.get(type.key)
@@ -89,6 +99,74 @@ export interface ValueRefs {
   form(ref: string, why: string): Promise<string | undefined>
   /** A link's path as media, before it is tried as a page. */
   linkedMedia(ref: string): Promise<string | undefined>
+}
+
+const OBJECT_TYPES = {
+  content: ObjectTypes.Document,
+  library: ObjectTypes.Element,
+  media: ObjectTypes.Media,
+} as const
+
+/** What a value's paths name, in this site's database. */
+export function siteValueRefs(db: Db): ValueRefs {
+  const keyOf = async (ref: string, kind: keyof typeof OBJECT_TYPES) => {
+    const resolved = await resolveNodeRef(db, [OBJECT_TYPES[kind]], ref)
+    return resolved.ok && resolved.node.objectType === OBJECT_TYPES[kind]
+      ? resolved.node.key
+      : undefined
+  }
+  return {
+    content: (ref) => keyOf(ref, 'content'),
+    library: (ref) => keyOf(ref, 'library'),
+    // A Library form by its path or key; anything else is a form's own alias, as before.
+    async form(ref) {
+      if (looksLikeKey(ref)) return normaliseUuid(ref)
+      const key = await keyOf(ref, 'library')
+      if (!key) return ref
+      const rows = await db.q
+        .selectFrom('node as n')
+        .innerJoin('content as c', 'c.node_id', 'n.id')
+        .innerJoin('content_type as ct', 'ct.node_id', 'c.content_type_id')
+        .select('ct.form_key')
+        .where('n.unique_id', '=', key)
+        .execute()
+      return rows[0]?.form_key ? key : undefined
+    },
+    linkedMedia: (ref) => keyOf(ref, 'media'),
+    async media(ref) {
+      const key = await keyOf(ref, 'media')
+      if (!key) return undefined
+      const rows = await db.q
+        .selectFrom('node as n')
+        .innerJoin('content as c', 'c.node_id', 'n.id')
+        .innerJoin('content_type as ct', 'ct.node_id', 'c.content_type_id')
+        .select('ct.alias')
+        .where('n.unique_id', '=', key)
+        .execute()
+      return { key, typeAlias: rows[0] ? String(rows[0].alias) : 'Image' }
+    },
+  }
+}
+
+const TEXTUAL = new Set([
+  'Umbraco.TextBox',
+  'Umbraco.TextArea',
+  'Umbraco.RichText',
+  'Umbraco.TinyMCE',
+])
+
+/**
+ * A value as typed after `--set alias=`: text as it is for a text or rich text
+ * property, JSON where it reads as JSON for the rest (`true`, `3`,
+ * `["/a", "/b"]`), and the text itself otherwise, such as a path.
+ */
+export function typedValue(editor: string, text: string): unknown {
+  if (TEXTUAL.has(editor)) return text
+  try {
+    return JSON.parse(text)
+  } catch {
+    return text
+  }
 }
 
 /** The shorthand into each editor's stored shape. */

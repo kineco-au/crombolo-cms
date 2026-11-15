@@ -136,6 +136,23 @@ bunx crombolo recycle-bin restore "/Home/Visit us"        # put it back, with wh
 
 A version is named by the key `content history` prints, or by `previous` or `latest-published`. Rolling back goes through the same checks as the back office, approvals included. If the place an item came from has gone, restoring it asks for another with `--to`. Each takes `--profile` to act on a hosted site, as the person signed in to it.
 
+## Members
+
+Members, their groups, and who may see a page, without opening the back office:
+
+```sh
+bunx crombolo members list --group Subscribers                  # who is in a group
+bunx crombolo members show ana@example.com                      # everything the Members section shows
+bunx crombolo members new ana@example.com --type member --name "Ana Lee" --group Subscribers
+bunx crombolo members unlock ana@example.com                    # after too many failed sign-ins
+bunx crombolo members reset-password ana@example.com            # a new password, printed once
+bunx crombolo members groups list                               # each group, and how many are in it
+bunx crombolo content access set /Members --group Subscribers --login-page "/Sign in" --no-access-page /Subscribe
+bunx crombolo content access show /Members/News                 # who may see a page
+```
+
+A member is named by their e-mail address, login or key. Values take the same shorthand as `content new`, and a sensitive value is shown and changed only by the Sensitive data group. A new password is printed for you to pass on: no link is sent. Removing a group that a page's access names asks first, since the page would lose it. Each takes `--profile` to act on a hosted site, as the person signed in to it.
+
 ## Logs
 
 Log files are written to the site's `logs/` folder, one file a day, as structured JSON. The back office's **Log Viewer**, under **Settings**, reads them, so editors with access can search them without a terminal. Events are printed to the console too, for your platform to collect.

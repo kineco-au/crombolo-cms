@@ -402,6 +402,46 @@ describe(`members (${process.env.CROMBOLO_DB ?? 'sqlite'})`, () => {
     expect(shown?.values.find((v) => v.alias === 'creditLimit')?.value).toBe('5000')
   })
 
+  test('a save from outside Sensitive data keeps the value withheld from them', async () => {
+    const { h, member } = await site()
+    const key = await member('grace', {
+      memberType: { id: CUSTOMER_KEY },
+      values: [
+        { alias: 'nickname', culture: null, segment: null, value: 'Grace' },
+        { alias: 'creditLimit', culture: null, segment: null, value: '5000' },
+      ],
+    })
+    const port = createMemberPort(h.server.db, { nodeState: h.server.schema.nodeState })
+    const editor = {
+      id: crypto.randomUUID(),
+      groups: [{ key: crypto.randomUUID(), alias: 'admin', defaults: [], granular: new Map() }],
+    } as unknown as Principal
+    const shown = await port.byKey(key, editor)
+    expect(shown?.values.map((v) => v.alias)).toEqual(['nickname'])
+    const saved = await port.update(
+      key,
+      {
+        key,
+        memberTypeKey: CUSTOMER_KEY,
+        email: shown?.email as string,
+        username: shown?.username as string,
+        isApproved: true,
+        isLockedOut: false,
+        isTwoFactorEnabled: false,
+        groupKeys: undefined,
+        values: [{ alias: 'nickname', culture: null, segment: null, value: 'Gracie' }],
+        variants: [{ culture: null, segment: null, name: 'grace' }],
+      },
+      editor,
+    )
+    expect(saved.ok).toBe(true)
+    const read = await h.json<MemberResponse>(`${V1}/member/${key}`)
+    expect(Object.fromEntries(read.values.map((v) => [v.alias, v.value]))).toEqual({
+      nickname: 'Gracie',
+      creditLimit: '5000',
+    })
+  })
+
   test('validate before a save, exactly as the save would', async () => {
     const { h, member } = await site()
     const key = await member('ada')

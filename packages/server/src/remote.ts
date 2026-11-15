@@ -65,8 +65,10 @@ import { type CromboloConfig, REMOTE_ACCESS_LEVELS, type RemoteAccess } from './
 import { answerContentQuery, contentQueryScope } from './content-query.ts'
 import { mediaStoreFor } from './media-files.ts'
 import { type MediaStore, streamOf } from './media-store.ts'
+import { siteMemberPorts } from './member-admin.ts'
 import { describeProvenance, provenanceProblem, verifyProvenance } from './provenance.ts'
 import { createCiSignIn, readRuleInput, trustedIssuers } from './remote-ci.ts'
+import { createMemberRoutes } from './remote-members.ts'
 import { createUndoRoutes } from './remote-undo.ts'
 import { openSecret, sealSecret, usableSecretKey } from './secrets.ts'
 import { exportSite } from './site-file.ts'
@@ -226,6 +228,7 @@ export function createRemote(options: RemoteOptions): Remote {
       'audit',
       'content-query',
       ...(options.operations ? ['content-history', 'recycle-bin'] : []),
+      ...memberRoutes.capabilities,
       ...(settings.approvals ? ['approvals'] : []),
       ...(options.bundles && atLeast('read') ? ['bundle-manage'] : []),
       ...(options.restart && atLeast('all') ? ['restart'] : []),
@@ -268,6 +271,15 @@ export function createRemote(options: RemoteOptions): Remote {
           atLeast('content') ? undefined : notAtLevel('content', 'changes to content'),
       })
     : undefined
+
+  const memberRoutes = createMemberRoutes({
+    db,
+    ports: () => siteMemberPorts(db, config),
+    operations: options.operations?.documents,
+    problem,
+    levelRefusal: () =>
+      atLeast('content') ? undefined : notAtLevel('content', 'changes to members or pages'),
+  })
 
   const trust = new RemoteTrustRepository(db)
   const ci = createCiSignIn({
@@ -1522,6 +1534,10 @@ export function createRemote(options: RemoteOptions): Remote {
           contentQueryScope(principal),
           await request.json().catch(() => undefined),
         )
+      }
+      if (what.startsWith('member') || what.startsWith('content/')) {
+        const answered = await memberRoutes.handle(request, url, principal, what)
+        if (answered) return answered
       }
       if (
         undo &&

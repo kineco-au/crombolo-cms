@@ -2021,6 +2021,114 @@ crombolo assets new <kind> <name>
 
 Pages, media, the dictionary, domains and the recycle bin.
 
+### `crombolo content access clear`
+
+Remove a page's own rule, so it is open as the pages above it are. Safe to run again: a second run changes nothing more.
+
+```
+crombolo content access clear <page> [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `page` | string | The page: a path or a uuid; a uuid on a hosted site. Required. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`):
+
+- `access` (object)
+  - `page` (object)
+    - `key` (string)
+    - `path` (string)
+  - `rule` (string)
+  - `protectedBy` (object)
+    - `key` (string)
+    - `path` (string)
+  - `groups` (array of string)
+  - `members` (array of string)
+  - `loginPage` (object)
+    - `key` (string)
+    - `path` (string)
+  - `noAccessPage` (object)
+    - `key` (string)
+    - `path` (string)
+- `changed` (boolean)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.
+
+### `crombolo content access set`
+
+Make a page, and the pages below it, for some member groups or members. Safe to run again: a second run changes nothing more.
+
+```
+crombolo content access set <page> [--group <group>] [--member <member>] [--login-page <login-page>] [--no-access-page <no-access-page>] [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `page` | string | The page: a path or a uuid; a uuid on a hosted site. Required. |
+| `--group` | string[] | A member group it is for. |
+| `--member` | string[] | A member it is for, by login or e-mail address. |
+| `--login-page` | string | Where someone not signed in is sent. |
+| `--no-access-page` | string | Where a member it is not for is sent. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`):
+
+- `page` (object)
+  - `key` (string)
+  - `path` (string)
+- `rule` (string)
+- `protectedBy` (object)
+  - `key` (string)
+  - `path` (string)
+- `groups` (array of string)
+- `members` (array of string)
+- `loginPage` (object)
+  - `key` (string)
+  - `path` (string)
+- `noAccessPage` (object)
+  - `key` (string)
+  - `path` (string)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.
+
+### `crombolo content access show`
+
+Who may see a page: the member groups or members, and its sign-in page. Changes nothing.
+
+```
+crombolo content access show <page> [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `page` | string | The page: a path or a uuid; a uuid on a hosted site. Required. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`):
+
+- `page` (object)
+  - `key` (string)
+  - `path` (string)
+- `rule` (string)
+- `protectedBy` (object)
+  - `key` (string)
+  - `path` (string)
+- `groups` (array of string)
+- `members` (array of string)
+- `loginPage` (object)
+  - `key` (string)
+  - `path` (string)
+- `noAccessPage` (object)
+  - `key` (string)
+  - `path` (string)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.
+
 ### `crombolo content block add`
 
 Add a block to a page's block list. Each run acts again.
@@ -4122,7 +4230,7 @@ crombolo keys untrust <signer>
 
 ## Users and access
 
-Back office users, the administrator’s password, API clients, command-line tokens and the audit log.
+Back office users, members and their groups, the administrator’s password, API clients, command-line tokens and the audit log.
 
 ### `crombolo users disable`
 
@@ -4464,6 +4572,437 @@ crombolo users unlock <user>
 - `changed` (boolean)
 
 **Fails with:** `usage`, `internal`, `not_found`, `refused`.
+
+### `crombolo members approve`
+
+Approve a member, so they can sign in. Safe to run again: a second run changes nothing more.
+
+```
+crombolo members approve <member> [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `member` | string | Their e-mail address, login or key. Required. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`):
+
+- `key` (string)
+- `login` (string)
+- `email` (string)
+- `name` (string)
+- `type` (string)
+- `groups` (array of string)
+- `approved` (boolean)
+- `locked` (boolean)
+- `signsIn` (string)
+- `lastSignIn` (string)
+- `changed` (boolean)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.
+
+### `crombolo members groups add`
+
+Add a member to a group. Safe to run again: a second run changes nothing more.
+
+```
+crombolo members groups add <member> <group> [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `member` | string | Their e-mail address, login or key. Required. |
+| `group` | string | The group's name. Required. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`):
+
+- `key` (string)
+- `login` (string)
+- `email` (string)
+- `name` (string)
+- `type` (string)
+- `groups` (array of string)
+- `approved` (boolean)
+- `locked` (boolean)
+- `signsIn` (string)
+- `lastSignIn` (string)
+- `changed` (boolean)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.
+
+### `crombolo members groups leave`
+
+Take a member out of a group. Safe to run again: a second run changes nothing more.
+
+```
+crombolo members groups leave <member> <group> [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `member` | string | Their e-mail address, login or key. Required. |
+| `group` | string | The group's name. Required. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`):
+
+- `key` (string)
+- `login` (string)
+- `email` (string)
+- `name` (string)
+- `type` (string)
+- `groups` (array of string)
+- `approved` (boolean)
+- `locked` (boolean)
+- `signsIn` (string)
+- `lastSignIn` (string)
+- `changed` (boolean)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.
+
+### `crombolo members groups list`
+
+List the member groups, with how many members each has. Changes nothing.
+
+```
+crombolo members groups list [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (bounded, with `-o json`):
+
+- `groups` (array of object)
+  - `key` (string)
+  - `name` (string)
+  - `members` (integer)
+  - `pages` (array of object)
+    - `key` (string)
+    - `path` (string)
+
+**Fails with:** `usage`, `internal`, `refused`, `unavailable`.
+
+### `crombolo members groups new`
+
+Make a member group. Each run acts again.
+
+```
+crombolo members groups new <name> [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `name` | string | Its name. Required. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`):
+
+- `key` (string)
+- `name` (string)
+
+**Fails with:** `usage`, `internal`, `conflict`, `refused`, `unavailable`.
+
+### `crombolo members groups remove`
+
+Remove a member group; its members stay, out of it. Each run acts again.
+
+```
+crombolo members groups remove <name> [--yes] [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `name` | string | Its name. Required. |
+| `--yes` | boolean | Remove it even when pages name it. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`):
+
+- `key` (string)
+- `name` (string)
+- `members` (integer)
+- `pages` (array of object)
+  - `key` (string)
+  - `path` (string)
+
+**Fails with:** `usage`, `internal`, `not_found`, `confirmation_required`, `refused`, `unavailable`.
+
+### `crombolo members list`
+
+List members: login, e-mail, name and type, and where they can't sign in. Changes nothing.
+
+```
+crombolo members list [--group <group>] [--type <type>] [--find <find>] [--limit <limit>] [--offset <offset>] [--fields <fields>] [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `--group` | string | Only the members of this group. |
+| `--type` | string | Only members of this type. |
+| `--find` | string | Only those whose name, login, e-mail or details hold this. |
+| `--limit` | integer | How many to list. Default `50`. |
+| `--offset` | integer | How many to skip first. Default `0`. |
+| `--fields` | string | Only these fields of each item, comma-separated. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (bounded, with `-o json`):
+
+- `items` (array of object)
+  - `key` (string)
+  - `login` (string)
+  - `email` (string)
+  - `name` (string)
+  - `type` (string)
+  - `groups` (array of string)
+  - `approved` (boolean)
+  - `locked` (boolean)
+  - `signsIn` (string)
+  - `lastSignIn` (string)
+- `total` (integer)
+- `offset` (integer)
+- `truncated` (boolean)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.
+
+### `crombolo members lock`
+
+Lock a member out, so they cannot sign in until unlocked. Safe to run again: a second run changes nothing more.
+
+```
+crombolo members lock <member> [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `member` | string | Their e-mail address, login or key. Required. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`):
+
+- `key` (string)
+- `login` (string)
+- `email` (string)
+- `name` (string)
+- `type` (string)
+- `groups` (array of string)
+- `approved` (boolean)
+- `locked` (boolean)
+- `signsIn` (string)
+- `lastSignIn` (string)
+- `changed` (boolean)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.
+
+### `crombolo members new`
+
+Make a member, with their type, groups and values. Each run acts again.
+
+```
+crombolo members new <email> --type <type> [--login <login>] [--name <name>] [--group <group>] [--set <set>] [--set-file <set-file>] [--stdin] [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `email` | string | Their e-mail address. Required. |
+| `--type` | string | The member type. Required. |
+| `--login` | string | Their login; their e-mail address when left out. |
+| `--name` | string | Their name; their login when left out. |
+| `--group` | string[] | A member group they join. |
+| `--set` | string[] | A value, in the shorthand content files use; JSON for a toggle, number or list. |
+| `--set-file` | string[] | A value read from a file. |
+| `--stdin` | boolean | Read their password from stdin. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`):
+
+- `key` (string)
+- `login` (string)
+- `email` (string)
+- `name` (string)
+- `type` (string)
+- `groups` (array of string)
+- `approved` (boolean)
+- `locked` (boolean)
+- `signsIn` (string)
+- `lastSignIn` (string)
+- `changed` (boolean)
+
+**Fails with:** `usage`, `internal`, `not_found`, `conflict`, `refused`, `unavailable`.
+
+### `crombolo members remove`
+
+Remove a member for good, with their groups and sign-ins. Each run acts again.
+
+```
+crombolo members remove <member> [--yes] [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `member` | string | Their e-mail address, login or key. Required. |
+| `--yes` | boolean | Don't ask. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`):
+
+- `key` (string)
+- `email` (string)
+- `groups` (array of string)
+
+**Fails with:** `usage`, `internal`, `not_found`, `confirmation_required`, `refused`, `unavailable`.
+
+### `crombolo members reset-2fa`
+
+Remove a member's second factor, for one who lost their device. Safe to run again: a second run changes nothing more.
+
+```
+crombolo members reset-2fa <member> [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `member` | string | Their e-mail address, login or key. Required. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`):
+
+- `key` (string)
+- `login` (string)
+- `email` (string)
+- `name` (string)
+- `type` (string)
+- `groups` (array of string)
+- `approved` (boolean)
+- `locked` (boolean)
+- `signsIn` (string)
+- `lastSignIn` (string)
+- `changed` (boolean)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.
+
+### `crombolo members reset-password`
+
+Give a member a new password, and end their sessions. Each run acts again.
+
+```
+crombolo members reset-password <member> [--stdin] [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `member` | string | Their e-mail address, login or key. Required. |
+| `--stdin` | boolean | Read the new password from stdin. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`):
+
+- `key` (string)
+- `email` (string)
+- `password` (string)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.
+
+### `crombolo members show`
+
+One member: their type, groups, sign-in and values. Changes nothing.
+
+```
+crombolo members show <member> [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `member` | string | Their e-mail address, login or key. Required. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`): a JSON document.
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.
+
+### `crombolo members unlock`
+
+Clear a member's lockout and failed sign-ins. Safe to run again: a second run changes nothing more.
+
+```
+crombolo members unlock <member> [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `member` | string | Their e-mail address, login or key. Required. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`):
+
+- `key` (string)
+- `login` (string)
+- `email` (string)
+- `name` (string)
+- `type` (string)
+- `groups` (array of string)
+- `approved` (boolean)
+- `locked` (boolean)
+- `signsIn` (string)
+- `lastSignIn` (string)
+- `changed` (boolean)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.
+
+### `crombolo members update`
+
+Change a member's e-mail, login, name, values or groups. Safe to run again: a second run changes nothing more.
+
+```
+crombolo members update <member> [--email <email>] [--login <login>] [--name <name>] [--set <set>] [--set-file <set-file>] [--unset <unset>] [--group <group>] [--remove-group <remove-group>] [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `member` | string | Their e-mail address, login or key. Required. |
+| `--email` | string | Their new e-mail address. |
+| `--login` | string | Their new login. |
+| `--name` | string | Their new name. |
+| `--set` | string[] | A value, in the shorthand content files use; JSON for a toggle, number or list. |
+| `--set-file` | string[] | A value read from a file. |
+| `--unset` | string[] | Clear a value. |
+| `--group` | string[] | A group they join. |
+| `--remove-group` | string[] | A group they leave. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`):
+
+- `key` (string)
+- `login` (string)
+- `email` (string)
+- `name` (string)
+- `type` (string)
+- `groups` (array of string)
+- `approved` (boolean)
+- `locked` (boolean)
+- `signsIn` (string)
+- `lastSignIn` (string)
+- `changed` (boolean)
+
+**Fails with:** `usage`, `internal`, `not_found`, `conflict`, `refused`, `unavailable`.
 
 ### `crombolo admin reset-password`
 

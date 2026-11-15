@@ -26,15 +26,15 @@ import {
   bootstrapDatabase,
   type CromboloConfig,
   namedPath,
-  type PathKind,
   type PropertyEditor,
   pageReader,
   type SchemaLookup,
   schemaLookup,
   type shorthandReader,
   siteDocumentOperations,
+  siteValueRefs,
   tomlValue,
-  type ValueRefs,
+  typedValue,
   valueWriter,
 } from '@crombolo/server'
 import { Flags } from '@oclif/core'
@@ -42,52 +42,7 @@ import { CliError } from '../errors.ts'
 import { commandActor } from './acting.ts'
 import { type Io, siteConfig } from './site.ts'
 
-const OBJECT_TYPES: Record<PathKind, string> = {
-  content: ObjectTypes.Document,
-  library: ObjectTypes.Element,
-  media: ObjectTypes.Media,
-}
-
-/** What a value's paths name, on this site. */
-function siteRefs(db: Db): ValueRefs {
-  const keyOf = async (ref: string, kind: PathKind) => {
-    const resolved = await resolveNodeRef(db, [OBJECT_TYPES[kind]], ref)
-    return resolved.ok && resolved.node.objectType === OBJECT_TYPES[kind]
-      ? resolved.node.key
-      : undefined
-  }
-  return {
-    content: (ref) => keyOf(ref, 'content'),
-    library: (ref) => keyOf(ref, 'library'),
-    // A Library form by its path or key; anything else is a form's own alias, as before.
-    async form(ref) {
-      if (looksLikeKey(ref)) return normaliseUuid(ref)
-      const key = await keyOf(ref, 'library')
-      if (!key) return ref
-      const rows = await db.q
-        .selectFrom('node as n')
-        .innerJoin('content as c', 'c.node_id', 'n.id')
-        .innerJoin('content_type as ct', 'ct.node_id', 'c.content_type_id')
-        .select('ct.form_key')
-        .where('n.unique_id', '=', key)
-        .execute()
-      return rows[0]?.form_key ? key : undefined
-    },
-    linkedMedia: (ref) => keyOf(ref, 'media'),
-    async media(ref) {
-      const key = await keyOf(ref, 'media')
-      if (!key) return undefined
-      const rows = await db.q
-        .selectFrom('node as n')
-        .innerJoin('content as c', 'c.node_id', 'n.id')
-        .innerJoin('content_type as ct', 'ct.node_id', 'c.content_type_id')
-        .select('ct.alias')
-        .where('n.unique_id', '=', key)
-        .execute()
-      return { key, typeAlias: rows[0] ? String(rows[0].alias) : 'Image' }
-    },
-  }
-}
+export { typedValue }
 
 export interface PageSite {
   db: Db
@@ -114,7 +69,7 @@ export async function withPages<T>(work: (site: PageSite) => Promise<T>): Promis
       config,
       lookup,
       operations: (await siteDocumentOperations(db, config)).operations,
-      writer: valueWriter(lookup, siteRefs(db)),
+      writer: valueWriter(lookup, siteValueRefs(db)),
       reader: pageReader(db, lookup),
       languages,
     })
@@ -149,27 +104,6 @@ export async function findPage(site: PageSite, ref: string): Promise<FoundPage> 
     type,
     editors: await site.lookup.editorsOf('document', type),
     path: `/${(await namedPath(site.db, doc.key, 'content')) ?? ''}`,
-  }
-}
-
-const TEXTUAL = new Set([
-  'Umbraco.TextBox',
-  'Umbraco.TextArea',
-  'Umbraco.RichText',
-  'Umbraco.TinyMCE',
-])
-
-/**
- * A value as typed after `--set alias=`: text as it is for a text or rich text
- * property, JSON where it reads as JSON for the rest (`true`, `3`,
- * `["/a", "/b"]`), and the text itself otherwise, such as a path.
- */
-export function typedValue(editor: string, text: string): unknown {
-  if (TEXTUAL.has(editor)) return text
-  try {
-    return JSON.parse(text)
-  } catch {
-    return text
   }
 }
 

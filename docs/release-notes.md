@@ -8,6 +8,20 @@ point at `docs/stories/`.
 
 ### Features
 
+- **Members from the command line (354).** `crombolo members list [--group] [--type]
+  [--find]` and `members show <member>` give what the Members section shows, a member named
+  by e-mail, login or key; `members new <email> --type <alias>` and `members update
+  <member>` take values in the shorthand `content new` uses, and groups; `members
+  approve|lock|unlock|remove`, `members reset-password` (a new password, made and printed
+  once or read from `--stdin`, as the Members section gives one) and `members reset-2fa`
+  do what their buttons do. `members groups list|new|remove` and `members groups add|leave
+  <member> <group>` look after groups, and removing one a page's access names asks first.
+  `crombolo content access show|set|clear <page>` sets who may see a page, by group or by
+  member, with its sign-in and no-access pages, under the public access dialog's rules.
+  Each takes `--profile`, and the audit log names the member by key only.
+  `docs/operations.md`, "Members from the command line".
+- **The remote protocol's `members` and `public-access` (354)** carry those commands to a
+  hosted site, as the signed-in person and never as CI; the conformance suite checks both.
 - **Undoing a change from the command line (353).** `crombolo content history <page>`
   lists a page's versions, newest first: when, who, saved or published, and which is the
   draft, live and kept. `content history show <page> <version> [--diff]` shows one as
@@ -79,6 +93,12 @@ point at `docs/stories/`.
 - **`@crombolo/cli/plugin` (350):** a command declares `access` (`none`, `site` or
   `person`), and may declare its `section` and `adminOnly`. One that declares nothing is
   taken to be `site`.
+
+### Fixes
+
+- **A member saved by someone outside Sensitive data keeps their sensitive values (354).**
+  The Members section withholds a sensitive value from them, and saving the member then
+  dropped it; the save now keeps each value they were not shown.
 
 ### Upgrade notes
 

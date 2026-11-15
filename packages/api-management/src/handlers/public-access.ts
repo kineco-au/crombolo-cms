@@ -3,12 +3,14 @@
  *
  * A rule names member groups **or** individual members, never both — Umbraco
  * calls the mixture ambiguous and refuses it, and so do we, because the two are
- * different intentions and the editor offers them as a choice.
+ * different intentions and the editor offers them as a choice. The rules are
+ * `publicAccessRuleBreak`'s, which the command line keeps too.
  */
 import type { DocumentOperations } from '@crombolo/content'
 import { userActor } from '@crombolo/content/rules'
 import { notFound, problemDetails, problemResponse } from '@crombolo/core'
 import type { PublicAccessPort, PublicAccessStatus } from '../ports-members.ts'
+import { publicAccessRuleBreak } from '../public-access-rules.ts'
 import type { ManagementApiRouter, RequestContext } from '../router.ts'
 import { readBody } from './document.ts'
 
@@ -71,30 +73,41 @@ export function registerPublicAccessHandlers(
     const body = await readBody(ctx)
     const login = refId(body.loginDocument)
     const error = refId(body.errorDocument)
-    if (!login) return problemResponse(notFound('The login page could not be found'))
-    if (!error) return problemResponse(notFound('The error page could not be found'))
     const memberGroupNames = names(body.memberGroupNames)
     const memberUserNames = names(body.memberUserNames)
-    if (memberGroupNames.length === 0 && memberUserNames.length === 0)
-      return problemResponse(
-        problemDetails({
-          title: 'No allowed entities given',
-          detail: 'Both MemberGroups and Members were empty, thus no entities can be allowed.',
-          status: 400,
-        }),
-      )
-    if (memberGroupNames.length > 0 && memberUserNames.length > 0)
-      return problemResponse(
-        problemDetails({
-          title: 'Ambiguous Rule',
-          detail:
-            'The specified rule is ambiguous, because both member groups and member names were given.',
-          status: 400,
-        }),
-      )
+    switch (
+      publicAccessRuleBreak({
+        loginDocumentKey: login,
+        errorDocumentKey: error,
+        memberGroupNames,
+        memberUserNames,
+      })
+    ) {
+      case 'no-login-page':
+        return problemResponse(notFound('The login page could not be found'))
+      case 'no-error-page':
+        return problemResponse(notFound('The error page could not be found'))
+      case 'no-one':
+        return problemResponse(
+          problemDetails({
+            title: 'No allowed entities given',
+            detail: 'Both MemberGroups and Members were empty, thus no entities can be allowed.',
+            status: 400,
+          }),
+        )
+      case 'ambiguous':
+        return problemResponse(
+          problemDetails({
+            title: 'Ambiguous Rule',
+            detail:
+              'The specified rule is ambiguous, because both member groups and member names were given.',
+            status: 400,
+          }),
+        )
+    }
     const input = {
-      loginDocumentKey: login,
-      errorDocumentKey: error,
+      loginDocumentKey: login as string,
+      errorDocumentKey: error as string,
       memberGroupNames,
       memberUserNames,
     }

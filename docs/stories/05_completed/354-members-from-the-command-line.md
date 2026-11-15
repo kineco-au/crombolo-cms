@@ -239,23 +239,80 @@ Each command here takes `--profile` (story 352) to act on another site, through 
 
 ## Acceptance criteria
 
-- [ ] `crombolo members list [--group <alias>] [--type <alias>] [--find <text>]` and
+- [x] `crombolo members list [--group <alias>] [--type <alias>] [--find <text>]` and
       `members show <member>`, a member named by e-mail, login or key
-- [ ] `members new <email> --type <alias> [--name] [--group]... [--set
+- [x] `members new <email> --type <alias> [--name] [--group]... [--set
       <property>=<value>]...` and `members update <member> ...`, values in the
       shorthand `content new` uses
-- [ ] `members approve|lock|unlock|remove <member>`, `members reset-password <member>`
+- [x] `members approve|lock|unlock|remove <member>`, `members reset-password <member>`
       (with D1 (a): a new password, printed once or read from `--stdin`, as the
       Members section gives one; a reset link waits for story 282) and
       `members reset-2fa <member>`
-- [ ] `members groups list|new|remove`, and `members groups add|leave <member>
+- [x] `members groups list|new|remove`, and `members groups add|leave <member>
       <group>`
-- [ ] `crombolo content access show <page>`, `content access set <page> (--group
+- [x] `crombolo content access show <page>`, `content access set <page> (--group
       <name>... | --member <login>...) --login-page <page> --no-access-page <page>`, and
       `content access clear <page>`, with the public access dialog's rules
-- [ ] Each takes `--profile`; `-o json`; audited, with personal data kept out of the
+- [x] Each takes `--profile`; `-o json`; audited, with personal data kept out of the
       audit entry
-- [ ] Tests for each command, locally and through a test server, including removing a
+- [x] Tests for each command, locally and through a test server, including removing a
       member who is in a group, and a page's access set and cleared
-- [ ] The CLI reference regenerated, and `docs/operations.md` gains "Members from the
+- [x] The CLI reference regenerated, and `docs/operations.md` gains "Members from the
       command line"
+
+## Built
+
+Built 2026-11-15, with D1 (a) and D2 (a):
+- the core is `packages/server/src/member-admin.ts`: `findMember`, `showMember`,
+  `listMembers`, `newMember`, `changeMember` and `removeMember`; `groupsOf`,
+  `groupNamed`, `newGroup`, `removeGroup` and `pagesNaming`; `pageAccess`,
+  `setPageAccess` and `clearPageAccess`; and `siteMemberPorts`, the member ports over a
+  site's database as its server makes them. It refuses with `MemberAdminError`, whose
+  kind the command line and the routes each turn into their own;
+- `typedValue` and the value refs the CLI had (`siteValueRefs`) moved to
+  `packages/server/src/seed/values.ts`, and `schemaLookup` knows member types;
+- the public access dialog's two rules are `publicAccessRuleBreak`
+  (`packages/api-management/src/public-access-rules.ts`), which the handler and the core
+  both call;
+- the port's `update` keeps each sensitive value of the stored member that a person
+  outside Sensitive data was not shown. The back office's own save lost them before;
+- the remote routes are `packages/server/src/remote-members.ts`, mounted by
+  `createRemote`; discovery lists `members` always and `public-access` when the server
+  hands it its operations;
+- the commands are `members list|show|new|update|approve|lock|unlock|reset-password|
+  reset-2fa|remove`, `members groups list|new|remove|add|leave` and `content access
+  show|set|clear`, over `packages/cli/src/support/members.ts`, whose `withMembers` gives
+  each the same calls here or on a hosted site;
+- the conformance suite checks, when each is listed: members and groups listed and an
+  unknown member not found, and an unknown page's access not found and a page's read
+  back;
+- tests: `tests/member-admin.test.ts`, `tests/members-cli.test.ts`, and a case in
+  `tests/members.test.ts`.
+
+Where it differs from the plan:
+- **`members list --group` takes the group's name,** as groups have no alias; the
+  criterion's `<alias>` is a name.
+- **A group is named whatever the casing,** and `members groups new` refuses a name that
+  differs from another only by it, since the commands could not tell them apart.
+- **`members groups remove` asks first** when a page's access names the group, listing
+  those pages, rather than only refusing: off a terminal it is `confirmation_required`
+  until `--yes`. The route refuses 409 `conflict`, listing the pages, unless
+  `?confirmed=true`.
+- **A page's access drops a removed group or member** when read back, as the back
+  office's read does, so `content access show` names only those that still exist.
+- **The audit on a hosted site is the route's own.** Here, each write's entry is the
+  command's (`static audit`), by key. There, the route writes one by key with the person,
+  "Through the remote protocol" (and the token, when one was used), and `BaseCommand`
+  gains `auditedElsewhere` so this folder's log does not also get one. A change that
+  changes nothing writes no entry. The route's action is read from the change:
+  `Approve`, `Lock`, `Unlock`, `ResetPassword`, `ResetTwoFactor`, `JoinGroup`,
+  `LeaveGroup` or `Save`.
+- **The route takes `members/{ref}` by key, e-mail or login to read,** and only a key to
+  change or remove: the command line reads the member first, then changes them by key.
+- **A new member's name is their login** when `--name` is left out, and `members new` takes
+  `--set-file` and `--stdin` beside the planned flags.
+- **`members unlock` is a change** when the member was locked or had failed sign-ins, as
+  `users unlock` counts them.
+- **The command-line reference** puts the `members` commands on the "Users and access"
+  page rather than a page of their own.
+

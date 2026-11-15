@@ -8,7 +8,8 @@
  * - **Uniqueness.** Umbraco refuses a duplicate username or e-mail; the columns
  *   are case-insensitive in both dialects, so "A@b.com" and "a@b.com" clash.
  * - **Sensitive values.** A member property marked sensitive is withheld from a
- *   user outside the Sensitive data group, compositions included.
+ *   user outside the Sensitive data group, compositions included, and a save
+ *   by them keeps each such value they were not shown.
  * - **Passwords.** Plaintext arrives here and nowhere deeper; a change of one
  *   rotates the security stamp, which ends the member's sessions.
  *
@@ -106,7 +107,7 @@ export function createMemberPort(db: Db, options: MemberPortOptions = {}): Membe
   ): Promise<MemberResponse | undefined> => {
     const content = await members.content.byKey(member.key)
     if (!content) return undefined
-    const withheld = hasAccessToSensitiveData(viewer.groups)
+    const withheld = hasAccessToSensitiveData(viewer.groups ?? [])
       ? new Set<string>()
       : await sensitiveAliases(member.contentTypeKey)
     return {
@@ -148,6 +149,35 @@ export function createMemberPort(db: Db, options: MemberPortOptions = {}): Membe
         updateDate: variant.updateDate.toISOString(),
       })),
     }
+  }
+
+  /**
+   * The values a save writes: what it was sent, and, for someone outside
+   * Sensitive data, each stored sensitive value they were never shown.
+   */
+  const keepingWithheld = async (
+    existing: MemberCredentials,
+    sent: SaveMember['values'],
+    principal: Principal,
+  ): Promise<SaveMember['values']> => {
+    if (hasAccessToSensitiveData(principal.groups ?? [])) return sent
+    const withheld = await sensitiveAliases(existing.contentTypeKey)
+    if (withheld.size === 0) return sent
+    const stored = (await members.content.byKey(existing.key))?.values ?? []
+    const kept = stored.filter(
+      (value) =>
+        withheld.has(value.alias) &&
+        !sent.some(
+          (v) =>
+            v.alias === value.alias &&
+            (v.culture ?? null) === value.culture &&
+            (v.segment ?? null) === value.segment,
+        ),
+    )
+    return [
+      ...sent,
+      ...kept.map(({ alias, culture, segment, value }) => ({ alias, culture, segment, value })),
+    ]
   }
 
   const toItem = (member: MemberCredentials): MemberItem => ({
@@ -236,9 +266,13 @@ export function createMemberPort(db: Db, options: MemberPortOptions = {}): Membe
       if (input.oldPassword && !(await verifyPassword(input.oldPassword, existing.passwordHash)))
         return { ok: false as const, reason: 'The current password is not correct.', status: 400 }
       try {
+        const values = await keepingWithheld(existing, input.values, principal)
         const updated = await members.update(
           key,
-          { ...contentOf(input, existing.contentTypeKey), userId: await userIdOf(principal) },
+          {
+            ...contentOf({ ...input, values }, existing.contentTypeKey),
+            userId: await userIdOf(principal),
+          },
           {
             email: input.email,
             username: input.username,
