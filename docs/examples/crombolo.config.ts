@@ -25,6 +25,7 @@ export default defineConfig({
   siteName: 'Riverside Bakery', // CROMBOLO_SITE_NAME
   applicationUrl: 'https://www.riverside-bakery.example', // CROMBOLO_APPLICATION_URL
   contentMode: 'production', // CROMBOLO_CONTENT_MODE: templates, styles and scripts read-only
+  cliAccess: 'sign-in', // CROMBOLO_CLI_ACCESS: commands act as the person signed in
 
   // ── Where its files are (relative to this file) ─────────────────────────────
   siteDir: '.',

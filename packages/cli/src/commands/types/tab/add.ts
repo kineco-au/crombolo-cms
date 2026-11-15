@@ -20,6 +20,8 @@ export default class TypesTabAdd extends BaseCommand {
     after: Flags.string({ summary: 'the tab it goes after', helpValue: '<tab>' }),
     ...editFlags,
   }
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = editSpec
 
   async run() {

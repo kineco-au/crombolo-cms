@@ -31,6 +31,8 @@ export default class FormsFieldUpdate extends BaseCommand {
     ...fieldFlags,
     ...formEditFlags,
   }
+  static override access = 'site' as const
+  static override section = 'forms' as const
   static override spec = formEditSpec
 
   async run() {

@@ -7,7 +7,7 @@ gaps are marked, each with the story that closes it.
 
 The walk was run against 0.46.0 (unreleased) on 2026-11-03, on SQLite. Every
 command shown ran as written, with two exceptions:
-- `remote add` and `push` in step 8;
+- `remote add` and `push` in step 8, now `profile add` and `push --to` (story 352);
 - steps 2, 4 and 5, rewritten since for stories 253 to 255. The flow they
   describe is run end to end by `tests/integration/cli-site.integration.ts`.
 
@@ -202,8 +202,8 @@ There are two ways to deploy:
 bunx crombolo site build . --out ../bakery-bundle
 #   wrote    ../bakery-bundle  (riverside-bakery: 2 node(s), with its schema and views)
 
-bunx crombolo remote add live https://riverside.example
-bunx crombolo push live --dry-run
+bunx crombolo profile add live https://riverside.example
+bunx crombolo push --to live --dry-run
 ```
 
 - **A bundle** carries the schema, the views and the content files (export the
@@ -217,6 +217,24 @@ bunx crombolo push live --dry-run
 
 The walk built the bundle. It did not push, since there was no remote to push
 to.
+
+## On a production site
+
+The walk ran in development, where commands need no sign-in (`CROMBOLO_CLI_ACCESS` is
+`open`). With `NODE_ENV=production` it is `sign-in`, and every step from 2 on needs someone
+signed in. Start the site and sign in through it, once:
+
+```sh
+bunx crombolo start          # in another terminal
+bunx crombolo login          # approve the code in the back office
+#   signed in to Riverside Bakery as Administrator
+bunx crombolo whoami
+```
+
+The steps then run as that person, with the server stopped too, while the sign-in lasts:
+the audit log names them, and their groups decide what they may do. `crombolo logout`
+ends it. A pipeline that runs these commands with nobody there needs a personal access
+token (story 351). `docs/operations.md`, "Signing in from the command line".
 
 ## The gaps, in one place
 

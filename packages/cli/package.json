@@ -129,11 +129,17 @@
       "media": {
         "description": "the media library in bulk: import a folder, export one; a pulled site's files"
       },
+      "profile": {
+        "description": "the sites commands reach by name with --profile, kept in ~/.crombolo/profiles"
+      },
       "recycle-bin": {
         "description": "what has been deleted, before it is gone for good"
       },
       "remote": {
-        "description": "the remotes this site pulls from and pushes to (remotes.toml)"
+        "description": "a hosted site's trusted CI jobs, and its pull and push jobs"
+      },
+      "remote:trust": {
+        "description": "the CI jobs a hosted site trusts: add, list, disable, enable and remove them"
       },
       "seed": {
         "description": "a site's starting content, written as files and applied"

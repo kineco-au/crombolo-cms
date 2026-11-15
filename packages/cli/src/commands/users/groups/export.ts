@@ -26,6 +26,8 @@ export default class UsersGroupsExport extends BaseCommand {
       summary: 'change it, and leave applying it to `crombolo types sync`',
     }),
   }
+  static override access = 'site' as const
+  static override section = 'users' as const
   static override spec = editSpec
 
   async run() {

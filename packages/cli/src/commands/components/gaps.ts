@@ -5,6 +5,7 @@ import { siteConfig } from '../../support/site.ts'
 
 export default class ComponentsGaps extends BaseCommand {
   static override summary = 'the gaps marked in templates, with their reasons'
+  static override access = 'none' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'bounded',

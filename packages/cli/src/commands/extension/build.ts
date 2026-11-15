@@ -28,6 +28,7 @@ export default class ExtensionBuild extends BaseCommand {
     'with-media': Flags.boolean({ summary: 'the media files its picks name' }),
     check: Flags.boolean({ summary: 'build it and say what it holds, writing nothing' }),
   }
+  static override access = 'none' as const
   static override spec = {
     effects: 'non_idempotent',
     cardinality: 'single',

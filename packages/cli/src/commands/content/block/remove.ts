@@ -20,6 +20,8 @@ export default class ContentBlockRemove extends BaseCommand {
     block: Args.string({ required: true, description: 'the block: its alias or its key' }),
   }
   static override flags = blockFlags
+  static override access = 'site' as const
+  static override section = 'content' as const
   static override spec = blockSpec
 
   async run() {

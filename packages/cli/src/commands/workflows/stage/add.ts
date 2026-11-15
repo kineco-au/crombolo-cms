@@ -48,6 +48,8 @@ export default class WorkflowsStageAdd extends BaseCommand {
     }),
     ...workflowEditFlags,
   }
+  static override access = 'site' as const
+  static override section = ['content', 'workflow'] as const
   static override spec = editSpec
 
   async run() {

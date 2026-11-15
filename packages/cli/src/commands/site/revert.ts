@@ -10,9 +10,10 @@ import {
 import { Args, Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
 import * as ops from '../../operations/commands.ts'
+import { hostedOrHere } from '../../profiles/choose.ts'
 import { here } from '../../support/describe.ts'
 import { backupTaken, many } from '../../support/flags.ts'
-import { connectRemote, needEnvironment } from '../../support/remote.ts'
+import { connectSite, needEnvironment, profileFlags } from '../../support/remote.ts'
 import { siteConfig } from '../../support/site.ts'
 
 export default class SiteRevert extends BaseCommand {
@@ -35,10 +36,11 @@ export default class SiteRevert extends BaseCommand {
     }),
     force: Flags.boolean({ summary: 'revert over changes made since the run' }),
     'backup-taken': backupTaken,
-    remote: Flags.string({ summary: 'revert it on this remote instead', helpValue: '<name>' }),
-    env: Flags.string({ summary: "with --remote: the remote's environment", helpValue: '<id>' }),
+    ...profileFlags,
   }
   static override audit = { category: 'content', action: 'Revert', entityType: 'Document' } as const
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = {
     effects: 'non_idempotent',
     cardinality: 'single',
@@ -57,8 +59,9 @@ export default class SiteRevert extends BaseCommand {
     const { args, flags } = await this.parse(SiteRevert)
     const runId = args.run
     this.auditKey = runId
-    if (flags.remote) {
-      const { entry, client, discovery, environment } = await connectRemote(flags.remote, flags.env)
+    const remote = hostedOrHere(flags)
+    if (remote) {
+      const { site, client, discovery, environment } = await connectSite(remote)
       const env = needEnvironment(environment, discovery)
       const result = await client.post<{
         runId: string
@@ -69,7 +72,7 @@ export default class SiteRevert extends BaseCommand {
       }>(`environments/${env}/runs/${runId}/revert`, { force: flags.force })
       for (const key of result.restored) this.say(`  restored ${key}`)
       for (const key of result.recycled) this.say(`  recycled ${key}  (created by that run)`)
-      this.say(`\nReverted ${runId} on ${entry.name} as run ${result.runId}.`)
+      this.say(`\nReverted ${runId} on ${site.name} as run ${result.runId}.`)
       return { ...result, backup: null }
     }
     const resolutions: Record<string, RevertResolution> = {}

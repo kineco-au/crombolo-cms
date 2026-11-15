@@ -1,6 +1,6 @@
 /**
- * `site apply --remote` (story 167): the bundle built or packed here, sent to
- * the remote, which checks it and, unless a dry run, applies it as `bundle
+ * `site apply --profile` (story 167): the bundle built or packed here, sent to
+ * a hosted site, which checks it and, unless a dry run, applies it as `bundle
  * apply` does on its own machine. A site directory sends its content alone,
  * built against its own schema; --structure sends its schema, views, styles
  * and code with it. Neither side needs the other's database.
@@ -18,16 +18,15 @@ import {
   writeNpmTarball,
 } from '@crombolo/server'
 import { CliError } from '../errors.ts'
+import { type HostedSite, profileArg } from '../profiles/choose.ts'
 import { bundleFormatProblem, problemOf } from '../remote/client.ts'
 import { findingsOf, printSitePackage } from './describe.ts'
 import { type TransferFlagValues, transferInput } from './flags.ts'
-import { connectRemote, needEnvironment } from './remote.ts'
+import { connectSite, needEnvironment } from './remote.ts'
 import { writeSeedPackage } from './seed.ts'
 import type { Io } from './site.ts'
 
 type ApplyFlags = TransferFlagValues & {
-  remote?: string
-  env?: string
   'dry-run'?: boolean
   structure?: boolean
   label?: string
@@ -93,9 +92,15 @@ export async function packed(source: string, structure: boolean): Promise<Uint8A
   }
 }
 
-/** Sends a bundle to a remote and reports what it did; `bytes` sends one already packed. */
-export async function applyToRemote(io: Io, source: string, flags: ApplyFlags, bytes?: Uint8Array) {
-  const { entry, client, discovery, environment } = await connectRemote(flags.remote, flags.env)
+/** Sends a bundle to a hosted site and reports what it did; `bytes` sends one already packed. */
+export async function applyToRemote(
+  io: Io,
+  remote: HostedSite,
+  source: string,
+  flags: ApplyFlags,
+  bytes?: Uint8Array,
+) {
+  const { site, client, discovery, environment } = await connectSite(remote)
   const env = needEnvironment(environment, discovery)
   const formats = bundleFormatProblem(discovery, 'send')
   if (formats) throw new CliError('refused', formats)
@@ -127,7 +132,7 @@ export async function applyToRemote(io: Io, source: string, flags: ApplyFlags, b
   const c = report.counts
   if (report.dryRun) {
     io.say(
-      `\n  would    ${c.create} create, ${c.update} update, ${c.unchanged} unchanged, ${c.skip} skip on ${entry.name}`,
+      `\n  would    ${c.create} create, ${c.update} update, ${c.unchanged} unchanged, ${c.skip} skip on ${site.name}`,
     )
     if (Array.isArray(report.code) && report.code.length > 0)
       io.say(`  code     ${report.code.length} file(s) would change; live after a restart`)
@@ -137,23 +142,23 @@ export async function applyToRemote(io: Io, source: string, flags: ApplyFlags, b
   } else if (!report.runId) {
     throw new CliError(
       'refused',
-      `${entry.name} refused it: ${report.outstanding || report.problems?.length || 0} finding(s) outstanding. Nothing was written.`,
+      `${site.name} refused it: ${report.outstanding || report.problems?.length || 0} finding(s) outstanding. Nothing was written.`,
       {
         hint: 'Resolve them with --resolve, or see them with --dry-run.',
         details: findingsOf(report.findings as never),
       },
     )
   } else {
-    io.say(`  run      ${report.runId} on ${entry.name}`)
+    io.say(`  run      ${report.runId} on ${site.name}`)
     io.say(
       `  applied  ${c.create} created, ${c.update} updated, ${c.unchanged} unchanged, ${c.skip} skipped`,
     )
     if ((report.published ?? 0) > 0) io.say(`  published ${report.published} node(s)`)
     if (report.code && !Array.isArray(report.code))
       io.say(
-        `  code     ${report.code.written} file(s) installed; live after \`crombolo restart --remote ${entry.name}\``,
+        `  code     ${report.code.written} file(s) installed; live after \`crombolo restart${profileArg(site)}\``,
       )
-    io.say(`\nDone. \`crombolo site revert ${report.runId} --remote ${entry.name}\` puts it back.`)
+    io.say(`\nDone. \`crombolo site revert ${report.runId}${profileArg(site)}\` puts it back.`)
   }
   const result = {
     runId: report.runId ?? null,
@@ -164,7 +169,7 @@ export async function applyToRemote(io: Io, source: string, flags: ApplyFlags, b
     backup: null,
     published: report.published ?? 0,
     saved: null,
-    remote: entry.name,
+    remote: site.name,
   }
   return { result, dryRun: report.dryRun, blocked: report.dryRun && report.outstanding > 0 }
 }

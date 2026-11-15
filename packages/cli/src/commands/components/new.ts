@@ -34,6 +34,7 @@ export default class ComponentsNew extends BaseCommand {
       summary: "components/<alias>/page.tsx, so the page's own parts can sit beside it",
     }),
   }
+  static override access = 'none' as const
   static override spec = {
     effects: 'non_idempotent',
     cardinality: 'single',

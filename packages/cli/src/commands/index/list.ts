@@ -5,6 +5,8 @@ import { siteConfig } from '../../support/site.ts'
 
 export default class IndexList extends BaseCommand {
   static override summary = 'the search indexes: what each holds, and what is waiting to be indexed'
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'bounded',

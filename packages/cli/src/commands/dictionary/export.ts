@@ -31,6 +31,8 @@ export default class DictionaryExport extends BaseCommand {
       helpValue: '<name|uuid>',
     }),
   }
+  static override access = 'site' as const
+  static override section = 'translation' as const
   static override spec = {
     effects: 'idempotent',
     cardinality: 'single',

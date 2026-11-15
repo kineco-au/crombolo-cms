@@ -1,11 +1,39 @@
-/** What the remote commands share: the remote a command names, and the browser it opens. */
-import { osKeychain } from '@crombolo/server/remote-credentials'
+/** What the commands that reach a hosted site share: the flags, the connection, the browser. */
+import { type UserKeychain, userKeychain } from '@crombolo/server/remote-credentials'
+import { Flags } from '@oclif/core'
 import { CliError } from '../errors.ts'
+import { type HostedSite, hostedSite, type SiteChoice } from '../profiles/choose.ts'
 import { ciIdentityToken, ciTokenSource, inCiWithIdentity } from '../remote/ci.ts'
 import { type Discovery, discover, RemoteClient } from '../remote/client.ts'
-import { pickRemote, readRemotes } from '../remote/remotes-file.ts'
 
-export const keychain = () => osKeychain()
+let shared: UserKeychain | undefined
+
+/** Where this person's sign-ins are kept: the keychain, or the credentials file without one. */
+export const keychain = (): UserKeychain => {
+  shared ??= userKeychain()
+  return shared
+}
+
+const gone = Flags.string({ summary: 'gone: --profile names the site', hidden: true })
+
+/** `--profile` and `--env`, for a command that acts here or on another site. */
+export const profileFlags = {
+  profile: Flags.string({
+    summary: 'act on the site this profile names, rather than this one',
+    helpValue: '<name>',
+  }),
+  env: Flags.string({ summary: "a hosted site's environment", helpValue: '<id>' }),
+  remote: gone,
+}
+
+/** `--profile` for a command that always acts on a hosted site: `default` when left out. */
+export const hostedFlags = {
+  profile: Flags.string({
+    summary: 'the hosted site, by its profile; the default profile when left out',
+    helpValue: '<name>',
+  }),
+  remote: gone,
+}
 
 /**
  * One exchanged token per remote for the whole command, however many times it
@@ -39,34 +67,28 @@ export function openInBrowser(url: string, disabled: boolean): void {
   }
 }
 
-/** The remote a command names, signed in or not, with the environment it goes to. */
-export async function connectRemote(name: string | undefined, env: string | undefined) {
-  const entry = pickRemote(process.cwd(), name)
-  if (!entry) {
-    const known = readRemotes(process.cwd())
-    if (known.length === 0)
-      throw new CliError('not_found', 'No remotes yet.', {
-        hint: '`crombolo remote add <name> <url>` adds one.',
-      })
-    throw new CliError(
-      name ? 'not_found' : 'usage',
-      name ? `There is no remote "${name}".` : 'Which remote?',
-      { hint: `Name one of: ${known.map((r) => r.name).join(', ')}.` },
-    )
-  }
-  const discovery = await discover(entry.url)
+/**
+ * The hosted site chosen, signed in or not, with the environment it goes to.
+ * A folder, or nothing chosen, is refused: this needs a hosted site.
+ */
+export async function connectSite(
+  choice: SiteChoice | undefined,
+  options: { mayDefault?: boolean } = {},
+) {
+  const site: HostedSite = hostedSite(choice, options)
+  const discovery = await discover(site.url)
   // In a CI job that can prove who it is, that identity; on a person's machine, their sign-in.
   const client = new RemoteClient(
     discovery,
     keychain(),
     fetch,
     inCiWithIdentity() ? ciTokensFor(discovery) : undefined,
+    `crombolo login${site.profile ? ` --profile ${site.name}` : ''}`,
   )
   const environment =
-    env ??
-    entry.environment ??
+    site.environment ??
     (discovery.environments.length === 1 ? discovery.environments[0]?.id : undefined)
-  return { entry, discovery, client, environment }
+  return { site, discovery, client, environment }
 }
 
 /** The environment, or a usage error naming the ones there are. */

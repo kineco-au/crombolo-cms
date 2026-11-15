@@ -11,8 +11,9 @@ import {
   useSchemaStore,
 } from '@crombolo/server'
 import { CliError } from '../errors.ts'
+import type { HostedSite } from '../profiles/choose.ts'
 import { confirm, interactive } from './prompt.ts'
-import { connectRemote, needEnvironment } from './remote.ts'
+import { connectSite, needEnvironment } from './remote.ts'
 import { siteConfig } from './site.ts'
 
 /** The person at this terminal, as the audit log names them. */
@@ -39,19 +40,20 @@ export async function withLocalBundles<T>(
   }
 }
 
-/** A remote's installed bundles, and the calls that change them. */
-export async function remoteBundles(remote: string, env: string | undefined) {
-  const { client, discovery, environment, entry } = await connectRemote(remote, env)
+/** A hosted site's installed bundles, and the calls that change them. */
+export async function remoteBundles(remote: HostedSite) {
+  const { client, discovery, environment, site } = await connectSite(remote)
   const id = needEnvironment(environment, discovery)
   if (!(discovery.capabilities ?? []).includes('bundle-manage'))
     throw new CliError(
       'unavailable',
-      `${entry.name} does not manage bundles through the remote protocol.`,
+      `${site.name} does not manage bundles through the remote protocol.`,
       { hint: 'It needs a newer CMS, and CROMBOLO_REMOTE_ACCESS of at least read.' },
     )
   const base = `environments/${id}/installed`
   return {
-    name: entry.name,
+    name: site.name,
+    site,
     installed: () => client.json<InstalledBundles>(base),
     install: (body: {
       name: string

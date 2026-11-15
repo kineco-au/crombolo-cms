@@ -43,6 +43,7 @@ export default class Init extends BaseCommand {
     template: Flags.string({ summary: 'a starter template, or `list`', helpValue: '<id>' }),
     verbose: Flags.boolean({ summary: 'list every file it writes' }),
   }
+  static override access = 'none' as const
   static override spec = {
     effects: 'non_idempotent',
     cardinality: 'bounded',

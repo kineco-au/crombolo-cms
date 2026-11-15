@@ -16,6 +16,8 @@ export default class UsersUnlock extends BaseCommand {
     user: Args.string({ required: true, description: 'their e-mail address or username' }),
   }
   static override audit = { category: 'user', action: 'Unlock', entityType: 'User' } as const
+  static override access = 'site' as const
+  static override section = 'users' as const
   static override spec = {
     effects: 'idempotent',
     cardinality: 'single',

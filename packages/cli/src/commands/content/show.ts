@@ -30,6 +30,8 @@ export default class ContentShow extends BaseCommand {
   static override args = {
     page: Args.string({ required: true, description: 'the page: a path or a uuid' }),
   }
+  static override access = 'site' as const
+  static override section = 'content' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'single',

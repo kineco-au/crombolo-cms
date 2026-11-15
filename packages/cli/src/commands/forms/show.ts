@@ -7,6 +7,8 @@ export default class FormsShow extends BaseCommand {
   static override summary = 'one form: its pages, fieldsets, fields, workflows and what uses it'
   static override examples = ['<%= config.bin %> forms show contact']
   static override args = { alias: Args.string({ required: true, description: "the form's alias" }) }
+  static override access = 'site' as const
+  static override section = 'forms' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'single',

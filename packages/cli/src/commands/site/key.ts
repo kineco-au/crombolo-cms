@@ -8,6 +8,8 @@ export default class SiteKey extends BaseCommand {
   static override description =
     'Give it to the sites that take this one\'s bundles: `crombolo keys trust <name> "<line>" --site` there, or Settings → Trusted signers.'
   static override examples = ['<%= config.bin %> site key']
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = {
     effects: 'idempotent',
     cardinality: 'single',

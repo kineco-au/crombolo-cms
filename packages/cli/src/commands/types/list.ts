@@ -33,6 +33,8 @@ export default class TypesList extends BaseCommand {
       summary: 'what the database has applied, not what the site defines',
     }),
   }
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'bounded',

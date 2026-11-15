@@ -6,6 +6,8 @@ export default class ContentPublish extends BaseCommand {
   static override description = '--culture per culture; --at and --until schedule it instead.'
   static override args = publishArgs
   static override flags = publishFlags
+  static override access = 'site' as const
+  static override section = 'content' as const
   static override spec = publishSpec
 
   async run() {

@@ -1,117 +1,42 @@
-import { Args, Flags } from '@oclif/core'
+import { Args } from '@oclif/core'
 import { BaseCommand } from '../base.ts'
-import { CliError } from '../errors.ts'
-import { bundleFormatProblem } from '../remote/client.ts'
-import { pushSite } from '../remote/transfer.ts'
-import { counted, describeBytes, describeJob } from '../support/describe.ts'
-import { confirm } from '../support/prompt.ts'
-import { connectRemote, needEnvironment, openInBrowser } from '../support/remote.ts'
-import { siteConfig } from '../support/site.ts'
-import { raiseVersionIfChanged } from '../support/types.ts'
+import { refuseNamed } from '../profiles/choose.ts'
+import { copyFlags, copySides, copySite, copySpec, siteFolders } from '../support/site-copy.ts'
 
 export default class Push extends BaseCommand {
-  static override summary = 'replace a remote environment with this site'
+  static override summary = 'replace another site with this one, or with any site named by --from'
   static override description = [
-    'Shows what it would replace first; --dry-run stops there.',
-    "A protected environment needs --force and its name typed back (--auto-approve skips that), and the remote may also hold it for someone else's approval.",
+    "From this folder's site, or --from, to the default profile, or --to: either may be hosted or a site folder. Shows what it would replace first; --dry-run stops there.",
+    "A protected environment needs --force and its name typed back (--auto-approve skips that), and the site may also hold it for someone else's approval. A site folder is checked and backed up first, and asked about unless --yes. Between two hosted sites, everything passes through this machine.",
   ].join('\n\n')
   static override examples = [
-    '<%= config.bin %> push production --env staging --dry-run',
-    '<%= config.bin %> push production --env live --force --auto-approve',
+    '<%= config.bin %> push --to staging --dry-run',
+    '<%= config.bin %> push --to production --env live --force --auto-approve',
+    '<%= config.bin %> push --from riverside-copy --to staging',
   ]
   static override args = {
-    remote: Args.string({ description: 'the remote; the only one, when there is one' }),
+    remote: Args.string({ description: 'gone: --to names the site', hidden: true }),
   }
-  static override flags = {
-    env: Flags.string({ summary: 'the environment to replace', helpValue: '<id>' }),
-    force: Flags.boolean({ summary: 'go on to a protected environment' }),
-    'auto-approve': Flags.boolean({ summary: "with --force: don't ask for its name" }),
-    'media-info-only': Flags.boolean({
-      summary: 'send media files one at a time, only what the remote lacks',
-    }),
-    'dry-run': Flags.boolean({ summary: 'say what it would replace, and send nothing' }),
-    timeout: Flags.integer({
-      summary: 'seconds to wait for the remote before giving up',
-      default: 1800,
-      min: 1,
-    }),
-    'no-browser': Flags.boolean({ summary: "don't open an approval page" }),
+  static override flags = copyFlags
+  static override spec = { ...copySpec, confirmationBypassArg: '--auto-approve' } as const
+
+  static override access = 'site' as const
+  static override section = 'settings' as const
+  static override adminOnly = true
+
+  /** Each site folder it reads or replaces needs its sign-in. */
+  protected override async gatedSites(): Promise<string[]> {
+    const { args, flags } = await this.parse(Push)
+    refuseNamed(args.remote, '--to')
+    const { from, to } = copySides('push', flags)
+    return siteFolders(from, to)
   }
-  static override spec = {
-    effects: 'non_idempotent',
-    cardinality: 'single',
-    confirmationBypassArg: '--auto-approve',
-    outputFields: [
-      { name: 'environment', type: 'string' },
-      { name: 'check', type: 'object' },
-      { name: 'job', type: 'object', nullable: true },
-    ],
-    errors: [
-      'usage',
-      'auth',
-      'not_found',
-      'refused',
-      'timeout',
-      'unavailable',
-      'confirmation_required',
-    ],
-  } as const
 
   async run() {
     const { args, flags } = await this.parse(Push)
-    const { client, environment: env, discovery } = await connectRemote(args.remote, flags.env)
-    const environment = needEnvironment(env, discovery)
-    const formats = bundleFormatProblem(discovery, 'send')
-    if (formats) throw new CliError('refused', formats)
+    refuseNamed(args.remote, '--to')
+    const { from, to } = copySides('push', flags)
     if (flags['dry-run']) this.changedNothing = true
-    const config = await siteConfig()
-    if (!flags['dry-run']) await raiseVersionIfChanged(this, config)
-    const { check, job } = await pushSite(config, client, {
-      environment,
-      force: flags.force,
-      autoApprove: flags['auto-approve'],
-      mediaInfoOnly: flags['media-info-only'],
-      dryRun: flags['dry-run'],
-      timeoutMs: flags.timeout * 1000,
-      onCheck: (c) => {
-        this.say(
-          `  sending  ${counted(c.sending.counts, 'no content')}, ${c.sending.files} file(s)`,
-        )
-        if (c.sending.publicBytes > 0)
-          this.say(`  public   ${describeBytes(c.sending.publicBytes)}`)
-        if (c.fromRemote) {
-          if (Object.keys(c.recycles).length > 0)
-            this.say(`  recycles ${counted(c.recycles)} on ${environment}`)
-          if (c.removesFiles.length > 0)
-            this.say(`  removes  ${c.removesFiles.join(', ')} on ${environment}`)
-        }
-      },
-      confirm: async () => {
-        await confirm(`  This replaces ${environment}. Type its name to go on:`, {
-          bypass: '--auto-approve',
-          answer: environment,
-          declined: 'Nothing was sent.',
-        })
-        return true
-      },
-      onProgress: (j) => this.progress(describeJob(j)),
-      onApproval: (j) => {
-        this.progress(`  waiting  for someone else to approve it: ${j.approvalUrl}`)
-        if (j.approvalUrl) openInBrowser(j.approvalUrl, flags['no-browser'])
-      },
-    })
-    if (!job) {
-      this.say('\n  Nothing was sent: that is what a push would replace.')
-      return { environment, check, job: null }
-    }
-    if (job.state !== 'done')
-      this.fail(
-        'refused',
-        job.problem?.title ?? `the push ended ${job.state}`,
-        undefined,
-        job.problem?.items,
-      )
-    this.say(`\n  pushed   ${environment} replaced, run ${job.runId ?? '—'}`)
-    return { environment, check, job }
+    return copySite(this, from, to, flags)
   }
 }

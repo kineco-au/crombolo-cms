@@ -121,6 +121,18 @@ function deliveryApiPublic(): boolean | undefined {
   return isPrivate === undefined ? undefined : !isPrivate
 }
 
+/** Whether a command needs someone signed in (story 350): `open` lets it run as the command line. */
+export type CliAccess = 'open' | 'sign-in'
+
+/** `CROMBOLO_CLI_ACCESS`, or undefined for the default, which follows `development`. */
+function cliAccessSetting(): CliAccess | undefined {
+  const value = setting('CROMBOLO_CLI_ACCESS')?.trim().toLowerCase()
+  if (!value) return undefined
+  if (value !== 'open' && value !== 'sign-in')
+    throw new Error(`CROMBOLO_CLI_ACCESS is "${value}": it is open or sign-in.`)
+  return value
+}
+
 /** Whether the back office must leave templates, stylesheets and scripts alone. */
 export const contentFilesLocked = (config: Pick<CromboloConfig, 'contentMode'>) =>
   config.contentMode === 'production'
@@ -381,6 +393,12 @@ export interface CromboloConfig {
    * `development` unless set, in production too. `CROMBOLO_CONTENT_MODE`.
    */
   contentMode: ContentMode
+  /**
+   * Whether a command that reads or changes the site needs a signed-in person
+   * (story 350): `sign-in` unless `development`, where it is `open`.
+   * `CROMBOLO_CLI_ACCESS`. docs/operations.md, "Signing in from the command line".
+   */
+  cliAccess: CliAccess
   /** Sync `schema/` at boot; a pipeline that runs `crombolo types sync` turns this off. */
   syncSchemaAtBoot: boolean
   /** Which database engine; from CROMBOLO_DB. */
@@ -939,6 +957,8 @@ export function loadConfig(
         : setting('NODE_ENV') !== 'production',
     syncSchemaAtBoot: setting('CROMBOLO_SYNC_SCHEMA_AT_BOOT') !== 'false',
     contentMode: contentModeSetting(),
+    // Resolved again below, once it is known whether this is development.
+    cliAccess: cliAccessSetting() as CliAccess,
     dialect: setting('CROMBOLO_DB') === 'postgres' ? 'postgres' : 'sqlite',
     pgDump: setting('CROMBOLO_PG_DUMP'),
     upgradePolicy:
@@ -1095,6 +1115,11 @@ export function loadConfig(
   if (merged.contentMode !== 'development' && merged.contentMode !== 'production')
     throw new Error(
       `contentMode is "${String(merged.contentMode)}" in crombolo.config.ts: it is development or production.`,
+    )
+  merged.cliAccess ??= merged.development ? 'open' : 'sign-in'
+  if (merged.cliAccess !== 'open' && merged.cliAccess !== 'sign-in')
+    throw new Error(
+      `cliAccess is "${String(merged.cliAccess)}" in crombolo.config.ts: it is open or sign-in.`,
     )
   checkIdentityProviders(merged.memberIdentityProviders, 'member')
   checkIdentityProviders(merged.backofficeIdentityProviders, 'backoffice')

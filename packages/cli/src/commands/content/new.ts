@@ -34,6 +34,8 @@ export default class ContentNew extends BaseCommand {
     type: Flags.string({ required: true, summary: "the page's content type", helpValue: '<type>' }),
     ...pageFlags,
   }
+  static override access = 'site' as const
+  static override section = 'content' as const
   static override spec = {
     effects: 'non_idempotent',
     cardinality: 'single',

@@ -191,7 +191,7 @@ crombolo content find --under /Products --where "price gte 10" --sort updateDate
 ```
 
 - **On the site's own database** it sees everything, as the operator.
-- **With `--remote <name>`** it answers as you through the remote protocol's
+- **With `--profile <name>`** naming a hosted site, it answers as you through the remote protocol's
   `content-query` capability (`remote-protocol.md`), and `--under`/`--parent`
   take a page's uuid.
 

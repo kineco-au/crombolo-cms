@@ -15,6 +15,8 @@ export default class TypesSync extends BaseCommand {
     }),
   }
   static override audit = { category: 'schema', action: 'Sync', entityType: 'Schema' } as const
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = {
     effects: 'idempotent',
     cardinality: 'single',

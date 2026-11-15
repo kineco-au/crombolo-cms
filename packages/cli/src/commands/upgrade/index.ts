@@ -24,6 +24,7 @@ export default class Upgrade extends BaseCommand {
     'backup-taken': backupTaken,
   }
   static override audit = { category: 'system', action: 'Upgrade' } as const
+  static override access = 'none' as const
   static override spec = {
     effects: 'idempotent',
     cardinality: 'single',

@@ -6,6 +6,9 @@
  *   environment names are one per run, under `output/test-runs/<run>/`, rather
  *   than the shared `output/test-views` and friends. A process id would not do:
  *   two containers' processes start from the same small numbers.
+ * - **Sign-ins.** `crombolo init` and `crombolo login` keep one, so they go to
+ *   a credentials file under the run's directory, never the keychain or
+ *   `~/.crombolo/credentials`.
  * - **The Postgres database.** Each run creates a database of its own from the
  *   configured one, and drops it afterwards. Resetting one shared schema made
  *   two Postgres runs at once trample each other. A database a killed run left
@@ -30,6 +33,12 @@ for (const [variable, name] of Object.entries(SHARED)) {
   const dir = join(root, name)
   mkdirSync(dir, { recursive: true })
   Bun.env[variable] = dir
+}
+// Sign-ins a test makes go to a file of the run's own, never the keychain or ~/.crombolo.
+if (!Bun.env.CROMBOLO_CREDENTIALS_FILE) {
+  mkdirSync(root, { recursive: true })
+  Bun.env.CROMBOLO_CREDENTIALS = 'file'
+  Bun.env.CROMBOLO_CREDENTIALS_FILE = join(root, 'credentials')
 }
 process.on('exit', () => rmSync(root, { recursive: true, force: true }))
 

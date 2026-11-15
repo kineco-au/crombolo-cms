@@ -17,6 +17,8 @@ export default class UsersResetPassword extends BaseCommand {
   }
   static override flags = { stdin: Flags.boolean({ summary: 'read the new password from stdin' }) }
   static override audit = { category: 'user', action: 'ResetPassword', entityType: 'User' } as const
+  static override access = 'site' as const
+  static override section = 'users' as const
   static override spec = {
     effects: 'non_idempotent',
     cardinality: 'single',

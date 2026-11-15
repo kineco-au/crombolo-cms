@@ -6,7 +6,9 @@ import { describeProvenance, signPath } from '@crombolo/server'
 import { Args, Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
 import { CliError } from '../../errors.ts'
+import { chooseSite, hostedSite, profileArg } from '../../profiles/choose.ts'
 import { confirm } from '../../support/prompt.ts'
+import { hostedFlags } from '../../support/remote.ts'
 import { applyToRemote, packed } from '../../support/remote-apply.ts'
 import { restartRemote } from '../../support/restart.ts'
 import { signBuilt } from '../../support/signing.ts'
@@ -31,29 +33,25 @@ function uncommitted(dir: string): string[] | undefined {
     .filter((line) => line.trim() !== '')
 }
 
-/** A site directory, as committed, built and applied to a remote, which then restarts (story 241). */
+/** A site directory, as committed, built and applied to a hosted site, which then restarts (story 241). */
 export default class SiteDeploy extends BaseCommand {
   static override summary =
-    'deploy a site directory to a remote: build, check, apply its structure, content and code, restart'
+    'deploy a site directory to a hosted site: build, check, apply its structure, content and code, restart'
   static override description = [
-    'Refuses a directory with changes git has not committed, so a remote only ever runs what the repository holds. Builds the site with its schema, views, styles and code, checks it on the remote, applies it, then restarts the remote and waits for the new server to be healthy.',
-    'Anything outstanding in the check stops it before anything is written. Off a terminal, --yes is needed to go on. A restart that fails leaves the remote serving as it was, and prints the `site revert` that undoes the apply.',
+    'Refuses a directory with changes git has not committed, so a hosted site only ever runs what the repository holds. Builds the site with its schema, views, styles and code, checks it there, applies it, then restarts it and waits for the new server to be healthy.',
+    'Anything outstanding in the check stops it before anything is written. Off a terminal, --yes is needed to go on. A restart that fails leaves it serving as it was, and prints the `site revert` that undoes the apply.',
     'It does not install or wire bundles: `crombolo extension install <name> --wire`, a commit, then `crombolo site deploy`.',
   ].join('\n\n')
   static override examples = [
-    '<%= config.bin %> site deploy --remote production',
-    '<%= config.bin %> site deploy --remote production --yes --publish',
+    '<%= config.bin %> site deploy --profile production',
+    '<%= config.bin %> site deploy --yes --publish',
   ]
   static override args = {
     dir: Args.string({ description: 'the site directory; this one when left out' }),
   }
   static override flags = {
-    remote: Flags.string({
-      summary: 'the remote to deploy to',
-      helpValue: '<name>',
-      required: true,
-    }),
-    env: Flags.string({ summary: "the remote's environment", helpValue: '<id>' }),
+    ...hostedFlags,
+    env: Flags.string({ summary: "the hosted site's environment", helpValue: '<id>' }),
     publish: Flags.boolean({ summary: 'publish what it applies' }),
     label: Flags.string({ summary: 'a label for the run', helpValue: '<text>' }),
     yes: Flags.boolean({ summary: "don't ask before applying" }),
@@ -72,6 +70,7 @@ export default class SiteDeploy extends BaseCommand {
     }),
   }
   static override audit = { category: 'content', action: 'Deploy', entityType: 'Bundle' } as const
+  static override access = 'site' as const
   static override spec = {
     effects: 'non_idempotent',
     cardinality: 'single',
@@ -116,9 +115,9 @@ export default class SiteDeploy extends BaseCommand {
         })
     }
 
+    const remote = hostedSite(chooseSite(flags, { mayDefault: true }))
+    const to = remote.name
     const base = {
-      remote: flags.remote,
-      env: flags.env,
       structure: true,
       publish: flags.publish,
       label: flags.label ?? 'deploy',
@@ -153,36 +152,33 @@ export default class SiteDeploy extends BaseCommand {
         await rm(work, { recursive: true, force: true })
       }
     }
-    this.say(`Checking ${shown} on ${flags.remote}…`)
-    const checked = await applyToRemote(this, dir, { ...base, 'dry-run': true }, bytes)
+    this.say(`Checking ${shown} on ${to}…`)
+    const checked = await applyToRemote(this, remote, dir, { ...base, 'dry-run': true }, bytes)
     if (checked.blocked) {
       this.outcome = 'blocked'
       this.changedNothing = true
-      return { runId: null, remote: flags.remote, restarted: false, counts: checked.result.counts }
+      return { runId: null, remote: to, restarted: false, counts: checked.result.counts }
     }
     if (!flags.yes)
-      await confirm(
-        `\nApply it to ${flags.remote}${flags['no-restart'] ? '' : ' and restart'}? [y/N] `,
-        {
-          bypass: '--yes',
-        },
-      )
+      await confirm(`\nApply it to ${to}${flags['no-restart'] ? '' : ' and restart'}? [y/N] `, {
+        bypass: '--yes',
+      })
 
     this.say(`\nApplying…`)
-    const applied = await applyToRemote(this, dir, base, bytes)
+    const applied = await applyToRemote(this, remote, dir, base, bytes)
     const runId = applied.result.runId
     if (flags['no-restart'] || !runId)
-      return { runId, remote: flags.remote, restarted: false, counts: applied.result.counts }
+      return { runId, remote: to, restarted: false, counts: applied.result.counts }
 
-    this.say(`\nRestarting ${flags.remote}…`)
-    const restart = await restartRemote(this, { remote: flags.remote, env: flags.env })
+    this.say(`\nRestarting ${to}…`)
+    const restart = await restartRemote(this, remote)
     if (!restart.ok)
       throw new CliError(
         'unavailable',
-        `${flags.remote} did not restart: ${restart.reason ?? 'its new server did not start'}. It is still serving as before the restart, with run ${runId} applied but its code not running.`,
-        { hint: `\`crombolo site revert ${runId} --remote ${flags.remote}\` undoes the apply.` },
+        `${to} did not restart: ${restart.reason ?? 'its new server did not start'}. It is still serving as before the restart, with run ${runId} applied but its code not running.`,
+        { hint: `\`crombolo site revert ${runId}${profileArg(remote)}\` undoes the apply.` },
       )
-    this.say(`\nDeployed: run ${runId} is live on ${flags.remote}.`)
-    return { runId, remote: flags.remote, restarted: true, counts: applied.result.counts }
+    this.say(`\nDeployed: run ${runId} is live on ${to}.`)
+    return { runId, remote: to, restarted: true, counts: applied.result.counts }
   }
 }

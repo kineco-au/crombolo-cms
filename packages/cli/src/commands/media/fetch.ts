@@ -12,6 +12,8 @@ export default class MediaFetch extends BaseCommand {
   static override summary = "a lazily pulled site's media files, all of them now"
   static override description =
     'Exits 10 when a file could not be fetched; running it again fetches only what is missing.'
+  static override access = 'site' as const
+  static override section = 'media' as const
   static override spec = {
     effects: 'idempotent',
     cardinality: 'single',

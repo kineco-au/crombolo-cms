@@ -173,7 +173,8 @@ not cover.
 | `262` | Telemetry that reaches the tools you already watch | should | L | done | 047 |
 | `273` | Search through providers a site can replace | could | L | done | 043, 140 |
 | `333` | How far Windows is from running the suite | could | S | ready | — |
-| `334` | A Windows developer works through Docker | could | M | in progress (waiting for a Windows trial) | — |
+| `334` | A Windows developer works through Docker | could | M | done | — |
+| `363` | Crombolo development tried on a Windows machine | could | S | on hold (needs a Windows 11 machine) | 334 |
 | `335` | A key vouches for an extension only when the site trusts it | must | M | done | 316, 324 |
 | `340` | E-mail is set up in Settings, and takes effect at once | should | M | done | 045 |
 
@@ -377,9 +378,9 @@ requests, only server-side and build-time front ends can call it.
 
 What the CLI lacks against [clispec.dev](https://clispec.dev/) is `150`. The
 rest are what the Management API can do that a script or an operator cannot,
-short of signing in as a person. The CLI does not mirror the API: editing
-content, data types, templates and the rest stays in the back office, or in files
-under `schema/` — and, for a site's starting content, in content files (Epic Q).
+short of signing in as a person. Pages, blocks and definitions are edited from the
+CLI too (Epic Q); `349` surveys what the back office still does that the CLI
+cannot, what is left out and why, and how the rest splits into stories.
 
 | # | Story | Priority | Size | State | Depends on |
 |---|---|---|---|---|---|
@@ -393,6 +394,20 @@ under `schema/` — and, for a site's starting content, in content files (Epic Q
 | `157` | A docs section on the product site | should | L | done | 150 |
 | `158` | A hosting plugin for the CLI | should | S | done | 150 |
 | `159` | A site file without its hostnames | should | S | done | 104, 105 |
+| `349` | The command line does what the back office does | should | XL | done | — |
+| `350` | The command line signs in to the site it changes | should | L | done | — |
+| `351` | Personal access tokens for the command line | should | M | ready | 350 |
+| `352` | Profiles in place of remotes | should | L | done | — |
+| `353` | Undoing a change from the command line | should | M | ready | 349, 352 |
+| `354` | Members from the command line | should | M | ready | 349, 350, 352 |
+| `355` | Media already in the library | should | M | backlog | 349, 352, 353 |
+| `356` | Users and groups filled in | should | S | ready | 349, 350, 352 |
+| `357` | Every data type editor from the command line | should | M | ready | 349 |
+| `358` | Blueprints from the command line | could | S | ready | 349 |
+| `359` | Background jobs from the command line | could | S | ready | 349, 352 |
+| `360` | Search and sharing settings from the command line | could | S | ready | 349 |
+| `361` | Library elements and menus from the command line | could | L | ready | 349 |
+| `362` | What an extension did, from the command line | could | S | ready | 349, 352 |
 
 ### Epic Q — A site from the command line
 
@@ -419,7 +434,7 @@ files kept as the committed record nobody has to open.
 | `167` | Changing a remote site piece by piece | should | M | done | 160 |
 | `168` | The dictionary and single media files | could | S | done | — |
 | `180` | A working site from an empty directory, from the command line | should | S | done | 163 |
-| `240` | Approvals from the command line | should | M | on hold | a CLI sign-in story, not written yet |
+| `240` | Approvals from the command line | should | M | ready | 350, 352 |
 | `241` | Bundles managed from the command line | should | L | done | 160, 167 |
 | `242` | The Library in content files | could | S | done | — |
 | `243` | Form entries from the command line | could | S | ready | — |

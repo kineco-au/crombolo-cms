@@ -23,6 +23,8 @@ export default class TypesPropertyMove extends BaseCommand {
     after: Flags.string({ summary: 'the property it goes after', helpValue: '<property>' }),
     ...editFlags,
   }
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = editSpec
 
   async run() {

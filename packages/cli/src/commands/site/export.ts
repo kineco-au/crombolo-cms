@@ -44,6 +44,8 @@ export default class SiteExport extends BaseCommand {
     'package-version': Flags.string({ summary: "the package's version", helpValue: '<version>' }),
     ...contentFlags,
   }
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = {
     effects: 'non_idempotent',
     cardinality: 'single',

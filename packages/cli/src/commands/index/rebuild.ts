@@ -27,6 +27,8 @@ export default class IndexRebuild extends BaseCommand {
     action: 'RebuildIndex',
     entityType: 'Index',
   } as const
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = {
     effects: 'idempotent',
     cardinality: 'single',

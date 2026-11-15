@@ -26,6 +26,8 @@ export default class CacheRebuild extends BaseCommand {
     action: 'RebuildCache',
     entityType: 'Cache',
   } as const
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = {
     effects: 'idempotent',
     cardinality: 'single',

@@ -7,8 +7,9 @@
  * remote, leaving content the laptop never had where it was.
  *
  * The command line signs in as a CI job does (story 160), from an identity
- * token a test issuer here signs, because a person's sign-in is kept in the
- * operating system's keychain, which a test machine may not have.
+ * token a test issuer here signs, and names its site as a CI job does (story
+ * 352), with CROMBOLO_PROFILE_URL and no profile, because a person's sign-in is kept
+ * in the operating system's keychain, which a test machine may not have.
  *
  * Named `*.integration.ts`, so `bun test` does not collect it: it spawns
  * processes and boots servers. `bun run test:integration` runs it, and CI does.
@@ -95,6 +96,9 @@ function environment(site: string, extra: Record<string, string> = {}): Record<s
     'CROMBOLO_SCRIPTS_DIR',
     'CROMBOLO_SITE_NAME',
     'CROMBOLO_ID_TOKEN',
+    'CROMBOLO_PROFILE',
+    'CROMBOLO_PROFILE_URL',
+    'CROMBOLO_PROFILE_ENVIRONMENT',
     'ACTIONS_ID_TOKEN_REQUEST_URL',
     'ACTIONS_ID_TOKEN_REQUEST_TOKEN',
   ])
@@ -105,6 +109,7 @@ function environment(site: string, extra: Record<string, string> = {}): Record<s
     CROMBOLO_LOGS_DIR: join(dir, 'logs', site),
     CROMBOLO_LOG_TO_CONSOLE: 'false',
     CROMBOLO_ADMIN_PASSWORD: 'integration-password',
+    CROMBOLO_PROFILES_FILE: join(dir, 'profiles'),
     ...extra,
   }
 }
@@ -242,9 +247,9 @@ const remoteSettings = (isProtected: boolean) => ({
 })
 
 /**
- * What the laptop's CI job carries for one command: an identity token for the
- * remote's origin. Each is exchanged once, as a job's are, so every command
- * gets a fresh one.
+ * What the laptop's CI job carries for one command: the site it acts on, and
+ * an identity token for its origin. Each is exchanged once, as a job's are, so
+ * every command gets a fresh one.
  */
 const identityFor = (server: Serving) => () => tokenFor(server)
 
@@ -264,7 +269,11 @@ async function tokenFor(server: Serving): Promise<Record<string, string>> {
     .setExpirationTime(now + 1800)
     .setJti(randomUUID())
     .sign(signingKey)
-  return { CROMBOLO_ID_TOKEN: token }
+  return {
+    CROMBOLO_ID_TOKEN: token,
+    CROMBOLO_PROFILE_URL: server.url,
+    CROMBOLO_PROFILE_ENVIRONMENT: 'production',
+  }
 }
 
 async function page(server: Serving, path: string): Promise<{ status: number; html: string }> {
@@ -272,15 +281,10 @@ async function page(server: Serving, path: string): Promise<{ status: number; ht
   return { status: response.status, html: await response.text() }
 }
 
-/** The laptop: a site of its own, pointed at `live`, then replaced by a pull from it. */
-async function laptopFrom(
-  name: string,
-  live: Serving,
-  identity: () => Promise<Record<string, string>>,
-) {
+/** The laptop: a site of its own, replaced by a pull from the site `identity` names. */
+async function laptopFrom(name: string, identity: () => Promise<Record<string, string>>) {
   await newSite(name)
-  await ok(name, ['remote', 'add', 'live', live.url, '--env', 'production'], await identity())
-  await ok(name, ['pull', 'live', '--yes', '--backup-taken'], await identity())
+  await ok(name, ['pull', '--yes', '--backup-taken'], await identity())
 }
 
 /**
@@ -317,21 +321,21 @@ describe('a template edited locally and pushed to a remote', () => {
     const identity = identityFor(live)
     expect((await page(live, '/')).html).toContain('<h1>Home</h1>')
 
-    await laptopFrom('laptop-push', live, identity)
+    await laptopFrom('laptop-push', identity)
     await trustLaptop('live-push', 'laptop-push')
     await editTemplate('laptop-push')
 
     // A dry run says what it would replace, and sends nothing.
-    const dry = await ok('laptop-push', ['push', 'live', '--dry-run'], await identity())
+    const dry = await ok('laptop-push', ['push', '--dry-run'], await identity())
     expect(dry.out).toContain('Nothing was sent')
     expect((await page(live, '/')).html).not.toContain('Changed on the laptop')
 
     // The environment is protected: refused without --force, and nothing changes.
-    const refused = await cli('laptop-push', ['push', 'live'], await identity())
+    const refused = await cli('laptop-push', ['push'], await identity())
     expect(refused.code, refused.out).not.toBe(0)
     expect((await page(live, '/')).html).not.toContain('Changed on the laptop')
 
-    await ok('laptop-push', ['push', 'live', '--force', '--auto-approve'], await identity())
+    await ok('laptop-push', ['push', '--force', '--auto-approve'], await identity())
     const after = await page(live, '/')
     expect(after.status).toBe(200)
     expect(after.html).toContain('<h1>Home</h1>')
@@ -351,7 +355,7 @@ describe('a template edited locally and deployed to a remote', () => {
     const live = await serve('live-deploy', remoteSettings(false))
     const identity = identityFor(live)
 
-    await laptopFrom('laptop-deploy', live, identity)
+    await laptopFrom('laptop-deploy', identity)
     await trustLaptop('live-deploy', 'laptop-deploy')
     git('laptop-deploy', 'init', '--quiet', '--initial-branch', 'main')
     git('laptop-deploy', 'add', '-A')
@@ -371,33 +375,21 @@ describe('a template edited locally and deployed to a remote', () => {
 
     await editTemplate('laptop-deploy')
     // A deploy sends only what is committed.
-    const dirty = await cli(
-      'laptop-deploy',
-      ['site', 'deploy', '--remote', 'live', '--yes'],
-      await identity(),
-    )
+    const dirty = await cli('laptop-deploy', ['site', 'deploy', '--yes'], await identity())
     expect(dirty.code, dirty.out).not.toBe(0)
     expect(dirty.out).toContain('not committed')
     git('laptop-deploy', 'add', '-A')
     git('laptop-deploy', 'commit', '--quiet', '-m', 'the page template says where it was changed')
 
-    let deployed = await cli(
-      'laptop-deploy',
-      ['site', 'deploy', '--remote', 'live', '--yes'],
-      await identity(),
-    )
+    let deployed = await cli('laptop-deploy', ['site', 'deploy', '--yes'], await identity())
     // A change to the definitions raises the site's version first, which is committed in turn.
     if (deployed.code !== 0 && deployed.out.includes('not yet committed')) {
       git('laptop-deploy', 'add', '-A')
       git('laptop-deploy', 'commit', '--quiet', '-m', 'the raised version')
-      deployed = await cli(
-        'laptop-deploy',
-        ['site', 'deploy', '--remote', 'live', '--yes'],
-        await identity(),
-      )
+      deployed = await cli('laptop-deploy', ['site', 'deploy', '--yes'], await identity())
     }
     expect(deployed.code, deployed.out).toBe(0)
-    expect(deployed.out).toContain('is live on live')
+    expect(deployed.out).toContain(`is live on ${new URL(live.url).host}`)
 
     const home = await page(live, '/')
     expect(home.status).toBe(200)

@@ -4,6 +4,7 @@ import { loadTypes, needSchemaDir } from '../../support/types.ts'
 
 export default class LanguagesList extends BaseCommand {
   static override summary = "the site's languages"
+  static override access = 'site' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'bounded',

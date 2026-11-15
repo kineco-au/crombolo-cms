@@ -10,6 +10,7 @@ export default class Schema extends BaseCommand {
   static override examples = ['<%= config.bin %> schema', '<%= config.bin %> schema site apply']
   static override strict = false
   static override usage = 'schema [COMMAND...]'
+  static override access = 'none' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'single',

@@ -159,7 +159,7 @@ import {
 import { loadSchemaDirectory, type SyncReport } from '@crombolo/schema'
 import { choicesFor } from '@crombolo/transfer'
 import type { Server } from 'bun'
-import { createNodeLookup, loadAccess } from './access.ts'
+import { createNodeLookup } from './access.ts'
 import { ACTION_FLASH_COOKIE, actionRegistry, actionRoutes } from './actions.ts'
 import { createAuditHost, createAuditSink, pluginAuditPlan, recordAudit } from './adapters/audit.ts'
 import {
@@ -243,6 +243,7 @@ import {
   readPreviewToken,
   signPreviewToken,
 } from './preview-tokens.ts'
+import { principalOf } from './principal.ts'
 import { provenanceProblem } from './provenance.ts'
 import { createRemote, may, type RestartOutcome } from './remote.ts'
 import { createSchemaTransfer, UPLOAD_LIMITS } from './schema-transfer.ts'
@@ -708,28 +709,10 @@ export async function createServer(
   }
 
   /** What a resolved user may do, as every check in the Management API reads it. */
-  async function principalFrom(
+  function principalFrom(
     identity: NonNullable<Awaited<ReturnType<typeof auth.identityOf>>>,
   ): Promise<Principal> {
-    return {
-      id: identity.user.key,
-      userName: identity.user.login,
-      name: identity.user.userName,
-      email: identity.user.email,
-      isAdmin: identity.isAdmin,
-      languageIsoCode: identity.user.language ?? undefined,
-      avatarUrls: identity.user.avatar ? [identity.user.avatar] : [],
-      allowedSections: identity.allowedSections,
-      permissions: identity.permissions,
-      groupKeys: identity.groupKeys,
-      hasAccessToAllLanguages: identity.hasAccessToAllLanguages,
-      ...(await loadAccess(
-        db,
-        identity.user.id,
-        identity.viewingAs ? identity.groupKeys : undefined,
-      )),
-      ...(identity.viewingAs ? { viewingAs: identity.viewingAs } : {}),
-    }
+    return principalOf(db, identity)
   }
 
   // Every page as last saved, for previewing in an app (story 053). Built on the
@@ -1554,6 +1537,10 @@ export async function createServer(
   if (config.setupCode && (await setup.pending()) === false)
     log.warning('CROMBOLO_SETUP_CODE is still set, but the site is set up. Remove the setting.')
   noticeAboutEmail(emailStatus, logger('email'), { development: config.development })
+  if (!config.development && config.cliAccess === 'open')
+    log.warning(
+      'CROMBOLO_CLI_ACCESS is open: commands run on this site without anyone signing in, and the audit log cannot say who ran them.',
+    )
   const hubPath = SERVER_EVENT_HUB_PATH
   const previewHubPath = PREVIEW_HUB_PATH
 

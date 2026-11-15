@@ -1,9 +1,8 @@
-import { operatorActor } from '@crombolo/content'
 import { currentSchemaState, DocumentRepository, type NodeRow } from '@crombolo/data'
 import { bootstrapDatabase, siteDocumentOperations, siteMediaOperations } from '@crombolo/server'
 import { Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
-import { commandActorName } from '../../operations/commands.ts'
+import { commandActor } from '../../support/acting.ts'
 import { dryRun } from '../../support/flags.ts'
 import { confirm } from '../../support/prompt.ts'
 import { siteConfig } from '../../support/site.ts'
@@ -30,6 +29,8 @@ export default class RecycleBinEmpty extends BaseCommand {
     action: 'EmptyRecycleBin',
     entityType: 'Document',
   } as const
+  static override access = 'site' as const
+  static override section = ['content', 'media'] as const
   static override spec = {
     effects: 'idempotent',
     cardinality: 'bounded',
@@ -125,7 +126,7 @@ export default class RecycleBinEmpty extends BaseCommand {
         ? (await siteDocumentOperations(db, config)).operations
         : undefined
       const media = kinds.includes('media') ? await siteMediaOperations(db, config) : undefined
-      const actor = operatorActor(commandActorName())
+      const actor = commandActor()
       for (const { node, kind } of chosen)
         await (kind === 'content' ? pages : media)?.delete(actor, node.key, { fromBin: true })
       this.say(`  deleted  ${items.length} item(s)`)

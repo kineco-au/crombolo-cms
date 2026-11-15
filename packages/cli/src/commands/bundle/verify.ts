@@ -30,6 +30,7 @@ export default class BundleVerify extends BaseCommand {
       helpValue: '<pattern>',
     }),
   }
+  static override access = 'none' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'single',

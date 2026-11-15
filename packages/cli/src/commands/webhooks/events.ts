@@ -7,6 +7,8 @@ export default class WebhooksEvents extends BaseCommand {
   static override description =
     '`webhooks new` and `update` take these names after --event, or the alias each is kept under.'
   static override examples = ['<%= config.bin %> webhooks events']
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'bounded',

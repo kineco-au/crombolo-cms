@@ -29,6 +29,8 @@ export default class FormsWorkflowUpdate extends BaseCommand {
     unset: Flags.string({ summary: 'take a setting away', helpValue: '<setting>', multiple: true }),
     ...formEditFlags,
   }
+  static override access = 'site' as const
+  static override section = 'forms' as const
   static override spec = formEditSpec
 
   async run() {

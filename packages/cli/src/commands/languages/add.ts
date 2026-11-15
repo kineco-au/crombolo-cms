@@ -41,6 +41,8 @@ export default class LanguagesAdd extends BaseCommand {
       helpValue: '<iso>',
     }),
   }
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = {
     effects: 'non_idempotent',
     cardinality: 'single',

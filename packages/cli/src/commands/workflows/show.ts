@@ -9,6 +9,8 @@ export default class WorkflowsShow extends BaseCommand {
   static override args = {
     alias: Args.string({ required: true, description: "the workflow's alias" }),
   }
+  static override access = 'site' as const
+  static override section = ['content', 'workflow'] as const
   static override spec = { effects: 'read_only', cardinality: 'single', stdoutSchema: {} } as const
 
   async run() {

@@ -32,6 +32,9 @@ export default class ExtensionSettings extends BaseCommand {
   static override args = {
     name: Args.string({ required: true, description: 'the package name, or its bundle id' }),
   }
+  static override access = 'site' as const
+  static override section = 'settings' as const
+  static override adminOnly = true
   static override spec = {
     effects: 'idempotent',
     cardinality: 'single',

@@ -20,6 +20,7 @@ export default class AdminResetPassword extends BaseCommand {
     stdin: Flags.boolean({ summary: 'read the new password from stdin' }),
   }
   static override audit = { category: 'user', action: 'ResetPassword', entityType: 'User' } as const
+  static override access = 'none' as const
   static override spec = {
     effects: 'non_idempotent',
     cardinality: 'single',

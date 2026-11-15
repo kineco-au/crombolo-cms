@@ -18,6 +18,8 @@ export default class SiteShow extends BaseCommand {
   static override description =
     'Each line names the command that shows more. `crombolo status` says whether the site is working.'
   static override examples = ['<%= config.bin %> site show', '<%= config.bin %> site show -o json']
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'single',

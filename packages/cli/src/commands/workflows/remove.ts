@@ -17,6 +17,8 @@ export default class WorkflowsRemove extends BaseCommand {
     alias: Args.string({ required: true, description: "the workflow's alias" }),
   }
   static override flags = { ...workflowEditFlags }
+  static override access = 'site' as const
+  static override section = ['content', 'workflow'] as const
   static override spec = editSpec
 
   async run() {

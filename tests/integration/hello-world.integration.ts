@@ -37,6 +37,8 @@ function environment(): Record<string, string> {
     CROMBOLO_DB: 'sqlite',
     CROMBOLO_LOGS_DIR: join(dir, 'logs'),
     CROMBOLO_LOG_TO_CONSOLE: 'false',
+    CROMBOLO_CREDENTIALS: 'file',
+    CROMBOLO_CREDENTIALS_FILE: join(dir, 'credentials'),
   }
 }
 

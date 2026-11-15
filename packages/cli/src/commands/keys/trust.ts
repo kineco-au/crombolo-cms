@@ -33,6 +33,9 @@ export default class KeysTrust extends BaseCommand {
       exclusive: ['source'],
     }),
   }
+  static override access = 'site' as const
+  static override section = 'settings' as const
+  static override adminOnly = true
   static override spec = {
     effects: 'non_idempotent',
     cardinality: 'single',

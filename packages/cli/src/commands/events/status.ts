@@ -12,6 +12,8 @@ export const QUEUES = [
 
 export default class EventsStatus extends BaseCommand {
   static override summary = 'what is waiting to go out to webhooks and e-mail, and what failed'
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'bounded',

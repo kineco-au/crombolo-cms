@@ -5,12 +5,15 @@ import { type CromboloConfig, loadConfig } from '@crombolo/server'
 
 export const cwd = (): string => process.cwd()
 
-export async function siteConfig(): Promise<CromboloConfig> {
-  const file = join(cwd(), 'crombolo.config.ts')
+export const siteConfig = (): Promise<CromboloConfig> => siteConfigAt(cwd())
+
+/** The config of the site in `dir`, as a command run there reads it. */
+export async function siteConfigAt(dir: string): Promise<CromboloConfig> {
+  const file = join(dir, 'crombolo.config.ts')
   const overrides = existsSync(file)
     ? ((await import(file)).default as Partial<CromboloConfig>)
     : {}
-  return loadConfig(overrides, cwd())
+  return loadConfig(overrides, dir)
 }
 
 export const hasSite = (): boolean => existsSync(join(cwd(), 'crombolo.config.ts'))

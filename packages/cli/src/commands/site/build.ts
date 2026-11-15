@@ -64,6 +64,7 @@ export default class SiteBuild extends BaseCommand {
       helpValue: '<glob>',
     }),
   }
+  static override access = 'none' as const
   static override spec = {
     effects: 'idempotent',
     cardinality: 'single',

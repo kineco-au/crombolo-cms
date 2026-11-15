@@ -2213,7 +2213,7 @@ crombolo content export [--root <root>] [--all]
 Find pages by their type, place, dates, state, name, text and values. Changes nothing.
 
 ```
-crombolo content find [--type <type>] [--name <name>] [--name-match <name-match>] [--text <text>] [--under <under>] [--parent <parent>] [--max-depth <max-depth>] [--created-from <created-from>] [--created-to <created-to>] [--updated-from <updated-from>] [--updated-to <updated-to>] [--state <state>] [--culture <culture>] [--where <where>] [--sort <sort>] [--desc] [--skip <skip>] [--take <take>] [--remote <remote>] [--env <env>]
+crombolo content find [--type <type>] [--name <name>] [--name-match <name-match>] [--text <text>] [--under <under>] [--parent <parent>] [--max-depth <max-depth>] [--created-from <created-from>] [--created-to <created-to>] [--updated-from <updated-from>] [--updated-to <updated-to>] [--state <state>] [--culture <culture>] [--where <where>] [--sort <sort>] [--desc] [--skip <skip>] [--take <take>] [--profile <profile>] [--env <env>]
 ```
 
 | Argument | Type | What it is |
@@ -2236,8 +2236,8 @@ crombolo content find [--type <type>] [--name <name>] [--name-match <name-match>
 | `--desc` | boolean | Newest, last or Z first. |
 | `--skip` | integer | How many to skip. Default `0`. |
 | `--take` | integer | How many to return. Default `25`. |
-| `--remote` | string | Search a hosted site through this remote, signed in as you. |
-| `--env` | string | The remote's environment. |
+| `--profile` | string | Search the site this profile names; a hosted one as you, signed in. |
+| `--env` | string | A hosted site's environment. |
 
 **Output** (bounded, with `-o json`):
 
@@ -2776,14 +2776,14 @@ crombolo recycle-bin empty [--content] [--media] [--older-than <older-than>] [--
 
 ## Sites, extensions and remotes
 
-Move a site as a site package, install extensions, and sign in to another environment to pull from and push to.
+Move a site as a site package, install extensions, name the sites you reach with profiles, and sign in to pull from and push to them.
 
 ### `crombolo site apply`
 
-Apply a site package here or to a remote: checked, backed up, one transaction. Safe to run again: a second run changes nothing more.
+Apply a site package here or to another site: checked, backed up, one transaction. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo site apply [<bundle>] [--under <under>] [--resolve <resolve>] [--resolve-all <resolve-all>] [--allow-missing-blobs] [--publish] [--no-schema] [--no-files] [--replace-files] [--exclude-people] [--allow-downgrade] [--label <label>] [--backup-taken] [--dry-run] [--save] [--remote <remote>] [--env <env>] [--structure]
+crombolo site apply [<bundle>] [--under <under>] [--resolve <resolve>] [--resolve-all <resolve-all>] [--allow-missing-blobs] [--publish] [--no-schema] [--no-files] [--replace-files] [--exclude-people] [--allow-downgrade] [--label <label>] [--backup-taken] [--dry-run] [--save] [--profile <profile>] [--env <env>] [--structure]
 ```
 
 | Argument | Type | What it is |
@@ -2803,9 +2803,9 @@ crombolo site apply [<bundle>] [--under <under>] [--resolve <resolve>] [--resolv
 | `--backup-taken` | boolean | A backup was taken another way: Postgres needs this, or CROMBOLO_PG_DUMP. |
 | `--dry-run` | boolean | Say what it would do, and change nothing. |
 | `--save` | boolean | With --dry-run: write the answers into the package. |
-| `--remote` | string | Apply it on this remote instead. |
-| `--env` | string | With --remote: the remote's environment. |
-| `--structure` | boolean | With --remote, from a site directory: send its schema, views, styles and code too, not its content alone. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+| `--structure` | boolean | To a hosted site, from a site directory: send its schema, views, styles and code too, not its content alone. |
 
 **Output** (single, with `-o json`):
 
@@ -2867,10 +2867,10 @@ crombolo site build [<dir>] [--template <template>] [--out <out>] [--check] [--p
 
 ### `crombolo site check`
 
-What applying a site package would do, here or on a remote, changing nothing. Safe to run again: a second run changes nothing more.
+What applying a site package would do, here or on another site, changing nothing. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo site check [<bundle>] [--under <under>] [--resolve <resolve>] [--resolve-all <resolve-all>] [--allow-missing-blobs] [--publish] [--no-schema] [--no-files] [--replace-files] [--exclude-people] [--allow-downgrade] [--label <label>] [--backup-taken] [--dry-run] [--save] [--remote <remote>] [--env <env>] [--structure]
+crombolo site check [<bundle>] [--under <under>] [--resolve <resolve>] [--resolve-all <resolve-all>] [--allow-missing-blobs] [--publish] [--no-schema] [--no-files] [--replace-files] [--exclude-people] [--allow-downgrade] [--label <label>] [--backup-taken] [--dry-run] [--save] [--profile <profile>] [--env <env>] [--structure]
 ```
 
 | Argument | Type | What it is |
@@ -2890,9 +2890,9 @@ crombolo site check [<bundle>] [--under <under>] [--resolve <resolve>] [--resolv
 | `--backup-taken` | boolean | A backup was taken another way: Postgres needs this, or CROMBOLO_PG_DUMP. |
 | `--dry-run` | boolean | Say what it would do, and change nothing. |
 | `--save` | boolean | With --dry-run: write the answers into the package. |
-| `--remote` | string | Apply it on this remote instead. |
-| `--env` | string | With --remote: the remote's environment. |
-| `--structure` | boolean | With --remote, from a site directory: send its schema, views, styles and code too, not its content alone. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+| `--structure` | boolean | To a hosted site, from a site directory: send its schema, views, styles and code too, not its content alone. |
 
 **Output** (single, with `-o json`):
 
@@ -2933,17 +2933,17 @@ crombolo site check-code <bundle>
 
 ### `crombolo site deploy`
 
-Deploy a site directory to a remote: build, check, apply its structure, content and code, restart. Each run acts again.
+Deploy a site directory to a hosted site: build, check, apply its structure, content and code, restart. Each run acts again.
 
 ```
-crombolo site deploy [<dir>] --remote <remote> [--env <env>] [--publish] [--label <label>] [--yes] [--no-restart] [--public-log] [--sign-with <sign-with>] [--sign]
+crombolo site deploy [<dir>] [--profile <profile>] [--env <env>] [--publish] [--label <label>] [--yes] [--no-restart] [--public-log] [--sign-with <sign-with>] [--sign]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
 | `dir` | string | The site directory; this one when left out. |
-| `--remote` | string | The remote to deploy to. Required. |
-| `--env` | string | The remote's environment. |
+| `--profile` | string | The hosted site, by its profile; the default profile when left out. |
+| `--env` | string | The hosted site's environment. |
 | `--publish` | boolean | Publish what it applies. |
 | `--label` | string | A label for the run. |
 | `--yes` | boolean | Don't ask before applying. |
@@ -3055,7 +3055,7 @@ crombolo site key
 Put an import back, restoring what the site served. Each run acts again.
 
 ```
-crombolo site revert <run> [--resolve <resolve>] [--resolve-all <resolve-all>] [--force] [--backup-taken] [--remote <remote>] [--env <env>]
+crombolo site revert <run> [--resolve <resolve>] [--resolve-all <resolve-all>] [--force] [--backup-taken] [--profile <profile>] [--env <env>]
 ```
 
 | Argument | Type | What it is |
@@ -3065,8 +3065,8 @@ crombolo site revert <run> [--resolve <resolve>] [--resolve-all <resolve-all>] [
 | `--resolve-all` | string | Answer every finding the same way. One of `discard`, `skip`. |
 | `--force` | boolean | Revert over changes made since the run. |
 | `--backup-taken` | boolean | A backup was taken another way: Postgres needs this, or CROMBOLO_PG_DUMP. |
-| `--remote` | string | Revert it on this remote instead. |
-| `--env` | string | With --remote: the remote's environment. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
 
 **Output** (single, with `-o json`):
 
@@ -3081,10 +3081,10 @@ crombolo site revert <run> [--resolve <resolve>] [--resolve-all <resolve-all>] [
 
 ### `crombolo site runs`
 
-The site packages applied here or on a remote, and the content extensions brought, newest first. Changes nothing.
+The site packages applied here or on another site, and the content extensions brought, newest first. Changes nothing.
 
 ```
-crombolo site runs [--limit <limit>] [--offset <offset>] [--fields <fields>] [--remote <remote>] [--env <env>]
+crombolo site runs [--limit <limit>] [--offset <offset>] [--fields <fields>] [--profile <profile>] [--env <env>]
 ```
 
 | Argument | Type | What it is |
@@ -3092,8 +3092,8 @@ crombolo site runs [--limit <limit>] [--offset <offset>] [--fields <fields>] [--
 | `--limit` | integer | How many to list. Default `20`. |
 | `--offset` | integer | How many to skip first. Default `0`. |
 | `--fields` | string | Only these fields of each item, comma-separated. |
-| `--remote` | string | A remote's applies instead. |
-| `--env` | string | With --remote: the remote's environment. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
 
 **Output** (unbounded, with `-o json`):
 
@@ -3155,36 +3155,126 @@ crombolo site urls [--hide-top-level] [--show-top-level] [--dry-run] [--no-apply
 
 **Fails with:** `usage`, `internal`, `not_found`, `refused`.
 
-### `crombolo login`
+### `crombolo profile add`
 
-Sign in to a remote with a code you approve in its back office. Each run acts again.
+Name a site, hosted or in a folder here, for --profile to choose: kept in ~/.crombolo/profiles. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo login [<remote>] [--no-browser]
+crombolo profile add <name> [<url>] [--path <path>] [--env <env>] [--force]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `remote` | string | The remote; the only one, when there is one. |
+| `name` | string | A name for it: lower case letters, digits and dashes. Required. |
+| `url` | string | A hosted site's address. |
+| `--path` | string | A site folder on this machine, instead of an address. |
+| `--env` | string | The environment it goes to by default. |
+| `--force` | boolean | Replace a profile of the same name. |
+
+**Output** (single, with `-o json`):
+
+- `name` (string)
+- `url` (string)
+- `path` (string)
+- `site` (string)
+- `changed` (boolean)
+- `environments` (array of object)
+  - `id` (string)
+  - `protected` (boolean)
+
+**Fails with:** `usage`, `internal`, `conflict`, `unavailable`, `not_found`.
+
+### `crombolo profile import`
+
+Copy this site's remotes.toml into your profiles. Safe to run again: a second run changes nothing more.
+
+```
+crombolo profile import [--replace]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `--replace` | boolean | Replace profiles of the same names. |
+
+**Output** (bounded, with `-o json`):
+
+- `name` (string)
+- `url` (string)
+- `environment` (string)
+- `action` (string)
+
+**Fails with:** `usage`, `internal`, `not_found`, `conflict`.
+
+### `crombolo profile list`
+
+The profiles in ~/.crombolo/profiles, and whether you are signed in to each. Changes nothing.
+
+```
+crombolo profile list
+```
+
+**Output** (bounded, with `-o json`):
+
+- `name` (string)
+- `url` (string)
+- `path` (string)
+- `environment` (string)
+- `signedIn` (boolean)
+- `keptIn` (string)
+
+**Fails with:** `usage`, `internal`.
+
+### `crombolo profile remove`
+
+Forget a profile; removing one that is not there changes nothing. Safe to run again: a second run changes nothing more.
+
+```
+crombolo profile remove <name>
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `name` | string | The profile's name. Required. |
+
+**Output** (single, with `-o json`):
+
+- `name` (string)
+- `changed` (boolean)
+
+**Fails with:** `usage`, `internal`.
+
+### `crombolo login`
+
+Sign in to this site, or a hosted one, with a code you approve in its back office. Each run acts again.
+
+```
+crombolo login [--profile <profile>] [--no-browser]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `--profile` | string | A hosted site, by its profile, rather than this one. |
 | `--no-browser` | boolean | Don't open the approval page. |
 
 **Output** (single, with `-o json`):
 
 - `remote` (string)
+- `user` (string)
+- `keptIn` (string)
 
-**Fails with:** `usage`, `internal`, `not_found`, `auth`, `timeout`, `unavailable`.
+**Fails with:** `usage`, `internal`, `not_found`, `auth`, `refused`, `timeout`, `unavailable`.
 
 ### `crombolo logout`
 
-Sign out of a remote, here and at the remote. Safe to run again: a second run changes nothing more.
+Sign out of this site, or a hosted one, here and at the site. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo logout [<remote>]
+crombolo logout [--profile <profile>]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `remote` | string | The remote; the only one, when there is one. |
+| `--profile` | string | A hosted site, by its profile, rather than this one. |
 
 **Output** (single, with `-o json`):
 
@@ -3195,15 +3285,15 @@ crombolo logout [<remote>]
 
 ### `crombolo whoami`
 
-Who you are signed in as at a remote, and what you may do there. Changes nothing.
+Who you are signed in as, here or at a hosted site, and what you may do there. Changes nothing.
 
 ```
-crombolo whoami [<remote>]
+crombolo whoami [--profile <profile>]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `remote` | string | The remote; the only one, when there is one. |
+| `--profile` | string | A hosted site, by its profile, rather than this one. |
 
 **Output** (single, with `-o json`):
 
@@ -3211,48 +3301,22 @@ crombolo whoami [<remote>]
 - `email` (string)
 - `remote` (string)
 - `environments` (array of object)
+- `access` (string)
 
 **Fails with:** `usage`, `internal`, `not_found`, `auth`, `unavailable`.
-
-### `crombolo remote add`
-
-A remote this site pulls from and pushes to, kept in remotes.toml. Safe to run again: a second run changes nothing more.
-
-```
-crombolo remote add <name> <url> [--env <env>] [--force]
-```
-
-| Argument | Type | What it is |
-| --- | --- | --- |
-| `name` | string | A name for it: lower case letters, digits and dashes. Required. |
-| `url` | string | The site's URL. Required. |
-| `--env` | string | The environment it goes to by default. |
-| `--force` | boolean | Replace a remote of the same name. |
-
-**Output** (single, with `-o json`):
-
-- `name` (string)
-- `url` (string)
-- `site` (string)
-- `changed` (boolean)
-- `environments` (array of object)
-  - `id` (string)
-  - `protected` (boolean)
-
-**Fails with:** `usage`, `internal`, `conflict`, `unavailable`, `not_found`.
 
 ### `crombolo remote job`
 
 Watch a pull or push job again, after a wait gave up. Changes nothing.
 
 ```
-crombolo remote job <id> [<remote>] [--timeout <timeout>]
+crombolo remote job <id> [--profile <profile>] [--timeout <timeout>]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
 | `id` | string | The job id the wait printed. Required. |
-| `remote` | string | The remote; the only one, when there is one. |
+| `--profile` | string | The hosted site, by its profile; the default profile when left out. |
 | `--timeout` | integer | Seconds to wait before giving up. Default `1800`. |
 
 **Output** (single, with `-o json`):
@@ -3265,53 +3329,17 @@ crombolo remote job <id> [<remote>] [--timeout <timeout>]
 
 **Fails with:** `usage`, `internal`, `timeout`, `not_found`, `auth`, `refused`, `unavailable`.
 
-### `crombolo remote list`
-
-The remotes in remotes.toml, and whether you are signed in to each. Changes nothing.
-
-```
-crombolo remote list
-```
-
-**Output** (bounded, with `-o json`):
-
-- `name` (string)
-- `url` (string)
-- `environment` (string)
-- `signedIn` (boolean)
-
-**Fails with:** `usage`, `internal`.
-
-### `crombolo remote remove`
-
-Forget a remote; removing one that is not there changes nothing. Safe to run again: a second run changes nothing more.
-
-```
-crombolo remote remove <name>
-```
-
-| Argument | Type | What it is |
-| --- | --- | --- |
-| `name` | string | The remote's name. Required. |
-
-**Output** (single, with `-o json`):
-
-- `name` (string)
-- `changed` (boolean)
-
-**Fails with:** `usage`, `internal`.
-
 ### `crombolo remote trust add`
 
 Trust a CI job: its repository and branch, tag or environment, and what it may do. Each run acts again.
 
 ```
-crombolo remote trust add [<remote>] --name <name> --provider <provider> --repository <repository> [--branch <branch>] [--tag <tag>] [--environment <environment>] --may <may>
+crombolo remote trust add [--profile <profile>] --name <name> --provider <provider> --repository <repository> [--branch <branch>] [--tag <tag>] [--environment <environment>] --may <may>
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `remote` | string | The remote; the only one, when there is one. |
+| `--profile` | string | The hosted site, by its profile; the default profile when left out. |
 | `--name` | string | What to call the rule. Required. |
 | `--provider` | string | `github`, `gitlab`, or a self-managed GitLab the site names. Required. |
 | `--repository` | string | Owner/name, or group/project. Required. |
@@ -3332,13 +3360,13 @@ crombolo remote trust add [<remote>] --name <name> --provider <provider> --repos
 Stop a trusted CI job at once; its tokens stop working. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo remote trust disable <rule> [<remote>]
+crombolo remote trust disable <rule> [--profile <profile>]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
 | `rule` | string | The rule's key, or the start of it. Required. |
-| `remote` | string | The remote; the only one, when there is one. |
+| `--profile` | string | The hosted site, by its profile; the default profile when left out. |
 
 **Output** (single, with `-o json`):
 
@@ -3352,13 +3380,13 @@ crombolo remote trust disable <rule> [<remote>]
 Trust a disabled CI job again. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo remote trust enable <rule> [<remote>]
+crombolo remote trust enable <rule> [--profile <profile>]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
 | `rule` | string | The rule's key, or the start of it. Required. |
-| `remote` | string | The remote; the only one, when there is one. |
+| `--profile` | string | The hosted site, by its profile; the default profile when left out. |
 
 **Output** (single, with `-o json`):
 
@@ -3372,12 +3400,12 @@ crombolo remote trust enable <rule> [<remote>]
 The CI jobs a remote trusts: each rule, what it matches and what it may do. Changes nothing.
 
 ```
-crombolo remote trust list [<remote>]
+crombolo remote trust list [--profile <profile>]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `remote` | string | The remote; the only one, when there is one. |
+| `--profile` | string | The hosted site, by its profile; the default profile when left out. |
 
 **Output** (bounded, with `-o json`):
 
@@ -3398,13 +3426,13 @@ crombolo remote trust list [<remote>]
 Forget a trusted CI job; its tokens stop working. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo remote trust remove <rule> [<remote>]
+crombolo remote trust remove <rule> [--profile <profile>]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
 | `rule` | string | The rule's key, or the start of it. Required. |
-| `remote` | string | The remote; the only one, when there is one. |
+| `--profile` | string | The hosted site, by its profile; the default profile when left out. |
 
 **Output** (single, with `-o json`):
 
@@ -3415,27 +3443,41 @@ crombolo remote trust remove <rule> [<remote>]
 
 ### `crombolo pull`
 
-A copy of a remote environment: started here, or replacing this site. Each run acts again.
+A copy of another site: started here, or replacing this site or any named by --to. Each run acts again.
 
 ```
-crombolo pull [<remote>] [--env <env>] [--full] [--yes] [--no-media] [--media-info-only] [--lazy-media] [--timeout <timeout>] [--backup-taken]
+crombolo pull [--from <from>] [--to <to>] [--from-env <from-env>] [--to-env <to-env>] [--env <env>] [--full] [--yes] [--no-media] [--media-info-only] [--lazy-media] [--force] [--auto-approve] [--dry-run] [--timeout <timeout>] [--no-browser] [--backup-taken]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `remote` | string | The remote; the only one, when there is one. |
-| `--env` | string | The environment to pull. |
-| `--full` | boolean | A full copy, people included: needs the permission for it. |
-| `--yes` | boolean | Replace this site without asking. |
-| `--no-media` | boolean | Leave the media files out. |
-| `--media-info-only` | boolean | Fetch media files one at a time, only what changed. |
-| `--lazy-media` | boolean | Fetch each media file the first time it is asked for. |
-| `--timeout` | integer | Seconds to wait for the remote before giving up. Default `1800`. |
+| `--from` | string | The site to copy, by its profile. |
+| `--to` | string | The site to replace, by its profile. |
+| `--from-env` | string | The hosted --from site's environment. |
+| `--to-env` | string | The hosted --to site's environment. |
+| `--env` | string | The environment of the one hosted site, when only one is. |
+| `--full` | boolean | From a hosted site: a full copy, people included, which needs the permission for it. |
+| `--yes` | boolean | Replace a site folder without asking. |
+| `--no-media` | boolean | From a hosted site: leave the media files out. |
+| `--media-info-only` | boolean | Media files one at a time, only what the receiving side lacks. |
+| `--lazy-media` | boolean | From a hosted site: fetch each media file the first time it is asked for. |
+| `--force` | boolean | Go on to a protected environment. |
+| `--auto-approve` | boolean | With --force: don't ask for its name. |
+| `--dry-run` | boolean | Say what it would replace, and replace nothing. |
+| `--timeout` | integer | Seconds to wait for a hosted site before giving up. Default `1800`. |
+| `--no-browser` | boolean | Don't open an approval page. |
 | `--backup-taken` | boolean | A backup was taken another way: Postgres needs this, or CROMBOLO_PG_DUMP. |
 
 **Output** (single, with `-o json`):
 
-- `environment` (string)
+- `from` (object)
+  - `name` (string)
+  - `environment` (string)
+- `to` (object)
+  - `name` (string)
+  - `environment` (string)
+- `check` (object)
+- `job` (object)
 - `size` (integer)
 - `anonymised` (boolean)
 - `started` (boolean)
@@ -3447,28 +3489,46 @@ crombolo pull [<remote>] [--env <env>] [--full] [--yes] [--no-media] [--media-in
 
 ### `crombolo push`
 
-Replace a remote environment with this site. Each run acts again.
+Replace another site with this one, or with any site named by --from. Each run acts again.
 
 ```
-crombolo push [<remote>] [--env <env>] [--force] [--auto-approve] [--media-info-only] [--dry-run] [--timeout <timeout>] [--no-browser]
+crombolo push [--from <from>] [--to <to>] [--from-env <from-env>] [--to-env <to-env>] [--env <env>] [--full] [--yes] [--no-media] [--media-info-only] [--lazy-media] [--force] [--auto-approve] [--dry-run] [--timeout <timeout>] [--no-browser] [--backup-taken]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `remote` | string | The remote; the only one, when there is one. |
-| `--env` | string | The environment to replace. |
+| `--from` | string | The site to copy, by its profile. |
+| `--to` | string | The site to replace, by its profile. |
+| `--from-env` | string | The hosted --from site's environment. |
+| `--to-env` | string | The hosted --to site's environment. |
+| `--env` | string | The environment of the one hosted site, when only one is. |
+| `--full` | boolean | From a hosted site: a full copy, people included, which needs the permission for it. |
+| `--yes` | boolean | Replace a site folder without asking. |
+| `--no-media` | boolean | From a hosted site: leave the media files out. |
+| `--media-info-only` | boolean | Media files one at a time, only what the receiving side lacks. |
+| `--lazy-media` | boolean | From a hosted site: fetch each media file the first time it is asked for. |
 | `--force` | boolean | Go on to a protected environment. |
 | `--auto-approve` | boolean | With --force: don't ask for its name. |
-| `--media-info-only` | boolean | Send media files one at a time, only what the remote lacks. |
-| `--dry-run` | boolean | Say what it would replace, and send nothing. |
-| `--timeout` | integer | Seconds to wait for the remote before giving up. Default `1800`. |
+| `--dry-run` | boolean | Say what it would replace, and replace nothing. |
+| `--timeout` | integer | Seconds to wait for a hosted site before giving up. Default `1800`. |
 | `--no-browser` | boolean | Don't open an approval page. |
+| `--backup-taken` | boolean | A backup was taken another way: Postgres needs this, or CROMBOLO_PG_DUMP. |
 
 **Output** (single, with `-o json`):
 
-- `environment` (string)
+- `from` (object)
+  - `name` (string)
+  - `environment` (string)
+- `to` (object)
+  - `name` (string)
+  - `environment` (string)
 - `check` (object)
 - `job` (object)
+- `size` (integer)
+- `anonymised` (boolean)
+- `started` (boolean)
+- `runId` (string)
+- `media` (object)
 
 **Fails with:** `usage`, `internal`, `auth`, `not_found`, `refused`, `timeout`, `unavailable`, `confirmation_required`.
 
@@ -3516,17 +3576,17 @@ crombolo extension check <bundle>
 
 ### `crombolo extension disable`
 
-Turn a bundle's server features off, here or on a remote. Safe to run again: a second run changes nothing more.
+Turn a bundle's server features off, here or on another site. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo extension disable <name> [--remote <remote>] [--env <env>]
+crombolo extension disable <name> [--profile <profile>] [--env <env>]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
 | `name` | string | The bundle id or its package name. Required. |
-| `--remote` | string | On this remote instead. |
-| `--env` | string | With --remote: the remote's environment. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
 
 **Output** (single, with `-o json`):
 
@@ -3538,17 +3598,17 @@ crombolo extension disable <name> [--remote <remote>] [--env <env>]
 
 ### `crombolo extension enable`
 
-Turn a disabled bundle's server features back on, here or on a remote. Safe to run again: a second run changes nothing more.
+Turn a disabled bundle's server features back on, here or on another site. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo extension enable <name> [--remote <remote>] [--env <env>]
+crombolo extension enable <name> [--profile <profile>] [--env <env>]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
 | `name` | string | The bundle id or its package name. Required. |
-| `--remote` | string | On this remote instead. |
-| `--env` | string | With --remote: the remote's environment. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
 
 **Output** (single, with `-o json`):
 
@@ -3560,10 +3620,10 @@ crombolo extension enable <name> [--remote <remote>] [--env <env>]
 
 ### `crombolo extension grant`
 
-Grant an installed extension what it asks for, here or on a remote. Safe to run again: a second run changes nothing more.
+Grant an installed extension what it asks for, here or on another site. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo extension grant <name> [--grant <grant>] [--delegate-to <delegate-to>] [--remote <remote>] [--env <env>]
+crombolo extension grant <name> [--grant <grant>] [--delegate-to <delegate-to>] [--profile <profile>] [--env <env>]
 ```
 
 | Argument | Type | What it is |
@@ -3571,8 +3631,8 @@ crombolo extension grant <name> [--grant <grant>] [--delegate-to <delegate-to>] 
 | `name` | string | The package name, or its bundle id. Required. |
 | `--grant` | string[] | A permission it asks for; name every one. |
 | `--delegate-to` | string | With user.delegate: the user a job or an event acts for when nobody is using it. |
-| `--remote` | string | Grant it on this remote instead. |
-| `--env` | string | With --remote: the remote's environment. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
 
 **Output** (single, with `-o json`):
 
@@ -3584,10 +3644,10 @@ crombolo extension grant <name> [--grant <grant>] [--delegate-to <delegate-to>] 
 
 ### `crombolo extension install`
 
-Add an extension to this site, or a remote, as a dependency. Safe to run again: a second run changes nothing more.
+Add an extension to this site, or another, as a dependency. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo extension install <bundle> [--grant <grant>] [--delegate-to <delegate-to>] [--apply-content] [--layout <layout>] [--code-into <code-into>] [--remote <remote>] [--env <env>] [--dry-run]
+crombolo extension install <bundle> [--grant <grant>] [--delegate-to <delegate-to>] [--apply-content] [--layout <layout>] [--code-into <code-into>] [--profile <profile>] [--env <env>] [--dry-run]
 ```
 
 | Argument | Type | What it is |
@@ -3598,8 +3658,8 @@ crombolo extension install <bundle> [--grant <grant>] [--delegate-to <delegate-t
 | `--apply-content` | boolean | Apply the content it carries too. |
 | `--layout` | string | The site's layout its page templates sit in. |
 | `--code-into` | string | Install a site package's own code into this empty directory. |
-| `--remote` | string | Install it on this remote instead. |
-| `--env` | string | With --remote: the remote's environment. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
 | `--dry-run` | boolean | Say what it would install and grant; install nothing. |
 
 **Output** (single, with `-o json`):
@@ -3616,16 +3676,16 @@ crombolo extension install <bundle> [--grant <grant>] [--delegate-to <delegate-t
 
 ### `crombolo extension list`
 
-The bundles this site, or a remote, has installed. Changes nothing.
+The bundles this site, or another, has installed. Changes nothing.
 
 ```
-crombolo extension list [--remote <remote>] [--env <env>]
+crombolo extension list [--profile <profile>] [--env <env>]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `--remote` | string | A remote's bundles instead. |
-| `--env` | string | With --remote: the remote's environment. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
 
 **Output** (single, with `-o json`):
 
@@ -3701,17 +3761,17 @@ crombolo extension settings <name>
 
 ### `crombolo extension uninstall`
 
-Remove an installed extension, here or on a remote. Each run acts again.
+Remove an installed extension, here or on another site. Each run acts again.
 
 ```
-crombolo extension uninstall <name> [--remote <remote>] [--env <env>] [--drop-data] [--drop-content] [--no-verify]
+crombolo extension uninstall <name> [--profile <profile>] [--env <env>] [--drop-data] [--drop-content] [--no-verify]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
 | `name` | string | The package name. Required. |
-| `--remote` | string | Remove it on this remote instead. |
-| `--env` | string | With --remote: the remote's environment. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
 | `--drop-data` | boolean | Delete its tables and its data folder too, with no backup; kept otherwise. |
 | `--drop-content` | boolean | First take out the content its install applied; nothing is removed if that is refused. |
 | `--no-verify` | boolean | Go ahead without being asked. |
@@ -4280,7 +4340,7 @@ crombolo api-client rotate [--client <client>]
 The audit log, newest first, a page at a time. Changes nothing.
 
 ```
-crombolo audit list [--since <since>] [--until <until>] [--user <user>] [--category <category>] [--action <action>] [--entity <entity>] [--remote <remote>] [--env <env>] [--limit <limit>] [--before <before>]
+crombolo audit list [--since <since>] [--until <until>] [--user <user>] [--category <category>] [--action <action>] [--entity <entity>] [--profile <profile>] [--env <env>] [--limit <limit>] [--before <before>]
 ```
 
 | Argument | Type | What it is |
@@ -4291,8 +4351,8 @@ crombolo audit list [--since <since>] [--until <until>] [--user <user>] [--categ
 | `--category` | string | One kind of change. One of `content`, `media`, `member`, `schema`, `settings`, `user`, `permission`, `sign-in`, `system`. |
 | `--action` | string | One action, such as Publish or SignIn. |
 | `--entity` | string | What one item had done to it. |
-| `--remote` | string | Read a hosted site through this remote, signed in as you. |
-| `--env` | string | The remote's environment. |
+| `--profile` | string | Read the site this profile names; a hosted one as you, signed in. |
+| `--env` | string | A hosted site's environment. |
 | `--limit` | integer | How many on a page. Default `50`. |
 | `--before` | string | The page after this cursor. |
 
@@ -4324,7 +4384,7 @@ crombolo audit list [--since <since>] [--until <until>] [--user <user>] [--categ
 The audit log as NDJSON, oldest first; --follow keeps it coming. Changes nothing.
 
 ```
-crombolo audit stream [--since <since>] [--until <until>] [--user <user>] [--category <category>] [--action <action>] [--entity <entity>] [--remote <remote>] [--env <env>] [--after <after>] [--follow] [--interval <interval>]
+crombolo audit stream [--since <since>] [--until <until>] [--user <user>] [--category <category>] [--action <action>] [--entity <entity>] [--profile <profile>] [--env <env>] [--after <after>] [--follow] [--interval <interval>]
 ```
 
 | Argument | Type | What it is |
@@ -4335,8 +4395,8 @@ crombolo audit stream [--since <since>] [--until <until>] [--user <user>] [--cat
 | `--category` | string | One kind of change. One of `content`, `media`, `member`, `schema`, `settings`, `user`, `permission`, `sign-in`, `system`. |
 | `--action` | string | One action, such as Publish or SignIn. |
 | `--entity` | string | What one item had done to it. |
-| `--remote` | string | Read a hosted site through this remote, signed in as you. |
-| `--env` | string | The remote's environment. |
+| `--profile` | string | Read the site this profile names; a hosted one as you, signed in. |
+| `--env` | string | A hosted site's environment. |
 | `--after` | integer | Carry on after this entry id. Default `0`. |
 | `--follow` | boolean | Keep reading new entries until stopped. |
 | `--interval` | integer | Seconds between reads with --follow. Default `5`. |
@@ -4618,13 +4678,13 @@ crombolo upgrade schema
 Restart the site, so code installed since it started runs. Each run acts again.
 
 ```
-crombolo restart [--remote <remote>] [--env <env>]
+crombolo restart [--profile <profile>] [--env <env>]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `--remote` | string | Restart this remote instead. |
-| `--env` | string | With --remote: the remote's environment. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
 
 **Output** (single, with `-o json`):
 

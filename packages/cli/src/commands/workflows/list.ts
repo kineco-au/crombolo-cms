@@ -5,6 +5,8 @@ import { openRequests, siteWorkflows } from '../../support/workflows.ts'
 export default class WorkflowsList extends BaseCommand {
   static override summary = "the site's approval workflows"
   static override examples = ['<%= config.bin %> workflows list']
+  static override access = 'site' as const
+  static override section = ['content', 'workflow'] as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'bounded',

@@ -23,3 +23,6 @@ with no password, invited or brought from elsewhere, has no way in at all.
 - [ ] Both are rate limited as sign-in is; a site with no email provider answers that
       reset is unavailable, and `render` offers helpers as for sign-in.
 - [ ] Documented in `docs/operations.md`, with covering tests on both dialects.
+- [ ] Once story 354 is built, `crombolo members reset-password <member>` sends the member the
+      reset link where the site sends mail, or prints it, in place of giving a new
+      password

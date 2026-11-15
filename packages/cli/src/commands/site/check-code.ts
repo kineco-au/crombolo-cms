@@ -15,6 +15,7 @@ export default class SiteCheckCode extends BaseCommand {
   static override args = {
     bundle: Args.string({ required: true, description: "the site package's directory" }),
   }
+  static override access = 'none' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'single',

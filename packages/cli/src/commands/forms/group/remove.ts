@@ -33,6 +33,8 @@ export default class FormsGroupRemove extends BaseCommand {
     }),
     ...formEditFlags,
   }
+  static override access = 'site' as const
+  static override section = 'forms' as const
   static override spec = formEditSpec
 
   async run() {

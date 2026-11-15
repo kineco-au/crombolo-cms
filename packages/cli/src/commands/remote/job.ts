@@ -1,7 +1,8 @@
 import { Args, Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
+import { chooseSite, refuseNamed } from '../../profiles/choose.ts'
 import { describeJob } from '../../support/describe.ts'
-import { connectRemote } from '../../support/remote.ts'
+import { connectSite, hostedFlags } from '../../support/remote.ts'
 
 export default class RemoteJob extends BaseCommand {
   static override summary = 'watch a pull or push job again, after a wait gave up'
@@ -9,11 +10,13 @@ export default class RemoteJob extends BaseCommand {
     "Exits 0 when the job is done, and with the job's own failure otherwise."
   static override args = {
     id: Args.string({ required: true, description: 'the job id the wait printed' }),
-    remote: Args.string({ description: 'the remote; the only one, when there is one' }),
+    remote: Args.string({ description: 'gone: --profile names the site', hidden: true }),
   }
   static override flags = {
+    ...hostedFlags,
     timeout: Flags.integer({ summary: 'seconds to wait before giving up', default: 1800, min: 1 }),
   }
+  static override access = 'site' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'single',
@@ -24,12 +27,13 @@ export default class RemoteJob extends BaseCommand {
       { name: 'environment', type: 'string' },
       { name: 'runId', type: 'string', nullable: true },
     ],
-    errors: ['timeout', 'not_found', 'auth', 'refused', 'unavailable'],
+    errors: ['usage', 'timeout', 'not_found', 'auth', 'refused', 'unavailable'],
   } as const
 
   async run() {
     const { args, flags } = await this.parse(RemoteJob)
-    const { client } = await connectRemote(args.remote, undefined)
+    refuseNamed(args.remote)
+    const { client } = await connectSite(chooseSite(flags, { mayDefault: true }))
     const job = await client.settle(args.id, {
       onProgress: (j) => this.progress(describeJob(j)),
       timeoutMs: flags.timeout * 1000,

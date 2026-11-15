@@ -22,6 +22,8 @@ export default class TypesPropertyRename extends BaseCommand {
     to: Args.string({ required: true, description: 'its new alias' }),
   }
   static override flags = { ...editFlags, ...renameFlags }
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = renameSpec
 
   async run() {

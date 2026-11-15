@@ -21,6 +21,8 @@ export default class FormsPageMove extends BaseCommand {
     }),
   }
   static override flags = { ...placeFlags, ...formEditFlags }
+  static override access = 'site' as const
+  static override section = 'forms' as const
   static override spec = formEditSpec
 
   async run() {

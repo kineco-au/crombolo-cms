@@ -16,6 +16,8 @@ export default class ContentExport extends BaseCommand {
     root: many('a subtree to write; repeatable', '<path|uuid>'),
     all: Flags.boolean({ summary: 'every page, Library element and media item, with its file' }),
   }
+  static override access = 'site' as const
+  static override section = 'content' as const
   static override spec = {
     effects: 'non_idempotent',
     cardinality: 'single',

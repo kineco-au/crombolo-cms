@@ -1,14 +1,17 @@
 import { Args } from '@oclif/core'
 import { BaseCommand } from '../../../base.ts'
+import { chooseSite, refuseNamed } from '../../../profiles/choose.ts'
 import { describeRule, type TrustRuleView } from '../../../remote/trust.ts'
-import { connectRemote } from '../../../support/remote.ts'
+import { connectSite, hostedFlags } from '../../../support/remote.ts'
 
 export default class RemoteTrustList extends BaseCommand {
   static override summary =
     'the CI jobs a remote trusts: each rule, what it matches and what it may do'
   static override args = {
-    remote: Args.string({ description: 'the remote; the only one, when there is one' }),
+    remote: Args.string({ description: 'gone: --profile names the site', hidden: true }),
   }
+  static override flags = { ...hostedFlags }
+  static override access = 'site' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'bounded',
@@ -23,12 +26,13 @@ export default class RemoteTrustList extends BaseCommand {
       { name: 'disabled', type: 'boolean' },
       { name: 'lastUsedDate', type: 'string', nullable: true },
     ],
-    errors: ['not_found', 'auth', 'refused', 'unavailable'],
+    errors: ['usage', 'not_found', 'auth', 'refused', 'unavailable'],
   } as const
 
   async run() {
-    const { args } = await this.parse(RemoteTrustList)
-    const { client } = await connectRemote(args.remote, undefined)
+    const { args, flags } = await this.parse(RemoteTrustList)
+    refuseNamed(args.remote)
+    const { client } = await connectSite(chooseSite(flags, { mayDefault: true }))
     const { items } = await client.json<{ items: TrustRuleView[] }>('trust')
     if (items.length === 0) this.say('  No CI job is trusted yet: `crombolo remote trust add`.')
     for (const rule of items) this.say(`  ${rule.key.slice(0, 8)}  ${describeRule(rule)}`)

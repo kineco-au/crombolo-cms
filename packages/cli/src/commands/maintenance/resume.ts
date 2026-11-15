@@ -5,6 +5,9 @@ import { siteConfig } from '../../support/site.ts'
 export default class MaintenanceResume extends BaseCommand {
   static override summary = 'let editors save again'
   static override audit = { category: 'system', action: 'ResumeEditing' } as const
+  static override access = 'site' as const
+  static override section = 'settings' as const
+  static override adminOnly = true
   static override spec = {
     effects: 'idempotent',
     cardinality: 'single',

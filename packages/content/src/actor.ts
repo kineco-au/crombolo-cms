@@ -32,8 +32,11 @@ export interface ActorOrigin {
 }
 
 export type Actor =
-  /** A signed-in user: their permissions, start nodes, languages and approvals. */
-  | { kind: 'user'; principal: ContentPrincipal; origin: ActorOrigin }
+  /**
+   * A signed-in user: their permissions, start nodes, languages and approvals.
+   * An administrator at the command line may say `skipApproval` (story 350).
+   */
+  | { kind: 'user'; principal: ContentPrincipal; origin: ActorOrigin; skipApproval?: boolean }
   /**
    * Someone at the command line on the box: no permission checks, since they hold
    * the database, but approvals apply unless they say `skipApproval`, which the
@@ -85,8 +88,14 @@ export const memberActor = (
 
 export const userActor = (
   principal: ContentPrincipal,
-  origin: Omit<ActorOrigin, 'source'> = {},
-): Actor => ({ kind: 'user', principal, origin: { source: 'request', ...origin } })
+  origin: Partial<ActorOrigin> = {},
+  options: { skipApproval?: boolean } = {},
+): Actor => ({
+  kind: 'user',
+  principal,
+  origin: { source: 'request', ...origin },
+  ...(options.skipApproval ? { skipApproval: true } : {}),
+})
 
 export const operatorActor = (name: string, options: { skipApproval?: boolean } = {}): Actor => ({
   kind: 'operator',

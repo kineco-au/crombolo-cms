@@ -17,6 +17,8 @@ export default class FormsWorkflowRemove extends BaseCommand {
     workflow: Args.string({ required: true, description: "the workflow's name" }),
   }
   static override flags = { ...formEditFlags }
+  static override access = 'site' as const
+  static override section = 'forms' as const
   static override spec = formEditSpec
 
   async run() {

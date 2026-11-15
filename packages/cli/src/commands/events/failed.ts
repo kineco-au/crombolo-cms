@@ -13,6 +13,8 @@ export default class EventsFailed extends BaseCommand {
   static override flags = {
     limit: Flags.integer({ summary: 'how many of each to list', default: 50, min: 1 }),
   }
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'bounded',

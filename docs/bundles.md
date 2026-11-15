@@ -33,7 +33,7 @@ files disagree, is refused. Nothing is assumed.
 |---|---|---|
 | **What it is** | This site, or a part of it, made to move it: a backup, the next environment, a subtree to copy | Someone's addition to a site: screens, a server half, content and structure |
 | **Made by** | `site build`, `site export` (and `--subtree`), `site deploy`, `push`, `pull` | The Bundle Editor (Created), `extension build <name>`, or by hand |
-| **Brought in by** | `site apply` (here or `--remote`), `site deploy`, `push`, `pull`, `start --bundle`, `--code-into`: from a file or a directory only | `extension install` (here or `--remote`), the Marketplace: as a dependency |
+| **Brought in by** | `site apply` (here or `--profile`), `site deploy`, `push`, `pull`, `start --bundle`, `--code-into`: from a file or a directory only | `extension install` (here or `--profile`), the Marketplace: as a dependency |
 | **May carry** | Everything the site has, `code/` included: its config, `package.json` and `bun.lock` | Never `code/` |
 | **Published** | Never: it is `private`, and declares no `server`, `extensions`, `permissions` or `importmap`, which are an extension's | To a registry, or kept as a file |
 | **Undone by** | `site revert <run>` | `extension uninstall --drop-content` |
@@ -738,10 +738,10 @@ implementation serves Settings → Extensions, the remote protocol and the CLI
 
 | Command | Does |
 | --- | --- |
-| `crombolo extension list [--remote <name>]` | the installed bundles: version, whether their server features are on, what was granted and by whom, and whether installed changes wait for a restart |
-| `crombolo extension install <name[@version] \| file.tgz> [--grant <p>…] [--delegate-to <user key>] [--apply-content] [--remote <name>] [--dry-run]` | `bun add`, as Install does, granting what it asks for; the content too with `--apply-content` |
-| `crombolo extension uninstall <name> [--remote <name>]` | `bun remove` |
-| `crombolo extension disable\|enable <id> [--remote <name>]` | a bundle's server features off or on, at once ([story 225](#permissions)) |
+| `crombolo extension list [--profile <name>]` | the installed bundles: version, whether their server features are on, what was granted and by whom, and whether installed changes wait for a restart |
+| `crombolo extension install <name[@version] \| file.tgz> [--grant <p>…] [--delegate-to <user key>] [--apply-content] [--profile <name>] [--dry-run]` | `bun add`, as Install does, granting what it asks for; the content too with `--apply-content` |
+| `crombolo extension uninstall <name> [--profile <name>]` | `bun remove` |
+| `crombolo extension disable\|enable <id> [--profile <name>]` | a bundle's server features off or on, at once ([story 225](#permissions)) |
 
 - **A grant names exactly what is asked.** A bundle with server code is
   installed only when `--grant` names every permission it asks for, and nothing

@@ -475,8 +475,8 @@ default, and each level takes everything the one before it does (story 167):
 starting and names the new setting. A developer's `crombolo` can then:
 - sign in with a code they approve in the back office;
 - pull a sealed, anonymised copy of the site;
-- apply a bundle there: `crombolo site apply --remote <name>`, with
-  `site runs --remote <name>` and `site revert <run> --remote <name>`;
+- apply a bundle there: `crombolo site apply --profile <name>`, with
+  `site runs --profile <name>` and `site revert <run> --profile <name>`;
 - push the whole site back. A push to a protected environment needs its own
   permission, and with `CROMBOLO_REMOTE_APPROVALS` it waits for someone else
   to approve it.
@@ -496,15 +496,33 @@ load-balanced set needs no stickiness: the job's state is in the database and
 its file in the media store. Run `bunx crombolo-remote-conformance <url>
 --token <token>` to check a remote against the specification.
 
-From the developer's side (story `108`):
+From the developer's side (stories `108`, `352`):
 
 ```bash
-crombolo remote add production https://example.com   # kept in remotes.toml, committed
-crombolo login                                        # a code to approve in the back office
-crombolo pull [--full] [--media-info-only | --lazy-media]
-crombolo push [--force [--auto-approve]] [--media-info-only]
+crombolo profile add default https://example.com --env production   # in ~/.crombolo/profiles
+crombolo profile add copy --path ~/dev/example-copy                  # a site folder
+crombolo login --profile default                                     # a code to approve in the back office
+crombolo pull [--from <profile>] [--to <profile>] [--full] [--media-info-only | --lazy-media]
+crombolo push [--from <profile>] [--to <profile>] [--force [--auto-approve]] [--media-info-only]
 ```
 
+- **Profiles** are the person's own, in `~/.crombolo/profiles` (or
+  `CROMBOLO_PROFILES_FILE`), one TOML table each, with a hosted site's `url`
+  and optional `environment`, or a site folder's `path`. Nothing in a site's
+  folder names them, so nothing there is committed. `crombolo profile list`
+  shows them, and where each sign-in is kept.
+- **Which site:** `--profile`, then `CROMBOLO_PROFILE`, then `CROMBOLO_PROFILE_URL` with
+  `CROMBOLO_PROFILE_ENVIRONMENT`, then the `default` profile. The default is used only
+  by `site deploy`, `remote trust` and `remote job`, which always act on a
+  hosted site, and for the side of `push` or `pull` it fills. A command that can
+  act on this folder's site, such as `site apply` or `audit list`, acts on it
+  unless `--profile`, `CROMBOLO_PROFILE` or `CROMBOLO_PROFILE_URL` says otherwise.
+- **`push` and `pull`** copy one site over another. `push` goes from this
+  folder's site to the default, `pull` from the default to this folder's site,
+  and `--from` and `--to` name either side, a folder or hosted, so
+  `crombolo push --from copy --to staging` works from any folder. Between two
+  folders the copy is checked and backed up as `site apply` is; between two
+  hosted sites it passes through this machine, media included.
 - **`pull`:**
   - In an empty folder it starts the site, as `start --from` does. In a
     folder that holds a site it replaces it, after saying what will be
@@ -520,6 +538,12 @@ crombolo push [--force [--auto-approve]] [--media-info-only]
   only what changed, and `--lazy-media` fetches each file the first time the
   local site is asked for it.
 - **Sign-ins** live in the operating system's keychain, never in the folder.
+  On a machine with no keychain, such as a container, they go in
+  `~/.crombolo/credentials`, which only its owner can read, and `crombolo
+  login` says so. `CROMBOLO_CREDENTIALS=keychain|file` chooses one.
+- **A `remotes.toml`** in a site's folder, from before story 352, is no longer
+  read: `crombolo profile import` there copies it into your profiles, and once
+  everyone has, it can be deleted.
 - **Exit codes:** as every command's ([Exit codes](#exit-codes)). The ones a
   pull or push meets most: 3 gave up waiting (the job carries on at the remote;
   `crombolo remote job <id>` watches it again), 4 not signed in or the sign-in
@@ -537,7 +561,7 @@ store in the pipeline.
    CI access**, or from their own signed-in machine:
 
    ```bash
-   crombolo remote trust add production --name "Deploys" --provider github \
+   crombolo remote trust add --profile production --name "Deploys" --provider github \
      --repository acme/site --branch main --may push --may push-protected \
      --may apply-structure
    ```
@@ -546,16 +570,19 @@ store in the pipeline.
    with nobody approving it. Leave it out to keep that for people.
    `apply-structure` is what a whole-site push needs on top; a job that only
    applies bundles of content can do without it.
-2. **GitHub Actions:** give the job `permissions: id-token: write`, then run
-   the CLI as usual:
+2. **GitHub Actions:** give the job `permissions: id-token: write`, name the
+   site with `CROMBOLO_PROFILE_URL`, then run the CLI as usual:
 
    ```yaml
    permissions:
      id-token: write
      contents: read
+   env:
+     CROMBOLO_PROFILE_URL: https://example.com
+     CROMBOLO_PROFILE_ENVIRONMENT: production
    steps:
      - uses: actions/checkout@v4
-     - run: bunx crombolo push production --force --auto-approve
+     - run: bunx crombolo push --force --auto-approve
    ```
 
 3. **GitLab CI:** declare an identity token named `CROMBOLO_ID_TOKEN` for the
@@ -563,11 +590,14 @@ store in the pipeline.
 
    ```yaml
    deploy:
+     variables:
+       CROMBOLO_PROFILE_URL: https://example.com
+       CROMBOLO_PROFILE_ENVIRONMENT: production
      id_tokens:
        CROMBOLO_ID_TOKEN:
          aud: https://example.com
      script:
-       - bunx crombolo push production --force --auto-approve
+       - bunx crombolo push --force --auto-approve
    ```
 
    A self-managed GitLab is trusted once the site names it:
@@ -599,6 +629,70 @@ A command that would ask first refuses at once when there is no terminal, with
 for a protected push); it never waits on stdin. `--dry-run` on `extension purge` and
 `push` says what would go and changes nothing. `admin reset-password --stdin`
 reads the new password from a pipe, so it never sits in shell history.
+
+### Signing in from the command line
+
+Story 350. `cliAccess` in `crombolo.config.ts`, or `CROMBOLO_CLI_ACCESS`, says whether a
+command may change the site with nobody signed in:
+
+| Level | Default | What it does |
+| --- | --- | --- |
+| `open` | in development | Commands run without a sign-in, recorded as the command line (`CROMBOLO_ACTOR`, else the account); someone signed in acts as themselves |
+| `sign-in` | when `NODE_ENV` is `production` | Every command that reads or changes the site needs someone signed in, and acts as them |
+
+A production server left at `open` logs a warning when it starts.
+
+**Signing in.** `crombolo login` with no `--profile` signs in to this folder's site through
+its running server: it finds the port in `.crombolo/supervisor.json`, which `crombolo
+start` writes, then tries the configured port. The person approves a code on the back
+office's device page, signed in there however the site signs people in, two-factor
+included. The sign-in is a back-office session of its own, listed under "Signed-in
+devices", and kept where a hosted site's is (the keychain, else
+`~/.crombolo/credentials`), under the site's database: its SQLite file, or its Postgres
+host and database, so two folders on one database share it. With no server running,
+`login` is refused, saying to start the site: there is no second place that takes
+passwords. Once signed in, commands need no server: each checks the session against the
+database and renews it while it lasts, which is as long as a back-office session lasts.
+One that has ended, been signed out or been revoked is refused, at either level, and never
+falls back to the command line. `crombolo logout` ends it in the database; `crombolo
+whoami` names the person, the site and its level. A hosted site is always named, with
+`--profile`.
+
+**What a person may do.** A signed-in command acts as the person. Pages and media are
+checked as the back office checks them: start nodes, per-page permissions, languages and
+approvals. `--skip-approval` is an administrator's. Every other command needs the section
+its screen is in, and some are for administrators, as their screens are. The table is
+the commands' own `section` and `adminOnly`, from what the Management API and the back
+office's own routes ask for (`packages/api-management/src/authorization.ts`); a command
+named for a hosted site is checked there instead:
+
+| Commands | Section | Administrators only |
+| --- | --- | --- |
+| `content *`, `domains *` | Content | |
+| `media *` | Media | |
+| `recycle-bin empty` | Content or Media | |
+| `dictionary *` | Translation | |
+| `forms *` | Forms | |
+| `workflows *` | Content or Workflows | |
+| `users *`, `users groups *` | Users | |
+| `api-client rotate` | Users | yes |
+| `types *` (not `types rewrite`), `webhooks *`, `audit *`, `events *`, `index *`, `cache rebuild`, `health`, `status`, `maintenance status`, `languages add\|update\|remove` | Settings | |
+| `site apply\|export\|show\|urls\|key\|runs\|revert`, `extension list\|enable\|disable` | Settings | |
+| `site import`, `push`, `pull`, `maintenance pause\|resume`, `keys trust\|trusted\|untrust`, `extension install\|uninstall\|grant\|settings\|purge` | Settings | yes |
+| `languages list`, `site deploy`, `remote job`, `remote trust *` | any | |
+
+**Never signed in.** Starting and recovery (`init`, `start`, `restart`, `upgrade`,
+`upgrade check|ledger`, `admin reset-password`), signing in and choosing a site (`login`,
+`logout`, `whoami`, `profile *`), and the commands that only work with files: `generate`,
+`schema`, `components *`, `assets *`, `site build|check|check-code`, `types rewrite`,
+`bundle digest|sign|verify`, `keys create|list`, `extension build|check|migrate`. Each
+command declares `access` (`none`, `site` or `person`), and `tests/cli-access.test.ts`
+fails one that declares nothing and pins the `none` list.
+
+**What it does not protect.** Whoever holds the database's credentials can go around the
+command line. The level makes every change through it attributed and checked against a
+person's permissions; it does not stop someone with the database. Keeping production's
+credentials private, and changing a hosted site through `--profile`, is what protects it.
 
 ### A site built from the command line
 
@@ -692,7 +786,7 @@ item already where it was asked to go is reported unchanged.
 
 **The audit log** (story 156): `crombolo audit list` pages it newest first,
 and `crombolo audit stream [--follow]` ships it as NDJSON to a log store. Both
-read without writing, locally or from a hosted site with `--remote`
+read without writing, locally or from another site with `--profile`
 (`audit-log.md`, "Reading it").
 
 **Media in bulk** (story 153): `crombolo media import <dir> [--under <folder>]`
@@ -721,8 +815,8 @@ as a child process, and a restart is a new child rather than an outage:
    the new server wrote.
 
 What starts a restart:
-- `crombolo restart`, in the site's directory, or `crombolo restart --remote
-  <name>` for a remote ([`remote-protocol.md`](remote-protocol.md),
+- `crombolo restart`, in the site's directory, or `crombolo restart --profile
+  <name>` for another site ([`remote-protocol.md`](remote-protocol.md),
   "Restarting").
 - SIGHUP to the `crombolo start` process.
 
@@ -757,11 +851,12 @@ A plugin is an oclif package whose commands come from `@crombolo/cli/plugin`,
 never from the CLI's internal paths:
 
 ```ts
-import { BaseCommand, Flags, discover, keychain, RemoteClient } from '@crombolo/cli/plugin'
+import { BaseCommand, chooseSite, connectSite, hostedFlags } from '@crombolo/cli/plugin'
 
 export default class CloudStatus extends BaseCommand {
   static override summary = 'what the platform says about this site'
-  static override flags = { url: Flags.string({ required: true }) }
+  static override flags = hostedFlags
+  static override access = 'site' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'single',
@@ -770,7 +865,7 @@ export default class CloudStatus extends BaseCommand {
 
   async run() {
     const { flags } = await this.parse(CloudStatus)
-    const client = new RemoteClient(await discover(flags.url), keychain())
+    const { client } = await connectSite(chooseSite(flags, { mayDefault: true }))
     // …
     return { state }
   }
@@ -779,10 +874,16 @@ export default class CloudStatus extends BaseCommand {
 
 Extending `BaseCommand` gives a command the global `-o json`, the failure
 envelope and exit codes (`this.fail(kind, message, hint)`), and its entry in
-`crombolo schema`, which needs the `spec`. Its own `package.json` sets
+`crombolo schema`, which needs the `spec`. `access` says whether it needs someone signed
+in to this folder's site (`none`, `site` or `person`, with a `section` and `adminOnly` as
+the CLI's own commands have; "Signing in from the command line" above); left out, it is
+`site`. A command on a hosted site is signed in there instead. Its own `package.json` sets
 `oclif.commands`, `topicSeparator: " "` and the `cloud` topic. `signIn`,
 `discover`, `RemoteClient` and `keychain` are the ones `crombolo login` and
 `pull` use, so a sign-in made by either is the other's: a person signs in once.
+`chooseSite`, `connectSite`, `hostedOrHere`, `profileFlags` and `hostedFlags`
+(story 352, a minor version) choose the site from `--profile` and the
+environment as the CLI's own commands do.
 `tests/fixtures/cloud-plugin` is a working example, used by
 `tests/cli-plugin.test.ts` and never shipped.
 

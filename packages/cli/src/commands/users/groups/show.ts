@@ -11,6 +11,8 @@ export default class UsersGroupsShow extends BaseCommand {
   static override args = {
     alias: Args.string({ required: true, description: "the group's alias" }),
   }
+  static override access = 'site' as const
+  static override section = 'users' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'single',

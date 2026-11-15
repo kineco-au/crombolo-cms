@@ -8,6 +8,9 @@ export default class KeysTrusted extends BaseCommand {
   static override summary =
     'the keys and CI builds this site trusts to sign the site bundles it applies'
   static override examples = ['<%= config.bin %> keys trusted']
+  static override access = 'site' as const
+  static override section = 'settings' as const
+  static override adminOnly = true
   static override spec = {
     effects: 'read_only',
     cardinality: 'bounded',

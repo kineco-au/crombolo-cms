@@ -39,6 +39,8 @@ export default class WebhooksUpdate extends BaseCommand {
     'remove-header': many('a header no longer sent', '<name>'),
     'dry-run': Flags.boolean({ summary: 'say what would change, and change nothing' }),
   }
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = {
     effects: 'idempotent',
     cardinality: 'single',

@@ -13,6 +13,8 @@ export default class WebhooksRemove extends BaseCommand {
   static override flags = {
     'dry-run': Flags.boolean({ summary: 'say what would change, and change nothing' }),
   }
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = {
     effects: 'idempotent',
     cardinality: 'single',

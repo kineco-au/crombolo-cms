@@ -7,6 +7,7 @@ export default class CloudHello extends BaseCommand {
     name: Flags.string({ summary: 'who to greet', default: 'world' }),
     fail: Flags.boolean({ summary: 'fail as a plugin command would' }),
   }
+  static override access = 'none' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'single',

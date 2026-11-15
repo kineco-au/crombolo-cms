@@ -10,6 +10,7 @@ export function movedCommand(from: string, to: string) {
     static override summary = `moved: use \`crombolo ${to}\``
     static override hidden = true
     static override strict = false
+    static override access = 'none' as const
     static override spec = {
       effects: 'read_only',
       cardinality: 'single',

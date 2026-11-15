@@ -23,17 +23,17 @@ bunx crombolo start --bundle ../site-bundle --publish
 
 Run it again with nothing changed and nothing is applied; build a changed bundle and only the changes are.
 
-**As a deploy.** With a remote set up ([Remotes](/docs/guides/remotes/)), `site deploy` sends the site as it is committed: its content, definitions and code, checked first, then applied, then the remote restarted:
+**As a deploy.** With a profile for the site ([Remotes](/docs/guides/remotes/)), `site deploy` sends the site as it is committed: its content, definitions and code, checked first, then applied, then the remote restarted:
 
 ```sh
-bunx crombolo site deploy --remote production --publish
+bunx crombolo site deploy --profile production --publish
 ```
 
 **As a push.** `push` replaces a remote environment with this one, content and all, after you confirm it by name:
 
 ```sh
-bunx crombolo push staging --dry-run
-bunx crombolo push staging
+bunx crombolo push --to staging --dry-run
+bunx crombolo push --to staging
 ```
 
 A production site applies changed definitions only under a new version. `site build`, `site deploy` and `push` raise the version a step when the definitions have changed since it was first applied, so you never edit it by hand. A deploy sends only what is committed, so when it raises the version it asks you to commit that first.

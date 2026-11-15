@@ -29,6 +29,7 @@ export default class Generate extends BaseCommand {
       helpValue: '<dir>',
     }),
   }
+  static override access = 'none' as const
   static override spec = {
     effects: 'idempotent',
     cardinality: 'single',

@@ -76,6 +76,8 @@ export default class MediaImport extends BaseCommand {
     'dry-run': dryRun,
   }
   static override audit = { category: 'media', action: 'Import', entityType: 'Media' } as const
+  static override access = 'site' as const
+  static override section = 'media' as const
   static override spec = {
     effects: 'idempotent',
     cardinality: 'bounded',

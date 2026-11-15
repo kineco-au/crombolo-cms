@@ -29,6 +29,8 @@ export default class MediaMove extends BaseCommand {
     }),
     'dry-run': dryRun,
   }
+  static override access = 'site' as const
+  static override section = 'media' as const
   static override spec = {
     effects: 'idempotent',
     cardinality: 'bounded',

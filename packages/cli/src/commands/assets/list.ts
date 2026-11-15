@@ -6,6 +6,7 @@ import { siteConfig } from '../../support/site.ts'
 /** The stylesheets and scripts the backoffice also edits. */
 export default class AssetsList extends BaseCommand {
   static override summary = 'the stylesheets and scripts this site has'
+  static override access = 'none' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'bounded',

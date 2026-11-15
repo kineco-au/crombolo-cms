@@ -1132,6 +1132,66 @@ const DECLARED = [
     appliesTo: 'cli',
   },
   {
+    env: 'CROMBOLO_PROFILE',
+    kind: 'string',
+    section: 'Command line',
+    description:
+      'The profile a command acts on when it is not given `--profile`, for a shell or a job.',
+    appliesTo: 'cli',
+  },
+  {
+    env: 'CROMBOLO_PROFILES_FILE',
+    kind: 'string',
+    default: '~/.crombolo/profiles',
+    section: 'Command line',
+    description: 'Where the profiles are kept, for tests and unusual machines.',
+    appliesTo: 'cli',
+  },
+  {
+    env: 'CROMBOLO_PROFILE_URL',
+    kind: 'string',
+    section: 'Command line',
+    description:
+      "The address of a hosted site a command acts on when neither `--profile` nor CROMBOLO_PROFILE names one: how a CI job names its site. A Next.js front end reads it as the CMS's address.",
+    appliesTo: 'cli',
+  },
+  {
+    env: 'CROMBOLO_PROFILE_ENVIRONMENT',
+    kind: 'string',
+    section: 'Command line',
+    description: "With CROMBOLO_PROFILE_URL: that site's environment, when it has more than one.",
+    appliesTo: 'cli',
+  },
+  {
+    env: 'CROMBOLO_CREDENTIALS',
+    kind: 'enum',
+    values: ['keychain', 'file'],
+    default: 'the keychain where there is one',
+    section: 'Command line',
+    description:
+      "Where sign-ins are kept: the operating system's keychain, or ~/.crombolo/credentials, which only you can read. Left unset, a machine with no keychain uses the file.",
+    appliesTo: 'both',
+  },
+  {
+    env: 'CROMBOLO_CREDENTIALS_FILE',
+    kind: 'string',
+    default: '~/.crombolo/credentials',
+    section: 'Command line',
+    description:
+      'The file sign-ins are kept in when they are not in the keychain, for tests and unusual machines.',
+    appliesTo: 'both',
+  },
+  {
+    env: 'CROMBOLO_CLI_ACCESS',
+    kind: 'enum',
+    values: ['open', 'sign-in'],
+    default: '`sign-in` in production, `open` otherwise',
+    section: 'Command line',
+    description:
+      'Whether a command that reads or changes the site needs someone signed in with `crombolo login`. At `open` it runs as the command line unless someone is signed in; at `sign-in` it acts as the person, with their permissions.',
+    appliesTo: 'both',
+  },
+  {
     env: 'CROMBOLO_BUNDLE_PASSPHRASE',
     kind: 'string',
     section: 'Command line',

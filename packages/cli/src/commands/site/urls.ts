@@ -26,6 +26,8 @@ export default class SiteUrls extends BaseCommand {
       summary: 'change it, and leave applying it to `crombolo types sync`',
     }),
   }
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = editSpec
 
   async run() {

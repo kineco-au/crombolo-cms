@@ -20,6 +20,7 @@ export default class UpgradeCheck extends BaseCommand {
     'backup-taken': backupTaken,
   }
   static override audit = { category: 'system', action: 'UpgradeFix' } as const
+  static override access = 'none' as const
   static override spec = {
     effects: 'idempotent',
     cardinality: 'single',

@@ -10,6 +10,7 @@ export default class TypesRewrite extends BaseCommand {
     'Every file in the canonical layout: a reviewable commit when the vocabulary changes.'
   static override aliases = ['schema:rewrite', 'upgrade:schema']
   static override deprecateAliases = true
+  static override access = 'none' as const
   static override spec = {
     effects: 'idempotent',
     cardinality: 'bounded',

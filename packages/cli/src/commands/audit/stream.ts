@@ -27,6 +27,8 @@ export default class AuditStream extends BaseCommand {
       min: 1,
     }),
   }
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = {
     effects: 'read_only',
     outputKind: 'stream',

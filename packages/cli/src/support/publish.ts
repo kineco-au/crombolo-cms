@@ -8,13 +8,13 @@
  * document operations as a backoffice publish (story 170).
  */
 
-import { operatorActor, type Refusal } from '@crombolo/content'
+import type { Refusal } from '@crombolo/content'
 import { ObjectTypes } from '@crombolo/core'
 import { describeRefFailure, resolveNodeRef } from '@crombolo/data'
 import { bootstrapDatabase, siteDocumentOperations } from '@crombolo/server'
 import { Args, Flags } from '@oclif/core'
 import { CliError } from '../errors.ts'
-import { commandActorName } from '../operations/commands.ts'
+import { commandActor } from './acting.ts'
 import { many } from './flags.ts'
 import { type Io, siteConfig } from './site.ts'
 
@@ -90,15 +90,15 @@ export async function publishPages(
 ) {
   const cultures = flags.culture
   const { publishTime, unpublishTime } = scheduleTimes(publishing, flags)
+  // The rules a backoffice publish follows, as the person at this command line
+  // (stories 170, 350): approvals apply unless --skip-approval, which the audit records.
+  const actor = commandActor({ skipApproval: flags['skip-approval'] })
   const config = await siteConfig()
   const { db } = await bootstrapDatabase(config)
   try {
     const resolved = await resolveNodeRef(db, [ObjectTypes.Document], ref)
     if (!resolved.ok) throw new CliError('not_found', describeRefFailure(ref, resolved))
     const { operations } = await siteDocumentOperations(db, config)
-    // The rules a backoffice publish follows, as the person at this command line
-    // (story 170): approvals apply unless --skip-approval, which the audit records.
-    const actor = operatorActor(commandActorName(), { skipApproval: flags['skip-approval'] })
     // Parents before children, which is the order publishing has to happen in.
     const targets = [
       resolved.node,

@@ -7,6 +7,8 @@ export default class UsersGroupsSections extends BaseCommand {
   static override description =
     '`users groups new` and `update` take these names after --section. A section a bundle adds is named by its own alias, such as Acme.Section.Reports.'
   static override examples = ['<%= config.bin %> users groups sections']
+  static override access = 'site' as const
+  static override section = 'users' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'bounded',

@@ -28,6 +28,8 @@ export default class DictionaryImport extends BaseCommand {
     action: 'Import',
     entityType: 'DictionaryItem',
   } as const
+  static override access = 'site' as const
+  static override section = 'translation' as const
   static override spec = {
     effects: 'idempotent',
     cardinality: 'single',

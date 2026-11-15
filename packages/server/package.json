@@ -21,6 +21,7 @@
     ".": "./src/index.ts",
     "./remote-credentials": "./src/remote-credentials.ts",
     "./atomic-write": "./src/atomic-write.ts",
+    "./settings": "./src/settings.ts",
     "./worker": "./src/worker.ts"
   },
   "files": [

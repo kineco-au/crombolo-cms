@@ -5,7 +5,7 @@
  * refusal names each item and why.
  */
 
-import { operatorActor, type Refusal, type SelectionResult } from '@crombolo/content'
+import type { Refusal, SelectionResult } from '@crombolo/content'
 import { ObjectTypes, SystemNodes } from '@crombolo/core'
 import {
   type Db,
@@ -18,7 +18,7 @@ import {
 import { bootstrapDatabase, siteDocumentOperations, siteMediaOperations } from '@crombolo/server'
 import { Args } from '@oclif/core'
 import { CliError } from '../errors.ts'
-import { commandActorName } from '../operations/commands.ts'
+import { commandActor } from './acting.ts'
 import { type Io, siteConfig } from './site.ts'
 
 export type TreeKind = 'content' | 'media'
@@ -132,7 +132,7 @@ async function operationsFor(db: Db, kind: TreeKind) {
     : await siteMediaOperations(db, config)
 }
 
-const actor = () => operatorActor(commandActorName())
+const actor = () => commandActor()
 
 function reportSelection(
   io: Io,

@@ -16,6 +16,8 @@ export default class TypesCheck extends BaseCommand {
   static override flags = {
     static: Flags.boolean({ summary: 'validate the files only, no database' }),
   }
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'single',

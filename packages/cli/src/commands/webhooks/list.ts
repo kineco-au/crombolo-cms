@@ -7,6 +7,8 @@ import { fileWebhooks, storedWebhooks } from '../../support/webhooks.ts'
 export default class WebhooksList extends BaseCommand {
   static override summary = "the site's webhooks, and those kept in this environment only"
   static override examples = ['<%= config.bin %> webhooks list']
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'bounded',

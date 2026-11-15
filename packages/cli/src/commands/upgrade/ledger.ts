@@ -6,6 +6,7 @@ import { siteConfig } from '../../support/site.ts'
 export default class UpgradeLedger extends BaseCommand {
   static override summary = 'print migration_history: every migration, sync and import applied here'
   static override flags = { ...pageFlags(1000) }
+  static override access = 'none' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'unbounded',

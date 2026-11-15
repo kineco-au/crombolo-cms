@@ -35,6 +35,8 @@ export default class TypesRename extends BaseCommand {
       options: [...TYPE_KINDS, 'data'],
     }),
   }
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = renameSpec
 
   async run() {

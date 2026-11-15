@@ -17,7 +17,8 @@ import {
 } from '@crombolo/data'
 import { Flags } from '@oclif/core'
 import { CliError } from '../errors.ts'
-import { connectRemote, needEnvironment } from './remote.ts'
+import { type HostedSite, hostedOrHere } from '../profiles/choose.ts'
+import { connectSite, needEnvironment, profileFlags } from './remote.ts'
 import { siteConfig } from './site.ts'
 
 export interface AuditPageResult {
@@ -52,11 +53,11 @@ export const auditFlags = {
   category: Flags.string({ summary: 'one kind of change', options: [...AUDIT_CATEGORIES] }),
   action: Flags.string({ summary: 'one action, such as Publish or SignIn', helpValue: '<action>' }),
   entity: Flags.string({ summary: 'what one item had done to it', helpValue: '<uuid>' }),
-  remote: Flags.string({
-    summary: 'read a hosted site through this remote, signed in as you',
+  ...profileFlags,
+  profile: Flags.string({
+    summary: 'read the site this profile names; a hosted one as you, signed in',
     helpValue: '<name>',
   }),
-  env: Flags.string({ summary: "the remote's environment", helpValue: '<id>' }),
 }
 
 /** What the filter flags ask for. */
@@ -86,7 +87,7 @@ async function localSource(): Promise<AuditSource> {
     db = await connect({ file: config.sqliteFile, readOnly: true })
   } catch (error) {
     throw new CliError('not_found', (error as Error).message, {
-      hint: 'Run this in the site, or name a hosted one with --remote.',
+      hint: 'Run this in the site, or name another with --profile.',
     })
   }
   const log = new AuditLog(db)
@@ -108,8 +109,8 @@ async function localSource(): Promise<AuditSource> {
 }
 
 /** A hosted site's log, through the remote protocol. */
-async function remoteSource(name: string, env: string | undefined): Promise<AuditSource> {
-  const { discovery, client, environment } = await connectRemote(name, env)
+async function remoteSource(site: HostedSite): Promise<AuditSource> {
+  const { discovery, client, environment } = await connectSite(site)
   if (!discovery.capabilities?.includes('audit'))
     throw new CliError(
       'refused',
@@ -133,8 +134,10 @@ async function remoteSource(name: string, env: string | undefined): Promise<Audi
   }
 }
 
-export const openAuditSource = (flags: { remote?: string; env?: string }) =>
-  flags.remote ? remoteSource(flags.remote, flags.env) : localSource()
+export function openAuditSource(flags: { profile?: string; env?: string; remote?: string }) {
+  const site = hostedOrHere(flags)
+  return site ? remoteSource(site) : localSource()
+}
 
 /** One entry as a line for people: when, what, who, to what, from where. */
 export function auditLine(entry: AuditRecord): string {

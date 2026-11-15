@@ -31,6 +31,8 @@ export default class ContentUpdate extends BaseCommand {
     unset: Flags.string({ summary: 'take a value away', helpValue: '<property>', multiple: true }),
     name: Flags.string({ summary: "the page's name", helpValue: '<name>' }),
   }
+  static override access = 'site' as const
+  static override section = 'content' as const
   static override spec = {
     effects: 'idempotent',
     cardinality: 'single',

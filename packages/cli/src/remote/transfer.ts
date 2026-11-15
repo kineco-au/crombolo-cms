@@ -204,31 +204,26 @@ export interface PushResult {
   job?: Job
 }
 
-/**
- * Exports this site and sends it. `confirm` is asked with the check for a
- * protected environment unless `autoApprove`; `onApproval` hears the job when
- * the remote holds it for approval. The flags are this side's guard against a
- * slip, never authority: the remote decides.
- */
-export async function pushSite(
-  config: CromboloConfig,
-  client: RemoteClient,
-  options: {
-    environment: string
-    force?: boolean
-    autoApprove?: boolean
-    mediaInfoOnly?: boolean
-    /** Export and check, then stop: nothing is uploaded. */
-    dryRun?: boolean
-    confirm?(check: PushCheck): Promise<boolean>
-    onCheck?(check: PushCheck): void
-    onProgress?(job: Job): void
-    onApproval?(job: Job): void | Promise<void>
-    onMedia?(done: number, total: number): void
-    timeoutMs?: number
-    sleep?: (ms: number) => Promise<void>
-  },
-): Promise<PushResult> {
+type PushOptions = {
+  environment: string
+  force?: boolean
+  autoApprove?: boolean
+  mediaInfoOnly?: boolean
+  /** Export and check, then stop: nothing is uploaded. */
+  dryRun?: boolean
+  confirm?(check: PushCheck): Promise<boolean>
+  onCheck?(check: PushCheck): void
+  onProgress?(job: Job): void
+  onApproval?(job: Job): void | Promise<void>
+  onMedia?(done: number, total: number): void
+  timeoutMs?: number
+  sleep?: (ms: number) => Promise<void>
+}
+
+type Environment = Awaited<ReturnType<RemoteClient['environments']>>[number]
+
+/** The environment a push replaces, refused here before anything is exported or sent. */
+async function pushTarget(client: RemoteClient, options: PushOptions): Promise<Environment> {
   const environments = await client.environments()
   const env = environments.find((e) => e.id === options.environment)
   if (!env)
@@ -248,22 +243,77 @@ export async function pushSite(
       'refused',
       `${client.discovery.name} does not take media by reference; push without --media-info-only.`,
     )
+  return env
+}
 
+/** A site exported sealed, as a push sends it and a copy between folders carries it. */
+export async function exportForTransfer(
+  config: CromboloConfig,
+  out: string,
+  passphrase: string,
+  options: { mediaInfoOnly?: boolean } = {},
+): Promise<void> {
+  const { db } = await bootstrapDatabase(config)
+  try {
+    await exportSite(db, config, {
+      out,
+      sealContent: true,
+      passphrase,
+      media: options.mediaInfoOnly ? 'referenced' : true,
+    })
+  } finally {
+    await db.close()
+  }
+}
+
+/**
+ * Exports this site and sends it. `confirm` is asked with the check for a
+ * protected environment unless `autoApprove`; `onApproval` hears the job when
+ * the remote holds it for approval. The flags are this side's guard against a
+ * slip, never authority: the remote decides.
+ */
+export async function pushSite(
+  config: CromboloConfig,
+  client: RemoteClient,
+  options: PushOptions,
+): Promise<PushResult> {
+  const env = await pushTarget(client, options)
   const work = mkdtempSync(join(tmpdir(), 'crombolo-push-'))
   try {
     const out = join(work, 'site.tgz')
     const passphrase = transferPassphrase()
-    const { db } = await bootstrapDatabase(config)
-    try {
-      await exportSite(db, config, {
-        out,
-        sealContent: true,
-        passphrase,
-        media: options.mediaInfoOnly ? 'referenced' : true,
-      })
-    } finally {
-      await db.close()
-    }
+    await exportForTransfer(config, out, passphrase, options)
+    return await sendPush(
+      client,
+      env,
+      { file: out, passphrase, store: () => mediaStoreFor(config) },
+      options,
+    )
+  } finally {
+    rmSync(work, { recursive: true, force: true })
+  }
+}
+
+/** Sends a whole-site file already made, such as one pulled from another site. */
+export async function pushFile(
+  client: RemoteClient,
+  sent: { file: string; passphrase: string },
+  options: PushOptions,
+): Promise<PushResult> {
+  if (options.mediaInfoOnly)
+    throw new RefusedBeforeSending('usage', 'A file is pushed with its media files in it.')
+  return sendPush(client, await pushTarget(client, options), sent, options)
+}
+
+async function sendPush(
+  client: RemoteClient,
+  env: Environment,
+  sent: { file: string; passphrase: string; store?: () => Promise<MediaStore> },
+  options: PushOptions,
+): Promise<PushResult> {
+  const work = mkdtempSync(join(tmpdir(), 'crombolo-push-'))
+  try {
+    const out = sent.file
     const unpacked = join(work, 'unpacked')
     await extractTarball(out, unpacked)
     const loaded = loadBundle(unpacked)
@@ -302,8 +352,8 @@ export async function pushSite(
       if (!yes) throw new RefusedBeforeSending('refused', 'Nothing was sent.')
     }
 
-    if (options.mediaInfoOnly && manifest.blobs.length > 0) {
-      const store = await mediaStoreFor(config)
+    if (options.mediaInfoOnly && sent.store && manifest.blobs.length > 0) {
+      const store = await sent.store()
       const { have } = await client.post<{ have: string[] }>(`environments/${env.id}/media/have`, {
         blobs: manifest.blobs.map((blob) => ({ key: blob.key, etag: blob.etag ?? undefined })),
       })
@@ -335,7 +385,7 @@ export async function pushSite(
       headers: {
         'content-type': 'application/gzip',
         'crombolo-sha256': await sha256File(out),
-        'crombolo-passphrase': passphrase,
+        'crombolo-passphrase': sent.passphrase,
       },
       body: Bun.file(out),
     })

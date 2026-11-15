@@ -6,8 +6,9 @@
  */
 import { join } from 'node:path'
 import { CliError } from '../errors.ts'
+import type { HostedSite } from '../profiles/choose.ts'
 import { problemOf } from '../remote/client.ts'
-import { connectRemote, needEnvironment } from './remote.ts'
+import { connectSite, needEnvironment } from './remote.ts'
 import type { Io } from './site.ts'
 import { RESTART_FILE, readRestart, readSupervisor } from './supervise.ts'
 
@@ -41,18 +42,15 @@ export async function restartLocal(io: Io, siteDir: string): Promise<Restarted> 
   })
 }
 
-/** Asks a remote for a new server, and waits for its answer. */
-export async function restartRemote(
-  io: Io,
-  flags: { remote?: string; env?: string },
-): Promise<Restarted> {
-  const { entry, client, discovery, environment } = await connectRemote(flags.remote, flags.env)
+/** Asks a hosted site for a new server, and waits for its answer. */
+export async function restartRemote(io: Io, remote: HostedSite): Promise<Restarted> {
+  const { site, client, discovery, environment } = await connectSite(remote)
   const env = needEnvironment(environment, discovery)
   if (!discovery.capabilities.includes('restart'))
-    throw new CliError('refused', `${entry.name} cannot be restarted from here.`, {
+    throw new CliError('refused', `${site.name} cannot be restarted from here.`, {
       hint: 'It was not started with `crombolo start`, or its CROMBOLO_REMOTE_ACCESS is not all; restart it the way its host does.',
     })
-  io.progress(`  restarting  ${entry.name}`)
+  io.progress(`  restarting  ${site.name}`)
   const response = await client.api(`environments/${env}/restart`, { method: 'POST' })
   if (response.status === 502) {
     const body = (await response.json().catch(() => ({}))) as { detail?: string }

@@ -10,6 +10,8 @@ export default class WebhooksShow extends BaseCommand {
   static override args = {
     alias: Args.string({ required: true, description: "the webhook's alias" }),
   }
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = { effects: 'read_only', cardinality: 'single', stdoutSchema: {} } as const
 
   async run() {

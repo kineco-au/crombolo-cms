@@ -59,6 +59,8 @@ export default class WorkflowsUpdate extends BaseCommand {
     scheduling: yesNo('a request may say when to publish or take down'),
     ...workflowEditFlags,
   }
+  static override access = 'site' as const
+  static override section = ['content', 'workflow'] as const
   static override spec = editSpec
 
   async run() {

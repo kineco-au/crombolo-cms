@@ -10,6 +10,8 @@ export default class FormsList extends BaseCommand {
   static override description =
     'Each with its name, fields and workflows; with how many pages and Library forms use it when the site has a database. `crombolo forms show <alias>` shows one.'
   static override examples = ['<%= config.bin %> forms list']
+  static override access = 'site' as const
+  static override section = 'forms' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'bounded',

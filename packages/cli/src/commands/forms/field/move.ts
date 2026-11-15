@@ -24,6 +24,8 @@ export default class FormsFieldMove extends BaseCommand {
     alias: Args.string({ required: true, description: "the field's alias" }),
   }
   static override flags = { page: pageFlag, group: groupFlag, ...placeFlags, ...formEditFlags }
+  static override access = 'site' as const
+  static override section = 'forms' as const
   static override spec = formEditSpec
 
   async run() {

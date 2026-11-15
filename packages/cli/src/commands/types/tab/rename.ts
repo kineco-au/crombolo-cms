@@ -13,6 +13,8 @@ export default class TypesTabRename extends BaseCommand {
     to: Args.string({ required: true, description: 'its new name' }),
   }
   static override flags = { ...editFlags }
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = editSpec
 
   async run() {

@@ -14,6 +14,8 @@ export default class UsersGroupsPermissions extends BaseCommand {
   static override flags = {
     verbs: Flags.boolean({ summary: 'show the name each is kept under as well' }),
   }
+  static override access = 'site' as const
+  static override section = 'users' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'bounded',

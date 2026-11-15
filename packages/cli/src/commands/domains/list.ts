@@ -6,6 +6,8 @@ import { siteConfig } from '../../support/site.ts'
 
 export default class DomainsList extends BaseCommand {
   static override summary = 'the hostnames domains.toml declares, and what is bound here'
+  static override access = 'site' as const
+  static override section = 'content' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'bounded',

@@ -25,6 +25,7 @@ export default class ExtensionCheck extends BaseCommand {
   static override args = {
     bundle: Args.string({ required: true, description: 'the package directory or .tgz' }),
   }
+  static override access = 'none' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'single',

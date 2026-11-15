@@ -22,6 +22,9 @@ export default class ApiClientRotate extends BaseCommand {
     action: 'RotateClientSecret',
     entityType: 'User',
   } as const
+  static override access = 'site' as const
+  static override section = 'users' as const
+  static override adminOnly = true
   static override spec = {
     effects: 'non_idempotent',
     cardinality: 'single',

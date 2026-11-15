@@ -28,6 +28,7 @@ export default class ExtensionMigrate extends BaseCommand {
     }),
     'dry-run': Flags.boolean({ summary: 'say what would move, and write nothing' }),
   }
+  static override access = 'none' as const
   static override spec = {
     effects: 'non_idempotent',
     cardinality: 'single',

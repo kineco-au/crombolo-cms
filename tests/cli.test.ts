@@ -35,7 +35,7 @@ function run(args: string[], stdin?: string, env: Record<string, string> = {}) {
   const proc = Bun.spawnSync(['bun', BIN, ...args], {
     cwd: dir,
     stdin: stdin === undefined ? 'ignore' : new TextEncoder().encode(stdin),
-    env: { ...process.env, NO_COLOR: '1', ...env },
+    env: { ...process.env, NO_COLOR: '1', CROMBOLO_PROFILES_FILE: join(dir, 'profiles'), ...env },
   })
   const err = proc.stderr.toString()
   return {
@@ -82,7 +82,7 @@ describe('arguments', () => {
     // `prod` belongs to --env; the URL is still the second argument, and the
     // failure is about reaching it.
     const result = run([
-      'remote',
+      'profile',
       'add',
       '--env',
       'prod',
@@ -119,22 +119,22 @@ describe('failures and outcomes', () => {
     expect(result.envelope()).toMatchObject({ kind: 'usage' })
   })
 
-  test('a different URL for a remote already named is a conflict, decided before any network', () => {
-    writeFileSync(join(dir, 'remotes.toml'), '[remotes.origin]\nurl = "https://one.example"\n')
-    const result = run(['remote', 'add', 'origin', 'https://two.example', '--json'])
+  test('a different URL for a profile already named is a conflict, decided before any network', () => {
+    writeFileSync(join(dir, 'profiles'), '[origin]\nurl = "https://one.example"\n')
+    const result = run(['profile', 'add', 'origin', 'https://two.example', '--json'])
     expect(result.code).toBe(ERROR_KINDS.conflict.exitCode)
     expect(result.envelope()).toMatchObject({ kind: 'conflict' })
-    expect(readFileSync(join(dir, 'remotes.toml'), 'utf8')).toContain('one.example')
+    expect(readFileSync(join(dir, 'profiles'), 'utf8')).toContain('one.example')
   })
 
-  test('removing a remote that is not there changes nothing, and says so', () => {
-    const result = run(['remote', 'remove', 'nowhere', '-o', 'json'])
+  test('removing a profile that is not there changes nothing, and says so', () => {
+    const result = run(['profile', 'remove', 'nowhere', '-o', 'json'])
     expect(result.code).toBe(0)
     expect(JSON.parse(result.out)).toEqual({ name: 'nowhere', changed: false })
   })
 
   test('a list is an items envelope', () => {
-    const result = run(['remote', 'list', '-o', 'json'])
+    const result = run(['profile', 'list', '-o', 'json'])
     expect(result.code).toBe(0)
     expect(JSON.parse(result.out)).toEqual({ items: [] })
   })
@@ -157,8 +157,8 @@ describe('failures and outcomes', () => {
       expect(run(old).code).toBe(ERROR_KINDS.usage.exitCode)
   })
 
-  test('bundle install refuses --wire with --remote, and --code-into with a grant', () => {
-    const wired = run(['extension', 'install', '@acme/crm', '--wire', '--remote', 'production'])
+  test('bundle install refuses --wire with --profile, and --code-into with a grant', () => {
+    const wired = run(['extension', 'install', '@acme/crm', '--wire', '--profile', 'production'])
     expect(wired.code).toBe(ERROR_KINDS.usage.exitCode)
     expect(wired.err).toContain('--wire is gone')
     expect(

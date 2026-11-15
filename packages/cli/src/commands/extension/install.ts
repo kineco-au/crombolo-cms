@@ -18,6 +18,7 @@ const delegateOf = (value: string | undefined): string | null => {
   return key
 }
 
+import { hostedOrHere, profileArg } from '../../profiles/choose.ts'
 import {
   cliActor,
   confirmLevel,
@@ -26,10 +27,11 @@ import {
   remoteBundles,
   withLocalBundles,
 } from '../../support/bundles.ts'
+import { profileFlags } from '../../support/remote.ts'
 
 const RESTART = 'Not live until `crombolo restart'
 
-/** A remote's bundles are its own; reading the registry needs none of this machine's. */
+/** A hosted site's bundles are its own; reading the registry needs none of this machine's. */
 const NO_EXTENSIONS = {
   list: () => [],
   bundles: () => ({ bundles: [], problems: [] }),
@@ -37,16 +39,16 @@ const NO_EXTENSIONS = {
 }
 
 export default class ExtensionInstall extends BaseCommand {
-  static override summary = 'add an extension to this site, or a remote, as a dependency'
+  static override summary = 'add an extension to this site, or another, as a dependency'
   static override description = [
     "What Install does in Settings, under Extensions: `bun add` in a root of its own, extensions/<id>/, recorded in crombolo.extensions.json, never in the site's package.json; then the content the bundle carries with --apply-content. A bundle with server code names every permission it asks for with --grant, or nothing is installed: a newer version that asks for more is refused until the script grants it.",
     "An extension runs once it is granted what it asks for: --grant names every permission, exactly. Nothing is imported into crombolo.config.ts; to grant it from the site's code, list it under `extensions` there. Installed code runs after `crombolo restart`.",
-    'On a remote it needs CROMBOLO_REMOTE_ACCESS=all, "Change a site\'s structure and code" and "Install code on this site", which administrators have only when a group gives it to them.',
+    'On a hosted site it needs CROMBOLO_REMOTE_ACCESS=all, "Change a site\'s structure and code" and "Install code on this site", which administrators have only when a group gives it to them.',
     "--code-into installs a site package's own code into an empty directory, ready for a host to start it: the argument is then the site package's directory.",
   ].join('\n\n')
   static override examples = [
     '<%= config.bin %> extension install @acme/crm --grant content.read --grant members.read',
-    '<%= config.bin %> extension install @acme/crm@2.1.0 --grant documents.read --remote production',
+    '<%= config.bin %> extension install @acme/crm@2.1.0 --grant documents.read --profile production',
     '<%= config.bin %> extension install ./acme-site-bundle --code-into /srv/sites/acme',
   ]
   static override args = {
@@ -78,12 +80,14 @@ export default class ExtensionInstall extends BaseCommand {
     'code-into': Flags.string({
       summary: "install a site package's own code into this empty directory",
       helpValue: '<dir>',
-      exclusive: ['remote', 'wire', 'grant', 'apply-content'],
+      exclusive: ['profile', 'wire', 'grant', 'apply-content'],
     }),
-    remote: Flags.string({ summary: 'install it on this remote instead', helpValue: '<name>' }),
-    env: Flags.string({ summary: "with --remote: the remote's environment", helpValue: '<id>' }),
+    ...profileFlags,
     'dry-run': Flags.boolean({ summary: 'say what it would install and grant; install nothing' }),
   }
+  static override access = 'site' as const
+  static override section = 'settings' as const
+  static override adminOnly = true
   static override spec = {
     effects: 'idempotent',
     cardinality: 'single',
@@ -112,15 +116,19 @@ export default class ExtensionInstall extends BaseCommand {
         },
       )
     const spec = parseSpec(args.bundle)
-    if (spec.file && flags.remote)
-      throw new CliError('usage', 'A remote installs from the package registry, not a file here.')
+    const site = hostedOrHere(flags)
+    if (spec.file && site)
+      throw new CliError(
+        'usage',
+        'A hosted site installs from the package registry, not a file here.',
+      )
     const grant = flags.grant ?? []
     if (!flags['dry-run']) await confirmLevel((line) => this.say(line), spec.name, grant)
 
     // Read first, so a grant that does not match refuses before anything lands.
     const inspected = spec.file
       ? undefined
-      : flags.remote
+      : site
         ? await createMarketplace({
             ...registryOf(),
             extensions: NO_EXTENSIONS,
@@ -132,7 +140,7 @@ export default class ExtensionInstall extends BaseCommand {
     if (flags['dry-run']) {
       this.changedNothing = true
       this.say(
-        `  would install ${spec.name}${spec.version ? `@${spec.version}` : ''}${flags.remote ? ` on ${flags.remote}` : ''}`,
+        `  would install ${spec.name}${spec.version ? `@${spec.version}` : ''}${site ? ` on ${site.name}` : ''}`,
       )
       if (inspected?.ok) this.say(`  signed   ${describeProvenance(inspected.provenance)}`)
       if (inspected?.ok && inspected.server)
@@ -144,14 +152,14 @@ export default class ExtensionInstall extends BaseCommand {
         version: spec.version ?? null,
         restartPending: false,
         wired: false,
-        remote: flags.remote ?? null,
+        remote: site?.name ?? null,
         dir: null,
         files: null,
       }
     }
 
-    if (flags.remote) {
-      const remote = await remoteBundles(flags.remote, flags.env)
+    if (site) {
+      const remote = await remoteBundles(site)
       const outcome = await remote.install({
         name: spec.name,
         version: spec.version,
@@ -162,7 +170,7 @@ export default class ExtensionInstall extends BaseCommand {
       })
       if (outcome.provenance) this.say(`  signed   ${describeProvenance(outcome.provenance)}`)
       this.say(`  ${outcome.message}`)
-      if (outcome.restartPending) this.say(`  ${RESTART} --remote ${remote.name}\`.`)
+      if (outcome.restartPending) this.say(`  ${RESTART}${profileArg(remote.site)}\`.`)
       return {
         name: spec.name,
         version: outcome.dependency?.version ?? spec.version ?? null,
@@ -247,7 +255,7 @@ export default class ExtensionInstall extends BaseCommand {
   }
 }
 
-/** The registry a remote install is read from before it is sent: this machine's setting. */
+/** The registry a hosted site's install is read from before it is sent: this machine's setting. */
 function registryOf() {
   const config = loadConfig({}, process.cwd())
   return {

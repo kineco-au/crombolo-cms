@@ -40,7 +40,7 @@ stated otherwise. Errors are `application/problem+json` with a stable `code`
 - **`versions`:** the protocol versions served. A client refuses a remote that
   serves none it speaks.
 - **`bundleFormats`:** the oldest and newest bundle formats the remote reads
-  (story 306). Before `push`, `site apply --remote` or `site deploy` builds
+  (story 306). Before `push`, `site apply --profile` or `site deploy` builds
   anything, the CLI checks that the remote reads the format it writes. Before
   `pull`, it checks that it reads what the remote writes. Either way it says
   which side to upgrade. A remote that names none is a release from before site
@@ -512,17 +512,52 @@ names it, administrators included, and no group has it until someone gives it.
 - **Audit.** Every pull, push and approval decision is written to the audit
   log.
 
-## The CLI (story 108)
+## The CLI (stories 108, 352)
 
-`crombolo remote`, `login`, `logout`, `whoami`, `pull`, `push` and `media fetch`
-are this protocol's reference client (`packages/cli/src/remote/`).
-- **Remotes** are in `remotes.toml`.
+`crombolo profile`, `remote trust`, `remote job`, `login`, `logout`, `whoami`,
+`pull`, `push` and `media fetch` are this protocol's reference client
+(`packages/cli/src/remote/`, `packages/cli/src/profiles/`).
+
+- **Profiles** name the sites a person reaches, in `~/.crombolo/profiles`
+  (`CROMBOLO_PROFILES_FILE` puts it elsewhere), a TOML file of their own with a
+  table per profile: a hosted site's `url`, with an optional `environment`, or a
+  site folder's `path`, absolute or from `~`. A key it doesn't know, a bad name
+  or bad TOML is refused, naming the line. `profile add` and `profile remove`
+  rewrite only the table they are about, so the person's comments and order
+  stay.
+- **Which site a command acts on:** `--profile`, then `CROMBOLO_PROFILE`, then
+  `CROMBOLO_PROFILE_URL` with `CROMBOLO_PROFILE_ENVIRONMENT`, then the `default` profile. The
+  default is used only by a command that always acts on a hosted site
+  (`site deploy`, `remote trust`, `remote job`) and for the side of `push` or
+  `pull` that defaults to it. A command that can act on this folder's site
+  acts on it unless one of the first three says otherwise, so nobody publishes
+  to production by forgetting where they are. With nothing chosen and no
+  `default`, a hosted-only command is refused, listing the profiles there are.
+- **A folder profile** on a single-site command runs the command as it would
+  run in that folder. A hosted-only command refuses one.
+- **`push` and `pull`** copy one site over another, `--from` and `--to`, each a
+  profile and either a folder or hosted. `push` defaults `--from` to this
+  folder's site and `--to` to the default; `pull` the other way round. Folder
+  to folder is an export applied here, checked and backed up; folder and
+  hosted is a push or a pull as above; hosted to hosted is a pull into a
+  temporary folder, then a push from it, everything passing through this
+  machine. The receiving site's own rules hold either way.
 - **Sign-ins** are in the keychain, through `Bun.secrets`, keyed by the API's
-  origin and refreshed as they run out.
+  origin and refreshed as they run out, so two profiles for one site share a
+  sign-in. A machine whose keychain can't be reached keeps them in
+  `~/.crombolo/credentials` instead, JSON by origin, readable only by its owner,
+  and `crombolo login` says which it used. `CROMBOLO_CREDENTIALS=keychain|file`
+  chooses one. A sign-in is never in the profiles file.
+- **A CI job** names its site with `CROMBOLO_PROFILE_URL` (and `CROMBOLO_PROFILE_ENVIRONMENT`)
+  alongside its other settings, and signs in with its identity token, as above.
+- **A site folder's `remotes.toml`** (before story 352) is no longer read.
+  A command run where there is one says once how to move it:
+  `crombolo profile import`.
 - **Passphrases:** each pull and push seals its file with a passphrase made
   for that transfer alone.
 - **A lazily pulled site** reads media through from the remote it came from,
-  with `.crombolo/remote-media.json` saying which remote.
+  with `.crombolo/remote-media.json` saying which remote, under the same
+  sign-in the CLI keeps.
 
 ## Conformance
 

@@ -16,6 +16,8 @@ export default class MediaDelete extends BaseCommand {
   static override usage = 'media delete ITEM...'
   static override args = { item: itemsArg('media') }
   static override flags = { 'dry-run': dryRun }
+  static override access = 'site' as const
+  static override section = 'media' as const
   static override spec = {
     effects: 'idempotent',
     cardinality: 'bounded',

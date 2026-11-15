@@ -19,6 +19,8 @@ export default class FormsFieldRemove extends BaseCommand {
     alias: Args.string({ required: true, description: "the field's alias" }),
   }
   static override flags = { ...formEditFlags }
+  static override access = 'site' as const
+  static override section = 'forms' as const
   static override spec = formEditSpec
 
   async run() {

@@ -16,6 +16,8 @@ export default class ContentDelete extends BaseCommand {
   static override usage = 'content delete PAGE...'
   static override args = { page: itemsArg('content') }
   static override flags = { 'dry-run': dryRun }
+  static override access = 'site' as const
+  static override section = 'content' as const
   static override spec = {
     effects: 'idempotent',
     cardinality: 'bounded',

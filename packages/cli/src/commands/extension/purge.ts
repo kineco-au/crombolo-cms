@@ -21,6 +21,9 @@ export default class ExtensionPurge extends BaseCommand {
     'backup-taken': backupTaken,
   }
   static override audit = { category: 'system', action: 'Purge', entityType: 'Bundle' } as const
+  static override access = 'site' as const
+  static override section = 'settings' as const
+  static override adminOnly = true
   static override spec = {
     effects: 'idempotent',
     cardinality: 'single',

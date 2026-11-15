@@ -680,11 +680,11 @@ crombolo site apply [<pkg>]         a package directory, a .tgz, a bundle this s
                         [--no-schema] [--no-files]  decline a section the bundle carries
                         [--replace-files]           allow replacing files this site has
                         [--dry-run [--save]]        the check alone; --save writes the answers
-                        [--remote <name> [--env <id>] [--structure]]  apply it on a remote
-crombolo site runs    [--limit N] [--remote <name> [--env <id>]]
+                        [--profile <name> [--env <id>] [--structure]]  apply it on another site
+crombolo site runs    [--limit N] [--profile <name> [--env <id>]]
 crombolo site revert <run-id>
                         [--resolve <key>=discard|skip] [--resolve-all <choice>]
-                        [--force] [--backup-taken] [--remote <name> [--env <id>]]
+                        [--force] [--backup-taken] [--profile <name> [--env <id>]]
 
 crombolo dictionary export --out <file.udt|file.toml> [--key <name|uuid>]
 crombolo dictionary import <file.udt|file.toml> [--dry-run]

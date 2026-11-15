@@ -108,6 +108,8 @@ export default class TypesNew extends BaseCommand {
     block: many('data types: an element type offered as a block', '<alias>'),
     columns: Flags.integer({ summary: 'data types: the columns a block grid has' }),
   }
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = {
     effects: 'non_idempotent',
     cardinality: 'single',

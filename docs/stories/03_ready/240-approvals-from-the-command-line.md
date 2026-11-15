@@ -1,7 +1,7 @@
 # 240 — Approvals from the command line
 
 **Epic:** Q — A site from the command line · **Priority:** should · **Size:** M
-**Depends on:** a CLI sign-in story, not written yet
+**Depends on:** 350, 352
 
 ## Story
 
@@ -25,6 +25,24 @@ approval page; the CLI can wait on the job but not decide it.
 
 CI never approves (story 160): a CI token is refused on every decision, here as
 everywhere else.
+
+## Taken off hold (2026-11-15)
+
+Story 349 settled what this was waiting for:
+
+- **D1:** the site sets the CLI's access level (story 350). At `sign-in`, the
+  production default, every command that reads or changes data needs a person.
+  At `open` none does, but an approval decision always does. That settles the
+  "three tiers" question below: starting and recovery, signing in, and the
+  commands that only work with files never need a sign-in. A script acts as a
+  person through a personal access token (story 351), which is where the
+  "Scripts" note below goes. `--skip-approval` with a sign-in is limited to
+  administrators.
+- **D2:** editorial commands can act on a hosted site, approvals among them.
+  The option is `--profile`, which replaces `--remote` (story 352).
+
+What follows is the note written when the story was put on hold, kept for its
+findings.
 
 ## On hold (2026-11-06)
 
@@ -104,9 +122,9 @@ command has none, so this waits on how the CLI identifies people.
       `approvals withdraw <page>` act on a page's request, as the Approvals
       section does, with the same rules (an approver only for their stage's
       groups; no approving one's own request where the workflow forbids it)
-- [ ] `crombolo remote approve|decline <job> [--remote] [--comment]` decides a
+- [ ] `crombolo remote approve|decline <job> [--profile] [--comment]` decides a
       held push; refused for the person who pushed it (`own-push`) and for CI
-- [ ] Each takes `--remote <name>` to act on a remote site, through the remote
+- [ ] Each takes `--profile <name>` to act on a hosted site, through the remote
       protocol, as `bundle apply --remote` does (story 167)
 - [ ] `-o json`, audited as the back office's actions are
 - [ ] Tests on SQLite and Postgres; a CI token refused on every decision

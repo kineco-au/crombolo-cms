@@ -5,6 +5,7 @@ import { BaseCommand } from '../../base.ts'
 export default class KeysList extends BaseCommand {
   static override summary = 'the keys of your own on this machine, with their public lines'
   static override examples = ['<%= config.bin %> keys list']
+  static override access = 'none' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'bounded',

@@ -41,6 +41,8 @@ export default class TypesPropertyUpdate extends BaseCommand {
     sensitive: yesNo('member types: hidden from users who may not see sensitive data'),
     ...editFlags,
   }
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = editSpec
 
   async run() {

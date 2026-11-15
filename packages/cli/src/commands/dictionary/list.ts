@@ -15,6 +15,8 @@ export default class DictionaryList extends BaseCommand {
       helpValue: '<iso>',
     }),
   }
+  static override access = 'site' as const
+  static override section = 'translation' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'bounded',

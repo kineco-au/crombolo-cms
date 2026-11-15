@@ -3,8 +3,9 @@ import { join, resolve } from 'node:path'
 import { describeProvenance } from '@crombolo/server'
 import { RESOLUTIONS_FILE, writeResolutions } from '@crombolo/transfer'
 import { Args, Flags } from '@oclif/core'
-import { BaseCommand } from '../../base.ts'
+import { BaseCommand, type CommandAccess } from '../../base.ts'
 import * as ops from '../../operations/commands.ts'
+import { hostedOrHere } from '../../profiles/choose.ts'
 import {
   describeBundle,
   describePlaced,
@@ -16,22 +17,23 @@ import {
 } from '../../support/describe.ts'
 import { backupTaken, dryRun, transferFlags, transferInput } from '../../support/flags.ts'
 import { passphraseToOpen } from '../../support/prompt.ts'
+import { profileFlags } from '../../support/remote.ts'
 import { applyToRemote } from '../../support/remote-apply.ts'
 import { buildSeed, refuseFindings, withSeedPackage } from '../../support/seed.ts'
 import { siteConfig } from '../../support/site.ts'
 
 export default class SiteApply extends BaseCommand {
   static override summary =
-    'apply a site package here or to a remote: checked, backed up, one transaction'
+    'apply a site package here or to another site: checked, backed up, one transaction'
   static override description = [
     "The site package is a package directory or a .tgz. It replaces what it carries: this site's code, config and dependencies among them, which the check lists first. This site's own directory, the default, means its content files: content/pages, content/library and content/media, built first. An extension is installed with `crombolo extension install`, not applied.",
     'Applying again is three-way: a change only the package made is taken, one made only here is kept, and one made in both needs --resolve. An unchanged package changes nothing. `site revert <run>` puts it back.',
-    '--dry-run says what it would do and changes nothing; with --save it writes the answers given into the package. --remote applies it on a remote site instead, which checks and applies it there.',
+    '--dry-run says what it would do and changes nothing; with --save it writes the answers given into the package. --profile applies it to another site instead; a hosted one checks and applies it there.',
   ].join('\n\n')
   static override examples = [
     '<%= config.bin %> site apply --publish',
     '<%= config.bin %> site apply ./acme-bundle --dry-run',
-    '<%= config.bin %> site apply --remote production --publish',
+    '<%= config.bin %> site apply --profile production --publish',
   ]
   static override args = {
     bundle: Args.string({
@@ -44,14 +46,15 @@ export default class SiteApply extends BaseCommand {
     'backup-taken': backupTaken,
     'dry-run': dryRun,
     save: Flags.boolean({ summary: 'with --dry-run: write the answers into the package' }),
-    remote: Flags.string({ summary: 'apply it on this remote instead', helpValue: '<name>' }),
-    env: Flags.string({ summary: "with --remote: the remote's environment", helpValue: '<id>' }),
+    ...profileFlags,
     structure: Flags.boolean({
       summary:
-        'with --remote, from a site directory: send its schema, views, styles and code too, not its content alone',
+        'to a hosted site, from a site directory: send its schema, views, styles and code too, not its content alone',
     }),
   }
   static override audit = { category: 'content', action: 'Import', entityType: 'Bundle' } as const
+  static override access: CommandAccess = 'site'
+  static override section: typeof BaseCommand.section = 'settings'
   static override spec = {
     effects: 'idempotent',
     cardinality: 'single',
@@ -72,8 +75,9 @@ export default class SiteApply extends BaseCommand {
 
   async run() {
     const { args, flags } = await this.parse(SiteApply)
-    if (flags.remote) {
-      const sent = await applyToRemote(this, args.bundle ?? '.', flags)
+    const remote = hostedOrHere(flags)
+    if (remote) {
+      const sent = await applyToRemote(this, remote, args.bundle ?? '.', flags)
       if (sent.dryRun) this.changedNothing = true
       if (sent.blocked) this.outcome = 'blocked'
       return sent.result

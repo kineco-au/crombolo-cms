@@ -28,6 +28,8 @@ export default class WorkflowsNew extends BaseCommand {
       multiple: true,
     }),
   }
+  static override access = 'site' as const
+  static override section = ['content', 'workflow'] as const
   static override spec = {
     effects: 'non_idempotent',
     cardinality: 'single',

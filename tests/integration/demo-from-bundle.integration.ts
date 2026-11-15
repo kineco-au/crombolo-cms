@@ -33,6 +33,8 @@ function environment(): Record<string, string> {
     if (name.startsWith('CROMBOLO_')) delete inherited[name]
   return {
     ...inherited,
+    CROMBOLO_CREDENTIALS: 'file',
+    CROMBOLO_CREDENTIALS_FILE: join(dir, 'credentials'),
     CROMBOLO_DB: 'sqlite',
     CROMBOLO_TEMPLATES_DIR: templates,
     CROMBOLO_LOGS_DIR: join(dir, 'logs'),

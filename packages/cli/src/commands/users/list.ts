@@ -7,6 +7,8 @@ import { siteConfig } from '../../support/site.ts'
 export default class UsersList extends BaseCommand {
   static override summary = 'the back-office users: who, their groups, their state and last sign-in'
   static override flags = { ...pageFlags(50) }
+  static override access = 'site' as const
+  static override section = 'users' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'unbounded',

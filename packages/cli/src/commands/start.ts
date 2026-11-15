@@ -40,6 +40,7 @@ export default class Start extends BaseCommand {
     'backup-taken': backupTaken,
     ...transferFlags,
   }
+  static override access = 'none' as const
   static override spec = {
     effects: 'non_idempotent',
     outputKind: 'stream',

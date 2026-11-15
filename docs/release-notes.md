@@ -6,6 +6,71 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+### Features
+
+- **Profiles in place of remotes (352).** The sites you reach are named once, in
+  `~/.crombolo/profiles` (`CROMBOLO_PROFILES_FILE` puts it elsewhere), and chosen with
+  `--profile` from any folder: a running site by its address, or a site folder on this
+  machine. `crombolo profile add|list|remove` replace `remote add|list|remove`, and change
+  only the profile they are about, comments included; `profile import` copies a site's
+  `remotes.toml`. `--profile` replaces `--remote` on every command, and `login`, `logout`
+  and `whoami` take it in place of their argument.
+- **Which site a command acts on (352):** `--profile`, then `CROMBOLO_PROFILE`, then
+  `CROMBOLO_PROFILE_URL` with `CROMBOLO_PROFILE_ENVIRONMENT`, then the `default` profile. The default is
+  used only by `site deploy`, `remote trust` and `remote job` and for the side of `push`
+  or `pull` it fills, so a command that can act on this folder's site never goes elsewhere
+  by itself. With none of them, those commands are refused, listing the profiles there are.
+- **`pull` and `push` between any two sites (352).** `--from` and `--to` name either side,
+  a running site or a site folder: `push` goes from this folder's site to the default, and
+  `pull` the other way round. Between two folders the copy is checked and backed up as
+  `site apply` is; between two running sites it passes through this machine. The site
+  replaced keeps its own checks, protection, approvals and sign-in level.
+- **Sign-ins without a keychain (352).** A machine with no keychain, such as a container,
+  keeps sign-ins in `~/.crombolo/credentials`, which only its owner can read, and `login`
+  says which it used. `CROMBOLO_CREDENTIALS=keychain|file` chooses one.
+- **`@crombolo/cli/plugin` (352)** adds `chooseSite`, `connectSite`, `hostedOrHere`,
+  `profileFlags` and `hostedFlags`, so a plugin's commands choose a site as the CLI's do.
+- **The command line signs in to the site it changes (350).** `cliAccess`, or
+  `CROMBOLO_CLI_ACCESS`, is `open` or `sign-in`. At `sign-in` every command that reads or
+  changes the site needs someone signed in, and acts as them: the audit log names them, and
+  their groups decide what they may do, by the section each command's screen is in and,
+  for pages and media, as the back office decides. At `open` a command runs as the command
+  line, unless someone has signed in. A production server left at `open` says so when it
+  starts. `docs/operations.md`, "Signing in from the command line".
+- **`crombolo login` with no `--profile` signs in to this folder's site (350),** through
+  its running server, so every way the back office signs people in works, two-factor
+  included. The sign-in is a device under "Signed-in devices", kept where a hosted site's
+  is, and lets commands run with the server stopped while it lasts. `logout` ends it in the
+  site's database, and `whoami` names the person, the site and its access level.
+- **`--skip-approval` is an administrator's once someone is signed in (350).**
+- **`CROMBOLO_CREDENTIALS_FILE` (350)** puts the credentials file somewhere other than
+  `~/.crombolo/credentials`.
+- **`@crombolo/cli/plugin` (350):** a command declares `access` (`none`, `site` or
+  `person`), and may declare its `section` and `adminOnly`. One that declares nothing is
+  taken to be `site`.
+
+### Upgrade notes
+
+- **`remotes.toml` is no longer read (352).** In each site's folder, run
+  `crombolo profile import` once to copy its remotes into your profiles; a command run where
+  one is says so. Once everyone has imported it, the committed file can be deleted.
+- **`push <name>` and `pull <name>` become `push --to <name>` and `pull --from <name>`
+  (352),** and `login <name>`, `logout <name>` and `whoami <name>` take `--profile <name>`.
+  `--remote <name>` is `--profile <name>` on every command. The old forms are refused,
+  saying what to use.
+- **CI jobs set `CROMBOLO_PROFILE_URL` (352),** with `CROMBOLO_PROFILE_ENVIRONMENT` when the site has more
+  than one environment, in place of `--remote <name>` and a committed `remotes.toml`. The
+  job's identity token signs it in as before.
+- **Production commands need someone signed in (350).** `CROMBOLO_CLI_ACCESS` is
+  `sign-in` when `NODE_ENV` is `production`. A deploy that runs data commands itself, such
+  as `site apply` in its container, needs a personal access token from this release, with
+  `CROMBOLO_CLI_TOKENS=true` (story 351), or else `CROMBOLO_CLI_ACCESS=open`. Starting,
+  upgrading and `admin reset-password` need no sign-in.
+- **A plain `crombolo login` no longer signs in to the only remote (350).** With no
+  `--profile` it means this folder's site, as `logout` and `whoami` do; a hosted site is
+  named with `--profile <name>`.
+- **No migrations.**
+
 ## v0.65.1 — 2026-11-14
 
 v0.65.0 was tagged but not published: its release run's SQLite load test failed. This

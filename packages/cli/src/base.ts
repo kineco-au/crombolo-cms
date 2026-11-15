@@ -1,12 +1,15 @@
 /**
  * What every crombolo command shares (story 150): the output flag, the failure
- * envelope and exit codes, the audit entry, and the description `crombolo
- * schema` publishes. A command's `run()` returns its result; in JSON mode that
- * result is the output, and in text mode the command says it as it goes.
+ * envelope and exit codes, the audit entry, the description `crombolo
+ * schema` publishes, and who it acts as (story 350). A command's `run()`
+ * returns its result; in JSON mode that result is the output, and in text mode
+ * the command says it as it goes.
  */
+import type { AppAlias } from '@crombolo/core'
 import { Command, Errors, Flags } from '@oclif/core'
 import { CliError, type ErrorKind, exitCodeOf, OUTCOMES, type OutcomeName } from './errors.ts'
 import type * as ops from './operations/commands.ts'
+import type { ProfileFlagValues } from './profiles/choose.ts'
 import type { Io } from './support/site.ts'
 
 /** A field of one output record, in clispec's closed set of types. */
@@ -36,6 +39,12 @@ export interface CommandSpec {
   fieldsArg?: string
   stability?: 'stable' | 'beta' | 'experimental' | 'deprecated'
 }
+
+/**
+ * Whether a command needs someone signed in (story 350): `none` never does,
+ * `site` does where the site's `cliAccess` is `sign-in`, and `person` always does.
+ */
+export type CommandAccess = 'none' | 'site' | 'person'
 
 export interface AuditSpec {
   category: ops.CommandAudit['category']
@@ -69,6 +78,12 @@ export abstract class BaseCommand extends Command implements Io {
 
   static spec: CommandSpec
   static audit?: AuditSpec
+  /** Undeclared, a command is taken to be `site`. */
+  static access?: CommandAccess
+  /** The back-office section its screen is in: a signed-in person needs one of these. */
+  static section?: AppAlias | readonly AppAlias[]
+  /** For administrators only, as the back office has it. */
+  static adminOnly?: boolean
 
   /** Set by a command whose check found what it reports: the exit code, with no envelope. */
   protected outcome?: OutcomeName
@@ -76,6 +91,23 @@ export abstract class BaseCommand extends Command implements Io {
   protected auditKey?: string
   /** A dry run or a plan changes nothing, so it writes no audit entry. */
   protected changedNothing = false
+
+  override async init(): Promise<void> {
+    await super.init()
+    if ((this.constructor as typeof BaseCommand).access === 'none') return
+    const { gate } = await import('./support/gate.ts')
+    await gate(this, await this.gatedSites())
+  }
+
+  /**
+   * The site folders whose sign-in the command needs: this folder's, or the
+   * one a folder profile names; none for a hosted site, which checks its own.
+   */
+  protected async gatedSites(): Promise<string[]> {
+    const { sitesFor } = await import('./support/gate.ts')
+    const command = this.constructor as typeof BaseCommand
+    return sitesFor(command, async () => (await this.parse(command)).flags as ProfileFlagValues)
+  }
 
   override jsonEnabled(): boolean {
     return wantsJson(this.argv)
@@ -120,10 +152,12 @@ export abstract class BaseCommand extends Command implements Io {
       import('./operations/commands.ts'),
       import('./support/site.ts'),
     ])
+    const { signedIn } = await import('./support/acting.ts')
     await recordCommand(await siteConfig(), {
       ...audit,
       command: `crombolo ${(this.id ?? '').replaceAll(':', ' ')}`,
       entityKey: this.auditKey,
+      by: signedIn(),
     })
   }
 

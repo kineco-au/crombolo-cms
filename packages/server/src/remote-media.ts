@@ -12,7 +12,7 @@ import { join } from 'node:path'
 import { writeFileAtomic } from './atomic-write.ts'
 import { logger } from './logging.ts'
 import type { MediaStore, StoredFile } from './media-store.ts'
-import { freshAccessToken, type Keychain, osKeychain } from './remote-credentials.ts'
+import { freshAccessToken, type Keychain, userKeychain } from './remote-credentials.ts'
 
 export const REMOTE_MEDIA_FILE = join('.crombolo', 'remote-media.json')
 
@@ -48,7 +48,7 @@ export function withRemoteMedia(
 ): MediaStore {
   const source = readRemoteMedia(siteDir)
   if (!source) return store
-  const keychain = options.keychain ?? osKeychain()
+  const keychain = options.keychain ?? userKeychain()
   const http = options.http ?? fetch
   const log = logger('media')
   let warned = false

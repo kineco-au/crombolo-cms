@@ -4,6 +4,8 @@ import { siteConfig } from '../../support/site.ts'
 
 export default class MaintenanceStatus extends BaseCommand {
   static override summary = 'whether editing is paused, by whom and why'
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'single',

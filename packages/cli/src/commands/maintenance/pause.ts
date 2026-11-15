@@ -11,6 +11,9 @@ export default class MaintenancePause extends BaseCommand {
     reason: Flags.string({ summary: 'what editors are told', helpValue: '<text>' }),
   }
   static override audit = { category: 'system', action: 'PauseEditing' } as const
+  static override access = 'site' as const
+  static override section = 'settings' as const
+  static override adminOnly = true
   static override spec = {
     effects: 'idempotent',
     cardinality: 'single',

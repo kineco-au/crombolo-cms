@@ -19,6 +19,8 @@ export default class TypesPurge extends BaseCommand {
     'backup-taken': backupTaken,
   }
   static override audit = { category: 'schema', action: 'Purge', entityType: 'Schema' } as const
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = {
     effects: 'idempotent',
     cardinality: 'bounded',

@@ -30,6 +30,8 @@ export default class ContentMove extends BaseCommand {
     }),
     'dry-run': dryRun,
   }
+  static override access = 'site' as const
+  static override section = 'content' as const
   static override spec = {
     effects: 'idempotent',
     cardinality: 'bounded',

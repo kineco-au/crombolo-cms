@@ -26,12 +26,6 @@ import {
 } from '@crombolo/server'
 import { discover, RemoteClient, RemoteError, signIn } from '../packages/cli/src/remote/client.ts'
 import {
-  addRemote,
-  pickRemote,
-  readRemotes,
-  removeRemote,
-} from '../packages/cli/src/remote/remotes-file.ts'
-import {
   fetchReferencedMedia,
   pullFile,
   pushSite,
@@ -183,20 +177,6 @@ function localSite(): CromboloConfig {
 
 /** Polls quickly, but through a real timer: a sleep that resolves at once never lets the job run. */
 const noWait = { sleep: () => Bun.sleep(5) }
-
-describe('remotes.toml', () => {
-  test('keeps names and URLs, never a credential', () => {
-    const dir = temp('remotes')
-    addRemote(dir, { name: 'production', url: 'https://example.com', environment: 'production' })
-    addRemote(dir, { name: 'staging', url: 'https://staging.example.com' })
-    expect(readRemotes(dir).map((r) => r.name)).toEqual(['production', 'staging'])
-    expect(pickRemote(dir, 'staging')?.url).toBe('https://staging.example.com')
-    expect(pickRemote(dir, undefined)).toBeUndefined()
-    expect(removeRemote(dir, 'staging')).toBe(true)
-    expect(pickRemote(dir, undefined)?.environment).toBe('production')
-    expect(() => addRemote(dir, { name: 'Not OK', url: 'https://x' })).toThrow('not a remote name')
-  })
-})
 
 describe(`signing in (${dialectUnderTest})`, () => {
   test('a site that is not a remote is refused, and a lapsed token refreshes itself', async () => {

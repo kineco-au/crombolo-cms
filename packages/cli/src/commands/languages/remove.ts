@@ -25,6 +25,8 @@ export default class LanguagesRemove extends BaseCommand {
     'dry-run': Flags.boolean({ summary: 'say what would change, and change nothing' }),
     'no-apply': Flags.boolean({ summary: 'change it, and leave the database as it is' }),
   }
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = editSpec
 
   async run() {

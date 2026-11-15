@@ -9,6 +9,7 @@ import { createWriteStream } from 'node:fs'
 import {
   freshAccessToken,
   type Keychain,
+  type RemoteSignIn,
   readSignIn,
   saveSignIn,
 } from '@crombolo/server/remote-credentials'
@@ -134,6 +135,13 @@ export async function discover(url: string, http: typeof fetch = fetch): Promise
   return body
 }
 
+export interface DeviceSignInOptions {
+  clientName: string
+  onCode(code: string, url: string): void | Promise<void>
+  http?: typeof fetch
+  sleep?: (ms: number) => Promise<void>
+}
+
 /**
  * Signs in by the device grant (RFC 8628): `onCode` shows the person the code
  * and the page to approve it on, then this polls until they decide. The tokens
@@ -142,13 +150,16 @@ export async function discover(url: string, http: typeof fetch = fetch): Promise
 export async function signIn(
   discovery: Discovery,
   keychain: Keychain,
-  options: {
-    clientName: string
-    onCode(code: string, url: string): void | Promise<void>
-    http?: typeof fetch
-    sleep?: (ms: number) => Promise<void>
-  },
+  options: DeviceSignInOptions,
 ): Promise<void> {
+  await saveSignIn(keychain, discovery.api, await deviceSignIn(discovery.auth, options))
+}
+
+/** The device grant against a site's own endpoints, answering the tokens it gives. */
+export async function deviceSignIn(
+  auth: Pick<Discovery['auth'], 'deviceAuthorization' | 'token' | 'clientId' | 'grantType'>,
+  options: DeviceSignInOptions,
+): Promise<RemoteSignIn> {
   const http = options.http ?? fetch
   const sleep = options.sleep ?? ((ms: number) => Bun.sleep(ms))
   const form = (url: string, fields: Record<string, string>) =>
@@ -157,11 +168,11 @@ export async function signIn(
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams(fields).toString(),
     })
-  const started = await form(discovery.auth.deviceAuthorization, {
-    client_id: discovery.auth.clientId,
+  const started = await form(auth.deviceAuthorization, {
+    client_id: auth.clientId,
     client_name: options.clientName,
   })
-  if (!started.ok) throw new Error(`The remote would not start a sign-in (${started.status}).`)
+  if (!started.ok) throw new Error(`The site would not start a sign-in (${started.status}).`)
   const codes = (await started.json()) as {
     device_code: string
     user_code: string
@@ -175,10 +186,10 @@ export async function signIn(
   const deadline = Date.now() + codes.expires_in * 1000
   for (;;) {
     await sleep(interval)
-    const polled = await form(discovery.auth.token, {
-      grant_type: discovery.auth.grantType,
+    const polled = await form(auth.token, {
+      grant_type: auth.grantType,
       device_code: codes.device_code,
-      client_id: discovery.auth.clientId,
+      client_id: auth.clientId,
     })
     const body = (await polled.json().catch(() => ({}))) as {
       error?: string
@@ -186,16 +197,14 @@ export async function signIn(
       refresh_token?: string
       expires_in?: number
     }
-    if (polled.ok && body.access_token) {
-      await saveSignIn(keychain, discovery.api, {
+    if (polled.ok && body.access_token)
+      return {
         accessToken: body.access_token,
         refreshToken: body.refresh_token ?? '',
         expiresAt: Date.now() + (body.expires_in ?? 0) * 1000,
-        tokenUrl: discovery.auth.token,
-        clientId: discovery.auth.clientId,
-      })
-      return
-    }
+        tokenUrl: auth.token,
+        clientId: auth.clientId,
+      }
     if (body.error === 'slow_down') interval += 5000
     else if (body.error === 'access_denied') throw new Error('The sign-in was declined.')
     else if (body.error === 'expired_token' || Date.now() > deadline)
@@ -211,18 +220,24 @@ export class RemoteClient {
   #keychain: Keychain
   #http: typeof fetch
   #source: ((force: boolean) => Promise<string | undefined>) | undefined
+  #login: string
 
-  /** `source`, when given, supplies the token in place of the keychain: CI's, for one. */
+  /**
+   * `source`, when given, supplies the token in place of the keychain: CI's,
+   * for one. `login` is the command a refusal says to run.
+   */
   constructor(
     discovery: Discovery,
     keychain: Keychain,
     http: typeof fetch = fetch,
     source?: (force: boolean) => Promise<string | undefined>,
+    login = 'crombolo login --profile <name>',
   ) {
     this.discovery = discovery
     this.#keychain = keychain
     this.#http = http
     this.#source = source
+    this.#login = login
   }
 
   /** Whether this client acts as CI by a trust rule rather than as a signed-in person. */
@@ -246,8 +261,7 @@ export class RemoteClient {
           status: 401,
           code: 'sign-in-required',
           title: `Not signed in to ${new URL(this.discovery.api).origin}`,
-          detail:
-            'Run `crombolo login` first, or in CI give the job an identity token that a trust rule on the site accepts.',
+          detail: `Run \`${this.#login}\` first, or in CI give the job an identity token that a trust rule on the site accepts.`,
         })
       const headers = new Headers(init.headers)
       headers.set('authorization', `Bearer ${token}`)

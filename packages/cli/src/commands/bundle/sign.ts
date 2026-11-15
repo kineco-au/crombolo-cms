@@ -33,6 +33,7 @@ export default class BundleSign extends BaseCommand {
       exclusive: ['public-log'],
     }),
   }
+  static override access = 'none' as const
   static override spec = {
     effects: 'idempotent',
     cardinality: 'single',

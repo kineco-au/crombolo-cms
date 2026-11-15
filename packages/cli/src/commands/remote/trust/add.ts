@@ -1,8 +1,9 @@
 import { Args, Flags } from '@oclif/core'
 import { BaseCommand } from '../../../base.ts'
 import { CliError } from '../../../errors.ts'
+import { chooseSite, refuseNamed } from '../../../profiles/choose.ts'
 import { describeRule, issuerFor, MAY, type TrustRuleView } from '../../../remote/trust.ts'
-import { connectRemote } from '../../../support/remote.ts'
+import { connectSite, hostedFlags } from '../../../support/remote.ts'
 
 export default class RemoteTrustAdd extends BaseCommand {
   static override summary =
@@ -12,13 +13,14 @@ export default class RemoteTrustAdd extends BaseCommand {
     'push-protected lets the job change a protected environment with nobody approving it.',
   ].join('\n\n')
   static override examples = [
-    '<%= config.bin %> remote trust add production --name "Deploys" --provider github --repository acme/site --branch main --may push --may push-protected',
-    '<%= config.bin %> remote trust add production --name "Deploys with code" --provider github --repository acme/site --environment production --may push --may push-protected --may apply-structure --may install-code',
+    '<%= config.bin %> remote trust add --profile production --name "Deploys" --provider github --repository acme/site --branch main --may push --may push-protected',
+    '<%= config.bin %> remote trust add --profile production --name "Deploys with code" --provider github --repository acme/site --environment production --may push --may push-protected --may apply-structure --may install-code',
   ]
   static override args = {
-    remote: Args.string({ description: 'the remote; the only one, when there is one' }),
+    remote: Args.string({ description: 'gone: --profile names the site', hidden: true }),
   }
   static override flags = {
+    ...hostedFlags,
     name: Flags.string({ required: true, summary: 'what to call the rule' }),
     provider: Flags.string({
       required: true,
@@ -44,6 +46,7 @@ export default class RemoteTrustAdd extends BaseCommand {
       summary: 'what it may do; repeat for each',
     }),
   }
+  static override access = 'site' as const
   static override spec = {
     effects: 'non_idempotent',
     cardinality: 'single',
@@ -67,7 +70,8 @@ export default class RemoteTrustAdd extends BaseCommand {
       throw new CliError('usage', 'Which branch, tag or environment?', {
         hint: 'Pass one of --branch, --tag or --environment.',
       })
-    const { client } = await connectRemote(args.remote, undefined)
+    refuseNamed(args.remote)
+    const { client } = await connectSite(chooseSite(flags, { mayDefault: true }))
     const rule = await client.post<TrustRuleView>('trust', {
       name: flags.name,
       issuer: issuerFor(flags.provider),

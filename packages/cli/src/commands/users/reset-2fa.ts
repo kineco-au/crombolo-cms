@@ -15,6 +15,8 @@ export default class UsersReset2fa extends BaseCommand {
     action: 'ResetTwoFactor',
     entityType: 'User',
   } as const
+  static override access = 'site' as const
+  static override section = 'users' as const
   static override spec = {
     effects: 'idempotent',
     cardinality: 'single',

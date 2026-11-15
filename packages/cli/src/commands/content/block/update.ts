@@ -41,6 +41,8 @@ export default class ContentBlockUpdate extends BaseCommand {
     alias: Flags.string({ summary: 'its alias; "" for none', helpValue: '<alias>' }),
     ...blockFlags,
   }
+  static override access = 'site' as const
+  static override section = 'content' as const
   static override spec = blockSpec
 
   async run() {

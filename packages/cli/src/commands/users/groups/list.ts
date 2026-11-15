@@ -7,6 +7,8 @@ export default class UsersGroupsList extends BaseCommand {
   static override description =
     "The site's own groups travel with it and the `users groups` commands change them. One made in the back office lives in this environment's database alone: `crombolo users groups export <alias>` makes it one of the site's."
   static override examples = ['<%= config.bin %> users groups list']
+  static override access = 'site' as const
+  static override section = 'users' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'bounded',

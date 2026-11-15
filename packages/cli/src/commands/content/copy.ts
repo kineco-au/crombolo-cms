@@ -22,6 +22,8 @@ export default class ContentCopy extends BaseCommand {
     descendants: Flags.boolean({ summary: 'the pages below it too' }),
     'dry-run': dryRun,
   }
+  static override access = 'site' as const
+  static override section = 'content' as const
   static override spec = {
     effects: 'non_idempotent',
     cardinality: 'single',

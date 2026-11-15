@@ -11,6 +11,7 @@ import { siteConfig } from '../../support/site.ts'
 export default class ComponentsCheck extends BaseCommand {
   static override summary = 'compile every component, and report one a type declares with no file'
   static override description = 'Exits 20 when a component does not compile or type-check.'
+  static override access = 'none' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'single',

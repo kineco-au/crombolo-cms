@@ -12,7 +12,8 @@ import { OPERATOR_SCOPE } from '@crombolo/server'
 import { Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
 import { CliError } from '../../errors.ts'
-import { connectRemote, needEnvironment } from '../../support/remote.ts'
+import { type HostedSite, hostedOrHere } from '../../profiles/choose.ts'
+import { connectSite, needEnvironment, profileFlags } from '../../support/remote.ts'
 import { resolveItem, withSite } from '../../support/tree.ts'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -30,13 +31,13 @@ export function whereClause(text: string): { alias: string; op: string; value?: 
 export default class ContentFind extends BaseCommand {
   static override summary = 'find pages by their type, place, dates, state, name, text and values'
   static override description = [
-    'Answers from the drafts, as the back office shows them. Here, on the site’s own database, it sees everything; with --remote it answers as you, within your start nodes and what you may read there.',
+    'Answers from the drafts, as the back office shows them. Here, on the site’s own database, it sees everything; on a hosted site, chosen with --profile, it answers as you, within your start nodes and what you may read there.',
     'A value comparison reads the property as its editor stores it, so numbers and dates compare as numbers and dates. Structured values (blocks, pickers, rich text) take only `exists` and `empty`; --text searches them.',
   ].join('\n\n')
   static override examples = [
     '<%= config.bin %> content find --type newsPage --updated-from 2026-10-01 --where "summary empty"',
     '<%= config.bin %> content find --under /Products --where "price gte 10" --sort updateDate --desc',
-    '<%= config.bin %> content find --text harbour --state changed --remote production -o json',
+    '<%= config.bin %> content find --text harbour --state changed --profile production -o json',
   ]
   static override flags = {
     type: Flags.string({
@@ -79,12 +80,14 @@ export default class ContentFind extends BaseCommand {
     desc: Flags.boolean({ summary: 'newest, last or Z first' }),
     skip: Flags.integer({ summary: 'how many to skip', min: 0, default: 0 }),
     take: Flags.integer({ summary: 'how many to return', min: 1, max: 100, default: 25 }),
-    remote: Flags.string({
-      summary: 'search a hosted site through this remote, signed in as you',
+    ...profileFlags,
+    profile: Flags.string({
+      summary: 'search the site this profile names; a hosted one as you, signed in',
       helpValue: '<name>',
     }),
-    env: Flags.string({ summary: "the remote's environment", helpValue: '<id>' }),
   }
+  static override access = 'site' as const
+  static override section = 'content' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'bounded',
@@ -152,8 +155,9 @@ export default class ContentFind extends BaseCommand {
       take: flags.take,
     }
 
-    const result = flags.remote
-      ? await this.#remote(flags.remote, flags.env, body, flags.under, flags.parent)
+    const site = hostedOrHere(flags)
+    const result = site
+      ? await this.#remote(site, body, flags.under, flags.parent)
       : await this.#local(body, flags.under, flags.parent)
 
     for (const item of result.items) {
@@ -193,8 +197,7 @@ export default class ContentFind extends BaseCommand {
   }
 
   async #remote(
-    name: string,
-    env: string | undefined,
+    site: HostedSite,
     body: Record<string, unknown>,
     under: string | undefined,
     parent: string | undefined,
@@ -205,8 +208,8 @@ export default class ContentFind extends BaseCommand {
       ['--parent', parent],
     ] as const)
       if (ref && !UUID.test(ref))
-        throw new CliError('usage', `${flag} takes a page's uuid with --remote.`)
-    const { discovery, client, environment } = await connectRemote(name, env)
+        throw new CliError('usage', `${flag} takes a page's uuid on a hosted site.`)
+    const { discovery, client, environment } = await connectSite(site)
     if (!discovery.capabilities?.includes('content-query'))
       throw new CliError(
         'refused',

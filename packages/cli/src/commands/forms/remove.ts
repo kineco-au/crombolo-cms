@@ -17,6 +17,8 @@ export default class FormsRemove extends BaseCommand {
   static override examples = ['<%= config.bin %> forms remove oldSurvey']
   static override args = { alias: Args.string({ required: true, description: "the form's alias" }) }
   static override flags = { ...formEditFlags }
+  static override access = 'site' as const
+  static override section = 'forms' as const
   static override spec = formEditSpec
 
   async run() {

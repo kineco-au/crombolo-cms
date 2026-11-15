@@ -6,7 +6,6 @@
  * share it.
  */
 import { readFileSync } from 'node:fs'
-import { operatorActor } from '@crombolo/content'
 import {
   type ContentTypeAggregate,
   type DocumentAggregate,
@@ -38,7 +37,7 @@ import {
 } from '@crombolo/server'
 import { Flags } from '@oclif/core'
 import { CliError } from '../errors.ts'
-import { commandActorName } from '../operations/commands.ts'
+import { commandActor } from './acting.ts'
 import { type Io, siteConfig } from './site.ts'
 
 const OBJECT_TYPES: Record<PathKind, string> = {
@@ -148,8 +147,7 @@ export async function withPages<T>(work: (site: PageSite) => Promise<T>): Promis
 }
 
 /** The person at this command line, under the rules a back office save follows. */
-export const pageActor = (skipApproval = false) =>
-  operatorActor(commandActorName(), { skipApproval })
+export const pageActor = (skipApproval = false) => commandActor({ skipApproval })
 
 export interface FoundPage {
   doc: DocumentAggregate
@@ -337,9 +335,10 @@ export async function savePage(
   flags: { publish?: boolean; 'skip-approval'?: boolean },
 ) {
   const actor = pageActor(flags['skip-approval'])
+  // Read and written in one go, so there is no older copy to check a revision against.
   const saved = flags.publish
-    ? await site.operations.saveAndPublish(actor, key, input, null)
-    : await site.operations.save(actor, key, input)
+    ? await site.operations.saveAndPublish(actor, key, input, null, { overwrite: true })
+    : await site.operations.save(actor, key, input, { overwrite: true })
   if (!saved.ok) throw refusedPage(saved)
   io.say(flags.publish ? '  published' : '\nA draft: `crombolo content publish` takes it live.')
 }

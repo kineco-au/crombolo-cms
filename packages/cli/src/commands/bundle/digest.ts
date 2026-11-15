@@ -15,6 +15,7 @@ export default class BundleDigest extends BaseCommand {
       description: 'a package directory, a .tgz, a URL, or name@version on the registry',
     }),
   }
+  static override access = 'none' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'single',

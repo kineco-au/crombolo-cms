@@ -5,9 +5,9 @@
 import { mkdirSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 
-export function writeFileAtomic(path: string, data: string | Uint8Array): void {
+export function writeFileAtomic(path: string, data: string | Uint8Array, mode?: number): void {
   mkdirSync(dirname(path), { recursive: true })
   const temporary = `${path}.${process.pid}.${Date.now().toString(36)}.tmp`
-  writeFileSync(temporary, data)
+  writeFileSync(temporary, data, mode === undefined ? undefined : { mode })
   renameSync(temporary, path)
 }

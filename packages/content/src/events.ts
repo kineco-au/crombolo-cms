@@ -248,7 +248,8 @@ export function liveEventsFor(event: DocumentEvent): Array<{
  */
 export function auditEntryFor(event: DocumentEvent, actor: Actor) {
   const entry = auditFor(event)
-  const skipped = actor.kind === 'operator' && actor.skipApproval === true
+  const skipped =
+    (actor.kind === 'operator' || actor.kind === 'user') && actor.skipApproval === true
   return {
     ...entry,
     source: actor.origin.source,

@@ -1,20 +1,20 @@
 import { describeProvenance, type InstalledBundles } from '@crombolo/server'
-import { Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
+import { hostedOrHere, profileArg } from '../../profiles/choose.ts'
 import { remoteBundles, withLocalBundles } from '../../support/bundles.ts'
+import { profileFlags } from '../../support/remote.ts'
 
 export default class ExtensionList extends BaseCommand {
-  static override summary = 'the bundles this site, or a remote, has installed'
+  static override summary = 'the bundles this site, or another, has installed'
   static override description =
     'Each with its version, where it was built when it is signed, whether its server features are on, what it was granted and by whom, and whether installed changes wait for `crombolo restart`.'
   static override examples = [
     '<%= config.bin %> extension list',
-    '<%= config.bin %> extension list --remote production',
+    '<%= config.bin %> extension list --profile production',
   ]
-  static override flags = {
-    remote: Flags.string({ summary: "a remote's bundles instead", helpValue: '<name>' }),
-    env: Flags.string({ summary: "with --remote: the remote's environment", helpValue: '<id>' }),
-  }
+  static override flags = profileFlags
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'single',
@@ -22,13 +22,14 @@ export default class ExtensionList extends BaseCommand {
       { name: 'restartPending', type: 'object', nullable: true },
       { name: 'items', type: 'array', items: { type: 'object' } },
     ],
-    errors: ['auth', 'not_found', 'unavailable'],
+    errors: ['usage', 'auth', 'not_found', 'unavailable'],
   } as const
 
   async run() {
     const { flags } = await this.parse(ExtensionList)
-    const listed: InstalledBundles = flags.remote
-      ? await (await remoteBundles(flags.remote, flags.env)).installed()
+    const site = hostedOrHere(flags)
+    const listed: InstalledBundles = site
+      ? await (await remoteBundles(site)).installed()
       : await withLocalBundles((admin) => admin.installed())
     if (listed.items.length === 0) this.say('No bundles are installed.')
     for (const item of listed.items) {
@@ -49,7 +50,7 @@ export default class ExtensionList extends BaseCommand {
     }
     if (listed.restartPending)
       this.say(
-        `\n  Waiting for a restart: ${listed.restartPending.reasons.join('; ')}. \`crombolo restart${flags.remote ? ` --remote ${flags.remote}` : ''}\` makes it live.`,
+        `\n  Waiting for a restart: ${listed.restartPending.reasons.join('; ')}. \`crombolo restart${site ? profileArg(site) : ''}\` makes it live.`,
       )
     return { restartPending: listed.restartPending, items: listed.items }
   }

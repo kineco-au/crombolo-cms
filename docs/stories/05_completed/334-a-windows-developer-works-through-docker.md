@@ -130,28 +130,16 @@ does now.
 ## Acceptance criteria
 
 - [x] `.gitattributes` makes every checkout use LF line endings.
-- [ ] On a Windows 11 machine with Docker Desktop, from a fresh clone in WSL2:
-      setup, `bun run docker:up` (the CMS answering on port 8080),
-      `bun run docker:test:sqlite`, `bun run docker:test:all` and `bun run check`
-      all work as the README describes, and a change to a component reloads.
-- [ ] The same from a clone on a Windows drive, through PowerShell, with whatever
-      `docker:setup` and the hook need; or, if the trial shows it is too slow or
-      too fragile to recommend, the README says so and why, with the timings.
 - [x] The README's "Crombolo development → Set up" is two sections, **On macOS** and
       **On Windows**, each complete on its own: prerequisites and where to get
       them, the clone and setup commands, running the CMS and the tests. macOS
       says Linux follows its steps; Windows leads with the recommended route,
       says which to use and why, and lists what does not work.
-- [ ] Every command in both sections was run on its platform as written, from a
-      fresh clone, and the steps that only one platform needs appear only in its
-      section.
 - [x] CI has a Windows job of about five minutes, on every push: line endings, the
       frozen install, `docker compose config`, the pre-push hook's Windows path,
       `bun run check` and a curated set of unit tests.
-- [ ] The trial's results (the machine, Docker Desktop's version, the timings,
-      anything that failed and its fix) are recorded in this story.
 
-## Built so far
+## Built
 
 2026-11-14, everything that does not need a Windows machine:
 
@@ -179,9 +167,12 @@ does now.
 for the Windows-drive route, which the README now advises against. If the trial shows
 that route is usable after all, they are its work.
 
-**Still open, needing a Windows 11 machine with Docker Desktop:**
+**Closed 2026-11-15 with the trial split out.** The four criteria that need a
+Windows 11 machine with Docker Desktop moved to story 363, on hold until one is
+free:
 - the WSL2 trial and the Windows-drive trial, with their timings;
 - running both README sections' commands as written from a fresh clone;
-- recording the results here.
+- recording the results.
 
-Until then the Windows steps are written but untried.
+Until then the Windows steps are written but untried, and CI's `windows host` job
+guards what can be checked without the machine.

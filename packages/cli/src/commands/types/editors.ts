@@ -17,6 +17,8 @@ export default class TypesEditors extends BaseCommand {
       description: 'one editor, by the name `types new data-type --editor` takes',
     }),
   }
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'bounded',

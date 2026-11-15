@@ -16,6 +16,8 @@ export default class FormsNew extends BaseCommand {
   static override flags = {
     name: Flags.string({ summary: "the form's name", helpValue: '<name>' }),
   }
+  static override access = 'site' as const
+  static override section = 'forms' as const
   static override spec = {
     effects: 'non_idempotent',
     cardinality: 'single',

@@ -12,6 +12,8 @@ export default class Status extends BaseCommand {
     'what this environment is, and what is wrong with it, without starting it'
   static override description =
     'Exits 20 when something would stop the site working; the problems are in the output. `crombolo site show` says what the site is.'
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'single',

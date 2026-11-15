@@ -17,13 +17,15 @@ export default class AuditList extends BaseCommand {
   static override examples = [
     '<%= config.bin %> audit list --since 2026-10-01 --category sign-in',
     '<%= config.bin %> audit list --user ada@example.com -o json',
-    '<%= config.bin %> audit list --remote production --limit 100',
+    '<%= config.bin %> audit list --profile production --limit 100',
   ]
   static override flags = {
     ...auditFlags,
     limit: Flags.integer({ summary: 'how many on a page', default: 50, min: 1, max: 500 }),
     before: Flags.integer({ summary: 'the page after this cursor', helpValue: '<cursor>', min: 0 }),
   }
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'bounded',

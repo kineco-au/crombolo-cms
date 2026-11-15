@@ -13,6 +13,8 @@ export default class DomainsClear extends BaseCommand {
     action: 'ClearDomains',
     entityType: 'Domain',
   } as const
+  static override access = 'site' as const
+  static override section = 'content' as const
   static override spec = {
     effects: 'idempotent',
     cardinality: 'bounded',

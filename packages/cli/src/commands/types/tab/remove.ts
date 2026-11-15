@@ -17,6 +17,8 @@ export default class TypesTabRemove extends BaseCommand {
     'move-to': Flags.string({ summary: 'the tab its properties go to', helpValue: '<tab>' }),
     ...editFlags,
   }
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = editSpec
 
   async run() {

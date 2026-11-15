@@ -12,6 +12,8 @@ export default class TypesPropertyRemove extends BaseCommand {
     property: Args.string({ required: true, description: "the property's alias" }),
   }
   static override flags = { ...editFlags }
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = editSpec
 
   async run() {

@@ -75,8 +75,16 @@ describe('a site bundle with no code of its own', () => {
 describe('bundle deploy', () => {
   const deploy = (cwd: string) => {
     const proc = Bun.spawnSync(
-      ['bun', join(ROOT, 'packages/cli/bin/crombolo.ts'), 'site', 'deploy', '--remote', 'nowhere'],
-      { cwd, stdin: 'ignore', env: { ...process.env, CROMBOLO_LOG_TO_CONSOLE: 'false' } },
+      ['bun', join(ROOT, 'packages/cli/bin/crombolo.ts'), 'site', 'deploy', '--profile', 'nowhere'],
+      {
+        cwd,
+        stdin: 'ignore',
+        env: {
+          ...process.env,
+          CROMBOLO_LOG_TO_CONSOLE: 'false',
+          CROMBOLO_PROFILES_FILE: join(cwd, 'profiles'),
+        },
+      },
     )
     return { code: proc.exitCode, out: proc.stdout.toString() + proc.stderr.toString() }
   }

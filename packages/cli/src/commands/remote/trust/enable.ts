@@ -1,15 +1,18 @@
 import { Args } from '@oclif/core'
 import { BaseCommand } from '../../../base.ts'
 import { CliError } from '../../../errors.ts'
+import { chooseSite, refuseNamed } from '../../../profiles/choose.ts'
 import type { TrustRuleView } from '../../../remote/trust.ts'
-import { connectRemote } from '../../../support/remote.ts'
+import { connectSite, hostedFlags } from '../../../support/remote.ts'
 
 export default class RemoteTrustEnable extends BaseCommand {
   static override summary = 'trust a disabled CI job again'
   static override args = {
     rule: Args.string({ required: true, description: "the rule's key, or the start of it" }),
-    remote: Args.string({ description: 'the remote; the only one, when there is one' }),
+    remote: Args.string({ description: 'gone: --profile names the site', hidden: true }),
   }
+  static override flags = { ...hostedFlags }
+  static override access = 'site' as const
   static override spec = {
     effects: 'idempotent',
     cardinality: 'single',
@@ -17,12 +20,13 @@ export default class RemoteTrustEnable extends BaseCommand {
       { name: 'key', type: 'string' },
       { name: 'name', type: 'string' },
     ],
-    errors: ['not_found', 'auth', 'refused', 'unavailable'],
+    errors: ['usage', 'not_found', 'auth', 'refused', 'unavailable'],
   } as const
 
   async run() {
-    const { args } = await this.parse(RemoteTrustEnable)
-    const { client } = await connectRemote(args.remote, undefined)
+    const { args, flags } = await this.parse(RemoteTrustEnable)
+    refuseNamed(args.remote)
+    const { client } = await connectSite(chooseSite(flags, { mayDefault: true }))
     const { items } = await client.json<{ items: TrustRuleView[] }>('trust')
     const found = items.filter((rule) => rule.key.startsWith(args.rule))
     if (found.length !== 1)

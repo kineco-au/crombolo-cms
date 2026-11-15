@@ -103,6 +103,25 @@ describe('loadConfig reads the environment', () => {
     expect(config.upgradePolicy).toBe('strict')
   })
 
+  test('commands need a sign-in in production, and run without one otherwise (story 350)', () => {
+    expect(loadConfig({}, site).cliAccess).toBe('open')
+    expect(loadConfig({ development: false }, site).cliAccess).toBe('sign-in')
+    setEnv({ NODE_ENV: 'production' })
+    expect(loadConfig({}, site).cliAccess).toBe('sign-in')
+    setEnv({ CROMBOLO_CLI_ACCESS: 'open' })
+    expect(loadConfig({}, site).cliAccess).toBe('open')
+    expect(loadConfig({ cliAccess: 'sign-in' }, site).cliAccess).toBe('sign-in')
+  })
+
+  test('a CLI access level other than the two is refused, naming them', () => {
+    setEnv({ CROMBOLO_CLI_ACCESS: 'closed' })
+    expect(() => loadConfig({}, site)).toThrow('it is open or sign-in')
+    setEnv({ CROMBOLO_CLI_ACCESS: 'open' })
+    expect(() => loadConfig({ cliAccess: 'anyone' as 'open' }, site)).toThrow(
+      'it is open or sign-in',
+    )
+  })
+
   test('every variable lands in its field', () => {
     setEnv({
       PORT: '3000',

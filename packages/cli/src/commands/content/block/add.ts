@@ -51,6 +51,8 @@ export default class ContentBlockAdd extends BaseCommand {
     ...placeFlags,
     ...blockFlags,
   }
+  static override access = 'site' as const
+  static override section = 'content' as const
   static override spec = { ...blockSpec, effects: 'non_idempotent' } as const
 
   async run() {

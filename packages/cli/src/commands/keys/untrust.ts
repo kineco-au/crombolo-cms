@@ -17,6 +17,9 @@ export default class KeysUntrust extends BaseCommand {
       description: 'its fingerprint, its repository, or its name on the list',
     }),
   }
+  static override access = 'site' as const
+  static override section = 'settings' as const
+  static override adminOnly = true
   static override spec = {
     effects: 'idempotent',
     cardinality: 'single',

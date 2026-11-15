@@ -20,6 +20,8 @@ export default class EventsRetry extends BaseCommand {
     all: Flags.boolean({ summary: 'every failed item' }),
   }
   static override audit = { category: 'system', action: 'RetryEvents' } as const
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = {
     effects: 'idempotent',
     cardinality: 'bounded',

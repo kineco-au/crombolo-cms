@@ -6,6 +6,7 @@ import { siteConfig } from '../../support/site.ts'
 
 export default class ComponentsList extends BaseCommand {
   static override summary = 'what is in components/, and which type declares each'
+  static override access = 'none' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'bounded',

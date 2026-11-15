@@ -209,7 +209,7 @@ do" is the dashboard's *Who* filter, or `crombolo audit list --user`.
 exists; Postgres in read-only transactions, creating no extension. They write
 no audit entry of their own.
 
-**A hosted site** is read with `--remote <name>` (and `--env`), through the
+**A hosted site** is read with `--profile <name>` (and `--env`), through the
 remote protocol's `audit` capability (`remote-protocol.md`). It asks for the
 Settings section, as the dashboard does.
 

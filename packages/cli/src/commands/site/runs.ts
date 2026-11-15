@@ -1,9 +1,9 @@
 import { TransferRunRepository } from '@crombolo/data'
 import { bootstrapDatabase } from '@crombolo/server'
-import { Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
+import { hostedOrHere } from '../../profiles/choose.ts'
 import { page, pageFlags, pagination } from '../../support/flags.ts'
-import { connectRemote, needEnvironment } from '../../support/remote.ts'
+import { connectSite, needEnvironment, profileFlags } from '../../support/remote.ts'
 import { siteConfig } from '../../support/site.ts'
 
 /** What a run applied, as the list says it (story 306); a run from before then is 'earlier'. */
@@ -33,12 +33,13 @@ export function runLine(run: {
 
 export default class SiteRuns extends BaseCommand {
   static override summary =
-    'the site packages applied here or on a remote, and the content extensions brought, newest first'
+    'the site packages applied here or on another site, and the content extensions brought, newest first'
   static override flags = {
     ...pageFlags(20),
-    remote: Flags.string({ summary: "a remote's applies instead", helpValue: '<name>' }),
-    env: Flags.string({ summary: "with --remote: the remote's environment", helpValue: '<id>' }),
+    ...profileFlags,
   }
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'unbounded',
@@ -59,8 +60,9 @@ export default class SiteRuns extends BaseCommand {
 
   async run() {
     const { flags } = await this.parse(SiteRuns)
-    if (flags.remote) {
-      const { client, discovery, environment } = await connectRemote(flags.remote, flags.env)
+    const remote = hostedOrHere(flags)
+    if (remote) {
+      const { client, discovery, environment } = await connectSite(remote)
       const env = needEnvironment(environment, discovery)
       const { items, total } = await client.json<{
         items: Array<{

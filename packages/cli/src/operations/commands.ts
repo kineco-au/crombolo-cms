@@ -734,13 +734,10 @@ export interface CommandAudit {
   command: string
   entityType?: string
   entityKey?: string
+  /** The person signed in to the site, who ran it (story 350). */
+  by?: { key: string; name: string }
 }
 
-/**
- * Records a command that changed this environment, in the audit log, as the
- * account that ran it — `CROMBOLO_ACTOR` when a pipeline names who it runs for.
- * Never fails the command: what it records has already happened.
- */
 /** Who runs a command: `CROMBOLO_ACTOR` when a pipeline names who it runs for, else the account. */
 export function commandActorName(): string {
   const named = setting('CROMBOLO_ACTOR')
@@ -752,15 +749,21 @@ export function commandActorName(): string {
   }
 }
 
+/**
+ * Records a command that changed this environment, in the audit log, as the
+ * person signed in, or else the account that ran it — `CROMBOLO_ACTOR` when a
+ * pipeline names who it runs for. Never fails the command: what it records has
+ * already happened.
+ */
 export async function recordCommand(config: CromboloConfig, entry: CommandAudit): Promise<void> {
-  const actor = commandActorName()
   try {
     await withDatabase(config, (db) =>
       recordAudit(db, {
         category: entry.category,
         action: entry.action,
         source: 'cli',
-        userName: actor ?? null,
+        ...(entry.by ? { userKey: entry.by.key } : {}),
+        userName: entry.by?.name ?? commandActorName(),
         entityType: entry.entityType ?? null,
         entityKey: entry.entityKey ?? null,
         detail: entry.command,

@@ -10,6 +10,8 @@ export default class TypesExport extends BaseCommand {
   static override summary = "write the database's definitions as schema/ files"
   static override aliases = ['schema:export']
   static override deprecateAliases = true
+  static override access = 'site' as const
+  static override section = 'settings' as const
   static override spec = {
     effects: 'idempotent',
     cardinality: 'bounded',

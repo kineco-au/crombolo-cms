@@ -18,6 +18,7 @@ export default class AssetsNew extends BaseCommand {
     }),
     name: Args.string({ required: true, description: 'its file name' }),
   }
+  static override access = 'none' as const
   static override spec = {
     effects: 'non_idempotent',
     cardinality: 'single',
