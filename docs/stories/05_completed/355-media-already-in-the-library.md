@@ -301,18 +301,80 @@ groups have no alias, and `--change` is the rule's write.
 
 ## Acceptance criteria
 
-- [ ] `crombolo media list [--under <folder>] [--type <alias>]` and `media find --name
+- [x] `crombolo media list [--under <folder>] [--type <alias>]` and `media find --name
       <text>`, a page at a time
-- [ ] `media show <item> [--references]`: its type, folder, file, size, alternative
+- [x] `media show <item> [--references]`: its type, folder, file, size, alternative
       text and focal point, and with `--references` the pages and media that use it
-- [ ] `media update <item> [--name] [--alt] [--focal <x,y>] [--file <path>]`,
+- [x] `media update <item> [--name] [--alt] [--focal <x,y>] [--file <path>]`,
       replacing the file keeping the item's key, so what uses it keeps working
-- [ ] `media folder new <path>`, making the folders it names that are missing
-- [ ] `crombolo media access show <item>` and `media access set <item> --group <name>
+- [x] `media folder new <path>`, making the folders it names that are missing
+- [x] `crombolo media access show <item>` and `media access set <item> --group <name>
       --read|--change [--inherit|--no-inherit]`, with the rules story 204's screen
       uses. A group is a member group, named as the screen lists it
-- [ ] `content show <page> --references`, listing what uses the page
-- [ ] Each takes `--profile`; `-o json`; changes audited
-- [ ] Tests for each command, locally and through a test server, including a replaced
+- [x] `content show <page> --references`, listing what uses the page
+- [x] Each takes `--profile`; `-o json`; changes audited
+- [x] Tests for each command, locally and through a test server, including a replaced
       file keeping its references working
-- [ ] The CLI reference regenerated
+- [x] The CLI reference regenerated
+
+## Built
+
+Built 2026-11-15, as planned with D1–D4 all (a):
+- the core is `packages/server/src/media-library.ts`: `listMedia` and `findMedia`
+  (a page, within a person's start nodes), `showMedia`, `referencesTo` and
+  `usedByWords`, `updateMedia` (alternative text, focal point, name and a new file,
+  through `MediaOperations.save` with `{ temporaryFileId }`), `makeFolders` (through
+  `MediaOperations.create`), and `mediaAccess` and `setMediaAccess`, with
+  `describeMediaAccess`, `mediaAccessRefusal` and `saveMediaAccess` moved out of
+  `createMediaAccess`, whose `handle` now calls them, so the dialog's route is unchanged.
+  `checkMediaDetails` and `parseFocalPoint` are `media import`'s checks, shared;
+- the dialog's rules are `packages/backoffice-host/plugin/media-access-rules.js`,
+  exported as `@crombolo/backoffice-host/media-access-rules` with JSDoc types; the
+  dialog, its info panel, the server's core and the tests import it (D2);
+- `@crombolo/render`'s `resolveLocalLinks` sets each `<img data-udi>`'s `src` to its
+  item's file now, query kept, with the media lookup its links make, and only for markup
+  with such an image (D1). An image whose item is gone keeps its saved address;
+- `pageShown` in `packages/server/src/undo.ts` gives a page as `content show` does,
+  through 353's `pageReader`; `content show` uses it here, and takes `--profile` and
+  `--references` (D4);
+- the remote routes are `packages/server/src/remote-media-library.ts`, mounted by
+  `createRemote` when it has the operations: `media-items…` and `content-items/{page}`.
+  Discovery lists `media-library`, `media-access` and `content-show`; `environments`
+  says `may.mediaLibrary` and `may.contentShow`. A new file is streamed past the body
+  limit as a push's media is. The server hands the remote `onMediaAccessChange`, for its
+  media cache;
+- the commands are `media list`, `find`, `show`, `update`, `folder new`, `access show`
+  and `access set`, over `packages/cli/src/support/media-library.ts`, whose
+  `withMediaLibrary` makes the same calls here or on a hosted site;
+- the conformance suite lists media, shows one with its references, renames it and
+  back, reads its access and refuses a change it can't read, and shows a page;
+- tests: `tests/media-library.test.ts` (the core), `tests/media-cli.test.ts`,
+  `tests/media-access-cli.test.ts`, a rich-text test in `tests/media-rendering.test.ts`,
+  `content show --references` and `--profile` in `tests/content-pages.test.ts`, the
+  rules' new module in `tests/media-access.test.ts` and `tests/bundle-media.test.ts`,
+  and additions to `tests/cli-access.test.ts`, `tests/remote.test.ts` and
+  `tests/remote-conformance.test.ts`, with `tests/support/media-commands.ts`. **The tests
+  are written but not yet run:** the maintainer runs the full suites once, at the
+  release. `bun run check` passes.
+
+Where it differs from the plan, or fills it in:
+- **`media import`'s checks moved to the server's core,** not `support/media-tree.ts`,
+  since the remote routes need them too; `media import` calls `checkMediaDetails`. Its
+  refusal now reads "no text field for its alternative text" rather than "for --alt".
+- **One `referencesTo`** answers for a page and a media item alike, rather than
+  `mediaReferences` and `pageReferences`; each reference has a `kind` (`page`, `media`,
+  `library`, `member`, `other`) and its path.
+- **`media list` gives a folder's own items, `media find` everything below `--under`.**
+- **`--read`, `--change` and `--none` apply to every `--group` given,** since a flag
+  can't be paired with the `--group` before it; giving groups different levels is two
+  commands. `--change` lets the group see and change it; `--read` alone also makes the
+  item seen only by the groups chosen; `--read` with `--anyone` or `--back-office-only`
+  is refused.
+- **A change other than `--inherit` gives the item its own settings,** starting from
+  what it inherited, as the dialog does once "Inherit parent permissions" is unticked.
+- **A hosted `access set` is audited by the site** (`SetPermissions` of `MediaAccess`,
+  with the summary); a local one by the command, as `crombolo media access set`.
+- **Refusals on the remote:** 404 for an item not found or in the recycle bin, 403
+  `forbidden` outside the person's start nodes, 422 `refused` for what its type can't
+  take, 400 for a body that is not one. A change needs the `content` access level.
+- **An item in the recycle bin is not shown or changed,** with a hint to restore it.

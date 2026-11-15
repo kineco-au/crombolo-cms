@@ -292,11 +292,44 @@ function safeExternalUrl(url: string): string {
 
 const LOCAL_LINK = /\/?(?:\{|%7B)localLink:(?:umb:\/\/[a-z-]+\/)?([0-9a-fA-F-]{32,36})(?:\}|%7D)/g
 
+const IMAGE_TAG = /<img\b[^>]*>/gi
+const IMAGE_UDI = /\sdata-udi\s*=\s*(["'])umb:\/\/media\/([0-9a-fA-F-]{32,36})\1/i
+const IMAGE_SRC = /(\ssrc\s*=\s*)(["'])([^"']*)\2/i
+
+/** The media keys the markup's images name by `data-udi`. */
+function imageKeys(markup: string): string[] {
+  if (!markup.includes('data-udi')) return []
+  const keys: string[] = []
+  for (const tag of markup.match(IMAGE_TAG) ?? []) {
+    const key = keyFromReference(IMAGE_UDI.exec(tag)?.[2])
+    if (key) keys.push(key)
+  }
+  return keys
+}
+
+/**
+ * Each image's `src` set to its media item's current address, its query kept,
+ * as Umbraco's `HtmlImageSourceParser` does; one whose item is not found is left.
+ */
+function replaceImages(markup: string, urlOf: (key: string) => string | undefined): string {
+  return markup.replace(IMAGE_TAG, (tag) => {
+    const key = keyFromReference(IMAGE_UDI.exec(tag)?.[2])
+    const url = key ? urlOf(key) : undefined
+    if (!url) return tag
+    return tag.replace(IMAGE_SRC, (_, before: string, quote: string, src: string) => {
+      const query = src.split('?')[1]
+      return `${before}${quote}${(query ? `${url}?${query}` : url).replaceAll(quote, quote === '"' ? '%22' : '%27')}${quote}`
+    })
+  })
+}
+
 /**
  * Rich text links to pages and media are stored as `/{localLink:<key>}`, so a
  * move or rename never breaks them; they become URLs when rendered. A link to
  * something unpublished or gone becomes `#`. Pages resolve at once; a link to
- * media is looked up in the media cache, so markup with one is a promise.
+ * media is looked up in the media cache, so markup with one is a promise. An
+ * image names its item by `data-udi`, and is shown from the item's current
+ * file, so a replaced or moved file still shows (story 355).
  */
 export function resolveLocalLinks(
   markup: string,
@@ -312,6 +345,8 @@ export function resolveLocalLinks(
     const key = keyFromReference(match[1] as string)
     if (key && context?.media && pageUrl(key) === undefined) media.add(key)
   }
+  const images = context?.media && context.mediaUrlOf ? imageKeys(markup) : []
+  for (const key of images) media.add(key)
   if (media.size === 0) return replaceLinks(markup, (key) => pageUrl(key) ?? '#')
   return Promise.all(
     [...media].map(async (key) => [key, await context?.media?.(key)] as const),
@@ -321,7 +356,11 @@ export function resolveLocalLinks(
         item && context?.mediaUrlOf ? [[key, context.mediaUrlOf(item)] as const] : [],
       ),
     )
-    return replaceLinks(markup, (key) => pageUrl(key) ?? (key ? urls.get(key) : undefined) ?? '#')
+    const linked = replaceLinks(
+      markup,
+      (key) => pageUrl(key) ?? (key ? urls.get(key) : undefined) ?? '#',
+    )
+    return images.length > 0 ? replaceImages(linked, (key) => urls.get(key)) : linked
   })
 }
 

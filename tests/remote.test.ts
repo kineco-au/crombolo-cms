@@ -227,6 +227,10 @@ describe(`discovery (${dialectUnderTest})`, () => {
         'background-jobs',
         // Story 362: what an extension did, as Installed's Activity view reads it.
         'extension-activity',
+        // Story 355: the media library, who may see media, and a page shown.
+        'media-library',
+        'media-access',
+        'content-show',
         // Story 241: installed bundles, managed as Settings → Bundles does.
         'bundle-manage',
       ],
@@ -250,6 +254,8 @@ describe(`discovery (${dialectUnderTest})`, () => {
           audit: true,
           backgroundJobs: true,
           extensionActivity: true,
+          mediaLibrary: true,
+          contentShow: true,
         },
       },
     ])

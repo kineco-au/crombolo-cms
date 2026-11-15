@@ -69,6 +69,10 @@ stated otherwise. Errors are `application/problem+json` with a stable `code`
     failed one run again (see below).
   - `extension-activity` means what an extension did can be read and exported
     (see below).
+  - `media-library` and `media-access` mean media can be listed, found, shown
+    with what uses it, changed and given folders, and who may see an item read
+    and set; `content-show` means a page can be read as `content show` gives it
+    (see below).
   - `restart` means the site can be restarted (see below).
   - A client ignores capabilities it doesn't know.
 
@@ -173,13 +177,16 @@ may do:
    "access": "all",
    "may": { "pull": true, "pullFull": false, "push": true, "apply": true,
             "applyStructure": true, "audit": false, "backgroundJobs": true,
-            "extensionActivity": true } }]
+            "extensionActivity": true, "mediaLibrary": true,
+            "contentShow": true } }]
 ```
 
 `audit` is there when the remote offers the capability. `backgroundJobs` is
 whether this person may see and retry the site's background jobs: the Settings
 section, and never CI. `extensionActivity` is whether this person may read what an
-extension did, on the same terms. `access` is the site's
+extension did, on the same terms. `mediaLibrary` is whether this person may use the
+media routes, which need the Media section, and `contentShow` whether they may show
+pages, which needs Content; neither is ever CI's. `access` is the site's
 `CROMBOLO_REMOTE_ACCESS`, and every `may` is already bounded by it: `apply` needs
 `content`, and `push` and `applyStructure` need `all`.
 
@@ -612,6 +619,52 @@ told apart by discovery rather than by a 405.
   `ci-cannot-read-activity`); without the section, 403 `forbidden`. Reading it is
   not itself audited.
 
+## The media library (`media-library`, `media-access`, `content-show`, optional)
+
+Story 355. Media already in the library as the Media section shows and changes it,
+who may see an item as its Permissions dialog sets it, and a page as `content show`
+gives it. They are named `media-items` and `content-items` so they are never
+confused with `media/{key}`, a push's or a pull's file.
+
+| | |
+| --- | --- |
+| `GET <api>/environments/{id}/media-items[?under&type&name&skip&take]` | `{ total, items }`: with `name`, the items whose names hold it anywhere below `under`; without, the items in `under`, or at the top |
+| `GET <api>/environments/{id}/media-items/{item}[?references=true&skip&take]` | one item: type, folder, file and its address, size, width, height, alternative text, focal point, and `access`, the dialog's summary; with `references`, what uses it |
+| `PATCH <api>/environments/{id}/media-items/{item}` | `{ name?, alt?, focal?: "x,y", dryRun? }`; answers `{ key, name, path, changed }` |
+| `PUT <api>/environments/{id}/media-items/{item}/file[?dryRun=true]` | a new file, streamed as a push's media is, its name in `Crombolo-File-Name` (URI-encoded); the key is kept and the old file removed. Answers as `PATCH` does, with `references` |
+| `POST <api>/environments/{id}/media-items/folders` | `{ path }`: makes the folders along it that are missing; `{ key, path, made }` |
+| `GET <api>/environments/{id}/media-items/{item}/access` | `{ key, name, path, summary, form, state }`: the dialog's summary and form, and everything it reads |
+| `PUT <api>/environments/{id}/media-items/{item}/access` | `{ see?: "anyone" \| "back-office", groups?: [name], level?: "read" \| "change" \| "none", inherit?: boolean }`; answers as `GET` does |
+| `GET <api>/environments/{id}/content-items/{page}[?references=true&skip&take]` | `{ key, path, type, typeName, variants, values }`, and `references` when asked |
+
+```json
+{ "total": 3, "items": [{ "key": "…", "name": "hero.jpg", "path": "/Gallery/hero.jpg",
+  "type": "Image", "folder": false, "size": 81234 }] }
+```
+
+- **`{item}` and `{page}`** are a key, or a path (`/Gallery/hero.jpg`) encoded as one
+  segment; the route resolves it.
+- **Paging:** `take` is 1 to 100, 25 by default.
+- **References** are `{ total, items }`, each `{ key, name, kind, path, type }`, `kind`
+  one of `page`, `media`, `library`, `member` and `other`: what names the item in its
+  values now, as the back office's "Used by" finds it.
+- **Refusals:** an item not found, or in the recycle bin, answers 404 `not-found`; one
+  outside the person's start nodes, or a change their permissions do not allow, 403
+  `forbidden`; alternative text or a focal point its type cannot hold, a file it does
+  not take, or a file where a folder is asked for, 422 `refused`, with the types that
+  would take the file in `detail`; an unknown member group, 404 with the site's groups
+  in `detail`; a body that is not one, 400 `bad-request`. A file past the site's upload
+  limit answers 413 `too-large`.
+- **Who:** a person with the Media section for `media-items`, or Content for
+  `content-items`, within their start nodes; never CI (403
+  `ci-cannot-change-media`, "Reading media needs a person" or "Changing media needs a
+  person"; `ci-cannot-read-pages` for a page); without the section, 403 `forbidden`.
+- **The level:** a change needs `content` (403 `access-level`).
+- **The audit log** records a change to an item or a folder made as the back office's
+  are, `Save` and `Create` of `Media`, and a change to who may see it as
+  `SetPermissions` of `MediaAccess`, with the summary it came to; each as the person,
+  with their address.
+
 ## Installed bundles (`bundle-manage`, optional)
 
 The bundles the environment depends on, managed as its Settings → Extensions does
@@ -806,6 +859,9 @@ The suite is read-only unless `--push` is given. It covers:
   access read back, when offered;
 - background jobs listed, and a retry of an unknown job and of one that has not
   failed refused, when offered and the token may;
+- media listed and one shown with what uses it, an unknown item not found, and its
+  name changed and changed back; an item's access read and a change it cannot read
+  refused; and a page shown, when offered and the token may;
 - a refused tampered push;
 - with `--push`, a full push.
 

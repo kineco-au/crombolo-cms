@@ -207,6 +207,33 @@ export async function pageVersion(
   return out
 }
 
+/** A page as `content show` gives it: its place, type, names in each language, and values. */
+export interface ShownPage {
+  key: string
+  /** Its place by name, `/Home/Visit us`. */
+  path: string
+  type: string
+  typeName: string
+  variants: Array<{ culture: string | null; name: string; state: string }>
+  values: ShownValue[]
+}
+
+/** A page's draft as `content show` gives it; undefined when there is no such page (story 355). */
+export async function pageShown(db: Db, key: string): Promise<ShownPage | undefined> {
+  if (!(await pageNode(db, key))) return undefined
+  const doc = await (await documents(db)).byKey(normaliseUuid(key))
+  if (!doc) return undefined
+  const type = await schemaLookup(db).typeByKey('document', doc.contentTypeKey)
+  return {
+    key: doc.key,
+    path: `/${(await namedPath(db, doc.key, 'content')) ?? ''}`,
+    type: type?.alias ?? doc.contentTypeAlias,
+    typeName: type?.name ?? doc.contentTypeAlias,
+    variants: doc.variants.map((v) => ({ culture: v.culture, name: v.name, state: v.state })),
+    values: await shownValues(db, doc),
+  }
+}
+
 export type BinKind = 'content' | 'media'
 
 export interface BinItem {

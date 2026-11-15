@@ -166,6 +166,14 @@ media is a promise of it, which JSX renders as it is: `<div>{model.html('body')}
 needs no `await`. `text()` never waits, so a rich text's media links are `#`
 there: write rich text with `html()`.
 
+**An image in rich text follows its item** (story 355). The editor stores an image with its
+file's address in `src` and its media item in `data-udi`. Rendering sets `src` to the
+address of the item's file now, its query string kept, as the Delivery API and Umbraco's
+`HtmlImageSourceParser` do, so a file replaced in the back office or by `crombolo media
+update --file`, or moved, still shows. An image whose item is gone keeps the address it was
+saved with. The lookup is the media cache's, made with the links' own, and only for markup
+with an image that names an item, so other rich text pays nothing.
+
 The **`setInnerHTML` attribute** covers markup from anywhere else, and takes React's
 `{ __html }` shape with one addition:
 
@@ -1013,7 +1021,7 @@ cache supplies (`@crombolo/render` `values.ts` and `media.ts`):
 | Block List / Block Grid | items with `content` and `settings` as `PublishedElement`s (same `value()`, `name` is `null`, as a block has none, and `contentType.alias` names the element type); grid items add spans, `areaGridColumns` and areas (with their alias and spans), and the list carries `gridColumns`. `<Blocks>` renders them (see "Blocks") |
 | Media Picker            | a promise of `MediaWithCrops`, one or a list as the data type says; `await model.media(alias)` always lists |
 | Image Cropper           | `ImageCropperValue` (`src`, `crops`, `focalPoint`, `cropUrl()`)                                             |
-| Rich text               | the markup, with `/{localLink:…}` links resolved (`#` when gone) and `{#key}` read as words; a promise when a link names media |
+| Rich text               | the markup, with `/{localLink:…}` links resolved (`#` when gone), each image's `src` the address of its item's file now, and `{#key}` read as words; a promise when a link or an image names media |
 | Text box / Text area    | the text, with `{#key}` read as words                                                                         |
 | Markdown                | its HTML, GitHub-flavoured (`marked`), as Umbraco's converter gives it, on a page and in a block; `null` when empty. The Delivery API gives the same HTML as a string, and search reads the Markdown's words, not the HTML (story 357) |
 
@@ -1586,6 +1594,24 @@ info panel, say where the settings come from and who they let in.
 
 Existing saved settings are preserved, including older all-members and creator
 settings on files, which show as overrides.
+
+**From the command line** (story 355), `crombolo media access show <item>` gives the
+dialog's summary line, then who can see it, who can change it, whether it follows a folder
+above, and any chosen members, member uploads and settings for new files. `crombolo media
+access set <item>` sets the common part as the dialog does, with the dialog's own rules
+(`@crombolo/backoffice-host/media-access-rules`, which the dialog imports too):
+
+- `--anyone` or `--back-office-only` chooses who may see it;
+- `--group <name>` (repeated) with `--read`, `--change` or `--none`: a member group, by
+  the name the dialog lists, may see it (and then only the groups chosen can), see and
+  change it, or neither. An unknown group is refused, naming the site's groups;
+- `--inherit` follows the folder above again, alone; `--no-inherit` gives it settings of
+  its own, starting from the folder above's. Any other change gives it its own settings
+  too, as changing the dialog does once inheritance is unticked;
+- chosen members, member uploads and the settings for new files are kept as they are.
+
+Each takes `--profile` for a hosted site, as the person signed in to it; `set` is audited
+as `SetPermissions` on `MediaAccess`, with the summary it came to.
 
 - **The nearest rule wins.** A folder's rule governs everything below it, and
   a rule on a child folder or item replaces it: stricter, looser, or open to

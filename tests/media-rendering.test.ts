@@ -318,3 +318,56 @@ describe('media cached apart from the pages (story 197)', () => {
     expect(h.server.cache.media?.stats().items).toBe(1)
   })
 })
+
+describe('a rich text image follows its media item (story 355)', () => {
+  test('an image whose file was replaced renders from the new file, its query kept', async () => {
+    const { h, image, page, upload } = await site()
+    const hero = await image('Hero')
+    const udi = `umb://media/${hero.key.replaceAll('-', '')}`
+    await page('Home', {
+      body: {
+        markup: `<p><img src="${hero.src}" alt="hero" data-udi="${udi}" /><img src="${hero.src}?width=200" alt="small" data-udi="${udi}" /></p>`,
+        blocks: null,
+      },
+    })
+    expect(await (await h.call('/')).text()).toContain(`src="${hero.src}"`)
+
+    // The back office's Replace: a new upload into the same item, the old file removed.
+    const read = await h.json<{ values: Array<{ alias: string; value: unknown }> }>(
+      `${V1}/media/${hero.key}`,
+    )
+    const temporaryFileId = await upload('harbour.png')
+    const replaced = await h.put(`${V1}/media/${hero.key}`, {
+      values: read.values.map((v) =>
+        v.alias === 'umbracoFile' ? { ...v, value: { src: '', temporaryFileId, crops: [] } } : v,
+      ),
+      variants: [{ culture: null, segment: null, name: 'Hero' }],
+    })
+    expect(replaced.status).toBe(200)
+    const after = await h.json<{ values: Array<{ alias: string; value: { src: string } }> }>(
+      `${V1}/media/${hero.key}`,
+    )
+    const src = after.values.find((v) => v.alias === 'umbracoFile')?.value.src as string
+    expect(src).not.toBe(hero.src)
+    expect(src).toEndWith('harbour.png')
+
+    const home = await (await h.call('/')).text()
+    expect(home).toContain(`<img src="${src}" alt="hero" data-udi="${udi}" />`)
+    expect(home).toContain(`<img src="${src}?width=200" alt="small" data-udi="${udi}" />`)
+    expect(home).not.toContain(hero.src)
+    expect((await h.call(src)).status).toBe(200)
+    expect((await h.call(hero.src)).status).toBe(404)
+  })
+
+  test('an image whose item is gone keeps the address it was saved with', async () => {
+    const { h, page } = await site()
+    const gone = crypto.randomUUID().replaceAll('-', '')
+    await page('Home', {
+      body: {
+        markup: `<p><img src="/media/old/x.png" alt="x" data-udi="umb://media/${gone}" /></p>`,
+        blocks: null,
+      },
+    })
+    expect(await (await h.call('/')).text()).toContain('<img src="/media/old/x.png" alt="x"')
+  })
+})

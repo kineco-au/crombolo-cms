@@ -21,6 +21,7 @@
     ".": "./src/index.ts",
     "./activity-words": "./plugin/bundles-activity-words.js",
     "./branding": "./src/branding.ts",
+    "./media-access-rules": "./plugin/media-access-rules.js",
     "./registry": "./src/registry.ts"
   },
   "files": [

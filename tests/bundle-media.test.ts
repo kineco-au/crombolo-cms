@@ -32,13 +32,13 @@ import {
   VERSION,
   validateServerBundles,
 } from '@crombolo/server'
+import { bundleWarningFor } from '../packages/backoffice-host/plugin/media-access.js'
 import {
-  bundleWarningFor,
   bytesOf,
   megabytesOf,
   requestFor,
   usedByText,
-} from '../packages/backoffice-host/plugin/media-access.js'
+} from '../packages/backoffice-host/plugin/media-access-rules.js'
 import { siteDeclaring, stubBundlePackage } from './support/bundles.ts'
 import { dialectUnderTest } from './support/db.ts'
 import { concat, contains, exifTiff, jpegWithExif, pngWithExif } from './support/exif.ts'

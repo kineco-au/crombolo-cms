@@ -6,6 +6,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { DEVICE_CODE_GRANT, REMOTE_CLIENT_ID } from '@crombolo/auth'
+import { SYSTEM_MEDIA_TYPE_KEYS } from '@crombolo/core'
 import { ExtensionActivityLog, JobRepository } from '@crombolo/data'
 import { runConformance } from '@crombolo/remote-conformance'
 import { dialectUnderTest } from './support/db.ts'
@@ -117,6 +118,14 @@ describe(`the remote conformance suite (${dialectUnderTest})`, () => {
         occurredAt: new Date(),
       },
     ])
+    // A media folder, for media-library to show and rename and back, and media-access to read.
+    const folder = await h.post(`${V1}/media`, {
+      mediaType: { id: SYSTEM_MEDIA_TYPE_KEYS.Folder },
+      parent: null,
+      values: [],
+      variants: [{ culture: null, segment: null, name: 'Conformance' }],
+    })
+    expect(folder.status).toBe(201)
     const report = await runConformance({
       url: ORIGIN,
       token: await token(h),

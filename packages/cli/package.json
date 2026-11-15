@@ -136,7 +136,13 @@
         "description": "pause and resume editors' saves, cluster-wide"
       },
       "media": {
-        "description": "the media library in bulk: import a folder, export one; a pulled site's files"
+        "description": "the media library: list, find, show and change items, import and export folders; a pulled site's files"
+      },
+      "media:access": {
+        "description": "who can see and change a media folder or item: show it, set it"
+      },
+      "media:folder": {
+        "description": "media folders: make one, and those above it"
       },
       "profile": {
         "description": "the sites commands reach by name with --profile, kept in ~/.crombolo/profiles"

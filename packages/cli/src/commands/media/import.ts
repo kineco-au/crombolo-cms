@@ -1,22 +1,19 @@
 import { readdirSync, statSync } from 'node:fs'
 import { basename, extname, join, relative, resolve } from 'node:path'
-import { type DocumentValue, IMAGE_CROPPER_EDITOR_ALIAS, mediaFileOf } from '@crombolo/core'
+import { type DocumentValue, mediaFileOf } from '@crombolo/core'
+import { appendCacheInstruction, IMAGE_ALT_TEXT_ALIAS, type NodeRow } from '@crombolo/data'
 import {
-  appendCacheInstruction,
-  ContentTypeRepository,
-  DataTypeRepository,
-  IMAGE_ALT_TEXT_ALIAS,
-  type NodeRow,
-} from '@crombolo/data'
-import { bootstrapDatabase } from '@crombolo/server'
+  bootstrapDatabase,
+  checkMediaDetails,
+  type FocalPoint,
+  MediaLibraryError,
+  parseFocalPoint,
+} from '@crombolo/server'
 import { Args, Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
 import { dryRun } from '../../support/flags.ts'
 import { childrenByName, mediaParent, openMedia, sha256 } from '../../support/media-tree.ts'
 import { siteConfig } from '../../support/site.ts'
-
-/** The editors `--alt` can write a sentence to. */
-const TEXT_EDITORS = new Set(['Umbraco.TextBox', 'Umbraco.TextArea'])
 
 /** How many new items one cache instruction names. */
 const IMPORT_BATCH = 500
@@ -30,15 +27,7 @@ interface Outcome {
 /** What one file was told about itself, beyond its bytes. */
 interface FileDetails {
   alt?: string
-  focal?: { left: number; top: number }
-}
-
-/** `--focal x,y`, each from 0 to 1. */
-function focalPoint(value: string): { left: number; top: number } | undefined {
-  const parts = value.split(',')
-  if (parts.length !== 2 || parts.some((part) => part.trim() === '')) return undefined
-  const [left, top] = parts.map(Number) as [number, number]
-  return left >= 0 && left <= 1 && top >= 0 && top <= 1 ? { left, top } : undefined
+  focal?: FocalPoint
 }
 
 /**
@@ -101,7 +90,7 @@ export default class MediaImport extends BaseCommand {
     const single = found.isFile()
     if (!single && (flags.name || flags.alt !== undefined || flags.focal))
       this.fail('usage', '--name, --alt and --focal are for one file, not a folder.')
-    const focal = flags.focal ? focalPoint(flags.focal) : undefined
+    const focal = flags.focal ? parseFocalPoint(flags.focal) : undefined
     if (flags.focal && !focal)
       this.fail('usage', `--focal takes two numbers from 0 to 1, as 0.4,0.6: not ${flags.focal}.`)
     const details: FileDetails = {
@@ -135,22 +124,14 @@ export default class MediaImport extends BaseCommand {
         if (batch.length >= IMPORT_BATCH) await announce()
       }
 
-      const contentTypes = new ContentTypeRepository(db, { kind: 'media' })
-      const dataTypes = new DataTypeRepository(db)
       /** Refuses what this type cannot hold, naming the file. */
       const checkDetails = async (typeKey: string, typeName: string, name: string) => {
-        const properties = (await contentTypes.byKey(typeKey))?.properties ?? []
-        const editorOf = async (alias: string) => {
-          const property = properties.find((p) => p.alias === alias)
-          return property && (await dataTypes.byKey(property.dataTypeKey))?.editorAlias
+        try {
+          await checkMediaDetails(db, { key: typeKey, name: typeName }, name, details, true)
+        } catch (error) {
+          if (error instanceof MediaLibraryError) this.fail('refused', error.message)
+          throw error
         }
-        if (
-          details.alt !== undefined &&
-          !TEXT_EDITORS.has((await editorOf(IMAGE_ALT_TEXT_ALIAS)) ?? '')
-        )
-          this.fail('refused', `${name} would be a ${typeName}, which has no text field for --alt.`)
-        if (details.focal && (await editorOf('umbracoFile')) !== IMAGE_CROPPER_EDITOR_ALIAS)
-          this.fail('refused', `${name} would be a ${typeName}, which has no focal point.`)
       }
       const altValue = (value: string): DocumentValue => ({
         alias: IMAGE_ALT_TEXT_ALIAS,

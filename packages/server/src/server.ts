@@ -935,6 +935,7 @@ export async function createServer(
     restart: serverOptions.restart,
     jobsWaitingSince: () => core.workerWatch.status().waitingSince,
     activity: { flush: () => core.activity.flush(), days: config.extensionActivityDays },
+    onMediaAccessChange: (key) => mediaCache.drop([key]),
     onApplied: async () => {
       cache.invalidate()
       mediaCache.clear()

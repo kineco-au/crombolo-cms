@@ -8,6 +8,29 @@ point at `docs/stories/`.
 
 ### Features
 
+- **Media already in the library, from the command line (355).** `crombolo media list
+  [--under <folder>] [--type <alias>]` and `media find --name <text>` give a page of items at
+  a time with `--skip` and `--take`; `media show <item> [--references]` its type, folder,
+  file, size, alternative text, focal point and who can see it, and with `--references` the
+  pages and media that use it; `media update <item> [--name] [--alt] [--focal <x,y>] [--file
+  <path>]` changes them, a new file going into the same item so what uses it keeps working;
+  `media folder new <path>` makes the folders missing along a path. `crombolo media access
+  show <item>` says who can see and change a folder or item, in the Permissions dialog's
+  words, and `media access set <item>` sets it with the dialog's own rules: `--anyone`,
+  `--back-office-only`, `--group <name>` with `--read`, `--change` or `--none`, `--inherit`
+  and `--no-inherit`, keeping chosen members, member uploads and the settings for new files.
+  `content show <page> --references` lists what uses a page. Each takes `--profile` and
+  `-o json`, needs the Media section (`content show` the Content section), and changes go
+  through the media operations as the person signed in, audited as theirs.
+  `docs/operations.md`, "Media already in the library", and `docs/rendering.md`, "Protected
+  media".
+- **The remote protocol's `media-library`, `media-access` and `content-show` (355)** carry
+  those commands to a hosted site under `media-items/…` and `content-items/{page}`, an item
+  or page named by its key or its path, as the signed-in person and never as CI;
+  `environments` says `may.mediaLibrary` and `may.contentShow`, and the conformance suite
+  checks them.
+- **`@crombolo/backoffice-host/media-access-rules` (355):** the Permissions dialog's rules,
+  which the dialog, the command line and the server now share.
 - **What an extension did, from the command line (362).** `crombolo extension activity
   <extension> [--kind changes|reads|requests|data|calls|screens|refused] [--user <who>]
   [--since <time>] [--until <time>]` prints the counts for the days the site keeps, then
@@ -189,6 +212,11 @@ point at `docs/stories/`.
 
 ### Fixes
 
+- **An image in rich text shows its media item's file now (355).** A rich text image was
+  rendered from the address saved with it, so replacing its file in the back office (or
+  moving it) left the page showing a file that was gone. A rendered page now sets each
+  image's `src` from the item it names, keeping its query string, as the Delivery API
+  already did.
 - **Date only, time only, date and time, and entity data picker values read back as
   saved (357).** The back office sends each as an object, which was kept as text and handed
   back as text, so the editor lost it. A template now receives the object too.

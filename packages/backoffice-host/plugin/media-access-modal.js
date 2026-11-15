@@ -6,6 +6,7 @@
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbModalBaseElement } from '@umbraco-cms/backoffice/modal'
 import '@umbraco-cms/backoffice/member'
+import { readMediaAccess, saveMediaAccess } from './media-access.js'
 import {
   bytesOf,
   describeAccess,
@@ -14,12 +15,10 @@ import {
   megabytesOf,
   PUBLIC_NOTE,
   READ_MODES,
-  readMediaAccess,
   requestFor,
-  saveMediaAccess,
   usedByText,
   WRITE_MODES,
-} from './media-access.js'
+} from './media-access-rules.js'
 
 export default class CromboloMediaAccessModalElement extends UmbModalBaseElement {
   static properties = {

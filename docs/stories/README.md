@@ -400,7 +400,7 @@ cannot, what is left out and why, and how the rest splits into stories.
 | `352` | Profiles in place of remotes | should | L | done | — |
 | `353` | Undoing a change from the command line | should | M | done | 349, 352 |
 | `354` | Members from the command line | should | M | done | 349, 350, 352 |
-| `355` | Media already in the library | should | M | ready | 349, 352, 353 |
+| `355` | Media already in the library | should | M | done | 349, 352, 353 |
 | `356` | Users and groups filled in | should | S | done | 349, 350, 352 |
 | `357` | Every data type editor from the command line | should | M | done | 349 |
 | `358` | Blueprints from the command line | could | S | done | 349 |

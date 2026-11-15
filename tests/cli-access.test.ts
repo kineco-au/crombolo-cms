@@ -138,6 +138,22 @@ describe('what each command declares', () => {
     // Story 359: background jobs are the Settings section's, as their dashboard is.
     for (const id of ['jobs:list', 'jobs:show', 'jobs:retry'])
       expect(declared(id), id).toEqual({ access: 'site', section: 'settings', adminOnly: false })
+    // Story 355: the media library and its permissions are the Media section's, as in the back office.
+    for (const id of [
+      'media:list',
+      'media:find',
+      'media:show',
+      'media:update',
+      'media:folder:new',
+      'media:access:show',
+      'media:access:set',
+    ])
+      expect(declared(id), id).toEqual({ access: 'site', section: 'media', adminOnly: false })
+    expect(declared('content:show')).toEqual({
+      access: 'site',
+      section: ['content', 'library'],
+      adminOnly: false,
+    })
     // Story 362: what an extension did, as Installed's Activity view; not an administrator's.
     expect(declared('extension:activity')).toEqual({
       access: 'site',

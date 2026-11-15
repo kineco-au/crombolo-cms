@@ -454,6 +454,105 @@ export async function runConformance(options: ConformanceOptions): Promise<Confo
   )
 
   await check(
+    'media-library: a page of media, one item shown, and a change to its name undone',
+    async () => {
+      const capabilities = (state.discovery?.capabilities as string[] | undefined) ?? []
+      if (!capabilities.includes('media-library') || !state.may?.mediaLibrary) return 'skip'
+      const base = `environments/${state.environment}/media-items`
+      const listed = await api(`${base}?take=5`)
+      assert(listed.status === 200, `the list answered ${listed.status}`)
+      const page = (await listed.json()) as { items?: Json[]; total?: unknown }
+      assert(Array.isArray(page.items), 'items is missing')
+      assert(typeof page.total === 'number', 'total is missing')
+      const missing = await api(`${base}/${crypto.randomUUID()}`)
+      assert(missing.status === 404, `an unknown item answered ${missing.status}`)
+      assert(isProblem(missing), 'not application/problem+json')
+      const first = page.items?.[0]
+      if (!first) return
+      assert(
+        typeof first.key === 'string' && typeof first.path === 'string',
+        'an item has no key or path',
+      )
+      const shown = await api(`${base}/${first.key}?references=true`)
+      assert(shown.status === 200, `showing an item answered ${shown.status}`)
+      const item = (await shown.json()) as Json
+      assert(typeof item.access === 'string', 'access is missing')
+      assert(
+        typeof (item.references as Json | undefined)?.total === 'number',
+        'references is missing',
+      )
+      const rename = (name: unknown) =>
+        api(`${base}/${first.key}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name }),
+        })
+      const renamed = await rename(`${first.name} (conformance)`)
+      // A site that takes no changes refuses the change first.
+      if (renamed.status === 403 && ((await renamed.json()) as Json).code === 'access-level') return
+      assert(renamed.status === 200, `renaming answered ${renamed.status}`)
+      const undone = await rename(first.name)
+      assert(undone.status === 200, `renaming it back answered ${undone.status}`)
+      assert(((await undone.json()) as Json).name === first.name, 'the name was not put back')
+    },
+  )
+
+  await check('media-access: who may see an item reads back, with its summary', async () => {
+    const capabilities = (state.discovery?.capabilities as string[] | undefined) ?? []
+    if (!capabilities.includes('media-access') || !state.may?.mediaLibrary) return 'skip'
+    const base = `environments/${state.environment}/media-items`
+    const missing = await api(`${base}/${crypto.randomUUID()}/access`)
+    assert(missing.status === 404, `an unknown item's access answered ${missing.status}`)
+    const first = (((await (await api(`${base}?take=1`)).json()) as { items?: Json[] }).items ??
+      [])[0]
+    if (!first) return
+    const read = await api(`${base}/${first.key}/access`)
+    assert(read.status === 200, `reading access answered ${read.status}`)
+    const view = (await read.json()) as Json
+    assert(typeof view.summary === 'string', 'summary is missing')
+    assert(typeof (view.form as Json | undefined)?.inherit === 'boolean', 'form is missing')
+    const wrong = await api(`${base}/${first.key}/access`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ level: 'everything' }),
+    })
+    if (wrong.status === 403 && ((await wrong.json()) as Json).code === 'access-level') return
+    assert(wrong.status === 400, `a change it cannot read answered ${wrong.status}`)
+    assert(isProblem(wrong), 'not application/problem+json')
+  })
+
+  await check(
+    'content-show: a page as content show gives it, and an unknown one is not found',
+    async () => {
+      const capabilities = (state.discovery?.capabilities as string[] | undefined) ?? []
+      if (!capabilities.includes('content-show') || !state.may?.contentShow) return 'skip'
+      const env = `environments/${state.environment}`
+      const missing = await api(`${env}/content-items/${crypto.randomUUID()}`)
+      assert(missing.status === 404, `an unknown page answered ${missing.status}`)
+      assert(isProblem(missing), 'not application/problem+json')
+      if (!capabilities.includes('content-query')) return
+      const found = await api(`${env}/content/query`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ entity: 'document', take: 1 }),
+      })
+      const first = (((await found.json().catch(() => ({}))) as { items?: Json[] }).items ?? [])[0]
+      if (!first) return
+      const shown = await api(`${env}/content-items/${first.id}?references=true`)
+      assert(shown.status === 200, `showing a page answered ${shown.status}`)
+      const page = (await shown.json()) as Json
+      assert(
+        typeof page.path === 'string' && Array.isArray(page.values),
+        'path or values is missing',
+      )
+      assert(
+        typeof (page.references as Json | undefined)?.total === 'number',
+        'references is missing',
+      )
+    },
+  )
+
+  await check(
     "public-access: a page's access reads back, and an unknown page's is not found",
     async () => {
       const capabilities = (state.discovery?.capabilities as string[] | undefined) ?? []

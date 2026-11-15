@@ -2567,9 +2567,36 @@
           "type": "string",
           "required": true,
           "description": "the page: a path or a uuid; library:/… for a Library item"
+        },
+        {
+          "name": "--references",
+          "type": "boolean",
+          "description": "list what uses the page"
+        },
+        {
+          "name": "--skip",
+          "type": "integer",
+          "default": 0,
+          "description": "with --references: how many to skip"
+        },
+        {
+          "name": "--take",
+          "type": "integer",
+          "default": 25,
+          "description": "with --references: how many to show"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "act on the site this profile names, rather than this one"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "a hosted site's environment"
         }
       ],
-      "errors": ["usage", "internal", "not_found"]
+      "errors": ["usage", "internal", "not_found", "refused", "unavailable"]
     },
     {
       "name": "content sort",
@@ -6479,6 +6506,147 @@
       "errors": ["usage", "internal"]
     },
     {
+      "name": "media access set",
+      "description": "set who can see and change a media folder or item",
+      "effects": "idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "key",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "path",
+          "type": "string"
+        },
+        {
+          "name": "summary",
+          "type": "string"
+        },
+        {
+          "name": "form",
+          "type": "object",
+          "description": "the Permissions dialog’s form"
+        },
+        {
+          "name": "state",
+          "type": "object",
+          "description": "everything the Permissions dialog reads"
+        }
+      ],
+      "args": [
+        {
+          "name": "item",
+          "type": "string",
+          "required": true,
+          "description": "the folder or item: a path or a uuid"
+        },
+        {
+          "name": "--anyone",
+          "type": "boolean",
+          "description": "anyone with the link can see it"
+        },
+        {
+          "name": "--back-office-only",
+          "type": "boolean",
+          "description": "only back-office users can see it"
+        },
+        {
+          "name": "--group",
+          "type": "string[]",
+          "description": "a member group, by name; repeat it for more"
+        },
+        {
+          "name": "--read",
+          "type": "boolean",
+          "description": "the groups' members can see it"
+        },
+        {
+          "name": "--change",
+          "type": "boolean",
+          "description": "the groups' members can see and change it"
+        },
+        {
+          "name": "--none",
+          "type": "boolean",
+          "description": "the groups' members can neither see nor change it"
+        },
+        {
+          "name": "--inherit",
+          "type": "boolean",
+          "description": "follow the folder above; --no-inherit for settings of its own"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "act on the site this profile names, rather than this one"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "a hosted site's environment"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "refused", "unavailable"]
+    },
+    {
+      "name": "media access show",
+      "description": "who can see and change a media folder or item",
+      "effects": "read_only",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "key",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "path",
+          "type": "string"
+        },
+        {
+          "name": "summary",
+          "type": "string"
+        },
+        {
+          "name": "form",
+          "type": "object",
+          "description": "the Permissions dialog’s form"
+        },
+        {
+          "name": "state",
+          "type": "object",
+          "description": "everything the Permissions dialog reads"
+        }
+      ],
+      "args": [
+        {
+          "name": "item",
+          "type": "string",
+          "required": true,
+          "description": "the folder or item: a path or a uuid"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "act on the site this profile names, rather than this one"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "a hosted site's environment"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "refused", "unavailable"]
+    },
+    {
       "name": "media delete",
       "description": "move media items, and what is inside them, to the recycle bin",
       "effects": "idempotent",
@@ -6596,6 +6764,135 @@
       "errors": ["usage", "internal", "not_found", "auth", "unavailable", "io"]
     },
     {
+      "name": "media find",
+      "description": "find media items whose names hold some text, a page at a time",
+      "effects": "read_only",
+      "cardinality": "bounded",
+      "output_fields": [
+        {
+          "name": "items",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "fields": [
+              {
+                "name": "key",
+                "type": "string"
+              },
+              {
+                "name": "name",
+                "type": "string"
+              },
+              {
+                "name": "path",
+                "type": "string"
+              },
+              {
+                "name": "type",
+                "type": "string"
+              },
+              {
+                "name": "folder",
+                "type": "boolean"
+              },
+              {
+                "name": "size",
+                "type": "integer",
+                "nullable": true
+              }
+            ]
+          }
+        },
+        {
+          "name": "total",
+          "type": "integer"
+        }
+      ],
+      "args": [
+        {
+          "name": "--name",
+          "type": "string",
+          "required": true,
+          "description": "text the name holds"
+        },
+        {
+          "name": "--under",
+          "type": "string",
+          "description": "only items below this folder"
+        },
+        {
+          "name": "--type",
+          "type": "string",
+          "description": "only items of this media type"
+        },
+        {
+          "name": "--skip",
+          "type": "integer",
+          "default": 0,
+          "description": "how many to skip"
+        },
+        {
+          "name": "--take",
+          "type": "integer",
+          "default": 25,
+          "description": "how many to show"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "act on the site this profile names, rather than this one"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "a hosted site's environment"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "refused", "unavailable"]
+    },
+    {
+      "name": "media folder new",
+      "description": "make a media folder, and any folders above it that are missing",
+      "effects": "idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "key",
+          "type": "string"
+        },
+        {
+          "name": "path",
+          "type": "string"
+        },
+        {
+          "name": "made",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "path",
+          "type": "string",
+          "required": true,
+          "description": "the folder, as /Gallery/2026"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "act on the site this profile names, rather than this one"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "a hosted site's environment"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "refused", "unavailable"]
+    },
+    {
       "name": "media import",
       "description": "import a file, or a folder of files keeping its folders, into the media library",
       "effects": "idempotent",
@@ -6672,6 +6969,87 @@
       "errors": ["usage", "internal", "not_found", "io", "refused"]
     },
     {
+      "name": "media list",
+      "description": "the items in a media folder, or at the top of the library, by name",
+      "effects": "read_only",
+      "cardinality": "bounded",
+      "output_fields": [
+        {
+          "name": "items",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "fields": [
+              {
+                "name": "key",
+                "type": "string"
+              },
+              {
+                "name": "name",
+                "type": "string"
+              },
+              {
+                "name": "path",
+                "type": "string"
+              },
+              {
+                "name": "type",
+                "type": "string"
+              },
+              {
+                "name": "folder",
+                "type": "boolean"
+              },
+              {
+                "name": "size",
+                "type": "integer",
+                "nullable": true
+              }
+            ]
+          }
+        },
+        {
+          "name": "total",
+          "type": "integer"
+        }
+      ],
+      "args": [
+        {
+          "name": "--under",
+          "type": "string",
+          "description": "the folder to list; the top of the library when not given"
+        },
+        {
+          "name": "--type",
+          "type": "string",
+          "description": "only items of this media type"
+        },
+        {
+          "name": "--skip",
+          "type": "integer",
+          "default": 0,
+          "description": "how many to skip"
+        },
+        {
+          "name": "--take",
+          "type": "integer",
+          "default": 25,
+          "description": "how many to show"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "act on the site this profile names, rather than this one"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "a hosted site's environment"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "refused", "unavailable"]
+    },
+    {
       "name": "media move",
       "description": "move media items, and what is inside them, into another folder",
       "effects": "idempotent",
@@ -6738,6 +7116,276 @@
         }
       ],
       "errors": ["usage", "internal", "not_found", "refused"]
+    },
+    {
+      "name": "media show",
+      "description": "one media item: its type, folder, file, size, alternative text, focal point and who can see it",
+      "effects": "read_only",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "key",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "path",
+          "type": "string"
+        },
+        {
+          "name": "type",
+          "type": "object",
+          "fields": [
+            {
+              "name": "alias",
+              "type": "string"
+            },
+            {
+              "name": "name",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "folder",
+          "type": "boolean"
+        },
+        {
+          "name": "parent",
+          "type": "object",
+          "nullable": true,
+          "fields": [
+            {
+              "name": "key",
+              "type": "string"
+            },
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "path",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "file",
+          "type": "string",
+          "nullable": true,
+          "description": "the address it is served at"
+        },
+        {
+          "name": "size",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "width",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "height",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "extension",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "alt",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "focal",
+          "type": "object",
+          "nullable": true,
+          "fields": [
+            {
+              "name": "left",
+              "type": "number"
+            },
+            {
+              "name": "top",
+              "type": "number"
+            }
+          ]
+        },
+        {
+          "name": "access",
+          "type": "string",
+          "description": "who can see and change it"
+        },
+        {
+          "name": "protected",
+          "type": "boolean"
+        },
+        {
+          "name": "references",
+          "type": "object",
+          "nullable": true,
+          "description": "with --references: what uses it",
+          "fields": [
+            {
+              "name": "total",
+              "type": "integer"
+            },
+            {
+              "name": "items",
+              "type": "array",
+              "items": {
+                "type": "object",
+                "fields": [
+                  {
+                    "name": "key",
+                    "type": "string"
+                  },
+                  {
+                    "name": "name",
+                    "type": "string"
+                  },
+                  {
+                    "name": "kind",
+                    "type": "string",
+                    "enum": ["page", "media", "library", "member", "other"]
+                  },
+                  {
+                    "name": "path",
+                    "type": "string",
+                    "nullable": true
+                  },
+                  {
+                    "name": "type",
+                    "type": "string",
+                    "nullable": true
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "item",
+          "type": "string",
+          "required": true,
+          "description": "the media item: a path or a uuid"
+        },
+        {
+          "name": "--references",
+          "type": "boolean",
+          "description": "list the pages and media that use it"
+        },
+        {
+          "name": "--skip",
+          "type": "integer",
+          "default": 0,
+          "description": "with --references: how many to skip"
+        },
+        {
+          "name": "--take",
+          "type": "integer",
+          "default": 25,
+          "description": "with --references: how many to show"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "act on the site this profile names, rather than this one"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "a hosted site's environment"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "refused", "unavailable"]
+    },
+    {
+      "name": "media update",
+      "description": "change a media item's name, alternative text, focal point or file, keeping what uses it working",
+      "effects": "idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "key",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "path",
+          "type": "string"
+        },
+        {
+          "name": "changed",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["name", "alt", "focal", "file"]
+          }
+        },
+        {
+          "name": "references",
+          "type": "object",
+          "nullable": true,
+          "description": "with --file: what uses it"
+        }
+      ],
+      "args": [
+        {
+          "name": "item",
+          "type": "string",
+          "required": true,
+          "description": "the media item: a path or a uuid"
+        },
+        {
+          "name": "--name",
+          "type": "string",
+          "description": "its name in the library"
+        },
+        {
+          "name": "--alt",
+          "type": "string",
+          "description": "its alternative text"
+        },
+        {
+          "name": "--focal",
+          "type": "string",
+          "description": "the point a crop keeps, each from 0 to 1"
+        },
+        {
+          "name": "--file",
+          "type": "string",
+          "description": "a new file for it, from here"
+        },
+        {
+          "name": "--dry-run",
+          "type": "boolean",
+          "description": "say what it would do, and change nothing"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "act on the site this profile names, rather than this one"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "a hosted site's environment"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "refused", "unavailable"]
     },
     {
       "name": "members approve",

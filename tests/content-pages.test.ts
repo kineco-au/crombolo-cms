@@ -13,7 +13,7 @@ import { type BlockListValue, convertValue } from '@crombolo/render'
 import { seedKey } from '@crombolo/server'
 import { ERROR_KINDS } from '../packages/cli/src/errors.ts'
 import { ROOT } from '../scripts/packages.ts'
-import { bootServer, ORIGIN } from './support/harness.ts'
+import { ADMIN, BACKOFFICE, bootServer, ORIGIN, signIn } from './support/harness.ts'
 
 const BIN = join(ROOT, 'packages/cli/bin/crombolo.ts')
 
@@ -175,6 +175,21 @@ describe('the commands, on a site with page types and a block list', () => {
     expect(shown('/Home/Visit us').variants[0]?.state).toBe('Published')
   }, 30_000)
 
+  test('content show --references: what uses the page (story 355)', () => {
+    const text = ok('content', 'show', '/Home', '--references').out
+    expect(text).toContain('Used by 1 page.')
+    expect(text).toContain('page     /Home/Visit us  (page)')
+    const asJson = JSON.parse(ok('content', 'show', '/Home', '--references', '-o', 'json').out) as {
+      references: { total: number; items: Array<{ kind: string; path: string; name: string }> }
+    }
+    expect(asJson.references.total).toBe(1)
+    expect(asJson.references.items[0]).toMatchObject({ kind: 'page', path: '/Home/Visit us' })
+    expect(ok('content', 'show', '/Home/Visit us', '--references').out).toContain(
+      'Nothing uses it.',
+    )
+    expect(shown('/Home')).not.toHaveProperty('references')
+  }, 30_000)
+
   test('refused, with nothing made: a taken name, a place the type is not allowed, a bad value', () => {
     const refused = ERROR_KINDS.refused.exitCode
     expect(cli('content', 'new', '/Home/Visit us', '--type', 'page').code).toBe(refused)
@@ -311,6 +326,68 @@ describe('the commands, on a site with page types and a block list', () => {
       await server.close()
     }
   }, 30_000)
+
+  test('content show --profile: the page from a hosted site, as content show gives it here', async () => {
+    const server = await bootServer({
+      keepDatabase: true,
+      config: {
+        dialect: 'sqlite',
+        sqliteFile: join(site, 'site.sqlite'),
+        siteDir: site,
+        schemaDir: join(site, 'schema'),
+        componentsDir: join(site, 'components'),
+        development: true,
+        secretKey: 'a-test-secret-key-that-is-long-enough-to-use',
+        cliTokens: true,
+        remote: {
+          enabled: true,
+          environment: 'production',
+          protected: false,
+          approvals: false,
+          maxUploadBytes: 1024 ** 2,
+          oidcIssuers: [],
+        },
+      },
+    })
+    const listening = Bun.serve({ port: 0, fetch: (request) => server.fetch(request) })
+    const dir = mkdtempSync(join(process.cwd(), 'output', 'content-show-hosted-'))
+    try {
+      const h = await signIn(server, ADMIN)
+      const { token } = (await (
+        await h.post(`${BACKOFFICE}/crombolo/api/cli-tokens`, { name: 'show' })
+      ).json()) as { token: string }
+      writeFileSync(join(dir, 'profiles'), `[prod]\nurl = "http://localhost:${listening.port}"\n`)
+      const hosted = (...args: string[]) => {
+        const proc = Bun.spawnSync(['bun', BIN, ...args, '--profile', 'prod'], {
+          cwd: dir,
+          stdin: 'ignore',
+          env: {
+            ...(process.env as Record<string, string>),
+            CROMBOLO_PROFILES_FILE: join(dir, 'profiles'),
+            CROMBOLO_TOKEN: token,
+          },
+        })
+        return { code: proc.exitCode, out: proc.stdout.toString(), err: proc.stderr.toString() }
+      }
+      const there = hosted('content', 'show', '/Home', '--references', '-o', 'json')
+      expect(there.code, there.err).toBe(0)
+      const remote = JSON.parse(there.out) as Shown & { references: { total: number } }
+      const local = JSON.parse(ok('content', 'show', '/Home', '--references', '-o', 'json').out)
+      expect(remote).toEqual(local)
+      expect(remote.references.total).toBe(1)
+      const text = hosted('content', 'show', '/Home/Visit us')
+      expect(text.code, text.err).toBe(0)
+      expect(text.out).toContain('/Home/Visit us  (Page, page)')
+      expect(hosted('content', 'show', '/Nowhere').code).toBe(ERROR_KINDS.not_found.exitCode)
+      expect(hosted('content', 'show', 'library:/Menus/Footer').code).toBe(
+        ERROR_KINDS.refused.exitCode,
+      )
+    } finally {
+      await listening.stop(true)
+      await server.close()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }, 60_000)
 
   test('a content file whose blocks share an alias is refused', () => {
     writeFileSync(

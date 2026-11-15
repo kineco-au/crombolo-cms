@@ -5,7 +5,8 @@
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { UMB_MEDIA_WORKSPACE_CONTEXT } from '@umbraco-cms/backoffice/media'
-import { readMediaAccess, summarise, usedByText } from './media-access.js'
+import { readMediaAccess } from './media-access.js'
+import { summarise, usedByText } from './media-access-rules.js'
 
 export default class CromboloMediaAccessInfoElement extends UmbLitElement {
   static properties = {

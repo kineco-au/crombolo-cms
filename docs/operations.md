@@ -1004,6 +1004,38 @@ stop: a file already there with the same bytes is skipped, and one whose bytes
 differ is reported and left. `--dry-run` says what it would create. `crombolo
 media export [<folder>] --out <dir>` writes the files back out as folders.
 
+**Media already in the library** (story 355): found, shown, changed and given folders,
+here or on a hosted site with `--profile`, as the person signed in to it. Changes go
+through the media operations the back office uses, so a person's start nodes and
+permissions are checked, and each is audited as theirs.
+
+| Command | Does |
+| --- | --- |
+| `crombolo media list [--under <folder>] [--type <alias>]` | the items in a folder, or at the top: type, size and place, by name |
+| `crombolo media find --name <text> [--under <folder>] [--type <alias>]` | items whose names hold the text, anywhere below `--under` |
+| `crombolo media show <item> [--references]` | its type, folder, file and address, size, dimensions, alternative text, focal point and who can see it; with `--references` the pages, Library items and media that use it |
+| `crombolo media update <item> [--name] [--alt] [--focal <x,y>] [--file <path>] [--dry-run]` | changes what is named. A new file goes into the same item, so what uses it keeps working; the old file is removed |
+| `crombolo media folder new <path>` | makes the folders along the path that are missing, and nothing when they are all there |
+| `crombolo media access show\|set <item>` | who can see and change it, as its Permissions dialog does ([`rendering.md`](rendering.md#protected-media)) |
+| `crombolo content show <page> --references` | what uses a page |
+
+- **An item** is named by its path (`/Gallery/hero.jpg`) or its key, on a hosted site
+  too: the routes resolve the path there.
+- **Paging** is `--skip` and `--take`, 25 at a time and at most 100, and says "Showing
+  26–50 of 120" when there is more. `-o json` gives `total` and `items`.
+- **What uses something** is read from the values as they are, as the back office's
+  "Used by" is: a picker, a link, or an image in rich text names it by its key.
+- **Alternative text** needs a type whose `altText` is a text box or text area, and a
+  focal point an image cropper; a type without them is refused, as `media import`
+  refuses it. A file its type does not take is refused, naming the types that would.
+- **A replaced file keeps working everywhere**: pickers and links name the item, and an
+  image in rich text is shown from its item's file when the page renders
+  ([`rendering.md`](rendering.md)).
+- **On a hosted site** these need the `media-library`, `media-access` and
+  `content-show` capabilities ([`remote-protocol.md`](remote-protocol.md)); one from
+  before them is refused, saying it needs a newer crombolo. CI cannot do any of this,
+  as each acts for a person.
+
 ### Restarting
 
 `crombolo start` supervises the server it starts (story 241). The server runs

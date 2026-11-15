@@ -2775,16 +2775,21 @@ crombolo content rollback <page> <version> [--publish] [--skip-approval] [--prof
 One page or Library item: its type, state, values and blocks. Changes nothing.
 
 ```
-crombolo content show <page>
+crombolo content show <page> [--references] [--skip <skip>] [--take <take>] [--profile <profile>] [--env <env>]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
 | `page` | string | The page: a path or a uuid; library:/… for a Library item. Required. |
+| `--references` | boolean | List what uses the page. |
+| `--skip` | integer | With --references: how many to skip. Default `0`. |
+| `--take` | integer | With --references: how many to show. Default `25`. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
 
 **Output** (single, with `-o json`): a JSON document.
 
-**Fails with:** `usage`, `internal`, `not_found`.
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.
 
 ### `crombolo content sort`
 
@@ -2870,6 +2875,63 @@ crombolo content update <page> [--set <set>] [--set-file <set-file>] [--culture 
 
 **Fails with:** `usage`, `internal`, `not_found`, `refused`.
 
+### `crombolo media access set`
+
+Set who can see and change a media folder or item. Safe to run again: a second run changes nothing more.
+
+```
+crombolo media access set <item> [--anyone] [--back-office-only] [--group <group>] [--read] [--change] [--none] [--inherit] [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `item` | string | The folder or item: a path or a uuid. Required. |
+| `--anyone` | boolean | Anyone with the link can see it. |
+| `--back-office-only` | boolean | Only back-office users can see it. |
+| `--group` | string[] | A member group, by name; repeat it for more. |
+| `--read` | boolean | The groups' members can see it. |
+| `--change` | boolean | The groups' members can see and change it. |
+| `--none` | boolean | The groups' members can neither see nor change it. |
+| `--inherit` | boolean | Follow the folder above; --no-inherit for settings of its own. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`):
+
+- `key` (string)
+- `name` (string)
+- `path` (string)
+- `summary` (string)
+- `form` (object)
+- `state` (object)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.
+
+### `crombolo media access show`
+
+Who can see and change a media folder or item. Changes nothing.
+
+```
+crombolo media access show <item> [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `item` | string | The folder or item: a path or a uuid. Required. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`):
+
+- `key` (string)
+- `name` (string)
+- `path` (string)
+- `summary` (string)
+- `form` (object)
+- `state` (object)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.
+
 ### `crombolo media delete`
 
 Move media items, and what is inside them, to the recycle bin. Safe to run again: a second run changes nothing more.
@@ -2932,6 +2994,59 @@ crombolo media fetch
 
 **Fails with:** `usage`, `internal`, `not_found`, `auth`, `unavailable`, `io`.
 
+### `crombolo media find`
+
+Find media items whose names hold some text, a page at a time. Changes nothing.
+
+```
+crombolo media find --name <name> [--under <under>] [--type <type>] [--skip <skip>] [--take <take>] [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `--name` | string | Text the name holds. Required. |
+| `--under` | string | Only items below this folder. |
+| `--type` | string | Only items of this media type. |
+| `--skip` | integer | How many to skip. Default `0`. |
+| `--take` | integer | How many to show. Default `25`. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (bounded, with `-o json`):
+
+- `items` (array of object)
+  - `key` (string)
+  - `name` (string)
+  - `path` (string)
+  - `type` (string)
+  - `folder` (boolean)
+  - `size` (integer)
+- `total` (integer)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.
+
+### `crombolo media folder new`
+
+Make a media folder, and any folders above it that are missing. Safe to run again: a second run changes nothing more.
+
+```
+crombolo media folder new <path> [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `path` | string | The folder, as /Gallery/2026. Required. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`):
+
+- `key` (string)
+- `path` (string)
+- `made` (array of string)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.
+
 ### `crombolo media import`
 
 Import a file, or a folder of files keeping its folders, into the media library. Safe to run again: a second run changes nothing more.
@@ -2961,6 +3076,36 @@ crombolo media import <path> [--under <under>] [--name <name>] [--alt <alt>] [--
 
 **Fails with:** `usage`, `internal`, `not_found`, `io`, `refused`.
 
+### `crombolo media list`
+
+The items in a media folder, or at the top of the library, by name. Changes nothing.
+
+```
+crombolo media list [--under <under>] [--type <type>] [--skip <skip>] [--take <take>] [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `--under` | string | The folder to list; the top of the library when not given. |
+| `--type` | string | Only items of this media type. |
+| `--skip` | integer | How many to skip. Default `0`. |
+| `--take` | integer | How many to show. Default `25`. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (bounded, with `-o json`):
+
+- `items` (array of object)
+  - `key` (string)
+  - `name` (string)
+  - `path` (string)
+  - `type` (string)
+  - `folder` (boolean)
+  - `size` (integer)
+- `total` (integer)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.
+
 ### `crombolo media move`
 
 Move media items, and what is inside them, into another folder. Safe to run again: a second run changes nothing more.
@@ -2987,6 +3132,87 @@ crombolo media move <item> --to <to> [--dry-run]
   - `name` (string)
 
 **Fails with:** `usage`, `internal`, `not_found`, `refused`.
+
+### `crombolo media show`
+
+One media item: its type, folder, file, size, alternative text, focal point and who can see it. Changes nothing.
+
+```
+crombolo media show <item> [--references] [--skip <skip>] [--take <take>] [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `item` | string | The media item: a path or a uuid. Required. |
+| `--references` | boolean | List the pages and media that use it. |
+| `--skip` | integer | With --references: how many to skip. Default `0`. |
+| `--take` | integer | With --references: how many to show. Default `25`. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`):
+
+- `key` (string)
+- `name` (string)
+- `path` (string)
+- `type` (object)
+  - `alias` (string)
+  - `name` (string)
+- `folder` (boolean)
+- `parent` (object)
+  - `key` (string)
+  - `name` (string)
+  - `path` (string)
+- `file` (string)
+- `size` (integer)
+- `width` (integer)
+- `height` (integer)
+- `extension` (string)
+- `alt` (string)
+- `focal` (object)
+  - `left` (number)
+  - `top` (number)
+- `access` (string)
+- `protected` (boolean)
+- `references` (object)
+  - `total` (integer)
+  - `items` (array of object)
+    - `key` (string)
+    - `name` (string)
+    - `kind` (string)
+    - `path` (string)
+    - `type` (string)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.
+
+### `crombolo media update`
+
+Change a media item's name, alternative text, focal point or file, keeping what uses it working. Safe to run again: a second run changes nothing more.
+
+```
+crombolo media update <item> [--name <name>] [--alt <alt>] [--focal <focal>] [--file <file>] [--dry-run] [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `item` | string | The media item: a path or a uuid. Required. |
+| `--name` | string | Its name in the library. |
+| `--alt` | string | Its alternative text. |
+| `--focal` | string | The point a crop keeps, each from 0 to 1. |
+| `--file` | string | A new file for it, from here. |
+| `--dry-run` | boolean | Say what it would do, and change nothing. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`):
+
+- `key` (string)
+- `name` (string)
+- `path` (string)
+- `changed` (array of string)
+- `references` (object)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.
 
 ### `crombolo dictionary export`
 

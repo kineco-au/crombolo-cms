@@ -40,7 +40,7 @@ import {
   requestFor,
   summarise,
   WRITE_MODES,
-} from '../packages/backoffice-host/plugin/media-access.js'
+} from '../packages/backoffice-host/plugin/media-access-rules.js'
 import { dialectUnderTest, undoMediaAccess } from './support/db.ts'
 import { BACKOFFICE, type Harness, signedInServer, signInAsGroup, V1 } from './support/harness.ts'
 

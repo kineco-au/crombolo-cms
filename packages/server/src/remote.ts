@@ -73,6 +73,7 @@ import { describeProvenance, provenanceProblem, verifyProvenance } from './prove
 import { createBackgroundJobRoutes } from './remote-background-jobs.ts'
 import { createCiSignIn, readRuleInput, trustedIssuers } from './remote-ci.ts'
 import { createExtensionActivityRoutes } from './remote-extension-activity.ts'
+import { createMediaLibraryRoutes } from './remote-media-library.ts'
 import { createMemberRoutes } from './remote-members.ts'
 import { createUndoRoutes } from './remote-undo.ts'
 import { createUserRoutes } from './remote-users.ts'
@@ -121,6 +122,8 @@ export interface RemoteOptions {
   jobsWaitingSince?: () => string | null
   /** The extension activity recorder's flush and the counts' window (story 362); absent, those routes are not offered. */
   activity?: { flush(): Promise<void>; days: number }
+  /** Told after a media item's permissions change here (story 355), for this node's media cache. */
+  onMediaAccessChange?(key: string): void | Promise<void>
 }
 
 /** What a supervised restart came to: the new server serving, or why the old one still is. */
@@ -247,6 +250,7 @@ export function createRemote(options: RemoteOptions): Remote {
       ...userRoutes.capabilities,
       ...backgroundJobRoutes.capabilities,
       ...(activityRoutes?.capabilities ?? []),
+      ...(mediaLibraryRoutes?.capabilities ?? []),
       ...(settings.approvals ? ['approvals'] : []),
       ...(options.bundles && atLeast('read') ? ['bundle-manage'] : []),
       ...(options.restart && atLeast('all') ? ['restart'] : []),
@@ -308,6 +312,20 @@ export function createRemote(options: RemoteOptions): Remote {
 
   const activityRoutes = options.activity
     ? createExtensionActivityRoutes({ db, problem, activity: options.activity })
+    : undefined
+
+  const mediaLibraryRoutes = options.operations
+    ? createMediaLibraryRoutes({
+        db,
+        media: options.operations.media,
+        files: async () => new MediaFileStore(await store()),
+        problem,
+        levelRefusal: () =>
+          atLeast('content') ? undefined : notAtLevel('content', 'changes to media'),
+        receive: (request, path) => receive(request, path),
+        onAccessChange: options.onMediaAccessChange,
+        nodeId: config.nodeId,
+      })
     : undefined
 
   const userRoutes = createUserRoutes({
@@ -1485,7 +1503,8 @@ export function createRemote(options: RemoteOptions): Remote {
       return (
         url.pathname === `${prefix}pushes` ||
         url.pathname === `${prefix}bundles` ||
-        url.pathname.startsWith(`${prefix}media/`)
+        url.pathname.startsWith(`${prefix}media/`) ||
+        (mediaLibraryRoutes?.isUpload(url.pathname.slice(prefix.length), request.method) ?? false)
       )
     },
 
@@ -1546,6 +1565,8 @@ export function createRemote(options: RemoteOptions): Remote {
               audit: mayReadAudit(principal),
               backgroundJobs: backgroundJobRoutes.may(principal),
               extensionActivity: activityRoutes?.may(principal) ?? false,
+              mediaLibrary: mediaLibraryRoutes?.mayMedia(principal) ?? false,
+              contentShow: mediaLibraryRoutes?.mayContent(principal) ?? false,
             },
           },
         ])
@@ -1606,6 +1627,13 @@ export function createRemote(options: RemoteOptions): Remote {
         (what.startsWith('content/') || what === 'recycle-bin' || what.startsWith('recycle-bin/'))
       ) {
         const answered = await undo.handle(request, url, principal, what)
+        if (answered) return answered
+      }
+      if (
+        mediaLibraryRoutes &&
+        (what.startsWith('media-items') || what.startsWith('content-items/'))
+      ) {
+        const answered = await mediaLibraryRoutes.handle(request, url, principal, what)
         if (answered) return answered
       }
       if (what === 'restart' && request.method === 'POST') return restartSite(request, principal)

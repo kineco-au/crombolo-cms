@@ -27,17 +27,23 @@ import {
   ObjectTypes,
 } from '@crombolo/core'
 import {
-  appendCacheInstruction,
   type Db,
-  type MediaAccessEntry,
   type MediaAccessGroup,
   type MediaAccessMember,
   MediaAccessRepository,
   type MediaByUrl,
-  MemberRepository,
   NodeRepository,
-  ruleOf,
+  type NodeRow,
 } from '@crombolo/data'
+import {
+  bundlesUsing,
+  describeMediaAccess,
+  type MediaAccessContext,
+  mediaAccessRefusal,
+  mediaChain,
+  type RuleBody,
+  saveMediaAccess,
+} from './media-library.ts'
 
 export interface MediaAccessDeps {
   db: Db
@@ -62,29 +68,6 @@ const bearerOf = (request: Request): string | undefined => {
 
 const isUuid = (value: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
-
-/** A rule as the back office sends and shows it. */
-interface RuleBody {
-  publicRead: boolean
-  groups: MediaAccessGroup[]
-  members?: MediaAccessMember[]
-  newRead: NewMediaRead | null
-  newWrite: NewMediaWrite | null
-  /** File types members may upload below (story 198); empty is none. */
-  memberTypes: string[]
-  /** The largest file a member may upload below, in bytes; null sets none. */
-  memberMaxBytes: number | null
-}
-
-const ruleBody = (entry: MediaAccessEntry): RuleBody => ({
-  publicRead: entry.publicRead,
-  groups: entry.groups,
-  ...(entry.members?.length ? { members: [...entry.members] } : {}),
-  newRead: entry.newRead,
-  newWrite: entry.newWrite,
-  memberTypes: entry.memberTypes,
-  memberMaxBytes: entry.memberMaxBytes,
-})
 
 /** A rule from a request body; a string saying what is wrong otherwise. Pure. */
 export function parseRuleBody(raw: unknown): RuleBody | string {
@@ -137,23 +120,15 @@ export function createMediaAccess(deps: MediaAccessDeps) {
   const { db } = deps
   const repo = new MediaAccessRepository(db)
   const nodes = new NodeRepository(db)
-
-  /** A node's media ancestors' keys then its own, root first. */
-  const chainOf = async (path: string): Promise<string[]> => {
-    const ids = path
-      .split(',')
-      .map(Number)
-      .filter((id) => id > 0)
-    const byId = new Map((await nodes.byIds(ids)).map((row) => [row.id, row]))
-    return ids.flatMap((id) => {
-      const row = byId.get(id)
-      return row && row.objectType === ObjectTypes.Media ? [row.key] : []
-    })
+  const context: MediaAccessContext = {
+    db,
+    bundleFolders: deps.bundleFolders,
+    onChange: deps.onChange,
+    nodeId: deps.nodeId,
   }
 
-  const mayView = async (principal: Principal, path: string, trashed: boolean) =>
-    hasSection(principal, 'media') &&
-    hasPathAccess(principal.startNodes.media, await chainOf(path), trashed)
+  const mayView = async (principal: Principal, node: NodeRow) =>
+    !(await mediaAccessRefusal(db, principal, node, false))
 
   /** The member a request carries: its site cookie, else a Delivery API member token. */
   const memberOf = async (request: Request): Promise<MediaMember | undefined> => {
@@ -173,34 +148,14 @@ export function createMediaAccess(deps: MediaAccessDeps) {
       if (member && memberMay('read', item.access, item.rule, member)) return true
     }
     const principal = await deps.principal(request)
-    return principal ? mayView(principal, item.path, item.trashed) : false
+    return principal
+      ? hasSection(principal, 'media') &&
+          hasPathAccess(principal.startNodes.media, await mediaChain(db, item.path), item.trashed)
+      : false
   }
 
   /** Whether a file is closed to someone who is not signed in. */
   const isProtected = (item: MediaByUrl) => item.trashed || isProtectedMedia(item.access, item.rule)
-
-  const memberGroups = async (): Promise<string[]> => {
-    const rows = await db.q
-      .selectFrom('node')
-      .select('text')
-      .where('node_object_type', '=', ObjectTypes.MemberGroup)
-      .orderBy('text')
-      .execute()
-    return rows.flatMap((row) => (row.text ? [String(row.text)] : []))
-  }
-
-  /**
-   * The bundles that use a folder: those declaring it, or one below it, so a
-   * rename, move or delete of it would break their path. Sorted, each once.
-   */
-  const usedBy = (id: number): string[] =>
-    [
-      ...new Set(
-        (deps.bundleFolders?.() ?? [])
-          .filter((folder) => `,${folder.nodePath},`.includes(`,${id},`))
-          .map((folder) => folder.bundle),
-      ),
-    ].sort()
 
   /** Every folder a bundle's path runs through, with the bundles that use it. */
   async function usedFolders(): Promise<Array<{ key: string; name: string; bundles: string[] }>> {
@@ -210,53 +165,15 @@ export function createMediaAccess(deps: MediaAccessDeps) {
     const rows = await nodes.byIds([...ids])
     return rows
       .filter((row) => row.objectType === ObjectTypes.Media)
-      .map((row) => ({ key: row.key, name: row.text ?? '', bundles: usedBy(row.id) }))
+      .map((row) => ({
+        key: row.key,
+        name: row.text ?? '',
+        bundles: bundlesUsing(context, row.id),
+      }))
   }
 
   /** What the Permissions dialog shows for a folder or item. */
-  async function describe(key: string) {
-    const node = await nodes.byKey(key)
-    if (!node || node.objectType !== ObjectTypes.Media) return undefined
-    const own = await repo.byNodeKey(key)
-    const inherited = await repo.ruleFor(key, { above: true })
-    const item = (await repo.itemAccess(key)) ?? {
-      readPolicy: 'inherit' as const,
-      writePolicy: 'inherit' as const,
-      creatorMemberKey: null,
-    }
-    const fileRows = await db.q
-      .selectFrom('content')
-      .select('file_url')
-      .where('node_id', '=', node.id)
-      .execute()
-    const from = inherited ? await nodes.byKey(inherited.nodeKey) : undefined
-    const creator = item.creatorMemberKey
-      ? await new MemberRepository(db).byKey(item.creatorMemberKey)
-      : undefined
-    const effective = own ?? inherited
-    return {
-      key: node.key,
-      name: node.text ?? '',
-      hasParent: node.parentId > 0,
-      hasFile: Boolean(fileRows[0]?.file_url),
-      own: own ? ruleBody(own) : null,
-      inherited:
-        inherited && from
-          ? { from: { key: from.key, name: from.text ?? '' }, ...ruleBody(inherited) }
-          : null,
-      item: {
-        readPolicy: item.readPolicy,
-        writePolicy: item.writePolicy,
-        creator: item.creatorMemberKey
-          ? { key: item.creatorMemberKey, name: creator?.name ?? null }
-          : null,
-      },
-      protected: node.trashed || isProtectedMedia(item, effective ? ruleOf(effective) : undefined),
-      memberGroups: await memberGroups(),
-      memberFileTypes: MEMBER_FILE_TYPES.map((type) => ({ id: type.id, label: type.label })),
-      usedBy: usedBy(node.id),
-    }
-  }
+  const describe = (key: string) => describeMediaAccess(context, key)
 
   /**
    * `GET|PUT|DELETE /{key}`. A PUT sends `rule` (null takes the folder's or
@@ -278,8 +195,7 @@ export function createMediaAccess(deps: MediaAccessDeps) {
     const node = await nodes.byKey(key)
     if (!node || node.objectType !== ObjectTypes.Media)
       return new Response('Not Found', { status: 404 })
-    if (!(await mayView(principal, node.path, node.trashed)))
-      return new Response('Forbidden', { status: 403 })
+    if (!(await mayView(principal, node))) return new Response('Forbidden', { status: 403 })
 
     if (request.method === 'GET') return Response.json(await describe(key))
     if (request.method !== 'PUT' && request.method !== 'DELETE')
@@ -316,19 +232,8 @@ export function createMediaAccess(deps: MediaAccessDeps) {
         if (typeof parsed === 'string') return Response.json({ reason: parsed }, { status: 400 })
         rule = parsed
       }
-      await db.transaction(async (tx) => {
-        const writing = new MediaAccessRepository(tx)
-        if (rule === null) await writing.remove(key)
-        else if (rule) await writing.save({ nodeKey: key, ...rule })
-        if (item) await writing.setItemAccess(key, item)
-        // The item carries its own settings in every server's media cache (story 197).
-        if (item)
-          await appendCacheInstruction(tx, {
-            kind: 'content',
-            payload: { media: [normaliseUuid(key)] },
-            by: deps.nodeId,
-          })
-      })
+      await saveMediaAccess(context, key, { rule, item })
+      return Response.json(await describe(normaliseUuid(key)))
     }
     await deps.onChange?.(normaliseUuid(key))
     return Response.json(await describe(normaliseUuid(key)))
