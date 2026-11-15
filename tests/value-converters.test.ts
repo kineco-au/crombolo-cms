@@ -9,7 +9,13 @@ import { join } from 'node:path'
 import { keyFromReference } from '@crombolo/core'
 import { ComponentRepository, ContentTypeRepository } from '@crombolo/data'
 import { type BlockGridItem, convertValue, PublishedElement } from '@crombolo/render'
-import { generateTypes, loadSchemaDirectory } from '@crombolo/schema'
+import {
+  generateDeliveryTypes,
+  generateTypes,
+  loadSchemaDirectory,
+  presetDataType,
+  writeDataType,
+} from '@crombolo/schema'
 import { type Harness, signedInServer, V1 } from './support/harness.ts'
 
 const open: Harness[] = []
@@ -366,5 +372,58 @@ describe('value converters', () => {
     // The element type the blocks use is typed too
     expect(types).toContain('export interface Feature {')
     expect(types).toContain('"target"?: PublishedContent | null')
+  })
+
+  test('`crombolo generate` types the editors story 357 made presets for', () => {
+    const root = mkdtempSync(join(process.cwd(), 'output', 'converters-presets-'))
+    dirs.push(root)
+    const presets = {
+      notes: 'markdown',
+      snippet: 'code',
+      contact: 'email',
+      tint: 'eye-dropper',
+      brand: 'color-picker',
+      price: 'decimal',
+      rating: 'slider',
+      photo: 'image-cropper',
+      owner: 'member-picker',
+      answer: 'radio-list',
+    }
+    mkdirSync(join(root, 'schema', 'data-types'), { recursive: true })
+    mkdirSync(join(root, 'schema', 'content-types'), { recursive: true })
+    writeFileSync(join(root, 'schema', 'schema.toml'), '[schema]\nversion = "1.0.0"\n')
+    for (const [alias, preset] of Object.entries(presets)) {
+      const built = presetDataType(alias, preset)
+      if (!built.ok) throw new Error(built.reason)
+      writeFileSync(
+        join(root, 'schema', 'data-types', `${alias}.toml`),
+        writeDataType(built.dataType),
+      )
+    }
+    writeFileSync(
+      join(root, 'schema', 'content-types', 'page.toml'),
+      `[content-type]\nalias = "page"\nname = "Page"\nallow-at-root = true\n${Object.keys(presets)
+        .map(
+          (alias) => `\n[[property]]\nalias = "${alias}"\nname = "${alias}"\ntype = "${alias}"\n`,
+        )
+        .join('')}`,
+    )
+    const set = loadSchemaDirectory(join(root, 'schema')).set
+    const types = generateTypes(set)
+    for (const line of [
+      '"notes"?: string',
+      '"snippet"?: string',
+      '"contact"?: string',
+      '"tint"?: string',
+      '"brand"?: { value: string; label: string } | null',
+      '"price"?: number',
+      '"rating"?: { from: number; to: number }',
+      '"photo"?: ImageCropperValue',
+      '"owner"?: string',
+      '"answer"?: string',
+    ])
+      expect(types).toContain(line)
+    expect(types).toContain('ImageCropperValue')
+    expect(generateDeliveryTypes(set)).toContain('  notes: string | null')
   })
 })

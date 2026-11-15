@@ -200,7 +200,7 @@ crombolo schema export
 Write a type or data type file, and the view it points at, then apply it. Each run acts again.
 
 ```
-crombolo schema new <kind> <alias> [--name <name>] [--description <description>] [--icon <icon>] [--at-root] [--element] [--tab <tab>] [--title] [--no-view] [--compose <compose>] [--allow-child <allow-child>] [--vary-by-culture] [--vary-by-segment] [--library] [--list-view] [--list-view-type <list-view-type>] [--editor <editor>] [--max-chars <max-chars>] [--rows <rows>] [--min <min>] [--max <max>] [--step <step>] [--default-on] [--label <label>] [--with-time] [--option <option>] [--multiple] [--allow <allow>] [--block <block>] [--columns <columns>]
+crombolo schema new <kind> <alias> [--name <name>] [--description <description>] [--icon <icon>] [--at-root] [--element] [--tab <tab>] [--title] [--no-view] [--compose <compose>] [--allow-child <allow-child>] [--vary-by-culture] [--vary-by-segment] [--library] [--list-view] [--list-view-type <list-view-type>] [--editor <editor>] [--max-chars <max-chars>] [--rows <rows>] [--min <min>] [--max <max>] [--step <step>] [--range] [--default-on] [--label <label>] [--with-time] [--option <option>] [--multiple] [--allow <allow>] [--of <of>] [--columns <columns>] [--group <group>] [--color <color>] [--alpha] [--palette] [--extension <extension>] [--crop <crop>] [--preview] [--language <language>] [--value-type <value-type>] [--block <block>] [--set <set>]
 ```
 
 | Argument | Type | What it is |
@@ -222,20 +222,32 @@ crombolo schema new <kind> <alias> [--name <name>] [--description <description>]
 | `--library` | boolean | It may be created in the Library. |
 | `--list-view` | boolean | Show the pages beneath it as a list. |
 | `--list-view-type` | string | The list view data type, instead of the default. |
-| `--editor` | string | Data types: the editor it uses. One of `textstring`, `textarea`, `rich-text`, `number`, `toggle`, `date`, `dropdown`, `content-picker`, `media-picker`, `element-picker`, `block-list`, `single-block`, `block-grid`. |
+| `--editor` | string | Data types: the editor it uses, by its short name or its full name (`types editors --all`). |
 | `--max-chars` | string | Data types: the most characters allowed. |
 | `--rows` | string | Data types: the rows a text area shows. |
-| `--min` | string | Data types: the least allowed (number, items). |
-| `--max` | string | Data types: the most allowed (number, items). |
-| `--step` | string | Data types: the step between numbers. |
+| `--min` | string | Data types: the least allowed (numbers, a slider, items). |
+| `--max` | string | Data types: the most allowed (numbers, a slider, items). |
+| `--step` | string | Data types: the step between numbers, or along a slider. |
+| `--range` | boolean | Data types: a slider picks a range, from and to. |
 | `--default-on` | boolean | Data types: a toggle starts on. |
 | `--label` | string | Data types: a toggle's label. |
 | `--with-time` | boolean | Data types: a date with a time of day. |
-| `--option` | string[] | Data types: a dropdown choice. |
+| `--option` | string[] | Data types: a choice in a dropdown or list; give each, in order. |
 | `--multiple` | boolean | Data types: more than one may be chosen. |
-| `--allow` | string[] | Data types: a type a picker offers. |
-| `--block` | string[] | Data types: an element type offered as a block. |
+| `--allow` | string[] | Data types: a type a picker offers; give each. |
+| `--of` | string | Data types: what a content picker picks. One of `pages`, `media`, `members`. |
 | `--columns` | string | Data types: the columns a block grid has. |
+| `--group` | string | Data types: the group tags are kept in. |
+| `--color` | string[] | Data types: a colour a colour picker offers; give each. |
+| `--alpha` | boolean | Data types: an eye dropper picks transparency too. |
+| `--palette` | boolean | Data types: an eye dropper shows a palette. |
+| `--extension` | string[] | Data types: a file type an upload accepts; give each. |
+| `--crop` | string[] | Data types: a crop an image cropper offers; give each. |
+| `--preview` | boolean | Data types: a Markdown editor shows a preview. |
+| `--language` | string | Data types: the language a code editor highlights. |
+| `--value-type` | string | Data types: what a label holds. One of `string`, `long-string`, `decimal`, `integer`, `big-integer`, `date`, `time`. |
+| `--block` | string[] | Data types: an element type offered as a block. |
+| `--set` | string[] | Data types: store any other setting as given; JSON when it parses. |
 
 **Output** (single, with `-o json`):
 
@@ -337,19 +349,23 @@ crombolo types check [--static]
 The editors a data type can use, and the settings each takes by name. Changes nothing.
 
 ```
-crombolo types editors [<editor>]
+crombolo types editors [<editor>] [--all]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `editor` | string | One editor, by the name `types new data-type --editor` takes. |
+| `editor` | string | One editor, by a name `types new data-type --editor` takes. |
+| `--all` | boolean | Every editor the back office offers, with its full name and settings. |
 
 **Output** (bounded, with `-o json`):
 
 - `items` (array of object)
   - `editor` (string)
   - `umbracoEditor` (string)
+  - `editorUi` (string)
+  - `label` (string)
   - `flags` (array of string)
+  - `settings` (array of string)
 
 **Fails with:** `usage`, `internal`, `not_found`.
 
@@ -402,7 +418,7 @@ crombolo types list [--kind <kind>] [--own] [--from-database]
 Write a type or data type file, and the view it points at, then apply it. Each run acts again.
 
 ```
-crombolo types new <kind> <alias> [--name <name>] [--description <description>] [--icon <icon>] [--at-root] [--element] [--tab <tab>] [--title] [--no-view] [--compose <compose>] [--allow-child <allow-child>] [--vary-by-culture] [--vary-by-segment] [--library] [--list-view] [--list-view-type <list-view-type>] [--editor <editor>] [--max-chars <max-chars>] [--rows <rows>] [--min <min>] [--max <max>] [--step <step>] [--default-on] [--label <label>] [--with-time] [--option <option>] [--multiple] [--allow <allow>] [--block <block>] [--columns <columns>]
+crombolo types new <kind> <alias> [--name <name>] [--description <description>] [--icon <icon>] [--at-root] [--element] [--tab <tab>] [--title] [--no-view] [--compose <compose>] [--allow-child <allow-child>] [--vary-by-culture] [--vary-by-segment] [--library] [--list-view] [--list-view-type <list-view-type>] [--editor <editor>] [--max-chars <max-chars>] [--rows <rows>] [--min <min>] [--max <max>] [--step <step>] [--range] [--default-on] [--label <label>] [--with-time] [--option <option>] [--multiple] [--allow <allow>] [--of <of>] [--columns <columns>] [--group <group>] [--color <color>] [--alpha] [--palette] [--extension <extension>] [--crop <crop>] [--preview] [--language <language>] [--value-type <value-type>] [--block <block>] [--set <set>]
 ```
 
 | Argument | Type | What it is |
@@ -424,20 +440,32 @@ crombolo types new <kind> <alias> [--name <name>] [--description <description>] 
 | `--library` | boolean | It may be created in the Library. |
 | `--list-view` | boolean | Show the pages beneath it as a list. |
 | `--list-view-type` | string | The list view data type, instead of the default. |
-| `--editor` | string | Data types: the editor it uses. One of `textstring`, `textarea`, `rich-text`, `number`, `toggle`, `date`, `dropdown`, `content-picker`, `media-picker`, `element-picker`, `block-list`, `single-block`, `block-grid`. |
+| `--editor` | string | Data types: the editor it uses, by its short name or its full name (`types editors --all`). |
 | `--max-chars` | string | Data types: the most characters allowed. |
 | `--rows` | string | Data types: the rows a text area shows. |
-| `--min` | string | Data types: the least allowed (number, items). |
-| `--max` | string | Data types: the most allowed (number, items). |
-| `--step` | string | Data types: the step between numbers. |
+| `--min` | string | Data types: the least allowed (numbers, a slider, items). |
+| `--max` | string | Data types: the most allowed (numbers, a slider, items). |
+| `--step` | string | Data types: the step between numbers, or along a slider. |
+| `--range` | boolean | Data types: a slider picks a range, from and to. |
 | `--default-on` | boolean | Data types: a toggle starts on. |
 | `--label` | string | Data types: a toggle's label. |
 | `--with-time` | boolean | Data types: a date with a time of day. |
-| `--option` | string[] | Data types: a dropdown choice. |
+| `--option` | string[] | Data types: a choice in a dropdown or list; give each, in order. |
 | `--multiple` | boolean | Data types: more than one may be chosen. |
-| `--allow` | string[] | Data types: a type a picker offers. |
-| `--block` | string[] | Data types: an element type offered as a block. |
+| `--allow` | string[] | Data types: a type a picker offers; give each. |
+| `--of` | string | Data types: what a content picker picks. One of `pages`, `media`, `members`. |
 | `--columns` | string | Data types: the columns a block grid has. |
+| `--group` | string | Data types: the group tags are kept in. |
+| `--color` | string[] | Data types: a colour a colour picker offers; give each. |
+| `--alpha` | boolean | Data types: an eye dropper picks transparency too. |
+| `--palette` | boolean | Data types: an eye dropper shows a palette. |
+| `--extension` | string[] | Data types: a file type an upload accepts; give each. |
+| `--crop` | string[] | Data types: a crop an image cropper offers; give each. |
+| `--preview` | boolean | Data types: a Markdown editor shows a preview. |
+| `--language` | string | Data types: the language a code editor highlights. |
+| `--value-type` | string | Data types: what a label holds. One of `string`, `long-string`, `decimal`, `integer`, `big-integer`, `date`, `time`. |
+| `--block` | string[] | Data types: an element type offered as a block. |
+| `--set` | string[] | Data types: store any other setting as given; JSON when it parses. |
 
 **Output** (single, with `-o json`):
 
@@ -843,7 +871,7 @@ crombolo types tab rename <type> <name> <to> [--kind <kind>] [--dry-run] [--no-a
 Change a type's or a data type's settings. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo types update <alias> [--name <name>] [--description <description>] [--icon <icon>] [--at-root] [--element] [--library] [--vary-by-culture] [--vary-by-segment] [--list-view <list-view>] [--allow-child <allow-child>] [--disallow-child <disallow-child>] [--compose <compose>] [--decompose <decompose>] [--view <view>] [--remove-view <remove-view>] [--default-view <default-view>] [--set <set>] [--unset <unset>] [--max-chars <max-chars>] [--rows <rows>] [--min <min>] [--max <max>] [--step <step>] [--default-on] [--label <label>] [--with-time] [--option <option>] [--multiple] [--allow <allow>] [--columns <columns>] [--add-block <add-block>] [--block-label <block-label>] [--block-settings <block-settings>] [--remove-block <remove-block>] [--start-at <start-at>] [--kind <kind>] [--dry-run] [--no-apply]
+crombolo types update <alias> [--name <name>] [--description <description>] [--icon <icon>] [--at-root] [--element] [--library] [--vary-by-culture] [--vary-by-segment] [--list-view <list-view>] [--allow-child <allow-child>] [--disallow-child <disallow-child>] [--compose <compose>] [--decompose <decompose>] [--view <view>] [--remove-view <remove-view>] [--default-view <default-view>] [--set <set>] [--unset <unset>] [--max-chars <max-chars>] [--rows <rows>] [--min <min>] [--max <max>] [--step <step>] [--range] [--default-on] [--label <label>] [--with-time] [--option <option>] [--multiple] [--allow <allow>] [--of <of>] [--columns <columns>] [--group <group>] [--color <color>] [--alpha] [--palette] [--extension <extension>] [--crop <crop>] [--preview] [--language <language>] [--value-type <value-type>] [--add-block <add-block>] [--block-label <block-label>] [--block-settings <block-settings>] [--remove-block <remove-block>] [--start-at <start-at>] [--kind <kind>] [--dry-run] [--no-apply]
 ```
 
 | Argument | Type | What it is |
@@ -869,16 +897,27 @@ crombolo types update <alias> [--name <name>] [--description <description>] [--i
 | `--unset` | string[] | Data types: take a setting away. |
 | `--max-chars` | string | Data types: the most characters allowed. |
 | `--rows` | string | Data types: the rows a text area shows. |
-| `--min` | string | Data types: the least allowed (number, items). |
-| `--max` | string | Data types: the most allowed (number, items). |
-| `--step` | string | Data types: the step between numbers. |
+| `--min` | string | Data types: the least allowed (numbers, a slider, items). |
+| `--max` | string | Data types: the most allowed (numbers, a slider, items). |
+| `--step` | string | Data types: the step between numbers, or along a slider. |
+| `--range` | boolean | Data types: a slider picks a range, from and to. |
 | `--default-on` | boolean | Data types: a toggle starts on. |
 | `--label` | string | Data types: a toggle's label. |
 | `--with-time` | boolean | Data types: a date with a time of day. |
-| `--option` | string[] | Data types: a dropdown option; give each, in order. |
+| `--option` | string[] | Data types: a choice in a dropdown or list; give each, in order. |
 | `--multiple` | boolean | Data types: more than one may be chosen. |
-| `--allow` | string[] | Data types: a type a picker allows; give each. |
-| `--columns` | string | Data types: a block grid's columns. |
+| `--allow` | string[] | Data types: a type a picker offers; give each. |
+| `--of` | string | Data types: what a content picker picks. One of `pages`, `media`, `members`. |
+| `--columns` | string | Data types: the columns a block grid has. |
+| `--group` | string | Data types: the group tags are kept in. |
+| `--color` | string[] | Data types: a colour a colour picker offers; give each. |
+| `--alpha` | boolean | Data types: an eye dropper picks transparency too. |
+| `--palette` | boolean | Data types: an eye dropper shows a palette. |
+| `--extension` | string[] | Data types: a file type an upload accepts; give each. |
+| `--crop` | string[] | Data types: a crop an image cropper offers; give each. |
+| `--preview` | boolean | Data types: a Markdown editor shows a preview. |
+| `--language` | string | Data types: the language a code editor highlights. |
+| `--value-type` | string | Data types: what a label holds. One of `string`, `long-string`, `decimal`, `integer`, `big-integer`, `date`, `time`. |
 | `--add-block` | string | Data types: offer this element type as a block. |
 | `--block-label` | string | Data types: the label of the block --add-block adds. |
 | `--block-settings` | string | Data types: the settings element type of the block --add-block adds. |

@@ -8291,22 +8291,7 @@
         {
           "name": "--editor",
           "type": "string",
-          "enum": [
-            "textstring",
-            "textarea",
-            "rich-text",
-            "number",
-            "toggle",
-            "date",
-            "dropdown",
-            "content-picker",
-            "media-picker",
-            "element-picker",
-            "block-list",
-            "single-block",
-            "block-grid"
-          ],
-          "description": "data types: the editor it uses"
+          "description": "data types: the editor it uses, by its short name or its full name (`types editors --all`)"
         },
         {
           "name": "--max-chars",
@@ -8321,17 +8306,22 @@
         {
           "name": "--min",
           "type": "string",
-          "description": "data types: the least allowed (number, items)"
+          "description": "data types: the least allowed (numbers, a slider, items)"
         },
         {
           "name": "--max",
           "type": "string",
-          "description": "data types: the most allowed (number, items)"
+          "description": "data types: the most allowed (numbers, a slider, items)"
         },
         {
           "name": "--step",
           "type": "string",
-          "description": "data types: the step between numbers"
+          "description": "data types: the step between numbers, or along a slider"
+        },
+        {
+          "name": "--range",
+          "type": "boolean",
+          "description": "data types: a slider picks a range, from and to"
         },
         {
           "name": "--default-on",
@@ -8351,7 +8341,7 @@
         {
           "name": "--option",
           "type": "string[]",
-          "description": "data types: a dropdown choice"
+          "description": "data types: a choice in a dropdown or list; give each, in order"
         },
         {
           "name": "--multiple",
@@ -8361,7 +8351,64 @@
         {
           "name": "--allow",
           "type": "string[]",
-          "description": "data types: a type a picker offers"
+          "description": "data types: a type a picker offers; give each"
+        },
+        {
+          "name": "--of",
+          "type": "string",
+          "enum": ["pages", "media", "members"],
+          "description": "data types: what a content picker picks"
+        },
+        {
+          "name": "--columns",
+          "type": "string",
+          "description": "data types: the columns a block grid has"
+        },
+        {
+          "name": "--group",
+          "type": "string",
+          "description": "data types: the group tags are kept in"
+        },
+        {
+          "name": "--color",
+          "type": "string[]",
+          "description": "data types: a colour a colour picker offers; give each"
+        },
+        {
+          "name": "--alpha",
+          "type": "boolean",
+          "description": "data types: an eye dropper picks transparency too"
+        },
+        {
+          "name": "--palette",
+          "type": "boolean",
+          "description": "data types: an eye dropper shows a palette"
+        },
+        {
+          "name": "--extension",
+          "type": "string[]",
+          "description": "data types: a file type an upload accepts; give each"
+        },
+        {
+          "name": "--crop",
+          "type": "string[]",
+          "description": "data types: a crop an image cropper offers; give each"
+        },
+        {
+          "name": "--preview",
+          "type": "boolean",
+          "description": "data types: a Markdown editor shows a preview"
+        },
+        {
+          "name": "--language",
+          "type": "string",
+          "description": "data types: the language a code editor highlights"
+        },
+        {
+          "name": "--value-type",
+          "type": "string",
+          "enum": ["string", "long-string", "decimal", "integer", "big-integer", "date", "time"],
+          "description": "data types: what a label holds"
         },
         {
           "name": "--block",
@@ -8369,9 +8416,9 @@
           "description": "data types: an element type offered as a block"
         },
         {
-          "name": "--columns",
-          "type": "string",
-          "description": "data types: the columns a block grid has"
+          "name": "--set",
+          "type": "string[]",
+          "description": "data types: store any other setting as given; JSON when it parses"
         }
       ],
       "errors": ["usage", "internal", "not_found", "conflict", "refused"]
@@ -9921,7 +9968,22 @@
                 "type": "string"
               },
               {
+                "name": "editorUi",
+                "type": "string"
+              },
+              {
+                "name": "label",
+                "type": "string"
+              },
+              {
                 "name": "flags",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "name": "settings",
                 "type": "array",
                 "items": {
                   "type": "string"
@@ -9935,7 +9997,12 @@
         {
           "name": "editor",
           "type": "string",
-          "description": "one editor, by the name `types new data-type --editor` takes"
+          "description": "one editor, by a name `types new data-type --editor` takes"
+        },
+        {
+          "name": "--all",
+          "type": "boolean",
+          "description": "every editor the back office offers, with its full name and settings"
         }
       ],
       "errors": ["usage", "internal", "not_found"]
@@ -10148,22 +10215,7 @@
         {
           "name": "--editor",
           "type": "string",
-          "enum": [
-            "textstring",
-            "textarea",
-            "rich-text",
-            "number",
-            "toggle",
-            "date",
-            "dropdown",
-            "content-picker",
-            "media-picker",
-            "element-picker",
-            "block-list",
-            "single-block",
-            "block-grid"
-          ],
-          "description": "data types: the editor it uses"
+          "description": "data types: the editor it uses, by its short name or its full name (`types editors --all`)"
         },
         {
           "name": "--max-chars",
@@ -10178,17 +10230,22 @@
         {
           "name": "--min",
           "type": "string",
-          "description": "data types: the least allowed (number, items)"
+          "description": "data types: the least allowed (numbers, a slider, items)"
         },
         {
           "name": "--max",
           "type": "string",
-          "description": "data types: the most allowed (number, items)"
+          "description": "data types: the most allowed (numbers, a slider, items)"
         },
         {
           "name": "--step",
           "type": "string",
-          "description": "data types: the step between numbers"
+          "description": "data types: the step between numbers, or along a slider"
+        },
+        {
+          "name": "--range",
+          "type": "boolean",
+          "description": "data types: a slider picks a range, from and to"
         },
         {
           "name": "--default-on",
@@ -10208,7 +10265,7 @@
         {
           "name": "--option",
           "type": "string[]",
-          "description": "data types: a dropdown choice"
+          "description": "data types: a choice in a dropdown or list; give each, in order"
         },
         {
           "name": "--multiple",
@@ -10218,7 +10275,64 @@
         {
           "name": "--allow",
           "type": "string[]",
-          "description": "data types: a type a picker offers"
+          "description": "data types: a type a picker offers; give each"
+        },
+        {
+          "name": "--of",
+          "type": "string",
+          "enum": ["pages", "media", "members"],
+          "description": "data types: what a content picker picks"
+        },
+        {
+          "name": "--columns",
+          "type": "string",
+          "description": "data types: the columns a block grid has"
+        },
+        {
+          "name": "--group",
+          "type": "string",
+          "description": "data types: the group tags are kept in"
+        },
+        {
+          "name": "--color",
+          "type": "string[]",
+          "description": "data types: a colour a colour picker offers; give each"
+        },
+        {
+          "name": "--alpha",
+          "type": "boolean",
+          "description": "data types: an eye dropper picks transparency too"
+        },
+        {
+          "name": "--palette",
+          "type": "boolean",
+          "description": "data types: an eye dropper shows a palette"
+        },
+        {
+          "name": "--extension",
+          "type": "string[]",
+          "description": "data types: a file type an upload accepts; give each"
+        },
+        {
+          "name": "--crop",
+          "type": "string[]",
+          "description": "data types: a crop an image cropper offers; give each"
+        },
+        {
+          "name": "--preview",
+          "type": "boolean",
+          "description": "data types: a Markdown editor shows a preview"
+        },
+        {
+          "name": "--language",
+          "type": "string",
+          "description": "data types: the language a code editor highlights"
+        },
+        {
+          "name": "--value-type",
+          "type": "string",
+          "enum": ["string", "long-string", "decimal", "integer", "big-integer", "date", "time"],
+          "description": "data types: what a label holds"
         },
         {
           "name": "--block",
@@ -10226,9 +10340,9 @@
           "description": "data types: an element type offered as a block"
         },
         {
-          "name": "--columns",
-          "type": "string",
-          "description": "data types: the columns a block grid has"
+          "name": "--set",
+          "type": "string[]",
+          "description": "data types: store any other setting as given; JSON when it parses"
         }
       ],
       "errors": ["usage", "internal", "not_found", "conflict", "refused"]
@@ -11348,17 +11462,22 @@
         {
           "name": "--min",
           "type": "string",
-          "description": "data types: the least allowed (number, items)"
+          "description": "data types: the least allowed (numbers, a slider, items)"
         },
         {
           "name": "--max",
           "type": "string",
-          "description": "data types: the most allowed (number, items)"
+          "description": "data types: the most allowed (numbers, a slider, items)"
         },
         {
           "name": "--step",
           "type": "string",
-          "description": "data types: the step between numbers"
+          "description": "data types: the step between numbers, or along a slider"
+        },
+        {
+          "name": "--range",
+          "type": "boolean",
+          "description": "data types: a slider picks a range, from and to"
         },
         {
           "name": "--default-on",
@@ -11378,7 +11497,7 @@
         {
           "name": "--option",
           "type": "string[]",
-          "description": "data types: a dropdown option; give each, in order"
+          "description": "data types: a choice in a dropdown or list; give each, in order"
         },
         {
           "name": "--multiple",
@@ -11388,12 +11507,64 @@
         {
           "name": "--allow",
           "type": "string[]",
-          "description": "data types: a type a picker allows; give each"
+          "description": "data types: a type a picker offers; give each"
+        },
+        {
+          "name": "--of",
+          "type": "string",
+          "enum": ["pages", "media", "members"],
+          "description": "data types: what a content picker picks"
         },
         {
           "name": "--columns",
           "type": "string",
-          "description": "data types: a block grid's columns"
+          "description": "data types: the columns a block grid has"
+        },
+        {
+          "name": "--group",
+          "type": "string",
+          "description": "data types: the group tags are kept in"
+        },
+        {
+          "name": "--color",
+          "type": "string[]",
+          "description": "data types: a colour a colour picker offers; give each"
+        },
+        {
+          "name": "--alpha",
+          "type": "boolean",
+          "description": "data types: an eye dropper picks transparency too"
+        },
+        {
+          "name": "--palette",
+          "type": "boolean",
+          "description": "data types: an eye dropper shows a palette"
+        },
+        {
+          "name": "--extension",
+          "type": "string[]",
+          "description": "data types: a file type an upload accepts; give each"
+        },
+        {
+          "name": "--crop",
+          "type": "string[]",
+          "description": "data types: a crop an image cropper offers; give each"
+        },
+        {
+          "name": "--preview",
+          "type": "boolean",
+          "description": "data types: a Markdown editor shows a preview"
+        },
+        {
+          "name": "--language",
+          "type": "string",
+          "description": "data types: the language a code editor highlights"
+        },
+        {
+          "name": "--value-type",
+          "type": "string",
+          "enum": ["string", "long-string", "decimal", "integer", "big-integer", "date", "time"],
+          "description": "data types: what a label holds"
         },
         {
           "name": "--add-block",

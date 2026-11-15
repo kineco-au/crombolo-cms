@@ -12,7 +12,7 @@ import {
   type SchemaProperty,
   type SchemaTab,
 } from './model.ts'
-import { DATA_TYPE_PRESETS, optionFlag, type PresetOptions } from './presets.ts'
+import { optionFlag, type PresetOptions, presetConfig, presetOf } from './presets.ts'
 import { addProperty } from './scaffold.ts'
 
 export { addProperty }
@@ -290,10 +290,6 @@ export interface DataTypeChanges {
   startNode?: string | null
 }
 
-/** The preset whose editor a data type uses, when there is one. */
-const presetFor = (dataType: SchemaDataType) =>
-  Object.entries(DATA_TYPE_PRESETS).find(([, preset]) => preset.editor === dataType.editor)
-
 /** The settings a preset's options write, and only those: the rest of the data type is left as it is. */
 function presetSettings(
   dataType: SchemaDataType,
@@ -301,17 +297,19 @@ function presetSettings(
 ): Record<string, unknown> | string {
   const given = Object.entries(options).filter(([, value]) => value !== undefined)
   if (given.length === 0) return {}
-  const found = presetFor(dataType)
+  const found = presetOf(dataType.editor, dataType.editorUi)
   if (!found) return `"${dataType.editor}" takes no named settings: use --set <setting>=<value>`
   const [name, preset] = found
   const unknown = given.filter(([option]) => !preset.takes.includes(option as keyof PresetOptions))
   if (unknown.length > 0)
     return `${unknown.map(([option]) => optionFlag(option)).join(', ')} does not apply to ${name}: it takes ${preset.takes.map(optionFlag).join(', ') || 'no named settings'}`
-  const without = preset.build({}).config
-  const withThem = preset.build(options).config
+  const without = presetConfig(name, preset, {})
+  const withThem = presetConfig(name, preset, options)
+  if (typeof withThem === 'string') return withThem
+  const before = typeof without === 'string' ? {} : without.config
   return Object.fromEntries(
-    Object.entries(withThem).filter(
-      ([key, value]) => JSON.stringify(value) !== JSON.stringify(without[key]),
+    Object.entries(withThem.config).filter(
+      ([key, value]) => JSON.stringify(value) !== JSON.stringify(before[key]),
     ),
   )
 }

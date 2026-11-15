@@ -2,6 +2,11 @@ import { describeType, type PresetOptions, updateDataType, updateType } from '@c
 import { Args, Flags, type Interfaces } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
 import { CliError } from '../../errors.ts'
+import {
+  DATA_TYPE_FLAG_NAMES,
+  dataTypeFlags,
+  presetOptions,
+} from '../../support/data-type-flags.ts'
 import { siteConfig } from '../../support/site.ts'
 import {
   commitDataTypeEdit,
@@ -42,18 +47,7 @@ const TYPE_FLAGS = [
 const DATA_FLAGS = [
   'set',
   'unset',
-  'max-chars',
-  'rows',
-  'min',
-  'max',
-  'step',
-  'default-on',
-  'label',
-  'with-time',
-  'option',
-  'multiple',
-  'allow',
-  'columns',
+  ...DATA_TYPE_FLAG_NAMES,
   'add-block',
   'block-label',
   'block-settings',
@@ -104,18 +98,7 @@ export default class TypesUpdate extends BaseCommand {
     }),
     set: many('data types: store a setting as given; JSON when it parses', '<setting>=<value>'),
     unset: many('data types: take a setting away', '<setting>'),
-    'max-chars': Flags.integer({ summary: 'data types: the most characters allowed' }),
-    rows: Flags.integer({ summary: 'data types: the rows a text area shows' }),
-    min: Flags.integer({ summary: 'data types: the least allowed (number, items)' }),
-    max: Flags.integer({ summary: 'data types: the most allowed (number, items)' }),
-    step: Flags.integer({ summary: 'data types: the step between numbers' }),
-    'default-on': yesNo('data types: a toggle starts on'),
-    label: Flags.string({ summary: "data types: a toggle's label", helpValue: '<text>' }),
-    'with-time': yesNo('data types: a date with a time of day'),
-    option: many('data types: a dropdown option; give each, in order', '<option>'),
-    multiple: yesNo('data types: more than one may be chosen'),
-    allow: many('data types: a type a picker allows; give each', '<type>'),
-    columns: Flags.integer({ summary: "data types: a block grid's columns" }),
+    ...dataTypeFlags(true),
     'add-block': Flags.string({
       summary: 'data types: offer this element type as a block',
       helpValue: '<element type>',
@@ -221,20 +204,7 @@ export default class TypesUpdate extends BaseCommand {
     const found = await findDataType(alias)
     if (flags['block-label'] !== undefined && !flags['add-block'])
       throw new CliError('usage', '--block-label names the block --add-block adds.')
-    const options: PresetOptions = {
-      maxChars: flags['max-chars'],
-      rows: flags.rows,
-      min: flags.min,
-      max: flags.max,
-      step: flags.step,
-      defaultOn: flags['default-on'],
-      label: flags.label,
-      withTime: flags['with-time'],
-      option: flags.option,
-      multiple: flags.multiple,
-      allow: flags.allow,
-      columns: flags.columns,
-    }
+    const options: PresetOptions = presetOptions(flags, true)
     const startAt = flags['start-at']
     const startNode =
       startAt === undefined

@@ -48,6 +48,36 @@ describe('updateDataType', () => {
     expect(!wrong.ok && wrong.reason).toContain('--rows does not apply to textstring')
   })
 
+  test("a new preset's named settings, found by its editor and UI (story 357)", () => {
+    const code: SchemaDataType = {
+      alias: 'snippet',
+      name: 'Snippet',
+      editor: 'Umbraco.Plain.String',
+      editorUi: 'Umb.PropertyEditorUi.CodeEditor',
+      config: { language: 'javascript', height: 400 },
+    }
+    const changed = updateDataType(code, { options: { language: 'css' } })
+    expect(changed.ok && changed.dataType.config).toEqual({ language: 'css', height: 400 })
+    const slider: SchemaDataType = {
+      alias: 'rating',
+      name: 'Rating',
+      editor: 'Umbraco.Slider',
+      config: { minVal: 0, maxVal: 100, step: 1 },
+    }
+    const stepped = updateDataType(slider, { options: { step: 0.5, max: 5, range: true } })
+    expect(stepped.ok && stepped.dataType.config).toEqual({
+      minVal: 0,
+      maxVal: 5,
+      step: 0.5,
+      enableRange: true,
+    })
+    const number: SchemaDataType = { alias: 'n', name: 'N', editor: 'Umbraco.Integer', config: {} }
+    expect(updateDataType(number, { options: { step: 0.5 } })).toEqual({
+      ok: false,
+      reason: '--step takes a whole number for number',
+    })
+  })
+
   test('blocks added and removed, only on an editor that has them', () => {
     const added = updateDataType(blocks(), { addBlock: { element: 'feature', label: 'Feature' } })
     expect(added.ok && added.dataType.blocks).toEqual([
@@ -110,6 +140,8 @@ describe('the commands, on a site with a page', () => {
         '[data-type]\nalias = "pageBlocks"\nname = "Page blocks"\neditor = "Umbraco.BlockList"\n\n[[data-type.block]]\nelement = "quote"\n',
       'schema/data-types/page-picker.toml':
         '[data-type]\nalias = "pagePicker"\nname = "Page picker"\neditor = "Umbraco.MultiNodeTreePicker"\n\n[data-type.config]\nstartNode = { type = "content" }\n',
+      'schema/data-types/rating.toml':
+        '[data-type]\nalias = "rating"\nname = "Rating"\neditor = "Umbraco.Slider"\neditor-ui = "Umb.PropertyEditorUi.Slider"\n\n[data-type.config]\nmaxVal = 100\nminVal = 0\nstep = 1\n',
       'schema/data-types/unused.toml':
         '[data-type]\nalias = "unused"\nname = "Unused"\neditor = "Umbraco.TextArea"\n',
       'components/page.tsx': 'export default () => <main />\n',
@@ -144,6 +176,18 @@ describe('the commands, on a site with a page', () => {
     expect(file('short-text.toml')).toContain('notAThing = true')
     expect(cli('types', 'update', 'shortText', '--unset', 'notAThing').code).toBe(0)
     expect(file('short-text.toml')).not.toContain('notAThing')
+  })
+
+  test("a new preset's named settings, fractions included (story 357)", () => {
+    const run = cli('types', 'update', 'rating', '--step', '0.5', '--max', '5', '--range')
+    expect(run.code, run.out).toBe(0)
+    expect(file('rating.toml')).toContain('step = 0.5')
+    expect(file('rating.toml')).toContain('maxVal = 5')
+    expect(file('rating.toml')).toContain('enableRange = true')
+    const wrong = cli('types', 'update', 'shortText', '--range')
+    expect(wrong.code).toBe(ERROR_KINDS.refused.exitCode)
+    expect(wrong.out).toContain('--range does not apply to textstring')
+    expect(cli('types', 'update', 'rating', '--step', 'half').code).not.toBe(0)
   })
 
   test('a block added and taken away', () => {
@@ -197,7 +241,22 @@ describe('the commands, on a site with a page', () => {
     expect(editors.out).toContain('textstring')
     expect(editors.out).toContain('--max-chars')
     expect(editors.out).toContain('--set <setting>=<value>')
-    expect(cli('types', 'editors', 'nothing').code).toBe(ERROR_KINDS.not_found.exitCode)
+    expect(editors.out).toContain('slider')
+    expect(editors.out).toContain('--range')
+    expect(editors.out).toContain('member-group-picker')
+    const one = cli('types', 'editors', 'Umbraco.Slider')
+    expect(one.code, one.out).toBe(0)
+    expect(one.out).toContain('Umb.PropertyEditorUi.Slider')
+    expect(one.out).toContain('minVal')
+    const all = cli('types', 'editors', '--all', '-o', 'json')
+    const items = (JSON.parse(all.out) as { items: Array<{ editor: string; editorUi: string }> })
+      .items
+    expect(items.find((item) => item.editor === 'code')?.editorUi).toBe(
+      'Umb.PropertyEditorUi.CodeEditor',
+    )
+    const nothing = cli('types', 'editors', 'slidr')
+    expect(nothing.code).toBe(ERROR_KINDS.not_found.exitCode)
+    expect(nothing.out).toContain('slider')
     for (const run of [editors, cli('types', 'update', 'shortText', '--max-chars', '70')])
       expect(run.out).not.toMatch(/\.toml|schema\//i)
   })

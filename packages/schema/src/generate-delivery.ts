@@ -118,6 +118,11 @@ export function generateDeliveryTypes(set: SchemaSet, options: DeliveryTypesOpti
       case 'Umbraco.TextBox':
       case 'Umbraco.TextArea':
       case 'Umbraco.EmailAddress':
+      // As HTML (story 357).
+      case 'Umbraco.MarkdownEditor':
+      case 'Umbraco.Plain.String':
+      case 'Umbraco.ColorPicker.EyeDropper':
+      case 'Umbraco.RadioButtonList':
         return 'string'
     }
     switch (storageTypeFor(editor)) {

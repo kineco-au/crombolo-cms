@@ -8,6 +8,8 @@ import {
   type Block,
   type BlockData,
   keyFromReference,
+  MARKDOWN_EDITOR_ALIAS,
+  markdownToHtml,
   readBlocks,
   resolveDictionaryWords,
   resolveDictionaryWordsInMarkup,
@@ -227,7 +229,8 @@ function elementFrom(data: BlockData | undefined, context?: ValueContext): Publi
         editorAlias: v.editorAlias ?? '',
         culture: v.culture ?? null,
         segment: v.segment ?? null,
-        value: v.value,
+        // A page's own values arrive published (`toPublishedValue`); a block's as stored.
+        value: v.editorAlias === MARKDOWN_EDITOR_ALIAS ? markdownToHtml(v.value) : v.value,
       })),
     },
     context,

@@ -8,6 +8,25 @@ point at `docs/stories/`.
 
 ### Features
 
+- **Every data type editor from the command line (357).** `crombolo types new data-type
+  --editor` takes every editor the back office offers, by a short name or its full name
+  (`Umbraco.ColorPicker`, `Umb.PropertyEditorUi.CodeEditor`): new are `markdown`, `code`,
+  `email`, `decimal`, `slider`, `date-with-zone`, `date-only`, `time-only`, `date-time`,
+  `checkbox-list`, `radio-list`, `tags`, `multiple-text`, `color-picker`, `eye-dropper`,
+  `document-picker`, `member-picker`, `member-group-picker`, `user-picker`,
+  `entity-data-picker`, `multi-url-picker`, `upload`, `image-cropper`, `label` and
+  `list-view`, with flags for their main settings (`--color`, `--crop`, `--extension`,
+  `--language`, `--range`, `--value-type`…). `content-picker` takes `--of
+  pages|media|members`. A new data type starts with the settings the back office's data
+  type editor would give it, so it opens there unchanged. `--min`, `--max` and `--step`
+  take fractions, refused where only a whole number makes sense. `types new` takes `--set`
+  as `types update` does; `types editors --all` lists every editor with its full names and
+  settings, and an unknown name is refused with the closest named. `types show` gives a
+  data type's editor UI and preset. The editor table is generated from the vendored back
+  office by `bun run editors:table`. `docs/schema-as-code.md`.
+- **A Markdown property gives HTML (357)** to a template and the Delivery API, as Umbraco's
+  value converter does, on a page and in a block. Write it with `model.html(alias)`.
+  Search still reads the Markdown's words.
 - **Users and groups filled in from the command line (356).** `crombolo users update <user>
   [--name] [--email] [--group <alias>]... [--remove-group <alias>]... [--ui-language <iso>]`
   changes a user under the Users section's rules, saying what changed; `users remove <user>`
@@ -109,6 +128,9 @@ point at `docs/stories/`.
 
 ### Fixes
 
+- **Date only, time only, date and time, and entity data picker values read back as
+  saved (357).** The back office sends each as an object, which was kept as text and handed
+  back as text, so the editor lost it. A template now receives the object too.
 - **The site always keeps an administrator (356).** Taking the admin group off its last
   member, in the user editor or by setting their groups, and removing the last
   administrator, are now refused, in the back office and on the command line, with the words
@@ -121,6 +143,14 @@ point at `docs/stories/`.
 
 ### Upgrade notes
 
+- **Markdown properties now reach templates and the Delivery API as HTML (357).** A site
+  whose template converts a Markdown property itself, with `marked` or another converter,
+  now converts it twice: remove that conversion and write the value with
+  `model.html(alias)`. A Delivery API client that converted the text does the same. Nothing
+  changes in what is stored or what search finds.
+- **A data type made with `types new data-type` carries the back office's defaults (357):**
+  a new `textstring` writes `maxChars = 512`, `autocomplete` and `inputType` as the data
+  type editor would, and so on for each editor. Data types already written are unchanged.
 - **`users` commands act as the person signed in (356).** Once someone is signed in to a
   site, each `users` and `users groups` command acts as them, with their permissions, rather
   than as the command line: someone who is not an administrator no longer sees or changes

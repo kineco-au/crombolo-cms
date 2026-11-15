@@ -93,6 +93,7 @@
       "type GitHubOptions",
       "type IdentityProvider",
       "type IdentityProviderOptions",
+      "type ImageCropperValue",
       "type InnerHTML",
       "installBundleCode",
       "Island",

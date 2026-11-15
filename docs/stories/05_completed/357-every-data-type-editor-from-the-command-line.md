@@ -172,15 +172,18 @@ time zone.
    | `label` | `Umbraco.Label` | `--value-type <string\|number\|date\|time\|decimal…>` |
    | `multiple-text` | `Umbraco.MultipleTextstring` | `--min`, `--max` |
    | `date-with-zone` | `Umbraco.DateTimeWithTimeZone` | none |
-   | `date-only` | `Umbraco.DateOnly` | none |
-   | `time-only` | `Umbraco.TimeOnly` | none |
-   | `date-time` | `Umbraco.DateTimeUnspecified` | none |
-   | `member-group-picker` | `Umbraco.MemberGroupPicker` | none |
-   | `user-picker` | `Umbraco.UserPicker` | none |
-   | `entity-data-picker` | `Umbraco.EntityDataPicker` | settings by `--set` |
+   | `date-only` | `Umbraco.DateOnly` / `DateOnlyPicker` | none |
+   | `time-only` | `Umbraco.TimeOnly` / `TimeOnlyPicker` | none |
+   | `date-time` | `Umbraco.DateTimeUnspecified` / `DateTimePicker` | none |
+   | `member-group-picker` | `Umbraco.MemberGroupPicker` / `MemberGroupPicker` | none |
+   | `user-picker` | `Umbraco.UserPicker` / `UserPicker` | none |
+   | `entity-data-picker` | `Umbraco.EntityDataPicker` / `EntityDataPicker` | settings by `--set` |
+| `list-view` | `Umbraco.ListView` / `Collection` | none (added when built: the back office offers it) |
 
-   The last six editors' full names are checked against the generated table when
-   this is built, and corrected here if the client names them differently. With
+   The last six editors' full names were checked against the generated table when
+   this was built: the client names all six as above, and their UIs are added. The
+   back office also offers the Collection (`Umbraco.ListView`), which the table above
+   left out, so it is `list-view`. With
    D2 (c), every editor the back office offers has a preset, so `--editor <full
    name>` (step 3) is left for an editor a bundle adds.
 
@@ -264,16 +267,62 @@ time zone.
 
 ## Acceptance criteria
 
-- [ ] Each of those editors is a preset, with a short name, its editor and UI, and
+- [x] Each of those editors is a preset, with a short name, its editor and UI, and
       flags for the settings a person sets most, so `types editors` lists it.
       The document picker (`Umbraco.ContentPicker`) is one of them. The
       multi-node tree picker is the `content-picker` preset already, which gains
       a choice of pages, media or members
-- [ ] `--editor` also takes an editor's full name (`Umbraco.ColorPicker`) for anything
+- [x] `--editor` also takes an editor's full name (`Umbraco.ColorPicker`) for anything
       with no preset, the settings then given with `--set`. A full name that has a
       preset uses it
-- [ ] A data type made either way reads back the same through `types show`, writes the
+- [x] A data type made either way reads back the same through `types show`, writes the
       same file, and opens in the back office's data type editor without changes
-- [ ] Tests for each preset: made, shown, round-tripped through its file, and its
+- [x] Tests for each preset: made, shown, round-tripped through its file, and its
       value saved and rendered on a page
-- [ ] The CLI reference regenerated
+- [x] The CLI reference regenerated
+
+## Built
+
+Built 2026-11-15, with D1 (a), D2 (c) and D3 (b):
+- **the editor table** is `packages/schema/src/editors.gen.ts`, written by
+  `scripts/editors-table.ts` (`bun run editors:table`, `--check` to compare). It imports
+  each vendored module that declares a `propertyEditorSchema` or `propertyEditorUi`, with
+  every other module of the client stubbed by a Bun plugin so nothing needing a browser
+  runs, and keeps each schema's default UI, settings and `defaultData`, and each offered
+  UI's schema, label, settings and `defaultData`. `packages/schema/src/editors.ts` reads it:
+  `editorSettings`, `editorDefaults` (the UI's over the schema's, only for settings the data
+  type editor shows, as `#transferConfigDefaultData` does) and `closestNames`;
+- **presets** (`presets.ts`): 38, every editor UI the back office offers. Each starts from
+  `editorDefaults` and its flags go over them (`presetConfig`), so the existing presets now
+  write those defaults too (a `textstring` gets `maxChars = 512`, `autocomplete`,
+  `inputType`). `whole` names the options that refuse a fraction. `findPreset` takes a short
+  name, an editor's full name or a UI's; `presetOf` matches editor and UI, and `types
+  update`'s `presetSettings` uses it. The plan's six full names all matched the client; the
+  plan's table missed the Collection (`Umbraco.ListView`), which is `list-view`;
+- **`--editor <full name>`**: a full name always has a preset under D2 (c), so it is that
+  preset and writes the same file; no separate path for a name without one was built. An
+  unknown name is refused with the three closest. `types new` takes `--set`; `types editors
+  [<name>] [--all]` gives each preset's editor, UI, flags and the settings its data type
+  editor shows. `types show` gives a data type's editor UI and preset;
+- **flags** are shared by `types new` and `types update` in
+  `packages/cli/src/support/data-type-flags.ts`; `--min`, `--max` and `--step` are number
+  flags;
+- `CONFIG_REFERENCES` gains the document picker's `allowedContentTypes`, so `--allow`
+  names types by alias there too;
+- the date only, time only, date and time and entity data picker values are objects, so they
+  joined `JSON_VALUE_EDITORS`: without it the back office read back text and lost the value.
+  A template gets the object;
+- **Markdown as HTML (D3 b)**: `markdownToHtml` in `@crombolo/core` (`marked`, GFM, now a
+  dependency of the core package) is applied by `toPublishedValue`, and by `elementFrom` in
+  `@crombolo/render` for a block's values, which do not pass through it. The Delivery API
+  gives the HTML as it is; search reads the stored Markdown. None of the repo's sites
+  converted Markdown themselves;
+- **model types**: string for Markdown, code, e-mail, eye dropper, radio list and member
+  picker; number for the decimal; `{ from: number; to: number }` for the slider, which is
+  what a template gets whether a range is set or not (not the plan's union, which render
+  does not give); the colour picker's `{ value, label } | null`; `ImageCropperValue`, now
+  exported as a type from `@crombolo/crombolo`. `generate --delivery` types Markdown as
+  `string`;
+- tests: `tests/editors-table.test.ts`, `tests/data-type-presets.test.ts`,
+  `tests/markdown-value.test.ts`, cases in `tests/schema-scaffold.test.ts`,
+  `tests/data-types-edit.test.ts` and `tests/value-converters.test.ts`.

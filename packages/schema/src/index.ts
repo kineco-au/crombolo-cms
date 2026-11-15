@@ -22,6 +22,7 @@ export {
   updateProperty,
   updateType,
 } from './edit.ts'
+export * from './editors.ts'
 export * from './export.ts'
 export * from './form-edit.ts'
 export * from './forms.ts'

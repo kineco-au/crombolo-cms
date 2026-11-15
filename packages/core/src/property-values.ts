@@ -4,11 +4,13 @@
  * stored and returned as is.
  */
 
+import { marked } from 'marked'
 import { BLOCK_EDITORS } from './blocks.ts'
 
 export const RICH_TEXT_EDITOR_ALIAS = 'Umbraco.RichText'
 export const UPLOAD_FIELD_EDITOR_ALIAS = 'Umbraco.UploadField'
 export const IMAGE_CROPPER_EDITOR_ALIAS = 'Umbraco.ImageCropper'
+export const MARKDOWN_EDITOR_ALIAS = 'Umbraco.MarkdownEditor'
 
 /** Editors whose value names an uploaded file, and so may arrive with a temporary file. */
 export const FILE_VALUE_EDITORS: ReadonlySet<string> = new Set([
@@ -21,17 +23,22 @@ export const JSON_VALUE_EDITORS: ReadonlySet<string> = new Set([
   ...BLOCK_EDITORS,
   'Umbraco.CheckBoxList',
   'Umbraco.ColorPicker',
+  // The date and time pickers send `{ date, timeZone }`, the entity data picker `{ ids }`.
+  'Umbraco.DateOnly',
+  'Umbraco.DateTimeUnspecified',
   'Umbraco.DateTimeWithTimeZone',
   'Umbraco.DropDown.Flexible',
   // A `Guid[]` of the elements picked, not the `umb://…` references a content
   // picker stores.
   'Umbraco.ElementPicker',
+  'Umbraco.EntityDataPicker',
   'Umbraco.ImageCropper',
   'Umbraco.MediaPicker3',
   'Umbraco.MultipleTextstring',
   'Umbraco.MultiUrlPicker',
   'Umbraco.Slider',
   'Umbraco.Tags',
+  'Umbraco.TimeOnly',
 ])
 
 export interface RichTextValue {
@@ -131,10 +138,21 @@ export function toEditorValue(editorAlias: string | undefined, stored: unknown):
   return parsed !== null && typeof parsed === 'object' ? parsed : stored
 }
 
-/** The value a template receives: rich text is its markup, an upload its URL. */
+/**
+ * Markdown as HTML, GitHub-flavoured, as Umbraco's value converter gives it (story
+ * 357). The editors' own markup, so not sanitised, as rich text is not.
+ */
+export function markdownToHtml(text: unknown): string | null {
+  if (typeof text !== 'string' || text.trim() === '') return null
+  return marked.parse(text, { async: false, gfm: true })
+}
+
+/** The value a template receives: rich text is its markup, Markdown its HTML, an upload its URL. */
 export function toPublishedValue(editorAlias: string | undefined, stored: unknown): unknown {
   const value = toEditorValue(editorAlias, stored)
   if (editorAlias === RICH_TEXT_EDITOR_ALIAS && value) return (value as RichTextValue).markup
+  if (editorAlias === MARKDOWN_EDITOR_ALIAS && value !== null && value !== undefined)
+    return markdownToHtml(value)
   if (editorAlias === UPLOAD_FIELD_EDITOR_ALIAS)
     return (value as { src: string } | null)?.src ?? null
   return value

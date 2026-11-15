@@ -195,6 +195,7 @@ cd crombolo-cms
 bun install
 bun run fork:checkout         # the fork of Umbraco's client, at vendor/umbraco-client
 bun run vendor:backoffice     # builds the back office into packages/backoffice-dist/dist
+bun run editors:table         # after a new client: the editors table the CLI's data type presets read
 bun run generate:types        # contract types into packages/contracts/generated/
 bun run check                 # format, lint, typecheck and the SQL rule
 bun run hooks:install         # a pre-push hook running the same gate

@@ -29,6 +29,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@crombolo/common": "workspace:*"
+    "@crombolo/common": "workspace:*",
+    "marked": "^18.0.14"
   }
 }

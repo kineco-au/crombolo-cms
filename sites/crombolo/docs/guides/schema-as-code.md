@@ -84,13 +84,15 @@ A data type is an editor with its settings:
 bunx crombolo types editors                               # the editors, and the settings each takes
 bunx crombolo types new data-type shortText --editor textstring --max-chars 80
 bunx crombolo types new data-type pageBlocks --editor block-list --block feature
+bunx crombolo types new data-type rating --editor slider --min 0 --max 5 --step 0.5
+bunx crombolo types new data-type brand --editor Umbraco.ColorPicker --color '#1b264f=Navy'
 bunx crombolo types update pageBlocks --add-block quote --block-label Quote
 bunx crombolo types update articlePicker --allow article --start-at /Home/News
 bunx crombolo types update gallery --set multiple=true --set 'validationLimit={"max":12}'
 bunx crombolo types remove shortText                      # refused while a property uses it
 ```
 
-`--editor` is one of `textstring`, `textarea`, `rich-text`, `number`, `toggle`, `date`, `dropdown`, `content-picker`, `media-picker`, `element-picker`, `block-list` or `block-grid`. `--set` stores any setting by name, read as JSON when it parses. The data types every site has built in are not changed: make the site's own with `types new data-type` and use that.
+`--editor` takes any editor the back office offers, by its short name (`textstring`, `markdown`, `slider`, `color-picker`, `document-picker` and the rest `types editors` lists) or its full name (`Umbraco.ColorPicker`). A new data type starts with the settings the back office would give it, and its flags change the ones a person sets most. `--set` stores any other setting by name, on `types new` or `types update`, read as JSON when it parses. The data types every site has built in are not changed: make the site's own with `types new data-type` and use that.
 
 ## Renaming
 

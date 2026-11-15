@@ -110,7 +110,23 @@ function tsTypeFor(set: SchemaSet, dataTypeAlias: string): string {
     case 'Umbraco.MultipleTextstring':
       return 'string[]'
     case 'Umbraco.UploadField':
+    case 'Umbraco.MarkdownEditor':
+    case 'Umbraco.Plain.String':
+    case 'Umbraco.EmailAddress':
+    case 'Umbraco.ColorPicker.EyeDropper':
+    case 'Umbraco.RadioButtonList':
+    // A member's `umb://member/…` reference: members are not looked up on a page.
+    case 'Umbraco.MemberPicker':
       return 'string'
+    case 'Umbraco.Decimal':
+      return 'number'
+    // Both ends, the same when the slider picks no range.
+    case 'Umbraco.Slider':
+      return '{ from: number; to: number }'
+    case 'Umbraco.ColorPicker':
+      return '{ value: string; label: string } | null'
+    case 'Umbraco.ImageCropper':
+      return 'ImageCropperValue'
     case 'Umbraco.BlockList': {
       const { content, settings } = blockElements(set, config, blocks)
       return `BlockListValue<BlockItem & { content: ${elementUnion(content)}; settings: ${settings.length ? `${elementUnion(settings)} | null` : 'PublishedElement | null'} }>`
@@ -165,6 +181,7 @@ export function generateTypes(set: SchemaSet): string {
     'BlockGridItem',
     'BlockItem',
     'BlockListValue',
+    'ImageCropperValue',
     'Link',
     'MediaWithCrops',
     'PublishedContent',

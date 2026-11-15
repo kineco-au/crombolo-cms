@@ -169,7 +169,8 @@ export default class TypesShow extends BaseCommand {
 
   #data(d: DataTypeDetail) {
     this.say(`${KIND_NAMES.data} "${d.name}" (${d.alias})${d.builtIn ? ', built in' : ''}`)
-    this.say(`  editor     ${d.editor}`)
+    this.say(`  editor     ${d.editor}${d.preset ? ` (${d.preset})` : ''}`)
+    if (d.editorUi) this.say(`  editor UI  ${d.editorUi}`)
     for (const s of d.settings) this.say(`  ${(s.label ?? s.setting).padEnd(28)} ${shown(s.value)}`)
     for (const b of d.blocks)
       this.say(

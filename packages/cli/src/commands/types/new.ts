@@ -18,9 +18,16 @@ import {
 } from '@crombolo/schema'
 import { Args, Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
+import { dataTypeFlags, presetOptions } from '../../support/data-type-flags.ts'
 import { describeDefinition, describeSync, here } from '../../support/describe.ts'
 import { siteConfig } from '../../support/site.ts'
-import { applySchema, loadTypes, needSchemaDir, refuseOwnProblems } from '../../support/types.ts'
+import {
+  applySchema,
+  loadTypes,
+  needSchemaDir,
+  parseSet,
+  refuseOwnProblems,
+} from '../../support/types.ts'
 
 const TYPE_KINDS: Record<string, SchemaTypeKind> = {
   'content-type': 'document',
@@ -56,6 +63,8 @@ export default class TypesNew extends BaseCommand {
     '<%= config.bin %> types new content-type article --at-root',
     '<%= config.bin %> types new content-type blog --at-root --allow-child article --list-view',
     '<%= config.bin %> types new data-type pageBlocks --editor block-list --block feature --block quote',
+    '<%= config.bin %> types new data-type rating --editor slider --min 0 --max 5 --step 0.5',
+    '<%= config.bin %> types new data-type brandColour --editor Umbraco.ColorPicker --color "#1b264f=Navy"',
   ]
   static override aliases = ['schema:new']
   static override deprecateAliases = true
@@ -91,22 +100,16 @@ export default class TypesNew extends BaseCommand {
       helpValue: '<alias>',
     }),
     editor: Flags.string({
-      summary: 'data types: the editor it uses',
-      options: Object.keys(DATA_TYPE_PRESETS),
+      summary:
+        'data types: the editor it uses, by its short name or its full name (`types editors --all`)',
+      helpValue: '<editor>',
     }),
-    'max-chars': Flags.integer({ summary: 'data types: the most characters allowed' }),
-    rows: Flags.integer({ summary: 'data types: the rows a text area shows' }),
-    min: Flags.integer({ summary: 'data types: the least allowed (number, items)' }),
-    max: Flags.integer({ summary: 'data types: the most allowed (number, items)' }),
-    step: Flags.integer({ summary: 'data types: the step between numbers' }),
-    'default-on': Flags.boolean({ summary: 'data types: a toggle starts on' }),
-    label: Flags.string({ summary: "data types: a toggle's label", helpValue: '<text>' }),
-    'with-time': Flags.boolean({ summary: 'data types: a date with a time of day' }),
-    option: many('data types: a dropdown choice', '<value>'),
-    multiple: Flags.boolean({ summary: 'data types: more than one may be chosen' }),
-    allow: many('data types: a type a picker offers', '<alias>'),
+    ...dataTypeFlags(false),
     block: many('data types: an element type offered as a block', '<alias>'),
-    columns: Flags.integer({ summary: 'data types: the columns a block grid has' }),
+    set: many(
+      'data types: store any other setting as given; JSON when it parses',
+      '<setting>=<value>',
+    ),
   }
   static override access = 'site' as const
   static override section = 'settings' as const
@@ -127,6 +130,7 @@ export default class TypesNew extends BaseCommand {
     const loaded = loadTypes(config)
     if (args.kind === 'data-type') return this.newDataType(args.alias, flags, config, loaded.set)
     if (flags.editor) this.fail('refused', '--editor is for data types.')
+    if (flags.set) this.fail('refused', '--set is for data types.')
     const kind = TYPE_KINDS[args.kind] as SchemaTypeKind
     const existing = [
       ...loaded.set.contentTypes,
@@ -227,26 +231,18 @@ export default class TypesNew extends BaseCommand {
     if (!flags.editor)
       this.fail(
         'refused',
-        `A data type needs --editor: one of ${Object.keys(DATA_TYPE_PRESETS).join(', ')}.`,
+        `A data type needs --editor: one of ${Object.keys(DATA_TYPE_PRESETS).join(', ')}, or an editor's full name.`,
       )
     if (set.dataTypes.some((d) => d.alias === alias))
       this.fail('conflict', `There is already a data type with the alias "${alias}".`)
-    const options: PresetOptions = {
-      maxChars: flags['max-chars'],
-      rows: flags.rows,
-      min: flags.min,
-      max: flags.max,
-      step: flags.step,
-      defaultOn: flags['default-on'] || undefined,
-      label: flags.label,
-      withTime: flags['with-time'] || undefined,
-      option: flags.option,
-      multiple: flags.multiple || undefined,
-      allow: flags.allow,
-      block: flags.block,
-      columns: flags.columns,
-    }
-    const built = presetDataType(alias, flags.editor, options, flags.name)
+    const options: PresetOptions = { ...presetOptions(flags), block: flags.block }
+    const built = presetDataType(
+      alias,
+      flags.editor,
+      options,
+      flags.name,
+      parseSet(flags.set ?? []),
+    )
     if (!built.ok) this.fail('refused', `${built.reason}.`)
     refuseOwnProblems(
       { ...set, dataTypes: [...set.dataTypes, built.dataType] },

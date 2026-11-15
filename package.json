@@ -36,6 +36,7 @@
     "docker:up": "docker compose up -d --wait cms",
     "docker:up:attached": "docker compose up cms",
     "docs:config": "bun run scripts/docs-config.ts",
+    "editors:table": "bun run scripts/editors-table.ts",
     "fix": "biome check --write .",
     "format": "biome format --write .",
     "format:check": "biome format .",

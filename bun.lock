@@ -170,6 +170,7 @@
       "version": "0.66.0",
       "dependencies": {
         "@crombolo/common": "workspace:*",
+        "marked": "^18.0.14",
       },
     },
     "packages/crombolo": {

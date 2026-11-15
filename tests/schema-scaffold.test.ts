@@ -220,9 +220,9 @@ describe('the options a new type takes (story 161)', () => {
 })
 
 describe('data types by preset (story 161)', () => {
-  test('each preset gives its editor, and its flags become config', () => {
+  test("each preset gives its editor, and its flags become config over the editor's defaults", () => {
     const cases: Array<[string, Parameters<typeof presetDataType>[2], Record<string, unknown>]> = [
-      ['textstring', { maxChars: 80 }, { maxChars: 80 }],
+      ['textstring', { maxChars: 80 }, { maxChars: 80, autocomplete: 'off', inputType: 'text' }],
       ['textarea', { rows: 4 }, { rows: 4 }],
       ['number', { min: 1, max: 9, step: 2 }, { min: 1, max: 9, step: 2 }],
       [
@@ -232,7 +232,21 @@ describe('data types by preset (story 161)', () => {
       ],
       ['date', { withTime: true }, { format: 'YYYY-MM-DD HH:mm:ss' }],
       ['dropdown', { option: ['a', 'b'], multiple: true }, { multiple: true, items: ['a', 'b'] }],
-      ['content-picker', { allow: ['page'] }, { startNode: { type: 'content' }, filter: ['page'] }],
+      [
+        'content-picker',
+        { allow: ['page'] },
+        { startNode: { type: 'content' }, filter: ['page'], minNumber: 0, maxNumber: 0 },
+      ],
+      [
+        'content-picker',
+        { of: 'media', allow: ['Image'] },
+        { startNode: { type: 'media' }, filter: ['Image'], minNumber: 0, maxNumber: 0 },
+      ],
+      [
+        'content-picker',
+        { of: 'members' },
+        { startNode: { type: 'member' }, minNumber: 0, maxNumber: 0 },
+      ],
       [
         'media-picker',
         { allow: ['Image'] },
@@ -240,11 +254,141 @@ describe('data types by preset (story 161)', () => {
       ],
       ['element-picker', { allow: ['quote'] }, { allowedContentTypes: ['quote'] }],
       ['block-grid', { columns: 6 }, { gridColumns: 6 }],
+      ['tags', {}, { group: 'default', storageType: 'Json' }],
+      ['tags', { group: 'topics' }, { group: 'topics', storageType: 'Json' }],
+      ['color-picker', {}, {}],
+      [
+        'color-picker',
+        { color: ['#1B264F=Navy', 'fff'] },
+        {
+          items: [
+            { value: '#1b264f', label: 'Navy' },
+            { value: '#fff', label: '#fff' },
+          ],
+          useLabel: true,
+        },
+      ],
+      ['color-picker', { color: ['#000'] }, { items: [{ value: '#000', label: '#000' }] }],
+      ['eye-dropper', {}, {}],
+      ['eye-dropper', { alpha: true, palette: true }, { showAlpha: true, showPalette: true }],
+      [
+        'slider',
+        {},
+        { minVal: 0, maxVal: 100, minimumRange: 0, initVal1: 0, initVal2: 0, step: 1 },
+      ],
+      [
+        'slider',
+        { min: 1, max: 5, step: 0.5, range: true },
+        {
+          minVal: 1,
+          maxVal: 5,
+          minimumRange: 0,
+          initVal1: 0,
+          initVal2: 0,
+          step: 0.5,
+          enableRange: true,
+        },
+      ],
+      ['multi-url-picker', {}, { minNumber: 0, maxNumber: 0 }],
+      ['multi-url-picker', { min: 1, max: 3 }, { minNumber: 1, maxNumber: 3 }],
+      ['upload', {}, {}],
+      ['upload', { extension: ['.pdf', 'docx'] }, { fileExtensions: ['pdf', 'docx'] }],
+      ['image-cropper', {}, {}],
+      [
+        'image-cropper',
+        { crop: ['thumb:200x100'] },
+        { crops: [{ label: 'Thumb', alias: 'thumb', width: 200, height: 100 }] },
+      ],
+      ['markdown', {}, {}],
+      ['markdown', { preview: true }, { preview: true }],
+      [
+        'code',
+        {},
+        { language: 'javascript', height: 400, lineNumbers: true, minimap: true, wordWrap: false },
+      ],
+      [
+        'code',
+        { language: 'css' },
+        { language: 'css', height: 400, lineNumbers: true, minimap: true, wordWrap: false },
+      ],
+      ['email', {}, { inputType: 'email' }],
+      ['checkbox-list', {}, {}],
+      ['checkbox-list', { option: ['Red', 'Blue'] }, { items: ['Red', 'Blue'] }],
+      ['radio-list', { option: ['Yes', 'No'] }, { items: ['Yes', 'No'] }],
+      ['member-picker', {}, {}],
+      ['document-picker', {}, {}],
+      ['document-picker', { allow: ['article'] }, { allowedContentTypes: ['article'] }],
+      ['decimal', {}, { step: '0.01' }],
+      ['decimal', { min: 0.5, max: 9.5, step: 0.25 }, { min: 0.5, max: 9.5, step: 0.25 }],
+      ['label', {}, { umbracoDataValueType: 'STRING' }],
+      ['label', { valueType: 'big-integer' }, { umbracoDataValueType: 'BIGINT' }],
+      ['multiple-text', {}, { min: 0, max: 0 }],
+      ['multiple-text', { min: 1, max: 4 }, { min: 1, max: 4 }],
+      ['date-with-zone', {}, { timeFormat: 'HH:mm', timeZones: { mode: 'all', timeZones: [] } }],
+      ['date-only', {}, {}],
+      ['time-only', {}, { timeFormat: 'HH:mm' }],
+      ['date-time', {}, { timeFormat: 'HH:mm' }],
+      ['member-group-picker', {}, {}],
+      ['user-picker', {}, {}],
+      ['entity-data-picker', {}, {}],
     ]
     for (const [preset, options, config] of cases) {
       const built = presetDataType('x', preset, options)
       if (!built.ok) throw new Error(`${preset}: ${built.reason}`)
       expect(built.dataType.config, preset).toEqual(config)
+    }
+  })
+
+  test('a full name is the preset it has, and --set adds settings over it', () => {
+    for (const name of [
+      'Umbraco.ColorPicker',
+      'Umb.PropertyEditorUi.ColorPicker',
+      'color-picker',
+    ]) {
+      const built = presetDataType('brand', name, { color: ['#000=Black'] }, undefined, {
+        extra: 1,
+      })
+      expect(built.ok && built.dataType, name).toEqual({
+        alias: 'brand',
+        name: 'Brand',
+        editor: 'Umbraco.ColorPicker',
+        editorUi: 'Umb.PropertyEditorUi.ColorPicker',
+        config: { items: [{ value: '#000', label: 'Black' }], useLabel: true, extra: 1 },
+      })
+    }
+    const code = presetDataType('snippet', 'Umb.PropertyEditorUi.CodeEditor')
+    expect(code.ok && [code.dataType.editor, code.dataType.editorUi]).toEqual([
+      'Umbraco.Plain.String',
+      'Umb.PropertyEditorUi.CodeEditor',
+    ])
+    const set = presetDataType('snippet', 'Umbraco.Plain.String', {}, undefined, {
+      language: 'json',
+    })
+    expect(set.ok && set.dataType.config.language).toBe('json')
+  })
+
+  test('an unknown editor is refused, naming the closest; a fraction where a whole number goes is too', () => {
+    const unknown = presetDataType('x', 'Umbraco.ColourPicker')
+    expect(unknown.ok).toBe(false)
+    if (!unknown.ok) {
+      expect(unknown.reason).toContain('unknown editor "Umbraco.ColourPicker"')
+      expect(unknown.reason).toContain('Umbraco.ColorPicker')
+      expect(unknown.reason).toContain('types editors --all')
+    }
+    const fraction = presetDataType('x', 'number', { step: 0.5 })
+    expect(fraction).toEqual({ ok: false, reason: '--step takes a whole number for number' })
+    expect(presetDataType('x', 'multi-url-picker', { max: 1.5 }).ok).toBe(false)
+    expect(presetDataType('x', 'decimal', { step: 0.5 }).ok).toBe(true)
+    const wrong: Array<[string, Parameters<typeof presetDataType>[2]]> = [
+      ['color-picker', { color: ['navy'] }],
+      ['image-cropper', { crop: ['thumb'] }],
+      ['code', { language: 'cobol' }],
+      ['label', { valueType: 'colour' }],
+      ['content-picker', { of: 'things' }],
+    ]
+    for (const [preset, options] of wrong) {
+      const refused = presetDataType('x', preset, options)
+      expect(refused.ok, preset).toBe(false)
     }
   })
 

@@ -12,6 +12,7 @@ import {
   type SchemaDataType,
   type SchemaSet,
 } from './model.ts'
+import { presetOf } from './presets.ts'
 
 /** What a definition is, as a person names it. */
 export type DescribedKind = 'content' | 'element' | 'media' | 'member' | 'data'
@@ -92,6 +93,9 @@ export interface DataTypeDetail {
   alias: string
   name: string
   editor: string
+  editorUi: string | null
+  /** The name `types new data-type --editor` knows it by, when it has one (story 357). */
+  preset: string | null
   builtIn: boolean
   /** Its settings by their own names, with the plain name where one is known. */
   settings: Array<{ setting: string; label: string | null; value: unknown }>
@@ -313,6 +317,8 @@ export function describeType(set: SchemaSet, alias: string, kind?: DescribedKind
       alias: dataType.alias,
       name: dataType.name,
       editor: dataType.editor,
+      editorUi: dataType.editorUi ?? null,
+      preset: presetOf(dataType.editor, dataType.editorUi)?.[0] ?? null,
       builtIn,
       settings: Object.entries(dataType.config).map(([setting, value]) => ({
         setting,

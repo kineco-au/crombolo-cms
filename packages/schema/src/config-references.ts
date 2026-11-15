@@ -26,6 +26,7 @@ const BLOCK_FIELDS: readonly FieldReference[] = [
 ]
 
 export const CONFIG_REFERENCES: Readonly<Record<string, readonly FieldReference[]>> = {
+  'Umbraco.ContentPicker': [{ path: ['allowedContentTypes'], many: true, kind: 'document' }],
   'Umbraco.ElementPicker': [{ path: ['allowedContentTypes'], many: true, kind: 'element' }],
   'Umbraco.MediaPicker3': [{ path: ['filter'], many: true, kind: 'media' }],
   'Umbraco.MultiNodeTreePicker': [{ path: ['filter'], many: true, kind: 'startNode' }],

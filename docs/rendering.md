@@ -160,7 +160,8 @@ Values escape by default: `renderChild` runs everything but `RawHtml` through
 ways.
 
 `model.html('alias')` returns `RawHtml` and is the short route — rich text hands a
-template its markup, so this is what a body field wants. Rich text that links to
+template its markup, and Markdown its HTML (story 357), so this is what a body field
+wants. Both are the editors' own markup and are not sanitised. Rich text that links to
 media is a promise of it, which JSX renders as it is: `<div>{model.html('body')}</div>`
 needs no `await`. `text()` never waits, so a rich text's media links are `#`
 there: write rich text with `html()`.
@@ -169,7 +170,7 @@ The **`setInnerHTML` attribute** covers markup from anywhere else, and takes Rea
 `{ __html }` shape with one addition:
 
 ```tsx
-<div setInnerHTML={{ __html: markdownToHtml(model.text('notes')), dangerously: true }} />
+<div setInnerHTML={{ __html: highlight(model.text('snippet')), dangerously: true }} />
 ```
 
 Without `dangerously` the content is **escaped**. That is the deliberate difference
@@ -1014,6 +1015,7 @@ cache supplies (`@crombolo/render` `values.ts` and `media.ts`):
 | Image Cropper           | `ImageCropperValue` (`src`, `crops`, `focalPoint`, `cropUrl()`)                                             |
 | Rich text               | the markup, with `/{localLink:…}` links resolved (`#` when gone) and `{#key}` read as words; a promise when a link names media |
 | Text box / Text area    | the text, with `{#key}` read as words                                                                         |
+| Markdown                | its HTML, GitHub-flavoured (`marked`), as Umbraco's converter gives it, on a page and in a block; `null` when empty. The Delivery API gives the same HTML as a string, and search reads the Markdown's words, not the HTML (story 357) |
 
 References to anything unpublished or deleted are dropped.
 

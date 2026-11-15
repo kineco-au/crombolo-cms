@@ -219,23 +219,73 @@ type also takes `--compose <alias>…`, `--allow-child <alias>…`,
 `--vary-by-culture`, `--vary-by-segment`, `--library`, and `--list-view` (the
 built-in list view) or `--list-view-type <data type alias>`.
 
-`types new data-type <alias> --editor <preset>` writes a data type for a
-common editor (`packages/schema/src/presets.ts`):
+`types new data-type <alias> --editor <preset>` writes a data type for any
+editor the back office offers (`packages/schema/src/presets.ts`, stories 161 and
+357). Each starts from the values the back office's data type editor fills in for
+a new data type of that editor, so the file opens there unchanged, and its flags
+set the settings a person changes most:
 
-| Preset | Flags |
-| --- | --- |
-| `textstring` | `--max-chars` |
-| `textarea` | `--rows`, `--max-chars` |
-| `rich-text` | `--block <alias>…` |
-| `number` | `--min`, `--max`, `--step` |
-| `toggle` | `--default-on`, `--label` |
-| `date` | `--with-time` |
-| `dropdown` | `--option <value>…`, `--multiple` |
-| `content-picker` | `--allow <alias>…` |
-| `media-picker` | `--allow <media type alias>…`, `--multiple`, `--min`, `--max` |
-| `element-picker` | `--allow <element alias>…` |
-| `block-list` | `--block <alias>…`, `--min`, `--max` |
-| `block-grid` | `--block <alias>…`, `--columns` |
+| Preset | Editor / editor UI | Flags |
+| --- | --- | --- |
+| `textstring` | `Umbraco.TextBox` | `--max-chars` |
+| `textarea` | `Umbraco.TextArea` | `--rows`, `--max-chars` |
+| `rich-text` | `Umbraco.RichText` / `Tiptap` | `--block <alias>…` |
+| `markdown` | `Umbraco.MarkdownEditor` | `--preview` |
+| `code` | `Umbraco.Plain.String` / `CodeEditor` | `--language <name>` |
+| `email` | `Umbraco.EmailAddress` | none |
+| `number` | `Umbraco.Integer` | `--min`, `--max`, `--step`, whole numbers |
+| `decimal` | `Umbraco.Decimal` | `--min`, `--max`, `--step` |
+| `slider` | `Umbraco.Slider` | `--min`, `--max`, `--step`, `--range` |
+| `toggle` | `Umbraco.TrueFalse` | `--default-on`, `--label` |
+| `date` | `Umbraco.DateTime` / `DatePicker` | `--with-time` |
+| `date-with-zone` | `Umbraco.DateTimeWithTimeZone` | none |
+| `date-only` | `Umbraco.DateOnly` / `DateOnlyPicker` | none |
+| `time-only` | `Umbraco.TimeOnly` / `TimeOnlyPicker` | none |
+| `date-time` | `Umbraco.DateTimeUnspecified` / `DateTimePicker` | none |
+| `dropdown` | `Umbraco.DropDown.Flexible` | `--option <value>…`, `--multiple` |
+| `checkbox-list` | `Umbraco.CheckBoxList` | `--option <value>…` |
+| `radio-list` | `Umbraco.RadioButtonList` | `--option <value>…` |
+| `tags` | `Umbraco.Tags` | `--group <name>` |
+| `multiple-text` | `Umbraco.MultipleTextstring` | `--min`, `--max` |
+| `color-picker` | `Umbraco.ColorPicker` | `--color <hex>[=<label>]…` |
+| `eye-dropper` | `Umbraco.ColorPicker.EyeDropper` | `--alpha`, `--palette` |
+| `content-picker` | `Umbraco.MultiNodeTreePicker` / `ContentPicker` | `--of pages\|media\|members`, `--allow <alias>…` |
+| `document-picker` | `Umbraco.ContentPicker` / `DocumentPicker` | `--allow <alias>…` |
+| `media-picker` | `Umbraco.MediaPicker3` | `--allow <media type alias>…`, `--multiple`, `--min`, `--max` |
+| `member-picker` | `Umbraco.MemberPicker` | none |
+| `member-group-picker` | `Umbraco.MemberGroupPicker` | none |
+| `user-picker` | `Umbraco.UserPicker` | none |
+| `entity-data-picker` | `Umbraco.EntityDataPicker` | settings by `--set` |
+| `multi-url-picker` | `Umbraco.MultiUrlPicker` | `--min`, `--max` |
+| `element-picker` | `Umbraco.ElementPicker` | `--allow <element alias>…` |
+| `upload` | `Umbraco.UploadField` | `--extension <ext>…` |
+| `image-cropper` | `Umbraco.ImageCropper` | `--crop <alias>:<width>x<height>…` |
+| `label` | `Umbraco.Label` | `--value-type string\|long-string\|decimal\|integer\|big-integer\|date\|time` |
+| `block-list` | `Umbraco.BlockList` | `--block <alias>…`, `--min`, `--max` |
+| `single-block` | `Umbraco.SingleBlock` / `BlockSingle` | `--block <alias>…` |
+| `block-grid` | `Umbraco.BlockGrid` | `--block <alias>…`, `--columns` |
+| `list-view` | `Umbraco.ListView` / `Collection` | none: what `--list-view-type` names |
+
+An editor UI is `Umb.PropertyEditorUi.<name>`, its editor's name where the table
+gives none. No short name starts with `Umbraco` or `Umb`. `--editor` also takes an
+editor's or an editor UI's full name (`Umbraco.ColorPicker`,
+`Umb.PropertyEditorUi.CodeEditor`), which is its preset, so both write the same
+file; an unknown name is refused with the closest ones named. `--set
+<setting>=<value>` stores any other setting, as `types update` does, and `types
+editors --all` lists every editor with its full names and the settings its data
+type editor shows. `--min`, `--max` and `--step` take fractions; a preset whose
+settings are counts or whole numbers refuses one, naming the flag.
+
+The date only, time only, date and time, member group, user and entity data
+pickers' values reach a template as the back office saved them: crombolo converts
+nothing for them yet.
+
+**The editor table.** What each editor's data type editor shows and fills in is
+`packages/schema/src/editors.gen.ts`, generated from the vendored back office's
+manifests by `bun run editors:table`. `tests/editors-table.test.ts` regenerates it
+and fails when it differs, so a new `backoffice-dist` shows what changed; it also
+fails when an editor the back office offers has no preset, or a preset writes a
+setting its editor does not have.
 
 A flag the preset does not take is refused. `languages add` writes
 `languages.toml`; the first language added to a site without one keeps English

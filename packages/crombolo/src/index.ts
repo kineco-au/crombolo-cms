@@ -82,6 +82,7 @@ export type {
   FormFieldRenderProps,
   FormProps,
   GapProps,
+  ImageCropperValue,
   InnerHTML,
   Link,
   MediaWithCrops,
