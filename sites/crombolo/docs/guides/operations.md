@@ -121,6 +121,21 @@ bunx crombolo recycle-bin empty --older-than 30
 
 Deletes what has been in the recycle bin for more than the given number of days, media files included. It asks first unless you pass `--yes`, and `--dry-run` lists what would go. `--content` or `--media` limits it to one bin.
 
+## Undoing a change
+
+A page's history, rolling it back, and what is in the recycle bin, without opening the back office:
+
+```sh
+bunx crombolo content history /Home                       # its versions, newest first
+bunx crombolo content history show /Home previous --diff  # what that version would change
+bunx crombolo content rollback /Home previous --publish   # make it the draft, and publish it
+bunx crombolo content history keep /Home latest-published # keep a version from cleanup
+bunx crombolo recycle-bin list                            # what is in the bin, and where it came from
+bunx crombolo recycle-bin restore "/Home/Visit us"        # put it back, with what was below it
+```
+
+A version is named by the key `content history` prints, or by `previous` or `latest-published`. Rolling back goes through the same checks as the back office, approvals included. If the place an item came from has gone, restoring it asks for another with `--to`. Each takes `--profile` to act on a hosted site, as the person signed in to it.
+
 ## Logs
 
 Log files are written to the site's `logs/` folder, one file a day, as structured JSON. The back office's **Log Viewer**, under **Settings**, reads them, so editors with access can search them without a terminal. Events are printed to the console too, for your platform to collect.

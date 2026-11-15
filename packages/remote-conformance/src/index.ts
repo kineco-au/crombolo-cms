@@ -269,6 +269,54 @@ export async function runConformance(options: ConformanceOptions): Promise<Confo
     assert(isProblem(refused), 'not application/problem+json')
   })
 
+  await check('content-history: an unknown page and an unknown version are not found', async () => {
+    const capabilities = (state.discovery?.capabilities as string[] | undefined) ?? []
+    if (!capabilities.includes('content-history')) return 'skip'
+    const env = `environments/${state.environment}`
+    const page = await api(`${env}/content/${crypto.randomUUID()}/history`)
+    assert(page.status === 404, `an unknown page's history answered ${page.status}`)
+    assert(isProblem(page), 'not application/problem+json')
+    const version = await api(`${env}/content/versions/999999999`)
+    assert(version.status === 404, `an unknown version answered ${version.status}`)
+    const rollback = await api(`${env}/content/versions/999999999/rollback`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    })
+    assert(
+      rollback.status === 404,
+      `rolling back to an unknown version answered ${rollback.status}`,
+    )
+  })
+
+  await check(
+    'recycle-bin: lists its items, and refuses to restore what is not in it',
+    async () => {
+      const capabilities = (state.discovery?.capabilities as string[] | undefined) ?? []
+      if (!capabilities.includes('recycle-bin')) return 'skip'
+      const env = `environments/${state.environment}`
+      const response = await api(`${env}/recycle-bin`)
+      assert(response.status === 200, `answered ${response.status}`)
+      const body = (await response.json()) as { items?: Json[] }
+      assert(Array.isArray(body.items), 'items is missing')
+      for (const item of body.items ?? []) {
+        assert(
+          typeof item.key === 'string' && typeof item.name === 'string',
+          'an item has no key or name',
+        )
+        assert(item.kind === 'content' || item.kind === 'media', `an item's kind is ${item.kind}`)
+        assert(typeof item.from === 'object' && item.from !== null, 'an item has no from')
+      }
+      const restore = await api(`${env}/recycle-bin/${crypto.randomUUID()}/restore`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      })
+      assert(restore.status === 404, `restoring what is not in the bin answered ${restore.status}`)
+      assert(isProblem(restore), 'not application/problem+json')
+    },
+  )
+
   await check('a push check answers what would be recycled and removed', async () => {
     const capabilities = (state.discovery?.capabilities as string[] | undefined) ?? []
     if (!capabilities.includes('push-check') || !state.may?.push) return 'skip'

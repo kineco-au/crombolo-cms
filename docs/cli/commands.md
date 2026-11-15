@@ -2258,6 +2258,85 @@ crombolo content find [--type <type>] [--name <name>] [--name-match <name-match>
 
 **Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.
 
+### `crombolo content history`
+
+A page's versions, newest first: when, who, and what is live and kept. Changes nothing.
+
+```
+crombolo content history <page> [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `page` | string | The page: a path or a uuid; a uuid on a hosted site. Required. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (bounded, with `-o json`):
+
+- `page` (object)
+  - `key` (string)
+  - `name` (string)
+- `versions` (array of object)
+  - `id` (string)
+  - `date` (string)
+  - `kind` (string)
+  - `by` (object)
+    - `key` (string)
+    - `name` (string)
+  - `draft` (boolean)
+  - `live` (boolean)
+  - `kept` (boolean)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.
+
+### `crombolo content history keep`
+
+Keep a version from cleanup, or with --off stop keeping it. Safe to run again: a second run changes nothing more.
+
+```
+crombolo content history keep <page> <version> [--off] [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `page` | string | The page: a path or a uuid; a uuid on a hosted site. Required. |
+| `version` | string | The version: its key, `previous` or `latest-published`. Required. |
+| `--off` | boolean | Stop keeping it. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`):
+
+- `page` (object)
+  - `key` (string)
+  - `name` (string)
+- `version` (string)
+- `kept` (boolean)
+- `changed` (boolean)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.
+
+### `crombolo content history show`
+
+One of a page's versions: its values and blocks, or with --diff what differs from the draft. Changes nothing.
+
+```
+crombolo content history show <page> <version> [--diff] [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `page` | string | The page: a path or a uuid; a uuid on a hosted site. Required. |
+| `version` | string | The version: its key, `previous` or `latest-published`. Required. |
+| `--diff` | boolean | Only what differs from the current draft. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`): a JSON document.
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.
+
 ### `crombolo content move`
 
 Move pages, and the pages below them, under another page. Safe to run again: a second run changes nothing more.
@@ -2342,6 +2421,33 @@ crombolo content publish <page> [--descendants] [--culture <culture>] [--at <at>
 - `cultures` (array of string)
 
 **Fails with:** `usage`, `internal`, `not_found`, `refused`.
+
+### `crombolo content rollback`
+
+Make one of a page's versions its draft; --publish to take it live too. Each run acts again.
+
+```
+crombolo content rollback <page> <version> [--publish] [--skip-approval] [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `page` | string | The page: a path or a uuid; a uuid on a hosted site. Required. |
+| `version` | string | The version: its key, `previous` or `latest-published`. Required. |
+| `--publish` | boolean | Publish it too, as `content publish` would. |
+| `--skip-approval` | boolean | With --publish: publish without the approval its workflow asks for; audited. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`):
+
+- `page` (object)
+  - `key` (string)
+  - `name` (string)
+- `version` (string)
+- `published` (boolean)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.
 
 ### `crombolo content show`
 
@@ -2773,6 +2879,68 @@ crombolo recycle-bin empty [--content] [--media] [--older-than <older-than>] [--
 - `changed` (boolean)
 
 **Fails with:** `usage`, `internal`, `confirmation_required`, `refused`.
+
+### `crombolo recycle-bin list`
+
+List what is in the recycle bin: name, when, by whom, and where it came from. Changes nothing.
+
+```
+crombolo recycle-bin list [--content] [--media] [--older-than <older-than>] [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `--content` | boolean | Only pages. |
+| `--media` | boolean | Only media. |
+| `--older-than` | string | Only what was trashed more than this many days ago. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (bounded, with `-o json`):
+
+- `items` (array of object)
+  - `key` (string)
+  - `name` (string)
+  - `kind` (string)
+  - `trashedAt` (string)
+  - `by` (object)
+    - `key` (string)
+    - `name` (string)
+  - `from` (object)
+    - `key` (string)
+    - `path` (string)
+    - `gone` (boolean)
+
+**Fails with:** `usage`, `internal`, `refused`, `unavailable`.
+
+### `crombolo recycle-bin restore`
+
+Put a page or media item back where it came from, with what was below it. Each run acts again.
+
+```
+crombolo recycle-bin restore <item> [--to <to>] [--content] [--media] [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `item` | string | The item: a key, the path it was at, or its name. Required. |
+| `--to` | string | Restore it here instead: a path or uuid, or / for the top level; a uuid on a hosted site. |
+| `--content` | boolean | Only look among pages. |
+| `--media` | boolean | Only look among media. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`):
+
+- `item` (object)
+  - `key` (string)
+  - `name` (string)
+  - `kind` (string)
+- `to` (object)
+  - `key` (string)
+  - `name` (string)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.
 
 ## Sites, extensions and remotes
 

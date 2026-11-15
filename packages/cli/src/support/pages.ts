@@ -20,18 +20,20 @@ import {
   describeRefFailure,
   LanguageRepository,
   looksLikeKey,
-  NodeRepository,
   resolveNodeRef,
 } from '@crombolo/data'
 import {
   bootstrapDatabase,
   type CromboloConfig,
+  namedPath,
   type PathKind,
   type PropertyEditor,
+  pageReader,
   type SchemaLookup,
   schemaLookup,
-  shorthandReader,
+  type shorthandReader,
   siteDocumentOperations,
+  tomlValue,
   type ValueRefs,
   valueWriter,
 } from '@crombolo/server'
@@ -87,24 +89,6 @@ function siteRefs(db: Db): ValueRefs {
   }
 }
 
-/** A node's place by its names, `Home/Visit us`, as a path argument names it. */
-async function pathOf(db: Db, key: string, kind: PathKind): Promise<string | undefined> {
-  const nodes = new NodeRepository(db)
-  const node = await nodes.byKey(normaliseUuid(key))
-  if (!node || node.objectType !== OBJECT_TYPES[kind]) return undefined
-  const ids = node.path
-    .split(',')
-    .map(Number)
-    .filter((id) => id > 0)
-  const names: string[] = []
-  for (const id of ids) {
-    const row = await nodes.byId(id)
-    if (!row) return undefined
-    names.push(row.text ?? row.key)
-  }
-  return names.join('/')
-}
-
 export interface PageSite {
   db: Db
   config: CromboloConfig
@@ -122,13 +106,6 @@ export async function withPages<T>(work: (site: PageSite) => Promise<T>): Promis
   const { db } = await bootstrapDatabase(config)
   try {
     const lookup = schemaLookup(db)
-    const typeAliases = new Map<string, string>()
-    const aliasOf = async (typeKey: string) => {
-      const key = normaliseUuid(typeKey)
-      if (!typeAliases.has(key))
-        typeAliases.set(key, (await lookup.typeByKey('document', key))?.alias ?? key)
-      return typeAliases.get(key) as string
-    }
     const languages = (await new LanguageRepository(db).all())
       .sort((a, b) => Number(b.isDefault) - Number(a.isDefault))
       .map((l) => l.isoCode)
@@ -138,7 +115,7 @@ export async function withPages<T>(work: (site: PageSite) => Promise<T>): Promis
       lookup,
       operations: (await siteDocumentOperations(db, config)).operations,
       writer: valueWriter(lookup, siteRefs(db)),
-      reader: shorthandReader(lookup, aliasOf, (key, kind) => pathOf(db, key, kind)),
+      reader: pageReader(db, lookup),
       languages,
     })
   } finally {
@@ -171,7 +148,7 @@ export async function findPage(site: PageSite, ref: string): Promise<FoundPage> 
     doc,
     type,
     editors: await site.lookup.editorsOf('document', type),
-    path: `/${(await pathOf(site.db, doc.key, 'content')) ?? ''}`,
+    path: `/${(await namedPath(site.db, doc.key, 'content')) ?? ''}`,
   }
 }
 
@@ -365,6 +342,35 @@ export const pageFlags = {
     summary: 'with --publish: publish without the approval its workflow asks for; audited',
   }),
   'dry-run': Flags.boolean({ summary: 'say what would change, and change nothing' }),
+}
+
+interface ShownBlock {
+  type: string
+  alias?: string
+  key: string
+  values: Record<string, unknown>
+}
+
+const isBlocks = (value: unknown): value is ShownBlock[] =>
+  Array.isArray(value) &&
+  value.every((b) => typeof b === 'object' && b !== null && 'type' in b && 'key' in b)
+
+/** A page's values as `content show` prints them, each block with its alias, type and key. */
+export function sayValues(
+  io: Io,
+  values: ReadonlyArray<{ property: string; culture: string | null; value: unknown }>,
+): void {
+  for (const v of values) {
+    const label = `${v.property}${v.culture ? ` (${v.culture})` : ''}`
+    if (isBlocks(v.value)) {
+      io.say(`\n  ${label}`)
+      for (const block of v.value) {
+        io.say(`    ${block.alias ?? '(no alias)'}  ${block.type}  ${block.key}`)
+        for (const [alias, value] of Object.entries(block.values))
+          io.say(`      ${alias.padEnd(20)} ${tomlValue(value) ?? ''}`)
+      }
+    } else io.say(`  ${label.padEnd(22)} ${tomlValue(v.value) ?? ''}`)
+  }
 }
 
 /** A key that looks like one, or undefined. */

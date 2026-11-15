@@ -1,7 +1,6 @@
-import { tomlValue } from '@crombolo/server'
 import { Args } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
-import { findPage, withPages } from '../../support/pages.ts'
+import { findPage, sayValues, withPages } from '../../support/pages.ts'
 
 const STATES: Record<string, string> = {
   Draft: 'a draft',
@@ -9,17 +8,6 @@ const STATES: Record<string, string> = {
   PublishedPendingChanges: 'published, with changes not published yet',
   NotCreated: 'not made in this language',
 }
-
-interface ShownBlock {
-  type: string
-  alias?: string
-  key: string
-  values: Record<string, unknown>
-}
-
-const isBlocks = (value: unknown): value is ShownBlock[] =>
-  Array.isArray(value) &&
-  value.every((b) => typeof b === 'object' && b !== null && 'type' in b && 'key' in b)
 
 /** One page, its values in the shorthand content files use and its blocks (story 253). */
 export default class ContentShow extends BaseCommand {
@@ -60,17 +48,7 @@ export default class ContentShow extends BaseCommand {
         this.say(
           `  ${variant.culture ? `${variant.culture.padEnd(8)} ` : ''}"${variant.name}", ${STATES[variant.state] ?? variant.state}`,
         )
-      for (const v of values) {
-        const label = `${v.property}${v.culture ? ` (${v.culture})` : ''}`
-        if (isBlocks(v.value)) {
-          this.say(`\n  ${label}`)
-          for (const block of v.value) {
-            this.say(`    ${block.alias ?? '(no alias)'}  ${block.type}  ${block.key}`)
-            for (const [alias, value] of Object.entries(block.values))
-              this.say(`      ${alias.padEnd(20)} ${tomlValue(value) ?? ''}`)
-          }
-        } else this.say(`  ${label.padEnd(22)} ${tomlValue(v.value) ?? ''}`)
-      }
+      sayValues(this, values)
       return {
         key: doc.key,
         path: page.path,

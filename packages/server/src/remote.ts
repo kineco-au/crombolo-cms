@@ -18,6 +18,7 @@ import { join, sep } from 'node:path'
 import { hasSection, type Principal } from '@crombolo/api-management/domain'
 import { DEVICE_CODE_GRANT, REMOTE_CLIENT_ID } from '@crombolo/auth'
 import { BACKOFFICE_CODE, BACKOFFICE_CODE_WARNING } from '@crombolo/backoffice-host/registry'
+import type { DocumentOperations, MediaOperations } from '@crombolo/content'
 import {
   EXPLICIT_PERMISSIONS,
   managementApiPath,
@@ -66,6 +67,7 @@ import { mediaStoreFor } from './media-files.ts'
 import { type MediaStore, streamOf } from './media-store.ts'
 import { describeProvenance, provenanceProblem, verifyProvenance } from './provenance.ts'
 import { createCiSignIn, readRuleInput, trustedIssuers } from './remote-ci.ts'
+import { createUndoRoutes } from './remote-undo.ts'
 import { openSecret, sealSecret, usableSecretKey } from './secrets.ts'
 import { exportSite } from './site-file.ts'
 import { REMOTE_DISCOVERY_PATH } from './site-public.ts'
@@ -100,6 +102,8 @@ export interface RemoteOptions {
   restart?: () => Promise<RestartOutcome>
   /** Installed bundles (story 241); absent where this node does not manage them. */
   bundles?: BundleAdmin
+  /** The content and media operations, for undoing a change (story 353); absent, those routes are not offered. */
+  operations?: { documents: DocumentOperations; media: MediaOperations }
 }
 
 /** What a supervised restart came to: the new server serving, or why the old one still is. */
@@ -221,6 +225,7 @@ export function createRemote(options: RemoteOptions): Remote {
       'push-check',
       'audit',
       'content-query',
+      ...(options.operations ? ['content-history', 'recycle-bin'] : []),
       ...(settings.approvals ? ['approvals'] : []),
       ...(options.bundles && atLeast('read') ? ['bundle-manage'] : []),
       ...(options.restart && atLeast('all') ? ['restart'] : []),
@@ -253,6 +258,16 @@ export function createRemote(options: RemoteOptions): Remote {
       forwardedFor: request.headers.get('x-forwarded-for'),
       detail: `${detail}${ciRun(principal)}`,
     })
+
+  const undo = options.operations
+    ? createUndoRoutes({
+        db,
+        operations: options.operations,
+        problem,
+        levelRefusal: () =>
+          atLeast('content') ? undefined : notAtLevel('content', 'changes to content'),
+      })
+    : undefined
 
   const trust = new RemoteTrustRepository(db)
   const ci = createCiSignIn({
@@ -1507,6 +1522,13 @@ export function createRemote(options: RemoteOptions): Remote {
           contentQueryScope(principal),
           await request.json().catch(() => undefined),
         )
+      }
+      if (
+        undo &&
+        (what.startsWith('content/') || what === 'recycle-bin' || what.startsWith('recycle-bin/'))
+      ) {
+        const answered = await undo.handle(request, url, principal, what)
+        if (answered) return answered
       }
       if (what === 'restart' && request.method === 'POST') return restartSite(request, principal)
       if (what === 'installed' || what.startsWith('installed/'))

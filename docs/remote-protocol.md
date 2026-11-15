@@ -59,6 +59,8 @@ stated otherwise. Errors are `application/problem+json` with a stable `code`
   - `approvals` means a push may wait for approval.
   - `audit` means the audit log can be read (see below).
   - `content-query` means pages can be found by their facts (see below).
+  - `content-history` and `recycle-bin` mean a page's history can be read and
+    rolled back, and the recycle bin listed and restored from (see below).
   - `restart` means the site can be restarted (see below).
   - A client ignores capabilities it doesn't know.
 
@@ -385,6 +387,50 @@ read ([`search.md`](search.md), "Finding content by its properties").
   named. A person without the Content section answers 403 `forbidden`.
 - **The reference server** does not record the read.
 
+## Undoing a change (`content-history`, `recycle-bin`, optional)
+
+Story 353. A page's history and the recycle bin, as the back office's Info view
+and recycle bin give them, answered as the signed-in person.
+
+| | |
+| --- | --- |
+| `GET <api>/environments/{id}/content/{key}/history` | `{ page: { key, name }, versions }`, newest first |
+| `GET <api>/environments/{id}/content/versions/{version}[?diff=true]` | `{ id, page, name, values, diff? }` |
+| `POST <api>/environments/{id}/content/versions/{version}/rollback` `{ publish?, skipApproval? }` | makes it the page's draft, then with `publish` publishes it; `{ page, version, published }` |
+| `PUT <api>/environments/{id}/content/versions/{version}/keep` `{ keep }` | keeps it from cleanup, or with `keep: false` stops; `{ version, kept }` |
+| `GET <api>/environments/{id}/recycle-bin[?kind=content\|media][&olderThan=<days>]` | `{ items }`, newest first |
+| `POST <api>/environments/{id}/recycle-bin/{key}/restore` `{ target? }` | puts it back with what was below it; `target` a key, or null for the top level |
+| `GET <api>/environments/{id}/recycle-bin/jobs/{job}` | a restore handed to the background: `{ state, progress, error }` |
+
+```json
+{ "page": { "key": "…", "name": "Home" },
+  "versions": [{ "id": "1043", "date": "2026-11-15T09:12:03.000Z", "kind": "save",
+    "by": { "key": "…", "name": "Ana" }, "draft": true, "live": false, "kept": false }] }
+```
+
+- **A version** is the whole page, in every language. `kind` is `save`,
+  `publish`, `rollback` or `migrate`; `by` is null for a version no person
+  made. `values` are as the command line's `content show` gives them, and
+  `diff` lists each property `added` (only in the version), `removed` (only in
+  the draft) or `changed`, with its `draft` and `version` values.
+- **A bin item** is `{ key, name, kind, trashedAt, by, from }`, `kind` being
+  `content` or `media`, and `from` `{ key, path, gone }`: a null key and `/`
+  for the top level, and `gone` when that place has been deleted or is in the
+  bin itself. Only what was put in the bin is listed, not what went with it.
+- **Who:** a person, never CI (403 `needs-person`), with the Content section
+  for history, and the Content or Media section for the bin's items of that
+  kind (403 `forbidden`). Rolling back, publishing and restoring are checked as
+  the back office checks them; `skipApproval` is an administrator's.
+- **The level:** a rollback, a keep and a restore need `content` (403
+  `access-level`).
+- **Errors:** a restore with no `target` whose place is gone answers 409
+  `place-gone`. A publish that needs an approval answers 409 `needs-approval`;
+  the rollback has been made by then, as a draft. An unknown page, version or
+  item answers 404 `not-found`.
+- **A large media branch** is restored in the background, answered 202
+  `{ item, queued }`; poll the job until `succeeded` or `failed`.
+- **The audit log** records `Rollback` and `Restore`, as the back office does.
+
 ## Installed bundles (`bundle-manage`, optional)
 
 The bundles the environment depends on, managed as its Settings → Extensions does
@@ -444,11 +490,12 @@ restarted.
 | --- | --- | --- |
 | 400 | `passphrase-required`, `hash-required`, `hash-mismatch`, `body-required`, `bad-key`, `too-many`, `bad-query` | the request is wrong |
 | 401 | `sign-in-required` | no token, or a lapsed one |
-| 403 | `forbidden`, `forbidden-protected`, `forbidden-structure`, `forbidden-code`, `own-push` | the person may not |
+| 403 | `forbidden`, `forbidden-protected`, `forbidden-structure`, `forbidden-code`, `own-push`, `needs-person` | the person may not; `needs-person`, CI may not |
 | 403 | `signature-refused` | the site does not take the bundle: unsigned where it requires a signature, from a source it does not list, or a signature that does not check out (story 060) |
 | 403 | `access-level` | the site does not take that, at its `CROMBOLO_REMOTE_ACCESS` |
 | 404 | `not-found`, `no-such-environment`, `not-enabled` | |
 | 409 | `not-waiting`, `approval-expired` | the job is not in a state for that |
+| 409 | `place-gone`, `needs-approval` | a restore needs a `target`; a publish needs an approval |
 | 409 | `not-supervised` | nothing on the site can restart it |
 | 409 | `installs-elsewhere`, `grant-mismatch` | the site installs no code while it runs; the grant is not what the bundle asks for |
 | 410 | `gone` | the download has expired |
@@ -572,6 +619,7 @@ The suite is read-only unless `--push` is given. It covers:
 - a pull to completion, checked against its stated hash;
 - media links, when offered;
 - an audit page, oldest first, when offered;
+- an unknown page's history and version, and the recycle bin, when offered;
 - a refused tampered push;
 - with `--push`, a full push.
 

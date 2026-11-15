@@ -925,6 +925,7 @@ export async function createServer(
     config,
     authenticate,
     bundles: bundleAdmin,
+    operations: core.operations,
     restart: serverOptions.restart,
     onApplied: async () => {
       cache.invalidate()

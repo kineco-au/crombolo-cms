@@ -139,21 +139,61 @@ Each command here takes `--profile` (story 352) to act on another site, through 
 
 ## Acceptance criteria
 
-- [ ] `crombolo content history <page>` lists its versions, newest
+- [x] `crombolo content history <page>` lists its versions, newest
       first: when, who, saved or published, and whether it is kept from cleanup
-- [ ] `content history show <page> <version>` shows that version's values and blocks
+- [x] `content history show <page> <version>` shows that version's values and blocks
       as `content show` does. `--diff` shows only what differs from the current draft
-- [ ] `content rollback <page> <version> [--publish]` makes the
+- [x] `content rollback <page> <version> [--publish]` makes the
       version the page's draft, as the back office's rollback does. With `--publish`,
       it publishes as `content publish` would, approvals included
-- [ ] `content history keep <page> <version> [--off]` keeps a version from cleanup, or
+- [x] `content history keep <page> <version> [--off]` keeps a version from cleanup, or
       stops keeping it
-- [ ] `crombolo recycle-bin list [--content|--media] [--older-than <days>]` lists what
+- [x] `crombolo recycle-bin list [--content|--media] [--older-than <days>]` lists what
       is in the bin: name, when, by whom, and where it came from
-- [ ] `recycle-bin restore <item> [--to <parent>]` restores a page or media item, and
+- [x] `recycle-bin restore <item> [--to <parent>]` restores a page or media item, and
       what was below it, to where it came from. When that place is gone, the command
       is refused unless `--to` gives another
-- [ ] Each takes `--profile`; `-o json`; changes are audited as the back office's are
-- [ ] Tests for each command locally and through a test server, a restore whose parent
+- [x] Each takes `--profile`; `-o json`; changes are audited as the back office's are
+- [x] Tests for each command locally and through a test server, a restore whose parent
       is gone, and a CI identity refused
-- [ ] The CLI reference regenerated, and `docs/operations.md` gains "Undoing a change"
+- [x] The CLI reference regenerated, and `docs/operations.md` gains "Undoing a change"
+
+## Built
+
+Built 2026-11-15, with D1 (a):
+- the core is `packages/server/src/undo.ts`: `pageHistory`, `pageVersion` (with
+  `diffValues`), `binItems`, `binMatches` and `placeGone`, and `pageReader` and
+  `namedPath`, which `content show` now shares (`support/pages.ts`, `sayValues`);
+- the remote routes are `packages/server/src/remote-undo.ts`, mounted by `createRemote`
+  when the server hands it its operations (`RemoteOptions.operations`); discovery lists
+  `content-history` and `recycle-bin` then;
+- the commands are `content history`, `content history show|keep`, `content rollback`
+  and `recycle-bin list|restore`, over `packages/cli/src/support/undo.ts`, whose
+  `withUndo` gives each the same few calls here or on a hosted site;
+- the conformance suite checks both capabilities, read-only: an unknown page, version
+  and rollback answer 404, the bin's items have their fields, and restoring what is not
+  in the bin answers 404;
+- tests: `tests/undo.test.ts` and `tests/undo-cli.test.ts`.
+
+Where it differs from the plan:
+- **"By whom" in the bin is the audit log's `Trash` entry,** as no table records who
+  trashed an item. Retention can remove it, and `by` is then null.
+- **"Who" for a version no person made is "the command line or the site".** A version
+  records only a user's key, so a command at `open`, a schedule and a job look the same.
+- **A restore's place being gone is checked here, not only by the operation.** The
+  operation restores to the top level when the original parent has been deleted for
+  good (`originalParent` answers null), so the core reads `original_parent_id` itself, and
+  both the command and the route refuse (`place-gone`) unless a target is given.
+- **Writes over the remote need the `content` access level** (403 `access-level`), as
+  a bundle of content does; reads need only the protocol on.
+- **A large media restore on a hosted site** answers 202 with a job, followed through
+  `recycle-bin/jobs/{id}`. Here, the command line's media operations have no background,
+  so it always restores inline. The queued path is not covered by a test: the branch
+  size is not configurable on a server.
+- **Keeping a version is not audited,** as the back office's prevent-cleanup is not.
+- **`recycle-bin restore` takes `--content` or `--media`** to narrow the name it looks
+  for, and names an item by key, the path it was at, or its name alone.
+- **On a hosted site a page, and `--to`, are named by uuid,** as `content find --under`
+  is there.
+- **`--publish` after a rollback that is then refused** (an approval, say) leaves the
+  rollback as a draft, and the error says so; approvals are not checked before.

@@ -1338,6 +1338,201 @@
       "errors": ["usage", "internal", "not_found", "refused", "unavailable"]
     },
     {
+      "name": "content history",
+      "description": "a page's versions, newest first: when, who, and what is live and kept",
+      "effects": "read_only",
+      "cardinality": "bounded",
+      "output_fields": [
+        {
+          "name": "page",
+          "type": "object",
+          "fields": [
+            {
+              "name": "key",
+              "type": "string"
+            },
+            {
+              "name": "name",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "versions",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "fields": [
+              {
+                "name": "id",
+                "type": "string"
+              },
+              {
+                "name": "date",
+                "type": "string"
+              },
+              {
+                "name": "kind",
+                "type": "string",
+                "enum": ["save", "publish", "rollback", "migrate"]
+              },
+              {
+                "name": "by",
+                "type": "object",
+                "nullable": true,
+                "description": "null for the command line or the site itself",
+                "fields": [
+                  {
+                    "name": "key",
+                    "type": "string"
+                  },
+                  {
+                    "name": "name",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "name": "draft",
+                "type": "boolean",
+                "description": "the page's draft now"
+              },
+              {
+                "name": "live",
+                "type": "boolean",
+                "description": "what is published now"
+              },
+              {
+                "name": "kept",
+                "type": "boolean",
+                "description": "kept from cleanup"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "page",
+          "type": "string",
+          "required": true,
+          "description": "the page: a path or a uuid; a uuid on a hosted site"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "act on the site this profile names, rather than this one"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "a hosted site's environment"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "refused", "unavailable"]
+    },
+    {
+      "name": "content history keep",
+      "description": "keep a version from cleanup, or with --off stop keeping it",
+      "effects": "idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "page",
+          "type": "object",
+          "fields": [
+            {
+              "name": "key",
+              "type": "string"
+            },
+            {
+              "name": "name",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "version",
+          "type": "string"
+        },
+        {
+          "name": "kept",
+          "type": "boolean"
+        },
+        {
+          "name": "changed",
+          "type": "boolean"
+        }
+      ],
+      "args": [
+        {
+          "name": "page",
+          "type": "string",
+          "required": true,
+          "description": "the page: a path or a uuid; a uuid on a hosted site"
+        },
+        {
+          "name": "version",
+          "type": "string",
+          "required": true,
+          "description": "the version: its key, `previous` or `latest-published`"
+        },
+        {
+          "name": "--off",
+          "type": "boolean",
+          "description": "stop keeping it"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "act on the site this profile names, rather than this one"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "a hosted site's environment"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "refused", "unavailable"]
+    },
+    {
+      "name": "content history show",
+      "description": "one of a page's versions: its values and blocks, or with --diff what differs from the draft",
+      "effects": "read_only",
+      "cardinality": "single",
+      "stdout_schema": {},
+      "args": [
+        {
+          "name": "page",
+          "type": "string",
+          "required": true,
+          "description": "the page: a path or a uuid; a uuid on a hosted site"
+        },
+        {
+          "name": "version",
+          "type": "string",
+          "required": true,
+          "description": "the version: its key, `previous` or `latest-published`"
+        },
+        {
+          "name": "--diff",
+          "type": "boolean",
+          "description": "only what differs from the current draft"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "act on the site this profile names, rather than this one"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "a hosted site's environment"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "refused", "unavailable"]
+    },
+    {
       "name": "content move",
       "description": "move pages, and the pages below them, under another page",
       "effects": "idempotent",
@@ -1556,6 +1751,71 @@
         }
       ],
       "errors": ["usage", "internal", "not_found", "refused"]
+    },
+    {
+      "name": "content rollback",
+      "description": "make one of a page's versions its draft; --publish to take it live too",
+      "effects": "non_idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "page",
+          "type": "object",
+          "fields": [
+            {
+              "name": "key",
+              "type": "string"
+            },
+            {
+              "name": "name",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "version",
+          "type": "string"
+        },
+        {
+          "name": "published",
+          "type": "boolean"
+        }
+      ],
+      "args": [
+        {
+          "name": "page",
+          "type": "string",
+          "required": true,
+          "description": "the page: a path or a uuid; a uuid on a hosted site"
+        },
+        {
+          "name": "version",
+          "type": "string",
+          "required": true,
+          "description": "the version: its key, `previous` or `latest-published`"
+        },
+        {
+          "name": "--publish",
+          "type": "boolean",
+          "description": "publish it too, as `content publish` would"
+        },
+        {
+          "name": "--skip-approval",
+          "type": "boolean",
+          "description": "with --publish: publish without the approval its workflow asks for; audited"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "act on the site this profile names, rather than this one"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "a hosted site's environment"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "refused", "unavailable"]
     },
     {
       "name": "content show",
@@ -5873,6 +6133,185 @@
         }
       ],
       "errors": ["usage", "internal", "confirmation_required", "refused"]
+    },
+    {
+      "name": "recycle-bin list",
+      "description": "list what is in the recycle bin: name, when, by whom, and where it came from",
+      "effects": "read_only",
+      "cardinality": "bounded",
+      "output_fields": [
+        {
+          "name": "items",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "fields": [
+              {
+                "name": "key",
+                "type": "string"
+              },
+              {
+                "name": "name",
+                "type": "string"
+              },
+              {
+                "name": "kind",
+                "type": "string",
+                "enum": ["content", "media"]
+              },
+              {
+                "name": "trashedAt",
+                "type": "string",
+                "nullable": true
+              },
+              {
+                "name": "by",
+                "type": "object",
+                "nullable": true,
+                "description": "who put it in the bin; null when not a person, or not recorded",
+                "fields": [
+                  {
+                    "name": "key",
+                    "type": "string"
+                  },
+                  {
+                    "name": "name",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "name": "from",
+                "type": "object",
+                "fields": [
+                  {
+                    "name": "key",
+                    "type": "string",
+                    "nullable": true,
+                    "description": "null for the top level"
+                  },
+                  {
+                    "name": "path",
+                    "type": "string",
+                    "nullable": true,
+                    "description": "`/` for the top level"
+                  },
+                  {
+                    "name": "gone",
+                    "type": "boolean",
+                    "description": "the place has been deleted, or is in the bin too"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "--content",
+          "type": "boolean",
+          "description": "only pages"
+        },
+        {
+          "name": "--media",
+          "type": "boolean",
+          "description": "only media"
+        },
+        {
+          "name": "--older-than",
+          "type": "string",
+          "description": "only what was trashed more than this many days ago"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "act on the site this profile names, rather than this one"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "a hosted site's environment"
+        }
+      ],
+      "errors": ["usage", "internal", "refused", "unavailable"]
+    },
+    {
+      "name": "recycle-bin restore",
+      "description": "put a page or media item back where it came from, with what was below it",
+      "effects": "non_idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "item",
+          "type": "object",
+          "fields": [
+            {
+              "name": "key",
+              "type": "string"
+            },
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "enum": ["content", "media"]
+            }
+          ]
+        },
+        {
+          "name": "to",
+          "type": "object",
+          "nullable": true,
+          "description": "where it went; null for the top level",
+          "fields": [
+            {
+              "name": "key",
+              "type": "string"
+            },
+            {
+              "name": "name",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "item",
+          "type": "string",
+          "required": true,
+          "description": "the item: a key, the path it was at, or its name"
+        },
+        {
+          "name": "--to",
+          "type": "string",
+          "description": "restore it here instead: a path or uuid, or / for the top level; a uuid on a hosted site"
+        },
+        {
+          "name": "--content",
+          "type": "boolean",
+          "description": "only look among pages"
+        },
+        {
+          "name": "--media",
+          "type": "boolean",
+          "description": "only look among media"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "act on the site this profile names, rather than this one"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "a hosted site's environment"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "refused", "unavailable"]
     },
     {
       "name": "remote job",

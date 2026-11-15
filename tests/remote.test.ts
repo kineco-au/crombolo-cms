@@ -216,6 +216,8 @@ describe(`discovery (${dialectUnderTest})`, () => {
         'push-check',
         'audit',
         'content-query',
+        'content-history',
+        'recycle-bin',
         // Story 241: installed bundles, managed as Settings → Bundles does.
         'bundle-manage',
       ],

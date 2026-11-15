@@ -8,6 +8,21 @@ point at `docs/stories/`.
 
 ### Features
 
+- **Undoing a change from the command line (353).** `crombolo content history <page>`
+  lists a page's versions, newest first: when, who, saved or published, and which is the
+  draft, live and kept. `content history show <page> <version> [--diff]` shows one as
+  `content show` does, or only what differs from the draft; `content rollback <page>
+  <version> [--publish]` makes it the draft, publishing it as `content publish` does,
+  approvals included; `content history keep <page> <version> [--off]` keeps it from
+  cleanup. A version is named by its key, `previous` or `latest-published`. `crombolo
+  recycle-bin list` shows what is in the bin, by whom and where it came from, and
+  `recycle-bin restore <item> [--to <parent>]` puts it back with what was below it, refused
+  when its place has gone unless `--to` gives another. Each takes `--profile`, and is
+  audited as the back office's own is. `docs/operations.md`, "Undoing a change".
+- **The remote protocol's `content-history` and `recycle-bin` (353)** carry those
+  commands to a hosted site, as the signed-in person and never as CI; the conformance suite
+  checks both. A site from before them is told apart, and the command says it needs a newer
+  crombolo.
 - **Profiles in place of remotes (352).** The sites you reach are named once, in
   `~/.crombolo/profiles` (`CROMBOLO_PROFILES_FILE` puts it elsewhere), and chosen with
   `--profile` from any folder: a running site by its address, or a site folder on this

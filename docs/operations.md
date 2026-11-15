@@ -670,7 +670,7 @@ named for a hosted site is checked there instead:
 | --- | --- | --- |
 | `content *`, `domains *` | Content | |
 | `media *` | Media | |
-| `recycle-bin empty` | Content or Media | |
+| `recycle-bin empty\|list\|restore` | Content or Media | |
 | `dictionary *` | Translation | |
 | `forms *` | Forms | |
 | `workflows *` | Content or Workflows | |
@@ -854,6 +854,44 @@ below itself) stops the lot, and the failure lists each one and why.
 `--dry-run` says what would change. Each change is in the audit log under the
 operator's name, and a move records the redirects an editor's move would. An
 item already where it was asked to go is reported unchanged.
+
+**Undoing a change** (story 353): a page's history, rolling it back, keeping a
+version, and the recycle bin, here or on a hosted site with `--profile`, as the
+person signed in to it. Each goes through the operations the back office's Info
+view and recycle bin use, so permissions, approvals and the audit log are theirs.
+
+| Command | Does |
+| --- | --- |
+| `crombolo content history <page>` | its versions, newest first: when, who, saved or published, and which is the draft, live and kept |
+| `crombolo content history show <page> <version> [--diff]` | that version's values and blocks, as `content show` gives them; `--diff` only what differs from the draft |
+| `crombolo content rollback <page> <version> [--publish] [--skip-approval]` | makes the version the page's draft; `--publish` then publishes it as `content publish` does, approvals included |
+| `crombolo content history keep <page> <version> [--off]` | keeps a version from cleanup, or stops keeping it |
+| `crombolo recycle-bin list [--content\|--media] [--older-than <days>]` | what is in the bin: name, when, by whom, and where it came from |
+| `crombolo recycle-bin restore <item> [--to <parent>]` | puts it back with what was below it |
+
+- **A version** is named by its key, which `content history` prints, or by
+  `previous` (the one before the draft) or `latest-published`. A version is the
+  whole page, in every language, so these take no `--culture`.
+- **Who** is the person who saved it, or "the command line or the site" for a
+  version no person made: a command run at `open` with nobody signed in, a
+  schedule, a job. "By whom" in the bin is read from the audit log's `Trash`
+  entry, so it is blank once retention has removed that.
+- **An item in the bin** is named by its key, by the path it was at
+  (`/Home/Visit us`), or by its name alone when only one item has it.
+- **Where it goes back to** is where it came from. When that place has been
+  deleted, or is in the bin itself, restoring is refused, saying so, unless
+  `--to` names another (`/` for the top level). Restoring a large media branch
+  happens in the background on a hosted site, and the command follows it to the
+  end.
+- **Rolling back with `--publish`** rolls back first: a publish then refused,
+  for an approval say, leaves the rollback as a draft, and the error says so.
+- **On a hosted site** a page, a version's place and `--to` are named by uuid.
+  The site needs the `content-history` and `recycle-bin` capabilities
+  ([`remote-protocol.md`](remote-protocol.md)); one from before them is refused,
+  saying it needs a newer crombolo. CI cannot do any of this, as each acts for a
+  person.
+- **The audit log** records `Rollback` and `Restore` as it does for the back
+  office. Keeping a version is not recorded, in either.
 
 **Content files** (stories 163 and 167): `crombolo site build --check`,
 `site apply`, `content export` and `start --bundle .` turn a site's
