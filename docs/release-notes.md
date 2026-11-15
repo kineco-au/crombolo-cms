@@ -6,6 +6,14 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+### Fixes
+
+- **A member saved with a group that doesn't exist is refused.** The back office's member
+  API dropped a group key it couldn't find and saved the member without it, so a save could
+  quietly leave someone out of a group. On Postgres, a group given by something other than
+  its key failed the save outright. Both now answer 400, naming the group, and change
+  nothing. A sign-in provider's group sync still skips a group that is gone.
+
 ## v0.66.0 — 2026-11-15
 
 ### Features

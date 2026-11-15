@@ -25,6 +25,8 @@ import {
 } from './documents.ts'
 import { NodeRepository } from './nodes.ts'
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 /** The sign-in facet beside a member's content. */
 export interface MemberIdentity {
   email: string
@@ -209,6 +211,23 @@ export class MemberRepository {
     return node ? this.#groupKeysOf(node.id) : []
   }
 
+  /** Those of `keys` that name no member group. */
+  async notGroups(keys: readonly string[]): Promise<string[]> {
+    const missing: string[] = []
+    for (const key of keys) if (!(await this.#group(key))) missing.push(key)
+    return missing
+  }
+
+  /**
+   * The member group a key names. Anything not shaped as a key names none, as
+   * Postgres's uuid column would refuse it.
+   */
+  async #group(key: string) {
+    if (!UUID.test(key)) return undefined
+    const node = await this.#nodes.byKey(key)
+    return node?.objectType === ObjectTypes.MemberGroup ? node : undefined
+  }
+
   /** Whether a username or an e-mail is taken by anyone other than `exceptKey`. */
   async taken(field: 'username' | 'email', value: string, exceptKey?: string): Promise<boolean> {
     const column = field === 'username' ? 'm.login_name' : 'm.email'
@@ -233,8 +252,8 @@ export class MemberRepository {
   async #writeGroups(nodeId: number, groupKeys: readonly string[]): Promise<void> {
     await this.#db.q.deleteFrom('member_group_member').where('member_id', '=', nodeId).execute()
     for (const key of groupKeys) {
-      const group = await this.#nodes.byKey(key)
-      if (!group || group.objectType !== ObjectTypes.MemberGroup) continue
+      const group = await this.#group(key)
+      if (!group) continue
       await this.#db.q
         .insertInto('member_group_member')
         .values({ member_id: nodeId, member_group_id: group.id })

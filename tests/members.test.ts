@@ -214,6 +214,30 @@ describe(`members (${process.env.CROMBOLO_DB ?? 'sqlite'})`, () => {
     expect((await h.call(`${V1}/member/${crypto.randomUUID()}`)).status).toBe(404)
   })
 
+  test('refuse a group that does not exist, on a create and a change, rather than leave it out', async () => {
+    const { h, create, member, group } = await site()
+    const gold = await group('Gold')
+    const refused = await create({
+      email: 'goldie@example.test',
+      username: 'goldie',
+      password: 'correct-horse-battery',
+      groups: ['Gold'],
+    })
+    expect(refused.status).toBe(400)
+    expect(((await refused.json()) as { detail: string }).detail).toContain('"Gold"')
+    expect(await new MemberRepository(h.server.db).byUsername('goldie')).toBeUndefined()
+
+    const key = await member('silvia', { groups: [gold] })
+    const read = await h.json<MemberResponse>(`${V1}/member/${key}`)
+    expect(read.groups).toEqual([gold])
+    const changed = await h.put(`${V1}/member/${key}`, {
+      ...read,
+      groups: [gold, crypto.randomUUID()],
+    })
+    expect(changed.status).toBe(400)
+    expect((await h.json<MemberResponse>(`${V1}/member/${key}`)).groups).toEqual([gold])
+  })
+
   test('a create with no password, or an empty one, makes a member who signs in only through a provider', async () => {
     const { h, create } = await site()
     const keys: string[] = []

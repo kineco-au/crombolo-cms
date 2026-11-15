@@ -217,6 +217,20 @@ export function createMemberPort(db: Db, options: MemberPortOptions = {}): Membe
     return undefined
   }
 
+  /**
+   * A group that doesn't exist is refused rather than dropped, so a save never
+   * leaves a member out of a group it was asked to put them in.
+   */
+  const unknownGroups = async (groupKeys: readonly string[] | undefined) => {
+    const missing = await members.notGroups(groupKeys ?? [])
+    if (missing.length === 0) return undefined
+    return {
+      ok: false as const,
+      reason: `No member group has ${missing.length === 1 ? 'the key' : 'the keys'} ${missing.map((k) => `"${k}"`).join(', ')}.`,
+      status: 400,
+    }
+  }
+
   const failure = (error: unknown) => {
     if (error instanceof WriteRejectedError)
       return { ok: false as const, reason: error.message, status: 409 }
@@ -235,7 +249,7 @@ export function createMemberPort(db: Db, options: MemberPortOptions = {}): Membe
       const type = await memberTypes.byKey(input.memberTypeKey)
       if (!type)
         return { ok: false as const, reason: 'The member type could not be found.', status: 404 }
-      const clash = await duplicate(input)
+      const clash = (await duplicate(input)) ?? (await unknownGroups(input.groupKeys))
       if (clash) return clash
       try {
         const created = await members.create(
@@ -259,7 +273,7 @@ export function createMemberPort(db: Db, options: MemberPortOptions = {}): Membe
     async update(key, input, principal) {
       const existing = await members.byKey(key)
       if (!existing) return notFound()
-      const clash = await duplicate(input, key)
+      const clash = (await duplicate(input, key)) ?? (await unknownGroups(input.groupKeys))
       if (clash) return clash
       // Umbraco requires the current password only when the editor supplies one;
       // an administrator changing another member's password does not.
