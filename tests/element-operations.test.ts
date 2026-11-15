@@ -226,8 +226,9 @@ describe('who may', () => {
       null,
     )
     expect(published.ok).toBe(true)
-    const [entry] = await audit(made.key)
-    expect(entry).toMatchObject({
+    const entries = await audit(made.key)
+    expect(entries.map((e) => e.action)).toEqual(['Create', 'Publish'])
+    expect(entries[1]).toMatchObject({
       action: 'Publish',
       source: 'job',
       userKey: person.id,

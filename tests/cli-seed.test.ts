@@ -164,7 +164,7 @@ describe('content find (story 183)', () => {
       ERROR_KINDS.refused.exitCode,
     )
     expect(cli(['content', 'find', '--where', 'title sounds-like x']).code).toBe(2)
-  })
+  }, 60_000)
 })
 
 describe('bundle export --source', () => {

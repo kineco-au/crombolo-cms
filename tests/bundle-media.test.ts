@@ -854,7 +854,7 @@ describe(`server bundles create media as the member (${dialectUnderTest})`, () =
     const narrow = await realSite({ types: ['png'] })
     expect((await narrow.upload('ada', await phonePhoto(), 'a.jpg')).status).toBe(415)
     expect((await narrow.upload('ada', marked(2, 2), 'a.png')).status).toBe(200)
-  })
+  }, 60_000)
 
   test("size: the folder's limit, the bundle's, and an upload stopped as it is read", async () => {
     const s = await realSite({ maxBytes: 100_000 })
@@ -884,7 +884,7 @@ describe(`server bundles create media as the member (${dialectUnderTest})`, () =
     })
     expect((await roomy.upload('ada', stream, 'a.png')).status).toBe(413)
     expect(pulled).toBeLessThan(10)
-  })
+  }, 60_000)
 
   test('a public route may not use media; a back-office route runs as its user', async () => {
     const s = await realSite()

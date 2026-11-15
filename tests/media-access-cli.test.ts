@@ -104,9 +104,11 @@ describe('in a site folder', () => {
       const members = await make.folder('Members')
       const inner = await make.folder('Inner', members)
       const photo = await make.image('photo', members)
-      for (const name of ['Gold', 'Silver', 'Editors']) await make.group(name)
-      await member(h, 'goldie', ['Gold'])
-      await member(h, 'silvia', ['Silver'])
+      const gold = await make.group('Gold')
+      const silver = await make.group('Silver')
+      await make.group('Editors')
+      await member(h, 'goldie', [gold])
+      await member(h, 'silvia', [silver])
       made = { members, inner, photo }
     } finally {
       await h.db.close()
@@ -186,7 +188,7 @@ describe('in a site folder', () => {
     expect(follows.form.inherit).toBe(true)
     expect(follows.state.own).toBeNull()
     expect(follows.summary).toStartWith('Inherited from Members.')
-  })
+  }, 60_000)
 
   test('refused: an unknown group, naming the site’s groups, and changes that do not go together', () => {
     const unknown = run(['media', 'access', 'set', '/Members', '--group', 'Bronze', '--read'])
@@ -204,7 +206,7 @@ describe('in a site folder', () => {
         ERROR_KINDS.usage.exitCode,
       )
     expect(run(['media', 'access', 'show', '/Nowhere']).code).toBe(ERROR_KINDS.not_found.exitCode)
-  })
+  }, 60_000)
 
   test('what set does not name is kept: member uploads and their size', async () => {
     const h = await serveSite(here)

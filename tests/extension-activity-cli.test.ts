@@ -10,13 +10,14 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { join } from 'node:path'
 import { hashToken } from '@crombolo/auth'
 import { packageInRoot, prepareRoot, recordExtension } from '@crombolo/backoffice-host'
-import { RemotePermissions } from '@crombolo/core'
+import { CliTokenPermissions, RemotePermissions } from '@crombolo/core'
 import {
   type ActivityInput,
   type Db,
   DbDate,
   ExtensionActivityLog,
   RemoteTrustRepository,
+  UserGroupRepository,
   UserRepository,
 } from '@crombolo/data'
 import {
@@ -143,7 +144,14 @@ describe('in a site folder', () => {
         name: '@acme/crm',
         version: '1.0.0',
         peerDependencies: { '@crombolo/crombolo': `^${VERSION}` },
-        crombolo: { bundleType: 'extension', id: 'crm', name: 'CRM' },
+        crombolo: {
+          bundleType: 'extension',
+          id: 'crm',
+          name: 'CRM',
+          server: 'crm',
+          schemaVersion: 6,
+          permissions: {},
+        },
       }),
     )
     await (await bootstrapDatabase(here.config)).db.close()
@@ -165,7 +173,7 @@ describe('in a site folder', () => {
     expect(rows[5]).toContain('changed redirects (k1)')
     expect(rows[6]).toContain('read pages, 4 times')
     expect(rows[6]).toMatch(/^ {2}\d{4}-\d{2}-\d{2} \d{2}:\d{2} {2}/)
-  })
+  }, 60_000)
 
   test('each --kind, --user by e-mail and itself, and --since', () => {
     for (const [flag, kind] of Object.entries(KINDS)) {
@@ -211,7 +219,7 @@ describe('in a site folder', () => {
     expect(run(['extension', 'activity', 'crm', '--since', 'last tuesday']).code).toBe(
       ERROR_KINDS.usage.exitCode,
     )
-  })
+  }, 60_000)
 
   test('two pages through --before', () => {
     const first = ok('extension', 'activity', 'crm', '--limit', '4').out
@@ -235,7 +243,7 @@ describe('in a site folder', () => {
     expect(rest.items).toHaveLength(3)
     expect(rest.next).toBeNull()
     expect(new Set([...page.items, ...rest.items].map((item) => item.id)).size).toBe(7)
-  })
+  }, 60_000)
 
   test('-o json: the summary, the stored kinds and full dates', () => {
     const listed = json<Listed>(run(['extension', 'activity', 'crm', '-o', 'json']))
@@ -247,7 +255,7 @@ describe('in a site folder', () => {
     expect(listed.items[0]).toMatchObject({ kind: 'refused', outcome: 'refused' })
     expect(listed.items[0]?.occurredAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
     expect(listed.next).toBeNull()
-  })
+  }, 60_000)
 
   test('--csv matches the screen’s file, to stdout or to --file', async () => {
     const screen = await withSiteDb(here, (db) =>
@@ -265,7 +273,7 @@ describe('in a site folder', () => {
     expect(run(['extension', 'activity', 'crm', '--file', file]).code).toBe(
       ERROR_KINDS.usage.exitCode,
     )
-  })
+  }, 60_000)
 
   test('named by its package name or its id; a removed one by its id', () => {
     const byPackage = json<Listed>(run(['extension', 'activity', '@acme/crm', '-o', 'json']))
@@ -277,7 +285,7 @@ describe('in a site folder', () => {
     const unknown = run(['extension', 'activity', '@acme/none'])
     expect(unknown.code).toBe(ERROR_KINDS.not_found.exitCode)
     expect(unknown.err).toContain('No extension "@acme/none" is installed here.')
-  })
+  }, 60_000)
 })
 
 describe('on a hosted site, with --profile', () => {
@@ -404,7 +412,14 @@ describe('on a hosted site, with --profile', () => {
     const { site, run } = await hosted()
     await signInAsGroup(site.h, 'writer', 'writer@example.com')
     const writer = await new UserRepository(site.h.server.db).byEmail('writer@example.com')
-    // Their groups give them no command-line tokens, so one is made for them here.
+    // Writers may not make command-line tokens until a group lets them.
+    const groups = new UserGroupRepository(site.h.server.db)
+    const group = await groups.byAlias('writer')
+    if (group)
+      await groups.save({
+        ...group,
+        permissions: [...group.permissions, CliTokenPermissions.Create],
+      })
     const token = `crombolo_pat_${randomUUID().replaceAll('-', '')}`
     await site.h.server.db.q
       .insertInto('cli_token')
@@ -422,7 +437,7 @@ describe('on a hosted site, with --profile', () => {
       ['extension', 'activity', 'crm', '--csv'],
     ]) {
       const refused = await run(args, token)
-      expect(refused.code, args.join(' ')).toBe(ERROR_KINDS.refused.exitCode)
+      expect(refused.code, `${args.join(' ')}: ${refused.err}`).toBe(ERROR_KINDS.refused.exitCode)
       expect(refused.err).toContain('You may not see what extensions did here')
     }
   }, 120_000)

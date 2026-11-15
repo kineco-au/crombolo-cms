@@ -58,8 +58,9 @@ export const CLI_PAGES: readonly CliPageSpec[] = [
   {
     slug: 'content',
     title: 'Content and media',
-    summary: 'Pages, media, the dictionary, domains and the recycle bin.',
-    topics: ['content', 'media', 'dictionary', 'domains', 'recycle-bin'],
+    summary:
+      'Pages, media, the dictionary, domains, search and sharing settings, and the recycle bin.',
+    topics: ['content', 'media', 'dictionary', 'domains', 'seo', 'recycle-bin'],
   },
   {
     slug: 'remotes',
@@ -91,8 +92,8 @@ export const CLI_PAGES: readonly CliPageSpec[] = [
     slug: 'operations',
     title: 'Operations',
     summary:
-      'Caches, the search index, maintenance pauses, outgoing changes, upgrades and restarts.',
-    topics: ['cache', 'index', 'maintenance', 'events', 'upgrade', 'restart'],
+      'Caches, the search index, background jobs, maintenance pauses, outgoing changes, upgrades and restarts.',
+    topics: ['cache', 'index', 'jobs', 'maintenance', 'events', 'upgrade', 'restart'],
   },
 ]
 

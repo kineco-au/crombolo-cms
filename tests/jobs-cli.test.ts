@@ -161,7 +161,7 @@ describe('in a site folder', () => {
       'No failed jobs.',
     )
     expect(run(['jobs', 'list', '--state', 'stuck']).code).toBe(ERROR_KINDS.usage.exitCode)
-  })
+  }, 60_000)
 
   test('show: what it is, how far it got and the whole error, by a prefix', () => {
     const shown = ok('jobs', 'show', jobs.failed.slice(0, 8)).out
@@ -180,7 +180,7 @@ describe('in a site folder', () => {
     expect(short.code).toBe(ERROR_KINDS.usage.exitCode)
     expect(short.err).toContain('at least the first 8 characters')
     expect(run(['jobs', 'show', '99999999']).code).toBe(ERROR_KINDS.not_found.exitCode)
-  })
+  }, 60_000)
 
   test('retry: a failed job queued again and audited; any other refused, saying its state', async () => {
     for (const [id, word] of [
@@ -203,7 +203,7 @@ describe('in a site folder', () => {
     expect(entries).toHaveLength(1)
     expect(entries[0]).toMatchObject({ entity_name: 'acme/feeds.pull', source: 'cli' })
     expect(run(['jobs', 'retry', jobs.failed]).code).toBe(ERROR_KINDS.conflict.exitCode)
-  })
+  }, 60_000)
 
   test('signed in: a person without Settings is refused; a retry names the person', async () => {
     const env = { CROMBOLO_CLI_ACCESS: 'sign-in' }

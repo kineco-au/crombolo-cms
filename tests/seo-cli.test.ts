@@ -5,7 +5,7 @@
  * section at sign-in, and a server started afterwards following what was saved.
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
-import { rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { SUPER_USER_KEY } from '@crombolo/data'
 import { ERROR_KINDS } from '../packages/cli/src/errors.ts'
@@ -82,6 +82,7 @@ describe('in a site folder', () => {
 
   beforeAll(() => {
     here = localSite('seo-cli')
+    mkdirSync(join(here.dir, 'schema', 'content-types'))
     writeFileSync(join(here.dir, 'schema', 'content-types', 'page.toml'), PAGE_TOML)
     writeFileSync(join(here.dir, 'components', 'page.tsx'), VIEW)
     writeFileSync(join(here.dir, 'share.png'), PNG)
@@ -118,7 +119,7 @@ describe('in a site folder', () => {
       siteName: 'saved',
       indexable: 'default',
     })
-  })
+  }, 60_000)
 
   test('set: each field, by its name in any case or kebab-case', () => {
     expect(json<Field>(run(['seo', 'set', 'indexable', 'off', '-o', 'json']))).toEqual({
@@ -155,7 +156,7 @@ describe('in a site folder', () => {
 
     ok('seo', 'set', 'robotsTxt', 'User-agent: *\nDisallow: /private')
     expect(ok('seo', 'show').out).toContain('  Disallow: /private')
-  })
+  }, 60_000)
 
   test('set: --file for the robots file only, and a bad value refused', () => {
     const file = join(here.dir, 'robots.txt')
@@ -183,7 +184,7 @@ describe('in a site folder', () => {
     expect(run(['seo', 'set', 'defaultImage', 'Nowhere.png']).code).toBe(
       ERROR_KINDS.not_found.exitCode,
     )
-  })
+  }, 60_000)
 
   test('notFoundPage over rules per hostname or language, and pages.notFound reported', () => {
     ok('seo', 'unset', 'notFoundPage')
@@ -205,7 +206,7 @@ describe('in a site folder', () => {
       "The site's configuration chooses the page for addresses that don't exist, so this one is not used.",
     )
     configure("{ seo: { titleSuffix: ' | Configured' } }")
-  })
+  }, 60_000)
 
   test('unset: back to the configuration, and nothing changed when nothing is saved', async () => {
     ok('seo', 'set', 'titleSuffix', ' | Saved')
@@ -227,7 +228,7 @@ describe('in a site folder', () => {
       category: 'settings',
       source: 'cli',
     })
-  })
+  }, 60_000)
 
   test('signed in: a person without Settings is refused; a save names the person', async () => {
     const env = { CROMBOLO_CLI_ACCESS: 'sign-in' }

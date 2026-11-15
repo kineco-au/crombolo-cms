@@ -357,29 +357,39 @@ describe('the commands, on a site with page types and a block list', () => {
         await h.post(`${BACKOFFICE}/crombolo/api/cli-tokens`, { name: 'show' })
       ).json()) as { token: string }
       writeFileSync(join(dir, 'profiles'), `[prod]\nurl = "http://localhost:${listening.port}"\n`)
-      const hosted = (...args: string[]) => {
-        const proc = Bun.spawnSync(['bun', BIN, ...args, '--profile', 'prod'], {
+      // Spawned, not spawnSync: the site answering it runs in this process.
+      const hosted = async (...args: string[]) => {
+        const proc = Bun.spawn(['bun', BIN, ...args, '--profile', 'prod'], {
           cwd: dir,
           stdin: 'ignore',
+          stdout: 'pipe',
+          stderr: 'pipe',
           env: {
             ...(process.env as Record<string, string>),
             CROMBOLO_PROFILES_FILE: join(dir, 'profiles'),
             CROMBOLO_TOKEN: token,
           },
         })
-        return { code: proc.exitCode, out: proc.stdout.toString(), err: proc.stderr.toString() }
+        const [out, err, code] = await Promise.all([
+          new Response(proc.stdout).text(),
+          new Response(proc.stderr).text(),
+          proc.exited,
+        ])
+        return { code, out, err }
       }
-      const there = hosted('content', 'show', '/Home', '--references', '-o', 'json')
+      const there = await hosted('content', 'show', '/Home', '--references', '-o', 'json')
       expect(there.code, there.err).toBe(0)
       const remote = JSON.parse(there.out) as Shown & { references: { total: number } }
       const local = JSON.parse(ok('content', 'show', '/Home', '--references', '-o', 'json').out)
       expect(remote).toEqual(local)
       expect(remote.references.total).toBe(1)
-      const text = hosted('content', 'show', '/Home/Visit us')
+      const text = await hosted('content', 'show', '/Home/Visit us')
       expect(text.code, text.err).toBe(0)
       expect(text.out).toContain('/Home/Visit us  (Page, page)')
-      expect(hosted('content', 'show', '/Nowhere').code).toBe(ERROR_KINDS.not_found.exitCode)
-      expect(hosted('content', 'show', 'library:/Menus/Footer').code).toBe(
+      expect((await hosted('content', 'show', '/Nowhere')).code).toBe(
+        ERROR_KINDS.not_found.exitCode,
+      )
+      expect((await hosted('content', 'show', 'library:/Menus/Footer')).code).toBe(
         ERROR_KINDS.refused.exitCode,
       )
     } finally {

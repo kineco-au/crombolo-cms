@@ -1566,7 +1566,9 @@ export class DocumentRepository {
     if (!source) return undefined
     if (targetKey) {
       const target = await this.#nodes.byKey(targetKey)
-      if (!target || target.objectType !== this.objectType) return undefined
+      const container = KINDS[this.kind].container
+      if (!target || (target.objectType !== this.objectType && target.objectType !== container))
+        return undefined
     }
     const copyOne = async (from: DocumentAggregate, parentKey: string | null): Promise<string> => {
       const siblings = await this.#siblingNames(parentKey)

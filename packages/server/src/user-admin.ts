@@ -144,15 +144,18 @@ function summaryOf(user: UserRecord, aliases: Map<string, string>): UserSummary 
 
 async function userRecord(db: Db, who: string): Promise<UserRecord | undefined> {
   const wanted = who.trim().toLowerCase()
+  // Postgres keeps the key as a uuid, which neither lower() nor a non-uuid comparison takes.
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(wanted)
   const row = await db.q
     .selectFrom('user_account')
     .select('key')
     .where((eb) =>
-      eb.or([
-        eb(eb.fn('lower', ['key']), '=', wanted),
-        eb(eb.fn('lower', ['email']), '=', wanted),
-        eb(eb.fn('lower', ['login']), '=', wanted),
-      ]),
+      uuid
+        ? eb('key', '=', normaliseUuid(wanted))
+        : eb.or([
+            eb(eb.fn('lower', ['email']), '=', wanted),
+            eb(eb.fn('lower', ['login']), '=', wanted),
+          ]),
     )
     .executeTakeFirst()
   return row ? new UserRepository(db).byKey(String(row.key)) : undefined

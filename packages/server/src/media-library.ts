@@ -267,7 +267,7 @@ export const listMedia = (db: Db, actor: Actor, query: MediaQuery = {}) =>
   pageOf(db, actor, query, 'children')
 
 /** The items whose names hold `name`, anywhere below `under`, a page at a time. */
-export function findMedia(db: Db, actor: Actor, query: MediaQuery & { name: string }) {
+export async function findMedia(db: Db, actor: Actor, query: MediaQuery & { name: string }) {
   if (!query.name.trim()) throw new MediaLibraryError('usage', 'Give some of the name to find.')
   return pageOf(db, actor, query, 'descendants')
 }
@@ -500,7 +500,7 @@ export async function updateMedia(
       change.file.name.includes('.') ? extension : '',
     )
     if (!types.some((t) => normaliseUuid(t.key) === normaliseUuid(doc.contentTypeKey))) {
-      const takers = types.filter((t) => t.matched).map((t) => t.name)
+      const takers = types.map((t) => t.name)
       throw new MediaLibraryError(
         'refused',
         `${shown} is a ${typeName}, which does not take a .${extension} file.`,

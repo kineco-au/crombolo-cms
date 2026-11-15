@@ -2058,7 +2058,7 @@ crombolo assets new <kind> <name>
 
 ## Content and media
 
-Pages, media, the dictionary, domains and the recycle bin.
+Pages, media, the dictionary, domains, search and sharing settings, and the recycle bin.
 
 ### `crombolo content access clear`
 
@@ -3398,6 +3398,66 @@ crombolo domains undo
 - `removed` (integer)
 
 **Fails with:** `usage`, `internal`, `not_found`, `refused`.
+
+### `crombolo seo set`
+
+Save a search and sharing value on this site. Safe to run again: a second run changes nothing more.
+
+```
+crombolo seo set <field> [<value>] [--file <file>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `field` | string | One of indexable, sitemap, siteName, titleSuffix, defaultImage, notFoundPage, robotsTxt; any case, or kebab-case. Required. |
+| `value` | string | Its value. |
+| `--file` | string | Read the robots file from this file. |
+
+**Output** (single, with `-o json`): a JSON document.
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `io`, `unavailable`.
+
+### `crombolo seo show`
+
+The values every page falls back to, the robots file and the not-found page. Changes nothing.
+
+```
+crombolo seo show
+```
+
+**Output** (single, with `-o json`):
+
+- `effective` (object)
+  - `indexable` (boolean)
+  - `sitemap` (boolean)
+  - `siteName` (string)
+  - `titleSuffix` (string)
+  - `defaultImage` (string)
+  - `notFoundPage` (array of object)
+    - `document` (string)
+    - `host` (string)
+    - `culture` (string)
+  - `robotsTxt` (string)
+- `saved` (object)
+- `sources` (object)
+
+**Fails with:** `usage`, `internal`, `refused`, `unavailable`.
+
+### `crombolo seo unset`
+
+Remove a value saved on this site, so the configuration or the default applies. Safe to run again: a second run changes nothing more.
+
+```
+crombolo seo unset <field>
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `field` | string | One of indexable, sitemap, siteName, titleSuffix, defaultImage, notFoundPage, robotsTxt; any case, or kebab-case. Required. |
+
+**Output** (single, with `-o json`): a JSON document.
+
+**Fails with:** `usage`, `internal`, `refused`, `unavailable`.
 
 ### `crombolo recycle-bin empty`
 
@@ -5824,7 +5884,7 @@ crombolo audit stream [--since <since>] [--until <until>] [--user <user>] [--cat
 
 ## Operations
 
-Caches, the search index, maintenance pauses, outgoing changes, upgrades and restarts.
+Caches, the search index, background jobs, maintenance pauses, outgoing changes, upgrades and restarts.
 
 ### `crombolo cache rebuild`
 
@@ -5885,6 +5945,117 @@ crombolo index rebuild [<index>] [--queue-only]
 - `queued` (boolean)
 
 **Fails with:** `usage`, `internal`.
+
+### `crombolo jobs list`
+
+The site's and its bundles' background jobs, newest first: what each is, its state and how far it got. Changes nothing.
+
+```
+crombolo jobs list [--state <state>] [--owner <owner>] [--limit <limit>] [--offset <offset>] [--fields <fields>] [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `--state` | string | Only the jobs in this state. One of `waiting`, `running`, `failed`, `done`. |
+| `--owner` | string | Only one bundle's jobs, or site for the site's own. |
+| `--limit` | integer | How many to list. Default `50`. |
+| `--offset` | integer | How many to skip first. Default `0`. |
+| `--fields` | string | Only these fields of each item, comma-separated. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (bounded, with `-o json`):
+
+- `items` (array of object)
+  - `id` (string)
+  - `owner` (string)
+  - `name` (string)
+  - `state` (string)
+  - `attempts` (integer)
+  - `maxAttempts` (integer)
+  - `nextAttemptAt` (string)
+  - `progress` (object)
+    - `done` (integer)
+    - `total` (integer)
+    - `note` (string)
+  - `error` (string)
+  - `queuedBy` (string)
+  - `createdAt` (string)
+  - `finishedAt` (string)
+- `total` (integer)
+- `offset` (integer)
+- `truncated` (boolean)
+- `waitingSince` (string)
+
+**Fails with:** `usage`, `internal`, `refused`, `unavailable`.
+
+### `crombolo jobs retry`
+
+Run a failed background job again, from its first attempt. Each run acts again.
+
+```
+crombolo jobs retry <id> [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `id` | string | Its id, or at least the first 8 characters of it. Required. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`):
+
+- `id` (string)
+- `owner` (string)
+- `name` (string)
+- `state` (string)
+- `attempts` (integer)
+- `maxAttempts` (integer)
+- `nextAttemptAt` (string)
+- `progress` (object)
+  - `done` (integer)
+  - `total` (integer)
+  - `note` (string)
+- `error` (string)
+- `queuedBy` (string)
+- `createdAt` (string)
+- `finishedAt` (string)
+
+**Fails with:** `usage`, `internal`, `not_found`, `conflict`, `refused`, `unavailable`.
+
+### `crombolo jobs show`
+
+One background job: what it is, how far it got, and why it failed. Changes nothing.
+
+```
+crombolo jobs show <id> [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `id` | string | Its id, or at least the first 8 characters of it. Required. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`):
+
+- `id` (string)
+- `owner` (string)
+- `name` (string)
+- `state` (string)
+- `attempts` (integer)
+- `maxAttempts` (integer)
+- `nextAttemptAt` (string)
+- `progress` (object)
+  - `done` (integer)
+  - `total` (integer)
+  - `note` (string)
+- `error` (string)
+- `queuedBy` (string)
+- `createdAt` (string)
+- `finishedAt` (string)
+
+**Fails with:** `usage`, `internal`, `not_found`, `conflict`, `refused`, `unavailable`.
 
 ### `crombolo maintenance pause`
 
@@ -6109,185 +6280,6 @@ crombolo restart [--profile <profile>] [--env <env>]
 - `remote` (string)
 
 **Fails with:** `usage`, `internal`, `refused`, `unavailable`, `auth`, `not_found`.
-
-## jobs
-
-The jobs commands.
-
-### `crombolo jobs list`
-
-The site's and its bundles' background jobs, newest first: what each is, its state and how far it got. Changes nothing.
-
-```
-crombolo jobs list [--state <state>] [--owner <owner>] [--limit <limit>] [--offset <offset>] [--fields <fields>] [--profile <profile>] [--env <env>]
-```
-
-| Argument | Type | What it is |
-| --- | --- | --- |
-| `--state` | string | Only the jobs in this state. One of `waiting`, `running`, `failed`, `done`. |
-| `--owner` | string | Only one bundle's jobs, or site for the site's own. |
-| `--limit` | integer | How many to list. Default `50`. |
-| `--offset` | integer | How many to skip first. Default `0`. |
-| `--fields` | string | Only these fields of each item, comma-separated. |
-| `--profile` | string | Act on the site this profile names, rather than this one. |
-| `--env` | string | A hosted site's environment. |
-
-**Output** (bounded, with `-o json`):
-
-- `items` (array of object)
-  - `id` (string)
-  - `owner` (string)
-  - `name` (string)
-  - `state` (string)
-  - `attempts` (integer)
-  - `maxAttempts` (integer)
-  - `nextAttemptAt` (string)
-  - `progress` (object)
-    - `done` (integer)
-    - `total` (integer)
-    - `note` (string)
-  - `error` (string)
-  - `queuedBy` (string)
-  - `createdAt` (string)
-  - `finishedAt` (string)
-- `total` (integer)
-- `offset` (integer)
-- `truncated` (boolean)
-- `waitingSince` (string)
-
-**Fails with:** `usage`, `internal`, `refused`, `unavailable`.
-
-### `crombolo jobs retry`
-
-Run a failed background job again, from its first attempt. Each run acts again.
-
-```
-crombolo jobs retry <id> [--profile <profile>] [--env <env>]
-```
-
-| Argument | Type | What it is |
-| --- | --- | --- |
-| `id` | string | Its id, or at least the first 8 characters of it. Required. |
-| `--profile` | string | Act on the site this profile names, rather than this one. |
-| `--env` | string | A hosted site's environment. |
-
-**Output** (single, with `-o json`):
-
-- `id` (string)
-- `owner` (string)
-- `name` (string)
-- `state` (string)
-- `attempts` (integer)
-- `maxAttempts` (integer)
-- `nextAttemptAt` (string)
-- `progress` (object)
-  - `done` (integer)
-  - `total` (integer)
-  - `note` (string)
-- `error` (string)
-- `queuedBy` (string)
-- `createdAt` (string)
-- `finishedAt` (string)
-
-**Fails with:** `usage`, `internal`, `not_found`, `conflict`, `refused`, `unavailable`.
-
-### `crombolo jobs show`
-
-One background job: what it is, how far it got, and why it failed. Changes nothing.
-
-```
-crombolo jobs show <id> [--profile <profile>] [--env <env>]
-```
-
-| Argument | Type | What it is |
-| --- | --- | --- |
-| `id` | string | Its id, or at least the first 8 characters of it. Required. |
-| `--profile` | string | Act on the site this profile names, rather than this one. |
-| `--env` | string | A hosted site's environment. |
-
-**Output** (single, with `-o json`):
-
-- `id` (string)
-- `owner` (string)
-- `name` (string)
-- `state` (string)
-- `attempts` (integer)
-- `maxAttempts` (integer)
-- `nextAttemptAt` (string)
-- `progress` (object)
-  - `done` (integer)
-  - `total` (integer)
-  - `note` (string)
-- `error` (string)
-- `queuedBy` (string)
-- `createdAt` (string)
-- `finishedAt` (string)
-
-**Fails with:** `usage`, `internal`, `not_found`, `conflict`, `refused`, `unavailable`.
-
-## seo
-
-The seo commands.
-
-### `crombolo seo set`
-
-Save a search and sharing value on this site. Safe to run again: a second run changes nothing more.
-
-```
-crombolo seo set <field> [<value>] [--file <file>]
-```
-
-| Argument | Type | What it is |
-| --- | --- | --- |
-| `field` | string | One of indexable, sitemap, siteName, titleSuffix, defaultImage, notFoundPage, robotsTxt; any case, or kebab-case. Required. |
-| `value` | string | Its value. |
-| `--file` | string | Read the robots file from this file. |
-
-**Output** (single, with `-o json`): a JSON document.
-
-**Fails with:** `usage`, `internal`, `not_found`, `refused`, `io`, `unavailable`.
-
-### `crombolo seo show`
-
-The values every page falls back to, the robots file and the not-found page. Changes nothing.
-
-```
-crombolo seo show
-```
-
-**Output** (single, with `-o json`):
-
-- `effective` (object)
-  - `indexable` (boolean)
-  - `sitemap` (boolean)
-  - `siteName` (string)
-  - `titleSuffix` (string)
-  - `defaultImage` (string)
-  - `notFoundPage` (array of object)
-    - `document` (string)
-    - `host` (string)
-    - `culture` (string)
-  - `robotsTxt` (string)
-- `saved` (object)
-- `sources` (object)
-
-**Fails with:** `usage`, `internal`, `refused`, `unavailable`.
-
-### `crombolo seo unset`
-
-Remove a value saved on this site, so the configuration or the default applies. Safe to run again: a second run changes nothing more.
-
-```
-crombolo seo unset <field>
-```
-
-| Argument | Type | What it is |
-| --- | --- | --- |
-| `field` | string | One of indexable, sitemap, siteName, titleSuffix, defaultImage, notFoundPage, robotsTxt; any case, or kebab-case. Required. |
-
-**Output** (single, with `-o json`): a JSON document.
-
-**Fails with:** `usage`, `internal`, `refused`, `unavailable`.
 
 ## Exit codes
 

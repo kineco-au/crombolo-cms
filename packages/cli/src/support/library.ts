@@ -15,6 +15,7 @@ import {
   ObjectTypes,
 } from '@crombolo/core'
 import {
+  currentSchemaState,
   type Db,
   DocumentRepository,
   describeRefFailure,
@@ -150,13 +151,17 @@ export interface LibrarySite extends PageSite {
 
 /** The site's database, the page site and the Library operations, for one command. */
 export async function withLibrary<T>(work: (site: LibrarySite) => Promise<T>): Promise<T> {
-  return withPages(async (site) =>
-    work({
+  return withPages(async (site) => {
+    const state = await currentSchemaState(site.db)
+    return work({
       ...site,
       library: await siteElementOperations(site.db, site.config),
-      elements: new DocumentRepository(site.db, { kind: 'element' }),
-    }),
-  )
+      elements: new DocumentRepository(site.db, {
+        kind: 'element',
+        nodeState: { version: state.version, revision: state.revision },
+      }),
+    })
+  })
 }
 
 export interface FoundElement {

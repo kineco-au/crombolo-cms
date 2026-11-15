@@ -288,11 +288,11 @@ describe('Ctrl-C', () => {
   })
 
   test('runs both ways of starting through the same wait', () => {
-    // The local branch has nothing to clean up, but a half-exited parent would
-    // hand the prompt back while the server still held the port.
+    // The local branch cleans up only a single-page app's server, but a
+    // half-exited parent would hand the prompt back while the CMS held the port.
     expect(script.match(/runToCompletion\(/g)?.length).toBe(3)
     expect(script).toContain('runToCompletion(proc, removeContainer)')
-    expect(script).toContain('runToCompletion(proc)')
+    expect(script).toContain('runToCompletion(proc, () => app?.kill())')
   })
 })
 

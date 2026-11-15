@@ -224,6 +224,9 @@ point at `docs/stories/`.
 
 ### Fixes
 
+- **An element can be copied into a Library folder (361).** Copying a Library element
+  into a folder answered that the folder could not be found, in the back office and from
+  the command line. A copy may now go into a folder, as a move already could.
 - **An image in rich text shows its media item's file now (355).** A rich text image was
   rendered from the address saved with it, so replacing its file in the back office (or
   moving it) left the page showing a file that was gone. A rendered page now sets each

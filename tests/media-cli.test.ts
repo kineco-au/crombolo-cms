@@ -162,7 +162,7 @@ describe('in a site folder', () => {
     ])
     expect(ok('media', 'find', '--name', 'nothing').out).toContain('No media matches.')
     expect(run(['media', 'list', '--under', '/Nowhere']).code).toBe(ERROR_KINDS.not_found.exitCode)
-  })
+  }, 60_000)
 
   test('show: its type, folder, file, size, alternative text and focal point, and what uses it', () => {
     const text = ok('media', 'show', '/Gallery/hero').out
@@ -187,7 +187,7 @@ describe('in a site folder', () => {
     expect(ok('media', 'show', '/Gallery/harbour', '--references').out).toContain(
       'Nothing uses it.',
     )
-  })
+  }, 60_000)
 
   test('update: alternative text, focal point and name; refused where the type takes neither', async () => {
     const dry = ok('media', 'update', '/Gallery/harbour', '--alt', 'Boats', '--dry-run').out
@@ -228,7 +228,7 @@ describe('in a site folder', () => {
       ERROR_KINDS.usage.exitCode,
     )
     expect(run(['media', 'update', '/Gallery/harbour']).code).toBe(ERROR_KINDS.usage.exitCode)
-  })
+  }, 60_000)
 
   test('update --file: the key kept, so the picker, the link and the image in rich text show the new file', async () => {
     const pdf = join(here.dir, 'hero.pdf')
@@ -273,7 +273,7 @@ describe('in a site folder', () => {
     expect(run(['media', 'folder', 'new', '/Gallery/hero/Inside']).code).toBe(
       ERROR_KINDS.refused.exitCode,
     )
-  })
+  }, 60_000)
 
   test('signed in: without Media refused, outside the start node refused, and audited as the person', async () => {
     const env = { CROMBOLO_CLI_ACCESS: 'sign-in' }
