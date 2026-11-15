@@ -5860,6 +5860,70 @@ crombolo jobs show <id> [--profile <profile>] [--env <env>]
 
 **Fails with:** `usage`, `internal`, `not_found`, `conflict`, `refused`, `unavailable`.
 
+## seo
+
+The seo commands.
+
+### `crombolo seo set`
+
+Save a search and sharing value on this site. Safe to run again: a second run changes nothing more.
+
+```
+crombolo seo set <field> [<value>] [--file <file>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `field` | string | One of indexable, sitemap, siteName, titleSuffix, defaultImage, notFoundPage, robotsTxt; any case, or kebab-case. Required. |
+| `value` | string | Its value. |
+| `--file` | string | Read the robots file from this file. |
+
+**Output** (single, with `-o json`): a JSON document.
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `io`, `unavailable`.
+
+### `crombolo seo show`
+
+The values every page falls back to, the robots file and the not-found page. Changes nothing.
+
+```
+crombolo seo show
+```
+
+**Output** (single, with `-o json`):
+
+- `effective` (object)
+  - `indexable` (boolean)
+  - `sitemap` (boolean)
+  - `siteName` (string)
+  - `titleSuffix` (string)
+  - `defaultImage` (string)
+  - `notFoundPage` (array of object)
+    - `document` (string)
+    - `host` (string)
+    - `culture` (string)
+  - `robotsTxt` (string)
+- `saved` (object)
+- `sources` (object)
+
+**Fails with:** `usage`, `internal`, `refused`, `unavailable`.
+
+### `crombolo seo unset`
+
+Remove a value saved on this site, so the configuration or the default applies. Safe to run again: a second run changes nothing more.
+
+```
+crombolo seo unset <field>
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `field` | string | One of indexable, sitemap, siteName, titleSuffix, defaultImage, notFoundPage, robotsTxt; any case, or kebab-case. Required. |
+
+**Output** (single, with `-o json`): a JSON document.
+
+**Fails with:** `usage`, `internal`, `refused`, `unavailable`.
+
 ## Exit codes
 
 | Code | Kind | When |

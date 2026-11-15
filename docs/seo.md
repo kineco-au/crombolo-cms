@@ -188,6 +188,41 @@ the framework's own endpoints at `<backoffice>/crombolo/api/seo/`: `settings`
 (GET and PUT, Settings section) and `preview?document=&culture=` (GET, any
 editor). The preview reads the last **saved** version, published or not.
 
+Both the screen's routes and the command line read and save through
+`readSeoSettings` and `saveSeoSettings` (`packages/server/src/seo.ts`), so they
+share the same rules and refuse the same malformed values (story 360).
+
+### From the command line
+
+In a site folder, with the Settings section when the site asks for a sign-in:
+
+- `crombolo seo show` lists each value and says where it comes from: "Saved
+  here", "From the site's configuration" or "Default". The sharing image and the
+  not-found page are named by their path and key, rules per hostname or language
+  are listed as the configuration gives them, and the robots file follows in
+  full. It also says when `pages.notFound` in the configuration chooses the page
+  instead. `-o json` gives `{ effective, saved, sources }`, each source `saved`,
+  `config` or `default`;
+- `crombolo seo set <field> [<value>]` saves one, the field named as
+  `crombolo.config.ts` names it, in any case or kebab-case (`site-name`,
+  `robots-txt`). `indexable` and `sitemap` take on/off, yes/no or true/false;
+  `defaultImage` a media item's path or key, kept as its key as the screen keeps
+  it, or an address beginning with `/` or `http`; `notFoundPage` a page's path or
+  key, used everywhere, replacing any rules per hostname or language, as the
+  screen does; `robotsTxt` the rules, or `--file <path>`;
+- `crombolo seo unset <field>` removes the saved value, so the configuration or
+  the default applies again. With nothing saved it changes nothing.
+
+`set` and `unset` are audited as the screen's save is: category `settings`,
+action `Save`, entity `SeoSettings`, the field as its key.
+
+A saved value stays with this site's database. No site package, bundle, push or
+pull carries it; only a database backup does. So the commands change this site
+only, and are not offered with `--profile`: a hosted site is changed in its back
+office. A value every copy of a site should start with belongs in
+`crombolo.config.ts`, which travels with the code. A running site picks up a
+change the command line saves within ten seconds.
+
 ## The not-found page
 
 After route resolution, the alias finder and the redirect lookup have all failed,

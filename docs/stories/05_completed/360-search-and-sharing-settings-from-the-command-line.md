@@ -145,11 +145,42 @@ language stay in the configuration.
 
 ## Acceptance criteria
 
-- [ ] `crombolo seo show` lists each value, and whether it comes from the
+- [x] `crombolo seo show` lists each value, and whether it comes from the
       configuration, was saved, or is the default
-- [ ] `seo set <field> <value>` saves the same override the screen saves, `--file`
+- [x] `seo set <field> <value>` saves the same override the screen saves, `--file`
       reading the robots file from a file
-- [ ] `seo unset <field>` removes the override, so the configuration applies again
-- [ ] `-o json`; audited
-- [ ] Tests for each, and that the page head and `/robots.txt` follow
-- [ ] The CLI reference regenerated
+- [x] `seo unset <field>` removes the override, so the configuration applies again
+- [x] `-o json`; audited
+- [x] Tests for each, and that the page head and `/robots.txt` follow
+- [x] The CLI reference regenerated
+
+## Built
+
+- `readSeoSettings(db, config)` and `saveSeoSettings(db, config, changes)` in
+  `packages/server/src/seo.ts` hold what `settings()` and the `PUT settings` branch
+  did; `createSeoHost` calls both, keeping its ten-second memo, and after a save
+  keeps the settings the save answered. The screen and its routes are unchanged;
+- the commands are `seo show`, `seo set` and `seo unset`
+  (`packages/cli/src/commands/seo/`), over `packages/cli/src/support/seo.ts`, each
+  `access: 'site'`, `section: 'settings'`, on this site's database only;
+- `docs/seo.md`, "From the command line", the access table in
+  `docs/operations.md`, the CLI reference and the release notes;
+- tests: `tests/seo-settings.test.ts` (the two functions), `tests/seo-cli.test.ts`
+  (the commands, the audit entry, sign-in, and a server started after the
+  change) and an addition to `tests/cli-access.test.ts`. **The tests are written
+  but not yet run:** the maintainer runs the full suites once, at the release.
+  `bun run check` passes.
+
+Where it differs from the plan, or fills it in:
+- **JSON names the sources `saved`, `config` and `default`,** matching its `saved`
+  object, rather than the routes' `backoffice`. `seo set` and `seo unset -o json`
+  give `{ field, value, source }`, the field as it now stands.
+- **A path beginning with `/` for `defaultImage` is tried as a media item first;**
+  when none is there it is kept as an address, with a warning saying so. A value
+  that is neither a media item, nor `/…` nor `http…`, is refused as not found.
+- **A bad on/off word reaches `saveSeoSettings` as given,** so it is refused in the
+  server's words ("indexable must be true or false."), as a usage error; any other
+  refusal from the save is a usage error too.
+- **`seo set` audits even when the value is unchanged;** only `unset` with nothing
+  saved writes no entry.
+- **The replaced-rules notice goes to stderr,** so `-o json` stays clean.

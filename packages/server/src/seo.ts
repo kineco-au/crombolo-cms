@@ -193,11 +193,7 @@ export interface SeoHostOptions {
 }
 
 export interface SeoHost {
-  settings(): Promise<{
-    effective: SeoSettings
-    overrides: SeoSettingsOverrides
-    sources: Record<keyof SeoSettings, SettingSource>
-  }>
+  settings(): Promise<SeoSettingsState>
   siteDefaults(): Promise<SeoSiteDefaults>
   sitemap(request: Request, host: string): Promise<Response>
   robots(request: Request): Promise<Response>
@@ -224,23 +220,32 @@ export interface SeoHost {
   handle(request: Request, subpath: string, principal: Principal): Promise<Response | undefined>
 }
 
-export function createSeoHost(options: SeoHostOptions): SeoHost {
-  const { db, config, cache } = options
-  let memo: { at: number; overrides: SeoSettingsOverrides } | undefined
+/** The site-wide settings in force, what is saved, and where each value comes from. */
+export interface SeoSettingsState {
+  effective: SeoSettings
+  overrides: SeoSettingsOverrides
+  sources: Record<keyof SeoSettings, SettingSource>
+}
 
-  const readOverrides = async (): Promise<SeoSettingsOverrides> => {
-    if (memo && Date.now() - memo.at < SETTINGS_TTL_MS) return memo.overrides
-    const raw = await readKeyValue(db, SEO_SETTINGS_KEY)
-    let overrides: SeoSettingsOverrides = {}
-    if (raw) {
-      const parsed = parseSettingsBody(safeJson(raw))
-      if (parsed.ok) overrides = parsed.overrides
-    }
-    memo = { at: Date.now(), overrides }
-    return overrides
+async function readOverrides(db: Db): Promise<SeoSettingsOverrides> {
+  const raw = await readKeyValue(db, SEO_SETTINGS_KEY)
+  if (!raw) return {}
+  const parsed = parseSettingsBody(safeJson(raw))
+  return parsed.ok ? parsed.overrides : {}
+}
+
+function resolveSettings(
+  config: Pick<CromboloConfig, 'siteName' | 'seo'>,
+  overrides: SeoSettingsOverrides,
+): SeoSettingsState {
+  const configured: Partial<SeoSettings> = {}
+  for (const field of FIELDS) {
+    const value = config.seo?.[field]
+    if (value === undefined) continue
+    if (field === 'notFoundPage') configured.notFoundPage = parseRules(value) ?? []
+    else (configured as Record<string, unknown>)[field] = value
   }
-
-  const defaults = (): SeoSettings => ({
+  const effective: SeoSettings = {
     sitemap: true,
     indexable: true,
     robotsTxt: DEFAULT_ROBOTS_TXT,
@@ -248,36 +253,60 @@ export function createSeoHost(options: SeoHostOptions): SeoHost {
     titleSuffix: '',
     defaultImage: '',
     notFoundPage: [],
-  })
-
-  const fromConfig = (): Partial<SeoSettings> => {
-    const seo = config.seo ?? {}
-    const out: Partial<SeoSettings> = {}
-    for (const field of FIELDS) {
-      const value = seo[field]
-      if (value === undefined) continue
-      if (field === 'notFoundPage') out.notFoundPage = parseRules(value) ?? []
-      else (out as Record<string, unknown>)[field] = value
-    }
-    return out
   }
+  const sources = {} as Record<keyof SeoSettings, SettingSource>
+  for (const field of FIELDS) {
+    const own = overrides[field]
+    if (own !== undefined && own !== null) {
+      ;(effective as unknown as Record<string, unknown>)[field] = own
+      sources[field] = 'backoffice'
+    } else if (configured[field] !== undefined) {
+      ;(effective as unknown as Record<string, unknown>)[field] = configured[field]
+      sources[field] = 'config'
+    } else sources[field] = 'default'
+  }
+  return { effective, overrides, sources }
+}
+
+/** The site-wide settings: each a saved value, else the configuration's, else the default. */
+export async function readSeoSettings(
+  db: Db,
+  config: Pick<CromboloConfig, 'siteName' | 'seo'>,
+): Promise<SeoSettingsState> {
+  return resolveSettings(config, await readOverrides(db))
+}
+
+/**
+ * Saves changes to the site-wide settings, a `null` removing a saved value so
+ * the configuration applies again; a malformed change is refused, saving nothing.
+ */
+export async function saveSeoSettings(
+  db: Db,
+  config: Pick<CromboloConfig, 'siteName' | 'seo'>,
+  changes: unknown,
+): Promise<{ ok: true; settings: SeoSettingsState } | { ok: false; message: string }> {
+  const parsed = parseSettingsBody(changes)
+  if (!parsed.ok) return parsed
+  const merged: SeoSettingsOverrides = { ...(await readOverrides(db)) }
+  for (const field of FIELDS) {
+    if (!(field in parsed.overrides)) continue
+    const value = parsed.overrides[field]
+    if (value === null) delete merged[field]
+    else (merged as Record<string, unknown>)[field] = value
+  }
+  await writeKeyValue(db, SEO_SETTINGS_KEY, JSON.stringify(merged))
+  return { ok: true, settings: resolveSettings(config, merged) }
+}
+
+export function createSeoHost(options: SeoHostOptions): SeoHost {
+  const { db, config, cache } = options
+  let memo: { at: number; state: SeoSettingsState } | undefined
 
   const settings: SeoHost['settings'] = async () => {
-    const overrides = await readOverrides()
-    const configured = fromConfig()
-    const effective = defaults()
-    const sources = {} as Record<keyof SeoSettings, SettingSource>
-    for (const field of FIELDS) {
-      const own = overrides[field]
-      if (own !== undefined && own !== null) {
-        ;(effective as unknown as Record<string, unknown>)[field] = own
-        sources[field] = 'backoffice'
-      } else if (configured[field] !== undefined) {
-        ;(effective as unknown as Record<string, unknown>)[field] = configured[field]
-        sources[field] = 'config'
-      } else sources[field] = 'default'
-    }
-    return { effective, overrides, sources }
+    if (memo && Date.now() - memo.at < SETTINGS_TTL_MS) return memo.state
+    const state = await readSeoSettings(db, config)
+    memo = { at: Date.now(), state }
+    return state
   }
 
   /** A media item's address when given its key, else the address as written. */
@@ -532,19 +561,10 @@ export function createSeoHost(options: SeoHostOptions): SeoHost {
     if (request.method === 'GET') return Response.json(await settings())
     if (request.method !== 'PUT')
       return new Response('Method Not Allowed', { status: 405, headers: { allow: 'GET, PUT' } })
-    const parsed = parseSettingsBody(await request.json().catch(() => undefined))
-    if (!parsed.ok) return Response.json({ message: parsed.message }, { status: 400 })
-    memo = undefined
-    const merged: SeoSettingsOverrides = { ...(await readOverrides()) }
-    for (const field of FIELDS) {
-      if (!(field in parsed.overrides)) continue
-      const value = parsed.overrides[field]
-      if (value === null) delete merged[field]
-      else (merged as Record<string, unknown>)[field] = value
-    }
-    await writeKeyValue(db, SEO_SETTINGS_KEY, JSON.stringify(merged))
-    memo = undefined
-    return Response.json(await settings())
+    const saved = await saveSeoSettings(db, config, await request.json().catch(() => undefined))
+    if (!saved.ok) return Response.json({ message: saved.message }, { status: 400 })
+    memo = { at: Date.now(), state: saved.settings }
+    return Response.json(saved.settings)
   }
 
   return { settings, siteDefaults, sitemap, robots, notFound, details, sitemapItems, handle }

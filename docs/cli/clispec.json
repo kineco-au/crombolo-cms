@@ -8992,6 +8992,120 @@
       "errors": ["usage", "internal", "not_found", "refused"]
     },
     {
+      "name": "seo set",
+      "description": "save a search and sharing value on this site",
+      "effects": "idempotent",
+      "cardinality": "single",
+      "stdout_schema": {},
+      "args": [
+        {
+          "name": "field",
+          "type": "string",
+          "required": true,
+          "description": "one of indexable, sitemap, siteName, titleSuffix, defaultImage, notFoundPage, robotsTxt; any case, or kebab-case"
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "description": "its value"
+        },
+        {
+          "name": "--file",
+          "type": "string",
+          "description": "read the robots file from this file"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "refused", "io", "unavailable"]
+    },
+    {
+      "name": "seo show",
+      "description": "the values every page falls back to, the robots file and the not-found page",
+      "effects": "read_only",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "effective",
+          "type": "object",
+          "description": "the values in force",
+          "fields": [
+            {
+              "name": "indexable",
+              "type": "boolean"
+            },
+            {
+              "name": "sitemap",
+              "type": "boolean"
+            },
+            {
+              "name": "siteName",
+              "type": "string"
+            },
+            {
+              "name": "titleSuffix",
+              "type": "string"
+            },
+            {
+              "name": "defaultImage",
+              "type": "string",
+              "description": "a media item's key, or an address"
+            },
+            {
+              "name": "notFoundPage",
+              "type": "array",
+              "items": {
+                "type": "object",
+                "fields": [
+                  {
+                    "name": "document",
+                    "type": "string"
+                  },
+                  {
+                    "name": "host",
+                    "type": "string"
+                  },
+                  {
+                    "name": "culture",
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "robotsTxt",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "saved",
+          "type": "object",
+          "description": "the values saved on this site, by field"
+        },
+        {
+          "name": "sources",
+          "type": "object",
+          "description": "where each value comes from: saved, config or default"
+        }
+      ],
+      "errors": ["usage", "internal", "refused", "unavailable"]
+    },
+    {
+      "name": "seo unset",
+      "description": "remove a value saved on this site, so the configuration or the default applies",
+      "effects": "idempotent",
+      "cardinality": "single",
+      "stdout_schema": {},
+      "args": [
+        {
+          "name": "field",
+          "type": "string",
+          "required": true,
+          "description": "one of indexable, sitemap, siteName, titleSuffix, defaultImage, notFoundPage, robotsTxt; any case, or kebab-case"
+        }
+      ],
+      "errors": ["usage", "internal", "refused", "unavailable"]
+    },
+    {
       "name": "site apply",
       "description": "apply a site package here or to another site: checked, backed up, one transaction",
       "effects": "idempotent",

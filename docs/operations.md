@@ -679,7 +679,7 @@ named for a hosted site is checked there instead:
 | `users sessions [end]` (your own; someone else's is an administrator's) | any | |
 | `members *`, `members groups *` | Members | |
 | `api-client rotate` | Users | yes |
-| `types *` (not `types rewrite`), `webhooks *`, `audit *`, `events *`, `index *`, `cache rebuild`, `health`, `status`, `maintenance status`, `languages add\|update\|remove` | Settings | |
+| `types *` (not `types rewrite`), `webhooks *`, `audit *`, `events *`, `index *`, `seo *`, `cache rebuild`, `health`, `status`, `maintenance status`, `languages add\|update\|remove` | Settings | |
 | `site apply\|export\|show\|urls\|key\|runs\|revert`, `extension list\|enable\|disable` | Settings | |
 | `site import`, `push`, `pull`, `maintenance pause\|resume`, `keys trust\|trusted\|untrust`, `extension install\|uninstall\|grant\|settings\|purge` | Settings | yes |
 | `languages list`, `site deploy`, `remote job`, `remote trust *` | any | |

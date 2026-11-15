@@ -8,6 +8,16 @@ point at `docs/stories/`.
 
 ### Features
 
+- **Search and sharing settings from the command line (360).** `crombolo seo show` lists
+  the values every page falls back to, the robots file and the not-found page, each saying
+  whether it was saved here, comes from the site's configuration or is the default, and
+  says when `pages.notFound` in the configuration chooses the page instead. `seo set <field>
+  [<value>]` saves one as Settings → Search & sharing saves it: `indexable` and `sitemap`
+  take on or off, `defaultImage` a media item's path or an address, `notFoundPage` a page's
+  path, `robotsTxt` its rules or `--file <path>`. `seo unset <field>` removes a saved value,
+  so the configuration applies again. Both are audited as the screen's save is, and each
+  command needs the Settings section. They change this site's database only, with no
+  `--profile`. `docs/seo.md`, "From the command line".
 - **Background jobs from the command line (359).** `crombolo jobs list [--state
   waiting|running|failed|done] [--owner <bundle|site>]` lists the site's and its bundles'
   jobs, newest first, a page at a time, as Settings → Background jobs does; `jobs show <id>`

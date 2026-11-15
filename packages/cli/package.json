@@ -150,6 +150,9 @@
       "seed": {
         "description": "a site's starting content, written as files and applied"
       },
+      "seo": {
+        "description": "search and sharing: what every page falls back to, the robots file and the not-found page"
+      },
       "site": {
         "description": "the site as a whole: what it is, and how page addresses are built"
       },
