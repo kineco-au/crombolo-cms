@@ -65,9 +65,16 @@ export * from './email-ses.ts'
 export * from './email-settings.ts'
 export * from './email-text.ts'
 export {
+  type ActivityAnswer,
+  type ActivityPart,
+  ActivityQueryError,
+  type ActivitySummary,
   activityCsv,
+  activityPath,
+  answerActivity,
   createActivityRecorder,
   personOf,
+  readActivity,
   readActivityQuery,
 } from './extension-activity.ts'
 export {

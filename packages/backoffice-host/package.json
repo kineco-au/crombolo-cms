@@ -19,6 +19,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./activity-words": "./plugin/bundles-activity-words.js",
     "./branding": "./src/branding.ts",
     "./registry": "./src/registry.ts"
   },

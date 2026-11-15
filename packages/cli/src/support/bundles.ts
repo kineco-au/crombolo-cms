@@ -2,6 +2,8 @@ import { userInfo } from 'node:os'
 import { resolve } from 'node:path'
 import { groupsOf, isUpperLevel, LEVEL_WORDS, levelOf } from '@crombolo/backoffice-host/registry'
 import {
+  type ActivityAnswer,
+  type ActivityPart,
   type BundleActor,
   type BundleAdmin,
   bootstrapDatabase,
@@ -12,6 +14,7 @@ import {
 } from '@crombolo/server'
 import { CliError } from '../errors.ts'
 import type { HostedSite } from '../profiles/choose.ts'
+import { problemOf } from '../remote/client.ts'
 import { confirm, interactive } from './prompt.ts'
 import { connectSite, needEnvironment } from './remote.ts'
 import { siteConfig } from './site.ts'
@@ -100,6 +103,47 @@ export async function remoteBundles(remote: HostedSite) {
           body: JSON.stringify({ grant, delegateTo }),
         },
       ),
+  }
+}
+
+/**
+ * What a hosted site's extensions did (story 362), through the remote
+ * protocol's `extension-activity` routes, and what it has installed when the
+ * person may list it, to name an extension by its package.
+ */
+export async function remoteActivity(remote: HostedSite) {
+  const { client, discovery, environment } = await connectSite(remote)
+  if (!(discovery.capabilities ?? []).includes('extension-activity'))
+    throw new CliError(
+      'refused',
+      'This site needs a newer crombolo to show what an extension did.',
+      {
+        hint: `${discovery.name} has to be upgraded first.`,
+      },
+    )
+  const id = needEnvironment(environment, discovery)
+  const env = `environments/${id}/installed`
+  return {
+    async installed(): Promise<InstalledBundles['items']> {
+      if (!(discovery.capabilities ?? []).includes('bundle-manage')) return []
+      try {
+        return (await client.json<InstalledBundles>(env)).items
+      } catch {
+        return []
+      }
+    },
+    async read(
+      extension: string,
+      part: ActivityPart,
+      search: URLSearchParams,
+    ): Promise<ActivityAnswer> {
+      const path = `${env}/${encodeURIComponent(extension)}/activity${part === 'summary' ? '/summary' : part === 'csv' ? '.csv' : ''}?${search}`
+      if (part === 'summary') return { part, summary: await client.json(path) }
+      if (part === 'page') return { part, page: await client.json(path) }
+      const response = await client.api(path)
+      if (!response.ok) throw await problemOf(response)
+      return { part, csv: await response.text() }
+    },
   }
 }
 

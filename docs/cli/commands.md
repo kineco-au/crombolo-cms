@@ -4021,6 +4021,39 @@ crombolo push [--from <from>] [--to <to>] [--from-env <from-env>] [--to-env <to-
 
 **Fails with:** `usage`, `internal`, `auth`, `not_found`, `refused`, `timeout`, `unavailable`, `confirmation_required`.
 
+### `crombolo extension activity`
+
+What an extension did, newest first: what it read and changed, for whom, and what it was refused. Changes nothing.
+
+```
+crombolo extension activity <extension> [--kind <kind>] [--user <user>] [--since <since>] [--until <until>] [--limit <limit>] [--before <before>] [--csv] [--file <file>] [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `extension` | string | Its id or package name; one removed is named by its id. Required. |
+| `--kind` | string | Only one kind of thing it did. One of `changes`, `reads`, `requests`, `data`, `calls`, `screens`, `refused`. |
+| `--user` | string | Only what it did for one person, by e-mail, login or key; itself for what it did on its own. |
+| `--since` | string | What it did at or after this time. |
+| `--until` | string | What it did before this time. |
+| `--limit` | integer | How many on a page. Default `50`. |
+| `--before` | string | The page after this cursor. |
+| `--csv` | boolean | Everything the filters match, as the Activity screen exports it. |
+| `--file` | string | Write the CSV file here rather than to stdout. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (bounded, with `-o json`):
+
+- `summary` (object)
+  - `counts` (object)
+  - `people` (array of object)
+  - `days` (integer)
+- `items` (array of object)
+- `next` (integer)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.
+
 ### `crombolo extension build`
 
 Build a bundle made in the Bundle Editor as an extension package. Each run acts again.

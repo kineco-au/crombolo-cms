@@ -5,14 +5,17 @@
  * person, in one minute, fold into one row. A crash loses at most a second of
  * activity; the audit log still has every write the API made.
  */
+import { normaliseUuid } from '@crombolo/core'
 import {
   ACTIVITY_KINDS,
+  type ActivityEntry,
   type ActivityFilter,
   type ActivityInput,
   type ActivityKind,
   type ActivityOutcome,
   type Db,
   ExtensionActivityLog,
+  UserRepository,
 } from '@crombolo/data'
 import type { BundleCaller } from './bundles.ts'
 import { logger } from './logging.ts'
@@ -234,4 +237,122 @@ export async function activityCsv(
     before = page.next
   }
   return `${lines.join('\n')}\n`
+}
+
+/** What an extension's activity is read for: how to flush what is not yet written, and the counts' window. */
+export interface ActivitySource {
+  flush?(): Promise<void>
+  days: number
+}
+
+export type ActivityPart = 'page' | 'summary' | 'csv'
+
+export interface ActivitySummary {
+  counts: Record<ActivityKind, number>
+  people: Array<{ key: string; name: string }>
+  days: number
+}
+
+export type ActivityAnswer =
+  | { part: 'page'; page: { items: ActivityEntry[]; next: number | null } }
+  | { part: 'summary'; summary: ActivitySummary }
+  | { part: 'csv'; csv: string }
+
+/** Why an activity query was not answered, with the status it is answered with. */
+export class ActivityQueryError extends Error {
+  constructor(
+    message: string,
+    readonly status: 400 | 404,
+  ) {
+    super(message)
+  }
+}
+
+const ACTIVITY_PATH = /^installed\/([a-z0-9][a-z0-9-]*)\/activity(\/summary|\.csv)?$/
+
+/** The extension and the part a path such as `installed/crm/activity.csv` asks for. */
+export function activityPath(path: string): { id: string; part: ActivityPart } | undefined {
+  const found = ACTIVITY_PATH.exec(path)
+  if (!found) return undefined
+  const part = found[2] === '/summary' ? 'summary' : found[2] === '.csv' ? 'csv' : 'page'
+  return { id: found[1] as string, part }
+}
+
+const UUID = /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i
+
+/** A person's key, from a key, `itself`, an e-mail or a login. */
+async function personKey(db: Db, who: string): Promise<string> {
+  const asked = who.trim()
+  if (asked === 'itself') return asked
+  if (UUID.test(asked)) return normaliseUuid(asked)
+  const users = new UserRepository(db)
+  const lower = asked.toLowerCase()
+  const found =
+    (await users.byEmail(asked)) ??
+    (await users.byUserName(asked)) ??
+    (await users.all()).find(
+      (user) => user.email.toLowerCase() === lower || user.userName.toLowerCase() === lower,
+    )
+  if (!found) throw new ActivityQueryError(`There is no user "${asked}".`, 404)
+  return found.key
+}
+
+/**
+ * One extension's activity as Installed's Activity view, the remote protocol and
+ * the command line read it: a page, the summary, or the CSV file. What the
+ * recorder holds is written first.
+ */
+export async function readActivity(
+  db: Db,
+  source: ActivitySource,
+  id: string,
+  part: ActivityPart,
+  search: URLSearchParams,
+): Promise<ActivityAnswer> {
+  const read = readActivityQuery(search)
+  if (typeof read === 'string') throw new ActivityQueryError(read, 400)
+  if (read.filter.person) read.filter.person = await personKey(db, read.filter.person)
+  await source.flush?.()
+  const store = new ExtensionActivityLog(db)
+  if (part === 'summary')
+    return {
+      part,
+      summary: {
+        counts: await store.counts(id, new Date(Date.now() - source.days * 86_400_000)),
+        people: await store.people(id),
+        days: source.days,
+      },
+    }
+  if (part === 'csv') return { part, csv: await activityCsv(store, id, read.filter) }
+  return { part, page: await store.page(id, read.filter, read.cursor) }
+}
+
+/** {@link readActivity} as a response; `refuse` words a query that was not one. */
+export async function answerActivity(
+  db: Db,
+  source: ActivitySource,
+  id: string,
+  part: ActivityPart,
+  search: URLSearchParams,
+  refuse: (status: number, message: string) => Response = (status, detail) =>
+    Response.json(
+      { title: status === 404 ? 'Not found' : 'Invalid request', status, detail },
+      { status },
+    ),
+): Promise<Response> {
+  try {
+    const answer = await readActivity(db, source, id, part, search)
+    if (answer.part === 'summary') return Response.json(answer.summary)
+    if (answer.part === 'csv')
+      return new Response(answer.csv, {
+        headers: {
+          'content-type': 'text/csv; charset=utf-8',
+          'content-disposition': `attachment; filename="${id}-activity.csv"`,
+        },
+      })
+    return Response.json(answer.page)
+  } catch (error) {
+    if (error instanceof ActivityQueryError) return refuse(error.status, error.message)
+    throw error
+  }
 }

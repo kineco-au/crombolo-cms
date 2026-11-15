@@ -419,6 +419,41 @@ export async function runConformance(options: ConformanceOptions): Promise<Confo
   )
 
   await check(
+    'extension-activity: a page, the counts and the CSV file of what an extension did',
+    async () => {
+      const capabilities = (state.discovery?.capabilities as string[] | undefined) ?? []
+      if (!capabilities.includes('extension-activity') || !state.may?.extensionActivity)
+        return 'skip'
+      const base = `environments/${state.environment}/installed/conformance-check/activity`
+      const page = await api(`${base}?limit=5`)
+      assert(page.status === 200, `a page answered ${page.status}`)
+      const body = (await page.json()) as { items?: unknown; next?: unknown }
+      assert(Array.isArray(body.items), 'items is missing')
+      assert('next' in body, 'next is missing')
+      const summary = await api(`${base}/summary`)
+      assert(summary.status === 200, `the summary answered ${summary.status}`)
+      const counts = (await summary.json()) as {
+        counts?: unknown
+        people?: unknown
+        days?: unknown
+      }
+      assert(typeof counts.counts === 'object' && counts.counts !== null, 'counts is missing')
+      assert(Array.isArray(counts.people), 'people is missing')
+      assert(typeof counts.days === 'number', 'days is missing')
+      const csv = await api(`${base}.csv`)
+      assert(csv.status === 200, `the CSV file answered ${csv.status}`)
+      assert(
+        (csv.headers.get('content-type') ?? '').startsWith('text/csv'),
+        'the CSV file is not text/csv',
+      )
+      assert((await csv.text()).startsWith('when,person,kind,'), 'the CSV file has no header')
+      const wrong = await api(`${base}?limit=0`)
+      assert(wrong.status === 400, `a limit of 0 answered ${wrong.status}`)
+      assert(isProblem(wrong), 'not application/problem+json')
+    },
+  )
+
+  await check(
     "public-access: a page's access reads back, and an unknown page's is not found",
     async () => {
       const capabilities = (state.discovery?.capabilities as string[] | undefined) ?? []

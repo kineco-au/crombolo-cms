@@ -67,6 +67,8 @@ stated otherwise. Errors are `application/problem+json` with a stable `code`
     listed and ended, and where a group starts set (see below).
   - `background-jobs` means the site's background jobs can be listed, and a
     failed one run again (see below).
+  - `extension-activity` means what an extension did can be read and exported
+    (see below).
   - `restart` means the site can be restarted (see below).
   - A client ignores capabilities it doesn't know.
 
@@ -170,12 +172,14 @@ may do:
 [{ "id": "production", "name": "production", "protected": true,
    "access": "all",
    "may": { "pull": true, "pullFull": false, "push": true, "apply": true,
-            "applyStructure": true, "audit": false, "backgroundJobs": true } }]
+            "applyStructure": true, "audit": false, "backgroundJobs": true,
+            "extensionActivity": true } }]
 ```
 
 `audit` is there when the remote offers the capability. `backgroundJobs` is
 whether this person may see and retry the site's background jobs: the Settings
-section, and never CI. `access` is the site's
+section, and never CI. `extensionActivity` is whether this person may read what an
+extension did, on the same terms. `access` is the site's
 `CROMBOLO_REMOTE_ACCESS`, and every `may` is already bounded by it: `apply` needs
 `content`, and `push` and `applyStructure` need `all`.
 
@@ -576,6 +580,37 @@ push's.
 - **The audit log** records a retry as the dashboard does: category `system`,
   `Retry` of a `Job` named `owner/name`, with the error it failed with, as the
   person, with their address.
+
+## What an extension did (`extension-activity`, optional)
+
+Story 362. An extension's activity as Installed → "See what it did" reads it, and
+the same as its CSV export. They are answered before `bundle-manage`'s
+`installed/…` routes, under their own capability, so a site from before them is
+told apart by discovery rather than by a 405.
+
+| | |
+| --- | --- |
+| `GET <api>/environments/{id}/installed/{ext}/activity[?kind&person&since&until&before&limit]` | `{ items, next }`, the newest first |
+| `GET <api>/environments/{id}/installed/{ext}/activity/summary` | `{ counts, people, days }`: each kind's count over the window the site keeps, and everyone it acted for |
+| `GET <api>/environments/{id}/installed/{ext}/activity.csv[?kind&person&since&until]` | every row the filters match, as `text/csv`: `when,person,kind,area,verb,item,count,outcome,ms` |
+
+```json
+{ "id": 812, "extensionId": "crm", "personKey": "…", "personName": "Ada King",
+  "kind": "write", "area": "content", "verb": "save", "entityKey": "…", "count": 1,
+  "outcome": "ok", "ms": 12, "occurredAt": "2026-11-15T09:12:00.000Z" }
+```
+
+- **`{ext}`** is the extension's id, not its package name; a removed extension's rows
+  are found by it until they are pruned.
+- **The filters:** `kind` is one of `read`, `write`, `request`, `rows`, `call`,
+  `screen` and `refused`; `person` is a user's key, e-mail or login, or `itself`,
+  and one that is nobody answers 404 `not-found`; `since` and `until` are times.
+  `limit` is 1 to 500, 100 by default, and `next` passed back as `before` gives the
+  page after. A query that is not one answers 400 `bad-request`.
+- **Fresh:** what the extension did in the last second is written before answering.
+- **Who:** a person with the Settings section, never CI (403
+  `ci-cannot-read-activity`); without the section, 403 `forbidden`. Reading it is
+  not itself audited.
 
 ## Installed bundles (`bundle-manage`, optional)
 

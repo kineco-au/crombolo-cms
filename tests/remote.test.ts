@@ -225,6 +225,8 @@ describe(`discovery (${dialectUnderTest})`, () => {
         'users',
         // Story 359: background jobs, listed and a failed one run again.
         'background-jobs',
+        // Story 362: what an extension did, as Installed's Activity view reads it.
+        'extension-activity',
         // Story 241: installed bundles, managed as Settings → Bundles does.
         'bundle-manage',
       ],
@@ -247,6 +249,7 @@ describe(`discovery (${dialectUnderTest})`, () => {
           applyStructure: true,
           audit: true,
           backgroundJobs: true,
+          extensionActivity: true,
         },
       },
     ])

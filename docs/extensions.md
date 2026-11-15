@@ -217,8 +217,21 @@ filterable by kind and by person, with an export as CSV.
 - **How long:** `CROMBOLO_EXTENSION_ACTIVITY_DAYS`, 14 by default, `0` to keep none,
   pruned hourly, and at most 100,000 rows an extension, oldest first.
 - **The routes:** `GET <back office>/crombolo/api/extensions/installed/<id>/activity`
-  with `before`, `limit`, `kind`, `person` (a key, or `itself`), `since` and `until`;
-  `…/activity/summary`; `…/activity.csv`.
+  with `before`, `limit`, `kind`, `person` (a key, an e-mail, a login, or `itself`),
+  `since` and `until`; `…/activity/summary`; `…/activity.csv`. `answerActivity` in
+  `extension-activity.ts` answers them, and the remote protocol's
+  `extension-activity` routes too.
+- **From the command line** (story 362): `crombolo extension activity <extension>`,
+  the extension by its id or package name, a removed one by its id. It prints the
+  counts line, then a line per row worded as the screen words it, newest first.
+  - `--kind changes|reads|requests|data|calls|screens|refused`, `--user <who>` (an
+    e-mail, a login, a key, or `itself`), `--since` and `--until`;
+  - `--limit` (50) and `--before`, with "More: --before N" in text and `next` in
+    `-o json`'s `{ summary, items, next }`;
+  - `--csv` writes the screen's file to stdout, or to `--file <path>`.
+  - It needs the Settings section, as the screen does. On this site it reads the
+    database, so while the site runs the last second may not be there yet; with
+    `--profile` it reads a hosted site through `extension-activity`.
 
 ## Its own tables
 

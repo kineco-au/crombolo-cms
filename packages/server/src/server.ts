@@ -91,7 +91,6 @@ import {
   appendCacheInstruction,
   currentAuditContext,
   type Db,
-  ExtensionActivityLog,
   ensureFormLibraryTypes,
   ensureKeyValue,
   FormEntryRepository,
@@ -204,7 +203,7 @@ import { editorTypeLibs, siteJsxImportSource } from './editor-types.ts'
 import { emailAvailability, emailReady } from './email.ts'
 import { noticeAboutEmail } from './email-notice.ts'
 import { createEmailSettings, type EmailSettingsInput } from './email-settings.ts'
-import { activityCsv, readActivityQuery } from './extension-activity.ts'
+import { activityPath, answerActivity } from './extension-activity.ts'
 import { createBackOfficeBuilds } from './extension-backoffice.ts'
 import { warnAboutAppPlugins } from './extensions-notice.ts'
 import { coerceForm, deleteForm, saveForm } from './form-files.ts'
@@ -935,6 +934,7 @@ export async function createServer(
     },
     restart: serverOptions.restart,
     jobsWaitingSince: () => core.workerWatch.status().waitingSince,
+    activity: { flush: () => core.activity.flush(), days: config.extensionActivityDays },
     onApplied: async () => {
       cache.invalidate()
       mediaCache.clear()
@@ -2336,35 +2336,15 @@ export async function createServer(
       }
 
       // Story 327: what one extension did, newest first, its counts, and the same as a file.
-      const watching = /^installed\/([a-z0-9][a-z0-9-]*)\/activity(\/summary|\.csv)?$/.exec(action)
-      if (watching && request.method === 'GET') {
-        const [, id, part] = watching as unknown as [string, string, string | undefined]
-        const read = readActivityQuery(url.searchParams)
-        if (typeof read === 'string')
-          return Response.json(
-            { title: 'Invalid request', status: 400, detail: read },
-            { status: 400 },
-          )
-        await core.activity.flush()
-        const store = new ExtensionActivityLog(db)
-        if (part === '/summary')
-          return Response.json({
-            counts: await store.counts(
-              id,
-              new Date(Date.now() - config.extensionActivityDays * 86_400_000),
-            ),
-            people: await store.people(id),
-            days: config.extensionActivityDays,
-          })
-        if (part === '.csv')
-          return new Response(await activityCsv(store, id, read.filter), {
-            headers: {
-              'content-type': 'text/csv; charset=utf-8',
-              'content-disposition': `attachment; filename="${id}-activity.csv"`,
-            },
-          })
-        return Response.json(await store.page(id, read.filter, read.cursor))
-      }
+      const watching = activityPath(action)
+      if (watching && request.method === 'GET')
+        return answerActivity(
+          db,
+          { flush: () => core.activity.flush(), days: config.extensionActivityDays },
+          watching.id,
+          watching.part,
+          url.searchParams,
+        )
 
       // What this person may grant at each level here (story 324): the panel shows the button, the sentence or the snippet.
       const granting = mayGrant(principal.isAdmin, config.unrestrictedExtensions)

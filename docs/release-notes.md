@@ -8,6 +8,19 @@ point at `docs/stories/`.
 
 ### Features
 
+- **What an extension did, from the command line (362).** `crombolo extension activity
+  <extension> [--kind changes|reads|requests|data|calls|screens|refused] [--user <who>]
+  [--since <time>] [--until <time>]` prints the counts for the days the site keeps, then
+  what the extension did, newest first, a page at a time with `--limit` and `--before`,
+  each row worded as Installed → "See what it did" words it. The extension is named by its
+  id or package name, and a removed one by its id; `--user` takes an e-mail, a login, a key
+  or `itself`. `-o json` gives `{ summary, items, next }`, and `--csv` writes the screen's
+  export to stdout or to `--file <path>`. It needs the Settings section and takes
+  `--profile`. The screen's Person filter now also takes an e-mail or a login.
+  `docs/extensions.md`, "Watching one".
+- **The remote protocol's `extension-activity` (362)** carries that command to a hosted
+  site: a page, the summary and the CSV file, as the signed-in person and never as CI;
+  `environments` says `may.extensionActivity`, and the conformance suite checks it.
 - **Library elements and menus from the command line (361).** The `content` commands take a
   Library item as `library:/<folder>/<name>`, or by its key: `content new library:/Menus/Footer
   --type menu` makes an element in a folder that is already there, and `update`, `show`,

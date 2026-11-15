@@ -138,6 +138,12 @@ describe('what each command declares', () => {
     // Story 359: background jobs are the Settings section's, as their dashboard is.
     for (const id of ['jobs:list', 'jobs:show', 'jobs:retry'])
       expect(declared(id), id).toEqual({ access: 'site', section: 'settings', adminOnly: false })
+    // Story 362: what an extension did, as Installed's Activity view; not an administrator's.
+    expect(declared('extension:activity')).toEqual({
+      access: 'site',
+      section: 'settings',
+      adminOnly: false,
+    })
     // Story 360: search and sharing settings, as Settings → Search & sharing has them.
     for (const id of ['seo:show', 'seo:set', 'seo:unset'])
       expect(declared(id), id).toEqual({ access: 'site', section: 'settings', adminOnly: false })

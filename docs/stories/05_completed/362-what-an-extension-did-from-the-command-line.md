@@ -161,9 +161,59 @@ refused, and exports it. `extension list` doesn't show it.
 
 ## Acceptance criteria
 
-- [ ] `crombolo extension activity <id> [--kind <kind>] [--user <user>] [--since
+- [x] `crombolo extension activity <id> [--kind <kind>] [--user <user>] [--since
       <time>]`, a page at a time, with `-o json`, and the screen's export as CSV through
       the flag D2 settles (`-o` takes only text and json today)
-- [ ] It takes `--profile`, as the other `extension` commands do
-- [ ] Tests locally and through a test server
-- [ ] The CLI reference regenerated
+- [x] It takes `--profile`, as the other `extension` commands do
+- [x] Tests locally and through a test server
+- [x] The CLI reference regenerated
+
+## Built
+
+Built 2026-11-15, as planned:
+- the shared core is in `packages/server/src/extension-activity.ts`: `readActivity`
+  answers a page, the summary or the CSV file, flushing the recorder first, and
+  `answerActivity` makes it a response. `activityPath` reads
+  `installed/{id}/activity[/summary|.csv]`, and `ActivityQueryError` is a query that is
+  not one (400) or a person who is nobody (404). The Activity view's endpoint in
+  `server.ts` now calls `answerActivity`, with the same answers;
+- `person` takes a key, `itself`, an e-mail or a login, the last two in any case, looked
+  up through `UserRepository`; a key is taken as it is, so a removed person's rows are
+  still found;
+- the remote routes are `packages/server/src/remote-extension-activity.ts`, mounted in
+  `remote.ts` under `extension-activity` before `manageBundles`, offered when
+  `RemoteOptions.activity` is given (`server.ts` passes the recorder's flush and
+  `extensionActivityDays`). Settings, as the signed-in person; CI is refused with 403
+  `ci-cannot-read-activity`, a person without Settings with 403 `forbidden`;
+- the command is `packages/cli/src/commands/extension/activity.ts`, over
+  `packages/cli/src/support/extension-activity.ts`, whose `withActivity` makes the same
+  calls here or on a hosted site; `support/bundles.ts` gains `remoteActivity`;
+- `@crombolo/backoffice-host` exports `./activity-words`, so the CLI words a row as the
+  screen does;
+- the conformance suite reads a page, the summary and the CSV file, and checks a limit
+  of 0 is a 400 problem;
+- docs: `docs/extensions.md` ("Watching one"), `docs/remote-protocol.md`, the CLI
+  reference, and the release notes;
+- tests: `tests/extension-activity.test.ts` (the core, beside the endpoint's existing
+  test), `tests/extension-activity-cli.test.ts`, and additions to
+  `tests/cli-access.test.ts`, `tests/remote.test.ts` and
+  `tests/remote-conformance.test.ts`. **The tests are written but not yet run:** the
+  maintainer runs the full suites once, at the release. `bun run check` passes.
+
+Where it differs from the plan, or fills it in:
+- **The core is split in two:** `readActivity` gives the data, which the local command
+  uses, and `answerActivity` the response, which the endpoint and the remote routes use,
+  each wording a refusal its own way (the endpoint's `{ title, status, detail }`, the
+  remote's problem document).
+- **`environments` says `may.extensionActivity`,** as it says `may.backgroundJobs`, false
+  for CI.
+- **On a hosted site the package name is resolved through `bundle-manage`'s
+  `installed`** when the site offers it and the person may list it; otherwise the name
+  is read as an id.
+- **A refused row is marked `(refused)`** after its sentence, unless the sentence already
+  says so (a `refused` row's "was refused: …").
+- **`--csv` with `-o json` and no `--file` is refused** as usage, since both would go to
+  stdout; with `--file`, JSON gives `{ file, rows }`. `--file` without `--csv` is refused
+  by the flag parser.
+- **The screen's Person filter takes an e-mail or a login too,** since the endpoint now
+  uses the same core. It sends keys, so it is unchanged.

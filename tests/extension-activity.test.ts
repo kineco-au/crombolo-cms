@@ -7,8 +7,21 @@
  */
 import { afterEach, describe, expect, test } from 'bun:test'
 import { join } from 'node:path'
-import { cromboloPlan, type Db, ExtensionActivityLog, migrate } from '@crombolo/data'
-import { createActivityRecorder, readActivityQuery } from '@crombolo/server'
+import {
+  cromboloPlan,
+  type Db,
+  ExtensionActivityLog,
+  migrate,
+  UserRepository,
+} from '@crombolo/data'
+import {
+  ActivityQueryError,
+  activityPath,
+  answerActivity,
+  createActivityRecorder,
+  readActivity,
+  readActivityQuery,
+} from '@crombolo/server'
 import {
   activitySentence,
   countsLine,
@@ -104,6 +117,111 @@ describe(`the recorder (${dialectUnderTest})`, () => {
       ['write', 1],
       ['write', 1],
     ])
+  })
+})
+
+describe(`the shared core (${dialectUnderTest})`, () => {
+  const ADA = '6c1f6f9e-2b7a-4d4e-9a51-1f0e8d2a3b4c'
+  async function seeded() {
+    const db = await migrated()
+    await new UserRepository(db).create({
+      key: ADA,
+      name: 'Ada Lovelace',
+      userName: 'ada',
+      email: 'ada@example.com',
+      kind: 'Default',
+      groupKeys: [],
+      languageIsoCode: null,
+    })
+    await new ExtensionActivityLog(db).record([
+      row({ kind: 'read', count: 7 }),
+      row({ personKey: ADA, personName: 'Ada Lovelace', entityKey: 'k1' }),
+      row({ kind: 'refused', outcome: 'refused', verb: 'save (redirects.write)' }),
+    ])
+    return db
+  }
+  const q = (query = '') => new URLSearchParams(query)
+
+  test('a page, the summary and the CSV file, the recorder flushed first', async () => {
+    const db = await seeded()
+    let flushed = 0
+    const source = { flush: async () => void flushed++, days: 14 }
+    const page = await readActivity(db, source, 'crm', 'page', q('limit=2'))
+    expect(page.part === 'page' && page.page.items.map((item) => item.kind)).toEqual([
+      'refused',
+      'write',
+    ])
+    expect(page.part === 'page' && page.page.next).not.toBeNull()
+    const summary = await readActivity(db, source, 'crm', 'summary', q())
+    expect(summary).toEqual({
+      part: 'summary',
+      summary: {
+        counts: expect.objectContaining({ read: 7, write: 1, refused: 1 }),
+        people: [{ key: ADA, name: 'Ada Lovelace' }],
+        days: 14,
+      },
+    })
+    const csv = await readActivity(db, source, 'crm', 'csv', q('kind=write'))
+    const lines = csv.part === 'csv' ? csv.csv.trim().split('\n') : []
+    expect(lines[0]).toBe('when,person,kind,area,verb,item,count,outcome,ms')
+    expect(lines.slice(1)).toEqual([
+      expect.stringContaining(',Ada Lovelace,write,redirects,save,k1,1,ok,3'),
+    ])
+    expect(flushed).toBe(3)
+  })
+
+  test('a person by key, e-mail or login, or itself; an unknown one is not found', async () => {
+    const db = await seeded()
+    const source = { days: 14 }
+    const kinds = async (person: string) => {
+      const answer = await readActivity(
+        db,
+        source,
+        'crm',
+        'page',
+        q(`person=${encodeURIComponent(person)}`),
+      )
+      return answer.part === 'page' ? answer.page.items.map((item) => item.kind) : []
+    }
+    expect(await kinds(ADA.toUpperCase())).toEqual(['write'])
+    expect(await kinds('ada@example.com')).toEqual(['write'])
+    expect(await kinds('ADA@Example.com')).toEqual(['write'])
+    expect(await kinds('ada')).toEqual(['write'])
+    expect(await kinds('itself')).toEqual(['refused', 'read'])
+    const unknown = readActivity(db, source, 'crm', 'page', q('person=nobody@example.com'))
+    await expect(unknown).rejects.toBeInstanceOf(ActivityQueryError)
+    await expect(unknown).rejects.toThrow('There is no user "nobody@example.com".')
+  })
+
+  test('as a response: the JSON, the file, and a query that is not one refused', async () => {
+    const db = await seeded()
+    const source = { days: 14 }
+    expect(activityPath('installed/crm/activity')).toEqual({ id: 'crm', part: 'page' })
+    expect(activityPath('installed/crm/activity/summary')).toEqual({ id: 'crm', part: 'summary' })
+    expect(activityPath('installed/crm/activity.csv')).toEqual({ id: 'crm', part: 'csv' })
+    expect(activityPath('installed/@acme%2Fcrm/activity')).toBeUndefined()
+    const page = await answerActivity(db, source, 'crm', 'page', q())
+    expect(((await page.json()) as { items: unknown[] }).items).toHaveLength(3)
+    const file = await answerActivity(db, source, 'crm', 'csv', q())
+    expect(file.headers.get('content-type')).toBe('text/csv; charset=utf-8')
+    expect(file.headers.get('content-disposition')).toBe('attachment; filename="crm-activity.csv"')
+    const bad = await answerActivity(db, source, 'crm', 'page', q('limit=0'))
+    expect(bad.status).toBe(400)
+    expect(await bad.json()).toEqual({
+      title: 'Invalid request',
+      status: 400,
+      detail: 'limit must be between 1 and 500.',
+    })
+    const nobody = await answerActivity(
+      db,
+      source,
+      'crm',
+      'page',
+      q('person=nobody'),
+      (status, title) => Response.json({ code: 'refused', title }, { status }),
+    )
+    expect(nobody.status).toBe(404)
+    expect(await nobody.json()).toEqual({ code: 'refused', title: 'There is no user "nobody".' })
   })
 })
 

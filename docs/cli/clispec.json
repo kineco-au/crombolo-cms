@@ -3263,6 +3263,111 @@
       "errors": ["usage", "internal"]
     },
     {
+      "name": "extension activity",
+      "description": "what an extension did, newest first: what it read and changed, for whom, and what it was refused",
+      "effects": "read_only",
+      "cardinality": "bounded",
+      "output_fields": [
+        {
+          "name": "summary",
+          "type": "object",
+          "fields": [
+            {
+              "name": "counts",
+              "type": "object",
+              "description": "how many of each kind, reads counted as made"
+            },
+            {
+              "name": "people",
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            {
+              "name": "days",
+              "type": "integer",
+              "description": "the days the counts cover"
+            }
+          ]
+        },
+        {
+          "name": "items",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "next",
+          "type": "integer",
+          "nullable": true,
+          "description": "pass back as --before for the next page; null at the end"
+        }
+      ],
+      "args": [
+        {
+          "name": "extension",
+          "type": "string",
+          "required": true,
+          "description": "its id or package name; one removed is named by its id"
+        },
+        {
+          "name": "--kind",
+          "type": "string",
+          "enum": ["changes", "reads", "requests", "data", "calls", "screens", "refused"],
+          "description": "only one kind of thing it did"
+        },
+        {
+          "name": "--user",
+          "type": "string",
+          "description": "only what it did for one person, by e-mail, login or key; itself for what it did on its own"
+        },
+        {
+          "name": "--since",
+          "type": "string",
+          "description": "what it did at or after this time"
+        },
+        {
+          "name": "--until",
+          "type": "string",
+          "description": "what it did before this time"
+        },
+        {
+          "name": "--limit",
+          "type": "integer",
+          "default": 50,
+          "description": "how many on a page"
+        },
+        {
+          "name": "--before",
+          "type": "string",
+          "description": "the page after this cursor"
+        },
+        {
+          "name": "--csv",
+          "type": "boolean",
+          "description": "everything the filters match, as the Activity screen exports it"
+        },
+        {
+          "name": "--file",
+          "type": "string",
+          "description": "write the CSV file here rather than to stdout"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "act on the site this profile names, rather than this one"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "a hosted site's environment"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "refused", "unavailable"]
+    },
+    {
       "name": "extension build",
       "description": "build a bundle made in the Bundle Editor as an extension package",
       "effects": "non_idempotent",

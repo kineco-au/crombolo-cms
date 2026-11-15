@@ -32,7 +32,8 @@ export interface AuditSource {
   close(): Promise<void>
 }
 
-const when = (value: string | undefined, flag: string): Date | undefined => {
+/** A time a flag gives, or a usage error saying what it could not read. */
+export const readTime = (value: string | undefined, flag: string): Date | undefined => {
   if (value === undefined) return undefined
   const date = new Date(value)
   if (Number.isNaN(date.getTime()))
@@ -70,8 +71,8 @@ export function auditFilterOf(flags: {
   entity?: string
 }): AuditFilter {
   return {
-    since: when(flags.since, '--since'),
-    until: when(flags.until, '--until'),
+    since: readTime(flags.since, '--since'),
+    until: readTime(flags.until, '--until'),
     user: flags.user,
     category: flags.category as AuditCategory | undefined,
     action: flags.action,

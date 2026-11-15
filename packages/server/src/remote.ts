@@ -72,6 +72,7 @@ import { siteMemberPorts } from './member-admin.ts'
 import { describeProvenance, provenanceProblem, verifyProvenance } from './provenance.ts'
 import { createBackgroundJobRoutes } from './remote-background-jobs.ts'
 import { createCiSignIn, readRuleInput, trustedIssuers } from './remote-ci.ts'
+import { createExtensionActivityRoutes } from './remote-extension-activity.ts'
 import { createMemberRoutes } from './remote-members.ts'
 import { createUndoRoutes } from './remote-undo.ts'
 import { createUserRoutes } from './remote-users.ts'
@@ -118,6 +119,8 @@ export interface RemoteOptions {
   userPorts?: () => Pick<UserPorts, 'users' | 'groups'> | undefined
   /** When this node began waiting for a background worker that is not running (story 223), or null. */
   jobsWaitingSince?: () => string | null
+  /** The extension activity recorder's flush and the counts' window (story 362); absent, those routes are not offered. */
+  activity?: { flush(): Promise<void>; days: number }
 }
 
 /** What a supervised restart came to: the new server serving, or why the old one still is. */
@@ -243,6 +246,7 @@ export function createRemote(options: RemoteOptions): Remote {
       ...memberRoutes.capabilities,
       ...userRoutes.capabilities,
       ...backgroundJobRoutes.capabilities,
+      ...(activityRoutes?.capabilities ?? []),
       ...(settings.approvals ? ['approvals'] : []),
       ...(options.bundles && atLeast('read') ? ['bundle-manage'] : []),
       ...(options.restart && atLeast('all') ? ['restart'] : []),
@@ -301,6 +305,10 @@ export function createRemote(options: RemoteOptions): Remote {
     levelRefusal: () => (atLeast('content') ? undefined : notAtLevel('content', 'job retries')),
     waitingSince: options.jobsWaitingSince,
   })
+
+  const activityRoutes = options.activity
+    ? createExtensionActivityRoutes({ db, problem, activity: options.activity })
+    : undefined
 
   const userRoutes = createUserRoutes({
     db,
@@ -1537,6 +1545,7 @@ export function createRemote(options: RemoteOptions): Remote {
                 may(principal, RemotePermissions.ApplyStructure),
               audit: mayReadAudit(principal),
               backgroundJobs: backgroundJobRoutes.may(principal),
+              extensionActivity: activityRoutes?.may(principal) ?? false,
             },
           },
         ])
@@ -1600,6 +1609,10 @@ export function createRemote(options: RemoteOptions): Remote {
         if (answered) return answered
       }
       if (what === 'restart' && request.method === 'POST') return restartSite(request, principal)
+      if (activityRoutes && what.startsWith('installed/')) {
+        const answered = await activityRoutes.handle(request, url, principal, what)
+        if (answered) return answered
+      }
       if (what === 'installed' || what.startsWith('installed/'))
         return manageBundles(request, principal, what)
       // Story 167: the site's level first, then the person's permissions.

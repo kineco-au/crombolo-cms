@@ -6,7 +6,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { DEVICE_CODE_GRANT, REMOTE_CLIENT_ID } from '@crombolo/auth'
-import { JobRepository } from '@crombolo/data'
+import { ExtensionActivityLog, JobRepository } from '@crombolo/data'
 import { runConformance } from '@crombolo/remote-conformance'
 import { dialectUnderTest } from './support/db.ts'
 import {
@@ -101,6 +101,22 @@ describe(`the remote conformance suite (${dialectUnderTest})`, () => {
       queuedBy: null,
       runAt: new Date(Date.now() + 60 * 60_000),
     })
+    // A row of what an extension did, for extension-activity to page, count and export.
+    await new ExtensionActivityLog(h.server.db).record([
+      {
+        extensionId: 'conformance-check',
+        personKey: null,
+        personName: null,
+        kind: 'write',
+        area: 'redirects',
+        verb: 'save',
+        entityKey: null,
+        count: 1,
+        outcome: 'ok',
+        ms: 2,
+        occurredAt: new Date(),
+      },
+    ])
     const report = await runConformance({
       url: ORIGIN,
       token: await token(h),

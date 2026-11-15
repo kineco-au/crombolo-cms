@@ -100,7 +100,7 @@
         "description": "what is waiting to go out to webhooks and e-mail, and sending failures again"
       },
       "extension": {
-        "description": "extensions: install, grant, configure and check them, and purge their tables"
+        "description": "extensions: install, grant, configure and check them, see what they did, and purge their tables"
       },
       "forms": {
         "description": "the site's forms: make, list, show, change and remove them"
