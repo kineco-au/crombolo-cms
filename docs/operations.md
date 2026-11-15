@@ -674,7 +674,9 @@ named for a hosted site is checked there instead:
 | `dictionary *` | Translation | |
 | `forms *` | Forms | |
 | `workflows *` | Content or Workflows | |
-| `users *`, `users groups *` | Users | |
+| `users *` (not `users sessions`), `users groups list\|show\|export\|sections\|permissions` | Users | |
+| `users groups new\|update\|remove` | Users | yes |
+| `users sessions [end]` (your own; someone else's is an administrator's) | any | |
 | `members *`, `members groups *` | Members | |
 | `api-client rotate` | Users | yes |
 | `types *` (not `types rewrite`), `webhooks *`, `audit *`, `events *`, `index *`, `cache rebuild`, `health`, `status`, `maintenance status`, `languages add\|update\|remove` | Settings | |
@@ -804,11 +806,18 @@ These open the site's database directly rather than going through the server,
 so they work when the site will not boot; in a container, run them with `docker
 exec`. Each writes an audit entry, and each takes `-o json`.
 
-**People** (story 151) go through the same rules as the Users section:
+**People** (stories 151 and 356) go through the same rules as the Users section, as the
+person signed in, or as the command line when nobody is (story 356, D1): someone who is
+no administrator sees no administrators and changes none, hands out only the groups they
+own, and is refused `users groups new|update|remove`, which are an administrator's:
 
 | Command | What it does |
 |---|---|
-| `crombolo users list` | everyone, the built-in administrator included: groups, state, last sign-in |
+| `crombolo users list` | everyone the person may see, the built-in administrator too with nobody signed in: groups, state, last sign-in |
+| `crombolo users update <who> [--name] [--email] [--group <alias>]… [--remove-group <alias>]… [--ui-language <iso>]` | changes what it names and keeps the rest; a username that was the old e-mail follows a new one where usernames are e-mail addresses. Says what changed, or "no change" |
+| `crombolo users remove <who>` | removes someone who has never signed in. Someone who has is disabled instead; yourself, the built-in administrator and the last administrator are refused |
+| `crombolo users sessions [<who>]` | the browsers and terminals signed in as you, or as someone else for an administrator: an id, when it signed in, when it was last used and the address. The sign-in this command line uses is marked "this terminal". With nobody signed in, name whose |
+| `crombolo users sessions end <id>` | ends one, by the eight characters listed or more; ending this terminal's own is allowed, and `crombolo logout` is the way next time |
 | `crombolo users unlock <who>` | clears a lockout and the failed sign-ins |
 | `crombolo users disable <who>` / `enable <who>` | stops someone signing in, ending their sessions, and lets them again |
 | `crombolo users reset-password <who> [--stdin]` | a generated password, printed, or one piped in; their sessions end |
@@ -816,7 +825,37 @@ exec`. Each writes an audit entry, and each takes `-o json`.
 | `crombolo users invite <email> --group <alias>` | creates the user and prints the link they set a password with, for a site with no e-mail |
 | `crombolo api-client rotate [--client <id>]` | a new secret for the seeded API client, printed once; put it in `CROMBOLO_API_CLIENT_SECRET` |
 
-`<who>` is an e-mail address or a username, in any case.
+`<who>` is an e-mail address, a username or a key, in any case.
+
+**Nobody leaves the site without an administrator** (story 356). The user ports refuse a
+change, a group change or a removal that would leave the admin group empty, so the back
+office refuses it too, as it already refused taking the last person out of the group from
+the group's own screen. The site's built-in administrator is never removed.
+
+**A sign-in** is open while its session has not ended and it still has a refresh token to
+renew: a browser's (`user_login_session`), or a terminal's, which is a device sign-in
+(story 107) and named by the device. Ending one is `AuthStore.endSession`, as a revoked
+device's is. The audit entry is `EndSession`, keyed by whose it was, with no address.
+
+**A group's start nodes and owners** (story 356) are kept with each environment's
+database, as story 228 settled, so `users groups new|update` set them through the group
+screen's own save (`placeGroup`, `packages/server/src/user-admin.ts`):
+
+- `--start-at <page|root|none>`, `--media-start-at <folder|root|none>` and
+  `--library-start-at <folder|root|none>`: a place by path or key, `root` for the whole tree,
+  `none` for none of it;
+- `--owner <alias>`… and `--remove-owner <alias>`…: owners are the group's file's when the
+  file names them, and changed there; otherwise the database's (D3);
+- the file is changed and applied first, then the database's part. `--no-apply` refuses
+  those flags, since the group is not there yet, and `--dry-run` says what both would do;
+- `users groups update` with only these flags works on a group made in the back office too;
+- `users groups show` shows each, and where each is kept.
+
+With `--profile`, `users update|remove|sessions|sessions end` and `users groups update` act
+on a hosted site through the remote protocol's `users` routes, as the person signed in to
+it; CI is refused. On a hosted site `users groups update` takes only the start node and
+owner flags, since a group's name, sections, permissions and languages are in the site's
+files. `users groups new` takes no `--profile`: a group is made in the site's files.
 
 **The running site** (story 152):
 

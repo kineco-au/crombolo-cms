@@ -41,6 +41,10 @@ export type UserStatus =
   | 'InvalidResetCode'
   /** Crombolo: a group added or removed is not one the caller owns (story 302). */
   | 'NotGroupOwner'
+  /** Crombolo: the change would leave the admin group with nobody in it. */
+  | 'AdminGroupCannotBeEmpty'
+  /** The site's built-in administrator, who is never deleted. */
+  | 'CannotDelete'
 
 export type UserOrder =
   | 'UserName'

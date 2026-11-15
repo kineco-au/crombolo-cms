@@ -63,6 +63,8 @@ stated otherwise. Errors are `application/problem+json` with a stable `code`
     rolled back, and the recycle bin listed and restored from (see below).
   - `members` and `public-access` mean members and their groups can be looked
     after, and who may see a page set (see below).
+  - `users` means back-office users can be changed and removed, their sign-ins
+    listed and ended, and where a group starts set (see below).
   - `restart` means the site can be restarted (see below).
   - A client ignores capabilities it doesn't know.
 
@@ -486,6 +488,54 @@ person.
 - **The audit log** records each write to a member or a group by its key, with the
   person and their address, and never the member's name, e-mail or values. A
   page's access is recorded as the back office's is.
+
+## Users (`users`, optional)
+
+Story 356. Back-office users as the Users section has them, the browsers and
+terminals signed in, and where a user group starts and who owns it, answered as
+the signed-in person through the same rules.
+
+| | |
+| --- | --- |
+| `GET <api>/environments/{id}/users?find=<who>` or `users/{who}` | one user, named by key, e-mail address or username |
+| `PATCH <api>/environments/{id}/users/{key}` `{ name?, email?, addGroups?, removeGroups?, uiLanguage? }` | a change; `{ user, changed }` |
+| `DELETE <api>/environments/{id}/users/{key}` | removes someone who has never signed in; the user as they were |
+| `GET <api>/environments/{id}/sign-ins[?user={key}]` | `{ items }`: the caller's open sign-ins, or that user's |
+| `DELETE <api>/environments/{id}/sign-ins/{id}` | ends one, by its id or at least its first eight characters; the sign-in |
+| `PATCH <api>/environments/{id}/user-groups/{alias}[?dryRun=true]` `{ content?, media?, library?, addOwners?, removeOwners? }` | where it starts and who owns it; `{ group, changed }` |
+
+```json
+{ "key": "…", "name": "Ada King", "email": "ada@example.com", "userName": "ada@example.com",
+  "state": "Active", "groups": ["editor"], "uiLanguage": null, "lastSignIn": "2026-11-15T09:12:00.000Z" }
+```
+
+- **A change** names only what changes; groups by alias. `changed` lists what did
+  (`name`, `email`, `userName`, `groups`, `uiLanguage`), empty for a change to
+  nothing, which saves nothing. A username that was the e-mail follows a new one
+  where usernames are e-mail addresses.
+- **A sign-in** is `{ id, user: { key, name }, kind, device, signedIn, lastUsed,
+  address, current }`: `kind` is `browser` or `terminal`, a device sign-in, which
+  `device` names; `current` marks the one the request's own token belongs to. An
+  open one has not ended and still has a refresh token to renew.
+- **A group's place** is `{ key, alias, name, content, media, library, owners }`:
+  each tree is `{ at, key, path }`, with `at` one of `root`, `none` or `node`, and
+  owners by alias. A change names a place by path or key, `root` or `none`; owners are
+  added and removed by alias. Owners the group's file names are the file's, so a site
+  whose files are not written refuses them (403 `forbidden`). `dryRun=true` says what
+  would change and changes nothing.
+- **Who:** a person, never CI (403 `ci-cannot-change-people`), with the Users
+  section for users and groups (403 `forbidden`). A sign-in needs no section: your
+  own are yours, and someone else's are an administrator's. Only an administrator
+  changes an administrator's account, or a group; anyone else adds people to and
+  takes them out of only the groups they own.
+- **The level:** a write needs `content` (403 `access-level`).
+- **Errors:** an unknown user, group, place or sign-in answers 404 `not-found`; an
+  e-mail or username another user has, 409 `conflict`; a refusal, 403 `forbidden`
+  with the reason in `title`: someone who has signed in, yourself, the built-in
+  administrator, and a change that would leave the site with no administrator.
+- **The audit log** records each write as the Management API records the same change:
+  a user's `Save` and `Delete`, a group's `Save` (category `permission`), and
+  `EndSession` keyed by whose sign-in it was, with the person and their address, by key.
 
 ## Installed bundles (`bundle-manage`, optional)
 

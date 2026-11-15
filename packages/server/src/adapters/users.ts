@@ -255,6 +255,19 @@ export function createUserPorts(
     return found.length === new Set(keys.map(normaliseUuid)).size ? found : undefined
   }
 
+  /** Whether giving these users these groups, or with none removing them, leaves no administrator. */
+  const leavesNoAdmin = async (
+    changing: readonly UserRecord[],
+    groupKeys: readonly string[] | undefined,
+  ) => {
+    const admin = await adminKey()
+    if (!admin) return false
+    const keeps = groupKeys?.map(normaliseUuid).includes(admin) ?? false
+    if (keeps || !changing.some((u) => isAdmin(u, admin))) return false
+    const gone = new Set(changing.map((u) => u.key))
+    return !(await users.all()).some((u) => isAdmin(u, admin) && !gone.has(u.key))
+  }
+
   const userPort: UserPort = {
     configuration: () => ({
       canInviteUsers: Boolean(config.sendUserLink),
@@ -415,6 +428,7 @@ export function createUserPorts(
       if ((await groups.byKeys(input.groupKeys)).length !== new Set(input.groupKeys).size)
         return 'MissingUserGroup'
       if (!(await mayAssignGroups(principal, user, input.groupKeys))) return 'NotGroupOwner'
+      if (await leavesNoAdmin([user], input.groupKeys)) return 'AdminGroupCannotBeEmpty'
       // Story 339: where a user works is their groups'; start nodes sent here are not kept.
       const result = await users.update(key, {
         name: input.name,
@@ -433,6 +447,9 @@ export function createUserPorts(
       const found = await findAll(keys)
       if (!found) return 'UserNotFound'
       if (!(await mayActOn(principal, found))) return 'Forbidden'
+      // The site's own administrator, whom the Users section shows to nobody else.
+      if (found.some((u) => normaliseUuid(u.key) === SUPER_USER_KEY)) return 'CannotDelete'
+      if (await leavesNoAdmin(found, undefined)) return 'AdminGroupCannotBeEmpty'
       if (found.some((u) => u.lastLoginDate)) return 'CannotDeleteUserWithLoginHistory'
       for (const user of found) {
         if (user.avatar) await options.mediaFiles.remove(user.avatar)
@@ -468,6 +485,7 @@ export function createUserPorts(
       if (!(await mayActOn(principal, found))) return 'Forbidden'
       for (const user of found)
         if (!(await mayAssignGroups(principal, user, groupKeys))) return 'NotGroupOwner'
+      if (await leavesNoAdmin(found, groupKeys)) return 'AdminGroupCannotBeEmpty'
       return (await users.setGroups(userKeys, groupKeys)) ? 'Success' : 'MissingUserGroup'
     },
 

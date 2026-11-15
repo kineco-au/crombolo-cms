@@ -11827,6 +11827,97 @@
           "name": "schema",
           "type": "string",
           "nullable": true
+        },
+        {
+          "name": "placed",
+          "type": "object",
+          "nullable": true,
+          "description": "where it starts and who owns it, when those were changed",
+          "fields": [
+            {
+              "name": "key",
+              "type": "string"
+            },
+            {
+              "name": "alias",
+              "type": "string"
+            },
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "content",
+              "type": "object",
+              "fields": [
+                {
+                  "name": "at",
+                  "type": "string",
+                  "enum": ["root", "none", "node"]
+                },
+                {
+                  "name": "key",
+                  "type": "string",
+                  "nullable": true
+                },
+                {
+                  "name": "path",
+                  "type": "string",
+                  "nullable": true
+                }
+              ]
+            },
+            {
+              "name": "media",
+              "type": "object",
+              "fields": [
+                {
+                  "name": "at",
+                  "type": "string",
+                  "enum": ["root", "none", "node"]
+                },
+                {
+                  "name": "key",
+                  "type": "string",
+                  "nullable": true
+                },
+                {
+                  "name": "path",
+                  "type": "string",
+                  "nullable": true
+                }
+              ]
+            },
+            {
+              "name": "library",
+              "type": "object",
+              "fields": [
+                {
+                  "name": "at",
+                  "type": "string",
+                  "enum": ["root", "none", "node"]
+                },
+                {
+                  "name": "key",
+                  "type": "string",
+                  "nullable": true
+                },
+                {
+                  "name": "path",
+                  "type": "string",
+                  "nullable": true
+                }
+              ]
+            },
+            {
+              "name": "owners",
+              "type": "array",
+              "description": "by alias",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
         }
       ],
       "args": [
@@ -11868,6 +11959,31 @@
           "description": "a language it may edit, or all; give each"
         },
         {
+          "name": "--start-at",
+          "type": "string",
+          "description": "where in content it starts: a page, root for all of it, or none"
+        },
+        {
+          "name": "--media-start-at",
+          "type": "string",
+          "description": "where in media it starts: a folder, root for all of it, or none"
+        },
+        {
+          "name": "--library-start-at",
+          "type": "string",
+          "description": "where in the Library it starts: a folder, root for all of it, or none"
+        },
+        {
+          "name": "--owner",
+          "type": "string[]",
+          "description": "a group whose people choose who is in this one"
+        },
+        {
+          "name": "--remove-owner",
+          "type": "string[]",
+          "description": "a group that no longer owns this one"
+        },
+        {
           "name": "--dry-run",
           "type": "boolean",
           "description": "say what would change, and change nothing"
@@ -11878,7 +11994,7 @@
           "description": "change it, and leave applying it to `crombolo types sync`"
         }
       ],
-      "errors": ["usage", "internal", "not_found", "refused"]
+      "errors": ["usage", "internal", "not_found", "refused", "conflict", "unavailable"]
     },
     {
       "name": "users groups permissions",
@@ -12005,7 +12121,7 @@
     },
     {
       "name": "users groups show",
-      "description": "one user group: its sections, permissions and languages",
+      "description": "one user group: its sections, permissions and languages, where it starts and who owns it",
       "effects": "read_only",
       "cardinality": "single",
       "stdout_schema": {},
@@ -12021,7 +12137,7 @@
     },
     {
       "name": "users groups update",
-      "description": "change a user group's name, sections, permissions or languages",
+      "description": "change a user group: its name, sections, permissions, languages, start nodes or owners",
       "effects": "idempotent",
       "cardinality": "single",
       "output_fields": [
@@ -12048,6 +12164,97 @@
           "name": "schema",
           "type": "string",
           "nullable": true
+        },
+        {
+          "name": "placed",
+          "type": "object",
+          "nullable": true,
+          "description": "where it starts and who owns it, when those were changed",
+          "fields": [
+            {
+              "name": "key",
+              "type": "string"
+            },
+            {
+              "name": "alias",
+              "type": "string"
+            },
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "content",
+              "type": "object",
+              "fields": [
+                {
+                  "name": "at",
+                  "type": "string",
+                  "enum": ["root", "none", "node"]
+                },
+                {
+                  "name": "key",
+                  "type": "string",
+                  "nullable": true
+                },
+                {
+                  "name": "path",
+                  "type": "string",
+                  "nullable": true
+                }
+              ]
+            },
+            {
+              "name": "media",
+              "type": "object",
+              "fields": [
+                {
+                  "name": "at",
+                  "type": "string",
+                  "enum": ["root", "none", "node"]
+                },
+                {
+                  "name": "key",
+                  "type": "string",
+                  "nullable": true
+                },
+                {
+                  "name": "path",
+                  "type": "string",
+                  "nullable": true
+                }
+              ]
+            },
+            {
+              "name": "library",
+              "type": "object",
+              "fields": [
+                {
+                  "name": "at",
+                  "type": "string",
+                  "enum": ["root", "none", "node"]
+                },
+                {
+                  "name": "key",
+                  "type": "string",
+                  "nullable": true
+                },
+                {
+                  "name": "path",
+                  "type": "string",
+                  "nullable": true
+                }
+              ]
+            },
+            {
+              "name": "owners",
+              "type": "array",
+              "description": "by alias",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
         }
       ],
       "args": [
@@ -12108,6 +12315,31 @@
           "description": "a language it may no longer edit"
         },
         {
+          "name": "--start-at",
+          "type": "string",
+          "description": "where in content it starts: a page, root for all of it, or none"
+        },
+        {
+          "name": "--media-start-at",
+          "type": "string",
+          "description": "where in media it starts: a folder, root for all of it, or none"
+        },
+        {
+          "name": "--library-start-at",
+          "type": "string",
+          "description": "where in the Library it starts: a folder, root for all of it, or none"
+        },
+        {
+          "name": "--owner",
+          "type": "string[]",
+          "description": "a group whose people choose who is in this one"
+        },
+        {
+          "name": "--remove-owner",
+          "type": "string[]",
+          "description": "a group that no longer owns this one"
+        },
+        {
           "name": "--dry-run",
           "type": "boolean",
           "description": "say what would change, and change nothing"
@@ -12116,9 +12348,19 @@
           "name": "--no-apply",
           "type": "boolean",
           "description": "change it, and leave applying it to `crombolo types sync`"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "act on the site this profile names, rather than this one"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "a hosted site's environment"
         }
       ],
-      "errors": ["usage", "internal", "not_found", "refused"]
+      "errors": ["usage", "internal", "not_found", "refused", "conflict", "unavailable"]
     },
     {
       "name": "users invite",
@@ -12242,6 +12484,71 @@
       "errors": ["usage", "internal"]
     },
     {
+      "name": "users remove",
+      "description": "remove a user who has never signed in",
+      "effects": "non_idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "key",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "email",
+          "type": "string"
+        },
+        {
+          "name": "userName",
+          "type": "string"
+        },
+        {
+          "name": "state",
+          "type": "string"
+        },
+        {
+          "name": "groups",
+          "type": "array",
+          "description": "by alias",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "uiLanguage",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "lastSignIn",
+          "type": "string",
+          "nullable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "user",
+          "type": "string",
+          "required": true,
+          "description": "their e-mail address, username or key"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "act on the site this profile names, rather than this one"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "a hosted site's environment"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "refused", "unavailable"]
+    },
+    {
       "name": "users reset-2fa",
       "description": "remove a user's second factors, so their next sign-in sets one up again",
       "effects": "idempotent",
@@ -12275,7 +12582,7 @@
           "description": "their e-mail address or username"
         }
       ],
-      "errors": ["usage", "internal", "not_found"]
+      "errors": ["usage", "internal", "not_found", "refused"]
     },
     {
       "name": "users reset-password",
@@ -12314,6 +12621,164 @@
       "errors": ["usage", "internal", "not_found", "refused"]
     },
     {
+      "name": "users sessions",
+      "description": "the browsers and terminals signed in as you, or as someone else",
+      "effects": "read_only",
+      "cardinality": "bounded",
+      "output_fields": [
+        {
+          "name": "items",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "fields": [
+              {
+                "name": "id",
+                "type": "string"
+              },
+              {
+                "name": "user",
+                "type": "object",
+                "fields": [
+                  {
+                    "name": "key",
+                    "type": "string"
+                  },
+                  {
+                    "name": "name",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "name": "kind",
+                "type": "string",
+                "enum": ["browser", "terminal"]
+              },
+              {
+                "name": "device",
+                "type": "string",
+                "nullable": true,
+                "description": "a terminal's name"
+              },
+              {
+                "name": "signedIn",
+                "type": "string"
+              },
+              {
+                "name": "lastUsed",
+                "type": "string",
+                "nullable": true
+              },
+              {
+                "name": "address",
+                "type": "string",
+                "nullable": true
+              },
+              {
+                "name": "current",
+                "type": "boolean",
+                "description": "the sign-in this command line is using"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "user",
+          "type": "string",
+          "description": "whose: their e-mail address, username or key; yours when left out"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "act on the site this profile names, rather than this one"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "a hosted site's environment"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "refused", "unavailable"]
+    },
+    {
+      "name": "users sessions end",
+      "description": "end one sign-in, by the id `users sessions` lists",
+      "effects": "idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "user",
+          "type": "object",
+          "fields": [
+            {
+              "name": "key",
+              "type": "string"
+            },
+            {
+              "name": "name",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "kind",
+          "type": "string",
+          "enum": ["browser", "terminal"]
+        },
+        {
+          "name": "device",
+          "type": "string",
+          "nullable": true,
+          "description": "a terminal's name"
+        },
+        {
+          "name": "signedIn",
+          "type": "string"
+        },
+        {
+          "name": "lastUsed",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "address",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "current",
+          "type": "boolean",
+          "description": "the sign-in this command line is using"
+        }
+      ],
+      "args": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": true,
+          "description": "the id listed, or more of it"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "act on the site this profile names, rather than this one"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "a hosted site's environment"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "refused", "unavailable"]
+    },
+    {
       "name": "users unlock",
       "description": "clear a user's lockout and failed sign-ins",
       "effects": "idempotent",
@@ -12345,6 +12810,105 @@
         }
       ],
       "errors": ["usage", "internal", "not_found", "refused"]
+    },
+    {
+      "name": "users update",
+      "description": "change a user's name, e-mail, groups or language",
+      "effects": "idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "key",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "email",
+          "type": "string"
+        },
+        {
+          "name": "userName",
+          "type": "string"
+        },
+        {
+          "name": "state",
+          "type": "string"
+        },
+        {
+          "name": "groups",
+          "type": "array",
+          "description": "by alias",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "uiLanguage",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "lastSignIn",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "changed",
+          "type": "array",
+          "description": "what changed; empty when it was so already",
+          "items": {
+            "type": "string",
+            "enum": ["name", "email", "userName", "groups", "uiLanguage"]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "user",
+          "type": "string",
+          "required": true,
+          "description": "their e-mail address, username or key"
+        },
+        {
+          "name": "--name",
+          "type": "string",
+          "description": "their new name"
+        },
+        {
+          "name": "--email",
+          "type": "string",
+          "description": "their new e-mail address"
+        },
+        {
+          "name": "--group",
+          "type": "string[]",
+          "description": "a group they join"
+        },
+        {
+          "name": "--remove-group",
+          "type": "string[]",
+          "description": "a group they leave"
+        },
+        {
+          "name": "--ui-language",
+          "type": "string",
+          "description": "the language the back office shows them, such as en-US"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "act on the site this profile names, rather than this one"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "a hosted site's environment"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "conflict", "refused", "unavailable"]
     },
     {
       "name": "webhooks events",

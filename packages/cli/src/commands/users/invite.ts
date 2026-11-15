@@ -2,7 +2,7 @@ import { UserGroupRepository } from '@crombolo/data'
 import { Args, Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
 import { many } from '../../support/flags.ts'
-import { checkStatus, OPERATOR, openPeople } from '../../support/people.ts'
+import { actingPrincipal, checkStatus, openPeople } from '../../support/people.ts'
 import { siteConfig } from '../../support/site.ts'
 
 export default class UsersInvite extends BaseCommand {
@@ -54,7 +54,7 @@ export default class UsersInvite extends BaseCommand {
         groupKeys.push(group.key)
       }
       const result = await people.users.invite(
-        OPERATOR,
+        actingPrincipal(),
         {
           kind: 'Default',
           email: args.email,

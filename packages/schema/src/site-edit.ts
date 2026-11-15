@@ -83,6 +83,9 @@ export interface UserGroupChanges {
   allLanguages?: boolean
   addLanguages?: readonly string[]
   removeLanguages?: readonly string[]
+  /** Owners, by alias: for a file that names them (story 356). */
+  addOwners?: readonly string[]
+  removeOwners?: readonly string[]
 }
 
 const plus = (list: readonly string[], more: readonly string[] = []) => [
@@ -130,10 +133,17 @@ export function updateUserGroup(
     if (typeof named === 'string') return { ok: false, reason: named }
     languages = named
   }
+  let owners = group.owners
+  if (changes.addOwners?.length || changes.removeOwners?.length) {
+    const named = minus(plus(owners ?? [], changes.addOwners), changes.removeOwners, 'owner')
+    if (typeof named === 'string') return { ok: false, reason: named }
+    owners = named
+  }
   return {
     ok: true,
     group: {
       ...group,
+      ...(owners !== undefined ? { owners } : {}),
       ...(changes.name !== undefined ? { name: changes.name } : {}),
       ...(changes.description !== undefined
         ? { description: changes.description || undefined }

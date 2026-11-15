@@ -99,6 +99,12 @@ const USER_PROBLEMS: Partial<Record<UserStatus, [number, string, string]>> = {
     'Invalid client ID',
     'The client ID must be prefixed with "crombolo-back-office-".',
   ],
+  AdminGroupCannotBeEmpty: [
+    400,
+    'Admin group cannot be empty',
+    'The admin group must have at least one user.',
+  ],
+  CannotDelete: [400, 'Cannot delete', "The site's built-in administrator cannot be deleted."],
   NotGroupOwner: [
     403,
     "You don't own that group",

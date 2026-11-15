@@ -340,6 +340,48 @@ export async function runConformance(options: ConformanceOptions): Promise<Confo
   })
 
   await check(
+    "users: the caller's own sign-ins are listed, they are found, and a change of nothing changes nothing",
+    async () => {
+      const capabilities = (state.discovery?.capabilities as string[] | undefined) ?? []
+      if (!capabilities.includes('users')) return 'skip'
+      const env = `environments/${state.environment}`
+      const listed = await api(`${env}/sign-ins`)
+      assert(listed.status === 200, `the sign-ins answered ${listed.status}`)
+      const items = ((await listed.json()) as { items?: Json[] }).items
+      assert(Array.isArray(items), 'items is missing')
+      const keys = new Set((items ?? []).map((item) => (item.user as Json | undefined)?.key))
+      for (const item of items ?? [])
+        assert(
+          typeof item.id === 'string' && (item.kind === 'browser' || item.kind === 'terminal'),
+          'a sign-in has no id, or is neither a browser nor a terminal',
+        )
+      assert(keys.size <= 1, "the sign-ins are not all the caller's own")
+      const me = [...keys][0]
+      if (typeof me !== 'string') return
+      const found = await api(`${env}/users?find=${encodeURIComponent(me)}`)
+      // Finding and changing users needs the Users section, which the caller may not have.
+      if (found.status === 403) return
+      assert(found.status === 200, `finding the caller answered ${found.status}`)
+      assert(((await found.json()) as Json).key === me, 'the user found is not the caller')
+      const missing = await api(`${env}/users?find=${crypto.randomUUID()}`)
+      assert(missing.status === 404, `an unknown user answered ${missing.status}`)
+      assert(isProblem(missing), 'not application/problem+json')
+      const unchanged = await api(`${env}/users/${me}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      })
+      if (unchanged.status === 403) return
+      assert(unchanged.status === 200, `a change of nothing answered ${unchanged.status}`)
+      const done = (await unchanged.json()) as Json
+      assert(
+        Array.isArray(done.changed) && done.changed.length === 0,
+        'a change of nothing changed something',
+      )
+    },
+  )
+
+  await check(
     "public-access: a page's access reads back, and an unknown page's is not found",
     async () => {
       const capabilities = (state.discovery?.capabilities as string[] | undefined) ?? []

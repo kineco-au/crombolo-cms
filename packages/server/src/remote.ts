@@ -16,7 +16,7 @@ import { mkdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, sep } from 'node:path'
 import { hasSection, type Principal } from '@crombolo/api-management/domain'
-import { DEVICE_CODE_GRANT, REMOTE_CLIENT_ID } from '@crombolo/auth'
+import { AuthStore, DEVICE_CODE_GRANT, REMOTE_CLIENT_ID } from '@crombolo/auth'
 import { BACKOFFICE_CODE, BACKOFFICE_CODE_WARNING } from '@crombolo/backoffice-host/registry'
 import type { DocumentOperations, MediaOperations } from '@crombolo/content'
 import {
@@ -44,8 +44,10 @@ import {
   type Resolution,
   revertRun,
 } from '@crombolo/transfer'
+import { createNodeLookup } from './access.ts'
 import { readAuditPageQuery, recordAudit } from './adapters/audit.ts'
 import type { MemberPortOptions } from './adapters/members.ts'
+import { createUserPorts } from './adapters/users.ts'
 import { type BundleAdmin, settingsIn } from './bundle-admin.ts'
 import { userKeyOf } from './bundle-api.ts'
 import { codeChanges, installedCode, planCode } from './bundle-code-install.ts'
@@ -64,18 +66,20 @@ import {
 } from './bundle-sections.ts'
 import { type CromboloConfig, REMOTE_ACCESS_LEVELS, type RemoteAccess } from './config.ts'
 import { answerContentQuery, contentQueryScope } from './content-query.ts'
-import { mediaStoreFor } from './media-files.ts'
+import { MediaFileStore, mediaStoreFor } from './media-files.ts'
 import { type MediaStore, streamOf } from './media-store.ts'
 import { siteMemberPorts } from './member-admin.ts'
 import { describeProvenance, provenanceProblem, verifyProvenance } from './provenance.ts'
 import { createCiSignIn, readRuleInput, trustedIssuers } from './remote-ci.ts'
 import { createMemberRoutes } from './remote-members.ts'
 import { createUndoRoutes } from './remote-undo.ts'
+import { createUserRoutes } from './remote-users.ts'
 import { openSecret, sealSecret, usableSecretKey } from './secrets.ts'
 import { exportSite } from './site-file.ts'
 import { REMOTE_DISCOVERY_PATH } from './site-public.ts'
 import { replaceSummary } from './site-replace.ts'
 import { extractTarball } from './tar.ts'
+import type { UserPorts } from './user-admin.ts'
 
 export const REMOTE_PROTOCOL_VERSION = '1'
 export { REMOTE_DISCOVERY_PATH }
@@ -109,6 +113,8 @@ export interface RemoteOptions {
   operations?: { documents: DocumentOperations; media: MediaOperations }
   /** The server's own schema state, so a node behind the database writes no members. */
   nodeState?: MemberPortOptions['nodeState']
+  /** The server's own user ports, as the Users section uses them; absent, made over the database. */
+  userPorts?: () => Pick<UserPorts, 'users' | 'groups'> | undefined
 }
 
 /** What a supervised restart came to: the new server serving, or why the old one still is. */
@@ -232,6 +238,7 @@ export function createRemote(options: RemoteOptions): Remote {
       'content-query',
       ...(options.operations ? ['content-history', 'recycle-bin'] : []),
       ...memberRoutes.capabilities,
+      ...userRoutes.capabilities,
       ...(settings.approvals ? ['approvals'] : []),
       ...(options.bundles && atLeast('read') ? ['bundle-manage'] : []),
       ...(options.restart && atLeast('all') ? ['restart'] : []),
@@ -282,6 +289,29 @@ export function createRemote(options: RemoteOptions): Remote {
     problem,
     levelRefusal: () =>
       atLeast('content') ? undefined : notAtLevel('content', 'changes to members or pages'),
+  })
+
+  const userRoutes = createUserRoutes({
+    db,
+    ports: async () => {
+      const own = options.userPorts?.()
+      if (own) return { db, ...own }
+      const auth = new AuthStore(db)
+      return {
+        db,
+        ...createUserPorts(db, {
+          config,
+          mediaFiles: new MediaFileStore(await store()),
+          nodes: createNodeLookup(db),
+          endSessions: async (userId) => {
+            await auth.endAllSessionsForUser(userId)
+          },
+        }),
+      }
+    },
+    problem,
+    levelRefusal: () =>
+      atLeast('content') ? undefined : notAtLevel('content', 'changes to users'),
   })
 
   const trust = new RemoteTrustRepository(db)
@@ -1540,6 +1570,10 @@ export function createRemote(options: RemoteOptions): Remote {
       }
       if (what.startsWith('member') || what.startsWith('content/')) {
         const answered = await memberRoutes.handle(request, url, principal, what)
+        if (answered) return answered
+      }
+      if (what.startsWith('user') || what.startsWith('sign-ins')) {
+        const answered = await userRoutes.handle(request, url, principal, what)
         if (answered) return answered
       }
       if (

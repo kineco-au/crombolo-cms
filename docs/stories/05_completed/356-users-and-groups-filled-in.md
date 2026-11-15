@@ -253,22 +253,79 @@ Each command here takes `--profile` (story 352) to act on another site, through 
 
 ## Acceptance criteria
 
-- [ ] `crombolo users update <user> [--name] [--email] [--group <alias>]... [--remove-
+- [x] `crombolo users update <user> [--name] [--email] [--group <alias>]... [--remove-
       group <alias>]... [--ui-language <iso>]`, with the rules the Users section and
       story 302 apply
-- [ ] `users remove <user>`, refused for yourself, the last administrator, the built-in
+- [x] `users remove <user>`, refused for yourself, the last administrator, the built-in
       administrator, and anyone who has signed in before (who is disabled instead), as
       the Users section refuses them. Neither the back office nor the CLI leaves the
       admin group empty, by removing a user or by taking the group away
-- [ ] `users sessions [<user>]` lists signed-in devices and terminals, yours without a
+- [x] `users sessions [<user>]` lists signed-in devices and terminals, yours without a
       name and anyone's for an administrator, and `users sessions end <id>` ends one
-- [ ] `--start-at <page>`, `--media-start-at <folder>`, `--library-start-at <folder>`,
+- [x] `--start-at <page>`, `--media-start-at <folder>`, `--library-start-at <folder>`,
       `--owner <group>` and `--remove-owner <group>` on `users groups new|update`, start
       nodes kept with the database, as story 228 settled, through the rules the group
       screen applies
-- [ ] Each takes `--profile`, except `users groups new`, whose group is made in the
+- [x] Each takes `--profile`, except `users groups new`, whose group is made in the
       site's files. On a hosted site `users groups update` changes only what the
       database keeps. `-o json`; audited
-- [ ] Tests for each, including the last administrator refused and a non-administrator
+- [x] Tests for each, including the last administrator refused and a non-administrator
       refused another person's session
-- [ ] The CLI reference regenerated
+- [x] The CLI reference regenerated
+
+## Built
+
+Built 2026-11-15, with D1 (a), D2 (a) and D3 (a):
+- **the last administrator** is `leavesNoAdmin` in `createUserPorts`
+  (`packages/server/src/adapters/users.ts`): `users.update`, `setGroups` and `delete` answer
+  `AdminGroupCannotBeEmpty` for a change that would leave the admin group empty, and `delete`
+  answers `CannotDelete` for the built-in administrator. Both are `UserStatus`es now, and the
+  Management API words them as the group screen's `AdminGroupCannotBeEmpty` is worded;
+- **the core** is `packages/server/src/user-admin.ts`: `findUser`, `changeUser`,
+  `removeUser`, `signIns`, `endSignIn`, `placeGroup` and `groupPlaceOf`, refusing with
+  `UserAdminError`. The words for each port status are `userRefusal` there, which the
+  command line's `checkStatus` and the remote routes both use;
+- **the remote routes** are `packages/server/src/remote-users.ts`, mounted by `createRemote`
+  with the server's own user ports (`userPorts`, read from the Management API's deps when a
+  request comes), so a hosted site's file rule for owners is the group screen's. Discovery
+  lists `users`;
+- **the commands** are `users update|remove`, `users sessions [<user>]`, `users sessions
+  end <id>`, and the start node and owner flags on `users groups new|update`, over
+  `packages/cli/src/support/users.ts`, whose `withUsers` gives the same calls here or on a
+  hosted site. `support/people.ts` gains `actingPrincipal()` and `readingPrincipal()`, and
+  `openPeople` returns the `groups` port;
+- **D1 (a):** every `users` and `users groups` command acts as the signed-in person;
+  `users reset-2fa`, which used no port, now asks the port first whether the person may act
+  on that user. `users groups new|update|remove` are `adminOnly`;
+- `updateUserGroup` (`packages/schema/src/site-edit.ts`) takes `addOwners` and
+  `removeOwners`, for a file that names owners;
+- the conformance suite checks, when `users` is listed: the caller's sign-ins are their
+  own, the caller is found, an unknown user is not, and a change of nothing changes nothing;
+- tests: `tests/user-admin.test.ts`, `tests/users-cli.test.ts`, a case in
+  `tests/users.test.ts` and one in `tests/cli-access.test.ts`.
+
+Where it differs from the plan:
+- **An open sign-in** is one whose session has not ended and that still has an unrevoked,
+  unexpired refresh token: a session row stays open after its browser's cookie has lapsed,
+  so the row alone would list sign-ins nobody can use. "Last used" is when its newest token
+  was made, since `last_validated_utc` is never updated after the sign-in.
+- **A sign-in is named by its session id,** eight characters in the list and in `end`, or
+  more of it when eight are not enough to tell two apart.
+- **"This terminal"** on a hosted site is the sign-in the request's bearer token belongs
+  to; a command-line token is no sign-in, so nothing is marked then.
+- **A user is found by key, e-mail or username.** The existing commands matched the display
+  name where their help said username (`userNamed`), which is fixed for them too.
+- **`users sessions <user>` by someone who is not an administrator, naming an
+  administrator,** is refused as "Only an administrator can change an administrator's
+  account", since finding them is refused first: a non-administrator cannot name an
+  administrator either way, as the plan says.
+- **The route `PATCH user-groups/{alias}` takes `?dryRun=true`,** so `--dry-run` works
+  through `--profile`; and `GET users/{who}` answers as `users?find=` does.
+- **The audit for a group's start nodes and owners** from the command line is the command's
+  own (`permission`/`Save`/`UserGroup`, by key), written only when they changed; a change to
+  the group's file alone writes none, as before.
+- **`users groups update` with nothing to change** is a usage error, "Nothing to change".
+- **The username follows the e-mail only where the site's usernames are e-mail addresses,**
+  as the plan says: elsewhere a username that happened to be the old e-mail is kept.
+- **The release notes' Fixes** also carry the username fix above.
+

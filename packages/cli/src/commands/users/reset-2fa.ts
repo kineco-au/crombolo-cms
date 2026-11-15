@@ -1,6 +1,12 @@
 import { Args } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
-import { describeUser, openPeople, userNamed } from '../../support/people.ts'
+import {
+  actingPrincipal,
+  checkStatus,
+  describeUser,
+  openPeople,
+  userNamed,
+} from '../../support/people.ts'
 import { siteConfig } from '../../support/site.ts'
 
 /** For someone who has lost their authenticator: their next sign-in enrols again. */
@@ -26,7 +32,7 @@ export default class UsersReset2fa extends BaseCommand {
       { name: 'removed', type: 'array', items: { type: 'string' } },
       { name: 'changed', type: 'boolean' },
     ],
-    errors: ['not_found'],
+    errors: ['not_found', 'refused'],
   } as const
 
   async run() {
@@ -35,6 +41,8 @@ export default class UsersReset2fa extends BaseCommand {
     try {
       const user = await userNamed(people, args.user)
       this.auditKey = user.key
+      // As the person signed in: only an administrator may reset an administrator's.
+      checkStatus((await people.users.get(actingPrincipal(), user.key)).status)
       const removed = await people.twoFactor.providers(user.key)
       await people.twoFactor.reset(user.key)
       this.say(

@@ -5,7 +5,7 @@
  * database directly, not through the server, so it works when the site will not
  * boot; in a container it runs through `docker exec`.
  */
-import type { Principal, UserPort, UserStatus } from '@crombolo/api-management'
+import type { Principal, UserGroupPort, UserPort, UserStatus } from '@crombolo/api-management'
 import { AuthStore } from '@crombolo/auth'
 import { type Db, SUPER_USER_KEY, UserRepository } from '@crombolo/data'
 import {
@@ -16,8 +16,11 @@ import {
   MediaFileStore,
   mediaStoreFor,
   TwoFactorService,
+  type UserAdminError,
+  userRefusal,
 } from '@crombolo/server'
-import { CliError, type ErrorKind } from '../errors.ts'
+import { CliError } from '../errors.ts'
+import { signedInPerson } from './acting.ts'
 
 /** The operator: an administrator who is nobody in particular, so no rule about acting on oneself applies. */
 const CLI_PRINCIPAL_ID = '00000000-0000-4000-8000-0000000c1c1e'
@@ -43,10 +46,17 @@ export const OBSERVER = principal(SUPER_USER_KEY)
 /** Acts on any user, the built-in administrator included. */
 export const OPERATOR = principal(CLI_PRINCIPAL_ID)
 
+/** Whom a `users` command acts as (story 356): the person signed in, or the command line. */
+export const actingPrincipal = (): Principal => signedInPerson() ?? OPERATOR
+
+/** Whom a `users` command reads as: the person signed in, or the command line, which sees everyone. */
+export const readingPrincipal = (): Principal => signedInPerson() ?? OBSERVER
+
 export interface People {
   config: CromboloConfig
   db: Db
   users: UserPort
+  groups: UserGroupPort
   repository: UserRepository
   twoFactor: TwoFactorService
   /** The link the last invite would have e-mailed. */
@@ -57,7 +67,7 @@ export async function openPeople(config: CromboloConfig): Promise<People> {
   const { db } = await bootstrapDatabase(config)
   const store = new AuthStore(db)
   let link: string | undefined
-  const { users } = createUserPorts(db, {
+  const { users, groups } = createUserPorts(db, {
     config: {
       ...config,
       // Captured, not sent: the command prints it, for a site with no e-mail.
@@ -75,6 +85,7 @@ export async function openPeople(config: CromboloConfig): Promise<People> {
     config,
     db,
     users,
+    groups,
     repository: new UserRepository(db),
     twoFactor: new TwoFactorService(db, { secretKey: config.secretKey, issuer: config.siteName }),
     lastLink: () => link,
@@ -90,7 +101,7 @@ export async function userNamed(people: People, who: string) {
     .where((eb) =>
       eb.or([
         eb(eb.fn('lower', ['email']), '=', wanted),
-        eb(eb.fn('lower', ['user_name']), '=', wanted),
+        eb(eb.fn('lower', ['login']), '=', wanted),
       ]),
     )
     .executeTakeFirst()
@@ -103,32 +114,15 @@ export async function userNamed(people: People, who: string) {
   return user
 }
 
-const STATUS_KINDS: Partial<Record<UserStatus, ErrorKind>> = {
-  UserNotFound: 'not_found',
-  MissingUserGroup: 'not_found',
-  DuplicateUserName: 'conflict',
-  DuplicateEmail: 'conflict',
-  InvalidEmail: 'usage',
-  InvalidUserName: 'usage',
-  UserNameIsNotEmail: 'usage',
-  InvalidPassword: 'usage',
-  NoUserGroup: 'usage',
+/** A user port status other than `Success`, as a failure; `who` names them in a refusal that does. */
+export function checkStatus(status: UserStatus, who?: string): void {
+  const refusal = userRefusal(status, who)
+  if (refusal) throw cliRefusal(refusal)
 }
 
-const STATUS_MESSAGES: Partial<Record<UserStatus, string>> = {
-  CannotDisableInvitedUser: 'An invited user cannot be disabled; delete the invitation instead.',
-  CannotInvite: 'The invitation could not be made.',
-  InvalidPassword: "That password does not meet this site's password rules.",
-  DuplicateEmail: 'Another user has that e-mail address.',
-  DuplicateUserName: 'Another user has that username.',
-  MissingUserGroup: 'There is no group with that alias.',
-}
-
-/** A user port status other than `Success`, as a failure. */
-export function checkStatus(status: UserStatus): void {
-  if (status === 'Success') return
-  throw new CliError(STATUS_KINDS[status] ?? 'refused', STATUS_MESSAGES[status] ?? status)
-}
+/** A refusal from the user core, as the command line reports one. */
+export const cliRefusal = (error: UserAdminError): CliError =>
+  new CliError(error.kind, error.message, error.hint ? { hint: error.hint } : undefined)
 
 export function describeUser(user: {
   key: string

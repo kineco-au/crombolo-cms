@@ -1,12 +1,20 @@
+import { groupPlaceOf } from '@crombolo/server'
 import { Args } from '@oclif/core'
 import { BaseCommand } from '../../../base.ts'
 import { CliError } from '../../../errors.ts'
 import { permissionName } from '../../../support/names.ts'
-import { asDeclared, databaseGroups, siteDefinitions } from '../../../support/site-definitions.ts'
+import {
+  asDeclared,
+  databaseGroups,
+  siteDefinitions,
+  withExisting,
+} from '../../../support/site-definitions.ts'
+import { describeStart } from '../../../support/users.ts'
 
-/** One user group: its sections, permissions and languages, and who is in it (story 251). */
+/** One user group: its sections, permissions and languages, who is in it (story 251), and where it starts (story 356). */
 export default class UsersGroupsShow extends BaseCommand {
-  static override summary = 'one user group: its sections, permissions and languages'
+  static override summary =
+    'one user group: its sections, permissions and languages, where it starts and who owns it'
   static override examples = ['<%= config.bin %> users groups show editors']
   static override args = {
     alias: Args.string({ required: true, description: "the group's alias" }),
@@ -42,10 +50,35 @@ export default class UsersGroupsShow extends BaseCommand {
       `  languages    ${group.languages === 'all' ? 'all' : group.languages.join(', ') || 'none'}`,
     )
     if (inDatabase) this.say(`  users        ${inDatabase.users}`)
+    const place = inDatabase
+      ? await withExisting(config, (db) => groupPlaceOf(db, inDatabase.group))
+      : undefined
+    // Owners are the file's when it names them, as the group screen keeps them (story 302).
+    const ownersIn = own?.owners !== undefined ? 'file' : 'database'
+    if (place) {
+      this.say(`  content      ${describeStart(place.content)}`)
+      this.say(`  media        ${describeStart(place.media)}`)
+      this.say(`  Library      ${describeStart(place.library)}`)
+      this.say("               where it starts is kept with this environment's database")
+    }
+    const owners = own?.owners ?? place?.owners ?? []
+    this.say(`  owners       ${owners.join(', ') || 'none'}`)
+    this.say(
+      `               ${ownersIn === 'file' ? "kept in the group's file" : "kept with this environment's database"}`,
+    )
     if (!own)
       this.say(
         "\n`crombolo users groups export` makes it one of the site's, so the CLI can change it.",
       )
-    return { ...group, source: own ? 'site' : 'back office', users: inDatabase?.users ?? null }
+    return {
+      ...group,
+      source: own ? 'site' : 'back office',
+      users: inDatabase?.users ?? null,
+      startsAt: place
+        ? { content: place.content, media: place.media, library: place.library }
+        : null,
+      owners,
+      ownersKeptIn: ownersIn,
+    }
   }
 }

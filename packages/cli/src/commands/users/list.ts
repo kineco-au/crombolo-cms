@@ -1,7 +1,7 @@
 import { UserGroupRepository } from '@crombolo/data'
 import { BaseCommand } from '../../base.ts'
 import { page, pageFlags, pagination } from '../../support/flags.ts'
-import { OBSERVER, openPeople } from '../../support/people.ts'
+import { openPeople, readingPrincipal } from '../../support/people.ts'
 import { siteConfig } from '../../support/site.ts'
 
 export default class UsersList extends BaseCommand {
@@ -31,7 +31,7 @@ export default class UsersList extends BaseCommand {
     const { flags } = await this.parse(UsersList)
     const people = await openPeople(await siteConfig())
     try {
-      const found = await people.users.list(OBSERVER, flags.offset, flags.limit)
+      const found = await people.users.list(readingPrincipal(), flags.offset, flags.limit)
       const groups = new Map(
         (await new UserGroupRepository(people.db).all()).map((g) => [g.key, g.alias]),
       )

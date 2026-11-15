@@ -221,6 +221,8 @@ describe(`discovery (${dialectUnderTest})`, () => {
         // Story 354: members, and who may see a page.
         'members',
         'public-access',
+        // Story 356: users, their sign-ins, and where a group starts.
+        'users',
         // Story 241: installed bundles, managed as Settings → Bundles does.
         'bundle-manage',
       ],

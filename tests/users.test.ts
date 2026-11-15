@@ -6,8 +6,20 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { ComponentRepository, ContentTypeRepository, SUPER_USER_KEY } from '@crombolo/data'
-import type { UserLinkSender } from '@crombolo/server'
+import type { Principal } from '@crombolo/api-management/domain'
+import {
+  ComponentRepository,
+  ContentTypeRepository,
+  SUPER_USER_KEY,
+  UserRepository,
+} from '@crombolo/data'
+import {
+  createNodeLookup,
+  createUserPorts,
+  MediaFileStore,
+  mediaStoreFor,
+  type UserLinkSender,
+} from '@crombolo/server'
 import { BACKOFFICE, type Harness, signedInServer, signIn, V1 } from './support/harness.ts'
 
 const open: Harness[] = []
@@ -42,6 +54,7 @@ const GROUPS = {
   sensitiveData: '8c6ad70f-d307-4e4a-af58-72c2e4e9439d',
 }
 const PASSWORD = 'a-long-password'
+const ADMIN_EMAIL = 'admin@crombolo.local'
 
 interface UserBody {
   id: string
@@ -282,6 +295,82 @@ describe('users', () => {
     const neverKey = never.headers.get('umb-generated-resource') as string
     expect((await h.del(`${V1}/user/${neverKey}`)).status).toBe(200)
     expect((await h.call(`${V1}/user/${neverKey}`)).status).toBe(404)
+  })
+
+  test('story 356: nobody leaves the site without an administrator, and the built-in one stays', async () => {
+    const { h } = await site()
+    // The back office: the only administrator taking the admin group off themselves.
+    const own = await h.put(`${V1}/user/${SUPER_USER_KEY}`, {
+      email: ADMIN_EMAIL,
+      userName: ADMIN_EMAIL,
+      name: 'Administrator',
+      languageIsoCode: '',
+      userGroupIds: [{ id: GROUPS.editor }],
+      documentStartNodeIds: [],
+      hasDocumentRootAccess: false,
+      mediaStartNodeIds: [],
+      hasMediaRootAccess: false,
+      elementStartNodeIds: [],
+      hasElementRootAccess: false,
+    })
+    expect(own.status).toBe(400)
+    expect(await own.json()).toMatchObject({
+      operationStatus: 'AdminGroupCannotBeEmpty',
+      detail: 'The admin group must have at least one user.',
+    })
+    const setGroups = await h.post(`${V1}/user/set-user-groups`, {
+      userIds: [{ id: SUPER_USER_KEY }],
+      userGroupIds: [{ id: GROUPS.editor }],
+    })
+    expect((await setGroups.json()).operationStatus).toBe('AdminGroupCannotBeEmpty')
+
+    // The ports, as an administrator who is no user, when one other is the last administrator.
+    const db = h.server.db
+    const { users } = createUserPorts(db, {
+      config: h.server.config,
+      mediaFiles: new MediaFileStore(await mediaStoreFor(h.server.config)),
+      nodes: createNodeLookup(db),
+      endSessions: async () => {},
+    })
+    const operator = {
+      id: crypto.randomUUID(),
+      name: 'The command line',
+      isAdmin: true,
+      groupKeys: [],
+    } as unknown as Principal
+    const created = await users.create(operator, {
+      kind: 'Default',
+      email: 'second@example.com',
+      userName: 'second@example.com',
+      name: 'Second',
+      groupKeys: [GROUPS.admin],
+    })
+    const second = created.status === 'Success' ? created.value : ''
+    await new UserRepository(db).removeFromGroup(GROUPS.admin, [SUPER_USER_KEY])
+    const input = {
+      email: 'second@example.com',
+      userName: 'second@example.com',
+      name: 'Second',
+      languageIsoCode: '',
+      groupKeys: [GROUPS.editor],
+      documentStartNodeKeys: [],
+      hasDocumentRootAccess: false,
+      mediaStartNodeKeys: [],
+      hasMediaRootAccess: false,
+      elementStartNodeKeys: [],
+      hasElementRootAccess: false,
+    }
+    expect(await users.update(operator, second, input)).toBe('AdminGroupCannotBeEmpty')
+    expect(await users.setGroups(operator, [second], [GROUPS.editor])).toBe(
+      'AdminGroupCannotBeEmpty',
+    )
+    expect(await users.delete(operator, [second])).toBe('AdminGroupCannotBeEmpty')
+    expect(await users.delete(operator, [SUPER_USER_KEY])).toBe('CannotDelete')
+    // With another administrator there, the same changes go through.
+    await new UserRepository(db).addToGroup(GROUPS.admin, [SUPER_USER_KEY])
+    expect(await users.update(operator, second, input)).toBe('Success')
+    expect(await users.setGroups(operator, [second], [GROUPS.admin])).toBe('Success')
+    expect(await users.delete(operator, [second])).toBe('Success')
   })
 
   test('passwords: reset shows a new one, changing your own needs the old one, the rules apply', async () => {

@@ -181,6 +181,17 @@ bunx crombolo admin reset-password
 
 `reset-password` prints a generated password; with `--stdin` it reads one from a pipe instead, so it never sits in your shell history. On a site with no e-mail, `users invite <email> --group <alias>` creates the user and prints the link they set a password with. The [users commands](/docs/reference/command-line/users/) have the full list.
 
+To change someone's name, e-mail, groups or language, and to see and end where they are signed in:
+
+```sh
+bunx crombolo users update sam@example.com --group editor --remove-group writer
+bunx crombolo users sessions sam@example.com
+bunx crombolo users sessions end 3f2a9c1d
+bunx crombolo users groups update writer --start-at /Home/Blog --owner editor
+```
+
+These act as you, with your permissions, once you are signed in: only an administrator changes an administrator, or a group. Someone who has signed in is disabled rather than removed, and the site always keeps an administrator. Each takes `--profile` to act on a hosted site.
+
 ## Where next
 
 - [The operations commands](/docs/reference/command-line/operations/), with every flag

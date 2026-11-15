@@ -8,6 +8,19 @@ point at `docs/stories/`.
 
 ### Features
 
+- **Users and groups filled in from the command line (356).** `crombolo users update <user>
+  [--name] [--email] [--group <alias>]... [--remove-group <alias>]... [--ui-language <iso>]`
+  changes a user under the Users section's rules, saying what changed; `users remove <user>`
+  removes someone who has never signed in. `users sessions [<user>]` lists the browsers and
+  terminals signed in, with when, last used and the address, yours or anyone's for an
+  administrator, and `users sessions end <id>` ends one. `users groups new|update` take
+  `--start-at`, `--media-start-at`, `--library-start-at`, `--owner` and `--remove-owner`,
+  kept with the database as the group screen keeps them, and `users groups show` shows them.
+  Each but `users groups new` takes `--profile`; on a hosted site `users groups update`
+  changes only what the database keeps. `docs/operations.md`, "Running a site from the
+  command line".
+- **The remote protocol's `users` (356)** carries those commands to a hosted site, as the
+  signed-in person and never as CI; the conformance suite checks it.
 - **Members from the command line (354).** `crombolo members list [--group] [--type]
   [--find]` and `members show <member>` give what the Members section shows, a member named
   by e-mail, login or key; `members new <email> --type <alias>` and `members update
@@ -96,12 +109,27 @@ point at `docs/stories/`.
 
 ### Fixes
 
+- **The site always keeps an administrator (356).** Taking the admin group off its last
+  member, in the user editor or by setting their groups, and removing the last
+  administrator, are now refused, in the back office and on the command line, with the words
+  the group's own screen gave. The site's built-in administrator is never removed.
+- **`users` commands name a user by their username (356),** as their help says, not by their
+  display name.
 - **A member saved by someone outside Sensitive data keeps their sensitive values (354).**
   The Members section withholds a sensitive value from them, and saving the member then
   dropped it; the save now keeps each value they were not shown.
 
 ### Upgrade notes
 
+- **`users` commands act as the person signed in (356).** Once someone is signed in to a
+  site, each `users` and `users groups` command acts as them, with their permissions, rather
+  than as the command line: someone who is not an administrator no longer sees or changes
+  administrators, and hands out only the groups they own. `users groups new|update|remove`
+  are for administrators. With nobody signed in (`CROMBOLO_CLI_ACCESS=open`) they act as the
+  command line, as before.
+- **Neither the back office nor the command line leaves the site without an administrator
+  (356).** A change that would empty the admin group is refused; add another administrator
+  first.
 - **`remotes.toml` is no longer read (352).** In each site's folder, run
   `crombolo profile import` once to copy its remotes into your profiles; a command run where
   one is says so. Once everyone has imported it, the committed file can be deleted.

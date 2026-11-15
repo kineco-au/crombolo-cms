@@ -1,6 +1,12 @@
 import { Args, Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
-import { checkStatus, describeUser, OPERATOR, openPeople, userNamed } from '../../support/people.ts'
+import {
+  actingPrincipal,
+  checkStatus,
+  describeUser,
+  openPeople,
+  userNamed,
+} from '../../support/people.ts'
 import { readStdin } from '../../support/prompt.ts'
 import { siteConfig } from '../../support/site.ts'
 
@@ -44,9 +50,10 @@ export default class UsersResetPassword extends BaseCommand {
       const user = await userNamed(people, args.user)
       this.auditKey = user.key
       let password: string | null = null
-      if (given) checkStatus(await people.users.changePassword(OPERATOR, user.key, given, null))
+      if (given)
+        checkStatus(await people.users.changePassword(actingPrincipal(), user.key, given, null))
       else {
-        const result = await people.users.resetPassword(OPERATOR, user.key)
+        const result = await people.users.resetPassword(actingPrincipal(), user.key)
         checkStatus(result.status)
         password = result.status === 'Success' ? result.value : null
       }

@@ -1,19 +1,29 @@
 import { ADMIN_GROUP_ALIAS } from '@crombolo/core'
 import { writeUserGroup } from '@crombolo/schema'
 import { Args, Flags } from '@oclif/core'
-import { BaseCommand } from '../../../base.ts'
 import { CliError } from '../../../errors.ts'
 import { permissionVerbs, sectionNames } from '../../../support/names.ts'
 import { databaseGroups, groupFile, siteDefinitions } from '../../../support/site-definitions.ts'
-import { commitDefinitionEdit, editSpec } from '../../../support/type-edit.ts'
+import { commitDefinitionEdit } from '../../../support/type-edit.ts'
+import {
+  groupEditSpec,
+  placeChangeOf,
+  placeFlags,
+  placeLines,
+  placesAnything,
+  refuseUnapplied,
+  UserCommand,
+  withUsers,
+} from '../../../support/users.ts'
 
 /** A user group of the site's own (story 251). */
-export default class UsersGroupsNew extends BaseCommand {
+export default class UsersGroupsNew extends UserCommand {
   static override summary = "add a user group of the site's own"
   static override description =
-    'It travels with the site. Who is in it, and where in the tree it starts, are set on each environment.'
+    "It travels with the site. Who is in it, where in the tree it starts and who owns it are kept with each environment's database: the start node and owner flags set them here once the group is applied."
   static override examples = [
     '<%= config.bin %> users groups new reviewers --name Reviewers --section content --permission content:read --language all',
+    '<%= config.bin %> users groups new bloggers --name Bloggers --section content --start-at /Home/Blog --owner editor',
   ]
   static override args = {
     alias: Args.string({ required: true, description: "the group's alias" }),
@@ -37,17 +47,26 @@ export default class UsersGroupsNew extends BaseCommand {
       helpValue: '<iso|all>',
       multiple: true,
     }),
+    ...placeFlags,
     'dry-run': Flags.boolean({ summary: 'say what would change, and change nothing' }),
     'no-apply': Flags.boolean({
       summary: 'change it, and leave applying it to `crombolo types sync`',
     }),
   }
+  static override audit = {
+    category: 'permission',
+    action: 'Save',
+    entityType: 'UserGroup',
+  } as const
   static override access = 'site' as const
   static override section = 'users' as const
-  static override spec = editSpec
+  static override adminOnly = true
+  static override spec = groupEditSpec
 
   async run() {
     const { args, flags } = await this.parse(UsersGroupsNew)
+    const place = placeChangeOf(flags)
+    refuseUnapplied(place, flags)
     const { config, loaded } = await siteDefinitions()
     const wanted = args.alias.toLowerCase()
     if (wanted === ADMIN_GROUP_ALIAS.toLowerCase())
@@ -68,7 +87,7 @@ export default class UsersGroupsNew extends BaseCommand {
       permissions: permissionVerbs(flags.permission) ?? [],
       languages: languages.includes('all') ? 'all' : languages,
     })
-    return commitDefinitionEdit(
+    const outcome = await commitDefinitionEdit(
       this,
       {
         config,
@@ -77,8 +96,16 @@ export default class UsersGroupsNew extends BaseCommand {
         current: '',
         next: text,
       },
-      [`The user group "${flags.name}" (${args.alias}) is added.`],
+      [`The user group "${flags.name}" (${args.alias}) is added.`, ...placeLines(place)],
       flags,
     )
+    this.changedNothing = true
+    if (!outcome.applied || !placesAnything(place)) return { ...outcome, placed: null }
+    // Kept with the database, so set once the group is there (story 356).
+    return withUsers({}, async (site) => {
+      const placed = await site.placeGroup(args.alias, place, false)
+      this.noted(site, placed.group.key, placed.changed.length > 0)
+      return { ...outcome, placed: placed.group }
+    })
   }
 }

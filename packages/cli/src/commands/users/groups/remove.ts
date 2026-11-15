@@ -29,6 +29,7 @@ export default class UsersGroupsRemove extends BaseCommand {
   }
   static override access = 'site' as const
   static override section = 'users' as const
+  static override adminOnly = true
   static override spec = editSpec
 
   async run() {

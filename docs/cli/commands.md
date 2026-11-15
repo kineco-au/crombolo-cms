@@ -4321,7 +4321,7 @@ crombolo users groups list
 Add a user group of the site's own. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo users groups new <alias> --name <name> [--description <description>] [--icon <icon>] [--section <section>] [--permission <permission>] [--language <language>] [--dry-run] [--no-apply]
+crombolo users groups new <alias> --name <name> [--description <description>] [--icon <icon>] [--section <section>] [--permission <permission>] [--language <language>] [--start-at <start-at>] [--media-start-at <media-start-at>] [--library-start-at <library-start-at>] [--owner <owner>] [--remove-owner <remove-owner>] [--dry-run] [--no-apply]
 ```
 
 | Argument | Type | What it is |
@@ -4333,6 +4333,11 @@ crombolo users groups new <alias> --name <name> [--description <description>] [-
 | `--section` | string[] | A section it may open; give each. |
 | `--permission` | string[] | A permission it holds; give each. |
 | `--language` | string[] | A language it may edit, or all; give each. |
+| `--start-at` | string | Where in content it starts: a page, root for all of it, or none. |
+| `--media-start-at` | string | Where in media it starts: a folder, root for all of it, or none. |
+| `--library-start-at` | string | Where in the Library it starts: a folder, root for all of it, or none. |
+| `--owner` | string[] | A group whose people choose who is in this one. |
+| `--remove-owner` | string[] | A group that no longer owns this one. |
 | `--dry-run` | boolean | Say what would change, and change nothing. |
 | `--no-apply` | boolean | Change it, and leave applying it to `crombolo types sync`. |
 
@@ -4343,8 +4348,25 @@ crombolo users groups new <alias> --name <name> [--description <description>] [-
 - `applied` (boolean)
 - `findings` (array of string)
 - `schema` (string)
+- `placed` (object)
+  - `key` (string)
+  - `alias` (string)
+  - `name` (string)
+  - `content` (object)
+    - `at` (string)
+    - `key` (string)
+    - `path` (string)
+  - `media` (object)
+    - `at` (string)
+    - `key` (string)
+    - `path` (string)
+  - `library` (object)
+    - `at` (string)
+    - `key` (string)
+    - `path` (string)
+  - `owners` (array of string)
 
-**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `conflict`, `unavailable`.
 
 ### `crombolo users groups permissions`
 
@@ -4411,7 +4433,7 @@ crombolo users groups sections
 
 ### `crombolo users groups show`
 
-One user group: its sections, permissions and languages. Changes nothing.
+One user group: its sections, permissions and languages, where it starts and who owns it. Changes nothing.
 
 ```
 crombolo users groups show <alias>
@@ -4427,10 +4449,10 @@ crombolo users groups show <alias>
 
 ### `crombolo users groups update`
 
-Change a user group's name, sections, permissions or languages. Safe to run again: a second run changes nothing more.
+Change a user group: its name, sections, permissions, languages, start nodes or owners. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo users groups update <alias> [--name <name>] [--description <description>] [--icon <icon>] [--section <section>] [--remove-section <remove-section>] [--permission <permission>] [--remove-permission <remove-permission>] [--all-languages] [--language <language>] [--remove-language <remove-language>] [--dry-run] [--no-apply]
+crombolo users groups update <alias> [--name <name>] [--description <description>] [--icon <icon>] [--section <section>] [--remove-section <remove-section>] [--permission <permission>] [--remove-permission <remove-permission>] [--all-languages] [--language <language>] [--remove-language <remove-language>] [--start-at <start-at>] [--media-start-at <media-start-at>] [--library-start-at <library-start-at>] [--owner <owner>] [--remove-owner <remove-owner>] [--dry-run] [--no-apply] [--profile <profile>] [--env <env>]
 ```
 
 | Argument | Type | What it is |
@@ -4446,8 +4468,15 @@ crombolo users groups update <alias> [--name <name>] [--description <description
 | `--all-languages` | boolean | It may edit every language. |
 | `--language` | string[] | A language it may edit. |
 | `--remove-language` | string[] | A language it may no longer edit. |
+| `--start-at` | string | Where in content it starts: a page, root for all of it, or none. |
+| `--media-start-at` | string | Where in media it starts: a folder, root for all of it, or none. |
+| `--library-start-at` | string | Where in the Library it starts: a folder, root for all of it, or none. |
+| `--owner` | string[] | A group whose people choose who is in this one. |
+| `--remove-owner` | string[] | A group that no longer owns this one. |
 | `--dry-run` | boolean | Say what would change, and change nothing. |
 | `--no-apply` | boolean | Change it, and leave applying it to `crombolo types sync`. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
 
 **Output** (single, with `-o json`):
 
@@ -4456,8 +4485,25 @@ crombolo users groups update <alias> [--name <name>] [--description <description
 - `applied` (boolean)
 - `findings` (array of string)
 - `schema` (string)
+- `placed` (object)
+  - `key` (string)
+  - `alias` (string)
+  - `name` (string)
+  - `content` (object)
+    - `at` (string)
+    - `key` (string)
+    - `path` (string)
+  - `media` (object)
+    - `at` (string)
+    - `key` (string)
+    - `path` (string)
+  - `library` (object)
+    - `at` (string)
+    - `key` (string)
+    - `path` (string)
+  - `owners` (array of string)
 
-**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `conflict`, `unavailable`.
 
 ### `crombolo users invite`
 
@@ -4510,6 +4556,33 @@ crombolo users list [--limit <limit>] [--offset <offset>] [--fields <fields>]
 
 **Fails with:** `usage`, `internal`.
 
+### `crombolo users remove`
+
+Remove a user who has never signed in. Each run acts again.
+
+```
+crombolo users remove <user> [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `user` | string | Their e-mail address, username or key. Required. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`):
+
+- `key` (string)
+- `name` (string)
+- `email` (string)
+- `userName` (string)
+- `state` (string)
+- `groups` (array of string)
+- `uiLanguage` (string)
+- `lastSignIn` (string)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.
+
 ### `crombolo users reset-2fa`
 
 Remove a user's second factors, so their next sign-in sets one up again. Safe to run again: a second run changes nothing more.
@@ -4529,7 +4602,7 @@ crombolo users reset-2fa <user>
 - `removed` (array of string)
 - `changed` (boolean)
 
-**Fails with:** `usage`, `internal`, `not_found`.
+**Fails with:** `usage`, `internal`, `not_found`, `refused`.
 
 ### `crombolo users reset-password`
 
@@ -4552,6 +4625,65 @@ crombolo users reset-password <user> [--stdin]
 
 **Fails with:** `usage`, `internal`, `not_found`, `refused`.
 
+### `crombolo users sessions`
+
+The browsers and terminals signed in as you, or as someone else. Changes nothing.
+
+```
+crombolo users sessions [<user>] [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `user` | string | Whose: their e-mail address, username or key; yours when left out. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (bounded, with `-o json`):
+
+- `items` (array of object)
+  - `id` (string)
+  - `user` (object)
+    - `key` (string)
+    - `name` (string)
+  - `kind` (string)
+  - `device` (string)
+  - `signedIn` (string)
+  - `lastUsed` (string)
+  - `address` (string)
+  - `current` (boolean)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.
+
+### `crombolo users sessions end`
+
+End one sign-in, by the id `users sessions` lists. Safe to run again: a second run changes nothing more.
+
+```
+crombolo users sessions end <id> [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `id` | string | The id listed, or more of it. Required. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`):
+
+- `id` (string)
+- `user` (object)
+  - `key` (string)
+  - `name` (string)
+- `kind` (string)
+- `device` (string)
+- `signedIn` (string)
+- `lastUsed` (string)
+- `address` (string)
+- `current` (boolean)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.
+
 ### `crombolo users unlock`
 
 Clear a user's lockout and failed sign-ins. Safe to run again: a second run changes nothing more.
@@ -4572,6 +4704,39 @@ crombolo users unlock <user>
 - `changed` (boolean)
 
 **Fails with:** `usage`, `internal`, `not_found`, `refused`.
+
+### `crombolo users update`
+
+Change a user's name, e-mail, groups or language. Safe to run again: a second run changes nothing more.
+
+```
+crombolo users update <user> [--name <name>] [--email <email>] [--group <group>] [--remove-group <remove-group>] [--ui-language <ui-language>] [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `user` | string | Their e-mail address, username or key. Required. |
+| `--name` | string | Their new name. |
+| `--email` | string | Their new e-mail address. |
+| `--group` | string[] | A group they join. |
+| `--remove-group` | string[] | A group they leave. |
+| `--ui-language` | string | The language the back office shows them, such as en-US. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`):
+
+- `key` (string)
+- `name` (string)
+- `email` (string)
+- `userName` (string)
+- `state` (string)
+- `groups` (array of string)
+- `uiLanguage` (string)
+- `lastSignIn` (string)
+- `changed` (array of string)
+
+**Fails with:** `usage`, `internal`, `not_found`, `conflict`, `refused`, `unavailable`.
 
 ### `crombolo members approve`
 

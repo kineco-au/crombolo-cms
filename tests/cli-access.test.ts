@@ -117,6 +117,25 @@ describe('what each command declares', () => {
       }
     }
   })
+
+  test("story 356: the users commands' access, and the group changes for administrators", () => {
+    const declared = (id: string) => {
+      const found = commands.find((c) => c.id === id)?.declared
+      if (!found) throw new Error(`no command ${id}`)
+      return {
+        access: found.access,
+        section: found.section ?? null,
+        adminOnly: found.adminOnly ?? false,
+      }
+    }
+    for (const id of ['users:update', 'users:remove'])
+      expect(declared(id), id).toEqual({ access: 'site', section: 'users', adminOnly: false })
+    // Your own sign-ins are in your profile, so these need no section.
+    for (const id of ['users:sessions', 'users:sessions:end'])
+      expect(declared(id), id).toEqual({ access: 'site', section: null, adminOnly: false })
+    for (const id of ['users:groups:new', 'users:groups:update', 'users:groups:remove'])
+      expect(declared(id), id).toEqual({ access: 'site', section: 'users', adminOnly: true })
+  })
 })
 
 describe('the gate', () => {

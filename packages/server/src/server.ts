@@ -927,6 +927,12 @@ export async function createServer(
     bundles: bundleAdmin,
     operations: core.operations,
     nodeState: schema.nodeState,
+    // Read when a request comes, by which time the Management API's ports are made.
+    userPorts: () => {
+      const users = managementDeps.userManagement
+      const groups = managementDeps.userGroups
+      return users && groups ? { users, groups } : undefined
+    },
     restart: serverOptions.restart,
     onApplied: async () => {
       cache.invalidate()

@@ -1,10 +1,10 @@
 import { Args } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
 import {
+  actingPrincipal,
   checkStatus,
   describeUser,
   OBSERVER,
-  OPERATOR,
   openPeople,
   userNamed,
 } from '../../support/people.ts'
@@ -43,7 +43,7 @@ export default class UsersUnlock extends BaseCommand {
           : { state: 'unknown', failed: 0 }
       }
       const before = await snapshot()
-      checkStatus(await people.users.unlock(OPERATOR, [user.key]))
+      checkStatus(await people.users.unlock(actingPrincipal(), [user.key]))
       const after = await snapshot()
       const state = after.state
       const changed = before.state !== after.state || before.failed !== after.failed
