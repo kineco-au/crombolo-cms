@@ -34,7 +34,7 @@ import {
   PublicAccessRepository,
 } from '@crombolo/data'
 import { createMemberGroupPort } from './adapters/member-groups.ts'
-import { createMemberPort } from './adapters/members.ts'
+import { createMemberPort, type MemberPortOptions } from './adapters/members.ts'
 import type { CromboloConfig } from './config.ts'
 import {
   type SchemaLookup,
@@ -66,14 +66,22 @@ export interface MemberPorts {
   writer: ReturnType<typeof valueWriter>
 }
 
-/** The member ports over a site's database, as its server makes them. */
-export async function siteMemberPorts(db: Db, config: CromboloConfig): Promise<MemberPorts> {
-  const state = await currentSchemaState(db)
+/**
+ * The member ports over a site's database, as its server makes them. A running
+ * server passes its own schema state, so a node behind the database refuses the
+ * write as its own ports do; the command line reads the database's.
+ */
+export async function siteMemberPorts(
+  db: Db,
+  config: CromboloConfig,
+  nodeState?: MemberPortOptions['nodeState'],
+): Promise<MemberPorts> {
   const lookup = schemaLookup(db)
+  const state = nodeState ?? (await currentSchemaState(db))
   return {
     db,
     members: createMemberPort(db, {
-      nodeState: { version: state.version, revision: state.revision },
+      nodeState: nodeState ?? { version: state.version, revision: state.revision },
       nodeId: config.nodeId,
       apiMemberUserNames: resolveDeliveryApiSettings(
         config.deliveryApi,

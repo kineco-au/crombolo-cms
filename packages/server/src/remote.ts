@@ -45,6 +45,7 @@ import {
   revertRun,
 } from '@crombolo/transfer'
 import { readAuditPageQuery, recordAudit } from './adapters/audit.ts'
+import type { MemberPortOptions } from './adapters/members.ts'
 import { type BundleAdmin, settingsIn } from './bundle-admin.ts'
 import { userKeyOf } from './bundle-api.ts'
 import { codeChanges, installedCode, planCode } from './bundle-code-install.ts'
@@ -106,6 +107,8 @@ export interface RemoteOptions {
   bundles?: BundleAdmin
   /** The content and media operations, for undoing a change (story 353); absent, those routes are not offered. */
   operations?: { documents: DocumentOperations; media: MediaOperations }
+  /** The server's own schema state, so a node behind the database writes no members. */
+  nodeState?: MemberPortOptions['nodeState']
 }
 
 /** What a supervised restart came to: the new server serving, or why the old one still is. */
@@ -274,7 +277,7 @@ export function createRemote(options: RemoteOptions): Remote {
 
   const memberRoutes = createMemberRoutes({
     db,
-    ports: () => siteMemberPorts(db, config),
+    ports: () => siteMemberPorts(db, config, options.nodeState),
     operations: options.operations?.documents,
     problem,
     levelRefusal: () =>
