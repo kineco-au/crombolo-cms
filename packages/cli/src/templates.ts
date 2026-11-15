@@ -64,6 +64,8 @@ export interface SiteTemplate {
   serverBundles: TemplateServerBundle[]
   /** The site has a Next.js front end in `web/` (story 208). */
   next: boolean
+  /** The site has a single-page app in `web/`, built as static files (story 347). */
+  spa: boolean
   /** Packages the site depends on, such as React for its islands (story 209). */
   dependencies: Record<string, string>
   /** Its server action modules, `files/actions/*.ts`, each listed in the config (story 219). */
@@ -84,6 +86,7 @@ function read(dir: string, id: string): SiteTemplate | undefined {
     seed: existsSync(join(dir, 'files', 'content')),
     serverBundles: readServerBundles(raw.bundles),
     next: raw.next === true,
+    spa: raw.spa === true,
     dependencies: readDependencies(raw.dependencies),
     actions: actionModules(join(dir, 'files', 'actions')),
   }
@@ -260,11 +263,33 @@ const NEXT_CONFIG = `  // The Next.js app in web/ reads the site through the Del
   seo: { publicUrl: APP },
 `
 
+/**
+ * What a site with a single-page app in `web/` sets (story 347): nothing for
+ * reading, which is public from any origin, and preview and member sign-in sent
+ * back to the app.
+ */
+const SPA_CONFIG = `  // The app reads what the site publishes with no key, from any origin (story 348).
+  deliveryApi: {
+    preview: { url: \`\${APP}/preview?path={path}&token={token}\` },
+    memberAuthorization: {
+      authorizationCodeFlow: {
+        enabled: true,
+        loginRedirectUrls: [\`\${APP}/signed-in\`],
+        logoutRedirectUrls: [\`\${APP}/\`],
+        // The one page this site still draws: a member signs in here, then goes back to the app.
+        loginPage: '/login',
+      },
+    },
+  },
+  seo: { publicUrl: APP },
+`
+
 function config(
   siteName: string,
   bundles: readonly TemplateServerBundle[],
   next = false,
   actions: readonly string[] = [],
+  spa = false,
 ): string {
   const imports = actions
     .map((file) => `import * as ${actionKey(file)} from '#actions/${file}'\n`)
@@ -277,6 +302,16 @@ function config(
     actions.length > 0
       ? `  // Server actions a page's forms post to (story 219): each export is one.\n  actions: { ${actions.map(actionKey).join(', ')} },\n`
       : ''
+  if (spa)
+    return `${imports}import { defineConfig } from '@crombolo/crombolo'
+
+/** Where visitors see the site: the single-page app in web/, beside the Next.js one on 3000. */
+const APP = process.env.CROMBOLO_APP_URL ?? 'http://localhost:3001'
+
+export default defineConfig({
+  siteName: ${quote(siteName)},
+${bundles.length > 0 ? extensions : ''}${SPA_CONFIG}})
+`
   if (next)
     return `${imports}import { defineConfig } from '@crombolo/crombolo'
 
@@ -309,6 +344,7 @@ function packageJson(options: {
   start: string
   bundles: readonly TemplateServerBundle[]
   next?: boolean
+  spa?: boolean
   dependencies?: Record<string, string>
 }): string {
   const ranges = options.bundles.map(
@@ -324,13 +360,21 @@ function packageJson(options: {
       name: options.name,
       private: true,
       type: 'module',
-      ...(options.next ? { workspaces: ['web'] } : {}),
+      ...(options.next || options.spa ? { workspaces: ['web'] } : {}),
       // Views import server actions through this (story 219): they render from a
       // copy of components/, where a relative path to actions/ would break.
-      ...(options.next ? {} : { imports: { '#actions/*': './actions/*' } }),
-      scripts: options.next
-        ? { start: options.start, dev: 'bun dev.ts', 'dev:cms': 'bun --watch server.ts' }
-        : { start: options.start, dev: 'bun --watch server.ts' },
+      ...(options.next || options.spa ? {} : { imports: { '#actions/*': './actions/*' } }),
+      scripts: options.spa
+        ? {
+            start: options.start,
+            dev: 'bun dev.ts',
+            'dev:cms': 'bun --watch server.ts',
+            members: 'bun members.ts',
+            serve: 'bun serve.ts',
+          }
+        : options.next
+          ? { start: options.start, dev: 'bun dev.ts', 'dev:cms': 'bun --watch server.ts' }
+          : { start: options.start, dev: 'bun --watch server.ts' },
       ...(own.length > 0 ? { dependencies: Object.fromEntries(own) } : {}),
       // Peers, because a host that runs the site provides the CMS; `bun install`
       // still installs them here (story 192).
@@ -357,7 +401,9 @@ export function scaffoldFiles(options: ScaffoldOptions = {}): ScaffoldFile[] {
       ? 'crombolo start --bundle . --publish'
       : 'crombolo start'
   const serverBundles = options.template?.serverBundles ?? []
-  const next = options.next ?? options.template?.next ?? false
+  const spa = options.template?.spa ?? false
+  // A single-page app is a front end of its own, so `--next` adds nothing beside it.
+  const next = !spa && (options.next ?? options.template?.next ?? false)
   const files: ScaffoldFile[] = [
     {
       path: 'package.json',
@@ -368,12 +414,13 @@ export function scaffoldFiles(options: ScaffoldOptions = {}): ScaffoldFile[] {
         start,
         bundles: serverBundles,
         next,
+        spa,
         dependencies: options.template?.dependencies,
       }),
     },
     {
       path: 'crombolo.config.ts',
-      text: config(siteName, serverBundles, next, options.template?.actions ?? []),
+      text: config(siteName, serverBundles, next, options.template?.actions ?? [], spa),
     },
     {
       path: 'server.ts',
@@ -393,7 +440,7 @@ export default await crombolo(config)
     // Files served at the root of the site at their own paths (story 284).
     { path: 'public/.gitkeep', text: '' },
     // Server actions (story 219), imported by views as `#actions/<file>.ts`.
-    ...(next ? [] : [{ path: 'actions/.gitkeep', text: '' }]),
+    ...(next || spa ? [] : [{ path: 'actions/.gitkeep', text: '' }]),
     {
       path: '.gitignore',
       // `.crombolo/` holds the view snapshots: pure cache, rebuilt from `components/`
@@ -404,6 +451,7 @@ export default await crombolo(config)
 
   const secrets = next ? (options.secrets ?? randomSecrets()) : undefined
   if (next && secrets) files.push(...nextFiles(siteName, secrets))
+  if (spa) files.push(spaFiles(siteName))
   // Every site has a secret key from the start: it seals the site's secrets and
   // its signing key, which signs the site bundles it makes (story 316).
   const keyEnv = `# Seals this site's secrets and the key that signs its site bundles. Keep it secret.
@@ -536,6 +584,37 @@ stop()
     },
   )
   return out
+}
+
+/**
+ * The single-page app's manifest (story 347): its pages, scripts and the rest are
+ * the template's own files. It reads with `@crombolo/delivery-client` alone.
+ */
+function spaFiles(siteName: string): ScaffoldFile {
+  return {
+    path: 'web/package.json',
+    text: `${JSON.stringify(
+      {
+        name: `${packageNameFor(siteName)}-web`,
+        private: true,
+        type: 'module',
+        scripts: { dev: 'next dev --port 3001', build: 'next build' },
+        dependencies: {
+          '@crombolo/delivery-client': `^${VERSION}`,
+          next: NEXT_VERSIONS.next,
+          react: NEXT_VERSIONS.react,
+          'react-dom': NEXT_VERSIONS.react,
+        },
+        devDependencies: {
+          '@types/node': NEXT_VERSIONS.node,
+          '@types/react': NEXT_VERSIONS.types,
+          typescript: TYPESCRIPT_VERSION,
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  }
 }
 
 /** `files/` into the site root, its seed among them. */

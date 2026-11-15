@@ -1,0 +1,9 @@
+type = "whiskyList"
+key = "2efbdb5b-7888-4a49-bca5-c0f85b76e472"
+name = "Bottlings"
+order = 1
+
+[values]
+eyebrow = "The range"
+title = "Bottlings on offer."
+standfirst = "All Harbourstone single malt is bottled at the distillery. Natural colour. Non-chill filtered. 700 ml."

@@ -284,6 +284,9 @@ describe('Getting started (story 256)', () => {
       expect(page?.body).toContain('id="what-is-in-it"')
     }
     expect(templates?.children.find((p) => p.slug === 'next')?.body).toContain('bun run dev')
+    const spa = templates?.children.find((p) => p.slug === 'demo-harbourstone-spa')?.body
+    expect(spa).toContain('bun run dev')
+    expect(spa).toContain('http://localhost:3001/')
   })
 })
 

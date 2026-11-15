@@ -9,6 +9,9 @@
  *   bun run site demo/harbourstone --in-place  run the committed site itself
  *   bun run site demo/harbourstone --dry-run  say what it would do, start nothing
  *
+ * A site with a single-page app (`"spa": true`, story 347) builds it first, then
+ * runs the CMS and serves the build beside it, on localhost only.
+ *
  * Ctrl-C ends it, including the container `--docker` runs it in: see
  * `runToCompletion` for why that needs a handler rather than bun's default.
  *
@@ -68,6 +71,10 @@ if (!site && !template) {
 }
 
 const id = (site ?? template)?.id as string
+if (site?.spa && flags.has('--docker')) {
+  console.error(`\n${id} runs on localhost only: its app is served beside the CMS.`)
+  process.exit(1)
+}
 const slug = slugOf(id)
 const inPlace = Boolean(site) && flags.has('--in-place')
 const siteDir = site && inPlace ? site.dir : join(SCAFFOLDS, slug)
@@ -312,23 +319,56 @@ const command = [
   ...startArgs,
   ...passThrough,
 ]
+const env = {
+  ...process.env,
+  // Forced, not defaulted: see above.
+  CROMBOLO_DB: 'sqlite',
+  CROMBOLO_SQLITE_FILE: sqliteFile,
+  CROMBOLO_POSTGRES_URL: '',
+  CROMBOLO_MEDIA_DIR: join(siteDir, 'media'),
+  CROMBOLO_LOGS_DIR: join(siteDir, 'logs'),
+  CROMBOLO_LOCAL_ADMIN: 'true',
+}
+const cmsUrl = `http://localhost:${Bun.env.PORT ?? 8080}`
+if (site?.spa)
+  console.log(`\n  bun run build  in ${relative(ROOT, join(siteDir, 'web'))}, for ${cmsUrl}`)
 console.log(`\n  ${command.join(' ')}\n`)
 console.log(`  database    ${sqliteFile}`)
+if (site?.spa) console.log('  then        bun members.ts, and bun serve.ts for the app')
 if (flags.has('--dry-run')) process.exit(0)
-const proc = Bun.spawn(command, {
-  cwd: siteDir,
-  stdio: ['inherit', 'inherit', 'inherit'],
-  env: {
-    ...process.env,
-    // Forced, not defaulted: see above.
-    CROMBOLO_DB: 'sqlite',
-    CROMBOLO_SQLITE_FILE: sqliteFile,
-    CROMBOLO_POSTGRES_URL: '',
-    CROMBOLO_MEDIA_DIR: join(siteDir, 'media'),
-    CROMBOLO_LOGS_DIR: join(siteDir, 'logs'),
-    CROMBOLO_LOCAL_ADMIN: 'true',
-  },
-})
-// Nothing to clean up: the server is this child, and it holds the port only for
-// as long as it runs.
-process.exit(await runToCompletion(proc))
+
+if (site?.spa) {
+  const built = Bun.spawnSync(['bun', 'run', 'build'], {
+    cwd: join(siteDir, 'web'),
+    stdio: ['inherit', 'inherit', 'inherit'],
+    env: { ...env, CROMBOLO_URL: cmsUrl, NEXT_TELEMETRY_DISABLED: '1' },
+  })
+  if (built.exitCode !== 0) process.exit(built.exitCode ?? 1)
+}
+const proc = Bun.spawn(command, { cwd: siteDir, stdio: ['inherit', 'inherit', 'inherit'], env })
+
+/** Once the CMS answers with the home page: the Members page made members-only, and the app served. */
+let app: Bun.Subprocess | undefined
+async function serveApp(): Promise<void> {
+  for (let tries = 0; tries < 240 && proc.exitCode === null; tries++) {
+    const answer = await fetch(`${cmsUrl}/crombolo/delivery/api/v2/route?path=/`).catch(() => null)
+    if (answer?.ok) {
+      Bun.spawnSync(['bun', 'members.ts'], {
+        cwd: siteDir,
+        stdio: ['inherit', 'inherit', 'inherit'],
+        env,
+      })
+      app = Bun.spawn(['bun', 'serve.ts'], {
+        cwd: siteDir,
+        stdio: ['inherit', 'inherit', 'inherit'],
+        env,
+      })
+      return
+    }
+    await Bun.sleep(500)
+  }
+}
+if (site?.spa) serveApp()
+// The server is this child, and it holds the port only for as long as it runs;
+// a single-page app's server goes with it.
+process.exit(await runToCompletion(proc, () => app?.kill()))

@@ -1,0 +1,19 @@
+type = "expression"
+key = "b3946a35-e64c-4161-b59a-81f33a109bb5"
+name = "Haar"
+order = 6
+
+[values]
+title = "Haar"
+kind = "Lightly peated"
+productType = "Whisky"
+abv = "46%"
+age = 10
+summary = "Ten years, peated at 12 ppm. Smoke like the sea fog it is named for."
+bottleImage = "/bottle-brine-and-kiln.jpg"
+bodyText = { html = "<p>Haar is the cold fog that rolls in off the firth in summer. This is our lightest peating, ten years in ex-bourbon, and the smoke drifts rather than lands.</p>" }
+tastingNotes = [
+  "nose-damp-woodsmoke-lemon-peel-sea",
+  "palate-soft-peat-honeyed-malt-crac",
+  "finish-medium-gently-smoky-a-littl",
+]

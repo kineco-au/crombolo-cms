@@ -1,0 +1,19 @@
+type = "expression"
+key = "269fdcb2-15f4-4e33-8b98-59896cf8b4a7"
+name = "Spring Tide"
+order = 10
+
+[values]
+title = "Spring Tide"
+kind = "Cask strength"
+productType = "Whisky"
+abv = "61.2%"
+batch = "03"
+summary = "First-fill sherry at full strength. Neap Tide's darker sibling."
+bottleImage = "/bottle-neap-tide.jpg"
+bodyText = { html = "<p>A vatting of first-fill oloroso butts, taken at the strength they came out at. Batch 03 is 61.2%: start with a few drops of water and keep going.</p>" }
+tastingNotes = [
+  "nose-dark-chocolate-cherry-toasted",
+  "palate-thick-and-intense-christmas",
+  "finish-huge-and-long-dried-fruit-a",
+]

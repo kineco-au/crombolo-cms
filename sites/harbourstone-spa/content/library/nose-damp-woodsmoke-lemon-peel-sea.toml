@@ -1,0 +1,8 @@
+type = "tastingNote"
+key = "864370dc-f5b5-4f2e-b9b6-06e92d75db3a"
+name = "Nose — Damp woodsmoke, lemon peel…"
+order = 18
+
+[values]
+aspect = "Nose"
+note = "Damp woodsmoke, lemon peel, seaweed."

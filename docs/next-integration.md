@@ -11,6 +11,10 @@ templates, put the app in `web/`. How the pieces fit together is in
 [`delivery-api.md`](delivery-api.md), "A Next.js front end". This page lists
 what the package offers, by entry point.
 
+A Next.js app that runs entirely in the browser, built as static files, needs none
+of this package: `demo/harbourstone-spa` reads with `@crombolo/delivery-client`
+alone. [`delivery-api.md`](delivery-api.md), "A single-page app", compares the two.
+
 ## Reading content: `@crombolo/next-integration`
 
 `createCrombolo({ url, apiKey, cache, revalidate, host, culture, startItem, secret, apiPath })`

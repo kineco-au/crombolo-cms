@@ -299,6 +299,8 @@ export interface TemplateInfo {
   description: string
   /** It has a Next.js front end in `web/`. */
   next: boolean
+  /** It has a single-page app in `web/`, built with Next.js as static files. */
+  spa: boolean
   /** It ships content, applied and published on the first start. */
   seed: boolean
   /** The server bundles it brings, by package name. */
@@ -319,6 +321,7 @@ export function templateInfos(): TemplateInfo[] {
     name: t.name,
     description: t.description,
     next: t.next,
+    spa: t.spa,
     seed: t.seed,
     bundles: t.serverBundles.map((b) => b.package),
     notes: notesIn(t.dir),
@@ -330,6 +333,7 @@ export function templateInfos(): TemplateInfo[] {
       name: site.name,
       description: site.description,
       next: site.next,
+      spa: site.spa,
       seed: existsSync(join(site.dir, 'content')),
       bundles: site.bundles.flatMap((b) =>
         b && typeof b === 'object' && typeof (b as { package?: unknown }).package === 'string'
@@ -355,10 +359,12 @@ function templateMarkdown(t: TemplateInfo): string {
       'bun install',
     ),
     '## Start it',
-    t.next ? block('bun run dev') : block('bun start'),
-    t.next
-      ? 'This runs the CMS on <http://localhost:8080/> and the Next.js front end in `web/` on <http://localhost:3000/>.'
-      : 'The site is served on <http://localhost:8080/>.',
+    t.next || t.spa ? block('bun run dev') : block('bun start'),
+    t.spa
+      ? 'This runs the CMS on <http://localhost:8080/> and the single-page app in `web/` on <http://localhost:3001/>.'
+      : t.next
+        ? 'This runs the CMS on <http://localhost:8080/> and the Next.js front end in `web/` on <http://localhost:3000/>.'
+        : 'The site is served on <http://localhost:8080/>.',
     `${t.seed ? "The first start applies the template's content and publishes it. " : ''}The back office is at <http://localhost:8080/crombolo>, and the start prints how to sign in ([Getting started](/docs/getting-started/#sign-in)).`,
   ]
   if (t.bundles.length > 0)

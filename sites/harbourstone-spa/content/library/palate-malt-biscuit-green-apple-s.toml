@@ -1,0 +1,8 @@
+type = "tastingNote"
+key = "88ec1185-53b5-439a-a2ce-3f56603be4ff"
+name = "Palate — Malt biscuit, green apple, s…"
+order = 9
+
+[values]
+aspect = "Palate"
+note = "Malt biscuit, green apple, sea spray, white pepper."

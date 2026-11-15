@@ -70,6 +70,7 @@ describe('the starter templates', () => {
       'demo/crombolo',
       'demo/harbourstone',
       'demo/harbourstone-next',
+      'demo/harbourstone-spa',
       'demo/plain-signal',
       'product/crombolo',
       'starter',
@@ -291,6 +292,65 @@ describe('a Next.js front end (story 208)', () => {
     expect(files.some((f) => f.path.includes('node_modules') || f.path.includes('/.next/'))).toBe(
       false,
     )
+  })
+})
+
+describe('a single-page app (story 347)', () => {
+  const at = (files: ReturnType<typeof scaffoldFiles>, path: string) =>
+    files.find((f) => f.path === path)
+  const template = byId('demo/harbourstone-spa')
+
+  test('is its own front end: an app in web/ that reads with the delivery client alone', () => {
+    expect(template.spa).toBe(true)
+    const files = scaffoldFiles({ template, siteName: 'Harbourstone' })
+    const web = JSON.parse(at(files, 'web/package.json')?.text ?? '{}')
+    expect(web.name).toBe('harbourstone-web')
+    expect(web.dependencies).toEqual({
+      '@crombolo/delivery-client': `^${VERSION}`,
+      next: expect.stringMatching(/^\^16\./),
+      react: expect.any(String),
+      'react-dom': expect.any(String),
+    })
+    expect(web.scripts.build).toBe('next build')
+    // The Next.js skeleton, its webhook and its secrets are the server-rendered app's.
+    const paths = files.map((f) => f.path)
+    expect(paths).not.toContain('web/lib/crombolo.ts')
+    expect(paths).not.toContain('schema/webhooks/next-revalidate.toml')
+    expect(at(files, '.env')?.text).not.toContain('CROMBOLO_DELIVERY_API_KEY')
+    expect(at(files, 'web/.env.local')).toBeUndefined()
+    expect(paths).toContain('web/components/app.tsx')
+  })
+
+  test('sends preview and sign-in back to the app, and reads with no key', () => {
+    const config = at(scaffoldFiles({ template }), 'crombolo.config.ts')?.text ?? ''
+    expect(config).toContain("process.env.CROMBOLO_APP_URL ?? 'http://localhost:3001'")
+    expect(config).toContain(`preview: { url: \`\${APP}/preview?path={path}&token={token}\` }`)
+    expect(config).toContain(`loginRedirectUrls: [\`\${APP}/signed-in\`]`)
+    expect(config).toContain(`logoutRedirectUrls: [\`\${APP}/\`]`)
+    expect(config).toContain("loginPage: '/login'")
+    expect(config).toContain('seo: { publicUrl: APP }')
+    expect(config).not.toContain('apiKey')
+    expect(config).not.toContain('cors')
+  })
+
+  test('starts the CMS and the app together, and ships the scripts the site in sites/ runs', () => {
+    const files = scaffoldFiles({ template })
+    const site = JSON.parse(at(files, 'package.json')?.text ?? '{}')
+    expect(site.workspaces).toEqual(['web'])
+    expect(site.scripts).toMatchObject({
+      start: 'crombolo start --bundle . --publish',
+      dev: 'bun dev.ts',
+      members: 'bun members.ts',
+      serve: 'bun serve.ts',
+    })
+    for (const script of ['dev.ts', 'serve.ts', 'members.ts'])
+      expect(at(files, script)?.copyFrom).toContain(template.dir)
+  })
+
+  test('takes no Next.js skeleton from --next', () => {
+    const files = scaffoldFiles({ template, next: true }).map((f) => f.path)
+    expect(files).not.toContain('web/proxy.ts')
+    expect(files).not.toContain('web/lib/crombolo.ts')
   })
 })
 

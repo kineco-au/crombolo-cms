@@ -1,0 +1,8 @@
+type = "tastingNote"
+key = "c0e3847b-a3c4-4692-baa9-25b19f63708a"
+name = "Palate — Baked apple, vanilla custard…"
+order = 16
+
+[values]
+aspect = "Palate"
+note = "Baked apple, vanilla custard, sea salt."

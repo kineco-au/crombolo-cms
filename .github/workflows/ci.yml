@@ -338,6 +338,43 @@ jobs:
                   fail-on-cache-miss: true
             - run: bun run smoke:next --next ${{ matrix.next }} --template ${{ matrix.template }}
 
+    # The single-page Harbourstone (story 347): the delivery client packed as it
+    # publishes, the site scaffolded by `crombolo init`, its static build served
+    # beside the CMS and driven in Chromium, since a single-page app renders only
+    # in a browser. Locally: `bun run smoke:spa`.
+    spa:
+        name: Single-page app front end
+        needs: [client, check]
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v5
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: ${{ env.BUN_VERSION }}
+            - uses: actions/setup-node@v5
+              with:
+                  node-version: '24'
+            - run: bun install --frozen-lockfile
+            - run: bun run generate:types
+            - uses: actions/cache@v6
+              id: browsers
+              with:
+                  path: ~/.cache/ms-playwright
+                  key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+            - run: bunx playwright install --with-deps chromium
+              if: steps.browsers.outputs.cache-hit != 'true'
+            - run: bunx playwright install-deps chromium
+              if: steps.browsers.outputs.cache-hit == 'true'
+            - uses: actions/cache/restore@v6
+              with:
+                  path: ${{ env.DIST_PATH }}
+                  key: >-
+                      backoffice-dist-${{ hashFiles('bun.lock', 'scripts/vendor-backoffice.ts',
+                      'packages/backoffice-dist/upstream-static/**',
+                      'packages/backoffice-dist/UMBRACO_CLIENT', 'scripts/fork.ts') }}
+                  fail-on-cache-miss: true
+            - run: bun run smoke:spa
+
     # The browser suite drives the real backoffice, so it is the slowest thing here
     # (~7 minutes at one worker) and the most sensitive to a busy runner. It is
     # therefore opt-in on main — put `--browser-tests` in the commit message — and

@@ -1,0 +1,8 @@
+type = "loginPage"
+key = "f9dd345b-bce2-4511-afde-f7c4bc01dbfe"
+name = "Login"
+order = 8
+
+[values]
+title = "Sign in"
+standfirst = "Sign in with your member account to see the members' cellar."

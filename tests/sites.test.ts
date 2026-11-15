@@ -7,13 +7,14 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync }
 import { join } from 'node:path'
 import { findTemplate, listTemplates, scaffoldFiles } from '@crombolo/cli'
 import { siteMediaTypeFiles } from '@crombolo/schema'
-import { buildBundleFromDirectory } from '@crombolo/server'
+import { buildBundleFromDirectory, listComponents } from '@crombolo/server'
 import { ROOT } from '../scripts/packages.ts'
 import {
   findSite,
   listSites,
   runState,
   SITES_DIR,
+  SPA_SCRIPTS,
   stageTemplates,
   unstage,
 } from '../scripts/sites.ts'
@@ -39,6 +40,7 @@ describe('the sites', () => {
       'demo/crombolo',
       'demo/harbourstone',
       'demo/harbourstone-next',
+      'demo/harbourstone-spa',
       'demo/plain-signal',
       'product/crombolo',
       'starter',
@@ -93,6 +95,7 @@ describe('the sites', () => {
       'demo/crombolo',
       'demo/harbourstone',
       'demo/harbourstone-next',
+      'demo/harbourstone-spa',
       'demo/plain-signal',
       'starter',
     ])
@@ -107,6 +110,7 @@ describe('staging a site as a template', () => {
       'demo/crombolo',
       'demo/harbourstone',
       'demo/harbourstone-next',
+      'demo/harbourstone-spa',
       'demo/plain-signal',
       'starter',
     ])
@@ -151,6 +155,25 @@ describe('staging a site as a template', () => {
       expect([left, existsSync(join(web, left))]).toEqual([left, false])
   })
 
+  test('a single-page app ships its web/ and the scripts beside it, less what is installed or built', () => {
+    const into = tempDir()
+    const site = findSite('demo/harbourstone-spa')
+    if (!site) throw new Error('no harbourstone-spa')
+    expect(site.spa).toBe(true)
+    expect(site.next).toBe(false)
+    stageTemplates(into, [site])
+    const template = findTemplate('demo/harbourstone-spa', into)
+    expect(template?.spa).toBe(true)
+    expect(template?.next).toBe(false)
+    const files = join(into, 'demo', 'harbourstone-spa', 'files')
+    expect(existsSync(join(files, 'web', 'components', 'app.tsx'))).toBe(true)
+    expect(existsSync(join(files, 'web', 'lib', 'cms-types.gen.ts'))).toBe(true)
+    for (const script of SPA_SCRIPTS)
+      expect([script, existsSync(join(files, script))]).toEqual([script, true])
+    for (const left of ['node_modules', '.next', 'out', '.env.local', 'package.json'])
+      expect([left, existsSync(join(files, 'web', left))]).toEqual([left, false])
+  })
+
   test('leaves out the media types init writes for itself', () => {
     const into = tempDir()
     const site = findSite('demo/harbourstone')
@@ -178,9 +201,57 @@ describe('staging a site as a template', () => {
     const into = tempDir()
     mkdirSync(join(into, 'basic'))
     const staged = stageTemplates(into, listSites())
-    expect(staged).toHaveLength(6)
+    expect(staged).toHaveLength(7)
     unstage(staged, into)
     expect(readdirSync(into)).toEqual(['basic'])
+  })
+})
+
+describe('the single-page Harbourstone (story 347)', () => {
+  const site = findSite('demo/harbourstone-spa')
+  const dir = site?.dir as string
+  const page = (path: string) =>
+    Bun.TOML.parse(readFileSync(join(dir, 'content', 'pages', path), 'utf8')) as {
+      type: string
+      key: string
+    }
+
+  test('makes members-only the page its content calls Members, signed in on its Login page', () => {
+    const script = readFileSync(join(dir, 'members.ts'), 'utf8')
+    const members = page('harbourstone/members.toml')
+    const login = page('harbourstone/login.toml')
+    expect(login.type).toBe('loginPage')
+    expect(script).toContain(`MEMBERS_PAGE = '${members.key}'`)
+    expect(script).toContain(`LOGIN_PAGE = '${login.key}'`)
+    // The page the CMS sends a member to sign in on, by its address.
+    expect(readFileSync(join(dir, 'crombolo.config.ts'), 'utf8')).toContain("loginPage: '/login'")
+  })
+
+  test('draws only the login page itself: every other page is sent to the app', () => {
+    expect(
+      listComponents(join(dir, 'components'))
+        .map((c) => c.alias)
+        .sort(),
+    ).toEqual(['pages/appPage', 'pages/loginPage'])
+  })
+
+  test('keeps no key in the app, and reads with the delivery client alone', () => {
+    const manifest = json(join(dir, 'web', 'package.json')) as {
+      dependencies: Record<string, string>
+    }
+    expect(Object.keys(manifest.dependencies).sort()).toEqual([
+      '@crombolo/delivery-client',
+      'next',
+      'react',
+      'react-dom',
+    ])
+    const sources = readdirSync(join(dir, 'web'), { recursive: true, encoding: 'utf8' }).filter(
+      (file) => /\.tsx?$/.test(file) && !/^(node_modules|\.next|out)\//.test(file),
+    )
+    for (const file of sources) {
+      const text = readFileSync(join(dir, 'web', file), 'utf8')
+      expect([file, /apiKey|CROMBOLO_DELIVERY_API_KEY/.test(text)]).toEqual([file, false])
+    }
   })
 })
 

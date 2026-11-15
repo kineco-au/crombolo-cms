@@ -1,11 +1,11 @@
 {
   "formatVersion": 8,
-  "id": "cd2b4fa8-c19d-56da-9b05-92538b0be867",
+  "id": "8429a1f3-7600-5a42-bc4c-c2c7068b9ce0",
   "bundleType": "site",
   "label": "Crombolo",
   "createdAt": "1970-01-01T00:00:00.000Z",
   "createdBy": "crombolo site build",
-  "integrity": "sha256-48c9a22fc378fd3aa0df045bc02b8b8def9e9fa470f41dcac597988e1335d2b6",
+  "integrity": "sha256-7e1df881555ce9cde3daa90d70e87aadcf8e1e58a10551c12d84e5584d3a4380",
   "snapshot": "drafts",
   "provenance": {
     "siteName": "Crombolo",
@@ -49,7 +49,7 @@
     ]
   },
   "counts": {
-    "document": 38,
+    "document": 41,
     "element": 25
   },
   "dependencies": {
@@ -73,6 +73,7 @@
       "3d525785-ea12-44ab-890b-fdcb049d9d1b",
       "43ff870b-8511-477f-8dd0-cc9d2edc5727",
       "4d577630-7c9f-46c0-a0d5-f887daef0aa0",
+      "4fd22408-9a26-4398-8921-4dc8673f58a1",
       "566477d3-97a4-446b-b9f1-d9b0f810caa8",
       "56c7f79b-2233-46dd-8887-27992f20bc95",
       "5846d97d-b99b-4949-951d-43eda14b73ee",
@@ -89,6 +90,7 @@
       "89ecdb25-4b22-4557-8494-e075e88ae0d3",
       "8c17e1ab-26ab-483d-8cff-0469962db510",
       "8cd61712-878b-474e-8577-d1143f75ed37",
+      "8d38b1a2-f901-4df1-880b-cc3a0039941c",
       "8edc6093-5294-4e95-8d4b-13cda44da5f4",
       "8fce2408-43fa-407f-8059-bc777b4c6ce8",
       "905caea9-3de6-45fb-8d64-60d5e23c6ef5",
@@ -113,6 +115,7 @@
       "dc12892a-7d67-40cf-8645-09a9387a069b",
       "e41ed7cc-3023-43a1-93ad-83f1b2ea1559",
       "eda4ab14-74bf-446d-bb3e-064be4e5913b",
+      "f2ab1d97-2dc1-458b-8ab8-5e59531b58f4",
       "f6c036de-300b-42d5-aa83-56f60fa26ef2",
       "fa2dd680-27ba-4811-8dc2-101cb3813c6d",
       "fe380729-34ae-48f6-848c-ab6e20d20b09",

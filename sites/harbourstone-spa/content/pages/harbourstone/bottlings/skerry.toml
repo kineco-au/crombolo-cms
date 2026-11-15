@@ -1,0 +1,19 @@
+type = "expression"
+key = "41e8c46c-1b76-46b2-bf65-5f72857f4ea7"
+name = "Skerry"
+order = 5
+
+[values]
+title = "Skerry"
+kind = "House malt"
+productType = "Whisky"
+abv = "46%"
+age = 16
+summary = "Sixteen years by the water. The house malt with its shoulders back."
+bottleImage = "/bottle-the-cove.jpg"
+bodyText = { html = "<p>Named for the rocks off the point, and kept four years longer than The Cove in the same low warehouse. The salt is still there; there is more honey and oak around it.</p>" }
+tastingNotes = [
+  "nose-heather-honey-beeswax-wet-roc",
+  "palate-baked-apple-vanilla-custard",
+  "finish-long-and-warming-oak-and-to",
+]

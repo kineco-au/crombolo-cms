@@ -1,0 +1,8 @@
+type = "tastingNote"
+key = "bf3a8baa-9552-490c-99f6-851e3c886849"
+name = "Palate — Sweet barley, white peach, a…"
+order = 13
+
+[values]
+aspect = "Palate"
+note = "Sweet barley, white peach, a pinch of salt."

@@ -1,0 +1,17 @@
+[content-type]
+alias = "siteSettings"
+name = "Site Settings"
+description = "What every page's footer says"
+icon = "icon-settings"
+site-settings = true
+
+[[property]]
+alias = "address"
+name = "Address"
+description = "The line after the wordmark"
+type = "textstring"
+
+[[property]]
+alias = "footerNote"
+name = "Footer note"
+type = "textarea"

@@ -1,0 +1,14 @@
+{
+  "id": "demo/harbourstone-spa",
+  "name": "Harbourstone Distillery (single-page app)",
+  "description": "the Harbourstone distillery as a single-page app in web/, built with Next.js and run in the browser: the same content read from the APIs, members signing in from the app, drafts shown by the Preview button, and a static build to host anywhere",
+  "distribute": true,
+  "spa": true,
+  "bundles": [
+    {
+      "package": "@crombolo/simple-redirects",
+      "id": "redirects",
+      "grant": ["redirects.read", "redirects.write", "content.read"]
+    }
+  ]
+}

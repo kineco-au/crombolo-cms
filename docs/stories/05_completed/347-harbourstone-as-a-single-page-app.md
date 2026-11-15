@@ -130,13 +130,86 @@ before it is made.
 
 ## Acceptance criteria
 
-- [ ] `bun run site demo/harbourstone-spa` runs the CMS and the static app, and every
+- [x] `bun run site demo/harbourstone-spa` runs the CMS and the static app, and every
       Harbourstone page renders in the browser from the APIs.
-- [ ] Following links, the browser's back and forward, and a path opened directly all
+- [x] Following links, the browser's back and forward, and a path opened directly all
       work; a path that is no page shows the app's not-found.
-- [ ] The contact form submits; a member signs in and out and sees the members-only page
+- [x] The contact form submits; a member signs in and out and sees the members-only page
       only while signed in; Preview shows a draft.
-- [ ] No key or secret is in the built app.
-- [ ] `crombolo init --template demo/harbourstone-spa` makes a working site with it.
-- [ ] A CI smoke test builds and serves it and checks it in a real browser.
-- [ ] The docs compare the server-rendered and single-page front ends.
+- [x] No key or secret is in the built app.
+- [x] `crombolo init --template demo/harbourstone-spa` makes a working site with it.
+- [x] A CI smoke test builds and serves it and checks it in a real browser.
+- [x] The docs compare the server-rendered and single-page front ends.
+
+## Built
+
+Built 2026-11-15, as planned with D1–D4. No server change was needed.
+- **`sites/harbourstone-spa`** is `harbourstone-next`'s schema, content, media and
+  form, with `"distribute": true` and `"spa": true` in `site.json`. Two pages are added:
+  `members.toml`, a Content Page for the members' cellar, and `login.toml`, of a new
+  `loginPage` type. Every other page type names one view, `pages/appPage`, which sends a
+  visitor on to the page's address in the app (`urls.absolute`, so `seo.publicUrl`);
+  `pages/loginPage` is the member login form authorization sends a member to, posting to
+  `/umbraco/members/login` with the `returnUrl` it was given. The webhook and the CMS's
+  other views are gone.
+- **`crombolo.config.ts`** sets `preview.url` to `${APP}/preview?path={path}&token={token}`,
+  the authorization code flow with `${APP}/signed-in` and `${APP}/`, `loginPage: '/login'`,
+  and `seo.publicUrl: APP`, `APP` from `CROMBOLO_APP_URL` or `http://localhost:3001`.
+  Nothing for reading.
+- **`web/`**: `next.config.ts` exports (`output: 'export'`) except under `next dev`,
+  writes `CROMBOLO_URL` in at build, and loads images through `lib/image-loader.ts`,
+  which asks the CMS to resize. `app/[[...slug]]/page.tsx` is built once as `index.html`
+  and renders `components/app.tsx`, which resolves the address with `cms.route(path,
+  { seo: true })` and draws the page by type (`components/page.tsx`), follows a redirect,
+  or shows the app's not-found, a members-only notice on 401 or a refusal on 403.
+  `lib/cms.ts` is `createDeliveryClient<DeliveryTypes>` with no key, the member's token
+  and the preview token; `lib/cms-types.gen.ts` is `crombolo generate --delivery`'s.
+  The page components are `harbourstone-next`'s, reading in the browser through
+  `lib/use-load.ts`; `components/rich-text.tsx` draws rich text with
+  `walkRichText`. `lib/members.ts` signs in with PKCE (verifier and state in
+  `sessionStorage`, the access token in memory, the refresh token in `sessionStorage`,
+  renewed as it runs out), and signs out by revoking the refresh token and going to
+  `signout`. `lib/preview.ts` keeps the preview token for the tab; the app shows a
+  "Previewing drafts" bar with a button to leave.
+- **Beside it:** `serve.ts` serves `web/out`, a file when there is one and `index.html`
+  for any other address; `dev.ts` runs the CMS and `next dev` on 3001, then `members.ts`
+  once the CMS answers; `members.ts` makes the Members page members-only for a Members
+  group, with the command line (`members groups new`, `content access set`), since who
+  may see a page goes with no content file.
+- **`bun run site demo/harbourstone-spa`** (`scripts/start-site.ts`) builds the app, runs
+  the CMS, then `members.ts` and `serve.ts`; `--docker` is refused for it.
+- **The template:** `scripts/sites.ts` stages `web/` (less `out/` too) and the three
+  scripts, and `template.json` says `spa: true`. `crombolo init` writes the SPA config,
+  `web/package.json` depending on `@crombolo/delivery-client`, Next.js and React only,
+  and `start`, `dev`, `dev:cms`, `members` and `serve` scripts; `--next` adds nothing to
+  it. The docs site's page for it says `bun run dev` and `:3001`.
+- **`scripts/spa-smoke.ts`** (`bun run smoke:spa`, the `spa` job in CI beside the Next.js
+  one): packs the delivery client, scaffolds with `init`, installs `web/` from npm and the
+  pack, starts the CMS, runs `members.ts`, adds a member and a draft with the command
+  line, mints a preview token as the Preview button would, builds the export and serves
+  it, then checks that no key or secret is in the built files and, in Chromium, the home
+  page, a link followed without a reload, a bottling, Back and Forward, an address opened
+  directly, a path that is no page, the contact form, a member signing in and out and the
+  members' page, and Preview showing a draft that a visitor does not see.
+- **Tests:** the site and its staging in `tests/sites.test.ts` (with `members.ts`' keys
+  checked against the content files, the views, and no key in the app), the scaffold in
+  `tests/templates.test.ts`, and the docs site's page in `tests/docs-site.test.ts`. **The
+  tests and the smoke test are written but not yet run.** `next build` of the app
+  succeeds, and `bun run check` passes.
+- **Docs:** `docs/delivery-api.md`, "A single-page app", with the comparison table;
+  `docs/next-integration.md` points at it; `docs/testing.md`, README and the release
+  notes.
+
+Where it differs from the plan, or fills it in:
+- **`bun start` runs the CMS alone,** as every site's and the Next.js template's does;
+  `bun run dev` runs both, as the Next.js template's does, with `next dev` rather than a
+  build. `bun run site` and `bun serve.ts` serve the build.
+- **Links use `history.pushState`, not `next/link`.** Next's router follows it, so
+  `usePathname`, Back and Forward work; `next/link` would fetch each page's own payload
+  from the static host, which has only `index.html`, and fall back to a full load.
+- **The CMS draws no not-found page:** Harbourstone has none, so a path that is no page
+  shows the app's own; the site's not-found page is drawn by the app when one is chosen.
+- **The members-only rule and group are made by `members.ts`, not the content files,**
+  which carry no access. A member to sign in as is added in the back office.
+- **The generated types are `web/lib/cms-types.gen.ts`,** so the formatter leaves them as
+  the generator writes them.

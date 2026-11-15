@@ -1,0 +1,14 @@
+type = "contactPage"
+key = "3d312cc8-2937-40e1-ba14-fd781c9a862d"
+name = "Contact"
+order = 3
+
+[values]
+eyebrow = "Visitors and trade"
+title = "Write to the cove."
+standfirst = "Tours run Thursday to Saturday, April through October, and only by appointment. The road down to Stenwick is single-track."
+enquiryForm = "7b1f4c20-9a63-4e18-8d25-3c6f5a1e9b04"
+asideEyebrow = "Distillery"
+asideHeading = "Cove of Stenwick, Caithness"
+asideBody = { html = "<p>Harbourstone Distillery<br />Stenwick Shore Road<br />Near Dunnet Head<br />North coast, Scotland</p><p>visitors@harbourstone.scot<br />+44 (0)1847 555 014</p>" }
+asideImage = "/casks-in-the-sea-facing-warehouse.jpg"

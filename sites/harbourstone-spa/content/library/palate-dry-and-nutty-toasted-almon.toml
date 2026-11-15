@@ -1,0 +1,8 @@
+type = "tastingNote"
+key = "3fadd607-e7e2-4ebe-994d-d2541064db6f"
+name = "Palate — Dry and nutty: toasted almon…"
+order = 25
+
+[values]
+aspect = "Palate"
+note = "Dry and nutty: toasted almond, lemon, salt."

@@ -1,0 +1,19 @@
+type = "expression"
+key = "a562f0a2-cb6e-4ead-a1ce-4d180632419f"
+name = "Brine and Kiln"
+order = 1
+
+[values]
+title = "Brine & Kiln"
+kind = "Lightly peated"
+productType = "Whisky"
+abv = "46%"
+age = 14
+summary = "Coastal peat at 18 ppm. Smoke that tastes of weather, not a bonfire."
+bottleImage = "/bottle-brine-and-kiln.jpg"
+bodyText = { html = "<p>A portion of the malt dried over peat cut behind Dunnet, which is wet, salty ground and gives a smoke quite unlike an inland one. Fourteen years, and the smoke has had time to settle under the fruit rather than sit on top of it.</p>" }
+tastingNotes = [
+  "nose-cold-kiln-smoke-kelp-lemon",
+  "palate-sweet-peat-oyster-shell-bl",
+  "finish-iodine-and-ember-long-but",
+]

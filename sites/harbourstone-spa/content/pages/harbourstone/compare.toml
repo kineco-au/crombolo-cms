@@ -1,0 +1,9 @@
+type = "comparisonPage"
+key = "c0a1e7d2-5b3f-4e8a-9c61-2d7f0b4e8a13"
+name = "Compare"
+order = 2
+
+[values]
+eyebrow = "Side by side"
+title = "Compare the bottlings."
+standfirst = "Choose up to four and read them across: strength, age, cask and what is in the glass."

@@ -691,6 +691,112 @@ Next.js 15 tags a fetch before it runs, so there every answer is kept under the
 site's tag and any change clears them all. `bun run smoke:next --next 15|16`
 builds and runs a scaffolded app on either, as CI does.
 
+## A single-page app
+
+`crombolo init --template demo/harbourstone-spa` makes Harbourstone with an app in `web/`
+that runs entirely in the browser. Next.js builds it as static files (`output:
+'export'`): one page, `index.html`, which reads whatever address it is opened at from
+the site's APIs. Story 347; `sites/harbourstone-spa`.
+
+```
+my-site/
+  crombolo.config.ts  schema/  content/          the CMS
+  components/pages/loginPage.tsx                 the one page the CMS still draws
+  components/pages/appPage.tsx                   every other page: sent on to the app
+  dev.ts  serve.ts  members.ts                   run both, serve the build, make Members members-only
+  web/
+    next.config.ts         output: 'export', CROMBOLO_URL written in at build
+    components/app.tsx     the address, through the route lookup, to a page
+    lib/cms.ts             createDeliveryClient: no key, a member's token, a preview token
+    lib/cms-types.gen.ts   crombolo generate --delivery --out web/lib/cms-types.gen.ts
+    lib/members.ts         sign-in with PKCE, refresh, sign-out
+```
+
+`bun run dev` runs the CMS on `:8080` and `next dev` on `:3001`, beside the
+server-rendered Harbourstone on `:3000`. `cd web && bun run build` writes the app to
+`web/out`, and `bun serve.ts` serves it as a static host would. In this repository,
+`bun run site demo/harbourstone-spa` builds it, runs the CMS and serves the build.
+
+**The config.** Nothing for reading: the API serves what the site publishes to any
+origin, with no key (story 348), so no key is in the app.
+
+```ts
+const APP = process.env.CROMBOLO_APP_URL ?? 'http://localhost:3001'
+
+export default defineConfig({
+  deliveryApi: {
+    preview: { url: `${APP}/preview?path={path}&token={token}` },
+    memberAuthorization: {
+      authorizationCodeFlow: {
+        enabled: true,
+        loginRedirectUrls: [`${APP}/signed-in`],
+        logoutRedirectUrls: [`${APP}/`],
+        loginPage: '/login',
+      },
+    },
+  },
+  seo: { publicUrl: APP },
+})
+```
+
+The app's own setting is `CROMBOLO_URL`, the CMS's address, read when it is built.
+
+**Routing is the app's.**
+- Each address goes to `route(path)` ("Route lookup" above): a page is drawn by the
+  component for its type, a redirect is followed, and a miss shows the app's own
+  not-found, or the site's not-found page when it has one.
+- A members-only page answers 401, and the app asks the visitor to sign in; 403 says the
+  page is not open to their account.
+- Links are followed with `history.pushState`, which Next's router follows, so Back,
+  Forward and `usePathname` keep up and nothing is fetched but the page. `next/link`
+  would ask the static host for each page's own files, which an export of one page
+  has not got.
+
+**The static host's fallback.** Every address that is not a file answers `index.html`
+with a 200, and the app decides what it shows. On a CDN that is its single-page
+fallback: on S3 and CloudFront the error document and a 404 to 200 rewrite to
+`/index.html`, on Netlify `/* /index.html 200`, on nginx `try_files $uri /index.html`.
+Files under `/_next/static/` never change name, so they can be kept for a year;
+`index.html` should be revalidated.
+
+**Members sign in from the browser,** with the authorization code flow and PKCE, as a
+public client must ("Member sign-in" above).
+1. The app keeps a random verifier and state in `sessionStorage` and sends the visitor to
+   `authorize` with the verifier's S256 challenge.
+2. The site sends a member who is not signed in to its `/login` page, the one the CMS
+   draws, which signs them in on the site and goes back to `authorize`.
+3. `/signed-in` checks the state and exchanges the code and verifier at `token`.
+4. The access token is kept in memory and sent with each read; the refresh token is kept
+   in `sessionStorage` for the tab, and renews the access token when it runs out or the
+   page is opened again.
+5. Sign-out revokes the refresh token, clears both, and goes to `signout`, which ends the
+   member's session on the site and every token they hold, and back to the app.
+
+Who may see a page belongs to the site and goes with no content file, so `members.ts`
+makes the Members page members-only with the command line (`members groups new`,
+`content access set`) once the site's content is in; `bun run dev` runs it.
+
+**Preview.** The Preview button opens `/preview?path=…&token=…`. The app keeps the token
+in `sessionStorage` for the tab, sends it as `Preview-Token` with `Preview: true` on every
+read, and shows a bar to leave the preview.
+
+**Search engines** get the one built page and nothing else until JavaScript runs; the
+title is set once a page is read. A site that needs to be found is better served by the
+server-rendered front end.
+
+| | Server-rendered (`demo/harbourstone-next`) | Single-page (`demo/harbourstone-spa`) |
+| --- | --- | --- |
+| First paint | The page's HTML, from the server or its cache | The app, then the page once the browser has read it |
+| Search engines | Every page as HTML, with its title and sharing tags | Only what runs JavaScript |
+| Publishing | Shows once the webhook clears the app's cache | Shows at once, with nothing to rebuild |
+| Hosting | A Node.js server for the app, beside the CMS | Static files on any host or CDN with a fallback |
+| Members | A sealed session cookie only the app's server reads | Tokens in the tab: memory and `sessionStorage` |
+| Preview | Draft Mode and a cookie, through the app's route handlers | The token in the address, then in the tab |
+| What it costs | A server to run, scale and keep up; the API key and secrets it holds | Search, and the wait before each page; nothing to keep secret |
+
+Choose the server-rendered app for a site people find by searching, and the single-page
+app for one people sign in to, or one that must be hosted as files.
+
 ## Not built
 
 `Accept-Segment`, domain cultures in path resolution, and

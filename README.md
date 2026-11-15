@@ -117,9 +117,11 @@ island. `demo/crombolo` is a full site about Crombolo itself, in English and
 Spanish: a home page built from blocks, features filtered by category, people
 from the Library, a blog with tags and paging, search and a contact form. The
 others are `basic` (one page type, one view, one page), `starter` (a header, a
-footer and a two-column layout to restyle), and `next` and
+footer and a two-column layout to restyle), `next` and
 `demo/harbourstone-next`, which add a Next.js front end in `web/`
-([`docs/delivery-api.md`](docs/delivery-api.md), "A Next.js front end").
+([`docs/delivery-api.md`](docs/delivery-api.md), "A Next.js front end"), and
+`demo/harbourstone-spa`, Harbourstone as a single-page app that runs in the browser
+([`docs/delivery-api.md`](docs/delivery-api.md), "A single-page app").
 
 ### Next steps
 
@@ -258,9 +260,10 @@ once; it prints the credentials, as `bun start` does in a site. Only one of
 ### The sites in this repository
 
 `sites/` holds the sites this repository builds: `starter`, `demo/crombolo`,
-`demo/harbourstone`, `demo/harbourstone-next`, `demo/plain-signal` and the
-product site `product/crombolo`. Each is a real
-site, and the templates `init` offers are made from them.
+`demo/harbourstone`, `demo/harbourstone-next`, `demo/harbourstone-spa`,
+`demo/plain-signal` and the product site `product/crombolo`. Each is a real
+site, and the templates `init` offers are made from them. `demo/harbourstone-spa`
+builds its app and serves it on `:3001` beside the CMS.
 
 ```bash
 bun run site                            # the list: the sites, then the CLI's templates

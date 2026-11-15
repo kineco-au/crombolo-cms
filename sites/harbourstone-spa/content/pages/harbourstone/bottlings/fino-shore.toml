@@ -1,0 +1,19 @@
+type = "expression"
+key = "23794bad-93c1-47fa-9838-813a37b94220"
+name = "Fino Shore"
+order = 8
+
+[values]
+title = "Fino Shore"
+kind = "Sherry matured"
+productType = "Whisky"
+abv = "46%"
+age = 12
+summary = "Finished in fino butts. Dry, nutty and saline, the lightest of our sherry casks."
+bottleImage = "/bottle-oloroso-pier.jpg"
+bodyText = { html = "<p>Twelve years in ex-bourbon, then eighteen months in fino butts from Sanlúcar. Fino suits a coastal spirit: both taste faintly of the sea.</p>" }
+tastingNotes = [
+  "nose-green-almond-brine-white-flow",
+  "palate-dry-and-nutty-toasted-almon",
+  "finish-crisp-and-medium-nutty-and",
+]

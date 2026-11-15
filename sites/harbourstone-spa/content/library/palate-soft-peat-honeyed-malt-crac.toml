@@ -1,0 +1,8 @@
+type = "tastingNote"
+key = "c9296bc1-98b0-42be-a405-b769cba21425"
+name = "Palate — Soft peat, honeyed malt, cra…"
+order = 19
+
+[values]
+aspect = "Palate"
+note = "Soft peat, honeyed malt, cracked pepper."

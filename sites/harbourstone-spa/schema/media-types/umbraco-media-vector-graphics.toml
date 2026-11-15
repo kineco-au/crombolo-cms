@@ -1,0 +1,35 @@
+[media-type]
+alias = "umbracoMediaVectorGraphics"
+name = "Vector Graphics (SVG)"
+icon = "icon-origami"
+allow-at-root = true
+
+[[group]]
+name = "Vector Graphics"
+alias = "vectorGraphics"
+
+[[group.property]]
+alias = "umbracoFile"
+name = "Vector Graphics"
+type = "uploadVectorGraphics"
+mandatory = true
+
+[[group.property]]
+alias = "umbracoExtension"
+name = "File extension"
+type = "label"
+
+[[group.property]]
+alias = "umbracoBytes"
+name = "File size"
+type = "labelBytes"
+
+[[group.property]]
+alias = "umbracoWidth"
+name = "Width"
+type = "labelPixels"
+
+[[group.property]]
+alias = "umbracoHeight"
+name = "Height"
+type = "labelPixels"

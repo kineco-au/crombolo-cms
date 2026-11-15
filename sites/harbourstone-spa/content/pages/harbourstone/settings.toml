@@ -1,0 +1,8 @@
+type = "siteSettings"
+key = "5c3b6e2a-7d41-4f0e-9b8c-1a2d3e4f5058"
+name = "Site Settings"
+order = 9
+
+[values]
+address = "Distillery · Cove of Stenwick, Caithness"
+footerNote = "A demonstration site. Nothing here is real, and nothing here is for sale."

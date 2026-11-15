@@ -1,0 +1,8 @@
+type = "tastingNote"
+key = "2c51df14-20a7-48ec-a710-8b80e05a532e"
+name = "Finish — Short and fresh, with a lick…"
+order = 14
+
+[values]
+aspect = "Finish"
+note = "Short and fresh, with a lick of oak."

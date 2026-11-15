@@ -390,6 +390,29 @@
         "typescript": "^7.0.2",
       },
     },
+    "sites/harbourstone-spa": {
+      "name": "@crombolo/site-harbourstone-spa",
+      "version": "0.0.0",
+      "dependencies": {
+        "@crombolo/crombolo": "workspace:*",
+        "@crombolo/simple-redirects": "workspace:*",
+      },
+    },
+    "sites/harbourstone-spa/web": {
+      "name": "@crombolo/site-harbourstone-spa-web",
+      "version": "0.0.0",
+      "dependencies": {
+        "@crombolo/delivery-client": "workspace:*",
+        "next": "16.4.3",
+        "react": "19.3.1",
+        "react-dom": "19.3.1",
+      },
+      "devDependencies": {
+        "@types/node": "26.6.2",
+        "@types/react": "19.3.0",
+        "typescript": "^7.0.2",
+      },
+    },
     "sites/plain-signal": {
       "name": "@crombolo/site-plain-signal",
       "version": "0.0.0",
@@ -479,6 +502,10 @@
     "@crombolo/site-harbourstone-next": ["@crombolo/site-harbourstone-next@workspace:sites/harbourstone-next"],
 
     "@crombolo/site-harbourstone-next-web": ["@crombolo/site-harbourstone-next-web@workspace:sites/harbourstone-next/web"],
+
+    "@crombolo/site-harbourstone-spa": ["@crombolo/site-harbourstone-spa@workspace:sites/harbourstone-spa"],
+
+    "@crombolo/site-harbourstone-spa-web": ["@crombolo/site-harbourstone-spa-web@workspace:sites/harbourstone-spa/web"],
 
     "@crombolo/site-plain-signal": ["@crombolo/site-plain-signal@workspace:sites/plain-signal"],
 

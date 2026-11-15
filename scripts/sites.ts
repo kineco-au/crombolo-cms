@@ -10,7 +10,8 @@
  *
  *   site.json     id, name, description; `distribute` and the server `bundles`
  *                 its scaffold wires, as in a template's `template.json`; `bundle`
- *                 when its content bundle keeps a name other than its id's
+ *                 when its content bundle keeps a name other than its id's; `next`
+ *                 or `spa` for a front end in `web/`
  *   bundles/      the content bundle, a private package at `bundles/<slug>` as a
  *                 scaffold puts it
  *   CREDITS.md    where its images came from, shipped beside the template
@@ -45,10 +46,14 @@ const TEMPLATE_FILES = ['actions', 'components', 'css', 'schema', 'content', 'do
 const WEB_SKIPPED = new Set([
   'node_modules',
   '.next',
+  'out',
   '.env.local',
   'next-env.d.ts',
   'package.json',
 ])
+
+/** A single-page app's scripts beside the CMS (story 347): it ships them as they are. */
+export const SPA_SCRIPTS = ['dev.ts', 'serve.ts', 'members.ts']
 
 /** Shipped beside `template.json` rather than copied into a new site. */
 const TEMPLATE_EXTRAS = ['CREDITS.md']
@@ -65,6 +70,8 @@ export interface RepoSite {
   bundles: unknown[]
   /** It has a Next.js front end in `web/` (story 208). */
   next: boolean
+  /** It has a single-page app in `web/`, built as static files (story 347). */
+  spa: boolean
   /** Packages a scaffold of it depends on: React, for its islands (story 209). */
   dependencies: Record<string, string>
   /** `bundles/<slug>`, relative to the site. */
@@ -104,6 +111,7 @@ function read(dir: string): RepoSite | undefined {
     distribute: raw.distribute === true,
     bundles: Array.isArray(raw.bundles) ? raw.bundles : [],
     next: raw.next === true,
+    spa: raw.spa === true,
     dependencies:
       raw.dependencies && typeof raw.dependencies === 'object'
         ? (raw.dependencies as Record<string, string>)
@@ -149,12 +157,15 @@ export function copyTemplateFiles(site: RepoSite, dir: string): void {
     cpSync(source, join(dir, entry), { recursive: true, filter: shipped })
   }
   const web = join(site.dir, 'web')
-  if (site.next && existsSync(web))
+  if ((site.next || site.spa) && existsSync(web))
     cpSync(web, join(dir, 'web'), {
       recursive: true,
       filter: (path) =>
         path === web || !WEB_SKIPPED.has(relative(web, path).split(sep)[0] as string),
     })
+  if (site.spa)
+    for (const script of SPA_SCRIPTS)
+      if (existsSync(join(site.dir, script))) cpSync(join(site.dir, script), join(dir, script))
 }
 
 /** Writes a site out as a template under `<into>/<id>`, in the layout `@crombolo/cli` reads. */
@@ -170,6 +181,7 @@ export function stageTemplate(site: RepoSite, into: string): string {
       description: site.description,
       ...(site.bundles.length > 0 ? { bundles: site.bundles } : {}),
       ...(site.next ? { next: true } : {}),
+      ...(site.spa ? { spa: true } : {}),
       ...(Object.keys(site.dependencies).length > 0 ? { dependencies: site.dependencies } : {}),
     }
     writeFileSync(join(target, 'template.json'), `${JSON.stringify(manifest, null, 2)}\n`)

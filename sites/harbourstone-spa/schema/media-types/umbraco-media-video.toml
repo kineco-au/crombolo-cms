@@ -1,0 +1,25 @@
+[media-type]
+alias = "umbracoMediaVideo"
+name = "Video"
+icon = "icon-video"
+allow-at-root = true
+
+[[group]]
+name = "Video"
+alias = "video"
+
+[[group.property]]
+alias = "umbracoFile"
+name = "Video"
+type = "uploadVideo"
+mandatory = true
+
+[[group.property]]
+alias = "umbracoExtension"
+name = "File extension"
+type = "label"
+
+[[group.property]]
+alias = "umbracoBytes"
+name = "File size"
+type = "labelBytes"

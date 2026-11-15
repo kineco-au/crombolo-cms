@@ -8,6 +8,18 @@ point at `docs/stories/`.
 
 ### Features
 
+- **Harbourstone as a single-page app (347).** `crombolo init --template
+  demo/harbourstone-spa` makes Harbourstone with an app in `web/` that Next.js builds as
+  static files and that runs entirely in the browser: every page is read through the route
+  lookup with `@crombolo/delivery-client`, typed by `crombolo generate --delivery`, with no
+  key, so a publish shows at once with no rebuild. The contact form is drawn by the app and
+  posted to the site; members sign in and out from the app with the authorization code flow
+  and PKCE, and see the members' cellar only while signed in; the Preview button opens a
+  draft in the app with its preview token. The site draws only the page members sign in
+  on. `bun run dev` runs the CMS and the app; `bun run site demo/harbourstone-spa` builds
+  the app and serves it beside the CMS, and `bun run smoke:spa` drives it in Chromium, as CI
+  does. `docs/delivery-api.md`, "A single-page app", compares it with the server-rendered
+  `demo/harbourstone-next`.
 - **Media already in the library, from the command line (355).** `crombolo media list
   [--under <folder>] [--type <alias>]` and `media find --name <text>` give a page of items at
   a time with `--skip` and `--take`; `media show <item> [--references]` its type, folder,

@@ -1,0 +1,13 @@
+type = "contentPage"
+key = "066d33a9-72c0-49e7-92d2-e14722d71d65"
+name = "Members"
+order = 5
+
+[values]
+eyebrow = "For members"
+title = "The members' cellar."
+standfirst = "Signed-in members see the casks we hold back from the range, and are the first to hear when one is ready to draw."
+heroImage = "/copper-pot-stills.jpg"
+sectionEyebrow = "Held back"
+sectionHeading = "Casks we have not let go of yet."
+bodyText = { html = "<p>Cask 214 is a refill sherry butt filled in the winter of 2009, and it is close. Cask 87 is a first-fill bourbon barrel from the year the warehouse roof came off in a storm, and it tastes of it.</p><p>When either is ready, members hear first, and may ask for a bottle before the rest of the outturn goes to the shop.</p>" }

@@ -1,0 +1,8 @@
+type = "tastingNote"
+key = "c6c4b96b-7a62-4501-a6f5-e59325d48e9c"
+name = "Finish — Medium, gently smoky, a litt…"
+order = 20
+
+[values]
+aspect = "Finish"
+note = "Medium, gently smoky, a little lime."

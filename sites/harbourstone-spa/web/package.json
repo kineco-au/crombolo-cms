@@ -1,0 +1,21 @@
+{
+  "name": "@crombolo/site-harbourstone-spa-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --port 3001",
+    "build": "next build"
+  },
+  "dependencies": {
+    "@crombolo/delivery-client": "workspace:*",
+    "next": "16.4.3",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.2",
+    "@types/react": "19.3.0",
+    "typescript": "^7.0.2"
+  }
+}

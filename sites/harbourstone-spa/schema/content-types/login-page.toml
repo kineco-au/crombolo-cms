@@ -1,0 +1,22 @@
+[content-type]
+alias = "loginPage"
+name = "Login Page"
+description = "Where a member signs in before the app shows a members-only page"
+icon = "icon-lock"
+site-search = false
+# The one page the CMS still draws itself: member sign-in sends a member here,
+# and back to the app once they are in.
+components = ["pages/loginPage"]
+default-component = "pages/loginPage"
+
+[[property]]
+alias = "title"
+name = "Title"
+type = "textstring"
+mandatory = true
+
+[[property]]
+alias = "standfirst"
+name = "Standfirst"
+description = "A paragraph under the title"
+type = "textarea"

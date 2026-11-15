@@ -16,6 +16,7 @@
 | `bun run docker:test` / `docker:test:sqlite` / `docker:test:postgres` / `docker:test:all` | the same four, inside a container over the mounted source |
 | `bun run test:integration` / `docker:test:integration` | the CLI suites: creating a site, importing an Umbraco site, content transfer, a split deployment and the upgrade, spawned per step |
 | `bun run smoke:next --next 15\|16 [--template next\|demo/harbourstone-next]` | the Next.js front end (story 208): the packages packed as they publish, a site scaffolded under `output/`, its CMS and its built app answering real requests; CI runs both majors and both templates. Needs Node.js |
+| `bun run smoke:spa [--keep]` | the single-page Harbourstone (story 347): the delivery client packed as it publishes, `demo/harbourstone-spa` scaffolded under `output/`, its static build served beside its CMS, and Chromium following links, going back and forward, opening an address directly, sending the contact form, signing a member in and out and opening a draft by preview token; CI runs it. Needs Node.js and Playwright's Chromium |
 | `bun run test:load` / `docker:test:load` | concurrent edits on overlapping branches and an invariant pass; release pipeline only |
 | `bun run test:bench` / `docker:test:bench` | a generated 25,000-page site, and a library of a million media items, timed against their budgets; release pipeline only, or run small |
 | `bun run docker:test:browser` | the browser suite in its own Playwright image, against Chromium |
