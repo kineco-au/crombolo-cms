@@ -223,6 +223,8 @@ describe(`discovery (${dialectUnderTest})`, () => {
         'public-access',
         // Story 356: users, their sign-ins, and where a group starts.
         'users',
+        // Story 359: background jobs, listed and a failed one run again.
+        'background-jobs',
         // Story 241: installed bundles, managed as Settings → Bundles does.
         'bundle-manage',
       ],
@@ -244,6 +246,7 @@ describe(`discovery (${dialectUnderTest})`, () => {
           apply: true,
           applyStructure: true,
           audit: true,
+          backgroundJobs: true,
         },
       },
     ])

@@ -1612,7 +1612,8 @@ any data:
 - **No worker running.** Work queues safely and runs when a worker starts.
   After five minutes with no live worker in `server`, the `api` node:
   - says so in its `/health` (`jobs.waitingSince`), staying 200;
-  - shows a warning on Settings → Background jobs;
+  - shows a warning on Settings → Background jobs, and on `crombolo jobs list
+    --profile`;
   - logs one warning.
   Nothing drains, so editors keep working.
 - **One worker.** The claims make more than one safe, but more than one worker
@@ -1625,6 +1626,37 @@ A single process (`all`, the default) runs everything as before. `api` plus
 the command line has the back office's code in memory, though nothing of it is
 built or mounted. A host that imports `createWorker` from
 `@crombolo/server/worker` loads only what the worker uses.
+
+### Background jobs from the command line
+
+Settings → Background jobs (story 187) lists the site's and its bundles' jobs, how
+far each got and why one failed, and runs a failed one again. `crombolo jobs` does
+the same from the command line (story 359), on this site's database or, with
+`--profile`, on a hosted site through the remote protocol's `background-jobs`
+routes:
+
+```bash
+crombolo jobs list --state failed            # waiting, running, failed or done
+crombolo jobs list --owner acme-feeds        # one bundle's, or --owner site
+crombolo jobs show 1a2b3c4d                  # what it is, its progress, the whole error
+crombolo jobs retry 1a2b3c4d --profile production
+```
+
+- **Naming a job.** `jobs list` prints the first eight characters of each id.
+  `show` and `retry` take the whole id or a prefix of at least eight that names
+  one job; a prefix naming two is refused, listing both.
+- **Who.** The Settings section, as the dashboard needs. On a hosted site, a
+  person: a CI token is refused. A retry there needs `CROMBOLO_REMOTE_ACCESS` of
+  `content` or more.
+- **A retry** is for a failed job only, and starts it again from its first
+  attempt. Each node running jobs looks every five seconds, so it runs within
+  that on a running site, or when a stopped one next starts. The audit log records
+  it as the dashboard's button does, as the person signed in, or the command line.
+- **Output.** The states are the dashboard's words. `-o json` gives the stored
+  state (`queued`, `running`, `succeeded`, `failed`), full ids and ISO dates, and
+  `--fields`, `--limit` and `--offset` work on `jobs list`.
+- **Nothing running the jobs.** Only a running node knows, so the warning shows on
+  a hosted site only, not on this site's own database.
 
 ### Health while the database moves
 

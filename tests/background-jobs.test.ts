@@ -11,22 +11,28 @@ import { route } from '@crombolo/common'
 import {
   cromboloPlan,
   type Db,
+  DbDate,
   defineSiteTables,
   JobRepository,
+  type JobState,
   migrate,
   sql,
 } from '@crombolo/data'
 import {
+  BackgroundJobError,
   type BundleRedirects,
   createJobRunner,
   createServerBundles,
   isTimezone,
   type JobOwner,
   JobPayloadTooLargeError,
+  jobOf,
   jobProblems,
+  listJobs,
   nextOccurrence,
   parseCron,
   retryDelayMs,
+  retryJob,
   type ServerBundle,
   siteJobProblems,
   UnknownJobError,
@@ -523,5 +529,153 @@ describe(`jobs on a running site (${dialectUnderTest})`, () => {
     expect(refused).toBeInstanceOf(Error)
     expect((refused as Error).message).toContain('the job "imports.note" is not a function')
     expect((refused as Error).message).toContain('names no job of its own')
+  })
+})
+
+describe(`the jobs the dashboard and the command line show (${dialectUnderTest})`, () => {
+  /** A job in the state asked, queued an hour from now so nothing claims it. */
+  async function jobIn(
+    d: Db,
+    owner: string,
+    name: string,
+    state: JobState,
+    more: { id?: string; error?: string } = {},
+  ): Promise<string> {
+    const made = await new JobRepository(d).enqueue({
+      owner,
+      name,
+      payload: '{}',
+      maxAttempts: 3,
+      queuedBy: 'ada',
+      runAt: new Date(Date.now() + 60 * 60_000),
+    })
+    const id = more.id ?? made
+    await d.q
+      .updateTable('job')
+      .set({
+        id,
+        state,
+        attempts: state === 'queued' ? 0 : state === 'failed' ? 3 : 1,
+        last_error: more.error ?? null,
+        finished_at: state === 'failed' || state === 'succeeded' ? DbDate.toDb(new Date()) : null,
+      })
+      .where('id', '=', made)
+      .execute()
+    // A millisecond apart at least, so the newest is the newest.
+    await Bun.sleep(5)
+    return id
+  }
+
+  const audited = (d: Db) =>
+    d.query<{
+      category: string
+      action: string
+      entity_type: string
+      entity_name: string
+      detail: string | null
+      source: string
+      user_key: string | null
+      user_name: string | null
+      forwarded_for: string | null
+    }>(
+      "SELECT category, action, entity_type, entity_name, detail, source, user_key, user_name, forwarded_for FROM audit_entry WHERE action = 'Retry'",
+    )
+
+  test('lists the newest first, by state and owner, a page at a time', async () => {
+    const d = await db()
+    const first = await jobIn(d, 'site', 'reports.nightly', 'succeeded')
+    const second = await jobIn(d, 'acme', 'feeds.pull', 'failed', { error: 'the feed is down' })
+    const third = await jobIn(d, 'site', 'imports.run', 'running')
+    const all = await listJobs(d)
+    expect(all.total).toBe(3)
+    expect(all.items.map((job) => job.id)).toEqual([third, second, first])
+    expect(all.items[1]).toMatchObject({
+      owner: 'acme',
+      name: 'feeds.pull',
+      state: 'failed',
+      attempts: 3,
+      maxAttempts: 3,
+      error: 'the feed is down',
+      queuedBy: 'ada',
+    })
+    expect(typeof all.items[1]?.createdAt).toBe('string')
+    expect((await listJobs(d, { state: 'failed' })).items.map((job) => job.id)).toEqual([second])
+    expect((await listJobs(d, { owner: 'site' })).items.map((job) => job.id)).toEqual([
+      third,
+      first,
+    ])
+    const paged = await listJobs(d, { skip: 1, take: 1 })
+    expect(paged).toMatchObject({ total: 3 })
+    expect(paged.items.map((job) => job.id)).toEqual([second])
+  })
+
+  test('a job is named by its id or a prefix of at least eight that names only it', async () => {
+    const d = await db()
+    const one = await jobIn(d, 'site', 'a.one', 'queued', {
+      id: 'abcdef12-0000-4000-8000-000000000001',
+    })
+    await jobIn(d, 'site', 'a.two', 'queued', { id: 'abcdef12-0000-4000-8000-000000000002' })
+    const other = await jobIn(d, 'site', 'a.three', 'queued')
+    expect((await jobOf(d, one)).name).toBe('a.one')
+    expect((await jobOf(d, one.toUpperCase())).name).toBe('a.one')
+    expect((await jobOf(d, other.slice(0, 8))).name).toBe('a.three')
+    const short = await jobOf(d, 'abcdef1').catch((e) => e)
+    expect(short).toBeInstanceOf(BackgroundJobError)
+    expect(short).toMatchObject({ kind: 'usage' })
+    const two = await jobOf(d, 'abcdef12').catch((e) => e)
+    expect(two).toMatchObject({ kind: 'conflict' })
+    expect((two as Error).message).toContain('abcdef12-0000-4000-8000-000000000001 (a.one)')
+    expect((two as Error).message).toContain('abcdef12-0000-4000-8000-000000000002 (a.two)')
+    expect(await jobOf(d, '99999999').catch((e) => e)).toMatchObject({ kind: 'not_found' })
+    expect(await jobOf(d, 'abcd%ef12').catch((e) => e)).toMatchObject({ kind: 'usage' })
+  })
+
+  test('a failed job is queued again from its first attempt, and the retry audited', async () => {
+    const d = await db()
+    const id = await jobIn(d, 'acme', 'feeds.pull', 'failed', { error: 'the feed is down' })
+    const done = await retryJob(d, id.slice(0, 8), {
+      key: 'b1d0c2a4-0000-4000-8000-000000000000',
+      name: 'Ada',
+      source: 'cli',
+    })
+    expect(done.message).toBe('feeds.pull is queued to run again.')
+    expect(done.job).toMatchObject({ id, state: 'queued', attempts: 0, error: null })
+    const row = await new JobRepository(d).get(id)
+    expect(row).toMatchObject({ state: 'queued', attempts: 0, lastError: null, finishedAt: null })
+    expect((row?.nextAttemptAt.getTime() ?? 0) <= Date.now()).toBe(true)
+    expect(await audited(d)).toEqual([
+      {
+        category: 'system',
+        action: 'Retry',
+        entity_type: 'Job',
+        entity_name: 'acme/feeds.pull',
+        detail: 'after: the feed is down',
+        source: 'cli',
+        user_key: 'b1d0c2a4-0000-4000-8000-000000000000',
+        user_name: 'Ada',
+        forwarded_for: null,
+      },
+    ])
+  })
+
+  test('a waiting, running or done job is refused, saying its state, and nothing is written', async () => {
+    const d = await db()
+    for (const [state, word] of [
+      ['queued', 'waiting'],
+      ['running', 'running'],
+      ['succeeded', 'done'],
+    ] as const) {
+      const id = await jobIn(d, 'site', `a.${state}`, state)
+      const before = await new JobRepository(d).get(id)
+      const refused = await retryJob(d, id, { name: 'Ada', source: 'cli' }).catch((e) => e)
+      expect(refused).toBeInstanceOf(BackgroundJobError)
+      expect(refused).toMatchObject({
+        kind: 'conflict',
+        message: 'Only a job that has failed can be run again.',
+        hint: `a.${state} is ${word}.`,
+      })
+      expect(await new JobRepository(d).get(id)).toEqual(before)
+    }
+    expect(await audited(d)).toEqual([])
   })
 })

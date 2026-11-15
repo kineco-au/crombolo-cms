@@ -98,7 +98,6 @@ import {
   FormWorkflowRepository,
   FormWorkflowSecretRepository,
   JobRepository,
-  type JobState,
   latestContentVersionId,
   listLibraryForms,
   MediaAccessRepository,
@@ -176,6 +175,7 @@ import {
 import { createPublishedContentSource, loadDraftNode } from './adapters/documents.ts'
 import type { Approvals } from './approvals.ts'
 import { handleApprovalsApi } from './approvals-api.ts'
+import { BackgroundJobError, listJobs, readJobQuery, retryJob } from './background-jobs.ts'
 import { type BundleActor, createBundleAdmin, settingsIn } from './bundle-admin.ts'
 import { actingPrincipalOf } from './bundle-api.ts'
 import { type BundleGrants, declaredOrigins } from './bundle-grants.ts'
@@ -934,6 +934,7 @@ export async function createServer(
       return users && groups ? { users, groups } : undefined
     },
     restart: serverOptions.restart,
+    jobsWaitingSince: () => core.workerWatch.status().waitingSince,
     onApplied: async () => {
       cache.invalidate()
       mediaCache.clear()
@@ -3146,59 +3147,32 @@ export async function createServer(
       const principal = await authenticate(request)
       if (!principal) return new Response('Unauthorized', { status: 401 })
       if (!hasSection(principal, 'settings')) return new Response('Forbidden', { status: 403 })
-      const queue = new JobRepository(db)
       if (pathname === jobsPath && request.method === 'GET') {
-        const url = new URL(request.url)
-        const state = url.searchParams.get('state')
-        const listed = await queue.list({
-          owner: url.searchParams.get('owner') || undefined,
-          state: ['queued', 'running', 'succeeded', 'failed'].includes(state ?? '')
-            ? (state as JobState)
-            : undefined,
-          skip: Math.max(0, Number(url.searchParams.get('skip')) || 0),
-          take: Math.min(200, Math.max(1, Number(url.searchParams.get('take')) || 50)),
-        })
+        const listed = await listJobs(db, readJobQuery(new URL(request.url).searchParams))
         return Response.json({
           total: listed.total,
           // Set while this node leaves its jobs to a worker and none is running.
           waitingSince: core.workerWatch.status().waitingSince,
-          items: listed.items.map((job) => ({
-            id: job.id,
-            owner: job.owner,
-            name: job.name,
-            state: job.state,
-            attempts: job.attempts,
-            maxAttempts: job.maxAttempts,
-            nextAttemptAt: job.nextAttemptAt.toISOString(),
-            progress: job.progress,
-            error: job.lastError,
-            queuedBy: job.queuedBy,
-            createdAt: job.createdAt.toISOString(),
-            finishedAt: job.finishedAt?.toISOString() ?? null,
-          })),
+          items: listed.items,
         })
       }
       const retry = /^\/([0-9a-f-]{36})\/retry$/i.exec(pathname.slice(jobsPath.length))
       if (retry && request.method === 'POST') {
-        const id = retry[1] as string
-        const job = await queue.get(id)
-        if (!job || !(await queue.retry(id)))
+        try {
+          const done = await retryJob(db, retry[1] as string, {
+            key: principal.id,
+            name: principal.name,
+            source: 'request',
+            address: clientAddress(request),
+          })
+          return Response.json({ ok: true, message: done.message })
+        } catch (error) {
+          if (!(error instanceof BackgroundJobError)) throw error
           return Response.json(
             { ok: false, message: 'Only a job that has failed can be run again.' },
             { status: 409 },
           )
-        await recordAudit(db, {
-          category: 'system',
-          action: 'Retry',
-          entityType: 'Job',
-          entityName: `${job.owner}/${job.name}`,
-          detail: job.lastError ? `after: ${job.lastError.slice(0, 200)}` : null,
-          source: 'request',
-          userKey: principal.id,
-          userName: principal.name,
-          ...clientAddress(request),
-        })
-        return Response.json({ ok: true, message: `${job.name} is queued to run again.` })
+        }
       }
       return new Response('Not Found', { status: 404 })
     }

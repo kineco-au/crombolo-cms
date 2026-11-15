@@ -6,6 +6,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { DEVICE_CODE_GRANT, REMOTE_CLIENT_ID } from '@crombolo/auth'
+import { JobRepository } from '@crombolo/data'
 import { runConformance } from '@crombolo/remote-conformance'
 import { dialectUnderTest } from './support/db.ts'
 import {
@@ -91,6 +92,15 @@ const fetchFrom = (h: Harness) =>
 describe(`the remote conformance suite (${dialectUnderTest})`, () => {
   test('passes read-only, and with a push', async () => {
     const h = await remote()
+    // A waiting job, an hour off so nothing runs it, for background-jobs to refuse to run again.
+    await new JobRepository(h.server.db).enqueue({
+      owner: 'site',
+      name: 'conformance.wait',
+      payload: '{}',
+      maxAttempts: 1,
+      queuedBy: null,
+      runAt: new Date(Date.now() + 60 * 60_000),
+    })
     const report = await runConformance({
       url: ORIGIN,
       token: await token(h),

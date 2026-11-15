@@ -120,6 +120,9 @@
       "index": {
         "description": "the search indexes: what they hold, and rebuilding them"
       },
+      "jobs": {
+        "description": "the site's and its bundles' background jobs: list them, see one, run a failed one again"
+      },
       "keys": {
         "description": "keys that sign site bundles: your own, and the ones this site trusts"
       },

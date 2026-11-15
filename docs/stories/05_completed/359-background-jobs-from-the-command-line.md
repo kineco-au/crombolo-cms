@@ -136,10 +136,51 @@ entry is the dashboard's.
 
 ## Acceptance criteria
 
-- [ ] `crombolo jobs list [--state <state>] [--owner <bundle>]`, newest first, a page
+- [x] `crombolo jobs list [--state <state>] [--owner <bundle>]`, newest first, a page
       at a time
-- [ ] `jobs show <id>`: what it is, its progress, and why it failed
-- [ ] `jobs retry <id>`, for a failed job only, as the dashboard's button does
-- [ ] Each takes `--profile`; `-o json`; a retry audited
-- [ ] Tests for each, locally and through a test server
-- [ ] The CLI reference regenerated
+- [x] `jobs show <id>`: what it is, its progress, and why it failed
+- [x] `jobs retry <id>`, for a failed job only, as the dashboard's button does
+- [x] Each takes `--profile`; `-o json`; a retry audited
+- [x] Tests for each, locally and through a test server
+- [x] The CLI reference regenerated
+
+## Built
+
+Built 2026-11-15, as planned:
+- the core is `packages/server/src/background-jobs.ts`: `listJobs`, `jobOf` and
+  `retryJob`, with `readJobQuery` for a request's query and `BackgroundJobError` for a
+  refusal. The dashboard's route in `server.ts` now uses it, with the same answers and
+  audit entry; `JobRepository` gains `byPrefix`;
+- the remote routes are `packages/server/src/remote-background-jobs.ts`, mounted by
+  `createRemote`, which the server hands `jobsWaitingSince` from its own worker watch;
+  discovery lists `background-jobs`, and `environments` says `may.backgroundJobs`;
+- the commands are `jobs list`, `jobs show` and `jobs retry`, over
+  `packages/cli/src/support/jobs.ts`, whose `withJobs` makes the same calls here or on a
+  hosted site;
+- the conformance suite lists a page of jobs, and refuses a retry of an unknown job (404)
+  and of one that hasn't failed (409);
+- tests: `tests/background-jobs.test.ts` (the core), `tests/jobs-cli.test.ts`, and
+  additions to `tests/cli-access.test.ts`, `tests/remote.test.ts` and
+  `tests/remote-conformance.test.ts`. **The tests are written but not yet run:** the
+  maintainer runs the full suites once, at the release. `bun run check` passes.
+
+Where it differs from the plan, or fills it in:
+- **A job named by a prefix is resolved in the core,** so `jobOf` and `retryJob` take the
+  whole id or a prefix of at least eight hex characters, here and on the remote. A prefix
+  naming two is `conflict` (409), one too short `usage` (400 `bad-request`).
+- **`byPrefix` casts the id to text,** since the column is a `uuid` on Postgres, where
+  `LIKE` doesn't apply to one.
+- **A retry of a job that hasn't failed is `conflict`,** exit code and 409 alike, with
+  the dashboard's message and the job's state as the hint ("imports.run is running.").
+  The dashboard's own route still answers its 409 `{ ok: false, message }`, for an unknown
+  job too.
+- **A hosted retry needs the `content` access level** (403 `access-level`), as the other
+  remote writes do; the conformance check accepts that refusal on a site below it.
+- **`may.backgroundJobs` is false for CI,** as the routes refuse it.
+- **An empty list names the state asked for:** "No waiting jobs.", "No running jobs.",
+  "No failed jobs." or "No finished jobs.", and "No background jobs." with no state.
+- **The waiting warning goes to stderr,** so `-o json` stays clean; the JSON carries
+  `waitingSince` instead (null on the site's own database). The CLI test checks the
+  warning against a stand-in hosted site, since a test server runs its own jobs and so
+  never waits.
+- **`jobs retry -o json` gives the job as it is now,** queued from its first attempt.

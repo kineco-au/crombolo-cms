@@ -135,6 +135,9 @@ describe('what each command declares', () => {
       expect(declared(id), id).toEqual({ access: 'site', section: null, adminOnly: false })
     for (const id of ['users:groups:new', 'users:groups:update', 'users:groups:remove'])
       expect(declared(id), id).toEqual({ access: 'site', section: 'users', adminOnly: true })
+    // Story 359: background jobs are the Settings section's, as their dashboard is.
+    for (const id of ['jobs:list', 'jobs:show', 'jobs:retry'])
+      expect(declared(id), id).toEqual({ access: 'site', section: 'settings', adminOnly: false })
   })
 })
 

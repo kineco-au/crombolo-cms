@@ -8,6 +8,17 @@ point at `docs/stories/`.
 
 ### Features
 
+- **Background jobs from the command line (359).** `crombolo jobs list [--state
+  waiting|running|failed|done] [--owner <bundle|site>]` lists the site's and its bundles'
+  jobs, newest first, a page at a time, as Settings → Background jobs does; `jobs show <id>`
+  gives what one is, how far it got and the whole error it failed with, and `jobs retry
+  <id>` runs a failed one again from its first attempt, audited as the dashboard's button
+  is. A job is named by its id or a prefix of at least eight characters. Each needs the
+  Settings section and takes `--profile`; on a hosted site the list warns when nothing is
+  running the jobs. `docs/operations.md`, "Background jobs from the command line".
+- **The remote protocol's `background-jobs` (359)** carries those commands to a hosted
+  site, as the signed-in person and never as CI; `environments` says `may.backgroundJobs`,
+  and the conformance suite checks it.
 - **Blueprints from the command line (358).** `crombolo content blueprint new <name> --from
   <page>` saves a page's values, in every language, as a blueprint of its type; `content
   blueprint list [--type <alias>]` lists them with their type and folder, and `content

@@ -111,6 +111,20 @@ export class JobRepository {
     return row ? rowOf(row) : undefined
   }
 
+  /** The jobs whose id starts with `prefix`, at most `take` of them, newest first. */
+  async byPrefix(prefix: string, take = 10): Promise<JobRow[]> {
+    const wanted = prefix.toLowerCase().replace(/[^0-9a-f-]/g, '')
+    if (!wanted) return []
+    const rows = await this.db.q
+      .selectFrom('job')
+      .selectAll()
+      .where((eb) => eb(eb.cast('id', 'text'), 'like', `${wanted}%`))
+      .orderBy('created_at', 'desc')
+      .limit(take)
+      .execute()
+    return rows.map(rowOf)
+  }
+
   /** The newest first, for the administrators' view; `owner` and `state` narrow it. */
   async list(
     options: { owner?: string; state?: JobState; skip?: number; take?: number } = {},

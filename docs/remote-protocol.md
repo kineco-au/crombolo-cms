@@ -65,6 +65,8 @@ stated otherwise. Errors are `application/problem+json` with a stable `code`
     after, and who may see a page set (see below).
   - `users` means back-office users can be changed and removed, their sign-ins
     listed and ended, and where a group starts set (see below).
+  - `background-jobs` means the site's background jobs can be listed, and a
+    failed one run again (see below).
   - `restart` means the site can be restarted (see below).
   - A client ignores capabilities it doesn't know.
 
@@ -168,10 +170,12 @@ may do:
 [{ "id": "production", "name": "production", "protected": true,
    "access": "all",
    "may": { "pull": true, "pullFull": false, "push": true, "apply": true,
-            "applyStructure": true, "audit": false } }]
+            "applyStructure": true, "audit": false, "backgroundJobs": true } }]
 ```
 
-`audit` is there when the remote offers the capability. `access` is the site's
+`audit` is there when the remote offers the capability. `backgroundJobs` is
+whether this person may see and retry the site's background jobs: the Settings
+section, and never CI. `access` is the site's
 `CROMBOLO_REMOTE_ACCESS`, and every `may` is already bounded by it: `apply` needs
 `content`, and `push` and `applyStructure` need `all`.
 
@@ -537,6 +541,42 @@ the signed-in person through the same rules.
   a user's `Save` and `Delete`, a group's `Save` (category `permission`), and
   `EndSession` keyed by whose sign-in it was, with the person and their address, by key.
 
+## Background jobs (`background-jobs`, optional)
+
+Story 359. The site's and its bundles' background jobs as Settings → Background
+jobs lists them, and a failed one run again as its button does. They are named
+`background-jobs` so they are never confused with `jobs/{id}`, a pull's or a
+push's.
+
+| | |
+| --- | --- |
+| `GET <api>/environments/{id}/background-jobs[?state&owner&skip&take]` | `{ total, waitingSince, items }`, the newest first |
+| `GET <api>/environments/{id}/background-jobs/{job}` | one job, by its id or at least its first eight characters |
+| `POST <api>/environments/{id}/background-jobs/{job}/retry` | runs a failed job again from its first attempt; `{ ok, job, message }` |
+
+```json
+{ "id": "…", "owner": "site", "name": "imports.runBatch", "state": "failed",
+  "attempts": 5, "maxAttempts": 5, "nextAttemptAt": "2026-11-15T09:12:00.000Z",
+  "progress": { "done": 40, "total": 100, "note": "species checked" },
+  "error": "the registry is down", "queuedBy": "Ada King",
+  "createdAt": "2026-11-15T09:00:00.000Z", "finishedAt": "2026-11-15T09:12:00.000Z" }
+```
+
+- **The list** narrows by `state` (`queued`, `running`, `succeeded`, `failed`) and
+  `owner` (`site`, or a bundle's id); `take` is 1 to 200, 50 by default.
+  `waitingSince` is set while the node answering leaves its jobs to a worker and
+  none is running. A job's payload is its owner's, and is not shown.
+- **A prefix** naming two jobs answers 409 `conflict`, naming both; one shorter
+  than eight characters, 400 `bad-request`.
+- **A retry** is for a failed job only: any other answers 409 `conflict`, with its
+  state in `detail`. A node running jobs takes it up within five seconds.
+- **Who:** a person with the Settings section, never CI (403
+  `ci-cannot-manage-jobs`); without the section, 403 `forbidden`.
+- **The level:** a retry needs `content` (403 `access-level`).
+- **The audit log** records a retry as the dashboard does: category `system`,
+  `Retry` of a `Job` named `owner/name`, with the error it failed with, as the
+  person, with their address.
+
 ## Installed bundles (`bundle-manage`, optional)
 
 The bundles the environment depends on, managed as its Settings → Extensions does
@@ -596,13 +636,13 @@ restarted.
 | --- | --- | --- |
 | 400 | `passphrase-required`, `hash-required`, `hash-mismatch`, `body-required`, `bad-key`, `too-many`, `bad-query`, `bad-request`, `invalid` | the request is wrong; `invalid`, a member that does not validate |
 | 401 | `sign-in-required` | no token, or a lapsed one |
-| 403 | `forbidden`, `forbidden-protected`, `forbidden-structure`, `forbidden-code`, `own-push`, `needs-person`, `ci-cannot-change-people` | the person may not; `needs-person` and `ci-cannot-change-people`, CI may not |
+| 403 | `forbidden`, `forbidden-protected`, `forbidden-structure`, `forbidden-code`, `own-push`, `needs-person`, `ci-cannot-change-people`, `ci-cannot-manage-jobs` | the person may not; `needs-person`, `ci-cannot-change-people` and `ci-cannot-manage-jobs`, CI may not |
 | 403 | `signature-refused` | the site does not take the bundle: unsigned where it requires a signature, from a source it does not list, or a signature that does not check out (story 060) |
 | 403 | `access-level` | the site does not take that, at its `CROMBOLO_REMOTE_ACCESS` |
 | 404 | `not-found`, `no-such-environment`, `not-enabled` | |
 | 409 | `not-waiting`, `approval-expired` | the job is not in a state for that |
 | 409 | `place-gone`, `needs-approval` | a restore needs a `target`; a publish needs an approval |
-| 409 | `conflict` | an e-mail, login or group name taken, or a group a page names removed unconfirmed |
+| 409 | `conflict` | an e-mail, login or group name taken, a group a page names removed unconfirmed, a job prefix naming two, or a retry of a job that has not failed |
 | 409 | `not-supervised` | nothing on the site can restart it |
 | 409 | `installs-elsewhere`, `grant-mismatch` | the site installs no code while it runs; the grant is not what the bundle asks for |
 | 410 | `gone` | the download has expired |
@@ -729,6 +769,8 @@ The suite is read-only unless `--push` is given. It covers:
 - an unknown page's history and version, and the recycle bin, when offered;
 - members and member groups listed and an unknown member not found, and a page's
   access read back, when offered;
+- background jobs listed, and a retry of an unknown job and of one that has not
+  failed refused, when offered and the token may;
 - a refused tampered push;
 - with `--push`, a full push.
 

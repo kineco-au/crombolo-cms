@@ -382,6 +382,43 @@ export async function runConformance(options: ConformanceOptions): Promise<Confo
   )
 
   await check(
+    'background-jobs: lists a page of jobs, and refuses to run again one that has not failed',
+    async () => {
+      const capabilities = (state.discovery?.capabilities as string[] | undefined) ?? []
+      if (!capabilities.includes('background-jobs') || !state.may?.backgroundJobs) return 'skip'
+      const env = `environments/${state.environment}`
+      const listed = await api(`${env}/background-jobs?take=20`)
+      assert(listed.status === 200, `the list answered ${listed.status}`)
+      const body = (await listed.json()) as { items?: Json[]; total?: unknown }
+      assert(Array.isArray(body.items), 'items is missing')
+      assert(typeof body.total === 'number', 'total is missing')
+      assert('waitingSince' in body, 'waitingSince is missing')
+      for (const job of body.items ?? [])
+        assert(
+          typeof job.id === 'string' &&
+            typeof job.name === 'string' &&
+            typeof job.state === 'string',
+          'a job has no id, name or state',
+        )
+      const missing = await api(`${env}/background-jobs/${crypto.randomUUID()}/retry`, {
+        method: 'POST',
+      })
+      // A site that takes no changes refuses any retry first.
+      if (missing.status === 403 && ((await missing.json()) as Json).code === 'access-level') return
+      assert(missing.status === 404, `retrying an unknown job answered ${missing.status}`)
+      assert(isProblem(missing), 'not application/problem+json')
+      const notFailed = (body.items ?? []).find((job) => job.state !== 'failed')
+      if (!notFailed) return
+      const refused = await api(`${env}/background-jobs/${notFailed.id}/retry`, { method: 'POST' })
+      assert(
+        refused.status === 409,
+        `retrying a job that has not failed answered ${refused.status}`,
+      )
+      assert(isProblem(refused), 'not application/problem+json')
+    },
+  )
+
+  await check(
     "public-access: a page's access reads back, and an unknown page's is not found",
     async () => {
       const capabilities = (state.discovery?.capabilities as string[] | undefined) ?? []

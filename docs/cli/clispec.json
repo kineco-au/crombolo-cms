@@ -5256,6 +5256,352 @@
       "errors": ["usage", "internal", "not_found", "refused"]
     },
     {
+      "name": "jobs list",
+      "description": "the site's and its bundles' background jobs, newest first: what each is, its state and how far it got",
+      "effects": "read_only",
+      "cardinality": "bounded",
+      "output_fields": [
+        {
+          "name": "items",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "fields": [
+              {
+                "name": "id",
+                "type": "string"
+              },
+              {
+                "name": "owner",
+                "type": "string",
+                "description": "`site`, or the bundle’s id"
+              },
+              {
+                "name": "name",
+                "type": "string"
+              },
+              {
+                "name": "state",
+                "type": "string",
+                "enum": ["queued", "running", "succeeded", "failed"]
+              },
+              {
+                "name": "attempts",
+                "type": "integer"
+              },
+              {
+                "name": "maxAttempts",
+                "type": "integer"
+              },
+              {
+                "name": "nextAttemptAt",
+                "type": "string"
+              },
+              {
+                "name": "progress",
+                "type": "object",
+                "nullable": true,
+                "fields": [
+                  {
+                    "name": "done",
+                    "type": "integer"
+                  },
+                  {
+                    "name": "total",
+                    "type": "integer",
+                    "nullable": true
+                  },
+                  {
+                    "name": "note",
+                    "type": "string",
+                    "nullable": true
+                  }
+                ]
+              },
+              {
+                "name": "error",
+                "type": "string",
+                "nullable": true
+              },
+              {
+                "name": "queuedBy",
+                "type": "string",
+                "nullable": true
+              },
+              {
+                "name": "createdAt",
+                "type": "string"
+              },
+              {
+                "name": "finishedAt",
+                "type": "string",
+                "nullable": true
+              }
+            ]
+          }
+        },
+        {
+          "name": "total",
+          "type": "integer"
+        },
+        {
+          "name": "offset",
+          "type": "integer"
+        },
+        {
+          "name": "truncated",
+          "type": "boolean"
+        },
+        {
+          "name": "waitingSince",
+          "type": "string",
+          "nullable": true,
+          "description": "on a hosted site, since when nothing has been running its jobs"
+        }
+      ],
+      "pagination": {
+        "style": "offset",
+        "offset_arg": "--offset",
+        "limit_arg": "--limit"
+      },
+      "fields_arg": "--fields",
+      "args": [
+        {
+          "name": "--state",
+          "type": "string",
+          "enum": ["waiting", "running", "failed", "done"],
+          "description": "only the jobs in this state"
+        },
+        {
+          "name": "--owner",
+          "type": "string",
+          "description": "only one bundle's jobs, or site for the site's own"
+        },
+        {
+          "name": "--limit",
+          "type": "integer",
+          "default": 50,
+          "description": "how many to list"
+        },
+        {
+          "name": "--offset",
+          "type": "integer",
+          "default": 0,
+          "description": "how many to skip first"
+        },
+        {
+          "name": "--fields",
+          "type": "string",
+          "description": "only these fields of each item, comma-separated"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "act on the site this profile names, rather than this one"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "a hosted site's environment"
+        }
+      ],
+      "errors": ["usage", "internal", "refused", "unavailable"]
+    },
+    {
+      "name": "jobs retry",
+      "description": "run a failed background job again, from its first attempt",
+      "effects": "non_idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "owner",
+          "type": "string",
+          "description": "`site`, or the bundle’s id"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "state",
+          "type": "string",
+          "enum": ["queued", "running", "succeeded", "failed"]
+        },
+        {
+          "name": "attempts",
+          "type": "integer"
+        },
+        {
+          "name": "maxAttempts",
+          "type": "integer"
+        },
+        {
+          "name": "nextAttemptAt",
+          "type": "string"
+        },
+        {
+          "name": "progress",
+          "type": "object",
+          "nullable": true,
+          "fields": [
+            {
+              "name": "done",
+              "type": "integer"
+            },
+            {
+              "name": "total",
+              "type": "integer",
+              "nullable": true
+            },
+            {
+              "name": "note",
+              "type": "string",
+              "nullable": true
+            }
+          ]
+        },
+        {
+          "name": "error",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "queuedBy",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "createdAt",
+          "type": "string"
+        },
+        {
+          "name": "finishedAt",
+          "type": "string",
+          "nullable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": true,
+          "description": "its id, or at least the first 8 characters of it"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "act on the site this profile names, rather than this one"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "a hosted site's environment"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "conflict", "refused", "unavailable"]
+    },
+    {
+      "name": "jobs show",
+      "description": "one background job: what it is, how far it got, and why it failed",
+      "effects": "read_only",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "owner",
+          "type": "string",
+          "description": "`site`, or the bundle’s id"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "state",
+          "type": "string",
+          "enum": ["queued", "running", "succeeded", "failed"]
+        },
+        {
+          "name": "attempts",
+          "type": "integer"
+        },
+        {
+          "name": "maxAttempts",
+          "type": "integer"
+        },
+        {
+          "name": "nextAttemptAt",
+          "type": "string"
+        },
+        {
+          "name": "progress",
+          "type": "object",
+          "nullable": true,
+          "fields": [
+            {
+              "name": "done",
+              "type": "integer"
+            },
+            {
+              "name": "total",
+              "type": "integer",
+              "nullable": true
+            },
+            {
+              "name": "note",
+              "type": "string",
+              "nullable": true
+            }
+          ]
+        },
+        {
+          "name": "error",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "queuedBy",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "createdAt",
+          "type": "string"
+        },
+        {
+          "name": "finishedAt",
+          "type": "string",
+          "nullable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": true,
+          "description": "its id, or at least the first 8 characters of it"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "act on the site this profile names, rather than this one"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "a hosted site's environment"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "conflict", "refused", "unavailable"]
+    },
+    {
       "name": "keys create",
       "description": "make a key of your own, on this machine, to sign site bundles with",
       "effects": "non_idempotent",

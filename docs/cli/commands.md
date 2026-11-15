@@ -5745,6 +5745,121 @@ crombolo restart [--profile <profile>] [--env <env>]
 
 **Fails with:** `usage`, `internal`, `refused`, `unavailable`, `auth`, `not_found`.
 
+## jobs
+
+The jobs commands.
+
+### `crombolo jobs list`
+
+The site's and its bundles' background jobs, newest first: what each is, its state and how far it got. Changes nothing.
+
+```
+crombolo jobs list [--state <state>] [--owner <owner>] [--limit <limit>] [--offset <offset>] [--fields <fields>] [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `--state` | string | Only the jobs in this state. One of `waiting`, `running`, `failed`, `done`. |
+| `--owner` | string | Only one bundle's jobs, or site for the site's own. |
+| `--limit` | integer | How many to list. Default `50`. |
+| `--offset` | integer | How many to skip first. Default `0`. |
+| `--fields` | string | Only these fields of each item, comma-separated. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (bounded, with `-o json`):
+
+- `items` (array of object)
+  - `id` (string)
+  - `owner` (string)
+  - `name` (string)
+  - `state` (string)
+  - `attempts` (integer)
+  - `maxAttempts` (integer)
+  - `nextAttemptAt` (string)
+  - `progress` (object)
+    - `done` (integer)
+    - `total` (integer)
+    - `note` (string)
+  - `error` (string)
+  - `queuedBy` (string)
+  - `createdAt` (string)
+  - `finishedAt` (string)
+- `total` (integer)
+- `offset` (integer)
+- `truncated` (boolean)
+- `waitingSince` (string)
+
+**Fails with:** `usage`, `internal`, `refused`, `unavailable`.
+
+### `crombolo jobs retry`
+
+Run a failed background job again, from its first attempt. Each run acts again.
+
+```
+crombolo jobs retry <id> [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `id` | string | Its id, or at least the first 8 characters of it. Required. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`):
+
+- `id` (string)
+- `owner` (string)
+- `name` (string)
+- `state` (string)
+- `attempts` (integer)
+- `maxAttempts` (integer)
+- `nextAttemptAt` (string)
+- `progress` (object)
+  - `done` (integer)
+  - `total` (integer)
+  - `note` (string)
+- `error` (string)
+- `queuedBy` (string)
+- `createdAt` (string)
+- `finishedAt` (string)
+
+**Fails with:** `usage`, `internal`, `not_found`, `conflict`, `refused`, `unavailable`.
+
+### `crombolo jobs show`
+
+One background job: what it is, how far it got, and why it failed. Changes nothing.
+
+```
+crombolo jobs show <id> [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `id` | string | Its id, or at least the first 8 characters of it. Required. |
+| `--profile` | string | Act on the site this profile names, rather than this one. |
+| `--env` | string | A hosted site's environment. |
+
+**Output** (single, with `-o json`):
+
+- `id` (string)
+- `owner` (string)
+- `name` (string)
+- `state` (string)
+- `attempts` (integer)
+- `maxAttempts` (integer)
+- `nextAttemptAt` (string)
+- `progress` (object)
+  - `done` (integer)
+  - `total` (integer)
+  - `note` (string)
+- `error` (string)
+- `queuedBy` (string)
+- `createdAt` (string)
+- `finishedAt` (string)
+
+**Fails with:** `usage`, `internal`, `not_found`, `conflict`, `refused`, `unavailable`.
+
 ## Exit codes
 
 | Code | Kind | When |

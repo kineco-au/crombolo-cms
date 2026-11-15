@@ -70,6 +70,7 @@ import { MediaFileStore, mediaStoreFor } from './media-files.ts'
 import { type MediaStore, streamOf } from './media-store.ts'
 import { siteMemberPorts } from './member-admin.ts'
 import { describeProvenance, provenanceProblem, verifyProvenance } from './provenance.ts'
+import { createBackgroundJobRoutes } from './remote-background-jobs.ts'
 import { createCiSignIn, readRuleInput, trustedIssuers } from './remote-ci.ts'
 import { createMemberRoutes } from './remote-members.ts'
 import { createUndoRoutes } from './remote-undo.ts'
@@ -115,6 +116,8 @@ export interface RemoteOptions {
   nodeState?: MemberPortOptions['nodeState']
   /** The server's own user ports, as the Users section uses them; absent, made over the database. */
   userPorts?: () => Pick<UserPorts, 'users' | 'groups'> | undefined
+  /** When this node began waiting for a background worker that is not running (story 223), or null. */
+  jobsWaitingSince?: () => string | null
 }
 
 /** What a supervised restart came to: the new server serving, or why the old one still is. */
@@ -239,6 +242,7 @@ export function createRemote(options: RemoteOptions): Remote {
       ...(options.operations ? ['content-history', 'recycle-bin'] : []),
       ...memberRoutes.capabilities,
       ...userRoutes.capabilities,
+      ...backgroundJobRoutes.capabilities,
       ...(settings.approvals ? ['approvals'] : []),
       ...(options.bundles && atLeast('read') ? ['bundle-manage'] : []),
       ...(options.restart && atLeast('all') ? ['restart'] : []),
@@ -289,6 +293,13 @@ export function createRemote(options: RemoteOptions): Remote {
     problem,
     levelRefusal: () =>
       atLeast('content') ? undefined : notAtLevel('content', 'changes to members or pages'),
+  })
+
+  const backgroundJobRoutes = createBackgroundJobRoutes({
+    db,
+    problem,
+    levelRefusal: () => (atLeast('content') ? undefined : notAtLevel('content', 'job retries')),
+    waitingSince: options.jobsWaitingSince,
   })
 
   const userRoutes = createUserRoutes({
@@ -1525,6 +1536,7 @@ export function createRemote(options: RemoteOptions): Remote {
                 mayChange(principal) &&
                 may(principal, RemotePermissions.ApplyStructure),
               audit: mayReadAudit(principal),
+              backgroundJobs: backgroundJobRoutes.may(principal),
             },
           },
         ])
@@ -1570,6 +1582,10 @@ export function createRemote(options: RemoteOptions): Remote {
       }
       if (what.startsWith('member') || what.startsWith('content/')) {
         const answered = await memberRoutes.handle(request, url, principal, what)
+        if (answered) return answered
+      }
+      if (what.startsWith('background-jobs')) {
+        const answered = await backgroundJobRoutes.handle(request, url, principal, what)
         if (answered) return answered
       }
       if (what.startsWith('user') || what.startsWith('sign-ins')) {
