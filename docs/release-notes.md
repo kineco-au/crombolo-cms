@@ -8,6 +8,16 @@ point at `docs/stories/`.
 
 ### Features
 
+- **Blueprints from the command line (358).** `crombolo content blueprint new <name> --from
+  <page>` saves a page's values, in every language, as a blueprint of its type; `content
+  blueprint list [--type <alias>]` lists them with their type and folder, and `content
+  blueprint remove <name> [--type <alias>] [--yes]` deletes one for good, asking first. `content
+  new <path> --blueprint <name>` starts a page from one, `--set` changing what it gives and
+  `--type` optional; a blueprint of another type is refused. Making one needs Create on the
+  page and removing one the Settings section, as in the back office, and both are audited. A
+  blueprint made from a page in several languages, in the back office too, is now named in the
+  default language, as Umbraco names it, rather than keeping that language's page name.
+  `docs/building-a-site-from-the-cli.md`, "Pages".
 - **Every data type editor from the command line (357).** `crombolo types new data-type
   --editor` takes every editor the back office offers, by a short name or its full name
   (`Umbraco.ColorPicker`, `Umb.PropertyEditorUi.CodeEditor`): new are `markdown`, `code`,

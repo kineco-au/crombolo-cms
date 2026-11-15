@@ -2287,6 +2287,73 @@ crombolo content block update <page> <property> <block> [--set <set>] [--unset <
 
 **Fails with:** `usage`, `internal`, `not_found`, `refused`.
 
+### `crombolo content blueprint list`
+
+List the blueprints new pages can start from: name, type and folder. Changes nothing.
+
+```
+crombolo content blueprint list [--type <type>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `--type` | string | Only this page type's. |
+
+**Output** (bounded, with `-o json`):
+
+- `items` (array of object)
+  - `key` (string)
+  - `name` (string)
+  - `type` (string)
+  - `folder` (string)
+
+**Fails with:** `usage`, `internal`, `not_found`.
+
+### `crombolo content blueprint new`
+
+Save a page's values as a blueprint of its type. Each run acts again.
+
+```
+crombolo content blueprint new <name> --from <from>
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `name` | string | The blueprint's name. Required. |
+| `--from` | string | The page whose values it keeps, by path or key. Required. |
+
+**Output** (single, with `-o json`):
+
+- `key` (string)
+- `name` (string)
+- `type` (string)
+- `from` (string)
+- `changed` (boolean)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+
+### `crombolo content blueprint remove`
+
+Delete a blueprint, for good. Each run acts again.
+
+```
+crombolo content blueprint remove <name> [--type <type>] [--yes]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `name` | string | The blueprint's name or key. Required. |
+| `--type` | string | The page type it is for. |
+| `--yes` | boolean | Don't ask. |
+
+**Output** (single, with `-o json`):
+
+- `key` (string)
+- `name` (string)
+- `changed` (boolean)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `confirmation_required`.
+
 ### `crombolo content copy`
 
 Copy a page under another page; --descendants for the branch below it. Each run acts again.
@@ -2516,13 +2583,14 @@ crombolo content move <page> --to <to> [--dry-run]
 Make a page, with its values, under the page its path names. Each run acts again.
 
 ```
-crombolo content new <path> --type <type> [--set <set>] [--set-file <set-file>] [--culture <culture>] [--view <view>] [--publish] [--skip-approval] [--dry-run]
+crombolo content new <path> [--type <type>] [--blueprint <blueprint>] [--set <set>] [--set-file <set-file>] [--culture <culture>] [--view <view>] [--publish] [--skip-approval] [--dry-run]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
 | `path` | string | The new page's path, ending in its name. Required. |
-| `--type` | string | The page's content type. Required. |
+| `--type` | string | The page's content type; a blueprint's, when --blueprint is given. |
+| `--blueprint` | string | The blueprint it starts from, by name or key. |
 | `--set` | string[] | A value, in the shorthand content files use; JSON for a toggle, number or list. |
 | `--set-file` | string[] | A value read from a file: Markdown for rich text, say. |
 | `--culture` | string | The language the values and name are in, for a page that varies by language. |

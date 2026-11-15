@@ -147,6 +147,23 @@ key. Pages are written to the site's database, as the back office writes
 them. `content export --root /Home` writes them out as content files
 to ship with the site (story 253).
 
+A blueprint is a page's values saved as a starting point for new pages of its
+type, as the back office offers when a page is made (story 358):
+
+```sh
+bunx crombolo content blueprint new "Landing page" --from "/Home/Visit us"
+bunx crombolo content new "/Home/Spring sale" --blueprint "Landing page" \
+  --set title="Spring sale"
+bunx crombolo content blueprint list --type contentPage
+bunx crombolo content blueprint remove "Landing page" --type contentPage --yes
+```
+
+The new page takes the blueprint's type, values and other languages, named by
+its path; `--set` changes what the blueprint gives, and the page is made, and
+approved, as any page is. A blueprint's name is unique within its type, and one
+named for another type is refused. Making one needs Create on the page,
+removing one the Settings section, and both are audited.
+
 ## 6. Published, and served
 
 ```sh

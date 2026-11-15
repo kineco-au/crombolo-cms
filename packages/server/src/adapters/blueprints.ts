@@ -9,6 +9,7 @@ import {
   type Db,
   DocumentRepository,
   FolderRepository,
+  LanguageRepository,
   type NodeSchemaState,
   type ValueIntake,
   WriteRejectedError,
@@ -43,6 +44,8 @@ export function createBlueprintPort(
       .execute()
     return rows[0] ? Number(rows[0].id) : undefined
   }
+  const defaultCulture = async (): Promise<string | undefined> =>
+    (await new LanguageRepository(db).all()).find((l) => l.isDefault)?.isoCode
   const failure = (error: unknown) => {
     if (error instanceof WriteRejectedError)
       return { ok: false as const, reason: error.message, status: 409 }
@@ -86,17 +89,28 @@ export function createBlueprintPort(
       if (!document)
         return { ok: false as const, reason: 'The document could not be found.', status: 404 }
       try {
+        // As Umbraco names one: a page in several languages gets the name in its
+        // default one, which comes first so the tree shows it; the others keep theirs.
+        const defaultIso = (await defaultCulture())?.toLowerCase()
+        const named =
+          document.variants.find((v) => v.culture === null) ??
+          document.variants.find((v) => v.culture?.toLowerCase() === defaultIso) ??
+          document.variants[0]
+        const variants = [
+          ...(named ? [named] : []),
+          ...document.variants.filter((v) => v !== named),
+        ].map((v) => ({
+          culture: v.culture,
+          segment: v.segment,
+          name: v === named ? init.name : v.name,
+        }))
         const created = await repo.create({
           key: init.key,
           contentTypeKey: document.contentTypeKey,
           componentKey: null,
           parentKey: init.parentKey,
           values: document.values,
-          variants: document.variants.map((v) => ({
-            culture: v.culture,
-            segment: v.segment,
-            name: v.culture === null ? init.name : v.name,
-          })),
+          variants,
           userId: await userIdOf(principal),
         })
         return { ok: true as const, key: created.key }

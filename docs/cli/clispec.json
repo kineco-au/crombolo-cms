@@ -1365,6 +1365,134 @@
       "errors": ["usage", "internal", "not_found", "refused"]
     },
     {
+      "name": "content blueprint list",
+      "description": "list the blueprints new pages can start from: name, type and folder",
+      "effects": "read_only",
+      "cardinality": "bounded",
+      "output_fields": [
+        {
+          "name": "items",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "fields": [
+              {
+                "name": "key",
+                "type": "string"
+              },
+              {
+                "name": "name",
+                "type": "string"
+              },
+              {
+                "name": "type",
+                "type": "string",
+                "description": "its type's alias"
+              },
+              {
+                "name": "folder",
+                "type": "string",
+                "description": "empty at the top"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "--type",
+          "type": "string",
+          "description": "only this page type's"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found"]
+    },
+    {
+      "name": "content blueprint new",
+      "description": "save a page's values as a blueprint of its type",
+      "effects": "non_idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "key",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "type",
+          "type": "string",
+          "description": "its type's alias"
+        },
+        {
+          "name": "from",
+          "type": "string",
+          "description": "the page's path"
+        },
+        {
+          "name": "changed",
+          "type": "boolean"
+        }
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "description": "the blueprint's name"
+        },
+        {
+          "name": "--from",
+          "type": "string",
+          "required": true,
+          "description": "the page whose values it keeps, by path or key"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "refused"]
+    },
+    {
+      "name": "content blueprint remove",
+      "description": "delete a blueprint, for good",
+      "effects": "non_idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "key",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "changed",
+          "type": "boolean"
+        }
+      ],
+      "confirmation_bypass_arg": "--yes",
+      "args": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "description": "the blueprint's name or key"
+        },
+        {
+          "name": "--type",
+          "type": "string",
+          "description": "the page type it is for"
+        },
+        {
+          "name": "--yes",
+          "type": "boolean",
+          "description": "don't ask"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "refused", "confirmation_required"]
+    },
+    {
       "name": "content copy",
       "description": "copy a page under another page; --descendants for the branch below it",
       "effects": "non_idempotent",
@@ -1988,8 +2116,12 @@
         {
           "name": "--type",
           "type": "string",
-          "required": true,
-          "description": "the page's content type"
+          "description": "the page's content type; a blueprint's, when --blueprint is given"
+        },
+        {
+          "name": "--blueprint",
+          "type": "string",
+          "description": "the blueprint it starts from, by name or key"
         },
         {
           "name": "--set",

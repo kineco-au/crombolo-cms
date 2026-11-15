@@ -127,11 +127,46 @@ copies them.
 
 ## Acceptance criteria
 
-- [ ] `crombolo content blueprint new <name> --from <page>` saves a page's values as a
+- [x] `crombolo content blueprint new <name> --from <page>` saves a page's values as a
       blueprint of its type
-- [ ] `content blueprint list [--type <alias>]` and `content blueprint remove <name>`
-- [ ] `content new <path> --type <alias> --blueprint <name>` starts the page from the
+- [x] `content blueprint list [--type <alias>]` and `content blueprint remove <name>`
+- [x] `content new <path> --type <alias> --blueprint <name>` starts the page from the
       blueprint, `--set` changing what it gives
-- [ ] `-o json`; audited
-- [ ] Tests for each, including a blueprint of one type refused for another
-- [ ] The CLI reference regenerated
+- [x] `-o json`; audited
+- [x] Tests for each, including a blueprint of one type refused for another
+- [x] The CLI reference regenerated
+
+## Built
+
+- `packages/cli/src/support/blueprints.ts`: `withBlueprints` (the page site and
+  `createBlueprintPort` with the node's schema state), `allBlueprints` (the Settings
+  tree walked, each with its folder), `findBlueprint` (by key, by name within a type
+  through `forContentType`, or across every type; two or more refused with their keys,
+  and their folders, as details) and `chainOf` (a page's ancestry for `mayAt`).
+- `content blueprint new <name> --from <page>` (Content): Create on the page checked
+  with `mayAt` for a signed-in person, a name already used for the type refused with
+  the `content blueprint remove` hint, then `fromDocument` as the person or the command
+  line; audited `content` / `Create` / `DocumentBlueprint` with the new key.
+- `content blueprint list [--type]` (Content or Settings): name, type and folder, the
+  key in `-o json`. With `--type` the keys come from `forContentType`; the tree walk
+  gives the folders.
+- `content blueprint remove <name> [--type] [--yes]` (Settings): asks first at a
+  terminal, refuses off one without `--yes`; audited `content` / `Delete` /
+  `DocumentBlueprint`.
+- `content new --blueprint <name>`: `--type` is optional with it; a blueprint of
+  another type is refused ("“Feature” is a blueprint for News page, not Page."); its
+  values go in as `existing`, so `--set` changes them; the page is named by its path in
+  its language and keeps the blueprint's names in the others; made through
+  `operations.create` / `createAndPublish` as before.
+- A `content:blueprint` topic in `packages/cli/package.json`.
+- **Differs from the plan:** the port's `fromDocument` named only an invariant variant,
+  so a blueprint made from a page in several languages kept that page's name in the
+  tree, and its name could not be found again. It now names the default language's
+  variant, as Umbraco's `CreateBlueprintFromContent` does, and puts it first so the
+  tree shows it. This changes the back office's blueprints from such pages too.
+- Docs: `docs/building-a-site-from-the-cli.md` "Pages", the CLI reference
+  (`bun run cli:spec`), the release notes.
+- Tests: `tests/content-blueprints-cli.test.ts`, covering every case the plan lists. By
+  the maintainer's instruction these tests were written but not run with the suites, and
+  will be run with the full suite at the end of the release. The file did run once on
+  its own (SQLite) before that instruction and passed (5 tests). `bun run check` passes.
