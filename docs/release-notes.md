@@ -6,6 +6,8 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.66.0 — 2026-11-15
+
 ### Features
 
 - **Harbourstone as a single-page app (347).** `crombolo init --template
