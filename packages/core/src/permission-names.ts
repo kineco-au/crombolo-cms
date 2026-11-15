@@ -5,6 +5,7 @@
  * publish and the rest exist for pages, Library items, media and forms alike.
  */
 import {
+  CliTokenPermissions,
   DocumentPermissions,
   ElementPermissions,
   FormPermissions,
@@ -92,6 +93,9 @@ export const PERMISSION_NAMES: readonly PermissionName[] = [
     PushProtected: 'Push to a protected environment',
     ApplyStructure: "Change a site's definitions, views, styles or code from a bundle or push",
     InstallCode: 'Install the code a bundle carries',
+  }),
+  ...area('tokens', CliTokenPermissions, {
+    Create: 'Create tokens that let scripts run commands as you',
   }),
 ]
 

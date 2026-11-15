@@ -4,7 +4,12 @@
  * Password hashing is injected rather than imported so this package stays free of
  * a dependency on @crombolo/auth.
  */
-import { EXPLICIT_PERMISSIONS, MediaPermissions, RemotePermissions } from '@crombolo/core'
+import {
+  CliTokenPermissions,
+  EXPLICIT_PERMISSIONS,
+  MediaPermissions,
+  RemotePermissions,
+} from '@crombolo/core'
 import type { Db } from '../database.ts'
 import { DbDate } from '../dialect.ts'
 
@@ -64,6 +69,8 @@ export const BUILT_IN_GROUP_PERMISSIONS: Record<string, readonly string[]> = {
     // Never one a group has to name (story 241): administrators are not given it.
     ...Object.values(RemotePermissions).filter((verb) => !EXPLICIT_PERMISSIONS.has(verb)),
     ...MEDIA_FULL,
+    // Explicit, so given by name (story 351): taking it away turns tokens off for administrators.
+    CliTokenPermissions.Create,
   ],
   editor: [
     'Umb.Document.Create',

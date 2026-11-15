@@ -1,5 +1,6 @@
 /** What the commands that reach a hosted site share: the flags, the connection, the browser. */
 import { type UserKeychain, userKeychain } from '@crombolo/server/remote-credentials'
+import { setting } from '@crombolo/server/settings'
 import { Flags } from '@oclif/core'
 import { CliError } from '../errors.ts'
 import { type HostedSite, hostedSite, type SiteChoice } from '../profiles/choose.ts'
@@ -77,13 +78,16 @@ export async function connectSite(
 ) {
   const site: HostedSite = hostedSite(choice, options)
   const discovery = await discover(site.url)
-  // In a CI job that can prove who it is, that identity; on a person's machine, their sign-in.
+  // A command-line token first, as the most explicit (story 351); then, in a CI job
+  // that can prove who it is, that identity; on a person's machine, their sign-in.
+  const token = setting('CROMBOLO_TOKEN')?.trim() || undefined
   const client = new RemoteClient(
     discovery,
     keychain(),
     fetch,
-    inCiWithIdentity() ? ciTokensFor(discovery) : undefined,
+    token ? async () => token : inCiWithIdentity() ? ciTokensFor(discovery) : undefined,
     `crombolo login${site.profile ? ` --profile ${site.name}` : ''}`,
+    token !== undefined,
   )
   const environment =
     site.environment ??

@@ -7,10 +7,17 @@
  */
 import { existsSync } from 'node:fs'
 import type { Principal } from '@crombolo/api-management/domain'
-import { AuthService, AuthStore, DEVICE_CODE_GRANT, REMOTE_CLIENT_ID } from '@crombolo/auth'
+import {
+  AuthService,
+  AuthStore,
+  type CliTokenRefusal,
+  CliTokens,
+  DEVICE_CODE_GRANT,
+  REMOTE_CLIENT_ID,
+} from '@crombolo/auth'
 import { managementApiPath } from '@crombolo/core'
 import { connect, type Db } from '@crombolo/data'
-import { type CromboloConfig, describeDatabase, principalOf } from '@crombolo/server'
+import { type CromboloConfig, describeDatabase, principalOf, recordAudit } from '@crombolo/server'
 import type { RemoteSignIn } from '@crombolo/server/remote-credentials'
 import { keychain } from './remote.ts'
 import { readSupervisor } from './supervise.ts'
@@ -80,6 +87,49 @@ export async function resolveSiteSignIn(
       })
     }
     return { person: await principalOf(db, identity) }
+  })
+}
+
+/** The site's command-line tokens, as its settings have them. */
+export const siteCliTokens = (config: CromboloConfig, db: Db) =>
+  new CliTokens(db, { enabled: config.cliTokens, maxDays: config.cliTokenMaxDays })
+
+export const withSiteDatabase = withSiteDb
+
+/**
+ * The person a command-line token acts as (story 351), checked against the
+ * site's database with their permissions as they are now, or why it may not.
+ * Its first use is audited under them.
+ */
+export async function resolveSiteToken(
+  config: CromboloConfig,
+  token: string,
+): Promise<{ person: Principal } | { refused: CliTokenRefusal }> {
+  if (noDatabase(config)) return { refused: 'unknown' }
+  return withSiteDb(config, async (db) => {
+    const tokens = siteCliTokens(config, db)
+    const resolved = await tokens.resolve(token)
+    if (!resolved.ok) return { refused: resolved.reason }
+    const identity = await new AuthService(new AuthStore(db)).identityOf(resolved.user.id)
+    if (!identity) return { refused: resolved.user.isLockedOut ? 'locked' : 'disabled' }
+    if (resolved.firstUse)
+      await recordAudit(db, {
+        category: 'user',
+        action: 'FirstUseOfToken',
+        source: 'cli',
+        userKey: resolved.user.key,
+        userName: resolved.user.userName,
+        entityType: 'User',
+        entityKey: resolved.user.key,
+        entityName: resolved.user.userName,
+        detail: `"${resolved.token.name}"`,
+      })
+    return {
+      person: await principalOf(db, identity, {
+        key: resolved.token.key,
+        name: resolved.token.name,
+      }),
+    }
   })
 }
 

@@ -680,6 +680,7 @@ named for a hosted site is checked there instead:
 | `site apply\|export\|show\|urls\|key\|runs\|revert`, `extension list\|enable\|disable` | Settings | |
 | `site import`, `push`, `pull`, `maintenance pause\|resume`, `keys trust\|trusted\|untrust`, `extension install\|uninstall\|grant\|settings\|purge` | Settings | yes |
 | `languages list`, `site deploy`, `remote job`, `remote trust *` | any | |
+| `tokens new\|list\|revoke` (always signed in, as a person; `--user` is for administrators) | any | |
 
 **Never signed in.** Starting and recovery (`init`, `start`, `restart`, `upgrade`,
 `upgrade check|ledger`, `admin reset-password`), signing in and choosing a site (`login`,
@@ -693,6 +694,81 @@ fails one that declares nothing and pins the `none` list.
 command line. The level makes every change through it attributed and checked against a
 person's permissions; it does not stop someone with the database. Keeping production's
 credentials private, and changing a hosted site through `--profile`, is what protects it.
+
+### Command-line tokens
+
+Story 351. A token lets a script or a CI job run commands as the person who made it, for
+a site at `sign-in` that nothing unattended can sign in to through a browser. It is not
+an identity of its own: everything done through it is that person's, with their
+permissions as they are each time it is used, and every audit entry it makes says
+"through the token *name*".
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `cliTokens` / `CROMBOLO_CLI_TOKENS` | off | Turns tokens on. Off, none is made and every existing one is refused, but kept |
+| `cliTokenMaxDays` / `CROMBOLO_CLI_TOKEN_MAX_DAYS` | 90 | The most days a token may last |
+| `CROMBOLO_TOKEN` | — | The token a command acts through, read by the command line |
+
+**Who may make one.** A person in a group that gives "Command-line tokens"
+(`Crombolo.CliTokens.Create`, `tokens:create` in `crombolo users groups permissions`).
+Only the built-in Administrators group has it at first. It is explicit, as "Install code"
+is: an administrator holds it only while one of their groups names it. It is checked each
+time a token is made **and each time one is used**, so a person whose groups lose it has
+their tokens refused, without them being deleted, and giving it back restores them.
+
+**Making and revoking.** `crombolo tokens new --name <name> [--expires <days>]` prints the
+token once; `-o json` gives it as `token`. It lasts 30 days unless asked, and never longer
+than the site allows. `crombolo tokens list` and `crombolo tokens revoke <name>` act on
+your own; an administrator adds `--user <who>` for someone else's. Each takes `--profile`
+for a hosted site. The back office has the same: "Command-line tokens" in your profile,
+beside signed-in devices, and a Tokens view on a user's screen for an administrator. Only
+the token's hash is kept (`cli_token`), and a token starts `crombolo_pat_`, so secret
+scanners recognise one. Making, first using and revoking one are audited, under the
+person, in the `user` category. Endpoints: `<backoffice>/crombolo/api/cli-tokens` (GET,
+POST `{ name, days }`, DELETE `/{key}`), which take a token too.
+
+**Using one.** With `CROMBOLO_TOKEN` set, a command uses it before any stored sign-in: in a
+site folder it is checked against the site's database, and with `--profile` it is sent to
+the hosted site as the bearer, before the keychain or a CI identity. A token is only ever
+taken as a bearer, never from a cookie, so it cannot become a back-office sign-in. It is
+refused, each with its own message, when it is unknown, expired or revoked, when its
+person is disabled, locked out or removed, when their groups no longer give tokens, and
+while tokens are off.
+
+**What a token never does.** It never decides an approval: a page's approval in the
+approvals engine, or a held push to a protected site. Neither does CI (story 160).
+
+### Running unattended at `sign-in`
+
+A CI job, or a person's own script, that runs commands against a site at `sign-in`:
+
+1. The person it should act as makes a token, for as long as the job needs and no longer:
+   `crombolo tokens new --name nightly --expires 30 --profile production`.
+2. The token goes into the CI system's secrets, never into the repository.
+3. The job sets `CROMBOLO_TOKEN` from the secret, and names the site with
+   `CROMBOLO_PROFILE_URL` (and `CROMBOLO_PROFILE_ENVIRONMENT` when it has more than one):
+
+```yaml
+# .github/workflows/nightly.yml
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    env:
+      CROMBOLO_TOKEN: ${{ secrets.CROMBOLO_TOKEN }}
+      CROMBOLO_PROFILE_URL: https://cms.example.com
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      - run: bunx crombolo audit list --category sign-in --since 2026-11-01 -o json
+```
+
+The same token works in a site folder of the site's own database, such as a job on the
+server: set `CROMBOLO_TOKEN` and run the command there.
+
+A token expires: renew it before it does with `tokens new` and replace the secret, then
+revoke the old one. A job that only pulls or pushes whole sites can use a trust rule
+instead ("Deploying from CI"), which needs no secret at all.
 
 ### A site built from the command line
 

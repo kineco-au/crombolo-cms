@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/cli",
-  "version": "0.65.1",
+  "version": "0.66.0",
   "description": "The crombolo command line: scaffolding a site, schema, views, domains, content transfer and upgrades.",
   "license": "MIT",
   "author": "Crombolo",
@@ -146,6 +146,9 @@
       },
       "site": {
         "description": "the site as a whole: what it is, and how page addresses are built"
+      },
+      "tokens": {
+        "description": "command-line tokens, for a script or a CI job to run commands as you"
       },
       "types": {
         "description": "schema-as-code: the content types, data types and languages in schema/"

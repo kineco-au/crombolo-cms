@@ -399,6 +399,13 @@ export interface CromboloConfig {
    * `CROMBOLO_CLI_ACCESS`. docs/operations.md, "Signing in from the command line".
    */
   cliAccess: CliAccess
+  /**
+   * Whether people may make command-line tokens, and any is taken (story 351).
+   * `CROMBOLO_CLI_TOKENS`, off unless set.
+   */
+  cliTokens: boolean
+  /** The most days a command-line token may last. `CROMBOLO_CLI_TOKEN_MAX_DAYS`, 90. */
+  cliTokenMaxDays: number
   /** Sync `schema/` at boot; a pipeline that runs `crombolo types sync` turns this off. */
   syncSchemaAtBoot: boolean
   /** Which database engine; from CROMBOLO_DB. */
@@ -959,6 +966,8 @@ export function loadConfig(
     contentMode: contentModeSetting(),
     // Resolved again below, once it is known whether this is development.
     cliAccess: cliAccessSetting() as CliAccess,
+    cliTokens: setting('CROMBOLO_CLI_TOKENS') === 'true',
+    cliTokenMaxDays: Math.floor(positiveNumber(setting('CROMBOLO_CLI_TOKEN_MAX_DAYS'), 90)),
     dialect: setting('CROMBOLO_DB') === 'postgres' ? 'postgres' : 'sqlite',
     pgDump: setting('CROMBOLO_PG_DUMP'),
     upgradePolicy:
@@ -1264,7 +1273,7 @@ export function describeDatabase(
   }
 }
 
-export const VERSION = '0.65.1'
+export const VERSION = '0.66.0'
 
 /** A whole number of seconds from the environment; undefined when unset or not one. */
 /** A positive number from a setting, else the default. */

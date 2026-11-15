@@ -1194,6 +1194,12 @@ export function createRemote(options: RemoteOptions): Remote {
     // CI never approves, whatever its rule holds: a second person is the point.
     if (principal.ci)
       return problem(403, { code: 'ci-cannot-approve', title: 'CI cannot approve pushes' })
+    if (principal.viaToken)
+      return problem(403, {
+        code: 'token-cannot-approve',
+        title: 'A command-line token cannot approve pushes',
+        detail: 'Approve or decline it signed in as yourself.',
+      })
     const job = await jobs.get(id)
     if (job?.kind !== 'push')
       return problem(404, { code: 'not-found', title: 'There is no such push' })

@@ -13,8 +13,8 @@ import {
   migrate,
   readLedger,
   readState,
+  STATE_CLI_TOKENS,
   STATE_CONTENT_APPLIED,
-  STATE_SESSION_VIEW_AS,
   seedIdentity,
 } from '@crombolo/data'
 import { summariseUpgrades, VERSION } from '@crombolo/server'
@@ -145,10 +145,11 @@ describe('upgrading from the previous release', () => {
       'PruneGroupPermissions',
       'DropUserStartNodes',
       'AddSessionViewAs',
+      'AddCliTokens',
     ])
-    expect(await readState(db)).toBe(STATE_SESSION_VIEW_AS)
+    expect(await readState(db)).toBe(STATE_CLI_TOKENS)
     const summary = summariseUpgrades(await readLedger(db), VERSION)
-    expect(summary.lastUpgrade).toMatchObject({ release: '0.65.1', steps: 28 })
+    expect(summary.lastUpgrade).toMatchObject({ release: '0.66.0', steps: 29 })
   })
 
   test('the Changes dashboard reports the version, the install and the last upgrade', async () => {

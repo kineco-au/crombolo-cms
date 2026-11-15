@@ -7764,6 +7764,158 @@
       "outcomes": ["problems_found"]
     },
     {
+      "name": "tokens list",
+      "description": "your command-line tokens, or with --user someone else’s",
+      "effects": "read_only",
+      "cardinality": "bounded",
+      "output_fields": [
+        {
+          "name": "items",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "fields": [
+              {
+                "name": "key",
+                "type": "string"
+              },
+              {
+                "name": "name",
+                "type": "string"
+              },
+              {
+                "name": "createdAt",
+                "type": "string"
+              },
+              {
+                "name": "expiresAt",
+                "type": "string"
+              },
+              {
+                "name": "lastUsedAt",
+                "type": "string",
+                "nullable": true
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "--user",
+          "type": "string",
+          "description": "someone else's, by e-mail, login or key: for administrators"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "the site this profile names, rather than this one; a hosted one as you, signed in"
+        }
+      ],
+      "errors": ["usage", "internal", "auth", "refused", "not_found"]
+    },
+    {
+      "name": "tokens new",
+      "description": "a token for a script or a CI job to run commands as you",
+      "effects": "non_idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "key",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "createdAt",
+          "type": "string"
+        },
+        {
+          "name": "expiresAt",
+          "type": "string"
+        },
+        {
+          "name": "lastUsedAt",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "token",
+          "type": "string",
+          "description": "shown only this once"
+        }
+      ],
+      "args": [
+        {
+          "name": "--name",
+          "type": "string",
+          "required": true,
+          "description": "what it is for, so you know it again"
+        },
+        {
+          "name": "--expires",
+          "type": "string",
+          "description": "how many days it lasts: 30 unless given, and no more than the site allows"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "the site this profile names, rather than this one; a hosted one as you, signed in"
+        }
+      ],
+      "errors": ["usage", "internal", "auth", "refused", "conflict", "not_found"]
+    },
+    {
+      "name": "tokens revoke",
+      "description": "stop a command-line token working, by its name",
+      "effects": "non_idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "key",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "createdAt",
+          "type": "string"
+        },
+        {
+          "name": "expiresAt",
+          "type": "string"
+        },
+        {
+          "name": "lastUsedAt",
+          "type": "string",
+          "nullable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "description": "the name it was given"
+        },
+        {
+          "name": "--user",
+          "type": "string",
+          "description": "someone else's, by e-mail, login or key: for administrators"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "the site this profile names, rather than this one; a hosted one as you, signed in"
+        }
+      ],
+      "errors": ["usage", "internal", "auth", "refused", "not_found"]
+    },
+    {
       "name": "types check",
       "description": "check the site's definitions, and what applying them would do to this database",
       "effects": "read_only",

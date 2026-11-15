@@ -5,13 +5,18 @@
  * rule the command declares, as the back office checks its screen, and the
  * command acts as them. Refused before anything is opened for writing.
  */
+
+import type { Principal } from '@crombolo/api-management/domain'
 import { hasSection } from '@crombolo/api-management/domain'
-import type { AppAlias } from '@crombolo/core'
+import { CLI_TOKEN_REFUSALS } from '@crombolo/auth'
+import { type AppAlias, normaliseUuid } from '@crombolo/core'
+import { setProcessAuditContext } from '@crombolo/data'
+import { setting } from '@crombolo/server/settings'
 import type { BaseCommand } from '../base.ts'
 import { CliError } from '../errors.ts'
 import { chooseSite, type ProfileFlagValues, siteFolder } from '../profiles/choose.ts'
 import { actAs } from './acting.ts'
-import { readSiteSignIn, resolveSiteSignIn } from './local-sign-in.ts'
+import { readSiteSignIn, resolveSiteSignIn, resolveSiteToken } from './local-sign-in.ts'
 import { hostedFlags } from './remote.ts'
 import { cwd, siteConfigAt } from './site.ts'
 
@@ -60,8 +65,22 @@ export async function gate(command: BaseCommand, dirs: readonly string[]): Promi
   const access = declared.access ?? 'site'
   if (access === 'none') return
   const what = named(declared, command.id)
+  const token = setting('CROMBOLO_TOKEN')?.trim() || undefined
   for (const dir of dirs) {
     const config = await siteConfigAt(dir)
+    if (token) {
+      const found = await resolveSiteToken(config, token)
+      if ('refused' in found)
+        throw new CliError('auth', `CROMBOLO_TOKEN: ${CLI_TOKEN_REFUSALS[found.refused]}`, {
+          hint: 'Make a new token with `crombolo tokens new`, or unset CROMBOLO_TOKEN.',
+        })
+      check(declared, what, found.person)
+      actAs(found.person)
+      setProcessAuditContext({
+        token: { userKey: normaliseUuid(found.person.id), name: found.person.viaToken?.name ?? '' },
+      })
+      continue
+    }
     const stored = await readSiteSignIn(config)
     if (!stored) {
       if (access === 'site' && config.cliAccess === 'open') continue
@@ -78,15 +97,19 @@ export async function gate(command: BaseCommand, dirs: readonly string[]): Promi
       throw new CliError('auth', 'Your sign-in to this site has ended.', {
         hint: 'Sign in again with `crombolo login` while the site is running, or sign out with `crombolo logout`.',
       })
-    const { person } = resolved
-    if (declared.adminOnly && !person.isAdmin)
-      throw new CliError('refused', `${what} is for administrators.`)
-    const sections = declared.section === undefined ? [] : [declared.section].flat()
-    if (sections.length > 0 && !sections.some((section) => hasSection(person, section)))
-      throw new CliError(
-        'refused',
-        `${what} needs the ${sections.map((section) => SECTIONS[section]).join(' or ')} section, which your groups don't give you.`,
-      )
-    actAs(person)
+    check(declared, what, resolved.person)
+    actAs(resolved.person)
   }
+}
+
+/** The section and administrator rules the command declares, for the person found. */
+function check(declared: CommandClass, what: string, person: Principal): void {
+  if (declared.adminOnly && !person.isAdmin)
+    throw new CliError('refused', `${what} is for administrators.`)
+  const sections = declared.section === undefined ? [] : [declared.section].flat()
+  if (sections.length > 0 && !sections.some((section) => hasSection(person, section)))
+    throw new CliError(
+      'refused',
+      `${what} needs the ${sections.map((section) => SECTIONS[section]).join(' or ')} section, which your groups don't give you.`,
+    )
 }

@@ -10,6 +10,7 @@ import { loadAccess } from './access.ts'
 export async function principalOf(
   db: Db,
   identity: Omit<ResolvedIdentity, 'sessionId'>,
+  viaToken?: Principal['viaToken'],
 ): Promise<Principal> {
   return {
     id: identity.user.key,
@@ -29,5 +30,6 @@ export async function principalOf(
       identity.viewingAs ? identity.groupKeys : undefined,
     )),
     ...(identity.viewingAs ? { viewingAs: identity.viewingAs } : {}),
+    ...(viaToken ? { viaToken } : {}),
   }
 }

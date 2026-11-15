@@ -36,9 +36,11 @@ import {
 import {
   AuthService,
   AuthStore,
+  CliTokens,
   cookieNames,
   createAuthRoutes,
   expireCookie,
+  isCliToken,
   isSafeMethod,
   isSameOrigin,
   memberCookieName,
@@ -275,6 +277,7 @@ export const PREVIEW_MEMBER_COOKIE = 'crombolo-preview-member'
 
 import { ACTIONS_PATH, type SiteRoute } from '@crombolo/common'
 import { backofficeAudience } from './backoffice-external.ts'
+import { createCliTokensApi, tokenRefusal } from './cli-tokens-api.ts'
 import { createExternalSignIn } from './external-sign-in.ts'
 import { IdentityProviderOverrides } from './identity-provider-overrides.ts'
 import {
@@ -672,7 +675,7 @@ export async function createServer(
     const acting = actingPrincipalOf(request)
     if (acting) return acting
     const identity = await identify(request)
-    if (!identity) return undefined
+    if (!identity) return tokenPrincipal(request)
     const principal = await principalFrom(identity)
     // Story 314: what this session writes says whose groups it was seen as.
     const context = currentAuditContext()
@@ -681,6 +684,31 @@ export async function createServer(
         userKey: normaliseUuid(principal.id),
         groups: principal.viewingAs.groups.map((g) => g.name).join(', '),
       }
+    return principal
+  }
+
+  /** A command-line token a request carries as its bearer, never from a cookie (story 351). */
+  const cliTokenOf = (request: Request): string | undefined => {
+    const header = request.headers.get('authorization')
+    const bearer = header?.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : undefined
+    return bearer && isCliToken(bearer) ? bearer : undefined
+  }
+
+  /** The person a command-line token acts as, with their permissions as they are now. */
+  async function tokenPrincipal(request: Request): Promise<Principal | undefined> {
+    const token = cliTokenOf(request)
+    if (!token) return undefined
+    const resolved = await cliTokens.resolve(token)
+    if (!resolved.ok) return undefined
+    const identity = await auth.identityOf(resolved.user.id)
+    if (!identity) return undefined
+    if (resolved.firstUse) await cliTokensApi.firstUse(resolved.token, clientAddress(request))
+    const principal = await principalOf(db, identity, {
+      key: resolved.token.key,
+      name: resolved.token.name,
+    })
+    const context = currentAuditContext()
+    if (context) context.token = { userKey: normaliseUuid(principal.id), name: resolved.token.name }
     return principal
   }
 
@@ -1330,6 +1358,11 @@ export async function createServer(
   const canSendUserLinks = () => Boolean(resolveUserLinkSender(config, email))
   const emailSettings = createEmailSettings(db, config, { port: () => email })
   const viewAs = createViewAs(db, auth)
+  const cliTokens = new CliTokens(db, {
+    enabled: config.cliTokens,
+    maxDays: config.cliTokenMaxDays,
+  })
+  const cliTokensApi = createCliTokensApi(db, cliTokens)
   const schemaTransfer = createSchemaTransfer(db, config, {
     boot: schema,
     afterApply: async (report) => {
@@ -1554,10 +1587,12 @@ export async function createServer(
   const hostTokenPath = `${paths.pluginPath}/api/host-token`
   const contentQueryPath = `${paths.pluginPath}/api/content-query`
   const viewAsPath = `${paths.pluginPath}/api/view-as`
+  const cliTokensPath = `${paths.pluginPath}/api/cli-tokens`
   const selfAudited = [
     `${paths.pluginPath}/api/email/`,
     `${paths.pluginPath}/api/schema-transfer/`,
     viewAsPath,
+    cliTokensPath,
   ]
   const bundleInstallPaths = new Set(
     ['install', 'uninstall', 'disable', 'enable', 'grant', 'settings'].flatMap((action) => [
@@ -2579,6 +2614,24 @@ export async function createServer(
       return outcome.ok
         ? Response.json(outcome)
         : Response.json(outcome, { status: outcome.status })
+    }
+
+    // Story 351: a person's command-line tokens, and an administrator's view of anyone's.
+    if (pathname === cliTokensPath || pathname.startsWith(`${cliTokensPath}/`)) {
+      const principal = await authenticate(request)
+      if (!principal) {
+        const token = cliTokenOf(request)
+        const why = token ? await cliTokens.resolve(token) : undefined
+        return why && !why.ok
+          ? tokenRefusal(why.reason)
+          : new Response('Unauthorized', { status: 401 })
+      }
+      return cliTokensApi.handle(
+        request,
+        principal,
+        pathname.slice(cliTokensPath.length),
+        clientAddress(request),
+      )
     }
 
     // Story 314: an administrator's session seen as user groups, and back.

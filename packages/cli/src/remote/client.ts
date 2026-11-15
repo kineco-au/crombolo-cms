@@ -221,10 +221,12 @@ export class RemoteClient {
   #http: typeof fetch
   #source: ((force: boolean) => Promise<string | undefined>) | undefined
   #login: string
+  #personal: boolean
 
   /**
    * `source`, when given, supplies the token in place of the keychain: CI's,
-   * for one. `login` is the command a refusal says to run.
+   * for one, or with `personal` a person's command-line token (story 351).
+   * `login` is the command a refusal says to run.
    */
   constructor(
     discovery: Discovery,
@@ -232,17 +234,27 @@ export class RemoteClient {
     http: typeof fetch = fetch,
     source?: (force: boolean) => Promise<string | undefined>,
     login = 'crombolo login --profile <name>',
+    personal = false,
   ) {
     this.discovery = discovery
     this.#keychain = keychain
     this.#http = http
     this.#source = source
     this.#login = login
+    this.#personal = personal
   }
 
   /** Whether this client acts as CI by a trust rule rather than as a signed-in person. */
   get ci(): boolean {
-    return this.#source !== undefined
+    return this.#source !== undefined && !this.#personal
+  }
+
+  /** Where the site keeps a person's command-line tokens, under its back office. */
+  get cliTokensUrl(): string {
+    return this.discovery.auth.token.replace(
+      /\/management\/api\/v1\/security\/back-office\/token$/,
+      '/crombolo/api/cli-tokens',
+    )
   }
 
   async signedIn(): Promise<boolean> {
@@ -269,7 +281,23 @@ export class RemoteClient {
     }
     const first = await attempt(false)
     if (first.status !== 401) return first
-    return attempt(true)
+    const second = await attempt(true)
+    if (second.status === 401 && this.#personal) await this.#refuseToken()
+    return second
+  }
+
+  /** Why the site refused a command-line token, in its own words. */
+  async #refuseToken(): Promise<void> {
+    const token = await this.#source?.(false)
+    const response = await this.#http(this.cliTokensUrl, {
+      headers: { authorization: `Bearer ${token}` },
+    }).catch(() => undefined)
+    const body = (await response?.json().catch(() => ({}))) as { message?: string } | undefined
+    throw new RemoteError({
+      status: 401,
+      code: 'token-refused',
+      title: `CROMBOLO_TOKEN: ${body?.message ?? `${new URL(this.discovery.api).origin} did not accept the token.`}`,
+    })
   }
 
   async api(path: string, init: RequestInit = {}): Promise<Response> {

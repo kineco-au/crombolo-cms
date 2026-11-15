@@ -135,6 +135,9 @@ describe('the first boot of a self-hosted site', () => {
   test('a database the previous release left is upgraded by `crombolo upgrade`, and then starts', async () => {
     const file = readdirSync(site()).find((name) => name.endsWith('.sqlite')) as string
     const sqlite = new Database(join(site(), file))
+    sqlite.exec('DROP INDEX IF EXISTS ux_cli_token_name')
+    sqlite.exec('DROP TABLE IF EXISTS cli_token')
+    sqlite.exec("DELETE FROM migration_history WHERE name = 'AddCliTokens'")
     sqlite.exec('ALTER TABLE user_login_session DROP COLUMN view_as_until')
     sqlite.exec('ALTER TABLE user_login_session DROP COLUMN view_as_groups')
     sqlite.exec("DELETE FROM migration_history WHERE name = 'AddSessionViewAs'")

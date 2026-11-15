@@ -45,6 +45,22 @@ point at `docs/stories/`.
 - **`--skip-approval` is an administrator's once someone is signed in (350).**
 - **`CROMBOLO_CREDENTIALS_FILE` (350)** puts the credentials file somewhere other than
   `~/.crombolo/credentials`.
+- **Command-line tokens (351).** With `cliTokens` (`CROMBOLO_CLI_TOKENS=true`) a person
+  makes a token for a script or a CI job, `crombolo tokens new --name <name> [--expires
+  <days>]`, shown once, and lists and revokes theirs with `tokens list` and `tokens revoke
+  <name>`; an administrator adds `--user` for anyone's. The back office has the same, in
+  your profile beside signed-in devices and on a user's screen. A command run with
+  `CROMBOLO_TOKEN` acts as the token's person, here or with `--profile`, with their
+  permissions as they are then, and the audit log notes the token by name. A token lasts
+  30 days unless asked and never more than `cliTokenMaxDays` (90), and is refused once it
+  expires, is revoked, or its person is disabled, locked out or removed.
+  `docs/operations.md`, "Command-line tokens" and "Running unattended at `sign-in`".
+- **"Command-line tokens", a group permission (351),** `Crombolo.CliTokens.Create`, beside
+  the Data Transfer ones. It is needed to make a token and checked each time one is used,
+  and like "Install code" only a group that names it gives it, administrators included.
+  The built-in Administrators group is given it.
+- **Neither a token nor CI decides an approval (351).** The approvals engine now refuses
+  both, as a held push already refused CI.
 - **`@crombolo/cli/plugin` (350):** a command declares `access` (`none`, `site` or
   `person`), and may declare its `section` and `adminOnly`. One that declares nothing is
   taken to be `site`.
@@ -63,13 +79,18 @@ point at `docs/stories/`.
   job's identity token signs it in as before.
 - **Production commands need someone signed in (350).** `CROMBOLO_CLI_ACCESS` is
   `sign-in` when `NODE_ENV` is `production`. A deploy that runs data commands itself, such
-  as `site apply` in its container, needs a personal access token from this release, with
-  `CROMBOLO_CLI_TOKENS=true` (story 351), or else `CROMBOLO_CLI_ACCESS=open`. Starting,
-  upgrading and `admin reset-password` need no sign-in.
+  as `site apply` in its container, needs a command-line token (story 351): set
+  `CROMBOLO_CLI_TOKENS=true` on the site, have an administrator make one with
+  `crombolo tokens new`, and give it to the job as `CROMBOLO_TOKEN`. Or else set
+  `CROMBOLO_CLI_ACCESS=open`. Starting, upgrading and `admin reset-password` need no
+  sign-in.
+- **Command-line tokens are off until turned on (351),** and only Administrators may make
+  one. Give "Command-line tokens" to another group for its members to.
 - **A plain `crombolo login` no longer signs in to the only remote (350).** With no
   `--profile` it means this folder's site, as `logout` and `whoami` do; a hosted site is
   named with `--profile <name>`.
-- **No migrations.**
+- **Migrations:** 078 `AddCliTokens` (release 0.66.0) adds the `cli_token` table and gives
+  the Administrators group `Crombolo.CliTokens.Create`. Nothing to do.
 
 ## v0.65.1 — 2026-11-14
 

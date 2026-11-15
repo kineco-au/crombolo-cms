@@ -26,6 +26,8 @@ export default defineConfig({
   applicationUrl: 'https://www.riverside-bakery.example', // CROMBOLO_APPLICATION_URL
   contentMode: 'production', // CROMBOLO_CONTENT_MODE: templates, styles and scripts read-only
   cliAccess: 'sign-in', // CROMBOLO_CLI_ACCESS: commands act as the person signed in
+  cliTokens: true, // CROMBOLO_CLI_TOKENS: tokens let scripts run commands as a person
+  cliTokenMaxDays: 90, // CROMBOLO_CLI_TOKEN_MAX_DAYS
 
   // ── Where its files are (relative to this file) ─────────────────────────────
   siteDir: '.',

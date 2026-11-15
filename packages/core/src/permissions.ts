@@ -74,11 +74,23 @@ const REMOTE_VERBS: ReadonlySet<string> = new Set(Object.values(RemotePermission
 export const isRemotePermission = (verb: string): boolean => REMOTE_VERBS.has(verb)
 
 /**
+ * Command-line tokens (story 351): creating one, and using it, which is
+ * checked each time. Group-wide, held in the groups' fallback permissions, and
+ * explicit, so an administrator holds it only while a group of theirs names it.
+ */
+export const CliTokenPermissions = {
+  Create: 'Crombolo.CliTokens.Create',
+} as const
+
+/**
  * Permissions an administrator does not hold by being one (story 241): only a
  * group that names them grants them, so installing code on a site is always a
  * choice somebody made and the audit log recorded.
  */
-export const EXPLICIT_PERMISSIONS: ReadonlySet<string> = new Set([RemotePermissions.InstallCode])
+export const EXPLICIT_PERMISSIONS: ReadonlySet<string> = new Set([
+  RemotePermissions.InstallCode,
+  CliTokenPermissions.Create,
+])
 
 /**
  * Media (story 088). Umbraco has no media verbs: a group with the Media section
@@ -143,6 +155,7 @@ export const KNOWN_PERMISSIONS: ReadonlySet<string> = new Set([
   ...Object.values(RemotePermissions),
   ...Object.values(MediaPermissions),
   ...Object.values(ElementPermissions),
+  ...Object.values(CliTokenPermissions),
 ])
 
 export const ADMIN_GROUP_ALIAS = 'admin'

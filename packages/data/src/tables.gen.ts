@@ -153,6 +153,18 @@ export interface CoreTables {
     subject_name: string | null
     subject_type: string
   }
+  cli_token: {
+    created_at: Timestamp
+    expires_at: Timestamp
+    id: Generated<number>
+    key: string
+    last_used_at: Timestamp | null
+    name: string
+    revoked_at: Timestamp | null
+    revoked_by: string | null
+    token_hash: string
+    user_id: number
+  }
   content: {
     content_type_id: number
     creator_member_key: string | null

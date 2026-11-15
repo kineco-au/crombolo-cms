@@ -67,6 +67,11 @@ export interface Principal {
    */
   ci?: { rule: string; claims: Record<string, string> }
   /**
+   * Set when the person acts through one of their command-line tokens (story
+   * 351): it is them, but like CI it never decides an approval.
+   */
+  viaToken?: { key: string; name: string }
+  /**
    * Set while an administrator's session views as user groups (story 314):
    * everything above is the groups', and they are who this really is.
    */

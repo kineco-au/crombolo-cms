@@ -4,6 +4,8 @@
  * server's (`@crombolo/core`, `permission-levels.ts`).
  */
 
+import { PERMISSION_DESCRIPTION, PERMISSION_LABEL } from './cli-tokens-words.js'
+
 export const TABS = [
   { id: 'access', label: 'Access' },
   { id: 'permissions', label: 'Permissions' },
@@ -242,6 +244,12 @@ export const TRANSFER = [
     warning: true,
     label: 'Install code on this site',
     line: 'Templates, server code and whole-site pushes: all of these run on the server. Nobody has this unless a group gives it, administrators included. Keep it on a group of its own, such as "Deployers".',
+  },
+  {
+    group: 'Command line',
+    verb: 'Crombolo.CliTokens.Create',
+    label: PERMISSION_LABEL,
+    line: `${PERMISSION_DESCRIPTION}. Nobody has this unless a group gives it, administrators included.`,
   },
 ]
 

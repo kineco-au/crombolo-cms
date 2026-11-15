@@ -1192,6 +1192,32 @@ const DECLARED = [
     appliesTo: 'both',
   },
   {
+    env: 'CROMBOLO_CLI_TOKENS',
+    kind: 'boolean',
+    default: 'false',
+    section: 'Command line',
+    description:
+      'Whether people may create command-line tokens, for a script or a CI job to run commands as them. Off, no token is made and every existing one is refused, but kept.',
+    appliesTo: 'both',
+  },
+  {
+    env: 'CROMBOLO_CLI_TOKEN_MAX_DAYS',
+    kind: 'number',
+    default: '90',
+    section: 'Command line',
+    description: 'The most days a command-line token may last.',
+    appliesTo: 'both',
+  },
+  {
+    env: 'CROMBOLO_TOKEN',
+    kind: 'string',
+    section: 'Command line',
+    description:
+      "A command-line token: commands act as the person who made it, here or on a hosted site, before anyone's stored sign-in.",
+    secret: true,
+    appliesTo: 'cli',
+  },
+  {
     env: 'CROMBOLO_BUNDLE_PASSPHRASE',
     kind: 'string',
     section: 'Command line',

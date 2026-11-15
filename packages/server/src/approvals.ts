@@ -268,6 +268,19 @@ export function scheduleRefusal(
   return undefined
 }
 
+/**
+ * CI and a command-line token never decide (stories 160, 351): a person
+ * deciding, signed in, is the point of an approval.
+ */
+function refuseUnattended(principal: Principal): void {
+  if (principal.ci) throw new ApprovalRefused('CI cannot approve or send back a request.', 403)
+  if (principal.viaToken)
+    throw new ApprovalRefused(
+      'A command-line token cannot approve or send back a request. Decide it signed in as yourself.',
+      403,
+    )
+}
+
 export function createApprovals(options: ApprovalsOptions): Approvals {
   const { db } = options
   const requests = (tx: Db = db): ApprovalRepositoryType => new ApprovalRepository(tx)
@@ -947,6 +960,7 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
     },
 
     async approve(principal, requestKey, stage, comment) {
+      refuseUnattended(principal)
       const request = await waitingRequest(requestKey)
       const current = await view(principal, request)
       const target = stage ?? current.can.approve[0]
@@ -985,6 +999,7 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
     },
 
     async sendBack(principal, requestKey, stage, comment) {
+      refuseUnattended(principal)
       const request = await waitingRequest(requestKey)
       const current = await view(principal, request)
       const from = stage ?? current.can.sendBack[0]

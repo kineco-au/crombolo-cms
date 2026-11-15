@@ -396,7 +396,7 @@ cannot, what is left out and why, and how the rest splits into stories.
 | `159` | A site file without its hostnames | should | S | done | 104, 105 |
 | `349` | The command line does what the back office does | should | XL | done | — |
 | `350` | The command line signs in to the site it changes | should | L | done | — |
-| `351` | Personal access tokens for the command line | should | M | ready | 350 |
+| `351` | Personal access tokens for the command line | should | M | done | 350 |
 | `352` | Profiles in place of remotes | should | L | done | — |
 | `353` | Undoing a change from the command line | should | M | ready | 349, 352 |
 | `354` | Members from the command line | should | M | ready | 349, 350, 352 |

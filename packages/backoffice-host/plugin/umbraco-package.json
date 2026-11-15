@@ -2,7 +2,7 @@
   "$schema": "../../backoffice-dist/dist/umbraco-package-schema.json",
   "name": "Crombolo",
   "id": "Crombolo.Core",
-  "version": "0.65.1",
+  "version": "0.66.0",
   "allowPublicAccess": false,
   "extensions": [
     {
@@ -100,6 +100,17 @@
     },
     {
       "type": "entityUserPermission",
+      "alias": "Crombolo.UserPermission.CliTokens.Create",
+      "name": "Crombolo Command-line Tokens Permission",
+      "forEntityTypes": ["crombolo-remote"],
+      "meta": {
+        "verbs": ["Crombolo.CliTokens.Create"],
+        "label": "Command-line tokens",
+        "description": "Create tokens that let scripts run commands as you"
+      }
+    },
+    {
+      "type": "entityUserPermission",
       "alias": "Crombolo.UserPermission.Media.Read",
       "name": "Crombolo Media Read Permission",
       "forEntityTypes": ["media"],
@@ -165,6 +176,17 @@
       "meta": {
         "label": "Signed-in devices",
         "pathname": "devices"
+      }
+    },
+    {
+      "type": "userProfileApp",
+      "alias": "Crombolo.UserProfileApp.CliTokens",
+      "name": "Crombolo Command-line Tokens",
+      "element": "/crombolo-plugin/cli-tokens.js",
+      "weight": 90,
+      "meta": {
+        "label": "Command-line tokens",
+        "pathname": "tokens"
       }
     },
     {
@@ -439,6 +461,27 @@
         {
           "alias": "Umb.Condition.WorkspaceAlias",
           "match": "Umb.Workspace.UserGroup"
+        }
+      ]
+    },
+    {
+      "type": "workspaceView",
+      "alias": "Crombolo.WorkspaceView.User.CliTokens",
+      "name": "Crombolo User Command-line Tokens",
+      "element": "/crombolo-plugin/cli-tokens-user.js",
+      "weight": 50,
+      "meta": {
+        "label": "Tokens",
+        "pathname": "tokens",
+        "icon": "icon-key"
+      },
+      "conditions": [
+        {
+          "alias": "Umb.Condition.WorkspaceAlias",
+          "match": "Umb.Workspace.User"
+        },
+        {
+          "alias": "Umb.Condition.CurrentUser.IsAdmin"
         }
       ]
     },

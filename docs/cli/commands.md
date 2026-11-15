@@ -3954,7 +3954,7 @@ crombolo keys untrust <signer>
 
 ## Users and access
 
-Back office users, the administrator’s password, API clients and the audit log.
+Back office users, the administrator’s password, API clients, command-line tokens and the audit log.
 
 ### `crombolo users disable`
 
@@ -4334,6 +4334,79 @@ crombolo api-client rotate [--client <client>]
 - `secret` (string)
 
 **Fails with:** `usage`, `internal`, `not_found`.
+
+### `crombolo tokens list`
+
+Your command-line tokens, or with --user someone else’s. Changes nothing.
+
+```
+crombolo tokens list [--user <user>] [--profile <profile>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `--user` | string | Someone else's, by e-mail, login or key: for administrators. |
+| `--profile` | string | The site this profile names, rather than this one; a hosted one as you, signed in. |
+
+**Output** (bounded, with `-o json`):
+
+- `items` (array of object)
+  - `key` (string)
+  - `name` (string)
+  - `createdAt` (string)
+  - `expiresAt` (string)
+  - `lastUsedAt` (string)
+
+**Fails with:** `usage`, `internal`, `auth`, `refused`, `not_found`.
+
+### `crombolo tokens new`
+
+A token for a script or a CI job to run commands as you. Each run acts again.
+
+```
+crombolo tokens new --name <name> [--expires <expires>] [--profile <profile>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `--name` | string | What it is for, so you know it again. Required. |
+| `--expires` | string | How many days it lasts: 30 unless given, and no more than the site allows. |
+| `--profile` | string | The site this profile names, rather than this one; a hosted one as you, signed in. |
+
+**Output** (single, with `-o json`):
+
+- `key` (string)
+- `name` (string)
+- `createdAt` (string)
+- `expiresAt` (string)
+- `lastUsedAt` (string)
+- `token` (string)
+
+**Fails with:** `usage`, `internal`, `auth`, `refused`, `conflict`, `not_found`.
+
+### `crombolo tokens revoke`
+
+Stop a command-line token working, by its name. Each run acts again.
+
+```
+crombolo tokens revoke <name> [--user <user>] [--profile <profile>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `name` | string | The name it was given. Required. |
+| `--user` | string | Someone else's, by e-mail, login or key: for administrators. |
+| `--profile` | string | The site this profile names, rather than this one; a hosted one as you, signed in. |
+
+**Output** (single, with `-o json`):
+
+- `key` (string)
+- `name` (string)
+- `createdAt` (string)
+- `expiresAt` (string)
+- `lastUsedAt` (string)
+
+**Fails with:** `usage`, `internal`, `auth`, `refused`, `not_found`.
 
 ### `crombolo audit list`
 

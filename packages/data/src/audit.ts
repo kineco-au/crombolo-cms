@@ -181,6 +181,8 @@ function toEntry(row: Record<string, unknown>): AuditEntry {
  */
 export interface AuditContext {
   viewing?: { userKey: string; groups: string }
+  /** A person acting through one of their command-line tokens (story 351), by its name. */
+  token?: { userKey: string; name: string }
 }
 
 const contexts = new AsyncLocalStorage<AuditContext>()
@@ -188,18 +190,36 @@ const contexts = new AsyncLocalStorage<AuditContext>()
 /** Runs `work` with an audit context of its own, which it fills in as it learns who is asking. */
 export const withAuditContext = <T>(work: () => T): T => contexts.run({}, work)
 
-/** The context of the request being answered; undefined outside one. */
-export const currentAuditContext = (): AuditContext | undefined => contexts.getStore()
+let processContext: AuditContext | undefined
 
-/** The detail an entry is written with: "while viewing as Editors" added to the viewer's own. */
+/**
+ * The context for a whole process that answers no requests, such as one
+ * command (story 351); a request's own context always comes first.
+ */
+export const setProcessAuditContext = (context: AuditContext | undefined): void => {
+  processContext = context
+}
+
+/** The context of the request being answered, or of the process; undefined outside both. */
+export const currentAuditContext = (): AuditContext | undefined =>
+  contexts.getStore() ?? processContext
+
+/**
+ * The detail an entry is written with: "while viewing as Editors", or "through
+ * the token deploy", added to the person's own.
+ */
 export function detailInContext(
   entry: Pick<AuditEntryInput, 'userKey' | 'detail'>,
   context = currentAuditContext(),
 ): string | null | undefined {
-  const viewing = context?.viewing
-  if (!viewing || !entry.userKey || !UUID.test(entry.userKey)) return entry.detail
-  if (normaliseUuid(entry.userKey) !== viewing.userKey) return entry.detail
-  const note = `while viewing as ${viewing.groups}`
+  if (!context || !entry.userKey || !UUID.test(entry.userKey)) return entry.detail
+  const who = normaliseUuid(entry.userKey)
+  const notes = [
+    context.viewing?.userKey === who ? `while viewing as ${context.viewing.groups}` : undefined,
+    context.token?.userKey === who ? `through the token ${context.token.name}` : undefined,
+  ].filter((note): note is string => note !== undefined)
+  if (notes.length === 0) return entry.detail
+  const note = notes.join(', ')
   return entry.detail ? `${entry.detail}, ${note}` : `${note[0]?.toUpperCase()}${note.slice(1)}`
 }
 

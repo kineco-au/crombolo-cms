@@ -193,33 +193,77 @@ audit log, permissions and approval rules all treat it as that person.
 
 ## Acceptance criteria
 
-- [ ] `cliTokens` in `crombolo.config.ts`, or `CROMBOLO_CLI_TOKENS`, turns tokens on.
+- [x] `cliTokens` in `crombolo.config.ts`, or `CROMBOLO_CLI_TOKENS`, turns tokens on.
       It is off by default. With it off, no token is issued and every existing one is
       refused, without being deleted
-- [ ] `crombolo tokens new --name <name> --expires <days>` gives a signed-in person a
+- [x] `crombolo tokens new --name <name> --expires <days>` gives a signed-in person a
       token, printed once. Every token has an expiry, the site may cap it (default
       cap 90 days), and only a hash is kept
-- [ ] Creating a token needs `Crombolo.CliTokens.Create`, a group permission given
+- [x] Creating a token needs `Crombolo.CliTokens.Create`, a group permission given
       only to Administrators at first and shown in a group's permissions as
       "Command-line tokens". A token whose person's groups no longer hold it is
       refused, with its own message, and works again when it is given back
-- [ ] `crombolo tokens list` and `tokens revoke <name>` act on a person's own tokens.
+- [x] `crombolo tokens list` and `tokens revoke <name>` act on a person's own tokens.
       An administrator lists and revokes anyone's, with `--user`
-- [ ] The same is in the back office: the person's profile lists their tokens and
+- [x] The same is in the back office: the person's profile lists their tokens and
       creates and revokes them, and the Users screen lets an administrator see and
       revoke a user's tokens
-- [ ] A command run with `CROMBOLO_TOKEN` acts as the token's person, locally and
+- [x] A command run with `CROMBOLO_TOKEN` acts as the token's person, locally and
       with `--profile` (story 352). It is audited under them, noting it was through that token,
       and holds their current permissions, not those they had when it was made
-- [ ] A token stops working when it expires, is revoked, or its person is disabled,
+- [x] A token stops working when it expires, is revoked, or its person is disabled,
       locked or removed. Each is refused with its own message
-- [ ] A token never decides an approval, as a CI token never does (story 160)
-- [ ] Creating, using for the first time and revoking a token are audited
-- [ ] `docs/operations.md` (tokens, and running unattended at `sign-in`) and the CLI
+- [x] A token never decides an approval, as a CI token never does (story 160)
+- [x] Creating, using for the first time and revoking a token are audited
+- [x] `docs/operations.md` (tokens, and running unattended at `sign-in`) and the CLI
       reference regenerated
-- [ ] Tests on SQLite and Postgres (a new table, so a migration and the rewind
+- [x] Tests on SQLite and Postgres (a new table, so a migration and the rewind
       helpers):
       - a token acts as its person;
       - an expired, revoked or switched-off token is refused;
       - a disabled person's token is refused;
       - a token is refused an approval decision
+
+## Built
+
+Built 2026-11-15:
+- the settings are `cliTokens` and `cliTokenMaxDays` on `CromboloConfig`, and
+  `CROMBOLO_CLI_TOKENS`, `CROMBOLO_CLI_TOKEN_MAX_DAYS` and `CROMBOLO_TOKEN` in the registry;
+- migration 078 is `packages/data/src/schema/cli-tokens.ts` (release 0.66.0): the
+  `cli_token` table, a unique index on `(user_id, name)` where not revoked, and
+  `grantBuiltInPermissions`, which gives Administrators the verb as the seed does;
+- the verb is `CliTokenPermissions.Create` in `packages/core/src/permissions.ts`, plain name
+  `tokens:create`;
+- the service is `CliTokens` in `packages/auth/src/cli-tokens.ts`, with its refusals'
+  sentences in `CLI_TOKEN_REFUSALS`;
+- the endpoints are `packages/server/src/cli-tokens-api.ts`; `authenticate` in `server.ts`
+  turns a `crombolo_pat_` bearer into a principal with `viaToken`, and an audit context
+  whose entries say "through the token *name*" (`AuditContext.token`, and
+  `setProcessAuditContext` for a command);
+- `approve` and `sendBack` in `approvals.ts` refuse a principal with `ci` or `viaToken`, and
+  the remote's push approval refuses `viaToken` (`token-cannot-approve`);
+- the commands are `packages/cli/src/commands/tokens/`, over `support/tokens.ts`; the gate
+  takes `CROMBOLO_TOKEN` before a stored sign-in (`resolveSiteToken` in
+  `support/local-sign-in.ts`), and `connectSite` gives it to `RemoteClient` as a personal
+  token source, which is not CI;
+- the back office is `plugin/cli-tokens.js` (the profile box), `plugin/cli-tokens-user.js`
+  (a Tokens view on a user, administrators only) and `plugin/cli-tokens-words.js`; the
+  permission is a `Command line` entry in the group editor's Data Transfer tab, and an
+  `entityUserPermission` manifest.
+
+Where it differs from the plan:
+- **The verb is explicit, as Install code is (`EXPLICIT_PERMISSIONS`).** Being an
+  administrator bypasses the permission tables, so without this an administrator would hold
+  it whatever their groups said, and taking it from Administrators would not refuse their
+  tokens, which D2 asks for.
+- **`--expires` beyond the site's cap is refused, not cut down,** saying the most the site
+  allows, so a token never lasts less than asked without saying so.
+- **`cli_token.user_id` has no foreign key,** so a removed person's tokens stay and are
+  refused as `removed` rather than `unknown`.
+- **A token is taken by `authenticate`, not `identify`.** Routes that need a session of
+  their own (viewing as a group, signed-in devices) never take one.
+- **A refused token's reason reaches a hosted command** through the `cli-tokens` endpoint,
+  which answers `401 { reason, message }`: `RemoteClient` asks it once a token is refused.
+- **The Tokens view on a user's screen shows while tokens are off,** saying the site does
+  not take them, as hiding a workspace view by a server setting needs a condition of its
+  own. The profile box is hidden.

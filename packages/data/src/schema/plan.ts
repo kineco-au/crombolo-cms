@@ -28,6 +28,7 @@ import { bundlesDisabledMigration } from './bundles-disabled.ts'
 import { bundlesInSettingsMigration } from './bundles-in-settings.ts'
 import { bundlesRenameMigration } from './bundles-rename.ts'
 import { changeReportMigration } from './change-report.ts'
+import { cliTokensMigration } from './cli-tokens.ts'
 import { clientIdPrefixMigration } from './client-id-prefix.ts'
 import { contentMigration } from './content.ts'
 import { contentAppliedMigration } from './content-applied.ts'
@@ -169,4 +170,5 @@ export const cromboloPlan = new MigrationPlan([
   prunedPermissionsMigration,
   userStartNodesDroppedMigration,
   sessionViewAsMigration,
+  cliTokensMigration,
 ])
