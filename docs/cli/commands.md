@@ -2364,7 +2364,7 @@ crombolo content copy <page> --to <to> [--descendants] [--dry-run]
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `page` | string | The page: a path or a uuid. Required. |
+| `page` | string | The page: a path or a uuid; library:/… for a Library element. Required. |
 | `--to` | string | The page to copy it under; / for the top level. Required. |
 | `--descendants` | boolean | The pages below it too. |
 | `--dry-run` | boolean | Say what it would do, and change nothing. |
@@ -2436,8 +2436,8 @@ crombolo content find [--type <type>] [--name <name>] [--name-match <name-match>
 | `--name` | string | The page name to match. |
 | `--name-match` | string | How --name matches. One of `contains`, `startsWith`, `equals`. Default `contains`. |
 | `--text` | string | Words in the page, through the search index. |
-| `--under` | string | Only pages below this one. |
-| `--parent` | string | Only the children of this page. |
+| `--under` | string | Only pages below this one; library:/… for the Library, or a folder in it. |
+| `--parent` | string | Only the children of this page, or of a Library folder. |
 | `--max-depth` | string | How many levels below --under or --parent. |
 | `--created-from` | string | Created on or after. |
 | `--created-to` | string | Created on or before. |
@@ -2551,9 +2551,115 @@ crombolo content history show <page> <version> [--diff] [--profile <profile>] [-
 
 **Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.
 
+### `crombolo content menu add`
+
+Add an item to a menu: a page, a media item, an address, or a heading. Each run acts again.
+
+```
+crombolo content menu add <alias> [<link>] [--label <label>] [--target <target>] [--under <under>] [--first] [--before <before>] [--after <after>] [--publish] [--dry-run]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `alias` | string | The menu, by the alias templates use. Required. |
+| `link` | string | What it links to: a page path, a media path or an address; none for a heading. |
+| `--label` | string | What it says, instead of the page's name. |
+| `--target` | string | Where the link opens: _blank for a new tab. |
+| `--under` | string | Put it under this item. |
+| `--first` | boolean | Put it first in its list. |
+| `--before` | string | Put it before this item. |
+| `--after` | string | Put it after this item. |
+| `--publish` | boolean | Publish the menu too, so templates and the Delivery API follow. |
+| `--dry-run` | boolean | Say what would change, and change nothing. |
+
+**Output** (single, with `-o json`):
+
+- `key` (string)
+- `alias` (string)
+- `path` (string)
+- `item` (string)
+- `changed` (boolean)
+- `published` (boolean)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+
+### `crombolo content menu move`
+
+Move a menu item, with the items below it. Each run acts again.
+
+```
+crombolo content menu move <alias> <item> [--under <under>] [--first] [--before <before>] [--after <after>] [--top] [--publish] [--dry-run]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `alias` | string | The menu, by the alias templates use. Required. |
+| `item` | string | The item: its labels from the top, or its key. Required. |
+| `--under` | string | Put it under this item. |
+| `--first` | boolean | Put it first in its list. |
+| `--before` | string | Put it before this item. |
+| `--after` | string | Put it after this item. |
+| `--top` | boolean | Put it at the top of the menu. |
+| `--publish` | boolean | Publish the menu too, so templates and the Delivery API follow. |
+| `--dry-run` | boolean | Say what would change, and change nothing. |
+
+**Output** (single, with `-o json`):
+
+- `key` (string)
+- `alias` (string)
+- `path` (string)
+- `item` (string)
+- `changed` (boolean)
+- `published` (boolean)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+
+### `crombolo content menu remove`
+
+Remove a menu item, and the items below it. Each run acts again.
+
+```
+crombolo content menu remove <alias> <item> [--publish] [--dry-run]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `alias` | string | The menu, by the alias templates use. Required. |
+| `item` | string | The item: its labels from the top, or its key. Required. |
+| `--publish` | boolean | Publish the menu too, so templates and the Delivery API follow. |
+| `--dry-run` | boolean | Say what would change, and change nothing. |
+
+**Output** (single, with `-o json`):
+
+- `key` (string)
+- `alias` (string)
+- `path` (string)
+- `item` (string)
+- `changed` (boolean)
+- `published` (boolean)
+- `removed` (integer)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+
+### `crombolo content menu show`
+
+A menu's items: each one's label and what it links to. Changes nothing.
+
+```
+crombolo content menu show <alias>
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `alias` | string | The menu, by the alias templates use. Required. |
+
+**Output** (single, with `-o json`): a JSON document.
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+
 ### `crombolo content move`
 
-Move pages, and the pages below them, under another page. Safe to run again: a second run changes nothing more.
+Move pages, and the pages below them, under another page; or Library items into a Library folder. Safe to run again: a second run changes nothing more.
 
 ```
 crombolo content move <page> --to <to> [--dry-run]
@@ -2562,7 +2668,7 @@ crombolo content move <page> --to <to> [--dry-run]
 | Argument | Type | What it is |
 | --- | --- | --- |
 | `page` | string | The page: a path or a uuid; name more after it. Required. |
-| `--to` | string | The page to move them under; / for the top level. Required. |
+| `--to` | string | The page to move them under; / for the top level; a Library folder for Library items. Required. |
 | `--dry-run` | boolean | Say what it would do, and change nothing. |
 
 **Output** (bounded, with `-o json`):
@@ -2580,7 +2686,7 @@ crombolo content move <page> --to <to> [--dry-run]
 
 ### `crombolo content new`
 
-Make a page, with its values, under the page its path names. Each run acts again.
+Make a page, with its values, under the page its path names; or a Library element. Each run acts again.
 
 ```
 crombolo content new <path> [--type <type>] [--blueprint <blueprint>] [--set <set>] [--set-file <set-file>] [--culture <culture>] [--view <view>] [--publish] [--skip-approval] [--dry-run]
@@ -2588,7 +2694,7 @@ crombolo content new <path> [--type <type>] [--blueprint <blueprint>] [--set <se
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `path` | string | The new page's path, ending in its name. Required. |
+| `path` | string | The new page's path, ending in its name; library:/… for a Library element. Required. |
 | `--type` | string | The page's content type; a blueprint's, when --blueprint is given. |
 | `--blueprint` | string | The blueprint it starts from, by name or key. |
 | `--set` | string[] | A value, in the shorthand content files use; JSON for a toggle, number or list. |
@@ -2666,7 +2772,7 @@ crombolo content rollback <page> <version> [--publish] [--skip-approval] [--prof
 
 ### `crombolo content show`
 
-One page: its type, state, values and blocks. Changes nothing.
+One page or Library item: its type, state, values and blocks. Changes nothing.
 
 ```
 crombolo content show <page>
@@ -2674,7 +2780,7 @@ crombolo content show <page>
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `page` | string | The page: a path or a uuid. Required. |
+| `page` | string | The page: a path or a uuid; library:/… for a Library item. Required. |
 
 **Output** (single, with `-o json`): a JSON document.
 
@@ -2736,7 +2842,7 @@ crombolo content unpublish <page> [--descendants] [--culture <culture>] [--at <a
 
 ### `crombolo content update`
 
-Change a page's values, its name or its view. Safe to run again: a second run changes nothing more.
+Change a page's or a Library element's values, its name or its view. Safe to run again: a second run changes nothing more.
 
 ```
 crombolo content update <page> [--set <set>] [--set-file <set-file>] [--culture <culture>] [--view <view>] [--publish] [--skip-approval] [--dry-run] [--unset <unset>] [--name <name>]
@@ -2744,7 +2850,7 @@ crombolo content update <page> [--set <set>] [--set-file <set-file>] [--culture 
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `page` | string | The page: a path or a uuid. Required. |
+| `page` | string | The page: a path or a uuid; library:/… for a Library item. Required. |
 | `--set` | string[] | A value, in the shorthand content files use; JSON for a toggle, number or list. |
 | `--set-file` | string[] | A value read from a file: Markdown for rich text, say. |
 | `--culture` | string | The language the values and name are in, for a page that varies by language. |

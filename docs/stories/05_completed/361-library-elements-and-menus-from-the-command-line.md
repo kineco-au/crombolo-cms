@@ -234,15 +234,96 @@ the back office.
 
 ## Acceptance criteria
 
-- [ ] The `content` commands that make sense for an element take a Library path
+- [x] The `content` commands that make sense for an element take a Library path
       (`library:/...`): `new`, `update`, `show`, `find`, `move`,
       `copy`, `delete`, `publish` and `unpublish`. There is no `sort`, since the
       Library keeps no order of its own, and a menu changes the site only once
       published
-- [ ] `crombolo content menu show <alias>`, and `content menu add <alias>
+- [x] `crombolo content menu show <alias>`, and `content menu add <alias>
       <page|media|url> [--under <item>] [--label]`, `content menu move` and `content
       menu remove`, keeping a menu's order and nesting
-- [ ] `-o json`; audited
-- [ ] Tests for each, and that a template's `menu()` and the Delivery API's menus
+- [x] `-o json`; audited
+- [x] Tests for each, and that a template's `menu()` and the Delivery API's menus
       follow
-- [ ] The CLI reference regenerated
+- [x] The CLI reference regenerated
+
+## Built
+
+- **Step 0, the Library operations.** `createElementOperations` in
+  `packages/content/src/element-operations.ts`: `create`, `save`,
+  `createAndPublish`, `saveAndPublish`, `publish` (with the back office's
+  schedules), `unpublish`, `copy`, `move`, `trash`, and `createFolder`,
+  `renameFolder`, `moveFolder`, `trashFolder`, each taking an `Actor`. A `user` is
+  checked against `ELEMENT_VERBS` (`packages/content/src/policy.ts`, exported
+  through `rules.ts`), which `ELEMENT_RULES` in `api-management/src/authorization.ts`
+  now reads, so there is one table; the operator and the system pass. Each write
+  takes the content tree lock, then one transaction holding the storage write, its
+  audit entry and the cache instruction; a refused write rolls back what it began.
+  The events are `ElementEvent` in `events.ts`, with `elementAuditFor` and
+  `elementAuditEntryFor` giving `content` / `Element` or `ElementFolder` and the
+  action names the router used to derive (`Copy` entered against the original);
+  `createElementEventSink` in `server/src/content-events.ts` writes them.
+- **The storage beneath** is the elements adapter, unchanged in what it does: the
+  menu alias rule and the cache instruction stay there. Its writes take an
+  `ElementAuthor` (`{ id } | null`) in place of the principal, it gains
+  `instructedBy` so the command line's instructions say `cli:<node>`, and it
+  exports `menuByAlias(db, alias)`, the alias query `withMenuAlias` already used.
+- **The back office moved onto them.** `createNodeOperations` builds `elements`;
+  `ManagementApiDeps.elementOperations` carries them to `registerElementHandlers`,
+  whose writes call the operations with `actorOf(ctx)`. `PostElementFolder` and
+  `PutElementFolderById` are registered over the shared folder handlers so a
+  folder made or renamed is audited the same way. `ELEMENT_WRITE_OPERATIONS`
+  (`document-writes.ts`) keeps the router from auditing them a second time; it
+  still raises their live events and change notices. The scheduled job still
+  publishes elements through the port, as before.
+- **The command line.** `packages/cli/src/support/library.ts` (`libraryPath`,
+  `inLibrary`, `resolveLibrary`, `findLibraryItem`, `withLibrary`, `needSection`,
+  `needLibraryVerb`) and `support/library-content.ts` (each content command's
+  Library branch); `siteElementOperations` in `server/src/content-operations.ts`.
+  `content new|update|show|find|move|copy|delete|publish|unpublish` declare
+  `section: ['content', 'library']` and check the section their path needs once
+  it is resolved. `content sort` refuses a Library path. `queryDocuments` takes
+  `{ library: true }`, which searches elements and lets `under` and `parent` name a
+  Library folder.
+- **Menus.** `content menu show|add|move|remove` (`commands/content/menu/`,
+  `support/menus.ts`), `access: 'site'`, `section: 'library'`.
+- **Docs**: `docs/rendering.md` ("Building a menu from the command line"),
+  `docs/building-a-site-from-the-cli.md`, `docs/architecture.md` ("Content
+  writes"), `docs/audit-log.md`, the CLI reference and the release notes.
+- **Tests**: `tests/element-operations.test.ts` (each write's audit entry once, for
+  the operator, the system and a user held to the verbs; the back office's writes
+  entered once; a refused alias leaving nothing), `tests/cli-library.test.ts`,
+  `tests/menu-cli.test.ts`, and additions to `tests/cli-access.test.ts`;
+  `serveSite` in `tests/support/local-site.ts` takes extra config. **The tests are
+  written but not yet run:** the maintainer runs the full suites once, at the
+  release. The existing tests that cover the back office's Library writes are
+  `tests/elements.test.ts`, `tests/menus.test.ts`,
+  `tests/library-folders-transfer.test.ts`, `tests/read-only-group.test.ts`,
+  `tests/form-library.test.ts` and `tests/authorization.test.ts` ("verbs on
+  elements"). `bun run check` passes.
+
+Where it differs from the plan, or fills it in:
+- **`createElementOperations(options)`** takes `{ db, store, events, onChange }`,
+  as the media operations take their options, `store` being the adapter on the
+  write's transaction, rather than `(repo, options)`.
+- **The verbs table lives in `policy.ts`,** beside the page verbs, and reaches
+  `rules.ts` through its re-export, as `WRITE_VERBS` does.
+- **Library writes have no webhook or change notification:** there were none
+  before, so the sink writes the audit entry only.
+- **Block keys stay out of text output.** `menu add` gives the new item's key in
+  `-o json` (`item`), not in its text, and an ambiguous item is refused pointing at
+  `menu show -o json` for the keys rather than listing them.
+- **`content update library:/<folder> --name`** renames a folder, through
+  `renameFolder`; a folder takes nothing else.
+- **`content new library:/…`** also refuses an element type the Library does not
+  offer (`allowedInLibrary`), and `--blueprint`.
+- **`content publish|unpublish library:/…`** acts now: `--at`, `--until` and
+  `--descendants` are refused, the first two pointing at the back office's
+  Publish dialog.
+- **`content find`** refuses `--text` for the Library, since the search index the
+  text runs through holds pages.
+- **`content show library:/<folder>`** lists what the folder holds.
+- **`content delete` and `content move` on Library items** write each item in
+  turn, after checking each one's verb and, for a move, that nothing goes inside
+  itself; they are not one transaction, as the Library has no `moveMany`.
+

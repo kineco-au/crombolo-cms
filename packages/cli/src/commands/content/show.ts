@@ -1,5 +1,7 @@
 import { Args } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
+import { needSection, refersToLibrary } from '../../support/library.ts'
+import { showLibraryItem } from '../../support/library-content.ts'
 import { findPage, sayValues, withPages } from '../../support/pages.ts'
 
 const STATES: Record<string, string> = {
@@ -11,15 +13,21 @@ const STATES: Record<string, string> = {
 
 /** One page, its values in the shorthand content files use and its blocks (story 253). */
 export default class ContentShow extends BaseCommand {
-  static override summary = 'one page: its type, state, values and blocks'
+  static override summary = 'one page or Library item: its type, state, values and blocks'
   static override description =
     'Values are shown in the shorthand `content new` and `content update` take, and each block with its type, alias and key, which `content block` names it by.'
-  static override examples = ['<%= config.bin %> content show "/Home/Visit us"']
+  static override examples = [
+    '<%= config.bin %> content show "/Home/Visit us"',
+    '<%= config.bin %> content show library:/Menus/Footer',
+  ]
   static override args = {
-    page: Args.string({ required: true, description: 'the page: a path or a uuid' }),
+    page: Args.string({
+      required: true,
+      description: 'the page: a path or a uuid; library:/… for a Library item',
+    }),
   }
   static override access = 'site' as const
-  static override section = 'content' as const
+  static override section = ['content', 'library'] as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'single',
@@ -29,6 +37,8 @@ export default class ContentShow extends BaseCommand {
 
   async run() {
     const { args } = await this.parse(ContentShow)
+    if (await refersToLibrary(args.page)) return showLibraryItem(this, args.page)
+    needSection(false)
     return withPages(async (site) => {
       const page = await findPage(site, args.page)
       const { doc, type } = page

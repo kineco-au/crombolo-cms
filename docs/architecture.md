@@ -112,6 +112,20 @@ the rules do not depend on what started the change.
   have. The media port keeps the reads; the router still raises media's live
   events and skips only its audit entry (`MEDIA_WRITE_OPERATIONS`). The command
   line wires them with `siteMediaOperations`.
+- **Library writes have their own operations** (`ElementOperations`,
+  `packages/content/src/element-operations.ts`, story 361): create, save,
+  create-and-publish, save-and-publish, publish, unpublish, copy, move and trash
+  an element, and make, rename, move and trash a folder. A user needs the
+  Library verbs each write names (`ELEMENT_VERBS` in `policy.ts`), held
+  group-wide in the groups' fallback permissions with no start nodes; the
+  Management API's `ELEMENT_RULES` reads the same table. The Library has no
+  approvals. The tree lock, then one transaction holding the change, its audit
+  entry (`content` / `Element` or `ElementFolder`, the back office's action
+  names) and the cache instruction. The elements adapter
+  (`server/adapters/elements.ts`) is the storage beneath them, and keeps the
+  menu alias rule; the router skips only its audit entry
+  (`ELEMENT_WRITE_OPERATIONS`). The command line wires them with
+  `siteElementOperations`, its cache instructions said to be from `cli:<node>`.
 - file I/O a save needs (placing uploads) reaches the repository as a
   _value intake_ the server supplies, so `data` stays free of the file system
 - image processing adds no dependency: Bun's `Image` resizes and encodes, and

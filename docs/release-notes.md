@@ -8,6 +8,19 @@ point at `docs/stories/`.
 
 ### Features
 
+- **Library elements and menus from the command line (361).** The `content` commands take a
+  Library item as `library:/<folder>/<name>`, or by its key: `content new library:/Menus/Footer
+  --type menu` makes an element in a folder that is already there, and `update`, `show`,
+  `find --under library:/`, `move` (an element or a folder, `--to library:/` for the top),
+  `copy`, `delete`, `publish` and `unpublish` work on one as on a page. A path with no scheme
+  is always a page. `sort` on a Library path is refused, since the Library keeps no order of
+  its own. `crombolo content menu show <alias>` prints a menu's items as a tree, and `content
+  menu add <alias> <page|media|url>`, `menu move` and `menu remove` change its draft, an item
+  named by its labels from the top or its key, keeping each item's key and what was not
+  touched; `--publish` takes the menu live, which is when templates and the Delivery API
+  follow. Each needs the Library section and the Library verbs the back office asks for, and
+  is audited as the back office's is. On this site's database only, with no `--profile`.
+  `docs/rendering.md`, "Building a menu from the command line".
 - **Search and sharing settings from the command line (360).** `crombolo seo show` lists
   the values every page falls back to, the robots file and the not-found page, each saying
   whether it was saved here, comes from the site's configuration or is the default, and
@@ -153,6 +166,10 @@ point at `docs/stories/`.
   The built-in Administrators group is given it.
 - **Neither a token nor CI decides an approval (351).** The approvals engine now refuses
   both, as a held push already refused CI.
+- **The Library's writes go through operations of their own (361),** in `@crombolo/content`,
+  as pages' and media's do: the back office and the command line check the same Library
+  verbs and write the same audit entries, in the change's transaction. What the back office
+  does is unchanged.
 - **`@crombolo/cli/plugin` (350):** a command declares `access` (`none`, `site` or
   `person`), and may declare its `section` and `adminOnly`. One that declares nothing is
   taken to be `site`.

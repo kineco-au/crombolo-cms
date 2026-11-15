@@ -274,22 +274,34 @@ interface PropertyTarget {
   storage: ValueStorageTypeName
 }
 
-/** The documents a query matches, as the scope may see them. */
+/**
+ * The documents a query matches, as the scope may see them; with `library`, the
+ * Library's elements instead (story 361), placed under its folders.
+ */
 export async function queryDocuments(
   db: Db,
   query: ContentQuery,
   scope: QueryScope,
+  options: { library?: boolean } = {},
 ): Promise<QueryResult> {
   const run = async (tx: Db) => {
     if (tx.dialect.name === 'postgres')
       await tx.exec(`SET LOCAL statement_timeout = ${QUERY_TIMEOUT_MS}`)
-    return runQuery(tx, query, scope)
+    return runQuery(tx, query, scope, options.library === true)
   }
   // Postgres's timeout is per transaction; SQLite has none, so the window bounds it.
   return db.dialect.name === 'postgres' ? db.transaction(run) : run(db)
 }
 
-async function runQuery(db: Db, query: ContentQuery, scope: QueryScope): Promise<QueryResult> {
+async function runQuery(
+  db: Db,
+  query: ContentQuery,
+  scope: QueryScope,
+  library: boolean,
+): Promise<QueryResult> {
+  const objectType = library ? ObjectTypes.Element : ObjectTypes.Document
+  /** What `under` and `parent` may name: a page, or an element or its folder. */
+  const places = library ? [ObjectTypes.Element, ObjectTypes.ElementContainer] : [objectType]
   const bool = (value: boolean) => db.dialect.boolValue(value) as boolean
 
   // ---- culture
@@ -326,7 +338,7 @@ async function runQuery(db: Db, query: ContentQuery, scope: QueryScope): Promise
         join.onRef('dcv.node_id', '=', 'n.id').on('dcv.language_id', '=', languageId as number),
       ),
     )
-    .where('n.node_object_type', '=', ObjectTypes.Document)
+    .where('n.node_object_type', '=', objectType)
 
   // ---- types
   let typeIds: number[] | undefined
@@ -356,9 +368,12 @@ async function runQuery(db: Db, query: ContentQuery, scope: QueryScope): Promise
       .selectFrom('node')
       .select(['id', 'path', 'level'])
       .where('unique_id', '=', key.toLowerCase())
-      .where('node_object_type', '=', ObjectTypes.Document)
+      .where('node_object_type', 'in', places)
       .executeTakeFirst()
-    if (!row) throw new ContentQueryRefused(`"${field}" names no page: ${key}.`)
+    if (!row)
+      throw new ContentQueryRefused(
+        `"${field}" names no ${library ? 'Library folder' : 'page'}: ${key}.`,
+      )
     return { id: Number(row.id), path: String(row.path), level: Number(row.level) }
   }
   const under = query.under ? await nodeByKey(query.under, 'under') : undefined

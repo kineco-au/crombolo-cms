@@ -6,7 +6,12 @@
  * the running nodes instead.
  */
 
-import type { DocumentOperations, EventSink, MediaOperations } from '@crombolo/content'
+import type {
+  DocumentOperations,
+  ElementOperations,
+  EventSink,
+  MediaOperations,
+} from '@crombolo/content'
 import { currentSchemaState, type Db } from '@crombolo/data'
 import { PublishedCache } from '@crombolo/render'
 import { createPublishedContentSource } from './adapters/documents.ts'
@@ -89,4 +94,24 @@ export async function siteMediaOperations(
     mediaFiles: files,
     webhooks,
   }).media
+}
+
+/**
+ * Library operations for a process that is not serving requests (story 361): the
+ * same rules and audit entries as the back office's. Its cache instructions are
+ * the command line's, so a running server refreshes its pages and menus.
+ */
+export async function siteElementOperations(
+  db: Db,
+  config: CromboloConfig,
+): Promise<ElementOperations> {
+  const state = await currentSchemaState(db)
+  return createNodeOperations({
+    db,
+    config,
+    nodeState: { version: state.version, revision: state.revision },
+    nodeId: config.nodeId,
+    instructedBy: `cli:${config.nodeId}`,
+    mediaFiles: new MediaFileStore(await mediaStoreFor(config)),
+  }).elements
 }

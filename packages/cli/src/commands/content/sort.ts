@@ -1,6 +1,8 @@
 import { Args } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
+import { CliError } from '../../errors.ts'
 import { dryRun } from '../../support/flags.ts'
+import { refersToLibrary } from '../../support/library.ts'
 import { positionals, sortChildren } from '../../support/tree.ts'
 
 export default class ContentSort extends BaseCommand {
@@ -59,6 +61,11 @@ export default class ContentSort extends BaseCommand {
   async run() {
     const { argv, flags } = await this.parse(ContentSort)
     const [parent, ...children] = positionals(argv)
+    for (const ref of [parent as string, ...children])
+      if (await refersToLibrary(ref))
+        throw new CliError('refused', 'The Library keeps no order of its own.', {
+          hint: 'Its items are listed by name; a menu keeps the order of its items: `crombolo content menu move`.',
+        })
     return sortChildren(this, parent as string, children, flags['dry-run'])
   }
 }

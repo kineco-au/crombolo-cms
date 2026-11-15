@@ -6,8 +6,10 @@
  */
 import {
   createDocumentOperations,
+  createElementOperations,
   createMediaOperations,
   type DocumentOperations,
+  type ElementOperations,
   type EventSink,
   type MediaOperations,
   SILENT,
@@ -19,9 +21,10 @@ import {
   RedirectRepository,
 } from '@crombolo/data'
 import type { PublishedCache } from '@crombolo/render'
+import { createElementPort } from './adapters/elements.ts'
 import { type Approvals, approvalsGate, createApprovals } from './approvals.ts'
 import type { CromboloConfig } from './config.ts'
-import { createMediaEventSink } from './content-events.ts'
+import { createElementEventSink, createMediaEventSink } from './content-events.ts'
 import type { ContentNotifier } from './content-notifications.ts'
 import { writeDomainsFor } from './domains.ts'
 import type { EmailPort } from './email.ts'
@@ -36,6 +39,8 @@ export interface NodeOperations {
   approvals: Approvals
   documents: DocumentOperations
   media: MediaOperations
+  /** Every Library write (story 361). */
+  elements: ElementOperations
 }
 
 export interface NodeOperationsOptions {
@@ -121,5 +126,17 @@ export function createNodeOperations(options: NodeOperationsOptions): NodeOperat
     refusalReason,
     background: options.background,
   })
-  return { valueIntake: repository.valueIntake, tracker, approvals, documents, media }
+  const elements = createElementOperations({
+    db,
+    store: (tx) =>
+      createElementPort(tx, {
+        nodeState: options.nodeState,
+        nodeId: options.nodeId,
+        instructedBy: options.instructedBy,
+        valueIntake: repository.valueIntake,
+      }),
+    events: createElementEventSink(),
+    onChange: () => cache?.invalidate(),
+  })
+  return { valueIntake: repository.valueIntake, tracker, approvals, documents, media, elements }
 }

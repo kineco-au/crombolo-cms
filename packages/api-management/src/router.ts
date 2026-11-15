@@ -26,7 +26,11 @@ import {
   auditReadsBody,
 } from './audit.ts'
 import { authorize, LOCAL_LOGIN_OPERATIONS, type NodeLookup } from './authorization.ts'
-import { DOCUMENT_WRITE_OPERATIONS, MEDIA_WRITE_OPERATIONS } from './document-writes.ts'
+import {
+  DOCUMENT_WRITE_OPERATIONS,
+  ELEMENT_WRITE_OPERATIONS,
+  MEDIA_WRITE_OPERATIONS,
+} from './document-writes.ts'
 import {
   changeReadsBody,
   contentChangeFor,
@@ -311,7 +315,10 @@ export class ManagementApiRouter {
     if (!handler) this.#onNotImplemented?.(operation, request)
     // A document write announces itself from its operation (story 170).
     const announces = !DOCUMENT_WRITE_OPERATIONS.has(operation.operationId)
-    const audits = announces && !MEDIA_WRITE_OPERATIONS.has(operation.operationId)
+    const audits =
+      announces &&
+      !MEDIA_WRITE_OPERATIONS.has(operation.operationId) &&
+      !ELEMENT_WRITE_OPERATIONS.has(operation.operationId)
     const plan = handler && this.#audit && audits ? auditPlanFor(operation.operationId) : undefined
     const audit = plan ? await this.#beforeAudit(plan, params, request) : undefined
     const changeBody =

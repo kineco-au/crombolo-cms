@@ -16,6 +16,7 @@ import { Args, Flags } from '@oclif/core'
 import { CliError } from '../errors.ts'
 import { commandActor } from './acting.ts'
 import { many } from './flags.ts'
+import { libraryHint } from './library.ts'
 import { type Io, siteConfig } from './site.ts'
 
 export const publishArgs = {
@@ -97,7 +98,8 @@ export async function publishPages(
   const { db } = await bootstrapDatabase(config)
   try {
     const resolved = await resolveNodeRef(db, [ObjectTypes.Document], ref)
-    if (!resolved.ok) throw new CliError('not_found', describeRefFailure(ref, resolved))
+    if (!resolved.ok)
+      throw new CliError('not_found', describeRefFailure(ref, resolved), await libraryHint(db, ref))
     const { operations } = await siteDocumentOperations(db, config)
     // Parents before children, which is the order publishing has to happen in.
     const targets = [

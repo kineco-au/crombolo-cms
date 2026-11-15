@@ -79,13 +79,16 @@
         "description": "the components in components/: check, list, new"
       },
       "content": {
-        "description": "pages: make them, change their values and blocks, move and publish them"
+        "description": "pages and Library elements: make them, change their values and blocks, move and publish them"
       },
       "content:blueprint": {
         "description": "blueprints: a page's values saved as a starting point for new pages of its type"
       },
       "content:block": {
         "description": "a page's blocks: add, change, move and remove them"
+      },
+      "content:menu": {
+        "description": "a menu's items, by its alias: show, add, move and remove them"
       },
       "dictionary": {
         "description": "the dictionary as Umbraco .udt files"

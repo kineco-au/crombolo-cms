@@ -1533,7 +1533,7 @@
           "name": "page",
           "type": "string",
           "required": true,
-          "description": "the page: a path or a uuid"
+          "description": "the page: a path or a uuid; library:/… for a Library element"
         },
         {
           "name": "--to",
@@ -1731,12 +1731,12 @@
         {
           "name": "--under",
           "type": "string",
-          "description": "only pages below this one"
+          "description": "only pages below this one; library:/… for the Library, or a folder in it"
         },
         {
           "name": "--parent",
           "type": "string",
-          "description": "only the children of this page"
+          "description": "only the children of this page, or of a Library folder"
         },
         {
           "name": "--max-depth",
@@ -2012,8 +2012,263 @@
       "errors": ["usage", "internal", "not_found", "refused", "unavailable"]
     },
     {
+      "name": "content menu add",
+      "description": "add an item to a menu: a page, a media item, an address, or a heading",
+      "effects": "non_idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "key",
+          "type": "string",
+          "description": "the menu"
+        },
+        {
+          "name": "alias",
+          "type": "string"
+        },
+        {
+          "name": "path",
+          "type": "string"
+        },
+        {
+          "name": "item",
+          "type": "string",
+          "nullable": true,
+          "description": "the item's key"
+        },
+        {
+          "name": "changed",
+          "type": "boolean"
+        },
+        {
+          "name": "published",
+          "type": "boolean"
+        }
+      ],
+      "args": [
+        {
+          "name": "alias",
+          "type": "string",
+          "required": true,
+          "description": "the menu, by the alias templates use"
+        },
+        {
+          "name": "link",
+          "type": "string",
+          "description": "what it links to: a page path, a media path or an address; none for a heading"
+        },
+        {
+          "name": "--label",
+          "type": "string",
+          "description": "what it says, instead of the page's name"
+        },
+        {
+          "name": "--target",
+          "type": "string",
+          "description": "where the link opens: _blank for a new tab"
+        },
+        {
+          "name": "--under",
+          "type": "string",
+          "description": "put it under this item"
+        },
+        {
+          "name": "--first",
+          "type": "boolean",
+          "description": "put it first in its list"
+        },
+        {
+          "name": "--before",
+          "type": "string",
+          "description": "put it before this item"
+        },
+        {
+          "name": "--after",
+          "type": "string",
+          "description": "put it after this item"
+        },
+        {
+          "name": "--publish",
+          "type": "boolean",
+          "description": "publish the menu too, so templates and the Delivery API follow"
+        },
+        {
+          "name": "--dry-run",
+          "type": "boolean",
+          "description": "say what would change, and change nothing"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "refused"]
+    },
+    {
+      "name": "content menu move",
+      "description": "move a menu item, with the items below it",
+      "effects": "non_idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "key",
+          "type": "string",
+          "description": "the menu"
+        },
+        {
+          "name": "alias",
+          "type": "string"
+        },
+        {
+          "name": "path",
+          "type": "string"
+        },
+        {
+          "name": "item",
+          "type": "string",
+          "nullable": true,
+          "description": "the item's key"
+        },
+        {
+          "name": "changed",
+          "type": "boolean"
+        },
+        {
+          "name": "published",
+          "type": "boolean"
+        }
+      ],
+      "args": [
+        {
+          "name": "alias",
+          "type": "string",
+          "required": true,
+          "description": "the menu, by the alias templates use"
+        },
+        {
+          "name": "item",
+          "type": "string",
+          "required": true,
+          "description": "the item: its labels from the top, or its key"
+        },
+        {
+          "name": "--under",
+          "type": "string",
+          "description": "put it under this item"
+        },
+        {
+          "name": "--first",
+          "type": "boolean",
+          "description": "put it first in its list"
+        },
+        {
+          "name": "--before",
+          "type": "string",
+          "description": "put it before this item"
+        },
+        {
+          "name": "--after",
+          "type": "string",
+          "description": "put it after this item"
+        },
+        {
+          "name": "--top",
+          "type": "boolean",
+          "description": "put it at the top of the menu"
+        },
+        {
+          "name": "--publish",
+          "type": "boolean",
+          "description": "publish the menu too, so templates and the Delivery API follow"
+        },
+        {
+          "name": "--dry-run",
+          "type": "boolean",
+          "description": "say what would change, and change nothing"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "refused"]
+    },
+    {
+      "name": "content menu remove",
+      "description": "remove a menu item, and the items below it",
+      "effects": "non_idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "key",
+          "type": "string",
+          "description": "the menu"
+        },
+        {
+          "name": "alias",
+          "type": "string"
+        },
+        {
+          "name": "path",
+          "type": "string"
+        },
+        {
+          "name": "item",
+          "type": "string",
+          "nullable": true,
+          "description": "the item's key"
+        },
+        {
+          "name": "changed",
+          "type": "boolean"
+        },
+        {
+          "name": "published",
+          "type": "boolean"
+        },
+        {
+          "name": "removed",
+          "type": "integer",
+          "description": "the item and the items below it"
+        }
+      ],
+      "args": [
+        {
+          "name": "alias",
+          "type": "string",
+          "required": true,
+          "description": "the menu, by the alias templates use"
+        },
+        {
+          "name": "item",
+          "type": "string",
+          "required": true,
+          "description": "the item: its labels from the top, or its key"
+        },
+        {
+          "name": "--publish",
+          "type": "boolean",
+          "description": "publish the menu too, so templates and the Delivery API follow"
+        },
+        {
+          "name": "--dry-run",
+          "type": "boolean",
+          "description": "say what would change, and change nothing"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "refused"]
+    },
+    {
+      "name": "content menu show",
+      "description": "a menu's items: each one's label and what it links to",
+      "effects": "read_only",
+      "cardinality": "single",
+      "stdout_schema": {},
+      "args": [
+        {
+          "name": "alias",
+          "type": "string",
+          "required": true,
+          "description": "the menu, by the alias templates use"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "refused"]
+    },
+    {
       "name": "content move",
-      "description": "move pages, and the pages below them, under another page",
+      "description": "move pages, and the pages below them, under another page; or Library items into a Library folder",
       "effects": "idempotent",
       "cardinality": "bounded",
       "output_fields": [
@@ -2069,7 +2324,7 @@
           "name": "--to",
           "type": "string",
           "required": true,
-          "description": "the page to move them under; / for the top level"
+          "description": "the page to move them under; / for the top level; a Library folder for Library items"
         },
         {
           "name": "--dry-run",
@@ -2081,7 +2336,7 @@
     },
     {
       "name": "content new",
-      "description": "make a page, with its values, under the page its path names",
+      "description": "make a page, with its values, under the page its path names; or a Library element",
       "effects": "non_idempotent",
       "cardinality": "single",
       "output_fields": [
@@ -2111,7 +2366,7 @@
           "name": "path",
           "type": "string",
           "required": true,
-          "description": "the new page's path, ending in its name"
+          "description": "the new page's path, ending in its name; library:/… for a Library element"
         },
         {
           "name": "--type",
@@ -2302,7 +2557,7 @@
     },
     {
       "name": "content show",
-      "description": "one page: its type, state, values and blocks",
+      "description": "one page or Library item: its type, state, values and blocks",
       "effects": "read_only",
       "cardinality": "single",
       "stdout_schema": {},
@@ -2311,7 +2566,7 @@
           "name": "page",
           "type": "string",
           "required": true,
-          "description": "the page: a path or a uuid"
+          "description": "the page: a path or a uuid; library:/… for a Library item"
         }
       ],
       "errors": ["usage", "internal", "not_found"]
@@ -2456,7 +2711,7 @@
     },
     {
       "name": "content update",
-      "description": "change a page's values, its name or its view",
+      "description": "change a page's or a Library element's values, its name or its view",
       "effects": "idempotent",
       "cardinality": "single",
       "output_fields": [
@@ -2482,7 +2737,7 @@
           "name": "page",
           "type": "string",
           "required": true,
-          "description": "the page: a path or a uuid"
+          "description": "the page: a path or a uuid; library:/… for a Library item"
         },
         {
           "name": "--set",

@@ -19,6 +19,7 @@ import { bootstrapDatabase, siteDocumentOperations, siteMediaOperations } from '
 import { Args } from '@oclif/core'
 import { CliError } from '../errors.ts'
 import { commandActor } from './acting.ts'
+import { libraryHint, notALibraryPath } from './library.ts'
 import { type Io, siteConfig } from './site.ts'
 
 export type TreeKind = 'content' | 'media'
@@ -73,8 +74,14 @@ export async function withSite<T>(work: (db: Db) => Promise<T>): Promise<T> {
 
 /** The node a path or uuid names, of this kind. */
 export async function resolveItem(db: Db, kind: TreeKind, ref: string): Promise<NodeRow> {
+  if (kind === 'content') notALibraryPath(ref)
   const resolved = await resolveNodeRef(db, [OBJECT_TYPE[kind]], ref)
-  if (!resolved.ok) throw new CliError('not_found', describeRefFailure(ref, resolved))
+  if (!resolved.ok)
+    throw new CliError(
+      'not_found',
+      describeRefFailure(ref, resolved),
+      kind === 'content' ? await libraryHint(db, ref) : undefined,
+    )
   if (resolved.node.objectType !== OBJECT_TYPE[kind])
     throw new CliError('not_found', `"${ref}" is not a ${NOUN[kind]}.`)
   return resolved.node

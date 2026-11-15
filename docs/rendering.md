@@ -1467,6 +1467,41 @@ name, else the link's text; `content` is the page, for `aria-current`.
 The starter template's header reads `menu('main')`, falling back to the home page
 and its children when the menu is empty.
 
+### Building a menu from the command line
+
+A menu is made as any Library element is, then its items are added by its alias
+(story 361):
+
+```sh
+crombolo content new library:/Menus/Main --type menu --set alias=main
+crombolo content menu add main /Home --label Home
+crombolo content menu add main /Home/About
+crombolo content menu add main "/Home/About/Our team" --under About
+crombolo content menu add main https://example.org/shop --label Shop --target _blank
+crombolo content menu add main --label More --before Shop
+crombolo content menu move main About/Our team --top --after Home
+crombolo content menu remove main Shop
+crombolo content menu show main
+crombolo content publish library:/Menus/Main
+```
+
+- **A link** is read as a content file reads one: an address with a scheme, else
+  a media item's path, else a page's path. A `--label` with no link is a heading.
+- **An item is named** by its labels from the top, as `menu show` prints them
+  (`About/Our team`), or by its key, which `menu show -o json` gives. A name two
+  items share is refused, pointing at the keys.
+- **Each command edits the stored tree in place**: every item keeps its key, and
+  what a command does not touch stays as it was. Moving or removing an item takes
+  the items below it with it; an item cannot go under itself.
+- **The draft changes**, as the back office's Save does. Templates and the
+  Delivery API read published menus only, so nothing changes on the site until
+  the menu is published: `--publish` on any of these commands, or `crombolo
+  content publish library:/…`. A running server refreshes on the cache
+  instruction the write leaves.
+- They are the Library section's, and need its Update verb, with Publish for
+  `--publish`; `menu show` needs Read. Each save is audited as the back office's
+  is, through the Library operations.
+
 ## Media and imaging
 
 Media items are documents of the media object type, never published. A file

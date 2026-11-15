@@ -40,6 +40,7 @@ import {
 import { Flags } from '@oclif/core'
 import { CliError } from '../errors.ts'
 import { commandActor } from './acting.ts'
+import { libraryHint, notALibraryPath } from './library.ts'
 import { type Io, siteConfig } from './site.ts'
 
 export { typedValue }
@@ -91,8 +92,14 @@ export interface FoundPage {
 
 /** The page a path or key names, with its type and its properties' editors. */
 export async function findPage(site: PageSite, ref: string): Promise<FoundPage> {
+  notALibraryPath(ref)
   const resolved = await resolveNodeRef(site.db, [ObjectTypes.Document], ref)
-  if (!resolved.ok) throw new CliError('not_found', describeRefFailure(ref, resolved))
+  if (!resolved.ok)
+    throw new CliError(
+      'not_found',
+      describeRefFailure(ref, resolved),
+      await libraryHint(site.db, ref),
+    )
   if (resolved.node.objectType !== ObjectTypes.Document)
     throw new CliError('not_found', `"${ref}" is not a page.`)
   const doc = await site.operations.repository.byKey(resolved.node.key)

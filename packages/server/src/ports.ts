@@ -618,6 +618,8 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
       valueIntake,
       onChange: () => options.cache?.invalidate(),
     })
+    // Every Library write, whoever starts it (story 361).
+    deps.elementOperations = operations?.elements
     deps.references = createReferencePort(options.db)
     deps.relations = createRelationPort(options.db)
     deps.webhooks = createWebhookPort(

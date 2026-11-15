@@ -164,6 +164,27 @@ approved, as any page is. A blueprint's name is unique within its type, and one
 named for another type is refused. Making one needs Create on the page,
 removing one the Settings section, and both are audited.
 
+A Library element is made and changed by the same commands, named
+`library:/<folder>/<name>`; a path with no scheme is always a page. A menu's
+items are then added by its alias (story 361):
+
+```sh
+bunx crombolo content new library:/Main --type menu --set alias=main
+bunx crombolo content menu add main /Home --label Home
+bunx crombolo content menu add main "/Home/Visit us"
+bunx crombolo content menu show main
+bunx crombolo content publish library:/Main
+```
+
+`update`, `show`, `find --under library:/`, `move`, `copy`, `delete`,
+`publish` and `unpublish` take a Library path too; `sort` does not, since the
+Library keeps no order of its own. The folder an element goes in has to be
+there already: folders are made in the back office's Library or by content
+files. A menu changes the site once it is published: until then templates and
+the Delivery API keep the published one. Library writes need the Library
+section and are audited as the back office's are
+([`rendering.md`](rendering.md), "Menus").
+
 ## 6. Published, and served
 
 ```sh

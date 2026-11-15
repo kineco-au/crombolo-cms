@@ -12,7 +12,9 @@ import {
   actorUserKey,
   auditEntryFor,
   type DocumentEvent,
+  type ElementEventSink,
   type EventSink,
+  elementAuditEntryFor,
   liveEventsFor,
   type MediaActor,
   type MediaEventSink,
@@ -150,6 +152,26 @@ export function createMediaEventSink(options: {
     },
     afterCommit(event) {
       if (mediaWebhookFor(event)) options.nudge?.()
+    },
+  }
+}
+
+/**
+ * Where Library operations record what they did (story 361): the audit entry, in
+ * the change's own transaction, as the back office has always written it.
+ */
+export function createElementEventSink(): ElementEventSink {
+  return {
+    async record(tx: Db, event, actor) {
+      const entry = elementAuditEntryFor(event, actor)
+      const audit = new AuditLog(tx)
+      const subject = await audit.describe(entry.entityType, entry.entityKey)
+      await audit.record({
+        ...entry,
+        entityType: subject.entityType,
+        entityKey: subject.entityKey,
+        entityName: subject.entityName,
+      })
     },
   }
 }

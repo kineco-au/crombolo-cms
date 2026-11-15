@@ -7,12 +7,11 @@
  * involved, which their port enforces. See docs/backoffice-hosting.md for the
  * tables' provenance.
  */
-import { WRITE_VERBS as W } from '@crombolo/content/rules'
+import { ELEMENT_VERBS as L, WRITE_VERBS as W } from '@crombolo/content/rules'
 import type { OperationInfo } from '@crombolo/contracts'
 import {
   type AppAlias,
   DocumentPermissions as D,
-  ElementPermissions as E,
   fallbackPermissions,
   hasPathAccess,
   MediaPermissions as M,
@@ -333,42 +332,41 @@ const MEDIA_RULES: Record<string, MediaRule> = {
 
 /**
  * The element and element folder verbs each Library operation needs, held in
- * the groups' fallback permissions. Mirrors DOCUMENT_RULES verb for verb.
+ * the groups' fallback permissions: the Library operations' own table (story 361).
  */
 const ELEMENT_RULES: Record<string, readonly string[]> = {
-  GetElementById: [E.Read],
-  GetElementByIdPublished: [E.Read],
-  GetElementByIdAuditLog: [E.Read],
-  GetElementVersion: [E.Read],
-  GetElementVersionById: [E.Read],
-  GetRecycleBinElementByIdOriginalParent: [E.Read],
-  PostElement: [E.Create],
-  PostElementValidate: [E.Create],
-  PutElementById: [E.Update],
-  PutElementByIdValidate: [E.Update],
-  PutElementVersionByIdPreventCleanup: [E.Update],
-  PostElementCreateAndPublish: [E.Publish],
-  PutElementByIdUpdateAndPublish: [E.Publish],
-  PutElementByIdPublish: [E.Publish],
-  PutElementByIdUnpublish: [E.Unpublish],
-  DeleteElementById: [E.Delete],
-  PutElementByIdMoveToRecycleBin: [E.Delete],
-  PutElementByIdMove: [E.Move],
-  PostElementByIdCopy: [E.Duplicate, E.Create],
-  PostElementVersionByIdRollback: [E.Rollback],
-  DeleteRecycleBinElementById: [E.Delete],
-  PutRecycleBinElementByIdRestore: [E.Move],
-  // Emptying the bin deletes the folders in it as well as the elements
-  DeleteRecycleBinElement: [E.Delete],
-  GetElementFolderById: [E.Read],
-  GetRecycleBinElementFolderByIdOriginalParent: [E.Read],
-  PostElementFolder: [E.Create],
-  PutElementFolderById: [E.Update],
-  DeleteElementFolderById: [E.Delete],
-  PutElementFolderByIdMoveToRecycleBin: [E.Delete],
-  DeleteRecycleBinElementFolderById: [E.Delete],
-  PutElementFolderByIdMove: [E.Move],
-  PutRecycleBinElementFolderByIdRestore: [E.Move],
+  GetElementById: L.read,
+  GetElementByIdPublished: L.read,
+  GetElementByIdAuditLog: L.read,
+  GetElementVersion: L.read,
+  GetElementVersionById: L.read,
+  GetRecycleBinElementByIdOriginalParent: L.read,
+  PostElement: L.create,
+  PostElementValidate: L.create,
+  PutElementById: L.save,
+  PutElementByIdValidate: L.save,
+  PutElementVersionByIdPreventCleanup: L.save,
+  PostElementCreateAndPublish: L.createAndPublish,
+  PutElementByIdUpdateAndPublish: L.saveAndPublish,
+  PutElementByIdPublish: L.publish,
+  PutElementByIdUnpublish: L.unpublish,
+  DeleteElementById: L.delete,
+  PutElementByIdMoveToRecycleBin: L.trash,
+  PutElementByIdMove: L.move,
+  PostElementByIdCopy: L.copy,
+  PostElementVersionByIdRollback: L.rollback,
+  DeleteRecycleBinElementById: L.delete,
+  PutRecycleBinElementByIdRestore: L.restore,
+  DeleteRecycleBinElement: L.emptyBin,
+  GetElementFolderById: L.read,
+  GetRecycleBinElementFolderByIdOriginalParent: L.read,
+  PostElementFolder: L.createFolder,
+  PutElementFolderById: L.renameFolder,
+  DeleteElementFolderById: L.deleteFolder,
+  PutElementFolderByIdMoveToRecycleBin: L.trashFolder,
+  DeleteRecycleBinElementFolderById: L.delete,
+  PutElementFolderByIdMove: L.moveFolder,
+  PutRecycleBinElementFolderByIdRestore: L.restore,
 }
 
 /** Values at `path` in `body`; `*` walks every element of an array. A missing or null step means the root. */

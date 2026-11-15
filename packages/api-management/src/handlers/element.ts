@@ -11,12 +11,17 @@
  * The tree mixes folders and elements. A folder reports `documentType: null` and a
  * single `NotCreated` variant, which is the contract's way of saying there is no
  * content at that row.
+ *
+ * Every write goes through the Library operations (story 361) as the signed-in
+ * user, so it is checked and audited as one from the command line is.
  */
+import type { ElementOperations } from '@crombolo/content'
+import { userActor } from '@crombolo/content/rules'
 import type { DocumentAggregate, ElementTreeItem } from '@crombolo/core'
 import { invalidSkipTake, notFound, problemDetails, problemResponse } from '@crombolo/core'
 import type { ElementPort, PortFailure, ReferencePort } from '../ports-content.ts'
 import type { ManagementApiRouter, RequestContext } from '../router.ts'
-import { created, paging, registerFolderHandlers } from './content-type.ts'
+import { created, paging, refOf, registerFolderHandlers } from './content-type.ts'
 import { failureResponse, readBody, readSchedules, toSaveDocument } from './document.ts'
 import { itemFlags, variantFlags } from './flags.ts'
 
@@ -123,6 +128,7 @@ const refId = (value: unknown): string | null => {
 export function registerElementHandlers(
   router: ManagementApiRouter,
   port: ElementPort,
+  operations: ElementOperations,
   /** For the warning a folder delete shows: what points into the branch. */
   references?: ReferencePort,
 ): void {
@@ -138,7 +144,36 @@ export function registerElementHandlers(
     return new Response(null, { status: 200 })
   }
 
+  /** The signed-in user, as the operations know them: their Library verbs apply. */
+  const actorOf = (ctx: RequestContext) =>
+    userActor(ctx.principal as NonNullable<typeof ctx.principal>, ctx.client ?? {})
+  /** A write the operations found nothing to do it to, as the 404 the back office reads. */
+  const missing = (title: string, detail: string, result: PortFailure & { kind?: string }) =>
+    result.kind === 'notFound' ? problemResponse(notFound(detail)) : failed(title, result)
+
   registerFolderHandlers(router, 'Element', port.folders)
+  // A folder made or renamed is a Library write too, so these replace the shared ones.
+  handle('PostElementFolder', async (ctx) => {
+    const body = (await ctx.request.json()) as Record<string, unknown>
+    const result = await operations.createFolder(actorOf(ctx), {
+      key: typeof body.id === 'string' && body.id ? body.id : undefined,
+      name: String(body.name ?? ''),
+      parentKey: refOf(body.parent),
+    })
+    if (!result.ok) return failed('Could not create the folder', result)
+    return created(`${ctx.url.origin}${API}/element/folder/${result.key}`, result.key)
+  })
+  handle('PutElementFolderById', async (ctx) => {
+    const body = (await ctx.request.json()) as Record<string, unknown>
+    const result = await operations.renameFolder(
+      actorOf(ctx),
+      ctx.params.id as string,
+      String(body.name ?? ''),
+    )
+    if (!result.ok)
+      return missing('Could not rename the folder', 'The folder could not be found', result)
+    return new Response(null, { status: 200 })
+  })
 
   // ── the tree ──────────────────────────────────────────────────────────────
   handle('GetTreeElementRoot', async (ctx) => {
@@ -232,7 +267,7 @@ export function registerElementHandlers(
     const body = await readBody(ctx)
     const key = typeof body.id === 'string' && body.id ? body.id : crypto.randomUUID()
     const input = toSaveDocument(key, body)
-    const result = await port.create(input, ctx.principal as NonNullable<typeof ctx.principal>)
+    const result = await operations.create(actorOf(ctx), input)
     if (!result.ok) return failureResponse('Could not create the element', result, input.values)
     ctx.notifications.push({ message: 'Element created', category: 'Element', type: 'Success' })
     return created(`${ctx.url.origin}${API}/element/${result.key}`, result.key)
@@ -244,7 +279,7 @@ export function registerElementHandlers(
     if (!existing) return problemResponse(notFound('The element could not be found'))
     const body = await readBody(ctx)
     const input = { ...toSaveDocument(key, body), contentTypeKey: existing.contentTypeKey }
-    const result = await port.update(key, input, ctx.principal as NonNullable<typeof ctx.principal>)
+    const result = await operations.save(actorOf(ctx), key, input)
     if (!result.ok) return failureResponse('Could not save the element', result, input.values)
     return done(ctx, 'Element saved')
   })
@@ -253,11 +288,7 @@ export function registerElementHandlers(
     const body = await readBody(ctx)
     const key = typeof body.id === 'string' && body.id ? body.id : crypto.randomUUID()
     const input = toSaveDocument(key, body)
-    const result = await port.createAndPublish(
-      input,
-      readCultures(body),
-      ctx.principal as NonNullable<typeof ctx.principal>,
-    )
+    const result = await operations.createAndPublish(actorOf(ctx), input, readCultures(body))
     if (!result.ok) return failureResponse('Could not create the element', result, input.values)
     ctx.notifications.push({ message: 'Element published', category: 'Element', type: 'Success' })
     return created(`${ctx.url.origin}${API}/element/${result.key}`, result.key)
@@ -269,12 +300,7 @@ export function registerElementHandlers(
     const existing = await port.byKey(key)
     if (!existing) return problemResponse(notFound('The element could not be found'))
     const input = { ...toSaveDocument(key, body), contentTypeKey: existing.contentTypeKey }
-    const result = await port.updateAndPublish(
-      key,
-      input,
-      readCultures(body),
-      ctx.principal as NonNullable<typeof ctx.principal>,
-    )
+    const result = await operations.saveAndPublish(actorOf(ctx), key, input, readCultures(body))
     if (!result.ok) return failureResponse('Could not publish the element', result, input.values)
     return done(ctx, 'Element published')
   })
@@ -303,7 +329,7 @@ export function registerElementHandlers(
       return problemResponse(
         problemDetails({ title: 'A schedule date is not a valid date', status: 400 }),
       )
-    const result = await port.publish(key, readCultures(body), schedules)
+    const result = await operations.publish(actorOf(ctx), key, readCultures(body), schedules)
     if (!result.ok) return failed('Could not publish the element', result)
     return done(ctx, result.scheduledOnly ? 'Publishing scheduled' : 'Element published')
   })
@@ -311,7 +337,7 @@ export function registerElementHandlers(
   handle('PutElementByIdUnpublish', async (ctx) => {
     const key = ctx.params.id as string
     if (!(await port.byKey(key))) return problemResponse(notFound('The element could not be found'))
-    const result = await port.unpublish(key, readCultures(await readBody(ctx)))
+    const result = await operations.unpublish(actorOf(ctx), key, readCultures(await readBody(ctx)))
     return result.ok
       ? done(ctx, 'Element unpublished')
       : failed('Could not unpublish the element', result)
@@ -319,17 +345,23 @@ export function registerElementHandlers(
 
   // ── moving, copying and the bin ───────────────────────────────────────────
   handle('PutElementByIdMove', async (ctx) => {
-    const result = await port.move(ctx.params.id as string, refId((await readBody(ctx)).target))
+    const result = await operations.move(
+      actorOf(ctx),
+      ctx.params.id as string,
+      refId((await readBody(ctx)).target),
+    )
     return result.ok ? done(ctx, 'Element moved') : failed('Could not move the element', result)
   })
 
   handle('PostElementByIdCopy', async (ctx) => {
     const body = await readBody(ctx)
-    const result = await port.copy(
+    const result = await operations.copy(
+      actorOf(ctx),
       ctx.params.id as string,
       refId(body.target),
-      { includeDescendants: body.includeDescendants === true },
-      ctx.principal as NonNullable<typeof ctx.principal>,
+      {
+        includeDescendants: body.includeDescendants === true,
+      },
     )
     if (!result.ok) return failed('Could not copy the element', result)
     ctx.notifications.push({ message: 'Element copied', category: 'Element', type: 'Success' })
@@ -337,8 +369,9 @@ export function registerElementHandlers(
   })
 
   handle('PutElementByIdMoveToRecycleBin', async (ctx) => {
-    const moved = await port.moveToRecycleBin(ctx.params.id as string)
-    if (!moved) return problemResponse(notFound('The element could not be found'))
+    const result = await operations.trash(actorOf(ctx), ctx.params.id as string)
+    if (!result.ok)
+      return missing('Could not delete the element', 'The element could not be found', result)
     return done(ctx, 'Moved to the recycle bin')
   })
 
@@ -349,7 +382,8 @@ export function registerElementHandlers(
   })
 
   handle('PutElementFolderByIdMove', async (ctx) => {
-    const result = await port.moveFolder(
+    const result = await operations.moveFolder(
+      actorOf(ctx),
       ctx.params.id as string,
       refId((await readBody(ctx)).target),
     )
@@ -357,8 +391,9 @@ export function registerElementHandlers(
   })
 
   handle('PutElementFolderByIdMoveToRecycleBin', async (ctx) => {
-    const moved = await port.folderToRecycleBin(ctx.params.id as string)
-    if (!moved) return problemResponse(notFound('The folder could not be found'))
+    const result = await operations.trashFolder(actorOf(ctx), ctx.params.id as string)
+    if (!result.ok)
+      return missing('Could not delete the folder', 'The folder could not be found', result)
     return done(ctx, 'Moved to the recycle bin')
   })
 

@@ -141,6 +141,30 @@ describe('what each command declares', () => {
     // Story 360: search and sharing settings, as Settings → Search & sharing has them.
     for (const id of ['seo:show', 'seo:set', 'seo:unset'])
       expect(declared(id), id).toEqual({ access: 'site', section: 'settings', adminOnly: false })
+    // Story 361: the content commands that take a Library path, and a menu's items.
+    for (const id of [
+      'content:new',
+      'content:update',
+      'content:show',
+      'content:find',
+      'content:move',
+      'content:copy',
+      'content:delete',
+      'content:publish',
+      'content:unpublish',
+    ])
+      expect(declared(id), id).toEqual({
+        access: 'site',
+        section: ['content', 'library'],
+        adminOnly: false,
+      })
+    for (const id of [
+      'content:menu:show',
+      'content:menu:add',
+      'content:menu:move',
+      'content:menu:remove',
+    ])
+      expect(declared(id), id).toEqual({ access: 'site', section: 'library', adminOnly: false })
   })
 })
 

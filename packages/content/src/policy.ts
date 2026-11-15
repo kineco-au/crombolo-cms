@@ -6,6 +6,7 @@
  */
 import {
   DocumentPermissions as D,
+  ElementPermissions as E,
   fallbackPermissions,
   hasPathAccess,
   MediaPermissions as M,
@@ -37,6 +38,45 @@ export const WRITE_VERBS = {
 } as const satisfies Record<string, readonly string[]>
 
 export type WriteKind = keyof typeof WRITE_VERBS
+
+/**
+ * The Library verbs each element and element folder write needs (story 361),
+ * held in the groups' fallback permissions: group-wide, with no start nodes.
+ */
+export const ELEMENT_VERBS = {
+  read: [E.Read],
+  create: [E.Create],
+  save: [E.Update],
+  createAndPublish: [E.Publish],
+  saveAndPublish: [E.Publish],
+  publish: [E.Publish],
+  unpublish: [E.Unpublish],
+  trash: [E.Delete],
+  delete: [E.Delete],
+  move: [E.Move],
+  copy: [E.Duplicate, E.Create],
+  rollback: [E.Rollback],
+  /** The recycle bin: restoring moves an element or folder out of it. */
+  restore: [E.Move],
+  /** Emptying the bin deletes the folders in it as well as the elements. */
+  emptyBin: [E.Delete],
+  createFolder: [E.Create],
+  renameFolder: [E.Update],
+  deleteFolder: [E.Delete],
+  moveFolder: [E.Move],
+  trashFolder: [E.Delete],
+} as const satisfies Record<string, readonly string[]>
+
+export type ElementWriteKind = keyof typeof ELEMENT_VERBS
+
+/** Whether the user's groups hold every Library verb `kind` needs. Pure. */
+export const mayInLibrary = (
+  principal: Pick<ContentPrincipal, 'groups'>,
+  kind: ElementWriteKind,
+): boolean => {
+  const granted = fallbackPermissions(principal.groups)
+  return ELEMENT_VERBS[kind].every((verb) => granted.has(verb))
+}
 
 /** Whether the user holds a section, named in either vocabulary. Pure. */
 export const holdsSection = (principal: ContentPrincipal, section: string): boolean =>

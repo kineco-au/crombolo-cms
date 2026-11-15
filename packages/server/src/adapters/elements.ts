@@ -11,7 +11,7 @@
  * by the generic folder repository, which is why they worked before elements
  * themselves did.
  */
-import type { ElementPort, Principal } from '@crombolo/api-management/domain'
+import type { ElementAuthor, ElementPort } from '@crombolo/api-management/domain'
 import {
   type ElementTreeItem,
   MENU_ALIAS_PROPERTY,
@@ -37,11 +37,43 @@ import {
 import { TemporaryFileMissingError } from '../file-intake.ts'
 import { createFolderPort, createSettingsTree } from './content.ts'
 
+/** The menus, not in the bin, that answer to `alias`, by key. */
+async function menuKeysByAlias(db: Db, alias: string): Promise<string[]> {
+  const rows = await db.q
+    .selectFrom('property_value as pv')
+    .innerJoin('property_type as p', 'p.id', 'pv.property_type_id')
+    .innerJoin('node as n', 'n.id', 'pv.node_id')
+    .innerJoin('content as c', 'c.node_id', 'n.id')
+    .innerJoin('node as ct', 'ct.id', 'c.content_type_id')
+    .select('n.unique_id')
+    .where('p.alias', '=', MENU_ALIAS_PROPERTY)
+    .where('pv.is_current', '=', db.dialect.boolValue(true) as boolean)
+    .where('n.trashed', '=', db.dialect.boolValue(false) as boolean)
+    .where('ct.unique_id', '=', SYSTEM_CONTENT_TYPE_KEYS.Menu)
+    .where(
+      (eb) => eb.fn('lower', [eb.fn.coalesce('pv.varchar_value', 'pv.text_value')]),
+      '=',
+      alias.toLowerCase(),
+    )
+    .execute()
+  return [...new Set(rows.map((row) => normaliseUuid(String(row.unique_id))))]
+}
+
+/**
+ * The menu a template's `menu(alias)` names, by the draft's key (story 361);
+ * undefined when no menu outside the bin has that alias.
+ */
+export async function menuByAlias(db: Db, alias: string): Promise<string | undefined> {
+  return (await menuKeysByAlias(db, alias))[0]
+}
+
 export function createElementPort(
   db: Db,
   options: {
     nodeState?: NodeSchemaState
     nodeId?: string
+    /** Who its cache instructions say they are from; the node, unless said otherwise. */
+    instructedBy?: string
     valueIntake?: ValueIntake
     /** Told after every change, so pages that resolved an element refresh. */
     onChange?: () => void | Promise<void>
@@ -55,17 +87,18 @@ export function createElementPort(
     await appendCacheInstruction(db, {
       kind: 'content',
       payload: { elements: true },
-      by: options.nodeId,
+      by: options.instructedBy ?? options.nodeId,
     })
     await options.onChange?.()
   }
   const tree = createSettingsTree(nodes, ObjectTypes.ElementContainer, ObjectTypes.Element, changed)
 
-  const userIdOf = async (principal: Principal): Promise<number | undefined> => {
+  const userIdOf = async (author: ElementAuthor): Promise<number | undefined> => {
+    if (!author) return undefined
     const rows = await db.q
       .selectFrom('user_account')
       .select('id')
-      .where('key', '=', principal.id)
+      .where('key', '=', author.id)
       .execute()
     return rows[0] ? Number(rows[0].id) : undefined
   }
@@ -88,26 +121,8 @@ export function createElementPort(
   const saved = <T extends object>(input: T) => ({ ...input, componentKey: null })
 
   /** Whether another menu, not in the bin, already answers to `alias`. */
-  const menuAliasTaken = async (alias: string, key: string | undefined): Promise<boolean> => {
-    const rows = await db.q
-      .selectFrom('property_value as pv')
-      .innerJoin('property_type as p', 'p.id', 'pv.property_type_id')
-      .innerJoin('node as n', 'n.id', 'pv.node_id')
-      .innerJoin('content as c', 'c.node_id', 'n.id')
-      .innerJoin('node as ct', 'ct.id', 'c.content_type_id')
-      .select('n.unique_id')
-      .where('p.alias', '=', MENU_ALIAS_PROPERTY)
-      .where('pv.is_current', '=', db.dialect.boolValue(true) as boolean)
-      .where('n.trashed', '=', db.dialect.boolValue(false) as boolean)
-      .where('ct.unique_id', '=', SYSTEM_CONTENT_TYPE_KEYS.Menu)
-      .where(
-        (eb) => eb.fn('lower', [eb.fn.coalesce('pv.varchar_value', 'pv.text_value')]),
-        '=',
-        alias.toLowerCase(),
-      )
-      .execute()
-    return rows.some((row) => normaliseUuid(String(row.unique_id)) !== key?.toLowerCase())
-  }
+  const menuAliasTaken = async (alias: string, key: string | undefined): Promise<boolean> =>
+    (await menuKeysByAlias(db, alias)).some((found) => found !== key?.toLowerCase())
 
   /**
    * A menu's alias, filled from its name when left empty, as Umbraco makes a type's
@@ -195,11 +210,11 @@ export function createElementPort(
     byKeyPublished: (key) => repo.byKeyPublished(key),
     validate: (input, cultures) => repo.validate(input, cultures),
 
-    async create(sent, principal) {
+    async create(sent, author) {
       const input = await withMenuAlias(sent)
       if (refused(input)) return input
       try {
-        const created = await repo.create(saved({ ...input, userId: await userIdOf(principal) }))
+        const created = await repo.create(saved({ ...input, userId: await userIdOf(author) }))
         await changed()
         return { ok: true as const, key: created.key }
       } catch (error) {
@@ -207,13 +222,11 @@ export function createElementPort(
       }
     },
 
-    async update(key, sent, principal) {
+    async update(key, sent, author) {
       const input = await withMenuAlias(sent, key)
       if (refused(input)) return input
       try {
-        const updated = await repo.update(
-          saved({ ...input, key, userId: await userIdOf(principal) }),
-        )
+        const updated = await repo.update(saved({ ...input, key, userId: await userIdOf(author) }))
         if (!updated) return notFound()
         await changed()
         return { ok: true as const }
@@ -222,12 +235,12 @@ export function createElementPort(
       }
     },
 
-    async createAndPublish(sent, cultures, principal) {
+    async createAndPublish(sent, cultures, author) {
       const input = await withMenuAlias(sent)
       if (refused(input)) return input
       try {
         const result = await repo.createAndPublish(
-          saved({ ...input, userId: await userIdOf(principal) }),
+          saved({ ...input, userId: await userIdOf(author) }),
           cultures,
         )
         if (!result.ok)
@@ -244,12 +257,12 @@ export function createElementPort(
       }
     },
 
-    async updateAndPublish(key, sent, cultures, principal) {
+    async updateAndPublish(key, sent, cultures, author) {
       const input = await withMenuAlias(sent, key)
       if (refused(input)) return input
       try {
         const result = await repo.updateAndPublish(
-          saved({ ...input, key, userId: await userIdOf(principal) }),
+          saved({ ...input, key, userId: await userIdOf(author) }),
           cultures,
         )
         if (!result) return notFound()
@@ -306,11 +319,11 @@ export function createElementPort(
       }
     },
 
-    async copy(key, targetKey, copyOptions, principal) {
+    async copy(key, targetKey, copyOptions, author) {
       try {
         const copied = await repo.copy(key, targetKey, {
           includeDescendants: copyOptions.includeDescendants,
-          userId: await userIdOf(principal),
+          userId: await userIdOf(author),
         })
         // The repository answers the new key, or undefined when either end is missing.
         if (!copied) return notFound('The element or target could not be found.')

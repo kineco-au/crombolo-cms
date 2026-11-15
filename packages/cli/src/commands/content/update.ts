@@ -1,6 +1,8 @@
 import { Args, Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
 import { CliError } from '../../errors.ts'
+import { needSection, refersToLibrary } from '../../support/library.ts'
+import { updateElement } from '../../support/library-content.ts'
 import {
   findPage,
   pageFlags,
@@ -13,18 +15,23 @@ import {
 
 /** A page's values, name and view changed from the command line (story 253). */
 export default class ContentUpdate extends BaseCommand {
-  static override summary = "change a page's values, its name or its view"
+  static override summary = "change a page's or a Library element's values, its name or its view"
   static override description = [
     'Saved as a draft, as the back office’s Save is: what is published stays until the page is published again, which --publish does.',
     'Values are given in the shorthand content files use. A value its property cannot take is refused with the reason, and nothing is saved.',
+    'A Library element is named `library:/<folder>/<name>`, or by its key; a Library folder takes --name alone.',
   ].join('\n\n')
   static override examples = [
     '<%= config.bin %> content update "/Home/Visit us" --set title="Find us" --publish',
     '<%= config.bin %> content update /Home --set-file body=home.md --unset intro',
     '<%= config.bin %> content update /Home --culture fr-FR --name Accueil --set title=Bienvenue',
+    '<%= config.bin %> content update library:/Menus/Footer --set alias=footer --publish',
   ]
   static override args = {
-    page: Args.string({ required: true, description: 'the page: a path or a uuid' }),
+    page: Args.string({
+      required: true,
+      description: 'the page: a path or a uuid; library:/… for a Library item',
+    }),
   }
   static override flags = {
     ...pageFlags,
@@ -32,7 +39,7 @@ export default class ContentUpdate extends BaseCommand {
     name: Flags.string({ summary: "the page's name", helpValue: '<name>' }),
   }
   static override access = 'site' as const
-  static override section = 'content' as const
+  static override section = ['content', 'library'] as const
   static override spec = {
     effects: 'idempotent',
     cardinality: 'single',
@@ -59,6 +66,8 @@ export default class ContentUpdate extends BaseCommand {
         'usage',
         'Say what to change: --set, --unset, --name, --view or --publish.',
       )
+    if (await refersToLibrary(args.page)) return updateElement(this, args.page, flags)
+    needSection(false)
     return withPages(async (site) => {
       const page = await findPage(site, args.page)
       const { doc, type } = page

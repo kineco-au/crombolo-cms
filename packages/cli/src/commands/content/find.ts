@@ -13,6 +13,8 @@ import { Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
 import { CliError } from '../../errors.ts'
 import { type HostedSite, hostedOrHere } from '../../profiles/choose.ts'
+import { libraryPath, needSection, refersToLibrary } from '../../support/library.ts'
+import { libraryScope } from '../../support/library-content.ts'
 import { connectSite, needEnvironment, profileFlags } from '../../support/remote.ts'
 import { resolveItem, withSite } from '../../support/tree.ts'
 
@@ -33,11 +35,13 @@ export default class ContentFind extends BaseCommand {
   static override description = [
     'Answers from the drafts, as the back office shows them. Here, on the site’s own database, it sees everything; on a hosted site, chosen with --profile, it answers as you, within your start nodes and what you may read there.',
     'A value comparison reads the property as its editor stores it, so numbers and dates compare as numbers and dates. Structured values (blocks, pickers, rich text) take only `exists` and `empty`; --text searches them.',
+    '`--under library:/` searches the Library’s elements instead, and `--under library:/<folder>` those in a folder. The Library is searched on this site’s own database only.',
   ].join('\n\n')
   static override examples = [
     '<%= config.bin %> content find --type newsPage --updated-from 2026-10-01 --where "summary empty"',
     '<%= config.bin %> content find --under /Products --where "price gte 10" --sort updateDate --desc',
     '<%= config.bin %> content find --text harbour --state changed --profile production -o json',
+    '<%= config.bin %> content find --under library:/Menus --type menu',
   ]
   static override flags = {
     type: Flags.string({
@@ -55,8 +59,14 @@ export default class ContentFind extends BaseCommand {
       summary: 'words in the page, through the search index',
       helpValue: '<words>',
     }),
-    under: Flags.string({ summary: 'only pages below this one', helpValue: '<path|uuid>' }),
-    parent: Flags.string({ summary: 'only the children of this page', helpValue: '<path|uuid>' }),
+    under: Flags.string({
+      summary: 'only pages below this one; library:/… for the Library, or a folder in it',
+      helpValue: '<path|uuid>',
+    }),
+    parent: Flags.string({
+      summary: 'only the children of this page, or of a Library folder',
+      helpValue: '<path|uuid>',
+    }),
     'max-depth': Flags.integer({ summary: 'how many levels below --under or --parent', min: 0 }),
     'created-from': Flags.string({ summary: 'created on or after', helpValue: '<date>' }),
     'created-to': Flags.string({ summary: 'created on or before', helpValue: '<date>' }),
@@ -87,7 +97,7 @@ export default class ContentFind extends BaseCommand {
     }),
   }
   static override access = 'site' as const
-  static override section = 'content' as const
+  static override section = ['content', 'library'] as const
   static override spec = {
     effects: 'read_only',
     cardinality: 'bounded',
@@ -156,15 +166,31 @@ export default class ContentFind extends BaseCommand {
     }
 
     const site = hostedOrHere(flags)
+    const scopes = [flags.under, flags.parent].filter((ref): ref is string => ref !== undefined)
+    const library =
+      site === undefined
+        ? (await Promise.all(scopes.map(refersToLibrary))).some(Boolean)
+        : scopes.some((ref) => libraryPath(ref) !== undefined)
+    if (library && site)
+      throw new CliError(
+        'refused',
+        'The Library is searched on this site’s own database only: leave out --profile.',
+      )
+    if (library && flags.text !== undefined)
+      throw new CliError('usage', '--text searches pages only: leave it out for the Library.')
+    needSection(library)
     const result = site
       ? await this.#remote(site, body, flags.under, flags.parent)
-      : await this.#local(body, flags.under, flags.parent)
+      : library
+        ? await this.#library(body, flags.under, flags.parent)
+        : await this.#local(body, flags.under, flags.parent)
 
     for (const item of result.items) {
       const path = [...item.path.map((step) => step.name), item.name].join(' / ')
       this.say(`  ${item.state.padEnd(9)} ${item.contentType.alias.padEnd(20)} ${path}`)
     }
-    if (result.items.length === 0) this.say('  No pages match.')
+    if (result.items.length === 0)
+      this.say(library ? '  Nothing in the Library matches.' : '  No pages match.')
     else
       this.say(
         `\n  ${result.items.length} of ${result.total}${result.exact ? '' : ' or more (only the first 1,000 matches were checked)'}`,
@@ -189,6 +215,28 @@ export default class ContentFind extends BaseCommand {
         throw new CliError('usage', parsed.problems[0] as string, { details: parsed.problems })
       try {
         return await queryDocuments(db, parsed.query, OPERATOR_SCOPE)
+      } catch (error) {
+        if (error instanceof ContentQueryRefused) throw new CliError('refused', error.message)
+        throw error
+      }
+    })
+  }
+
+  async #library(
+    body: Record<string, unknown>,
+    under: string | undefined,
+    parent: string | undefined,
+  ): Promise<QueryResult> {
+    return withSite(async (db) => {
+      const parsed = parseContentQuery({
+        ...body,
+        under: await libraryScope({ db }, under),
+        parent: await libraryScope({ db }, parent),
+      })
+      if (!parsed.ok)
+        throw new CliError('usage', parsed.problems[0] as string, { details: parsed.problems })
+      try {
+        return await queryDocuments(db, parsed.query, OPERATOR_SCOPE, { library: true })
       } catch (error) {
         if (error instanceof ContentQueryRefused) throw new CliError('refused', error.message)
         throw error

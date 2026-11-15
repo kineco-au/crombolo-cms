@@ -46,6 +46,13 @@ twice.
 actors and sources as the table below. The router leaves them out too
 (`MEDIA_WRITE_OPERATIONS`).
 
+**Library writes** (story 361) too, through the Library operations:
+`createElementEventSink` writes the entry from `elementAuditEntryFor`, `content` /
+`Element` or `ElementFolder` with the action names the router used to derive
+(`Create`, `Save`, `CreateAndPublish`, `SaveAndPublish`, `Publish`, `Unpublish`,
+`Copy` against the original, `Move`, `Trash`). The router leaves them out
+(`ELEMENT_WRITE_OPERATIONS`).
+
 | Actor | `user_name` | `source` | `detail` |
 | --- | --- | --- | --- |
 | a backoffice user | the user | `request` | — |

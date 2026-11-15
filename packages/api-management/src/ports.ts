@@ -7,7 +7,7 @@
  * drifts from the wire shape fails to compile.
  */
 
-import type { DocumentOperations, MediaOperations } from '@crombolo/content'
+import type { DocumentOperations, ElementOperations, MediaOperations } from '@crombolo/content'
 import type { ResponseOf } from '@crombolo/contracts'
 import type { UploadSettings } from '@crombolo/core'
 import type {
@@ -286,6 +286,8 @@ export interface ManagementApiDeps {
   approvals?: ApprovalGatePort
   /** Every document write, with its rules and its events (story 170); required alongside `documents`. */
   documentOperations?: DocumentOperations
+  /** Every Library write, with its rules and its audit entries (story 361); required alongside `elements`. */
+  elementOperations?: ElementOperations
   dictionary?: DictionaryPort
   userManagement?: UserPort
   userGroups?: UserGroupPort

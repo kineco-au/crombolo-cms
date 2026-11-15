@@ -266,3 +266,87 @@ export function auditEntryFor(event: DocumentEvent, actor: Actor) {
 /** A note as the audit log writes it: a capital first, as its entries read. */
 const sentence = (note: string | undefined) =>
   note ? note.charAt(0).toUpperCase() + note.slice(1) : undefined
+
+/** What a Library write did (story 361): an element, or one of the folders they sit in. */
+export type ElementEvent =
+  | { type: 'created'; key: string }
+  | { type: 'saved'; key: string }
+  | { type: 'createdAndPublished'; key: string }
+  | { type: 'savedAndPublished'; key: string }
+  /** Published now, or only scheduled to be. */
+  | { type: 'published'; key: string }
+  | { type: 'unpublished'; key: string }
+  | { type: 'trashed'; key: string }
+  | { type: 'moved'; key: string }
+  | { type: 'copied'; key: string; copyKey: string }
+  | { type: 'folderCreated'; key: string }
+  | { type: 'folderRenamed'; key: string }
+  | { type: 'folderMoved'; key: string }
+  | { type: 'folderTrashed'; key: string }
+
+/** Where a Library operation records what it did, inside the change's transaction. */
+export interface ElementEventSink {
+  record(tx: Db, event: ElementEvent, actor: Actor): Promise<void>
+  afterCommit?(event: ElementEvent, actor: Actor): void
+}
+
+/**
+ * The audit entry a Library event writes: the category and action names the
+ * back office has always written for it. A copy is entered against the original.
+ * Pure.
+ */
+export function elementAuditFor(event: ElementEvent): {
+  category: 'content'
+  action: string
+  entityType: 'Element' | 'ElementFolder'
+  entityKey: string
+} {
+  const element = (action: string) => ({
+    category: 'content' as const,
+    action,
+    entityType: 'Element' as const,
+    entityKey: event.key,
+  })
+  const folder = (action: string) => ({ ...element(action), entityType: 'ElementFolder' as const })
+  switch (event.type) {
+    case 'created':
+      return element('Create')
+    case 'saved':
+      return element('Save')
+    case 'createdAndPublished':
+      return element('CreateAndPublish')
+    case 'savedAndPublished':
+      return element('SaveAndPublish')
+    case 'published':
+      return element('Publish')
+    case 'unpublished':
+      return element('Unpublish')
+    case 'trashed':
+      return element('Trash')
+    case 'moved':
+      return element('Move')
+    case 'copied':
+      return element('Copy')
+    case 'folderCreated':
+      return folder('Create')
+    case 'folderRenamed':
+      return folder('Save')
+    case 'folderMoved':
+      return folder('Move')
+    case 'folderTrashed':
+      return folder('Trash')
+  }
+}
+
+/** The whole audit entry a Library event writes, with who acted and from where. Pure. */
+export function elementAuditEntryFor(event: ElementEvent, actor: Actor) {
+  return {
+    ...elementAuditFor(event),
+    source: actor.origin.source,
+    userKey: actorUserKey(actor),
+    userName: actorName(actor),
+    ipAddress: actor.origin.ipAddress ?? null,
+    forwardedFor: actor.origin.forwardedFor ?? null,
+    detail: sentence(actorNote(actor)) ?? null,
+  }
+}

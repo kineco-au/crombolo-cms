@@ -48,3 +48,24 @@ export const MEDIA_WRITE_OPERATIONS: ReadonlySet<string> = new Set([
   'DeleteRecycleBinMediaById',
   'DeleteRecycleBinMedia',
 ])
+
+/**
+ * The Library writes that go through the Library operations (story 361). Each
+ * writes its own audit entry in the change's transaction; the router still
+ * raises their live events and change notices.
+ */
+export const ELEMENT_WRITE_OPERATIONS: ReadonlySet<string> = new Set([
+  'PostElement',
+  'PutElementById',
+  'PostElementCreateAndPublish',
+  'PutElementByIdUpdateAndPublish',
+  'PutElementByIdPublish',
+  'PutElementByIdUnpublish',
+  'PutElementByIdMove',
+  'PostElementByIdCopy',
+  'PutElementByIdMoveToRecycleBin',
+  'PostElementFolder',
+  'PutElementFolderById',
+  'PutElementFolderByIdMove',
+  'PutElementFolderByIdMoveToRecycleBin',
+])

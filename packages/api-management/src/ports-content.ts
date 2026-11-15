@@ -66,6 +66,9 @@ export type TreeItemKind = 'All' | 'Item' | 'Folder'
  * elements are gathered in. `folders` and the four tree reads stay as they were,
  * because a folder is a plain node and the generic folder port already carries it.
  */
+/** Whom an element version names as its author: a user, by key. */
+export type ElementAuthor = { id: string } | null
+
 export interface ElementPort {
   folders: FolderPort
   treeRoot(paging: TreePage): Promise<Page<ElementTreeItem>>
@@ -84,23 +87,23 @@ export interface ElementPort {
   validate(input: SaveDocument, cultures: string[] | null): Promise<DocumentValidationError[]>
   create(
     input: SaveDocument,
-    principal: Principal,
+    author: ElementAuthor,
   ): Promise<{ ok: true; key: string } | PortFailure>
   update(
     key: string,
     input: SaveDocument,
-    principal: Principal,
+    author: ElementAuthor,
   ): Promise<{ ok: true } | PortFailure>
   createAndPublish(
     input: SaveDocument,
     cultures: string[] | null,
-    principal: Principal,
+    author: ElementAuthor,
   ): Promise<{ ok: true; key: string } | PortFailure>
   updateAndPublish(
     key: string,
     input: SaveDocument,
     cultures: string[] | null,
-    principal: Principal,
+    author: ElementAuthor,
   ): Promise<{ ok: true } | PortFailure>
   /**
    * Publishes now, or schedules: an entry with a publish time still to come
@@ -116,7 +119,7 @@ export interface ElementPort {
     key: string,
     targetKey: string | null,
     options: { includeDescendants: boolean },
-    principal: Principal,
+    author: ElementAuthor,
   ): Promise<{ ok: true; key: string } | PortFailure>
   move(key: string, targetKey: string | null): Promise<{ ok: true } | PortFailure>
   moveToRecycleBin(key: string): Promise<boolean>

@@ -5,6 +5,8 @@ import { Args, Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
 import { CliError } from '../../errors.ts'
 import { findBlueprint, withBlueprints } from '../../support/blueprints.ts'
+import { libraryPath, needSection } from '../../support/library.ts'
+import { newElement } from '../../support/library-content.ts'
 import {
   findPage,
   pageActor,
@@ -17,20 +19,26 @@ import {
 
 /** A page made from the command line (story 253), as the back office makes one. */
 export default class ContentNew extends BaseCommand {
-  static override summary = 'make a page, with its values, under the page its path names'
+  static override summary =
+    'make a page, with its values, under the page its path names; or a Library element'
   static override description = [
     "The path's last part is the new page's name and the rest is where it goes: `/Home/Visit us` makes \"Visit us\" under Home, and `/About` makes one at the top level. The page's type has to be allowed there.",
     'Values are given in the shorthand content files use: Markdown for rich text, a path for a picked page or media item, JSON for a toggle, a number or a list. The page is a draft until it is published: --publish publishes it too, through any approval its workflow asks for.',
     "--blueprint starts it from a blueprint, a page's values saved as a starting point for new pages of its type: its values and its other languages come with it, and --set changes what it gives. The blueprint's type is the page's, so --type can be left out.",
     'It is made with the key a content file at that path would have, so the same command makes the same page in every environment.',
+    '`library:/<folder>/<name>` makes a Library element instead, of an element type the Library offers, in a folder that is already there: `library:/Menus/Footer` makes "Footer" in the Menus folder, and `library:/Footer` at the top of the Library. An element has no view and needs no approval.',
   ].join('\n\n')
   static override examples = [
     '<%= config.bin %> content new "/Home/Visit us" --type contentPage --set title="Visit us" --set body="Open every day from **7am**."',
     '<%= config.bin %> content new /About --type contentPage --set-file body=about.md --publish',
     '<%= config.bin %> content new "/Home/Spring sale" --blueprint "Landing page" --set title="Spring sale"',
+    '<%= config.bin %> content new library:/Menus/Footer --type menu --set alias=footer',
   ]
   static override args = {
-    path: Args.string({ required: true, description: "the new page's path, ending in its name" }),
+    path: Args.string({
+      required: true,
+      description: "the new page's path, ending in its name; library:/… for a Library element",
+    }),
   }
   static override flags = {
     type: Flags.string({
@@ -44,7 +52,7 @@ export default class ContentNew extends BaseCommand {
     ...pageFlags,
   }
   static override access = 'site' as const
-  static override section = 'content' as const
+  static override section = ['content', 'library'] as const
   static override spec = {
     effects: 'non_idempotent',
     cardinality: 'single',
@@ -60,6 +68,8 @@ export default class ContentNew extends BaseCommand {
 
   async run() {
     const { args, flags } = await this.parse(ContentNew)
+    if (libraryPath(args.path) !== undefined) return newElement(this, args.path, flags)
+    needSection(false)
     const parts = args.path
       .split('/')
       .map((p) => p.trim())

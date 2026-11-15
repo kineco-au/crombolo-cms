@@ -128,7 +128,8 @@ export function createManagementApiRouter(options: ManagementApiOptions = {}): M
   if (deps.members) registerMemberHandlers(router, deps.members)
   if (deps.publicAccess)
     registerPublicAccessHandlers(router, deps.publicAccess, deps.documentOperations)
-  if (deps.elements) registerElementHandlers(router, deps.elements, deps.references)
+  if (deps.elements && deps.elementOperations)
+    registerElementHandlers(router, deps.elements, deps.elementOperations, deps.references)
   registerAuditLogHandlers(
     router,
     {

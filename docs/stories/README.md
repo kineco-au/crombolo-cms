@@ -406,7 +406,7 @@ cannot, what is left out and why, and how the rest splits into stories.
 | `358` | Blueprints from the command line | could | S | done | 349 |
 | `359` | Background jobs from the command line | could | S | done | 349, 352 |
 | `360` | Search and sharing settings from the command line | could | S | done | 349 |
-| `361` | Library elements and menus from the command line | could | L | ready | 349 |
+| `361` | Library elements and menus from the command line | could | L | done | 349 |
 | `362` | What an extension did, from the command line | could | S | ready | 349, 352 |
 
 ### Epic Q — A site from the command line

@@ -72,8 +72,11 @@ export function cli(site: LocalSite, args: string[], extra: Record<string, strin
   return { code: proc.exitCode, out: proc.stdout.toString(), err: proc.stderr.toString() }
 }
 
-/** The site's server in this process, its administrator signed in. */
-export async function serveSite(site: LocalSite): Promise<Harness> {
+/** The site's server in this process, its administrator signed in; `extra` adds to its config. */
+export async function serveSite(
+  site: LocalSite,
+  extra: Partial<CromboloConfig> = {},
+): Promise<Harness> {
   const server = await bootServer({
     keepDatabase: true,
     config: {
@@ -86,6 +89,7 @@ export async function serveSite(site: LocalSite): Promise<Harness> {
       dialect: 'sqlite',
       sqliteFile: site.config.sqliteFile,
       secretKey: SECRET_KEY,
+      ...extra,
     },
   })
   return signIn(server, ADMIN)
