@@ -40,6 +40,46 @@ const text = (claims: JWTPayload, name: string | undefined): string | undefined 
   return typeof value === 'string' && value !== '' ? value : undefined
 }
 
+/** Text from a token for the history: control characters gone, and no longer than `limit`. */
+const plain = (value: string, limit: number) =>
+  value
+    .replace(/\p{Cc}/gu, '')
+    .trim()
+    .slice(0, limit)
+
+/** Who acts for the person (story 366): the tool a token names, by id and by name. */
+export interface ExchangeActor {
+  id: string
+  name: string | null
+}
+
+/**
+ * The actor a verified token names: its `act` (RFC 8693), or else the client it
+ * was issued to (`azp`, or Entra v1's `appid`), named by the provider's `actors`.
+ * `malformed` for an `act` with no string `sub`.
+ */
+export function actorOf(
+  claims: JWTPayload,
+  actors: Readonly<Record<string, string>> = {},
+): ExchangeActor | undefined | 'malformed' {
+  if (claims.act !== undefined) {
+    const act = claims.act
+    if (!act || typeof act !== 'object' || Array.isArray(act)) return 'malformed'
+    const { sub, name } = act as Record<string, unknown>
+    const id = typeof sub === 'string' ? plain(sub, 200) : ''
+    if (!id) return 'malformed'
+    const named = typeof name === 'string' ? plain(name, 100) : ''
+    return { id, name: named || (Object.hasOwn(actors, id) ? (actors[id] ?? null) : null) }
+  }
+  const client = text(claims, 'azp') ?? text(claims, 'appid')
+  const id = client ? plain(client, 200) : ''
+  if (!id) return undefined
+  return { id, name: Object.hasOwn(actors, id) ? (actors[id] ?? null) : null }
+}
+
+/** Entra's v1 issuer for a tenant, which the exchange recognises only to refuse. */
+const entraV1Issuer = (tenantId: string) => `https://sts.windows.net/${tenantId}`
+
 const list = (claims: JWTPayload, name: string | undefined): string[] => {
   const value = name ? claims[name] : undefined
   if (Array.isArray(value)) return value.filter((v): v is string => typeof v === 'string')
@@ -59,11 +99,17 @@ export interface ExchangeAccounts {
     provider: { id: string; name: string },
     seconds: number,
     ip: string | undefined,
+    actor: ExchangeActor | undefined,
   ): Promise<{ accessToken: string } | { refused: string }>
 }
 
 export type PeopleExchangeOutcome =
-  | { ok: true; provider: IdentityProvider; account: ExternalAccount }
+  | {
+      ok: true
+      provider: IdentityProvider
+      account: ExternalAccount
+      actor: ExchangeActor | undefined
+    }
   | { ok: false; reason: string; provider?: IdentityProvider }
 
 export interface PeopleExchange {
@@ -103,6 +149,18 @@ export function createPeopleExchange(options: {
     provider.remoteExchange?.audience ?? origin
   const usable = (provider: IdentityProvider) =>
     !provider.unavailable && usableIssuer(issuerOf(provider))
+  /** The exchanging provider a token's issuer is, and whether it came as Entra's v1 token. */
+  const providerFor = async (issuer: string | undefined) => {
+    if (!issuer) return undefined
+    const bare = issuer.replace(/\/+$/, '')
+    for (const p of await effective()) {
+      if (!usable(p)) continue
+      if (issuerOf(p) === issuer) return { provider: p, v1: false }
+      if (p.kind === 'entra' && p.tenantId && entraV1Issuer(p.tenantId) === bare)
+        return { provider: p, v1: true }
+    }
+    return undefined
+  }
 
   const json = (body: unknown, status: number) =>
     Response.json(body, { status, headers: { 'cache-control': 'no-store' } })
@@ -169,7 +227,7 @@ export function createPeopleExchange(options: {
     },
 
     async handles(issuer) {
-      return (await effective()).some((p) => usable(p) && issuerOf(p) === issuer)
+      return (await providerFor(issuer)) !== undefined
     },
 
     async exchange(request, url, ip) {
@@ -188,11 +246,19 @@ export function createPeopleExchange(options: {
       const token = form.get('subject_token') ?? ''
 
       const issuer = unverifiedIssuer(token)
-      const provider = (await effective()).find((p) => usable(p) && issuerOf(p) === issuer)
-      if (!issuer || !provider)
+      const found = await providerFor(issuer)
+      if (!issuer || !found)
         return refuse(request, ip, 'an issuer that is not an exchanging provider')
-      if (limiter.blocked(`issuer:${issuer}`))
+      const { provider } = found
+      if (limiter.blocked(`issuer:${issuerOf(provider)}`))
         return json({ error: 'slow_down', error_description: 'Too many refused tokens.' }, 429)
+      if (found.v1)
+        return refuse(
+          request,
+          ip,
+          'it is an Entra v1 token: set requestedAccessTokenVersion to 2 in the manifest of the app it was issued for',
+          provider,
+        )
 
       const audience = audienceOf(provider, url.origin)
       const signInClients = await Promise.all(
@@ -229,13 +295,16 @@ export function createPeopleExchange(options: {
       if (!tokenId) return refuse(request, ip, 'the token has no one-time id', provider)
       if (!(await ids.spend(issuer, tokenId, new Date(exp * 1000))))
         return refuse(request, ip, 'the token was already used', provider)
+      const actor = actorOf(claims, provider.remoteExchange?.actors)
+      if (actor === 'malformed')
+        return refuse(request, ip, 'its act claim names no actor by a string sub', provider)
 
-      const found = await accountFor(provider, issuer, claims)
-      if (typeof found === 'string') return refuse(request, ip, found, provider)
-      const refusal = await options.accounts.refusal(found.key)
+      const person = await accountFor(provider, issuer, claims)
+      if (typeof person === 'string') return refuse(request, ip, person, provider)
+      const refusal = await options.accounts.refusal(person.key)
       if (refusal) return refuse(request, ip, refusal, provider)
 
-      let account = found
+      let account = person
       if (Object.keys(provider.groupMap).length > 0) {
         const groups = syncedGroups(
           account.groups,
@@ -252,9 +321,10 @@ export function createPeopleExchange(options: {
         { id: provider.oidc.id, name: provider.oidc.name },
         PERSON_TOKEN_SECONDS,
         ip,
+        actor,
       )
       if ('refused' in signedIn) return refuse(request, ip, signedIn.refused, provider)
-      await options.onExchange({ ok: true, provider, account }, request)
+      await options.onExchange({ ok: true, provider, account, actor }, request)
       return json(
         {
           access_token: signedIn.accessToken,

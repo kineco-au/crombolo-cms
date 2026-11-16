@@ -138,6 +138,8 @@ export class DeviceStore {
     userId: number
     sessionId: string
     expiresAt: Date
+    /** The tool the token named as acting for the person (story 366). */
+    actor?: { id: string; name: string | null }
   }): Promise<void> {
     const now = new Date()
     for (let attempt = 0; ; attempt++) {
@@ -153,6 +155,8 @@ export class DeviceStore {
             status: 'issued',
             user_id: init.userId,
             session_id: init.sessionId,
+            actor_id: init.actor?.id ?? null,
+            actor_name: init.actor?.name ?? null,
             interval_seconds: DEVICE_POLL_SECONDS,
             expires_at: DbDate.toDb(init.expiresAt),
             decided_at: DbDate.toDb(now),
@@ -164,6 +168,17 @@ export class DeviceStore {
         if (attempt >= 4) throw error
       }
     }
+  }
+
+  /** The actor a device signed in by exchange was made for, by its session. */
+  async exchangeActor(sessionId: string): Promise<{ id: string; name: string | null } | undefined> {
+    const row = await this.#db.q
+      .selectFrom('device_authorization')
+      .select(['actor_id', 'actor_name'])
+      .where('session_id', '=', sessionId)
+      .where('actor_id', 'is not', null)
+      .executeTakeFirst()
+    return row?.actor_id ? { id: row.actor_id, name: row.actor_name } : undefined
   }
 
   async byDeviceCode(deviceCode: string): Promise<DeviceAuthorizationRow | undefined> {

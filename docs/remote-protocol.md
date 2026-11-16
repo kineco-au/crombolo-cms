@@ -15,6 +15,14 @@ Everything here is required unless marked optional. All bodies are JSON unless
 stated otherwise. Errors are `application/problem+json` with a stable `code`
 (see Errors).
 
+## Where it is
+
+The protocol is at `/crombolo/remote/v1` (`REMOTE_API_PATH`, exported from
+`@crombolo/crombolo`), wherever the back office is mounted. Before 0.68.0 it was
+at `/umbraco/remote/v1`; nothing answers there now, not even a redirect. A
+client finds it through discovery's `api`, so only one that wrote the old path
+down notices (story 365).
+
 ## Discovery
 
 `GET /.well-known/crombolo-remote`, unauthenticated:
@@ -25,7 +33,7 @@ stated otherwise. Errors are `application/problem+json` with a stable `code`
   "versions": ["1"],
   "bundleFormats": [8, 8],
   "name": "Harbourstone Distillery",
-  "api": "https://example.com/umbraco/remote/v1",
+  "api": "https://example.com/crombolo/remote/v1",
   "auth": {
     "deviceAuthorization": "https://example.com/…/security/back-office/device",
     "token": "https://example.com/…/security/back-office/token",
@@ -120,7 +128,7 @@ and exchanges it for a short-lived token by OAuth 2.0 token exchange
 ```json
 "auth": {
   "ci": {
-    "tokenExchange": "https://example.com/umbraco/remote/v1/token",
+    "tokenExchange": "https://example.com/crombolo/remote/v1/token",
     "grantType": "urn:ietf:params:oauth:grant-type:token-exchange",
     "subjectTokenType": "urn:ietf:params:oauth:token-type:jwt",
     "audience": "https://example.com",
@@ -177,7 +185,7 @@ person, at the endpoint and with the grant CI uses. Discovery adds:
 ```json
 "auth": {
   "people": {
-    "tokenExchange": "https://example.com/umbraco/remote/v1/token",
+    "tokenExchange": "https://example.com/crombolo/remote/v1/token",
     "grantType": "urn:ietf:params:oauth:grant-type:token-exchange",
     "subjectTokenType": "urn:ietf:params:oauth:token-type:jwt",
     "audience": "https://example.com",
@@ -214,8 +222,21 @@ Nothing stored in the back office turns it on or off.
    with none signs in to the back office once first. Their groups follow the
    token's groups claim, as at sign-in. A person locked out, disabled or with
    no section of the back office is refused.
-5. **The answer.** As for CI: a 15-minute bearer token and no refresh token,
+5. **The actor** (story 366), the host's tool acting for the person: the
+   token's `act` (RFC 8693), `{ sub, name? }`, or else the client it was
+   issued to, `azp` (Entra's v1 `appid`). `sub` is kept to 200 characters and
+   `name` to 100, with control characters removed; anything else in `act` is
+   ignored. An `act` that isn't an object with a string `sub` is refused. The
+   provider's `remoteExchange.actors` names a client id; nothing in the token
+   does.
+6. **The answer.** As for CI: a 15-minute bearer token and no refresh token,
    or 400 `invalid_grant` and nothing more.
+
+**Entra's v1 tokens are refused.** An API app issues them unless its manifest
+sets `requestedAccessTokenVersion` to `2`; their issuer is
+`https://sts.windows.net/<tenant>/`. The exchange recognises that issuer for an
+exchanging Entra provider's tenant only to refuse it, and the audit log names
+the setting.
 
 **What the token may do.** It is the person, with their own permissions, and
 works wherever a device sign-in does, the back office's API included. It is one
@@ -225,7 +246,18 @@ an approval (403 `exchange-cannot-approve`), and it makes nothing that would
 outlast it: no command-line token, API key, password, password reset or
 two-factor change, and no viewing as other groups. **Every exchange is
 audited,** accepted or refused, with the reason, and so is everything the token
-does, as the person, "signed in through Microsoft".
+does, as the person, "signed in through Microsoft, by Acme console", with the
+actor in the entry's `actor` too. The signed-in device reads "Signed in through
+Microsoft, by Acme console".
+
+**With the remote off** (story 365). A host can keep `CROMBOLO_REMOTE_ACCESS`
+`off` and still let its tools sign people in. `POST …/token` then answers an
+opted-in provider's token exactly as above, and anything else, a CI token
+included, with 404 `not-enabled`, as it does with no provider exchanging.
+Every other route of the remote answers 404 `not-enabled`, so the token is a
+back-office sign-in and nothing more, and discovery answers nothing: a host
+that offers the exchange says so in its own discovery, naming
+`REMOTE_API_PATH`.
 
 ## Environments
 
@@ -815,7 +847,7 @@ does:
 
 | `CROMBOLO_REMOTE_ACCESS` | The site takes |
 | --- | --- |
-| `off` | nothing: the protocol answers 404 `not-enabled` |
+| `off` | nothing: the protocol answers 404 `not-enabled`, but for a person's exchange through a provider that opts in |
 | `read` | pulls |
 | `content` | also bundles of content and media, applied and reverted |
 | `all` | also whole-site pushes, and bundles that change content types, views, styles or code |

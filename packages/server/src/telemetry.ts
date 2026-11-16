@@ -361,6 +361,7 @@ export function withTraceHeaders(headers: Record<string, string>): Record<string
 export function routeOf(pathname: string, backOfficePath: string): string {
   if (pathname === '/health') return '/health'
   if (pathname.startsWith('/umbraco/delivery/api/')) return '/umbraco/delivery/api/*'
+  if (pathname.startsWith('/crombolo/remote/v1/')) return '/crombolo/remote/v1/*'
   if (pathname.startsWith(`${backOfficePath}/management/api/`))
     return `${backOfficePath}/management/api/*`
   if (pathname === backOfficePath || pathname.startsWith(`${backOfficePath}/`))

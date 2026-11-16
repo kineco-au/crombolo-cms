@@ -135,6 +135,11 @@ describe('the first boot of a self-hosted site', () => {
   test('a database the previous release left is upgraded by `crombolo upgrade`, and then starts', async () => {
     const file = readdirSync(site()).find((name) => name.endsWith('.sqlite')) as string
     const sqlite = new Database(join(site(), file))
+    sqlite.exec('ALTER TABLE audit_entry DROP COLUMN actor_name')
+    sqlite.exec('ALTER TABLE audit_entry DROP COLUMN actor_id')
+    sqlite.exec('ALTER TABLE device_authorization DROP COLUMN actor_name')
+    sqlite.exec('ALTER TABLE device_authorization DROP COLUMN actor_id')
+    sqlite.exec("DELETE FROM migration_history WHERE name = 'AddExchangeActor'")
     sqlite.exec('DROP INDEX IF EXISTS ux_remote_exchange_id')
     sqlite.exec('DROP TABLE IF EXISTS remote_exchange_id')
     sqlite.exec('DROP INDEX IF EXISTS ix_external_login_identity')

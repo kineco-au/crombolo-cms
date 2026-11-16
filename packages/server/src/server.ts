@@ -89,6 +89,7 @@ import {
 } from '@crombolo/core'
 import {
   appendCacheInstruction,
+  byActor,
   currentAuditContext,
   type Db,
   ensureFormLibraryTypes,
@@ -688,6 +689,7 @@ export async function createServer(
         provider:
           config.backofficeIdentityProviders.find((p) => p.oidc.id === identity.exchangedThrough)
             ?.oidc.name ?? identity.exchangedThrough,
+        ...(identity.exchangedActor ? { actor: identity.exchangedActor } : {}),
       }
     if (context && principal.viewingAs)
       context.viewing = {
@@ -942,9 +944,12 @@ export async function createServer(
         { id },
       )
   if (exchanging.length > 0)
-    log.info('The remote exchanges tokens from {providers}', {
-      providers: exchanging.map((p) => p.oidc.id).join(', '),
-    })
+    log.info(
+      config.remote.enabled
+        ? 'The remote exchanges tokens from {providers}'
+        : "The remote is off, and its token endpoint answers only {providers}'s exchange for a person",
+      { providers: exchanging.map((p) => p.oidc.id).join(', ') },
+    )
   const people =
     exchanging.length === 0
       ? undefined
@@ -980,10 +985,16 @@ export async function createServer(
                   ? undefined
                   : 'the person has no access to the back office'
               },
-              signIn: async (key, provider, seconds, ip) => {
+              signIn: async (key, provider, seconds, ip, actor) => {
                 const user = await users.byKey(key)
                 if (!user) return { refused: 'the person no longer exists' }
-                const result = await auth.signInByExchange(user.userName, provider, seconds, ip)
+                const result = await auth.signInByExchange(
+                  user.userName,
+                  provider,
+                  seconds,
+                  ip,
+                  actor,
+                )
                 if (result.status === 'success') return { accessToken: result.accessToken }
                 return {
                   refused:
@@ -1004,8 +1015,9 @@ export async function createServer(
                 entityKey: outcome.ok ? outcome.account.key : null,
                 entityName: outcome.ok ? outcome.account.email : null,
                 detail: outcome.ok
-                  ? `Signed in through ${outcome.provider.oidc.name}, by exchange at the remote`
+                  ? `Signed in through ${outcome.provider.oidc.name}${byActor(outcome.actor)}, by exchange at the remote`
                   : `Refused${outcome.provider ? ` through ${outcome.provider.oidc.name}` : ''}: ${outcome.reason}`,
+                actor: outcome.ok ? (outcome.actor ?? null) : null,
                 ...clientAddress(request),
               }),
           })

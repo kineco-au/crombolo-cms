@@ -5851,6 +5851,9 @@ crombolo audit list [--since <since>] [--until <until>] [--user <user>] [--categ
   - `ipAddress` (string)
   - `forwardedFor` (string)
   - `detail` (string)
+  - `actor` (object)
+    - `id` (string)
+    - `name` (string)
 - `next` (integer)
 - `truncated` (boolean)
 

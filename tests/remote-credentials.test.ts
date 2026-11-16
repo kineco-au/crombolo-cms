@@ -50,7 +50,7 @@ describe('the credentials file', () => {
   test('is JSON by origin, which only its owner can read', async () => {
     const file = credentials()
     const keychain = fileKeychain(file)
-    await saveSignIn(keychain, 'https://live.example/umbraco/remote/v1', SIGN_IN)
+    await saveSignIn(keychain, 'https://live.example/crombolo/remote/v1', SIGN_IN)
     expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ 'https://live.example': SIGN_IN })
     if (process.platform !== 'win32') {
       expect(statSync(file).mode & 0o777).toBe(0o600)

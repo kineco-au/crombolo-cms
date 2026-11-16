@@ -418,10 +418,14 @@ everything it talks to sit under one path.
 | the SPA shell and its routes (`/crombolo/section/…`) | the Delivery API, at `/crombolo/delivery/api/v2` wherever the back office is: it is public, and a site that locks its back office down must not cut its apps off |
 | the login page and its assets | Umbraco's own paths, which keep answering: `/umbraco/management/api/v1/**`, `/umbraco/serverEventHub`, `/umbraco/PreviewHub`, `/umbraco/delivery/api/v2/**` |
 | static assets, `/crombolo/backoffice/<hash>/…` | external sign-in callbacks, at `/umbraco/management/api/v1/security/back-office/external/<id>/callback`, so a provider's registration never changes |
-| our own plugin, `/crombolo/crombolo/…` | the remote protocol, `/umbraco/remote/v1` |
+| our own plugin, `/crombolo/crombolo/…` | the remote protocol, at `/crombolo/remote/v1` wherever the back office is (`REMOTE_API_PATH`); before 0.68.0 it was at `/umbraco/remote/v1`, where nothing answers now |
 | `oauth_complete` and `logout`, the SPA's own routes | |
 | the Management API, `/crombolo/management/api/v1/**`, its security endpoints and graphics included | |
 | the hubs, `/crombolo/serverEventHub` and `/crombolo/PreviewHub` | |
+
+The fixed paths sit under `/crombolo` too, so a proxy that hides the back
+office by blocking all of `/crombolo/*` cuts off the Delivery API and the remote
+with it. To lock the editor down alone, move `backOfficePath` and block that.
 
 **How the client follows.** The vendored client and its contract name
 Umbraco's paths. Two pieces make the move:

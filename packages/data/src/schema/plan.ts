@@ -42,6 +42,7 @@ import { deliveryMemberTokensMigration } from './delivery-member-tokens.ts'
 import { diagnosticsMigration } from './diagnostics.ts'
 import { dropAssistantMigration } from './drop-assistant.ts'
 import { elementsMigration } from './elements.ts'
+import { exchangeActorMigration } from './exchange-actor.ts'
 import { extensionActivityMigration } from './extension-activity.ts'
 import { extensionSettingsMigration } from './extension-settings.ts'
 import { formLibraryMigration } from './form-library.ts'
@@ -173,4 +174,5 @@ export const cromboloPlan = new MigrationPlan([
   sessionViewAsMigration,
   cliTokensMigration,
   remoteExchangeMigration,
+  exchangeActorMigration,
 ])

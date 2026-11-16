@@ -162,6 +162,8 @@ export {
   oidc,
   type PostmarkOptions,
   postmarkEmail,
+  REMOTE_API_PATH,
+  REMOTE_DISCOVERY_PATH,
   type ResendOptions,
   resendEmail,
   type S3MediaStoreOptions,

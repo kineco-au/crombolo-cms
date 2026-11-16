@@ -430,7 +430,10 @@ provider"). It is off until the provider opts in:
 ```ts
 entra({
   tenantId, clientId, clientSecret,
-  remoteExchange: { audience: '<the API app\'s client id>' },
+  remoteExchange: {
+    audience: '<the API app\'s client id>',
+    actors: { '<the console app\'s client id>': 'Acme console' },
+  },
   locked: true,
 })
 ```
@@ -443,8 +446,17 @@ providers exchange.
   client id the back office signs in with: the site refuses to start if it is.
   Entra puts an API's client id there, so register a second app, used only for
   the remote and never for sign-in, expose a scope on it, let the host's tool
-  request that scope, and name that app's client id as the audience. Keycloak,
-  Okta and Auth0 can put the site's origin there with an audience setting.
+  request that scope, and name that app's client id as the audience. In that
+  app's manifest set `requestedAccessTokenVersion` to `2`: Entra issues v1
+  tokens otherwise, which the exchange refuses, and the audit log says so.
+  Keycloak, Okta and Auth0 can put the site's origin there with an audience
+  setting.
+- **Who acted for them** (story 366). The history says which of the host's
+  tools it was: the token's `act` (RFC 8693, `{ sub, name? }`) where the
+  provider can add it, and otherwise the app the token was issued to, its
+  `azp` (Entra's v1 `appid`). Entra can't add `act`, so with Entra it names the
+  app. `actors` gives a client id the name the history shows; without one it
+  shows the client id.
 - **Who it is.** The person is found by `oid` for Entra, whose `sub` differs for
   each app, and by `sub` for other providers (`claims: { identity }` on
   `oidc({...})` names another claim). Each back-office sign-in records it, so
@@ -456,6 +468,12 @@ providers exchange.
   exchange as it does to sign-in.
 - **Tokens last** up to 90 minutes at the provider and are accepted once; have
   the tool exchange one as soon as it has it, and never log it.
+- **The remote can stay off** (story 365). With `CROMBOLO_REMOTE_ACCESS=off`
+  the token endpoint, `/crombolo/remote/v1/token`, still answers the exchange
+  for a provider that opts in, and the token works on the back office's API;
+  nothing of the remote's answers, discovery included, and the boot log says
+  so. A host whose tools find the site through their own discovery names
+  `REMOTE_API_PATH` from `@crombolo/crombolo`.
 
 ## Two-factor sign-in
 

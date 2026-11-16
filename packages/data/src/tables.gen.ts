@@ -51,6 +51,8 @@ export interface CoreTables {
   }
   audit_entry: {
     action: string
+    actor_id: string | null
+    actor_name: string | null
     category: string
     detail: string | null
     entity_key: string | null
@@ -330,6 +332,8 @@ export interface CoreTables {
     scopes: string
   }
   device_authorization: {
+    actor_id: string | null
+    actor_name: string | null
     client_id: string
     client_name: string | null
     create_date: Timestamp

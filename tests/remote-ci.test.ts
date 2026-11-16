@@ -375,7 +375,7 @@ describe('signing in from CI', () => {
   test('the exchange is refused over plain HTTP from anywhere but this machine', async () => {
     const { h } = await site()
     const response = await h.server.fetch(
-      new Request('http://cms.example.com/umbraco/remote/v1/token', {
+      new Request('http://cms.example.com/crombolo/remote/v1/token', {
         method: 'POST',
         body: new URLSearchParams({ grant_type: TOKEN_EXCHANGE_GRANT }),
       }),

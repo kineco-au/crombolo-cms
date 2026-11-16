@@ -6,7 +6,7 @@
 import { css, html, LitElement, nothing } from '@umbraco-cms/backoffice/external/lit'
 import '@umbraco-cms/backoffice/external/uui'
 
-const API = '/umbraco/remote/v1/jobs'
+const API = '/crombolo/remote/v1/jobs'
 
 class CromboloRemoteApprovalElement extends LitElement {
   static properties = {

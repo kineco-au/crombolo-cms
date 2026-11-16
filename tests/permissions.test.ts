@@ -194,6 +194,7 @@ describe('the media verbs (story 088)', () => {
       'AddSessionViewAs',
       'AddCliTokens',
       'AddRemoteExchange',
+      'AddExchangeActor',
     ])
     const held = async (key: string) =>
       (

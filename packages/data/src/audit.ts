@@ -51,7 +51,15 @@ export interface AuditEntryInput {
   ipAddress?: string | null
   forwardedFor?: string | null
   detail?: string | null
+  /** Who acted for the user: the host's tool an exchanged token names (story 366). */
+  actor?: AuditActor | null
   occurredAt?: Date
+}
+
+/** The tool acting for a person, by the id its token gave and the name the site knows it by. */
+export interface AuditActor {
+  id: string
+  name: string | null
 }
 
 export interface AuditEntry {
@@ -68,6 +76,7 @@ export interface AuditEntry {
   ipAddress: string | null
   forwardedFor: string | null
   detail: string | null
+  actor: AuditActor | null
 }
 
 export interface AuditFilter {
@@ -117,6 +126,7 @@ export function auditRecord(entry: AuditEntry) {
     ipAddress: entry.ipAddress,
     forwardedFor: entry.forwardedFor,
     detail: entry.detail,
+    actor: entry.actor,
   }
 }
 
@@ -140,6 +150,7 @@ const LIMITS = {
   ipAddress: 64,
   forwardedFor: 255,
   detail: 4000,
+  actor: 255,
 } as const
 
 type Condition = (eb: ExpressionBuilder<CoreTables, 'audit_entry'>) => Expression<SqlBool>
@@ -151,6 +162,11 @@ function clip(value: string | null | undefined, limit: number): string | null {
   if (value === null || value === undefined || value === '') return null
   return value.length > limit ? value.slice(0, limit) : value
 }
+
+const actorColumns = (actor: AuditActor | null) => ({
+  actor_id: clip(actor?.id, LIMITS.actor),
+  actor_name: clip(actor?.name, LIMITS.actor),
+})
 
 function text(value: unknown): string | null {
   return value === null || value === undefined ? null : String(value)
@@ -171,6 +187,7 @@ function toEntry(row: Record<string, unknown>): AuditEntry {
     ipAddress: text(row.ip_address),
     forwardedFor: text(row.forwarded_for),
     detail: text(row.detail),
+    actor: row.actor_id ? { id: String(row.actor_id), name: text(row.actor_name) } : null,
   }
 }
 
@@ -184,7 +201,7 @@ export interface AuditContext {
   /** A person acting through one of their command-line tokens (story 351), by its name. */
   token?: { userKey: string; name: string }
   /** A person acting through a token exchanged at the remote (story 364), by the provider's name. */
-  exchange?: { userKey: string; provider: string }
+  exchange?: { userKey: string; provider: string; actor?: AuditActor }
 }
 
 const contexts = new AsyncLocalStorage<AuditContext>()
@@ -220,12 +237,27 @@ export function detailInContext(
     context.viewing?.userKey === who ? `while viewing as ${context.viewing.groups}` : undefined,
     context.token?.userKey === who ? `through the token ${context.token.name}` : undefined,
     context.exchange?.userKey === who
-      ? `signed in through ${context.exchange.provider}`
+      ? `signed in through ${context.exchange.provider}${byActor(context.exchange.actor)}`
       : undefined,
   ].filter((note): note is string => note !== undefined)
   if (notes.length === 0) return entry.detail
   const note = notes.join(', ')
   return entry.detail ? `${entry.detail}, ${note}` : `${note[0]?.toUpperCase()}${note.slice(1)}`
+}
+
+/** ", by Acme console": who acted for the person, by name or else by id. */
+export const byActor = (actor: AuditActor | null | undefined): string =>
+  actor ? `, by ${actor.name ?? actor.id}` : ''
+
+/** The actor an entry is written with: its own, or the request's for the same person. */
+function actorInContext(
+  entry: Pick<AuditEntryInput, 'userKey' | 'actor'>,
+  context = currentAuditContext(),
+): AuditActor | null {
+  if (entry.actor) return entry.actor
+  const actor = context?.exchange?.actor
+  if (!actor || !entry.userKey || !UUID.test(entry.userKey)) return null
+  return context?.exchange?.userKey === normaliseUuid(entry.userKey) ? actor : null
 }
 
 export class AuditLog {
@@ -259,6 +291,7 @@ export class AuditLog {
           ip_address: clip(entry.ipAddress, LIMITS.ipAddress),
           forwarded_for: clip(entry.forwardedFor, LIMITS.forwardedFor),
           detail: clip(detailInContext(entry), LIMITS.detail),
+          ...actorColumns(actorInContext(entry)),
         })
         .execute()
     }

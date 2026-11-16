@@ -318,6 +318,7 @@ describe('the telemetry policy', () => {
     expect(routeOf('/crombolo/management/api/v1/document', '/crombolo')).toBe(
       '/crombolo/management/api/*',
     )
+    expect(routeOf('/crombolo/remote/v1/environments', '/crombolo')).toBe('/crombolo/remote/v1/*')
     expect(statementSummary('select * from "node" where id = ?')).toEqual({
       operation: 'SELECT',
       summary: 'SELECT node',

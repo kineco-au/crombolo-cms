@@ -211,6 +211,22 @@
                 "name": "detail",
                 "type": "string",
                 "nullable": true
+              },
+              {
+                "name": "actor",
+                "type": "object",
+                "nullable": true,
+                "fields": [
+                  {
+                    "name": "id",
+                    "type": "string"
+                  },
+                  {
+                    "name": "name",
+                    "type": "string",
+                    "nullable": true
+                  }
+                ]
               }
             ]
           }

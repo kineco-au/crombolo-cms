@@ -280,7 +280,7 @@ describe(`pull, change, push (${dialectUnderTest})`, () => {
       autoApprove: true,
       onApproval: async (job) => {
         approval = job.approvalUrl
-        await colleague.call(`/umbraco/remote/v1/jobs/${job.id}/approve`, { method: 'POST' })
+        await colleague.call(`/crombolo/remote/v1/jobs/${job.id}/approve`, { method: 'POST' })
       },
       ...noWait,
     })

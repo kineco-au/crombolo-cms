@@ -219,6 +219,7 @@ describe(`reading a hosted site's log (${dialectUnderTest})`, () => {
       'ipAddress',
       'forwardedFor',
       'detail',
+      'actor',
     ])
     expect((await log.page({}, { limit: 1 })).items[0]?.id ?? 0).toBe(latest)
 

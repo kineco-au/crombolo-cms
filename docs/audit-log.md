@@ -209,7 +209,9 @@ do" is the dashboard's *Who* filter, or `crombolo audit list --user`.
   a login with no account finds the failed sign-ins that tried it.
 - **Records:** an entry has the dashboard's shape (`auditRecord` in
   `packages/data/src/audit.ts`): `id`, `occurredAt`, `category`, `action`,
-  `source`, `user`, `item`, `ipAddress`, `forwardedFor` and `detail`.
+  `source`, `user`, `item`, `ipAddress`, `forwardedFor`, `detail` and `actor`.
+  `actor` is `{ id, name }` for an entry a host's tool wrote for a person through
+  an exchanged token (story 366), and null otherwise.
 
 **Reading writes nothing.** The commands open the database through
 `connect({ readOnly: true })`: SQLite read-only, and only a file that already

@@ -8,6 +8,8 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test
 import { randomUUID } from 'node:crypto'
 import { AuthStore, DeviceStore } from '@crombolo/auth'
 import {
+  AuditLog,
+  auditRecord,
   detailInContext,
   ExternalLoginRepository,
   externalLoginProvider,
@@ -15,9 +17,11 @@ import {
   UserRepository,
 } from '@crombolo/data'
 import {
+  actorOf,
   entra,
   exchangeAudienceClashes,
   exchangingProviders,
+  type IdentityProvider,
   JWT_TOKEN_TYPE,
   loadConfig,
   oidc,
@@ -66,12 +70,12 @@ afterEach(async () => {
 /** A token the provider issued for the remote, naming the person by `oid`. */
 async function providerToken(
   claims: Record<string, unknown> = {},
-  options: { audience?: string; seconds?: number; jti?: string | null } = {},
+  options: { audience?: string; seconds?: number; jti?: string | null; issuer?: string } = {},
 ) {
   const now = Math.floor(Date.now() / 1000)
   const jwt = new SignJWT({ oid: 'oid-1', sub: 'pairwise-for-the-api', ...claims })
     .setProtectedHeader({ alg: 'RS256', kid: 'test' })
-    .setIssuer(issuer)
+    .setIssuer(options.issuer ?? issuer)
     .setAudience(options.audience ?? AUDIENCE)
     .setIssuedAt(now)
     .setExpirationTime(now + (options.seconds ?? 600))
@@ -91,17 +95,21 @@ const provider = (over: Record<string, unknown> = {}) =>
     ...over,
   })
 
-async function site(over: Record<string, unknown> = {}) {
+async function site(
+  over: Record<string, unknown> = {},
+  remote: 'on' | 'off' = 'on',
+  shape: (p: IdentityProvider) => IdentityProvider = (p) => p,
+) {
   const h = await signedInServer({
     config: {
       remote: {
-        enabled: true,
+        enabled: remote === 'on',
         environment: 'production',
         protected: false,
         approvals: false,
         maxUploadBytes: 1024 ** 3,
       },
-      backofficeIdentityProviders: [provider(over)],
+      backofficeIdentityProviders: [shape(provider(over))],
     },
   })
   open.push(h)
@@ -291,6 +299,56 @@ describe(`exchanging a provider's token for a person (${process.env.CROMBOLO_DB 
   })
 })
 
+describe(`a person's exchange with the remote off (${process.env.CROMBOLO_DB ?? 'sqlite'})`, () => {
+  test('signs the person in to the back office, and opens nothing of the remote', async () => {
+    const { h, link, signIn, as, exchange } = await site({}, 'off')
+    await link()
+    const token = await signIn(await providerToken())
+    expect((await as(token, `${V1}/user/current`)).status).toBe(200)
+
+    const notEnabled = async (response: Response) => {
+      expect(response.status).toBe(404)
+      expect(((await response.json()) as { code: string }).code).toBe('not-enabled')
+    }
+    await notEnabled(await as(token, `${API}/me`))
+    await notEnabled(await as(token, `${API}/environments`))
+    expect((await h.server.fetch(new Request(`${ORIGIN}${REMOTE_DISCOVERY_PATH}`))).status).toBe(
+      404,
+    )
+
+    // A token from any other issuer, CI's among them, is told the site is no remote.
+    const now = Math.floor(Date.now() / 1000)
+    const ci = await new SignJWT({ repository: 'acme/site' })
+      .setProtectedHeader({ alg: 'RS256', kid: 'test' })
+      .setIssuer('https://token.actions.githubusercontent.com')
+      .setAudience(ORIGIN)
+      .setIssuedAt(now)
+      .setExpirationTime(now + 300)
+      .sign(privateKey)
+    await notEnabled(await exchange(ci))
+  })
+
+  test('without a provider that exchanges, the token endpoint is not there either', async () => {
+    const { exchange } = await site({ remoteExchange: undefined }, 'off')
+    const response = await exchange(await providerToken())
+    expect(response.status).toBe(404)
+    expect(((await response.json()) as { code: string }).code).toBe('not-enabled')
+  })
+})
+
+describe('where the remote is', () => {
+  test('under /crombolo, and nothing answers where it was', async () => {
+    const { link, signIn, as } = await site()
+    await link()
+    const token = await signIn(await providerToken())
+    expect(REMOTE_API_PATH).toBe('/crombolo/remote/v1')
+    expect((await as(token, `${API}/me`)).status).toBe(200)
+    const old = await as(token, `${ORIGIN}/umbraco/remote/v1/me`)
+    expect(old.status).toBe(404)
+    expect(await old.text()).not.toContain('not-enabled')
+  })
+})
+
 describe('spending one-time ids', () => {
   test('an id is spent once, and forgotten once its token expires', async () => {
     const { h } = await site()
@@ -312,5 +370,93 @@ describe('what an exchanged sign-in writes', () => {
         { exchange: { userKey: key, provider: 'Corp' } },
       ),
     ).toBe('Saved, signed in through Corp')
+  })
+})
+
+describe('the actor a token names (366)', () => {
+  test("is its act, else the client it was issued to, named by the provider's actors", () => {
+    const actors = { 'console-app': 'Acme console' }
+    expect(actorOf({ act: { sub: 'agent-7', name: 'Claude Code on\u0007 Ada’s laptop' } })).toEqual(
+      { id: 'agent-7', name: 'Claude Code on Ada’s laptop' },
+    )
+    expect(actorOf({ act: { sub: 'console-app', act: { sub: 'x' } } }, actors)).toEqual({
+      id: 'console-app',
+      name: 'Acme console',
+    })
+    expect(actorOf({ azp: 'console-app' }, actors)).toEqual({
+      id: 'console-app',
+      name: 'Acme console',
+    })
+    expect(actorOf({ appid: 'other-app' }, actors)).toEqual({ id: 'other-app', name: null })
+    expect(actorOf({ azp: 'toString' }, actors)).toEqual({ id: 'toString', name: null })
+    expect(actorOf({})).toBeUndefined()
+    expect(actorOf({ act: 'agent' })).toBe('malformed')
+    expect(actorOf({ act: { name: 'nameless' } })).toBe('malformed')
+    expect(actorOf({ act: { sub: 7 } })).toBe('malformed')
+    expect(
+      (
+        actorOf({ act: { sub: 'a'.repeat(300), name: 'n'.repeat(300) } }) as {
+          id: string
+          name: string
+        }
+      ).id,
+    ).toHaveLength(200)
+  })
+
+  test('the device, the sign-in and everything the token does name it', async () => {
+    const { h, key, link, signIn, as, audit } = await site({
+      groups: { map: { 'cms-admins': 'admin' } },
+      remoteExchange: { audience: AUDIENCE, actors: { 'console-app': 'Acme console' } },
+    })
+    await link()
+    const token = await signIn(await providerToken({ azp: 'console-app', groups: ['cms-admins'] }))
+
+    const user = await new UserRepository(h.server.db).byKey(key)
+    const devices = await new DeviceStore(h.server.db).signedIn(user?.id as number)
+    expect(devices.map((d) => d.clientName)).toEqual(['Signed in through Corp, by Acme console'])
+    expect((await audit()).at(-1)?.detail).toBe(
+      'Signed in through Corp, by Acme console, by exchange at the remote',
+    )
+
+    const made = await as(token, `${V1}/dictionary`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Greeting', parent: null, translations: [] }),
+    })
+    expect(made.status).toBe(201)
+    const { items } = await new AuditLog(h.server.db).page({ userKey: key }, { limit: 50 })
+    const written = items.filter((e) => !e.action.startsWith('RemoteExchange'))
+    expect(written.length).toBeGreaterThan(0)
+    for (const entry of written) {
+      expect(entry.detail).toMatch(/signed in through Corp, by Acme console/i)
+      expect(auditRecord(entry).actor).toEqual({ id: 'console-app', name: 'Acme console' })
+    }
+    const signedIn = items.find((e) => e.action === 'RemoteExchangeSignIn')
+    expect(signedIn && auditRecord(signedIn).actor).toEqual({
+      id: 'console-app',
+      name: 'Acme console',
+    })
+  })
+
+  test('a malformed act is refused, and a token naming no actor is as before', async () => {
+    const { h, key, link, signIn, refusedFor } = await site()
+    await link()
+    expect(await refusedFor(await providerToken({ act: { name: 'nameless' } }))).toContain(
+      'act claim',
+    )
+    await signIn(await providerToken())
+    const user = await new UserRepository(h.server.db).byKey(key)
+    const devices = await new DeviceStore(h.server.db).signedIn(user?.id as number)
+    expect(devices.map((d) => d.clientName)).toEqual(['Signed in through Corp'])
+  })
+
+  test("Entra's v1 token is refused, saying which setting makes it v2", async () => {
+    const { refusedFor } = await site({}, 'on', (p) => ({
+      ...p,
+      kind: 'entra',
+      tenantId: 'tenant-1',
+    }))
+    expect(
+      await refusedFor(await providerToken({}, { issuer: 'https://sts.windows.net/tenant-1/' })),
+    ).toContain('requestedAccessTokenVersion')
   })
 })

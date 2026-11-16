@@ -53,8 +53,16 @@ export interface IdentityProviderOptions {
    * provider's tokens for a sign-in as the person they name. The token's `aud`
    * must be `audience`, the site's origin by default, and never a sign-in
    * client id. `CROMBOLO_REMOTE_EXCHANGE_PROVIDERS` turns it on too.
+   * `actors` names the clients a token can be issued to, by client id, for the
+   * history (story 366).
    */
-  remoteExchange?: boolean | { audience?: string }
+  remoteExchange?: boolean | RemoteExchangeOptions
+}
+
+/** How a provider's tokens are exchanged at the remote (stories 364 and 366). */
+export interface RemoteExchangeOptions {
+  audience?: string
+  actors?: Readonly<Record<string, string>>
 }
 
 /** Which preset made a provider: what the Entra bundle looks for. */
@@ -74,8 +82,8 @@ export interface IdentityProvider {
   memberType: string | undefined
   /** Declared `locked: true`. */
   locked: boolean
-  /** Declared `remoteExchange`: the audience its exchanged tokens carry, when not the site's origin. */
-  remoteExchange: { audience?: string } | undefined
+  /** Declared `remoteExchange`: the audience its exchanged tokens carry, and the actors it names. */
+  remoteExchange: RemoteExchangeOptions | undefined
   /** Why it cannot sign anyone in as it stands, such as a new issuer with no secret of its own. */
   unavailable?: string
 }

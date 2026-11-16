@@ -103,6 +103,8 @@ export interface ResolvedIdentity {
   sessionId: string
   /** The provider a token exchanged through it came by (story 364); never set for a browser's session. */
   exchangedThrough?: string
+  /** The tool acting for the person, as the exchanged token named it (story 366). */
+  exchangedActor?: { id: string; name: string | null }
   allowedSections: Array<SectionAlias | ExtensionSectionAlias>
   groupKeys: string[]
   isAdmin: boolean
@@ -399,7 +401,10 @@ export class AuthService {
     const own = await this.#store.loadAuthorization(user.id)
     const view = session.view
     const provider = exchangeProviderOf(token.clientId)
-    const through = provider ? { exchangedThrough: provider } : {}
+    const actor = provider ? await this.#store.devices.exchangeActor(token.sessionId) : undefined
+    const through = provider
+      ? { exchangedThrough: provider, ...(actor ? { exchangedActor: actor } : {}) }
+      : {}
     if (view && view.until.getTime() > now.getTime() && own.isAdmin) {
       const theirs = await this.#store.loadGroupAuthorization(view.groupKeys)
       return {
@@ -549,6 +554,7 @@ export class AuthService {
     provider: { id: string; name: string },
     seconds: number,
     ipAddress?: string,
+    actor?: { id: string; name: string | null },
   ): Promise<
     | { status: 'success'; user: UserRow; accessToken: string; expiresIn: number }
     | { status: 'notAllowed'; reason: 'lockedOut' | 'notApproved' | 'unknown' }
@@ -563,10 +569,11 @@ export class AuthService {
     await this.#store.recordLoginSuccess(user.id, sessionId, ipAddress)
     await this.#store.devices.signedInByExchange({
       clientId,
-      clientName: `Signed in through ${provider.name}`,
+      clientName: `Signed in through ${provider.name}${actor ? `, by ${actor.name ?? actor.id}` : ''}`,
       userId: user.id,
       sessionId,
       expiresAt,
+      actor,
     })
     const accessToken = generateToken()
     await this.#store.createToken({

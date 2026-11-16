@@ -177,4 +177,13 @@ export const recordFields = [
   { name: 'ipAddress', type: 'string', nullable: true },
   { name: 'forwardedFor', type: 'string', nullable: true },
   { name: 'detail', type: 'string', nullable: true },
+  {
+    name: 'actor',
+    type: 'object',
+    nullable: true,
+    fields: [
+      { name: 'id', type: 'string' },
+      { name: 'name', type: 'string', nullable: true },
+    ],
+  },
 ] as const

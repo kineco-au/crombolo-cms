@@ -6,6 +6,47 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.68.0 — 2026-11-16
+
+### Features
+
+- **The history names the tool acting for a person (366).** An exchanged token's
+  sign-in, and everything it does, is recorded as the person, through the
+  provider, by the host's tool: the token's `act`, or else the app it was issued
+  to, named by the provider's `remoteExchange.actors`. The signed-in device names
+  it too, and audit records from `audit list`, `audit stream` and the remote gain
+  `actor`.
+
+- **A person's exchange works with the remote off (365).** With
+  `CROMBOLO_REMOTE_ACCESS=off`, the remote's token endpoint still exchanges a
+  token from a provider that opts in for a sign-in as the person, which works
+  on the back office's API. Nothing else of the remote answers, and a CI token
+  is told the site is not a remote, as before.
+
+### Changes
+
+- **The remote protocol moved to `/crombolo/remote/v1` (365),** with the rest of
+  the CMS's own routes. Nothing answers at `/umbraco/remote/v1` any more. The
+  command line and the conformance suite find it through discovery, so they
+  follow on their own. `REMOTE_API_PATH` and `REMOTE_DISCOVERY_PATH` are
+  exported from `@crombolo/crombolo`.
+
+- **Entra's v1 tokens are refused with a reason (366).** The audit log says to set
+  `requestedAccessTokenVersion` to `2` in the manifest of the API app the token
+  was issued for, rather than recording a refused CI token.
+
+### Upgrade notes
+
+- Anything that calls the remote at a written-down `/umbraco/remote/v1`
+  address, rather than through `/.well-known/crombolo-remote`, changes to
+  `/crombolo/remote/v1`. A proxy that blocks `/crombolo/*` to hide the back
+  office now blocks the remote too; move `backOfficePath` to lock the editor
+  down alone.
+- An Entra API app used for the exchange sets `requestedAccessTokenVersion` to
+  `2` in its manifest; until it does, every exchange is refused.
+- Migration 080 `AddExchangeActor` adds `actor_id` and `actor_name` to
+  `device_authorization` and `audit_entry`. It only adds columns.
+
 ## v0.67.0 — 2026-11-16
 
 ### Features

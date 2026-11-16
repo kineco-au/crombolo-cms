@@ -129,6 +129,8 @@
       "type RedirectRule",
       "type RedirectTo",
       "type ReloadedBundle",
+      "REMOTE_API_PATH",
+      "REMOTE_DISCOVERY_PATH",
       "type RequestMember",
       "resendEmail",
       "type ResendOptions",

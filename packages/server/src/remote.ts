@@ -87,7 +87,7 @@ import type { UserPorts } from './user-admin.ts'
 
 export const REMOTE_PROTOCOL_VERSION = '1'
 export { REMOTE_DISCOVERY_PATH }
-export const REMOTE_API_PATH = '/umbraco/remote/v1'
+export const REMOTE_API_PATH = '/crombolo/remote/v1'
 
 /** How long a finished job's file stays downloadable, and its row with it. */
 const JOB_FILE_SECONDS = 60 * 60
@@ -1533,22 +1533,25 @@ export function createRemote(options: RemoteOptions): Remote {
           : new Response(null, { status: 405 })
       }
       if (!pathname.startsWith(`${REMOTE_API_PATH}/`)) return undefined
-      if (!settings.enabled)
-        return problem(404, { code: 'not-enabled', title: 'This site is not a remote' })
+      const notEnabled = () =>
+        problem(404, { code: 'not-enabled', title: 'This site is not a remote' })
       if (pathname === `${REMOTE_API_PATH}/token`) {
+        const people = options.people
+        if (!settings.enabled && !people) return notEnabled()
         if (request.method !== 'POST') return new Response(null, { status: 405 })
         const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
         // One endpoint for both: the token's issuer says whether it is CI's or a person's.
-        const people = options.people
+        // A person's exchange answers with the remote off too (story 365); CI's does not.
         const issuer = people
           ? unverifiedIssuer(
               new URLSearchParams(await request.clone().text()).get('subject_token') ?? '',
             )
           : undefined
-        return people && issuer && (await people.handles(issuer))
-          ? people.exchange(request, url, ip)
-          : ci.exchange(request, url, ip)
+        if (people && issuer && (await people.handles(issuer)))
+          return people.exchange(request, url, ip)
+        return settings.enabled ? ci.exchange(request, url, ip) : notEnabled()
       }
+      if (!settings.enabled) return notEnabled()
       // A CI token is good here and nowhere else; a person's is the back office's own.
       const principal = (await ci.principalOf(request)) ?? (await options.authenticate(request))
       if (!principal)
