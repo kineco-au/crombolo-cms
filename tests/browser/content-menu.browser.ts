@@ -1,6 +1,7 @@
 /**
  * Story 289: the menu under Content, which keeps Content's tab marked across
- * Pages, Structure, Code and Workflows, and the tree beside forms
+ * Pages, Structure and Code (Approvals, shown only once a workflow exists, is
+ * in workflow-section.browser.ts), and the tree beside forms
  * and workflows, with folders.
  */
 import type { Page } from '@playwright/test'
@@ -21,7 +22,6 @@ test('the menu opens each place, with Content marked throughout', async ({ page,
   await goToSection(page, 'Content')
   await settle(page)
   for (const [label, address] of [
-    ['Approvals', /\/section\/workflow/],
     ['Structure', /\/section\/settings\/structure$/],
     ['Code', /\/section\/settings\/code$/],
     ['Pages', /\/section\/content/],
