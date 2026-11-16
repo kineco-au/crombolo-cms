@@ -1,18 +1,18 @@
 {
   "formatVersion": 8,
-  "id": "d3158e30-6314-5100-993c-6aa3e8e17413",
+  "id": "1720061a-0066-5a2c-bb56-5bc89b5fded9",
   "bundleType": "site",
   "label": "Crombolo",
   "createdAt": "1970-01-01T00:00:00.000Z",
   "createdBy": "crombolo site build",
-  "integrity": "sha256-46b5ba34acd45fd84cf95adf594e11dce74826a3c3f842a8610f61585792fdfa",
+  "integrity": "sha256-b90cbcc30ad2d21b0c4076af3b7cc54502fb033d8902fe053ad3de7f211214aa",
   "snapshot": "drafts",
   "provenance": {
     "siteName": "Crombolo",
     "schemaVersion": "1.0.0",
     "schemaRevision": "0",
     "schemaHash": "a3c5f471b0e1a2339488ed167840e8c32fadc041ff67d39f1d74a4840c28929a",
-    "cmsVersion": "0.68.0"
+    "cmsVersion": "0.69.0"
   },
   "selector": {
     "roots": [

@@ -990,6 +990,14 @@ const DECLARED = [
       'The largest push or media file a client may upload, in gigabytes. Every other request keeps the usual body limit.',
   },
   {
+    env: 'CROMBOLO_REMOTE_AGENTS_GUIDE',
+    kind: 'string',
+    default: '',
+    section: 'Remote',
+    description:
+      'An https address of a guide for coding agents working on a site from this remote, which discovery names and `crombolo pull` writes into AGENTS.md.',
+  },
+  {
     env: 'CROMBOLO_REMOTE_OIDC_ISSUERS',
     kind: 'string',
     default: '',

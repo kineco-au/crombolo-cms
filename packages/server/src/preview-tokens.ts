@@ -25,13 +25,13 @@ export function previewSigningSecret(db: Db): Promise<string> {
   return ensureKeyValue(db, SIGNING_KEY, () => crypto.randomUUID())
 }
 
-function hmac(secret: string, payload: string): string {
+export function hmac(secret: string, payload: string): string {
   const hasher = new Bun.CryptoHasher('sha256', secret)
   hasher.update(payload)
   return hasher.digest('base64url')
 }
 
-function sameSignature(a: string, b: string): boolean {
+export function sameSignature(a: string, b: string): boolean {
   if (a.length !== b.length) return false
   let difference = 0
   for (let i = 0; i < a.length; i++) difference |= a.charCodeAt(i) ^ b.charCodeAt(i)

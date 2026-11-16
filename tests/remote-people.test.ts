@@ -13,7 +13,7 @@ import {
   detailInContext,
   ExternalLoginRepository,
   externalLoginProvider,
-  RemoteExchangeIds,
+  SingleUseTokens,
   UserRepository,
 } from '@crombolo/data'
 import {
@@ -352,12 +352,12 @@ describe('where the remote is', () => {
 describe('spending one-time ids', () => {
   test('an id is spent once, and forgotten once its token expires', async () => {
     const { h } = await site()
-    const ids = new RemoteExchangeIds(h.server.db)
+    const ids = new SingleUseTokens(h.server.db)
     const soon = new Date(Date.now() + 60_000)
-    expect(await ids.spend('https://i', 'a', soon)).toBe(true)
-    expect(await ids.spend('https://i', 'a', soon)).toBe(false)
-    expect(await ids.spend('https://other', 'a', soon)).toBe(true)
-    expect(await ids.spend('https://i', 'a', soon, new Date(Date.now() + 120_000))).toBe(true)
+    expect(await ids.use('https://i', 'a', soon)).toBe(true)
+    expect(await ids.use('https://i', 'a', soon)).toBe(false)
+    expect(await ids.use('https://other', 'a', soon)).toBe(true)
+    expect(await ids.use('https://i', 'a', soon, new Date(Date.now() + 120_000))).toBe(true)
   })
 })
 

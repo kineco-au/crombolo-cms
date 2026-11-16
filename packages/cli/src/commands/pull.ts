@@ -1,4 +1,4 @@
-import { Args } from '@oclif/core'
+import { Args, Flags } from '@oclif/core'
 import { BaseCommand } from '../base.ts'
 import { refuseNamed } from '../profiles/choose.ts'
 import { serveSite } from '../support/serve.ts'
@@ -18,7 +18,14 @@ export default class Pull extends BaseCommand {
   static override args = {
     remote: Args.string({ description: 'gone: --from names the site', hidden: true }),
   }
-  static override flags = copyFlags
+  static override flags = {
+    ...copyFlags,
+    agents: Flags.boolean({
+      summary: "in an empty folder: write AGENTS.md, with crombolo's guide and the remote's",
+      default: true,
+      allowNo: true,
+    }),
+  }
   static override spec = {
     ...copySpec,
     outputFields: [

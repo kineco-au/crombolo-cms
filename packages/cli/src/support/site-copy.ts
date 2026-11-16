@@ -27,7 +27,7 @@ import {
   siteOf,
 } from '../profiles/choose.ts'
 import { profileNamed } from '../profiles/profiles-file.ts'
-import { bundleFormatProblem, type Job } from '../remote/client.ts'
+import { bundleFormatProblem, type Discovery, type Job } from '../remote/client.ts'
 import {
   exportForTransfer,
   fetchReferencedMedia,
@@ -39,6 +39,15 @@ import {
   referencedBlobs,
   transferPassphrase,
 } from '../remote/transfer.ts'
+import {
+  fetchGuide,
+  readAgentsFile,
+  readSiteProfiles,
+  withCmsBlock,
+  withRemoteBlock,
+  writeAgentsFile,
+  writeSiteProfiles,
+} from './agents.ts'
 import {
   counted,
   describeBytes,
@@ -81,6 +90,8 @@ export interface CopyFlags {
   'no-browser': boolean
   'backup-taken': boolean
   timeout: number
+  /** A pull into an empty folder writes AGENTS.md (story 370); `--no-agents` does not. */
+  agents?: boolean
 }
 
 /** The flags `push` and `pull` share: the same copy, with mirrored defaults. */
@@ -491,6 +502,7 @@ export async function copySite(
       })
       result.started = true
       result.runId = started.runId
+      if (flags.agents !== false) await guidesAfterPull(io, into.dir, from, source?.discovery)
     } else {
       const config = await deps.configOf(into.dir)
       const { summary } = await ops.siteReplaceCheck(config, {
@@ -574,4 +586,36 @@ export async function copySite(
   } finally {
     if (work) await rm(work, { recursive: true, force: true })
   }
+}
+
+/**
+ * A new site's AGENTS.md (story 370): crombolo's guide, and the remote's when
+ * its discovery names one. A guide that can't be had is a line, never a failed
+ * pull. The profile it came from is recorded, so `agents refresh` finds it again.
+ */
+export async function guidesAfterPull(
+  io: Io,
+  dir: string,
+  from: CopySide,
+  discovery: Discovery | undefined,
+): Promise<void> {
+  let text = withCmsBlock(readAgentsFile(dir))
+  if (from.kind === 'hosted') {
+    const origin = new URL(from.url).origin
+    const guide = discovery?.agents?.guide
+    if (guide) {
+      const fetched = await fetchGuide(guide)
+      if ('text' in fetched) {
+        text = withRemoteBlock(text, origin, fetched.text)
+        io.say(`  agents   AGENTS.md has ${origin}'s guide for agents`)
+      } else io.say(`  agents   ${origin}'s guide for agents was left out: ${fetched.problem}`)
+    }
+    if (from.profile)
+      writeSiteProfiles(dir, [...readSiteProfiles(dir), { name: from.name, origin }])
+    else if (guide)
+      io.say(
+        `  agents   no profile names ${origin}: \`crombolo agents link <profile>\` keeps its guide through \`agents refresh\``,
+      )
+  }
+  writeAgentsFile(dir, text)
 }

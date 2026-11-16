@@ -96,6 +96,14 @@ it holds wherever a publish starts. Who is acting decides how it applies:
   someone who may not skip: a covered page is refused with the same reason.
   `--skip-approval` goes ahead anyway, and the audit log records the publish
   with *Approval skipped from the command line*.
+- **A sign-in through a provider** (a token exchanged at the remote, story 364)
+  is gated as the command line is, without its way round: it never skips,
+  whatever `publishers-may-skip` says and whatever its person may do, and
+  `on-edit` holds it even when its person is an administrator. It can send a
+  page for approval but never decide one, a rollback through the remote refuses
+  its `skipApproval`, and a whole-site push from it is refused while any
+  workflow exists, since a push replaces pages without passing this gate
+  (story 367). A person who means to skip does it with their own sign-in.
 - **The site itself** — the schedule, an approved request, a form's workflow —
   acts on what was already decided and is not gated.
 

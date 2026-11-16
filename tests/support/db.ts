@@ -128,6 +128,10 @@ export async function undoMediaMemberUploads(db: Db): Promise<void> {
   // 059, forms in the Library (story 239), 058, bundle schema picks (story
   // 226), and 057, site settings types (story 058): columns on tables that stay.
   // 072, what each extension did (story 327): a table of its own.
+  // 081, single-use tokens (story 368): 079's table, renamed; it goes with 079's undo.
+  await db.exec('DROP INDEX IF EXISTS ux_single_use_token')
+  await db.exec('DROP TABLE IF EXISTS single_use_token')
+  await db.exec("DELETE FROM migration_history WHERE name = 'RenameSingleUseToken'")
   // 080, the actor an exchanged token names (story 366): columns on tables that stay.
   await db.exec('ALTER TABLE audit_entry DROP COLUMN actor_name')
   await db.exec('ALTER TABLE audit_entry DROP COLUMN actor_id')

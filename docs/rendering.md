@@ -1387,6 +1387,27 @@ the target instead, so the preview frame stays where it is (story 206).
 A preview, like a member's page, is sent `private, no-store`, so nothing in
 front of the site keeps it ([`operations.md`](operations.md), "Behind a CDN").
 
+**A preview link** (story 368) opens one page's draft in a browser with no
+back-office sign-in, for a tool with a browser of its own:
+
+- **Asking:** `POST <backoffice>/crombolo/api/preview-link` with
+  `{ document, culture? }` answers `{ url, expiresAt }`. Anyone signed in who
+  may read the document may ask: the back office, a command-line token, or a
+  sign-in through a provider. It is `403` otherwise, and each link asked for is
+  audited as the person.
+- **The link** is the page's address, or `/<key>` for a page never published,
+  with `?crombolo-preview=<token>`. The token is signed with a key of its own,
+  derived from the preview key, and names the person, the page, the culture and
+  a single-use id. It waits five minutes for its first use.
+- **First use:** the site uses the id once (`single_use_token`), sets
+  `crombolo_preview_link` (httpOnly, `SameSite=Lax`, `Secure` with secure
+  cookies, 30 minutes) and answers `303` to the same address without the token,
+  so it never stays in the address bar, the history or a `Referer`. A token
+  used before, expired or forged gets the same `303` and no cookie.
+- **The cookie** renders that page's draft as the person, with their read rights
+  checked again on every request, and published content everywhere else.
+  Locking them out, disabling them or changing their password ends it.
+
 A headless site previews in its app instead: with an app preview address set,
 the Preview button opens the app with a preview token, and the Delivery API
 answers it from drafts ([`delivery-api.md`](delivery-api.md), "Preview").

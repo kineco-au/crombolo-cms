@@ -28,6 +28,14 @@ new site also gets a Content Page type, its template and a welcome page
 once, as what to commit, and lists the commands to run next (story 252). A
 SQLite database is created the first time a command needs one.
 
+It also writes `AGENTS.md`, crombolo's guide for a coding agent working on the
+site: the folders, schema as files, the checks before a push and where the
+documentation is (story 370). Only the part between `<!-- crombolo -->` and
+`<!-- /crombolo -->` is crombolo's, and a file already there keeps the rest.
+A pull into an empty folder adds the remote's own guide when its discovery
+names one, and `crombolo agents refresh` brings both up to date later;
+`--no-agents` writes none.
+
 ## 2. The types
 
 First the data types: a short text, and a block list that offers a

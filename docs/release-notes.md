@@ -6,6 +6,37 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.69.0 — 2026-11-16
+
+### Features
+
+- **A site arrives with a guide for coding agents (370).** `crombolo init` and a pull
+  into an empty folder write `AGENTS.md`, with crombolo's guide in a block of its own
+  and every other line left as the developer wrote it; `--no-agents` writes none. A
+  remote's discovery can name a guide of its own (`agents.guide`, which the CMS sets
+  from `remote.agentsGuide` / `CROMBOLO_REMOTE_AGENTS_GUIDE`), which a pull adds as
+  its own block. `crombolo agents refresh` brings both up to date, and `agents link`
+  and `unlink` choose the profiles whose guides it fetches.
+
+- **A preview link for a rendered page (368).** `POST <backoffice>/crombolo/api/preview-link`
+  answers a link that opens one page's draft in any browser, without a back-office
+  sign-in in it: used once within five minutes, swapped for an httpOnly cookie that
+  shows that page's draft for 30 minutes, as its person, and published content
+  everywhere else. Each link is audited.
+
+### Changes
+
+- **A tool acting for a person never skips a workflow (367).** A sign-in through a
+  provider is gated as the command line is, even when its person may skip or is an
+  administrator: a covered page is sent for approval, not published, `on-edit` holds,
+  a rollback can't skip approval, and a whole-site push is refused while any workflow
+  exists. The person's own sign-in is unchanged.
+
+### Upgrade notes
+
+- Migration 081 `RenameSingleUseToken` renames `remote_exchange_id` to
+  `single_use_token`, which the remote's exchange and preview links share.
+
 ## v0.68.0 — 2026-11-16
 
 ### Features

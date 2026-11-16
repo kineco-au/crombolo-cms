@@ -85,6 +85,12 @@ export function createUndoRoutes(options: UndoRouteOptions) {
     const skipApproval = asked.skipApproval === true
     if (skipApproval && !principal.isAdmin)
       return problem(403, { code: 'forbidden', title: 'Only an administrator can skip approval' })
+    if (skipApproval && principal.viaExchange)
+      return problem(403, {
+        code: 'forbidden',
+        title: 'A sign-in through a provider cannot skip approval',
+        detail: 'Sign in with your own command-line sign-in to skip it.',
+      })
     const version = await pageVersion(db, id)
     if (!version) return notHere('There is no such version')
     const actor = actorOf(principal, request, skipApproval)

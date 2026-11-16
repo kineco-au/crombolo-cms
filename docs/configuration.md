@@ -240,6 +240,7 @@ rather than the running server. Secret ones are never printed or logged.
 | `CROMBOLO_REMOTE_PROTECTED` | `true` / `false` | `true` | A push here needs the protected-push permission. |
 | `CROMBOLO_REMOTE_APPROVALS` | `true` / `false` | `false` | A push to a protected site waits for someone else to approve it. Needs `CROMBOLO_SECRET_KEY`. |
 | `CROMBOLO_REMOTE_MAX_UPLOAD_GB` | number | `50` | The largest push or media file a client may upload, in gigabytes. Every other request keeps the usual body limit. |
+| `CROMBOLO_REMOTE_AGENTS_GUIDE` | string | `` | An https address of a guide for coding agents working on a site from this remote, which discovery names and `crombolo pull` writes into AGENTS.md. |
 | `CROMBOLO_REMOTE_OIDC_ISSUERS` | string | `` | A self-managed GitLab's address, or several separated by commas, whose CI jobs may sign in beside GitHub Actions and gitlab.com. Each job still needs a trust rule in Settings. |
 
 ### Logging

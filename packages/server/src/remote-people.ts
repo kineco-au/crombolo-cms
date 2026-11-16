@@ -12,7 +12,7 @@ import {
   type Db,
   ExternalLoginRepository,
   externalLoginProvider,
-  RemoteExchangeIds,
+  SingleUseTokens,
 } from '@crombolo/data'
 import { type JWTPayload, jwtVerify } from 'jose'
 import { type ExternalAccount, syncedGroups } from './external-sign-in.ts'
@@ -133,7 +133,7 @@ export function createPeopleExchange(options: {
   onExchange(outcome: PeopleExchangeOutcome, request: Request): Promise<void>
 }): PeopleExchange {
   const logins = new ExternalLoginRepository(options.db)
-  const ids = new RemoteExchangeIds(options.db)
+  const ids = new SingleUseTokens(options.db)
   const keysOf = issuerKeys()
   const limiter = new AttemptLimiter({ max: 10, maxAll: 200, windowMs: 15 * 60_000 })
 
@@ -293,7 +293,7 @@ export function createPeopleExchange(options: {
       // Entra calls its one-time id `uti`.
       const tokenId = text(claims, 'jti') ?? text(claims, 'uti')
       if (!tokenId) return refuse(request, ip, 'the token has no one-time id', provider)
-      if (!(await ids.spend(issuer, tokenId, new Date(exp * 1000))))
+      if (!(await ids.use(issuer, tokenId, new Date(exp * 1000))))
         return refuse(request, ip, 'the token was already used', provider)
       const actor = actorOf(claims, provider.remoteExchange?.actors)
       if (actor === 'malformed')

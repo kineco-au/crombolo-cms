@@ -32,6 +32,7 @@ import {
   type RemoteJob,
   RemoteJobRepository,
   RemoteTrustRepository,
+  readWorkflows,
   TransferRunRepository,
   type TrustRule,
 } from '@crombolo/data'
@@ -264,6 +265,8 @@ export function createRemote(options: RemoteOptions): Remote {
       ...(options.restart && atLeast('all') ? ['restart'] : []),
     ],
     environments: [environment()],
+    // Story 370: a guide for agents working on a site from here.
+    ...(settings.agentsGuide ? { agents: { guide: settings.agentsGuide } } : {}),
   })
 
   /** Where a CI principal's run was, for its audit rows: repository, ref and run. */
@@ -1225,6 +1228,17 @@ export function createRemote(options: RemoteOptions): Remote {
         title: 'This environment is protected',
         detail: 'Pushing here replaces something people rely on, and needs its own permission.',
       })
+    // Story 367: a push replaces pages without the page gate, so a tool never pushes over a workflow.
+    if (principal.viaExchange) {
+      const workflows = await readWorkflows(db)
+      if (workflows.length > 0)
+        return problem(403, {
+          code: 'workflow-covers-pages',
+          title:
+            'Pages here need approval, so a sign-in through a provider cannot push the whole site',
+          detail: `Workflows: ${workflows.map((w) => w.workflow.name).join(', ')}. Push with your own command-line sign-in, or publish the pages one by one.`,
+        })
+    }
     const declared = request.headers.get('crombolo-sha256')?.toLowerCase()
     const passphrase = request.headers.get('crombolo-passphrase')
     const refused = passphraseProblem(passphrase)

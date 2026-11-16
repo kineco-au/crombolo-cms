@@ -38,8 +38,9 @@ export const CLI_PAGES: readonly CliPageSpec[] = [
   {
     slug: 'sites',
     title: 'Sites',
-    summary: 'Create a site, start it, check on it, and describe the command line to a script.',
-    topics: ['init', 'start', 'status', 'health', 'generate', 'export', 'schema'],
+    summary:
+      'Create a site, start it, check on it, keep its guide for coding agents, and describe the command line to a script.',
+    topics: ['init', 'agents', 'start', 'status', 'health', 'generate', 'export', 'schema'],
   },
   {
     slug: 'types',

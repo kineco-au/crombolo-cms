@@ -78,6 +78,7 @@ import { searchRemovalsMigration } from './search-removals.ts'
 import { serverRoleMigration } from './server-role.ts'
 import { sessionViewAsMigration } from './session-view-as.ts'
 import { sinceVersionMigration } from './since-version.ts'
+import { singleUseTokenMigration } from './single-use-token.ts'
 import { siteSearchMigration } from './site-search.ts'
 import { siteSettingsTypesMigration } from './site-settings-types.ts'
 import { transferAnswersMigration } from './transfer-answers.ts'
@@ -175,4 +176,5 @@ export const cromboloPlan = new MigrationPlan([
   cliTokensMigration,
   remoteExchangeMigration,
   exchangeActorMigration,
+  singleUseTokenMigration,
 ])

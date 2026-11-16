@@ -31,6 +31,9 @@ import {
 /** Every command that needs no sign-in, whatever the site says: widening it is a decision. */
 const NONE = [
   'admin:reset-password',
+  'agents:link',
+  'agents:refresh',
+  'agents:unlink',
   'assets:list',
   'assets:new',
   'bundle:digest',

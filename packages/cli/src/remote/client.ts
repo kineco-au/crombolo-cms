@@ -40,6 +40,8 @@ export interface Discovery {
   environments: Array<{ id: string; name: string; protected: boolean }>
   /** The bundle formats it reads, oldest and newest; absent before story 306. */
   bundleFormats?: [number, number]
+  /** A guide for agents working on a site from this remote (story 370). */
+  agents?: { guide?: string }
 }
 
 /**

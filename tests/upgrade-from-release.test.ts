@@ -14,7 +14,7 @@ import {
   readLedger,
   readState,
   STATE_CONTENT_APPLIED,
-  STATE_EXCHANGE_ACTOR,
+  STATE_SINGLE_USE_TOKEN,
   seedIdentity,
 } from '@crombolo/data'
 import { summariseUpgrades, VERSION } from '@crombolo/server'
@@ -148,10 +148,11 @@ describe('upgrading from the previous release', () => {
       'AddCliTokens',
       'AddRemoteExchange',
       'AddExchangeActor',
+      'RenameSingleUseToken',
     ])
-    expect(await readState(db)).toBe(STATE_EXCHANGE_ACTOR)
+    expect(await readState(db)).toBe(STATE_SINGLE_USE_TOKEN)
     const summary = summariseUpgrades(await readLedger(db), VERSION)
-    expect(summary.lastUpgrade).toMatchObject({ release: '0.68.0', steps: 31 })
+    expect(summary.lastUpgrade).toMatchObject({ release: '0.69.0', steps: 32 })
   })
 
   test('the Changes dashboard reports the version, the install and the last upgrade', async () => {

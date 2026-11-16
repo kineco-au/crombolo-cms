@@ -107,6 +107,7 @@ import {
   readLedger,
   readReport,
   readUrlOptions,
+  SingleUseTokens,
   searchProvidersOf,
   TransferRunRepository,
   UserRepository,
@@ -240,6 +241,18 @@ import { noNodesPage } from './no-nodes.ts'
 import { NotImplementedLog } from './not-implemented.ts'
 import { overview, readOverviewQuery } from './overview.ts'
 import { createDeps, PREVIEW_COOKIE, resolveUserLinkSender } from './ports.ts'
+import {
+  PREVIEW_LINK_COOKIE,
+  PREVIEW_LINK_COOKIE_SECONDS,
+  PREVIEW_LINK_ISSUER,
+  PREVIEW_LINK_PARAM,
+  PREVIEW_LINK_SECONDS,
+  previewLinkCookie,
+  readPreviewCookie,
+  readPreviewLink,
+  signPreviewCookie,
+  signPreviewLink,
+} from './preview-links.ts'
 import {
   previewSigningSecret,
   previewUser,
@@ -1702,6 +1715,7 @@ export async function createServer(
   const contentQueryPath = `${paths.pluginPath}/api/content-query`
   const viewAsPath = `${paths.pluginPath}/api/view-as`
   const cliTokensPath = `${paths.pluginPath}/api/cli-tokens`
+  const previewLinkPath = `${paths.pluginPath}/api/preview-link`
   const selfAudited = [
     `${paths.pluginPath}/api/email/`,
     `${paths.pluginPath}/api/schema-transfer/`,
@@ -1932,6 +1946,109 @@ export async function createServer(
     })
   }
 
+  /** Story 368: a preview link for a page its person may read, audited as them. */
+  async function askForPreviewLink(request: Request): Promise<Response> {
+    if (request.method !== 'POST') return new Response(null, { status: 405 })
+    const principal = await authenticate(request)
+    if (!principal) return new Response('Unauthorized', { status: 401 })
+    const asked = (await request.json().catch(() => ({}))) as {
+      document?: unknown
+      culture?: unknown
+    }
+    const document = typeof asked.document === 'string' ? asked.document : ''
+    const culture = typeof asked.culture === 'string' && asked.culture ? asked.culture : null
+    if (!UUID_PATTERN.test(document))
+      return Response.json({ title: 'Name the page by its key' }, { status: 400 })
+    const standing = await previewUser(db, { key: principal.id })
+    if (!standing || !(await canReadDocument(principal, document, nodeLookup)))
+      return Response.json({ title: 'You may not read this page' }, { status: 403 })
+    const key = normaliseUuid(document)
+    const page = await (await draftCache()).byKey(key, culture)
+    const published = await cache.byKey(key, culture)
+    const expires = Date.now() + PREVIEW_LINK_SECONDS * 1000
+    const token = signPreviewLink(previewSecret, {
+      user: standing.id,
+      stamp: standing.stamp,
+      document: key,
+      culture,
+      expires,
+      id: crypto.randomUUID(),
+    })
+    const url = new URL(published?.url ?? `/${key}`, publicOrigin(request, config))
+    url.searchParams.set(PREVIEW_LINK_PARAM, token)
+    await recordAudit(db, {
+      category: 'content',
+      action: 'PreviewLink',
+      source: 'request',
+      userKey: principal.id,
+      userName: principal.name,
+      entityType: 'Document',
+      entityKey: key,
+      entityName: page?.name ?? published?.name ?? null,
+      detail: culture ? `A preview link, for ${culture}` : 'A preview link',
+      ...clientAddress(request),
+    })
+    return Response.json(
+      { url: url.toString(), expiresAt: new Date(expires).toISOString() },
+      { headers: { 'cache-control': PRIVATE_NO_STORE } },
+    )
+  }
+
+  /**
+   * A link's first use (story 368): its token swapped for the cookie, once, and
+   * the browser sent to the same address without it. A token that is spent,
+   * expired or forged is dropped from the address the same way, with no cookie.
+   */
+  async function usePreviewLink(request: Request, url: URL): Promise<Response | undefined> {
+    if (request.method !== 'GET' && request.method !== 'HEAD') return undefined
+    const token = url.searchParams.get(PREVIEW_LINK_PARAM)
+    if (token === null) return undefined
+    const clean = new URL(url)
+    clean.searchParams.delete(PREVIEW_LINK_PARAM)
+    const headers = new Headers({
+      location: `${clean.pathname}${clean.search}`,
+      'cache-control': PRIVATE_NO_STORE,
+      'referrer-policy': 'no-referrer',
+    })
+    const claims = readPreviewLink(previewSecret, token)
+    const standing = claims ? await previewUser(db, { id: claims.user }) : undefined
+    if (
+      claims &&
+      standing?.stamp === claims.stamp &&
+      (await new SingleUseTokens(db).use(PREVIEW_LINK_ISSUER, claims.id, new Date(claims.expires)))
+    )
+      headers.set(
+        'set-cookie',
+        previewLinkCookie(
+          signPreviewCookie(previewSecret, {
+            user: claims.user,
+            stamp: claims.stamp,
+            document: claims.document,
+            culture: claims.culture,
+            expires: Date.now() + PREVIEW_LINK_COOKIE_SECONDS * 1000,
+          }),
+          config.secureCookies,
+        ),
+      )
+    return new Response(null, { status: 303, headers })
+  }
+
+  /** Who a used link previews as, and which page: undefined once they may not, or it has run out. */
+  async function linkedPreview(request: Request) {
+    const value = readCookie(request, PREVIEW_LINK_COOKIE)
+    const claims = value ? readPreviewCookie(previewSecret, value) : undefined
+    if (!claims) return undefined
+    const standing = await previewUser(db, { id: claims.user })
+    if (standing?.stamp !== claims.stamp) return undefined
+    const identity = await auth.identityOf(claims.user)
+    if (!identity) return undefined
+    return {
+      principal: await principalFrom(identity),
+      document: claims.document,
+      culture: claims.culture,
+    }
+  }
+
   /** What a chain is carrying through one request (story 210). */
   interface ChainRun {
     original: URL
@@ -1954,6 +2071,8 @@ export async function createServer(
 
   /** A site request: the middleware chain around crombolo's own handling, when the site has one. */
   async function siteRequest(request: Request, url: URL): Promise<Response> {
+    const linked = await usePreviewLink(request, url)
+    if (linked) return linked
     if (!anyMiddleware()) return siteFiles(request)
     const run: ChainRun = {
       original: url,
@@ -2727,6 +2846,9 @@ export async function createServer(
         clientAddress(request),
       )
     }
+
+    // Story 368: a link that opens one page's draft in any browser.
+    if (pathname === previewLinkPath) return askForPreviewLink(request)
 
     // Story 314: an administrator's session seen as user groups, and back.
     if (pathname === viewAsPath) {
@@ -3738,18 +3860,22 @@ export async function createServer(
    * draft of the page it resolves to.
    */
   async function renderPreview(request: Request, pathname: string, host: string) {
-    if (!readCookie(request, PREVIEW_COOKIE)) return undefined
-    const principal = await authenticate(request)
+    const editor = readCookie(request, PREVIEW_COOKIE) ? await authenticate(request) : undefined
+    // Story 368: else a used preview link, for its one page.
+    const link = editor ? undefined : await linkedPreview(request)
+    const principal = editor ?? link?.principal
     if (!principal) return undefined
     const byKey = /^\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i.exec(
       pathname,
     )
     const key = byKey?.[1] ?? (await cache.resolve(host, pathname))?.content.key
     if (!key) return undefined
-    const draft = await draftModel(key, new URL(request.url).searchParams.get('culture'), principal)
+    if (link && normaliseUuid(key) !== normaliseUuid(link.document)) return undefined
+    const culture = link ? link.culture : new URL(request.url).searchParams.get('culture')
+    const draft = await draftModel(key, culture, principal)
     if (!draft) return undefined
     // The previewing editor is the visitor: signed out, or a member they chose (story 264).
-    const member = await previewMember(request, principal)
+    const member = link ? undefined : await previewMember(request, principal)
     return renderer.renderModel(draft.content, draft.culture, {
       ...(await pageRequest(request)),
       member,

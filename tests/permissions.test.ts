@@ -195,6 +195,7 @@ describe('the media verbs (story 088)', () => {
       'AddCliTokens',
       'AddRemoteExchange',
       'AddExchangeActor',
+      'RenameSingleUseToken',
     ])
     const held = async (key: string) =>
       (

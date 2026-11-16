@@ -331,12 +331,20 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
   const groupAliases = async (principal: Principal): Promise<Set<string>> =>
     new Set((await groups.byKeys(principal.groupKeys)).map((g) => g.alias))
 
+  /**
+   * A tool acting for a person through an exchanged token (story 367) is gated
+   * as the command line is: it never stands in for a person deciding to skip.
+   */
+  const unattended = (principal: Principal | undefined): boolean =>
+    principal === undefined || principal.viaExchange !== undefined
+
   /** A local operator (no principal) holds no publishing rights of their own. */
   const mayPublish = (
     principal: Principal | undefined,
     facts: PageFacts,
     action: ApprovalAction,
   ): boolean =>
+    !unattended(principal) &&
     principal !== undefined &&
     (principal.isAdmin ||
       permissionsForPath(principal.groups, facts.chain).has(
@@ -858,7 +866,7 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
 
     async beforeSave(principal, key) {
       const request = await requests().openFor(key)
-      if (!request || principal?.isAdmin) return undefined
+      if (!request || (principal?.isAdmin && !unattended(principal))) return undefined
       const edit = request.workflow.onEdit
       if (request.state === 'scheduled') {
         if (edit === 'lock' || edit === 'lock-after-first-approval')
@@ -884,7 +892,10 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
           ?.head ?? null
       if (head === request.eventId) return
       // Administrators may always edit; the request goes on, on what they saved.
-      if (!principal?.isAdmin && request.workflow.onEdit === 'withdraw') {
+      if (
+        !(principal?.isAdmin && !unattended(principal)) &&
+        request.workflow.onEdit === 'withdraw'
+      ) {
         await repo.setState(request.id, 'withdrawn')
         await repo.record(request.id, {
           kind: 'withdrawn',

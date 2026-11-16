@@ -17,6 +17,8 @@ export interface ContentPrincipal {
   languages: readonly string[]
   startNodes: { document: StartNodes; media: StartNodes }
   groups: readonly GroupGrant[]
+  /** Signed in by a token exchanged through a provider (story 364): never skips a workflow (367). */
+  viaExchange?: { provider: string }
 }
 
 /** Where a write came from, for the audit log. */

@@ -681,12 +681,6 @@ export interface CoreTables {
     rule_key: string
     token_hash: string
   }
-  remote_exchange_id: {
-    expires_at: Timestamp
-    id: Generated<number>
-    issuer: string
-    token_id: string
-  }
   remote_job: {
     create_date: Timestamp
     decided_at: Timestamp | null
@@ -764,6 +758,12 @@ export interface CoreTables {
     served_at: Timestamp | null
     served_checkpoint: BigInteger | null
     version: string | null
+  }
+  single_use_token: {
+    expires_at: Timestamp
+    id: Generated<number>
+    issuer: string
+    token_id: string
   }
   site_search_document: {
     culture: string

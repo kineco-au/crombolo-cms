@@ -175,6 +175,20 @@ export async function runConformance(options: ConformanceOptions): Promise<Confo
     })
   }
 
+  // Optional: a guide for agents (story 370), named by discovery as an https address.
+  const agents = state.discovery?.agents as Json | undefined
+  if (agents !== undefined)
+    await check("agents: discovery's guide is an https address", async () => {
+      const guide = agents?.guide
+      assert(typeof guide === 'string', 'agents.guide is missing')
+      const url = new URL(String(guide))
+      const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
+      assert(
+        url.protocol === 'https:' || (url.protocol === 'http:' && local),
+        `agents.guide is ${url.protocol} rather than https`,
+      )
+    })
+
   // Optional: a person signed in through a provider (story 364). Offered by
   // discovery alone, with the same endpoint and grant as CI's.
   const people = (state.discovery?.auth as Json | undefined)?.people as Json | undefined

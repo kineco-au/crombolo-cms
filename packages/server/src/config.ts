@@ -91,6 +91,25 @@ export interface RemoteSettings {
    * 160): a self-managed GitLab, as `CROMBOLO_REMOTE_OIDC_ISSUERS`, comma separated.
    */
   oidcIssuers?: string[]
+  /**
+   * A guide for coding agents working on a site from this remote (story 370):
+   * an https address that discovery names as `agents.guide`.
+   */
+  agentsGuide?: string
+}
+
+/** Why an agents' guide address can't be advertised, or undefined when it can. */
+export function agentsGuideProblem(guide: string): string | undefined {
+  let url: URL
+  try {
+    url = new URL(guide)
+  } catch {
+    return `The remote's agentsGuide, "${guide}", is not an address.`
+  }
+  const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
+  return url.protocol === 'https:' || (url.protocol === 'http:' && local)
+    ? undefined
+    : `The remote's agentsGuide, ${guide}, is not https: a guide is fetched only over https.`
 }
 
 export type ContentMode = 'development' | 'production'
@@ -1053,6 +1072,7 @@ export function loadConfig(
         .split(',')
         .map((issuer) => issuer.trim())
         .filter(Boolean),
+      agentsGuide: setting('CROMBOLO_REMOTE_AGENTS_GUIDE') || undefined,
     },
     redirects: [],
     trackRedirects: setting('CROMBOLO_TRACK_REDIRECTS') !== 'false',
@@ -1157,6 +1177,10 @@ export function loadConfig(
     merged.remote.access = overrides.remote.enabled ? 'all' : 'off'
   merged.remote.access ??= merged.remote.enabled ? 'all' : 'off'
   merged.remote.enabled = merged.remote.access !== 'off'
+  if (merged.remote.agentsGuide) {
+    const problem = agentsGuideProblem(merged.remote.agentsGuide)
+    if (problem) throw new Error(problem)
+  }
   merged.errors = {
     showDetails:
       overrides.errors?.showDetails ??
@@ -1290,7 +1314,7 @@ export function describeDatabase(
   }
 }
 
-export const VERSION = '0.68.0'
+export const VERSION = '0.69.0'
 
 /** A whole number of seconds from the environment; undefined when unset or not one. */
 /** A positive number from a setting, else the default. */

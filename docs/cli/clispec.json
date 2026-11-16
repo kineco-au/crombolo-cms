@@ -47,6 +47,81 @@
       "errors": ["usage", "internal", "not_found"]
     },
     {
+      "name": "agents link",
+      "description": "name a profile this site came from, so `agents refresh` fetches its remote's guide",
+      "effects": "idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "profiles",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "profile",
+          "type": "string",
+          "required": true,
+          "description": "a hosted profile"
+        }
+      ],
+      "errors": ["usage", "internal", "refused", "not_found"]
+    },
+    {
+      "name": "agents refresh",
+      "description": "bring AGENTS.md up to date: crombolo's guide, and the guide of each remote this site names",
+      "effects": "idempotent",
+      "cardinality": "bounded",
+      "output_fields": [
+        {
+          "name": "changed",
+          "type": "boolean"
+        },
+        {
+          "name": "remotes",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "--dry-run",
+          "type": "boolean",
+          "description": "say what would change, and write nothing"
+        }
+      ],
+      "errors": ["usage", "internal", "refused"]
+    },
+    {
+      "name": "agents unlink",
+      "description": "stop naming a profile, and take its remote's guide out of AGENTS.md",
+      "effects": "idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "profiles",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "profile",
+          "type": "string",
+          "required": true,
+          "description": "a profile the site names"
+        }
+      ],
+      "errors": ["usage", "internal", "refused", "not_found"]
+    },
+    {
       "name": "api-client rotate",
       "description": "issue a new secret for the API client, and print it once",
       "effects": "non_idempotent",
@@ -5641,6 +5716,11 @@
           "description": "add a Next.js front end in web/, whatever the template"
         },
         {
+          "name": "--agents",
+          "type": "boolean",
+          "description": "write crombolo's guide for coding agents into AGENTS.md"
+        },
+        {
           "name": "--postgres",
           "type": "boolean",
           "description": "configure Postgres rather than SQLite"
@@ -8869,6 +8949,11 @@
           "name": "--backup-taken",
           "type": "boolean",
           "description": "a backup was taken another way: Postgres needs this, or CROMBOLO_PG_DUMP"
+        },
+        {
+          "name": "--agents",
+          "type": "boolean",
+          "description": "in an empty folder: write AGENTS.md, with crombolo's guide and the remote's"
         }
       ],
       "errors": [

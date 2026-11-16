@@ -3,14 +3,18 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Flags } from '@oclif/core'
 import { BaseCommand } from '../base.ts'
+import { AGENTS_FILE, readAgentsFile, withCmsBlock, writeAgentsFile } from '../support/agents.ts'
 import { cwd } from '../support/site.ts'
 import { DEFAULT_SITE_NAME, findTemplate, listTemplates, scaffoldFiles } from '../templates.ts'
 
 /** What a plain `init` scaffolds: a Content Page type, its template and a welcome page (story 341). */
 export const DEFAULT_TEMPLATE = 'basic'
 
-/** What may already be in a folder `init` scaffolds into: a fresh repository, and macOS's folder settings. */
-const IGNORED = new Set(['.git', '.DS_Store'])
+/**
+ * What may already be in a folder `init` scaffolds into: a fresh repository,
+ * macOS's folder settings, and a guide for agents, which keeps its own lines (story 370).
+ */
+const IGNORED = new Set(['.git', '.DS_Store', AGENTS_FILE])
 
 /** The entries of a folder that make it not empty for `init`. */
 export const occupying = (dir: string): string[] =>
@@ -37,6 +41,11 @@ export default class Init extends BaseCommand {
     name: Flags.string({ summary: "the site's name", helpValue: '<site name>' }),
     next: Flags.boolean({
       summary: 'add a Next.js front end in web/, whatever the template',
+      allowNo: true,
+    }),
+    agents: Flags.boolean({
+      summary: "write crombolo's guide for coding agents into AGENTS.md",
+      default: true,
       allowNo: true,
     }),
     postgres: Flags.boolean({ summary: 'configure Postgres rather than SQLite' }),
@@ -91,6 +100,11 @@ export default class Init extends BaseCommand {
       else await Bun.write(target, Bun.file(file.copyFrom))
       created.push(file.path)
       if (flags.verbose) this.say(`  created  ${file.path}`)
+    }
+    if (flags.agents) {
+      writeAgentsFile(cwd(), withCmsBlock(readAgentsFile(cwd())))
+      if (!created.includes(AGENTS_FILE)) created.push(AGENTS_FILE)
+      if (flags.verbose) this.say(`  wrote    ${AGENTS_FILE}`)
     }
 
     const next = flags.next ?? template?.next ?? false

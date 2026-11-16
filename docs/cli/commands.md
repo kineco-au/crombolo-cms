@@ -11,14 +11,14 @@ Every command also takes:
 
 ## Sites
 
-Create a site, start it, check on it, and describe the command line to a script.
+Create a site, start it, check on it, keep its guide for coding agents, and describe the command line to a script.
 
 ### `crombolo init`
 
 Scaffold a site in the current, empty directory. Each run acts again.
 
 ```
-crombolo init [--empty] [--force] [--name <name>] [--next] [--postgres] [--template <template>] [--verbose]
+crombolo init [--empty] [--force] [--name <name>] [--next] [--agents] [--postgres] [--template <template>] [--verbose]
 ```
 
 | Argument | Type | What it is |
@@ -27,6 +27,7 @@ crombolo init [--empty] [--force] [--name <name>] [--next] [--postgres] [--templ
 | `--force` | boolean | Scaffold into a directory that is not empty, overwriting its files. |
 | `--name` | string | The site's name. |
 | `--next` | boolean | Add a Next.js front end in web/, whatever the template. |
+| `--agents` | boolean | Write crombolo's guide for coding agents into AGENTS.md. |
 | `--postgres` | boolean | Configure Postgres rather than SQLite. |
 | `--template` | string | A starter template, or `list`. |
 | `--verbose` | boolean | List every file it writes. |
@@ -37,6 +38,61 @@ crombolo init [--empty] [--force] [--name <name>] [--next] [--postgres] [--templ
 - `templates` (array of object)
 
 **Fails with:** `usage`, `internal`, `not_found`, `refused`.
+
+### `crombolo agents link`
+
+Name a profile this site came from, so `agents refresh` fetches its remote's guide. Safe to run again: a second run changes nothing more.
+
+```
+crombolo agents link <profile>
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `profile` | string | A hosted profile. Required. |
+
+**Output** (single, with `-o json`):
+
+- `profiles` (array of object)
+
+**Fails with:** `usage`, `internal`, `refused`, `not_found`.
+
+### `crombolo agents refresh`
+
+Bring AGENTS.md up to date: crombolo's guide, and the guide of each remote this site names. Safe to run again: a second run changes nothing more.
+
+```
+crombolo agents refresh [--dry-run]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `--dry-run` | boolean | Say what would change, and write nothing. |
+
+**Output** (bounded, with `-o json`):
+
+- `changed` (boolean)
+- `remotes` (array of object)
+
+**Fails with:** `usage`, `internal`, `refused`.
+
+### `crombolo agents unlink`
+
+Stop naming a profile, and take its remote's guide out of AGENTS.md. Safe to run again: a second run changes nothing more.
+
+```
+crombolo agents unlink <profile>
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `profile` | string | A profile the site names. Required. |
+
+**Output** (single, with `-o json`):
+
+- `profiles` (array of object)
+
+**Fails with:** `usage`, `internal`, `refused`, `not_found`.
 
 ### `crombolo start`
 
@@ -4221,7 +4277,7 @@ crombolo remote trust remove <rule> [--profile <profile>]
 A copy of another site: started here, or replacing this site or any named by --to. Each run acts again.
 
 ```
-crombolo pull [--from <from>] [--to <to>] [--from-env <from-env>] [--to-env <to-env>] [--env <env>] [--full] [--yes] [--no-media] [--media-info-only] [--lazy-media] [--force] [--auto-approve] [--dry-run] [--timeout <timeout>] [--no-browser] [--backup-taken]
+crombolo pull [--from <from>] [--to <to>] [--from-env <from-env>] [--to-env <to-env>] [--env <env>] [--full] [--yes] [--no-media] [--media-info-only] [--lazy-media] [--force] [--auto-approve] [--dry-run] [--timeout <timeout>] [--no-browser] [--backup-taken] [--agents]
 ```
 
 | Argument | Type | What it is |
@@ -4242,6 +4298,7 @@ crombolo pull [--from <from>] [--to <to>] [--from-env <from-env>] [--to-env <to-
 | `--timeout` | integer | Seconds to wait for a hosted site before giving up. Default `1800`. |
 | `--no-browser` | boolean | Don't open an approval page. |
 | `--backup-taken` | boolean | A backup was taken another way: Postgres needs this, or CROMBOLO_PG_DUMP. |
+| `--agents` | boolean | In an empty folder: write AGENTS.md, with crombolo's guide and the remote's. |
 
 **Output** (single, with `-o json`):
 

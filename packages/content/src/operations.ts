@@ -301,7 +301,13 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
   /** The approval gate, as the actor meets it; `skip` for the system and an operator who chose to. */
   const gateFor = (actor: Actor): { skip: boolean; who: ContentPrincipal | undefined } => {
     if (actor.kind === 'user')
-      return { skip: actor.skipApproval === true && actor.principal.isAdmin, who: actor.principal }
+      return {
+        skip:
+          actor.skipApproval === true &&
+          actor.principal.isAdmin &&
+          actor.principal.viaExchange === undefined,
+        who: actor.principal,
+      }
     if (actor.kind === 'operator') return { skip: actor.skipApproval === true, who: undefined }
     return { skip: true, who: undefined }
   }

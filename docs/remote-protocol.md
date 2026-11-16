@@ -58,6 +58,16 @@ down notices (story 365).
   extensions. Each refuses the other kind, naming the command to use.
 - **`api`:** the base for everything below. It need not share the discovery
   document's origin.
+- **`agents`** (optional, story 370): `{ "guide": "<https address>" }`, a
+  Markdown guide for coding agents working on a site from this remote: where
+  work goes, how to publish, anything the host asks. A pull into an empty folder
+  writes it into the site's `AGENTS.md` between `<!-- remote:<origin> -->` and
+  `<!-- /remote:<origin> -->`, and `crombolo agents refresh` fetches it again for
+  each profile the site names (`agents link`). It is fetched over https, with
+  no redirect followed, at most 64 KB, as text; its block markers are escaped
+  so it can't leave its block, and nothing in it is run. A guide that can't be
+  fetched is a line in the output, never a failed pull. The reference server
+  names one from `remote.agentsGuide` (`CROMBOLO_REMOTE_AGENTS_GUIDE`).
 - **`environments`:** what the remote offers.
   - `id` is lower case letters, digits and dashes.
   - `protected: true` means a push there replaces something people rely on.
@@ -242,7 +252,9 @@ the setting.
 works wherever a device sign-in does, the back office's API included. It is one
 of their **signed-in devices**, "Signed in through Microsoft", and signing it
 out there ends it at once, as locking or disabling them does. It never decides
-an approval (403 `exchange-cannot-approve`), and it makes nothing that would
+an approval (403 `exchange-cannot-approve`), never skips a workflow, and pushes
+no whole site while any workflow exists (403 `workflow-covers-pages`; story
+367), and it makes nothing that would
 outlast it: no command-line token, API key, password, password reset or
 two-factor change, and no viewing as other groups. **Every exchange is
 audited,** accepted or refused, with the reason, and so is everything the token
@@ -819,6 +831,7 @@ restarted.
 | 403 | `forbidden`, `forbidden-protected`, `forbidden-structure`, `forbidden-code`, `own-push`, `needs-person`, `ci-cannot-change-people`, `ci-cannot-manage-jobs` | the person may not; `needs-person`, `ci-cannot-change-people` and `ci-cannot-manage-jobs`, CI may not |
 | 403 | `signature-refused` | the site does not take the bundle: unsigned where it requires a signature, from a source it does not list, or a signature that does not check out (story 060) |
 | 403 | `access-level` | the site does not take that, at its `CROMBOLO_REMOTE_ACCESS` |
+| 403 | `workflow-covers-pages` | a sign-in through a provider pushing a whole site while a workflow covers pages (story 367) |
 | 404 | `not-found`, `no-such-environment`, `not-enabled` | |
 | 409 | `not-waiting`, `approval-expired` | the job is not in a state for that |
 | 409 | `place-gone`, `needs-approval` | a restore needs a `target`; a publish needs an approval |

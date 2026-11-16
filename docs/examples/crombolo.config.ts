@@ -201,6 +201,7 @@ export default defineConfig({
     approvals: true,
     maxUploadBytes: 500 * 1024 * 1024,
     oidcIssuers: ['https://gitlab.riverside-bakery.example'],
+    agentsGuide: 'https://riverside-bakery.example/agents-guide.md', // CROMBOLO_REMOTE_AGENTS_GUIDE
   },
   git: { provider: gitHub({ repository: 'riverside/site', token: env.GITHUB_TOKEN ?? '' }) },
 

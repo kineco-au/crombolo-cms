@@ -373,6 +373,7 @@ requests, only server-side and build-time front ends can call it.
 | `287` | A template's element has its name | should | S | done | — |
 | `290` | A starter site that shows what the CMS does | should | L | done | — |
 | `298` | Site code writes content and handles its events | should | L | done | 187, 206 |
+| `371` | Pages served as Markdown | could | M | ready | 370 |
 
 ### Epic P — The command line
 
@@ -456,6 +457,10 @@ files kept as the committed record nobody has to open.
 | `364` | A person signed in through a provider reaches the remote | should | M | done | 160 |
 | `365` | The remote at `/crombolo`, and a person's exchange with it off | should | S | done | 364 |
 | `366` | The actor an exchanged token names is in the history | should | S | done | 364 |
+| `367` | An exchanged sign-in never skips a workflow | should | S | done | 364 |
+| `368` | A preview link for a rendered page | should | S | done | 364 |
+| `369` | A person lets a tool skip a workflow, through their provider | could | S | on hold | 367 |
+| `370` | `init` writes a guide for agents | should | S | done | 352 |
 
 ### Epic R — Architecture and reliability
 
