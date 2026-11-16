@@ -48,6 +48,13 @@ export interface IdentityProviderOptions {
    * alone. `CROMBOLO_LOCKED_IDENTITY_PROVIDERS` locks it too.
    */
   locked?: boolean
+  /**
+   * Back-office providers only (story 364): lets the remote exchange this
+   * provider's tokens for a sign-in as the person they name. The token's `aud`
+   * must be `audience`, the site's origin by default, and never a sign-in
+   * client id. `CROMBOLO_REMOTE_EXCHANGE_PROVIDERS` turns it on too.
+   */
+  remoteExchange?: boolean | { audience?: string }
 }
 
 /** Which preset made a provider: what the Entra bundle looks for. */
@@ -67,6 +74,8 @@ export interface IdentityProvider {
   memberType: string | undefined
   /** Declared `locked: true`. */
   locked: boolean
+  /** Declared `remoteExchange`: the audience its exchanged tokens carry, when not the site's origin. */
+  remoteExchange: { audience?: string } | undefined
   /** Why it cannot sign anyone in as it stands, such as a new issuer with no secret of its own. */
   unavailable?: string
 }
@@ -125,6 +134,12 @@ function preset(
     defaultGroups: options.defaultGroups ?? [],
     memberType: options.memberType,
     locked: options.locked === true,
+    remoteExchange:
+      options.remoteExchange === true
+        ? {}
+        : typeof options.remoteExchange === 'object'
+          ? { ...options.remoteExchange }
+          : undefined,
   }
 }
 
@@ -145,7 +160,8 @@ export function entra(
       clientId: options.clientId,
       clientSecret: options.clientSecret,
     },
-    { email: 'email', name: 'name', groups: 'groups' },
+    // Entra's `sub` differs for each app registration; `oid` is the person's in the tenant.
+    { email: 'email', name: 'name', groups: 'groups', identity: 'oid' },
     options,
   )
   return { ...provider, tenantId: options.tenantId }
@@ -205,4 +221,31 @@ export function checkIdentityProviders(
     seen.add(provider.oidc.id)
   }
   return list
+}
+
+/** The back-office providers that exchange: those the config opts in, and those the server names. */
+export function exchangingProviders(
+  providers: readonly IdentityProvider[],
+  fromServer: readonly string[],
+): IdentityProvider[] {
+  return providers.flatMap((provider) => {
+    if (provider.remoteExchange) return [provider]
+    return fromServer.includes(provider.oidc.id) ? [{ ...provider, remoteExchange: {} }] : []
+  })
+}
+
+/** Exchanging providers whose audience is a client id a sign-in uses, which the boot refuses. Pure. */
+export function exchangeAudienceClashes(
+  exchanging: readonly IdentityProvider[],
+  backoffice: readonly IdentityProvider[],
+): string[] {
+  return exchanging.flatMap((provider) => {
+    const audience = provider.remoteExchange?.audience
+    const clash = audience ? backoffice.find((p) => p.oidc.clientId === audience) : undefined
+    return clash
+      ? [
+          `The ${provider.oidc.name} identity provider's remoteExchange audience is the client id ${clash.oidc.name} signs in with. Name the audience of an app used only for the remote, so a sign-in token can never be exchanged.`,
+        ]
+      : []
+  })
 }

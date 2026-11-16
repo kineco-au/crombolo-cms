@@ -105,6 +105,7 @@ rather than the running server. Secret ones are never printed or logged.
 | `CROMBOLO_API_CLIENT_SECRET` | string | — | That client's secret, set together with the id. It is used once, when the client is created. Kept secret: never printed. |
 | `CROMBOLO_LOCAL_ADMIN` | `true` / `false` | `false` | Creates the password administrator even when an API client is set. Honoured only on localhost. |
 | `CROMBOLO_LOCKED_IDENTITY_PROVIDERS` | list | — | Identity providers nobody can change in the back office, by id, separated by commas, or `all`: they sign in by the site's configuration alone. A provider declared `locked: true` is locked too. |
+| `CROMBOLO_REMOTE_EXCHANGE_PROVIDERS` | list | — | Back-office identity providers, by id, separated by commas, whose tokens the remote exchanges for a sign-in as the person they name, besides those the site's configuration opts in. |
 | `CROMBOLO_SECRET_KEY` | string | — | Seals secrets kept in the database, such as a webhook's headers and two-factor keys; 32 or more characters. Features that need it are not offered without it. Kept secret: never printed. |
 | `CROMBOLO_USERNAME_IS_EMAIL` | `true` / `false` | `true` | A back office user's login is their e-mail address. |
 

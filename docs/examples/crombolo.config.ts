@@ -161,6 +161,7 @@ export default defineConfig({
     }),
   ],
   lockedIdentityProviders: [], // CROMBOLO_LOCKED_IDENTITY_PROVIDERS
+  remoteExchangeProviders: [], // CROMBOLO_REMOTE_EXCHANGE_PROVIDERS
   host: undefined, // a host service the back office vouches for its user to
 
   // ── Members ─────────────────────────────────────────────────────────────────

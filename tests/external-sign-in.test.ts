@@ -287,6 +287,8 @@ describe(`members signing in through a provider (${process.env.CROMBOLO_DB ?? 's
     expect(links.map((l) => [l.loginProvider, l.providerKey])).toEqual([
       [externalLoginProvider('member', 'fake'), 'ada-1'],
     ])
+    // Story 364: what names the person, `sub` here, and the issuer it came from.
+    expect(links[0]?.identity).toEqual({ value: 'ada-1', issuer: fake.issuer })
     expect(fake.lastAuthorize()?.get('code_challenge_method')).toBe('S256')
   })
 
@@ -294,9 +296,15 @@ describe(`members signing in through a provider (${process.env.CROMBOLO_DB ?? 's
     const { h, fake, signIn, page } = await memberSite()
     fake.as({ sub: 'ada-1', email: 'ada@example.test', groups: ['staff-claim'] })
     await signIn()
+    // A link made before story 364 has no identity; the next sign-in records it.
+    const logins = new ExternalLoginRepository(h.server.db)
+    await logins.recordIdentity(externalLoginProvider('member', 'fake'), 'ada-1', undefined)
     fake.as({ sub: 'ada-1', email: 'ada@example.test', groups: [] })
     const again = await signIn()
     expect(again.status).toBe(302)
+    expect((await logins.find(externalLoginProvider('member', 'fake'), 'ada-1'))?.identity).toEqual(
+      { value: 'ada-1', issuer: fake.issuer },
+    )
     const members = await new MemberRepository(h.server.db).filter({ skip: 0, take: 10 })
     expect(members.total).toBe(1)
     expect(members.items[0]?.roles).toEqual([])

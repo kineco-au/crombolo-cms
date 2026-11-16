@@ -285,6 +285,13 @@ const DECLARED = [
       "Identity providers nobody can change in the back office, by id, separated by commas, or `all`: they sign in by the site's configuration alone. A provider declared `locked: true` is locked too.",
   },
   {
+    env: 'CROMBOLO_REMOTE_EXCHANGE_PROVIDERS',
+    kind: 'list',
+    section: 'Sign-in and secrets',
+    description:
+      "Back-office identity providers, by id, separated by commas, whose tokens the remote exchanges for a sign-in as the person they name, besides those the site's configuration opts in.",
+  },
+  {
     env: 'CROMBOLO_SECRET_KEY',
     kind: 'string',
     section: 'Sign-in and secrets',

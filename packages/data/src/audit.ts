@@ -183,6 +183,8 @@ export interface AuditContext {
   viewing?: { userKey: string; groups: string }
   /** A person acting through one of their command-line tokens (story 351), by its name. */
   token?: { userKey: string; name: string }
+  /** A person acting through a token exchanged at the remote (story 364), by the provider's name. */
+  exchange?: { userKey: string; provider: string }
 }
 
 const contexts = new AsyncLocalStorage<AuditContext>()
@@ -217,6 +219,9 @@ export function detailInContext(
   const notes = [
     context.viewing?.userKey === who ? `while viewing as ${context.viewing.groups}` : undefined,
     context.token?.userKey === who ? `through the token ${context.token.name}` : undefined,
+    context.exchange?.userKey === who
+      ? `signed in through ${context.exchange.provider}`
+      : undefined,
   ].filter((note): note is string => note !== undefined)
   if (notes.length === 0) return entry.detail
   const note = notes.join(', ')

@@ -71,10 +71,11 @@ import { type MediaStore, streamOf } from './media-store.ts'
 import { siteMemberPorts } from './member-admin.ts'
 import { describeProvenance, provenanceProblem, verifyProvenance } from './provenance.ts'
 import { createBackgroundJobRoutes } from './remote-background-jobs.ts'
-import { createCiSignIn, readRuleInput, trustedIssuers } from './remote-ci.ts'
+import { createCiSignIn, readRuleInput, trustedIssuers, unverifiedIssuer } from './remote-ci.ts'
 import { createExtensionActivityRoutes } from './remote-extension-activity.ts'
 import { createMediaLibraryRoutes } from './remote-media-library.ts'
 import { createMemberRoutes } from './remote-members.ts'
+import type { PeopleExchange } from './remote-people.ts'
 import { createUndoRoutes } from './remote-undo.ts'
 import { createUserRoutes } from './remote-users.ts'
 import { openSecret, sealSecret, usableSecretKey } from './secrets.ts'
@@ -102,6 +103,8 @@ export interface RemoteOptions {
   db: Db
   config: CromboloConfig
   authenticate(request: Request): Promise<Principal | undefined>
+  /** Story 364: a back-office provider's token exchanged for a sign-in as the person it names. */
+  people?: PeopleExchange
   /**
    * Told once a push has landed, so this node's published cache is rebuilt: the
    * import's cache instruction carries this node's id, and a node skips its own.
@@ -223,7 +226,7 @@ export function createRemote(options: RemoteOptions): Remote {
   // Under the back office, as the editor's own API calls are; a command line
   // follows these addresses rather than building its own.
   const managementApi = managementApiPath(config.backOfficePath.replace(/\/+$/, ''))
-  const discovery = (origin: string) => ({
+  const discovery = async (origin: string) => ({
     protocol: 'crombolo-remote',
     versions: [REMOTE_PROTOCOL_VERSION],
     // The bundle formats this site reads, oldest and newest (story 306).
@@ -237,6 +240,11 @@ export function createRemote(options: RemoteOptions): Remote {
       grantType: DEVICE_CODE_GRANT,
       // Story 160: a CI job's identity token, exchanged for a token acting as a trust rule.
       ci: ci.discovery(origin, `${origin}${REMOTE_API_PATH}`),
+      // Story 364: a person's token from one of this site's own back-office providers.
+      ...(await (async () => {
+        const people = await options.people?.discovery(origin, `${origin}${REMOTE_API_PATH}`)
+        return people ? { people } : {}
+      })()),
     },
     capabilities: [
       ...(atLeast('content') ? ['bundle-apply'] : []),
@@ -1297,6 +1305,12 @@ export function createRemote(options: RemoteOptions): Remote {
         title: 'A command-line token cannot approve pushes',
         detail: 'Approve or decline it signed in as yourself.',
       })
+    if (principal.viaExchange)
+      return problem(403, {
+        code: 'exchange-cannot-approve',
+        title: 'A sign-in through another service cannot approve pushes',
+        detail: 'Approve or decline it signed in as yourself.',
+      })
     const job = await jobs.get(id)
     if (job?.kind !== 'push')
       return problem(404, { code: 'not-found', title: 'There is no such push' })
@@ -1513,16 +1527,28 @@ export function createRemote(options: RemoteOptions): Remote {
       if (pathname === REMOTE_DISCOVERY_PATH) {
         if (!settings.enabled) return undefined
         return request.method === 'GET'
-          ? Response.json(discovery(url.origin), { headers: { 'cache-control': 'no-store' } })
+          ? Response.json(await discovery(url.origin), {
+              headers: { 'cache-control': 'no-store' },
+            })
           : new Response(null, { status: 405 })
       }
       if (!pathname.startsWith(`${REMOTE_API_PATH}/`)) return undefined
       if (!settings.enabled)
         return problem(404, { code: 'not-enabled', title: 'This site is not a remote' })
-      if (pathname === `${REMOTE_API_PATH}/token`)
-        return request.method === 'POST'
-          ? ci.exchange(request, url, request.headers.get('x-forwarded-for')?.split(',')[0]?.trim())
-          : new Response(null, { status: 405 })
+      if (pathname === `${REMOTE_API_PATH}/token`) {
+        if (request.method !== 'POST') return new Response(null, { status: 405 })
+        const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+        // One endpoint for both: the token's issuer says whether it is CI's or a person's.
+        const people = options.people
+        const issuer = people
+          ? unverifiedIssuer(
+              new URLSearchParams(await request.clone().text()).get('subject_token') ?? '',
+            )
+          : undefined
+        return people && issuer && (await people.handles(issuer))
+          ? people.exchange(request, url, ip)
+          : ci.exchange(request, url, ip)
+      }
       // A CI token is good here and nowhere else; a person's is the back office's own.
       const principal = (await ci.principalOf(request)) ?? (await options.authenticate(request))
       if (!principal)

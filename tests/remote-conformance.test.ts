@@ -7,8 +7,15 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { DEVICE_CODE_GRANT, REMOTE_CLIENT_ID } from '@crombolo/auth'
 import { SYSTEM_MEDIA_TYPE_KEYS } from '@crombolo/core'
-import { ExtensionActivityLog, JobRepository } from '@crombolo/data'
+import {
+  ExtensionActivityLog,
+  ExternalLoginRepository,
+  externalLoginProvider,
+  JobRepository,
+} from '@crombolo/data'
 import { runConformance } from '@crombolo/remote-conformance'
+import { oidc } from '@crombolo/server'
+import { exportJWK, generateKeyPair, SignJWT } from 'jose'
 import { dialectUnderTest } from './support/db.ts'
 import {
   giveAdminsInstallCode,
@@ -31,7 +38,7 @@ afterEach(async () => {
   while (dirs.length > 0) rmSync(dirs.pop() as string, { recursive: true, force: true })
 })
 
-async function remote(protectedEnvironment = false) {
+async function remote(protectedEnvironment = false, config: Record<string, unknown> = {}) {
   const root = mkdtempSync(join(process.cwd(), 'output', 'conformance-'))
   dirs.push(root)
   for (const dir of ['schema', 'components', 'css', 'scripts', 'media'])
@@ -52,6 +59,7 @@ async function remote(protectedEnvironment = false) {
         approvals: false,
         maxUploadBytes: 1024 ** 3,
       },
+      ...config,
     },
   })
   open.push(h)
@@ -137,6 +145,68 @@ describe(`the remote conformance suite (${dialectUnderTest})`, () => {
     expect(failed).toEqual([])
     expect(report.checks.filter((c) => c.skipped).map((c) => c.name)).toEqual([])
     expect(report.passed).toBe(true)
+  }, 60_000)
+
+  test('checks the exchange for a person signed in through a provider', async () => {
+    const { privateKey, publicKey } = await generateKeyPair('RS256')
+    const jwk = { ...(await exportJWK(publicKey)), kid: 'k', alg: 'RS256', use: 'sig' }
+    let issuer = ''
+    const provider = Bun.serve({
+      port: 0,
+      fetch: (request) =>
+        new URL(request.url).pathname === '/jwks'
+          ? Response.json({ keys: [jwk] })
+          : Response.json({ issuer, jwks_uri: `${issuer}/jwks` }),
+    })
+    issuer = `http://localhost:${provider.port}`
+    try {
+      const h = await remote(false, {
+        backofficeIdentityProviders: [
+          oidc({
+            id: 'corp',
+            name: 'Corp',
+            issuer,
+            clientId: 'back-office-app',
+            remoteExchange: { audience: 'api://remote' },
+          }),
+        ],
+      })
+      const me = await h.json<{ id: string }>(`${V1}/user/current`)
+      await new ExternalLoginRepository(h.server.db).link(
+        me.id,
+        externalLoginProvider('user', 'corp'),
+        'admin-sub',
+        { value: 'admin-sub', issuer },
+      )
+      const report = await runConformance({
+        url: ORIGIN,
+        token: await token(h),
+        timeoutMs: 60_000,
+        fetch: fetchFrom(h),
+        personToken: async (p) =>
+          new SignJWT({ sub: 'admin-sub' })
+            .setProtectedHeader({ alg: 'RS256', kid: 'k' })
+            .setIssuer(p.issuer)
+            .setAudience(p.audience)
+            .setIssuedAt()
+            .setExpirationTime('10m')
+            .setJti(crypto.randomUUID())
+            .sign(privateKey),
+      })
+      const people = report.checks.filter((c) => c.name.startsWith('people:'))
+      expect(people.map((c) => [c.name, c.ok, c.skipped ?? false, c.detail])).toEqual([
+        [
+          'people: discovery names the exchange and each provider, issuer and audience',
+          true,
+          false,
+          undefined,
+        ],
+        ["people: an unsigned token naming a provider's issuer is refused", true, false, undefined],
+        ['people: a minted token signs the person in, once', true, false, undefined],
+      ])
+    } finally {
+      provider.stop(true)
+    }
   }, 60_000)
 
   test('fails a server that is not a remote', async () => {

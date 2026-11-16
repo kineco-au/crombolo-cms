@@ -226,21 +226,27 @@ export function createExternalSignIn(
       identity,
       provider: { ...provider, name: provider.oidc.name },
     })
+    // Story 364: what the remote's exchange finds this person by, from this issuer.
+    const named = identity.identity
+      ? { value: identity.identity, issuer: provider.oidc.issuer }
+      : undefined
     let account: ExternalAccount
     switch (decision.kind) {
       case 'refuse':
         return back(decision.reason)
       case 'signIn':
         account = linkedAccount as ExternalAccount
+        if (named?.value !== linked?.identity?.value || named?.issuer !== linked?.identity?.issuer)
+          await logins.recordIdentity(loginProvider, identity.subject, named)
         break
       case 'link':
         account = sameEmail as ExternalAccount
-        await logins.link(account.key, loginProvider, identity.subject)
+        await logins.link(account.key, loginProvider, identity.subject, named)
         break
       case 'create': {
         const groups = syncedGroups(provider.defaultGroups, identity.groups, provider.groupMap)
         account = await audience.create(identity, provider, groups)
-        await logins.link(account.key, loginProvider, identity.subject)
+        await logins.link(account.key, loginProvider, identity.subject, named)
         break
       }
     }

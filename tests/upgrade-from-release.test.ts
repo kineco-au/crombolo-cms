@@ -13,8 +13,8 @@ import {
   migrate,
   readLedger,
   readState,
-  STATE_CLI_TOKENS,
   STATE_CONTENT_APPLIED,
+  STATE_REMOTE_EXCHANGE,
   seedIdentity,
 } from '@crombolo/data'
 import { summariseUpgrades, VERSION } from '@crombolo/server'
@@ -146,10 +146,11 @@ describe('upgrading from the previous release', () => {
       'DropUserStartNodes',
       'AddSessionViewAs',
       'AddCliTokens',
+      'AddRemoteExchange',
     ])
-    expect(await readState(db)).toBe(STATE_CLI_TOKENS)
+    expect(await readState(db)).toBe(STATE_REMOTE_EXCHANGE)
     const summary = summariseUpgrades(await readLedger(db), VERSION)
-    expect(summary.lastUpgrade).toMatchObject({ release: '0.66.0', steps: 29 })
+    expect(summary.lastUpgrade).toMatchObject({ release: '0.67.0', steps: 30 })
   })
 
   test('the Changes dashboard reports the version, the install and the last upgrade', async () => {

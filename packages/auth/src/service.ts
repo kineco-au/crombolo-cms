@@ -7,6 +7,8 @@ import {
   DEVICE_CODE_SECONDS,
   DEVICE_POLL_SECONDS,
   type DeviceAuthorizationRow,
+  EXCHANGE_CLIENT_PREFIX,
+  exchangeProviderOf,
   type SignedInDevice,
 } from './device.ts'
 import { hashPassword, isNativeHash, passwordConfigJson, verifyPassword } from './password.ts'
@@ -99,6 +101,8 @@ export interface ViewingAs {
 export interface ResolvedIdentity {
   user: UserRow
   sessionId: string
+  /** The provider a token exchanged through it came by (story 364); never set for a browser's session. */
+  exchangedThrough?: string
   allowedSections: Array<SectionAlias | ExtensionSectionAlias>
   groupKeys: string[]
   isAdmin: boolean
@@ -394,15 +398,18 @@ export class AuthService {
     if (!user) return undefined
     const own = await this.#store.loadAuthorization(user.id)
     const view = session.view
+    const provider = exchangeProviderOf(token.clientId)
+    const through = provider ? { exchangedThrough: provider } : {}
     if (view && view.until.getTime() > now.getTime() && own.isAdmin) {
       const theirs = await this.#store.loadGroupAuthorization(view.groupKeys)
       return {
         ...identityFrom(user, theirs),
         sessionId: token.sessionId,
         viewingAs: { groups: groupsOf(theirs), until: view.until },
+        ...through,
       }
     }
-    return { ...identityFrom(user, own), sessionId: token.sessionId }
+    return { ...identityFrom(user, own), sessionId: token.sessionId, ...through }
   }
 
   /**
@@ -530,6 +537,48 @@ export class AuthService {
       return { ok: false, error: 'invalid_grant', description: 'This device code has been used.' }
     await this.#store.recordLoginSuccess(user.id, sessionId)
     return { ok: true, grant: await this.#issue(user.id, sessionId, clientId, row.scope), user }
+  }
+
+  /**
+   * Signs a user in for a token exchanged through a provider (story 364): the
+   * same refusals as any sign-in, then a signed-in device of its own with an
+   * access token and no refresh token, so it ends when the token does.
+   */
+  async signInByExchange(
+    login: string,
+    provider: { id: string; name: string },
+    seconds: number,
+    ipAddress?: string,
+  ): Promise<
+    | { status: 'success'; user: UserRow; accessToken: string; expiresIn: number }
+    | { status: 'notAllowed'; reason: 'lockedOut' | 'notApproved' | 'unknown' }
+  > {
+    const user = await this.#store.findUserByLogin(login)
+    if (!user) return { status: 'notAllowed', reason: 'unknown' }
+    if (user.isLockedOut) return { status: 'notAllowed', reason: 'lockedOut' }
+    if (!user.isApproved) return { status: 'notAllowed', reason: 'notApproved' }
+    const sessionId = crypto.randomUUID()
+    const clientId = `${EXCHANGE_CLIENT_PREFIX}${provider.id}`
+    const expiresAt = new Date(Date.now() + seconds * 1000)
+    await this.#store.recordLoginSuccess(user.id, sessionId, ipAddress)
+    await this.#store.devices.signedInByExchange({
+      clientId,
+      clientName: `Signed in through ${provider.name}`,
+      userId: user.id,
+      sessionId,
+      expiresAt,
+    })
+    const accessToken = generateToken()
+    await this.#store.createToken({
+      token: accessToken,
+      type: 'access',
+      userId: user.id,
+      sessionId,
+      clientId,
+      scope: '',
+      expiresAt,
+    })
+    return { status: 'success', user, accessToken, expiresIn: seconds }
   }
 
   /** The devices signed in as this user. */

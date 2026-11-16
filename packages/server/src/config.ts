@@ -27,6 +27,8 @@ import { type UnrestrictedFrom, unrestrictedFrom } from './grant-policy.ts'
 import { checkHost, type HostConfig } from './host-token.ts'
 import {
   checkIdentityProviders,
+  exchangeAudienceClashes,
+  exchangingProviders,
   type IdentityProvider,
   type LockedIdentityProviders,
 } from './identity-providers.ts'
@@ -238,6 +240,12 @@ export interface CromboloConfig {
    * them without the site's code. A provider's own `locked: true` does too.
    */
   lockedIdentityProviders: LockedIdentityProviders
+  /**
+   * Back-office identity providers whose tokens the remote exchanges for a
+   * sign-in as the person (story 364), by id, besides those the config opts
+   * in: `CROMBOLO_REMOTE_EXCHANGE_PROVIDERS`.
+   */
+  remoteExchangeProviders: readonly string[]
   /**
    * Whether the cache-busted asset path may be cached immutably. Defaults to
    * `!development`.
@@ -1064,6 +1072,10 @@ export function loadConfig(
     liveReload: envFlag(setting('CROMBOLO_LIVE_RELOAD')) ?? false,
     allowPrivateAddresses: envFlag(setting('CROMBOLO_ALLOW_PRIVATE_ADDRESSES')) ?? false,
     lockedIdentityProviders: lockedProviders(setting('CROMBOLO_LOCKED_IDENTITY_PROVIDERS')),
+    remoteExchangeProviders: (setting('CROMBOLO_REMOTE_EXCHANGE_PROVIDERS') ?? '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean),
     seo: stripUndefined({
       sitemap: envFlag(setting('CROMBOLO_SITEMAP')),
       indexable: envFlag(setting('CROMBOLO_INDEXABLE')),
@@ -1132,6 +1144,11 @@ export function loadConfig(
     )
   checkIdentityProviders(merged.memberIdentityProviders, 'member')
   checkIdentityProviders(merged.backofficeIdentityProviders, 'backoffice')
+  for (const clash of exchangeAudienceClashes(
+    exchangingProviders(merged.backofficeIdentityProviders, merged.remoteExchangeProviders),
+    merged.backofficeIdentityProviders,
+  ))
+    throw new Error(clash)
   // Field by field, so a site setting its title suffix keeps the environment's switches.
   merged.seo = { ...fromEnv.seo, ...stripUndefined(overrides.seo ?? {}) }
   merged.remote = { ...fromEnv.remote, ...stripUndefined(overrides.remote ?? {}) }
@@ -1273,7 +1290,7 @@ export function describeDatabase(
   }
 }
 
-export const VERSION = '0.66.0'
+export const VERSION = '0.67.0'
 
 /** A whole number of seconds from the environment; undefined when unset or not one. */
 /** A positive number from a setting, else the default. */

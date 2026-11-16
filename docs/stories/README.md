@@ -453,6 +453,7 @@ files kept as the committed record nobody has to open.
 | `261` | Crombolo on Windows | could | L | on hold | — |
 | `341` | A new site opens on a welcome page | should | S | done | 163, 180 |
 | `344` | A save the schema files can't take is refused | must | S | done | 021 |
+| `364` | A person signed in through a provider reaches the remote | should | M | done | 160 |
 
 ### Epic R — Architecture and reliability
 

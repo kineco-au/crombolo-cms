@@ -30,6 +30,18 @@ export const CI_TOKEN_SECONDS = 15 * 60
 /** An identity token valid for longer than this is refused. */
 const MAX_IDENTITY_SECONDS = 60 * 60
 
+/** The `iss` a JWT claims, unverified: only to choose who checks it. */
+export function unverifiedIssuer(token: string): string | undefined {
+  try {
+    const body = token.split('.')[1]
+    if (!body) return undefined
+    const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as JWTPayload
+    return typeof payload.iss === 'string' ? payload.iss.replace(/\/+$/, '') : undefined
+  } catch {
+    return undefined
+  }
+}
+
 /** The issuers a site trusts tokens from: GitHub's, gitlab.com's, and any it names. */
 export function trustedIssuers(extra: readonly string[] = []): string[] {
   return [...new Set([GITHUB_ISSUER, GITLAB_ISSUER, ...extra.map((i) => i.replace(/\/+$/, ''))])]
@@ -44,6 +56,27 @@ export function usableIssuer(issuer: string): boolean {
     return url.protocol === 'https:' || (url.protocol === 'http:' && isLocal(url.hostname))
   } catch {
     return false
+  }
+}
+
+/**
+ * An issuer's signing keys, from its OIDC discovery: cached per issuer, and
+ * failing closed when the issuer or its key set is not one to fetch.
+ */
+export function issuerKeys(): (issuer: string) => Promise<ReturnType<typeof createRemoteJWKSet>> {
+  const keySets = new Map<string, ReturnType<typeof createRemoteJWKSet>>()
+  return async (issuer) => {
+    const known = keySets.get(issuer)
+    if (known) return known
+    if (!usableIssuer(issuer)) throw new Error('the issuer is not reached over HTTPS')
+    const response = await fetch(`${issuer.replace(/\/+$/, '')}/.well-known/openid-configuration`)
+    if (!response.ok) throw new Error(`the issuer's discovery answered ${response.status}`)
+    const { jwks_uri: jwksUri } = (await response.json()) as { jwks_uri?: string }
+    if (!jwksUri || !usableIssuer(new URL(jwksUri).origin))
+      throw new Error('the issuer names no usable key set')
+    const set = createRemoteJWKSet(new URL(jwksUri))
+    keySets.set(issuer, set)
+    return set
   }
 }
 
@@ -193,21 +226,7 @@ export function createCiSignIn(options: {
   const rules = new RemoteTrustRepository(options.db)
   const issuers = options.issuers.filter(usableIssuer)
   const limiter = new AttemptLimiter({ max: 10, maxAll: 200, windowMs: 15 * 60_000 })
-  const keySets = new Map<string, ReturnType<typeof createRemoteJWKSet>>()
-
-  /** The issuer's signing keys, from its OIDC discovery; cached, and failing closed. */
-  const keysOf = async (issuer: string) => {
-    const known = keySets.get(issuer)
-    if (known) return known
-    const response = await fetch(`${issuer}/.well-known/openid-configuration`)
-    if (!response.ok) throw new Error(`the issuer's discovery answered ${response.status}`)
-    const { jwks_uri: jwksUri } = (await response.json()) as { jwks_uri?: string }
-    if (!jwksUri || !usableIssuer(new URL(jwksUri).origin))
-      throw new Error('the issuer names no usable key set')
-    const set = createRemoteJWKSet(new URL(jwksUri))
-    keySets.set(issuer, set)
-    return set
-  }
+  const keysOf = issuerKeys()
 
   const refuse = async (request: Request, refusal: Refusal, ip: string | undefined) => {
     limiter.fail(`ip:${ip ?? 'unknown'}`)
@@ -218,17 +237,6 @@ export function createCiSignIn(options: {
       { error: 'invalid_grant', error_description: 'The identity token was not accepted.' },
       { status: 400, headers: { 'cache-control': 'no-store' } },
     )
-  }
-
-  const unverifiedIssuer = (token: string): string | undefined => {
-    try {
-      const body = token.split('.')[1]
-      if (!body) return undefined
-      const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as JWTPayload
-      return typeof payload.iss === 'string' ? payload.iss.replace(/\/+$/, '') : undefined
-    } catch {
-      return undefined
-    }
   }
 
   return {

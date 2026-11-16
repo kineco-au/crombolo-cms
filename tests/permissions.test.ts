@@ -193,6 +193,7 @@ describe('the media verbs (story 088)', () => {
       'DropUserStartNodes',
       'AddSessionViewAs',
       'AddCliTokens',
+      'AddRemoteExchange',
     ])
     const held = async (key: string) =>
       (

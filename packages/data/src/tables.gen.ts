@@ -410,6 +410,8 @@ export interface CoreTables {
   external_login: {
     create_date: Timestamp
     id: Generated<number>
+    identity_issuer: string | null
+    identity_value: string | null
     login_provider: string
     provider_key: string
     user_data: string | null
@@ -674,6 +676,12 @@ export interface CoreTables {
     jti: string
     rule_key: string
     token_hash: string
+  }
+  remote_exchange_id: {
+    expires_at: Timestamp
+    id: Generated<number>
+    issuer: string
+    token_id: string
   }
   remote_job: {
     create_date: Timestamp

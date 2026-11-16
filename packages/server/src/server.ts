@@ -108,6 +108,7 @@ import {
   readUrlOptions,
   searchProvidersOf,
   TransferRunRepository,
+  UserRepository,
   type WritesPaused,
   withAuditContext,
 } from '@crombolo/data'
@@ -247,6 +248,7 @@ import {
 import { principalOf } from './principal.ts'
 import { provenanceProblem } from './provenance.ts'
 import { createRemote, may, type RestartOutcome } from './remote.ts'
+import { createPeopleExchange } from './remote-people.ts'
 import { createSchemaTransfer, UPLOAD_LIMITS } from './schema-transfer.ts'
 import { SiteAssets } from './site-assets.ts'
 import { unknownHostProvided } from './site-file.ts'
@@ -279,6 +281,7 @@ import { backofficeAudience } from './backoffice-external.ts'
 import { createCliTokensApi, tokenRefusal } from './cli-tokens-api.ts'
 import { createExternalSignIn } from './external-sign-in.ts'
 import { IdentityProviderOverrides } from './identity-provider-overrides.ts'
+import { exchangingProviders } from './identity-providers.ts'
 import {
   builtIslandFile,
   devServerIslandManifest,
@@ -678,6 +681,14 @@ export async function createServer(
     const principal = await principalFrom(identity)
     // Story 314: what this session writes says whose groups it was seen as.
     const context = currentAuditContext()
+    // Story 364: and that it came by a token exchanged through a provider.
+    if (context && identity.exchangedThrough)
+      context.exchange = {
+        userKey: normaliseUuid(principal.id),
+        provider:
+          config.backofficeIdentityProviders.find((p) => p.oidc.id === identity.exchangedThrough)
+            ?.oidc.name ?? identity.exchangedThrough,
+      }
     if (context && principal.viewingAs)
       context.viewing = {
         userKey: normaliseUuid(principal.id),
@@ -919,10 +930,91 @@ export async function createServer(
     source: 'request',
     ...clientAddress(request),
   })
+  // Story 364: a back-office provider's token exchanged at the remote for a sign-in as the person.
+  const exchanging = exchangingProviders(
+    config.backofficeIdentityProviders,
+    config.remoteExchangeProviders,
+  )
+  for (const id of config.remoteExchangeProviders)
+    if (!config.backofficeIdentityProviders.some((p) => p.oidc.id === id))
+      log.warning(
+        'CROMBOLO_REMOTE_EXCHANGE_PROVIDERS names {id}, which the config declares no back-office identity provider as.',
+        { id },
+      )
+  if (exchanging.length > 0)
+    log.info('The remote exchanges tokens from {providers}', {
+      providers: exchanging.map((p) => p.oidc.id).join(', '),
+    })
+  const people =
+    exchanging.length === 0
+      ? undefined
+      : (() => {
+          const users = new UserRepository(db)
+          const accounts = backofficeAudience(db, {
+            auth,
+            providers: exchanging,
+            backOfficePath: paths.backOfficePath,
+            sessionCookie: () => '',
+          })
+          const overrides = new IdentityProviderOverrides(
+            db,
+            config.secretKey,
+            config.lockedIdentityProviders,
+          )
+          return createPeopleExchange({
+            db,
+            providers: exchanging,
+            backoffice: config.backofficeIdentityProviders,
+            resolve: (provider) => overrides.apply('user', provider),
+            accounts: {
+              byKey: accounts.byKey,
+              byEmail: accounts.byEmail,
+              setGroups: accounts.setGroups,
+              refusal: async (key) => {
+                const user = await users.byKey(key)
+                if (!user) return 'the person no longer exists'
+                if (user.isLockedOut) return 'the person is locked out'
+                if (!user.isApproved) return 'the person is disabled or not yet approved'
+                const identity = await auth.identityOf(user.id)
+                return (identity?.allowedSections.length ?? 0) > 0
+                  ? undefined
+                  : 'the person has no access to the back office'
+              },
+              signIn: async (key, provider, seconds, ip) => {
+                const user = await users.byKey(key)
+                if (!user) return { refused: 'the person no longer exists' }
+                const result = await auth.signInByExchange(user.userName, provider, seconds, ip)
+                if (result.status === 'success') return { accessToken: result.accessToken }
+                return {
+                  refused:
+                    result.reason === 'lockedOut'
+                      ? 'the person is locked out'
+                      : 'the person is disabled or not yet approved',
+                }
+              },
+            },
+            onExchange: (outcome, request) =>
+              recordAudit(db, {
+                category: 'sign-in',
+                action: outcome.ok ? 'RemoteExchangeSignIn' : 'RemoteExchangeSignInRefused',
+                source: 'request',
+                userKey: outcome.ok ? outcome.account.key : null,
+                userName: null,
+                entityType: 'User',
+                entityKey: outcome.ok ? outcome.account.key : null,
+                entityName: outcome.ok ? outcome.account.email : null,
+                detail: outcome.ok
+                  ? `Signed in through ${outcome.provider.oidc.name}, by exchange at the remote`
+                  : `Refused${outcome.provider ? ` through ${outcome.provider.oidc.name}` : ''}: ${outcome.reason}`,
+                ...clientAddress(request),
+              }),
+          })
+        })()
   const remote = createRemote({
     db,
     config,
     authenticate,
+    people,
     bundles: bundleAdmin,
     operations: core.operations,
     nodeState: schema.nodeState,
@@ -2628,6 +2720,8 @@ export async function createServer(
     if (pathname === viewAsPath) {
       const identity = await identify(request)
       if (!identity) return new Response('Unauthorized', { status: 401 })
+      // Story 364: a token exchanged through a provider never sees as anyone else.
+      if (identity.exchangedThrough) return new Response('Forbidden', { status: 403 })
       return viewAs.handle(request, identity, clientAddress(request))
     }
 

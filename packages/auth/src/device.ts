@@ -15,6 +15,18 @@ import { generateToken, hashToken } from './pkce.ts'
 
 /** The client id the CLI signs in as. */
 export const REMOTE_CLIENT_ID = 'crombolo-cli'
+
+/**
+ * The client a token exchanged through a provider is issued to (story 364),
+ * with the provider's id after the colon: what marks its sessions as a machine's.
+ */
+export const EXCHANGE_CLIENT_PREFIX = 'crombolo-exchange:'
+
+/** The provider an exchanged token came through, when the client is one. */
+export const exchangeProviderOf = (clientId: string): string | undefined =>
+  clientId.startsWith(EXCHANGE_CLIENT_PREFIX)
+    ? clientId.slice(EXCHANGE_CLIENT_PREFIX.length)
+    : undefined
 export const DEVICE_CODE_SECONDS = 10 * 60
 export const DEVICE_POLL_SECONDS = 5
 
@@ -110,6 +122,44 @@ export class DeviceStore {
           })
           .execute()
         return { deviceCode, userCode: code, expiresAt }
+      } catch (error) {
+        if (attempt >= 4) throw error
+      }
+    }
+  }
+
+  /**
+   * A device signed in already, with no code to approve: a token exchanged
+   * through a provider (story 364), listed and signed out like any other.
+   */
+  async signedInByExchange(init: {
+    clientId: string
+    clientName: string
+    userId: number
+    sessionId: string
+    expiresAt: Date
+  }): Promise<void> {
+    const now = new Date()
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await this.#db.q
+          .insertInto('device_authorization')
+          .values({
+            device_code_hash: hashToken(generateToken()),
+            user_code: userCode(),
+            client_id: init.clientId,
+            client_name: init.clientName,
+            scope: '',
+            status: 'issued',
+            user_id: init.userId,
+            session_id: init.sessionId,
+            interval_seconds: DEVICE_POLL_SECONDS,
+            expires_at: DbDate.toDb(init.expiresAt),
+            decided_at: DbDate.toDb(now),
+            create_date: DbDate.toDb(now),
+          })
+          .execute()
+        return
       } catch (error) {
         if (attempt >= 4) throw error
       }

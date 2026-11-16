@@ -6,6 +6,22 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.67.0 — 2026-11-16
+
+### Features
+
+- **A host's tools reach the remote as a person its provider signed in (364).** A
+  back-office identity provider that opts in, with `remoteExchange` in the config or
+  `CROMBOLO_REMOTE_EXCHANGE_PROVIDERS` on the server, lets a token it issued for the remote
+  be exchanged at the remote's `/token` for a 15-minute sign-in as the person it names. The
+  person is found as their last back-office sign-in through the provider recorded them, by
+  `oid` for Entra, and their groups follow the token. The sign-in is one of their signed-in
+  devices, and signing it out ends it. It never approves anything, and makes nothing that
+  outlasts it: no command-line token, API key, password or two-factor change. An exchange
+  never creates an account. Discovery lists the providers under `auth.people`, and
+  `@crombolo/remote-conformance` checks the exchange. `docs/operations.md`, "Letting a
+  host's tools reach the remote as a person", covers setting it up with Entra.
+
 ### Changes
 
 - **Approvals says how many changes are waiting.** The Approvals screen of a site with no
@@ -27,6 +43,15 @@ point at `docs/stories/`.
   quietly leave someone out of a group. On Postgres, a group given by something other than
   its key failed the save outright. Both now answer 400, naming the group, and change
   nothing. A sign-in provider's group sync still skips a group that is gone.
+
+
+### Upgrade notes
+
+- **Back-office sign-ins through a provider now record who the person is at it (364).**
+  Nothing to do unless a provider is to exchange tokens: then someone linked before this
+  release signs in to the back office through it once before their first exchange.
+- **Migrations:** 079 `AddRemoteExchange` (release 0.67.0) adds `identity_value` and
+  `identity_issuer` to `external_login` and the `remote_exchange_id` table. Nothing to do.
 
 ## v0.66.0 — 2026-11-15
 

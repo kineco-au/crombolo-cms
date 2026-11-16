@@ -22,6 +22,12 @@ export interface ConformanceOptions {
   push?: boolean
   /** How long to wait for a job, in milliseconds. */
   timeoutMs?: number
+  /**
+   * Mints a token one of the providers `auth.people` names issued for the
+   * remote, for a person signed in to it once (story 364): the exchange is
+   * then checked end to end. Without it, only its refusals are.
+   */
+  personToken?: (provider: { id: string; issuer: string; audience: string }) => Promise<string>
   fetch?: typeof fetch
 }
 
@@ -166,6 +172,67 @@ export async function runConformance(options: ConformanceOptions): Promise<Confo
       const text = await response.text()
       assert(text.includes('invalid_grant'), 'the refusal is not invalid_grant')
       assert(!text.includes(forged), 'the refusal repeats the token')
+    })
+  }
+
+  // Optional: a person signed in through a provider (story 364). Offered by
+  // discovery alone, with the same endpoint and grant as CI's.
+  const people = (state.discovery?.auth as Json | undefined)?.people as Json | undefined
+  if (people) {
+    const providers = (people.providers as Json[] | undefined) ?? []
+    const exchange = (token: string) =>
+      http(String(people.tokenExchange), {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: String(people.grantType),
+          subject_token: token,
+          subject_token_type: String(people.subjectTokenType),
+        }).toString(),
+      })
+    const refusal = async (response: Response, token: string) => {
+      assert(response.status === 400, `answered ${response.status}`)
+      const text = await response.text()
+      assert(text.includes('invalid_grant'), 'the refusal is not invalid_grant')
+      assert(!text.includes(token), 'the refusal repeats the token')
+    }
+    await check(
+      'people: discovery names the exchange and each provider, issuer and audience',
+      async () => {
+        for (const field of ['tokenExchange', 'grantType', 'subjectTokenType', 'audience'])
+          assert(typeof people[field] === 'string', `auth.people.${field} is missing`)
+        assert(providers.length > 0, 'auth.people.providers is empty')
+        for (const provider of providers)
+          for (const field of ['id', 'issuer', 'audience'])
+            assert(typeof provider[field] === 'string', `a provider's ${field} is missing`)
+      },
+    )
+    await check("people: an unsigned token naming a provider's issuer is refused", async () => {
+      const claims = Buffer.from(JSON.stringify({ iss: providers[0]?.issuer })).toString(
+        'base64url',
+      )
+      const forged = `eyJhbGciOiJub25lIn0.${claims}.`
+      await refusal(await exchange(forged), forged)
+    })
+    await check('people: a minted token signs the person in, once', async () => {
+      const provider = providers[0]
+      if (!options.personToken || !provider) return 'skip'
+      const token = await options.personToken({
+        id: String(provider.id),
+        issuer: String(provider.issuer),
+        audience: String(provider.audience),
+      })
+      const answer = await exchange(token)
+      assert(answer.status === 200, `answered ${answer.status}`)
+      const body = (await answer.json()) as Json
+      assert(typeof body.access_token === 'string', 'no access_token')
+      assert(body.token_type === 'Bearer', 'token_type is not Bearer')
+      const me = await http(`${state.api}/me`, {
+        headers: { authorization: `Bearer ${String(body.access_token)}` },
+      })
+      assert(me.status === 200, `me answered ${me.status}`)
+      assert(((await me.json()) as Json).kind === 'person', 'me is not a person')
+      await refusal(await exchange(token), token)
     })
   }
 

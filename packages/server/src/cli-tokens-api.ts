@@ -96,6 +96,12 @@ export function createCliTokensApi(db: Db, tokens: CliTokens) {
       }
       if (!enabled) return refused(CLI_TOKEN_REFUSALS.off)
       if (request.method === 'POST' && rest === '') {
+        // Story 364: a sign-in through another service lasts minutes; a token it made would not.
+        if (principal.viaExchange)
+          return refused(
+            'A sign-in through another service cannot make command-line tokens. Make one signed in as yourself.',
+            403,
+          )
         const body = (await request.json().catch(() => ({}))) as { name?: unknown; days?: unknown }
         const issued = await tokens.issue(
           me.id,

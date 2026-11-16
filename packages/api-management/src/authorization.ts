@@ -473,6 +473,21 @@ export function canReadDocumentAt(
   return permissionsForPath(principal.groups, chain).has(D.Read)
 }
 
+/**
+ * What a token exchanged through a provider may not do (story 364): set or
+ * reset a password, change two-factor sign-in, or make an API key, any of
+ * which would outlast its fifteen minutes.
+ */
+export const EXCHANGE_REFUSED_OPERATIONS: ReadonlySet<string> = new Set([
+  'PostUserCurrentChangePassword',
+  'PostUserByIdChangePassword',
+  'PostUserByIdResetPassword',
+  'PostUserCurrent2faByProviderName',
+  'DeleteUserCurrent2faByProviderName',
+  'DeleteUserById2faByProviderName',
+  'PostUserByIdClientCredentials',
+])
+
 /** Evaluates the operation's section requirements, then its node rules. */
 export async function authorize(
   operation: OperationInfo,
@@ -481,6 +496,7 @@ export async function authorize(
   principal: Principal,
   nodes: NodeLookup | undefined,
 ): Promise<boolean> {
+  if (principal.viaExchange && EXCHANGE_REFUSED_OPERATIONS.has(operation.operationId)) return false
   const sections = sectionsOf(principal)
   for (const requirement of sectionRequirements(operation)) {
     if (requirement === 'admin') {

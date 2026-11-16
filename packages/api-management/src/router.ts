@@ -76,6 +76,13 @@ export interface Principal {
    */
   viaToken?: { key: string; name: string }
   /**
+   * Set when the person acts through a token exchanged at the remote for one
+   * their identity provider issued (story 364), by that provider's id: it is
+   * them for its fifteen minutes, but it decides no approval and makes nothing
+   * that outlives it.
+   */
+  viaExchange?: { provider: string }
+  /**
    * Set while an administrator's session views as user groups (story 314):
    * everything above is the groups', and they are who this really is.
    */

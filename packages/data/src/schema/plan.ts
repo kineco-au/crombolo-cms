@@ -69,6 +69,7 @@ import { publicAccessMigration } from './public-access.ts'
 import { recycleBinMigration } from './recycle-bin.ts'
 import { redirectsMigration } from './redirects.ts'
 import { remoteMigration } from './remote.ts'
+import { remoteExchangeMigration } from './remote-exchange.ts'
 import { remoteTrustMigration } from './remote-trust.ts'
 import { richTextUiMigration } from './rich-text-ui.ts'
 import { searchIndexMigration } from './search-index.ts'
@@ -171,4 +172,5 @@ export const cromboloPlan = new MigrationPlan([
   userStartNodesDroppedMigration,
   sessionViewAsMigration,
   cliTokensMigration,
+  remoteExchangeMigration,
 ])

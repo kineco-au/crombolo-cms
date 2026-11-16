@@ -167,6 +167,66 @@ The reference server's Settings screen is **CI access**.
 
 [RFC 8693]: https://www.rfc-editor.org/rfc/rfc8693
 
+### Signing in as a person through a provider (`auth.people`, optional)
+
+A host that signs people in to the back office through its own OpenID Connect
+provider can let its own tools reach the remote as them (story 364). The tool
+exchanges a token the same provider issued, for the remote and for that
+person, at the endpoint and with the grant CI uses. Discovery adds:
+
+```json
+"auth": {
+  "people": {
+    "tokenExchange": "https://example.com/umbraco/remote/v1/token",
+    "grantType": "urn:ietf:params:oauth:grant-type:token-exchange",
+    "subjectTokenType": "urn:ietf:params:oauth:token-type:jwt",
+    "audience": "https://example.com",
+    "providers": [
+      { "id": "entra", "name": "Microsoft", "issuer": "https://login.microsoftonline.com/<tenant>/v2.0", "audience": "<the API app's client id>" }
+    ]
+  }
+}
+```
+
+It is there only when a provider opts in: `remoteExchange` on a back-office
+provider in the config, or its id in `CROMBOLO_REMOTE_EXCHANGE_PROVIDERS`.
+Nothing stored in the back office turns it on or off.
+
+1. **The token.** The tool asks the provider for a token whose `aud` is that
+   provider's `audience`: the site's origin, unless the config names another.
+   It is never a client id the back office signs in with; the site refuses to
+   start if it is, so a sign-in ID token can never be exchanged.
+2. **The exchange.** As for CI. The token's `iss` says which exchange it is.
+3. **The remote verifies the token:**
+   - its signature, against the provider's published keys, with an asymmetric
+     algorithm;
+   - `iss`, the provider's issuer as sign-in uses it, with an administrator's
+     changes (story 033) unless the provider is locked;
+   - `aud`, the provider's audience;
+   - `exp`, `nbf` and `iat`, and a lifetime of 90 minutes at most;
+   - no `nonce`, which only a sign-in ID token carries;
+   - `jti`, or Entra's `uti`, accepted once.
+4. **The person** is found by the claim that names them across the provider's
+   apps, `oid` for Entra and `sub` for the others, as their last back-office
+   sign-in through the provider recorded it, from the same issuer. Where the
+   provider links by verified email, someone not yet linked is found by it.
+   **An exchange never makes an account**, whatever `autoCreate` says: someone
+   with none signs in to the back office once first. Their groups follow the
+   token's groups claim, as at sign-in. A person locked out, disabled or with
+   no section of the back office is refused.
+5. **The answer.** As for CI: a 15-minute bearer token and no refresh token,
+   or 400 `invalid_grant` and nothing more.
+
+**What the token may do.** It is the person, with their own permissions, and
+works wherever a device sign-in does, the back office's API included. It is one
+of their **signed-in devices**, "Signed in through Microsoft", and signing it
+out there ends it at once, as locking or disabling them does. It never decides
+an approval (403 `exchange-cannot-approve`), and it makes nothing that would
+outlast it: no command-line token, API key, password, password reset or
+two-factor change, and no viewing as other groups. **Every exchange is
+audited,** accepted or refused, with the reason, and so is everything the token
+does, as the person, "signed in through Microsoft".
+
 ## Environments
 
 `GET <api>/environments` lists the environments, each with what this person

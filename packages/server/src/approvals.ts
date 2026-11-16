@@ -269,14 +269,20 @@ export function scheduleRefusal(
 }
 
 /**
- * CI and a command-line token never decide (stories 160, 351): a person
- * deciding, signed in, is the point of an approval.
+ * CI, a command-line token and a token exchanged through a provider never
+ * decide (stories 160, 351, 364): a person deciding, signed in, is the point
+ * of an approval.
  */
 function refuseUnattended(principal: Principal): void {
   if (principal.ci) throw new ApprovalRefused('CI cannot approve or send back a request.', 403)
   if (principal.viaToken)
     throw new ApprovalRefused(
       'A command-line token cannot approve or send back a request. Decide it signed in as yourself.',
+      403,
+    )
+  if (principal.viaExchange)
+    throw new ApprovalRefused(
+      'A sign-in through another service cannot approve or send back a request. Decide it signed in as yourself.',
       403,
     )
 }

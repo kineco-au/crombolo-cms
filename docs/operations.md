@@ -420,6 +420,43 @@ says it is not available, the boot and the log say why, and the screen asks for
 the secret. Every change and reset is audited, with the fields changed and
 never a secret.
 
+**Letting a host's tools reach the remote as a person** (story 364). A host
+that signs people in through a back-office provider can let its own console or
+tooling act on the remote as whoever it has signed in, for 15 minutes at a
+time, by exchanging a token the provider issued
+([`remote-protocol.md`](remote-protocol.md), "Signing in as a person through a
+provider"). It is off until the provider opts in:
+
+```ts
+entra({
+  tenantId, clientId, clientSecret,
+  remoteExchange: { audience: '<the API app\'s client id>' },
+  locked: true,
+})
+```
+
+or, without the site's code, `CROMBOLO_REMOTE_EXCHANGE_PROVIDERS=entra` on the
+server, which takes the site's origin as the audience. The boot says which
+providers exchange.
+
+- **The audience** is the `aud` the provider puts in the token, and never the
+  client id the back office signs in with: the site refuses to start if it is.
+  Entra puts an API's client id there, so register a second app, used only for
+  the remote and never for sign-in, expose a scope on it, let the host's tool
+  request that scope, and name that app's client id as the audience. Keycloak,
+  Okta and Auth0 can put the site's origin there with an audience setting.
+- **Who it is.** The person is found by `oid` for Entra, whose `sub` differs for
+  each app, and by `sub` for other providers (`claims: { identity }` on
+  `oidc({...})` names another claim). Each back-office sign-in records it, so
+  someone linked before 0.67 signs in to the back office once before their
+  first exchange; until then it is refused, and the audit log says why. An
+  exchange never creates a user.
+- **Lock the provider** the host relies on. On an unlocked one, an
+  administrator's change to its issuer, tenant or groups applies to the
+  exchange as it does to sign-in.
+- **Tokens last** up to 90 minutes at the provider and are accepted once; have
+  the tool exchange one as soon as it has it, and never log it.
+
 ## Two-factor sign-in
 
 Backoffice users and members can turn on a second factor: an authenticator app

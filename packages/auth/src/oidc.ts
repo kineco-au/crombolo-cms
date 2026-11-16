@@ -17,6 +17,8 @@ export interface OidcClaims {
   name: string
   /** Where group or role values come from, for mapping onto groups. */
   groups?: string
+  /** What names the person across tokens for other apps of the provider; `sub` when unset. */
+  identity?: string
 }
 
 /** One provider, as a preset describes it. */
@@ -41,6 +43,8 @@ export interface OidcIdentity {
   name: string | undefined
   /** The values of the provider's groups claim, when it names one. */
   groups: string[]
+  /** The value of the claim that names the person (story 364): `sub` unless the provider says. */
+  identity: string | undefined
   claims: JWTPayload
 }
 
@@ -189,6 +193,7 @@ export class OidcClient {
       emailVerified: verified === true || verified === 'true',
       name: stringClaim(claims, this.options.claims.name),
       groups: listClaim(claims, this.options.claims.groups),
+      identity: stringClaim(claims, this.options.claims.identity ?? 'sub'),
       claims,
     }
   }

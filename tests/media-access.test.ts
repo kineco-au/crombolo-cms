@@ -1113,6 +1113,7 @@ describe(`the migration (${dialectUnderTest})`, () => {
       'DropUserStartNodes',
       'AddSessionViewAs',
       'AddCliTokens',
+      'AddRemoteExchange',
     ])
     const found = await new MediaAccessRepository(db).byUrl(photo.src)
     expect(found?.key).toBe(photo.key)
