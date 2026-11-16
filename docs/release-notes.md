@@ -6,6 +6,20 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+### Changes
+
+- **Approvals says how many changes are waiting.** The Approvals screen of a site with no
+  workflows counts the changes waiting for approval instead of explaining where workflows
+  are set up, and the Approvals link under Content is hidden while there are no workflows
+  and nothing is waiting, as the Approvals section already was.
+- **Shorter wording in the back office.** Redirects with no rules says "No redirect rules
+  have been configured. Add a new rule here."; Structure's opening screen says only how to
+  choose what to edit.
+- **The Harbourstone demos' compare view** centres the category tabs, the bottle cards and
+  the "nothing chosen yet" line, moves each bottle's Remove button below its column, and
+  drops the "Choose up to 4" heading from view. The footer reads "This is a Crombolo demo
+  site. Nothing here is for sale."
+
 ### Fixes
 
 - **A member saved with a group that doesn't exist is refused.** The back office's member

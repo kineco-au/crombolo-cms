@@ -32,20 +32,21 @@ const WORKFLOW = {
   ],
 }
 
-test('Approvals says when no workflow is set up, and lists requests once one is', async ({
+test('Approvals counts what waits when no workflow is set up, and lists requests once one is', async ({
   page,
 }) => {
   await signIn(page)
   await page.goto('/crombolo/section/workflow')
   const tabs = page.locator('umb-backoffice-header-sections uui-tab')
   const waiting = page.locator('crombolo-approvals-list')
-  await expect(waiting).toContainText('No approval workflows have been set up yet', {
+  await expect(waiting).toContainText('You have no changes waiting for approval', {
     timeout: 30_000,
   })
   await expect(tabs.filter({ hasText: 'Approvals' })).toHaveCount(0)
-  await expect(
-    page.locator('crombolo-content-strip').getByRole('link', { name: 'Approvals' }),
-  ).toHaveAttribute('aria-current', 'page')
+  const approvalsLink = page
+    .locator('crombolo-content-strip')
+    .getByRole('link', { name: 'Approvals' })
+  await expect(approvalsLink).toHaveCount(0)
 
   const saved = await page.request.put(`${API}/workflows/${WORKFLOW.alias}`, {
     data: { workflow: WORKFLOW },
@@ -56,7 +57,8 @@ test('Approvals says when no workflow is set up, and lists requests once one is'
   await expect(waiting.locator('uui-checkbox[label="Pending"]')).toBeVisible({
     timeout: 30_000,
   })
-  await expect(waiting).not.toContainText('No approval workflows')
+  await expect(waiting).not.toContainText('You have no changes waiting')
+  await expect(approvalsLink).toHaveAttribute('aria-current', 'page')
   await expect(page.locator('umb-section-main-views uui-tab')).toHaveCount(0)
   await expect(page.locator('crombolo-workflow-designer')).toHaveCount(0)
 
@@ -68,7 +70,7 @@ test('Approvals says when no workflow is set up, and lists requests once one is'
   await designer.getByRole('button', { name: 'Delete' }).click()
   await expect(designer.getByText('Browser check')).toHaveCount(0)
   await page.goto('/crombolo/section/workflow')
-  await expect(waiting).toContainText('No approval workflows have been set up yet', {
+  await expect(waiting).toContainText('You have no changes waiting for approval', {
     timeout: 30_000,
   })
 })

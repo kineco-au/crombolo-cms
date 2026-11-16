@@ -261,7 +261,7 @@ async function rulesScreen(host: Host, state: RulesState): Promise<Screen> {
         ? empty(state.query ? 'No redirect matches' : 'No redirects yet', {
             text: state.query
               ? 'Nothing redirects from or to that.'
-              : 'Nothing redirects on this site. Add a rule here, or rename a published page, which records one by itself so the old URL keeps working.',
+              : 'No redirect rules have been configured. Add a new rule here.',
           })
         : table(['From', 'To', 'Status', 'Source'], rules.map(ruleRow)),
     ],

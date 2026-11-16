@@ -514,14 +514,7 @@ export class CromboloSettingsLandingElement extends UmbLitElement {
 }
 
 const TREE_HELP = {
-  structure: html`<p>
-      Choose a type, data type or language in the tree to edit it.
-    </p>
-    <p>
-      Content types, data types and languages are <strong>files</strong>, in
-      <code>schema/</code>, written as TOML. What you change here is written to the file, and the
-      file is what a deploy and every other server reads, so a change can be reviewed like code.
-    </p>`,
+  structure: html`<p>Choose a type, data type or language in the tree to edit it.</p>`,
   code: html`<p>Choose a component, stylesheet or script in the tree to edit it.</p>`,
 }
 

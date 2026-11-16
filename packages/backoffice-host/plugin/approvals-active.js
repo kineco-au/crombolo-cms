@@ -14,6 +14,12 @@ export function approvalsChanged() {
   for (const listener of listeners) listener()
 }
 
+/** Calls `listener` each time approvals may have changed; answers how to stop. */
+export function watchApprovals(listener) {
+  listeners.add(listener)
+  return () => listeners.delete(listener)
+}
+
 export class CromboloApprovalsActiveCondition extends UmbConditionBase {
   #listener = () => this.#check()
 

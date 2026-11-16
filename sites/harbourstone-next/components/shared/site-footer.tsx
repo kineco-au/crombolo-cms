@@ -7,7 +7,7 @@ export function SiteFooter() {
         <p>
           <Wordmark /> Distillery · Cove of Stenwick, Caithness
         </p>
-        <p>A demonstration site. Nothing here is real, and nothing here is for sale.</p>
+        <p>This is a Crombolo demo site. Nothing here is for sale.</p>
       </div>
     </footer>
   )

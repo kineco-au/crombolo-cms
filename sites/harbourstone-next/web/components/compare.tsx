@@ -108,7 +108,9 @@ export function Compare({ bottlings }: { bottlings: Bottling[] }) {
   return (
     <div className="compare">
       <section className="compare__picker" aria-labelledby={`${ids}-pick`}>
-        <h2 id={`${ids}-pick`}>Choose up to {MOST}</h2>
+        <h2 id={`${ids}-pick`} className="visually-hidden">
+          Choose up to {MOST}
+        </h2>
         <Categories
           id={ids}
           categories={categories}
@@ -161,14 +163,6 @@ export function Compare({ bottlings }: { bottlings: Bottling[] }) {
                         />
                       ) : null}
                       <Link href={b.href}>{b.title}</Link>
-                      <button
-                        type="button"
-                        className="compare__remove"
-                        onClick={() => toggle(b.id)}
-                        aria-label={`Remove ${b.title}`}
-                      >
-                        Remove
-                      </button>
                     </th>
                   ))}
                 </tr>
@@ -186,6 +180,23 @@ export function Compare({ bottlings }: { bottlings: Bottling[] }) {
                   </tr>
                 ))}
               </tbody>
+              <tfoot>
+                <tr>
+                  <td />
+                  {chosen.map((b) => (
+                    <td key={b.id}>
+                      <button
+                        type="button"
+                        className="compare__remove"
+                        onClick={() => toggle(b.id)}
+                        aria-label={`Remove ${b.title}`}
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  ))}
+                </tr>
+              </tfoot>
             </table>
           </div>
           <ul className="compare__cards">

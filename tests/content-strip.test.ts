@@ -44,6 +44,16 @@ describe('what the menu offers', () => {
     ])
   })
 
+  test('no Approvals while the site has no workflow and no request open', () => {
+    const admin = { allowedSections: [CONTENT, APPROVALS, SETTINGS], isAdmin: true }
+    expect(stripItems(admin, { approvals: false }).map((i) => i.label)).toEqual([
+      'Pages',
+      'Structure',
+      'Code',
+    ])
+    expect(stripItems(admin, { approvals: true }).map((i) => i.label)).toContain('Approvals')
+  })
+
   test('nothing, to someone with one thing to open', () => {
     expect(labels({ allowedSections: [CONTENT], isAdmin: false })).toEqual([])
     expect(labels({ allowedSections: [], isAdmin: false })).toEqual([])

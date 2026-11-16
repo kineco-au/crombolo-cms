@@ -31,13 +31,17 @@ const ITEMS = [
 
 /**
  * The items this user may open. One alone is no menu, so it offers none.
+ * Approvals is offered only while the site has a workflow or a request is open,
+ * as its section is (story 234).
  *
  * @param {{ allowedSections?: string[], fallbackPermissions?: string[], isAdmin?: boolean } | undefined} user
+ * @param {{ approvals?: boolean }} [site]
  */
-export function stripItems(user) {
+export function stripItems(user, site = {}) {
   const allowed = user?.allowedSections ?? []
   const may = (verb) => user?.isAdmin === true || (user?.fallbackPermissions ?? []).includes(verb)
   const items = ITEMS.flatMap((item) => {
+    if (item.section === APPROVALS && site.approvals === false) return []
     if (allowed.includes(item.section)) return [item]
     const other = (item.or ?? []).find(
       (or) => allowed.includes(or.section) && (!or.verb || may(or.verb)),

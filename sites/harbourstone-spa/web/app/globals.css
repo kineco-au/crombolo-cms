@@ -928,6 +928,18 @@ nav.search-pages a {
   overscroll-behavior-x: contain;
 }
 
+/* Centred while they fit; from the start once they scroll, so none is cut off. */
+@supports (justify-content: safe center) {
+  .compare__tabs,
+  .compare__track {
+    justify-content: safe center;
+  }
+}
+
+.compare__status {
+  text-align: center;
+}
+
 .compare__slide {
   scroll-snap-align: start;
   animation: compare-in 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
@@ -1090,6 +1102,10 @@ nav.search-pages a {
 
 .compare__table thead th {
   display: table-cell;
+}
+
+.compare__table tfoot td {
+  border-bottom: none;
 }
 
 .compare__table thead img {

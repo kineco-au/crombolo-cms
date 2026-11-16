@@ -1,10 +1,12 @@
 /**
  * Approvals' list (story 028): the requests pending, and those decided when asked
  * for, a page at a time. Each row opens the page's Workflow tab, where a request
- * is acted on. With no workflow set up and no request open, it says so instead.
+ * is acted on. With no workflow set up and no request open, it says how many
+ * changes wait instead.
  */
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
+import { waitingLine } from './approvals-words.js'
 import { approvalsActive, requestList } from './workflow-client.js'
 import { describeWhen } from './workflow-time.js'
 
@@ -53,6 +55,7 @@ class CromboloApprovalsListElement extends UmbLitElement {
     _pending: { state: true },
     _decided: { state: true },
     _inactive: { state: true },
+    _waiting: { state: true },
   }
 
   connectedCallback() {
@@ -70,6 +73,10 @@ class CromboloApprovalsListElement extends UmbLitElement {
       approvalsActive(),
     ])
     this._inactive = active.ok && active.active !== true
+    if (this._inactive) {
+      const waiting = await requestList({ pending: true, decided: false }, 0, 1)
+      this._waiting = waiting.ok ? waiting.total : 0
+    }
     if (!result.ok) {
       this._message = result.message
       return
@@ -153,7 +160,7 @@ class CromboloApprovalsListElement extends UmbLitElement {
   render() {
     if (this._inactive)
       return html`<uui-box headline="Approvals">
-        <p>No approval workflows have been set up yet, so nothing waits for approval. Workflows are set up in Structure.</p>
+        <p>${waitingLine(this._waiting ?? 0)}</p>
       </uui-box>`
     const headline = listHeadline({ pending: this._pending, decided: this._decided })
     return html`<uui-box headline=${headline}>

@@ -5,7 +5,9 @@
 import { UMB_CURRENT_USER_CONTEXT } from '@umbraco-cms/backoffice/current-user'
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
+import { watchApprovals } from './approvals-active.js'
 import { activeItem, stripItems } from './content-strip-items.js'
+import { approvalsActive } from './workflow-client.js'
 
 const CONTENT = 'Umb.Section.Content'
 const ROW_HEIGHT = '--crombolo-content-strip-height'
@@ -24,6 +26,11 @@ export default class CromboloContentStripElement extends UmbLitElement {
     _active: { state: true },
   }
 
+  #user
+  /** Approvals waits for the site's answer, and stays offered if it can't be had. */
+  #approvals = false
+  #unwatch
+
   #follow = () => {
     this._active = activeItem(pathHere())
     this.#sync()
@@ -37,6 +44,17 @@ export default class CromboloContentStripElement extends UmbLitElement {
     else document.documentElement.style.removeProperty(ROW_HEIGHT)
   }
 
+  #offer() {
+    this._items = stripItems(this.#user, { approvals: this.#approvals })
+    this.#sync()
+  }
+
+  #checkApprovals = async () => {
+    const answer = await approvalsActive()
+    this.#approvals = answer.ok ? answer.active === true : true
+    this.#offer()
+  }
+
   #shown() {
     return this._items.length > 0 && this._active !== undefined
   }
@@ -46,8 +64,8 @@ export default class CromboloContentStripElement extends UmbLitElement {
     this._items = []
     this.consumeContext(UMB_CURRENT_USER_CONTEXT, (user) => {
       this.observe(user?.currentUser, (current) => {
-        this._items = stripItems(current)
-        this.#sync()
+        this.#user = current
+        this.#offer()
       })
     })
   }
@@ -55,6 +73,8 @@ export default class CromboloContentStripElement extends UmbLitElement {
   connectedCallback() {
     super.connectedCallback()
     this.#follow()
+    this.#checkApprovals()
+    this.#unwatch = watchApprovals(this.#checkApprovals)
     window.addEventListener('changestate', this.#follow)
     window.addEventListener('popstate', this.#follow)
     // A route the router settles on without a state change of its own, such as Home.
@@ -63,6 +83,7 @@ export default class CromboloContentStripElement extends UmbLitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback()
+    this.#unwatch?.()
     window.removeEventListener('changestate', this.#follow)
     window.removeEventListener('popstate', this.#follow)
     window.removeEventListener('navigationend', this.#follow)
