@@ -5,6 +5,11 @@
  * docs/bundles.md, "Tools a host provides".
  */
 import { SignJWT } from 'jose'
+import {
+  type IdentityProvider,
+  type LockedIdentityProviders,
+  lockOf,
+} from './identity-providers.ts'
 
 /** The installation's host, from `crombolo.config.ts` only. */
 export interface HostConfig {
@@ -14,13 +19,23 @@ export interface HostConfig {
   signingKey: string
   /** Names the key in each token's header, for a host running many installations. */
   keyId: string
+  /**
+   * The back-office identity provider the host signs people in through (story
+   * 372): each token names the person's subject there, as `host_sub` and
+   * `host_iss`. It must be locked, so nobody can point it at another issuer.
+   */
+  provider?: string
 }
 
 /** How long a token lasts, in seconds. */
 export const HOST_TOKEN_SECONDS = 300
 
 /** Refuses a `host` that could not be used, naming the field. */
-export function checkHost(host: HostConfig | undefined): void {
+export function checkHost(
+  host: HostConfig | undefined,
+  providers: readonly IdentityProvider[] = [],
+  locked: LockedIdentityProviders = [],
+): void {
   if (!host) return
   let url: URL | undefined
   try {
@@ -37,6 +52,17 @@ export function checkHost(host: HostConfig | undefined): void {
     throw new Error('host.signingKey must be at least 32 bytes.')
   if (typeof host.keyId !== 'string' || host.keyId.trim() === '')
     throw new Error('host.keyId must name the key.')
+  if (host.provider === undefined) return
+  const provider = providers.find((p) => p.oidc.id === host.provider)
+  if (!provider)
+    throw new Error(
+      `host.provider is "${host.provider}", which is not one of the back-office identity providers the config declares.`,
+    )
+  // Story 372: an unlocked provider could be re-pointed at an issuer an administrator controls.
+  if (!lockOf(provider, locked))
+    throw new Error(
+      `host.provider names ${provider.oidc.name}, which must be locked: set locked: true on it, so nobody can point it at another issuer.`,
+    )
 }
 
 /** Who the token is about, and which site says so. */
@@ -45,6 +71,8 @@ export interface HostTokenSubject {
   groups: readonly string[]
   sections: readonly string[]
   site: { name: string; nodeId: string; url?: string }
+  /** Who the person is at the host's provider (story 372), when their link recorded it. */
+  host?: { sub: string; iss: string }
 }
 
 export async function issueHostToken(
@@ -58,6 +86,7 @@ export async function issueHostToken(
     groups: [...subject.groups],
     sections: [...subject.sections],
     site: { name: subject.site.name, nodeId: subject.site.nodeId },
+    ...(subject.host ? { host_sub: subject.host.sub, host_iss: subject.host.iss } : {}),
   })
     .setProtectedHeader({ alg: 'HS256', kid: host.keyId, typ: 'JWT' })
     .setSubject(subject.user.key)

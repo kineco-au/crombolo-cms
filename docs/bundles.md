@@ -1728,7 +1728,9 @@ export default defineConfig({
 - `aud` is the host origin and `iss` the site's address;
 - it lasts five minutes;
 - `sub` is the user's key, with `name`, `groups` (aliases) and `sections`;
-- `site` gives the site's name and node id.
+- `site` gives the site's name and node id;
+- with `host.provider`, `host_sub` and `host_iss` say who the person is at the
+  host's own provider (below).
 
 **Getting one:**
 - only a signed-in person gets one, on a request from the site itself;
@@ -1754,6 +1756,36 @@ verifies, so only the service that checks tokens should hold it: any component
 that has it can mint tokens the others accept. The back office's content
 security policy lets its screens reach the host's origin for these calls
 (story 318).
+
+**The person at the host's own provider** (story 372). A host that signs
+people in to the back office through its own provider names it, so each token
+says who the person is there, not only by a user key that exists on one site:
+
+```ts
+export default defineConfig({
+  backofficeIdentityProviders: [
+    entra({ tenantId, clientId, clientSecret, locked: true }),
+  ],
+  host: { origin, signingKey, keyId: 'installation-7', provider: 'entra' },
+})
+```
+
+- `host_sub` is the subject the person's link to that provider recorded at
+  their last sign-in through it: `oid` for Entra, `sub` for the others, as the
+  remote's exchange finds them (story 364). `host_iss` is the provider's issuer,
+  since Entra's `oid` is unique only within a tenant.
+- Both are left out when the person has no link to the provider, the link has
+  no value yet (someone linked before 0.67 signs in through it once), or the
+  value was recorded from another issuer.
+- **The provider must be locked** (`locked: true`, or
+  `CROMBOLO_LOCKED_IDENTITY_PROVIDERS`), or the site refuses to start: an
+  administrator able to point it at an issuer of their own could otherwise link
+  people to that issuer's subjects.
+- **The host trusts `host_sub` only from an installation that person may use.**
+  The installation's key is in its config, so whoever deploys the site, or code
+  running in it, can sign a token naming any `host_sub`. The claim says who the
+  person is; the host decides, by `kid`, whether this installation may speak for
+  them, and refuses one that names someone it doesn't let in there.
 
 ## What a wired bundle gets
 

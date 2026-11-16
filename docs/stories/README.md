@@ -222,6 +222,7 @@ requests, only server-side and build-time front ends can call it.
 | `222` | Bundles ask for permissions | should | L | done | 063, 194 |
 | `244` | The provenance check from the host entry | should | S | done | 060 |
 | `346` | A granted extension starts without a restart | should | M | done | 311 |
+| `372` | The host token names the host's own sign-in | should | S | done | 178, 305, 364 |
 
 ### Epic H — Importing a site
 

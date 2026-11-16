@@ -4,8 +4,8 @@
  * nothing but that key.
  */
 import { afterEach, describe, expect, test } from 'bun:test'
-import { AuditLog } from '@crombolo/data'
-import { checkHost, type HostConfig, loadConfig } from '@crombolo/server'
+import { AuditLog, ExternalLoginRepository, externalLoginProvider } from '@crombolo/data'
+import { checkHost, entra, type HostConfig, loadConfig, oidc } from '@crombolo/server'
 import { decodeProtectedHeader, jwtVerify } from 'jose'
 import {
   BACKOFFICE,
@@ -155,5 +155,60 @@ describe('who gets one', () => {
     await token(h)
     const after = (await new AuditLog(h.server.db).query({}, { skip: 0, take: 500 })).total
     expect(after).toBe(before)
+  })
+})
+
+describe('the person at the host’s own provider (372)', () => {
+  const ISSUER = 'https://login.corp.example'
+  const corp = (locked = true) =>
+    oidc({ id: 'corp', name: 'Corp', issuer: ISSUER, clientId: 'back-office-app', locked })
+  const linked = async (identity?: { value: string; issuer: string }) => {
+    const h = await signedInServer({
+      config: { host: { ...HOST, provider: 'corp' }, backofficeIdentityProviders: [corp()] },
+    })
+    open.push(h.db)
+    const me = await h.json<{ id: string }>(`${V1}/user/current`)
+    await new ExternalLoginRepository(h.server.db).link(
+      me.id,
+      externalLoginProvider('user', 'corp'),
+      'sign-in-sub',
+      identity,
+    )
+    return (await jwtVerify(await token(h), key, { audience: HOST.origin })).payload
+  }
+
+  test('names them by the subject and issuer their link recorded', async () => {
+    const payload = await linked({ value: 'subject-1', issuer: ISSUER })
+    expect(payload.host_sub).toBe('subject-1')
+    expect(payload.host_iss).toBe(ISSUER)
+  })
+
+  test('says nothing for a link with no value, or one from another issuer, or none', async () => {
+    expect((await linked(undefined)).host_sub).toBeUndefined()
+    const elsewhere = await linked({ value: 'subject-1', issuer: 'https://other.example' })
+    expect(elsewhere.host_sub).toBeUndefined()
+    expect(elsewhere.host_iss).toBeUndefined()
+    const h = await signedInServer({
+      config: { host: { ...HOST, provider: 'corp' }, backofficeIdentityProviders: [corp()] },
+    })
+    open.push(h.db)
+    const payload = (await jwtVerify(await token(h), key, { audience: HOST.origin })).payload
+    expect(payload.host_sub).toBeUndefined()
+    expect(payload.name).toBeDefined()
+  })
+
+  test('a provider that is unknown or not locked stops the site starting', () => {
+    expect(() => checkHost({ ...HOST, provider: 'corp' }, [])).toThrow(/not one of/)
+    expect(() => checkHost({ ...HOST, provider: 'corp' }, [corp(false)])).toThrow(/must be locked/)
+    expect(() => checkHost({ ...HOST, provider: 'corp' }, [corp(false)], ['corp'])).not.toThrow()
+    expect(() => checkHost({ ...HOST, provider: 'corp' }, [corp()])).not.toThrow()
+    expect(() =>
+      loadConfig({
+        host: { ...HOST, provider: 'corp' },
+        backofficeIdentityProviders: [corp(false)],
+      }),
+    ).toThrow(/must be locked/)
+    const tenant = entra({ tenantId: 't', clientId: 'c', locked: true })
+    expect(() => checkHost({ ...HOST, provider: 'entra' }, [tenant])).not.toThrow()
   })
 })

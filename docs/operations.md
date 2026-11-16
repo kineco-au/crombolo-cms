@@ -468,6 +468,11 @@ providers exchange.
   exchange as it does to sign-in.
 - **Tokens last** up to 90 minutes at the provider and are accepted once; have
   the tool exchange one as soon as it has it, and never log it.
+- **Knowing the person on the host's side** (story 372). A host whose back-office
+  tools work for people on its own service sets `host.provider` to this provider,
+  locked, and each host token then carries `host_sub` and `host_iss`, the person's
+  subject and issuer there. The host trusts them only from an installation that
+  person may use ([`bundles.md`](bundles.md), "Tools a host provides").
 - **The remote can stay off** (story 365). With `CROMBOLO_REMOTE_ACCESS=off`
   the token endpoint, `/crombolo/remote/v1/token`, still answers the exchange
   for a provider that opts in, and the token works on the back office's API;

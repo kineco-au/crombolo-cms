@@ -1200,7 +1200,7 @@ export function loadConfig(
       'webhooks.allowPrivateAddresses is now CROMBOLO_ALLOW_PRIVATE_ADDRESSES (allowPrivateAddresses in the config), which covers forms and identity providers too (story 304).',
     )
   checkApiClient(merged.apiClient)
-  checkHost(merged.host)
+  checkHost(merged.host, merged.backofficeIdentityProviders, merged.lockedIdentityProviders)
   // The key itself is refused, so a config left over from before says so rather
   // than starting without the feature it asked for.
   if ('assistant' in overrides)
@@ -1314,7 +1314,7 @@ export function describeDatabase(
   }
 }
 
-export const VERSION = '0.69.0'
+export const VERSION = '0.69.1'
 
 /** A whole number of seconds from the environment; undefined when unset or not one. */
 /** A positive number from a setting, else the default. */

@@ -6,6 +6,20 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.69.1 — 2026-11-16
+
+### Features
+
+- **The host token names the person at the host's own provider (372).** With
+  `host.provider` naming a locked back-office identity provider, each host token
+  carries `host_sub` and `host_iss`, the subject and issuer the person's link to it
+  recorded, so a host tool can act for the person it already knows. A host trusts
+  the claim only from an installation that person may use (`docs/bundles.md`).
+
+### Upgrade notes
+
+- No migrations. Nothing changes without `host.provider`.
+
 ## v0.69.0 — 2026-11-16
 
 ### Features

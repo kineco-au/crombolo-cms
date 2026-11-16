@@ -92,8 +92,10 @@ import {
   byActor,
   currentAuditContext,
   type Db,
+  ExternalLoginRepository,
   ensureFormLibraryTypes,
   ensureKeyValue,
+  externalLoginProvider,
   FormEntryRepository,
   FormWorkflowRepository,
   FormWorkflowSecretRepository,
@@ -1946,6 +1948,26 @@ export async function createServer(
     })
   }
 
+  /**
+   * Story 372: who the person is at the host's own provider, as their last
+   * sign-in through it recorded, and only from that provider's issuer.
+   */
+  async function hostIdentityOf(userKey: string): Promise<{ host?: { sub: string; iss: string } }> {
+    const id = config.host?.provider
+    const provider = id
+      ? config.backofficeIdentityProviders.find((p) => p.oidc.id === id)
+      : undefined
+    if (!provider) return {}
+    const issuer = provider.oidc.issuer
+    const link = (await new ExternalLoginRepository(db).forOwner(userKey)).find(
+      (l) => l.loginProvider === externalLoginProvider('user', provider.oidc.id),
+    )
+    const identity = link?.identity
+    return identity && identity.issuer === issuer
+      ? { host: { sub: identity.value, iss: issuer } }
+      : {}
+  }
+
   /** Story 368: a preview link for a page its person may read, audited as them. */
   async function askForPreviewLink(request: Request): Promise<Response> {
     if (request.method !== 'POST') return new Response(null, { status: 405 })
@@ -2748,6 +2770,7 @@ export async function createServer(
           nodeId: schema.nodeId,
           url: config.applicationUrl || undefined,
         },
+        ...(await hostIdentityOf(principal.id)),
       })
       log.info('Issued a host token to {user} for {host}', {
         user: principal.email,
