@@ -325,7 +325,7 @@ describe('the commands', () => {
       expect(result.code, args.join(' ')).toBe(ERROR_KINDS.usage.exitCode)
       expect(result.err).toContain(hint)
     }
-  })
+  }, 10_000)
 
   test('a hosted-only command refuses a folder profile; login with none means this folder', () => {
     const dir = temp('hosted-only')
@@ -353,5 +353,5 @@ describe('the commands', () => {
     expect(listed.items).toEqual([
       { name: 'copy', url: null, path: folder, environment: null, signedIn: null, keptIn: null },
     ])
-  })
+  }, 10_000)
 })

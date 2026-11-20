@@ -77,6 +77,9 @@ export interface WorkspaceMerging {
       accepted?: readonly string[]
       rehearse?: boolean
       only?: string
+      /** Story 383: the identity its change takes, and the changes from other sites it applies. */
+      changeKey?: string
+      appliedChanges?: ReadonlyArray<{ key: string; name: string | null }>
     },
   ): Promise<WorkspaceMergeOutcome>
 }
@@ -253,6 +256,8 @@ export function createNodeOperations(options: NodeOperationsOptions): NodeOperat
         accepted: run.accepted,
         rehearse: run.rehearse,
         ...(run.only === undefined ? {} : { only: run.only }),
+        ...(run.changeKey ? { changeKey: run.changeKey } : {}),
+        ...(run.appliedChanges ? { appliedChanges: run.appliedChanges } : {}),
         ...(files ? { files } : {}),
         publishRefusal: (key, action) => gate.publishRefusal(principal, key, action),
       })

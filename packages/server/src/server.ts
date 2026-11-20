@@ -298,6 +298,7 @@ export const PREVIEW_MEMBER_COOKIE = 'crombolo-preview-member'
 
 import { ACTIONS_PATH, type SiteRoute } from '@crombolo/common'
 import { backofficeAudience } from './backoffice-external.ts'
+import { createChangeTransfer } from './change-transfer.ts'
 import { createChangesApi } from './changes-api.ts'
 import { createCliTokensApi, tokenRefusal } from './cli-tokens-api.ts'
 import { createExternalSignIn } from './external-sign-in.ts'
@@ -1109,6 +1110,7 @@ export async function createServer(
     // Made further down, and asked only once a request comes.
     schema: () => schemaTransfer,
     workspaces: () => workspacesApi,
+    changes: () => (config.workspaces ? changeTransfer : undefined),
     onApplied: async () => {
       cache.invalidate()
       mediaCache.clear()
@@ -1826,6 +1828,15 @@ export async function createServer(
     open: (workspace, principal, path, request) =>
       workspaceOpenUrl(workspace, principal, path, request),
     links: () => workspaceLinks,
+  })
+  // Story 383: a change moved from one site to another, staged and applied as a workspace.
+  const changeTransfer = createChangeTransfer({
+    db,
+    repository: { nodeState: core.schema.nodeState, nodeId: core.schema.nodeId },
+    siteName: () => config.siteName,
+    media: mediaFiles,
+    schema: () => workspaceSchema,
+    merge: () => core.operations.merge,
   })
   // Story 379: each workspace's site, kept on this node while it is looked at.
   const workspaceSites = createWorkspaceSites({

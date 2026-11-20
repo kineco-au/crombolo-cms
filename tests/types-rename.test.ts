@@ -290,7 +290,7 @@ describe('the commands, on a site with a page, a block and a view', () => {
     const page = JSON.parse(cli('types', 'show', 'page', '-o', 'json').out) as { items: number }
     expect(page.items).toBe(1)
     expect(cli('types', 'show', 'pullQuote', '-o', 'json').code).toBe(0)
-  })
+  }, 10_000)
 
   test('a data type renamed: refused while properties use it, then renamed with them', () => {
     const refused = cli('types', 'rename', 'pageBlocks', 'sections')

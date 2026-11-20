@@ -84,33 +84,67 @@ everything. With changes recorded (`381`), the thing to move is one change.
   in one step (the back office's Workspaces view, `384`, and the command line, `386`,
   over one route).
 
+## Decisions (settled 2026-11-20, building)
+
+- **A change bundle is a bundle package directory,** sent as a gzipped tarball over the
+  protocol, so it keeps the bundle's manifest, its one hash and its signing.
+
 ## Acceptance criteria
 
-- [ ] **A change exported from one site applies to another,** and both then hold the
+- [x] **A change exported from one site applies to another,** and both then hold the
       same items.
-- [ ] **An item the target changed since** merges where it can and is refused, named,
+- [x] **An item the target changed since** merges where it can and is refused, named,
       where it cannot.
-- [ ] **A page edited on the target in a property the change did not touch** keeps that
+- [x] **A page edited on the target in a property the change did not touch** keeps that
       edit after the change is applied.
-- [ ] **Media the target holds and the change never touched** is unchanged.
-- [ ] **Deleting an item the target edited since, or still uses,** is refused as a
+- [x] **Media the target holds and the change never touched** is unchanged.
+- [x] **Deleting an item the target edited since, or still uses,** is refused as a
       conflict.
-- [ ] **A refused apply** changes nothing and leaves a workspace holding the change.
-- [ ] **A staged change** is served at an address on the target with the target's
+- [x] **A refused apply** changes nothing and leaves a workspace holding the change.
+- [x] **A staged change** is served at an address on the target with the target's
       shared state unchanged, and merges when applied.
-- [ ] **An open workspace** is exported and applied elsewhere, and its later merge at
+- [x] **An open workspace** is exported and applied elsewhere, and its later merge at
       the source is the same change.
-- [ ] **Several changes staged together** are served as one site and applied together
+- [x] **Several changes staged together** are served as one site and applied together
       or not at all.
-- [ ] **The same change applied twice** is skipped the second time.
-- [ ] **A change without the earlier change it depends on** is refused, naming it.
-- [ ] **A lossy item** is counted against the target and needs accepting there.
-- [ ] **A whole-site bundle into an empty site** is its first change; into a site with
+- [x] **The same change applied twice** is skipped the second time.
+- [x] **A change without the earlier change it depends on** is refused, naming it.
+- [x] **A lossy item** is counted against the target and needs accepting there.
+- [x] **A whole-site bundle into an empty site** is its first change; into a site with
       content, a change marked as replacing everything.
-- [ ] **Page edits since a point** are exported and applied in bulk.
-- [ ] **The conformance suite** covers the protocol's new routes.
-- [ ] **Tests** on both dialects.
-- [ ] **An administrator lists every pending workspace,** staged changes included, with
+- [x] **Page edits since a point** are exported and applied in bulk.
+- [x] **The conformance suite** covers the protocol's new routes.
+- [x] **Tests** on both dialects.
+- [x] **An administrator lists every pending workspace,** staged changes included, with
       owner, age and last activity, and discards those older than an age in one step.
-- [ ] **An integration scenario** moves a change between two sites run with `crombolo
+- [x] **An integration scenario** moves a change between two sites run with `crombolo
       start`: staged, looked at, applied, refused where the target moved on.
+
+## Built (2026-11-20)
+
+- **The bundle** (`@crombolo/transfer`, `change-bundle.ts`): `writeChangeBundle` and
+  `readChangeBundle`, a private package typed `change` whose integrity covers
+  `change.json`, the media under `media/` and the package's identity.
+- **The service** (`packages/server/src/change-transfer.ts`): `exportChange`,
+  `exportWorkspace`, `exportSince`, `stage` and `apply`. Staging opens a workspace,
+  snapshots Shared's files and rebases each changed file on the change's before; pages
+  are written there field by field, conflicts named; the change keys are kept on the
+  workspace (`staged_changes`, read-only when staged).
+- **The merge** (`workspace-merge-run.ts`) takes `changeKey` and `appliedChanges`, a
+  whole workspace's merge recording its change under the workspace's key; its moves and
+  deletes are recorded as page changes, and a deleted page's state is kept as an item
+  (`REMOVED_PAGE_PREFIX`, hidden from file listings).
+- **Migration 088 `AddChangeTransfer`:** `applied_change`, `workspace.staged_changes`.
+- **Routes:** the remote protocol's `changes` (`remote-changes.ts`), with
+  `Crombolo.Remote.ApplyChanges`, Install code for a change carrying code, and
+  `may.applyChanges`; `GET/POST <plugin>/api/workspaces/pending[/discard]`.
+- **Whole sites:** an apply that replaces a site holding pages marks its run `replace`.
+- **Tests:** `tests/change-transfer.test.ts`, `tests/site-replace.test.ts`, the
+  conformance suite's two `changes` checks, `tests/integration/change-transfer.integration.ts`.
+
+## Left for later
+
+- **A page's place among its siblings** is left as the target has it; only a move to
+  another parent travels.
+- **The command line** (`386`) packs, unpacks and signs change bundles on disk; over the
+  protocol they travel as tarballs and are not signed.

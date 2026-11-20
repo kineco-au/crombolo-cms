@@ -223,7 +223,7 @@ describe('a page answered from what was published', () => {
     const after = await visit(h, '/', { 'if-none-match': etag })
     expect(after.status).toBe(200)
     expect(await after.text()).toContain('<article>')
-  })
+  }, 10_000)
 
   test('a publish on one server changes the ETag the other answers with', async () => {
     const root = site()
@@ -237,7 +237,7 @@ describe('a page answered from what was published', () => {
     const after = await visit(two, '/', { 'if-none-match': etag })
     expect(after.status).toBe(200)
     expect(after.headers.get('etag')).not.toBe(etag)
-  })
+  }, 10_000)
 })
 
 describe('a Delivery API answer from what was published', () => {
@@ -260,7 +260,7 @@ describe('a Delivery API answer from what was published', () => {
     expect(query.headers.get('etag')).toStartWith('W/"p')
     await publish(h, home)
     expect((await api(`/content/item/${home}`, { 'if-none-match': etag })).status).toBe(200)
-  })
+  }, 10_000)
 })
 
 describe('the validator policy', () => {

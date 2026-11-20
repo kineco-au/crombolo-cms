@@ -52,6 +52,8 @@ async function remote(protectedEnvironment = false, config: Record<string, unkno
       stylesheetsDir: join(root, 'css'),
       scriptsDir: join(root, 'scripts'),
       mediaDir: join(root, 'media'),
+      // For changes (story 383), which come with workspaces.
+      workspaces: true,
       remote: {
         enabled: true,
         environment: 'staging',

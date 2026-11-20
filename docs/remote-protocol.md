@@ -95,6 +95,8 @@ down notices (story 365).
     and changed by the definition (see below).
   - `workspace-merge` means a workspace can be merged into what the site serves
     (see below).
+  - `changes` means the site's changes can be listed, taken as change bundles, and
+    another site's staged or applied here (see below).
   - `restart` means the site can be restarted (see below).
   - A client ignores capabilities it doesn't know.
 
@@ -856,6 +858,30 @@ level is `content`:
   permissions (403 `forbidden`, naming each in `items`).
 - **A conflict, a pending change that cannot go, or a finding not accepted** is 409
   `conflict`, each named in `items`; nothing is written. `accept` names findings by id.
+
+## Changes (`changes`, optional)
+
+A change moves from one copy of a site to another (story 383), where workspaces are on.
+Taking one is a pull (level `read`, `Crombolo.Remote.Pull`); staging or applying one
+needs level `content` and `Crombolo.Remote.ApplyChanges`, and `Crombolo.Remote.InstallCode`
+too when it carries templates or the site's own code (403 `forbidden`). `may.applyChanges`
+in the environment's listing says whether the caller may.
+
+| | |
+| --- | --- |
+| `GET <api>/environments/{id}/changes` `?skip&take` | the site's changes, newest first: `{ total, items }`, each with its `id` and the `key` it travels with |
+| `GET <api>/environments/{id}/changes/held?keys=a,b` | which of those changes the site holds, made or applied here: `{ held }` |
+| `GET <api>/environments/{id}/changes/{id}/bundle` | one change as a change bundle, a gzipped package, its SHA-256 in `Crombolo-Sha256` |
+| `GET <api>/environments/{id}/workspaces/{key}/change` | an open workspace as the change its merge will be, with the workspace's key |
+| `GET <api>/environments/{id}/changes/since?at=` | every page edited since `at` (ISO), as one change |
+| `PUT <api>/environments/{id}/changes` `?accept=` | applies the change in the body (`Crombolo-Sha256` required): `{ ok, skipped, changeId }`, or 409 `{ conflicts, workspace }` |
+| `PUT <api>/environments/{id}/changes?stage=true` `&into=` | stages it, in a new workspace or `into` a staged one: `{ workspace, skipped, conflicts }` |
+
+- **A body that does not match its hash,** or is not a whole change bundle, is 400.
+- **A refused apply changes nothing** and answers the workspace holding the change,
+  where it can be settled and merged. A staged workspace is applied by its merge
+  (`workspaces/{key}/merge`), several staged into one together. A change already held
+  is skipped and named in `skipped`.
 
 ## Restarting (`restart`, optional)
 

@@ -27,6 +27,7 @@ import {
 import { ObjectTypes } from '@crombolo/core'
 import {
   answersByNode,
+  ChangeRepository,
   type Db,
   DictionaryRepository,
   describeRefFailure,
@@ -853,6 +854,8 @@ export async function installBundleContent(
     result = await db.locks.withLock(Locks.Schema, () =>
       db.locks.withLock(Locks.ContentTree, () =>
         db.transaction(async (tx) => {
+          // Story 383: replacing a site that holds pages is a change marked as replacing everything.
+          const replacing = replace ? await new ChangeRepository(tx).holdsPages() : false
           const pruned = replace ? await pruneSite(tx, set, replace, config.nodeId) : []
           if (replace === 'replace-all') await prunePeople(tx, set.people)
           if (staged?.next.schema) {
@@ -895,6 +898,7 @@ export async function installBundleContent(
           })
           if (!imported.runId) throw new InstallRefused([], imported)
           await recordPruned(tx, imported.runId, pruned)
+          if (replacing) await new ChangeRepository(tx).markReplacing(imported.runId)
           return imported
         }),
       ),

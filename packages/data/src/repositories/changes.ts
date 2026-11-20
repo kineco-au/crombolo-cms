@@ -12,7 +12,8 @@ import { DbDate } from '../dialect.ts'
 import { currentSchemaState } from '../schema-state.ts'
 import { fileHash } from './workspace-files.ts'
 
-export type ChangeSource = 'bundle' | 'merge' | 'edit' | 'revert'
+/** `replace`: a whole site applied over one that held pages (story 383). */
+export type ChangeSource = 'bundle' | 'replace' | 'merge' | 'edit' | 'revert'
 
 /** How long a person's direct edits keep gathering in one change. */
 export const EDIT_WINDOW_MS = 10 * 60 * 1000
@@ -79,7 +80,7 @@ export class ChangeRepository {
 
   /** Starts a change; its id is its key, which travels with it. */
   async begin(change: {
-    kind: Exclude<ChangeSource, 'bundle'>
+    kind: Exclude<ChangeSource, 'bundle' | 'replace'>
     name: string | null
     madeBy: string | null
     appliedBy?: string | null
@@ -112,6 +113,61 @@ export class ChangeRepository {
       })
       .execute()
     return id
+  }
+
+  /** Records a change brought from another site as applied here, in run `runId` (story 383). */
+  async applied(change: { key: string; name: string | null }, runId: string): Promise<void> {
+    await this.#db.q
+      .insertInto('applied_change')
+      .values({
+        change_key: normaliseUuid(change.key),
+        run_id: runId,
+        name: change.name,
+        applied_at: DbDate.toDb(new Date()),
+      })
+      .execute()
+  }
+
+  /** Which of these changes this site holds: applied from elsewhere, or made here. */
+  async held(keys: readonly string[]): Promise<Set<string>> {
+    const wanted = keys.map(normaliseUuid)
+    if (wanted.length === 0) return new Set()
+    const applied = await this.#db.q
+      .selectFrom('applied_change')
+      .select('change_key')
+      .where('change_key', 'in', wanted)
+      .execute()
+    const made = await this.#db.q
+      .selectFrom('content_transfer_run')
+      .select('change_key')
+      .where('change_key', 'in', wanted)
+      .where('status', '=', 'applied')
+      .execute()
+    return new Set([
+      ...applied.map((r) => String(r.change_key)),
+      ...made.map((r) => String(r.change_key)),
+    ])
+  }
+
+  /** Whether the site holds any page, media item or Library item outside a workspace. */
+  async holdsPages(): Promise<boolean> {
+    const rows = await this.#db.q
+      .selectFrom('content')
+      .innerJoin('node', 'node.id', 'content.node_id')
+      .select('node.id')
+      .where('node.workspace_id', 'is', null)
+      .limit(1)
+      .execute()
+    return rows.length > 0
+  }
+
+  /** Marks an applied whole site as replacing everything the site held (story 383). */
+  async markReplacing(runId: string): Promise<void> {
+    await this.#db.q
+      .updateTable('content_transfer_run')
+      .set({ change_kind: 'replace' })
+      .where('id', '=', runId)
+      .execute()
   }
 
   /** Records one item of a change. */
@@ -290,8 +346,13 @@ export class ChangeRepository {
   }
 
   /** The files a change touched, with each text before and after. */
-  itemsOf(changeId: string): Promise<ChangeItem[]> {
-    return this.#items({ runId: changeId })
+  /**
+   * A change's files. A page it deleted is kept among its items as it stood
+   * (story 383), for taking the change to another site: only with `pages`.
+   */
+  async itemsOf(changeId: string, options: { pages?: boolean } = {}): Promise<ChangeItem[]> {
+    const items = await this.#items({ runId: changeId })
+    return options.pages ? items : items.filter((i) => i.kind !== 'page')
   }
 
   /** A file's versions: each change that touched it, oldest first. Nobody numbers anything. */

@@ -12,6 +12,7 @@ import { join } from 'node:path'
 import { contentImport, revertSections, siteReplaceCheck } from '@crombolo/cli'
 import { SYSTEM_MEDIA_TYPE_KEYS } from '@crombolo/core'
 import {
+  ChangeRepository,
   ContentTypeRepository,
   DictionaryRepository,
   DomainRepository,
@@ -189,6 +190,8 @@ describe(`replacing a site (${dialectUnderTest})`, () => {
     expect(result.problems).toEqual([])
     expect(result.runId).toBeDefined()
     const db = b.h.server.db
+    // Story 383: over a site that held pages, the change replaces everything.
+    expect((await new ChangeRepository(db).byId(result.runId as string))?.kind).toBe('replace')
 
     expect(await live(b.config, db)).toEqual(['About', 'Home'])
     const published = await db.query<{ published: unknown }>(
@@ -470,6 +473,10 @@ describe(`the round trip (${dialectUnderTest})`, () => {
     })
     expect(imported.problems).toEqual([])
     expect(imported.runId).toBeDefined()
+    // Story 383: into a site with no pages, it is the site's first change.
+    expect((await new ChangeRepository(h.server.db).byId(imported.runId as string))?.kind).toBe(
+      'bundle',
+    )
     expect(await new NodeRepository(h.server.db).roots(ObjectTypes.Document, 0, 10)).toMatchObject({
       total: 2,
     })

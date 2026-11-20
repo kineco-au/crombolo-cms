@@ -106,6 +106,20 @@ point at `docs/stories/`.
   `CROMBOLO_WORKSPACE_PROCESS_IDLE_MINUTES` (30), `CROMBOLO_WORKSPACE_PROCESS_MEMORY_MB`
   (1024) and `CROMBOLO_WORKSPACE_RENDER_SECONDS` (30) set its limits.
 
+- **A change moves from one site to another (383).** The remote protocol's `changes`
+  routes list a site's changes, say which it holds, and give one as a change bundle (a
+  private package typed `change`), or an open workspace, or the page edits since a
+  point; another copy of the site stages it, in a read-only workspace served at its own
+  address, or applies it by that workspace's merge. Only what the change altered is
+  written: a field the target changed since, a page made at the same address, or a
+  delete of something edited or still used there, is a conflict that leaves the change
+  in a workspace and changes nothing else. A change is applied once; one whose earlier
+  change is missing is refused naming it; a lossy item needs accepting on the target.
+  Applying needs the new **Apply changes** permission (`Crombolo.Remote.ApplyChanges`),
+  and Install code for a change carrying templates. A whole site applied over one with
+  pages is recorded as replacing everything. Administrators list every pending workspace
+  and clear those idle too long (`docs/changes.md`).
+
 ### Migrations
 
 - **082 `AddWorkspaces`** (expand): the `workspace`, `workspace_member`,
@@ -131,6 +145,9 @@ point at `docs/stories/`.
   by hash.
 - **087 `AddWorkspaceLinks`** (expand): `workspace_link`, each link to a workspace's site by
   the SHA-256 of its secret, with its maker, expiry and withdrawal.
+- **088 `AddChangeTransfer`** (expand): `applied_change`, each change from another site
+  applied here by the key it carried, and `workspace.staged_changes`, the changes a staged
+  workspace holds.
 
 ### Upgrade notes
 

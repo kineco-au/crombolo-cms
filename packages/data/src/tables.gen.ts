@@ -15,6 +15,12 @@ type Default<C> = C extends ColumnType<infer S, infer I, infer U>
   : Generated<C>
 
 export interface CoreTables {
+  applied_change: {
+    applied_at: Timestamp
+    change_key: string
+    name: string | null
+    run_id: string
+  }
   approval_history: {
     comment: string | null
     create_date: Timestamp
@@ -1005,6 +1011,7 @@ export interface CoreTables {
     owner_key: string
     personal: Default<Bool>
     schema_built: Default<Bool>
+    staged_changes: string | null
     state: Generated<string>
     updated_at: Timestamp
   }

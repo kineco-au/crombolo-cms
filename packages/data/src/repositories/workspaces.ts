@@ -24,6 +24,10 @@ export interface Workspace {
   mergedBy: string | null
   createdAt: Date
   updatedAt: Date
+  /** Changes from another site it holds (story 383), which its merge applies. */
+  stagedChanges: Array<{ key: string; name: string | null }> | null
+  /** Staged to be looked at and applied: nobody edits it. A refused apply's is open to edit. */
+  stagedReadOnly: boolean
 }
 
 /** A move, reorder or delete waiting for the merge, with where its page stood (story 380). */
@@ -241,6 +245,19 @@ export class WorkspaceRepository {
   }
 
   /** Whether the workspace has rows of its own for its types yet (story 376). */
+  /** Marks a workspace as holding changes from another site, read-only or open to edit (story 383). */
+  async setStaged(
+    id: number,
+    changes: ReadonlyArray<{ key: string; name: string | null }> | null,
+    readOnly = true,
+  ): Promise<void> {
+    await this.#db.q
+      .updateTable('workspace')
+      .set({ staged_changes: changes ? JSON.stringify({ readOnly, changes }) : null })
+      .where('id', '=', id)
+      .execute()
+  }
+
   async schemaBuilt(id: number): Promise<boolean> {
     const rows = await this.#db.q
       .selectFrom('workspace')
@@ -376,6 +393,7 @@ export class WorkspaceRepository {
       merged_by?: string | null
       created_at: unknown
       updated_at: unknown
+      staged_changes?: string | null
     }>,
   ): Promise<Workspace[]> {
     if (rows.length === 0) return []
@@ -403,6 +421,7 @@ export class WorkspaceRepository {
       mergedBy: row.merged_by ? normaliseUuid(String(row.merged_by)) : null,
       createdAt: DbDate.fromDb(row.created_at) ?? new Date(0),
       updatedAt: DbDate.fromDb(row.updated_at) ?? new Date(0),
+      ...stagedOf(row.staged_changes),
     }))
   }
 }
@@ -457,4 +476,15 @@ export async function dropWorkspaceSchema(db: Db, id: number): Promise<void> {
   const nodes = [...types, ...dataTypes]
   if (nodes.length > 0) await db.q.deleteFrom('node').where('id', 'in', nodes).execute()
   await new WorkspaceFileRepository(db).discard(id)
+}
+
+function stagedOf(
+  text: string | null | undefined,
+): Pick<Workspace, 'stagedChanges' | 'stagedReadOnly'> {
+  if (!text) return { stagedChanges: null, stagedReadOnly: false }
+  const parsed = JSON.parse(String(text)) as {
+    readOnly: boolean
+    changes: Array<{ key: string; name: string | null }>
+  }
+  return { stagedChanges: parsed.changes, stagedReadOnly: parsed.readOnly }
 }

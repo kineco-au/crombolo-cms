@@ -189,6 +189,11 @@ calls the functions directly.
   serves what it did, then merged into the live site and its files at once; a conflict
   with Shared named, settled and merged; Shared's later change brought in; a discarded
   workspace leaving nothing behind.
+- `change-transfer.integration.ts` — story `383` on two copies of a site, each run
+  with `crombolo start`: a change made in a workspace on one is taken over the remote
+  protocol, staged on the other and looked at while its live site is unchanged, then
+  applied by the staged workspace's merge; a later change to a page the second copy
+  edited since is refused, naming the field.
 - `first-boot.integration.ts` — story `080`'s first boot. It covers a production
   start with no password, set up from the browser with `CROMBOLO_SETUP_CODE`
   (which never appears in the output), then restarted. It covers the holding page

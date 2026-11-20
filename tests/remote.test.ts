@@ -260,6 +260,7 @@ describe(`discovery (${dialectUnderTest})`, () => {
           mediaLibrary: true,
           contentShow: true,
           schemaEdit: true,
+          applyChanges: false,
         },
       },
     ])

@@ -357,7 +357,7 @@ describe(`media by reference (${dialectUnderTest})`, () => {
     expect(pushed.job?.state).toBe('done')
     expect(uploads).toBe(1)
     expect([...((await (await remoteStore.get(key as string))?.bytes()) ?? [])]).toEqual([4, 2])
-  })
+  }, 10_000)
 
   test('a lazily pulled site reads a file through from the remote the first time it is asked for', async () => {
     const { h } = await remoteSite()

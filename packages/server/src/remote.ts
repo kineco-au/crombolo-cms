@@ -72,6 +72,7 @@ import { type MediaStore, streamOf } from './media-store.ts'
 import { siteMemberPorts } from './member-admin.ts'
 import { describeProvenance, provenanceProblem, verifyProvenance } from './provenance.ts'
 import { createBackgroundJobRoutes } from './remote-background-jobs.ts'
+import { type ChangeRouteOptions, createChangeRoutes } from './remote-changes.ts'
 import { createCiSignIn, readRuleInput, trustedIssuers, unverifiedIssuer } from './remote-ci.ts'
 import { createExtensionActivityRoutes } from './remote-extension-activity.ts'
 import { createMediaLibraryRoutes } from './remote-media-library.ts'
@@ -134,6 +135,8 @@ export interface RemoteOptions {
   schema?: SchemaRouteOptions['transfer']
   /** The workspace routes, for a host to merge one (story 380); absent, that route is not offered. */
   workspaces?: WorkspaceRouteOptions['workspaces']
+  /** Moving changes between sites (story 383): absent where workspaces are off. */
+  changes?: ChangeRouteOptions['changes']
 }
 
 /** What a supervised restart came to: the new server serving, or why the old one still is. */
@@ -268,6 +271,7 @@ export function createRemote(options: RemoteOptions): Remote {
       ...(mediaLibraryRoutes?.capabilities ?? []),
       ...(schemaRoutes?.capabilities() ?? []),
       ...(workspaceRoutes?.capabilities() ?? []),
+      ...(changeRoutes?.capabilities() ?? []),
       ...(settings.approvals ? ['approvals'] : []),
       ...(options.bundles && atLeast('read') ? ['bundle-manage'] : []),
       ...(options.restart && atLeast('all') ? ['restart'] : []),
@@ -331,6 +335,18 @@ export function createRemote(options: RemoteOptions): Remote {
         problem,
         atLeast,
         notAtLevel,
+      })
+    : undefined
+
+  const changeRoutes = options.changes
+    ? createChangeRoutes({
+        db,
+        changes: options.changes,
+        problem,
+        atLeast,
+        notAtLevel,
+        may,
+        receive: (request, path) => receive(request, path),
       })
     : undefined
 
@@ -1640,6 +1656,10 @@ export function createRemote(options: RemoteOptions): Remote {
               mediaLibrary: mediaLibraryRoutes?.mayMedia(principal) ?? false,
               contentShow: mediaLibraryRoutes?.mayContent(principal) ?? false,
               schemaEdit: schemaRoutes?.mayEdit(principal) ?? false,
+              applyChanges:
+                Boolean(changeRoutes?.capabilities().length) &&
+                atLeast('content') &&
+                may(principal, RemotePermissions.ApplyChanges),
             },
           },
         ])
@@ -1707,6 +1727,13 @@ export function createRemote(options: RemoteOptions): Remote {
         (what.startsWith('media-items') || what.startsWith('content-items/'))
       ) {
         const answered = await mediaLibraryRoutes.handle(request, url, principal, what)
+        if (answered) return answered
+      }
+      if (
+        changeRoutes &&
+        (what === 'changes' || what.startsWith('changes/') || what.startsWith('workspaces/'))
+      ) {
+        const answered = await changeRoutes.handle(request, url, principal, what)
         if (answered) return answered
       }
       if (workspaceRoutes && what.startsWith('workspaces/')) {

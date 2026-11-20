@@ -65,6 +65,8 @@ export const RemotePermissions = {
   ApplyStructure: 'Crombolo.Remote.ApplyStructure',
   /** Installing a bundle's code or templates, a bundle as a dependency, or a whole-site push (stories 241, 336). */
   InstallCode: 'Crombolo.Remote.InstallCode',
+  /** Staging and applying a change from another site (story 383); its templates need InstallCode too. */
+  ApplyChanges: 'Crombolo.Remote.ApplyChanges',
 } as const
 export type RemoteVerb = (typeof RemotePermissions)[keyof typeof RemotePermissions]
 

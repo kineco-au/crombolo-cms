@@ -285,6 +285,12 @@ export const TRANSFER = [
     line: 'Templates, server code and whole-site pushes: all of these run on the server. Nobody has this unless a group gives it, administrators included. Keep it on a group of its own, such as "Deployers".',
   },
   {
+    group: 'Structure and code',
+    verb: 'Crombolo.Remote.ApplyChanges',
+    label: 'Apply changes from another copy of the site',
+    line: 'Pages, media, types and files changed on another copy of this site, staged to look at and then applied. A change that carries templates needs "Install code on this site" too.',
+  },
+  {
     group: 'Command line',
     verb: 'Crombolo.CliTokens.Create',
     label: PERMISSION_LABEL,

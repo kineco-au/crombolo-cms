@@ -28,6 +28,7 @@ import { bundlesDisabledMigration } from './bundles-disabled.ts'
 import { bundlesInSettingsMigration } from './bundles-in-settings.ts'
 import { bundlesRenameMigration } from './bundles-rename.ts'
 import { changeReportMigration } from './change-report.ts'
+import { changeTransferMigration } from './change-transfer.ts'
 import { changesMigration } from './changes.ts'
 import { cliTokensMigration } from './cli-tokens.ts'
 import { clientIdPrefixMigration } from './client-id-prefix.ts'
@@ -189,4 +190,5 @@ export const cromboloPlan = new MigrationPlan([
   workspaceSchemaMigration,
   changesMigration,
   workspaceLinksMigration,
+  changeTransferMigration,
 ])

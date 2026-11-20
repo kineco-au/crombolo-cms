@@ -28,6 +28,7 @@ import {
   type Db,
   DocumentRepository,
   type NodeSchemaState,
+  UserRepository,
   type Workspace,
   WorkspaceFileRepository,
   WorkspaceRefusedError,
@@ -125,6 +126,13 @@ export function createWorkspaceScope(db: Db, settings: WorkspaceScopeOptions | (
     if (found.state === 'merged')
       return problem(409, 'This workspace was merged', 'Open another to go on working.')
     if (refusal) return problem(409, 'Not in a workspace', refusal)
+    // Story 383: a staged change is looked at and applied, never edited where it is staged.
+    if (found.stagedReadOnly && request.method !== 'GET')
+      return problem(
+        409,
+        'This workspace holds a staged change',
+        'A staged change is not edited here: change it where it was made and stage it again.',
+      )
     const workspace = found
     const page = PUBLISHES.has(operation.operationId)
       ? new URL(request.url).pathname.match(PAGE_IN_PATH)?.[1]
@@ -230,6 +238,54 @@ type Client = { ipAddress: string | null; forwardedFor: string | null }
 
 const json = (body: unknown, status = 200) => Response.json(body, { status })
 const refused = (message: string, status: number) => json({ message }, status)
+
+/** One open workspace as an administrator sees it among them all (story 383). */
+export interface PendingWorkspace {
+  key: string
+  name: string
+  ownerKey: string
+  ownerName: string | null
+  createdAt: string
+  /** When anything was last written in it. */
+  lastActivity: string
+  ageDays: number
+  /** The changes from another site it holds, if it was staged with them. */
+  staged: Array<{ key: string; name: string | null }> | null
+}
+
+/** Every workspace still open, the least recently touched first. */
+async function pendingWorkspaces(db: Db): Promise<PendingWorkspace[]> {
+  const open = (await new WorkspaceRepository(db).all()).filter((w) => w.state === 'open')
+  if (open.length === 0) return []
+  const latest = await db.q
+    .selectFrom('content_version')
+    .select(['workspace_id', (eb) => eb.fn.max('version_date').as('at')])
+    .where(
+      'workspace_id',
+      'in',
+      open.map((w) => w.id),
+    )
+    .groupBy('workspace_id')
+    .execute()
+  const owners = await new UserRepository(db).byKeys([...new Set(open.map((w) => w.ownerKey))])
+  const now = Date.now()
+  return open
+    .map((w) => {
+      const written = latest.find((r) => Number(r.workspace_id) === w.id)?.at
+      const at = Math.max(w.updatedAt.getTime(), written ? new Date(String(written)).getTime() : 0)
+      return {
+        key: w.key,
+        name: w.name,
+        ownerKey: w.ownerKey,
+        ownerName: owners.find((u) => normaliseUuid(u.key) === w.ownerKey)?.name ?? null,
+        createdAt: w.createdAt.toISOString(),
+        lastActivity: new Date(at).toISOString(),
+        ageDays: Math.floor((now - w.createdAt.getTime()) / 86_400_000),
+        staged: w.stagedChanges,
+      }
+    })
+    .sort((a, b) => a.lastActivity.localeCompare(b.lastActivity))
+}
 
 /** The media files a workspace's own values name (story 390). */
 async function filesNamedBy(db: Db, workspaceId: number): Promise<string[]> {
@@ -453,10 +509,16 @@ export function createWorkspacesApi(
     }
     if (refusals.length > 0)
       return json({ message: 'You may not make every change it holds.', refusals }, 403)
+    // Story 383: the changes from other sites it holds are applied by it, each recorded once.
+    const appliedChanges = chosen.flatMap((one) => one.stagedChanges ?? [])
     const outcome = await merging.run(chosen, principal, {
       accepted,
       rehearse: asked.rehearse === true,
       ...(await userIdOf(db, principal)),
+      ...(appliedChanges.length > 0 ? { appliedChanges } : {}),
+      ...(appliedChanges.length === 1 && chosen.length === 1
+        ? { changeKey: appliedChanges[0]?.key }
+        : {}),
     })
     if (!outcome.ok)
       return json(
@@ -544,6 +606,39 @@ export function createWorkspacesApi(
         }
         if (chosen.length === 0) return refused('Name the workspaces to merge.', 400)
         return mergeNow(merging, chosen, principal, asked, client)
+      }
+
+      // Story 383: every workspace still open, staged changes included, and those idle too long cleared.
+      if (parts[0] === 'pending' && parts.length <= 2) {
+        if (!principal.isAdmin) return refused('Only an administrator looks after them all.', 403)
+        const open = await pendingWorkspaces(db)
+        if (parts.length === 1 && request.method === 'GET') return json({ items: open })
+        if (parts[1] === 'discard' && request.method === 'POST') {
+          const days = Number((await body()).olderThanDays)
+          if (!Number.isFinite(days) || days < 0)
+            return refused('Say how many days old, as olderThanDays.', 400)
+          const before = Date.now() - days * 86_400_000
+          const discarded: string[] = []
+          for (const one of open) {
+            if (new Date(one.lastActivity).getTime() >= before) continue
+            const found = await workspaces.byKey(one.key)
+            if (found?.state !== 'open') continue
+            const files = await filesNamedBy(db, found.id)
+            await workspaces.discard(found.id)
+            options.onClosed?.(found.key)
+            options.onDiscardedFiles?.(files)
+            await audit(
+              principal,
+              'Discard',
+              found,
+              `Discarded "${found.name}", idle since ${one.lastActivity}`,
+              client,
+            )
+            discarded.push(found.key)
+          }
+          return json({ discarded })
+        }
+        return new Response(null, { status: 405 })
       }
 
       const [key, sub, member] = parts as [string, string | undefined, string | undefined]

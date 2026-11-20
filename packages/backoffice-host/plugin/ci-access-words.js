@@ -29,6 +29,11 @@ export const CI_PERMISSIONS = [
     explain:
       'Install extensions, the code and templates a site package carries, and push a whole site: all of these run on the server.',
   },
+  {
+    verb: 'Crombolo.Remote.ApplyChanges',
+    label: 'Apply changes',
+    explain: 'Stage and apply a change made on another copy of the site.',
+  },
 ]
 
 /** A provider by the address its tokens come from. */

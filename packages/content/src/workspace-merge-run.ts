@@ -9,6 +9,7 @@ import { type DocumentValue, ObjectTypes } from '@crombolo/core'
 import {
   type ChangeItemInput,
   ChangeRepository,
+  type ContentKind,
   type Db,
   DocumentRepository,
   type DocumentRepositoryOptions,
@@ -50,6 +51,14 @@ export interface WorkspaceMergeOptions {
    * conflicts, then writing them on the merge's transaction, before its pages.
    */
   files?: WorkspaceFileMerging
+  /**
+   * The identity the change it records takes (story 383): a change brought from
+   * another site keeps its own. By default a whole workspace's own key, so one
+   * exported before it merged is known as the same change.
+   */
+  changeKey?: string
+  /** The changes from other sites this merge applies, recorded so each is applied once (story 383). */
+  appliedChanges?: ReadonlyArray<{ key: string; name: string | null }>
 }
 
 /** How a merge plans and writes a workspace's files, which the server knows. */
@@ -91,6 +100,9 @@ export type WorkspaceMergeOutcome =
     }
   | { ok: false; blockers: string[]; plan: MergePlan }
 
+/** Where a deleted page's state is kept among its change's items (story 383). */
+export const REMOVED_PAGE_PREFIX = 'pages/'
+
 /** Records a merge as a change (story 381): its name, who made and merged it, its files and pages. */
 async function recordChange(
   tx: Db,
@@ -112,14 +124,18 @@ async function recordChange(
     madeBy: first.ownerKey,
     appliedBy: options.userKey,
     workspaceKey: first.key,
+    key:
+      options.changeKey ??
+      (list.length === 1 && options.only === undefined ? first.key : undefined),
   })
+  for (const applied of options.appliedChanges ?? []) await changes.applied(applied, id)
   for (const item of items) await changes.item(id, item)
   const runs = new TransferRunRepository(tx)
   for (const page of pages)
     await runs.record({
       runId: id,
       nodeKey: page.key,
-      kind: 'document',
+      kind: page.kind,
       action: page.action,
       beforeEventId: page.beforeEventId,
       beforePublishedEventId: page.beforePublishedEventId,
@@ -132,7 +148,8 @@ async function recordChange(
 /** A page's events before and after a merge, which its change records (story 381). */
 interface PageChange {
   key: string
-  action: 'create' | 'update'
+  kind: ContentKind
+  action: 'create' | 'update' | 'recycle'
   beforeEventId: number | null
   beforePublishedEventId: number | null
   eventId: number | null
@@ -363,7 +380,13 @@ export async function runWorkspaceMerge(
             n === 0
               ? (first[0] as { plan: MergePlan }).plan
               : narrowed(await planFor(shared, workspaces, workspace))
-          await apply(shared, plan, record, options, { merged, forApproval, done, pages })
+          await apply(shared, plan, record, options, {
+            merged,
+            forApproval,
+            done,
+            pages,
+            removed: items,
+          })
           if (options.only === undefined)
             await workspaces.closeMerged(workspace.id, options.userKey)
           else
@@ -400,7 +423,10 @@ async function apply(
   plan: MergePlan,
   record: (event: DocumentEvent) => Promise<void>,
   options: WorkspaceMergeOptions,
-  out: Pick<Done, 'merged' | 'forApproval' | 'done'> & { pages: PageChange[] },
+  out: Pick<Done, 'merged' | 'forApproval' | 'done'> & {
+    pages: PageChange[]
+    removed: ChangeItemInput[]
+  },
 ): Promise<void> {
   for (const pagePlan of plan.pages) {
     const { page } = pagePlan
@@ -438,6 +464,7 @@ async function apply(
     const after = await shared.eventMarkers(page.key)
     out.pages.push({
       key: page.key,
+      kind: page.kind,
       action: page.made ? 'create' : 'update',
       beforeEventId: before?.head ?? null,
       beforePublishedEventId: before?.published ?? null,
@@ -451,6 +478,19 @@ async function apply(
     const key = pending.key
     if (pending.kind === 'gone' || key === null) continue
     const shared = sharedAll.ofKind(pending.objectKind ?? 'document')
+    const before = await shared.eventMarkers(key)
+    // A delete takes the page's history with it: its change keeps the page as it stood (story 383).
+    if (pending.kind === 'delete') {
+      const doc = await shared.byKey(key)
+      if (doc)
+        out.removed.push({
+          path: `${REMOVED_PAGE_PREFIX}${key}`,
+          kind: 'page',
+          class: 'none',
+          before: JSON.stringify(doc),
+          after: null,
+        })
+    }
     if (pending.kind === 'move') {
       await shared.move(key, await keyOf(pending.targetParentId))
       await record({ type: 'moved', key })
@@ -467,5 +507,21 @@ async function apply(
       await record({ type: 'deleted', key, name: pending.name })
     }
     out.done.push({ key, name: pending.name, kind: pending.kind })
+    // Story 383: what it moved or deleted is in its change too, once per page.
+    const gone = pending.kind === 'trash' || pending.kind === 'delete'
+    const after = gone ? undefined : await shared.eventMarkers(key)
+    const recorded = out.pages.find((p) => p.key === key)
+    if (recorded) {
+      if (gone) Object.assign(recorded, { action: 'recycle', eventId: null })
+      else recorded.eventId = after?.head ?? recorded.eventId
+    } else
+      out.pages.push({
+        key,
+        kind: pending.objectKind ?? 'document',
+        action: gone ? 'recycle' : 'update',
+        beforeEventId: before?.head ?? null,
+        beforePublishedEventId: before?.published ?? null,
+        eventId: after?.head ?? null,
+      })
   }
 }

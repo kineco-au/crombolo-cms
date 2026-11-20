@@ -707,6 +707,47 @@ export async function runConformance(options: ConformanceOptions): Promise<Confo
     },
   )
 
+  await check(
+    'changes: the site lists its changes, says which it holds, and gives one as a bundle with its hash',
+    async () => {
+      const capabilities = (state.discovery?.capabilities as string[] | undefined) ?? []
+      if (!capabilities.includes('changes') || !state.may?.pull) return 'skip'
+      const env = `environments/${state.environment}`
+      const listed = await api(`${env}/changes?take=5`)
+      assert(listed.status === 200, `the list answered ${listed.status}`)
+      const list = (await listed.json()) as { total?: unknown; items?: Json[] }
+      assert(typeof list.total === 'number', 'total is missing')
+      assert(Array.isArray(list.items), 'items is missing')
+      const unknown = crypto.randomUUID()
+      const held = await api(`${env}/changes/held?keys=${unknown}`)
+      assert(held.status === 200, `held answered ${held.status}`)
+      const heldBody = (await held.json()) as { held?: unknown }
+      assert(Array.isArray(heldBody.held), 'held is missing')
+      assert((heldBody.held as unknown[]).length === 0, 'it holds a change nobody made')
+      const missing = await api(`${env}/changes/${unknown}/bundle`)
+      assert(missing.status === 404, `an unknown change answered ${missing.status}`)
+      assert(isProblem(missing), 'not application/problem+json')
+      const first = list.items?.[0]
+      if (!first) return
+      const bundle = await api(`${env}/changes/${String(first.id)}/bundle`)
+      assert(bundle.status === 200, `the bundle answered ${bundle.status}`)
+      const bytes = new Uint8Array(await bundle.arrayBuffer())
+      const sha = new Bun.CryptoHasher('sha256').update(bytes).digest('hex')
+      assert(bundle.headers.get('crombolo-sha256') === sha, 'Crombolo-Sha256 is not its hash')
+    },
+  )
+
+  await check('changes: a change whose file does not match its hash is refused', async () => {
+    if (!state.may?.applyChanges) return 'skip'
+    const response = await api(`environments/${state.environment}/changes`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/gzip', 'crombolo-sha256': '0'.repeat(64) },
+      body: new Uint8Array([31, 139, 8, 0]) as BodyInit,
+    })
+    assert(response.status === 400, `answered ${response.status}`)
+    assert(isProblem(response), 'not application/problem+json')
+  })
+
   await check('a push check answers what would be recycled and removed', async () => {
     const capabilities = (state.discovery?.capabilities as string[] | undefined) ?? []
     if (!capabilities.includes('push-check') || !state.may?.push) return 'skip'

@@ -34,8 +34,11 @@ export interface BundlePackageInfo {
   private?: boolean
   /** The range on `@crombolo/crombolo` it is written for. */
   peerRange: string
-  /** A site package or an extension (story 306); a site package is always private. */
-  bundleType: BundleType
+  /**
+   * A site package or an extension (story 306); a site package is always private.
+   * A change (story 383) is a private package too.
+   */
+  bundleType: BundleType | 'change'
   /**
    * An extension's code (story 312): its files under `src/`, outside the
    * payload, the factory `crombolo.server` names, and the permissions it asks

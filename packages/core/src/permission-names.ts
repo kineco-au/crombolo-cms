@@ -94,6 +94,7 @@ export const PERMISSION_NAMES: readonly PermissionName[] = [
     PushProtected: 'Push to a protected environment',
     ApplyStructure: "Change a site's definitions, views, styles or code from a bundle or push",
     InstallCode: 'Install the code a bundle carries',
+    ApplyChanges: 'Apply a change from another copy of the site',
   }),
   ...area('tokens', CliTokenPermissions, {
     Create: 'Create tokens that let scripts run commands as you',

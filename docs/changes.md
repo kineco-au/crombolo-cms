@@ -51,3 +51,47 @@ them; a later change since reverted no longer stands in the way. With `toWorkspa
 work is reopened as a workspace holding the change's files and pages as it left them,
 to carry on with and merge again. An applied bundle is reverted with `crombolo content
 revert`.
+
+## Between sites
+
+A change moves from one copy of a site to another (story `383`), over the remote
+protocol's `changes` routes ([`remote-protocol.md`](remote-protocol.md)).
+
+- **A change bundle** is a private package like any site export: `package.json`, a
+  `bundle.json` typed `change` with the one integrity hash over everything and the
+  package's identity, `change.json`, and the media files it added or replaced under
+  `media/` (`@crombolo/transfer`'s `writeChangeBundle`, `readChangeBundle`). It carries
+  the change's identity, the changes it depends on, each file with its text before and
+  after, and each page, media item or Library item with its values, names and
+  publishing before and after, matched on another site by key. A page the change
+  deleted is kept among its items as it stood, since a delete takes its history.
+- **Its dependencies are named per item:** each item says which change last touched it
+  where the change was made, and the change lists those and the changes that made what
+  its values refer to. A target missing one refuses only an item that is not as the
+  change found it, naming the missing change.
+- **Staged** (`?stage=true`), it is a workspace on the target, read-only, its owner
+  whoever staged it: each file put in with the change's *before* as its base and its
+  *after* as its text, so the merge goes three ways against the target's now; each page
+  with only the fields the change altered. A field the target changed since, a page made
+  separately at the same address, a delete of a page edited or still used there, or a
+  move of a page moved there since, is a conflict. Its address serves it (`379`), and its
+  merge applies it, recording the change under its own key with every change it holds
+  in `applied_change` (migration 088), so a change is applied once. Several can be
+  staged into one (`&into=`) and applied together.
+- **Applied** (`PUT changes`), it is staged and merged at once. A conflict leaves the
+  workspace open to edit, holding the change, and changes nothing in Shared; a finding
+  (`382`) is counted against the target and refused until accepted there (`?accept=`).
+- **An open workspace** exports as the change its merge will be, under the workspace's
+  key, since a whole workspace's merge takes its key as its change's.
+- **Page edits since a point** export as one change, each page as it stood then and now.
+- **A whole site** applied into a site with no pages is its first change (`bundle`); over
+  one holding pages, it is recorded as `replace`.
+
+### Pending workspaces
+
+An administrator sees every open workspace, staged changes included, with its owner, its
+age and when it was last written in, at `GET <backoffice>/crombolo/api/workspaces/pending`,
+and discards those idle longer than a number of days in one step with
+`POST /pending/discard { olderThanDays }`. The back office (`384`) and the command line
+(`386`) use these.
+
