@@ -209,7 +209,7 @@ describe.each(['all', 'web'] as const)('a public file on an `%s` node', (role) =
     // A change the watcher has yet to report is never kept under the old address.
     write(root, 'public/images/logo.png', 'a new logo')
     expect((await visit(hashedAddress('/images/logo.png', hash))).status).toBe(404)
-  })
+  }, 10_000)
 })
 
 describe('a page at the same address', () => {

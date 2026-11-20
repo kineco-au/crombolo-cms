@@ -80,16 +80,42 @@ is a whole version of the site, and a reviewer wants to click through it.
 
 ## Acceptance criteria
 
-- [ ] **A workspace's pages are served at its host,** with its pages, types and files.
-- [ ] **A stranger** is refused; a member, and the holder of a link in date, are served.
-- [ ] **A withdrawn or expired link** is refused.
-- [ ] **A link longer than the site allows** is refused when it is made.
-- [ ] **The Delivery API on a workspace's host** answers from the workspace.
-- [ ] **A publish in a workspace** fires no webhook, runs no schedule and changes no
-      search result in Shared.
-- [ ] **A workspace's responses** are marked not to be indexed.
-- [ ] **Tests;** the preview link of `368` takes a workspace.
-- [ ] **A stylesheet or script changed in a workspace** is served changed at the
+- [x] **A workspace's pages are served at its host,** with its pages, types and files.
+- [x] **A stranger** is refused; a member, and the holder of a link in date, are served.
+- [x] **A withdrawn or expired link** is refused.
+- [x] **A link longer than the site allows** is refused when it is made.
+- [x] **The Delivery API on a workspace's host** answers from the workspace.
+- [x] **A publish in a workspace** fires no webhook, runs no schedule and changes no
+      search result in Shared (`tests/workspaces-api.test.ts`, story 375).
+- [x] **A workspace's responses** are marked not to be indexed.
+- [x] **Tests;** the preview link of `368` takes a workspace.
+- [x] **A stylesheet or script changed in a workspace** is served changed at the
       workspace's address only.
-- [ ] **A media file uploaded or replaced in a workspace** is served, with its crops
-      and sizes, at the workspace's address only.
+- [x] **A media file uploaded or replaced in a workspace** is served, with its crops and
+      sizes, at the workspace's address only (`390`, `tests/workspace-media.test.ts`).
+
+## Built (2026-11-20)
+
+- **Migration 087 `AddWorkspaceLinks`**, `WorkspaceLinkRepository`.
+- **The published view:** `DocumentRepository.loadPublished` in a workspace
+  (`#workspacePublished`, `#workspacePublishedRow`; `#workspaceView` takes an event to stop
+  at).
+- **Access:** `workspace-access.ts` (the handoff, the cookie, link secrets, the host
+  pattern); in `server.ts`, `inWorkspaceSite` wraps every request: a workspace's host or
+  cookie, the handoff or link swapped for a cookie and the address cleaned, access checked
+  again each time, then the request answered inside the workspace site's scope, with
+  `cache` and `renderer` proxies (`viaWorkspaceSite`) following it; `robots.txt`,
+  sitemaps, `/css/` and `/scripts/` answered for it; every answer private, `noindex`, no
+  ETag.
+- **Sites:** `createWorkspaceSites` (`workspace-sites.ts`): a cache per workspace, its
+  revision read each request, `CROMBOLO_WORKSPACE_SITES` and
+  `CROMBOLO_WORKSPACE_SITE_IDLE_MINUTES`; the workspace's views renderer takes the site's
+  cache.
+- **Routes:** `POST /{key}/open`, `GET|POST /{key}/links`, `DELETE /{key}/links/{id}`; the
+  preview link takes `workspace`. Settings `CROMBOLO_WORKSPACES_HOST`,
+  `CROMBOLO_WORKSPACE_LINK_MAX_DAYS`.
+- **Tests:** `tests/workspace-sites.test.ts`.
+
+## Left for later
+
+- **Site search** on a workspace's site reads Shared's index.

@@ -175,3 +175,22 @@ export function createElementEventSink(): ElementEventSink {
     },
   }
 }
+
+/** A workspace's Library writes (story 390): audited, naming the workspace, and announced nowhere else. */
+export function workspaceElementEventSink(name: string): ElementEventSink {
+  return {
+    async record(tx: Db, event, actor) {
+      const entry = elementAuditEntryFor(event, actor)
+      const audit = new AuditLog(tx)
+      const subject = await audit.describe(entry.entityType, entry.entityKey)
+      const where = `In the workspace "${name}"`
+      await audit.record({
+        ...entry,
+        entityType: subject.entityType,
+        entityKey: subject.entityKey,
+        entityName: subject.entityName,
+        detail: entry.detail ? `${where}. ${entry.detail}` : where,
+      })
+    },
+  }
+}

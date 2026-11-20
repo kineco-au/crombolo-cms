@@ -190,6 +190,17 @@ export class WorkspaceFileRepository {
             'not in',
             eb.selectFrom('workspace_file').select('base_hash').where('base_hash', 'is not', null),
           ),
+          // A change's texts are its history (story 381).
+          eb(
+            'hash',
+            'not in',
+            eb.selectFrom('change_item').select('before_hash').where('before_hash', 'is not', null),
+          ),
+          eb(
+            'hash',
+            'not in',
+            eb.selectFrom('change_item').select('after_hash').where('after_hash', 'is not', null),
+          ),
         ]),
       )
       .execute()

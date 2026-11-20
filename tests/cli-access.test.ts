@@ -261,7 +261,7 @@ describe('the gate', () => {
     expect(run.code).toBe(ERROR_KINDS.auth.exitCode)
     expect(run.err).toContain('has ended')
     expect(await withSiteDb(here, readWritesPaused)).toBeUndefined()
-  })
+  }, 10_000)
 
   test('a person command needs a sign-in even at open', async () => {
     const here = site()

@@ -45,6 +45,7 @@ import { aliasFromName, fileNameFor, TYPE_KIND_FILES } from '@crombolo/schema'
 import { readContentTypeUdt, writeContentTypeUdt } from '../content-type-udt.ts'
 import { classifyTypeChange } from '../schema-classify.ts'
 import { contentTypeJsonSchema, schemaForStorage, valueTypeName } from '../value-schemas.ts'
+import { dataTypeFile, recordEdit, typeFile } from './change-recording.ts'
 import {
   createSchemaFileWriter,
   createWorkspaceSchemaFileWriter,
@@ -329,7 +330,11 @@ export function createContentTypePort(
         // written so the file that lands carries the version it belongs to.
         await files?.bumpVersion('additive')
         await files?.write(aggregate)
-        void principal
+        // Story 381: a direct edit of Shared is a change, by its author.
+        if (!workspace) {
+          const after = await typeFile(db, kind, aggregate.key)
+          if (after) await recordEdit(db, principal.id, after.path, null, after.text)
+        }
         return { ok: true as const }
       },
 
@@ -341,6 +346,7 @@ export function createContentTypePort(
         if (refused) return refused
         await options.beforeWrite?.()
         const before = await repo.byKey(key)
+        const fileBefore = workspace ? undefined : await typeFile(db, kind, key)
         // Classified here, while the database still holds the old type: once it is
         // saved there is nothing left to compare it with.
         const change = files ? await classifyTypeChange(db, before, { ...aggregate, key }) : 'none'
@@ -355,7 +361,15 @@ export function createContentTypePort(
         if (!saved.ok) return saved
         await files?.bumpVersion(change)
         await files?.write({ ...aggregate, key }, before?.alias)
-        void principal
+        if (!workspace) {
+          const after = await typeFile(db, kind, key)
+          // A rename moves the file: the old one goes, the new one comes.
+          if (fileBefore && after && fileBefore.path !== after.path) {
+            await recordEdit(db, principal.id, fileBefore.path, fileBefore.text, null)
+            await recordEdit(db, principal.id, after.path, null, after.text)
+          } else if (after)
+            await recordEdit(db, principal.id, after.path, fileBefore?.text ?? null, after.text)
+        }
         return { ok: true as const }
       },
 
@@ -371,8 +385,11 @@ export function createContentTypePort(
           ))
         )
           return 'in-workspace' as const
+        const fileBefore = workspace ? undefined : await typeFile(db, kind, key)
         const removed = await repo.delete(key)
         if (removed && before) await files?.remove(before.alias)
+        if (removed && fileBefore)
+          await recordEdit(db, how.by, fileBefore.path, fileBefore.text, null)
         return removed
       },
 
@@ -708,7 +725,8 @@ export function createDataTypePort(
           jsonSchema: schemaForStorage(model.dbType),
         }
       },
-      async save(model: DataTypeModel) {
+      async save(model: DataTypeModel, principal: Principal) {
+        const fileBefore = workspace ? undefined : await dataTypeFile(db, model.key)
         if (workspace && schemaFiles) {
           const refused = files?.refuse({ alias: model.alias ?? model.name })
           if (refused) return refused
@@ -725,6 +743,16 @@ export function createDataTypePort(
         )
         if (!saved.ok) return saved
         await files?.writeDataType(saved.value)
+        if (!workspace) {
+          const after = await dataTypeFile(db, saved.value.key)
+          await recordEdit(
+            db,
+            principal?.id,
+            after?.path ?? fileBefore?.path ?? '',
+            fileBefore?.text ?? null,
+            after?.text ?? null,
+          )
+        }
         return undefined
       },
       async remove(key, how = {}) {
@@ -741,8 +769,11 @@ export function createDataTypePort(
           ))
         )
           return 'in-workspace' as const
+        const fileBefore = workspace ? undefined : await dataTypeFile(db, key)
         const removed = await repo.delete(key)
         if (removed && before.alias) await files?.removeDataType(before.alias)
+        if (removed && fileBefore)
+          await recordEdit(db, how.by, fileBefore.path, fileBefore.text, null)
         return removed
       },
       filter: (criteria, paging) => repo.filter(criteria, paging),

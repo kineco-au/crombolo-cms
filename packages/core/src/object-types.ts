@@ -15,6 +15,9 @@ export const ObjectTypes = {
   Document: 'c66ba18e-eaf3-4cff-8a22-41b16d66a972',
   /** A page made in a workspace (story 375), until it is merged: crombolo's own, hidden outside it. */
   WorkspaceDocument: '5e1c9b70-3f2a-4d8e-a1c6-0375f2b9d375',
+  /** A media item, or a Library item, made in a workspace (story 390), until it is merged. */
+  WorkspaceMedia: '6f2dac81-4a3b-4e9f-b2d7-0390a3c0e390',
+  WorkspaceElement: '7a3ebd92-5b4c-4fa0-83e8-0390b4d1f390',
   DocumentType: 'a2cb7800-f571-4787-9638-bc48539a0efb',
   /**
    * A workspace's copy of a content, media or member type, or a data type (story 376):

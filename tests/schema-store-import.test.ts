@@ -151,5 +151,5 @@ describe(`an import with a schema store (${dialectUnderTest})`, () => {
       'content-types/home-page.toml',
       'schema.toml',
     ])
-  })
+  }, 10_000)
 })

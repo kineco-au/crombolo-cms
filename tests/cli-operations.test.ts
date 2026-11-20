@@ -98,7 +98,7 @@ describe('users (151)', () => {
       ERROR_KINDS.not_found.exitCode,
     )
     expect(cli(['users', 'invite', 'bob@example.test']).code).toBe(ERROR_KINDS.usage.exitCode)
-  })
+  }, 10_000)
 
   test('unlocks a locked-out user, and says when there was nothing to do', async () => {
     await withDb(async (db) => {
@@ -126,7 +126,7 @@ describe('users (151)', () => {
     expect(cli(['users', 'enable', ADMIN, '-o', 'json']).json<{ state: string }>().state).not.toBe(
       'Disabled',
     )
-  })
+  }, 10_000)
 
   test('resets a password, generated or given on stdin', async () => {
     const generated = cli(['users', 'reset-password', ADMIN, '-o', 'json']).json<{

@@ -545,7 +545,7 @@ export function registerContentTypeHandlers(
         }),
       )
     const force = ctx.url.searchParams.get('force') === 'true' && ctx.principal?.isAdmin === true
-    const removed = await port.remove(ctx.params.id as string, { force })
+    const removed = await port.remove(ctx.params.id as string, { force, by: ctx.principal?.id })
     if (removed === 'in-workspace') return inWorkspace(noun)
     if (!removed) return problemResponse(notFound(`The ${noun} could not be found`))
     ctx.notifications.push({

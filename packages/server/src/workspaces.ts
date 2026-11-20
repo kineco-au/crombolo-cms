@@ -231,6 +231,20 @@ type Client = { ipAddress: string | null; forwardedFor: string | null }
 const json = (body: unknown, status = 200) => Response.json(body, { status })
 const refused = (message: string, status: number) => json({ message }, status)
 
+/** The media files a workspace's own values name (story 390). */
+async function filesNamedBy(db: Db, workspaceId: number): Promise<string[]> {
+  const rows = await db.q
+    .selectFrom('property_value')
+    .select(['varchar_value', 'text_value'])
+    .where('workspace_id', '=', workspaceId)
+    .execute()
+  const found = new Set<string>()
+  for (const row of rows)
+    for (const text of [row.varchar_value, row.text_value])
+      for (const match of String(text ?? '').matchAll(/\/media\/[^"'\s?#]+/g)) found.add(match[0])
+  return [...found]
+}
+
 /** Whether someone may merge workspaces at all: the permission of its own, which an administrator holds. */
 export const mayMerge = (principal: Principal): boolean =>
   principal.isAdmin || principal.permissions.includes(WorkspacePermissions.Merge)
@@ -358,6 +372,34 @@ export function createWorkspacesApi(
     render?: (workspace: { id: number; key: string }, path: string) => Promise<unknown>
     /** Told when a workspace is merged or discarded, for what is held for it. */
     onClosed?: (key: string) => void
+    /** The files a discarded workspace's values named, for those nothing else does to go (story 390). */
+    onDiscardedFiles?: (urls: string[]) => void
+    /** A member's way into the workspace's site (story 379): a link with a single-use token. */
+    open?: (
+      workspace: { key: string },
+      principal: Principal,
+      path: string,
+      request: Request,
+    ) => Promise<string | undefined>
+    /** Links for someone else to look at the workspace's site (story 379). */
+    links?: () => {
+      maxDays(): number
+      make(
+        workspace: { id: number; key: string },
+        principal: Principal,
+        days: number,
+      ): Promise<{ id: number; url: string; expiresAt: string }>
+      list(workspaceId: number): Promise<
+        Array<{
+          id: number
+          madeBy: string
+          expiresAt: Date
+          withdrawnAt: Date | null
+          createdAt: Date
+        }>
+      >
+      withdraw(workspaceId: number, id: number): Promise<boolean>
+    }
   },
 ) {
   const workspaces = new WorkspaceRepository(db)
@@ -448,21 +490,22 @@ export function createWorkspacesApi(
       rest: string,
       client: Client,
     ): Promise<Response> {
+      // What the back office asks at sign-in (story 380): must it work in the person's own?
+      // Answered for everyone, so a site without workspaces says no rather than refusing.
+      if (rest.replace(/^\/+|\/+$/g, '') === OWN_WORKSPACE && request.method === 'GET') {
+        const on = options.enabled() && hasSection(principal, 'content')
+        const own = on ? await workspaces.ownOf(principal.id) : undefined
+        return json({
+          required: on && options.required?.() === true,
+          workspace: own ? viewOf(own, principal) : null,
+        })
+      }
       if (!options.enabled()) return refused('Workspaces are not turned on for this site.', 404)
       if (!hasSection(principal, 'content'))
         return refused('Workspaces are for people who look after content.', 403)
       const body = async () =>
         ((await request.json().catch(() => ({}))) ?? {}) as Record<string, unknown>
       const parts = rest.split('/').filter(Boolean).map(decodeURIComponent)
-
-      // What the back office asks at sign-in (story 380): must it work in the person's own?
-      if (parts.length === 1 && parts[0] === OWN_WORKSPACE && request.method === 'GET') {
-        const own = await workspaces.ownOf(principal.id)
-        return json({
-          required: options.required?.() === true,
-          workspace: own ? viewOf(own, principal) : null,
-        })
-      }
 
       if (parts.length === 0) {
         if (request.method === 'GET') {
@@ -525,8 +568,10 @@ export function createWorkspacesApi(
         if (request.method === 'DELETE') {
           if (!owner && !principal.isAdmin)
             return refused('Only its owner discards a workspace.', 403)
+          const files = await filesNamedBy(db, found.id)
           await workspaces.discard(found.id)
           options.onClosed?.(found.key)
+          options.onDiscardedFiles?.(files)
           await audit(principal, 'Discard', found, `Discarded "${found.name}"`, client)
           return new Response(null, { status: 204 })
         }
@@ -568,6 +613,51 @@ export function createWorkspacesApi(
             400,
           )
         return json({ path, takesEffect: 'at merge' })
+      }
+      // Story 379: a member opens the workspace's site; links let someone else look.
+      if (sub === 'open' && !member && request.method === 'POST' && options.open) {
+        if (found.state === 'merged') return refused('This workspace was merged already.', 409)
+        const asked = await body()
+        const path = typeof asked.path === 'string' && asked.path.startsWith('/') ? asked.path : '/'
+        const url = await options.open(found, principal, path, request)
+        return url ? json({ url }) : refused('You may not open it.', 403)
+      }
+      if (sub === 'links' && options.links) {
+        const links = options.links()
+        if (!member && request.method === 'GET')
+          return json({
+            items: (await links.list(found.id)).map((l) => ({
+              id: l.id,
+              madeBy: l.madeBy,
+              createdAt: l.createdAt.toISOString(),
+              expiresAt: l.expiresAt.toISOString(),
+              withdrawn: l.withdrawnAt !== null,
+            })),
+          })
+        if (!member && request.method === 'POST') {
+          if (found.state === 'merged') return refused('This workspace was merged already.', 409)
+          const most = links.maxDays()
+          if (most <= 0) return refused('This site does not make links to a workspace.', 403)
+          const asked = await body()
+          const days = typeof asked.days === 'number' ? asked.days : most
+          if (!(days > 0) || days > most)
+            return refused(`A link lasts at most ${most} day(s) here.`, 400)
+          const made = await links.make(found, principal, days)
+          await audit(
+            principal,
+            'Link',
+            found,
+            `A link to "${found.name}" for ${days} day(s)`,
+            client,
+          )
+          return json(made, 201)
+        }
+        if (member && request.method === 'DELETE') {
+          if (!(await links.withdraw(found.id, Number(member))))
+            return refused('There is no such link.', 404)
+          await audit(principal, 'Unlink', found, `Withdrew a link to "${found.name}"`, client)
+          return new Response(null, { status: 204 })
+        }
       }
       // Story 377: one page as the workspace's views render it, before it has an address (379).
       if (sub === 'render' && !member && request.method === 'GET' && options.render) {

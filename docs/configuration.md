@@ -140,6 +140,10 @@ rather than the running server. Secret ones are never printed or logged.
 | `CROMBOLO_CONTENT_MODE` | `development`, `production` | `development` | In production, the back office cannot change templates, stylesheets and scripts, for a site whose files come from its repository. |
 | `CROMBOLO_WORKSPACES` | `true` / `false` | `false` | Whether people may open workspaces, to change pages apart from what everyone else sees and look after them there. Off, every workspace route is refused, and nothing else changes. |
 | `CROMBOLO_PURGE_AFTER_DAYS` | number | `0` | The fewest days between removing a property from a type and deleting its values for good. A purge sooner than that is refused. |
+| `CROMBOLO_WORKSPACES_HOST` | string | — | Where a workspace is looked at before it is merged: a host with `{workspace}` in it, such as `{workspace}.preview.example.com`, and `{host}` for one of the site’s own hosts. Unset, a workspace is opened in a browser on the site’s own address. |
+| `CROMBOLO_WORKSPACE_LINK_MAX_DAYS` | number | `30` | The longest a link to a workspace, made for someone to look at it, may last, in days. 0 turns such links off. |
+| `CROMBOLO_WORKSPACE_SITES` | number | `3` | How many workspaces one server keeps ready to be looked at at once. |
+| `CROMBOLO_WORKSPACE_SITE_IDLE_MINUTES` | number | `15` | How long a workspace is kept ready after the last time it was looked at. |
 | `CROMBOLO_WORKSPACE_VIEWS_LIMIT` | number | `50` | How many workspaces with changed templates one server keeps ready to show at once. Past it, the one least recently looked at is set aside, and made ready again when next asked for. |
 | `CROMBOLO_WORKSPACES_REQUIRED` | `true` / `false` | `false` | Whether every change to a page is made in a workspace. What everyone sees then changes only when a workspace is merged; someone who edits without choosing one works in their own. Needs `CROMBOLO_WORKSPACES=true`. |
 | `CROMBOLO_SYNC_SCHEMA_AT_BOOT` | `true` / `false` | `true` | Syncs the schema files when the server starts. Turn it off when a deploy runs `crombolo types sync` itself. |

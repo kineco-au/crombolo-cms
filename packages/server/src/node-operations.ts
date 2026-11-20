@@ -21,6 +21,7 @@ import {
   userActor,
   type WorkspaceFileMerging,
   type WorkspaceMergeOutcome,
+  workspaceAuditSink,
 } from '@crombolo/content'
 import {
   appendCacheInstruction,
@@ -33,7 +34,11 @@ import type { PublishedCache } from '@crombolo/render'
 import { createElementPort } from './adapters/elements.ts'
 import { type Approvals, approvalsGate, createApprovals } from './approvals.ts'
 import type { CromboloConfig } from './config.ts'
-import { createElementEventSink, createMediaEventSink } from './content-events.ts'
+import {
+  createElementEventSink,
+  createMediaEventSink,
+  workspaceElementEventSink,
+} from './content-events.ts'
 import type { ContentNotifier } from './content-notifications.ts'
 import { writeDomainsFor } from './domains.ts'
 import type { EmailPort } from './email.ts'
@@ -50,6 +55,9 @@ export interface NodeOperations {
   documents: DocumentOperations
   /** The document operations in a workspace (story 375). */
   documentsIn(workspace: Workspace): DocumentOperations
+  /** Its media and Library operations (story 390). */
+  mediaIn(workspace: Workspace): MediaOperations
+  elementsIn(workspace: Workspace): ElementOperations
   media: MediaOperations
   /** Every Library write (story 361). */
   elements: ElementOperations
@@ -168,6 +176,27 @@ export function createNodeOperations(options: NodeOperationsOptions): NodeOperat
     events: createElementEventSink(),
     onChange: () => cache?.invalidate(),
   })
+  /** A workspace's media and Library (story 390): audited, announced nowhere else. */
+  const mediaIn = (workspace: Workspace): MediaOperations =>
+    createMediaOperations({
+      db,
+      repository: { ...repository, workspace: workspace.id },
+      events: workspaceAuditSink(workspace.name),
+      files: options.mediaFiles,
+      refusalReason,
+    })
+  const elementsIn = (workspace: Workspace): ElementOperations =>
+    createElementOperations({
+      db,
+      store: (tx) =>
+        createElementPort(tx, {
+          nodeState: options.nodeState,
+          nodeId: options.nodeId,
+          valueIntake: repository.valueIntake,
+          workspace: workspace.id,
+        }),
+      events: workspaceElementEventSink(workspace.name),
+    })
   /** The document operations in a workspace (story 375): its pages, audited, announced nowhere else. */
   const documentsIn = (workspace: Workspace): DocumentOperations =>
     createWorkspaceOperations(
@@ -248,6 +277,8 @@ export function createNodeOperations(options: NodeOperationsOptions): NodeOperat
     merge,
     documents,
     documentsIn,
+    mediaIn,
+    elementsIn,
     media,
     elements,
   }

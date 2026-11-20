@@ -31,6 +31,10 @@ export default defineConfig({
   workspaces: true, // CROMBOLO_WORKSPACES: pages changed apart from Shared
   workspacesRequired: false, // CROMBOLO_WORKSPACES_REQUIRED: every page change made in a workspace
   purgeAfterDays: 0, // CROMBOLO_PURGE_AFTER_DAYS: fewest days between retiring a property and purging it
+  workspacesHost: '{workspace}.preview.example.com', // CROMBOLO_WORKSPACES_HOST: where a workspace is looked at
+  workspaceLinkMaxDays: 30, // CROMBOLO_WORKSPACE_LINK_MAX_DAYS: longest a link to a workspace lasts
+  workspaceSites: 3, // CROMBOLO_WORKSPACE_SITES: workspaces one server keeps ready
+  workspaceSiteIdleMinutes: 15, // CROMBOLO_WORKSPACE_SITE_IDLE_MINUTES: kept that long after a visit
   workspaceViewsLimit: 50, // CROMBOLO_WORKSPACE_VIEWS_LIMIT: workspaces' views one server keeps ready
 
   // ── Where its files are (relative to this file) ─────────────────────────────

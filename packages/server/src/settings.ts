@@ -475,6 +475,35 @@ const DECLARED = [
       'The fewest days between removing a property from a type and deleting its values for good. A purge sooner than that is refused.',
   },
   {
+    env: 'CROMBOLO_WORKSPACES_HOST',
+    kind: 'string',
+    section: 'Schema',
+    description:
+      'Where a workspace is looked at before it is merged: a host with `{workspace}` in it, such as `{workspace}.preview.example.com`, and `{host}` for one of the site’s own hosts. Unset, a workspace is opened in a browser on the site’s own address.',
+  },
+  {
+    env: 'CROMBOLO_WORKSPACE_LINK_MAX_DAYS',
+    kind: 'number',
+    default: '30',
+    section: 'Schema',
+    description:
+      'The longest a link to a workspace, made for someone to look at it, may last, in days. 0 turns such links off.',
+  },
+  {
+    env: 'CROMBOLO_WORKSPACE_SITES',
+    kind: 'number',
+    default: '3',
+    section: 'Schema',
+    description: 'How many workspaces one server keeps ready to be looked at at once.',
+  },
+  {
+    env: 'CROMBOLO_WORKSPACE_SITE_IDLE_MINUTES',
+    kind: 'number',
+    default: '15',
+    section: 'Schema',
+    description: 'How long a workspace is kept ready after the last time it was looked at.',
+  },
+  {
     env: 'CROMBOLO_WORKSPACE_VIEWS_LIMIT',
     kind: 'number',
     default: '50',

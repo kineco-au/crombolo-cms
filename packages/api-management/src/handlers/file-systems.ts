@@ -177,20 +177,29 @@ export function registerFileSystemHandlers(
       parentPathOf(b.parent),
       String(b.name ?? ''),
       typeof b.content === 'string' ? b.content : '',
+      ctx.principal?.id,
     )
     return result(ctx, outcome, true)
   })
   router.handle(`Put${area}ByPath`, async (ctx) => {
     const b = await body(ctx)
     const content = typeof b.content === 'string' ? b.content : ''
-    return result(ctx, await port.update(ctx.params.path as string, content), false)
+    return result(
+      ctx,
+      await port.update(ctx.params.path as string, content, ctx.principal?.id),
+      false,
+    )
   })
   router.handle(`Put${area}ByPathRename`, async (ctx) => {
     const b = await body(ctx)
-    return result(ctx, await port.rename(ctx.params.path as string, String(b.name ?? '')), true)
+    return result(
+      ctx,
+      await port.rename(ctx.params.path as string, String(b.name ?? ''), ctx.principal?.id),
+      true,
+    )
   })
   router.handle(`Delete${area}ByPath`, async (ctx) =>
-    result(ctx, await port.delete(ctx.params.path as string), false),
+    result(ctx, await port.delete(ctx.params.path as string, ctx.principal?.id), false),
   )
 
   router.handle(`Post${area}Folder`, async (ctx) => {

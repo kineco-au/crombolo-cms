@@ -8,6 +8,7 @@ import { fieldWords, mergeBlockers, planWorkspaceMerge } from '@crombolo/content
 import type { WorkspacePageMerge, WorkspacePending } from '@crombolo/data'
 
 const page = (over: Partial<WorkspacePageMerge> = {}): WorkspacePageMerge => ({
+  kind: 'document',
   key: 'k1',
   nodeId: 10,
   made: false,

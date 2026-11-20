@@ -5,13 +5,16 @@
  * reorder and delete is done; then the workspace is closed. Anything refused
  * undoes all of it. A rehearsal runs the same and undoes it on purpose.
  */
-import type { DocumentValue } from '@crombolo/core'
+import { type DocumentValue, ObjectTypes } from '@crombolo/core'
 import {
+  type ChangeItemInput,
+  ChangeRepository,
   type Db,
   DocumentRepository,
   type DocumentRepositoryOptions,
   Locks,
   SystemNodes,
+  TransferRunRepository,
   type Workspace,
   WorkspaceRepository,
 } from '@crombolo/data'
@@ -63,7 +66,11 @@ export interface WorkspaceFileMerging {
     findings: Array<{ id: string; kind: string; says: string }>
     ready: unknown
   }>
-  apply(tx: Db, ready: unknown): Promise<{ restore(): void; after(): Promise<void> }>
+  /** Writes them; `items` are each file's text before and after, for the change it records. */
+  apply(
+    tx: Db,
+    ready: unknown,
+  ): Promise<{ restore(): void; after(): Promise<void>; items?: ChangeItemInput[] }>
 }
 
 export type WorkspaceMergeOutcome =
@@ -79,8 +86,57 @@ export type WorkspaceMergeOutcome =
       }>
       done: Array<{ key: string | null; name: string; kind: string }>
       rehearsed: boolean
+      /** The change it was recorded as (story 381). */
+      changeId?: string
     }
   | { ok: false; blockers: string[]; plan: MergePlan }
+
+/** Records a merge as a change (story 381): its name, who made and merged it, its files and pages. */
+async function recordChange(
+  tx: Db,
+  list: readonly Workspace[],
+  options: WorkspaceMergeOptions & { only?: string },
+  items: readonly ChangeItemInput[],
+  pages: readonly PageChange[],
+  merged: Done['merged'],
+): Promise<string> {
+  const changes = new ChangeRepository(tx)
+  const first = list[0] as Workspace
+  const name =
+    options.only !== undefined
+      ? `Published "${merged[0]?.name ?? 'a page'}"`
+      : list.map((w) => w.name).join(', ')
+  const id = await changes.begin({
+    kind: 'merge',
+    name,
+    madeBy: first.ownerKey,
+    appliedBy: options.userKey,
+    workspaceKey: first.key,
+  })
+  for (const item of items) await changes.item(id, item)
+  const runs = new TransferRunRepository(tx)
+  for (const page of pages)
+    await runs.record({
+      runId: id,
+      nodeKey: page.key,
+      kind: 'document',
+      action: page.action,
+      beforeEventId: page.beforeEventId,
+      beforePublishedEventId: page.beforePublishedEventId,
+      eventId: page.eventId,
+    })
+  await runs.finish(id, pages.length)
+  return id
+}
+
+/** A page's events before and after a merge, which its change records (story 381). */
+interface PageChange {
+  key: string
+  action: 'create' | 'update'
+  beforeEventId: number | null
+  beforePublishedEventId: number | null
+  eventId: number | null
+}
 
 class Rehearsed extends Error {}
 
@@ -93,19 +149,40 @@ export async function previewWorkspaceMerge(
   return planFor(new DocumentRepository(db, repository), new WorkspaceRepository(db), workspace)
 }
 
+/** The kinds a workspace holds, in the order a merge writes them: what pages use, first (story 390). */
+const KINDS = ['element', 'media', 'document'] as const
+
+/** What each pending change's node is, by its object type. */
+const KIND_OF: Record<string, (typeof KINDS)[number]> = {
+  [ObjectTypes.Document]: 'document',
+  [ObjectTypes.WorkspaceDocument]: 'document',
+  [ObjectTypes.Media]: 'media',
+  [ObjectTypes.WorkspaceMedia]: 'media',
+  [ObjectTypes.Element]: 'element',
+  [ObjectTypes.WorkspaceElement]: 'element',
+}
+
 async function planFor(
   shared: DocumentRepository,
   workspaces: WorkspaceRepository,
   workspace: Workspace,
 ): Promise<MergePlan> {
-  const pages = await shared.inWorkspace(workspace.id).workspaceMergePages()
+  const pages = []
+  for (const kind of KINDS)
+    pages.push(...(await shared.ofKind(kind).inWorkspace(workspace.id).workspaceMergePages()))
   const pending = await workspaces.pending(workspace.id)
   const where = new Map<number, { parentId: number; head: number | null }>()
   for (const p of pending) {
     if (p.key === null) continue
     const node = await shared.nodes.byId(p.nodeId)
-    if (node && !node.trashed)
-      where.set(p.nodeId, { parentId: node.parentId, head: await shared.sharedHeadEvent(node.id) })
+    if (!node) continue
+    const kind = KIND_OF[node.objectType ?? ''] ?? 'document'
+    p.objectKind = kind
+    if (!node.trashed)
+      where.set(p.nodeId, {
+        parentId: node.parentId,
+        head: await shared.ofKind(kind).sharedHeadEvent(node.id),
+      })
   }
   return planWorkspaceMerge(pages, pending, where)
 }
@@ -182,8 +259,11 @@ export async function runWorkspaceMerge(
   // Files sync Shared's schema, which takes the schema lock: taken first, as every
   // schema write takes it before the content tree's.
   const files = options.only === undefined ? options.files : undefined
-  const locked = <T>(fn: () => Promise<T>) =>
-    files ? options.db.locks.withLock(Locks.Schema, fn) : fn()
+  // Media is written too (story 390), under its own tree's lock.
+  const locked = <T>(fn: () => Promise<T>) => {
+    const media = () => options.db.locks.withLock(Locks.MediaTree, fn)
+    return files ? options.db.locks.withLock(Locks.Schema, media) : media()
+  }
   try {
     await locked(() =>
       documents.atomically(async (shared, tx) => {
@@ -216,6 +296,31 @@ export async function runWorkspaceMerge(
           ])
             fileBlockers.push(list.length > 1 ? `In "${workspace.name}": ${c}` : c)
         }
+        // A page alone cannot go without the media or Library items it uses that only
+        // the workspace has (story 390): they come with the whole workspace.
+        if (options.only !== undefined)
+          for (const workspace of list) {
+            const own = await tx.q
+              .selectFrom('node')
+              .select(['unique_id', 'text'])
+              .where('workspace_id', '=', workspace.id)
+              .where('node_object_type', 'in', [
+                ObjectTypes.WorkspaceMedia,
+                ObjectTypes.WorkspaceElement,
+              ])
+              .execute()
+            for (const { plan } of first)
+              for (const page of plan.pages) {
+                const text = JSON.stringify(page.page.fields.map((f) => f.mine)).toLowerCase()
+                for (const item of own) {
+                  const key = String(item.unique_id).toLowerCase()
+                  if (text.includes(key) || text.includes(key.replaceAll('-', '')))
+                    fileBlockers.push(
+                      `"${page.name}" uses "${item.text ?? key}", which is only in the workspace: merge the workspace to bring both.`,
+                    )
+                }
+              }
+          }
         // A page alone cannot go before the type it is made of (story 376).
         if (options.only !== undefined)
           for (const { plan } of first)
@@ -244,22 +349,37 @@ export async function runWorkspaceMerge(
         const merged: Done['merged'] = []
         const forApproval: Done['forApproval'] = []
         const done: Done['done'] = []
+        const pages: PageChange[] = []
+        const items: ChangeItemInput[] = []
         for (const [n, workspace] of list.entries()) {
           // Its files first, so its pages are written against the types they need.
-          if (files) written.push(await files.apply(tx, filePlans[n]))
+          if (files) {
+            const applied = await files.apply(tx, filePlans[n])
+            written.push(applied)
+            items.push(...(applied.items ?? []))
+          }
           // Each after the first is planned again against Shared as the ones before left it.
           const plan =
             n === 0
               ? (first[0] as { plan: MergePlan }).plan
               : narrowed(await planFor(shared, workspaces, workspace))
-          await apply(shared, plan, record, options, { merged, forApproval, done })
+          await apply(shared, plan, record, options, { merged, forApproval, done, pages })
           if (options.only === undefined)
             await workspaces.closeMerged(workspace.id, options.userKey)
           else
             for (const page of plan.pages)
               if (!page.page.made) await workspaces.dropPage(workspace.id, page.page.nodeId)
         }
-        outcome = { ok: true, merged, forApproval, done, rehearsed: options.rehearse === true }
+        // Story 381: the merge is a change, its files and pages each with before and after.
+        const changeId = await recordChange(tx, list, options, items, pages, merged)
+        outcome = {
+          ok: true,
+          merged,
+          forApproval,
+          done,
+          rehearsed: options.rehearse === true,
+          changeId,
+        }
         if (options.rehearse) throw new Rehearsed()
       }),
     )
@@ -276,14 +396,17 @@ export async function runWorkspaceMerge(
 
 /** One workspace's plan, written into Shared through its own save, publish, move and delete. */
 async function apply(
-  shared: DocumentRepository,
+  sharedAll: DocumentRepository,
   plan: MergePlan,
   record: (event: DocumentEvent) => Promise<void>,
   options: WorkspaceMergeOptions,
-  out: Pick<Done, 'merged' | 'forApproval' | 'done'>,
+  out: Pick<Done, 'merged' | 'forApproval' | 'done'> & { pages: PageChange[] },
 ): Promise<void> {
   for (const pagePlan of plan.pages) {
     const { page } = pagePlan
+    // Each kind through its own repository: pages, media, Library items (story 390).
+    const shared = sharedAll.ofKind(page.kind)
+    const before = page.made ? undefined : await shared.eventMarkers(page.key)
     if (page.made) await shared.adoptWorkspacePage(page.nodeId)
     if (page.made || pagePlan.take.length > 0) {
       await shared.update(saveOf(pagePlan, options.userId))
@@ -312,13 +435,22 @@ async function apply(
       }
     }
     out.merged.push({ key: page.key, name: pagePlan.name, published, unpublished })
+    const after = await shared.eventMarkers(page.key)
+    out.pages.push({
+      key: page.key,
+      action: page.made ? 'create' : 'update',
+      beforeEventId: before?.head ?? null,
+      beforePublishedEventId: before?.published ?? null,
+      eventId: after?.head ?? null,
+    })
   }
 
   const keyOf = async (id: number | null) =>
-    id === null || id === SystemNodes.Root ? null : ((await shared.nodes.byId(id))?.key ?? null)
+    id === null || id === SystemNodes.Root ? null : ((await sharedAll.nodes.byId(id))?.key ?? null)
   for (const { pending } of plan.pending) {
     const key = pending.key
     if (pending.kind === 'gone' || key === null) continue
+    const shared = sharedAll.ofKind(pending.objectKind ?? 'document')
     if (pending.kind === 'move') {
       await shared.move(key, await keyOf(pending.targetParentId))
       await record({ type: 'moved', key })

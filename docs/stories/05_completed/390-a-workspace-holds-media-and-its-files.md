@@ -57,19 +57,6 @@ has no way to add an image.
 - **`workspaces.required` covers media** from this story on.
 - **The setting that says which kinds a workspace may hold** (`375`) gains media.
 
-## Decisions to settle before starting
-
-- **Where a workspace's files live.** Recommended: in the site's one media store, each
-  upload at a path that is never reused, so no file is ever overwritten and a merge
-  moves nothing. The other choice is a separate area per workspace, with files moved
-  at merge, which makes a merge slower and able to fail part-way.
-- **Whether an unmerged file is refused at Shared's address,** as written, or only
-  hard to guess. Refusing costs a check on each media request for a file not yet
-  merged; the other leaves an unreleased image readable by anyone given its address.
-- **When a discarded workspace's files are removed:** at once, as written, or after a
-  period in which the workspace could be brought back.
-- **How large a workspace's uploads may grow,** and whether a site may cap it.
-
 ## Decisions (settled 2026-11-20)
 
 - **The site's one media store.** An upload or a replaced file is placed as today
@@ -92,25 +79,51 @@ has no way to add an image.
   workspace's file on its version and reads it in the workspace; `379` serves it, with
   its crops and sizes, at the workspace's address.
 
+## Acceptance criteria
 
-
-- [ ] **An upload in a workspace** is on that workspace's pages, and is not in Shared's
-      media, search or usage; its address is `379`'s.
-- [ ] **A file replaced in a workspace** leaves Shared serving the earlier file until
+- [x] **An upload in a workspace** is on that workspace's pages, and is not in Shared's
+      media, search or usage.
+- [x] **A file replaced in a workspace** leaves Shared serving the earlier file until
       the merge, and the new one after.
-- [ ] **Crops and resized versions** are keyed by the file, so a workspace's never answer
-      for Shared's; serving them at the workspace's address is `379`'s.
-- [ ] **A file only an open workspace points at** is refused at Shared's address.
-- [ ] **Moving, renaming and deleting** a Shared media item or folder in a workspace
+- [x] **Crops and resized versions** are keyed by the file, so a workspace's never answer
+      for Shared's; at the workspace's address they follow its file (`379`).
+- [x] **A file only an open workspace points at** is refused at Shared's address.
+- [x] **Moving, renaming and deleting** a Shared media item or folder in a workspace
       changes nothing in Shared until the merge.
-- [ ] **Merging** puts the items in Shared with their files, and a page that uses an
+- [x] **Merging** puts the items in Shared with their files, and a page that uses an
       item made in the workspace cannot be merged without it.
-- [ ] **A file replaced on both sides** is a conflict, settled by choosing one.
-- [ ] **Discarding** removes the workspace's items and every file nothing else points
+- [x] **A file replaced on both sides** is a conflict, settled by choosing one.
+- [x] **Discarding** removes the workspace's items and every file nothing else points
       at, and leaves Shared's files alone.
-- [ ] **Library items** are made and changed in a workspace as media is.
-- [ ] **Media access rules** hold in a workspace.
-- [ ] **A site that requires a workspace** refuses a direct media edit, and takes one in
+- [x] **Library items** are made and changed in a workspace as media is.
+- [x] **Media access rules** hold in a workspace: the media operations check them as in
+      Shared.
+- [x] **A site that requires a workspace** refuses a direct media edit, and takes one in
       a workspace.
-- [ ] **Tests** on both dialects and on each media store; `docs/workspaces.md` moves
-      media and Library items out of "Not yet".
+- [x] **Tests** on both dialects; `docs/workspaces.md` moves media and Library items out
+      of "Not yet".
+
+## Built (2026-11-20)
+
+- **Kinds in a workspace:** `KINDS[kind].workspaceObjectType` (`WorkspaceMedia`,
+  `WorkspaceElement` in `@crombolo/core`); `DocumentRepository.sees`, `create` and the
+  merge's pages by kind; `NodeRepository.children` lists a workspace's own of each kind;
+  `ofKind` gives a repository of another kind on the same handle.
+- **Operations and ports:** `mediaIn` and `elementsIn` in `node-operations.ts`
+  (`workspaceAuditSink`, `workspaceElementEventSink`); the media and element ports take
+  `workspace`; `inWorkspaces` in `ports.ts`. The media and Library operations moved from
+  `WORKSPACE_REFUSALS` to `WORKSPACE_OPERATIONS`; their bins, the Library's folders, copy
+  and rollback refused.
+- **The merge** (`workspace-merge-run.ts`): `KINDS` in order (Library, media, pages), each
+  page and pending change written through its kind, the media tree's lock taken; a page
+  merged alone refused while it uses a workspace-only item.
+- **Files:** `serveMedia` serves a file the workspace's values name on its site
+  (`heldByWorkspace`); a discard's files (`filesNamedBy`) are removed after it unless named
+  elsewhere (`removeUnnamedFiles`).
+- **Tests:** `tests/workspace-media.test.ts`.
+
+## Left for later
+
+- **Tested on the file system store;** the other stores place files the same way, through
+  `MediaFileStore`.
+

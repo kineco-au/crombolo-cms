@@ -135,7 +135,20 @@ describe('the first boot of a self-hosted site', () => {
   test('a database the previous release left is upgraded by `crombolo upgrade`, and then starts', async () => {
     const file = readdirSync(site()).find((name) => name.endsWith('.sqlite')) as string
     const sqlite = new Database(join(site(), file))
-    // 085 (story 376), then 084.
+    // 087 (story 379), 086 (story 381), 085 (story 376), then 084.
+    sqlite.exec('DROP TABLE workspace_link')
+    sqlite.exec("DELETE FROM migration_history WHERE name = 'AddWorkspaceLinks'")
+    sqlite.exec('DROP TABLE change_item')
+    for (const column of [
+      'change_kind',
+      'name',
+      'change_key',
+      'made_by',
+      'workspace_key',
+      'closed_at',
+    ])
+      sqlite.exec(`ALTER TABLE content_transfer_run DROP COLUMN ${column}`)
+    sqlite.exec("DELETE FROM migration_history WHERE name = 'AddChanges'")
     for (const table of ['workspace_file', 'file_blob']) sqlite.exec(`DROP TABLE ${table}`)
     for (const index of [
       'ux_content_type_workspace_alias',

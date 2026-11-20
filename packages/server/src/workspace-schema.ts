@@ -22,8 +22,10 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative, sep } from 'node:path'
+import { costlier } from '@crombolo/core'
 import {
   appendCacheInstruction,
+  type ChangeItemInput,
   type Db,
   type NodeSchemaState,
   WorkspaceFileRepository,
@@ -73,6 +75,8 @@ export interface FileMergePlan {
   change: ChangeClass
   /** Each item of the change against Shared now, with how many pages a lossy one touches (story 382). */
   items: Array<ChangeItem & { pages?: number }>
+  /** Shared's text of each written file before the merge, for the change it records (story 381). */
+  befores: Record<string, string | null>
 }
 
 /** An area of files a workspace holds, besides its definitions (story 377). */
@@ -299,6 +303,11 @@ export function createWorkspaceSchema(
     sharedFiles,
     shown,
 
+    /** A file as Shared has it now, by its full path: a definition's, or any other's. */
+    async textNow(key: string): Promise<string | null> {
+      return sharedText(key, await sharedFiles())
+    },
+
     /** Takes Shared's files as the workspace's copy, as it opens. */
     async snapshot(workspaceId: number): Promise<void> {
       await new WorkspaceFileRepository(db).snapshot(workspaceId, await sharedCopied())
@@ -360,7 +369,16 @@ export function createWorkspaceSchema(
               ? { ...found, pages: await pagesHolding(handle, found.type, found.property) }
               : found,
           )
-      return { writes, conflicts, problems: await componentProblems(writes), change, items }
+      const befores: Record<string, string | null> = {}
+      for (const key of Object.keys(writes)) befores[key] = sharedText(key, schema)
+      return {
+        writes,
+        conflicts,
+        problems: await componentProblems(writes),
+        change,
+        items,
+        befores,
+      }
     },
 
     /**
@@ -368,8 +386,25 @@ export function createWorkspaceSchema(
      * then writes every merged file where it lives; what it returns puts them back,
      * for when the merge is undone after.
      */
-    async apply(tx: Db, plan: FileMergePlan): Promise<{ restore(): void; after(): Promise<void> }> {
+    async apply(
+      tx: Db,
+      plan: FileMergePlan,
+    ): Promise<{ restore(): void; after(): Promise<void>; items: ChangeItemInput[] }> {
       const restores: Array<() => void> = []
+      // Each file as the change records it (story 381): its text before and after.
+      const items: ChangeItemInput[] = Object.entries(plan.writes).map(([key, text]) => {
+        const before = plan.befores[key] ?? null
+        const own = describeFileChange(shown(key), before, text, {
+          definition: key.startsWith(WORKSPACE_SCHEMA_PREFIX),
+        })
+        return {
+          path: key,
+          kind: before === null ? 'file-added' : text === null ? 'file-removed' : 'file-changed',
+          class: own.reduce<ChangeClass>((worst, i) => costlier(worst, i.class), 'none'),
+          before,
+          after: text,
+        }
+      })
       const definitions = Object.entries(plan.writes).filter(([key]) =>
         key.startsWith(WORKSPACE_SCHEMA_PREFIX),
       )
@@ -433,6 +468,7 @@ export function createWorkspaceSchema(
       if (others.length > 0) restores.push(writeOut(others))
       const views = Object.keys(plan.writes).some((key) => key.startsWith('components/'))
       return {
+        items,
         restore() {
           for (const undo of restores.reverse()) undo()
         },

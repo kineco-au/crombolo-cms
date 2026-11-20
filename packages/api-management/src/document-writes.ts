@@ -95,6 +95,36 @@ export const WORKSPACE_OPERATIONS: ReadonlySet<string> = new Set([
   'PutDocumentSort',
   'PutDocumentByIdSortChildren',
   'PutDocumentRootSortChildren',
+  // Story 390: its media and Library items, made and changed as its pages are.
+  'PostMedia',
+  'PutMediaById',
+  'DeleteMediaById',
+  'PutMediaByIdMoveToRecycleBin',
+  'PutMediaByIdMove',
+  'PutMediaSort',
+  'PutMediaByIdSortChildren',
+  'PutMediaRootSortChildren',
+  'GetMediaById',
+  'GetItemMedia',
+  'GetCollectionMedia',
+  'GetTreeMediaRoot',
+  'GetTreeMediaChildren',
+  'GetTreeMediaAncestors',
+  'GetTreeMediaSiblings',
+  'PostElement',
+  'PutElementById',
+  'PostElementCreateAndPublish',
+  'PutElementByIdUpdateAndPublish',
+  'PutElementByIdPublish',
+  'PutElementByIdUnpublish',
+  'PutElementByIdMove',
+  'PutElementByIdMoveToRecycleBin',
+  'GetElementById',
+  'GetItemElement',
+  'GetTreeElementRoot',
+  'GetTreeElementChildren',
+  'GetTreeElementAncestors',
+  'GetTreeElementSiblings',
   // Story 377: its components, stylesheets and scripts, read and written in its own copy.
   'PostPartialView',
   'GetPartialViewByPath',
@@ -233,12 +263,29 @@ export const WORKSPACE_SHARED_SCHEMA_READS: ReadonlySet<string> = new Set(
  * users and settings are, and the header does not change it.
  */
 export const WORKSPACE_REFUSALS: ReadonlyMap<string, string> = new Map([
-  ...[...MEDIA_WRITE_OPERATIONS].map(
-    (id) => [id, 'Media is changed in Shared only, for now.'] as const,
-  ),
-  ...[...ELEMENT_WRITE_OPERATIONS].map(
-    (id) => [id, 'The Library is changed in Shared only, for now.'] as const,
-  ),
+  // Story 390: media and the Library are held, but not their bins or the Library's folders.
+  ...[
+    'PutRecycleBinMediaByIdRestore',
+    'DeleteRecycleBinMediaById',
+    'DeleteRecycleBinMedia',
+    'PutRecycleBinElementByIdRestore',
+    'DeleteRecycleBinElementById',
+    'DeleteRecycleBinElement',
+    'PutRecycleBinElementFolderByIdRestore',
+    'DeleteRecycleBinElementFolderById',
+  ].map((id) => [id, 'The recycle bin is Shared’s: change it there.'] as const),
+  ...[
+    'PostElementFolder',
+    'PutElementFolderById',
+    'PutElementFolderByIdMove',
+    'PutElementFolderByIdMoveToRecycleBin',
+    'DeleteElementFolderById',
+  ].map((id) => [id, 'The Library’s folders are the site’s, and are changed in Shared.'] as const),
+  ['PostElementByIdCopy', 'Copying a Library item is done in Shared only, for now.'],
+  [
+    'PostElementVersionByIdRollback',
+    'An earlier version can be brought back in Shared only, for now.',
+  ],
   [
     'PutDocumentByIdPublishWithDescendants',
     'Publish each page in a workspace; a whole branch is published in Shared.',

@@ -50,6 +50,7 @@ import { createNodeLookup } from './access.ts'
 import { createAuditHistory } from './adapters/audit.ts'
 import { createBlueprintPort } from './adapters/blueprints.ts'
 import { createPackagePort } from './adapters/bundles.ts'
+import { recordingFilePort } from './adapters/change-recording.ts'
 import {
   createContentTypePort,
   createDataTypePort,
@@ -490,12 +491,13 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
   // express a folder at all.
   const readOnly = contentFilesLocked(options.config)
   // Story 377: with the header, a workspace's own copy, kept in its file list.
+  // Story 381: Shared's own, each direct write recorded as its author's change.
   const workspaceFiles = (
     shared: FileSystemPort,
     area: Omit<WorkspaceFileAreaOptions, 'readOnly'>,
   ) =>
     options.db
-      ? inWorkspaces(shared, (w) =>
+      ? inWorkspaces(recordingFilePort(options.db, area.prefix, shared), (w) =>
           createWorkspaceFilePort(options.db as Db, w.id, { ...area, readOnly }),
         )
       : shared
@@ -589,13 +591,19 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
     }
     deps.userGroups = userPorts.groups
     deps.userData = userPorts.userData
-    deps.media = createMediaPort(options.db, {
+    // Story 390: with the header, a workspace's media.
+    const mediaOptions = {
       nodeState: options.schema?.nodeState,
       nodeId: options.schema?.nodeId,
       valueIntake,
-    })
+    }
+    deps.media = inWorkspaces(createMediaPort(options.db, mediaOptions), (w) =>
+      createMediaPort(options.db as Db, { ...mediaOptions, workspace: w.id }),
+    )
     // Every media write, whoever starts it (story 165).
-    deps.mediaOperations = operations?.media
+    deps.mediaOperations = operations
+      ? inWorkspaces(operations.media, operations.mediaIn)
+      : undefined
     deps.blueprints = createBlueprintPort(options.db, {
       nodeState: options.schema?.nodeState,
       valueIntake,
@@ -655,14 +663,22 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
       nodeId: options.schema?.nodeId,
       onChange: () => options.cache?.invalidate(),
     })
-    deps.elements = createElementPort(options.db, {
+    const elementOptions = {
       nodeState: options.schema?.nodeState,
       nodeId: options.schema?.nodeId,
       valueIntake,
-      onChange: () => options.cache?.invalidate(),
-    })
+    }
+    deps.elements = inWorkspaces(
+      createElementPort(options.db, {
+        ...elementOptions,
+        onChange: () => options.cache?.invalidate(),
+      }),
+      (w) => createElementPort(options.db as Db, { ...elementOptions, workspace: w.id }),
+    )
     // Every Library write, whoever starts it (story 361).
-    deps.elementOperations = operations?.elements
+    deps.elementOperations = operations
+      ? inWorkspaces(operations.elements, operations.elementsIn)
+      : undefined
     deps.references = createReferencePort(options.db)
     deps.relations = createRelationPort(options.db)
     deps.webhooks = createWebhookPort(

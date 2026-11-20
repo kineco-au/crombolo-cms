@@ -326,7 +326,8 @@ Design documents, in reading order; planned work is in the stories:
 | [performance](docs/performance.md) | the published cache as a site grows: what a change drops, the measured workloads and budgets, and when another topology is right |
 | [testing](docs/testing.md) | the test layers, the containers, the browser suite |
 | [schema-as-code](docs/schema-as-code.md) | the TOML format, sync, retirement, coherence across nodes |
-| [workspaces](docs/workspaces.md) | pages changed apart from Shared: what a workspace holds, how it is stored, its routes and header |
+| [workspaces](docs/workspaces.md) | work apart from Shared: pages, types, components, stylesheets and scripts in a workspace, how it is stored, merged and brought up to Shared |
+| [changes](docs/changes.md) | every change recorded: merges, direct edits and reverts, each file's versions, and putting one back |
 | [packaging-and-upgrades](docs/packaging-and-upgrades.md) | environments, the upgrade process, releasing to npm; what each release changed, and what to do on upgrading, in [release-notes](docs/release-notes.md) |
 | [schema-at-runtime](docs/schema-at-runtime.md) | the shared schema store, and importing at runtime |
 | [content-transfer](docs/content-transfer.md) | the bundle format, and moving content between environments; imports compare three ways against what was last applied |

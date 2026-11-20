@@ -7,7 +7,7 @@ import { normaliseUuid } from '@crombolo/core'
 import type { Db } from '../database.ts'
 import { DbDate, fromDbBool } from '../dialect.ts'
 import { Locks } from '../locks.ts'
-import { deleteNodeRows } from './documents.ts'
+import { type ContentKind, deleteNodeRows } from './documents.ts'
 import { WorkspaceFileRepository } from './workspace-files.ts'
 
 export interface Workspace {
@@ -28,6 +28,8 @@ export interface Workspace {
 
 /** A move, reorder or delete waiting for the merge, with where its page stood (story 380). */
 export interface WorkspacePending {
+  /** Which kind it is, once the merge has looked (story 390). */
+  objectKind?: ContentKind
   /** Null for a page Shared has since deleted. */
   key: string | null
   nodeId: number
@@ -228,6 +230,7 @@ export class WorkspaceRepository {
           'workspace_document_culture',
           'workspace_document',
           'workspace_member',
+          'workspace_link',
         ] as const)
           await tx.q.deleteFrom(table).where('workspace_id', '=', id).execute()
         if (made.length > 0) await deleteNodeRows(tx, { ids: made })

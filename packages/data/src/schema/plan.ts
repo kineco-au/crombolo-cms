@@ -28,6 +28,7 @@ import { bundlesDisabledMigration } from './bundles-disabled.ts'
 import { bundlesInSettingsMigration } from './bundles-in-settings.ts'
 import { bundlesRenameMigration } from './bundles-rename.ts'
 import { changeReportMigration } from './change-report.ts'
+import { changesMigration } from './changes.ts'
 import { cliTokensMigration } from './cli-tokens.ts'
 import { clientIdPrefixMigration } from './client-id-prefix.ts'
 import { contentMigration } from './content.ts'
@@ -95,6 +96,7 @@ import { userStartNodesDroppedMigration } from './user-start-nodes-dropped.ts'
 import { usersLocalisationMigration } from './users-localisation.ts'
 import { valuesMigration } from './values.ts'
 import { webhooksMigration } from './webhooks.ts'
+import { workspaceLinksMigration } from './workspace-links.ts'
 import { workspaceMergeMigration } from './workspace-merge.ts'
 import { workspaceSchemaMigration } from './workspace-schema.ts'
 import { workspacesMigration } from './workspaces.ts'
@@ -185,4 +187,6 @@ export const cromboloPlan = new MigrationPlan([
   contentPlacesMigration,
   workspaceMergeMigration,
   workspaceSchemaMigration,
+  changesMigration,
+  workspaceLinksMigration,
 ])

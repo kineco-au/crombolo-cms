@@ -53,7 +53,7 @@ test('a user created in the Users section, restricted to one branch, sees only i
     data: {
       name: GROUP,
       alias: GROUP.replace(/\W/g, ''),
-      sections: ['Umb.Section.Content'],
+      sections: ['Umb.Section.Content', 'Crombolo.Section.Pages'],
       languages: [],
       hasAccessToAllLanguages: true,
       documentRootAccess: false,
@@ -200,7 +200,7 @@ test("a group's owners choose who is in it, and only an administrator changes it
       data: {
         name,
         alias: name.replace(/\W/g, ''),
-        sections: ['Umb.Section.Users', 'Umb.Section.Content'],
+        sections: ['Umb.Section.Users', 'Umb.Section.Content', 'Crombolo.Section.Pages'],
         languages: [],
         hasAccessToAllLanguages: true,
         documentRootAccess: true,
@@ -281,7 +281,7 @@ test('a group is set up in levels, and its exceptions read as sentences (story 3
     data: {
       name: NAME,
       alias: NAME.replace(/\W/g, ''),
-      sections: ['Umb.Section.Content'],
+      sections: ['Umb.Section.Content', 'Crombolo.Section.Pages'],
       languages: [],
       hasAccessToAllLanguages: true,
       documentRootAccess: true,

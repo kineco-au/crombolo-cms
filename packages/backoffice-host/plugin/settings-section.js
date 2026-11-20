@@ -256,7 +256,8 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
 
   #viewContext(manifest) {
     let context = this.#viewContexts.get(manifest.alias)
-    if (!context) {
+    // A view's controller is destroyed with the section it was made in: make another.
+    if (!context || typeof context.provideAt !== 'function') {
       context = new UmbViewController(this, manifest.alias)
       context.inherit()
       this.#viewContexts.set(manifest.alias, context)

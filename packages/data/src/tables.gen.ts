@@ -136,6 +136,15 @@ export interface CoreTables {
     kind: string
     payload: string | null
   }
+  change_item: {
+    after_hash: string | null
+    before_hash: string | null
+    class: string
+    id: Generated<number>
+    kind: string
+    path: string
+    run_id: string
+  }
   change_report: {
     code: string
     culture: string | null
@@ -243,9 +252,14 @@ export interface CoreTables {
     bundle_id: string
     bundle_label: string | null
     bundle_type: string | null
+    change_key: string | null
+    change_kind: Generated<string>
+    closed_at: Timestamp | null
     direction: string
     finished_at: Timestamp | null
     id: string
+    made_by: string | null
+    name: string | null
     node_count: number
     package_name: string | null
     package_version: string | null
@@ -254,6 +268,7 @@ export interface CoreTables {
     signed_by: string | null
     started_at: Timestamp
     status: string
+    workspace_key: string | null
   }
   content_type: {
     alias: string
@@ -1022,6 +1037,15 @@ export interface CoreTables {
     hash: string | null
     path: string
     workspace_id: Generated<number>
+  }
+  workspace_link: {
+    created_at: Timestamp
+    expires_at: Timestamp
+    id: Generated<number>
+    made_by: string
+    secret_hash: string
+    withdrawn_at: Timestamp | null
+    workspace_id: number
   }
   workspace_member: {
     added_at: Timestamp

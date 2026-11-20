@@ -1,0 +1,353 @@
+/**
+ * Every change to a site, recorded (story 381). A change is a run, as an applied
+ * bundle is: a merged workspace, a direct edit of the definitions or files, or a
+ * revert. Its files are `change_item` rows, each with its text before and after,
+ * kept once by hash; its pages are the run's `content_transfer_change` rows. A
+ * person's direct edits gather in one change until ten minutes pass with none;
+ * their page edits are counted on it from the pages' own history, not listed.
+ */
+import { normaliseUuid } from '@crombolo/core'
+import type { Db } from '../database.ts'
+import { DbDate } from '../dialect.ts'
+import { currentSchemaState } from '../schema-state.ts'
+import { fileHash } from './workspace-files.ts'
+
+export type ChangeSource = 'bundle' | 'merge' | 'edit' | 'revert'
+
+/** How long a person's direct edits keep gathering in one change. */
+export const EDIT_WINDOW_MS = 10 * 60 * 1000
+
+export interface Change {
+  id: string
+  kind: ChangeSource
+  name: string | null
+  /** The identity that travels with it to another site (story 383). */
+  key: string
+  madeBy: string | null
+  appliedBy: string | null
+  workspaceKey: string | null
+  revertsId: string | null
+  status: string
+  startedAt: Date
+  finishedAt: Date | null
+  closedAt: Date | null
+  items: number
+  pages: number
+}
+
+export interface ChangeItem {
+  id: number
+  changeId: string
+  path: string
+  kind: string
+  class: string
+  before: string | null
+  after: string | null
+}
+
+/** One item as it is recorded. */
+export interface ChangeItemInput {
+  path: string
+  kind: string
+  class: string
+  before: string | null
+  after: string | null
+}
+
+export class ChangeRepository {
+  #db: Db
+
+  constructor(db: Db) {
+    this.#db = db
+  }
+
+  async #put(text: string | null): Promise<string | null> {
+    if (text === null) return null
+    const hash = fileHash(text)
+    const found = await this.#db.q
+      .selectFrom('file_blob')
+      .select('hash')
+      .where('hash', '=', hash)
+      .execute()
+    if (found.length === 0)
+      await this.#db.q
+        .insertInto('file_blob')
+        .values({ hash, text, size: Buffer.byteLength(text) })
+        .execute()
+    return hash
+  }
+
+  /** Starts a change; its id is its key, which travels with it. */
+  async begin(change: {
+    kind: Exclude<ChangeSource, 'bundle'>
+    name: string | null
+    madeBy: string | null
+    appliedBy?: string | null
+    workspaceKey?: string | null
+    revertsId?: string | null
+    key?: string
+  }): Promise<string> {
+    const id = normaliseUuid(change.key ?? crypto.randomUUID())
+    const state = await currentSchemaState(this.#db)
+    const now = DbDate.toDb(new Date())
+    await this.#db.q
+      .insertInto('content_transfer_run')
+      .values({
+        id,
+        bundle_id: id,
+        bundle_label: change.name,
+        direction: change.kind === 'revert' ? 'revert' : 'import',
+        reverts_run_id: change.revertsId ?? null,
+        schema_state_id: state.id,
+        started_at: now,
+        finished_at: now,
+        applied_by: change.appliedBy ?? change.madeBy,
+        node_count: 0,
+        status: 'applied',
+        change_kind: change.kind,
+        name: change.name,
+        change_key: id,
+        made_by: change.madeBy,
+        workspace_key: change.workspaceKey ?? null,
+      })
+      .execute()
+    return id
+  }
+
+  /** Records one item of a change. */
+  async item(changeId: string, input: ChangeItemInput): Promise<void> {
+    await this.#db.q
+      .insertInto('change_item')
+      .values({
+        run_id: changeId,
+        path: input.path,
+        kind: input.kind,
+        class: input.class,
+        before_hash: await this.#put(input.before),
+        after_hash: await this.#put(input.after),
+      })
+      .execute()
+  }
+
+  /**
+   * A person's direct edit of a file (story 381): it joins their open edit, unless
+   * ten minutes have passed since its last, when that one closes and another
+   * opens. An item already there keeps its first "before" and takes the new "after".
+   */
+  async recordEdit(madeBy: string, input: ChangeItemInput, now = new Date()): Promise<string> {
+    const open = await this.#db.q
+      .selectFrom('content_transfer_run')
+      .select(['id', 'finished_at'])
+      .where('change_kind', '=', 'edit')
+      .where('made_by', '=', madeBy)
+      .where('closed_at', 'is', null)
+      .orderBy('started_at', 'desc')
+      .execute()
+    let id = open[0] ? String(open[0].id) : undefined
+    const last = open[0] ? DbDate.fromDb(open[0].finished_at) : null
+    if (id && last && now.getTime() - last.getTime() > EDIT_WINDOW_MS) {
+      await this.#db.q
+        .updateTable('content_transfer_run')
+        .set({ closed_at: DbDate.toDb(last) })
+        .where('id', '=', id)
+        .execute()
+      id = undefined
+    }
+    id ??= await this.begin({ kind: 'edit', name: null, madeBy })
+    const found = await this.#db.q
+      .selectFrom('change_item')
+      .select('id')
+      .where('run_id', '=', id)
+      .where('path', '=', input.path)
+      .execute()
+    if (found[0])
+      await this.#db.q
+        .updateTable('change_item')
+        .set({ after_hash: await this.#put(input.after), kind: input.kind, class: input.class })
+        .where('id', '=', Number(found[0].id))
+        .execute()
+    else await this.item(id, input)
+    await this.#db.q
+      .updateTable('content_transfer_run')
+      .set({ finished_at: DbDate.toDb(now) })
+      .where('id', '=', id)
+      .execute()
+    return id
+  }
+
+  #view(row: Record<string, unknown>, items: number, pages: number): Change {
+    return {
+      id: String(row.id),
+      kind: (row.change_kind as ChangeSource | null) ?? 'bundle',
+      name: (row.name as string | null) ?? (row.bundle_label as string | null) ?? null,
+      key: String(row.change_key ?? row.bundle_id),
+      madeBy: (row.made_by as string | null) ?? null,
+      appliedBy: (row.applied_by as string | null) ?? null,
+      workspaceKey: (row.workspace_key as string | null) ?? null,
+      revertsId: (row.reverts_run_id as string | null) ?? null,
+      status: String(row.status),
+      startedAt: DbDate.fromDb(row.started_at) ?? new Date(0),
+      finishedAt: DbDate.fromDb(row.finished_at) ?? null,
+      closedAt: DbDate.fromDb(row.closed_at) ?? null,
+      items,
+      pages,
+    }
+  }
+
+  async #counts(ids: readonly string[]) {
+    const items = new Map<string, number>()
+    const pages = new Map<string, number>()
+    if (ids.length === 0) return { items, pages }
+    for (const row of await this.#db.q
+      .selectFrom('change_item')
+      .select(['run_id', (eb) => eb.fn.countAll<number>().as('n')])
+      .where('run_id', 'in', ids)
+      .groupBy('run_id')
+      .execute())
+      items.set(String(row.run_id), Number(row.n))
+    for (const row of await this.#db.q
+      .selectFrom('content_transfer_change')
+      .select(['run_id', (eb) => eb.fn.countAll<number>().as('n')])
+      .where('run_id', 'in', ids)
+      .groupBy('run_id')
+      .execute())
+      pages.set(String(row.run_id), Number(row.n))
+    return { items, pages }
+  }
+
+  /** The site's changes, newest first. */
+  async list(skip = 0, take = 50): Promise<{ total: number; items: Change[] }> {
+    const total = Number(
+      (
+        await this.#db.q
+          .selectFrom('content_transfer_run')
+          .select((eb) => eb.fn.countAll<number>().as('n'))
+          .execute()
+      )[0]?.n ?? 0,
+    )
+    const rows = await this.#db.q
+      .selectFrom('content_transfer_run')
+      .selectAll()
+      .orderBy('started_at', 'desc')
+      .orderBy('id')
+      .limit(take)
+      .offset(skip)
+      .execute()
+    const counts = await this.#counts(rows.map((r) => String(r.id)))
+    return {
+      total,
+      items: rows.map((r) =>
+        this.#view(r, counts.items.get(String(r.id)) ?? 0, counts.pages.get(String(r.id)) ?? 0),
+      ),
+    }
+  }
+
+  async byId(id: string): Promise<Change | undefined> {
+    const rows = await this.#db.q
+      .selectFrom('content_transfer_run')
+      .selectAll()
+      .where('id', '=', id)
+      .execute()
+    if (!rows[0]) return undefined
+    const counts = await this.#counts([id])
+    return this.#view(rows[0], counts.items.get(id) ?? 0, counts.pages.get(id) ?? 0)
+  }
+
+  async #texts(hashes: readonly (string | null)[]): Promise<Map<string, string>> {
+    const wanted = [...new Set(hashes.filter((h): h is string => Boolean(h)))]
+    if (wanted.length === 0) return new Map()
+    return new Map(
+      (
+        await this.#db.q
+          .selectFrom('file_blob')
+          .select(['hash', 'text'])
+          .where('hash', 'in', wanted)
+          .execute()
+      ).map((r) => [String(r.hash), String(r.text)]),
+    )
+  }
+
+  async #items(where: { runId?: string; path?: string }): Promise<ChangeItem[]> {
+    let query = this.#db.q
+      .selectFrom('change_item as i')
+      .innerJoin('content_transfer_run as r', 'r.id', 'i.run_id')
+      .select(['i.id', 'i.run_id', 'i.path', 'i.kind', 'i.class', 'i.before_hash', 'i.after_hash'])
+      .orderBy('r.started_at')
+      .orderBy('i.id')
+    if (where.runId) query = query.where('i.run_id', '=', where.runId)
+    if (where.path) query = query.where('i.path', '=', where.path)
+    const rows = await query.execute()
+    const texts = await this.#texts(rows.flatMap((r) => [r.before_hash, r.after_hash]))
+    return rows.map((r) => ({
+      id: Number(r.id),
+      changeId: String(r.run_id),
+      path: String(r.path),
+      kind: String(r.kind),
+      class: String(r.class),
+      before: r.before_hash ? (texts.get(String(r.before_hash)) ?? null) : null,
+      after: r.after_hash ? (texts.get(String(r.after_hash)) ?? null) : null,
+    }))
+  }
+
+  /** The files a change touched, with each text before and after. */
+  itemsOf(changeId: string): Promise<ChangeItem[]> {
+    return this.#items({ runId: changeId })
+  }
+
+  /** A file's versions: each change that touched it, oldest first. Nobody numbers anything. */
+  versions(path: string): Promise<ChangeItem[]> {
+    return this.#items({ path })
+  }
+
+  /**
+   * The paths a change touched that a later change, still applied, touched again.
+   * A later change since reverted no longer stands in the way, and neither does
+   * its revert.
+   */
+  async laterTouching(changeId: string): Promise<Array<{ path: string; changeId: string }>> {
+    const change = await this.byId(changeId)
+    if (!change) return []
+    const own = (await this.itemsOf(changeId)).map((i) => i.path)
+    if (own.length === 0) return []
+    const rows = await this.#db.q
+      .selectFrom('change_item as i')
+      .innerJoin('content_transfer_run as r', 'r.id', 'i.run_id')
+      .leftJoin('content_transfer_run as t', 't.id', 'r.reverts_run_id')
+      .select(['i.path', 'i.run_id', 'r.change_kind', 't.started_at as reverted_started_at'])
+      .where('i.path', 'in', own)
+      .where('r.id', '<>', changeId)
+      .where('r.status', '=', 'applied')
+      .where('r.started_at', '>', DbDate.toDb(change.startedAt))
+      .execute()
+    return rows
+      .filter((r) => {
+        if (r.change_kind !== 'revert') return true
+        const reverted = DbDate.fromDb(r.reverted_started_at)
+        return !reverted || reverted.getTime() <= change.startedAt.getTime()
+      })
+      .map((r) => ({ path: String(r.path), changeId: String(r.run_id) }))
+  }
+
+  /** How many page saves a person made directly between two moments: an edit's pages, counted. */
+  async pageEditsBy(userKey: string, from: Date, to: Date): Promise<number> {
+    const rows = await this.#db.q
+      .selectFrom('content_version as v')
+      .innerJoin('user_account as u', 'u.id', 'v.user_id')
+      .select((eb) => eb.fn.countAll<number>().as('n'))
+      .where('u.key', '=', normaliseUuid(userKey))
+      .where('v.workspace_id', 'is', null)
+      .where('v.version_date', '>=', DbDate.toDb(from))
+      .where('v.version_date', '<=', DbDate.toDb(to))
+      .execute()
+    return Number(rows[0]?.n ?? 0)
+  }
+
+  /** Marks a change reverted, as a run's revert does. */
+  async setStatus(id: string, status: 'applied' | 'reverted'): Promise<void> {
+    await this.#db.q
+      .updateTable('content_transfer_run')
+      .set({ status })
+      .where('id', '=', id)
+      .execute()
+  }
+}

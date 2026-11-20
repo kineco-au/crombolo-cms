@@ -77,6 +77,8 @@ export function createElementPort(
     valueIntake?: ValueIntake
     /** Told after every change, so pages that resolved an element refresh. */
     onChange?: () => void | Promise<void>
+    /** A workspace's Library (story 390): its changes are announced nowhere else. */
+    workspace?: number
   } = {},
 ): ElementPort {
   const repo = new DocumentRepository(db, { ...options, kind: 'element' })
@@ -84,6 +86,7 @@ export function createElementPort(
   const folders = new FolderRepository(db, ObjectTypes.ElementContainer, ObjectTypes.Element)
 
   const changed = async () => {
+    if (options.workspace !== undefined) return
     await appendCacheInstruction(db, {
       kind: 'content',
       payload: { elements: true },

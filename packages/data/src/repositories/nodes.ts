@@ -73,6 +73,13 @@ export interface CreateNodeInit {
   workspaceId?: number
 }
 
+/** What an item of each kind made in a workspace is. */
+const WORKSPACE_OBJECT_TYPES: Record<string, string> = {
+  [ObjectTypes.Document]: ObjectTypes.WorkspaceDocument,
+  [ObjectTypes.Media]: ObjectTypes.WorkspaceMedia,
+  [ObjectTypes.Element]: ObjectTypes.WorkspaceElement,
+}
+
 export class NodeRepository {
   #db: Db
 
@@ -176,7 +183,8 @@ export class NodeRepository {
           : eb.or([
               eb('node_object_type', '=', objectType),
               eb.and([
-                eb('node_object_type', '=', ObjectTypes.WorkspaceDocument),
+                // The workspace's own of this kind (stories 375, 390).
+                eb('node_object_type', '=', WORKSPACE_OBJECT_TYPES[objectType] ?? objectType),
                 eb('workspace_id', '=', workspaceId),
               ]),
             ]),

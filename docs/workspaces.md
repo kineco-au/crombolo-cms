@@ -24,7 +24,9 @@ workspace is refused with 400, so nothing is silently written to Shared.
 - **Components, stylesheets and scripts** (`377`): a frozen copy of the site's, its
   changes rendered with its own views (below). Files the site reads only as it starts
   are carried to the merge.
-- **Not yet:** media and Library items, copying a page, bringing back an earlier
+- **Media and Library items** (`390`), made, changed, moved, sorted and deleted as pages
+  are; a media item's file is its own until the merge (below).
+- **Not yet:** copying a page, bringing back an earlier
   version, the recycle bin, publishing a whole branch, hostnames, who may see a page and
   notifications. Each is refused in a workspace with a reason, and done in Shared.
 - **Never:** users, groups, members and settings. They are the site's.
@@ -155,6 +157,67 @@ wrote it.
   templates, stylesheets or scripts needs Code; a file the site reads at start, an
   administrator.
 
+## Media and the Library (story 390)
+
+- **Made and changed as pages are,** through the media and Library operations with the
+  header (`WORKSPACE_OPERATIONS`): an item made there is a node of the workspace's own
+  (`WorkspaceMedia`, `WorkspaceElement`), and a change to a Shared item is a version of
+  the workspace's, its moves and deletes waiting for the merge. Their recycle bins, the
+  Library's folders, copying a Library item and rolling one back are Shared's.
+- **A file is placed as any upload is,** at a path never reused in the site's one store,
+  and named only by the workspace's version: Shared's ownership index
+  (`content.file_url`, `node_file`) is untouched, so Shared answers 404 for it, as for a
+  missing file. The workspace's site serves it, crops and sizes included, because the
+  workspace's own values name it. Where the store is read directly (a public bucket or a
+  CDN), its random path is all that keeps it unseen.
+- **The merge moves no bytes:** media and Library items merge before pages, through their
+  own kinds' Shared writes, under the media tree's lock too; the merged save points the
+  ownership index at the file. A file replaced on both sides is a conflict on its
+  `umbracoFile`, settled by choosing one. A page merged alone (a person's own workspace)
+  is refused while it uses an item only the workspace has.
+- **Discarding** removes the workspace's items, then, once committed, each file its values
+  named that nothing else in the site names.
+- **With `CROMBOLO_WORKSPACES_REQUIRED`,** a direct media or Library edit is refused too.
+
+## Looking at a workspace (story 379)
+
+- **Its own host.** With `CROMBOLO_WORKSPACES_HOST` set, such as
+  `{workspace}.preview.example.com`, a request on a workspace's host (its key's 32 hex
+  digits for `{workspace}`, and `{host}` for one of the site's own hosts) is answered from
+  that workspace's site. Unset, a cookie on the site's own host switches the view; the
+  site's own host with no cookie is Shared.
+- **Its site** (`workspace-sites.ts`) is a published cache of its own over
+  `DocumentRepository.inWorkspace(…).loadPublished()`: Shared's published pages, with
+  each page the workspace changed as it has it. One it published is its own published
+  version; one it changed but did not publish is as Shared had it published when the
+  workspace first changed it; one it took down is not there; one it made and published is
+  added. It renders with the workspace's views where it changed any, and serves its
+  stylesheets and scripts at `/css/` and `/scripts/`. A request reads the workspace's
+  revision (its newest event, its newest waiting change, its changed files) and the
+  cache starts again when it has moved; nothing goes on the cache instruction stream. A
+  node keeps `CROMBOLO_WORKSPACE_SITES` (3), each dropped after
+  `CROMBOLO_WORKSPACE_SITE_IDLE_MINUTES` (15) without a visit.
+- **Rendering, the Delivery API** and everything else handed the site's cache and
+  renderer answer from the workspace while a request is served for it: the server's
+  `cache` and `renderer` follow the request's scope.
+- **Who may look:** a member, who gets in by `POST /{key}/open { path }`: a link with a
+  signed token used once within five minutes and swapped for a host-only cookie, checked
+  again on every request (still a member, still enabled, the workspace still open); or
+  whoever holds a link a member made (`POST /{key}/links { days }`, at most
+  `CROMBOLO_WORKSPACE_LINK_MAX_DAYS`, 30; 0 turns links off), reusable until it lapses or
+  is withdrawn (`DELETE /{key}/links/{id}`), and no use once its maker leaves the
+  workspace. Its secret travels once in the address, then as a cookie, or in
+  `Crombolo-Workspace-Link` on a Delivery API call. A link is kept by the SHA-256 of its
+  secret (`workspace_link`, migration 087). A stranger on a workspace's host is answered
+  404.
+- **Every answer** is `private, no-store`, `X-Robots-Tag: noindex, nofollow`, with no ETag;
+  `robots.txt` disallows everything and there is no sitemap. A workspace's publish fires
+  no webhook, runs no schedule and changes nothing in Shared's search (story 375).
+- **The preview link** (`368`) takes a workspace: `{ document, workspace }` answers the
+  handoff to that page on the workspace's site.
+- **The site's own code runs as on the site:** routes and server actions on a workspace's
+  host write to Shared, a form's entry included.
+
 ## Over HTTP
 
 The routes are crombolo's own, at `<backoffice>/crombolo/api/workspaces`
@@ -177,7 +240,9 @@ The routes are crombolo's own, at `<backoffice>/crombolo/api/workspaces`
 | `POST /{key}/update` | brings Shared's later changes to the definitions in (story 376) |
 | `POST /{key}/files/resolve` `{ path, side \| text }` | answers a file's conflict |
 | `PUT /{key}/site-files` `{ path, text }` | carries a file the site reads only as it starts to the merge (an administrator) |
-| `GET /{key}/render?path=/` | one page as the workspace's views render it |
+| `GET /{key}/render?path=/` | one page as the workspace's site renders it |
+| `POST /{key}/open` `{ path }` | a member's link to the workspace's site, used once (story 379) |
+| `GET /{key}/links` · `POST /{key}/links` `{ days }` · `DELETE /{key}/links/{id}` | links for someone else to look |
 
 Someone else's workspace answers 404, as one that is not there. An administrator may
 list and discard any, to clear one left behind, and reads none.
@@ -264,4 +329,5 @@ so they are still changed directly.
 - A template made in a workspace has no template row until it is merged, so a type
   there cannot allow it yet.
 - Back-office search, the list view and a page's version history read Shared's.
-- A workspace is not served or previewed yet (`379`).
+- Site search on a workspace's site reads Shared's index.
+

@@ -6,6 +6,7 @@
  * API, the SPA shells, then the front-end site.
  */
 
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { timingSafeEqual } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
@@ -113,6 +114,9 @@ import {
   searchProvidersOf,
   TransferRunRepository,
   UserRepository,
+  WorkspaceFileRepository,
+  WorkspaceLinkRepository,
+  WorkspaceRepository,
   type WritesPaused,
   withAuditContext,
 } from '@crombolo/data'
@@ -294,6 +298,7 @@ export const PREVIEW_MEMBER_COOKIE = 'crombolo-preview-member'
 
 import { ACTIONS_PATH, type SiteRoute } from '@crombolo/common'
 import { backofficeAudience } from './backoffice-external.ts'
+import { createChangesApi } from './changes-api.ts'
 import { createCliTokensApi, tokenRefusal } from './cli-tokens-api.ts'
 import { createExternalSignIn } from './external-sign-in.ts'
 import { IdentityProviderOverrides } from './identity-provider-overrides.ts'
@@ -339,7 +344,25 @@ import { TwoFactorService, USER_TWO_FACTOR_PROVIDER } from './two-factor.ts'
 import { summariseUpgrades } from './upgrade-summary.ts'
 import { createViewAs } from './view-as.ts'
 import { webhookStoreView } from './webhooks.ts'
+import {
+  accessCookie,
+  linkSecretHash,
+  readAccess,
+  readHandoff,
+  signAccess,
+  signHandoff,
+  WORKSPACE_COOKIE,
+  WORKSPACE_COOKIE_SECONDS,
+  WORKSPACE_HANDOFF_ISSUER,
+  WORKSPACE_HANDOFF_PARAM,
+  WORKSPACE_HANDOFF_SECONDS,
+  WORKSPACE_LINK_HEADER,
+  WORKSPACE_LINK_PARAM,
+  type WorkspaceAccess,
+  workspaceHosts,
+} from './workspace-access.ts'
 import { createWorkspaceSchema } from './workspace-schema.ts'
+import { createWorkspaceSites } from './workspace-sites.ts'
 import { createWorkspaceViews } from './workspace-views.ts'
 import { createWorkspaceScope, createWorkspacesApi } from './workspaces.ts'
 
@@ -485,10 +508,10 @@ export async function createServer(
     formSecret,
     cacheOptions,
     mediaCache,
-    cache,
+    cache: sharedCache,
     afterSync,
     snapshots,
-    renderer,
+    renderer: sharedRenderer,
     mediaStore,
     email,
     notifier,
@@ -503,6 +526,29 @@ export async function createServer(
     wake,
     urlChange,
   } = core
+  // Story 379: while a request is served from a workspace's site, the cache and the
+  // renderer it reads are the workspace's; everything handed them follows.
+  const workspaceSiteScope = new AsyncLocalStorage<{
+    cache: PublishedCache
+    renderer: Renderer
+    workspace?: { id: number; key: string }
+  }>()
+  const viaWorkspaceSite = <T extends object>(
+    shared: T,
+    pick: (site: { cache: PublishedCache; renderer: Renderer }) => T,
+  ): T =>
+    new Proxy(shared, {
+      get(target, prop) {
+        const site = workspaceSiteScope.getStore()
+        const actual = site ? pick(site) : target
+        // The real object as the receiver: its getters read private fields.
+        const value = Reflect.get(actual, prop, actual)
+        return typeof value === 'function' ? value.bind(actual) : value
+      },
+    })
+  const cache = viaWorkspaceSite(sharedCache, (site) => site.cache)
+  const renderer = viaWorkspaceSite(sharedRenderer, (site) => site.renderer)
+
   /** The extensions that are on: granted, and not turned off (story 309). */
   const onExtensions = () =>
     extensions.list().filter(
@@ -1731,6 +1777,7 @@ export async function createServer(
   const viewAsPath = `${paths.pluginPath}/api/view-as`
   const cliTokensPath = `${paths.pluginPath}/api/cli-tokens`
   const workspacesPath = `${paths.pluginPath}/api/workspaces`
+  const changesPath = `${paths.pluginPath}/api/changes`
   // Story 376: a workspace's copy of the schema files.
   const workspaceSchema = createWorkspaceSchema(db, config, core.schema)
   // Story 377: pages rendered with a workspace's views.
@@ -1747,8 +1794,48 @@ export async function createServer(
     nodeState: core.schema.nodeState,
     required: () => config.workspacesRequired,
     schema: () => workspaceSchema,
-    render: (workspace, path) => workspaceViews.render(workspace, path),
-    onClosed: (key) => workspaceViews.forget(key),
+    // From the workspace's own site: its published pages, with its views (stories 377, 379).
+    render: async (workspace, path) => {
+      const site = await workspaceSites.siteFor(workspace)
+      const result = await site.renderer.render(path)
+      const views = (await workspaceViews.rendererFor(workspace, site.cache))
+        ? 'workspace'
+        : 'shared'
+      if (result.status === 'ok') return { status: 'ok', html: result.html, views }
+      if (result.status === 'error') return { status: 'error', error: result.error.message, views }
+      return { status: result.status, views }
+    },
+    onClosed: (key) => {
+      workspaceViews.forget(key)
+      workspaceSites.forget(key)
+    },
+    // Story 390: a discarded workspace's files go, those nothing else names, after it.
+    onDiscardedFiles: (urls) => {
+      void removeUnnamedFiles(urls).catch((error: unknown) =>
+        logger('media').warn('A discarded workspace left files: {error}', { error: String(error) }),
+      )
+    },
+    open: (workspace, principal, path, request) =>
+      workspaceOpenUrl(workspace, principal, path, request),
+    links: () => workspaceLinks,
+  })
+  // Story 379: each workspace's site, kept on this node while it is looked at.
+  const workspaceSites = createWorkspaceSites({
+    db,
+    nodeState: core.schema.nodeState,
+    cacheOptions,
+    views: workspaceViews,
+    componentsDir: config.componentsDir,
+    snapshots,
+    renderTimeoutMs: config.renderTimeoutMs,
+    limit: config.workspaceSites,
+    idleMs: config.workspaceSiteIdleMinutes * 60_000,
+  })
+  // Story 381: every change to the site, and its revert.
+  const changesApi = createChangesApi(db, {
+    schema: () => workspaceSchema,
+    nodeState: core.schema.nodeState,
+    onReverted: () => core.cache.invalidate(),
   })
   const previewLinkPath = `${paths.pluginPath}/api/preview-link`
   const selfAudited = [
@@ -1757,6 +1844,7 @@ export async function createServer(
     viewAsPath,
     cliTokensPath,
     workspacesPath,
+    changesPath,
   ]
   const bundleInstallPaths = new Set(
     ['install', 'uninstall', 'disable', 'enable', 'grant', 'settings'].flatMap((action) => [
@@ -1817,7 +1905,7 @@ export async function createServer(
         'crombolo.node.role': config.role,
       },
       async (span) => {
-        const response = await answer(request)
+        const response = await inWorkspaceSite(request, () => answer(request))
         // Readers are answered from the previous cache while it rebuilds (story
         // 175), so a change is in it before the request that made it is answered.
         if (request.method !== 'GET' && request.method !== 'HEAD' && cache.stale)
@@ -2002,6 +2090,269 @@ export async function createServer(
       : {}
   }
 
+  // ---------------------------------------------------------------- workspace sites (story 379)
+
+  const workspaceHostsOf = () => workspaceHosts(config.workspacesHost)
+
+  /** Where a workspace's site is, for a request on `origin`: its host, or the site's own. */
+  function workspaceOrigin(workspace: { key: string }, request: Request): URL {
+    const origin = new URL(publicOrigin(request, config))
+    const hosts = workspaceHostsOf()
+    if (hosts) origin.host = hosts.hostFor(workspace.key, origin.host)
+    return origin
+  }
+
+  /** A member's way in: a link with a single-use token, swapped for a cookie on first use. */
+  async function workspaceOpenUrl(
+    workspace: { key: string },
+    principal: Principal,
+    path: string,
+    request?: Request,
+  ): Promise<string | undefined> {
+    const standing = await previewUser(db, { key: principal.id })
+    if (!standing) return undefined
+    const token = signHandoff(previewSecret, {
+      workspace: workspace.key,
+      user: standing.id,
+      stamp: standing.stamp,
+      id: crypto.randomUUID(),
+      expires: Date.now() + WORKSPACE_HANDOFF_SECONDS * 1000,
+    })
+    const url = new URL(
+      path.startsWith('/') ? path : `/${path}`,
+      request
+        ? workspaceOrigin(workspace, request)
+        : publicOrigin(new Request('http://localhost/'), config),
+    )
+    url.searchParams.set(WORKSPACE_HANDOFF_PARAM, token)
+    return url.toString()
+  }
+
+  /** Links a member makes for someone else to look at the workspace's site. */
+  const workspaceLinks = {
+    maxDays: () => config.workspaceLinkMaxDays,
+    async make(workspace: { id: number; key: string }, principal: Principal, days: number) {
+      const secret = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url')
+      const link = await new WorkspaceLinkRepository(db).make({
+        workspaceId: workspace.id,
+        madeBy: principal.id,
+        secretHash: linkSecretHash(secret),
+        expiresAt: new Date(Date.now() + days * 86_400_000),
+      })
+      const url = new URL('/', publicOrigin(new Request('http://localhost/'), config))
+      const hosts = workspaceHostsOf()
+      if (hosts) url.host = hosts.hostFor(workspace.key, url.host)
+      url.searchParams.set(WORKSPACE_LINK_PARAM, secret)
+      return { id: link.id, url: url.toString(), secret, expiresAt: link.expiresAt.toISOString() }
+    },
+    list: (workspaceId: number) => new WorkspaceLinkRepository(db).of(workspaceId),
+    withdraw: (workspaceId: number, id: number) =>
+      new WorkspaceLinkRepository(db).withdraw(workspaceId, id),
+  }
+
+  /** The workspace an access names, if whoever holds it may still look: a member, or a link in date. */
+  async function stillAllowed(access: WorkspaceAccess) {
+    const repo = new WorkspaceRepository(db)
+    const workspace = await repo.byKey(access.workspace)
+    if (workspace?.state !== 'open') return undefined
+    if ('user' in access) {
+      const standing = await previewUser(db, { id: access.user })
+      if (standing?.stamp !== access.stamp) return undefined
+      const user = await db.q
+        .selectFrom('user_account')
+        .select('key')
+        .where('id', '=', access.user)
+        .execute()
+      const key = user[0] ? normaliseUuid(String(user[0].key)) : ''
+      return workspace.ownerKey === key || workspace.memberKeys.includes(key)
+        ? workspace
+        : undefined
+    }
+    const link = await new WorkspaceLinkRepository(db).byId(access.link)
+    if (!link || link.workspaceId !== workspace.id || link.withdrawnAt) return undefined
+    if (link.expiresAt.getTime() <= Date.now() || config.workspaceLinkMaxDays <= 0) return undefined
+    // A link goes with its maker, when they leave the workspace.
+    return workspace.ownerKey === link.madeBy || workspace.memberKeys.includes(link.madeBy)
+      ? workspace
+      : undefined
+  }
+
+  /** What a link's secret opens: its workspace, as access for a cookie. */
+  async function accessFromLink(secret: string): Promise<WorkspaceAccess | undefined> {
+    const link = await new WorkspaceLinkRepository(db).bySecretHash(linkSecretHash(secret))
+    if (!link) return undefined
+    const workspace = (await new WorkspaceRepository(db).all()).find(
+      (w: { id: number }) => w.id === link.workspaceId,
+    )
+    if (!workspace) return undefined
+    const access: WorkspaceAccess = {
+      workspace: workspace.key,
+      link: link.id,
+      expires: Math.min(link.expiresAt.getTime(), Date.now() + WORKSPACE_COOKIE_SECONDS * 1000),
+    }
+    return (await stillAllowed(access)) ? access : undefined
+  }
+
+  /** A member's handoff, used once: access for a cookie, or nothing. */
+  async function accessFromHandoff(token: string): Promise<WorkspaceAccess | undefined> {
+    const claims = readHandoff(previewSecret, token)
+    if (!claims) return undefined
+    const standing = await previewUser(db, { id: claims.user })
+    if (standing?.stamp !== claims.stamp) return undefined
+    if (
+      !(await new SingleUseTokens(db).use(
+        WORKSPACE_HANDOFF_ISSUER,
+        claims.id,
+        new Date(claims.expires),
+      ))
+    )
+      return undefined
+    const access: WorkspaceAccess = {
+      workspace: claims.workspace,
+      user: claims.user,
+      stamp: claims.stamp,
+      expires: Date.now() + WORKSPACE_COOKIE_SECONDS * 1000,
+    }
+    return (await stillAllowed(access)) ? access : undefined
+  }
+
+  /**
+   * A request on a workspace's host, or with a workspace's cookie on the site's
+   * own: answered from that workspace's site, to a member or a link's holder, and
+   * never kept or indexed. Anything else goes on as it was.
+   */
+  async function inWorkspaceSite(
+    request: Request,
+    next: () => Promise<Response>,
+  ): Promise<Response> {
+    if (!config.workspaces) return next()
+    const url = new URL(request.url)
+    const path = url.pathname
+    const delivery = path.startsWith(DELIVERY_API_PREFIX)
+    if (
+      !delivery &&
+      (path === paths.backOfficePath ||
+        path.startsWith(`${paths.backOfficePath}/`) ||
+        path.startsWith('/umbraco/'))
+    )
+      return next()
+    const hosts = workspaceHostsOf()
+    const named = hosts?.parse(url.host)
+    if (hosts && !named) return next()
+    const handoff = url.searchParams.get(WORKSPACE_HANDOFF_PARAM)
+    const linked = url.searchParams.get(WORKSPACE_LINK_PARAM)
+    const header = request.headers.get(WORKSPACE_LINK_HEADER)
+    const cookie = readCookie(request, WORKSPACE_COOKIE)
+    if (!named && !handoff && !linked && !header && !cookie) return next()
+
+    // A token or a secret in the address is swapped for the cookie, and the address cleaned.
+    if ((handoff || linked) && (request.method === 'GET' || request.method === 'HEAD')) {
+      const clean = new URL(url)
+      clean.searchParams.delete(WORKSPACE_HANDOFF_PARAM)
+      clean.searchParams.delete(WORKSPACE_LINK_PARAM)
+      const headers = new Headers({
+        location: `${clean.pathname}${clean.search}`,
+        'cache-control': PRIVATE_NO_STORE,
+        'referrer-policy': 'no-referrer',
+      })
+      const access = handoff
+        ? await accessFromHandoff(handoff)
+        : await accessFromLink(linked as string)
+      if (access && (!named || named.key === access.workspace))
+        headers.set(
+          'set-cookie',
+          accessCookie(signAccess(previewSecret, access), config.secureCookies),
+        )
+      return new Response(null, { status: 303, headers })
+    }
+    const access = header
+      ? await accessFromLink(header)
+      : cookie
+        ? readAccess(previewSecret, cookie)
+        : undefined
+    const workspace = access ? await stillAllowed(access) : undefined
+    if (!workspace || (named && named.key !== workspace.key)) {
+      // On a workspace's host a stranger sees nothing; on the site's own, Shared.
+      if (!named) return next()
+      return new Response('There is no such workspace, or it is not yours to see.', {
+        status: 404,
+        headers: {
+          'content-type': 'text/plain; charset=utf-8',
+          'cache-control': PRIVATE_NO_STORE,
+          'x-robots-tag': 'noindex, nofollow',
+        },
+      })
+    }
+    const site = await workspaceSites.siteFor({ id: workspace.id, key: workspace.key })
+    const response = await workspaceSiteScope.run(site, async () => {
+      if (path === '/robots.txt')
+        return new Response('User-agent: *\nDisallow: /\n', {
+          headers: { 'content-type': 'text/plain; charset=utf-8' },
+        })
+      if (path === '/sitemap.xml' || path.startsWith('/sitemap'))
+        return new Response('Not Found', { status: 404 })
+      // Its own stylesheets and scripts, as it has them (stories 377, 379).
+      const area = path.startsWith('/css/')
+        ? { prefix: 'stylesheets/', at: '/css/', type: 'text/css; charset=utf-8' }
+        : path.startsWith('/scripts/')
+          ? { prefix: 'scripts/', at: '/scripts/', type: 'text/javascript; charset=utf-8' }
+          : undefined
+      if (area) {
+        const key = `${area.prefix}${decodeURIComponent(path.slice(area.at.length))}`
+        const text = (await new WorkspaceFileRepository(db).files(workspace.id, area.prefix)).get(
+          key,
+        )
+        if (text !== undefined)
+          return new Response(text, { headers: { 'content-type': area.type } })
+      }
+      return next()
+    })
+    // Never kept, never indexed, never the same as Shared's.
+    const headers = new Headers(response.headers)
+    headers.set('cache-control', PRIVATE_NO_STORE)
+    headers.set('x-robots-tag', 'noindex, nofollow')
+    headers.delete('etag')
+    headers.delete('last-modified')
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    })
+  }
+
+  /** Removes each file nothing in the site names any more: not a media item, a page, or a workspace. */
+  async function removeUnnamedFiles(urls: readonly string[]): Promise<void> {
+    for (const url of urls) {
+      const named = await db.q
+        .selectFrom('property_value')
+        .select('id')
+        .where((eb) =>
+          eb.or([eb('varchar_value', 'like', `%${url}%`), eb('text_value', 'like', `%${url}%`)]),
+        )
+        .limit(1)
+        .execute()
+      const owned = await new MediaAccessRepository(db).byUrl([url])
+      if (named.length === 0 && !owned) await mediaFiles.remove(url)
+    }
+  }
+
+  /** Whether a workspace's own values name a file (story 390). */
+  async function heldByWorkspace(workspaceId: number, urls: readonly string[]): Promise<boolean> {
+    for (const url of urls) {
+      const rows = await db.q
+        .selectFrom('property_value')
+        .select('id')
+        .where('workspace_id', '=', workspaceId)
+        .where((eb) =>
+          eb.or([eb('varchar_value', 'like', `%${url}%`), eb('text_value', 'like', `%${url}%`)]),
+        )
+        .limit(1)
+        .execute()
+      if (rows.length > 0) return true
+    }
+    return false
+  }
+
   /** Story 368: a preview link for a page its person may read, audited as them. */
   async function askForPreviewLink(request: Request): Promise<Response> {
     if (request.method !== 'POST') return new Response(null, { status: 405 })
@@ -2010,6 +2361,7 @@ export async function createServer(
     const asked = (await request.json().catch(() => ({}))) as {
       document?: unknown
       culture?: unknown
+      workspace?: unknown
     }
     const document = typeof asked.document === 'string' ? asked.document : ''
     const culture = typeof asked.culture === 'string' && asked.culture ? asked.culture : null
@@ -2019,6 +2371,20 @@ export async function createServer(
     if (!standing || !(await canReadDocument(principal, document, nodeLookup)))
       return Response.json({ title: 'You may not read this page' }, { status: 403 })
     const key = normaliseUuid(document)
+    // Story 379: a page in a workspace is looked at on the workspace's site.
+    if (typeof asked.workspace === 'string' && UUID_PATTERN.test(asked.workspace)) {
+      const workspace = await new WorkspaceRepository(db).byKey(asked.workspace)
+      const me = normaliseUuid(principal.id)
+      if (!workspace || (workspace.ownerKey !== me && !workspace.memberKeys.includes(me)))
+        return Response.json({ title: 'There is no such workspace' }, { status: 404 })
+      const shown = await cache.byKey(key, culture)
+      const url = await workspaceOpenUrl(workspace, principal, shown?.url ?? '/', request)
+      if (!url) return Response.json({ title: 'You may not read this page' }, { status: 403 })
+      return Response.json(
+        { url, expiresAt: new Date(Date.now() + WORKSPACE_HANDOFF_SECONDS * 1000).toISOString() },
+        { headers: { 'cache-control': PRIVATE_NO_STORE } },
+      )
+    }
     const page = await (await draftCache()).byKey(key, culture)
     const published = await cache.byKey(key, culture)
     const expires = Date.now() + PREVIEW_LINK_SECONDS * 1000
@@ -2912,6 +3278,23 @@ export async function createServer(
         request,
         principal,
         pathname.slice(workspacesPath.length),
+        clientAddress(request),
+      )
+    }
+
+    // Story 381: the site's changes, their files' versions, and reverting one.
+    if (pathname === changesPath || pathname.startsWith(`${changesPath}/`)) {
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      if (!hasSection(principal, 'content'))
+        return Response.json(
+          { message: 'Changes are for people who look after content.' },
+          { status: 403 },
+        )
+      return changesApi.handle(
+        request,
+        principal,
+        pathname.slice(changesPath.length),
         clientAddress(request),
       )
     }
@@ -3819,7 +4202,14 @@ export async function createServer(
     const owners = new MediaAccessRepository(db)
     const urls = [`/media/${key}`, pathname]
     const owner = await owners.byUrl(urls)
-    if (!owner && !(await owners.ownedElsewhere(urls)))
+    // Story 390: on a workspace's site, a file only its own media names is served too;
+    // on Shared's, an unmerged file is as missing as one that is not there.
+    const site = workspaceSiteScope.getStore()
+    if (
+      !owner &&
+      !(await owners.ownedElsewhere(urls)) &&
+      !(site?.workspace && (await heldByWorkspace(site.workspace.id, urls)))
+    )
       return new Response('Not Found', { status: 404 })
     const isProtected = owner ? mediaAccess.isProtected(owner) : false
     if (owner && isProtected && !(await mediaAccess.mayRead(request, owner)))
@@ -4655,8 +5045,9 @@ export async function createServer(
     paths,
     db,
     auth,
-    cache,
-    renderer,
+    // The shared ones: a workspace's site is only ever reached through a request.
+    cache: sharedCache,
+    renderer: sharedRenderer,
     snapshots,
     seededAdminPassword,
     bundleGrants,

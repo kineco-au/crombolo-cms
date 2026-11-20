@@ -120,7 +120,7 @@ export function registerDataTypeHandlers(router: ManagementApiRouter, port: Data
 
   router.handle('DeleteDataTypeById', async (ctx) => {
     const force = ctx.url.searchParams.get('force') === 'true' && ctx.principal?.isAdmin === true
-    const removed = await port.remove(ctx.params.id as string, { force })
+    const removed = await port.remove(ctx.params.id as string, { force, by: ctx.principal?.id })
     if (removed === 'in-workspace')
       return problemResponse(
         problemDetails({

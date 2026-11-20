@@ -220,7 +220,8 @@ describe(`workspaces over HTTP (${dialectUnderTest})`, () => {
     const html = await (await h.server.fetch(new Request('http://localhost/'))).text()
     expect(html).not.toContain('Sale on')
     expect(await count('content_event')).toBe(before.events)
-    expect(await count('search_index_queue')).toBe(before.queued)
+    // Nothing is queued for search; a worker may empty the queue meanwhile.
+    expect(await count('search_index_queue')).toBeLessThanOrEqual(before.queued)
     expect(await count('node_file')).toBe(before.files)
     const entries = await h.server.db.q
       .selectFrom('audit_entry')
@@ -304,6 +305,11 @@ describe(`workspaces over HTTP (${dialectUnderTest})`, () => {
     const home = await page('Home', 'Welcome')
     expect((await send(h, 'POST', WORKSPACES, { name: 'Sale' })).status).toBe(404)
     expect((await h.call(WORKSPACES)).status).toBe(404)
+    // What the back office asks at every sign-in says no, rather than refusing (story 380).
+    expect(await h.json<unknown>(`${WORKSPACES}/mine`)).toEqual({
+      required: false,
+      workspace: null,
+    })
     expect(
       (
         await h.call(`${V1}/document/${home}`, {

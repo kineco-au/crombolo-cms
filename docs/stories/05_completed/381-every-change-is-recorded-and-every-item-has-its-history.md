@@ -57,14 +57,40 @@ audit log and nowhere else.
 
 ## Acceptance criteria
 
-- [ ] **A merged workspace is a change,** listing its items with before and after.
-- [ ] **A type edited straight in Shared** appears as a change with its author.
-- [ ] **A type, a data type, a component and a stylesheet** each show their versions, the
+- [x] **A merged workspace is a change,** listing its items with before and after.
+- [x] **A type edited straight in Shared** appears as a change with its author.
+- [x] **A type, a data type, a component and a stylesheet** each show their versions, the
       change behind each, and what differed.
-- [ ] **An earlier version can be compared** with the current one.
-- [ ] **Reverting a change** puts each item back, as a change of its own, and is refused
-      where something later touched it.
-- [ ] **The Management API lists changes** and reads one.
-- [ ] **With the setting on,** an edit outside a workspace is refused, and what each
+- [x] **An earlier version can be compared** with the current one.
+- [x] **Reverting a change** puts each item back, as a change of its own, and is refused
+      where something later touched it; with `toWorkspace` its work is reopened.
+- [x] **The API lists changes** and reads one (`<backoffice>/crombolo/api/changes`).
+- [x] **With the setting on,** an edit outside a workspace is refused, and what each
       person changes in one is what their permissions allow.
-- [ ] **Tests** on both dialects.
+- [x] **Tests** on both dialects.
+
+## Built (2026-11-20)
+
+- **Migration 086 `AddChanges`** (`packages/data/src/schema/changes.ts`): the change's
+  columns on `content_transfer_run`, and `change_item`; the blob store keeps every text a
+  change names.
+- **`ChangeRepository`** (`packages/data/src/repositories/changes.ts`): `begin`, `item`,
+  `recordEdit` (ten-minute window, `EDIT_WINDOW_MS`), `list`, `byId`, `itemsOf`,
+  `versions`, `laterTouching` (a later change since reverted, and its revert, do not
+  count), `pageEditsBy`, `setStatus`.
+- **Merges** record themselves inside their transaction (`recordChange` in
+  `workspace-merge-run.ts`): the files hook's `apply` returns each file's text before and
+  after; each page's events before and after are its run rows.
+- **Direct edits** (`packages/server/src/adapters/change-recording.ts`): the type and
+  data-type ports record each save's file, exported before and after, by the person;
+  `recordingFilePort` wraps Shared's components, stylesheets and scripts. The file ports
+  and the type and data-type deletes now take the person (`by`).
+- **The routes** (`packages/server/src/changes-api.ts`): list, one, versions, compare,
+  revert (administrators), with `toWorkspace`.
+- **Tests:** `tests/changes.test.ts`. Docs: `docs/changes.md`.
+
+## Left for later
+
+- **A change's class** is each file's greatest; per-item listing is the merge's (`382`).
+- **The back office's history screens** come with `384`.
+- **A change moving to another site** is `383`.

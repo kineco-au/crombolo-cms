@@ -454,6 +454,19 @@ export interface CromboloConfig {
    * (story 382). `CROMBOLO_PURGE_AFTER_DAYS`, 0.
    */
   purgeAfterDays: number
+  /**
+   * Where a workspace's site is served (story 379): a host pattern with
+   * `{workspace}` for its key's 32 hex digits, and `{host}` for one of the site's
+   * hosts, such as `{workspace}.preview.example.com`. Unset, a workspace is
+   * opened by a cookie on the site's own host. `CROMBOLO_WORKSPACES_HOST`.
+   */
+  workspacesHost: string | undefined
+  /** The longest a link to a workspace's site may last, in days; 0 turns links off. `CROMBOLO_WORKSPACE_LINK_MAX_DAYS`, 30. */
+  workspaceLinkMaxDays: number
+  /** How many workspaces' sites one node keeps ready. `CROMBOLO_WORKSPACE_SITES`, 3. */
+  workspaceSites: number
+  /** How long a workspace's site is kept without a visit. `CROMBOLO_WORKSPACE_SITE_IDLE_MINUTES`, 15. */
+  workspaceSiteIdleMinutes: number
   /** Sync `schema/` at boot; a pipeline that runs `crombolo types sync` turns this off. */
   syncSchemaAtBoot: boolean
   /** Which database engine; from CROMBOLO_DB. */
@@ -1019,6 +1032,12 @@ export function loadConfig(
     workspaces: setting('CROMBOLO_WORKSPACES') === 'true',
     workspacesRequired: setting('CROMBOLO_WORKSPACES_REQUIRED') === 'true',
     purgeAfterDays: Math.floor(nonNegativeNumber(setting('CROMBOLO_PURGE_AFTER_DAYS'), 0)),
+    workspacesHost: setting('CROMBOLO_WORKSPACES_HOST') || undefined,
+    workspaceLinkMaxDays: Math.floor(
+      nonNegativeNumber(setting('CROMBOLO_WORKSPACE_LINK_MAX_DAYS'), 30),
+    ),
+    workspaceSites: Math.floor(positiveNumber(setting('CROMBOLO_WORKSPACE_SITES'), 3)),
+    workspaceSiteIdleMinutes: positiveNumber(setting('CROMBOLO_WORKSPACE_SITE_IDLE_MINUTES'), 15),
     workspaceViewsLimit: Math.floor(positiveNumber(setting('CROMBOLO_WORKSPACE_VIEWS_LIMIT'), 50)),
     dialect: setting('CROMBOLO_DB') === 'postgres' ? 'postgres' : 'sqlite',
     pgDump: setting('CROMBOLO_PG_DUMP'),

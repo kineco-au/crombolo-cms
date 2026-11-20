@@ -35,7 +35,13 @@ const COLLECTION_SORTS: Record<string, MediaSortField> = {
 /** The Media section's reads; its writes go through the media operations (story 165). */
 export function createMediaPort(
   db: Db,
-  options: { nodeState?: NodeSchemaState; nodeId?: string; valueIntake?: ValueIntake } = {},
+  options: {
+    nodeState?: NodeSchemaState
+    nodeId?: string
+    valueIntake?: ValueIntake
+    /** A workspace's media (story 390). */
+    workspace?: number
+  } = {},
 ): MediaPort {
   const repo = new DocumentRepository(db, { ...options, kind: 'media' })
   const tree = async (rows: readonly NodeRow[]) => repo.treeItems(rows)

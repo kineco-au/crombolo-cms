@@ -47,10 +47,11 @@ export interface FileSystemPort {
   children(parentPath: string | null): Promise<FileEntry[] | undefined>
   entry(path: string): Promise<FileEntry | undefined>
   read(path: string): Promise<FileContent | undefined>
-  create(parentPath: string | null, name: string, content: string): Promise<FileResult>
-  update(path: string, content: string): Promise<FileResult>
-  rename(path: string, name: string): Promise<FileResult>
-  delete(path: string): Promise<FileResult>
+  /** `by` is the person's key, for the change a direct edit is recorded as (story 381). */
+  create(parentPath: string | null, name: string, content: string, by?: string): Promise<FileResult>
+  update(path: string, content: string, by?: string): Promise<FileResult>
+  rename(path: string, name: string, by?: string): Promise<FileResult>
+  delete(path: string, by?: string): Promise<FileResult>
   createFolder(parentPath: string | null, name: string): Promise<FileResult>
   deleteFolder(path: string): Promise<FileResult>
 }

@@ -48,8 +48,15 @@ export function createWorkspaceViews(options: {
     rmSync(tree.root, { recursive: true, force: true })
   }
 
-  /** The workspace's renderer, its tree brought up to its files; undefined when it changed no view. */
-  async function rendererFor(workspace: WorkspaceScope): Promise<Renderer | undefined> {
+  /**
+   * The workspace's renderer, its tree brought up to its files; undefined when it
+   * changed no view. `cache` is what it renders from: the workspace's site's own
+   * (story 379), or Shared's.
+   */
+  async function rendererFor(
+    workspace: WorkspaceScope,
+    cache: PublishedCache = options.cache,
+  ): Promise<Renderer | undefined> {
     if ((await store.changes(workspace.id, PREFIX)).length === 0) return undefined
     const files = await store.files(workspace.id, PREFIX)
     let tree = trees.get(workspace.key)
@@ -65,7 +72,7 @@ export function createWorkspaceViews(options: {
         written: new Map(),
         usedAt: 0,
         renderer: new Renderer({
-          cache: options.cache,
+          cache,
           componentsDir: src,
           snapshots,
           renderTimeoutMs: options.config.renderTimeoutMs,

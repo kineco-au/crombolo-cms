@@ -76,6 +76,29 @@ point at `docs/stories/`.
   accepted the same way. `CROMBOLO_PURGE_AFTER_DAYS` holds a purge back until a
   retirement is that many days old (`docs/schema-as-code.md`).
 
+- **Every change is recorded, and every item has its history (381).** A merged workspace,
+  and a type, data type or file edited straight in Shared, are changes with their
+  author, each file's text before and after and their pages; a person's direct edits
+  gather in one until ten minutes pass. `<backoffice>/crombolo/api/changes` lists them,
+  shows a file's versions against the file now, and reverts one as a change of its own,
+  refused where something later touched the same thing, optionally reopening its work
+  as a workspace (`docs/changes.md`).
+
+- **A workspace is looked at before it is merged (379).** With
+  `CROMBOLO_WORKSPACES_HOST` (such as `{workspace}.preview.example.com`), or a cookie on the
+  site's own host, a workspace's site shows its pages as it has them published, with its
+  views and stylesheets, to a member who opened it (`POST /{key}/open`, a link used once)
+  or to whoever holds a link a member made (`POST /{key}/links`, at most
+  `CROMBOLO_WORKSPACE_LINK_MAX_DAYS`), never kept or indexed; the Delivery API on its host
+  answers from it, and the preview link takes a workspace (`docs/workspaces.md`).
+
+- **A workspace holds media and its files (390).** Media and Library items are made,
+  changed, moved and deleted in a workspace as pages are; an upload or a replaced file is
+  placed as any is and named only by the workspace's version, so Shared serves it as
+  missing while the workspace's site serves it, and the merge makes it Shared's without
+  moving a byte. A file replaced on both sides is a conflict; a discarded workspace's
+  files go, unless something else names them (`docs/workspaces.md`).
+
 ### Migrations
 
 - **082 `AddWorkspaces`** (expand): the `workspace`, `workspace_member`,
@@ -95,10 +118,16 @@ point at `docs/stories/`.
   `content_type` and `data_type`, `origin_key` on `property_type` and
   `property_type_group`, `schema_built` on `workspace`; Shared's content-type alias
   index is now over Shared's rows only.
+- **086 `AddChanges`** (expand): `change_kind`, `name`, `change_key`, `made_by`,
+  `workspace_key` and `closed_at` on `content_transfer_run` (every earlier run is a
+  `bundle`), and `change_item`, each file a change touched with its text before and after
+  by hash.
+- **087 `AddWorkspaceLinks`** (expand): `workspace_link`, each link to a workspace's site by
+  the SHA-256 of its secret, with its maker, expiry and withdrawal.
 
 ### Upgrade notes
 
-- Migrations 082, 084 and 085 run on upgrade; they only add. Workspaces stay off until
+- Migrations 082 and 084–087 run on upgrade; they only add. Workspaces stay off until
   `CROMBOLO_WORKSPACES=true`, and are required only with `CROMBOLO_WORKSPACES_REQUIRED=true`,
   which refuses to start without them.
 - Only administrators merge a workspace until a group is given `Crombolo.Workspace.Merge`.
