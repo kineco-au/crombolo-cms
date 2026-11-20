@@ -540,7 +540,7 @@ it.
 | `383` | A change moves from one site to another | should | L | done | 380, 381 |
 | `384` | Workspaces in the back office | should | L | ready | 375, 376, 377, 379, 380, 381, 382 |
 | `386` | Workspaces and changes from the command line | should | L | ready | 378, 379, 380, 381, 383 |
-| `387` | A property with a value per environment | should | M | ready | 383 |
+| `387` | A property with a value per environment | should | M | in progress | 383 |
 | `388` | Content and schema that arrive only by a change | should | M | done | 383, 391 |
 | `392` | Changes carry languages, the dictionary, blueprints, forms and workflow set-up | could | L | ready | 376, 377, 381, 383, 388, 390 |
 | `390` | A workspace holds media and its files | should | L | done | 375, 385 |

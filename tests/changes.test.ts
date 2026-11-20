@@ -126,7 +126,11 @@ type ChangeView = {
 }
 
 const list = async (h: Harness) =>
-  (await h.json<{ items: Array<{ id: string; kind: string; name: string | null }> }>(CHANGES)).items
+  (
+    await h.json<{
+      items: Array<{ id: string; kind: string; name: string | null; items: number }>
+    }>(CHANGES)
+  ).items
 const detail = (h: Harness, id: string) => h.json<ChangeView>(`${CHANGES}/${id}`)
 
 describe(`changes (${dialectUnderTest})`, () => {
