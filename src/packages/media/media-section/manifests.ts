@@ -1,3 +1,4 @@
+import { UMB_MEDIA_SECTION_PATHNAME } from './paths.js';
 import { UMB_MEDIA_ROOT_ENTITY_TYPE, UMB_MEDIA_MENU_ALIAS } from '../media/index.js';
 import {
 	UMB_SECTION_ALIAS_CONDITION_ALIAS,
@@ -14,7 +15,7 @@ export const manifests: Array<UmbExtensionManifest> = [
 		weight: 900,
 		meta: {
 			label: '#sections_media',
-			pathname: 'media',
+			pathname: UMB_MEDIA_SECTION_PATHNAME,
 		},
 		conditions: [
 			{

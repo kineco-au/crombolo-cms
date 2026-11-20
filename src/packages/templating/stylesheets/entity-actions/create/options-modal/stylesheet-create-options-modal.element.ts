@@ -44,7 +44,7 @@ export class UmbStylesheetCreateOptionsModalElement extends UmbModalBaseElement<
 	}
 
 	#getCreateHref() {
-		return `section/settings/workspace/stylesheet/create/parent/${this.data?.parent.entityType}/${
+		return `section/content/code/workspace/stylesheet/create/parent/${this.data?.parent.entityType}/${
 			this.data?.parent.unique || 'null'
 		}`;
 	}

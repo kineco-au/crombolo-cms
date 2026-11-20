@@ -38,6 +38,11 @@ export const manifests: Array<UmbExtensionManifest> = [
 				alias: UMB_SECTION_ALIAS_CONDITION_ALIAS,
 				match: UMB_CONTENT_SECTION_ALIAS,
 			},
+			// Crombolo: Pages is a place under Content, a grant of its own (story 385).
+			{
+				alias: UMB_SECTION_USER_PERMISSION_CONDITION_ALIAS,
+				match: 'Crombolo.Section.Pages',
+			},
 		],
 	},
 ];

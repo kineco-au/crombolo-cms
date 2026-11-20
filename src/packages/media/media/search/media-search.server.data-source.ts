@@ -1,3 +1,4 @@
+import { UMB_MEDIA_SECTION_PATHNAME } from '../../media-section/paths.js';
 import { UMB_MEDIA_ENTITY_TYPE } from '../entity.js';
 import type { UmbMediaItemModel } from '../types.js';
 import type { UmbMediaSearchItemModel, UmbMediaSearchRequestArgs } from './types.js';
@@ -88,7 +89,7 @@ export class UmbMediaSearchServerDataSource implements UmbSearchDataSource<
 				return {
 					entityType: UMB_MEDIA_ENTITY_TYPE,
 					hasChildren: item.hasChildren,
-					href: 'section/media/workspace/media/edit/' + item.id,
+					href: `section/${UMB_MEDIA_SECTION_PATHNAME}/workspace/media/edit/` + item.id,
 					isTrashed: item.isTrashed,
 					unique: item.id,
 					mediaType: {

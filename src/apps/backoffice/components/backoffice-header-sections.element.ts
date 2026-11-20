@@ -4,11 +4,12 @@ import { css, customElement, html, ifDefined, repeat, state } from '@umbraco-cms
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element';
 import type { ManifestSection } from '@umbraco-cms/backoffice/section';
 
-/** Crombolo: sections a group can hold, reached from the menu under Content (story 296), Approvals too. */
+/** Crombolo: the places under Content (story 385), reached from the row under it, with no tab of their own. */
 const CROMBOLO_NO_TAB = [
+	'Umb.Section.Media',
+	'Crombolo.Section.Forms',
 	'Crombolo.Section.Structure',
 	'Crombolo.Section.Components',
-	'Crombolo.Section.WorkflowSetup',
 	'Crombolo.Section.Workflow',
 ];
 
@@ -62,16 +63,12 @@ export class UmbBackofficeHeaderSectionsElement extends UmbLitElement {
 				this._sections = allowedSections
 					.map((section) => section.manifest)
 					// Settings opens from the header's gear (`Crombolo.HeaderApp.Settings`), and
-					// Forms from the menu under Content, for whoever has Content to find it in.
+					// the places under Content from the row beneath it.
 					.filter(
 						(section): section is ManifestSection =>
 							section !== undefined &&
 							section.alias !== 'Umb.Section.Settings' &&
-							!CROMBOLO_NO_TAB.includes(section.alias) &&
-							!(
-								section.alias === 'Crombolo.Section.Forms' &&
-								allowedSections.some((other) => other.manifest?.alias === 'Umb.Section.Content')
-							),
+							!CROMBOLO_NO_TAB.includes(section.alias),
 					);
 				this.requestUpdate('_sections', oldValue);
 			},

@@ -1,3 +1,4 @@
+import { UMB_MEDIA_SECTION_PATHNAME } from '../../../media-section/paths.js';
 import { UmbMediaItemRepository } from '../../repository/index.js';
 import type {
 	UmbMediaCreateOptionsModalData,
@@ -79,7 +80,7 @@ export class UmbMediaCreateOptionsModalElement extends UmbModalBaseElement<
 	// close the modal when navigating to media
 	#onNavigate(mediaType: UmbAllowedMediaTypeModel) {
 		// TODO: Use a URL builder instead of hardcoding the URL. [NL]
-		const url = `section/media/workspace/media/create/parent/${this.data?.parent.entityType}/${
+		const url = `section/${UMB_MEDIA_SECTION_PATHNAME}/workspace/media/create/parent/${this.data?.parent.entityType}/${
 			this.data?.parent.unique ?? 'null'
 		}/${mediaType.unique}`;
 		history.pushState({}, '', url);
@@ -120,7 +121,7 @@ export class UmbMediaCreateOptionsModalElement extends UmbModalBaseElement<
 						id="edit-permissions"
 						look="secondary"
 						@click=${() => this._rejectModal()}
-						href=${`/section/settings/workspace/media-type/edit/${this.data?.mediaType?.unique}/view/structure`}
+						href=${`/section/content/structure/workspace/media-type/edit/${this.data?.mediaType?.unique}/view/structure`}
 						label=${this.localize.term('create_noMediaTypesEditPermissions')}></uui-button>
 				`,
 			)}

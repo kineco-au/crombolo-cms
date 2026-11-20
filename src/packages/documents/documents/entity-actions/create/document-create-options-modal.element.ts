@@ -199,7 +199,7 @@ export class UmbDocumentCreateOptionsModalElement extends UmbModalBaseElement<
 						<uui-button
 							id="edit-permissions"
 							look="secondary"
-							href=${`/section/settings/workspace/document-type/edit/${this.data?.documentType?.unique}/view/structure`}
+							href=${`/section/content/structure/workspace/document-type/edit/${this.data?.documentType?.unique}/view/structure`}
 							label=${this.localize.term('create_noDocumentTypesEditPermissions')}
 							@click=${() => this._rejectModal()}></uui-button>
 					`,

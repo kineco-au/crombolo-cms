@@ -50,7 +50,7 @@ export class UmbScriptCreateOptionsModalElement extends UmbModalBaseElement<UmbS
 	}
 
 	#getCreateHref() {
-		return `section/settings/workspace/script/create/parent/${this.data?.parent.entityType}/${
+		return `section/content/code/workspace/script/create/parent/${this.data?.parent.entityType}/${
 			this.data?.parent.unique || 'null'
 		}`;
 	}

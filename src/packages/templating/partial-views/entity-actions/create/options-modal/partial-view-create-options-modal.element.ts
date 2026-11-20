@@ -65,7 +65,7 @@ export class UmbPartialViewCreateOptionsModalElement extends UmbModalBaseElement
 	}
 
 	#getCreateHref() {
-		return `section/settings/workspace/partial-view/create/parent/${this.data?.parent.entityType}/${
+		return `section/content/code/workspace/partial-view/create/parent/${this.data?.parent.entityType}/${
 			this.data?.parent.unique || 'null'
 		}`;
 	}

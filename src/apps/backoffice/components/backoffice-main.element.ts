@@ -85,6 +85,9 @@ export class UmbBackofficeMainElement extends UmbLitElement {
 			};
 		});
 
+		// Crombolo: a section under another's address (`content/media`) is matched before it (story 385).
+		newRoutes.sort((a, b) => b.path.split('/').length - a.path.split('/').length);
+
 		const home = this.#homeView();
 		if (home) {
 			newRoutes.unshift({
@@ -103,6 +106,11 @@ export class UmbBackofficeMainElement extends UmbLitElement {
 			});
 
 			// Crombolo: the addresses of a section that moved still open its screens.
+			for (const moved of ['media', 'forms', 'workflow'])
+				newRoutes.push({
+					path: `section/${moved}`,
+					component: async () => (await import('./moved-sections.js')).UmbMovedSectionElement,
+				});
 			newRoutes.push({
 				path: 'section/packages',
 				component: async () => (await import('./moved-sections.js')).UmbMovedSectionElement,

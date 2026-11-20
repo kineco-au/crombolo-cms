@@ -9,7 +9,7 @@ export const manifests: Array<UmbExtensionManifest> = [
 		weight: 200,
 		meta: {
 			label: '#general_create',
-			href: 'section/settings/workspace/language/create',
+			href: 'section/content/structure/workspace/language/create',
 		},
 		conditions: [
 			{

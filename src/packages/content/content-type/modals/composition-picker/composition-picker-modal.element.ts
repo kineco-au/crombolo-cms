@@ -156,7 +156,7 @@ export class UmbCompositionPickerModalElement extends UmbModalBaseElement<
 	}
 
 	get #editPathBase(): string {
-		return `/section/settings/workspace/${this.data?.entityType ?? 'document-type'}/edit/`;
+		return `/section/content/structure/workspace/${this.data?.entityType ?? 'document-type'}/edit/`;
 	}
 
 	override render() {
