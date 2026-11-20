@@ -215,6 +215,11 @@ export class UmbTreeItemChildrenManager<
 		return this.#loadNextItemsFromTarget();
 	}
 
+	async #getRepository() {
+		await this.#treeContext?.whenReady?.();
+		return this.#treeContext?.getRepository();
+	}
+
 	#loadChildrenRetries = 0;
 	async #loadChildren(reload = false) {
 		if (this.#loadChildrenRetries > this.#requestMaxRetries) {
@@ -223,8 +228,9 @@ export class UmbTreeItemChildrenManager<
 			return;
 		}
 
-		const repository = this.#treeContext?.getRepository();
-		if (!repository) throw new Error('Could not request children, repository is missing');
+		const repository = await this.#getRepository();
+		// Its tree went before its repository came (Crombolo): there is nothing to ask for.
+		if (!repository) return;
 
 		this.#isLoading.setValue(true);
 
@@ -339,8 +345,9 @@ export class UmbTreeItemChildrenManager<
 			return;
 		}
 
-		const repository = this.#treeContext?.getRepository();
-		if (!repository) throw new Error('Could not request children, repository is missing');
+		const repository = await this.#getRepository();
+		// Its tree went before its repository came (Crombolo): there is nothing to ask for.
+		if (!repository) return;
 
 		this.#isLoading.setValue(true);
 		this.#isLoadingPrevChildren.setValue(true);
@@ -415,8 +422,9 @@ export class UmbTreeItemChildrenManager<
 			return;
 		}
 
-		const repository = this.#treeContext?.getRepository();
-		if (!repository) throw new Error('Could not request children, repository is missing');
+		const repository = await this.#getRepository();
+		// Its tree went before its repository came (Crombolo): there is nothing to ask for.
+		if (!repository) return;
 
 		this.#isLoading.setValue(true);
 		this.#isLoadingNextChildren.setValue(true);

@@ -162,6 +162,10 @@ export class UmbDefaultTreeContext<
 		return this.#repository;
 	}
 
+	public whenReady(): Promise<void> {
+		return this.#init;
+	}
+
 	public open(item: TreeItemType): void {
 		// The tree root has a null unique and is not a navigable target, so opening it is a no-op.
 		const unique = item.unique as UmbEntityUnique;

@@ -53,6 +53,9 @@ export interface UmbTreeContext<
 
 	getRepository(): UmbTreeRepository | undefined;
 
+	/** Resolves once the tree's repository has arrived (Crombolo). */
+	whenReady?(): Promise<void>;
+
 	open?(item: TreeItemType): void;
 
 	loadTree(): void;
